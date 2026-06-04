@@ -48,8 +48,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
   ┌─ ✓ Release lifecycle spine [decided]
   ├─ ✓ Version detection & bump [decided]
-  ├─ ◐ Safety & preflight gates [exploring]
-  ├─ ○ Hook mechanism [pending]
+  ├─ ✓ Safety & preflight gates [decided]
+  ├─ ◐ Hook mechanism [exploring]
   ├─ ○ AI release notes [pending]
   ├─ ○ Changelog & version recording [pending]
   ├─ ○ Tag, push & publish [pending]
@@ -112,13 +112,42 @@ How mint determines the current version and computes the next one — the first 
 
 Truth still always comes from the tag; the file is a kept-in-sync mirror, never the source.
 
-### Notes / deferred
+### Notes / deferred (Version)
 
 - **Brew formula version bump is NOT mint's job.** The formula's version + sha256 are bumped downstream by the tap's auto-update CI reacting to the GitHub release mint creates. Most repos mint releases aren't formulas anyway. If a project ever wants mint to actively trigger it (`repository_dispatch`), that's a **post-release hook**, not engine code. Tracked as a child of Tag/push/publish.
 
 Confidence: high.
 
 ---
+
+## Safety & preflight gates
+
+### Context
+
+Stage 2 of the spine: the "is it safe to release?" checks. All cheap and reversible, all run before any mutation or hooks. The guiding principle — releasing is high-consequence, so force a conscious, known-good starting state. The user has been bitten by *both* failure modes: blocked unnecessarily (annoyance) and the risk of releasing something stale/unreviewed (danger). The design favours safety, with escape hatches for the annoyance.
+
+### Decision — the preflight gate set
+
+Run in order; cheap local checks first, then network checks. Nothing irreversible until all pass.
+
+1. **Git repo present**, anchored at repo root.
+2. **On the release branch** — default-on, **auto-derived** from `origin/HEAD` (so it just resolves `main`/`master` with zero config). Override via `release_branch` in config; `--any-branch` escape hatch for the rare deliberate off-branch release. Rationale: we shouldn't release feature branches; auto-derivation means it protects with no config burden.
+3. **Clean working tree (strict)** — `git status --porcelain` must be empty (gitignored files exempt, so build outputs don't trip it). Blocks on uncommitted/unstaged tracked changes *and* non-ignored untracked files. Rationale: a release is a big, consequential act — a clean slate forces the user to consciously check what's going out.
+   - **`--autostash` opt-in flag** (not default): stashes (`--include-untracked`) before the run and restores after, **including on abort/failure**. Deliberately opt-in, not default, because the release mutates the tree (hook commits, changelog, version file) and popping unrelated WIP on top can conflict — a nasty failure mode to bake in by default. Opt-in = user asserts it's safe.
+4. **Target tag is free** — computed `vX.Y.Z` must not exist locally or on the remote. Closes the double-release / re-run footgun (old script never checked this).
+5. **Remote sync** — `git fetch`, then **abort (never auto-pull)** if local is *behind* or *diverged* from the release branch's upstream. Being *ahead* is fine and expected (those are the commits being released). Rationale: auto-pulling silently drags in unseen remote commits and releases them — integrating remote work must be a conscious act, not a side effect. Clear message on abort ("N commits behind origin/main — pull and review, then re-run").
+6. **`gh` installed + authenticated** — gated only when actually publishing a GitHub release, and *before* the tag, so a missing/unauthenticated `gh` never strands a pushed tag with no release. (`claude` CLI is NOT a preflight gate — AI notes are optional with graceful fallback; see AI release notes subtopic.)
+
+### Notes / deferred (Preflight)
+
+- The exact membership above resolves the open "which tools gate the run" question: `gh` (conditional on publish), `git` (implied), `claude` optional.
+- Repo-root anchoring with the global-binary + shim model (where mint sets its working dir; behaviour in submodules/worktrees) is an implementation detail flagged for spec, not re-litigated here.
+
+Confidence: high.
+
+---
+
+## Summary
 
 ### Key Insights
 
