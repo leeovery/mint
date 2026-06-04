@@ -44,24 +44,46 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
 ### Map
 
-  Discussion Map — Mint Release Tool (8 subtopics · 8 pending)
+  Discussion Map — Mint Release Tool (9 subtopics — 1 decided · 1 exploring · 7 pending)
 
-  ┌─ ○ Hook mechanism [pending]
+  ┌─ ✓ Release lifecycle spine [decided]
+  ├─ ◐ Version detection & bump [exploring]
+  ├─ ○ Safety & preflight gates [pending]
+  ├─ ○ Hook mechanism [pending]
+  ├─ ○ AI release notes [pending]
+  ├─ ○ Changelog & version recording [pending]
+  ├─ ○ Tag, push & publish [pending]
   ├─ ○ Config format & schema [pending]
-  ├─ ○ Pipeline lifecycle & hook points [pending]
-  ├─ ○ CommandRunner & testability strategy [pending]
-  ├─ ○ Parity with bash oracle [pending]
   ├─ ○ CLI surface & flags [pending]
-  ├─ ○ `mint init` scaffolding [pending]
-  └─ ○ Distribution & versioning of mint itself [pending]
+  └─ ○ `mint init` scaffolding [pending]
 
 ---
 
-*Subtopics are documented below as they reach `decided` or accumulate enough exploration to capture.*
+*Subtopics are documented below as they reach `decided` or accumulate enough exploration to capture. Approach: clean-slate design, working top-to-bottom through the lifecycle spine. The old bash script is a feature checklist, not a design to copy.*
 
 ---
 
-## Summary
+## Release lifecycle spine
+
+### Context
+
+The lifecycle is the contract everything else hangs off — hooks, config, init, and the testability strategy all reference these stages. Designed clean-slate; the old script's ordering is not authoritative.
+
+### Decision
+
+A release run has seven stages, in order:
+
+1. **Version** — determine current version and compute the next (patch/minor/major).
+2. **Preflight** — safety gates: clean working tree, required tools present & authenticated. Nothing irreversible past this point until stage 6.
+3. **Project prep (hooks)** — project-specific build/prep steps that may produce and commit artifacts.
+4. **Release notes** — AI-generated from the diff.
+5. **Record** — changelog entry, version file (where applicable).
+6. **Make official** — annotated tag + atomic push. This is the point of no return.
+7. **Publish** — GitHub release + project-specific follow-ups.
+
+Provisional confidence: high on the spine; per-stage details still to be designed top-to-bottom. The user's bar: robust + usable across all their projects, configurable where ambiguous.
+
+---
 
 ### Key Insights
 
