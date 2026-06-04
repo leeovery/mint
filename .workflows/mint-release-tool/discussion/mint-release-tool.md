@@ -48,8 +48,9 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
   ┌─ ✓ Release lifecycle spine [decided]
   ├─ ✓ Version detection & bump [decided]
+  ├─ ◐ Tag format, prefix & pre-releases [exploring]
   ├─ ✓ Safety & preflight gates [decided]
-  ├─ ◐ Hook mechanism [exploring]
+  ├─ ○ Hook mechanism [pending]
   ├─ ○ AI release notes [pending]
   ├─ ○ Changelog & version recording [pending]
   ├─ ○ Tag, push & publish [pending]
