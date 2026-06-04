@@ -48,9 +48,9 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
   ┌─ ✓ Release lifecycle spine [decided]
   ├─ ✓ Version detection & bump [decided]
-  ├─ ◐ Tag format, prefix & pre-releases [exploring]
+  ├─ ✓ Tag format, prefix & pre-releases [decided]
   ├─ ✓ Safety & preflight gates [decided]
-  ├─ ○ Hook mechanism [pending]
+  ├─ ◐ Hook mechanism [exploring]
   ├─ ○ AI release notes [pending]
   ├─ ○ Changelog & version recording [pending]
   ├─ ○ Tag, push & publish [pending]
@@ -116,6 +116,33 @@ Truth still always comes from the tag; the file is a kept-in-sync mirror, never 
 ### Notes / deferred (Version)
 
 - **Brew formula version bump is NOT mint's job.** The formula's version + sha256 are bumped downstream by the tap's auto-update CI reacting to the GitHub release mint creates. Most repos mint releases aren't formulas anyway. If a project ever wants mint to actively trigger it (`repository_dispatch`), that's a **post-release hook**, not engine code. Tracked as a child of Tag/push/publish.
+
+Confidence: high.
+
+---
+
+## Tag format, prefix & pre-releases
+
+### Context
+
+Grew out of the version decision (review finding F1). "Latest `vX.Y.Z` tag" left several tag shapes undefined: pre-release/RC tags, prefixed/component tags, the `v` prefix itself, and 4th/build segments. Pinning the exact recognised grammar matters because mis-parsing a tag silently re-releases an existing version.
+
+### Decision
+
+**Standard: strict SemVer 2.0.0, three numeric segments only.** mint recognises exactly `MAJOR.MINOR.PATCH`. Anything else (`release-1.2`, `1.2`, `1.2.0.4`) is not a mint version — the project's problem, not ours.
+
+**`tag_prefix` config, default `"v"`.** Industry default leans `v` (GitHub convention; Go *requires* it on module tags), but it's a per-project preference so it's overridable to `""` or anything else. mint reads the prefix off a tag, parses the semver, and writes the prefix back when tagging. One elegant consequence: the same knob covers component/monorepo prefixes — e.g. `tag_prefix = "pkg-name/v"`.
+
+**Recognised tag grammar:** `^{tag_prefix}(\d+)\.(\d+)\.(\d+)$`. Tags not matching are ignored entirely.
+
+**"Latest" = highest semver, globally** (resolves F2). Among all tags matching the grammar, pick the numerically highest version — *not* `git describe`'s nearest-reachable-from-HEAD, which diverges on branches and hotfix lines. Tag-as-truth requires the true maximum.
+
+**Tag completeness** (resolves F3): preflight's fetch includes `--tags`, so mint always sees the complete tag set even after a fresh/partial clone. mint is a local interactive tool (not a CI job), so the CI `--no-tags` shallow scenario barely applies anyway.
+
+### Explicitly rejected (YAGNI)
+
+- **Pre-release / RC tags** (`1.2.0-rc.1`) — valid SemVer, but the user doesn't cut RC releases, so mint won't even *parse* them, let alone produce them. (Consequence accepted: a repo whose only tags are RC tags would read as `0.0.0`. Not a real scenario for these projects.) Re-addable later if a project needs it.
+- **4th / build segment** (`1.2.0.4`) — not SemVer; breaks brew and tag-as-truth. SemVer's build metadata (`1.2.0+build5`) is precedence-ignored and not wanted. Docker image build numbers are stamped at image-build time in CI (`semver + git-sha`/run-number), off mint's released version — not baked into the release tag. mint stays strictly 3-part.
 
 Confidence: high.
 
