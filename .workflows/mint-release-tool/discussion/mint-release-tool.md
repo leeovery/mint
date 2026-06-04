@@ -52,6 +52,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Safety & preflight gates [decided]
   ├─ ◐ Hook mechanism [exploring]
   ├─ ○ AI release notes [pending]
+  │  ├─ ○ Diff-exclude globs ("mint ignore") [pending]
+  │  └─ ○ Prompt control: override & context injection [pending]
   ├─ ○ Changelog & version recording [pending]
   ├─ ○ Tag, push & publish [pending]
   │  └─ ○ Post-release: tap / formula update [pending]
@@ -178,6 +180,15 @@ Run in order; cheap local checks first, then network checks. Nothing irreversibl
 - Repo-root anchoring with the global-binary + shim model (where mint sets its working dir; behaviour in submodules/worktrees) is an implementation detail flagged for spec, not re-litigated here.
 
 Confidence: high.
+
+---
+
+## AI release notes (parked requirements — not yet designed)
+
+Captured mid-discussion so they aren't lost; full design happens when we reach this subtopic.
+
+- **Diff-exclude globs ("mint ignore"):** config to exclude generated/build artifacts (e.g. the knowledge bundle, minified output) from the diff fed to the AI. Old script: `diff_exclude` + raised `max_diff_lines` (60000 vs 25000) once the bundle no longer counts. Connection: the same artifact a `pre-tag` hook builds is the one that needs excluding here.
+- **Prompt control:** the user wants notes meaningfully *better* than the current output. Needs (a) ability to **override** the prompt entirely, and/or (b) **inject project context** (prepend / append — exact shape TBD). Per-project.
 
 ---
 
