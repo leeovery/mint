@@ -51,9 +51,9 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Tag format, prefix & pre-releases [decided]
   ├─ ✓ Safety & preflight gates [decided]
   ├─ ✓ Hook mechanism [decided]
-  ├─ ○ Hook points (which stages) [pending]
-  ├─ ○ Hook contract & commit interplay [pending]
-  ├─ ○ AI release notes [pending]
+  ├─ ✓ Hook points (which stages) [decided]
+  ├─ ✓ Hook contract & commit interplay [decided]
+  ├─ ◐ AI release notes [exploring]
   │  ├─ ○ Diff-exclude globs ("mint ignore") [pending]
   │  └─ ○ Prompt control: override & context injection [pending]
   ├─ ○ Changelog & version recording [pending]
@@ -214,6 +214,60 @@ pre_tag = ["npm ci", "npm run build"]      # array of strings, run in order
 ### Why not a `.release/hooks/` directory convention
 
 No capability is lost by dropping it: testable/complex logic still lives in a script file, the config just references it. One mechanism, one place to look. `mint init` may still scaffold an example script + reference, but the directory is not load-bearing.
+
+Confidence: high.
+
+---
+
+## Hook points (which stages)
+
+### Context
+
+Which lifecycle stages expose a hook. Kept minimal — only points with a real or near-certain use case, since adding a point later is trivial under the config-table mechanism.
+
+### Decision
+
+Three points, mapped to the spine:
+
+- **`preflight`** — runs after mint's built-in preflight checks; for project-specific gates/validation. Before any mutation.
+- **`pre_tag`** — stage 3 project prep (build/generate artifacts; the knowledge bundle). Dirties the tree → mint commits per the interplay rule below.
+- **`post_release`** — stage 7 follow-ups after the GitHub release (notifications, tap `repository_dispatch`, etc.).
+
+**No `post_tag`** (between tag/push and publish) — no use case; YAGNI.
+
+Confidence: high.
+
+---
+
+## Hook contract & commit interplay
+
+### Context
+
+How mint invokes a hook, how it passes context, what a non-zero exit means, and how hook-produced changes reconcile with the clean-tree-before-tag invariant (review finding F5).
+
+### Decision — commit interplay
+
+**After a `pre_tag` hook runs, mint commits whatever it left dirty** (standard message, e.g. `chore(release): pre-tag artifacts for v1.4.0`). Consequences:
+
+- Simple hooks never touch git — they just build; mint handles the commit.
+- "Commit only if the bundle changed" falls out for free: changed → tree dirty → mint commits; unchanged → tree clean → nothing committed.
+- A hook that wants a *custom* commit can do its own and hand mint back a clean tree — mint then sees nothing to do.
+
+Either way mint never tags a dirty tree, and hook authors aren't forced to know git.
+
+### Decision — failure behaviour (asymmetric across the point of no return)
+
+- **`preflight` / `pre_tag`** run *before* the tag is pushed → **non-zero exit aborts the whole release cleanly** (no tag, no damage).
+- **`post_release`** runs *after* the tag is live → it **cannot abort**; a non-zero exit just **warns** ("post_release hook failed; tag is already published"). Same principle as a failed `gh release create`.
+
+### Decision — invocation & context
+
+- Each hook entry runs via `sh -c` from the **repo root**.
+- mint injects env vars: `MINT_NEW_VERSION` (`1.4.0`), `MINT_PREVIOUS_VERSION` (`1.3.2`), `MINT_VERSION_TAG` (`v1.4.0`), `MINT_BUMP` (`patch`/`minor`/`major`), `MINT_DRY_RUN` (`0`/`1`). Set may grow as stages need it.
+
+### Deferred
+
+- **Hooks under `--dry-run`:** lean is mint *skips* hooks by default (they have side effects) and reports that it skipped them. Final call made in the dry-run semantics subtopic (review F9).
 
 Confidence: high.
 
