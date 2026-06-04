@@ -113,6 +113,12 @@ How mint determines the current version and computes the next one — the first 
 
 Truth still always comes from the tag; the file is a kept-in-sync mirror, never the source.
 
+**Lineage — old `VERSION_STRATEGY` → new model** (all three absorbed, none lost):
+- old `none` → default (no `version_file`); tag is truth.
+- old `file` (plain `release.txt`) → `version_file = "release.txt"` (no pattern).
+- old `embedded` (sed-replace `RELEASE_VERSION="x.y.z"` in a source file) → `version_file` + `version_pattern = 'RELEASE_VERSION="{version}"'`.
+The behavioural change: these are now write-only mirrors, not read sources.
+
 ### Notes / deferred (Version)
 
 - **Brew formula version bump is NOT mint's job.** The formula's version + sha256 are bumped downstream by the tap's auto-update CI reacting to the GitHub release mint creates. Most repos mint releases aren't formulas anyway. If a project ever wants mint to actively trigger it (`repository_dispatch`), that's a **post-release hook**, not engine code. Tracked as a child of Tag/push/publish.
