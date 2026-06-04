@@ -50,7 +50,9 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Version detection & bump [decided]
   ├─ ✓ Tag format, prefix & pre-releases [decided]
   ├─ ✓ Safety & preflight gates [decided]
-  ├─ ◐ Hook mechanism [exploring]
+  ├─ ✓ Hook mechanism [decided]
+  ├─ ○ Hook points (which stages) [pending]
+  ├─ ○ Hook contract & commit interplay [pending]
   ├─ ○ AI release notes [pending]
   │  ├─ ○ Diff-exclude globs ("mint ignore") [pending]
   │  └─ ○ Prompt control: override & context injection [pending]
@@ -178,6 +180,40 @@ Run in order; cheap local checks first, then network checks. Nothing irreversibl
 
 - The exact membership above resolves the open "which tools gate the run" question: `gh` (conditional on publish), `git` (implied), `claude` optional.
 - Repo-root anchoring with the global-binary + shim model (where mint sets its working dir; behaviour in submodules/worktrees) is an implementation detail flagged for spec, not re-litigated here.
+
+Confidence: high.
+
+---
+
+## Hook mechanism
+
+### Context
+
+Hooks are mint's escape valve for steps that are *specific to one project* and that mint cannot know about generically. Critically, the discussion first **shrank** what hooks are for: anything universal-but-optional (version-file writing, diff-exclude globs) gets absorbed into mint as built-in config, because mint already owns those concerns and they're fragile string-work better tested once in Go. After that absorption, the only genuine hook use case across all the user's repos is *one*: `agentic-workflows` runs `npm ci && npm run build` to rebuild its knowledge bundle before tagging. So the hook system only needs to serve "run my own command at this lifecycle point."
+
+### Journey
+
+Started as a three-way fork — script files (`.release/hooks/pre-tag`) vs inline config commands vs both. The user collapsed it: an inline command string can simply *call* a script (`pre_tag = "./.release/hooks/build.sh"`), so "script vs inline" was never a real choice — inline strings subsume scripts. That removes a whole mechanism, a `.release/hooks/` convention to learn, and a second place to look. It mirrors the npm-scripts / GitHub-Actions `run:` model, which is familiar and proven.
+
+### Decision
+
+**Hooks are a config table of shell commands, keyed by lifecycle point.** One mechanism only.
+
+```toml
+[hooks]
+pre_tag = "npm ci && npm run build"        # single string — the 90% case
+# or:
+pre_tag = ["npm ci", "npm run build"]      # array of strings, run in order
+```
+
+- **Value is a string *or* an array of strings.** Array entries run sequentially; the **first non-zero exit aborts the release**. (String-or-array accepted for ergonomics: string for one command, array for readable multi-step without quoting a giant `&&` chain.)
+- **Executed through a shell** (`sh -c "<entry>"`) so `&&`, pipes, env vars, and `./script.sh` invocations all work. Run from the **repo root**.
+- **mint injects `MINT_*` env vars** (new version, tag, dry-run flag, etc.) so commands/scripts have context. Exact var set decided in the Hook contract subtopic.
+- **Script files are not a separate mechanism** — they're just something a command string can call. Complex/conditional logic lives in a script; the config points at it.
+
+### Why not a `.release/hooks/` directory convention
+
+No capability is lost by dropping it: testable/complex logic still lives in a script file, the config just references it. One mechanism, one place to look. `mint init` may still scaffold an example script + reference, but the directory is not load-bearing.
 
 Confidence: high.
 
