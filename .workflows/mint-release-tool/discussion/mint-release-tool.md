@@ -58,8 +58,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   │  └─ ✓ Prompt control: override & context injection [decided]
   ├─ ✓ Tool scope & command namespace (`mint <verb>`) [decided]
   ├─ ✓ Regenerate / backfill notes (non-destructive) [decided]
-  ├─ ◐ Body distribution: tag vs changelog vs release [exploring]
-  ├─ ○ Changelog & version recording [pending]
+  ├─ ✓ Body distribution: tag vs changelog vs release [decided]
+  ├─ ◐ Changelog & version recording [exploring]
   ├─ ○ Tag, push & publish [pending]
   │  └─ ○ Post-release: tap / formula update [pending]
   ├─ ○ Config format & schema [pending]
@@ -183,6 +183,46 @@ Run in order; cheap local checks first, then network checks. Nothing irreversibl
 
 - The exact membership above resolves the open "which tools gate the run" question: `gh` (conditional on publish), `git` (implied), `claude` optional.
 - Repo-root anchoring with the global-binary + shim model (where mint sets its working dir; behaviour in submodules/worktrees) is an implementation detail flagged for spec, not re-litigated here.
+
+Confidence: high.
+
+---
+
+## Body distribution: tag vs changelog vs release
+
+### Context
+
+The notes body feeds three surfaces. The user spotted real redundancy (all three carrying identical full text) and questioned whether the tag should differ. Also raised: how to split a TL;DR out *deterministically* without trusting the AI to obey positional rules, and the fact that a TL;DR may be multi-line.
+
+### Decision — what each surface carries
+
+- **Tag annotation** = subject `🔖 Release vX.Y.Z` + the **Summary** (TL;DR) only. Keep tags *annotated* (not lightweight) — they're the signable, offline, in-repo release marker (`git show` / `git tag -n`). Full body is redundant in the tag since `CHANGELOG.md` (in-repo at that commit) and the GitHub release already hold it.
+- **CHANGELOG.md** = full body (Summary + Notes), under the `## [x.y.z] - date` header.
+- **GitHub release** = full body (Summary + Notes).
+
+### Decision — structured AI output contract (the deterministic split)
+
+Positional splitting (first line / first blank line) is too fragile and wrongly assumes a one-line TL;DR. Instead:
+
+- **The AI returns a structured intermediate with labelled markdown sections:**
+  ```
+  ## Summary
+  <paragraph — one line or several>
+
+  ## Notes
+  ✨ Features
+  - ...
+  🐛 Fixes
+  - ...
+  ```
+- **Split on the labels, not on position.** Summary block is any length (multi-line TL;DR — solved). LLMs follow labelled structure far more reliably than "put it on line one."
+- **mint parses into a structure, then renders each surface** — the AI text is never pasted verbatim into three places; mint owns per-sink rendering (tag = Summary; changelog/release = Summary + Notes, formatted for each).
+- **Validation + retry + fail-loud** is where determinism actually lives:
+  - mint validates both labels present and non-empty.
+  - On malformed/non-conforming output, **one automatic retry** (model is stochastic).
+  - Still malformed → a **notes failure** → `on_notes_failure` (abort by default). A hallucinated/ignored format can therefore *never* silently produce a garbage tag or empty release.
+
+**Format choice: labelled markdown** over strict JSON — LLMs comply extremely well, it's human-readable raw, easy to parse. Reversible to JSON if it underperforms.
 
 Confidence: high.
 
