@@ -230,7 +230,7 @@ mint **owns** CHANGELOG generation (Keep a Changelog format):
 ### Decision — commit graph (up to two commits, then tag)
 
 1. **Hook artifacts** (if a `pre_tag` hook dirtied the tree) → their **own** commit: `chore(release): pre-tag artifacts for vX.Y.Z`. Kept separate because it's *project content* (e.g. the rebuilt knowledge bundle), semantically distinct from release bookkeeping.
-2. **Release bookkeeping** — CHANGELOG entry **and** version-file projection folded into **one** commit: `🔖 Release vX.Y.Z`. (Old script made three commits per release — needlessly noisy.)
+2. **Release bookkeeping** — CHANGELOG entry **and** version-file projection folded into **one** commit: `🌿 Release vX.Y.Z` (subject uses the configurable `commit_prefix`, default 🌿 mint leaf). (Old script made three commits per release — needlessly noisy.)
 3. **Annotated tag** points at the release commit.
 4. **`git push --atomic`** sends both commits + tag together — the single point of no return; anything failing before it is local-only and recoverable.
 
@@ -251,7 +251,7 @@ The notes body feeds three surfaces. The user spotted real redundancy (all three
 
 ### Decision — what each surface carries
 
-- **Tag annotation** = subject `🔖 Release vX.Y.Z` + the **Summary** (TL;DR) only. Keep tags *annotated* (not lightweight) — they're the signable, offline, in-repo release marker (`git show` / `git tag -n`). Full body is redundant in the tag since `CHANGELOG.md` (in-repo at that commit) and the GitHub release already hold it.
+- **Tag annotation** = subject `🌿 Release vX.Y.Z` (configurable `commit_prefix`) + the **Summary** (TL;DR) only. Keep tags *annotated* (not lightweight) — they're the signable, offline, in-repo release marker (`git show` / `git tag -n`). Full body is redundant in the tag since `CHANGELOG.md` (in-repo at that commit) and the GitHub release already hold it.
 - **CHANGELOG.md** = full body (Summary + Notes), under the `## [x.y.z] - date` header.
 - **GitHub release** = full body (Summary + Notes).
 
@@ -399,6 +399,7 @@ Where mint's per-project configuration lives and in what format. Handoff assumed
 # .mint.toml — all keys optional
 
 tag_prefix      = "v"            # default "v"
+commit_prefix   = "🌿"           # default 🌿 (mint leaf) — release commit + tag subject; cosmetic
 release_branch  = "main"         # default: auto-derived from origin/HEAD
 version_file    = "bin/tool"     # optional; omit = tag-only
 version_pattern = 'RELEASE_VERSION="{version}"'   # omit = whole file is the version
@@ -581,6 +582,19 @@ Confidence: high on skeleton.
 
 ## AI release notes — quality (children, parked)
 
+### Diff exclusion tiers — decided (refined by review F3)
+
+The AI diff has two tiers of exclusion, plus a strategy-aware nuance for the version file:
+
+- **Built-in always-exclude — `CHANGELOG.md`** (non-configurable). It's pure mint output, never meaningful source. Excluded in *both* forward and regenerate paths.
+- **`version_file` — NOT blanket-excluded** (strategy-aware):
+  - *Forward path:* nothing to exclude — notes generate (stage 4) *before* the version write (stage 5), so the file is inherently unchanged at notes time. This is why the whole concern is **regenerate-only** (post-hoc, where the bookkeeping commits already exist in the `vX-1..vX` range).
+  - *Regenerate, plain mode* (whole file is the version, e.g. `release.txt`): exclude the file — pure bookkeeping.
+  - *Regenerate, embedded mode* (`version_pattern` in a real source file like `main.go`): **do not** exclude — the file is source we want in notes. The lone `RELEASE_VERSION="…"` line bump is negligible, neutralised by the default prompt's "**ignore version-number bumps**" instruction, not by hiding real code.
+- **`diff_exclude` (project artifacts) — configurable, on top** of the above.
+
+**Why regenerate needs this and forward doesn't:** the forward path diffs at a HEAD that predates mint's bookkeeping commits; regenerate diffs a tag range that already contains them. Excluding by path (CHANGELOG always; version_file in plain mode) reproduces the forward path's *source* view. (A 🌿/mint commit prefix is cosmetic only — diffs are range-based and can't subtract commits, so exclusion stays path-based.)
+
 ### Diff-exclude globs — decided
 
 - **`diff_exclude`** — a config array of globs kept out of the diff sent to the AI (knowledge bundle, minified output, lockfiles, generated code). Implemented via git's `:(exclude)` pathspec — git does the filtering. Connection: the same artifact a `pre_tag` hook builds is what gets excluded here.
@@ -597,6 +611,7 @@ Grounded in the *actual* current output (agentic-workflows CHANGELOG + tag messa
 - **Emoji-headed sections** — e.g. `✨ Features`, `🐛 Fixes`, `🧹 Internal`. Empty sections omitted; AI may add a sensible section if warranted.
 - Notable features **bolded + described** (celebrated, not buried in a flat list).
 - Strict **"no preamble, no meta-commentary"** rule so prompt artifacts can never leak.
+- Default prompt instructs the AI to **ignore version-number bumps** and other trivial bookkeeping churn (supports the embedded-version-file regenerate case — see diff exclusion tiers).
 - Same body flows to all three sinks (tag message, CHANGELOG entry, GitHub release). In the changelog it sits under the `## [x.y.z] - date` header.
 
 **Two-knob configurability (no third "themes" concept):**
