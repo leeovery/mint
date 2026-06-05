@@ -610,12 +610,19 @@ Confidence: high.
 
 ### Key Insights
 
-*(to be filled as the discussion progresses)*
+1. **Tag is the single source of truth.** Collapses the old `file`/`embedded`/`none` strategies into one rule; version files become write-only mirrors. Brew installs from tags, so the tag *is* the version.
+2. **Shrink hooks before serving them.** Anything universal-but-optional (version-file writing, diff-excludes) is absorbed into mint as *tested Go config*; hooks are reserved for genuinely bespoke project steps. The recurring "is this core or a hook?" test: if mint already owns the data/concern, it's core.
+3. **Fail-loud, before the point of no return.** Notes/changelog/version all happen pre-push; failures abort cleanly with nothing tagged. mint auto-unwinds its own local mutations on pre-push failure; it never rewrites pushed history. The single point of no return is `git push --atomic`.
+4. **Determinism lives in mint, not in trusting the model.** Structured AI output (labelled `## Summary` / `## Notes`) + parse + validate + one retry + fail-loud means a hallucinated/non-conforming response can never produce a garbage release.
+5. **The CHANGELOG is the pivot** for regenerate: reuse-mode (heal a failed publish) treats it as source of truth; regenerate-mode overwrites it. Tags never touched.
+6. **One hook mechanism:** a config table of shell command strings keyed by lifecycle point — scripts are just something a string can call.
 
-### Open Threads
+### Open Threads (deferred / out of scope — consciously)
 
-*(to be filled)*
+- **`mint commit`** — deferred to its own separate feature; the `mint <verb>` namespace leaves room. mint may promote to an **epic** (release + commit + …) when scope justifies.
+- **Testing / parity strategy** — deferred to spec/planning/implementation. The old bash script is reframed from *test oracle* to *feature reference* (capability checklist, not byte-parity target), since the clean-slate design intentionally diverges. Idiomatic Go + Go skills pulled in at implementation time.
+- **YAGNI / addable-later:** pre-release/RC tags (parse + produce), `--rewrite-tags`, inline-vs-script hook duplication, built-in note "themes" (use `notes_prompt` override), project auto-detection in `mint init`, a dry-run hook-run config toggle, a notes-review disable toggle, `.mintignore` file.
 
 ### Current State
 
-- Nothing decided yet — discussion just initialized from the design handoff.
+- **All 20 subtopics decided.** The release pipeline is fully specified end-to-end: version → preflight → hooks → AI notes (with interactive review) → record → tag/push → publish, plus regenerate/heal, config schema, CLI surface, and `mint init`. Ready for specification.
