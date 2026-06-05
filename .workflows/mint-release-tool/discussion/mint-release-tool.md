@@ -56,8 +56,9 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ AI release notes [decided]
   │  ├─ ✓ Diff-exclude globs ("mint ignore") [decided]
   │  └─ ✓ Prompt control: override & context injection [decided]
-  ├─ ○ Regenerate / backfill notes (non-destructive) [pending]
-  ├─ ○ Tool scope & command namespace (`mint <verb>`) [pending]
+  ├─ ✓ Tool scope & command namespace (`mint <verb>`) [decided]
+  ├─ ✓ Regenerate / backfill notes (non-destructive) [decided]
+  ├─ ◐ Body distribution: tag vs changelog vs release [exploring]
   ├─ ○ Changelog & version recording [pending]
   ├─ ○ Tag, push & publish [pending]
   │  └─ ○ Post-release: tap / formula update [pending]
@@ -184,6 +185,38 @@ Run in order; cheap local checks first, then network checks. Nothing irreversibl
 - Repo-root anchoring with the global-binary + shim model (where mint sets its working dir; behaviour in submodules/worktrees) is an implementation detail flagged for spec, not re-litigated here.
 
 Confidence: high.
+
+---
+
+## Tool scope & command namespace (`mint <verb>`)
+
+### Context
+
+Mid-discussion the user proposed making mint multifaceted: `mint release` today, `mint commit` later (wrapping their existing AI-commit shell function — `--all`, `--no-ai`, context injection, auto-push). "Minting a commit" fits the brand. Raises a scope fork: does commit belong in *this* build, and is mint still a single feature?
+
+### Decision
+
+- **Adopt the `mint <verb>` namespace now.** The release command is `mint release`; the per-project shim `release` delegates to `mint release`. Cheap, forward-compatible — leaves room for `mint commit` and future verbs without restructuring later.
+- **Defer `mint commit` to its own separate feature/discussion.** A full AI-commit command is a second tool's worth of design (staging logic, its own prompt, flags, push behaviour); folding it in would balloon this build. Out of scope here.
+- **mint stays a single feature for now** (release-only). Commit arrives later as a *separate* feature. The namespace leaves the door open to promote mint to an **epic** (release + commit + … as siblings) if/when scope justifies it — discovery already flagged this as the likely trigger. Not promoting yet.
+
+Confidence: high.
+
+---
+
+## Regenerate / backfill notes (non-destructive)
+
+### Context
+
+User wants to be able to regenerate release notes for *existing* releases — even "rewrite all of agentic-workflows' release history." Hinges on what's mutable vs permanent.
+
+### Decision
+
+- **Target only the mutable surfaces.** The **GitHub release body** and **`CHANGELOG.md`** are editable documents with no history consequence. mint can re-diff `vX-1..vX`, regenerate notes, and update both — for one release or all of them (batch backfill). This is how you cleanly "rewrite release history": regenerate every version's GitHub release + rebuild `CHANGELOG.md`, **touching no tags.** ~95% of the visible value.
+- **Tag messages are git history — excluded by default.** "Rewriting" a tag means delete + re-create + force-push: destructive, breaks anyone who pulled. If ever built, it's a loud, explicit, opt-in-only escape (`--rewrite-tags`), strongly discouraged. Not in scope now.
+- Command mechanics (which versions, invocation, flags) fold into the CLI surface / spec.
+
+Confidence: high on direction.
 
 ---
 
