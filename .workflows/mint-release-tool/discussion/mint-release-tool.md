@@ -60,8 +60,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Regenerate / backfill notes (non-destructive) [decided]
   ├─ ✓ Body distribution: tag vs changelog vs release [decided]
   ├─ ✓ Changelog & version recording [decided]
-  ├─ ◐ Tag, push & publish [exploring]
-  │  └─ ○ Post-release: tap / formula update [pending]
+  ├─ ✓ Tag, push & publish [decided]
+  │  └─ ✓ Post-release: tap / formula update [decided]
   ├─ ○ Config format & schema [pending]
   ├─ ○ CLI surface & flags [pending]
   └─ ○ `mint init` scaffolding [pending]
@@ -188,6 +188,32 @@ Confidence: high.
 
 ---
 
+## Tag, push & publish
+
+### Context
+
+Stages 6–7: create the tag, push, publish the GitHub release. This is where the point of no return sits and where failure handling matters most (review findings F4, F11, F13).
+
+### Decision — lock-resilient git (F13)
+
+mint wraps **all** its git mutations in lock resilience (retry on a contended `.git` lock, clear a provably-stale lock) — the old `git_safe`, carried forward as built-in. Singled out in the handoff as fragile-but-important and a reason to choose Go (tested once, applies everywhere). A background agent/editor holding the index lock won't blow up a release.
+
+### Decision — the point of no return & failure model (F4, F11)
+
+`git push --atomic origin HEAD vX.Y.Z` is the **single point of no return** — commits + tag go up together or not at all.
+
+- **Failure *before* the push** (hook, notes, changelog, version, tag creation) → everything mint did is local only. mint **auto-unwinds its own mutations** — deletes the tag it made and resets the release commit(s) — returning the repo to the exact clean state it started from. mint knows precisely what it created (N commits + 1 tag), so it's surgical; it reports what it undid. Next run starts clean. **Not configurable (YAGNI)** — there's no good reason to want a half-made local release left behind; if you want resilience against AI flakiness, that's what `on_notes_failure = fallback` is for. Auto-unwind only ever concerns the rarer git-side failure.
+- **Push succeeds but `gh release create` fails** (e.g. transient network) → tag is already public, so mint **never unwinds** (that would be destructive history rewriting). mint **warns** and points to the heal path: the regenerate command's **reuse mode** recreates the GitHub release from the existing CHANGELOG entry. (F11 solved — recovery is a first-class command, not a special case.)
+- **`post_release` hook fails** → warn only (after the point of no return; already decided).
+
+### Decision — post-release: tap / formula update
+
+Resolved earlier and confirmed: the brew formula's version/sha bump is **downstream CI** reacting to the GitHub release, *not* mint's job. If a project wants mint to actively trigger it (`repository_dispatch`), that's a **`post_release` hook** — already supported by the hook system, no engine code. Child closed.
+
+Confidence: high.
+
+---
+
 ## Changelog & version recording (Record stage)
 
 ### Context
@@ -283,6 +309,15 @@ User wants to be able to regenerate release notes for *existing* releases — ev
 - **Target only the mutable surfaces.** The **GitHub release body** and **`CHANGELOG.md`** are editable documents with no history consequence. mint can re-diff `vX-1..vX`, regenerate notes, and update both — for one release or all of them (batch backfill). This is how you cleanly "rewrite release history": regenerate every version's GitHub release + rebuild `CHANGELOG.md`, **touching no tags.** ~95% of the visible value.
 - **Tag messages are git history — excluded by default.** "Rewriting" a tag means delete + re-create + force-push: destructive, breaks anyone who pulled. If ever built, it's a loud, explicit, opt-in-only escape (`--rewrite-tags`), strongly discouraged. Not in scope now.
 - Command mechanics (which versions, invocation, flags) fold into the CLI surface / spec.
+
+### Two regenerate modes (refined)
+
+Regenerate has two distinct modes — the CHANGELOG entry is the pivot:
+
+- **Reuse mode (heal):** tag + CHANGELOG entry already exist and are good; only the GitHub release is missing/broken. mint reads the **existing CHANGELOG entry** for that version and (re)creates the GitHub release from it — **no AI call, no re-diff**. Fast, deterministic, can't drift. The natural healer for a failed publish (the post-push recovery path).
+- **Regenerate mode (clean):** re-diff `vX-1..vX`, re-run the AI, rewrite *both* the CHANGELOG entry and the GitHub release. For genuinely fresh/better notes (the "rewrite all history" case).
+
+Both leave tags untouched. Reuse-mode treats the CHANGELOG as source of truth; regenerate-mode treats it as an output to overwrite. Flag/command shapes → CLI subtopic.
 
 Confidence: high on direction.
 
