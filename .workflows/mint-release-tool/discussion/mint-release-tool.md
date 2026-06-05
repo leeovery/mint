@@ -347,7 +347,7 @@ Default interactive flow before any mutation:
 - **`a` accept** → proceed to Record → tag → push.
 - **`e` edit** → open the notes in `$EDITOR`; saved text becomes the release notes verbatim. mint re-parses the Summary/Notes split; if mangled, re-prompt.
 - **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `notes_context`.
-- **`q` abort** → nothing created, clean exit.
+- **`q` abort** → **full auto-unwind** (review F1): identical to the pre-push failure path — mint rolls back *everything it made this run*, including any `pre_tag` hook-artifact commit, returning to the exact clean starting state. One mental model: *nothing mint did this run survives unless the release completes.* The hook re-runs next time (idempotent build). A user-abort and a pre-push git failure are treated identically.
 
 - **`-y/--yes`** skips the whole gate (uses notes as generated) for scripted/CI use.
 - Config toggle to disable the gate can be added later if it ever annoys (YAGNI now).
