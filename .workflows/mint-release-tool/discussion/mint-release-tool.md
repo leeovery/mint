@@ -44,7 +44,7 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
 ### Map
 
-  Discussion Map — Mint Release Tool (20 subtopics — 19 decided · 1 pending)
+  Discussion Map — Mint Release Tool (20 subtopics — 20 decided)
 
   ┌─ ✓ Release lifecycle spine [decided]
   ├─ ✓ Version detection & bump [decided]
@@ -65,7 +65,7 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Config format & schema [decided]
   ├─ ✓ CLI surface & flags [decided]
   ├─ ✓ Interactive confirmation & notes review [decided]
-  └─ ○ `mint init` scaffolding [pending]
+  └─ ✓ `mint init` scaffolding [decided]
 
 ---
 
@@ -353,6 +353,28 @@ Default interactive flow before any mutation:
 - Config toggle to disable the gate can be added later if it ever annoys (YAGNI now).
 
 This eliminates the "notes went out unseen / I had to fix the release afterward" pain entirely.
+
+Confidence: high.
+
+---
+
+## `mint init` scaffolding
+
+### Context
+
+How mint "activates" in a project — the activation step from the handoff.
+
+### Decision
+
+`mint init` drops in **two files**:
+
+1. **`.mint.toml`** — a **commented template**: common keys with defaults, optional keys (version_file, hooks, notes_context, …) present-but-commented with a one-line explanation each. Tune by uncommenting rather than reading docs.
+2. **The `release` shim** — a tiny executable committed to the repo so `./release` works for anyone who clones; execs `mint release "$@"`, and if mint isn't installed prints `brew install leeovery/tools/mint` and exits non-zero.
+
+**Behaviour:**
+- **Idempotent / non-clobbering** — existing `.mint.toml` or `release` is skipped with a notice; `--force` regenerates.
+- **No hook/prompt files scaffolded by default** — the commented config shows hook examples; a `notes_prompt` override file is only mentioned in a comment.
+- **No project auto-detection** (e.g. sniffing `package.json` to pre-fill a build hook) — guesswork that can surprise; a clean commented template is more honest. Deferred, addable later.
 
 Confidence: high.
 
