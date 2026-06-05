@@ -204,7 +204,7 @@ mint wraps **all** its git mutations in lock resilience (retry on a contended `.
 `git push --atomic origin HEAD vX.Y.Z` is the **single point of no return** — commits + tag go up together or not at all.
 
 - **Failure *before* the push** (hook, notes, changelog, version, tag creation) → everything mint did is local only. mint **auto-unwinds its own mutations** — deletes the tag it made and resets the release commit(s) — returning the repo to the exact clean state it started from. mint knows precisely what it created (N commits + 1 tag), so it's surgical; it reports what it undid. Next run starts clean. **Not configurable (YAGNI)** — there's no good reason to want a half-made local release left behind; if you want resilience against AI flakiness, that's what `on_notes_failure = fallback` is for. Auto-unwind only ever concerns the rarer git-side failure.
-- **Push succeeds but `gh release create` fails** (e.g. transient network) → tag is already public, so mint **never unwinds** (that would be destructive history rewriting). mint **warns** and points to the heal path: the regenerate command's **reuse mode** recreates the GitHub release from the existing CHANGELOG entry. (F11 solved — recovery is a first-class command, not a special case.)
+- **Push succeeds but `gh release create` fails** (e.g. transient network) → tag is already public, so mint **never unwinds** (that would be destructive history rewriting). mint **warns** and points to the heal path: the regenerate command's **reuse mode** recreates the GitHub release from the **tag annotation body** (deterministic, parse-free). (F11 solved — recovery is a first-class command, not a special case.)
 - **`post_release` hook fails** → warn only (after the point of no return; already decided).
 
 ### Decision — post-release: tap / formula update
@@ -249,11 +249,17 @@ Confidence: high.
 
 The notes body feeds three surfaces. The user spotted real redundancy (all three carrying identical full text) and questioned whether the tag should differ. Also raised: how to split a TL;DR out *deterministically* without trusting the AI to obey positional rules, and the fact that a TL;DR may be multi-line.
 
-### Decision — what each surface carries
+### Decision — what each surface carries (REVISED after changelog-optional)
 
-- **Tag annotation** = subject `🌿 Release vX.Y.Z` (configurable `commit_prefix`) + the **Summary** (TL;DR) only. Keep tags *annotated* (not lightweight) — they're the signable, offline, in-repo release marker (`git show` / `git tag -n`). Full body is redundant in the tag since `CHANGELOG.md` (in-repo at that commit) and the GitHub release already hold it.
-- **CHANGELOG.md** = full body (Summary + Notes), under the `## [x.y.z] - date` header.
-- **GitHub release** = full body (Summary + Notes).
+> **Reversal:** an earlier decision made the tag carry the **Summary/TL;DR only** (full body deemed redundant given CHANGELOG). That premise assumed a CHANGELOG always exists. Once the **CHANGELOG is optional** (see below), it collapses — so the tag now carries the **full notes body** and becomes the single source of truth.
+
+- **Tag annotation = subject `🌿 Release vX.Y.Z` (configurable `commit_prefix`) + the FULL notes body** (Summary + Notes). Annotated (not lightweight): signable, offline, in-repo, **immutable**. This is the **single source mint ever reads** — `regenerate --reuse` reads the annotation body via one deterministic git call (`git for-each-ref … contents:body`), no parsing.
+- **CHANGELOG.md (optional, `changelog = true` default) = a write-only projection** of the full body, under the `## [x.y.z] - date` header. mint *writes* it but **never reads** it. `changelog = false` → no changelog; nothing durable is lost (the tag has the full notes).
+- **GitHub release = a write-only projection** of the full body.
+
+**Optionality stack:** the **annotated tag is mandatory** (always created, always carries a body — the floor and source of truth). **GitHub release is optional** (`github_release`, default true — and *necessarily* optional since `gh` is GitHub-only, so off-GitHub repos just tag+push). **CHANGELOG is optional** (`changelog`, default true). **AI notes are optional** — with `--no-ai`/no AI, the tag body falls back to a commit-subject / changed-files list, so the tag is never empty.
+
+**Source-of-truth model:** the tag is the immutable record of *what shipped*. CHANGELOG + GitHub release are mutable projections. `regenerate --fresh` rewrites the **mutable** surfaces only; the tag is **never** rewritten (immutable history). Reuse always sources from the tag — deterministic, parse-free, and config-independent. Trade accepted: full notes duplicated in tag *and* changelog when both exist — worth it for changelog-optionality, an always-present offline record, and parse-free healing.
 
 ### Decision — structured AI output contract (the deterministic split)
 
@@ -271,7 +277,7 @@ Positional splitting (first line / first blank line) is too fragile and wrongly 
   - ...
   ```
 - **Split on the labels, not on position.** Summary block is any length (multi-line TL;DR — solved). LLMs follow labelled structure far more reliably than "put it on line one."
-- **mint parses into a structure, then renders each surface** — the AI text is never pasted verbatim into three places; mint owns per-sink rendering (tag = Summary; changelog/release = Summary + Notes, formatted for each).
+- **mint parses into a structure, then renders each surface** — the AI text is never pasted verbatim; mint owns per-sink rendering. (Post-revision all three sinks carry the full Summary + Notes body; the structured `## Summary`/`## Notes` contract still stands — it keeps the format consistent, gives the notes a clean lead, and lets validation confirm the AI produced well-formed output.)
 - **Validation + retry + fail-loud** is where determinism actually lives:
   - mint validates both labels present and non-empty.
   - On malformed/non-conforming output, **one automatic retry** (model is stochastic).
@@ -403,6 +409,8 @@ commit_prefix   = "🌿"           # default 🌿 (mint leaf) — release commit
 release_branch  = "main"         # default: auto-derived from origin/HEAD
 version_file    = "bin/tool"     # optional; omit = tag-only
 version_pattern = 'RELEASE_VERSION="{version}"'   # omit = whole file is the version
+changelog       = true           # default true; false = no CHANGELOG.md projection (tag holds full notes)
+github_release  = true           # default true; false = tag + push only (e.g. non-GitHub repos)
 
 # AI release notes
 ai_command       = "claude -p"   # default
@@ -450,16 +458,40 @@ User wants to be able to regenerate release notes for *existing* releases — ev
 - **Tag messages are git history — excluded by default.** "Rewriting" a tag means delete + re-create + force-push: destructive, breaks anyone who pulled. If ever built, it's a loud, explicit, opt-in-only escape (`--rewrite-tags`), strongly discouraged. Not in scope now.
 - Command mechanics (which versions, invocation, flags) fold into the CLI surface / spec.
 
-### Two regenerate modes (refined)
+### Regenerate contract — two axes (refined: source × target; reviews F4/F7/F8)
 
-Regenerate has two distinct modes — the CHANGELOG entry is the pivot:
+Regenerate has **two independent axes** plus scope, all leaving tags untouched (immutable):
 
-- **Reuse mode (heal):** tag + CHANGELOG entry already exist and are good; only the GitHub release is missing/broken. mint reads the **existing CHANGELOG entry** for that version and (re)creates the GitHub release from it — **no AI call, no re-diff**. Fast, deterministic, can't drift. The natural healer for a failed publish (the post-push recovery path).
-- **Regenerate mode (clean):** re-diff `vX-1..vX`, re-run the AI, rewrite *both* the CHANGELOG entry and the GitHub release. For genuinely fresh/better notes (the "rewrite all history" case).
+**Axis 1 — source of notes:**
+- **`--reuse`** — read the **tag annotation body** (the single source of truth; deterministic git read, no parsing, config-independent). No AI, no re-diff. Can't drift.
+- **fresh** (default) — re-diff `vX-1..vX` (with the diff-exclusion tiers from F3) + re-run the AI for genuinely better notes.
 
-Both leave tags untouched. Reuse-mode treats the CHANGELOG as source of truth; regenerate-mode treats it as an output to overwrite. Flag/command shapes → CLI subtopic.
+**Axis 2 — target surface(s):** `--target release | changelog | both`.
+- `--reuse` ⇒ **release-only** (its source *is* the notes record; "reuse → write changelog" would write a file from itself — a no-op; mint errors on `--reuse --changelog`).
+- fresh ⇒ release, changelog, or both.
 
-Confidence: high on direction.
+**Composition table:**
+
+| Goal | Source | Target |
+|---|---|---|
+| Heal a failed publish | reuse | release |
+| Clean up a legacy/bad release | fresh | both |
+| Refresh public release text only | fresh | release |
+| Rebuild a changelog entry only | fresh | changelog |
+| Mass-heal missing GH releases | reuse `--all` | release |
+| Full history rewrite | fresh `--all` | both |
+
+**Interactive by default, flags to skip (F7):**
+- `mint release regenerate <ver>` with no flags → interactive: asks source, asks target, shows plan, confirms.
+- **fresh** regeneration runs the same **notes-review gate** (`[a]/[e]/[r]/[q]`) before writing — backfilled notes are reviewable before they overwrite live surfaces (the whole point of the gate). **reuse** is deterministic (no new notes) → a simple confirm, no review gate.
+- Flags skip the questions but still confirm unless `-y`.
+
+**Preflight subset per verb (F4):** preflight is a *gate set*; each command runs the relevant subset.
+- `regenerate --reuse` (release-only, no git mutation) → **gh-auth only** (it *must* run that — a dead `gh` auth is the usual reason you're healing).
+- `regenerate` fresh → changelog/both (commits + pushes) → **gh-auth + clean-tree + branch + remote-sync**; **not** tag-free (tags exist, untouched); no version compute.
+- General rule: *calls `gh` → gh-auth; commits+pushes → clean-tree/branch/remote-sync; cuts a new tag → tag-free.*
+
+Confidence: high.
 
 ---
 
@@ -632,7 +664,7 @@ Confidence: high.
 2. **Shrink hooks before serving them.** Anything universal-but-optional (version-file writing, diff-excludes) is absorbed into mint as *tested Go config*; hooks are reserved for genuinely bespoke project steps. The recurring "is this core or a hook?" test: if mint already owns the data/concern, it's core.
 3. **Fail-loud, before the point of no return.** Notes/changelog/version all happen pre-push; failures abort cleanly with nothing tagged. mint auto-unwinds its own local mutations on pre-push failure; it never rewrites pushed history. The single point of no return is `git push --atomic`.
 4. **Determinism lives in mint, not in trusting the model.** Structured AI output (labelled `## Summary` / `## Notes`) + parse + validate + one retry + fail-loud means a hallucinated/non-conforming response can never produce a garbage release.
-5. **The CHANGELOG is the pivot** for regenerate: reuse-mode (heal a failed publish) treats it as source of truth; regenerate-mode overwrites it. Tags never touched.
+5. **The annotated tag is the floor and the source of truth.** It's the one mandatory, immutable artifact and the only thing mint ever *reads* (full notes body in the annotation). CHANGELOG + GitHub release are optional, write-only projections. `regenerate --reuse` heals from the tag deterministically (parse-free); even with no AI the tag still carries a commit/file-list fallback body.
 6. **One hook mechanism:** a config table of shell command strings keyed by lifecycle point — scripts are just something a string can call.
 
 ### Open Threads (deferred / out of scope — consciously)
