@@ -44,7 +44,7 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
 ### Map
 
-  Discussion Map — Mint Release Tool (20 subtopics — 20 decided)
+  Discussion Map — Mint Release Tool (21 subtopics — 21 decided)
 
   ┌─ ✓ Release lifecycle spine [decided]
   ├─ ✓ Version detection & bump [decided]
@@ -61,6 +61,7 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Body distribution: tag vs changelog vs release [decided]
   ├─ ✓ Changelog & version recording [decided]
   ├─ ✓ Tag, push & publish [decided]
+  │  ├─ ✓ Publishing: provider driver abstraction [decided]
   │  └─ ✓ Post-release: tap / formula update [decided]
   ├─ ✓ Config format & schema [decided]
   ├─ ✓ CLI surface & flags [decided]
@@ -207,6 +208,16 @@ mint wraps **all** its git mutations in lock resilience (retry on a contended `.
 - **Push succeeds but `gh release create` fails** (e.g. transient network) → tag is already public, so mint **never unwinds** (that would be destructive history rewriting). mint **warns** and points to the heal path: the regenerate command's **reuse mode** recreates the GitHub release from the **tag annotation body** (deterministic, parse-free). (F11 solved — recovery is a first-class command, not a special case.)
 - **`post_release` hook fails** → warn only (after the point of no return; already decided).
 
+### Decision — publishing: provider driver abstraction
+
+Publishing the release (the GitHub release today) is **first-class but provider-abstracted**, not hardcoded to `gh` and *not* a hook.
+
+- **Not a `post_release` hook** — that would reintroduce the copy-paste disease mint cures (every repo re-deriving `gh release create --notes … --verify-tag`) *and* break heal/regenerate (the reuse path recreates the provider release; mint must own it).
+- **Behind a small `Publisher` interface** (`CreateRelease` / `UpdateRelease`). mint **auto-detects the provider from the remote host** (`github.com` → GitHub driver via `gh`), overridable by `provider` config.
+- **GitHub is the only driver implemented now** (all that's needed); the seam means GitLab (`glab`), Gitea, etc. drop in later with zero rework. Extra drivers are YAGNI; the *interface* is the cheap future-proofing.
+- Config is provider-neutral: **`publish`** (default true; false = tag + push only) + optional **`provider`** override. Unknown/unsupported provider → tag + push only.
+- The interface shape and auto-detection mechanics are routine Go → spec/implementation, not further discussed here.
+
 ### Decision — post-release: tap / formula update
 
 Resolved earlier and confirmed: the brew formula's version/sha bump is **downstream CI** reacting to the GitHub release, *not* mint's job. If a project wants mint to actively trigger it (`repository_dispatch`), that's a **`post_release` hook** — already supported by the hook system, no engine code. Child closed.
@@ -257,7 +268,7 @@ The notes body feeds three surfaces. The user spotted real redundancy (all three
 - **CHANGELOG.md (optional, `changelog = true` default) = a write-only projection** of the full body, under the `## [x.y.z] - date` header. mint *writes* it but **never reads** it. `changelog = false` → no changelog; nothing durable is lost (the tag has the full notes).
 - **GitHub release = a write-only projection** of the full body.
 
-**Optionality stack:** the **annotated tag is mandatory** (always created, always carries a body — the floor and source of truth). **GitHub release is optional** (`github_release`, default true — and *necessarily* optional since `gh` is GitHub-only, so off-GitHub repos just tag+push). **CHANGELOG is optional** (`changelog`, default true). **AI notes are optional** — with `--no-ai`/no AI, the tag body falls back to a commit-subject / changed-files list, so the tag is never empty.
+**Optionality stack:** the **annotated tag is mandatory** (always created, always carries a body — the floor and source of truth). **Provider release is optional** (`publish`, default true). **CHANGELOG is optional** (`changelog`, default true). **AI notes are optional** — with `--no-ai`/no AI, the tag body falls back to a commit-subject / changed-files list, so the tag is never empty.
 
 **Source-of-truth model:** the tag is the immutable record of *what shipped*. CHANGELOG + GitHub release are mutable projections. `regenerate --fresh` rewrites the **mutable** surfaces only; the tag is **never** rewritten (immutable history). Reuse always sources from the tag — deterministic, parse-free, and config-independent. Trade accepted: full notes duplicated in tag *and* changelog when both exist — worth it for changelog-optionality, an always-present offline record, and parse-free healing.
 
@@ -410,7 +421,8 @@ release_branch  = "main"         # default: auto-derived from origin/HEAD
 version_file    = "bin/tool"     # optional; omit = tag-only
 version_pattern = 'RELEASE_VERSION="{version}"'   # omit = whole file is the version
 changelog       = true           # default true; false = no CHANGELOG.md projection (tag holds full notes)
-github_release  = true           # default true; false = tag + push only (e.g. non-GitHub repos)
+publish         = true           # default true; false = tag + push only (no provider release)
+provider        = "github"       # optional; default auto-detected from the remote host
 
 # AI release notes
 ai_command       = "claude -p"   # default
@@ -485,6 +497,12 @@ Regenerate has **two independent axes** plus scope, all leaving tags untouched (
 - `mint release regenerate <ver>` with no flags → interactive: asks source, asks target, shows plan, confirms.
 - **fresh** regeneration runs the same **notes-review gate** (`[a]/[e]/[r]/[q]`) before writing — backfilled notes are reviewable before they overwrite live surfaces (the whole point of the gate). **reuse** is deterministic (no new notes) → a simple confirm, no review gate.
 - Flags skip the questions but still confirm unless `-y`.
+
+**Batch `--all` semantics (F8):**
+- **Ordering: oldest → newest** (lets mint rebuild `CHANGELOG.md` in natural order).
+- **Partial failure: skip-and-continue, summarise at the end** — *not* abort-the-batch (a single huge release tripping `max_diff_lines` shouldn't kill 29 good ones). Consciously overrides the single-version `on_notes_failure=abort` default; mint reports `"27 regenerated, 3 skipped: vX (diff too large), …"` so the user re-runs the stragglers.
+- **Review gates per version by default** (consistent with "notes never go out unseen"); **`-y/--yes`** is the existing opt-out to run fully unattended. No new flag — gate-by-default, opt out.
+- **Re-runnable**, no resume state. `--reuse --all` (mass-heal from tags) is fully deterministic; `--fresh --all` re-generates (stochastic but harmless).
 
 **Preflight subset per verb (F4):** preflight is a *gate set*; each command runs the relevant subset.
 - `regenerate --reuse` (release-only, no git mutation) → **gh-auth only** (it *must* run that — a dead `gh` auth is the usual reason you're healing).
