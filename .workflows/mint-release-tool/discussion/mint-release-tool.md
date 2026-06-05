@@ -53,9 +53,11 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Hook mechanism [decided]
   ├─ ✓ Hook points (which stages) [decided]
   ├─ ✓ Hook contract & commit interplay [decided]
-  ├─ ◐ AI release notes [exploring]
+  ├─ ✓ AI release notes [decided]
   │  ├─ ✓ Diff-exclude globs ("mint ignore") [decided]
-  │  └─ ◐ Prompt control: override & context injection [exploring]
+  │  └─ ✓ Prompt control: override & context injection [decided]
+  ├─ ○ Regenerate / backfill notes (non-destructive) [pending]
+  ├─ ○ Tool scope & command namespace (`mint <verb>`) [pending]
   ├─ ○ Changelog & version recording [pending]
   ├─ ○ Tag, push & publish [pending]
   │  └─ ○ Post-release: tap / formula update [pending]
@@ -308,9 +310,24 @@ Confidence: high on skeleton.
 - **No `.gitignore`-based exclusion needed (inherent).** A release diff is commit-to-commit (`last_tag..HEAD`), so it can *only* contain tracked/committed files — gitignored files are never committed and thus never appear. `diff_exclude` exists precisely for the opposite case: files that *are* committed but are still noise (the knowledge bundle is tracked, which is why it needs explicit exclusion). Edge case (gitignored-but-force-added) is deliberate and not special-cased.
 - **`max_diff_lines`, default 50000.** Reframed: not a model-context limit (modern windows are ~1M tokens) but a **cost + quality** guard — a huge diff is slow, costly, and summarises to mush. Lines are a cheap proxy for tokens (~10–20 tokens/line). Excluded paths don't count toward it. Exceeding it = a notes failure → abort-or-fallback per `on_notes_failure`. Fully overridable.
 
-### Prompt control — exploring
+### Prompt control & default format — decided
 
-- **Goal:** notes meaningfully *better* than today's output. Needs (a) ability to **override** the prompt entirely, and/or (b) **inject project context**. Per-project. Designing now — first pinning down what "better" means (the spec for mint's default prompt), then the override/inject mechanics.
+Grounded in the *actual* current output (agentic-workflows CHANGELOG + tag messages). Problems observed: flat intertwined list (features, fixes, tests, logged ideas all equal-weight); prompt leakage ("Based on the diff:" preamble bled into v0.4.17/0.4.18); empty descriptions on oversized releases (the fail-loud default fixes this).
+
+**Default format mint ships:**
+- A **TL;DR** one-liner at the top — what the release is really about.
+- **Emoji-headed sections** — e.g. `✨ Features`, `🐛 Fixes`, `🧹 Internal`. Empty sections omitted; AI may add a sensible section if warranted.
+- Notable features **bolded + described** (celebrated, not buried in a flat list).
+- Strict **"no preamble, no meta-commentary"** rule so prompt artifacts can never leak.
+- Same body flows to all three sinks (tag message, CHANGELOG entry, GitHub release). In the changelog it sits under the `## [x.y.z] - date` header.
+
+**Two-knob configurability (no third "themes" concept):**
+1. **`notes_context`** (string or file) — *inject* project-specific guidance into mint's default prompt (e.g. "dev-workflow toolkit; emphasise user-facing changes"). The common case.
+2. **`notes_prompt`** (file path) — *full override* of the prompt; mint still supplies the diff. Total control.
+
+A "theme/variant" is **not** a separate feature — it's just a `notes_prompt` override file. `mint init` can scaffold an example prompt to start from. Avoids building/maintaining a built-in theme enum nobody asked for (YAGNI).
+
+Confidence: high.
 
 ---
 
