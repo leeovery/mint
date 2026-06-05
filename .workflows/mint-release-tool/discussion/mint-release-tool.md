@@ -273,11 +273,37 @@ Confidence: high.
 
 ---
 
-## AI release notes (parked requirements — not yet designed)
+## AI release notes — skeleton
 
-Captured mid-discussion so they aren't lost; full design happens when we reach this subtopic.
+### Context
 
-- **Diff-exclude globs ("mint ignore"):** config to exclude generated/build artifacts (e.g. the knowledge bundle, minified output) from the diff fed to the AI. Old script: `diff_exclude` + raised `max_diff_lines` (60000 vs 25000) once the bundle no longer counts. Connection: the same artifact a `pre-tag` hook builds is the one that needs excluding here.
+Stage 4: generate a release-notes body from the diff since the last release. The body is reused in three places — the tag message, the CHANGELOG entry, and the GitHub release. Generate once, use everywhere. This section covers the structural/robustness half; the *quality* half (prompt, diff-excludes, context injection) is its own children below. Resolves review finding F7.
+
+### Decision — skeleton
+
+**A. Diff base.** Diff `last_tag..HEAD` (changes since the last release).
+- **First release (no prior tag):** no base to diff and diffing the whole repo is useless to an AI → mint **skips the AI and uses a fixed body, "Initial release."**
+
+**B. Engine.** Default the `claude` CLI (`claude -p`): mint composes the prompt, pipes it to the command's stdin, reads the body from stdout, with a timeout (~60s) so a hung call can't stall a release. The **command is overridable** via config (`ai_command`, default `claude -p`) — mint always *owns the prompt*; the command is just transport. Cheap future-proofing (swap binary/model) that keeps prompt-control working.
+
+**C. Failure behaviour — fail loud by default.** Notes are generated at stage 4, *before* the tag (stage 6), so aborting on failure leaves **nothing tagged/pushed** — no mess to clean up. This is *why* blocking is safe and correct.
+- **Config `on_notes_failure`, default `abort`** — if the AI can't produce a body (missing tool, timeout, error, diff exceeds `max_diff_lines`), mint **fails loudly and tags nothing**. An empty/garbage release is worse than a failed command (the user has been bitten by having to delete/hand-edit bad releases).
+- **`fallback` mode** (opt-in) — proceed with a non-AI body instead of aborting. Fallback body defaults to the commit-subject list since last tag (lower-stakes since it only applies in this mode); can be a fixed configurable string.
+- **`--no-ai`** is a *deliberate* skip, not a failure → always uses the fallback body, never aborts.
+
+### Decided in passing
+
+- **mint owns CHANGELOG generation** (confirmed direction) — it's the Record stage, and the AI body feeds the changelog entry. So the abort/fallback decision *also* protects the changelog: no body → no entry → no tag. Mechanics designed in the Changelog & version recording subtopic.
+
+Confidence: high on skeleton.
+
+---
+
+## AI release notes — quality (children, parked)
+
+Full design happens next (the "make it better than today" half).
+
+- **Diff-exclude globs ("mint ignore"):** config to exclude generated/build artifacts (e.g. the knowledge bundle, minified output) from the diff fed to the AI. Old script: `diff_exclude` + raised `max_diff_lines` (60000 vs 25000) once the bundle no longer counts. Connection: the same artifact a `pre_tag` hook builds is the one that needs excluding here.
 - **Prompt control:** the user wants notes meaningfully *better* than the current output. Needs (a) ability to **override** the prompt entirely, and/or (b) **inject project context** (prepend / append — exact shape TBD). Per-project.
 
 ---
