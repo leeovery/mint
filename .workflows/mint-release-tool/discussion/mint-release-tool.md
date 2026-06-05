@@ -54,8 +54,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Hook points (which stages) [decided]
   ├─ ✓ Hook contract & commit interplay [decided]
   ├─ ◐ AI release notes [exploring]
-  │  ├─ ○ Diff-exclude globs ("mint ignore") [pending]
-  │  └─ ○ Prompt control: override & context injection [pending]
+  │  ├─ ✓ Diff-exclude globs ("mint ignore") [decided]
+  │  └─ ◐ Prompt control: override & context injection [exploring]
   ├─ ○ Changelog & version recording [pending]
   ├─ ○ Tag, push & publish [pending]
   │  └─ ○ Post-release: tap / formula update [pending]
@@ -301,10 +301,15 @@ Confidence: high on skeleton.
 
 ## AI release notes — quality (children, parked)
 
-Full design happens next (the "make it better than today" half).
+### Diff-exclude globs — decided
 
-- **Diff-exclude globs ("mint ignore"):** config to exclude generated/build artifacts (e.g. the knowledge bundle, minified output) from the diff fed to the AI. Old script: `diff_exclude` + raised `max_diff_lines` (60000 vs 25000) once the bundle no longer counts. Connection: the same artifact a `pre_tag` hook builds is the one that needs excluding here.
-- **Prompt control:** the user wants notes meaningfully *better* than the current output. Needs (a) ability to **override** the prompt entirely, and/or (b) **inject project context** (prepend / append — exact shape TBD). Per-project.
+- **`diff_exclude`** — a config array of globs kept out of the diff sent to the AI (knowledge bundle, minified output, lockfiles, generated code). Implemented via git's `:(exclude)` pathspec — git does the filtering. Connection: the same artifact a `pre_tag` hook builds is what gets excluded here.
+- **Config array, not a `.mintignore` file** — consistent with the "everything in one config file, one place to look" principle (same call as hooks). These are *tracked, committed* generated files, so they're deliberately not in `.gitignore`. A `.mintignore` only earns its place if exclude sets grow large/gitignore-like — YAGNI today, addable later.
+- **`max_diff_lines`, default 50000.** Reframed: not a model-context limit (modern windows are ~1M tokens) but a **cost + quality** guard — a huge diff is slow, costly, and summarises to mush. Lines are a cheap proxy for tokens (~10–20 tokens/line). Excluded paths don't count toward it. Exceeding it = a notes failure → abort-or-fallback per `on_notes_failure`. Fully overridable.
+
+### Prompt control — exploring
+
+- **Goal:** notes meaningfully *better* than today's output. Needs (a) ability to **override** the prompt entirely, and/or (b) **inject project context**. Per-project. Designing now — first pinning down what "better" means (the spec for mint's default prompt), then the override/inject mechanics.
 
 ---
 
