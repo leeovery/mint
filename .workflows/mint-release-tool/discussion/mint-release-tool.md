@@ -560,6 +560,9 @@ Stage 4: generate a release-notes body from the diff since the last release. The
 
 **A. Diff base.** Diff `last_tag..HEAD` (changes since the last release).
 - **First release (no prior tag):** no base to diff and diffing the whole repo is useless to an AI → mint **skips the AI and uses a fixed body, "Initial release."**
+- **Computed at the *post-hook* HEAD (review F2):** because `pre_tag` hooks (stage 3) commit before notes generate (stage 4), HEAD already includes the hook-artifact commit. That's intended — `diff_exclude` filters hook artifacts (e.g. the bundle) out *by path*, regardless of being freshly committed, so the AI never sees bundle churn. Consequence: anything a hook commits that *isn't* excluded legitimately appears in the notes (correct — you'd want it described). Ordering kept as-is rather than generating notes pre-hook, which would crudely hide *all* hook output including the meaningful kind.
+
+**No `pre_notes` / `post_notes` hook points (YAGNI).** `pre_tag` already runs before notes, so a pre-notes hook is a redundant second name for the same slot. A post-notes hook has no real use case and would have to mutate the structured body without breaking it — the jobs it might do are covered better by `notes_context`/`notes_prompt` (steering) and the interactive edit/regenerate gate (human intervention). Trivially addable later if a concrete need appears.
 
 **B. Engine.** Default the `claude` CLI (`claude -p`): mint composes the prompt, pipes it to the command's stdin, reads the body from stdout, with a timeout (~60s) so a hung call can't stall a release. The **command is overridable** via config (`ai_command`, default `claude -p`) — mint always *owns the prompt*; the command is just transport. Cheap future-proofing (swap binary/model) that keeps prompt-control working.
 
