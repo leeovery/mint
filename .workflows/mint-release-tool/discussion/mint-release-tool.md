@@ -44,7 +44,7 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
 ### Map
 
-  Discussion Map — Mint Release Tool (10 subtopics — 2 decided · 1 exploring · 7 pending)
+  Discussion Map — Mint Release Tool (19 subtopics — 17 decided · 1 exploring · 1 pending)
 
   ┌─ ✓ Release lifecycle spine [decided]
   ├─ ✓ Version detection & bump [decided]
@@ -62,8 +62,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Changelog & version recording [decided]
   ├─ ✓ Tag, push & publish [decided]
   │  └─ ✓ Post-release: tap / formula update [decided]
-  ├─ ○ Config format & schema [pending]
-  ├─ ○ CLI surface & flags [pending]
+  ├─ ✓ Config format & schema [decided]
+  ├─ ◐ CLI surface & flags [exploring]
   └─ ○ `mint init` scaffolding [pending]
 
 ---
@@ -277,6 +277,47 @@ Positional splitting (first line / first blank line) is too fragile and wrongly 
   - Still malformed → a **notes failure** → `on_notes_failure` (abort by default). A hallucinated/ignored format can therefore *never* silently produce a garbage tag or empty release.
 
 **Format choice: labelled markdown** over strict JSON — LLMs comply extremely well, it's human-readable raw, easy to parse. Reversible to JSON if it underperforms.
+
+Confidence: high.
+
+---
+
+## Config format & schema
+
+### Context
+
+Where mint's per-project configuration lives and in what format. Handoff assumed TOML; confirm vs YAML. Also resolves repo-root anchoring (review F12).
+
+### Decision
+
+- **Format: TOML.** Go-native, typed/validated with real error messages, supports comments, and `[hooks]`-style tables read cleanly. YAML's indentation + type-coercion footguns aren't worth it for a config file.
+- **Location: `.mint.toml` at the repo root.** mint resolves the root via `git rev-parse --show-toplevel`, looks for `.mint.toml` there, runs from root (F12 — anchoring defined).
+- **Fully optional.** Zero config = sensible defaults everywhere (tag-only release, `claude -p` notes, auto-derived release branch). `mint init` scaffolds a documented file.
+- **Typed validation, fail-loud** on unknown keys / bad types with clear messages (a Go advantage over the old sourced-bash config that failed silently on a typo).
+
+### The consolidated schema (every key named across the discussion)
+
+```toml
+# .mint.toml — all keys optional
+
+tag_prefix      = "v"            # default "v"
+release_branch  = "main"         # default: auto-derived from origin/HEAD
+version_file    = "bin/tool"     # optional; omit = tag-only
+version_pattern = 'RELEASE_VERSION="{version}"'   # omit = whole file is the version
+
+# AI release notes
+ai_command       = "claude -p"   # default
+on_notes_failure = "abort"       # abort | fallback
+max_diff_lines   = 50000
+diff_exclude     = ["skills/**/knowledge.cjs", "*.min.js"]
+notes_context    = "This is a dev-workflow toolkit; emphasise user-facing changes."
+notes_prompt     = ".mint/notes-prompt.md"   # optional full override
+
+[hooks]
+preflight    = "scripts/check.sh"
+pre_tag      = ["npm ci", "npm run build"]
+post_release = "scripts/notify.sh"
+```
 
 Confidence: high.
 
