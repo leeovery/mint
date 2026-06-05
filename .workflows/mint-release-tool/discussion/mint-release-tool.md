@@ -44,7 +44,7 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
 
 ### Map
 
-  Discussion Map — Mint Release Tool (19 subtopics — 17 decided · 1 exploring · 1 pending)
+  Discussion Map — Mint Release Tool (20 subtopics — 19 decided · 1 pending)
 
   ┌─ ✓ Release lifecycle spine [decided]
   ├─ ✓ Version detection & bump [decided]
@@ -63,7 +63,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Tag, push & publish [decided]
   │  └─ ✓ Post-release: tap / formula update [decided]
   ├─ ✓ Config format & schema [decided]
-  ├─ ◐ CLI surface & flags [exploring]
+  ├─ ✓ CLI surface & flags [decided]
+  ├─ ✓ Interactive confirmation & notes review [decided]
   └─ ○ `mint init` scaffolding [pending]
 
 ---
@@ -277,6 +278,81 @@ Positional splitting (first line / first blank line) is too fragile and wrongly 
   - Still malformed → a **notes failure** → `on_notes_failure` (abort by default). A hallucinated/ignored format can therefore *never* silently produce a garbage tag or empty release.
 
 **Format choice: labelled markdown** over strict JSON — LLMs comply extremely well, it's human-readable raw, easy to parse. Reversible to JSON if it underperforms.
+
+Confidence: high.
+
+---
+
+## CLI surface & flags
+
+### Context
+
+Consolidation — every command and flag was named across the discussion. Also resolves dry-run semantics (review F9).
+
+### Decision — commands
+
+```
+mint release [bump] [options]            cut a release   (shim `release` → `mint release`)
+mint release regenerate <version>        fresh regenerate (re-diff + AI), rewrites CHANGELOG + GitHub release
+mint release regenerate <ver> --reuse    heal from existing CHANGELOG entry (no AI) — failed-publish recovery
+mint release regenerate --all            backfill every version
+mint init                                scaffold .mint.toml (+ shim)
+mint version                             print mint's own version
+```
+
+- **Bare `mint release` is the cut action** (not `mint release cut`) — the shim is `release`, so `./release -m` must map cleanly to `mint release -m`. `release` is a command with a default action *and* subcommands (well-trodden, e.g. `git stash` = `git stash push`). No `cut` verb.
+- **Regenerate is a subcommand of `release`**, not a top-level `notes` verb — `notes` is the wrong noun and ages badly once `mint commit` exists.
+
+### Decision — `mint release` flags
+
+```
+-p, --patch            default
+-m, --minor
+-M, --major
+    --set-version X.Y.Z   explicit version (renamed from --version to avoid the tool-version clash)
+-d, --dry-run
+    --no-ai            deliberate skip → fallback body
+    --autostash        stash/restore unrelated WIP around the run
+    --any-branch       bypass the release-branch gate
+-y, --yes              skip the confirmation + notes-review gate (scripted/CI use)
+```
+
+`mint version` / `mint --version` print mint's own version (standard convention).
+
+### Decision — dry-run semantics (F9)
+
+- **Does:** read-only preflight, compute version, **generate the AI notes preview**, print the full plan (commits, tag, what would publish).
+- **Skips:** all mutations (commit/tag/push/release) **and hooks** (side effects) — reports hooks were skipped.
+
+Confidence: high.
+
+---
+
+## Interactive confirmation & notes review
+
+### Context
+
+The user's biggest live pain with the current script: release notes go out *unseen*, with no chance to review or edit before they're public. Since notes are generated at stage 4 (before any mutation / the point of no return), there's a natural zero-risk window to review them.
+
+### Decision
+
+Default interactive flow before any mutation:
+
+```
+1. Plan summary + computed version  → shown
+2. Notes generated + validated      → shown in full
+3. Gate:  [a] accept   [e] edit   [r] regenerate with context   [q] abort
+```
+
+- **`a` accept** → proceed to Record → tag → push.
+- **`e` edit** → open the notes in `$EDITOR`; saved text becomes the release notes verbatim. mint re-parses the Summary/Notes split; if mangled, re-prompt.
+- **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `notes_context`.
+- **`q` abort** → nothing created, clean exit.
+
+- **`-y/--yes`** skips the whole gate (uses notes as generated) for scripted/CI use.
+- Config toggle to disable the gate can be added later if it ever annoys (YAGNI now).
+
+This eliminates the "notes went out unseen / I had to fix the release afterward" pain entirely.
 
 Confidence: high.
 
