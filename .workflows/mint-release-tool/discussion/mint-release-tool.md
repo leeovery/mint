@@ -59,8 +59,8 @@ those, this discussion shapes the pipeline lifecycle, config schema, CLI surface
   ├─ ✓ Tool scope & command namespace (`mint <verb>`) [decided]
   ├─ ✓ Regenerate / backfill notes (non-destructive) [decided]
   ├─ ✓ Body distribution: tag vs changelog vs release [decided]
-  ├─ ◐ Changelog & version recording [exploring]
-  ├─ ○ Tag, push & publish [pending]
+  ├─ ✓ Changelog & version recording [decided]
+  ├─ ◐ Tag, push & publish [exploring]
   │  └─ ○ Post-release: tap / formula update [pending]
   ├─ ○ Config format & schema [pending]
   ├─ ○ CLI surface & flags [pending]
@@ -183,6 +183,34 @@ Run in order; cheap local checks first, then network checks. Nothing irreversibl
 
 - The exact membership above resolves the open "which tools gate the run" question: `gh` (conditional on publish), `git` (implied), `claude` optional.
 - Repo-root anchoring with the global-binary + shim model (where mint sets its working dir; behaviour in submodules/worktrees) is an implementation detail flagged for spec, not re-litigated here.
+
+Confidence: high.
+
+---
+
+## Changelog & version recording (Record stage)
+
+### Context
+
+Stage 5: persist the release into the repo — the CHANGELOG entry and the optional version-file projection — and decide the commit graph relative to the tag (review finding F8).
+
+### Decision — changelog mechanics
+
+mint **owns** CHANGELOG generation (Keep a Changelog format):
+- New entry `## [x.y.z] - YYYY-MM-DD` + the full body (Summary + Notes), inserted **above the most recent existing `## [` block**.
+- If `CHANGELOG.md` doesn't exist, create it with the standard Keep a Changelog header first.
+
+### Decision — commit graph (up to two commits, then tag)
+
+1. **Hook artifacts** (if a `pre_tag` hook dirtied the tree) → their **own** commit: `chore(release): pre-tag artifacts for vX.Y.Z`. Kept separate because it's *project content* (e.g. the rebuilt knowledge bundle), semantically distinct from release bookkeeping.
+2. **Release bookkeeping** — CHANGELOG entry **and** version-file projection folded into **one** commit: `🔖 Release vX.Y.Z`. (Old script made three commits per release — needlessly noisy.)
+3. **Annotated tag** points at the release commit.
+4. **`git push --atomic`** sends both commits + tag together — the single point of no return; anything failing before it is local-only and recoverable.
+
+### Edge cases
+
+- **`version_pattern` mismatch** (configured pattern matches nothing in the file) → **abort during Record, before the tag** (fail-loud, same family as a notes failure). Never silently skip the version write.
+- **No-op safety**: no empty commits — if the changelog yields no net change or the version file already holds the version, skip that commit.
 
 Confidence: high.
 
