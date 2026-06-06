@@ -133,7 +133,7 @@ StageStarted(name) · StageSucceeded(name) · StageFailed(name, err)
 Warn(msg) · ShowPlan(plan) · ShowNotes(body) · Prompt(gate) → choice
 ```
 
-- **Two implementations behind the interface — `pretty` and `plain`** — selected **once at startup** from `isatty(stdout)`. Nothing downstream re-checks the TTY.
+- **Two implementations behind the interface — `pretty` and `plain`** — selected **once at startup** (`--plain` if passed, else `isatty(stdout)`). Nothing downstream re-checks the TTY or the flag.
 - **The engine never touches colour, spinners, or TTY state.** It calls `Presenter` methods only. This mirrors the engine's existing seams (`CommandRunner` for git/gh/claude, `Publisher` for releases) — the same dependency-inversion discipline, now for output.
 - **Applies to every verb.** `release`, `regenerate`, `init`, `version` all emit through the same `Presenter`, which is *how* the "consistent presentation across all verbs" goal is met structurally (not per-verb styling code).
 - **Testability** (the whole Go rationale): assert which events fired and with what payload, independent of rendering. A `plain` impl is trivially assertable; a fake/recording presenter verifies engine behaviour without parsing styled text.
@@ -155,7 +155,7 @@ The discovery how-question: which Go packages provide styling and spinners — a
 
 ### Decision
 
-- **`lipgloss` for all `pretty`-mode styling** — colour, the 🌿 brand line, status glyphs, the notes box/border. It is *pure string styling* (no event loop), so it composes with the `Presenter` seam, and it auto-downgrades colour when piped. Idiomatic and already in the user's toolchain.
+- **`lipgloss` for all `pretty`-mode styling** — colour, the 🌿 brand line, status glyphs, the titled notes rule. It is *pure string styling* (no event loop), so it composes with the `Presenter` seam, and it auto-downgrades colour when piped (also relied on for colour-incapable TTYs — see Render-Mode Detection F2). Idiomatic and already in the user's toolchain.
 - **A lightweight standalone spinner** for stage progress — `briandowns/spinner` (explicit `Start()`/`Stop()`, maps 1:1 to `StageStarted`/`StageSucceeded`) or charm's `huh/spinner`. Exact pick is an impl detail; the seam doesn't care.
 - **NOT Bubble Tea / no alt-screen / no full-screen TUI.** Print-style linear narration only.
 - **`plain` mode pulls in no UI library** — just `fmt` lines. That's the point of token-efficiency.
