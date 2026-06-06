@@ -332,4 +332,40 @@ No empty commits — if the changelog yields no net change, or the version file 
 
 ---
 
+## Stages 6–7 — Tag, Push & Publish
+
+### Lock-resilient git
+
+mint wraps **all** its git mutations in lock resilience (retry on a contended `.git` lock; clear a provably-stale lock). This carries forward the legacy `git_safe` behaviour as a built-in — tested once in Go, applied everywhere. A background agent/editor holding the index lock won't blow up a release.
+
+### Point of no return
+
+`git push --atomic origin HEAD {tag}` is the **single point of no return** — commits + tag go up together or not at all.
+
+### Failure model
+
+| When it fails | What mint does |
+|---|---|
+| **Before the push** (hook, notes, changelog, version, tag creation) | Everything mint did is local-only. mint **auto-unwinds its own mutations** — deletes the tag it made, resets the release commit(s) — returning the repo to the exact clean starting state. mint knows precisely what it created (N commits + 1 tag), so the unwind is surgical, and it reports what it undid. Next run starts clean. **Not configurable (YAGNI).** |
+| **Push succeeds but provider release create fails** (e.g. transient network) | The tag is already public, so mint **never unwinds** (that would be destructive history rewriting). mint **warns** and points to the heal path: `regenerate --reuse` recreates the provider release from the tag annotation body (deterministic, parse-free). |
+| **`post_release` hook fails** | **Warn only** — after the point of no return, the tag is already published. |
+
+The auto-unwind is the same path a user `q`/abort at the review gate takes (see Interactive Review) — it includes any `pre_tag` hook-artifact commit. One mental model: *nothing mint did this run survives unless the release completes.*
+
+### Publishing: provider driver abstraction
+
+Publishing the release is **first-class but provider-abstracted** — not hardcoded to `gh`, and **not a `post_release` hook**.
+
+- **Not a hook** — a hook would reintroduce the copy-paste disease mint cures (every repo re-deriving `gh release create --notes … --verify-tag`) and would break heal/regenerate (the reuse path recreates the provider release, so mint must own it).
+- **Behind a small `Publisher` interface** (`CreateRelease` / `UpdateRelease`). mint **auto-detects the provider from the remote host** (`github.com` → GitHub driver via `gh`), overridable by the `provider` config.
+- **GitHub is the only driver implemented now.** The seam means GitLab (`glab`), Gitea, etc. can drop in later with zero rework — extra drivers are YAGNI; the *interface* is the cheap future-proofing.
+- Config is provider-neutral: **`publish`** (default `true`; `false` = tag + push only) plus optional **`provider`** override. An unknown/unsupported provider → tag + push only.
+- The interface shape and auto-detection mechanics are routine Go, left to implementation.
+
+### Post-release: tap / formula update
+
+The brew formula's version/sha bump is **downstream CI** reacting to the GitHub release mint creates — **not mint's job**. Most repos mint releases aren't formulas anyway. If a project ever wants mint to actively trigger it (`repository_dispatch`), that's a **`post_release` hook** — already supported by the hook system, no engine code.
+
+---
+
 ## Working Notes
