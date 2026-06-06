@@ -18,14 +18,14 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (7 subtopics — 1 decided · 1 exploring · 5 pending)
+  Discussion Map — CLI Presentation (7 subtopics — 2 decided · 1 exploring · 4 pending)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
-  ├─ ○ What The Styled Layer Actually Shows [pending]
+  ├─ ○ What The Pretty Layer Actually Shows [pending]
   ├─ ○ Plain / Token-Efficient Mode Contract [pending]
   ├─ ○ Spinners & Long-Running Progress [pending]
   ├─ ◐ -y/--yes Orthogonality [exploring]
-  ├─ ○ Presentation Seam / Architecture [pending]
+  ├─ ✓ Presentation Seam / Architecture [decided]
   └─ ○ Library Selection (Charm Vs Lighter) [pending]
 
   *(Dry-run note reuse / caching was routed out to the `mint-release-tool` discussion — engine behaviour, not presentation. See its dry-run-semantics addendum.)*
@@ -48,11 +48,11 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 - **`pretty`** (human): brand, colour, spinners, formatted stages.
 - **`plain`** (agent): terse token-efficient text — no ANSI, no animation, no banner.
 
-**Detection — `isatty(stdout)` + explicit override, never sniffing:**
-- Default: `isatty(stdout)` → `pretty`; non-TTY → `plain`. That's the entire heuristic.
-- **"Human vs agent" reduces to "is stdout a terminal?"** — this is exactly `tick`'s mechanism (`stat(stdout).Mode() & os.ModeCharDevice != 0`, called on `os.Stdout`). An agent never announces itself; it simply has a **pipe** on stdout (not a char device) because its harness captures output → `false` → plain. A human's terminal is a char device → `true` → pretty. Same binary, same code path; the OS reports what's connected for free. mint mirrors this (the stat check, or the equivalent `term.IsTerminal(int(os.Stdout.Fd()))`).
-- Explicit override flags `--pretty` / `--plain` win over detection. **No `CI=true`/`TERM` guessing** — exactly the environment sniffing the seed forbids.
-- **Accepted edge cases** (tick lives with these; the flags are the escape hatch): a human who pipes (`mint … | less`) gets `plain`; an agent that allocates a pseudo-terminal gets `pretty`. Neither is worth detecting around.
+**Detection — `isatty(stdout)` only. No override flags, no sniffing:**
+- `isatty(stdout)` → `pretty`; non-TTY → `plain`. That is the *entire* mechanism — there is **no `--pretty`/`--plain`/`--no-color` override**. (The only run flag near this area is `-y`, which is gating, not rendering — orthogonal.)
+- **"Human vs agent" reduces to "is stdout a terminal?"** — exactly `tick`'s mechanism (`stat(stdout).Mode() & os.ModeCharDevice != 0` on `os.Stdout`). An agent never announces itself; its harness captures stdout through a **pipe** (not a char device) → `false` → plain. A human's terminal is a char device → `true` → pretty. Same binary, same path; the OS reports what's connected for free. mint mirrors this (the stat check, or `term.IsTerminal(int(os.Stdout.Fd()))`).
+- **No `CI=true`/`TERM` guessing** — the environment sniffing the seed forbids.
+- **The two edge cases are features, not compromises** (confirmed desirable by the user): a human who pipes/redirects (`mint … > out.txt`, `… | grep`) gets `plain` — exactly what you want when capturing output (no ANSI junk), and this *is* the "force plain" path. An agent on a pseudo-terminal getting `pretty` is rare and harmless. There is deliberately no force-pretty.
 
 **Stream split — narration is the product, so it's stdout:**
 - **Run narration → stdout** — stages, the plan, the notes preview, the final summary, and `mint version`'s value. mint has no separate data payload, so the narration *is* its stdout output.
@@ -60,7 +60,7 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 - **Exit code** signals success/failure for scripts (they check `$?`, not stream parsing).
 - An **agent captures combined output (`2>&1`)** by default, so it sees narration *and* errors regardless of the split — the split costs the agent nothing and buys humans redirect-visibility.
 
-**No colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color` and no `NO_COLOR` handling. Don't want colour? You're in `plain` (or pass `--plain`). Mode ∈ {pretty, plain}, full stop — no third "no-colour-but-styled" state. (`NO_COLOR` support is addable later if anyone ever asks; YAGNI now.)
+**No colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color` and no `NO_COLOR` handling. Don't want colour? Pipe/redirect the output — any non-terminal stdout gives `plain`. Mode ∈ {pretty, plain}, full stop — no third "no-colour-but-styled" state, and no render-mode flags at all. (`NO_COLOR` support is addable later if anyone ever asks; YAGNI now.)
 
 ### Journey
 
@@ -91,6 +91,35 @@ Still exploring: whether any other gates exist beyond notes-review that interact
 
 ---
 
+## Presentation Seam / Architecture
+
+### Context
+
+The structural backbone the topic exists to define: how the engine and the presentation layer relate, so that mode selection, colour, and spinners live in exactly one place and the seven-stage release spine stays oblivious to them. `tick` gave a template — a `Formatter` interface with concrete per-mode impls behind a factory — but `tick`'s methods are **data-shaped** (`FormatTaskList(tasks)`) because it renders data structures. mint renders a **process**, so the seam must be shaped differently.
+
+### Decision
+
+**An event/step-oriented `Presenter` interface the engine calls at lifecycle points.** The engine emits *semantic events* ("stage X started", "here's the plan", "warn: hook failed"); the presenter decides *how they look*. Illustrative method set (exact surface settled at spec/impl):
+
+```
+StageStarted(name) · StageSucceeded(name) · StageFailed(name, err)
+Warn(msg) · ShowPlan(plan) · ShowNotes(body) · Prompt(gate) → choice
+```
+
+- **Two implementations behind the interface — `pretty` and `plain`** — selected **once at startup** from `isatty(stdout)`. Nothing downstream re-checks the TTY.
+- **The engine never touches colour, spinners, or TTY state.** It calls `Presenter` methods only. This mirrors the engine's existing seams (`CommandRunner` for git/gh/claude, `Publisher` for releases) — the same dependency-inversion discipline, now for output.
+- **Applies to every verb.** `release`, `regenerate`, `init`, `version` all emit through the same `Presenter`, which is *how* the "consistent presentation across all verbs" goal is met structurally (not per-verb styling code).
+- **Testability** (the whole Go rationale): assert which events fired and with what payload, independent of rendering. A `plain` impl is trivially assertable; a fake/recording presenter verifies engine behaviour without parsing styled text.
+- **Spinners are a `pretty`-only concern** owned inside the pretty presenter (e.g. a spinner spans the gap between `StageStarted` and `StageSucceeded/Failed`); `plain` renders the same events as terse lines. Lifecycle detail deferred to the spinners subtopic.
+
+### Journey
+
+Considered cloning `tick`'s data-shaped `Formatter` directly, but mint has no task-list-equivalent to format — it has a running process. Reshaping the seam from "format this data" to "react to this event" keeps the decoupling principle (one interface, per-mode impls, factory by mode) while fitting what mint actually does. The engine-emits-events / presenter-renders split is the payoff: the spine is testable and rendering-agnostic.
+
+Confidence: high (on the split and the event shape; exact method signatures are spec/impl detail).
+
+---
+
 ## Summary
 
 ### Key Insights
@@ -99,6 +128,8 @@ Still exploring: whether any other gates exist beyond notes-review that interact
 2. **Mirror `tick`'s adapter model** — one logical output, rendered by an adapter chosen by audience: `isatty(stdout)` → pretty, else plain; explicit flag overrides. Proven in a sibling tool the user already trusts.
 3. **Two modes suffice** (pretty + plain). Structured json/toon is YAGNI here because mint renders a process, not a queryable data structure.
 4. **Three orthogonal axes**: styling (TTY) · gating (`-y`) · output stream. Independence is the design's backbone.
+5. **Engine emits events; presenter renders.** An event-oriented `Presenter` seam (not tick's data-shaped `Formatter`) keeps the seven-stage spine oblivious to colour/spinners/TTY — mirroring the `CommandRunner`/`Publisher` seams — and is how "consistent across all verbs" is achieved structurally.
+6. **No render-mode flags.** Mode is purely `isatty(stdout)`; piping is the natural "force plain". Minimal surface by design.
 
 ### Open Threads
 
@@ -107,4 +138,4 @@ Still exploring: whether any other gates exist beyond notes-review that interact
 
 ### Current State
 
-- Render-mode detection **decided** (revised to stdout-based, tick-aligned, two modes, narration→stdout). `-y` orthogonality mostly decided. Remaining: what the pretty layer shows, the concrete plain-mode text contract, spinners, presentation seam/architecture, library selection.
+- Render-mode detection **decided** (stdout-based, tick-aligned, two modes, narration→stdout, no flags). Presentation seam **decided** (event-oriented `Presenter`, two impls). `-y` orthogonality mostly decided. Remaining: what the pretty layer shows, the concrete plain-mode text contract, spinners, library selection.
