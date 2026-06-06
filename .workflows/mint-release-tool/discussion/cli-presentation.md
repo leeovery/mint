@@ -40,25 +40,35 @@ The shape settled in discovery:
 
 ### Context
 
-The seed mandates: render mode is driven by **TTY detection, not environment sniffing**. Interactive terminal → styled (brand, colour, spinners); non-TTY (an AI/agent consuming the output) → token-efficient plain text. The job here was to make "TTY detection" operationally precise, since `mint` is a **local interactive tool, not a CI job**, and `mint release` emits no capturable payload — almost all its output is status/chrome.
+The seed mandates: render mode is driven by **TTY detection, not environment sniffing**. Interactive terminal → styled (brand, colour, spinners); non-TTY (an AI/agent consuming the output) → token-efficient plain text. The job here was to make "TTY detection" operationally precise, since `mint` is a **local interactive tool, not a CI job**, and `mint release` emits no capturable data payload — its output *is* the run narration.
 
-### Decision
+### Decision (REVISED — grounded in the sibling `tick` tool's proven model)
 
-**Stream split (conventional Unix):**
-- **Status / progress / chrome → stderr** (brand, title, spinners, "doing X…" lines).
-- **Machine payload → stdout** — only `mint version` and any future machine-readable value; stdout stays clean and capturable (`mint version | pbcopy` never sees a spinner).
-- **Styling gate keys on `isatty(stderr)`** — chrome lives on stderr, so judge that stream. Each stream is evaluated on its own TTY-ness (the technically-correct rule). Spinners always go to stderr.
+**Two modes only — `pretty` + `plain`.** No structured (`json`/`toon`) mode: `tick` has one because it renders *data structures* (task lists); mint renders a *process*, so an agent reads the narration, it doesn't parse it. Structured output is YAGNI, addable later.
+- **`pretty`** (human): brand, colour, spinners, formatted stages.
+- **`plain`** (agent): terse token-efficient text — no ANSI, no animation, no banner.
 
-**Detection heuristic — TTY + explicit overrides only, never sniffing:**
-- Default: `isatty(stderr)` → styled; else plain. That's the entire heuristic.
-- Explicit overrides (user intent, *not* sniffing): honour **`NO_COLOR`** (de-facto standard); **`--plain`** forces token-efficient mode even on a TTY; optionally **`--color=always`** to force colour in captured logs.
-- **No `CI=true` / `TERM` guessing** — that is precisely the environment sniffing the seed forbids. Mode comes from the TTY or an explicit flag/var, never inferred from the environment.
+**Detection — `isatty(stdout)` + explicit override, never sniffing:**
+- Default: `isatty(stdout)` → `pretty`; non-TTY → `plain`. That's the entire heuristic. (Matches `tick`: it detects on stdout and defaults TTY→pretty, piped→token-efficient.)
+- Explicit override flags `--pretty` / `--plain` win over detection. **No `CI=true`/`TERM` guessing** — exactly the environment sniffing the seed forbids.
 
-**Colour vs layout = one switch.** "Plain" = no ANSI *and* no spinner animation *and* no decorative banner — the full token-efficient degradation, because the only consumer of plain mode is a token-sensitive agent and half-measures waste tokens. The lone exception: `NO_COLOR` on a TTY strips colour but keeps the spinner (a human who simply dislikes colour).
+**Stream split — narration is the product, so it's stdout:**
+- **Run narration → stdout** — stages, the plan, the notes preview, the final summary, and `mint version`'s value. mint has no separate data payload, so the narration *is* its stdout output.
+- **Errors + warnings → stderr** — the one real job stderr keeps: *visibility under redirection*. `mint release > run.log` sends stdout to the file, but a failure on stderr still hits the terminal and can't silently vanish.
+- **Exit code** signals success/failure for scripts (they check `$?`, not stream parsing).
+- An **agent captures combined output (`2>&1`)** by default, so it sees narration *and* errors regardless of the split — the split costs the agent nothing and buys humans redirect-visibility.
+
+**Colour is a toggle *within* `pretty`, not a third mode.** `NO_COLOR` (de-facto standard) and `--no-color` drop ANSI colour but stay in pretty (spinner still runs) — a human who dislikes colour. `plain` already implies no colour. So: mode ∈ {pretty, plain}; colour is a sub-switch of pretty. (Optionally `--color=always` to force colour in captured logs; minor.)
 
 ### Journey
 
-Initial framing assumed a payload-vs-chrome stdout/stderr split where a human might do `mint release > notes.txt`. The user corrected this: mint doesn't emit a capturable release payload — it performs side effects (commits, tag, push, `gh` release, CHANGELOG) and shows the notes-review gate interactively. So "non-TTY" means *an agent runs mint and reads its output as text*, and the goal is stripping ANSI/animation to save the agent's tokens — not formatting a redirected result. That collapsed the detection model to a single per-stream TTY check.
+Three course-corrections, each from the user:
+
+1. **Initial framing assumed a payload-vs-chrome stdout/stderr split** where a human might do `mint release > notes.txt`. Wrong — mint emits no capturable release payload; it performs side effects and shows the notes-review gate interactively.
+2. **First revision over-corrected to "all chrome → stderr, detect on stderr."** The review (F8) caught the tension: if everything meaningful is on stderr and stdout is empty, an agent capturing stdout gets near-silence.
+3. **Resolved by reading `tick`** (the user's sibling CLI, which they already trust): it treats its rendered output as the product → **stdout**, detects on stdout, and reserves stderr for errors/`--verbose`. mint adopts the same stance. The "git/wget put progress on stderr" pattern exists to protect a *real* stdout payload mint doesn't have — copying it would be cargo-culting.
+
+The model collapsed to: **one logical output, rendered by an adapter chosen by audience (auto via stdout TTY, override via flag); narration→stdout, errors→stderr.**
 
 Confidence: high.
 
@@ -83,8 +93,10 @@ Still exploring: whether any other gates exist beyond notes-review that interact
 
 ### Key Insights
 
-1. **mint has no payload stream to protect** — it's a side-effecting interactive tool, so "styled vs plain" is a single per-stream TTY decision, not a payload/chrome split.
-2. **Three orthogonal axes**: styling (TTY) · gating (`-y`) · output stream (fixed). Keeping them independent is the design's backbone.
+1. **mint's narration IS its output.** No separate data payload (bar `mint version`), so narration → stdout, and stderr is reserved for errors/warnings (kept only for redirect-visibility). "All process" is fine — when the narration is the product, the narration is stdout.
+2. **Mirror `tick`'s adapter model** — one logical output, rendered by an adapter chosen by audience: `isatty(stdout)` → pretty, else plain; explicit flag overrides. Proven in a sibling tool the user already trusts.
+3. **Two modes suffice** (pretty + plain). Structured json/toon is YAGNI here because mint renders a process, not a queryable data structure.
+4. **Three orthogonal axes**: styling (TTY) · gating (`-y`) · output stream. Independence is the design's backbone.
 
 ### Open Threads
 
@@ -93,4 +105,4 @@ Still exploring: whether any other gates exist beyond notes-review that interact
 
 ### Current State
 
-- Render-mode detection decided. `-y` orthogonality mostly decided (stdin/gate interplay locked). Remaining: what the styled layer shows, plain-mode contract, spinners, presentation seam, library selection.
+- Render-mode detection **decided** (revised to stdout-based, tick-aligned, two modes, narration→stdout). `-y` orthogonality mostly decided. Remaining: what the pretty layer shows, the concrete plain-mode text contract, spinners, presentation seam/architecture, library selection.
