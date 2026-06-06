@@ -42,21 +42,24 @@
           "summary": "Styled CLI presentation layer: brand, title, colour, and spinners on a TTY; token-efficient plain output when piped or redirected; consistent across all mint commands.",
           "description": "A styled-but-restrained presentation layer for the mint CLI, applied consistently across every verb (release, regenerate, init, version) rather than only the release run. On an interactive terminal it shows a brand and title, colour, and progress spinners while git and the claude CLI work. When output is not a TTY (piped or redirected, e.g. an AI or agent consuming it) it degrades to token-efficient plain text. Render mode is driven by TTY detection, not environment sniffing. The -y/--yes flag is orthogonal: it only skips the interactive gate stops, so a human at a terminal with -y still gets the styled UI. The open how-question deferred to later phases is which Go packages provide the styling and spinners (a charm/lipgloss-style stack versus lighter colour libraries).",
           "routing": "discussion",
-          "source": "discovery"
+          "source": "discovery",
+          "order": 2
         },
         "commit-command": {
           "status": "in-progress",
           "summary": "mint commit: a built-in sibling verb wrapping AI-generated commit messages from the diff (--all, --no-ai, context injection, auto-push), sharing mint engine, config, and presentation layer.",
           "description": "Reintroduces mint commit, parked in the first discussion as its own separate feature with the mint verb namespace adopted to leave room; the pivot from feature to epic is the trigger flagged for promoting it. The command wraps the user existing AI-commit shell function: an AI-generated commit message from the staged diff, with --all, --no-ai, one-time context injection, and auto-push, fitting the minting-a-commit brand. The user wants it built into mint, sharing the AI engine, the .mint.toml config, and the styled presentation layer, with the integration details (how much it reuses the release pipeline versus stands alone) deliberately left for its own discussion.",
           "routing": "discussion",
-          "source": "discovery"
+          "source": "discovery",
+          "order": 3
         },
         "release-notes-quality": {
           "status": "in-progress",
           "summary": "Lift AI release-note quality beyond a raw textual diff (e.g. AST or richer semantic signal), especially for large releases where diffs summarise to mush.",
           "description": "A speculative research thread motivated by the user current agentic-workflows release script, whose AI notes are not always great, especially on bigger releases where large diffs summarise to mush (echoing the first discussion max_diff_lines cost and quality note). The first discussion tuned the prompt and output format but always fed the AI a raw textual diff. This thread explores enriching the input instead: feeding AST or semantic structure of the change, or some other signal, to produce more accurate and meaningful notes. Framed explicitly as speculative (a suspicion we can do better), an open what-is-possible question, hence research routing.",
           "routing": "research",
-          "source": "discovery"
+          "source": "discovery",
+          "order": 4
         }
       },
       "gap_analysis_cache": {
