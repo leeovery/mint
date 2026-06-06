@@ -301,4 +301,35 @@ An earlier design had the tag carry a Summary/TL;DR only (full body deemed redun
 
 ---
 
+## Stage 5 — Record (Changelog & Version Recording)
+
+Persist the release into the repo: the CHANGELOG entry and the optional version-file projection, then build the commit graph leading to the tag.
+
+### Changelog mechanics
+
+mint **owns** CHANGELOG generation (Keep a Changelog format):
+
+- A new entry `## [x.y.z] - YYYY-MM-DD` followed by the full notes body, inserted **above the most recent existing `## [` block**.
+- If `CHANGELOG.md` doesn't exist, mint creates it with the standard Keep a Changelog header first.
+- Skipped entirely when `changelog = false`.
+
+### Version-file projection
+
+When `version_file` is configured, mint writes the new version into it (per `version_pattern`, or the whole file in plain mode). See Stage 1 for the strategy mapping.
+
+- **`version_pattern` mismatch** (configured pattern matches nothing in the file) → **abort during Record, before the tag** (fail-loud, same family as a notes failure). Never silently skip the version write.
+
+### Commit graph (up to two commits, then tag)
+
+1. **Hook artifacts** (only if a `pre_tag` hook dirtied the tree) → their **own** commit: `chore(release): pre-tag artifacts for {tag}`. Kept separate because it's *project content* (e.g. a rebuilt knowledge bundle), semantically distinct from release bookkeeping.
+2. **Release bookkeeping** — the CHANGELOG entry **and** the version-file projection folded into **one** commit: `{commit_prefix} Release {tag}` (subject uses the configurable `commit_prefix`, default 🌿). (The legacy script made three commits per release — needlessly noisy.)
+3. **Annotated tag** points at the release-bookkeeping commit.
+4. **`git push --atomic`** sends both commits + tag together — the single point of no return.
+
+### No-op safety
+
+No empty commits — if the changelog yields no net change, or the version file already holds the target version, mint skips that commit.
+
+---
+
 ## Working Notes
