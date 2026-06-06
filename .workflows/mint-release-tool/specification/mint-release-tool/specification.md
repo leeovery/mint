@@ -203,4 +203,67 @@ Under `--dry-run`, mint **skips hooks** (they have side effects) and reports tha
 
 ---
 
+## Stage 4 — AI Release Notes
+
+Generate a release-notes body from the diff since the last release. The same body is reused for every output surface (tag annotation, CHANGELOG, provider release) — generate once, use everywhere.
+
+### Diff base
+
+- Diff **`last_tag..HEAD`** (changes since the last release).
+- **First release (no prior tag):** there's no base to diff and diffing the whole repo is useless to an AI → mint **skips the AI and uses a fixed body, "Initial release."**
+- **Computed at the post-hook HEAD:** because `pre_tag` hooks (Stage 3) commit before notes generate (Stage 4), HEAD already includes the hook-artifact commit. This is intended — `diff_exclude` filters hook artifacts (e.g. the bundle) out *by path* regardless of being freshly committed, so the AI never sees bundle churn. Anything a hook commits that *isn't* excluded legitimately appears in the notes.
+
+### Engine
+
+- **Default `claude -p`.** mint composes the prompt, pipes it to the command's stdin, and reads the body from stdout, with a **timeout (~60s)** so a hung call can't stall a release.
+- **Command overridable** via `ai_command` (default `claude -p`). mint always *owns the prompt*; the command is just transport — cheap future-proofing (swap binary/model) that keeps prompt-control working.
+
+### Diff exclusion (two tiers + strategy-aware version file)
+
+The diff sent to the AI is filtered via git's `:(exclude)` pathspec (git does the filtering):
+
+- **Built-in always-exclude — `CHANGELOG.md`** (non-configurable). Pure mint output, never meaningful source. Excluded in both forward and regenerate paths.
+- **`version_file` — NOT blanket-excluded (strategy-aware):**
+  - *Forward path:* nothing to exclude — notes generate (Stage 4) *before* the version write (Stage 5), so the file is inherently unchanged at notes time. (The whole concern is therefore **regenerate-only**.)
+  - *Regenerate, plain mode* (whole file is the version, e.g. `release.txt`): **exclude** the file — pure bookkeeping.
+  - *Regenerate, embedded mode* (`version_pattern` in a real source file like `main.go`): **do not exclude** — it's source we want in notes. The lone version-line bump is negligible and neutralised by the default prompt's "ignore version-number bumps" instruction, not by hiding real code.
+- **`diff_exclude` (project artifacts) — configurable array of globs**, on top of the above (knowledge bundle, minified output, lockfiles, generated code). These are *tracked, committed* generated files (deliberately not in `.gitignore`), which is why explicit exclusion is needed. A release diff is commit-to-commit so it can only contain tracked files; gitignored files never appear. Kept in config (not a `.mintignore` file) per the "one config, one place to look" principle; `.mintignore` is YAGNI, addable later if exclude sets grow large.
+
+### `max_diff_lines` guard
+
+- **Default 50000.** Not a context limit but a **cost + quality** guard — a huge diff is slow, costly, and summarises to mush. Lines are a cheap token proxy (~10–20 tokens/line). **Excluded paths don't count toward it.** Exceeding it = a notes failure → abort-or-fallback per `on_notes_failure`. Fully overridable.
+
+### Failure behaviour — fail loud by default
+
+Notes generate at Stage 4, *before* the tag (Stage 6), so aborting leaves nothing tagged/pushed — which is *why* blocking is safe.
+
+- **`on_notes_failure`, default `abort`** — if the AI can't produce a body (missing tool, timeout, error, diff exceeds `max_diff_lines`, or a bad/empty generation that survives one retry), mint **fails loudly and tags nothing**. An empty/garbage release is worse than a failed command.
+- **`fallback` mode (opt-in)** — proceed with a non-AI body instead of aborting. Fallback body defaults to the commit-subject list since the last tag; can be a fixed configurable string.
+- **`--no-ai`** is a *deliberate* skip, not a failure → always uses the fallback body, never aborts.
+
+### Output format & validation
+
+- **The AI returns the notes directly in presentation format** — no machine-parseable wrapper labels. mint uses the body **whole** for every sink; no parsing, no splitting, no per-sink reassembly.
+- **Validation is sanity, not structure:** non-empty, not an error/refusal/whitespace. On a bad/empty generation → **one automatic retry** → still bad → notes failure → `on_notes_failure`.
+- The interactive review gate (next section) is the human backstop for *style*.
+
+### Default notes format mint ships
+
+Grounded in the observed shortcomings of the current output (flat intertwined list; prompt-preamble leakage; empty descriptions on oversized releases):
+
+- A **TL;DR one-liner** at the top — what the release is really about (may be multi-line).
+- **Emoji-headed sections** — e.g. `✨ Features`, `🐛 Fixes`, `🧹 Internal`. Empty sections omitted; the AI may add a sensible section if warranted.
+- Notable features **bolded + described** (celebrated, not buried in a flat list).
+- Strict **"no preamble, no meta-commentary"** rule so prompt artifacts can never leak.
+- Default prompt instructs the AI to **ignore version-number bumps** and other trivial bookkeeping churn.
+
+### Prompt control — two knobs (no third "themes" concept)
+
+1. **`notes_context`** (string or file) — *injects* project-specific guidance into mint's default prompt (e.g. "dev-workflow toolkit; emphasise user-facing changes"). The common case.
+2. **`notes_prompt`** (file path) — *full override* of the prompt; mint still supplies the diff. Total control.
+
+A "theme/variant" is not a separate feature — it's just a `notes_prompt` override file. `mint init` can scaffold an example prompt. No built-in theme enum (YAGNI).
+
+---
+
 ## Working Notes
