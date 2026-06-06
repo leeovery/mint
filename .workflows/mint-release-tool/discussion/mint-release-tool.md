@@ -114,7 +114,12 @@ How mint determines the current version and computes the next one — the first 
 
 **First release handles itself** — no special-casing. With no tags, current is `0.0.0`, so `mint` → `0.0.1`, `mint -m` → `0.1.0`, `mint -M` → `1.0.0`. The user picks via the normal bump flag.
 
-**Escape hatch:** `--version X.Y.Z` to set an explicit version (e.g. a deliberate 1.x → 2.0.0 jump). Preferred over a positional `mint 2.0.0` — the flag is unambiguous and self-documenting.
+**Escape hatch:** `--set-version X.Y.Z` to set an explicit version (e.g. a deliberate 1.x → 2.0.0 jump). Preferred over a positional `mint 2.0.0` — the flag is unambiguous and self-documenting. (Named `--set-version`, not `--version`, to avoid the tool-version clash.)
+
+**`--set-version` interaction & validation (review F6):**
+- **Mutually exclusive with bump flags** — `--set-version` + `-p`/`-m`/`-M` → error ("can't combine `--set-version` with a bump flag"). No silent precedence. (`--set-version` alone = explicit; bump alone = computed; neither = default patch.)
+- **Valid 3-part semver, and strictly greater than the current latest tag** — a backwards jump is rejected by default *even if the tag is free*, because a lower version sorts below "latest" and corrupts tag-as-truth. Sits on top of the free-tag preflight (which catches an equal/existing tag).
+- **No downgrade override now** (YAGNI) — add `--force` if a genuine "re-tag an old line" need ever appears. Forward-only today.
 
 **Optional version-file projection:** when a project needs the version *written into the repo* (a bash script with `RELEASE_VERSION="x.y.z"`, or a plain `release.txt` read at runtime), mint mirrors the new version into a file during the Record stage. Config:
 - `version_file` — path; omit = tag-only (no projection).
