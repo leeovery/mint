@@ -34,8 +34,16 @@
           "routing": "discussion",
           "source": "discovery",
           "summary": "Reusable Go release tool replacing drift-prone per-project bash release scripts; config-driven pipeline with AI notes.",
-          "description": "mint extracts the generic release engine — AI-generated release notes, semver bump from git tags, lock-resilient git, CHANGELOG generation, annotated tag + atomic push, and provider-abstracted publishing — out of ~8 copy-pasted bash 'release' scripts into one reusable, testable Go binary distributed via the leeovery/homebrew-tools tap. Each project keeps a tiny 'release' shim delegating to the global 'mint', with per-project .mint.toml config and a shell-command hook system for bespoke steps. The discussion settled a seven-stage lifecycle spine (version → preflight → project prep/hooks → AI notes → record → tag/push → publish), tag-as-single-source-of-truth versioning, fail-loud-before-point-of-no-return safety with auto-unwind, an interactive notes-review gate, non-destructive regenerate/heal, the TOML config schema, the CLI surface, and 'mint init' scaffolding. All 21 subtopics are decided and the feature has been pivoted to an epic."
+          "description": "mint extracts the generic release engine — AI-generated release notes, semver bump from git tags, lock-resilient git, CHANGELOG generation, annotated tag + atomic push, and provider-abstracted publishing — out of ~8 copy-pasted bash 'release' scripts into one reusable, testable Go binary distributed via the leeovery/homebrew-tools tap. Each project keeps a tiny 'release' shim delegating to the global 'mint', with per-project .mint.toml config and a shell-command hook system for bespoke steps. The discussion settled a seven-stage lifecycle spine (version → preflight → project prep/hooks → AI notes → record → tag/push → publish), tag-as-single-source-of-truth versioning, fail-loud-before-point-of-no-return safety with auto-unwind, an interactive notes-review gate, non-destructive regenerate/heal, the TOML config schema, the CLI surface, and 'mint init' scaffolding. All 21 subtopics are decided and the feature has been pivoted to an epic.",
+          "order": 1
         }
+      },
+      "gap_analysis_cache": {
+        "checksum": "d7612acea7143d91e7c1579ef97e6fba",
+        "generated": "2026-06-06T11:33:26Z",
+        "input_files": [
+          "mint-release-tool.md"
+        ]
       }
     }
   },
