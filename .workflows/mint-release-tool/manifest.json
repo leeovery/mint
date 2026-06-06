@@ -12,6 +12,9 @@
         },
         "cli-presentation": {
           "status": "completed"
+        },
+        "commit-command": {
+          "status": "in-progress"
         }
       }
     },
