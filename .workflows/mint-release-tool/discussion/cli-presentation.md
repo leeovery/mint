@@ -318,7 +318,17 @@ The **pretty** half is decided.
 
 **Cross-ref / reconciliation needed:** this **revises the engine discussion's** "Interactive confirmation & notes review" gate, which documented keys as `[a] accept / [e] edit / [r] regenerate / [q] abort`. Semantics are unchanged (same four choices, auto-unwind on abort) — only the *rendering* changes: default-yes `Continue?` instead of explicit accept, `n` instead of `q`. The in-progress `mint-release-tool` spec should reconcile the two surfaces (presentation owns the rendering; engine owns the four semantic choices).
 
-Confidence: high on the pretty layer (brand, glyphs, stage shape, no-box notes, gate rendering); plain-mode verbosity still to confirm in its own subtopic.
+Confidence: high on the pretty layer (brand, glyphs, stage shape, no-box notes, gate rendering).
+
+### Cross-verb rendering (resolves review-002 F2)
+
+The worked examples above are all `mint release`, but the seam applies to every verb. The non-release verbs:
+
+- **`init`** — process narration in the same vocabulary: `✓ created .mint.toml` / `· skipped release (exists, use --force)`. No gate (non-clobbering).
+- **`regenerate`** — same stage/notes/gate vocabulary as `release`, narrated per version (`--all` runs oldest→newest, one block each).
+- **`version`** — the **one payload verb**: its output is a *value*, not narration. **Plain prints the bare value** (`1.4.0`) so `$(mint version)` / scripts consume it cleanly; **pretty may dress it** (`🌿 mint v1.4.0`). This is the deliberate exception to "narration is the product" — `version` actually has a payload, so the bare value is the floor and styling is additive only in pretty.
+
+All four verbs emit through the same `Presenter`; consistency is structural (one interface), not per-verb styling code.
 
 ---
 
@@ -329,15 +339,19 @@ Confidence: high on the pretty layer (brand, glyphs, stage shape, no-box notes, 
 1. **mint's narration IS its output.** No separate data payload (bar `mint version`), so narration → stdout, and stderr is reserved for errors/warnings (kept only for redirect-visibility). "All process" is fine — when the narration is the product, the narration is stdout.
 2. **Mirror `tick`'s adapter model** — one logical output, rendered by an adapter chosen by audience: `isatty(stdout)` → pretty, else plain; explicit flag overrides. Proven in a sibling tool the user already trusts.
 3. **Two modes suffice** (pretty + plain). Structured json/toon is YAGNI here because mint renders a process, not a queryable data structure.
-4. **Three orthogonal axes**: styling (TTY) · gating (`-y`) · output stream. Independence is the design's backbone.
+4. **Three orthogonal axes**: styling (`--plain` else TTY) · gating (`-y`) · output stream. Independence is the design's backbone — and the forbidden combo (non-TTY stdin + no `-y` at any gate) fails loud, never hangs.
 5. **Engine emits events; presenter renders.** An event-oriented `Presenter` seam (not tick's data-shaped `Formatter`) keeps the seven-stage spine oblivious to colour/spinners/TTY — mirroring the `CommandRunner`/`Publisher` seams — and is how "consistent across all verbs" is achieved structurally.
 6. **One render-mode flag — `--plain`.** Default is `isatty(stdout)`; `--plain` is the single explicit override (force-plain), which doubles as the escape hatch for UTF-8-incapable terminals so mint never needs capability sniffing or a fallback glyph set. No force-pretty (YAGNI). Minimal surface by design.
 
 ### Open Threads
 
 - **Dry-run note reuse / caching** — **routed out** to the `mint-release-tool` discussion (engine/dry-run behaviour, not presentation) as an addendum to its dry-run-semantics decision, so the in-progress spec picks it up. The idea: cache the dry-run-generated note and reuse it on the real run to guarantee *what was previewed is what ships* (determinism), with invalidation keyed on the post-exclude diff + version + prompt. Resolved here; decided in spec.
-- Library selection was flagged in discovery as a deferred how-question.
+
+### Spec hand-offs (reconciliation owed by the in-progress `mint-release-tool` spec)
+
+- **Gate rendering vs engine discussion** — this discussion redesigned the notes-review gate to a default-yes `Continue?` (`y`/`n`/`e`/`r`, Enter⇒accept); the engine discussion documented `[a]/[e]/[r]/[q]`. Same four semantic choices, different rendering. The spec must adopt the presentation rendering and drop the stale `[a]/[q]` keys.
+- **`--plain` in the CLI surface** — a new global/presentation flag (all verbs), to be recorded in the spec's CLI surface alongside `-y`.
 
 ### Current State
 
-- Render-mode detection **decided** (stdout-based, tick-aligned, two modes, narration→stdout, no flags). Presentation seam **decided** (event-oriented `Presenter`, two impls). `-y` orthogonality mostly decided. Remaining: what the pretty layer shows, the concrete plain-mode text contract, spinners, library selection.
+- **All 7 subtopics decided.** Render-mode detection (`--plain` override else `isatty(stdout)`, two modes, narration→stdout), the pretty layer (brand/glyphs/stage shape, no-box notes, default-yes `Continue?` gate, light width-cap), the plain contract (terse `key: value`, verbatim notes body), spinners (lifecycle + standalone non-Bubble-Tea spinner), `-y` orthogonality (full gate inventory, input handling, regenerate re-entry), the event-oriented `Presenter` seam, and library selection (lipgloss + standalone spinner). Ready for specification, pending the two spec hand-offs above.
