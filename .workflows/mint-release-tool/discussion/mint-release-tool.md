@@ -340,7 +340,19 @@ No flags → fully interactive (asks source, asks target, confirms). The provide
 - **Does:** read-only preflight, compute version, **generate the AI notes preview**, print the full plan (commits, tag, what would publish).
 - **Skips:** all mutations (commit/tag/push/release) **and hooks** (side effects) — reports hooks were skipped.
 
-Confidence: high.
+### Addendum — dry-run note reuse / caching (surfaced from the cli-presentation discussion, 2026-06-06)
+
+**Open consideration for spec.** When `--dry-run` generates the AI notes preview, mint should **cache that note so the subsequent real run reuses it** rather than regenerating. The motivating workflow: an agent runs `mint release -y --dry-run` to surface the notes to a human, then runs `mint release -y` for real.
+
+- **The real win is determinism, not cost.** AI generation is stochastic — regenerating on the real run risks shipping notes that differ from what was previewed/approved. Reuse guarantees *what was previewed is what ships*. Skipping the second AI call (cost/time) is the bonus.
+- **Cache invalidation is the crux.** The note is a pure function of the diff. Key = hash of **(the post-`diff_exclude` diff + computed version + prompt/`notes_context`)** — not just HEAD sha, since a `pre_tag` hook can change the tree between runs.
+  - **Miss → regenerate**, and say so ("diff changed since dry-run preview — regenerating notes"). Never silently ship a stale note that no longer matches the release.
+- **Location:** a gitignored cache (e.g. `.mint/cache/`) or system temp keyed by repo — never committed. **Short TTL** backstop so a stale preview can't resurrect.
+- **Interactions:** ties into the notes-review gate (a cached, already-approved note could skip re-review) and the dry-run semantics above (dry-run currently discards the preview — this makes it durable). Spec to settle whether reuse is automatic, opt-in (`--reuse-dry-run`?), or gated.
+
+Routing note: raised during cli-presentation but it is **engine/dry-run behaviour**, so it lands here for the in-progress spec to pick up.
+
+Confidence: high (on the existing dry-run semantics; the caching addendum is an open consideration for spec, not yet decided).
 
 ---
 

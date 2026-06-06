@@ -18,7 +18,7 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (8 subtopics — 1 decided · 1 exploring · 6 pending)
+  Discussion Map — CLI Presentation (7 subtopics — 1 decided · 1 exploring · 5 pending)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
   ├─ ○ What The Styled Layer Actually Shows [pending]
@@ -26,8 +26,9 @@ The shape settled in discovery:
   ├─ ○ Spinners & Long-Running Progress [pending]
   ├─ ◐ -y/--yes Orthogonality [exploring]
   ├─ ○ Presentation Seam / Architecture [pending]
-  ├─ ○ Dry-Run Note Reuse (cross-topic → mint-release-tool) [pending]
   └─ ○ Library Selection (Charm Vs Lighter) [pending]
+
+  *(Dry-run note reuse / caching was routed out to the `mint-release-tool` discussion — engine behaviour, not presentation. See its dry-run-semantics addendum.)*
 
 ---
 
@@ -87,7 +88,7 @@ Still exploring: whether any other gates exist beyond notes-review that interact
 
 ### Open Threads
 
-- **Dry-run note reuse / caching** — raised here but is **engine/dry-run behaviour**, owned by the `mint-release-tool` topic (which decided dry-run semantics and is currently in specification). Caching the dry-run-generated note for reuse on the real run would guarantee *what was previewed is what ships* (determinism, not just cost) — but hinges on cache invalidation keyed on the post-exclude diff + version + prompt, with miss→regenerate. **Routing TBD**: fold into the in-progress `mint-release-tool` spec, or decide here. Awaiting user.
+- **Dry-run note reuse / caching** — **routed out** to the `mint-release-tool` discussion (engine/dry-run behaviour, not presentation) as an addendum to its dry-run-semantics decision, so the in-progress spec picks it up. The idea: cache the dry-run-generated note and reuse it on the real run to guarantee *what was previewed is what ships* (determinism), with invalidation keyed on the post-exclude diff + version + prompt. Resolved here; decided in spec.
 - Library selection was flagged in discovery as a deferred how-question.
 
 ### Current State
