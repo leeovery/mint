@@ -177,7 +177,7 @@ The user asked for **concrete logged examples** so the implementer isn't guessin
 | Event | `pretty` | `plain` |
 |---|---|---|
 | start of run | `🌿 mint · {project}  ›  releasing v{X}` brand line | `mint: releasing {project} v{X}` |
-| `StageStarted` | dim line with spinner: `⠋ notes  generating with claude…` | (no line until transition) |
+| `StageStarted` | dim line with spinner: `⠋ notes  generating with claude…` | (blank for short stages; long/blocking stages emit a terse start line, e.g. `notes: generating…`) |
 | `StageSucceeded` | `✓ {stage}  {detail} ({elapsed})`, glyph green | `{stage}: ok` / `{stage}: {detail}` |
 | `StageFailed` | `✗ {stage}  {message}`, glyph red | `{stage}: FAILED - {message}` (also stderr) |
 | auto-unwind | `↩ unwound  {what it undid} — repo clean` | `unwound: {what}; repo clean` |
@@ -272,7 +272,8 @@ unwound: removed tag v1.4.0, reset 2 commits; repo clean
 
 The **plain** contract is decided:
 
-- **`key: value` lines**, lowercase, **one per stage on completion** — no "starting" line, no animation, no glyphs, no colour.
+- **`key: value` lines**, lowercase, **one per stage on completion** — no animation, no glyphs, no colour.
+- **Start line for long/blocking stages only (resolves review-003 F1)** — a stage that blocks on something slow (AI **notes** generation, a `pre_tag` build hook) also emits a terse start line (`notes: generating…` → `notes: generated (1.1s)`), so a **live-tail** consumer (`mint release | tee log`, or a streaming agent) isn't staring at silence through a multi-second wait. **Short stages stay one-line-on-completion** — no start line. This is plain's one-line equivalent of the pretty spinner; the captured-log target is unaffected (one extra line per long stage).
 - **Stage terseness** confirmed as-is (e.g. `preflight: ok (clean, on main, tag free, in sync)`) — terse but human-legible; not pared further.
 - **Notes block** delimited by plain rules: `--- release notes v{X} ---` … `--- end notes ---`, so a reader can slice it out reliably.
 - **Notes body is verbatim** — the same bytes as pretty/tag/changelog/release, **emoji headers shown if present** (`✨ Features`, `🐛 Fixes`). No stripping/transforming: it would contradict the engine's "use the body whole" rule and break "what previews is what ships." The few extra tokens are negligible.
