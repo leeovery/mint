@@ -18,15 +18,16 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (7 subtopics · 7 pending)
+  Discussion Map — CLI Presentation (8 subtopics — 1 decided · 1 exploring · 6 pending)
 
-  ┌─ ○ Render-mode detection model [pending]
-  ├─ ○ What the styled layer actually shows [pending]
-  ├─ ○ Plain / token-efficient mode contract [pending]
-  ├─ ○ Spinners & long-running progress [pending]
-  ├─ ○ -y/--yes orthogonality [pending]
-  ├─ ○ Presentation seam / architecture [pending]
-  └─ ○ Library selection (charm vs lighter) [pending]
+  ┌─ ✓ Render-Mode Detection Model [decided]
+  ├─ ○ What The Styled Layer Actually Shows [pending]
+  ├─ ○ Plain / Token-Efficient Mode Contract [pending]
+  ├─ ○ Spinners & Long-Running Progress [pending]
+  ├─ ◐ -y/--yes Orthogonality [exploring]
+  ├─ ○ Presentation Seam / Architecture [pending]
+  ├─ ○ Dry-Run Note Reuse (cross-topic → mint-release-tool) [pending]
+  └─ ○ Library Selection (Charm Vs Lighter) [pending]
 
 ---
 
@@ -34,16 +35,61 @@ The shape settled in discovery:
 
 ---
 
+## Render-Mode Detection Model
+
+### Context
+
+The seed mandates: render mode is driven by **TTY detection, not environment sniffing**. Interactive terminal → styled (brand, colour, spinners); non-TTY (an AI/agent consuming the output) → token-efficient plain text. The job here was to make "TTY detection" operationally precise, since `mint` is a **local interactive tool, not a CI job**, and `mint release` emits no capturable payload — almost all its output is status/chrome.
+
+### Decision
+
+**Stream split (conventional Unix):**
+- **Status / progress / chrome → stderr** (brand, title, spinners, "doing X…" lines).
+- **Machine payload → stdout** — only `mint version` and any future machine-readable value; stdout stays clean and capturable (`mint version | pbcopy` never sees a spinner).
+- **Styling gate keys on `isatty(stderr)`** — chrome lives on stderr, so judge that stream. Each stream is evaluated on its own TTY-ness (the technically-correct rule). Spinners always go to stderr.
+
+**Detection heuristic — TTY + explicit overrides only, never sniffing:**
+- Default: `isatty(stderr)` → styled; else plain. That's the entire heuristic.
+- Explicit overrides (user intent, *not* sniffing): honour **`NO_COLOR`** (de-facto standard); **`--plain`** forces token-efficient mode even on a TTY; optionally **`--color=always`** to force colour in captured logs.
+- **No `CI=true` / `TERM` guessing** — that is precisely the environment sniffing the seed forbids. Mode comes from the TTY or an explicit flag/var, never inferred from the environment.
+
+**Colour vs layout = one switch.** "Plain" = no ANSI *and* no spinner animation *and* no decorative banner — the full token-efficient degradation, because the only consumer of plain mode is a token-sensitive agent and half-measures waste tokens. The lone exception: `NO_COLOR` on a TTY strips colour but keeps the spinner (a human who simply dislikes colour).
+
+### Journey
+
+Initial framing assumed a payload-vs-chrome stdout/stderr split where a human might do `mint release > notes.txt`. The user corrected this: mint doesn't emit a capturable release payload — it performs side effects (commits, tag, push, `gh` release, CHANGELOG) and shows the notes-review gate interactively. So "non-TTY" means *an agent runs mint and reads its output as text*, and the goal is stripping ANSI/animation to save the agent's tokens — not formatting a redirected result. That collapsed the detection model to a single per-stream TTY check.
+
+Confidence: high.
+
+---
+
+## -y/--yes Orthogonality
+
+### Context
+
+The seed: `-y/--yes` is orthogonal to styling — it only skips interactive gate stops; a human at a terminal with `-y` still gets the styled UI. Three independent concerns: **styling** (TTY), **gating** (`-y`), **output stream** (stdout/stderr).
+
+### Decided so far
+
+- **Three orthogonal axes**: styling = f(TTY), gating = f(`-y`), output stream = fixed (chrome→stderr, payload→stdout). A human with `-y` at a terminal still gets full styling.
+- **The one forbidden combination errors, never hangs**: if **stdin is not a TTY** and **`-y` was not passed**, the notes-review gate (`[a]/[e]/[r]/[q]`) can't be answered — mint **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. Render mode is about *output* (stderr TTY); the gate is about *input* (stdin TTY) — both checked independently.
+
+Still exploring: whether any other gates exist beyond notes-review that interact with `-y`.
+
+---
+
 ## Summary
 
 ### Key Insights
 
-*(to be populated)*
+1. **mint has no payload stream to protect** — it's a side-effecting interactive tool, so "styled vs plain" is a single per-stream TTY decision, not a payload/chrome split.
+2. **Three orthogonal axes**: styling (TTY) · gating (`-y`) · output stream (fixed). Keeping them independent is the design's backbone.
 
 ### Open Threads
 
+- **Dry-run note reuse / caching** — raised here but is **engine/dry-run behaviour**, owned by the `mint-release-tool` topic (which decided dry-run semantics and is currently in specification). Caching the dry-run-generated note for reuse on the real run would guarantee *what was previewed is what ships* (determinism, not just cost) — but hinges on cache invalidation keyed on the post-exclude diff + version + prompt, with miss→regenerate. **Routing TBD**: fold into the in-progress `mint-release-tool` spec, or decide here. Awaiting user.
 - Library selection was flagged in discovery as a deferred how-question.
 
 ### Current State
 
-- Discussion just started; all subtopics pending.
+- Render-mode detection decided. `-y` orthogonality mostly decided (stdin/gate interplay locked). Remaining: what the styled layer shows, plain-mode contract, spinners, presentation seam, library selection.
