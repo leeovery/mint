@@ -49,8 +49,10 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 - **`plain`** (agent): terse token-efficient text — no ANSI, no animation, no banner.
 
 **Detection — `isatty(stdout)` + explicit override, never sniffing:**
-- Default: `isatty(stdout)` → `pretty`; non-TTY → `plain`. That's the entire heuristic. (Matches `tick`: it detects on stdout and defaults TTY→pretty, piped→token-efficient.)
+- Default: `isatty(stdout)` → `pretty`; non-TTY → `plain`. That's the entire heuristic.
+- **"Human vs agent" reduces to "is stdout a terminal?"** — this is exactly `tick`'s mechanism (`stat(stdout).Mode() & os.ModeCharDevice != 0`, called on `os.Stdout`). An agent never announces itself; it simply has a **pipe** on stdout (not a char device) because its harness captures output → `false` → plain. A human's terminal is a char device → `true` → pretty. Same binary, same code path; the OS reports what's connected for free. mint mirrors this (the stat check, or the equivalent `term.IsTerminal(int(os.Stdout.Fd()))`).
 - Explicit override flags `--pretty` / `--plain` win over detection. **No `CI=true`/`TERM` guessing** — exactly the environment sniffing the seed forbids.
+- **Accepted edge cases** (tick lives with these; the flags are the escape hatch): a human who pipes (`mint … | less`) gets `plain`; an agent that allocates a pseudo-terminal gets `pretty`. Neither is worth detecting around.
 
 **Stream split — narration is the product, so it's stdout:**
 - **Run narration → stdout** — stages, the plan, the notes preview, the final summary, and `mint version`'s value. mint has no separate data payload, so the narration *is* its stdout output.
@@ -58,7 +60,7 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 - **Exit code** signals success/failure for scripts (they check `$?`, not stream parsing).
 - An **agent captures combined output (`2>&1`)** by default, so it sees narration *and* errors regardless of the split — the split costs the agent nothing and buys humans redirect-visibility.
 
-**Colour is a toggle *within* `pretty`, not a third mode.** `NO_COLOR` (de-facto standard) and `--no-color` drop ANSI colour but stay in pretty (spinner still runs) — a human who dislikes colour. `plain` already implies no colour. So: mode ∈ {pretty, plain}; colour is a sub-switch of pretty. (Optionally `--color=always` to force colour in captured logs; minor.)
+**No colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color` and no `NO_COLOR` handling. Don't want colour? You're in `plain` (or pass `--plain`). Mode ∈ {pretty, plain}, full stop — no third "no-colour-but-styled" state. (`NO_COLOR` support is addable later if anyone ever asks; YAGNI now.)
 
 ### Journey
 
