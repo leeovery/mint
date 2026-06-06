@@ -18,11 +18,11 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (7 subtopics — 3 decided · 3 converging · 1 exploring)
+  Discussion Map — CLI Presentation (7 subtopics — 4 decided · 2 converging · 1 exploring)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
   ├─ ✓ What The Pretty Layer Actually Shows [decided]
-  ├─ → Plain / Token-Efficient Mode Contract [converging]
+  ├─ ✓ Plain / Token-Efficient Mode Contract [decided]
   ├─ → Spinners & Long-Running Progress [converging]
   ├─ ◐ -y/--yes Orthogonality [exploring]
   ├─ ✓ Presentation Seam / Architecture [decided]
@@ -224,9 +224,9 @@ notes: generated (1.1s)
 --- release notes v1.4.0 ---
 Faster cold starts and a calmer log.
 
-Features:
+✨ Features
 - Parallel warm-up halves boot time
-Fixes:
+🐛 Fixes
 - Stop double-flush on SIGTERM
 --- end notes ---
 notes: accepted (-y)
@@ -242,6 +242,21 @@ done: acme v1.4.0 https://github.com/acme/acme/releases/tag/v1.4.0
 tag/push: FAILED - push rejected: remote moved
 unwound: removed tag v1.4.0, reset 2 commits; repo clean
 ```
+
+### Decisions locked (plain layer)
+
+The **plain** contract is decided:
+
+- **`key: value` lines**, lowercase, **one per stage on completion** — no "starting" line, no animation, no glyphs, no colour.
+- **Stage terseness** confirmed as-is (e.g. `preflight: ok (clean, on main, tag free, in sync)`) — terse but human-legible; not pared further.
+- **Notes block** delimited by plain rules: `--- release notes v{X} ---` … `--- end notes ---`, so a reader can slice it out reliably.
+- **Notes body is verbatim** — the same bytes as pretty/tag/changelog/release, **emoji headers shown if present** (`✨ Features`, `🐛 Fixes`). No stripping/transforming: it would contradict the engine's "use the body whole" rule and break "what previews is what ships." The few extra tokens are negligible.
+- **`-y` echo** — when the gate is skipped under `-y`, emit `notes: accepted (-y)` so the auto-accept is visible in the captured log.
+- **Errors/warnings** still also go to **stderr** (per the detection model), in addition to appearing in the plain narration — redirect-visibility.
+
+Only the **delimiters and stage narration** differ between modes; the **notes body is byte-identical** in pretty and plain.
+
+Confidence: high.
 
 ### Spinner lifecycle (resolves the spinners subtopic)
 
