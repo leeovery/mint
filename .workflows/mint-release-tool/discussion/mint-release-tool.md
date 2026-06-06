@@ -299,13 +299,22 @@ Consolidation — every command and flag was named across the discussion. Also r
 ### Decision — commands
 
 ```
-mint release [bump] [options]            cut a release   (shim `release` → `mint release`)
-mint release regenerate <version>        fresh regenerate (re-diff + AI), rewrites CHANGELOG + GitHub release
-mint release regenerate <ver> --reuse    heal from the tag annotation body (no AI) — failed-publish recovery
-mint release regenerate --all            backfill every version
-mint init                                scaffold .mint.toml (+ shim)
-mint version                             print mint's own version
+mint release [bump] [options]                    cut a release   (shim `release` → `mint release`)
+mint release regenerate <version> [flags]        regenerate notes for an existing release
+mint release regenerate --all [flags]            backfill every version (oldest→newest)
+mint init                                        scaffold .mint.toml (+ shim)
+mint version                                     print mint's own version
 ```
+
+**`regenerate` flags** (full surface — see the Regenerate subtopic for semantics):
+```
+--reuse                 source = tag annotation body (no AI); implies --target release
+--fresh                 source = re-diff + AI (default)
+--target release|changelog|both    which surface(s) to write (default asked interactively)
+--all                   every version; gates per version unless -y
+-y, --yes               skip confirmation + per-version review gate
+```
+No flags → fully interactive (asks source, asks target, confirms). The provider release (GitHub today, driver-abstracted) is the `--target release` surface.
 
 - **Bare `mint release` is the cut action** (not `mint release cut`) — the shim is `release`, so `./release -m` must map cleanly to `mint release -m`. `release` is a command with a default action *and* subcommands (well-trodden, e.g. `git stash` = `git stash push`). No `cut` verb.
 - **Regenerate is a subcommand of `release`**, not a top-level `notes` verb — `notes` is the wrong noun and ages badly once `mint commit` exists.
@@ -469,8 +478,10 @@ Regenerate has **two independent axes** plus scope, all leaving tags untouched (
 - **fresh** (default) — re-diff `vX-1..vX` (with the diff-exclusion tiers from F3) + re-run the AI for genuinely better notes.
 
 **Axis 2 — target surface(s):** `--target release | changelog | both`.
-- `--reuse` ⇒ **release-only** (its source *is* the notes record; "reuse → write changelog" would write a file from itself — a no-op; mint errors on `--reuse --changelog`).
+- `--reuse` ⇒ **release-only** (its source *is* the notes record; "reuse → write changelog" would write a file from itself — a no-op; mint errors on `--reuse --target changelog`).
 - fresh ⇒ release, changelog, or both.
+- **`--target changelog`/`both` when `changelog = false`** → **error** (fail-loud: "changelog is disabled in config"). mint never silently creates a CHANGELOG the project opted out of.
+- **Canonical spelling is `--target <surface>`** (one flag, a value) — not separate `--release`/`--changelog` flags.
 
 **Composition table:**
 
@@ -683,4 +694,4 @@ Confidence: high.
 
 ### Current State
 
-- **All 20 subtopics decided.** The release pipeline is fully specified end-to-end: version → preflight → hooks → AI notes (with interactive review) → record → tag/push → publish, plus regenerate/heal, config schema, CLI surface, and `mint init`. Ready for specification.
+- **All 21 subtopics decided.** The release pipeline is fully specified end-to-end: version → preflight → hooks → AI notes (with interactive review) → record → tag/push → publish, plus regenerate/heal, config schema, CLI surface, and `mint init`. Ready for specification.
