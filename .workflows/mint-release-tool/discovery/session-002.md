@@ -79,8 +79,21 @@ what's-possible question → research-shaped.
 
 ## Topics Identified
 
-(none)
+### cli-presentation
+
+- Routing: discussion
+- Why: user has a clear shape in mind (styled-but-restrained, TTY-driven render modes, gate-skip orthogonal) — a design decision space, not an open feasibility question.
+
+### commit-command
+
+- Routing: discussion
+- Why: user knows the rough shape (wraps an existing AI-commit function, built into mint); the open work is design/integration decisions, not investigation.
+
+### release-notes-quality
+
+- Routing: research
+- Why: framed explicitly as speculative ("a suspicion we can do better"), an open what-is-possible question about enriching AI input beyond a raw diff.
 
 ## Conclusion
 
-(none)
+3 topic(s) added. Map now has 4 topics.
