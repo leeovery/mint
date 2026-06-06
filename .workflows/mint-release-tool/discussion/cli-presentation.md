@@ -18,10 +18,10 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (7 subtopics — 2 decided · 4 converging · 1 exploring)
+  Discussion Map — CLI Presentation (7 subtopics — 3 decided · 3 converging · 1 exploring)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
-  ├─ → What The Pretty Layer Actually Shows [converging]
+  ├─ ✓ What The Pretty Layer Actually Shows [decided]
   ├─ → Plain / Token-Efficient Mode Contract [converging]
   ├─ → Spinners & Long-Running Progress [converging]
   ├─ ◐ -y/--yes Orthogonality [exploring]
@@ -158,8 +158,8 @@ The user asked for **concrete logged examples** so the implementer isn't guessin
 | auto-unwind | `↩ unwound  {what it undid} — repo clean` | `unwound: {what}; repo clean` |
 | `Warn` | `⚠ {label}  {message}`, amber | `{label}: WARN - {message}` (also stderr) |
 | `ShowPlan` | a `Plan` block, bulleted | `plan: {semicolon-joined one-liner}` |
-| `ShowNotes` | rounded box `╭─ Release notes · v{X} ─╮ … ╰─╯` | `--- release notes v{X} ---` … `--- end notes ---` |
-| review gate | `[a] accept  [e] edit  [r] regenerate  [q] abort` + `› ` prompt | (not shown — non-TTY ⇒ `-y` required ⇒ gate skipped; emits `notes: accepted (-y)`) |
+| `ShowNotes` | titled rule: `── release notes · v{X} ──` body, closing `────` rule (no box) | `--- release notes v{X} ---` … `--- end notes ---` |
+| review gate | vertical menu (`y accept [default]` / `n abort` / `e edit` / `r regenerate`) then `Continue? › ` prompt; Enter ⇒ `y` | (not shown — non-TTY ⇒ `-y` required ⇒ gate skipped; emits `notes: accepted (-y)`) |
 | end of run | `🌿 released {project} v{X} · {url}` | `done: {project} v{X} {url}` |
 
 ### Full `pretty` run
@@ -180,17 +180,21 @@ The user asked for **concrete logged examples** so the implementer isn't guessin
   ⠋ notes      generating with claude…
   ✓ notes      generated (1.1s)
 
-  ╭─ Release notes · v1.4.0 ─────────────────────╮
-  │ Faster cold starts and a calmer log.         │
-  │                                              │
-  │ ✨ Features                                   │
-  │   • Parallel warm-up halves boot time        │
-  │ 🐛 Fixes                                      │
-  │   • Stop double-flush on SIGTERM             │
-  ╰──────────────────────────────────────────────╯
+  ── release notes · v1.4.0 ───────────────────────
+  Faster cold starts and a calmer log.
 
-  [a] accept   [e] edit   [r] regenerate   [q] abort
-  › a
+  ✨ Features
+    • Parallel warm-up halves boot time
+  🐛 Fixes
+    • Stop double-flush on SIGTERM
+  ─────────────────────────────────────────────────
+
+    y  accept & proceed [default]
+    n  abort
+    e  edit in $EDITOR
+    r  regenerate
+
+  Continue? › 
 
   ✓ record     CHANGELOG.md + bin/acme
   ✓ tag/push   v1.4.0 pushed (atomic)
@@ -246,7 +250,32 @@ unwound: removed tag v1.4.0, reset 2 commits; repo clean
 - **`$EDITOR` (note edit)** takes over the terminal — spinner is stopped before handing off, resumed after.
 - **`plain` never animates** — a stage emits exactly one line on its transition.
 
-Confidence: medium-high — baseline agreed in principle; awaiting user confirmation on glyphs / brand line / box style / plain verbosity.
+### Decisions locked (pretty layer)
+
+The **pretty** half is decided; the **plain** contract below stays converging until walked separately.
+
+- **Brand lines** — `🌿 mint · {project}  ›  releasing v{X}` (top) and `🌿 released {project} v{X} · {url}` (bottom). Leaf ties to the engine `commit_prefix` brand.
+- **Status glyphs** — `✓` success (green) · `✗` failure (red) · `⚠` warn (amber) · `↩` auto-unwind. Spinner frames `⠋⠙⠹…`.
+- **Stage lines** — two-space indent, glyph, stage name padded to a column, terse detail. Brand lines flush-left; everything else indented under them. Symmetry/consistency is the bar — no ad-hoc indentation.
+- **Release notes** — **no box.** A titled `── release notes · v{X} ──` rule, the body verbatim, a closing `────` rule. Dropped the rounded box: it forced wrap/truncate on arbitrary-width AI notes and read as clutter.
+- **Review gate** — a vertical menu, **options above the question**, `[default]` next to its action, prompt last:
+
+  ```
+    y  accept & proceed [default]
+    n  abort
+    e  edit in $EDITOR
+    r  regenerate
+
+  Continue? › 
+  ```
+
+  **Enter ⇒ `y`** (accept & proceed — the 99% path). `n` ⇒ abort (full auto-unwind, per the engine discussion). `e` ⇒ `$EDITOR`; `r` ⇒ regenerate-with-context.
+
+- **`-y` alignment** — `-y` is a *yes* flag: it answers this `Continue?` gate `yes` unattended — identical outcome to pressing Enter. Reinforces the orthogonality model (gating = f(`-y`)).
+
+**Cross-ref / reconciliation needed:** this **revises the engine discussion's** "Interactive confirmation & notes review" gate, which documented keys as `[a] accept / [e] edit / [r] regenerate / [q] abort`. Semantics are unchanged (same four choices, auto-unwind on abort) — only the *rendering* changes: default-yes `Continue?` instead of explicit accept, `n` instead of `q`. The in-progress `mint-release-tool` spec should reconcile the two surfaces (presentation owns the rendering; engine owns the four semantic choices).
+
+Confidence: high on the pretty layer (brand, glyphs, stage shape, no-box notes, gate rendering); plain-mode verbosity still to confirm in its own subtopic.
 
 ---
 
