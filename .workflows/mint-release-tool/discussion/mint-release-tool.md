@@ -272,29 +272,14 @@ The notes body feeds three surfaces. The user spotted real redundancy (all three
 
 **Source-of-truth model:** the tag is the immutable record of *what shipped*. CHANGELOG + GitHub release are mutable projections. `regenerate --fresh` rewrites the **mutable** surfaces only; the tag is **never** rewritten (immutable history). Reuse always sources from the tag — deterministic, parse-free, and config-independent. Trade accepted: full notes duplicated in tag *and* changelog when both exist — worth it for changelog-optionality, an always-present offline record, and parse-free healing.
 
-### Decision — structured AI output contract (the deterministic split)
+### Decision — AI output format & validation (machine-labels REMOVED)
 
-Positional splitting (first line / first blank line) is too fragile and wrongly assumes a one-line TL;DR. Instead:
+> **Cascade simplification:** the original design had the AI emit machine-parseable `## Summary` / `## Notes` labels so mint could *split the TL;DR out for the tag*. Once the tag was revised to carry the **full body**, nothing splits anymore — the labels became vestigial. **Removed.**
 
-- **The AI returns a structured intermediate with labelled markdown sections:**
-  ```
-  ## Summary
-  <paragraph — one line or several>
-
-  ## Notes
-  ✨ Features
-  - ...
-  🐛 Fixes
-  - ...
-  ```
-- **Split on the labels, not on position.** Summary block is any length (multi-line TL;DR — solved). LLMs follow labelled structure far more reliably than "put it on line one."
-- **mint parses into a structure, then renders each surface** — the AI text is never pasted verbatim; mint owns per-sink rendering. (Post-revision all three sinks carry the full Summary + Notes body; the structured `## Summary`/`## Notes` contract still stands — it keeps the format consistent, gives the notes a clean lead, and lets validation confirm the AI produced well-formed output.)
-- **Validation + retry + fail-loud** is where determinism actually lives:
-  - mint validates both labels present and non-empty.
-  - On malformed/non-conforming output, **one automatic retry** (model is stochastic).
-  - Still malformed → a **notes failure** → `on_notes_failure` (abort by default). A hallucinated/ignored format can therefore *never* silently produce a garbage tag or empty release.
-
-**Format choice: labelled markdown** over strict JSON — LLMs comply extremely well, it's human-readable raw, easy to parse. Reversible to JSON if it underperforms.
+- **The AI returns the notes directly in the presentation format** — a short TL;DR lead, then emoji-headed sections (`✨ Features` / `🐛 Fixes` / `🧹 Internal`, empty ones omitted). No machine-parse wrapper labels.
+- **mint uses the body whole** for every sink (tag / changelog / GitHub release). No parsing, no splitting, no per-sink reassembly.
+- **Validation is now sanity, not structure:** non-empty, not an error/refusal/whitespace. On a bad/empty generation → **one automatic retry** → still bad → **notes failure** → `on_notes_failure` (abort by default). The fail-loud guarantee survives; it just no longer hinges on label-parsing.
+- The interactive review gate is the human backstop for *style* (sections missing, tone off) — a far better place to catch presentation issues than a rigid parser.
 
 Confidence: high.
 
@@ -362,7 +347,7 @@ Default interactive flow before any mutation:
 ```
 
 - **`a` accept** → proceed to Record → tag → push.
-- **`e` edit** → open the notes in `$EDITOR`; saved text becomes the release notes verbatim. mint re-parses the Summary/Notes split; if mangled, re-prompt.
+- **`e` edit** → open the notes in `$EDITOR` for real manual editing; **saved text is used verbatim — no re-parse, no validation** (review F5). A human edit is trusted; structural validation only ever applied to untrusted AI output, which no longer has machine labels anyway. No mangle-loop, no possible trap.
 - **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `notes_context`.
 - **`q` abort** → **full auto-unwind** (review F1): identical to the pre-push failure path — mint rolls back *everything it made this run*, including any `pre_tag` hook-artifact commit, returning to the exact clean starting state. One mental model: *nothing mint did this run survives unless the release completes.* The hook re-runs next time (idempotent build). A user-abort and a pre-push git failure are treated identically.
 
@@ -681,7 +666,7 @@ Confidence: high.
 1. **Tag is the single source of truth.** Collapses the old `file`/`embedded`/`none` strategies into one rule; version files become write-only mirrors. Brew installs from tags, so the tag *is* the version.
 2. **Shrink hooks before serving them.** Anything universal-but-optional (version-file writing, diff-excludes) is absorbed into mint as *tested Go config*; hooks are reserved for genuinely bespoke project steps. The recurring "is this core or a hook?" test: if mint already owns the data/concern, it's core.
 3. **Fail-loud, before the point of no return.** Notes/changelog/version all happen pre-push; failures abort cleanly with nothing tagged. mint auto-unwinds its own local mutations on pre-push failure; it never rewrites pushed history. The single point of no return is `git push --atomic`.
-4. **Determinism lives in mint, not in trusting the model.** Structured AI output (labelled `## Summary` / `## Notes`) + parse + validate + one retry + fail-loud means a hallucinated/non-conforming response can never produce a garbage release.
+4. **Robustness lives in mint, not in trusting the model.** Sanity-validate AI output (non-empty/not-an-error) + one retry + fail-loud means a bad generation can never silently produce a garbage release; the interactive gate is the human backstop for style. (An earlier `## Summary`/`## Notes` machine-label contract was removed once the tag carried the full body — nothing splits, so the labels were vestigial.)
 5. **The annotated tag is the floor and the source of truth.** It's the one mandatory, immutable artifact and the only thing mint ever *reads* (full notes body in the annotation). CHANGELOG + GitHub release are optional, write-only projections. `regenerate --reuse` heals from the tag deterministically (parse-free); even with no AI the tag still carries a commit/file-list fallback body.
 6. **One hook mechanism:** a config table of shell command strings keyed by lifecycle point — scripts are just something a string can call.
 
