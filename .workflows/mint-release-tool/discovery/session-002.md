@@ -52,6 +52,27 @@ provide the styling/spinners (e.g. a charm/lipgloss-style stack vs lighter
 colour libraries). That's a how/feasibility question for a later phase, not
 shaped here.
 
+A second thread reintroduced **`mint commit`**. It was parked in the first
+discussion as "its own separate feature," with the `mint <verb>` namespace
+adopted to leave room — and the pivot from feature to epic is the exact trigger
+that was flagged for promoting it. Shape: a sibling command that wraps the
+user's existing AI-commit shell function — AI-generated commit message from the
+diff, with `--all`, `--no-ai`, context injection, and auto-push; "minting a
+commit" fitting the brand. The user wants it **built into mint** (sharing the AI
+engine, `.mint.toml` config, and the presentation layer above), with the
+integration details deliberately left for its own discussion. Discussion-shaped:
+the user knows the rough shape, the open work is design/integration decisions.
+
+A third thread: **better AI release-note generation**. Motivated by the user's
+current agentic-workflows release script — the notes aren't always great,
+**especially on bigger releases** (large diffs summarise to mush, echoing the
+first discussion's `max_diff_lines` cost/quality note). The first discussion
+tuned the *prompt and format* but always fed the AI a raw textual diff; this
+thread is about enriching the **input** — speculatively via AST / semantic
+structure of the change, or some other signal — to lift quality. The user framed
+it explicitly as speculative ("a suspicion we can do better"), an open
+what's-possible question → research-shaped.
+
 ## Edits
 
 (none)
