@@ -11,6 +11,21 @@
           "status": "completed"
         }
       }
+    },
+    "specification": {
+      "items": {
+        "mint-release-tool": {
+          "status": "in-progress",
+          "review_cycle": 0,
+          "finding_gate_mode": "gated",
+          "date": "2026-06-06",
+          "sources": {
+            "mint-release-tool": {
+              "status": "pending"
+            }
+          }
+        }
+      }
     }
   },
   "imports": [
