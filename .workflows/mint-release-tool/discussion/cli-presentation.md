@@ -63,7 +63,9 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 - **Exit code** signals success/failure for scripts (they check `$?`, not stream parsing).
 - An **agent captures combined output (`2>&1`)** by default, so it sees narration *and* errors regardless of the split — the split costs the agent nothing and buys humans redirect-visibility.
 
-**No separate colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color`. Don't want colour? **`--plain`** (or pipe/redirect — any non-terminal stdout gives `plain`). Mode ∈ {pretty, plain}, full stop — no third "no-colour-but-styled" state. `NO_COLOR` env handling stays YAGNI — it's sniffing, and `--plain` is the explicit equivalent.
+**No separate colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color`. Don't want colour? **`--plain`** (or pipe/redirect — any non-terminal stdout gives `plain`). Mode ∈ {pretty, plain} at *mint's* level, full stop — no third "no-colour-but-styled" state. `NO_COLOR` env handling stays YAGNI — it's sniffing, and `--plain` is the explicit equivalent.
+
+**Colour-incapable terminal — rely on lipgloss's own downgrade (resolves review-003 F2).** A real-but-colour-incapable TTY (`TERM=dumb`, etc.) is still selected as `pretty` by `isatty(stdout)`. We **lean into lipgloss's built-in colour auto-downgrade**: it emits no colour codes there while keeping layout and glyphs. That is *not* a third mint mode — mint still offers exactly pretty/plain; the styling library behaving correctly underneath is in-scope and free. The "no third state" rule constrains *mint*, not lipgloss internals. (Glyph/UTF-8 incapability is a separate axis — that's the `--plain` escape; colour incapability is handled for free.)
 
 ### Journey
 
