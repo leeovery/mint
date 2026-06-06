@@ -266,4 +266,39 @@ A "theme/variant" is not a separate feature — it's just a `notes_prompt` overr
 
 ---
 
+## Body Distribution: Tag vs Changelog vs Provider Release
+
+The single notes body feeds three surfaces. mint **writes** all three but **reads** only one — the tag annotation.
+
+### What each surface carries
+
+- **Tag annotation = subject `{commit_prefix} Release {tag}` + the FULL notes body** (default `commit_prefix` is 🌿). **Annotated** (not lightweight): signable, offline, in-repo, **immutable**. This is the **single source mint ever reads** — `regenerate --reuse` reads the annotation body via one deterministic git call (`git for-each-ref … contents:body`), no parsing.
+- **CHANGELOG.md = a write-only projection** of the full body, under the `## [x.y.z] - date` header. mint *writes* it but **never reads** it.
+- **Provider release (GitHub today) = a write-only projection** of the full body.
+
+### Optionality stack
+
+| Surface | Optional? | Control |
+|---|---|---|
+| **Annotated tag** | **Mandatory** | always created, always carries a body — the floor and source of truth |
+| **Provider release** | Optional | `publish` (default `true`) |
+| **CHANGELOG.md** | Optional | `changelog` (default `true`) |
+| **AI notes** | Optional | `--no-ai` / no AI → tag body falls back to a commit-subject / changed-files list, so the tag is never empty |
+
+With `changelog = false` nothing durable is lost — the tag still holds the full notes.
+
+### Source-of-truth model
+
+- The **tag is the immutable record of what shipped**. CHANGELOG + provider release are **mutable projections**.
+- `regenerate --fresh` rewrites the **mutable** surfaces only; the tag is **never** rewritten (immutable history).
+- `regenerate --reuse` always sources from the tag — deterministic, parse-free, config-independent.
+
+**Trade accepted:** the full notes are duplicated in the tag *and* the changelog when both exist. Worth it for changelog-optionality, an always-present offline record, and parse-free healing.
+
+### Design history (why the body is whole, not split)
+
+An earlier design had the tag carry a Summary/TL;DR only (full body deemed redundant given a CHANGELOG) and had the AI emit machine-parseable `## Summary` / `## Notes` labels so mint could split the TL;DR out. Once the CHANGELOG became optional, the tag had to become the single source of truth carrying the full body — so nothing splits anymore and the machine labels became vestigial and were removed. The current design: AI returns presentation-format notes, mint uses the body whole for every sink.
+
+---
+
 ## Working Notes
