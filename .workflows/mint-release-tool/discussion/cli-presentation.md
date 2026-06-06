@@ -18,13 +18,13 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (7 subtopics — 6 decided · 1 exploring)
+  Discussion Map — CLI Presentation (7 subtopics — 7 decided)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
   ├─ ✓ What The Pretty Layer Actually Shows [decided]
   ├─ ✓ Plain / Token-Efficient Mode Contract [decided]
   ├─ ✓ Spinners & Long-Running Progress [decided]
-  ├─ ◐ -y/--yes Orthogonality [exploring]
+  ├─ ✓ -y/--yes Orthogonality [decided]
   ├─ ✓ Presentation Seam / Architecture [decided]
   └─ ✓ Library Selection (Charm Vs Lighter) [decided]
 
@@ -86,12 +86,33 @@ Confidence: high.
 
 The seed: `-y/--yes` is orthogonal to styling — it only skips interactive gate stops; a human at a terminal with `-y` still gets the styled UI. Three independent concerns: **styling** (TTY), **gating** (`-y`), **output stream** (stdout/stderr).
 
-### Decided so far
+### Decision
 
 - **Three orthogonal axes**: styling = f(`--plain` else TTY), gating = f(`-y`), output stream = fixed (chrome→stderr, payload→stdout). A human with `-y` at a terminal still gets full styling; `--plain` drops styling without touching gating.
-- **The one forbidden combination errors, never hangs**: if **stdin is not a TTY** and **`-y` was not passed**, the notes-review gate (`[a]/[e]/[r]/[q]`) can't be answered — mint **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. Render mode is about *output* (stderr TTY); the gate is about *input* (stdin TTY) — both checked independently.
 
-Still exploring: whether any other gates exist beyond notes-review that interact with `-y`.
+**Gate inventory (resolves review-002 F1)** — every verb walked for interactive stops, not just notes-review:
+
+| Verb | Interactive gate? | Under `-y` |
+|---|---|---|
+| `release` | **Yes** — the `Continue?` notes-review gate (also confirms the plan) | answers `yes` |
+| `regenerate` | **Yes** — interactive *source* + *target* prompts, then the notes-review gate (fresh) / a simple confirm (reuse) | uses flags/defaults, auto-accepts |
+| `init` | **No** — non-clobbering (skips existing with a notice; `--force` to overwrite) | n/a |
+| `version` | **No** — prints its value | n/a |
+| `commit` (future) | out of scope — separate feature | — |
+
+Two gating verbs (`release`, `regenerate`). `init`'s safety is **structural** (non-clobber + `--force`), not a prompt — which is why it never needed `-y`.
+
+- **Generalised forbidden-combination rule (was only stated for notes-review)**: for **any** interactive gate, if **stdin is not a TTY** and **`-y` was not passed**, mint **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. Render mode is about *output* (stdout TTY); a gate is about *input* (stdin TTY) — checked independently. `-y` answers every gate.
+
+**Gate input handling (resolves review-002 F3)** — for the `Continue?` prompt:
+- **Line-read** (type the letter, press Enter) — not raw single-keypress; no termios raw-mode complexity.
+- **Empty line (just Enter) = default = accept.** The default fires *only* on a deliberate empty Enter.
+- **Case-insensitive** (`N` = `n`).
+- **Unrecognised key** (`x`, or old muscle-memory `a`/`q`) → **re-prompt**, never silently accept. Keeps the destructive-adjacent default safe — garbage never proceeds.
+
+**Regenerate / edit re-entry (resolves review-002 F7)** — after `e` (edit in `$EDITOR`) or `r` (regenerate-with-context), flow **loops back to the same `Continue?` gate** with the refreshed notes, until `y`/`n`. Rendering is **linear — re-prints the notes block + gate below** (it scrolls; no screen-clearing or alt-screen, consistent with the no-Bubble-Tea print model).
+
+Confidence: high.
 
 ---
 
