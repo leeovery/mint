@@ -56,4 +56,57 @@ The per-stage details are specified in their own sections below.
 
 ---
 
+## Stage 1 — Version Determination & Tag Grammar
+
+### Source of truth: git tags, always
+
+The current version is the **highest** SemVer tag in the repository (stripped of its prefix). There is no file-based or embedded version source — brew installs from tags, so the tag *is* the real version; any file copy is derived state. With no matching tags, the current version is `0.0.0`.
+
+- **"Latest" = the numerically highest matching version, globally** — not `git describe`'s nearest-reachable-from-HEAD (which diverges on branches and hotfix lines). Tag-as-truth requires the true maximum across all tags.
+- Preflight's fetch includes `--tags`, so mint always sees the complete tag set even after a fresh/partial clone.
+
+### Recognised tag grammar
+
+- **Strict SemVer 2.0.0, three numeric segments only:** `MAJOR.MINOR.PATCH`. Anything else (`release-1.2`, `1.2`, `1.2.0.4`, `1.2.0-rc.1`, `1.2.0+build5`) is **not** a mint version and is ignored entirely.
+- **Recognised pattern:** `^{tag_prefix}(\d+)\.(\d+)\.(\d+)$`. Tags not matching are ignored when computing "latest".
+- **`tag_prefix` config, default `"v"`** — mint reads the prefix off existing tags, parses the semver, and writes the prefix back when tagging. Overridable to `""` or anything else. The same knob covers component/monorepo prefixes, e.g. `tag_prefix = "pkg-name/v"`.
+
+### Bump selection
+
+The next version is computed from the current version by a bump flag:
+
+- `-p` / `--patch` — **default** when no flag is given
+- `-m` / `--minor`
+- `-M` / `--major`
+- `--set-version X.Y.Z` — explicit version escape hatch (e.g. a deliberate 1.x → 2.0.0 jump)
+
+**First release handles itself** with no special-casing: with no tags the current version is `0.0.0`, so `mint release` → `0.0.1`, `mint release -m` → `0.1.0`, `mint release -M` → `1.0.0`.
+
+### `--set-version` rules
+
+- **Mutually exclusive with bump flags.** `--set-version` combined with `-p`/`-m`/`-M` is an **error** ("can't combine `--set-version` with a bump flag") — no silent precedence. (`--set-version` alone = explicit; a bump flag alone = computed; neither = default patch.)
+- **Must be valid 3-part semver AND strictly greater than the current latest tag.** A backwards/equal jump is rejected by default *even if the target tag is free*, because a lower version sorts below "latest" and corrupts tag-as-truth. (This sits on top of the free-tag preflight check, which catches an equal/existing tag.)
+- **Forward-only today; no downgrade override.** A `--force`-style "re-tag an old line" escape is YAGNI and deliberately not built now.
+
+### Optional version-file projection
+
+When a project needs the version written *into the repo*, mint mirrors the new version into a file during the **Record** stage (Stage 5). The file is always a **write-only mirror kept in sync** — never a source of truth.
+
+- `version_file` — path to write; **omit = tag-only** (no projection).
+- `version_pattern` — e.g. `RELEASE_VERSION="{version}"`; **omit = the whole file *is* the version** (plain mode).
+
+**Legacy strategy mapping** (the old `VERSION_STRATEGY` model collapses into this; all absorbed, none lost):
+- old `none` → no `version_file` (tag is truth).
+- old `file` (plain `release.txt`) → `version_file = "release.txt"`, no pattern.
+- old `embedded` (sed-replace into a source file) → `version_file` + `version_pattern = 'RELEASE_VERSION="{version}"'`.
+
+The behavioural change vs. legacy: these are now write-only mirrors, not read sources.
+
+### Explicitly rejected (YAGNI)
+
+- **Pre-release / RC tags** (`1.2.0-rc.1`) — not parsed or produced. (Accepted consequence: a repo whose only tags are RC tags reads as `0.0.0` — not a real scenario here.)
+- **4th / build segments** (`1.2.0.4`, `1.2.0+build5`) — not SemVer 3-part; break brew and tag-as-truth. Docker/CI build numbers are stamped at image-build time off mint's released version, never baked into the release tag.
+
+---
+
 ## Working Notes
