@@ -18,15 +18,15 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (7 subtopics — 2 decided · 1 exploring · 4 pending)
+  Discussion Map — CLI Presentation (7 subtopics — 2 decided · 4 converging · 1 exploring)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
-  ├─ ○ What The Pretty Layer Actually Shows [pending]
-  ├─ ○ Plain / Token-Efficient Mode Contract [pending]
-  ├─ ○ Spinners & Long-Running Progress [pending]
+  ├─ → What The Pretty Layer Actually Shows [converging]
+  ├─ → Plain / Token-Efficient Mode Contract [converging]
+  ├─ → Spinners & Long-Running Progress [converging]
   ├─ ◐ -y/--yes Orthogonality [exploring]
   ├─ ✓ Presentation Seam / Architecture [decided]
-  └─ ○ Library Selection (Charm Vs Lighter) [pending]
+  └─ → Library Selection (Charm Vs Lighter) [converging]
 
   *(Dry-run note reuse / caching was routed out to the `mint-release-tool` discussion — engine behaviour, not presentation. See its dry-run-semantics addendum.)*
 
@@ -117,6 +117,136 @@ Warn(msg) · ShowPlan(plan) · ShowNotes(body) · Prompt(gate) → choice
 Considered cloning `tick`'s data-shaped `Formatter` directly, but mint has no task-list-equivalent to format — it has a running process. Reshaping the seam from "format this data" to "react to this event" keeps the decoupling principle (one interface, per-mode impls, factory by mode) while fitting what mint actually does. The engine-emits-events / presenter-renders split is the payoff: the spine is testable and rendering-agnostic.
 
 Confidence: high (on the split and the event shape; exact method signatures are spec/impl detail).
+
+---
+
+## Library Selection (Charm vs lighter)
+
+### Context
+
+The discovery how-question: which Go packages provide styling and spinners — a charm/lipgloss stack vs lighter colour libs. Grounded by two sibling Go tools the user already runs: `tick` (uses lipgloss-style formatting) and `portal`.
+
+### Decision
+
+- **`lipgloss` for all `pretty`-mode styling** — colour, the 🌿 brand line, status glyphs, the notes box/border. It is *pure string styling* (no event loop), so it composes with the `Presenter` seam, and it auto-downgrades colour when piped. Idiomatic and already in the user's toolchain.
+- **A lightweight standalone spinner** for stage progress — `briandowns/spinner` (explicit `Start()`/`Stop()`, maps 1:1 to `StageStarted`/`StageSucceeded`) or charm's `huh/spinner`. Exact pick is an impl detail; the seam doesn't care.
+- **NOT Bubble Tea / no alt-screen / no full-screen TUI.** Print-style linear narration only.
+- **`plain` mode pulls in no UI library** — just `fmt` lines. That's the point of token-efficiency.
+
+### Journey — why not Bubble Tea / Portal's stack
+
+`portal` is a full-screen Bubble Tea TUI (`tea.NewProgram(tea.WithAltScreen())`, a `Model`/`Update`/`View` state machine with pages and modals). Inspected as a candidate baseline and **rejected for mint**: it's built for an interactive picker that *owns the screen*, whereas mint narrates a linear process and exits. A full TUI would also fight the `Presenter` seam (Bubble Tea wants to own the event loop; mint's engine drives and calls the presenter) and the dual pretty/plain requirement. We take **lipgloss** (the styling layer) from that ecosystem and leave the TUI runtime. Note: `portal` and `tick` both detect TTY with the same `os.Stdout.Stat() & ModeCharDevice` check we locked — three-for-three.
+
+Confidence: high on the stack (lipgloss + standalone spinner, no Bubble Tea); specific spinner package is impl detail.
+
+---
+
+## What The Pretty Layer Shows / Plain Contract (worked examples)
+
+### Context
+
+The user asked for **concrete logged examples** so the implementer isn't guessing the look-and-feel. Both modes consume the *same* `Presenter` events; only rendering differs. Baseline below — refinable at implementation, but the intent is fixed.
+
+### Baseline renderings (per event)
+
+| Event | `pretty` | `plain` |
+|---|---|---|
+| start of run | `🌿 mint · {project}  ›  releasing v{X}` brand line | `mint: releasing {project} v{X}` |
+| `StageStarted` | dim line with spinner: `⠋ notes  generating with claude…` | (no line until transition) |
+| `StageSucceeded` | `✓ {stage}  {detail} ({elapsed})`, glyph green | `{stage}: ok` / `{stage}: {detail}` |
+| `StageFailed` | `✗ {stage}  {message}`, glyph red | `{stage}: FAILED - {message}` (also stderr) |
+| auto-unwind | `↩ unwound  {what it undid} — repo clean` | `unwound: {what}; repo clean` |
+| `Warn` | `⚠ {label}  {message}`, amber | `{label}: WARN - {message}` (also stderr) |
+| `ShowPlan` | a `Plan` block, bulleted | `plan: {semicolon-joined one-liner}` |
+| `ShowNotes` | rounded box `╭─ Release notes · v{X} ─╮ … ╰─╯` | `--- release notes v{X} ---` … `--- end notes ---` |
+| review gate | `[a] accept  [e] edit  [r] regenerate  [q] abort` + `› ` prompt | (not shown — non-TTY ⇒ `-y` required ⇒ gate skipped; emits `notes: accepted (-y)`) |
+| end of run | `🌿 released {project} v{X} · {url}` | `done: {project} v{X} {url}` |
+
+### Full `pretty` run
+
+```
+🌿 mint · acme  ›  releasing v1.4.0
+
+  ✓ version    v1.3.2 → v1.4.0 (minor)
+  ✓ preflight  clean · on main · tag free · in sync with origin
+
+  Plan
+    • commit   CHANGELOG.md + bin/acme
+    • tag      v1.4.0 (annotated)
+    • push     --atomic → origin
+    • publish  GitHub release
+
+  ✓ prep       pre_tag: npm ci && npm run build (2.3s)
+  ⠋ notes      generating with claude…
+  ✓ notes      generated (1.1s)
+
+  ╭─ Release notes · v1.4.0 ─────────────────────╮
+  │ Faster cold starts and a calmer log.         │
+  │                                              │
+  │ ✨ Features                                   │
+  │   • Parallel warm-up halves boot time        │
+  │ 🐛 Fixes                                      │
+  │   • Stop double-flush on SIGTERM             │
+  ╰──────────────────────────────────────────────╯
+
+  [a] accept   [e] edit   [r] regenerate   [q] abort
+  › a
+
+  ✓ record     CHANGELOG.md + bin/acme
+  ✓ tag/push   v1.4.0 pushed (atomic)
+  ✓ publish    github release created
+
+🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0
+```
+
+`pretty` failure + auto-unwind, and a post-release warn:
+
+```
+  ✗ tag/push   push rejected: remote moved
+  ↩ unwound    removed tag v1.4.0, reset 2 release commit(s) — repo clean
+
+  ⚠ post_release  hook failed (tag is already published): scripts/notify.sh exited 1
+```
+
+### Same run in `plain` (agent, `-y`)
+
+```
+mint: releasing acme v1.4.0
+version: v1.3.2 -> v1.4.0 (minor)
+preflight: ok (clean, on main, tag free, in sync)
+plan: commit changelog+version; tag v1.4.0; push --atomic; publish github
+prep: pre_tag ok (2.3s)
+notes: generated (1.1s)
+--- release notes v1.4.0 ---
+Faster cold starts and a calmer log.
+
+Features:
+- Parallel warm-up halves boot time
+Fixes:
+- Stop double-flush on SIGTERM
+--- end notes ---
+notes: accepted (-y)
+record: CHANGELOG.md + bin/acme
+tag/push: v1.4.0 pushed (atomic)
+publish: github release created
+done: acme v1.4.0 https://github.com/acme/acme/releases/tag/v1.4.0
+```
+
+`plain` failure:
+
+```
+tag/push: FAILED - push rejected: remote moved
+unwound: removed tag v1.4.0, reset 2 commits; repo clean
+```
+
+### Spinner lifecycle (resolves the spinners subtopic)
+
+- One spinner at a time, on the **current** stage line (stderr-independent — it's part of the narration on stdout). Starts on `StageStarted`, replaced in place by the `✓`/`✗` line on completion. Braille frames (`⠋⠙⠹…`).
+- **Underlying command output** (git/claude/gh chatter) is captured by mint, not streamed through the spinner line, so the animation can't be corrupted. On failure mint prints the captured output below the `✗` line.
+- **`$EDITOR` (note edit)** takes over the terminal — spinner is stopped before handing off, resumed after.
+- **`plain` never animates** — a stage emits exactly one line on its transition.
+
+Confidence: medium-high — baseline agreed in principle; awaiting user confirmation on glyphs / brand line / box style / plain verbosity.
 
 ---
 
