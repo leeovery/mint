@@ -60,7 +60,7 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 **Stream split — narration is the product, so it's stdout:**
 - **Run narration → stdout** — stages, the plan, the notes preview, the final summary, and `mint version`'s value. mint has no separate data payload, so the narration *is* its stdout output.
 - **Errors + warnings → stderr** — the one real job stderr keeps: *visibility under redirection*. `mint release > run.log` sends stdout to the file, but a failure on stderr still hits the terminal and can't silently vanish.
-- **Exit code** signals success/failure for scripts (they check `$?`, not stream parsing).
+- **Exit code** signals success/failure for scripts (they check `$?`, not stream parsing). **Ownership (resolves review-003 F3): the engine, not the `Presenter`.** The presenter is render-only — it reacts to events and has no say in process status. The engine/`main` knows the run outcome (success / pre-push failure + unwind / post-push warn) and sets the exit code independent of rendering. Mentioned here only because the stream contract touches it; **routed to the engine/spec** (same disposition as the dry-run caching thread).
 - An **agent captures combined output (`2>&1`)** by default, so it sees narration *and* errors regardless of the split — the split costs the agent nothing and buys humans redirect-visibility.
 
 **No separate colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color`. Don't want colour? **`--plain`** (or pipe/redirect — any non-terminal stdout gives `plain`). Mode ∈ {pretty, plain} at *mint's* level, full stop — no third "no-colour-but-styled" state. `NO_COLOR` env handling stays YAGNI — it's sniffing, and `--plain` is the explicit equivalent.
