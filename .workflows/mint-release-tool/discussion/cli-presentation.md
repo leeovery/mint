@@ -18,16 +18,15 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (8 subtopics — 8 decided)
+  Discussion Map — CLI Presentation (7 subtopics — 2 decided · 4 converging · 1 exploring)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
-  ├─ ✓ What The Pretty Layer Actually Shows [decided]
-  ├─ ✓ Plain / Token-Efficient Mode Contract [decided]
-  ├─ ✓ Spinners & Long-Running Progress [decided]
-  ├─ ✓ -y/--yes Orthogonality [decided]
+  ├─ → What The Pretty Layer Actually Shows [converging]
+  ├─ → Plain / Token-Efficient Mode Contract [converging]
+  ├─ → Spinners & Long-Running Progress [converging]
+  ├─ ◐ -y/--yes Orthogonality [exploring]
   ├─ ✓ Presentation Seam / Architecture [decided]
-  ├─ ✓ Per-Verb Presentation [decided]
-  └─ ✓ Library Selection (Charm Vs Lighter) [decided]
+  └─ → Library Selection (Charm Vs Lighter) [converging]
 
   *(Dry-run note reuse / caching was routed out to the `mint-release-tool` discussion — engine behaviour, not presentation. See its dry-run-semantics addendum.)*
 
@@ -51,8 +50,7 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 
 **Detection — `isatty(stdout)` only. No override flags, no sniffing:**
 - `isatty(stdout)` → `pretty`; non-TTY → `plain`. That is the *entire* mechanism — there is **no `--pretty`/`--plain`/`--no-color` override**. (The only run flag near this area is `-y`, which is gating, not rendering — orthogonal.)
-- **"Human vs agent" reduces to "is stdout a terminal?"** — an agent never announces itself; its harness captures stdout through a **pipe** (not a terminal) → plain. A human's terminal → pretty. The OS reports what's connected for free.
-- **Decided mechanism: `golang.org/x/term.IsTerminal(int(os.Stdout.Fd()))`** — *not* the `Stat().Mode() & os.ModeCharDevice` check that `tick` and `portal` use. The stat check is subtly wrong: `/dev/null` **is** a character device, so `mint release > /dev/null` would mis-detect as a TTY and emit ANSI. `x/term.IsTerminal` does a real terminal ioctl, correctly returning false for `/dev/null`, pipes, and regular files. One small, already-transitively-present dependency for a correct answer.
+- **"Human vs agent" reduces to "is stdout a terminal?"** — exactly `tick`'s mechanism (`stat(stdout).Mode() & os.ModeCharDevice != 0` on `os.Stdout`). An agent never announces itself; its harness captures stdout through a **pipe** (not a char device) → `false` → plain. A human's terminal is a char device → `true` → pretty. Same binary, same path; the OS reports what's connected for free. mint mirrors this (the stat check, or `term.IsTerminal(int(os.Stdout.Fd()))`).
 - **No `CI=true`/`TERM` guessing** — the environment sniffing the seed forbids.
 - **The two edge cases are features, not compromises** (confirmed desirable by the user): a human who pipes/redirects (`mint … > out.txt`, `… | grep`) gets `plain` — exactly what you want when capturing output (no ANSI junk), and this *is* the "force plain" path. An agent on a pseudo-terminal getting `pretty` is rare and harmless. There is deliberately no force-pretty.
 
@@ -84,25 +82,12 @@ Confidence: high.
 
 The seed: `-y/--yes` is orthogonal to styling — it only skips interactive gate stops; a human at a terminal with `-y` still gets the styled UI. Three independent concerns: **styling** (TTY), **gating** (`-y`), **output stream** (stdout/stderr).
 
-### Decision
+### Decided so far
 
-- **Three orthogonal axes**: styling = f(`isatty(stdout)`), gating = f(`-y`), output stream = fixed (narration→stdout, errors/warnings→stderr). A human with `-y` at a terminal still gets full styling.
-- **One uniform rule for every interactive stop**: a gate needs **`isatty(stdin)`**. If **stdin is not a TTY** and **`-y` was not passed**, mint **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. Output styling (stdout TTY) and gate availability (stdin TTY) are checked **independently** — a run can legitimately have a piped stdout (plain) but a TTY stdin, or vice versa; each is judged on its own fd.
+- **Three orthogonal axes**: styling = f(TTY), gating = f(`-y`), output stream = fixed (chrome→stderr, payload→stdout). A human with `-y` at a terminal still gets full styling.
+- **The one forbidden combination errors, never hangs**: if **stdin is not a TTY** and **`-y` was not passed**, the notes-review gate (`[a]/[e]/[r]/[q]`) can't be answered — mint **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. Render mode is about *output* (stderr TTY); the gate is about *input* (stdin TTY) — both checked independently.
 
-### The complete gate inventory (resolves "are there other gates?" — yes, and they all obey the one rule)
-
-Enumerated against the engine's decided CLI surface; **no per-gate special-casing**:
-
-1. **Release notes-review** (`[a]/[e]/[r]/[q]`) — the main gate. `-y` skips → notes ship as generated.
-2. **`regenerate` interactive questions** (no flags → asks source, asks target) — these are prompts; `-y` (or supplying the flags) skips them. Non-TTY stdin without `-y`/flags → fail loud.
-3. **`regenerate` confirm** ("shows plan, confirms") — `-y` skips the confirm.
-4. **`regenerate --all` per-version review gate** (fresh) — gated per version; `-y` runs the batch unattended. Same TTY-or-`-y` rule per version.
-5. **`regenerate [a]/[e]/[r]/[q]`** on a fresh single version — same as #1.
-6. **`mint init`** — **no gate**: it is non-clobbering by design (skips existing files with a notice) and `--force` overwrites without prompting. So there is nothing for `-y` to skip and no stdin dependency. Confirmed: `init` never blocks on input.
-
-`reuse` regenerate is deterministic (a simple confirm, no review gate) — covered by #3. That's the whole universe; the rule is uniform across all of them.
-
-Confidence: high — gate inventory is complete against the decided CLI surface; the single TTY-or-`-y` rule covers every case.
+Still exploring: whether any other gates exist beyond notes-review that interact with `-y`.
 
 ---
 
@@ -114,43 +99,24 @@ The structural backbone the topic exists to define: how the engine and the prese
 
 ### Decision
 
-**An event/step-oriented `Presenter` interface the engine calls at lifecycle points.** The engine emits *semantic events* ("stage X started", "here's the plan", "warn: hook failed"); the presenter decides *how they look*. **Pinned method set** (names/signatures are the decided surface; only cosmetic Go-idiom tweaks — receiver names, error-vs-bool return — are left to impl):
+**An event/step-oriented `Presenter` interface the engine calls at lifecycle points.** The engine emits *semantic events* ("stage X started", "here's the plan", "warn: hook failed"); the presenter decides *how they look*. Illustrative method set (exact surface settled at spec/impl):
 
-```go
-type Presenter interface {
-    // run framing
-    RunStarted(project, version string)            // 🌿 mint · {project} › releasing v{X}
-    RunFinished(project, version, url string)      // success footer (url "" if publish=false)
-
-    // the seven-stage spine
-    StageStarted(stage string)                     // pretty: starts spinner on this line
-    StageDetail(stage, detail string)              // optional sub-detail before completion
-    StageSucceeded(stage, detail string, d time.Duration)
-    StageFailed(stage string, err error)
-    Unwound(summary string)                        // ↩ what auto-unwind undid
-
-    // information surfaces
-    ShowPlan(plan Plan)                            // bulleted plan block
-    ShowNotes(version, body string)                // boxed notes / delimited block
-    Warn(label, msg string)                        // ⚠ non-fatal (e.g. post_release)
-
-    // interaction (pretty only; plain never reaches here — see -y rule)
-    ReviewGate() GateChoice                        // [a]/[e]/[r]/[q] → accept|edit|regen|abort
-    RegenContext() string                          // one-line context for [r]
-}
+```
+StageStarted(name) · StageSucceeded(name) · StageFailed(name, err)
+Warn(msg) · ShowPlan(plan) · ShowNotes(body) · Prompt(gate) → choice
 ```
 
-- **Two implementations behind the interface — `pretty` and `plain`** — selected **once at startup** from the TTY check (see detection below). Nothing downstream re-checks the TTY.
+- **Two implementations behind the interface — `pretty` and `plain`** — selected **once at startup** from `isatty(stdout)`. Nothing downstream re-checks the TTY.
 - **The engine never touches colour, spinners, or TTY state.** It calls `Presenter` methods only. This mirrors the engine's existing seams (`CommandRunner` for git/gh/claude, `Publisher` for releases) — the same dependency-inversion discipline, now for output.
-- **Applies to every verb.** `release`, `regenerate`, `init`, `version` all emit through the same `Presenter` (see the per-verb rendering subtopic for how each maps onto these methods) — this is *how* "consistent presentation across all verbs" is achieved structurally, not per-verb styling code.
-- **Testability** (the whole Go rationale): a recording/fake `Presenter` asserts which events fired and with what payload, independent of rendering. A non-interactive presenter is used under `-y`; `ReviewGate`/`RegenContext` are never called when gates are skipped.
-- **Spinner ownership**: the `pretty` impl owns the spinner internally (started by `StageStarted`, cleared by `StageSucceeded`/`StageFailed`); the engine is unaware a spinner exists. `plain` renders the same events as terse lines. Full lifecycle decided in the spinners subtopic below.
+- **Applies to every verb.** `release`, `regenerate`, `init`, `version` all emit through the same `Presenter`, which is *how* the "consistent presentation across all verbs" goal is met structurally (not per-verb styling code).
+- **Testability** (the whole Go rationale): assert which events fired and with what payload, independent of rendering. A `plain` impl is trivially assertable; a fake/recording presenter verifies engine behaviour without parsing styled text.
+- **Spinners are a `pretty`-only concern** owned inside the pretty presenter (e.g. a spinner spans the gap between `StageStarted` and `StageSucceeded/Failed`); `plain` renders the same events as terse lines. Lifecycle detail deferred to the spinners subtopic.
 
 ### Journey
 
 Considered cloning `tick`'s data-shaped `Formatter` directly, but mint has no task-list-equivalent to format — it has a running process. Reshaping the seam from "format this data" to "react to this event" keeps the decoupling principle (one interface, per-mode impls, factory by mode) while fitting what mint actually does. The engine-emits-events / presenter-renders split is the payoff: the spine is testable and rendering-agnostic.
 
-Confidence: high — split, event shape, and the method surface are all decided. Only Go-idiom cosmetics (error vs bool returns, exact `Plan`/`GateChoice` struct fields) remain, and those are mechanical.
+Confidence: high (on the split and the event shape; exact method signatures are spec/impl detail).
 
 ---
 
@@ -163,7 +129,7 @@ The discovery how-question: which Go packages provide styling and spinners — a
 ### Decision
 
 - **`lipgloss` for all `pretty`-mode styling** — colour, the 🌿 brand line, status glyphs, the notes box/border. It is *pure string styling* (no event loop), so it composes with the `Presenter` seam, and it auto-downgrades colour when piped. Idiomatic and already in the user's toolchain.
-- **Spinner: `github.com/briandowns/spinner`** (decided). Explicit `Start()`/`Stop()` + mutable suffix maps 1:1 onto `StageStarted`→`StageSucceeded/Failed`, and it handles the fiddly bits (line-clearing, carriage returns, cleanup on stop) that a hand-roll gets wrong. Rejected `huh/spinner` — it's action-wrapping (`.Action(fn).Run()`), which would invert our seam (presenter running the engine's work instead of the engine driving the presenter). Lipgloss styles the suffix text; briandowns drives the frames.
+- **A lightweight standalone spinner** for stage progress — `briandowns/spinner` (explicit `Start()`/`Stop()`, maps 1:1 to `StageStarted`/`StageSucceeded`) or charm's `huh/spinner`. Exact pick is an impl detail; the seam doesn't care.
 - **NOT Bubble Tea / no alt-screen / no full-screen TUI.** Print-style linear narration only.
 - **`plain` mode pulls in no UI library** — just `fmt` lines. That's the point of token-efficiency.
 
@@ -171,7 +137,7 @@ The discovery how-question: which Go packages provide styling and spinners — a
 
 `portal` is a full-screen Bubble Tea TUI (`tea.NewProgram(tea.WithAltScreen())`, a `Model`/`Update`/`View` state machine with pages and modals). Inspected as a candidate baseline and **rejected for mint**: it's built for an interactive picker that *owns the screen*, whereas mint narrates a linear process and exits. A full TUI would also fight the `Presenter` seam (Bubble Tea wants to own the event loop; mint's engine drives and calls the presenter) and the dual pretty/plain requirement. We take **lipgloss** (the styling layer) from that ecosystem and leave the TUI runtime. Note: `portal` and `tick` both detect TTY with the same `os.Stdout.Stat() & ModeCharDevice` check we locked — three-for-three.
 
-Confidence: high — stack decided: `lipgloss` (styling) + `briandowns/spinner` (spinner) + `golang.org/x/term` (TTY), no Bubble Tea. Exact lipgloss colour values are cosmetic and tweakable; the library choices are fixed.
+Confidence: high on the stack (lipgloss + standalone spinner, no Bubble Tea); specific spinner package is impl detail.
 
 ---
 
@@ -280,60 +246,7 @@ unwound: removed tag v1.4.0, reset 2 commits; repo clean
 - **`$EDITOR` (note edit)** takes over the terminal — spinner is stopped before handing off, resumed after.
 - **`plain` never animates** — a stage emits exactly one line on its transition.
 
-Confidence: high — look-and-feel baseline confirmed by the user. Exact colour values and micro-spacing are cosmetic and tweakable later (and the Claude Code TUI can't render colour in code blocks anyway); the structure — glyphs, the brand line, the notes box, plain's one-line-per-transition contract — is decided.
-
----
-
-## Per-Verb Presentation (release · regenerate · init · version)
-
-### Context
-
-The topic's scope is *every* verb, not just `release`. The seam (one `Presenter`, all verbs) makes this mostly free, but each verb maps onto the events differently — pin that mapping now rather than discovering it at impl.
-
-### Decision
-
-- **`release`** — the canonical case fully worked above (RunStarted → stages → ShowPlan → ShowNotes → ReviewGate → RunFinished).
-
-- **`version`** — special: it emits a **machine value**, so it bypasses the narration. **`plain`: bare `0.3.1` on stdout** (clean, scriptable — `v=$(mint version)`). **`pretty`: `🌿 mint 0.3.1`**. No stages, no spinner. This is the one verb whose stdout is a capturable payload (consistent with the render-mode decision).
-
-- **`init`** — emits a **per-file result** through the presenter (no spinner; the work is instant):
-  - `pretty`:
-    ```
-    🌿 mint · init
-      ✓ created  .mint.toml
-      • skipped  release (exists — use --force)
-    ```
-  - `plain`:
-    ```
-    init: created .mint.toml
-    init: skipped release (exists)
-    ```
-  - `--force` overwrites → `✓ regenerated`. No gate (decided in the gate inventory).
-
-- **`regenerate <version>`** — same notes-box + `ReviewGate` rendering as `release` (fresh), scoped to one version; `reuse` is a simple confirm + a single `✓ v1.4.0 release re-created` line.
-
-- **`regenerate --all`** — **per-version progress + a final skip summary** (the engine's skip-and-continue batch semantics):
-  - `pretty`:
-    ```
-    🌿 mint · regenerate (all, oldest→newest)
-      ✓ v1.2.0  regenerated
-      ✓ v1.3.0  regenerated
-      ⤬ v1.3.1  skipped — diff too large (max_diff_lines)
-      ✓ v1.4.0  regenerated
-    
-    27 regenerated · 3 skipped (v1.3.1, v0.9.4, v0.2.0)
-    ```
-  - `plain`:
-    ```
-    regenerate: v1.2.0 regenerated
-    regenerate: v1.3.1 skipped (diff too large)
-    summary: 27 regenerated, 3 skipped: v1.3.1, v0.9.4, v0.2.0
-    ```
-  - Per-version review gate (fresh) obeys the uniform `-y` rule; `-y` runs the whole batch unattended.
-
-These reuse the existing `Presenter` methods (`RunStarted`/`StageSucceeded`-style lines / `Warn` for skips / `RunFinished` for the summary) — no verb-specific presenter, just different call sequences.
-
-Confidence: high.
+Confidence: medium-high — baseline agreed in principle; awaiting user confirmation on glyphs / brand line / box style / plain verbosity.
 
 ---
 
@@ -342,7 +255,7 @@ Confidence: high.
 ### Key Insights
 
 1. **mint's narration IS its output.** No separate data payload (bar `mint version`), so narration → stdout, and stderr is reserved for errors/warnings (kept only for redirect-visibility). "All process" is fine — when the narration is the product, the narration is stdout.
-2. **Mirror `tick`'s adapter model** — one logical output, rendered by an adapter chosen by audience: `isatty(stdout)` → pretty, else plain. No override flags; piping is the force-plain path. Proven in a sibling tool the user already trusts.
+2. **Mirror `tick`'s adapter model** — one logical output, rendered by an adapter chosen by audience: `isatty(stdout)` → pretty, else plain; explicit flag overrides. Proven in a sibling tool the user already trusts.
 3. **Two modes suffice** (pretty + plain). Structured json/toon is YAGNI here because mint renders a process, not a queryable data structure.
 4. **Three orthogonal axes**: styling (TTY) · gating (`-y`) · output stream. Independence is the design's backbone.
 5. **Engine emits events; presenter renders.** An event-oriented `Presenter` seam (not tick's data-shaped `Formatter`) keeps the seven-stage spine oblivious to colour/spinners/TTY — mirroring the `CommandRunner`/`Publisher` seams — and is how "consistent across all verbs" is achieved structurally.
@@ -351,8 +264,8 @@ Confidence: high.
 ### Open Threads
 
 - **Dry-run note reuse / caching** — **routed out** to the `mint-release-tool` discussion (engine/dry-run behaviour, not presentation) as an addendum to its dry-run-semantics decision, so the in-progress spec picks it up. The idea: cache the dry-run-generated note and reuse it on the real run to guarantee *what was previewed is what ships* (determinism), with invalidation keyed on the post-exclude diff + version + prompt. Resolved here; decided in spec.
-- *(none open — the discovery how-question on libraries is now decided; dry-run caching is routed to the engine spec.)*
+- Library selection was flagged in discovery as a deferred how-question.
 
 ### Current State
 
-- **All 8 subtopics decided.** Render-mode detection (stdout `x/term.IsTerminal`, two modes, narration→stdout, no flags) · pretty + plain worked examples · spinner lifecycle · uniform `-y`/stdin-TTY gate rule with a complete gate inventory · event-oriented `Presenter` seam (pinned method set) · per-verb rendering (release/regenerate/init/version) · library stack (lipgloss + briandowns/spinner + x/term, no Bubble Tea). Only cosmetic colour/spacing values remain tweakable at impl. Ready for spec.
+- Render-mode detection **decided** (stdout-based, tick-aligned, two modes, narration→stdout, no flags). Presentation seam **decided** (event-oriented `Presenter`, two impls). `-y` orthogonality mostly decided. Remaining: what the pretty layer shows, the concrete plain-mode text contract, spinners, library selection.
