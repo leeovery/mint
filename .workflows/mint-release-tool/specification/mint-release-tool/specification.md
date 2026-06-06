@@ -138,4 +138,69 @@ After mint's built-in preflight checks pass, the project's optional `preflight` 
 
 ---
 
+## Hooks
+
+### Purpose & scope
+
+Hooks are mint's escape valve for steps **specific to one project** that mint cannot know about generically. Anything universal-but-optional (version-file writing, diff-exclude globs) is deliberately absorbed into mint as built-in, tested config rather than left to hooks. The guiding test: *if mint already owns the data/concern, it's core; hooks are only for genuinely bespoke project steps.*
+
+### Mechanism: one mechanism only
+
+Hooks are a **config table of shell commands keyed by lifecycle point** (`[hooks]` in `.mint.toml`). There is no separate `.release/hooks/` directory convention — a command string can simply *call* a script, so scripts are just something a string invokes, not a second mechanism.
+
+```toml
+[hooks]
+pre_tag = "npm ci && npm run build"        # single string — the 90% case
+# or:
+pre_tag = ["npm ci", "npm run build"]      # array of strings, run in order
+```
+
+- **Value is a string *or* an array of strings.** Array entries run sequentially; the **first non-zero exit aborts** (for pre-PONR hooks). String for one command; array for readable multi-step without quoting a giant `&&` chain.
+- **Executed through a shell** (`sh -c "<entry>"`) so `&&`, pipes, env vars, and `./script.sh` invocations all work.
+- **Run from the repo root.**
+- **Complex/conditional logic lives in a script file** that the config points at; `mint init` may scaffold an example script + reference, but the directory is not load-bearing.
+
+### Hook points (three, mapped to the spine)
+
+- **`preflight`** — runs *after* mint's built-in preflight checks (Stage 2), for project-specific gates/validation. Before any mutation.
+- **`pre_tag`** — Stage 3 project prep (build/generate artifacts, e.g. a knowledge bundle). Dirties the tree → mint commits per the interplay rule below.
+- **`post_release`** — Stage 7 follow-ups after the provider release (notifications, tap `repository_dispatch`, etc.).
+
+**No `post_tag`** point (between tag/push and publish) and **no `pre_notes`/`post_notes`** points — no use case; YAGNI. Adding a point later is trivial under the config-table mechanism.
+
+### Commit interplay (`pre_tag`)
+
+After a `pre_tag` hook runs, **mint commits whatever it left dirty** (message `chore(release): pre-tag artifacts for {tag}`). Consequences:
+
+- Simple hooks never touch git — they just build; mint handles the commit.
+- "Commit only if the bundle changed" falls out for free: changed → tree dirty → mint commits; unchanged → tree clean → nothing committed.
+- A hook that wants a *custom* commit can do its own and hand mint back a clean tree — mint then sees nothing to commit.
+
+Either way, mint never tags a dirty tree, and hook authors aren't forced to know git.
+
+### Failure behaviour (asymmetric across the point of no return)
+
+- **`preflight` / `pre_tag`** run *before* the tag is pushed → a non-zero exit **aborts the whole release cleanly** (no tag, no damage; mint auto-unwinds any local mutations).
+- **`post_release`** runs *after* the tag is live → it **cannot abort**; a non-zero exit just **warns** ("post_release hook failed; tag is already published"). Same principle as a failed `gh release create`.
+
+### Invocation & context (injected env vars)
+
+Each hook entry runs via `sh -c` from the repo root. mint injects:
+
+| Variable | Example | Meaning |
+|---|---|---|
+| `MINT_NEW_VERSION` | `1.4.0` | the version being released |
+| `MINT_PREVIOUS_VERSION` | `1.3.2` | the prior latest version |
+| `MINT_VERSION_TAG` | `v1.4.0` | the full tag (with prefix) |
+| `MINT_BUMP` | `patch`/`minor`/`major` | the bump kind |
+| `MINT_DRY_RUN` | `0`/`1` | dry-run flag |
+
+The set may grow as later stages need it.
+
+### Dry-run behaviour
+
+Under `--dry-run`, mint **skips hooks** (they have side effects) and reports that they were skipped. (Confirmed in the dry-run semantics section.)
+
+---
+
 ## Working Notes
