@@ -109,4 +109,33 @@ The behavioural change vs. legacy: these are now write-only mirrors, not read so
 
 ---
 
+## Stage 2 — Preflight & Safety Gates
+
+### Principle
+
+Releasing is high-consequence, so mint forces a conscious, known-good starting state. All preflight checks are cheap and reversible, and all run before any mutation or hooks. The design favours safety, with explicit escape hatches for the cases where a gate would merely annoy.
+
+### The gate set (run in order — cheap local checks first, then network)
+
+Nothing irreversible happens until all applicable gates pass.
+
+1. **Git repo present**, anchored at the repo root (resolved via `git rev-parse --show-toplevel`; mint runs from root).
+2. **On the release branch** — default-on, **auto-derived from `origin/HEAD`** (resolves `main`/`master` with zero config). Override via `release_branch` in config. Escape hatch: `--any-branch` for a deliberate off-branch release.
+3. **Clean working tree (strict)** — `git status --porcelain` must be empty. Gitignored files are exempt (build outputs don't trip it); blocks on uncommitted/unstaged tracked changes *and* non-ignored untracked files. Escape hatch: **`--autostash`** (opt-in, not default) stashes (`--include-untracked`) before the run and restores after, **including on abort/failure**. Opt-in because the release mutates the tree (hook commits, changelog, version file) and popping unrelated WIP on top can conflict — opting in is the user asserting it's safe.
+4. **Target tag is free** — the computed `{tag_prefix}X.Y.Z` must not exist locally or on the remote. Closes the double-release / re-run footgun.
+5. **Remote sync** — `git fetch`, then **abort (never auto-pull)** if local is *behind* or *diverged* from the release branch's upstream. Being *ahead* is fine and expected (those are the commits being released). Auto-pulling would silently drag in unseen remote commits and release them; integrating remote work must be a conscious act. Clear abort message, e.g. "N commits behind origin/main — pull and review, then re-run".
+6. **`gh` installed + authenticated** — gated **only when actually publishing** a GitHub release, and **before the tag**, so a missing/unauthenticated `gh` never strands a pushed tag with no release.
+
+### Tool gating summary
+
+- **`git`** — implied/required.
+- **`gh`** — gated conditionally, only when publishing.
+- **`claude` CLI is NOT a preflight gate** — AI notes are optional with graceful fallback (see AI release notes).
+
+### Project preflight hook
+
+After mint's built-in preflight checks pass, the project's optional `preflight` hook runs (for project-specific gates/validation) — before any mutation. A non-zero exit aborts the release cleanly. (Detailed in the Hooks section.)
+
+---
+
 ## Working Notes
