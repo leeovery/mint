@@ -368,4 +368,30 @@ The brew formula's version/sha bump is **downstream CI** reacting to the GitHub 
 
 ---
 
+## Interactive Confirmation & Notes Review
+
+The biggest live pain with the legacy script is that release notes go out *unseen* — no chance to review or edit before they're public. Notes are generated at Stage 4 (before any mutation / the point of no return), so there is a natural zero-risk window to review them.
+
+### Default interactive flow (before any mutation)
+
+```
+1. Plan summary + computed version  → shown
+2. Notes generated + validated      → shown in full
+3. Gate:  [a] accept   [e] edit   [r] regenerate with context   [q] abort
+```
+
+- **`a` accept** → proceed to Record → tag → push.
+- **`e` edit** → opens the notes in `$EDITOR` for real manual editing. **The saved text is used verbatim — no re-parse, no validation.** A human edit is trusted; structural validation only ever applied to untrusted AI output (which has no machine labels anyway). No mangle-loop, no possible trap.
+- **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, and shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `notes_context`.
+- **`q` abort** → **full auto-unwind**: identical to the pre-push failure path — mint rolls back everything it made this run, including any `pre_tag` hook-artifact commit, returning to the exact clean starting state. The hook re-runs next time (idempotent build). A user-abort and a pre-push git failure are treated identically.
+
+### Non-interactive
+
+- **`-y` / `--yes`** skips the whole gate (uses notes as generated) for scripted/CI use.
+- A config toggle to disable the gate can be added later if it ever annoys (YAGNI now).
+
+This eliminates the "notes went out unseen / I had to fix the release afterward" pain entirely.
+
+---
+
 ## Working Notes
