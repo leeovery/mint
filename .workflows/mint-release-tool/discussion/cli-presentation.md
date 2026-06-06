@@ -48,8 +48,11 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 - **`pretty`** (human): brand, colour, spinners, formatted stages.
 - **`plain`** (agent): terse token-efficient text — no ANSI, no animation, no banner.
 
-**Detection — `isatty(stdout)` only. No override flags, no sniffing:**
-- `isatty(stdout)` → `pretty`; non-TTY → `plain`. That is the *entire* mechanism — there is **no `--pretty`/`--plain`/`--no-color` override**. (The only run flag near this area is `-y`, which is gating, not rendering — orthogonal.)
+**Detection — `--plain` override, else `isatty(stdout)`. No sniffing:** *(AMENDED — see Journey course-correction 4)*
+- Precedence: **`--plain` passed → `plain`**; otherwise `isatty(stdout)` → `pretty`, non-TTY → `plain`. A flag is an explicit *instruction*, not a guess — the ban is on *sniffing* (`LANG`/`LC_*`/`TERM`/`CI`), which still stands. (The only other run flag near this area is `-y`, which is gating, not rendering — orthogonal.)
+- **`--plain` only — no `--pretty` (YAGNI).** Force-*plain* has real demand (a UTF-8/braille-incapable TTY that would garble the spinner/emoji; or just wanting clean output without piping). Force-*pretty* doesn't: a real terminal already gets pretty, and mint is "a local interactive tool, not a CI job," which kills the coloured-CI-logs case. Addable later if anyone asks.
+- **This resolves the terminal-capability gap (review-002 F6).** Pretty mode assumes UTF-8/braille; rather than build locale-capability detection (which *is* the banned sniffing) and a fallback glyph set, a broken-glyph terminal is the user's cue to pass `--plain`. mint never self-degrades.
+- **Cross-ref:** `--plain` is a new **global/presentation flag** (applies to every verb, like the `Presenter` itself), distinct from the per-verb engine flags. The in-progress `mint-release-tool` spec's CLI surface should record it alongside `-y`.
 - **"Human vs agent" reduces to "is stdout a terminal?"** — exactly `tick`'s mechanism (`stat(stdout).Mode() & os.ModeCharDevice != 0` on `os.Stdout`). An agent never announces itself; its harness captures stdout through a **pipe** (not a char device) → `false` → plain. A human's terminal is a char device → `true` → pretty. Same binary, same path; the OS reports what's connected for free. mint mirrors this (the stat check, or `term.IsTerminal(int(os.Stdout.Fd()))`).
 - **No `CI=true`/`TERM` guessing** — the environment sniffing the seed forbids.
 - **The two edge cases are features, not compromises** (confirmed desirable by the user): a human who pipes/redirects (`mint … > out.txt`, `… | grep`) gets `plain` — exactly what you want when capturing output (no ANSI junk), and this *is* the "force plain" path. An agent on a pseudo-terminal getting `pretty` is rare and harmless. There is deliberately no force-pretty.
@@ -60,17 +63,18 @@ The seed mandates: render mode is driven by **TTY detection, not environment sni
 - **Exit code** signals success/failure for scripts (they check `$?`, not stream parsing).
 - An **agent captures combined output (`2>&1`)** by default, so it sees narration *and* errors regardless of the split — the split costs the agent nothing and buys humans redirect-visibility.
 
-**No colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color` and no `NO_COLOR` handling. Don't want colour? Pipe/redirect the output — any non-terminal stdout gives `plain`. Mode ∈ {pretty, plain}, full stop — no third "no-colour-but-styled" state, and no render-mode flags at all. (`NO_COLOR` support is addable later if anyone ever asks; YAGNI now.)
+**No separate colour flag.** Colour is intrinsic to `pretty` and absent from `plain` — there is no `--no-color`. Don't want colour? **`--plain`** (or pipe/redirect — any non-terminal stdout gives `plain`). Mode ∈ {pretty, plain}, full stop — no third "no-colour-but-styled" state. `NO_COLOR` env handling stays YAGNI — it's sniffing, and `--plain` is the explicit equivalent.
 
 ### Journey
 
-Three course-corrections, each from the user:
+Four course-corrections, each from the user:
 
 1. **Initial framing assumed a payload-vs-chrome stdout/stderr split** where a human might do `mint release > notes.txt`. Wrong — mint emits no capturable release payload; it performs side effects and shows the notes-review gate interactively.
 2. **First revision over-corrected to "all chrome → stderr, detect on stderr."** The review (F8) caught the tension: if everything meaningful is on stderr and stdout is empty, an agent capturing stdout gets near-silence.
 3. **Resolved by reading `tick`** (the user's sibling CLI, which they already trust): it treats its rendered output as the product → **stdout**, detects on stdout, and reserves stderr for errors/`--verbose`. mint adopts the same stance. The "git/wget put progress on stderr" pattern exists to protect a *real* stdout payload mint doesn't have — copying it would be cargo-culting.
+4. **Reintroduced a single `--plain` override.** An earlier pass had dropped *all* render-mode flags (auto-detect only). The terminal-capability gap (review-002 F6 — a TTY that can't render UTF-8/braille still gets pretty and garbles glyphs) reopened it: the alternative was capability *sniffing* (the thing we banned) plus a fallback glyph set. A `--plain` flag is the explicit, no-sniff escape hatch — and it doubles as the discoverable form of "pipe to force plain." `--pretty` stayed out (YAGNI). Net: auto-detect by default, one explicit override.
 
-The model collapsed to: **one logical output, rendered by an adapter chosen by audience (auto via stdout TTY, override via flag); narration→stdout, errors→stderr.**
+The model collapsed to: **one logical output, rendered by an adapter chosen by audience (auto via stdout TTY, single `--plain` override); narration→stdout, errors→stderr.**
 
 Confidence: high.
 
@@ -84,7 +88,7 @@ The seed: `-y/--yes` is orthogonal to styling — it only skips interactive gate
 
 ### Decided so far
 
-- **Three orthogonal axes**: styling = f(TTY), gating = f(`-y`), output stream = fixed (chrome→stderr, payload→stdout). A human with `-y` at a terminal still gets full styling.
+- **Three orthogonal axes**: styling = f(`--plain` else TTY), gating = f(`-y`), output stream = fixed (chrome→stderr, payload→stdout). A human with `-y` at a terminal still gets full styling; `--plain` drops styling without touching gating.
 - **The one forbidden combination errors, never hangs**: if **stdin is not a TTY** and **`-y` was not passed**, the notes-review gate (`[a]/[e]/[r]/[q]`) can't be answered — mint **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. Render mode is about *output* (stderr TTY); the gate is about *input* (stdin TTY) — both checked independently.
 
 Still exploring: whether any other gates exist beyond notes-review that interact with `-y`.
@@ -303,7 +307,7 @@ Confidence: high on the pretty layer (brand, glyphs, stage shape, no-box notes, 
 3. **Two modes suffice** (pretty + plain). Structured json/toon is YAGNI here because mint renders a process, not a queryable data structure.
 4. **Three orthogonal axes**: styling (TTY) · gating (`-y`) · output stream. Independence is the design's backbone.
 5. **Engine emits events; presenter renders.** An event-oriented `Presenter` seam (not tick's data-shaped `Formatter`) keeps the seven-stage spine oblivious to colour/spinners/TTY — mirroring the `CommandRunner`/`Publisher` seams — and is how "consistent across all verbs" is achieved structurally.
-6. **No render-mode flags.** Mode is purely `isatty(stdout)`; piping is the natural "force plain". Minimal surface by design.
+6. **One render-mode flag — `--plain`.** Default is `isatty(stdout)`; `--plain` is the single explicit override (force-plain), which doubles as the escape hatch for UTF-8-incapable terminals so mint never needs capability sniffing or a fallback glyph set. No force-pretty (YAGNI). Minimal surface by design.
 
 ### Open Threads
 
