@@ -18,15 +18,15 @@ The shape settled in discovery:
 
 ## Discussion Map
 
-  Discussion Map — CLI Presentation (7 subtopics — 4 decided · 2 converging · 1 exploring)
+  Discussion Map — CLI Presentation (7 subtopics — 6 decided · 1 exploring)
 
   ┌─ ✓ Render-Mode Detection Model [decided]
   ├─ ✓ What The Pretty Layer Actually Shows [decided]
   ├─ ✓ Plain / Token-Efficient Mode Contract [decided]
-  ├─ → Spinners & Long-Running Progress [converging]
+  ├─ ✓ Spinners & Long-Running Progress [decided]
   ├─ ◐ -y/--yes Orthogonality [exploring]
   ├─ ✓ Presentation Seam / Architecture [decided]
-  └─ → Library Selection (Charm Vs Lighter) [converging]
+  └─ ✓ Library Selection (Charm Vs Lighter) [decided]
 
   *(Dry-run note reuse / caching was routed out to the `mint-release-tool` discussion — engine behaviour, not presentation. See its dry-run-semantics addendum.)*
 
@@ -269,9 +269,11 @@ Confidence: high.
 - **`$EDITOR` (note edit)** takes over the terminal — spinner is stopped before handing off, resumed after.
 - **`plain` never animates** — a stage emits exactly one line on its transition.
 
+Confidence: high — lifecycle confirmed (frame style, captured-output handling, `$EDITOR` stop/resume, no-animate-in-plain all signed off).
+
 ### Decisions locked (pretty layer)
 
-The **pretty** half is decided; the **plain** contract below stays converging until walked separately.
+The **pretty** half is decided.
 
 - **Brand lines** — `🌿 mint · {project}  ›  releasing v{X}` (top) and `🌿 released {project} v{X} · {url}` (bottom). Leaf ties to the engine `commit_prefix` brand.
 - **Status glyphs** — `✓` success (green) · `✗` failure (red) · `⚠` warn (amber) · `↩` auto-unwind. Spinner frames `⠋⠙⠹…`.
