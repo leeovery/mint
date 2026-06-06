@@ -9,6 +9,9 @@
       "items": {
         "mint-release-tool": {
           "status": "completed"
+        },
+        "cli-presentation": {
+          "status": "in-progress"
         }
       }
     },
