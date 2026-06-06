@@ -301,7 +301,7 @@ Consolidation — every command and flag was named across the discussion. Also r
 ```
 mint release [bump] [options]            cut a release   (shim `release` → `mint release`)
 mint release regenerate <version>        fresh regenerate (re-diff + AI), rewrites CHANGELOG + GitHub release
-mint release regenerate <ver> --reuse    heal from existing CHANGELOG entry (no AI) — failed-publish recovery
+mint release regenerate <ver> --reuse    heal from the tag annotation body (no AI) — failed-publish recovery
 mint release regenerate --all            backfill every version
 mint init                                scaffold .mint.toml (+ shim)
 mint version                             print mint's own version
