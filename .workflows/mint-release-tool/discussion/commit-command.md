@@ -48,15 +48,15 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 2 decided · 8 pending)
+  Discussion Map — Commit Command (10 subtopics — 4 decided · 1 exploring · 5 pending)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
-  ├─ ○ Commit flow / lifecycle (the stages) [pending]
-  ├─ ○ Staging model & `--all` (what gets committed) [pending]
+  ├─ ✓ Commit flow / lifecycle (the stages) [decided]
+  ├─ ✓ Staging model & `--all` (what gets committed) [decided]
   ├─ ✓ AI message generation (engine boundary, content source) [decided]
   ├─ ○ Commit message format & prompt (conventional vs emoji sections) [pending]
   ├─ ○ Interactive review gate (reuse of notes-review) [pending]
-  ├─ ○ Auto-push behaviour [pending]
+  ├─ ◐ Auto-push behaviour [exploring]
   ├─ ○ Preflight & safety for commit [pending]
   ├─ ○ Config schema additions [pending]
   └─ ○ CLI surface & flags [pending]
@@ -180,6 +180,107 @@ subtopics.
   interplay (what gets staged before we diff) → Staging subtopic.
 
 Confidence: high.
+
+---
+
+## Commit flow / lifecycle
+
+### Context
+
+Release is a seven-stage spine ending in an irreversible atomic push. Commit is a far
+shorter local act. This pins the stage sequence so the other subtopics have a spine to
+hang off.
+
+### Decision — the commit flow
+
+1. **Preflight (minimal)** — git repo present; **something to commit** after staging
+   (see Staging). Push-related gates only if pushing. (Exact gate subset → Preflight subtopic.)
+2. **Stage** — apply the staging flag (`-a`/`-A`) if given; otherwise use the index as-is.
+3. **Build context (L1)** — filtered staged diff (`git diff --cached`, with `diff_exclude`
+   + `max_diff_lines`).
+4. **Generate (L2)** — the commit message (skipped under `--no-ai`; fallback → Format subtopic).
+5. **Review gate** — same `Continue?` rendering as release, interactive only (→ Gate subtopic).
+6. **Commit** — `git commit` with the message (via `git_safe`).
+7. **Push (optional)** — only if `-p`/`--push` (or config) (→ Auto-push subtopic).
+
+**Reversibility:** no point-of-no-return / atomic-push semantics — a commit is local and
+reversible until pushed. *Open:* the partial-failure model (commit OK, push fails) is NOT
+auto-unwind like release; what mint does/says on a failed push is tracked under Auto-push
+(reviewer F6/F11).
+
+Confidence: high on the shape; push-failure detail open.
+
+---
+
+## Staging model & `--all`
+
+### Context
+
+What goes into the commit. The user's actual habit is `git add .` (which **includes new
+files**), but the natural flag to "copy from git" — `-a` — is git's `commit -a`, which is
+**tracked-only** (no untracked). That mismatch is the whole decision. (mint runs from the
+repo root, so `git add .` ≡ `git add -A` for its purposes — both sweep the whole tree
+including untracked.)
+
+| Command | Modified tracked | Deleted tracked | New/untracked |
+|---|---|---|---|
+| `git commit -a` / `git add -u` | ✅ | ✅ | ❌ |
+| `git add .` (from root) / `git add -A` | ✅ | ✅ | ✅ |
+
+### Options Considered
+
+- **A — Faithful `-a` only.** `mint commit -a` = `git commit -a` (tracked-only); untracked
+  requires a manual `git add .` first. Predictable, never sweeps stray files, but doesn't
+  replace the user's `git add . && commit` one-liner.
+- **B — Two faithful flags.** `-a`/`--all` = `git commit -a` (tracked); `-A`/`--add-all` =
+  `git add -A` then commit (everything incl. untracked). Both letters map to git flags the
+  user already knows; the "everything" sweep is explicit/opt-in.
+
+### Decision — B (two faithful flags)
+
+- **Default = staged-only.** Commit the index exactly as staged. Respects deliberate staging;
+  mint never decides *what* goes in unless asked.
+- **`-a` / `--all` = `git commit -a`** — tracked modifications + deletions, no untracked.
+  Muscle-memory faithful.
+- **`-A` / `--add-all` = `git add -A` then commit** — everything including untracked. This is
+  the user's `git add .` habit in one shot.
+- **Flags bundle:** `mint commit -Ap` = add-all + push, with a minted message — the headline
+  ergonomic target.
+- **Empty staging** (nothing to commit after staging) → **fail loud** ("nothing to commit"),
+  never invoke the AI on an empty diff (reviewer F1 — the analogue of release's first-release
+  guard). `-A`/`-a` that stage nothing land here too.
+
+### Journey
+
+The original local commit shell function did **not** do its own `git add` (commit-only). The
+user consciously chose to *add* the staging affordance to mint — a deliberate enhancement over
+the original, not a port. The `git add .` habit (untracked included) is what tipped the choice
+from A to B: a faithful `-a` alone would silently drop new files and surprise the user, so the
+explicit `-A` covers the everything-case without overloading `-a`.
+
+Confidence: high.
+
+---
+
+## Auto-push behaviour
+
+### Context
+
+The command optionally pushes after committing. The user's target invocation `mint commit -Ap`
+implies push is a **flag**, opt-in — not default.
+
+### Working direction (exploring)
+
+- **Push is opt-in via `-p` / `--push`** (default: no push). Possibly a config default too
+  (→ Config subtopic). `-p` is free on this verb (release uses `-p` for `--patch`; per-verb
+  flag meanings, like git subcommands) — **cross-verb `-p` collision noted for CLI surface**.
+- **Open (reviewer F6/F11):** is auto-push commit's point-of-no-return, with its own
+  pre/post-push failure handling, or fire-and-forget? "Reversible until pushed" implies push
+  *is* the line, so its failure behaviour deserves an explicit decision. To resolve here.
+- **Open:** push target / upstream handling (current branch → its tracking remote; what if no
+  upstream is set?). To resolve here.
+
+Confidence: direction clear (opt-in `-p`); failure model + upstream handling open.
 
 ---
 
