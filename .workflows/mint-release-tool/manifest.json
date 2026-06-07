@@ -69,9 +69,10 @@
         }
       },
       "gap_analysis_cache": {
-        "checksum": "fb16a1e0c00cf47fdf06624c9d59be19",
-        "generated": "2026-06-07T19:49:55Z",
+        "checksum": "750b89e3c771b2f271665434031999f7",
+        "generated": "2026-06-07T20:30:00Z",
         "input_files": [
+          "release-notes-quality.md",
           "mint-release-tool.md",
           "cli-presentation.md",
           "commit-command.md"
@@ -83,6 +84,13 @@
         "release-notes-quality": {
           "status": "completed"
         }
+      },
+      "analysis_cache": {
+        "checksum": "8552cf875bc0e172e6a4e145265214e8",
+        "generated": "2026-06-07T00:00:00Z",
+        "files": [
+          "release-notes-quality.md"
+        ]
       }
     }
   },
