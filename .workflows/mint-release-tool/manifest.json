@@ -69,11 +69,12 @@
         }
       },
       "gap_analysis_cache": {
-        "checksum": "643109ded2c08b71742a9d542f0d6825",
-        "generated": "2026-06-06T21:07:03Z",
+        "checksum": "fb16a1e0c00cf47fdf06624c9d59be19",
+        "generated": "2026-06-07T19:49:55Z",
         "input_files": [
           "mint-release-tool.md",
-          "cli-presentation.md"
+          "cli-presentation.md",
+          "commit-command.md"
         ]
       }
     }
