@@ -48,12 +48,12 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 10 pending)
+  Discussion Map — Commit Command (10 subtopics — 1 decided · 1 exploring · 8 pending)
 
-  ┌─ ○ Scope & relationship to the release pipeline (the framing fork) [pending]
+  ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ○ Commit flow / lifecycle (the stages) [pending]
   ├─ ○ Staging model & `--all` (what gets committed) [pending]
-  ├─ ○ AI message generation (engine reuse, diff base) [pending]
+  ├─ ◐ AI message generation (engine boundary, diff base) [exploring]
   ├─ ○ Commit message format & prompt (conventional vs emoji sections) [pending]
   ├─ ○ Interactive review gate (reuse of notes-review) [pending]
   ├─ ○ Auto-push behaviour [pending]
@@ -67,6 +67,60 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 exploration to capture. These seeds are a starting point, not a fixed agenda — the
 map grows and converges as we go. The framing fork (scope vs the release pipeline)
 is the natural place to start, since most other subtopics cascade from it.*
+
+---
+
+## Scope & relationship to the release pipeline
+
+### Context
+
+`mint release` is a seven-stage spine ending in an irreversible `git push --atomic`
+(tag + commits). `mint commit` is a far smaller act: stage → generate a message →
+maybe review → commit → maybe push. The fork: how much machinery does commit share
+with release, and does it ride the release spine or stand on its own?
+
+The decisive framing: **there is no code yet.** Nothing is being "squeezed into"
+release-note generation — we design the shared pieces clean to serve both verbs from
+the start. So this is not "retrofit commit onto release"; it's "design the engine
+boundary correctly the first time."
+
+### Options Considered
+
+- **A — Thin standalone verb** borrowing primitives (AI engine, Presenter, git_safe)
+  but with its own diff logic, prompt, gate wiring. Release spine stays release-only.
+- **B — Shared "AI-message-from-diff" core** that both verbs call, differing by diff
+  source + prompt + sinks.
+
+### Decision
+
+**A in spirit, B applied narrowly — but designed fresh, not extracted.** `commit` is
+a thin standalone verb that does NOT ride the release spine. It shares the genuinely
+common primitives, and the AI message-generation concern is designed *up front* as a
+shared engine both verbs consume (rather than retrofitted later). The guiding caution
+(user): don't assume the *existing release design* needs changing — it doesn't; we're
+designing the new shared seam, not reworking settled release decisions.
+
+**What commit reuses:** the `Presenter` seam (pretty/plain, `-y`, `--plain`), the AI
+engine (transport `claude -p`, mint-owned prompt, fail-loud + retry, `--no-ai`),
+`git_safe` lock-resilient git, and the TOML config model.
+
+**What commit does NOT touch:** version detection, tags, changelog, publish/provider,
+the regenerate command. No point-of-no-return / atomic-push semantics — commit is
+inherently local and reversible until pushed.
+
+**Core behaviour:** take what's staged → generate a commit message for it → optionally
+commit → optionally push (flags govern commit/push). A `-a`/add-staging flag is noted
+but deferred to the Staging subtopic (possible scope-creep flag).
+
+### Decided in passing
+
+- **`diff_exclude` and `max_diff_lines` apply to commit too.** We don't want to feed an
+  excluded file (bundle, lockfile, minified output) into commit-message generation any
+  more than into release notes. The exclusion + size-guard logic is shared. (Whether
+  commit reuses release's *config values* verbatim or can override them → Config subtopic.)
+
+Confidence: high on the framing; the engine *boundary* (git-aware vs context-agnostic)
+is the live question under AI message generation.
 
 ---
 
