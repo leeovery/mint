@@ -48,7 +48,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 9 decided · 1 exploring)
+  Discussion Map — Commit Command (10 subtopics — 10 decided)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ✓ Commit flow / lifecycle (the stages) [decided]
@@ -58,7 +58,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
   ├─ ✓ Interactive review gate (reuse of notes-review) [decided]
   ├─ ✓ Auto-push behaviour [decided]
   ├─ ✓ Preflight & safety for commit [decided]
-  ├─ ◐ Config schema additions (reopened — verb-namespaced shape) [exploring]
+  ├─ ✓ Config schema additions (verb-namespaced shape) [decided]
   └─ ✓ CLI surface & flags [decided]
 
 ---
@@ -444,35 +444,67 @@ Confidence: high.
 
 ### Context
 
-What new `.mint.toml` keys commit needs. Guiding constraint (user): keep it consistent with
-how release already does config — naming and structure should parallel, not diverge.
+What new `.mint.toml` keys commit needs — and, prompted by it, the right config *shape* now
+that mint is multi-verb. The user clarified "consistent" means *the best implementation,
+made coherent* — not "copy release's existing flat layout." So the shape itself is in play.
 
-### Decision — flat `commit_*` keys, mirroring release's `notes_*`
+### Journey — flat `commit_*` → verb-namespaced tables
 
-Release's AI/notes config is **flat** (`notes_context`, `notes_prompt`, `ai_command`,
-`max_diff_lines`, `diff_exclude` — no `[notes]` table). For consistency, commit adds **flat
-`commit_*` keys**, parallel to the `notes_*` pair:
+First pass added flat `commit_context`/`commit_prompt` keys to mirror release's flat
+`notes_*` keys. On reflection (user-prompted), flat-with-prefixes crowds the namespace as
+verbs multiply and hides which keys are shared vs verb-specific. With two verbs live and a
+third (future) flagged, the better shape is **verb-namespaced tables + shared engine keys**.
+
+### Decision — shared engine keys at top + a table per verb
 
 ```toml
-commit_context = "Conventional Commits; this is a dev-workflow toolkit."  # inject into commit prompt (∥ notes_context)
-commit_prompt  = ".mint/commit-prompt.md"                                 # full prompt override (∥ notes_prompt)
+# Engine-level — shared by every verb
+ai_command     = "claude -p"
+diff_exclude   = ["skills/**/knowledge.cjs", "*.min.js"]
+max_diff_lines = 50000
+
+[release]
+tag_prefix       = "v"
+commit_prefix    = "🌿"
+release_branch   = "main"
+changelog        = true
+publish          = true
+context          = "..."      # was notes_context
+prompt           = "..."      # was notes_prompt
+on_notes_failure = "abort"
+# version_file, version_pattern, provider, ...
+
+[commit]
+context = "Conventional Commits; dev-workflow toolkit."   # inject into the commit prompt
+prompt  = ".mint/commit-prompt.md"                        # full prompt override
+
+[hooks]
+pre_tag = "npm ci && npm run build"
 ```
 
-A `[commit]` table was considered (mirrors `[hooks]`) but rejected: release didn't use a
-`[notes]` table for the analogous concern, so a `[commit]` table would be the *inconsistent*
-choice. Parallel flat naming (`notes_*` ↔ `commit_*`) is the consistent one.
+Why this is the better implementation:
 
-**Reused as-is (shared engine keys):** `ai_command`, `diff_exclude`, `max_diff_lines` — same
-values serve both verbs (same transport, same noise to exclude, same size mechanism).
+- **Shared vs verb-specific is structural, not inferred from prefixes** — `ai_command` /
+  `diff_exclude` / `max_diff_lines` sit at the top *because* they serve every verb.
+- **The verbs become symmetric** — both `[release]` and `[commit]` carry plain `context` /
+  `prompt`; the table disambiguates, so no `notes_`/`commit_` prefixing is needed.
+- **Scales** — a future `mint <verb>` is a new table, not more flat prefixes.
 
-**Deliberately NOT added:**
+**Reused (shared) keys:** `ai_command`, `diff_exclude`, `max_diff_lines` — same values serve
+both verbs. **Commit-specific:** `[commit].context`, `[commit].prompt`.
 
-- **No push config** — push is **flag-only** (`-p`/`--push`); mint never pushes without `-p`.
-  No `commit_push` default (the user wants push always explicit).
-- **No `on_notes_failure` analogue** — commit's failure path is always the `$EDITOR` fallback
-  (not configurable).
-- **No scope toggle, no per-verb `ai_command`/`max_diff_lines`** — steer via `commit_context`/
-  `commit_prompt`; promote a shared key to a `commit_*` override only if a real need appears.
+**Deliberately NOT added:** no push config (push is flag-only `-p`, never a default); no
+`on_notes_failure` analogue for commit (failure path is always the `$EDITOR` fallback); no
+scope toggle or per-verb `ai_command`/`max_diff_lines` override (steer via `[commit].context`/
+`prompt`; promote to a `[commit]` key only if a real need appears).
+
+### Cost / reconciliation owed
+
+This **revises release's already-concluded flat config layout** — `notes_context` →
+`[release].context`, `notes_prompt` → `[release].prompt`, and every flat release key moves
+under `[release]`; the shared engine keys lift to the top. Cheap now (no code exists), far
+cheaper than after implementation. Recorded as a **spec hand-off** (see Summary) — the
+in-progress release spec absorbs it, the same way it owes the cli-presentation reconciliations.
 
 Confidence: high.
 
@@ -522,13 +554,47 @@ Confidence: high.
 
 ### Key Insights
 
-*(captured as the discussion progresses)*
+1. **Designed clean, not retrofitted.** No code exists, so the shared AI machinery is designed
+   up front to serve both verbs — commit is not squeezed into release-note generation.
+2. **The AI engine is content-agnostic (the load-bearing seam).** A three-layer split confines
+   git to Layer 1 (context builder), keeps Layer 2 a pure "context in, message out" engine, and
+   puts per-verb prompt/source/sinks in Layer 3. Because L2 never knows it's a diff, the future
+   release-notes-quality work (AST/semantic input) swaps L1 with zero L2 change.
+3. **Commit is the inverse of release on safety.** Release forces a clean, in-sync starting
+   state (high-consequence); commit assumes a messy tree (that's its purpose) and drops the
+   clean-tree / branch / remote-sync gates entirely.
+4. **Mutate nothing until accept; never unwind after.** Staging (`-a`/`-A`) is deferred to
+   gate-accept, so abort is a true no-op back to the user's pre-`mint` state; a completed commit
+   is never unwound (failed push → keep commit, warn). One coherent rule replacing release's
+   auto-unwind — chosen to never risk the user's working/staged state.
+5. **One degradation path for "no AI message":** `--no-ai`, AI failure, and oversized diff all
+   fall back to the normal `$EDITOR` commit — never abort.
+6. **Multi-verb forces config namespacing.** Two live verbs (third flagged) tip the config from
+   flat-with-prefixes to shared-engine-keys + a table per verb — symmetric, structural, scalable.
 
 ### Open Threads
 
-*(captured as the discussion progresses)*
+- None outstanding for commit itself — all 10 subtopics decided.
+- The separate **release-notes-quality** research topic remains; the content-agnostic engine
+  boundary was deliberately shaped to absorb whatever it concludes (enriched L1 input).
+
+### Spec hand-offs (reconciliation owed by the in-progress release spec)
+
+1. **Config restructure → verb-namespaced shape.** Adopt shared engine keys at top +
+   `[release]` / `[commit]` / `[hooks]` tables. Migrate release's flat keys under `[release]`
+   (`notes_context`→`[release].context`, `notes_prompt`→`[release].prompt`, etc.). See Config
+   subtopic.
+2. **Shared AI engine = the three-layer split.** The release spec should express notes
+   generation through the same L1/L2/L3 layering so commit and release literally share L1
+   (context builder + `diff_exclude`/`max_diff_lines`) and L2 (the engine).
+3. **Gate semantics already owed by release** (cli-presentation's `[a]/[q]`→`Continue?`
+   reconciliation) apply to commit's gate too — commit consumes the same rendering.
 
 ### Current State
 
-- Discussion initialized; all subtopics pending. Seeded from the discovery shape and
-  the settled release + presentation discussions.
+- **All 10 subtopics decided.** Commit is fully shaped: a thin standalone verb on a shared,
+  content-agnostic AI engine; staged-diff input with `-a`/`-A` staging deferred to accept;
+  Conventional Commits output with `$EDITOR` fallback; minimal preflight; on-by-default review
+  gate (mutate-nothing-until-accept); opt-in `-p` push with no-unwind failure handling; flat
+  `mint commit` surface (no dry-run/context-flag/shim); verb-namespaced config. Ready for
+  specification, pending the release-spec reconciliations above.
