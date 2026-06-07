@@ -77,6 +77,13 @@
           "commit-command.md"
         ]
       }
+    },
+    "research": {
+      "items": {
+        "release-notes-quality": {
+          "status": "in-progress"
+        }
+      }
     }
   },
   "imports": [
