@@ -48,13 +48,13 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 6 decided · 4 pending)
+  Discussion Map — Commit Command (10 subtopics — 7 decided · 3 pending)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ✓ Commit flow / lifecycle (the stages) [decided]
   ├─ ✓ Staging model & `--all` (what gets committed) [decided]
   ├─ ✓ AI message generation (engine boundary, content source) [decided]
-  ├─ ○ Commit message format & prompt (conventional vs emoji sections) [pending]
+  ├─ ✓ Commit message format & prompt (Conventional Commits) [decided]
   ├─ ○ Interactive review gate (reuse of notes-review) [pending]
   ├─ ✓ Auto-push behaviour [decided]
   ├─ ✓ Preflight & safety for commit [decided]
@@ -329,6 +329,54 @@ clean, in-sync starting state because it's high-consequence; commit assumes a me
 tree because that's its entire reason to exist.
 
 Confidence: high.
+
+---
+
+## Commit message format & prompt
+
+### Context
+
+Release's default format (TL;DR + emoji-headed sections) is wrong for a commit. This pins
+commit's default output format and its `--no-ai` behaviour. L3 owns this prompt (per the
+engine-boundary decision); it's just a different default from release's.
+
+### Decision — default format = Conventional Commits
+
+- **Conventional Commits 1.0.0** (the formal standard, conventionalcommits.org) is the default
+  output: `type(scope): description` subject line (imperative, concise), optional blank line +
+  wrapped body for the *why*. Chosen because the user's own repos already use conventional
+  commits (`discussion(...)`, `chore(...)`, `docs(...)`).
+- **AI infers the `type`** (feat/fix/chore/docs/…) from the diff — central to the format and
+  reliably inferable.
+- **Scope off by default** — scope conventions are project-specific and the AI guesses them
+  inconsistently; better omitted than wrong. (Re-enabling/guiding scope is a prompt/config
+  affordance if ever wanted.)
+- **Two-knob override**, mirroring release: a commit-specific context-inject knob + a full
+  prompt-override knob (exact key names → Config subtopic). Same "mint owns the prompt;
+  `ai_command` is transport" model.
+
+### `--no-ai` fallback (reviewer F4)
+
+- **`--no-ai` = behave like plain `git commit`** — drop to `$EDITOR` with an empty/template
+  message and let the user write it. No AI, no synthetic stub. This is the natural fallback for
+  a commit verb (unlike release, whose `--no-ai` builds a commit-subject-list body).
+- **Same path on AI generation failure** — if the AI errors/returns nothing usable (after the
+  engine's one retry), fall back to the `$EDITOR` path rather than abort. Low-stakes and
+  friendly; the user is at the terminal anyway.
+
+### Decided in passing
+
+- **commit does NOT use release's `commit_prefix` (🌿) (reviewer F7).** A conventional-commit
+  message is plain `type(scope): …`; forcing a 🌿 emoji onto *every* commit is undesirable.
+  `commit_prefix` stays a release-only concern (release commit + tag subject). Commit messages
+  carry no mint branding in their text.
+
+### Open (routed to next finding)
+
+- **`max_diff_lines` exceeded for commit (reviewer F5)** — the *consequence* for commit is
+  still open (abort vs fall back to `$EDITOR` vs warn-and-proceed). Being decided next.
+
+Confidence: high on format + `--no-ai`; max-diff consequence pending.
 
 ---
 
