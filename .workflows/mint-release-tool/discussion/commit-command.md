@@ -253,9 +253,15 @@ including untracked.)
   leaves a half-staged worktree behind.
 - **Flags bundle:** `mint commit -Ap` = add-all + push, with a minted message — the headline
   ergonomic target.
-- **Empty staging** (nothing to commit after staging) → **fail loud** ("nothing to commit"),
-  never invoke the AI on an empty diff (reviewer F1 — the analogue of release's first-release
-  guard). `-A`/`-a` that stage nothing land here too.
+- **Empty staging** (nothing to commit after staging) → **fail loud**, never invoke the AI on
+  an empty diff (review-001 F1 — the analogue of release's first-release guard). `-A`/`-a` that
+  stage nothing land here too.
+- **Mirror git's standard messaging (review-002 F7).** Distinguish the two empty cases exactly
+  as git does: a genuinely clean tree → "nothing to commit, working tree clean"; a
+  dirty-but-unstaged tree (bare `mint commit`, nothing in the index) → guide the user, mint's
+  flavour of git's `no changes added to commit (use "git add" / "git commit -a")` —
+  e.g. "no changes staged — use `-a`/`--all`, `-A`/`--add-all`, or `git add`". Follows the
+  familiar git expectation rather than a bare error.
 
 ### Journey
 
