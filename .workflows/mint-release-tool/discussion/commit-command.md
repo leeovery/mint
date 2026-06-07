@@ -417,6 +417,22 @@ contradictory — `--no-ai` unattended has nothing to commit with, and an unatte
 the AI anyway. **No `-m/--message` escape** (kept minimal — anyone needing unattended-with-own-
 message uses plain `git commit`; mint commit is for *minted* messages).
 
+### Decision — F2/F3/F4: the editor save *is* the accept event
+
+On the fallback path the editor replaces the `Continue?` gate (git-like), which reconciles the
+deferred-staging model with this non-gate path:
+
+- **F3 — no separate `Continue?` gate.** The `Continue?` gate governs the *AI-generated*
+  message only; the fallback path uses the editor itself as the review. A non-empty save =
+  accept; quit/empty = abort. (Reconciles "`--no-ai` behaves like plain `git commit`" with
+  "gate ON by default" — the gate is AI-path-only.)
+- **F2 — staging applies on save.** Same "stage on accept" rule, where *save* is the accept:
+  the editor opens against the real (unstaged) state; only on a non-empty save does mint apply
+  `-a`/`-A` staging, then commit. Mutate-nothing-until-accept holds.
+- **F4 — empty/aborted editor = true no-op.** No staging applied, no commit, no push (even with
+  `-p`). Nothing was mutated, so there is nothing to clean up — consistent with the
+  no-destructive-cleanup invariant.
+
 Confidence: high.
 
 ---
