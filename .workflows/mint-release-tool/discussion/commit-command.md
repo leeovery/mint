@@ -518,9 +518,15 @@ on_notes_failure = "abort"
 context = "Conventional Commits; dev-workflow toolkit."   # inject into the commit prompt
 prompt  = ".mint/commit-prompt.md"                        # full prompt override
 
-[hooks]
+[release.hooks]                                           # hooks nest under the owning verb
 pre_tag = "npm ci && npm run build"
 ```
+
+**Hooks nest under the owning verb (review-002 F5).** `[hooks]` becomes `[release.hooks]` —
+top-level is strictly shared-engine, so a top-level `[hooks]` would contradict the
+"top-level = shared by every verb" rule. Commit defines **no** hook points (release owns
+`preflight`/`pre_tag`/`post_release`, mapped to its spine), so there is no `[commit.hooks]`
+today; it's the natural slot if commit ever gains hooks.
 
 Why this is the better implementation:
 
@@ -621,9 +627,9 @@ Confidence: high.
 ### Spec hand-offs (reconciliation owed by the in-progress release spec)
 
 1. **Config restructure → verb-namespaced shape.** Adopt shared engine keys at top +
-   `[release]` / `[commit]` / `[hooks]` tables. Migrate release's flat keys under `[release]`
-   (`notes_context`→`[release].context`, `notes_prompt`→`[release].prompt`, etc.). See Config
-   subtopic.
+   `[release]` / `[commit]` tables, with hooks nested under their verb (`[release.hooks]`).
+   Migrate release's flat keys under `[release]` (`notes_context`→`[release].context`,
+   `notes_prompt`→`[release].prompt`, `[hooks]`→`[release.hooks]`, etc.). See Config subtopic.
 2. **Shared AI engine = the three-layer split.** The release spec should express notes
    generation through the same L1/L2/L3 layering so commit and release literally share L1
    (context builder + `diff_exclude`/`max_diff_lines`) and L2 (the engine).
