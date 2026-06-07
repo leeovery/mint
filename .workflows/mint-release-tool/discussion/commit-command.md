@@ -48,7 +48,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 8 decided · 2 pending)
+  Discussion Map — Commit Command (10 subtopics — 9 decided · 1 pending)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ✓ Commit flow / lifecycle (the stages) [decided]
@@ -58,7 +58,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
   ├─ ✓ Interactive review gate (reuse of notes-review) [decided]
   ├─ ✓ Auto-push behaviour [decided]
   ├─ ✓ Preflight & safety for commit [decided]
-  ├─ ○ Config schema additions [pending]
+  ├─ ✓ Config schema additions [decided]
   └─ ○ CLI surface & flags [pending]
 
 ---
@@ -435,6 +435,44 @@ then leave a mint-altered worktree — wrong: "abort" should mean the whole run 
 no trace. Fix: **mint mutates nothing until accept** (staging deferred). This is now a
 cross-cutting property — see Commit flow, Staging, and the never-unwind invariant under
 Auto-push.
+
+Confidence: high.
+
+---
+
+## Config schema additions
+
+### Context
+
+What new `.mint.toml` keys commit needs. Guiding constraint (user): keep it consistent with
+how release already does config — naming and structure should parallel, not diverge.
+
+### Decision — flat `commit_*` keys, mirroring release's `notes_*`
+
+Release's AI/notes config is **flat** (`notes_context`, `notes_prompt`, `ai_command`,
+`max_diff_lines`, `diff_exclude` — no `[notes]` table). For consistency, commit adds **flat
+`commit_*` keys**, parallel to the `notes_*` pair:
+
+```toml
+commit_context = "Conventional Commits; this is a dev-workflow toolkit."  # inject into commit prompt (∥ notes_context)
+commit_prompt  = ".mint/commit-prompt.md"                                 # full prompt override (∥ notes_prompt)
+```
+
+A `[commit]` table was considered (mirrors `[hooks]`) but rejected: release didn't use a
+`[notes]` table for the analogous concern, so a `[commit]` table would be the *inconsistent*
+choice. Parallel flat naming (`notes_*` ↔ `commit_*`) is the consistent one.
+
+**Reused as-is (shared engine keys):** `ai_command`, `diff_exclude`, `max_diff_lines` — same
+values serve both verbs (same transport, same noise to exclude, same size mechanism).
+
+**Deliberately NOT added:**
+
+- **No push config** — push is **flag-only** (`-p`/`--push`); mint never pushes without `-p`.
+  No `commit_push` default (the user wants push always explicit).
+- **No `on_notes_failure` analogue** — commit's failure path is always the `$EDITOR` fallback
+  (not configurable).
+- **No scope toggle, no per-verb `ai_command`/`max_diff_lines`** — steer via `commit_context`/
+  `commit_prompt`; promote a shared key to a `commit_*` override only if a real need appears.
 
 Confidence: high.
 
