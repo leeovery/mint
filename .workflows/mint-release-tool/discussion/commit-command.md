@@ -397,6 +397,30 @@ Confidence: high.
 
 ---
 
+## `$EDITOR` fallback path semantics
+
+### Context
+
+Three decided paths converge on "drop to `$EDITOR`": `--no-ai`, AI-generation failure, and
+oversized diff (all under Commit message format). The final review (set 002) found this path
+was never walked against the deferred-staging model, the gate, and the `-y`/non-TTY posture
+(F1–F4). This section pins it.
+
+### Decision — F1: the `$EDITOR` fallback requires a TTY
+
+`$EDITOR` is inherently interactive. When a fallback fires under **`-y` or non-TTY stdin**
+(e.g. `mint commit -Apy --no-ai`, or `-Apy` when the AI fails / the diff is oversized), mint
+**fails loud** ("no AI message and no interactive editor available") — it never hangs or commits
+an empty message. This extends the gate's forbidden-combo philosophy (unattended + needs-human →
+fail loud) to the editor path. Rationale: an unattended run with no message source is
+contradictory — `--no-ai` unattended has nothing to commit with, and an unattended user wants
+the AI anyway. **No `-m/--message` escape** (kept minimal — anyone needing unattended-with-own-
+message uses plain `git commit`; mint commit is for *minted* messages).
+
+Confidence: high.
+
+---
+
 ## Interactive review gate
 
 ### Context
