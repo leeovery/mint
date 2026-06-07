@@ -48,12 +48,12 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 1 decided · 1 exploring · 8 pending)
+  Discussion Map — Commit Command (10 subtopics — 2 decided · 8 pending)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ○ Commit flow / lifecycle (the stages) [pending]
   ├─ ○ Staging model & `--all` (what gets committed) [pending]
-  ├─ ◐ AI message generation (engine boundary, diff base) [exploring]
+  ├─ ✓ AI message generation (engine boundary, content source) [decided]
   ├─ ○ Commit message format & prompt (conventional vs emoji sections) [pending]
   ├─ ○ Interactive review gate (reuse of notes-review) [pending]
   ├─ ○ Auto-push behaviour [pending]
@@ -121,6 +121,65 @@ but deferred to the Staging subtopic (possible scope-creep flag).
 
 Confidence: high on the framing; the engine *boundary* (git-aware vs context-agnostic)
 is the live question under AI message generation.
+
+---
+
+## AI message generation (engine boundary)
+
+### Context
+
+The framing decision said the AI message-generation concern is a shared engine both
+verbs consume. This subtopic pins *where the git boundary sits* inside that engine —
+the architectural seam that feeds the spec.
+
+### Decision — a three-layer split, with git confined to Layer 1
+
+- **Layer 1 — Context builder (git-aware).** Produces the content to describe.
+  Parameterised by *source*: release uses `tag..HEAD`; commit uses the staged diff
+  (`git diff --cached`). Applies `diff_exclude` globs + the `max_diff_lines` guard —
+  identical logic for both verbs, so this is the genuinely shared git piece. (Different
+  git *providers* are a separate axis, handled by the existing driver/provider setup,
+  not by this layer.)
+- **Layer 2 — AI message engine (git-UNAWARE, content-agnostic).** Inputs: an assembled
+  prompt + the content + `ai_command`. Runs the transport, validates (non-empty / not an
+  error / not a refusal), one retry, fail-loud per policy, returns the message body.
+  **Knows nothing about git, diffs, tags, or commits — pure "context in, message out."**
+- **Layer 3 — Per-verb glue.** Picks the L1 source, supplies the prompt + default format
+  (release notes vs commit message), and decides the sinks. Where the verbs differ.
+
+**The engine is content-agnostic — this is the load-bearing property.** The input being
+a diff is incidental; L2 just sees "content." It doesn't matter whether that content is
+a textual diff, an AST/semantic breakdown, or a human-written note — same engine. This
+is what makes the separate **release-notes-quality** research thread cheap: enriching
+the *input* (AST/semantic signal instead of a raw diff) swaps L1's output with **zero
+change to L2**. The boundary was chosen partly *because* it absorbs that future work.
+
+### Journey / rationale
+
+- Confines git to one layer, mirroring the dependency-inversion discipline already locked
+  for release (`CommandRunner` / `Publisher` / `Presenter` are all seams the engine never
+  touches directly). A git-aware engine would be the lone exception that breaks the pattern.
+- L2 is trivially testable — a string + a fake `ai_command`, assert message + retry/fail
+  behaviour, no git fixtures.
+- **Composition is still allowed.** Keeping the underlying pieces separate doesn't forbid
+  a convenience wrapper (a local or exported function) that composes L1→L2→sink for a
+  call site's ergonomics. Separation is about the *underlying pieces*, not banning a tidy
+  facade over them.
+
+### Prompt boundary (consistent with settled release model)
+
+L3 owns prompt assembly; L2 receives the finished prompt. Mirrors release's settled
+"mint always owns the prompt; `ai_command` is just transport" with the two-knob model
+(context-inject + full-override). Commit gets its own *default* commit-message prompt and
+its own context/override knobs — specifics deferred to the Commit message format & Config
+subtopics.
+
+### Decided in passing
+
+- **Commit's content source = the staged diff** (`git diff --cached`). Working-tree/`-a`
+  interplay (what gets staged before we diff) → Staging subtopic.
+
+Confidence: high.
 
 ---
 
