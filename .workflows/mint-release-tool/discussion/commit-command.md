@@ -48,7 +48,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 4 decided · 1 exploring · 5 pending)
+  Discussion Map — Commit Command (10 subtopics — 5 decided · 5 pending)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ✓ Commit flow / lifecycle (the stages) [decided]
@@ -56,7 +56,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
   ├─ ✓ AI message generation (engine boundary, content source) [decided]
   ├─ ○ Commit message format & prompt (conventional vs emoji sections) [pending]
   ├─ ○ Interactive review gate (reuse of notes-review) [pending]
-  ├─ ◐ Auto-push behaviour [exploring]
+  ├─ ✓ Auto-push behaviour [decided]
   ├─ ○ Preflight & safety for commit [pending]
   ├─ ○ Config schema additions [pending]
   └─ ○ CLI surface & flags [pending]
@@ -269,18 +269,32 @@ Confidence: high.
 The command optionally pushes after committing. The user's target invocation `mint commit -Ap`
 implies push is a **flag**, opt-in — not default.
 
-### Working direction (exploring)
+### Decision
 
-- **Push is opt-in via `-p` / `--push`** (default: no push). Possibly a config default too
+- **Push is opt-in via `-p` / `--push`** (default: no push). May also have a config default
   (→ Config subtopic). `-p` is free on this verb (release uses `-p` for `--patch`; per-verb
   flag meanings, like git subcommands) — **cross-verb `-p` collision noted for CLI surface**.
-- **Open (reviewer F6/F11):** is auto-push commit's point-of-no-return, with its own
-  pre/post-push failure handling, or fire-and-forget? "Reversible until pushed" implies push
-  *is* the line, so its failure behaviour deserves an explicit decision. To resolve here.
-- **Open:** push target / upstream handling (current branch → its tracking remote; what if no
-  upstream is set?). To resolve here.
+- **Push failure → keep the commit, warn clearly, do NOT unwind (reviewer F6/F11).** On a
+  failed push (rejected, remote moved, no upstream, network), mint leaves the commit in place
+  and reports clearly with the fix (re-run the push). Rationale: a push is a trivially
+  repeatable manual fix, whereas unwinding the commit is *messy and risky* — the user may have
+  had files staged before running `mint commit`, and resetting/unstaging could clobber that
+  pre-existing state. So push is **not** treated as an atomic point-of-no-return with unwind;
+  it's a best-effort final step whose failure is reported, not repaired.
+- **Upstream handling:** defer to git — `mint commit -p` runs a normal `git push` (current
+  branch → its configured upstream). No upstream set → git's own failure, surfaced via the
+  warn-clearly rule above ("commit is in place; set an upstream and push"). mint adds no
+  special upstream logic.
 
-Confidence: direction clear (opt-in `-p`); failure model + upstream handling open.
+### Invariant established — *mint commit never subtracts*
+
+The push-failure decision generalises: **`mint commit` only ever *adds* (stage via `-a`/`-A`)
+and commits — it never unstages, resets, or rewrites.** This is the deliberate opposite of
+`mint release`'s auto-unwind model, and the reason is the same staging-safety concern: a local
+commit verb must never risk the user's working/staged state. Any failure leaves a clean,
+forward-only result the user can act on manually.
+
+Confidence: high.
 
 ---
 
