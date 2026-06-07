@@ -15,6 +15,9 @@
         },
         "commit-command": {
           "status": "completed"
+        },
+        "release-notes-quality": {
+          "status": "in-progress"
         }
       }
     },
