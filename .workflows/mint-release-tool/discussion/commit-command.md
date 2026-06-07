@@ -48,7 +48,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 9 decided · 1 pending)
+  Discussion Map — Commit Command (10 subtopics — 9 decided · 1 exploring)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ✓ Commit flow / lifecycle (the stages) [decided]
@@ -58,8 +58,8 @@ alone** — were deliberately left for this discussion. That's the framing fork 
   ├─ ✓ Interactive review gate (reuse of notes-review) [decided]
   ├─ ✓ Auto-push behaviour [decided]
   ├─ ✓ Preflight & safety for commit [decided]
-  ├─ ✓ Config schema additions [decided]
-  └─ ○ CLI surface & flags [pending]
+  ├─ ◐ Config schema additions (reopened — verb-namespaced shape) [exploring]
+  └─ ✓ CLI surface & flags [decided]
 
 ---
 
@@ -473,6 +473,46 @@ values serve both verbs (same transport, same noise to exclude, same size mechan
   (not configurable).
 - **No scope toggle, no per-verb `ai_command`/`max_diff_lines`** — steer via `commit_context`/
   `commit_prompt`; promote a shared key to a `commit_*` override only if a real need appears.
+
+Confidence: high.
+
+---
+
+## CLI surface & flags
+
+### Context
+
+Consolidation of every flag named across the discussion into commit's surface, plus the
+dry-run question (reviewer F8) and whether a one-time context flag / a shim are warranted.
+
+### Decision — the surface
+
+```
+mint commit [flags]
+
+  -a, --all          stage tracked changes first (git commit -a semantics)
+  -A, --add-all      stage everything incl. untracked first (git add -A)
+  -p, --push         push after committing (no push without this; no config default)
+      --no-ai        skip AI; drop to $EDITOR
+  -y, --yes          skip the review gate (auto-accept)
+      --plain        plain output — global presentation flag, all verbs
+```
+
+Bundles: `mint commit -Ap` (add-all + push, gate shown) · `mint commit -Apy` (unattended).
+`-p` = push is per-verb (release's `-p` = `--patch`); **cross-verb `-p` divergence is
+intentional and acceptable** (git subcommands carry their own flag meanings).
+
+### Resolved
+
+- **No `--dry-run` (reviewer F8).** Dropped consciously. The review gate already *is* the
+  preview-then-bail affordance (see the message, `n` aborts with zero mutation), and a commit
+  is cheap to `--amend`. Release needs dry-run because it previews a whole irreversible
+  pipeline; commit has no such pipeline.
+- **No `--context` one-time-context flag.** The original shell function had it, but the user
+  has never used it. Interactive `r` (regenerate-with-context) at the gate plus the
+  `commit_context` config cover the need. Dropped (YAGNI).
+- **No `commit` shim.** `release` gets a per-project shim for muscle memory + `mint` delegation;
+  `commit` is invoked directly as `mint commit` (the user aliases it personally if desired).
 
 Confidence: high.
 
