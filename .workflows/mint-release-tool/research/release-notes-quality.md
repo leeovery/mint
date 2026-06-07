@@ -89,9 +89,28 @@ Investigated `release-please`, `semantic-release`, `git-cliff`, `conventional-ch
 - **Don't borrow:** one-commit-one-line regex rendering (mint's AI layer already beats it); PR/label dependence (no PRs in solo repos); AST (industry avoids it for generality).
 - **Graceful degradation required** for repos mint *doesn't* author commits for (Stitch, legacy history) — fall back toward diff-truth; wip commits there are noise, not signal.
 
-### Open from review (to fold in)
-- **F1/F2/F11 — test against a code-heavy repo (mint itself / Portal / Tick).** Generality now confirmed → validating whether structural/commit signals (and whether AST even earns its keep) on a real Go diff is the obvious next empirical pass. No quality rubric yet defined (F2).
-- **F4 — token budget:** enrichment competes with the diff for the `max_diff_lines` budget on exactly the large releases this targets. A prepended structural/commit summary is *cheap* in tokens (tens of lines) vs the diff (thousands), and could even let us *shrink* the diff (summary carries the headline, diff carries detail). Unexplored.
-- **F5/F8/F10 — magnitude hint depends on noise-reduction first:** a line-count-ranked hint would surface the 1157-line planning doc as the "headline" unless A excludes it. B and A can't be designed independently.
+## Where this lands — the converged picture
+
+The thread converged. The enrichment shape is: **diff (ground-truth *what*) + structured commit-intent (the *why*/headline) + AI (cross-commit narrative synthesis)** — all language-agnostic. Supporting cheap signals: **structural** (new files/dirs/packages via `--name-status`) and **magnitude** (`--stat`). De-prioritised: **AST/semantic** (industry avoided it for a decade for mint's exact generality reason; near-useless for the markdown dogfood repo). Already-handled: **artifact noise** (existing `diff_exclude` config + inherent `.gitignore` exclusion).
+
+The motivating failure ("glosses over the big feature") is a **narrative/story failure**, not a *what-changed* failure — and mint's AI layer is uniquely the mechanism that escapes the regex tools' "one-commit-one-line, can't synthesise across commits" ceiling.
+
+**mint's structural advantage:** it owns *both ends of the pipe* (`mint commit` authors Conventional Commits; `mint release` consumes them) — no competitor can, because none author your commits.
+
+## Open Questions (for the discussion phase to decide)
+
+These are **decisions**, deliberately not made here:
+
+1. **Should `mint release` notes ingest commit data at all** — reversing the old script's explicit "ignore commit messages"? If yes, **how much weight** does commit-intent carry vs the diff (diff as primary + commits as headline hint? commits as spine + diff as detail/fallback?).
+2. **Which commit signal is highest-value** — the `type`/`scope` *structure*, the *subject* as a human headline, or the *body* (where the "why" lives, which the classic tools mostly ignore)? Possibly unmined signal in commit bodies.
+3. **Graceful degradation** for repos mint doesn't author commits for (Stitch, legacy history, wip-heavy histories) — when does commit data help vs become noise? Default posture when commits are unconventional.
+4. **Structural headline hint (thread E)** — is "a whole new directory/package appeared" worth surfacing explicitly to the AI as a magnitude/salience hint? (Note: any line-count-ranked magnitude hint must run *after* `diff_exclude`, or the 1157-line planning doc ranks as the "headline" — B depends on A.)
+5. **Token-budget interaction** — enrichment competes with the diff for the `max_diff_lines` budget on exactly the large releases this targets. A structured commit/structural summary is *cheap* (tens of lines) and could let mint *shrink* the diff (summary carries headline, diff carries detail). Design question for spec.
+6. **`diff_exclude` granularity (minor)** — exclusion is all-or-nothing, but "added test coverage for X" is sometimes a legit note. Gap between *exclude entirely* and *present-but-deprioritised*. Low priority.
+
+## Validation not yet done (flagged, parked)
+
+- **No empirical test on a code-heavy repo.** Every empirical finding here is from one markdown repo (agentic-workflows). Whether clean commit-intent measurably beats raw-diff notes on a real Go diff (mint/Portal/Tick) is **untested** (review F1/F2/F11). No quality rubric was defined. The discussion/spec phase may want to validate before committing to the blend.
+- **Reference:** git-cliff's `git cliff --context` JSON schema (per-commit id/group/scope/body/footers/breaking/raw_message) is a ready-made reference for what structured commit-intent L1 might assemble — independent of adopting git-cliff itself.
 
 ---
