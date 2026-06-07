@@ -71,6 +71,24 @@ This **inverts the starting (AST) hypothesis.** AST is the *least* language-agno
 ### Cost lens (review F3) applied to the reframe
 The language-blind signals (C, E, B) are **near-zero marginal cost** — git already computes them (`git log`, `git diff --name-status`, `--stat`). AST (D) needs parsing infra + per-language extraction. For a *general* tool, cheap-and-general dominates expensive-and-per-language on every axis the parent discussion cares about (cost is explicitly first-class via `max_diff_lines`).
 
+## Prior art (deep dive — commit-driven tooling landscape)
+
+Investigated `release-please`, `semantic-release`, `git-cliff`, `conventional-changelog`, GitHub auto-notes / `gh release`. Strategic findings:
+
+- **The entire established ecosystem is commit-message-only regex — no diff, no AI.** Parse commit text → group by Conventional-Commit `type` → render a template. mint's current design (diff is truth, commits ignored) is the **exact inverse** of every shipped tool. So the diff+commit blend is genuinely novel territory, not a solved pattern.
+- **Conventional Commits is the universal backbone.** One `type` token drives *two* outputs: changelog section (`feat`→Features, `fix`→Bug Fixes) **and** semver bump (`fix`→patch, `feat`→minor, `!`/`BREAKING CHANGE:`→major). Identical across all tools. Proven, language-agnostic. `scope` is the secondary axis (monorepo routing).
+- **GitHub auto-notes / `gh --generate-notes` are PR-driven, not commit-driven** — unit is the merged PR (title + labels). **Degrades to near-empty without PRs** (cli/cli#6159). The user's solo, direct-to-default-branch repos (agentic-workflows, Stitch) have few/no PRs → GitHub's native generator is structurally useless for them. *This is a concrete reason mint exists.*
+- **"A changelog is not a commit log" (the central quality complaint).** Regex tools render one-commit-one-line and **structurally cannot synthesise across commits** — that's the architectural ceiling on narrative quality. A real changelog entry is "a noteworthy difference, often across multiple commits," written for *users* not developers. **mint's AI narrative layer is precisely what escapes this ceiling** — a key differentiator.
+- **The hybrid (diff + commit-intent + AI) exists only as fragmented frontier pieces — nobody ships it as one general tool.** Classic tools = commits-only-no-AI; young AI tools pick *one* of diff-or-commits (e.g. AI-Changelog-Generator = diff-input; Changeish/deployHQ = commit-input). The synthesis argument ("diff says *what*, commit/PR says *why*") is stated in the literature but unpackaged. **git-cliff's `git cliff --context` → JSON → LLM seam** is the closest existing pattern and a ready-made reference schema (per-commit id/group/scope/body/footers/breaking/raw_message).
+- **Industry has converged on language-blind signals; AST is absent from a decade of changelog tooling** — for exactly mint's generality reason. Strong external corroboration that thread D ranks low on *fit*, not just cost.
+
+### Strategic synthesis — mint's unique position (deep-dive F7)
+**Every surveyed tool consumes a commit history it did not author** → their universal, unfixable weakness is GIGO (garbage commits → garbage notes); they can only defensively filter/drop non-conforming commits. **mint is the only tool that sits on both ends of the pipe** (`mint commit` authors Conventional Commits; `mint release` consumes them). So mint can treat the commit history as a *designed* signal it produced, not an unreliable one to filter. This inverts the GIGO assumption that forces every competitor to either drop commits or fall back to the diff. **No single-purpose release tool can replicate this — none of them write your commits.**
+
+- **Borrow:** Conventional-Commits type→section/semver mapping; `scope`/path-filter attribution; git-cliff's structured-JSON-to-AI shape.
+- **Don't borrow:** one-commit-one-line regex rendering (mint's AI layer already beats it); PR/label dependence (no PRs in solo repos); AST (industry avoids it for generality).
+- **Graceful degradation required** for repos mint *doesn't* author commits for (Stitch, legacy history) — fall back toward diff-truth; wip commits there are noise, not signal.
+
 ### Open from review (to fold in)
 - **F1/F2/F11 — test against a code-heavy repo (mint itself / Portal / Tick).** Generality now confirmed → validating whether structural/commit signals (and whether AST even earns its keep) on a real Go diff is the obvious next empirical pass. No quality rubric yet defined (F2).
 - **F4 — token budget:** enrichment competes with the diff for the `max_diff_lines` budget on exactly the large releases this targets. A prepended structural/commit summary is *cheap* in tokens (tens of lines) vs the diff (thousands), and could even let us *shrink* the diff (summary carries the headline, diff carries detail). Unexplored.
