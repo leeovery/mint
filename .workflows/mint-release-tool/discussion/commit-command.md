@@ -205,7 +205,7 @@ the gate.** Everything before accept is read-only — including the `-a`/`-A` st
 3. **Generate (L2)** — the commit message (skipped under `--no-ai`; fallback → Format subtopic).
 4. **Review gate** — same `Continue?` rendering as release, interactive only (→ Gate subtopic).
 5. **On accept** — apply `-a`/`-A` staging now (if given), then `git commit` (via `git_safe`).
-6. **Push (optional)** — only if `-p`/`--push` (or config) (→ Auto-push subtopic).
+6. **Push (optional)** — only if `-p`/`--push` (flag-only, no config default) (→ Auto-push subtopic).
 
 **Reversibility:** no point-of-no-return / atomic-push semantics — a commit is local and
 reversible. Before accept, nothing has been mutated (clean abort). After accept, a completed
@@ -284,9 +284,10 @@ implies push is a **flag**, opt-in — not default.
 
 ### Decision
 
-- **Push is opt-in via `-p` / `--push`** (default: no push). May also have a config default
-  (→ Config subtopic). `-p` is free on this verb (release uses `-p` for `--patch`; per-verb
-  flag meanings, like git subcommands) — **cross-verb `-p` collision noted for CLI surface**.
+- **Push is opt-in via `-p` / `--push`** (default: no push). **Flag-only — no config default**
+  (the user: "we never push without the `-p` flag"; confirmed in Config). `-p` is free on this
+  verb (release uses `-p` for `--patch`; per-verb flag meanings, like git subcommands) —
+  **cross-verb `-p` collision noted for CLI surface**.
 - **Push failure → keep the commit, warn clearly, do NOT unwind (reviewer F6/F11).** On a
   failed push (rejected, remote moved, no upstream, network), mint leaves the commit in place
   and reports clearly with the fix (re-run the push). Rationale: a push is a trivially
