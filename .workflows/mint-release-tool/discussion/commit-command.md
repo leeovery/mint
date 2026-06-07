@@ -433,6 +433,13 @@ deferred-staging model with this non-gate path:
   `-p`). Nothing was mutated, so there is nothing to clean up — consistent with the
   no-destructive-cleanup invariant.
 
+### Decision — F6: regeneration failure routes to the same fallback
+
+If the user presses `r` (regenerate-with-context) at the gate and the *regeneration* fails
+after its one retry, mint treats it as any other AI failure → the **`$EDITOR` fallback** (one
+consistent rule: any failed AI generation lands at the editor). No special "re-show the prior
+message" path. (Under `-y`/non-TTY this is moot — `r` is an interactive-only gate action.)
+
 Confidence: high.
 
 ---
