@@ -48,14 +48,14 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 7 decided · 3 pending)
+  Discussion Map — Commit Command (10 subtopics — 8 decided · 2 pending)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ✓ Commit flow / lifecycle (the stages) [decided]
   ├─ ✓ Staging model & `--all` (what gets committed) [decided]
   ├─ ✓ AI message generation (engine boundary, content source) [decided]
   ├─ ✓ Commit message format & prompt (Conventional Commits) [decided]
-  ├─ ○ Interactive review gate (reuse of notes-review) [pending]
+  ├─ ✓ Interactive review gate (reuse of notes-review) [decided]
   ├─ ✓ Auto-push behaviour [decided]
   ├─ ✓ Preflight & safety for commit [decided]
   ├─ ○ Config schema additions [pending]
@@ -193,22 +193,25 @@ hang off.
 
 ### Decision — the commit flow
 
-1. **Preflight (minimal)** — git repo present; **something to commit** after staging
-   (see Staging). Push-related gates only if pushing. (Exact gate subset → Preflight subtopic.)
-2. **Stage** — apply the staging flag (`-a`/`-A`) if given; otherwise use the index as-is.
-3. **Build context (L1)** — filtered staged diff (`git diff --cached`, with `diff_exclude`
-   + `max_diff_lines`).
-4. **Generate (L2)** — the commit message (skipped under `--no-ai`; fallback → Format subtopic).
-5. **Review gate** — same `Continue?` rendering as release, interactive only (→ Gate subtopic).
-6. **Commit** — `git commit` with the message (via `git_safe`).
-7. **Push (optional)** — only if `-p`/`--push` (or config) (→ Auto-push subtopic).
+Key property (refined during the Gate subtopic): **mint mutates nothing until the user accepts
+the gate.** Everything before accept is read-only — including the `-a`/`-A` staging, which is
+*deferred to the accept path*. This is what makes abort a true no-op.
+
+1. **Preflight (minimal)** — git repo present; **something to commit** (for `-a`/`-A`, the
+   would-be-staged changes; else the existing index). Computed read-only. Empty → fail loud.
+2. **Build context (L1)** — filtered diff of what *would* be committed (default: `git diff
+   --cached`; with `-a`/`-A`: the would-be-staged working-tree diff, computed **without**
+   mutating the index), with `diff_exclude` + `max_diff_lines`.
+3. **Generate (L2)** — the commit message (skipped under `--no-ai`; fallback → Format subtopic).
+4. **Review gate** — same `Continue?` rendering as release, interactive only (→ Gate subtopic).
+5. **On accept** — apply `-a`/`-A` staging now (if given), then `git commit` (via `git_safe`).
+6. **Push (optional)** — only if `-p`/`--push` (or config) (→ Auto-push subtopic).
 
 **Reversibility:** no point-of-no-return / atomic-push semantics — a commit is local and
-reversible until pushed. *Open:* the partial-failure model (commit OK, push fails) is NOT
-auto-unwind like release; what mint does/says on a failed push is tracked under Auto-push
-(reviewer F6/F11).
+reversible. Before accept, nothing has been mutated (clean abort). After accept, a completed
+commit is never unwound by mint (partial-failure model under Auto-push, reviewer F6/F11).
 
-Confidence: high on the shape; push-failure detail open.
+Confidence: high.
 
 ---
 
@@ -244,6 +247,10 @@ including untracked.)
   Muscle-memory faithful.
 - **`-A` / `--add-all` = `git add -A` then commit** — everything including untracked. This is
   the user's `git add .` habit in one shot.
+- **Staging is deferred to gate-accept** (see Gate subtopic). With `-a`/`-A`, mint computes the
+  would-be-committed diff *read-only* for message generation, and only runs `git add` after the
+  user accepts. So aborting an `-a`/`-A` run leaves the index exactly as it was — mint never
+  leaves a half-staged worktree behind.
 - **Flags bundle:** `mint commit -Ap` = add-all + push, with a minted message — the headline
   ergonomic target.
 - **Empty staging** (nothing to commit after staging) → **fail loud** ("nothing to commit"),
@@ -286,13 +293,19 @@ implies push is a **flag**, opt-in — not default.
   warn-clearly rule above ("commit is in place; set an upstream and push"). mint adds no
   special upstream logic.
 
-### Invariant established — *mint commit never subtracts*
+### Invariant established — *mutate nothing until accept; never unwind after*
 
-The push-failure decision generalises: **`mint commit` only ever *adds* (stage via `-a`/`-A`)
-and commits — it never unstages, resets, or rewrites.** This is the deliberate opposite of
-`mint release`'s auto-unwind model, and the reason is the same staging-safety concern: a local
-commit verb must never risk the user's working/staged state. Any failure leaves a clean,
-forward-only result the user can act on manually.
+The push-failure decision plus the gate-abort refinement give one coherent rule:
+
+- **Before gate-accept, mint mutates nothing** — staging (`-a`/`-A`) is deferred to accept, so
+  abort returns the user to their exact pre-`mint` state (their own prior staging untouched).
+- **After accept, mint never unwinds a completed commit** — on a failed push it leaves the
+  commit and reports clearly; it never unstages, resets, or rewrites.
+
+This is the deliberate opposite of `mint release`'s auto-unwind model. The reason is the same
+staging-safety concern: a local commit verb must never risk the user's working/staged state.
+There is no destructive cleanup path at all — failures either left nothing behind (pre-accept)
+or leave a clean forward-only commit the user can act on manually (post-accept).
 
 Confidence: high.
 
@@ -379,6 +392,49 @@ same **`$EDITOR` path** as `--no-ai` / AI-failure, with a clear note ("diff too 
 summarise — opening editor"). One consistent degradation path for all three "no AI message"
 cases: deliberate skip, generation failure, oversized diff. (`diff_exclude` still applies first,
 so excluded noise doesn't push a diff over the limit.)
+
+Confidence: high.
+
+---
+
+## Interactive review gate
+
+### Context
+
+Whether/how commit reviews the message before it lands, reusing the cli-presentation
+`Continue?` gate. Two reviewer concerns: the gate's abort semantics for commit (F3) and the
+default posture given commit's higher invocation frequency (F10).
+
+### Decision — reuse the `Continue?` gate, ON by default
+
+Reuses the cli-presentation gate rendering (`y`/`n`/`e`/`r`, Enter ⇒ accept). Choice mapping
+for commit:
+
+- **`y` / accept** → stage (if `-a`/`-A`) then commit; then push if `-p`.
+- **`n` / abort** → do nothing. **No auto-unwind needed** — nothing has been mutated yet
+  (staging deferred to accept), so abort is a true no-op back to the pre-`mint` state.
+  (Resolves F3 — commit's abort has nothing to roll back, unlike release's.)
+- **`e` / edit** → edit the message in `$EDITOR`, used verbatim.
+- **`r` / regenerate with context** → re-run the AI with a one-time context line. This *is* the
+  "context injection" affordance from the user's original commit shell function.
+
+**Posture: gate ON by default (F10).** Interactive runs show the message + `Continue?`; `-y`
+skips it (auto-accept); the shared forbidden-combo rule applies (non-TTY stdin + no `-y` →
+fail loud). Chosen for consistency with release + the presentation model, and because seeing
+the minted message before it sticks is the point. The frequent one-liner stays fast via `-y`
+(`mint commit -Apy`).
+
+- **Considered — gate OFF by default** (commit immediately, review opt-in): faster for the
+  frequent case, but commits messages unseen — the exact pain release's gate was built to kill.
+  Rejected; `-y` already covers the unattended case explicitly.
+
+### The gate-abort refinement (key design correction)
+
+Originally the flow staged `-a`/`-A` *before* the gate. The user flagged that aborting would
+then leave a mint-altered worktree — wrong: "abort" should mean the whole run is abandoned with
+no trace. Fix: **mint mutates nothing until accept** (staging deferred). This is now a
+cross-cutting property — see Commit flow, Staging, and the never-unwind invariant under
+Auto-push.
 
 Confidence: high.
 
