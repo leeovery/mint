@@ -371,12 +371,16 @@ engine-boundary decision); it's just a different default from release's.
   `commit_prefix` stays a release-only concern (release commit + tag subject). Commit messages
   carry no mint branding in their text.
 
-### Open (routed to next finding)
+### `max_diff_lines` exceeded → `$EDITOR` fallback (reviewer F5)
 
-- **`max_diff_lines` exceeded for commit (reviewer F5)** — the *consequence* for commit is
-  still open (abort vs fall back to `$EDITOR` vs warn-and-proceed). Being decided next.
+When the staged diff exceeds `max_diff_lines`, commit does **not** abort (release's
+notes-failure model is too harsh for a routine large commit). Instead it falls back to the
+same **`$EDITOR` path** as `--no-ai` / AI-failure, with a clear note ("diff too large to
+summarise — opening editor"). One consistent degradation path for all three "no AI message"
+cases: deliberate skip, generation failure, oversized diff. (`diff_exclude` still applies first,
+so excluded noise doesn't push a diff over the limit.)
 
-Confidence: high on format + `--no-ai`; max-diff consequence pending.
+Confidence: high.
 
 ---
 
