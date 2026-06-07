@@ -93,6 +93,14 @@ Investigated `release-please`, `semantic-release`, `git-cliff`, `conventional-ch
 
 The thread converged. The enrichment shape is: **diff (ground-truth *what*) + structured commit-intent (the *why*/headline) + AI (cross-commit narrative synthesis)** — all language-agnostic. Supporting cheap signals: **structural** (new files/dirs/packages via `--name-status`) and **magnitude** (`--stat`). De-prioritised: **AST/semantic** (industry avoided it for a decade for mint's exact generality reason; near-useless for the markdown dogfood repo). Already-handled: **artifact noise** (existing `diff_exclude` config + inherent `.gitignore` exclusion).
 
+### Correction (user) — the diff is the backbone, commit-intent is opportunistic
+**mint cannot rely on commit-history quality.** The user is explicit: across the repos mint will serve, you can't assume the merge strategy (squash/rebase collapses a feature into one commit — destroying the very "synthesise across commits" capability that beats the regex tools), and you can't assume people use `mint commit` at all (just as likely to do wip commits and use mint only for *releasing*). Consequence:
+
+- **The diff is the reliable foundation** — the one signal that's always true regardless of merge strategy or commit discipline. It stays primary.
+- **Commit-intent is best-effort enrichment**, used only when a per-release quality/granularity check says the history is good enough to help. Not a co-equal partner to the diff; a conditional bonus.
+- **The "both ends of the pipe" advantage is real but conditional** — it pays off only for the subset of repos where the user *does* use `mint commit` and keeps granular history. It is a *bonus*, not the architecture's foundation. (Tempers deep-dive F7's framing.)
+- This makes **graceful-degradation detection (Q3) central, not a footnote** — mint must decide per-release whether the commit signal is trustworthy. And mint can't even assume its *own* commits survive clean (humans edit/amend `mint commit` output) — the GIGO risk re-enters at the human-edit boundary (review F5).
+
 The motivating failure ("glosses over the big feature") is a **narrative/story failure**, not a *what-changed* failure — and mint's AI layer is uniquely the mechanism that escapes the regex tools' "one-commit-one-line, can't synthesise across commits" ceiling.
 
 **mint's structural advantage:** it owns *both ends of the pipe* (`mint commit` authors Conventional Commits; `mint release` consumes them) — no competitor can, because none author your commits.
@@ -103,7 +111,7 @@ These are **decisions**, deliberately not made here:
 
 1. **Should `mint release` notes ingest commit data at all** — reversing the old script's explicit "ignore commit messages"? If yes, **how much weight** does commit-intent carry vs the diff (diff as primary + commits as headline hint? commits as spine + diff as detail/fallback?).
 2. **Which commit signal is highest-value** — the `type`/`scope` *structure*, the *subject* as a human headline, or the *body* (where the "why" lives, which the classic tools mostly ignore)? Possibly unmined signal in commit bodies.
-3. **Graceful degradation** for repos mint doesn't author commits for (Stitch, legacy history, wip-heavy histories) — when does commit data help vs become noise? Default posture when commits are unconventional.
+3. **Graceful degradation — now central (see Correction above).** mint cannot rely on commit quality (merge strategy, mint-commit adoption, human edits all vary). So: (a) what is the *detection trigger* — per-release ratio of conforming/granular commits, a per-repo config flag, or attempt-parse-then-fall-back? (b) what is the default posture when the signal is weak (diff-only)? (c) how is the squash/collapsed-history axis (granular vs collapsed) handled, distinct from the conventional-vs-wip axis? The diff-only path must always be a complete, good answer on its own.
 4. **Structural headline hint (thread E)** — is "a whole new directory/package appeared" worth surfacing explicitly to the AI as a magnitude/salience hint? (Note: any line-count-ranked magnitude hint must run *after* `diff_exclude`, or the 1157-line planning doc ranks as the "headline" — B depends on A.)
 5. **Token-budget interaction** — enrichment competes with the diff for the `max_diff_lines` budget on exactly the large releases this targets. A structured commit/structural summary is *cheap* (tens of lines) and could let mint *shrink* the diff (summary carries headline, diff carries detail). Design question for spec.
 6. **`diff_exclude` granularity (minor)** — exclusion is all-or-nothing, but "added test coverage for X" is sometimes a legit note. Gap between *exclude entirely* and *present-but-deprioritised*. Low priority.
