@@ -48,7 +48,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
 
 ### Map
 
-  Discussion Map — Commit Command (10 subtopics — 5 decided · 5 pending)
+  Discussion Map — Commit Command (10 subtopics — 6 decided · 4 pending)
 
   ┌─ ✓ Scope & relationship to the release pipeline (the framing fork) [decided]
   ├─ ✓ Commit flow / lifecycle (the stages) [decided]
@@ -57,7 +57,7 @@ alone** — were deliberately left for this discussion. That's the framing fork 
   ├─ ○ Commit message format & prompt (conventional vs emoji sections) [pending]
   ├─ ○ Interactive review gate (reuse of notes-review) [pending]
   ├─ ✓ Auto-push behaviour [decided]
-  ├─ ○ Preflight & safety for commit [pending]
+  ├─ ✓ Preflight & safety for commit [decided]
   ├─ ○ Config schema additions [pending]
   └─ ○ CLI surface & flags [pending]
 
@@ -293,6 +293,40 @@ and commits — it never unstages, resets, or rewrites.** This is the deliberate
 `mint release`'s auto-unwind model, and the reason is the same staging-safety concern: a local
 commit verb must never risk the user's working/staged state. Any failure leaves a clean,
 forward-only result the user can act on manually.
+
+Confidence: high.
+
+---
+
+## Preflight & safety for commit
+
+### Context
+
+Release's preflight is a strict gate set (clean tree, on release branch, remote in sync,
+tag free, gh auth). A commit is a frequent, low-stakes, *local* act — most of those gates
+are actively wrong for it. This pins commit's minimal preflight (reviewer F2/F9).
+
+### Decision — commit's preflight is minimal
+
+Commit runs only:
+
+1. **Git repo present** — anchored at the repo root (same resolution as release).
+2. **Something to commit** — after staging; empty → fail loud (decided in Staging).
+
+**Gates commit deliberately DROPS (and why):**
+
+- **Clean-working-tree — dropped.** Commit exists *to* operate on a dirty tree; the release
+  gate is the direct opposite of commit's purpose. (Resolves the F2 head-on collision.)
+- **On-release-branch — dropped.** Commits legitimately happen on feature branches all day.
+- **Remote-in-sync (behind/diverged) — dropped.** You commit while behind origin constantly;
+  blocking that would be absurd. (Resolves F9.)
+- **No pre-push gate even with `-p`.** Consistent with the auto-push decision — mint doesn't
+  gate the commit on push-ability; it attempts the push and *reports* failure. No remote-sync
+  precheck.
+
+This makes commit's safety posture the inverse of release's: release forces a known-good,
+clean, in-sync starting state because it's high-consequence; commit assumes a messy in-progress
+tree because that's its entire reason to exist.
 
 Confidence: high.
 
