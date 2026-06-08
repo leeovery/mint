@@ -32,14 +32,15 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 
 ### Map
 
-  Discussion Map — Release-Notes Quality (8 subtopics — 1 decided · 2 converging · 5 pending)
+  Discussion Map — Release-Notes Quality (9 subtopics — 4 decided · 5 pending)
 
   ├─ ✓ Ingest commit data at all? + cooperative weighting [decided]
-  ├─ → Which commit signal is highest-value [converging]
-  ├─ → Graceful degradation — detection & default posture [converging]
-  ├─ ○ Structural headline hint (thread E) [pending]
-  ├─ ○ Token-budget interaction [pending]
-  ├─ ○ diff_exclude granularity (minor) [pending]
+  ├─ ✓ Which commit signal is highest-value [decided]
+  ├─ ✓ Graceful degradation — detection & default posture [decided]
+  ├─ ✓ Quality convention anchor (Keep a Changelog) [decided]
+  ├─ ○ Salience preamble — diff-derived structural map [pending]
+  ├─ ○ Noise deprioritisation (diff_exclude granularity) [pending]
+  ├─ ○ Hierarchical summarisation for big diffs / token budget [pending]
   ├─ ○ L1 output shape — the connective tissue [pending]
   └─ ○ Tag-range vs release scope [pending]
 
@@ -72,6 +73,36 @@ This collapses the commit-dependent open questions:
 - **Q3 (graceful degradation / detection)** — moot *for commits*. There's no commit-quality signal to detect or degrade. (Degradation may still matter for diff-side concerns like oversized diffs — tracked under token-budget / mush handling, not here.)
 
 The salience problem research identified is **still real** — it just has to be solved from the diff alone (see pivot to diff-derived enrichment).
+
+---
+
+## Quality convention anchor (Keep a Changelog)
+
+### Context
+
+With commit-ingestion dropped, the lever for quality is the **prompt + a thin diff-derived salience hint**. Rather than invent a house quality bar, anchor to an established convention so the bar is principled and the output looks professional/familiar. The user's instinct: "this must be a defined principle somewhere we could follow." It is — **Keep a Changelog** (keepachangelog.com), paired with **SemVer**.
+
+### Why this convention fits unusually well
+
+Its core principles are the same thesis as this whole epic:
+- *"Changelogs are for humans, not machines."*
+- *"A changelog is not a commit log"* — the exact line research quoted; it's what justifies mint's AI narrative layer existing, and independently validates dropping commit-ingestion.
+- Notable changes grouped by a finite type taxonomy: **Added / Changed / Deprecated / Removed / Fixed / Security**.
+
+### Decision — borrow the principles + taxonomy, keep mint's presentation
+
+**"Their meaning, mint's skin."** The decision separates two things the headings question conflated:
+- **Taxonomy (semantics)** — adopt Keep a Changelog's categories as the canonical bucket set. Rationale isn't aesthetic: a *fixed, standard* taxonomy forces the AI to classify every change, and classification is itself prioritization (helps the salience problem). KaC's set is battle-tested and universally recognised.
+- **Presentation (skin)** — keep mint's emoji-headed style as the rendering of those categories (`✨ Added`, `🐛 Fixed`, `🔧 Changed`, `🗑️ Removed`, …). This *refines* the first discussion's "emoji-headed sections" decision (pins the taxonomy behind the emoji); it does not override it.
+
+Refinements that fall out:
+- **mint's TL;DR one-liner is retained**, sitting *above* the categorized sections. KaC has no equivalent; it's mint's genuine value-add — the cross-release narrative synthesis that's the whole reason an AI layer beats regex tools.
+- **Diff-inferability tiers the categories.** `Added / Changed / Fixed / Removed` are readable from a diff. `Deprecated` and `Security` are intent-laden and often invisible in a raw diff → kept in the vocabulary but treated as **opportunistic** (emit only on real signal), never forced. Empty sections omitted entirely (KaC principle).
+- **One generated payload, two sinks** (resolves the changelog-vs-release-note question): the per-release entry is identical; `CHANGELOG.md` accumulates entries under SemVer version headers per KaC's file structure, while the tag/GitHub release note surfaces the single entry. Same convention governs both.
+
+### Confidence
+
+Medium-high. Per the user's stance ("take a stance and adjust as we go"), the taxonomy/principles are firm; the exact emoji↔category mapping and prompt wording are explicitly ship-and-refine.
 
 ---
 
