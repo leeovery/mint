@@ -630,4 +630,23 @@ post_release = "scripts/notify.sh"
 
 ---
 
+## Dependencies
+
+Prerequisites that must exist before implementation can begin:
+
+### Partial Requirement
+
+| Dependency | Why Blocked | Minimum Scope Needed |
+|------------|-------------|----------------------|
+| **CLI Presentation specification** | The release run emits semantic events to a `Presenter` and shows the interactive notes-review gate through it; this spec defers gate *rendering* and the `--plain` flag's behaviour to that spec. The engine cannot render output or prompt the gate without the Presenter contract. | The **`Presenter` interface** (the event/method surface the engine calls) and the **notes-review gate rendering contract** (the `Continue?` default-yes mapping of the four semantic choices). Concrete `pretty`/`plain` renderers and `--plain` detection can land in parallel — the engine builds and tests against the interface (a fake/recording presenter). |
+
+### Notes
+
+- **Everything else builds independently.** Version/tag logic, preflight gates, hooks, AI-notes context assembly + transport, the Change Map, record/changelog/version-file, tag/push/publish, regenerate, config parsing, and `mint init` have no cross-spec blocker — they sit behind the engine's own seams (`CommandRunner`, `Publisher`) and the shared config model, all owned by this spec.
+- **`mint commit` is not a dependency** — it *consumes* the AI engine, config model, and Presenter that this spec (and the presentation spec) establish. Release is the producer, so it does not wait on commit.
+- **Runtime tools** (`git`, `gh`, `claude`) are invoked behind the `CommandRunner` seam and are runtime prerequisites, not build/spec dependencies; the spec already defines graceful handling (preflight `gh` gate; optional/fallback `claude`).
+- **Downstream tap/formula auto-update CI** reacts to the GitHub release mint creates — it is post-release, not a build dependency.
+
+---
+
 ## Working Notes
