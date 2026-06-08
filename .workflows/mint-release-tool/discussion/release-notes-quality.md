@@ -105,6 +105,12 @@ Refinements that fall out:
 
 **Version number — out of scope, settled upstream (review F2).** The SemVer bump is *not* AI-decided. `mint release` defaults to patch; the user passes a flag (patch/minor/major) to override. AI-managed SemVer is explicitly out of scope. Consequence for this topic: the version number is always known *before* notes generation, so the `CHANGELOG.md` version header is a given input, not something the notes pipeline computes. Dropping commit-intent therefore costs nothing on the versioning axis — that signal was never going to drive the bump here.
 
+**CHANGELOG.md accumulation mechanics (resolves review F4) — ⚠ cross-cutting with `mint-release-tool` sink decisions.** Decided here (not deferred — decisions must live in a discussion, not the spec), but flagged for surfacing into the main `mint-release-tool` discussion when the cross-topic incoming-surfacing feature exists. Provisional stance:
+- **No `[Unreleased]` section.** mint is a *generator*, not a human-maintained changelog; KaC's `[Unreleased]` (for humans accruing notes between releases) doesn't apply. mint writes a complete `## [x.y.z] - date` section atomically at release time. mint follows KaC's *entry structure*, not its human-workflow conventions.
+- **Newest on top.** Prepend the new version section below the file's KaC header preamble, above prior versions.
+- **First release** — create `CHANGELOG.md` with the KaC header preamble + the first version section.
+- **Idempotent by version key** — a re-run / amended release for an existing version *replaces* that version's section in place rather than appending a duplicate.
+
 ### Confidence
 
 Medium-high. Per the user's stance ("take a stance and adjust as we go"), the taxonomy/principles are firm; the exact emoji↔category mapping and prompt wording are explicitly ship-and-refine.
@@ -149,8 +155,9 @@ Medium-high; ship-and-refine. Exact Change Map formatting and prompt wording are
 
 ### Open Threads
 
-- Five-then-four pending subtopics on the map: noise deprioritisation, hierarchical summarisation / token budget, L1 output shape, tag-range vs release scope.
+- Remaining pending subtopics on the map: noise deprioritisation, hierarchical summarisation / token budget, L1 output shape, tag-range vs release scope.
 - Background review (set 001) raised 7 gaps + 2 questions — being worked through one at a time.
+- **⚠ Cross-cutting → `mint-release-tool` (main discussion):** the CHANGELOG.md accumulation mechanics decided under the KaC section (no `[Unreleased]`, newest-on-top, idempotent-by-version) overlap the main discussion's sink decisions. When the `.workflows` incoming-surfacing feature exists, surface that block there for reconciliation. Captured here in full so nothing is lost in the interim.
 
 ### Current State
 
