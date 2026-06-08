@@ -140,8 +140,9 @@ Clarified idempotent-replace is a regenerate-path (and amended-release) behaviou
 `--autostash` "stashes before the run and restores after, including on abort/failure" (line 125). The auto-unwind "resets the release commit(s)" and returns the repo "to the exact clean starting state" (line 402, 437). The interaction order is undefined: on an abort/failure with `--autostash` active, does mint first unwind its own commits/tag, then pop the stash (restoring the user's WIP on top of the original clean state)? The order matters — popping before the reset, or resetting past the stash point, could either conflict or lose the WIP. Given the spec's strong "exact clean starting state" guarantee, the precise unwind-then-restore sequence (and behaviour if the stash pop conflicts) should be stated so an implementer doesn't guess and risk losing user work.
 
 **Proposed Addition**:
+Restore ordering: unwind own commits/tag first → then pop stash on top; pop conflict → keep stash intact + warn (never discard WIP).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
