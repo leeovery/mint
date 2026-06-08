@@ -453,6 +453,8 @@ The biggest live pain with the legacy script is that release notes go out *unsee
 - **`e` edit** → opens the notes in the user's editor for real manual editing. **The saved text is used verbatim — no re-parse, no validation.** A human edit is trusted; structural validation only ever applied to untrusted AI output (which has no machine labels anyway). No mangle-loop, no possible trap. **Editor resolution:** `$VISUAL` then `$EDITOR`, falling back to a sensible default (`vi`); if no editor can be launched, mint reports the problem and returns to the gate rather than crashing.
 - **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, and shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `[release].context`.
 
+**On the no-AI notes paths** (first-release fixed body, degenerate stub, or `--no-ai` fallback — see Notes-path precedence), the gate offers only **`y` / `n` / `e`**: the AI-dependent **`r` regenerate is omitted**, since there is no AI invocation to nudge (and offering it under `--no-ai` would contradict the flag). To regenerate with the AI on a `--no-ai` run, the user re-runs without `--no-ai` rather than `r` silently overriding it. `y`/`n` are body-agnostic and `e` edits verbatim regardless of source, so only `r` is affected.
+
 **Exact gate rendering** (the default-yes `Continue?` prompt, menu layout, and line-read input handling) is owned by the **CLI Presentation specification** (a cross-spec dependency); this section owns the four semantic choices and their effects.
 
 ### Non-interactive

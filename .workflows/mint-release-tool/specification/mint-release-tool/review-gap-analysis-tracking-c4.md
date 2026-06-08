@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 4
 phase: Gap Analysis
@@ -33,7 +33,7 @@ This is a semantic question the section claims to own (which choices are valid a
 **Proposed Addition**:
 {leave blank until discussed — likely: on the three no-AI notes paths the gate offers only `y`/`n`/`e` (the AI-dependent `r` is omitted, since there is no AI invocation to nudge); for `--no-ai` specifically, choosing to regenerate would require the user to re-run without `--no-ai` rather than `r` silently overriding the flag.}
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Added a note to Interactive Review: on the three no-AI paths the gate offers only `y`/`n`/`e` (`r` omitted); on `--no-ai`, regenerating means re-running without the flag, not `r` overriding it. (auto mode)
 
 ---
