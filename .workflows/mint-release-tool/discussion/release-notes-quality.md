@@ -48,7 +48,7 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 
 ---
 
-## Ingest commit data at all? + cooperative weighting
+## Ingest commit data at all?
 
 ### Context
 
@@ -205,18 +205,6 @@ The epic's success criterion is: **on a big release, the headline feature leads 
 
 ### Current State
 
-- **All 10 subtopics decided.** Core decisions: no commit-intent ingestion (diff is sole source of truth); quality anchored on Keep a Changelog (their taxonomy + principles, mint's emoji skin, mint's TL;DR retained); diff-derived Change Map salience preamble (structural novelty > magnitude, directory rollup, post-`diff_exclude`, rank-from-map/describe-from-diff); degenerate-release stub (no AI on empty diff); SemVer bump user-driven (out of scope); CHANGELOG.md accumulation (no `[Unreleased]`, newest-on-top, idempotent-by-version — cross-cutting flag set).
+- **All subtopics resolved** — 5 substantive decisions on the map; the rest moot/parked, documented in the body. Core decisions: no commit-intent ingestion (diff is sole source of truth); quality anchored on Keep a Changelog (their taxonomy + principles, mint's emoji skin, mint's TL;DR retained); diff-derived Change Map salience preamble (structural novelty > magnitude, directory rollup, post-`diff_exclude`, rank-from-map/describe-from-diff); degenerate-release stub (no AI on empty diff); SemVer bump user-driven (out of scope); CHANGELOG.md accumulation (no `[Unreleased]`, newest-on-top, idempotent-by-version — cross-cutting flag set).
 - **Parked:** hierarchical summarisation (escalation if needed). **Single open lever for the future:** big-release mush, should single-pass prove insufficient.
 - Ready for specification.
-
-### Key Insights
-
-*(captured as the discussion progresses)*
-
-### Open Threads
-
-*(captured as the discussion progresses)*
-
-### Current State
-
-- Nothing decided yet — discussion just initialized from research handoff.
