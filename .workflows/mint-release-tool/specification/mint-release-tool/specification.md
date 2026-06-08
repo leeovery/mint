@@ -437,4 +437,61 @@ This eliminates the "notes went out unseen / I had to fix the release afterward"
 
 ---
 
+## Regenerate / Backfill Notes (non-destructive)
+
+mint can regenerate release notes for *existing* releases — one release, or every release in a batch backfill ("rewrite all of a repo's release history"). It is **non-destructive**: it touches only the mutable surfaces and never rewrites tags.
+
+### What's mutable vs permanent
+
+- **Mutable (regenerate targets these):** the **provider release body** (GitHub today) and **`CHANGELOG.md`** — editable documents with no history consequence. mint re-diffs `vX-1..vX`, regenerates notes, and updates either or both, for one release or all. This is how you cleanly "rewrite release history": regenerate every version's provider release + rebuild `CHANGELOG.md`, touching no tags. ~95% of the visible value.
+- **Permanent (excluded by default):** **tag annotations are git history.** "Rewriting" a tag means delete + re-create + force-push — destructive, and it breaks anyone who pulled. If ever built it would be a loud, explicit, opt-in-only escape (`--rewrite-tags`), strongly discouraged. **Not in scope now.**
+
+### Two-axis contract (source × target)
+
+Regenerate has two independent axes plus scope, all leaving tags untouched:
+
+**Axis 1 — source of notes:**
+- **`--reuse`** — read the **tag annotation body** (the single source of truth; deterministic git read, no parsing, config-independent). No AI, no re-diff — can't drift.
+- **fresh** (default) — re-diff `vX-1..vX` (with the same `diff_exclude` tiers + Change Map as the forward path) and re-run the AI for genuinely better notes.
+
+**Axis 2 — target surface(s): `--target release | changelog | both`.**
+- **`--reuse` ⇒ release-only.** Its source *is* the notes record, so "reuse → write changelog" would write a file from itself (a no-op) → mint **errors on `--reuse --target changelog`**.
+- **fresh ⇒ release, changelog, or both.**
+- **`--target changelog`/`both` when `changelog = false` → error** (fail-loud: "changelog is disabled in config"). mint never silently creates a CHANGELOG the project opted out of.
+- **Canonical spelling is `--target <surface>`** (one flag, a value) — not separate `--release`/`--changelog` flags.
+
+**Composition table:**
+
+| Goal | Source | Target |
+|---|---|---|
+| Heal a failed publish | reuse | release |
+| Clean up a legacy/bad release | fresh | both |
+| Refresh public release text only | fresh | release |
+| Rebuild a changelog entry only | fresh | changelog |
+| Mass-heal missing provider releases | reuse `--all` | release |
+| Full history rewrite | fresh `--all` | both |
+
+### Interactive by default, flags to skip
+
+- `mint release regenerate <ver>` with **no flags → interactive**: asks source, asks target, shows the plan, confirms.
+- **fresh** regeneration runs the same **notes-review gate** (see Interactive Review) before writing — backfilled notes are reviewable before they overwrite live surfaces.
+- **reuse** is deterministic (no new notes) → a **simple confirm**, no review gate.
+- Flags skip the questions but still confirm unless `-y`.
+
+### Batch `--all` semantics
+
+- **Ordering: oldest → newest** (lets mint rebuild `CHANGELOG.md` in natural order).
+- **Partial failure: skip-and-continue, summarise at the end** — *not* abort-the-batch (a single huge release tripping `max_diff_lines` shouldn't kill the others). This consciously overrides the single-version `on_notes_failure = abort` default; mint reports e.g. *"27 regenerated, 3 skipped: vX (diff too large), …"* so the user re-runs the stragglers.
+- **Review gates per version by default** (consistent with "notes never go out unseen"); **`-y`** is the opt-out to run fully unattended.
+- **Re-runnable, no resume state.** `--reuse --all` (mass-heal from tags) is fully deterministic; `--fresh --all` re-generates (stochastic but harmless).
+
+### Preflight subset per verb
+
+Preflight is a *gate set*; each command runs only the relevant subset (general rule: *calls `gh` → gh-auth; commits + pushes → clean-tree / branch / remote-sync; cuts a new tag → tag-free*):
+
+- **`regenerate --reuse`** (release-only, no git mutation) → **gh-auth only** (it must run that — a dead `gh` auth is the usual reason you're healing).
+- **`regenerate` fresh → changelog / both** (commits + pushes) → **gh-auth + clean-tree + branch + remote-sync**; **not** tag-free (tags exist, untouched); no version compute.
+
+---
+
 ## Working Notes
