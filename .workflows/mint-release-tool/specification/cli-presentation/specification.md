@@ -58,8 +58,17 @@ The presentation layer is structured as an **event/step-oriented `Presenter` int
 
 ```
 StageStarted(name) · StageSucceeded(name) · StageFailed(name, err)
-Warn(msg) · ShowPlan(plan) · ShowNotes(body) · Prompt(gate) → choice
+Warn(msg) · Unwound(summary) · ShowPlan(plan) · ShowNotes(body) · Prompt(gate) → choice
 ```
+
+**Event payload principle.** The method names above are illustrative; the exact Go signatures are settled at implementation. The fixed requirement is that **the engine supplies, in each event's payload, every datum the renderings consume** — the presenter never re-derives engine knowledge or hardcodes stage-specific logic. Specifically:
+
+- **`StageStarted` carries whether the stage is long/blocking** (engine knowledge — it knows when it is about to invoke `claude` or run a build hook). The plain presenter uses this flag to decide whether to emit a start line; the pretty presenter always shows a spinner. The presenter does not hold a hardcoded list of long stage names.
+- **`StageSucceeded` carries its detail string and the elapsed time**, both measured/supplied by the engine (the presenter does not time stages). Pretty renders `({elapsed})` on **long/blocking stages only** (the same stages flagged on `StageStarted`); short stages render detail without elapsed.
+- **`Warn` carries a structured `label` and `message`** (e.g. `post_release` + the failure text). Both renderings are label-prefixed (`⚠ {label}  {message}` / `{label}: WARN - {message}`); the presenter does not parse a label out of a single string.
+- **`Unwound` is a first-class event** (not a `StageFailed`) carrying the "what it undid" summary; it has its own glyph (`↩`) and renderings in both modes.
+- **`ShowPlan` carries structured plan steps** (each a verb + target), not pre-formatted text. Pretty renders them as a bulleted block; plain joins them into a `plan: …; …` one-liner. Each presenter formats from the same structured steps — there is no separate verbose/terse payload, and the abbreviations shown in the worked examples are illustrative wording, not a distinct terse field.
+- **Gate auto-accept under `-y` is a rendered event, not engine-printed text.** When `-y` skips the gate, the engine emits an event the presenter renders (plain: `notes: accepted (-y)`; pretty: see the Gating section), preserving "narration → presenter."
 
 **Decisions:**
 
@@ -85,7 +94,7 @@ Warn(msg) · ShowPlan(plan) · ShowNotes(body) · Prompt(gate) → choice
 
 Two gating verbs (`release`, `regenerate`). `init`'s safety is **structural** (non-clobber + `--force`), not a prompt — which is why it never needed `-y`.
 
-**Forbidden-combination rule (applies to any interactive gate):** if **stdin is not a TTY** and **`-y` was not passed**, `mint` **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. `-y` answers every gate.
+**Forbidden-combination rule (applies to any interactive gate):** if **stdin is not a TTY** and **`-y` was not passed**, `mint` **fails loud** ("not a TTY — pass `-y` to run unattended") rather than blocking on stdin. `-y` answers every gate. This failure **surfaces through the `Presenter`** (rendered as a failure — styled in `pretty`, terse in `plain` — since render mode is selected on stdout independently of the stdin problem) and, per the stream contract, also goes to **stderr**.
 
 **Gate input handling** (for the `Continue?` prompt):
 
@@ -94,7 +103,9 @@ Two gating verbs (`release`, `regenerate`). `init`'s safety is **structural** (n
 - **Case-insensitive** (`N` = `n`).
 - **Unrecognised key** (`x`, or old muscle-memory `a`/`q`) → **re-prompt**, never silently accept. Garbage never proceeds — keeps the destructive-adjacent default safe.
 
-**Regenerate / edit re-entry:** after `e` (edit in `$EDITOR`) or `r` (regenerate-with-context), flow **loops back to the same `Continue?` gate** with the refreshed notes, until `y`/`n`. Rendering is **linear** — it re-prints the notes block + gate below (it scrolls; no screen-clearing or alt-screen).
+**Regenerate / edit re-entry — the engine owns the loop:** `Prompt(gate)` returns a single `choice` (`y`/`n`/`e`/`r`) and is render-only. On `e`/`r` the **engine** does the work — invoking `$EDITOR` (edit) or re-running generation via `claude` (regenerate-with-context) — then re-calls `ShowNotes` with the refreshed body and `Prompt` again, looping until `y`/`n`. The presenter never calls `$EDITOR` or `claude`; it only re-renders on each pass. Rendering is **linear** — each pass re-prints the notes block + gate below (it scrolls; no screen-clearing or alt-screen). Because the engine drives the handoff, it is also the engine that stops the pretty spinner before `$EDITOR` takes over the terminal and resumes after.
+
+**Pretty under `-y`:** `-y` **skips the gate** rather than auto-pressing it — identical outcome to pressing Enter, but the menu is not drawn (consistent with "the gate is skipped"). "Full styling under `-y`" means the rest of the run is styled; it does not mean the interactive menu is shown then auto-answered. The auto-accept is rendered via the gate auto-accept event (pretty: a concise accept line in the same vocabulary, e.g. `✓ notes  accepted (-y)`; plain: `notes: accepted (-y)`).
 
 ## The Pretty Layer
 

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 1
 phase: Gap Analysis
@@ -22,9 +22,10 @@ The plain contract is explicit: short stages emit nothing on start; "long/blocki
 The spec says the exact surface is settled at implementation, but this is a *behavioural* decision, not just a method signature: where does the long/blocking classification live — in the engine (which knows it blocks on claude/build) or hardcoded in the presenter? Leaving it open forces the implementer to make a design decision that affects both presenter implementations and the engine's call sites. Notably "long" is engine knowledge (the engine knows it's about to shell out to claude or run a build hook), arguing for the event to carry it — but the spec never states this.
 
 **Proposed Addition**:
+Added an "Event payload principle" subsection to the `Presenter` Seam stating the engine supplies every datum the renderings consume, with a bullet: `StageStarted` carries the long/blocking flag (engine knowledge); plain uses it to decide the start line, pretty always shows a spinner; no hardcoded stage-name list in the presenter.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Resolved via the engine-supplies-payload principle. Auto-approved.
 
 ---
 
@@ -38,9 +39,10 @@ The spec says the exact surface is settled at implementation, but this is a *beh
 Both renderings of a warning are label-prefixed: pretty `⚠ {label}  {message}` (worked example: `⚠ post_release  hook failed (tag is already published): …`) and plain `{label}: WARN - {message}`. But the illustrative event is `Warn(msg)` — a single message, no label. The implementer cannot produce `{label}` from `{msg}` alone. Either `Warn` needs a label parameter (`Warn(label, msg)`) or the convention is that the caller embeds the label in `msg` and the presenter must not re-format. The two table rows imply structured `{label}`/`{message}` fields, contradicting the single-arg signature. This needs resolving so the presenter and every `Warn` call site agree on the shape.
 
 **Proposed Addition**:
+Bullet under the Event payload principle: `Warn` carries structured `label` + `message`; the presenter does not parse a label out of a single string.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Resolved via the engine-supplies-payload principle. Auto-approved.
 
 ---
 
@@ -54,9 +56,10 @@ Both renderings of a warning are label-prefixed: pretty `⚠ {label}  {message}`
 Auto-unwind has a dedicated glyph (`↩`), a pretty rendering (`↩ unwound  {what it undid} — repo clean`), a plain rendering (`unwound: {what}; repo clean`), and a table row — so it is a first-class presentation event. But it is absent from the illustrative method set (`StageStarted/StageSucceeded/StageFailed/Warn/ShowPlan/ShowNotes/Prompt`), and it is clearly not a `StageFailed` (it follows the failure as a separate `↩` line). The implementer needs to know this is a distinct event (e.g. `Unwound(summary)`) carrying the "what it undid" payload. While "exact surface settled at implementation" covers method names, an entirely missing event with its own glyph and two renderings is a completeness gap, not a naming detail.
 
 **Proposed Addition**:
+Added `Unwound(summary)` to the illustrative method set and a payload-principle bullet declaring it a first-class event (not a `StageFailed`) carrying the "what it undid" summary.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 
@@ -67,16 +70,13 @@ Auto-unwind has a dedicated glyph (`↩`), a pretty rendering (`↩ unwound  {wh
 **Affects**: "Gating & `-y` Orthogonality" (Regenerate / edit re-entry); "The `Presenter` Seam" (`Prompt(gate) → choice`); "The Pretty Layer" (Review gate)
 
 **Details**:
-`Prompt(gate) → choice` returns a single choice. The spec says after `e` (edit in `$EDITOR`) or `r` (regenerate-with-context) the flow "loops back to the same `Continue?` gate … until `y`/`n`," and rendering "re-prints the notes block + gate below (it scrolls)." But it never states who owns the loop:
-- If the presenter loops internally on `e`/`r`, then `Prompt` must itself perform the edit/regenerate (calling `$EDITOR`, triggering regeneration) — which violates "the engine never touches … TTY state … the presenter is render-only" because regenerate-with-context is engine work (a claude call).
-- If the engine loops (re-calling `Prompt` after handling `e`/`r` and re-showing notes via `ShowNotes`), then `Prompt` returns `e`/`r` to the engine and the "loops back to the same gate" + "re-prints the notes block" behaviour is an engine orchestration, with the presenter only re-rendering on each pass.
-
-The latter is consistent with the seam's render-only discipline, but the spec asserts the loop and the re-print behaviour without saying which component drives them. An implementer must guess the division, and the guess determines whether `Prompt` blocks on `$EDITOR`/claude or returns immediately. Also: the spinner-stop-around-`$EDITOR` note ("stopped before handing off, resumed after") presumes someone stops the spinner across the edit — this only works if ownership is pinned down.
+`Prompt(gate) → choice` returns a single choice. The spec says after `e` (edit in `$EDITOR`) or `r` (regenerate-with-context) the flow "loops back to the same `Continue?` gate … until `y`/`n`," and rendering "re-prints the notes block + gate below (it scrolls)." But it never states who owns the loop. The render-only-presenter discipline implies the engine drives the loop, but the spec asserts the loop and re-print behaviour without saying which component drives them.
 
 **Proposed Addition**:
+Rewrote the re-entry paragraph: the engine owns the loop; `Prompt` is render-only and returns the choice; on `e`/`r` the engine performs the edit/regenerate work and re-calls `ShowNotes`/`Prompt`; the engine also stops/resumes the pretty spinner around `$EDITOR`.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 
@@ -87,16 +87,13 @@ The latter is consistent with the seam's render-only discipline, but the spec as
 **Affects**: "Per-event rendering" table (`StageSucceeded` row `({elapsed})`); "The Plain Layer"; worked examples (`prep … (2.3s)`, `notes … (1.1s)`)
 
 **Details**:
-Pretty `StageSucceeded` renders `({elapsed})` and the examples show `(2.3s)`/`(1.1s)`. The spec never says whether elapsed is (a) measured by the presenter between `StageStarted` and `StageSucceeded`, or (b) supplied by the engine in the `StageSucceeded` payload. This matters:
-- If the presenter measures it, the plain presenter must record a start time even for stages it does *not* print a start line for — workable, but only the long stages in the examples show elapsed, so it's unclear whether short stages (`version`, `preflight`, `record`) intentionally omit elapsed or just happen to be fast.
-- If the engine supplies it, `StageSucceeded(name)` needs an elapsed/detail payload.
-
-Either way the rule for *which* stages show `({elapsed})` (only long/blocking? all?) is implied by examples but never stated, so an implementer would guess. The examples consistently show elapsed only on the two long stages (`prep`, `notes`), suggesting elapsed is shown only for long stages — but this is inference, not specification.
+Pretty `StageSucceeded` renders `({elapsed})` and the examples show `(2.3s)`/`(1.1s)`. The spec never says whether elapsed is measured by the presenter or supplied by the engine, nor which stages show it. The examples consistently show elapsed only on the two long stages (`prep`, `notes`), suggesting elapsed is shown only for long stages — but this is inference, not specification.
 
 **Proposed Addition**:
+Payload-principle bullet: `StageSucceeded` carries detail + elapsed, both supplied by the engine; pretty renders `({elapsed})` on long/blocking stages only (same flag as `StageStarted`); short stages render detail without elapsed.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 
@@ -107,12 +104,13 @@ Either way the rule for *which* stages show `({elapsed})` (only long/blocking? a
 **Affects**: "Gating & `-y` Orthogonality" (Forbidden-combination rule)
 
 **Details**:
-The rule states `mint` "fails loud" with the message `"not a TTY — pass -y to run unattended"`. The message text is given, and stderr placement follows the stream contract. But the spec does not say how this surfaces through the presentation layer: is it a `StageFailed`, a `Warn`, or a bare pre-presenter error printed before any `Presenter` is even engaged? Because this failure is fundamentally about input (stdin), and render mode is selected on stdout, it can occur in either pretty or plain output mode — so an implementer needs to know whether it routes through the `Presenter` (and thus gets styled in pretty) or is emitted directly. Minor, but it's the one error the presentation spec itself introduces, so its rendering should be pinned.
+The rule states `mint` "fails loud" with a given message and stderr placement. But the spec does not say how this surfaces through the presentation layer: a `StageFailed`, a `Warn`, or a bare pre-presenter error. Because this failure is about input (stdin) while render mode is selected on stdout, it can occur in either output mode — so an implementer needs to know whether it routes through the `Presenter` or is emitted directly.
 
 **Proposed Addition**:
+Extended the forbidden-combination rule: the failure surfaces through the `Presenter` (rendered as a failure — styled in pretty, terse in plain — since render mode is selected on stdout independently of the stdin problem) and also goes to stderr per the stream contract.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 
@@ -123,12 +121,13 @@ The rule states `mint` "fails loud" with the message `"not a TTY — pass -y to 
 **Affects**: "Gating & `-y` Orthogonality" (Gate input handling, Forbidden-combination rule); "Per-event rendering" (review gate row: "not shown — non-TTY ⇒ -y required ⇒ gate skipped")
 
 **Details**:
-Under `-y`, the gate is skipped and plain emits `notes: accepted (-y)`. The table says the gate is "not shown" in plain. This implies the engine decides to skip `Prompt` entirely when `-y` is set, and instead the *presenter* emits the `notes: accepted (-y)` echo — but there is no event for "gate auto-accepted." Is `notes: accepted (-y)` produced by the presenter (needs an event/method, e.g. the engine calling something) or printed by the engine directly? Given the seam discipline (engine emits semantic events, presenter renders), there should be an event like `GateAutoAccepted` or the `-y` echo is engine-printed text — which would contradict "narration → presenter." The pretty side has no stated equivalent echo line under `-y` (the worked pretty example shows the full menu, i.e. interactive). Clarify: under `-y`, does pretty also skip the menu (and if so does it print an accept echo)? The orthogonality section says a human with `-y` "still gets full styling," but does "full styling" include showing then auto-answering the menu, or skipping it? The `-y alignment` note ("identical outcome to pressing Enter") suggests the gate is skipped, not auto-pressed — leaving the pretty-mode `-y` rendering undefined.
+Under `-y`, the gate is skipped and plain emits `notes: accepted (-y)`. Is that echo produced by the presenter (needs an event) or printed by the engine directly? The pretty side has no stated `-y` echo, and it's unclear whether pretty shows-then-auto-answers the menu or skips it. The `-y alignment` note ("identical outcome to pressing Enter") suggests skip, leaving the pretty-mode `-y` rendering undefined.
 
 **Proposed Addition**:
+Payload-principle bullet: gate auto-accept under `-y` is a rendered event, not engine-printed text. Plus a "Pretty under `-y`" paragraph in the Gating section: `-y` skips the gate (menu not drawn); the auto-accept renders via the event (pretty `✓ notes  accepted (-y)`, plain `notes: accepted (-y)`).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 
@@ -139,11 +138,12 @@ Under `-y`, the gate is skipped and plain emits `notes: accepted (-y)`. The tabl
 **Affects**: "Per-event rendering" table (`ShowPlan` row); plain example (`plan: commit changelog+version; tag v1.4.0; push --atomic; publish github`)
 
 **Details**:
-Pretty renders `ShowPlan(plan)` as a multi-line bulleted block; plain renders `plan: {semicolon-joined one-liner}`. The example shows the plan abbreviated (`commit CHANGELOG.md + bin/acme` becomes `commit changelog+version`) — i.e. the plain one-liner is not a mechanical join of the pretty bullets, it's a separately abbreviated form. The spec doesn't define whether the `plan` payload carries both a verbose and terse form, or whether each presenter abbreviates independently. If the presenter must abbreviate (`CHANGELOG.md + bin/acme` → `changelog+version`), that abbreviation logic is unspecified and would be guessed. This is lower-severity than the event-signature gaps but still forces an implementer decision about what `plan` contains.
+Pretty renders `ShowPlan(plan)` as a multi-line bulleted block; plain renders `plan: {semicolon-joined one-liner}`. The example abbreviates (`commit CHANGELOG.md + bin/acme` → `commit changelog+version`), so the plain one-liner is not a mechanical join of the pretty bullets. The spec doesn't define whether `plan` carries both forms or whether each presenter abbreviates independently.
 
 **Proposed Addition**:
+Payload-principle bullet: `ShowPlan` carries structured plan steps (verb + target), not pre-formatted text; pretty bullets them, plain joins them; no separate verbose/terse payload; the example abbreviations are illustrative wording.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
