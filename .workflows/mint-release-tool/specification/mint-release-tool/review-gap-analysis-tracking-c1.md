@@ -89,8 +89,9 @@ New "Version argument & diff base resolution" subsection: `<version>` accepted w
 The dry-run note cache has "a **short TTL** backstop so a stale preview can't resurrect" (line 467) but no concrete value or order of magnitude is given. Unlike `max_diff_lines` (50000) and the AI timeout (~60s), which carry defaults, the TTL is left fully open. An implementer must invent a duration, and too-short defeats the motivating workflow (dry-run then real run) while too-long defeats the staleness backstop. A default (even an approximate one, consistent with "~60s"-style guidance) is needed.
 
 **Proposed Addition**:
+TTL default ~1 hour — long enough for the dry-run→real-run handoff, short enough a forgotten preview can't resurrect.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

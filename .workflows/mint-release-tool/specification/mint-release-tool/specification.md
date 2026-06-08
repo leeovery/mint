@@ -464,7 +464,7 @@ When `--dry-run` generates the notes preview, mint **caches it so the subsequent
 - **Activation is automatic.** The dry-run writes the note to the cache; the real run reuses it on a key match. No flag — the key-based invalidation makes automatic reuse safe, and it serves the motivating workflow transparently.
 - **Cache key = hash of (post-`diff_exclude` diff + computed version + prompt / `[release].context`)** — not HEAD sha, since a `pre_tag` hook can change the tree between runs. **Miss → regenerate**, and say so ("diff changed since dry-run preview — regenerating notes"). mint never silently ships a stale note that no longer matches the release.
 - **Re-review is unaffected.** A cached note does **not** skip the notes-review gate: an interactive real run still shows it (re-showing identical notes is cheap, and avoids assuming an out-of-band approval mint can't verify); `-y` still skips the gate on both runs. Reuse guarantees determinism; the review gate stays orthogonal.
-- **Location:** a **gitignored cache** (e.g. `.mint/cache/`) or system temp, keyed by repo, **never committed**, with a **short TTL** backstop so a stale preview can't resurrect.
+- **Location:** a **gitignored cache** (e.g. `.mint/cache/`) or system temp, keyed by repo, **never committed**, with a **short TTL** backstop (default **~1 hour** — long enough for the dry-run→real-run handoff, short enough that a forgotten preview can't resurrect) so a stale preview can't be reused.
 
 ---
 
