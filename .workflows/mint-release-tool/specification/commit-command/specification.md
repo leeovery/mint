@@ -121,6 +121,23 @@ The three "no AI message" cases (`--no-ai`, AI-generation failure, oversized dif
 
 **Regeneration failure routes here too.** If the user presses `r` (regenerate-with-context) at the gate and the regeneration fails after its one retry, mint treats it as any other AI failure → the `$EDITOR` fallback. One consistent rule: any failed AI generation lands at the editor. No special "re-show the prior message" path. (Under `-y`/non-TTY this is moot — `r` is an interactive-only gate action.)
 
+## Interactive Review Gate
+
+Commit reuses the cli-presentation `Continue?` gate rendering (`y`/`n`/`e`/`r`, Enter ⇒ accept), **ON by default**.
+
+**Choice mapping for commit:**
+
+- **`y` / accept** → stage (if `-a`/`-A`) then commit; then push if `-p`.
+- **`n` / abort** → do nothing. **No auto-unwind needed** — nothing has been mutated yet (staging deferred to accept), so abort is a true no-op back to the pre-`mint` state.
+- **`e` / edit** → edit the message in `$EDITOR`, used verbatim.
+- **`r` / regenerate with context** → re-run the AI with a one-time context line. This *is* the "context injection" affordance from the user's original commit shell function. (Regeneration failure → `$EDITOR` fallback, per Fallback Semantics.)
+
+**Posture — gate ON by default.** Interactive runs show the message + `Continue?`; `-y` skips it (auto-accept); the shared forbidden-combo rule applies (non-TTY stdin + no `-y` → fail loud). Chosen for consistency with release and the presentation model, and because seeing the minted message before it sticks is the point. The frequent one-liner stays fast via `-y` (`mint commit -Apy`).
+
+- **Considered and rejected — gate OFF by default** (commit immediately, review opt-in): faster for the frequent case, but commits messages unseen — the exact pain the gate exists to kill. `-y` already covers the unattended case explicitly.
+
+**The gate-abort refinement (key design correction).** Originally the flow staged `-a`/`-A` *before* the gate, which meant aborting would leave a mint-altered worktree — wrong; "abort" must mean the whole run is abandoned with no trace. The fix — **mint mutates nothing until accept** (staging deferred) — is the cross-cutting property that runs through the lifecycle, staging, and the never-unwind invariant.
+
 ---
 
 ## Working Notes
