@@ -174,12 +174,14 @@ High. Simple, honest, symmetric with existing guards.
 
 ### Success criterion (resolves review F7)
 
-The epic's success criterion is: **on a big release, the headline feature leads the notes.** The mechanism pointed at it is the **Change Map** (new-structure-as-headline, novelty over magnitude) plus **forced KaC classification**. Dropping commit-intent doesn't undermine this: research diagnosed the original failure as *salience, not absence* — the big feature was always in the diff, attention got misallocated. Commits were a separate "why/intent" signal, orthogonal to salience. The salience fix (Change Map) is intact; what was dropped never targeted the motivating failure. This reasoning is *argued, not yet measured* — see F5 below.
+The epic's success criterion is: **on a big release, the headline feature leads the notes.** The mechanism pointed at it is the **Change Map** (new-structure-as-headline, novelty over magnitude) plus **forced KaC classification**. Dropping commit-intent doesn't undermine this: research diagnosed the original failure as *salience, not absence* — the big feature was always in the diff, attention got misallocated. Commits were a separate "why/intent" signal, orthogonal to salience. The salience fix (Change Map) is intact; what was dropped never targeted the motivating failure. This reasoning is *argued, not yet measured*.
+
+**Verification (resolves review F5):** no official process, no rubric, no harness. The user assesses output quality by eye on real releases (mint dogfoods itself; agentic-workflows, Portal, etc. are live cases) and tunes the prompt when the headline-leads criterion isn't met. Consistent with the "best effort, tune over time" posture throughout.
 
 ### Open Threads
 
 - Remaining pending subtopics on the map: noise deprioritisation, hierarchical summarisation / token budget, L1 output shape, tag-range vs release scope.
-- Background review (set 001) raised 7 gaps + 2 questions — being worked through one at a time.
+- Background review (set 001) raised 7 gaps + 2 questions — all worked through and resolved/folded into the decided sections.
 - **⚠ Cross-cutting → `mint-release-tool` (main discussion):** the CHANGELOG.md accumulation mechanics decided under the KaC section (no `[Unreleased]`, newest-on-top, idempotent-by-version) overlap the main discussion's sink decisions. When the `.workflows` incoming-surfacing feature exists, surface that block there for reconciliation. Captured here in full so nothing is lost in the interim.
 
 ### Current State
