@@ -106,8 +106,9 @@ TTL default ~1 hour — long enough for the dry-run→real-run handoff, short en
 The transport "retries once" on a bad/empty/error/refusal generation (lines 226, 289). Separately, a hung call is bounded by a "timeout (~60s)" (line 238). The `on_notes_failure` list includes "timeout" as a failure cause (line 282). It is not stated whether a **timeout** is one of the conditions that triggers the single automatic retry, or whether a timeout bypasses the retry and goes straight to `on_notes_failure`. This affects worst-case release latency (one 60s timeout vs two = 120s) and the retry implementation. Needs a one-line clarification of whether timeout is retryable.
 
 **Proposed Addition**:
+Timeout is not retried → straight to `on_notes_failure`; the single retry covers empty/error/refusal content only (bounds worst case at one ~60s timeout).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

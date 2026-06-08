@@ -286,7 +286,7 @@ Notes generate at Stage 4, *before* the tag (Stage 6), so aborting leaves nothin
 ### Output format & validation
 
 - **The AI returns the notes directly in presentation format** — no machine-parseable wrapper labels. mint uses the body **whole** for every sink; no parsing, no splitting, no per-sink reassembly.
-- **Validation is sanity, not structure:** non-empty, not an error/refusal/whitespace. On a bad/empty generation → **one automatic retry** → still bad → notes failure → `on_notes_failure`.
+- **Validation is sanity, not structure:** non-empty, not an error/refusal/whitespace. On a bad/empty generation → **one automatic retry** → still bad → notes failure → `on_notes_failure`. A **timeout is not retried** — it goes straight to `on_notes_failure` (retrying a hung call only risks a second full timeout); the single retry covers empty/error/refusal *content* only, bounding worst-case latency at one ~60s timeout.
 - The interactive review gate (next section) is the human backstop for *style*.
 
 ### Default notes format mint ships (anchored on Keep a Changelog)
