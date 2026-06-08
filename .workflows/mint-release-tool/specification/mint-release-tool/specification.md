@@ -17,7 +17,7 @@
 
 ### Command namespace
 
-`mint` adopts a `mint <verb>` command namespace from the outset. The release command is `mint release`; the per-project `release` shim delegates to `mint release`. This is forward-compatible — it leaves room for future verbs (e.g. a later `mint commit`) without restructuring — but **this build ships release functionality only**. `mint` remains a single feature for now. The namespace leaves the door open to promote `mint` to an epic (release + commit + …) later, but that promotion is not made now.
+`mint` adopts a `mint <verb>` command namespace from the outset. The release command is `mint release`; the per-project `release` shim delegates to `mint release`. This **specification covers the release pipeline only**. `mint` is now an **epic**: the release pipeline is one specification within it, with sibling specifications for the CLI presentation layer and the `mint commit` verb. This spec is standalone and self-contained; cross-spec touch-points are recorded under Dependencies.
 
 ### In scope (this build)
 
@@ -25,7 +25,7 @@ The complete release pipeline end-to-end: version determination → preflight sa
 
 ### Out of scope (consciously deferred)
 
-- **`mint commit`** — a future, separate feature with its own design.
+- **`mint commit`** — a sibling verb specified separately (shares the AI engine, config model, and presentation layer; not part of this spec).
 - **Testing / parity strategy** — deferred to planning/implementation. The legacy 552-line `agentic-workflows/release` bash script is treated as a **feature reference / capability checklist, not a byte-parity test oracle**; the clean-slate design intentionally diverges from it.
 - **YAGNI items addable later:** pre-release/RC tag parsing & production, `--rewrite-tags` (destructive tag rewriting), a `.release/hooks/` directory convention, built-in note "themes", project auto-detection in `mint init`, a dry-run hook-run toggle, a notes-review disable toggle, and a `.mintignore` file.
 
@@ -216,6 +216,15 @@ mint generates notes from the **release diff and nothing else**. Commit messages
 - The conditional machinery to exploit them **isn't worth it** — the signal is unreliable and shrinks further as squash/rebase collapse history.
 
 The diff is the one signal always true regardless of merge strategy or commit discipline, so it is the sole input. Quality is lifted by making the diff **more legible** (the Change Map, below) — never by adding other data.
+
+### Engine layering (context assembly vs AI transport)
+
+Notes generation separates two concerns, mirroring the engine's other seams (`CommandRunner`, `Publisher`, `Presenter`):
+
+- **Context assembly (git-aware):** builds what the AI describes — the `last_tag..HEAD` diff, `diff_exclude` filtering, the `max_diff_lines` guard, and the Change Map preamble. All git-aware, release-specific logic lives here.
+- **AI transport (content-agnostic):** takes an assembled prompt + content + `ai_command`, runs the call, validates (non-empty / not-an-error / not-a-refusal), retries once, and returns the body. It knows nothing about git, diffs, or tags — pure "content in, message out."
+
+The boundary keeps the transport trivially testable (a string + a fake `ai_command`) and means quality work (enriching the Change Map / context) changes only the assembly side, never the transport. This is the same shared AI engine the sibling `mint commit` verb consumes — with a different context source (its staged diff) and prompt.
 
 ### Diff base
 

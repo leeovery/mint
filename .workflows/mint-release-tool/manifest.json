@@ -34,7 +34,7 @@
           "date": "2026-06-06",
           "sources": {
             "mint-release-tool": {
-              "status": "pending"
+              "status": "incorporated"
             },
             "release-notes-quality": {
               "status": "incorporated"
