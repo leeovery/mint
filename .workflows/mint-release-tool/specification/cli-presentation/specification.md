@@ -239,6 +239,29 @@ tag/push: FAILED - push rejected: remote moved
 unwound: removed tag v1.4.0, reset 2 commits; repo clean
 ```
 
+## Spinner Lifecycle (pretty only)
+
+Spinners are a `pretty`-only concern, owned inside the pretty presenter. `plain` never animates — a stage emits exactly one line on its transition.
+
+- **One spinner at a time, on the current stage line.** Starts on `StageStarted`, replaced in place by the `✓`/`✗` line on completion. Braille frames (`⠋⠙⠹…`). The spinner is part of the narration on stdout.
+- **Underlying command output** (git/claude/gh chatter) is captured by `mint`, not streamed through the spinner line, so the animation can't be corrupted. On failure, `mint` prints the captured output below the `✗` line.
+- **`$EDITOR` (note edit)** takes over the terminal — the spinner is stopped before handing off, resumed after.
+
+## Library Selection
+
+- **`lipgloss` for all `pretty`-mode styling** — colour, the 🌿 brand line, status glyphs, the titled notes rule. It is *pure string styling* (no event loop), so it composes with the `Presenter` seam, and it **auto-downgrades colour when piped** (also relied on for colour-incapable TTYs — see Render-Mode Detection).
+- **A lightweight standalone spinner** for stage progress — e.g. `briandowns/spinner` (explicit `Start()`/`Stop()`, maps 1:1 to `StageStarted`/`StageSucceeded`) or charm's `huh/spinner`. The exact package is an implementation detail; the seam doesn't care.
+- **NOT Bubble Tea / no alt-screen / no full-screen TUI.** Print-style linear narration only. A full TUI would fight the `Presenter` seam (Bubble Tea wants to own the event loop; `mint`'s engine drives and calls the presenter) and the dual pretty/plain requirement.
+- **`plain` mode pulls in no UI library** — just `fmt` lines. That is the point of token-efficiency.
+
+## Cross-Verb Rendering
+
+The worked examples are all `mint release`, but the `Presenter` seam applies to every verb. All four verbs emit through the same `Presenter`; consistency is structural (one interface), not per-verb styling code.
+
+- **`init`** — process narration in the same vocabulary: `✓ created .mint.toml` / `· skipped release (exists, use --force)`. No gate (non-clobbering).
+- **`regenerate`** — same stage/notes/gate vocabulary as `release`, narrated per version (`--all` runs oldest→newest, one block each).
+- **`version`** — the **one payload verb**: its output is a *value*, not narration. **Plain prints the bare value** (`1.4.0`) so `$(mint version)`/scripts consume it cleanly; **pretty may dress it** (`🌿 mint v1.4.0`). This is the deliberate exception to "narration is the product" — `version` actually has a payload, so the bare value is the floor and styling is additive only in pretty.
+
 ---
 
 ## Working Notes
