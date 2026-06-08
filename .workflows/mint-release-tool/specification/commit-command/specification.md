@@ -56,6 +56,34 @@ The stages:
 
 **Reversibility:** no point-of-no-return / atomic-push semantics — a commit is local and reversible. Before accept, nothing has been mutated (clean abort). After accept, a completed commit is never unwound by mint (partial-failure model under Auto-push).
 
+## Staging Model
+
+What goes into the commit. The design tension: the user's habit is `git add .` (which **includes new files**), but the natural "copy from git" flag `-a` maps to git's `commit -a`, which is **tracked-only**. Two faithful flags resolve the mismatch.
+
+| Command | Modified tracked | Deleted tracked | New/untracked |
+|---|---|---|---|
+| `git commit -a` / `git add -u` | ✅ | ✅ | ❌ |
+| `git add .` (from root) / `git add -A` | ✅ | ✅ | ✅ |
+
+(mint runs from the repo root, so `git add .` ≡ `git add -A` for its purposes.)
+
+**Decision — two faithful flags:**
+
+- **Default = staged-only.** Commit the index exactly as staged. Respects deliberate staging; mint never decides *what* goes in unless asked.
+- **`-a` / `--all` = `git commit -a`** — tracked modifications + deletions, no untracked. Muscle-memory faithful.
+- **`-A` / `--add-all` = `git add -A` then commit** — everything including untracked. This is the user's `git add .` habit in one shot.
+- **Staging is deferred to gate-accept.** With `-a`/`-A`, mint computes the would-be-committed diff *read-only* for message generation, and only runs `git add` after the user accepts. Aborting an `-a`/`-A` run leaves the index exactly as it was — mint never leaves a half-staged worktree behind.
+- **Flags bundle:** `mint commit -Ap` = add-all + push with a minted message — the headline ergonomic target.
+
+**Empty-staging handling — fail loud, mirroring git's messaging:**
+
+- Empty staging (nothing to commit after staging) → **fail loud**; never invoke the AI on an empty diff. `-A`/`-a` that stage nothing land here too.
+- Distinguish the two empty cases exactly as git does:
+  - Genuinely clean tree → "nothing to commit, working tree clean".
+  - Dirty-but-unstaged tree (bare `mint commit`, nothing in the index) → guide the user — mint's flavour of git's `no changes added to commit`, e.g. *"no changes staged — use `-a`/`--all`, `-A`/`--add-all`, or `git add`"*.
+
+**Rationale:** the original commit shell function did not do its own `git add` (commit-only); the staging affordance is a deliberate enhancement in mint, not a port. The `git add .` habit (untracked included) is what tipped the choice to two flags — a faithful `-a` alone would silently drop new files, so the explicit `-A` covers the everything-case without overloading `-a`.
+
 ---
 
 ## Working Notes
