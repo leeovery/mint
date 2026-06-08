@@ -64,7 +64,7 @@ The user rejects the commit-intent direction outright, on **value** grounds (not
 2. **Commit messages are unreliable and entirely user-controlled.** mint won't always author them (`mint commit` adoption is optional), so they may be hand-written or bare `WIP`. There's no floor on commit-message quality to build on.
 3. **The conditional machinery isn't worth it.** Because the signal is unreliable, research had to make degradation-detection "central." That's a lot of complexity for a bonus that fires only on the subset of repos with clean granular history — and shrinks further as merge strategies (squash/rebase) collapse history.
 
-**Residual (low-stakes, open):** commits *could* still be passed into L1 raw with **zero special handling** — no detection, no weighting, no degradation logic — and the diff-always-wins precedence rule already prevents hallucination. The user is neutral on this ("we can take it in; I don't think we need any special handling if we choose to"). Not a load-bearing inclusion; deferred as a trivial L1-shape detail, not a feature.
+**Residual — now closed.** Earlier the user was neutral on passing commits into L1 raw ("we can take it in… if we choose to"). On reflection the user closed it: **don't use commits at all — it was a false path.** No commit text enters L1 in any form. This removes the residual GIGO/precedence concern (review F6): with zero commit text in the AI's context, there's no unlabelled signal that could compete with the diff, so no precedence-framing prose is needed.
 
 ### Cascade
 
@@ -96,7 +96,7 @@ Its core principles are the same thesis as this whole epic:
 - **Presentation (skin)** — keep mint's emoji-headed style as the rendering of those categories (`✨ Added`, `🐛 Fixed`, `🔧 Changed`, `🗑️ Removed`, …). This *refines* the first discussion's "emoji-headed sections" decision (pins the taxonomy behind the emoji); it does not override it.
 
 Refinements that fall out:
-- **mint's TL;DR one-liner is retained**, sitting *above* the categorized sections. KaC has no equivalent; it's mint's genuine value-add — the cross-release narrative synthesis that's the whole reason an AI layer beats regex tools.
+- **mint's TL;DR one-liner is retained**, sitting *above* the categorized sections. KaC has no equivalent; it's mint's genuine value-add — **cross-*change* narrative synthesis from the whole diff**. (Clarified per review F8: the value is the AI reading the *entire release as one picture* and writing a unified story — independent of how it was committed. This is what beats regex tools, which render one-line-per-commit and structurally can't see the whole. It needs the complete diff, which it has; it never needed commit history. "Cross-commit" was loose wording for "cross-change.")
 - **Diff-inferability tiers the categories.** `Added / Changed / Fixed / Removed` are readable from a diff. `Deprecated` and `Security` are intent-laden and often invisible in a raw diff → kept in the vocabulary but treated as **opportunistic** (emit only on real signal), never forced. Empty sections omitted entirely (KaC principle).
 - **One generated payload, two sinks** (resolves the changelog-vs-release-note question): the per-release entry is identical; `CHANGELOG.md` accumulates entries under SemVer version headers per KaC's file structure, while the tag/GitHub release note surfaces the single entry. Same convention governs both.
 
