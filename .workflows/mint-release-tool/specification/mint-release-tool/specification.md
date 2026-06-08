@@ -146,10 +146,10 @@ Hooks are mint's escape valve for steps **specific to one project** that mint ca
 
 ### Mechanism: one mechanism only
 
-Hooks are a **config table of shell commands keyed by lifecycle point** (`[hooks]` in `.mint.toml`). There is no separate `.release/hooks/` directory convention — a command string can simply *call* a script, so scripts are just something a string invokes, not a second mechanism.
+Hooks are a **config table of shell commands keyed by lifecycle point** (`[release.hooks]` in `.mint.toml`). There is no separate `.release/hooks/` directory convention — a command string can simply *call* a script, so scripts are just something a string invokes, not a second mechanism.
 
 ```toml
-[hooks]
+[release.hooks]
 pre_tag = "npm ci && npm run build"        # single string — the 90% case
 # or:
 pre_tag = ["npm ci", "npm run build"]      # array of strings, run in order
@@ -287,7 +287,7 @@ The format anchors on the **Keep a Changelog** convention — its category taxon
 - **Emoji-headed sections keyed to the Keep a Changelog taxonomy** — the canonical bucket set is `Added / Changed / Deprecated / Removed / Fixed / Security`, rendered with emoji headers (e.g. `✨ Added`, `🔧 Changed`, `🐛 Fixed`, `🗑️ Removed`). A *fixed, standard* taxonomy forces the AI to classify every change, and classification is itself prioritization — which helps the salience problem. Empty sections are omitted entirely.
 - **Unit of entry = the notable item**, not the file / hunk / commit. The AI reads the whole diff, extracts notable items, and files each under its category. A change that adds a feature *and* fixes a bug yields two items in two sections — multi-category coverage falls out naturally.
 - **Notable features bolded + described** (celebrated, not buried in a flat list).
-- **Diff-inferability tiers the categories.** `Added / Changed / Fixed / Removed` are readable from a diff. `Deprecated` and `Security` are intent-laden and often invisible in a raw diff → kept in the vocabulary but treated as **opportunistic**: emit only on an *explicit textual marker* (a `@deprecated`/deprecation annotation; an obvious security surface — auth, crypto, input validation, a CVE-referencing dependency bump). Light prompt guidance, not detection machinery; expected to stay empty most releases. The deliberate escape hatch for diff-invisible intent is the **`notes_context` inject knob** — the user tells mint rather than mint guessing.
+- **Diff-inferability tiers the categories.** `Added / Changed / Fixed / Removed` are readable from a diff. `Deprecated` and `Security` are intent-laden and often invisible in a raw diff → kept in the vocabulary but treated as **opportunistic**: emit only on an *explicit textual marker* (a `@deprecated`/deprecation annotation; an obvious security surface — auth, crypto, input validation, a CVE-referencing dependency bump). Light prompt guidance, not detection machinery; expected to stay empty most releases. The deliberate escape hatch for diff-invisible intent is the **`[release].context` inject knob** — the user tells mint rather than mint guessing.
 - **Strict "no preamble, no meta-commentary"** rule so prompt artifacts can never leak.
 - Default prompt instructs the AI to **ignore version-number bumps** and other trivial bookkeeping churn.
 
@@ -295,10 +295,10 @@ The same body flows to every sink; in the changelog it sits under the `## [x.y.z
 
 ### Prompt control — two knobs (no third "themes" concept)
 
-1. **`notes_context`** (string or file) — *injects* project-specific guidance into mint's default prompt (e.g. "dev-workflow toolkit; emphasise user-facing changes"). The common case.
-2. **`notes_prompt`** (file path) — *full override* of the prompt; mint still supplies the diff. Total control.
+1. **`[release].context`** (string or file) — *injects* project-specific guidance into mint's default prompt (e.g. "dev-workflow toolkit; emphasise user-facing changes"). The common case.
+2. **`[release].prompt`** (file path) — *full override* of the prompt; mint still supplies the diff. Total control.
 
-A "theme/variant" is not a separate feature — it's just a `notes_prompt` override file. `mint init` can scaffold an example prompt. No built-in theme enum (YAGNI).
+A "theme/variant" is not a separate feature — it's just a `[release].prompt` override file. `mint init` can scaffold an example prompt. No built-in theme enum (YAGNI).
 
 ### Success criterion & verification
 
@@ -426,7 +426,7 @@ The biggest live pain with the legacy script is that release notes go out *unsee
 - **`y` accept** (default; a bare Enter accepts) → proceed to Record → tag → push.
 - **`n` abort** → **full auto-unwind**: identical to the pre-push failure path — mint rolls back everything it made this run, including any `pre_tag` hook-artifact commit, returning to the exact clean starting state. The hook re-runs next time (idempotent build). A user-abort and a pre-push git failure are treated identically.
 - **`e` edit** → opens the notes in `$EDITOR` for real manual editing. **The saved text is used verbatim — no re-parse, no validation.** A human edit is trusted; structural validation only ever applied to untrusted AI output (which has no machine labels anyway). No mangle-loop, no possible trap.
-- **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, and shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `notes_context`.
+- **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, and shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `[release].context`.
 
 **Exact gate rendering** (the default-yes `Continue?` prompt, menu layout, and line-read input handling) is owned by the **CLI Presentation specification** (a cross-spec dependency); this section owns the four semantic choices and their effects.
 
@@ -452,7 +452,7 @@ When `--dry-run` generates the notes preview, mint **caches it so the subsequent
 
 - **The win is determinism, not cost.** AI generation is stochastic; regenerating on the real run risks shipping notes that differ from the preview. Reuse removes that risk. Skipping the second AI call is a bonus.
 - **Activation is automatic.** The dry-run writes the note to the cache; the real run reuses it on a key match. No flag — the key-based invalidation makes automatic reuse safe, and it serves the motivating workflow transparently.
-- **Cache key = hash of (post-`diff_exclude` diff + computed version + prompt / `notes_context`)** — not HEAD sha, since a `pre_tag` hook can change the tree between runs. **Miss → regenerate**, and say so ("diff changed since dry-run preview — regenerating notes"). mint never silently ships a stale note that no longer matches the release.
+- **Cache key = hash of (post-`diff_exclude` diff + computed version + prompt / `[release].context`)** — not HEAD sha, since a `pre_tag` hook can change the tree between runs. **Miss → regenerate**, and say so ("diff changed since dry-run preview — regenerating notes"). mint never silently ships a stale note that no longer matches the release.
 - **Re-review is unaffected.** A cached note does **not** skip the notes-review gate: an interactive real run still shows it (re-showing identical notes is cheap, and avoids assuming an out-of-band approval mint can't verify); `-y` still skips the gate on both runs. Reuse guarantees determinism; the review gate stays orthogonal.
 - **Location:** a **gitignored cache** (e.g. `.mint/cache/`) or system temp, keyed by repo, **never committed**, with a **short TTL** backstop so a stale preview can't resurrect.
 
@@ -556,6 +556,49 @@ mint version                                   print mint's own version
 ```
 
 No flags → fully interactive (asks source, asks target, shows plan, confirms). See Regenerate / Backfill Notes for semantics.
+
+### Config Format & Schema
+
+#### Format & location
+
+- **Format: TOML.** Go-native, typed/validated with real error messages, supports comments, and `[table]`-style sections read cleanly. (YAML's indentation + type-coercion footguns aren't worth it.)
+- **Location: `.mint.toml` at the repo root.** mint resolves the root via `git rev-parse --show-toplevel`, looks for `.mint.toml` there, and runs from root.
+- **Fully optional.** Zero config = sensible defaults everywhere (tag-only release, `claude -p` notes, auto-derived release branch). `mint init` scaffolds a documented file.
+- **Typed validation, fail-loud** on unknown keys / bad types, with clear messages.
+
+#### Shape: shared engine keys + a table per verb
+
+mint is multi-verb, so config is **verb-namespaced**: keys shared by every verb sit at the top level; each verb has its own table. This shape is adopted across the epic (it supersedes an earlier flat `notes_*` / `[hooks]` layout) — shared-vs-verb-specific becomes structural rather than inferred from prefixes, the verbs stay symmetric, and a future verb is a new table rather than more prefixes.
+
+```toml
+# Engine-level — shared by every verb
+ai_command     = "claude -p"                      # default
+diff_exclude   = ["skills/**/knowledge.cjs", "*.min.js"]
+max_diff_lines = 50000
+
+[release]
+tag_prefix       = "v"             # default "v"
+commit_prefix    = "🌿"            # default 🌿 — release commit + tag subject; cosmetic
+release_branch   = "main"          # default: auto-derived from origin/HEAD
+version_file     = "bin/tool"      # optional; omit = tag-only
+version_pattern  = 'RELEASE_VERSION="{version}"'   # omit = whole file is the version
+changelog        = true            # default true; false = no CHANGELOG.md projection
+publish          = true            # default true; false = tag + push only
+provider         = "github"        # optional; default auto-detected from remote host
+on_notes_failure = "abort"         # abort | fallback
+context          = "This is a dev-workflow toolkit; emphasise user-facing changes."  # inject into the notes prompt
+prompt           = ".mint/notes-prompt.md"         # optional full prompt override
+
+[release.hooks]
+preflight    = "scripts/check.sh"
+pre_tag      = ["npm ci", "npm run build"]
+post_release = "scripts/notify.sh"
+```
+
+- **Shared engine keys (top level):** `ai_command`, `diff_exclude`, `max_diff_lines` — they serve every verb, so they sit above the tables.
+- **`[release]` keys:** all release-specific config. `context` (the notes context-injection knob — formerly `notes_context`) and `prompt` (the full prompt override — formerly `notes_prompt`) are plain names; the table disambiguates them, so no `notes_` prefix is needed.
+- **Hooks nest under their owning verb** as `[release.hooks]` (top-level is strictly shared-engine, so a top-level `[hooks]` would contradict that rule). Release owns `preflight` / `pre_tag` / `post_release`.
+- **Other verbs add their own `[verb]` table** (e.g. a future `mint commit` gets `[commit]`), defined in that verb's own specification. This release spec specifies only the shared-engine keys and the `[release]` / `[release.hooks]` tables.
 
 ### Global / presentation flags
 
