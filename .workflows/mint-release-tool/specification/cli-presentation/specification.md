@@ -107,6 +107,13 @@ Two gating verbs (`release`, `regenerate`). `init`'s safety is **structural** (n
 
 **Pretty under `-y`:** `-y` **skips the gate** rather than auto-pressing it — identical outcome to pressing Enter, but the menu is not drawn (consistent with "the gate is skipped"). "Full styling under `-y`" means the rest of the run is styled; it does not mean the interactive menu is shown then auto-answered. The auto-accept is rendered via the gate auto-accept event (pretty: a concise accept line in the same vocabulary, e.g. `✓ notes  accepted (-y)`; plain: `notes: accepted (-y)`).
 
+**`Prompt(gate)` carries its choice set.** A *gate* is described by the choices it offers; `Prompt` renders whatever choice set the gate declares and returns one of them. This lets one method render every gate variant:
+
+- **Notes-review gate** (release; regenerate-fresh) — the four-choice `y`/`n`/`e`/`r` `Continue?` menu specified in the Pretty Layer; default-yes; the engine owns the `e`/`r` re-entry loop.
+- **Reuse confirm** (regenerate reusing existing notes) — a reduced **two-choice `y`/`n`** confirm rendered in the same `Continue?` vocabulary (no `e`/`r`, since there are no freshly-generated notes to edit or regenerate); default-yes. Plain skips it under `-y` exactly like the notes gate, with an analogous auto-accept echo.
+
+**Regenerate source/target prompts.** Before the notes/confirm gate, `regenerate` has interactive *source* and *target* selection prompts. They render through the `Presenter` using the **same line-read input model** as `Continue?` (type the value, press Enter; case-insensitive; unrecognised input re-prompts, never silently proceeds), with plain rendering them as terse prompt lines in the same `key: value` vocabulary. Under `-y` they are **skipped using the provided flags/defaults**, with an auto-accept echo in the same vocabulary as the notes gate (so the chosen source/target are visible in a captured log). The forbidden-combination rule applies to them as to any interactive gate: non-TTY stdin without `-y` fails loud.
+
 ## The Pretty Layer
 
 The `pretty` presenter renders the run as styled, linear narration (print-style, no alt-screen). The look-and-feel below is the fixed intent; exact spacing/wording is refinable at implementation.
@@ -272,6 +279,12 @@ The worked examples are all `mint release`, but the `Presenter` seam applies to 
 - **`init`** — process narration in the same vocabulary: `✓ created .mint.toml` / `· skipped release (exists, use --force)`. No gate (non-clobbering).
 - **`regenerate`** — same stage/notes/gate vocabulary as `release`, narrated per version (`--all` runs oldest→newest, one block each).
 - **`version`** — the **one payload verb**: its output is a *value*, not narration. **Plain prints the bare value** (`1.4.0`) so `$(mint version)`/scripts consume it cleanly; **pretty may dress it** (`🌿 mint v1.4.0`). This is the deliberate exception to "narration is the product" — `version` actually has a payload, so the bare value is the floor and styling is additive only in pretty.
+
+**End-of-run line — success-shaped and verb-shaped.** The `🌿 released {project} v{X} · {url}` / `done: {project} v{X} {url}` lines are the *release-success* form. The closing line follows the verb's payload:
+
+- **`regenerate`** does not publish and has no release URL — it emits a closing summary in the same vocabulary without the `{url}` field; with `--all` (oldest→newest), each version is its own narrated block and the closing line summarises the set.
+- **`init`** has no versioned release — its `created`/`skipped` lines are themselves the terminal output; no release-style brand footer is required.
+- **Failure runs** end after the `✗`/`unwound`/`warn` lines: the **end-of-run success line is suppressed** (it is success-only). Failure/abort is communicated by those lines plus the engine-owned non-zero exit code — there is no failure-flavoured closing brand line.
 
 ## Dependencies
 

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 2
 phase: Gap Analysis
@@ -22,10 +22,10 @@ The gate inventory states `regenerate` has "interactive *source* + *target* prom
 An implementer would have to invent: the menu/prompt shape, whether they are choice-lists or free text, the plain-mode rendering (the per-event table has no row for them), and whether their input handling mirrors `Continue?`. The forbidden-combination interaction is implied (`-y` "uses flags/defaults, auto-accepts") but the auto-accept event/echo for these specific prompts is unspecified, unlike the explicit `notes: accepted (-y)` echo for the notes gate.
 
 **Proposed Addition**:
-_(leave blank until discussed)_
+Added a "Regenerate source/target prompts" paragraph to the Gating section: they render through the `Presenter` with the same line-read input model as `Continue?` (terse `key: value` in plain), are skipped under `-y` using flags/defaults with an auto-accept echo, and are subject to the forbidden-combination rule.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 
@@ -41,10 +41,10 @@ The gate inventory distinguishes two regenerate gate variants: "the notes-review
 Because `Prompt(gate)` is documented to return `y`/`n`/`e`/`r` and the engine owns the e/r re-entry loop, the reuse confirm's relationship to that contract needs stating — otherwise an implementer must guess which choices the reuse confirm offers and how the presenter renders a (possibly) different gate.
 
 **Proposed Addition**:
-_(leave blank until discussed)_
+Added a "`Prompt(gate)` carries its choice set" paragraph: a gate declares its choices and `Prompt` renders whatever set it declares. The reuse confirm is a reduced two-choice `y`/`n` gate (no `e`/`r`) in the same `Continue?` vocabulary, default-yes, `-y`-skippable like the notes gate.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 
@@ -62,9 +62,9 @@ The "end of run" event is defined only with a release-shaped, URL-bearing payloa
 2. **Failure runs.** Both failure worked examples (lines 186–191, 248–251) end after the `✗`/`unwound`/`warn` lines with no closing brand/`done:` line. This implies the end-of-run line is success-only, but that conditionality is never stated. An implementer needs to know whether `StageFailed` suppresses the end-of-run event entirely, or whether a failure-flavoured closing line should be emitted.
 
 **Proposed Addition**:
-_(leave blank until discussed)_
+Added an "End-of-run line — success-shaped and verb-shaped" paragraph to Cross-Verb Rendering: the URL-bearing line is the release-success form; `regenerate` closes without `{url}` (per-version blocks + a set summary under `--all`), `init`'s created/skipped lines are terminal, and failure runs suppress the success line (failure communicated by the failure/unwind lines + non-zero exit code).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
