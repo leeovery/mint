@@ -20,10 +20,10 @@ topic: mint-release-tool
 The discussion explicitly parked one item *for the spec to resolve*: "Repo-root anchoring with the global-binary + shim model (where mint sets its working dir; behaviour in submodules/worktrees) is an implementation detail flagged for spec, not re-litigated here." The specification resolves root via `git rev-parse --show-toplevel` and states "mint runs from root" / "runs from root" (Stage 2 gate #1 and the config location section), but it never addresses the flagged edge: what `--show-toplevel` resolves to when mint is invoked from inside a git submodule or a linked worktree, and where mint then sets its working directory. This was a conscious "carry into the spec" item, not a closed decision, and it fell out. It matters because the global-binary-plus-shim model means mint can be launched from an arbitrary subdirectory, and submodule/worktree resolution changes which `.mint.toml` and which tag set mint sees.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added a "Submodule / worktree resolution" note under Stage 2 gate #1: `git rev-parse --show-toplevel` resolves to the innermost enclosing repo/linked worktree from the invocation directory; submodule = its own repo (own tags + `.mint.toml`); linked worktree = worktree root sharing the main repo's tag/ref store; mint anchors to and runs from that resolved root.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Discussion deferred this to spec ("implementation detail flagged for spec"); resolved with git's native resolution semantics as the sensible default.
 
 ---
 
