@@ -123,8 +123,9 @@ Timeout is not retried → straight to `on_notes_failure`; the single retry cove
 The changelog rule states it is "Idempotent by version key — a re-run or amended release for an *existing* version replaces that version's section in place rather than appending a duplicate" (line 366). But on the forward `mint release` path, Stage 2's tag-free gate (line 126) aborts before Record if the target tag already exists, so the forward path can never reach Record with an "existing version". The idempotency rule therefore only applies to the regenerate path. As written it reads as a forward-path Record behaviour, which is contradicted by the preflight gate. Either clarify that idempotent-replace is a regenerate-path behaviour, or note the specific forward-path scenario (if any) where Record sees an existing version section. Without this an implementer may build forward-path replace logic that is dead code, or be confused about which path owns it.
 
 **Proposed Addition**:
+Clarified idempotent-replace is a regenerate-path (and amended-release) behaviour; forward path's tag-free gate blocks re-running an existing version before Record.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

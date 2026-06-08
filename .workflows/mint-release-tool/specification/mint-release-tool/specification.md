@@ -363,7 +363,7 @@ mint **owns** CHANGELOG generation (Keep a Changelog format). mint is a **genera
 - **No `[Unreleased]` section.** KaC's `[Unreleased]` exists for humans accruing notes between releases; mint writes the finished version section directly, so it doesn't apply.
 - **Newest on top** — the new version section is prepended **below the file's Keep a Changelog header preamble, above all prior version sections**.
 - **First release** — if `CHANGELOG.md` doesn't exist, mint creates it with the standard Keep a Changelog header preamble first, then the first version section.
-- **Idempotent by version key** — a re-run or amended release for an *existing* version **replaces that version's section in place** rather than appending a duplicate.
+- **Idempotent by version key** — writing an *existing* version's section **replaces it in place** rather than appending a duplicate. This applies on the **regenerate path** (and amended releases), since the forward `mint release` path's tag-free preflight gate blocks re-running an already-released version before Record is reached.
 - **Skipped entirely when `changelog = false`.**
 
 ### Version-file projection
