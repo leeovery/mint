@@ -84,6 +84,29 @@ What goes into the commit. The design tension: the user's habit is `git add .` (
 
 **Rationale:** the original commit shell function did not do its own `git add` (commit-only); the staging affordance is a deliberate enhancement in mint, not a port. The `git add .` habit (untracked included) is what tipped the choice to two flags — a faithful `-a` alone would silently drop new files, so the explicit `-A` covers the everything-case without overloading `-a`.
 
+## Commit Message Format & Prompt
+
+L3 owns this prompt; it is simply a different default from release's.
+
+**Default format = Conventional Commits 1.0.0** (the formal standard, conventionalcommits.org):
+- `type(scope): description` subject line — imperative, concise; optional blank line + wrapped body for the *why*.
+- Chosen because the user's own repos already use conventional commits (`discussion(...)`, `chore(...)`, `docs(...)`).
+- **AI infers the `type`** (feat/fix/chore/docs/…) from the diff — central to the format and reliably inferable.
+- **Scope off by default** — scope conventions are project-specific and the AI guesses them inconsistently; better omitted than wrong. (Re-enabling/guiding scope is a prompt/config affordance if ever wanted.)
+- **Two-knob override**, mirroring release: a commit-specific context-inject knob + a full prompt-override knob (key names in Config). Same "mint owns the prompt; `ai_command` is transport" model.
+
+**No mint branding in the message text.** Commit does **not** use release's `commit_prefix` (🌿) — a conventional-commit message is plain `type(scope): …`, and forcing a 🌿 onto every commit is undesirable. `commit_prefix` stays a release-only concern (release commit + tag subject).
+
+### The `$EDITOR` fallback — one degradation path for all "no AI message" cases
+
+Three cases converge on dropping to `$EDITOR` with an empty/template message (behaving like plain `git commit`):
+
+1. **`--no-ai`** — skip AI entirely; the user writes the message. No synthetic stub.
+2. **AI generation failure** — if the AI errors or returns nothing usable after the engine's one retry, fall back to `$EDITOR` rather than abort. Low-stakes; the user is at the terminal anyway.
+3. **`max_diff_lines` exceeded** — commit does **not** abort (release's notes-failure model is too harsh for a routine large commit). Fall back to `$EDITOR` with a clear note (*"diff too large to summarise — opening editor"*). `diff_exclude` still applies first, so excluded noise doesn't push a diff over the limit.
+
+(The detailed semantics of the `$EDITOR` path — TTY requirement, save-as-accept, regeneration failure routing — are specified next.)
+
 ---
 
 ## Working Notes
