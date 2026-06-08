@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 1
 phase: Gap Analysis
@@ -174,8 +174,9 @@ New "Notes-path precedence" subsection: first-release → degenerate → `--no-a
 Two regenerate rules can interact ambiguously. A `--target changelog`/`both` when `changelog = false` is a fail-loud error (line 491). Batch `--all` uses "skip-and-continue, summarise at the end" rather than abort-the-batch (line 515). For `regenerate --all --target both` with `changelog = false`, it is unclear whether the changelog-disabled condition is a single up-front validation error that aborts the whole batch before it starts (config-level, not per-version), or whether it is treated as a per-version skip. Since `changelog = false` is a static config fact (not a per-version condition like a too-large diff), the natural reading is an up-front abort — but the spec's two rules don't say which wins. Worth one line to disambiguate config-level pre-validation from per-version skip-and-continue.
 
 **Proposed Addition**:
+Clarified: skip-and-continue is per-version only; config-level errors (`--target changelog`/`both` with `changelog=false`) are validated up front and abort the whole batch before it starts.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

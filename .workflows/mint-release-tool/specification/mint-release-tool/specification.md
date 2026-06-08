@@ -528,7 +528,7 @@ Regenerate has two independent axes plus scope, all leaving tags untouched:
 ### Batch `--all` semantics
 
 - **Ordering: oldest → newest** (lets mint rebuild `CHANGELOG.md` in natural order).
-- **Partial failure: skip-and-continue, summarise at the end** — *not* abort-the-batch (a single huge release tripping `max_diff_lines` shouldn't kill the others). This consciously overrides the single-version `on_notes_failure = abort` default; mint reports e.g. *"27 regenerated, 3 skipped: vX (diff too large), …"* so the user re-runs the stragglers.
+- **Partial failure: skip-and-continue, summarise at the end** — *not* abort-the-batch (a single huge release tripping `max_diff_lines` shouldn't kill the others). This consciously overrides the single-version `on_notes_failure = abort` default; mint reports e.g. *"27 regenerated, 3 skipped: vX (diff too large), …"* so the user re-runs the stragglers. Skip-and-continue covers **per-version** failures only; **config-level** errors are validated **up front and abort the whole batch before it starts** — e.g. `--target changelog`/`both` with `changelog = false` (a static config fact, not a per-version condition) fails immediately rather than being skipped per version.
 - **Review gates per version by default** (consistent with "notes never go out unseen"); **`-y`** is the opt-out to run fully unattended.
 - **Re-runnable, no resume state.** `--reuse --all` (mass-heal from tags) is fully deterministic; `--fresh --all` re-generates (stochastic but harmless).
 
