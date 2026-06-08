@@ -41,6 +41,21 @@ The AI message-generation concern is a shared engine that both `release` and `co
 - **Layer 1 source:** the staged diff (`git diff --cached`), or the would-be-staged diff under `-a`/`-A` computed read-only (see Staging).
 - **Layer 3 glue:** supplies the Conventional Commits default prompt/format, the `[commit]` context/override knobs, and the commit sinks (`git commit`, optional push).
 
+## Commit Flow / Lifecycle
+
+The core invariant that shapes the whole flow: **mint mutates nothing until the user accepts the gate.** Everything before accept is read-only — including the `-a`/`-A` staging, which is deferred to the accept path. This is what makes abort a true no-op.
+
+The stages:
+
+1. **Preflight (minimal)** — git repo present; *something to commit* (for `-a`/`-A`, the would-be-staged changes; otherwise the existing index). Computed read-only. Empty → fail loud.
+2. **Build context (L1)** — filtered diff of what *would* be committed (default: `git diff --cached`; with `-a`/`-A`: the would-be-staged working-tree diff, computed **without** mutating the index), with `diff_exclude` + `max_diff_lines` applied.
+3. **Generate (L2)** — the commit message (skipped under `--no-ai`; fallback path covered under Message Format).
+4. **Review gate** — the same `Continue?` rendering as release, interactive only (see Review Gate).
+5. **On accept** — apply `-a`/`-A` staging now (if given), then `git commit` (via `git_safe`).
+6. **Push (optional)** — only if `-p`/`--push` (flag-only, no config default) (see Auto-push).
+
+**Reversibility:** no point-of-no-return / atomic-push semantics — a commit is local and reversible. Before accept, nothing has been mutated (clean abort). After accept, a completed commit is never unwound by mint (partial-failure model under Auto-push).
+
 ---
 
 ## Working Notes
