@@ -96,6 +96,149 @@ Two gating verbs (`release`, `regenerate`). `init`'s safety is **structural** (n
 
 **Regenerate / edit re-entry:** after `e` (edit in `$EDITOR`) or `r` (regenerate-with-context), flow **loops back to the same `Continue?` gate** with the refreshed notes, until `y`/`n`. Rendering is **linear** — it re-prints the notes block + gate below (it scrolls; no screen-clearing or alt-screen).
 
+## The Pretty Layer
+
+The `pretty` presenter renders the run as styled, linear narration (print-style, no alt-screen). The look-and-feel below is the fixed intent; exact spacing/wording is refinable at implementation.
+
+**Brand lines:**
+- Top: `🌿 mint · {project}  ›  releasing v{X}`
+- Bottom: `🌿 released {project} v{X} · {url}`
+- The leaf ties to the engine's `commit_prefix` brand. Brand lines are flush-left; everything else indents under them.
+
+**Status glyphs:**
+- `✓` success (green) · `✗` failure (red) · `⚠` warn (amber) · `↩` auto-unwind. Spinner frames `⠋⠙⠹…`.
+
+**Stage lines:** two-space indent, glyph, stage name padded to a column, terse detail. Symmetry/consistency is the bar — no ad-hoc indentation.
+
+**Release notes — no box.** A titled `── release notes · v{X} ──` rule, the body verbatim, a closing `────` rule. (The rounded box was dropped: it forced wrap/truncate on arbitrary-width AI notes and read as clutter.)
+
+**Review gate — vertical menu, options above the question, `[default]` next to its action, prompt last:**
+
+```
+    y  accept & proceed [default]
+    n  abort
+    e  edit in $EDITOR
+    r  regenerate
+
+  Continue? › 
+```
+
+**Enter ⇒ `y`** (accept & proceed — the 99% path). `n` ⇒ abort (full auto-unwind, owned by the engine). `e` ⇒ `$EDITOR`; `r` ⇒ regenerate-with-context.
+
+**Width robustness (light touch):** pretty mode assumes a normal terminal; no pervasive width math. The single concession — **decorative rules are capped at `min(terminalWidth, ~50)`** so the `── release notes ──`/closing rule can't overflow and wrap into junk. Everything else **wraps naturally — never truncate** (losing release-note text is worse than a wrapped line). Stage lines stay fixed (they're short). Genuinely tiny/weird terminals are a `--plain` case. Exact rule width is an implementation detail.
+
+**`-y` alignment:** `-y` answers this `Continue?` gate `yes` unattended — identical outcome to pressing Enter.
+
+**Full `pretty` run (worked example):**
+
+```
+🌿 mint · acme  ›  releasing v1.4.0
+
+  ✓ version    v1.3.2 → v1.4.0 (minor)
+  ✓ preflight  clean · on main · tag free · in sync with origin
+
+  Plan
+    • commit   CHANGELOG.md + bin/acme
+    • tag      v1.4.0 (annotated)
+    • push     --atomic → origin
+    • publish  GitHub release
+
+  ✓ prep       pre_tag: npm ci && npm run build (2.3s)
+  ⠋ notes      generating with claude…
+  ✓ notes      generated (1.1s)
+
+  ── release notes · v1.4.0 ───────────────────────
+  Faster cold starts and a calmer log.
+
+  ✨ Features
+    • Parallel warm-up halves boot time
+  🐛 Fixes
+    • Stop double-flush on SIGTERM
+  ─────────────────────────────────────────────────
+
+    y  accept & proceed [default]
+    n  abort
+    e  edit in $EDITOR
+    r  regenerate
+
+  Continue? › 
+
+  ✓ record     CHANGELOG.md + bin/acme
+  ✓ tag/push   v1.4.0 pushed (atomic)
+  ✓ publish    github release created
+
+🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0
+```
+
+**Pretty failure + auto-unwind, and a post-release warn:**
+
+```
+  ✗ tag/push   push rejected: remote moved
+  ↩ unwound    removed tag v1.4.0, reset 2 release commit(s) — repo clean
+
+  ⚠ post_release  hook failed (tag is already published): scripts/notify.sh exited 1
+```
+
+## The Plain Layer
+
+The `plain` presenter renders the same `Presenter` events as terse, token-efficient text — no animation, no glyphs, no colour. Only the **delimiters and stage narration** differ from pretty; the **notes body is byte-identical** in both modes.
+
+**Contract:**
+
+- **`key: value` lines, lowercase, one per stage on completion.**
+- **Start line for long/blocking stages only.** A stage that blocks on something slow (AI **notes** generation, a `pre_tag` build hook) also emits a terse start line (`notes: generating…` → `notes: generated (1.1s)`), so a live-tail consumer (`mint release | tee log`, a streaming agent) isn't staring at silence through a multi-second wait. **Short stages stay one-line-on-completion** — no start line. This is plain's equivalent of the pretty spinner; the captured-log target gains only one extra line per long stage.
+- **Stage terseness** as-is (e.g. `preflight: ok (clean, on main, tag free, in sync)`) — terse but human-legible, not pared further.
+- **Notes block** delimited by plain rules: `--- release notes v{X} ---` … `--- end notes ---`, so a reader can slice it out reliably.
+- **Notes body verbatim** — the same bytes as pretty/tag/changelog/release, **emoji headers shown if present** (`✨ Features`, `🐛 Fixes`). No stripping/transforming.
+- **`-y` echo** — when the gate is skipped under `-y`, emit `notes: accepted (-y)` so the auto-accept is visible in the captured log.
+- **Errors/warnings** also go to **stderr** (per the stream contract), in addition to appearing in the plain narration.
+
+**Per-event rendering (pretty vs plain):**
+
+| Event | `pretty` | `plain` |
+|---|---|---|
+| start of run | `🌿 mint · {project}  ›  releasing v{X}` brand line | `mint: releasing {project} v{X}` |
+| `StageStarted` | dim line with spinner: `⠋ notes  generating with claude…` | (blank for short stages; long/blocking stages emit a terse start line, e.g. `notes: generating…`) |
+| `StageSucceeded` | `✓ {stage}  {detail} ({elapsed})`, glyph green | `{stage}: ok` / `{stage}: {detail}` |
+| `StageFailed` | `✗ {stage}  {message}`, glyph red | `{stage}: FAILED - {message}` (also stderr) |
+| auto-unwind | `↩ unwound  {what it undid} — repo clean` | `unwound: {what}; repo clean` |
+| `Warn` | `⚠ {label}  {message}`, amber | `{label}: WARN - {message}` (also stderr) |
+| `ShowPlan` | a `Plan` block, bulleted | `plan: {semicolon-joined one-liner}` |
+| `ShowNotes` | titled rule + body + closing rule (no box) | `--- release notes v{X} ---` … `--- end notes ---` |
+| review gate | vertical menu then `Continue? › ` prompt; Enter ⇒ `y` | (not shown — non-TTY ⇒ `-y` required ⇒ gate skipped; emits `notes: accepted (-y)`) |
+| end of run | `🌿 released {project} v{X} · {url}` | `done: {project} v{X} {url}` |
+
+**Same run in `plain` (agent, `-y`):**
+
+```
+mint: releasing acme v1.4.0
+version: v1.3.2 -> v1.4.0 (minor)
+preflight: ok (clean, on main, tag free, in sync)
+plan: commit changelog+version; tag v1.4.0; push --atomic; publish github
+prep: pre_tag ok (2.3s)
+notes: generated (1.1s)
+--- release notes v1.4.0 ---
+Faster cold starts and a calmer log.
+
+✨ Features
+- Parallel warm-up halves boot time
+🐛 Fixes
+- Stop double-flush on SIGTERM
+--- end notes ---
+notes: accepted (-y)
+record: CHANGELOG.md + bin/acme
+tag/push: v1.4.0 pushed (atomic)
+publish: github release created
+done: acme v1.4.0 https://github.com/acme/acme/releases/tag/v1.4.0
+```
+
+**Plain failure:**
+
+```
+tag/push: FAILED - push rejected: remote moved
+unwound: removed tag v1.4.0, reset 2 commits; repo clean
+```
+
 ---
 
 ## Working Notes
