@@ -107,6 +107,20 @@ Three cases converge on dropping to `$EDITOR` with an empty/template message (be
 
 (The detailed semantics of the `$EDITOR` path — TTY requirement, save-as-accept, regeneration failure routing — are specified next.)
 
+## `$EDITOR` Fallback — Path Semantics
+
+The three "no AI message" cases (`--no-ai`, AI-generation failure, oversized diff) all drop to `$EDITOR`. This path is reconciled with the deferred-staging model, the gate, and the `-y`/non-TTY posture.
+
+**Requires a TTY.** `$EDITOR` is inherently interactive. When a fallback fires under `-y` or non-TTY stdin (e.g. `mint commit -Apy --no-ai`, or `-Apy` when the AI fails / the diff is oversized), mint **fails loud** (*"no AI message and no interactive editor available"*) — it never hangs and never commits an empty message. This extends the gate's forbidden-combo philosophy (unattended + needs-human → fail loud) to the editor path. An unattended run with no message source is contradictory: `--no-ai` unattended has nothing to commit with, and an unattended user wants the AI anyway. **There is no `-m`/`--message` escape** — anyone needing unattended-with-own-message uses plain `git commit`; `mint commit` is for *minted* messages.
+
+**The editor save *is* the accept event.** On the fallback path the editor replaces the `Continue?` gate (git-like):
+
+- **No separate `Continue?` gate.** The gate governs the *AI-generated* message only; the fallback path uses the editor itself as the review. A non-empty save = accept; quit/empty = abort. (This reconciles "`--no-ai` behaves like plain `git commit`" with "gate ON by default" — the gate is AI-path-only.)
+- **Staging applies on save.** Same "stage on accept" rule, where *save* is the accept: the editor opens against the real (unstaged) state; only on a non-empty save does mint apply `-a`/`-A` staging, then commit. Mutate-nothing-until-accept holds.
+- **Empty/aborted editor = true no-op.** No staging applied, no commit, no push (even with `-p`). Nothing was mutated, so there is nothing to clean up.
+
+**Regeneration failure routes here too.** If the user presses `r` (regenerate-with-context) at the gate and the regeneration fails after its one retry, mint treats it as any other AI failure → the `$EDITOR` fallback. One consistent rule: any failed AI generation lands at the editor. No special "re-show the prior message" path. (Under `-y`/non-TTY this is moot — `r` is an interactive-only gate action.)
+
 ---
 
 ## Working Notes
