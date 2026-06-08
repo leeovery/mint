@@ -32,7 +32,7 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 
 ### Map
 
-  Discussion Map — Release-Notes Quality (10 subtopics — 6 decided · 4 pending)
+  Discussion Map — Release-Notes Quality (10 subtopics — 10 decided)
 
   ├─ ✓ Ingest commit data at all? + cooperative weighting [decided]
   ├─ ✓ Which commit signal is highest-value [decided — moot via cascade]
@@ -40,10 +40,10 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
   ├─ ✓ Quality convention anchor (Keep a Changelog) [decided]
   ├─ ✓ Salience preamble — diff-derived structural map [decided]
   ├─ ✓ Degenerate-release handling (empty / all-excluded diff) [decided]
-  ├─ ○ Noise deprioritisation (diff_exclude granularity) [pending]
-  ├─ ○ Hierarchical summarisation for big diffs / token budget [pending]
-  ├─ ○ L1 output shape — the connective tissue [pending]
-  └─ ○ Tag-range vs release scope [pending]
+  ├─ ✓ Noise deprioritisation (diff_exclude granularity) [decided — not pursued]
+  ├─ ✓ Hierarchical summarisation for big diffs / token budget [decided — parked as escalation]
+  ├─ ✓ L1 output shape — the connective tissue [decided]
+  └─ ✓ Tag-range vs release scope [decided — moot]
 
 ---
 
@@ -164,6 +164,28 @@ High. Simple, honest, symmetric with existing guards.
 
 ---
 
+## Remaining subtopics — closed at conclusion
+
+Closed deliberately at the user's call to conclude. Each is `decided` in the "not pursued / deferred / moot" sense (no cancelled state exists in the workflow); rationale recorded so a later pass can reopen with context.
+
+### L1 output shape — the connective tissue
+
+**Decision (settled by prior decisions).** L1 emits a single structured block: the **Change Map preamble + the post-`diff_exclude` (possibly `max_diff_lines`-capped) diff**. The prompt instructs *rank importance from the Change Map; describe changes from the diff*. With commit-intent gone there's no composite to reconcile — research's "connective tissue" question simplifies to preamble-then-diff. Nothing further to design; details are prompt-tuning.
+
+### Hierarchical summarisation for big diffs / token budget
+
+**Decision — parked as documented escalation; not built for v1.** Ship single-pass: whole diff (capped by `max_diff_lines`) + Change Map. The Change Map already injects salience within one pass, which is the cheap win. *If* real big-release output is still mushy, escalate to **per-area summarise-then-synthesize**; an intermediate lever is sending Change Map + a *trimmed* diff instead of falling back at the cap. Deferred on the user's keep-it-simple / tune-over-time posture — revisit only on observed need.
+
+### Noise deprioritisation (diff_exclude granularity)
+
+**Decision — not pursued.** Binary `diff_exclude` stays; no "present-but-deprioritised" middle tier. The Change Map's novelty-over-magnitude weighting plus prompt guidance already keep test/doc churn from being mistaken for the headline, and excluded noise never reaches the AI. Revisit only if real output shows wanted-but-excluded items (e.g. "added test coverage for X") going missing.
+
+### Tag-range vs release scope
+
+**Decision — moot.** Research's concern was the commit *range* diverging from the diff under release branches / cherry-picks / backports. With commits dropped, no range is consumed — only the **tag-to-tag diff** is the input, which is always well-defined regardless of branch topology. Which two refs bound "this release" is a release-flow concern (main `mint-release-tool` discussion), not a notes-quality input concern.
+
+---
+
 ## Summary
 
 ### Key Insights
@@ -180,14 +202,15 @@ The epic's success criterion is: **on a big release, the headline feature leads 
 
 ### Open Threads
 
-- Remaining pending subtopics on the map: noise deprioritisation, hierarchical summarisation / token budget, L1 output shape, tag-range vs release scope.
+- **Hierarchical summarisation is parked, not killed** — the documented escalation if single-pass + Change Map proves insufficient on big releases. Most likely future reopening point.
 - Background review (set 001) raised 7 gaps + 2 questions — all worked through and resolved/folded into the decided sections.
 - **⚠ Cross-cutting → `mint-release-tool` (main discussion):** the CHANGELOG.md accumulation mechanics decided under the KaC section (no `[Unreleased]`, newest-on-top, idempotent-by-version) overlap the main discussion's sink decisions. When the `.workflows` incoming-surfacing feature exists, surface that block there for reconciliation. Captured here in full so nothing is lost in the interim.
 
 ### Current State
 
-- **Decided:** no commit-intent ingestion; quality anchored on Keep a Changelog (their taxonomy, mint's skin); diff-derived Change Map salience preamble (novelty > magnitude, directory rollup, post-`diff_exclude`).
-- **Open:** noise deprioritisation tier, big-diff handling / token budget, the L1 composite output shape, tag-range scoping, and the review findings.
+- **All 10 subtopics decided.** Core decisions: no commit-intent ingestion (diff is sole source of truth); quality anchored on Keep a Changelog (their taxonomy + principles, mint's emoji skin, mint's TL;DR retained); diff-derived Change Map salience preamble (structural novelty > magnitude, directory rollup, post-`diff_exclude`, rank-from-map/describe-from-diff); degenerate-release stub (no AI on empty diff); SemVer bump user-driven (out of scope); CHANGELOG.md accumulation (no `[Unreleased]`, newest-on-top, idempotent-by-version — cross-cutting flag set).
+- **Parked:** hierarchical summarisation (escalation if needed). **Single open lever for the future:** big-release mush, should single-pass prove insufficient.
+- Ready for specification.
 
 ### Key Insights
 
