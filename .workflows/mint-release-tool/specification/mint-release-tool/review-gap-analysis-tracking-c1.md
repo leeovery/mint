@@ -157,8 +157,9 @@ Restore ordering: unwind own commits/tag first → then pop stash on top; pop co
 The first release (no prior tag) "skips the AI and uses a fixed body, 'Initial release.'" (line 233). It is not stated how this fixed-body path interacts with the surrounding knobs: does `--no-ai` on a first release also yield "Initial release." (rather than the commit-subject fallback)? Does `on_notes_failure` ever apply to a first release (it shouldn't, since the AI isn't called)? And does the degenerate-diff stub (line 258) or the first-release fixed body win when a first release also has an empty/all-excluded diff? These are independent guards that can co-occur on the same run; their precedence is unstated. An implementer would have to pick an ordering.
 
 **Proposed Addition**:
+New "Notes-path precedence" subsection: first-release → degenerate → `--no-ai` → normal AI path; `on_notes_failure` governs only the normal AI path.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

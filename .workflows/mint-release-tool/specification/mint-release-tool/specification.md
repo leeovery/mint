@@ -259,6 +259,17 @@ The mirror image of the `max_diff_lines` ceiling — a guard at the *small* end.
 
 One coherent family of "don't run the AI on a bad-sized diff" guards: too-big → fallback/abort per `on_notes_failure`; too-small/empty → stub, no AI.
 
+### Notes-path precedence
+
+When multiple guards could apply to one run, mint resolves them in this order:
+
+1. **First release** (no prior tag) → fixed body **"Initial release."**, no AI. Wins over everything below — there is no diff base, so `--no-ai`, `on_notes_failure`, and the degenerate check don't apply.
+2. **Degenerate diff** (empty / all-excluded post-`diff_exclude`) → stub entry, no AI.
+3. **`--no-ai`** (deliberate skip) → fallback body (commit-subject list), never aborts.
+4. **Normal AI path** → generate + validate; failures route to `on_notes_failure`.
+
+`on_notes_failure` governs only the normal AI path — steps 1–3 never call the AI, so they can't trigger it.
+
 ### Change Map (diff-derived salience preamble)
 
 The motivating failure — "glosses over the big feature on big releases" — is a **salience** problem (misallocated attention), not a missing-data problem; feeding *more* raw diff makes it worse. The fix is a computed **Change Map** that mint assembles (cheap git commands) and **prepends to the AI input**, telling the AI what to prioritize.
