@@ -384,6 +384,7 @@ mint **owns** CHANGELOG generation (Keep a Changelog format). mint is a **genera
 When `version_file` is configured, mint writes the new version into it (per `version_pattern`, or the whole file in plain mode). See Stage 1 for the strategy mapping.
 
 - **`version_pattern` mismatch** (configured pattern matches nothing in the file) → **abort during Record, before the tag** (fail-loud, same family as a notes failure). Never silently skip the version write.
+- **`version_pattern` multiple matches** → mint **replaces all occurrences** (carrying forward the legacy `sed`-replace semantics), keeping the file internally consistent rather than leaving stale copies of the old version.
 
 ### Commit graph (up to two commits, then tag)
 
@@ -426,6 +427,7 @@ Publishing the release is **first-class but provider-abstracted** — not hardco
 - **Behind a small `Publisher` interface** (`CreateRelease` / `UpdateRelease`). mint **auto-detects the provider from the remote host** (`github.com` → GitHub driver via `gh`), overridable by the `provider` config.
 - **GitHub is the only driver implemented now.** The seam means GitLab (`glab`), Gitea, etc. can drop in later with zero rework — extra drivers are YAGNI; the *interface* is the cheap future-proofing.
 - Config is provider-neutral: **`publish`** (default `true`; `false` = tag + push only) plus optional **`provider`** override. An unknown/unsupported `provider` *value* (a recognised key, e.g. `provider = "gitlab"` when only GitHub is implemented) is **not** a fail-loud config error — mint **warns loudly and downgrades to tag + push only** (publish skipped), so a typo can't silently vanish. Fail-loud config validation still applies to unknown *keys* and bad *types*.
+- **Auto-detection with no matching driver** — a non-`github.com` remote (GitHub Enterprise, GitLab, Gitea, an unmatchable SSH host) or no remote at all, with `publish = true` (the default) and no explicit `provider` — is treated the **same as an unsupported value**: mint **warns loudly and downgrades to tag + push only**. It never silently assumes GitHub, and (because the `gh` gate runs only when actually publishing) never strands a pushed tag waiting on a release it can't create.
 - The interface shape and auto-detection mechanics are routine Go, left to implementation.
 
 ### Post-release: tap / formula update
@@ -448,7 +450,7 @@ The biggest live pain with the legacy script is that release notes go out *unsee
 
 - **`y` accept** (default; a bare Enter accepts) → proceed to Record → tag → push.
 - **`n` abort** → **full auto-unwind**: identical to the pre-push failure path — mint rolls back everything it made this run, including any `pre_tag` hook-artifact commit, returning to the exact clean starting state. The hook re-runs next time (idempotent build). A user-abort and a pre-push git failure are treated identically.
-- **`e` edit** → opens the notes in `$EDITOR` for real manual editing. **The saved text is used verbatim — no re-parse, no validation.** A human edit is trusted; structural validation only ever applied to untrusted AI output (which has no machine labels anyway). No mangle-loop, no possible trap.
+- **`e` edit** → opens the notes in the user's editor for real manual editing. **The saved text is used verbatim — no re-parse, no validation.** A human edit is trusted; structural validation only ever applied to untrusted AI output (which has no machine labels anyway). No mangle-loop, no possible trap. **Editor resolution:** `$VISUAL` then `$EDITOR`, falling back to a sensible default (`vi`); if no editor can be launched, mint reports the problem and returns to the gate rather than crashing.
 - **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, and shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `[release].context`.
 
 **Exact gate rendering** (the default-yes `Continue?` prompt, menu layout, and line-read input handling) is owned by the **CLI Presentation specification** (a cross-spec dependency); this section owns the four semantic choices and their effects.
@@ -476,6 +478,7 @@ When `--dry-run` generates the notes preview, mint **caches it so the subsequent
 - **The win is determinism, not cost.** AI generation is stochastic; regenerating on the real run risks shipping notes that differ from the preview. Reuse removes that risk. Skipping the second AI call is a bonus.
 - **Activation is automatic.** The dry-run writes the note to the cache; the real run reuses it on a key match. No flag — the key-based invalidation makes automatic reuse safe, and it serves the motivating workflow transparently.
 - **Cache key = hash of (post-`diff_exclude` diff + computed version + prompt / `[release].context`)** — not HEAD sha, since a `pre_tag` hook can change the tree between runs. **Miss → regenerate**, and say so ("diff changed since dry-run preview — regenerating notes"). mint never silently ships a stale note that no longer matches the release.
+- **Interaction with `pre_tag` hooks:** because the key is the *post-`diff_exclude`* diff, it is **invariant to hook artifacts that fall under `diff_exclude`** (the normal case — build outputs like a generated bundle are excluded), so reuse holds even though dry-run skips hooks. If a `pre_tag` hook changes a **non-excluded** (real source) path, the dry-run (hook-skipped) and real (post-hook) diffs genuinely differ → the key **correctly misses and the real run regenerates** — which is right, since what would ship differs from the preview.
 - **Re-review is unaffected.** A cached note does **not** skip the notes-review gate: an interactive real run still shows it (re-showing identical notes is cheap, and avoids assuming an out-of-band approval mint can't verify); `-y` still skips the gate on both runs. Reuse guarantees determinism; the review gate stays orthogonal.
 - **Location:** a **gitignored cache** (e.g. `.mint/cache/`) or system temp, keyed by repo, **never committed**, with a **short TTL** backstop (default **~1 hour** — long enough for the dry-run→real-run handoff, short enough that a forgotten preview can't resurrect) so a stale preview can't be reused.
 
@@ -519,6 +522,8 @@ Regenerate has two independent axes plus scope, all leaving tags untouched:
 
 - **`<version>` argument** may be given **with or without `tag_prefix`** (`regenerate v1.4.0` ≡ `regenerate 1.4.0`); mint normalises it. A `<version>` with **no matching tag** → **fail loud** ("no tag `vX.Y.Z` found").
 - **Fresh diff base = `vX-1..vX`** (previous tag → target tag). For the **oldest release** (no predecessor tag — a single regenerate of the first release, or the first version in an `--all` backfill), there is no `vX-1`, so mint mirrors the forward path's first-release rule: **no AI, fixed body "Initial release."**
+- **Argument presence:** a bare `regenerate` with **neither `<version>` nor `--all`** is an error ("specify a version or `--all`"); supplying **both** `<version>` and `--all` is also an error (mutually exclusive).
+- **`--reuse` with no annotation body:** a tag not created by mint may be lightweight (no annotation) or carry an empty/whitespace body (`git for-each-ref … contents:body` returns empty). `--reuse` against such a tag is a **fail-loud error in single mode** ("tag `vX.Y.Z` has no annotation body — use `--fresh`"); in **`--all` mode** it is **skipped and reported** (consistent with batch skip-and-continue), never written as an empty release body.
 
 ### Interactive by default, flags to skip
 
@@ -526,6 +531,7 @@ Regenerate has two independent axes plus scope, all leaving tags untouched:
 - **fresh** regeneration runs the same **notes-review gate** (see Interactive Review) before writing — backfilled notes are reviewable before they overwrite live surfaces.
 - **reuse** is deterministic (no new notes) → a **simple confirm**, no review gate.
 - Flags skip the questions but still confirm unless `-y`.
+- **Fresh + `-y` requires an explicit `--target`.** Since `-y` skips the interactive target prompt and the fresh path has no default surface, `regenerate --fresh -y` (and `--fresh --all -y`) **without `--target`** is a fail-loud error ("`--target` is required with `--fresh -y`"). mint never guesses which live surface(s) to rewrite unattended. (`--reuse` is unaffected — it implies `--target release`.)
 
 ### Batch `--all` semantics
 
