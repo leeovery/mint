@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 2
 phase: Input Review
@@ -30,7 +30,7 @@ The spec states *what* is excluded per path/mode but never explains *why exclusi
 **Proposed Addition**:
 Add a short rationale note to the diff-exclusion section, e.g.: "Exclusion is **path-based, never commit-based**: the forward path diffs a HEAD that predates mint's release-bookkeeping commits, while regenerate diffs a tag range (`vX-1..vX`) that already contains them. A git range diff operates on paths/content and cannot subtract commits, so even though mint's bookkeeping commit carries a recognisable `commit_prefix` (cosmetic only), it cannot be dropped from the range — path exclusion is what reproduces the forward path's source view on the regenerate path."
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Added path-based-exclusion rationale note to the Diff exclusion section. (User selected auto mode at this finding.)
 
 ---
