@@ -420,13 +420,15 @@ The biggest live pain with the legacy script is that release notes go out *unsee
 ```
 1. Plan summary + computed version  → shown
 2. Notes generated + validated      → shown in full
-3. Gate:  [a] accept   [e] edit   [r] regenerate with context   [q] abort
+3. Gate (Continue?):  [y] accept (default — Enter)   [n] abort   [e] edit   [r] regenerate with context
 ```
 
-- **`a` accept** → proceed to Record → tag → push.
+- **`y` accept** (default; a bare Enter accepts) → proceed to Record → tag → push.
+- **`n` abort** → **full auto-unwind**: identical to the pre-push failure path — mint rolls back everything it made this run, including any `pre_tag` hook-artifact commit, returning to the exact clean starting state. The hook re-runs next time (idempotent build). A user-abort and a pre-push git failure are treated identically.
 - **`e` edit** → opens the notes in `$EDITOR` for real manual editing. **The saved text is used verbatim — no re-parse, no validation.** A human edit is trusted; structural validation only ever applied to untrusted AI output (which has no machine labels anyway). No mangle-loop, no possible trap.
 - **`r` regenerate with context** → mint asks for a one-time context line, appends it to the prompt, re-runs the AI, and shows the result again (loops until happy). The "nudge it just this once" affordance — without permanently editing `notes_context`.
-- **`q` abort** → **full auto-unwind**: identical to the pre-push failure path — mint rolls back everything it made this run, including any `pre_tag` hook-artifact commit, returning to the exact clean starting state. The hook re-runs next time (idempotent build). A user-abort and a pre-push git failure are treated identically.
+
+**Exact gate rendering** (the default-yes `Continue?` prompt, menu layout, and line-read input handling) is owned by the **CLI Presentation specification** (a cross-spec dependency); this section owns the four semantic choices and their effects.
 
 ### Non-interactive
 
@@ -510,6 +512,54 @@ Preflight is a *gate set*; each command runs only the relevant subset (general r
 
 - **`regenerate --reuse`** (release-only, no git mutation) → **gh-auth only** (it must run that — a dead `gh` auth is the usual reason you're healing).
 - **`regenerate` fresh → changelog / both** (commits + pushes) → **gh-auth + clean-tree + branch + remote-sync**; **not** tag-free (tags exist, untouched); no version compute.
+
+---
+
+## CLI Surface & Flags
+
+### Commands
+
+```
+mint release [bump] [options]                  cut a release   (shim `release` → `mint release`)
+mint release regenerate <version> [flags]      regenerate notes for an existing release
+mint release regenerate --all [flags]          backfill every version (oldest → newest)
+mint init                                      scaffold .mint.toml (+ release shim)
+mint version                                   print mint's own version
+```
+
+- **Bare `mint release` is the cut action** (not `mint release cut`). `release` is a command with a default action *and* subcommands (well-trodden, e.g. `git stash` = `git stash push`). The per-project shim is `release`, so `./release -m` maps cleanly to `mint release -m`.
+- **`regenerate` is a subcommand of `release`**, not a top-level `notes` verb — `notes` is the wrong noun and ages badly.
+- `mint version` / `mint --version` print mint's own version (standard convention).
+
+### `mint release` flags
+
+```
+-p, --patch          default when no bump flag is given
+-m, --minor
+-M, --major
+    --set-version X.Y.Z   explicit version (mutually exclusive with bump flags)
+-d, --dry-run
+    --no-ai          deliberate skip → fallback body
+    --autostash      stash/restore unrelated WIP around the run
+    --any-branch     bypass the release-branch gate
+-y, --yes            skip the confirmation + notes-review gate (scripted/CI use)
+```
+
+### `regenerate` flags
+
+```
+--reuse              source = tag annotation body (no AI); implies --target release
+--fresh              source = re-diff + AI (default)
+--target release|changelog|both    surface(s) to write (default: asked interactively)
+--all                every version, oldest → newest; per-version gates unless -y
+-y, --yes            skip confirmation + per-version review gate
+```
+
+No flags → fully interactive (asks source, asks target, shows plan, confirms). See Regenerate / Backfill Notes for semantics.
+
+### Global / presentation flags
+
+- **`--plain`** — a **global presentation flag** (applies to every verb): forces token-efficient plain output instead of styled output. Detection model (`--plain` else `isatty(stdout)`) and rendering are specified by the **CLI Presentation specification** (a cross-spec dependency); listed here so the full invocation surface is visible in one place.
 
 ---
 
