@@ -32,11 +32,11 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 
 ### Map
 
-  Discussion Map — Release-Notes Quality (8 subtopics · 8 pending)
+  Discussion Map — Release-Notes Quality (8 subtopics — 1 decided · 2 converging · 5 pending)
 
-  ├─ ○ Ingest commit data at all? + cooperative weighting [pending]
-  ├─ ○ Which commit signal is highest-value [pending]
-  ├─ ○ Graceful degradation — detection & default posture [pending]
+  ├─ ✓ Ingest commit data at all? + cooperative weighting [decided]
+  ├─ → Which commit signal is highest-value [converging]
+  ├─ → Graceful degradation — detection & default posture [converging]
   ├─ ○ Structural headline hint (thread E) [pending]
   ├─ ○ Token-budget interaction [pending]
   ├─ ○ diff_exclude granularity (minor) [pending]
@@ -46,6 +46,32 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 ---
 
 *Subtopics are documented below as they reach `decided` or accumulate enough exploration to capture.*
+
+---
+
+## Ingest commit data at all? + cooperative weighting
+
+### Context
+
+Research's central convergence was: diff = backbone, commit-intent = opportunistic best-effort enrichment, gated by per-release degradation detection. The whole apparatus (Q2 commit-signal choice, Q3 degradation detection, half of Q7's L1 composite) hung off a "yes, ingest" answer to this gate.
+
+### Decision — do NOT build commit-intent ingestion as a feature
+
+The user rejects the commit-intent direction outright, on **value** grounds (not the correctness grounds research already neutralised):
+
+1. **The final diff is the source of truth; commit history is the path, not the destination.** A commit may add code that a later commit removes — the final diff correctly shows neither. The path we took is largely noise relative to the outcome.
+2. **Commit messages are unreliable and entirely user-controlled.** mint won't always author them (`mint commit` adoption is optional), so they may be hand-written or bare `WIP`. There's no floor on commit-message quality to build on.
+3. **The conditional machinery isn't worth it.** Because the signal is unreliable, research had to make degradation-detection "central." That's a lot of complexity for a bonus that fires only on the subset of repos with clean granular history — and shrinks further as merge strategies (squash/rebase) collapse history.
+
+**Residual (low-stakes, open):** commits *could* still be passed into L1 raw with **zero special handling** — no detection, no weighting, no degradation logic — and the diff-always-wins precedence rule already prevents hallucination. The user is neutral on this ("we can take it in; I don't think we need any special handling if we choose to"). Not a load-bearing inclusion; deferred as a trivial L1-shape detail, not a feature.
+
+### Cascade
+
+This collapses the commit-dependent open questions:
+- **Q2 (which commit signal is highest-value)** — moot. No signal is being mined.
+- **Q3 (graceful degradation / detection)** — moot *for commits*. There's no commit-quality signal to detect or degrade. (Degradation may still matter for diff-side concerns like oversized diffs — tracked under token-budget / mush handling, not here.)
+
+The salience problem research identified is **still real** — it just has to be solved from the diff alone (see pivot to diff-derived enrichment).
 
 ---
 
