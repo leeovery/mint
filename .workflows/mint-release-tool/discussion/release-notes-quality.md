@@ -32,18 +32,15 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 
 ### Map
 
-  Discussion Map — Release-Notes Quality (10 subtopics — 10 decided)
+  Discussion Map — Release-Notes Quality (5 subtopics)
 
-  ├─ ✓ Ingest commit data at all? + cooperative weighting [decided]
-  ├─ ✓ Which commit signal is highest-value [decided — moot via cascade]
-  ├─ ✓ Graceful degradation — detection & default posture [decided — moot via cascade]
+  ┌─ ✓ Ingest commit data at all? [decided]
   ├─ ✓ Quality convention anchor (Keep a Changelog) [decided]
   ├─ ✓ Salience preamble — diff-derived structural map [decided]
   ├─ ✓ Degenerate-release handling (empty / all-excluded diff) [decided]
-  ├─ ✓ Noise deprioritisation (diff_exclude granularity) [decided — not pursued]
-  ├─ ✓ Hierarchical summarisation for big diffs / token budget [decided — parked as escalation]
-  ├─ ✓ L1 output shape — the connective tissue [decided]
-  └─ ✓ Tag-range vs release scope [decided — moot]
+  └─ ✓ L1 output shape — the connective tissue [decided]
+
+*Subtopics that resolved as moot or not-pursued (commit-signal choice and degradation — folded into the commit decision; noise-deprioritisation, hierarchical-summarisation, tag-range) are not listed here; their rationale is documented in the body below.*
 
 ---
 
