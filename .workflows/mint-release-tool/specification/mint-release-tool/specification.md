@@ -193,7 +193,7 @@ Each hook entry runs via `sh -c` from the repo root. mint injects:
 | `MINT_NEW_VERSION` | `1.4.0` | the version being released |
 | `MINT_PREVIOUS_VERSION` | `1.3.2` | the prior latest version |
 | `MINT_VERSION_TAG` | `v1.4.0` | the full tag (with prefix) |
-| `MINT_BUMP` | `patch`/`minor`/`major` | the bump kind |
+| `MINT_BUMP` | `patch` / `minor` / `major` / `explicit` | the bump kind; `explicit` when `--set-version` was used |
 | `MINT_DRY_RUN` | `0`/`1` | dry-run flag |
 
 The set may grow as later stages need it.

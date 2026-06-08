@@ -38,8 +38,9 @@ Reworded the Stages 6–7 line to "the same path taken when the user answers **n
 The injected `MINT_BUMP` env var is documented with values `patch`/`minor`/`major` only (line 196). But `--set-version X.Y.Z` is a first-class path that produces a release without any bump flag. The spec never states what `MINT_BUMP` is set to in that case (e.g. `explicit`, `set`, empty, or the closest-equivalent computed bump). A hook author keying behaviour off `MINT_BUMP` would have to guess, and an implementer must invent a value. The same gap touches the dry-run env injection. Needs an explicit value (or "unset") for the `--set-version` case.
 
 **Proposed Addition**:
+Env-var table: `MINT_BUMP` values become `patch` / `minor` / `major` / `explicit`, with `explicit` set when `--set-version` was used.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
