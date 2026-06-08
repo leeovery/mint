@@ -55,9 +55,10 @@ Env-var table: `MINT_BUMP` values become `patch` / `minor` / `major` / `explicit
 Two rules collide. The publishing section says "An unknown/unsupported provider → tag + push only" (line 415) — i.e. silently downgrade to no-publish. The config section says config has "Typed validation, fail-loud on unknown keys / bad types, with clear messages" (line 577). An unknown `provider` *value* (e.g. `provider = "gitlab"` when only GitHub is implemented) sits between these: is it a fail-loud validation error, or a silent downgrade to tag+push-only? The two readings produce opposite behaviour (release aborts vs release ships without a GitHub release). This is especially consequential because a typo in `provider` would silently skip publishing rather than erroring. Implementers need one rule.
 
 **Proposed Addition**:
+Recognised `provider` key with an unsupported value → warn loudly + downgrade to tag+push-only (publish skipped), never silent. Fail-loud config validation remains for unknown keys / bad types.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Reconciles the two source rules; user accepted the warn+downgrade over a hard abort.
 
 ---
 

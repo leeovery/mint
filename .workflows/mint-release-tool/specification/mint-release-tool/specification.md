@@ -412,7 +412,7 @@ Publishing the release is **first-class but provider-abstracted** — not hardco
 - **Not a hook** — a hook would reintroduce the copy-paste disease mint cures (every repo re-deriving `gh release create --notes … --verify-tag`) and would break heal/regenerate (the reuse path recreates the provider release, so mint must own it).
 - **Behind a small `Publisher` interface** (`CreateRelease` / `UpdateRelease`). mint **auto-detects the provider from the remote host** (`github.com` → GitHub driver via `gh`), overridable by the `provider` config.
 - **GitHub is the only driver implemented now.** The seam means GitLab (`glab`), Gitea, etc. can drop in later with zero rework — extra drivers are YAGNI; the *interface* is the cheap future-proofing.
-- Config is provider-neutral: **`publish`** (default `true`; `false` = tag + push only) plus optional **`provider`** override. An unknown/unsupported provider → tag + push only.
+- Config is provider-neutral: **`publish`** (default `true`; `false` = tag + push only) plus optional **`provider`** override. An unknown/unsupported `provider` *value* (a recognised key, e.g. `provider = "gitlab"` when only GitHub is implemented) is **not** a fail-loud config error — mint **warns loudly and downgrades to tag + push only** (publish skipped), so a typo can't silently vanish. Fail-loud config validation still applies to unknown *keys* and bad *types*.
 - The interface shape and auto-detection mechanics are routine Go, left to implementation.
 
 ### Post-release: tap / formula update
