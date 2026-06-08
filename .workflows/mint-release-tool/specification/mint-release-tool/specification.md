@@ -347,11 +347,14 @@ Persist the release into the repo: the CHANGELOG entry and the optional version-
 
 ### Changelog mechanics
 
-mint **owns** CHANGELOG generation (Keep a Changelog format):
+mint **owns** CHANGELOG generation (Keep a Changelog format). mint is a **generator, not a human-maintained changelog**, so it follows Keep a Changelog's *entry structure* but not its human-workflow conventions:
 
-- A new entry `## [x.y.z] - YYYY-MM-DD` followed by the full notes body, inserted **above the most recent existing `## [` block**.
-- If `CHANGELOG.md` doesn't exist, mint creates it with the standard Keep a Changelog header first.
-- Skipped entirely when `changelog = false`.
+- **A complete `## [x.y.z] - YYYY-MM-DD` section** (the full notes body), written atomically at release time, inserted **above the most recent existing `## [` block**.
+- **No `[Unreleased]` section.** KaC's `[Unreleased]` exists for humans accruing notes between releases; mint writes the finished version section directly, so it doesn't apply.
+- **Newest on top** — the new version section is prepended **below the file's Keep a Changelog header preamble, above all prior version sections**.
+- **First release** — if `CHANGELOG.md` doesn't exist, mint creates it with the standard Keep a Changelog header preamble first, then the first version section.
+- **Idempotent by version key** — a re-run or amended release for an *existing* version **replaces that version's section in place** rather than appending a duplicate.
+- **Skipped entirely when `changelog = false`.**
 
 ### Version-file projection
 

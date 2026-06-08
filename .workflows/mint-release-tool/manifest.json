@@ -35,6 +35,9 @@
           "sources": {
             "mint-release-tool": {
               "status": "pending"
+            },
+            "release-notes-quality": {
+              "status": "incorporated"
             }
           }
         }
