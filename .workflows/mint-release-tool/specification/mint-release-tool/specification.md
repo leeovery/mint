@@ -547,6 +547,19 @@ Preflight is a *gate set*; each command runs only the relevant subset (general r
 - **`regenerate --reuse`** (release-only, no git mutation) → **gh-auth only** (it must run that — a dead `gh` auth is the usual reason you're healing).
 - **`regenerate` fresh → changelog / both** (commits + pushes) → **gh-auth + clean-tree + branch + remote-sync**; **not** tag-free (tags exist, untouched); no version compute.
 
+### Write path (commit, push & recovery)
+
+Regenerate's write mechanics mirror the forward path's principles, adapted to the fact that **no tag is ever cut** (tags are immutable):
+
+- **Commit graph (changelog target).** A `--target changelog`/`both` run writes at most **one** CHANGELOG commit (hooks don't run on regenerate, so there is no hook-artifact commit). Subject: **`docs(changelog): regenerate notes for {tag}`** for a single version, or **`docs(changelog): regenerate release notes`** for an `--all` rebuild. It does **not** reuse the forward `{commit_prefix} Release {tag}` subject — nothing is being released.
+- **Push form.** Plain **`git push origin HEAD`** (no tag, so not the forward path's `--atomic … {tag}`).
+- **Provider target: create-or-update is automatic.** For `--target release`/`both`, mint **probes whether a provider release exists at `{tag}`** and dispatches `UpdateRelease` if it does, `CreateRelease` if it doesn't. The user never picks — "refresh existing text" and "mass-heal missing releases" are the same command, resolved per version (so an `--all` batch transparently mixes updates and creates).
+- **Point of no return & recovery.** The changelog commit's **`git push` is the point of no return**, mirroring the forward model:
+  - **Abort at the review gate** (fresh) or any **pre-push failure** → mint resets the local CHANGELOG commit, returning to the clean starting state (no tag is involved, so the unwind is just the commit reset).
+  - **A provider create/update failure after the changelog push** → **warn only** (the changelog is already pushed; the provider release re-heals with `--target release`). Same post-PONR principle as the forward path.
+  - **`--target both` is not atomic across surfaces:** mint writes the changelog (commit + push) first, then the provider release; a provider failure after the changelog push is the warn-only case above, not a rollback.
+- **`--all` rebuild strategy.** An `--all` `--target changelog`/`both` run **rebuilds `CHANGELOG.md` whole** — regenerating the file from the Keep a Changelog preamble + every version's section, newest-on-top — rather than editing in place (whole-file rebuild is what "rebuild the changelog" means, and it repairs ordering/stray-section drift). A **single-version** regenerate uses the idempotent in-place section replace (per Stage 5). The batch makes **one** CHANGELOG commit + push **at the end** (after all per-version notes are generated/reviewed), not one per version — avoiding N noisy commits for a large backfill.
+
 ---
 
 ## CLI Surface & Flags
