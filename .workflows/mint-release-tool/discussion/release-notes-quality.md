@@ -172,6 +172,10 @@ High. Simple, honest, symmetric with existing guards.
 2. **Salience, not data volume, is the lever.** The motivating failure is misallocated attention, not missing data; feeding *more* raw diff makes it worse. Every decision here adds *structure/signal*, not *more text*.
 3. **Anchoring to Keep a Changelog gives a principled quality bar for free** — and its "a changelog is not a commit log / for humans" thesis independently validates both the AI-narrative layer and the commit-rejection.
 
+### Success criterion (resolves review F7)
+
+The epic's success criterion is: **on a big release, the headline feature leads the notes.** The mechanism pointed at it is the **Change Map** (new-structure-as-headline, novelty over magnitude) plus **forced KaC classification**. Dropping commit-intent doesn't undermine this: research diagnosed the original failure as *salience, not absence* — the big feature was always in the diff, attention got misallocated. Commits were a separate "why/intent" signal, orthogonal to salience. The salience fix (Change Map) is intact; what was dropped never targeted the motivating failure. This reasoning is *argued, not yet measured* — see F5 below.
+
 ### Open Threads
 
 - Remaining pending subtopics on the map: noise deprioritisation, hierarchical summarisation / token budget, L1 output shape, tag-range vs release scope.
