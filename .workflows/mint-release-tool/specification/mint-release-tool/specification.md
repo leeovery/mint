@@ -437,6 +437,25 @@ This eliminates the "notes went out unseen / I had to fix the release afterward"
 
 ---
 
+## Dry-Run (`-d` / `--dry-run`)
+
+### Semantics
+
+- **Does:** read-only preflight, compute the version, **generate the AI notes preview** (Change Map + diff → AI), and print the full plan — the commits it would make, the tag, and what it would publish.
+- **Skips:** all mutations (commit / tag / push / provider release) **and all hooks** (they have side effects) — and **reports** that hooks were skipped.
+
+### Dry-run note caching
+
+When `--dry-run` generates the notes preview, mint **caches it so the subsequent real run reuses it** — guaranteeing *what was previewed is what ships*. (Motivating workflow: an agent runs `mint release -y --dry-run` to surface the notes to a human, then `mint release -y` for real.)
+
+- **The win is determinism, not cost.** AI generation is stochastic; regenerating on the real run risks shipping notes that differ from the preview. Reuse removes that risk. Skipping the second AI call is a bonus.
+- **Activation is automatic.** The dry-run writes the note to the cache; the real run reuses it on a key match. No flag — the key-based invalidation makes automatic reuse safe, and it serves the motivating workflow transparently.
+- **Cache key = hash of (post-`diff_exclude` diff + computed version + prompt / `notes_context`)** — not HEAD sha, since a `pre_tag` hook can change the tree between runs. **Miss → regenerate**, and say so ("diff changed since dry-run preview — regenerating notes"). mint never silently ships a stale note that no longer matches the release.
+- **Re-review is unaffected.** A cached note does **not** skip the notes-review gate: an interactive real run still shows it (re-showing identical notes is cheap, and avoids assuming an out-of-band approval mint can't verify); `-y` still skips the gate on both runs. Reuse guarantees determinism; the review gate stays orthogonal.
+- **Location:** a **gitignored cache** (e.g. `.mint/cache/`) or system temp, keyed by repo, **never committed**, with a **short TTL** backstop so a stale preview can't resurrect.
+
+---
+
 ## Regenerate / Backfill Notes (non-destructive)
 
 mint can regenerate release notes for *existing* releases — one release, or every release in a batch backfill ("rewrite all of a repo's release history"). It is **non-destructive**: it touches only the mutable surfaces and never rewrites tags.
