@@ -207,6 +207,16 @@ Under `--dry-run`, mint **skips hooks** (they have side effects) and reports tha
 
 Generate a release-notes body from the diff since the last release. The same body is reused for every output surface (tag annotation, CHANGELOG, provider release) — generate once, use everywhere.
 
+### Source of truth: the diff alone
+
+mint generates notes from the **release diff and nothing else**. Commit messages / history are deliberately **not** ingested in any form:
+
+- They are the **path, not the destination** — a commit may add code a later commit removes; the final diff correctly shows neither.
+- They are **unreliable and entirely user-controlled** — mint may not have authored them (`mint commit` adoption is optional), so they may be hand-written or bare `WIP`. There is no floor on commit-message quality to build on.
+- The conditional machinery to exploit them **isn't worth it** — the signal is unreliable and shrinks further as squash/rebase collapse history.
+
+The diff is the one signal always true regardless of merge strategy or commit discipline, so it is the sole input. Quality is lifted by making the diff **more legible** (the Change Map, below) — never by adding other data.
+
 ### Diff base
 
 - Diff **`last_tag..HEAD`** (changes since the last release).
@@ -233,6 +243,28 @@ The diff sent to the AI is filtered via git's `:(exclude)` pathspec (git does th
 
 - **Default 50000.** Not a context limit but a **cost + quality** guard — a huge diff is slow, costly, and summarises to mush. Lines are a cheap token proxy (~10–20 tokens/line). **Excluded paths don't count toward it.** Exceeding it = a notes failure → abort-or-fallback per `on_notes_failure`. Fully overridable.
 
+### Degenerate release (empty / all-excluded diff)
+
+The mirror image of the `max_diff_lines` ceiling — a guard at the *small* end. If the post-`diff_exclude` diff is **empty or whitespace-only** (a re-tag with no source change; a release where every changed file fell under `diff_exclude`; or pure churn with nothing notable), mint **does not call the AI** — an empty diff is the one input it will reliably hallucinate on. It writes a minimal, honest entry: the version header + a short stub line (e.g. *"Maintenance release — no notable source changes"*). No hallucination, no hard error, no skipped entry — a no-op release still produces a truthful record.
+
+One coherent family of "don't run the AI on a bad-sized diff" guards: too-big → fallback/abort per `on_notes_failure`; too-small/empty → stub, no AI.
+
+### Change Map (diff-derived salience preamble)
+
+The motivating failure — "glosses over the big feature on big releases" — is a **salience** problem (misallocated attention), not a missing-data problem; feeding *more* raw diff makes it worse. The fix is a computed **Change Map** that mint assembles (cheap git commands) and **prepends to the AI input**, telling the AI what to prioritize.
+
+- **Structural novelty (primary signal):** new / removed / renamed paths — *especially new directories or packages appearing*. "A whole new `auth/` package showed up" is the strongest language-agnostic headline signal there is, and is qualitatively different from churn — a new subsystem is a headline even at modest line count, whereas a large refactor of existing code may not be. Weighted **above** raw magnitude, in both ordering and how the prompt is told to read it.
+- **Magnitude (secondary signal):** per-area churn ranking, as supporting context ("400 lines here, 3 there").
+- **Granularity — directory/area rollup by default**, with individually-notable files called out (new top-level entries, the single largest file). A flat list of every changed file is itself mush on big releases — the exact case this targets — so rollup is the salience-preserving form.
+- **Computed after `diff_exclude`** (the map runs *after* exclusion, never before). Bulk noise is already removed, so post-exclude magnitude is largely trustworthy.
+- **Prompt discipline (carries the diff-always-wins rule):** the prompt says **rank** importance using the Change Map but **describe** changes from the diff. The map is salience *metadata*, not content — the AI must never narrate a file as a feature merely because it's large or new.
+
+**The AI input is therefore: the Change Map preamble, then the post-`diff_exclude` (and `max_diff_lines`-capped) diff — nothing else.**
+
+### Big-diff handling — deferred (documented escalation)
+
+Ship **single-pass**: the whole (`max_diff_lines`-capped) diff + Change Map, which already injects salience within one pass — the cheap win. **Hierarchical summarisation** (per-area summarise-then-synthesize) is **parked, not built for v1** — the documented escalation if real big-release output still reads as mush. An intermediate lever (Change Map + a *trimmed* diff rather than falling back at the cap) is noted for the same future. Revisit only on observed need.
+
 ### Failure behaviour — fail loud by default
 
 Notes generate at Stage 4, *before* the tag (Stage 6), so aborting leaves nothing tagged/pushed — which is *why* blocking is safe.
@@ -247,15 +279,19 @@ Notes generate at Stage 4, *before* the tag (Stage 6), so aborting leaves nothin
 - **Validation is sanity, not structure:** non-empty, not an error/refusal/whitespace. On a bad/empty generation → **one automatic retry** → still bad → notes failure → `on_notes_failure`.
 - The interactive review gate (next section) is the human backstop for *style*.
 
-### Default notes format mint ships
+### Default notes format mint ships (anchored on Keep a Changelog)
 
-Grounded in the observed shortcomings of the current output (flat intertwined list; prompt-preamble leakage; empty descriptions on oversized releases):
+The format anchors on the **Keep a Changelog** convention — its category taxonomy and principles (*"a changelog is for humans, not machines"*; *"a changelog is not a commit log"*) — rendered in **mint's emoji skin**. "Their meaning, mint's skin." This **refines** the emoji-headed-sections decision; it does not override it (it pins a fixed taxonomy *behind* the emoji).
 
-- A **TL;DR one-liner** at the top — what the release is really about (may be multi-line).
-- **Emoji-headed sections** — e.g. `✨ Features`, `🐛 Fixes`, `🧹 Internal`. Empty sections omitted; the AI may add a sensible section if warranted.
-- Notable features **bolded + described** (celebrated, not buried in a flat list).
-- Strict **"no preamble, no meta-commentary"** rule so prompt artifacts can never leak.
+- A **TL;DR one-liner** at the top (may be multi-line) — what the release is really about. This is mint's value-add over a raw changelog: a unified **cross-change narrative** synthesized from the *whole* diff (what beats regex/one-line-per-commit tools, which structurally can't see the whole release). Retained, sitting above the categorized sections.
+- **Emoji-headed sections keyed to the Keep a Changelog taxonomy** — the canonical bucket set is `Added / Changed / Deprecated / Removed / Fixed / Security`, rendered with emoji headers (e.g. `✨ Added`, `🔧 Changed`, `🐛 Fixed`, `🗑️ Removed`). A *fixed, standard* taxonomy forces the AI to classify every change, and classification is itself prioritization — which helps the salience problem. Empty sections are omitted entirely.
+- **Unit of entry = the notable item**, not the file / hunk / commit. The AI reads the whole diff, extracts notable items, and files each under its category. A change that adds a feature *and* fixes a bug yields two items in two sections — multi-category coverage falls out naturally.
+- **Notable features bolded + described** (celebrated, not buried in a flat list).
+- **Diff-inferability tiers the categories.** `Added / Changed / Fixed / Removed` are readable from a diff. `Deprecated` and `Security` are intent-laden and often invisible in a raw diff → kept in the vocabulary but treated as **opportunistic**: emit only on an *explicit textual marker* (a `@deprecated`/deprecation annotation; an obvious security surface — auth, crypto, input validation, a CVE-referencing dependency bump). Light prompt guidance, not detection machinery; expected to stay empty most releases. The deliberate escape hatch for diff-invisible intent is the **`notes_context` inject knob** — the user tells mint rather than mint guessing.
+- **Strict "no preamble, no meta-commentary"** rule so prompt artifacts can never leak.
 - Default prompt instructs the AI to **ignore version-number bumps** and other trivial bookkeeping churn.
+
+The same body flows to every sink; in the changelog it sits under the `## [x.y.z] - date` header. *(Source confidence: the taxonomy/principles are firm; the exact emoji↔category mapping and prompt wording are explicitly ship-and-refine.)*
 
 ### Prompt control — two knobs (no third "themes" concept)
 
@@ -263,6 +299,10 @@ Grounded in the observed shortcomings of the current output (flat intertwined li
 2. **`notes_prompt`** (file path) — *full override* of the prompt; mint still supplies the diff. Total control.
 
 A "theme/variant" is not a separate feature — it's just a `notes_prompt` override file. `mint init` can scaffold an example prompt. No built-in theme enum (YAGNI).
+
+### Success criterion & verification
+
+The quality bar for the notes is: **on a big release, the headline feature leads the notes.** The mechanism aimed at it is the Change Map (new-structure-as-headline, novelty over magnitude) plus forced Keep a Changelog classification. There is **no formal rubric or harness** — the user assesses output quality by eye on real releases (mint dogfoods itself; agentic-workflows, Portal, etc. are live cases) and tunes the prompt when the headline-leads criterion isn't met. Consistent with the "best effort, tune over time" posture.
 
 ---
 
