@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 2
 phase: Input Review
@@ -24,9 +24,9 @@ The spec states the *what* — "Notes body verbatim … emoji headers shown if p
 > - **Notes body verbatim** — the same bytes as pretty/tag/changelog/release, **emoji headers shown if present** (`✨ Features`, `🐛 Fixes`). No stripping/transforming.
 
 **Proposed Addition**:
-_(leave blank until discussed)_
+Enhanced the "Notes body verbatim" bullet with the rationale: the rule is non-negotiable (not stylistic) — stripping/transforming would contradict the engine's "use the body whole" rule and break "what previews is what ships"; emoji headers' token cost is negligible and preview/ship parity wins.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
