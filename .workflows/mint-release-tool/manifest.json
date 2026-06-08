@@ -72,8 +72,8 @@
         }
       },
       "gap_analysis_cache": {
-        "checksum": "750b89e3c771b2f271665434031999f7",
-        "generated": "2026-06-07T20:30:00Z",
+        "checksum": "b3f0dfbb14fba0919ed1c5c49db337d9",
+        "generated": "2026-06-08T14:27:31Z",
         "input_files": [
           "release-notes-quality.md",
           "mint-release-tool.md",
