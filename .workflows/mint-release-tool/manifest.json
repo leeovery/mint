@@ -29,7 +29,7 @@
       "items": {
         "mint-release-tool": {
           "status": "in-progress",
-          "review_cycle": 4,
+          "review_cycle": 5,
           "finding_gate_mode": "auto",
           "date": "2026-06-06",
           "sources": {
