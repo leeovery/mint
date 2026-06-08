@@ -262,6 +262,23 @@ The worked examples are all `mint release`, but the `Presenter` seam applies to 
 - **`regenerate`** — same stage/notes/gate vocabulary as `release`, narrated per version (`--all` runs oldest→newest, one block each).
 - **`version`** — the **one payload verb**: its output is a *value*, not narration. **Plain prints the bare value** (`1.4.0`) so `$(mint version)`/scripts consume it cleanly; **pretty may dress it** (`🌿 mint v1.4.0`). This is the deliberate exception to "narration is the product" — `version` actually has a payload, so the bare value is the floor and styling is additive only in pretty.
 
+## Dependencies
+
+Prerequisites that must exist before implementation can begin:
+
+### Required
+
+_None._ The presentation layer is **foundational**, not dependent. It defines the `Presenter` seam that every verb consumes; via dependency inversion the engine depends on this layer, not the reverse. The pretty/plain implementations are rendering logic driven by semantic events and can be built and tested standalone with a fake/recording engine driving the events.
+
+### Notes
+
+- **Built independently of the engine.** The `Presenter` interface and its two implementations need no engine code to exist — a recording presenter and fixed event sequences are enough to build and assert rendering. The worked release examples are illustrative; the presenter renders whatever events it is handed.
+- **Third-party libraries** (`lipgloss`, a standalone spinner package) are implementation dependencies, not spec prerequisites.
+- **Reconciliations owed *by* the `mint-release-tool` (engine) specification** — reverse direction; this spec is the source of truth for rendering:
+  - **Review-gate rendering** — this spec's default-yes `Continue?` gate (`y`/`n`/`e`/`r`, Enter ⇒ accept) supersedes the engine discussion's `[a] accept / [e] edit / [r] regenerate / [q] abort`. Same four semantic choices (auto-unwind on abort); only the rendering changes. The engine spec must adopt this rendering and drop the stale `[a]`/`[q]` keys. The engine owns the four semantic choices; presentation owns how they look.
+  - **`--plain` global flag** — a new presentation flag applying to every verb, to be recorded in the engine spec's CLI surface alongside `-y`.
+- **Exit-code ownership** stays with the engine/`main`, not the `Presenter` — recorded here only because the stream contract touches it.
+
 ---
 
 ## Working Notes
