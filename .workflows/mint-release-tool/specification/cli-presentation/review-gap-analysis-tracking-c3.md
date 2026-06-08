@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 3
 phase: Gap Analysis
@@ -28,9 +28,9 @@ The spec states that git/claude/gh chatter is captured (not streamed through the
 These are behavioural/ownership questions of the same kind already closed for `Warn`, auto-accept, and the forbidden-combination failure — not deferred wording/signature detail. Left open, an implementer must invent the event shape, the plain-mode behaviour, and the stream placement, and risks violating the render-only-presenter discipline by printing engine-side.
 
 **Proposed Addition**:
-[leave blank until discussed] — likely: an Event payload principle bullet stating captured underlying-command output on failure is supplied to the presenter (e.g. as part of the `StageFailed` payload or a dedicated detail event) and rendered by both modes — pretty below the `✗` line, plain below the `FAILED` line with a sliceable delimiter — never printed directly by the engine; plus a statement of its stream placement relative to the stderr error line.
+Added an Event payload principle bullet: `StageFailed` carries the error message and the captured underlying-command output; the presenter renders it in both modes (pretty below the `✗` line, plain below the `FAILED` line wrapped in a sliceable `--- output --- … --- end output ---` delimiter), never engine-printed; captured body is stdout narration while the one-line FAILED/error summary also goes to stderr (the multi-line body is not duplicated to stderr).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved. Closes the last ownership/rendering gap, consistent with the Warn/auto-accept/forbidden-combination resolutions.
 
 ---
