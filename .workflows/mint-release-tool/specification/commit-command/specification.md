@@ -23,6 +23,24 @@ The guiding design stance: **there is no code yet.** The shared AI machinery is 
 
 **Safety posture:** the inverse of release's. Release forces a known-good, clean, in-sync starting state because it is high-consequence; commit assumes a messy, in-progress working tree because operating on one is its entire reason to exist.
 
+## AI Engine — Three-Layer Split
+
+The AI message-generation concern is a shared engine that both `release` and `commit` consume. The git boundary sits in a single layer:
+
+- **Layer 1 — Context builder (git-aware).** Produces the content to describe. Parameterised by *source*: release uses `tag..HEAD`; commit uses the staged diff (`git diff --cached`). Applies `diff_exclude` globs and the `max_diff_lines` guard — identical logic for both verbs, so this is the genuinely shared git piece. (Different git *providers* are a separate axis, handled by the existing driver/provider setup, not by this layer.)
+- **Layer 2 — AI message engine (git-unaware, content-agnostic).** Inputs: an assembled prompt + the content + `ai_command`. Runs the transport, validates the output (non-empty / not an error / not a refusal), retries once, fails loud per policy, and returns the message body. **Knows nothing about git, diffs, tags, or commits — pure "context in, message out."**
+- **Layer 3 — Per-verb glue.** Picks the L1 source, supplies the prompt + default format (release notes vs commit message), and decides the sinks. This is where the verbs differ.
+
+**Content-agnostic is the load-bearing property.** The input being a diff is incidental; L2 only ever sees "content." It does not matter whether that content is a textual diff, an AST/semantic breakdown, or a human-written note — same engine. This is what lets the separate release-notes-quality work enrich L1's *input* with zero change to L2.
+
+**Composition is permitted.** Keeping L1/L2/L3 as separate underlying pieces does not forbid a convenience wrapper (a local or exported function) that composes L1→L2→sink for a call site's ergonomics. Separation governs the *underlying pieces*, not a tidy facade over them.
+
+**Prompt boundary.** L3 owns prompt assembly; L2 receives the finished prompt. This mirrors release's settled model — mint always owns the prompt; `ai_command` is just transport — with the two-knob model (context-inject + full-override). Commit gets its own default commit-message prompt and its own context/override knobs (see Config).
+
+### Commit's binding to the engine
+- **Layer 1 source:** the staged diff (`git diff --cached`), or the would-be-staged diff under `-a`/`-A` computed read-only (see Staging).
+- **Layer 3 glue:** supplies the Conventional Commits default prompt/format, the `[commit]` context/override knobs, and the commit sinks (`git commit`, optional push).
+
 ---
 
 ## Working Notes
