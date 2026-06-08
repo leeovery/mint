@@ -21,9 +21,10 @@ topic: mint-release-tool
 The interactive gate menu defines the abort choice as `[n] abort` (line 433) and the prose at line 437 consistently calls it "`n` abort". But the Stages 6–7 failure-model section (line 406) says "The auto-unwind is the same path a user `q`/abort at the review gate takes". The key `q` appears nowhere else and is not in the menu. An implementer reading the failure-model section could wire a `q` key that the gate section never defines. The two sections disagree on the abort key letter.
 
 **Proposed Addition**:
+Reworded the Stages 6–7 line to "the same path taken when the user answers **no** at the `Continue?` review gate" — frames abort as the "no" answer rather than inventing an abort key.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Per user — the gate is a Continue? question answered yes/no (+ edit/regenerate); abort is "no", not a `q`/`n`-abort compound.
 
 ---
 

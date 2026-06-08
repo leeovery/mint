@@ -403,7 +403,7 @@ mint wraps **all** its git mutations in lock resilience (retry on a contended `.
 | **Push succeeds but provider release create fails** (e.g. transient network) | The tag is already public, so mint **never unwinds** (that would be destructive history rewriting). mint **warns** and points to the heal path: `regenerate --reuse` recreates the provider release from the tag annotation body (deterministic, parse-free). |
 | **`post_release` hook fails** | **Warn only** — after the point of no return, the tag is already published. |
 
-The auto-unwind is the same path a user `q`/abort at the review gate takes (see Interactive Review) — it includes any `pre_tag` hook-artifact commit. One mental model: *nothing mint did this run survives unless the release completes.*
+The auto-unwind is the same path taken when the user answers **no** at the `Continue?` review gate (see Interactive Review) — it includes any `pre_tag` hook-artifact commit. One mental model: *nothing mint did this run survives unless the release completes.*
 
 ### Publishing: provider driver abstraction
 
