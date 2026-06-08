@@ -32,13 +32,14 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 
 ### Map
 
-  Discussion Map — Release-Notes Quality (9 subtopics — 5 decided · 4 pending)
+  Discussion Map — Release-Notes Quality (10 subtopics — 6 decided · 4 pending)
 
   ├─ ✓ Ingest commit data at all? + cooperative weighting [decided]
   ├─ ✓ Which commit signal is highest-value [decided — moot via cascade]
   ├─ ✓ Graceful degradation — detection & default posture [decided — moot via cascade]
   ├─ ✓ Quality convention anchor (Keep a Changelog) [decided]
   ├─ ✓ Salience preamble — diff-derived structural map [decided]
+  ├─ ✓ Degenerate-release handling (empty / all-excluded diff) [decided]
   ├─ ○ Noise deprioritisation (diff_exclude granularity) [pending]
   ├─ ○ Hierarchical summarisation for big diffs / token budget [pending]
   ├─ ○ L1 output shape — the connective tissue [pending]
@@ -142,6 +143,24 @@ The user noted `diff_exclude` removes most noise, which makes magnitude more tru
 ### Confidence
 
 Medium-high; ship-and-refine. Exact Change Map formatting and prompt wording are tuning knobs.
+
+---
+
+## Degenerate-release handling (empty / all-excluded diff)
+
+### Context
+
+Review F9: nothing on the map covered degenerate releases — an empty diff (re-tag, no source change), a release where every changed file fell under `diff_exclude`, or pure churn with nothing notable. Running the AI on an empty diff is the one situation it will reliably hallucinate.
+
+### Decision — detect empty/trivial post-exclude diff *before* the AI, write a minimal stub
+
+If the post-`diff_exclude` diff is empty or whitespace-only, mint **does not call the AI**. It writes a minimal, honest entry: the version header + a short stub line (e.g. "Maintenance release — no notable source changes"). No hallucination, no hard error, no skipped entry — a no-op release still produces a truthful changelog record.
+
+This is the **mirror image of the already-decided `max_diff_lines` ceiling**: too-big → fallback path; too-small/empty → stub, no AI. One coherent family of "don't run the AI on a bad-sized diff" guards at both extremes.
+
+### Confidence
+
+High. Simple, honest, symmetric with existing guards.
 
 ---
 
