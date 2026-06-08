@@ -72,8 +72,9 @@ Recognised `provider` key with an unsupported value → warn loudly + downgrade 
 The fresh regenerate path "re-diffs `vX-1..vX`" (lines 477, 486) but the spec never defines (a) whether the `<version>` CLI argument is given with or without the `tag_prefix` (e.g. `regenerate v1.4.0` vs `regenerate 1.4.0`), (b) how mint resolves `vX-1` — the previous tag — when the target is the **oldest** release (no `vX-1` exists), and (c) what happens for a `<version>` that has no matching tag at all. The forward path solves the no-prior-tag case explicitly ("Initial release.", line 233), but the regenerate fresh path does not state the analogous rule for the oldest version in a `--all` backfill or a single regenerate of the first release. An implementer would have to guess the base for the earliest version and the argument's prefix handling.
 
 **Proposed Addition**:
+New "Version argument & diff base resolution" subsection: `<version>` accepted with/without `tag_prefix` (normalised); no matching tag → fail loud; oldest release (no `vX-1`) mirrors forward first-release → "Initial release." (no AI).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

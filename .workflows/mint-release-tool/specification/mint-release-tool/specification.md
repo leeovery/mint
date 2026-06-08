@@ -502,6 +502,11 @@ Regenerate has two independent axes plus scope, all leaving tags untouched:
 | Mass-heal missing provider releases | reuse `--all` | release |
 | Full history rewrite | fresh `--all` | both |
 
+### Version argument & diff base resolution
+
+- **`<version>` argument** may be given **with or without `tag_prefix`** (`regenerate v1.4.0` ≡ `regenerate 1.4.0`); mint normalises it. A `<version>` with **no matching tag** → **fail loud** ("no tag `vX.Y.Z` found").
+- **Fresh diff base = `vX-1..vX`** (previous tag → target tag). For the **oldest release** (no predecessor tag — a single regenerate of the first release, or the first version in an `--all` backfill), there is no `vX-1`, so mint mirrors the forward path's first-release rule: **no AI, fixed body "Initial release."**
+
 ### Interactive by default, flags to skip
 
 - `mint release regenerate <ver>` with **no flags → interactive**: asks source, asks target, shows the plan, confirms.
