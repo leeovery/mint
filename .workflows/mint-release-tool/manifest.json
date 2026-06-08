@@ -19,6 +19,10 @@
         "release-notes-quality": {
           "status": "completed"
         }
+      },
+      "analysis_cache": {
+        "checksum": "fdd1e63544f86b3295940d92104de693",
+        "generated": "2026-06-08T15:54:11Z"
       }
     },
     "specification": {
