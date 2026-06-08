@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-08
 cycle: 1
 phase: Input Review
@@ -40,9 +40,9 @@ The discussion closes the diff-exclusion reasoning with an explicit edge-case ru
 `diff_exclude` (project artifacts) — configurable array of globs, on top of the above (knowledge bundle, minified output, lockfiles, generated code). These are *tracked, committed* generated files (deliberately not in `.gitignore`), which is why explicit exclusion is needed. A release diff is commit-to-commit so it can only contain tracked files; gitignored files never appear. Kept in config (not a `.mintignore` file) per the "one config, one place to look" principle; `.mintignore` is YAGNI, addable later if exclude sets grow large.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Appended to the `diff_exclude` paragraph: "A file that is gitignored yet *force-added* is nonetheless tracked, so it can still appear in the diff — this edge is deliberate and not special-cased."
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Captures the discussion's explicit non-special-case ruling.
 
 ---
