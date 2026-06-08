@@ -606,4 +606,19 @@ post_release = "scripts/notify.sh"
 
 ---
 
+## `mint init` Scaffolding
+
+`mint init` activates mint in a project by dropping in **two files**:
+
+1. **`.mint.toml`** — a **commented template**: the common keys with their defaults, plus optional keys (`version_file`, `[release.hooks]`, `[release].context` / `prompt`, …) present-but-commented with a one-line explanation each. The project tunes mint by uncommenting rather than reading docs.
+2. **The `release` shim** — a tiny executable committed to the repo so `./release` works for anyone who clones. It execs `mint release "$@"`; if mint isn't installed it prints the install hint (`brew install leeovery/tools/mint`) and exits non-zero.
+
+### Behaviour
+
+- **Idempotent / non-clobbering** — an existing `.mint.toml` or `release` is **skipped with a notice**; **`--force`** regenerates.
+- **No hook/prompt files scaffolded by default** — the commented config shows hook examples inline, and a `[release].prompt` override file is only *mentioned* in a comment (not created).
+- **No project auto-detection** — mint does **not** sniff `package.json`/etc. to pre-fill a build hook; that guesswork can surprise. A clean commented template is more honest. Deferred, addable later.
+
+---
+
 ## Working Notes
