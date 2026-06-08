@@ -32,13 +32,13 @@ Can `mint release`'s AI-generated release notes be lifted in quality beyond what
 
 ### Map
 
-  Discussion Map — Release-Notes Quality (9 subtopics — 4 decided · 5 pending)
+  Discussion Map — Release-Notes Quality (9 subtopics — 5 decided · 4 pending)
 
   ├─ ✓ Ingest commit data at all? + cooperative weighting [decided]
-  ├─ ✓ Which commit signal is highest-value [decided]
-  ├─ ✓ Graceful degradation — detection & default posture [decided]
+  ├─ ✓ Which commit signal is highest-value [decided — moot via cascade]
+  ├─ ✓ Graceful degradation — detection & default posture [decided — moot via cascade]
   ├─ ✓ Quality convention anchor (Keep a Changelog) [decided]
-  ├─ ○ Salience preamble — diff-derived structural map [pending]
+  ├─ ✓ Salience preamble — diff-derived structural map [decided]
   ├─ ○ Noise deprioritisation (diff_exclude granularity) [pending]
   ├─ ○ Hierarchical summarisation for big diffs / token budget [pending]
   ├─ ○ L1 output shape — the connective tissue [pending]
@@ -106,7 +106,51 @@ Medium-high. Per the user's stance ("take a stance and adjust as we go"), the ta
 
 ---
 
+## Salience preamble — diff-derived structural map
+
+### Context
+
+The "make the diff legible" lever (avenue #1). Since commit-intent is gone, salience must come from the diff itself. A raw unified diff is anti-salient — a 3-line tweak and a 400-line subsystem both render as "a hunk." The fix is a computed **Change Map** prepended to the AI's input, telling it what to prioritize.
+
+### Decision — adopt a directory-rollup "Change Map", structural novelty weighted above magnitude
+
+L1 computes a Change Map (cheap git commands) and prepends it to the AI input. Components:
+
+- **Structural novelty (primary signal):** new / removed / renamed paths — *especially new directories or packages appearing*. "A whole new `auth/` package showed up" is the strongest language-agnostic headline signal there is, and it's qualitatively different from churn: a new subsystem is a headline even at modest line count, whereas a large refactor of existing code may not be. This is weighted **above** raw magnitude in both ordering and how the prompt is told to read it.
+- **Magnitude (secondary signal):** per-area churn ranking, as supporting context ("400 lines here, 3 there").
+
+Design choices:
+- **Granularity — directory/area rollup by default**, with individually-notable files called out (new top-level entries, the single largest file). A flat list of every changed file *is* mush on big releases — the exact case this targets — so it just relocates the noise. Rollup is the salience-preserving form.
+- **Computed after `diff_exclude`.** The user confirms bulk noise (large planning docs, generated artifacts) is already handled by mint's existing exclude config, so post-exclude magnitude is largely trustworthy. The B-depends-on-A ordering from research holds: the Change Map runs *after* exclusion, never before.
+- **Prompt discipline (carries over diff-always-wins):** the prompt says **rank** importance using the Change Map, but **describe** changes from the diff. The map is salience *metadata*, not content — the AI must never narrate a file as a feature merely because it's large or new.
+
+### Why structural novelty still leads even with `diff_exclude` doing the heavy lifting
+
+The user noted `diff_exclude` removes most noise, which makes magnitude more trustworthy — but novelty still leads, for a reason independent of noise: a refactor and a new feature can have identical (post-exclude, real-source) churn, yet only one is the headline. "New structure appeared" captures the headline axis that line-count fundamentally cannot.
+
+### Confidence
+
+Medium-high; ship-and-refine. Exact Change Map formatting and prompt wording are tuning knobs.
+
+---
+
 ## Summary
+
+### Key Insights
+
+1. **The reliable enrichment signals are the ones derived from the diff itself.** Dropping commits didn't shrink the option space so much as clarify it — structural novelty and magnitude inherit the diff's trustworthiness; commit-intent never could.
+2. **Salience, not data volume, is the lever.** The motivating failure is misallocated attention, not missing data; feeding *more* raw diff makes it worse. Every decision here adds *structure/signal*, not *more text*.
+3. **Anchoring to Keep a Changelog gives a principled quality bar for free** — and its "a changelog is not a commit log / for humans" thesis independently validates both the AI-narrative layer and the commit-rejection.
+
+### Open Threads
+
+- Five-then-four pending subtopics on the map: noise deprioritisation, hierarchical summarisation / token budget, L1 output shape, tag-range vs release scope.
+- Background review (set 001) raised 7 gaps + 2 questions — being worked through one at a time.
+
+### Current State
+
+- **Decided:** no commit-intent ingestion; quality anchored on Keep a Changelog (their taxonomy, mint's skin); diff-derived Change Map salience preamble (novelty > magnitude, directory rollup, post-`diff_exclude`).
+- **Open:** noise deprioritisation tier, big-diff handling / token budget, the L1 composite output shape, tag-range scoping, and the review findings.
 
 ### Key Insights
 
