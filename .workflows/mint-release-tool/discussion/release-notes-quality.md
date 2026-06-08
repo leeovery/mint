@@ -100,6 +100,8 @@ Refinements that fall out:
 - **Diff-inferability tiers the categories.** `Added / Changed / Fixed / Removed` are readable from a diff. `Deprecated` and `Security` are intent-laden and often invisible in a raw diff → kept in the vocabulary but treated as **opportunistic** (emit only on real signal), never forced. Empty sections omitted entirely (KaC principle).
 - **One generated payload, two sinks** (resolves the changelog-vs-release-note question): the per-release entry is identical; `CHANGELOG.md` accumulates entries under SemVer version headers per KaC's file structure, while the tag/GitHub release note surfaces the single entry. Same convention governs both.
 
+**Version number — out of scope, settled upstream (review F2).** The SemVer bump is *not* AI-decided. `mint release` defaults to patch; the user passes a flag (patch/minor/major) to override. AI-managed SemVer is explicitly out of scope. Consequence for this topic: the version number is always known *before* notes generation, so the `CHANGELOG.md` version header is a given input, not something the notes pipeline computes. Dropping commit-intent therefore costs nothing on the versioning axis — that signal was never going to drive the bump here.
+
 ### Confidence
 
 Medium-high. Per the user's stance ("take a stance and adjust as we go"), the taxonomy/principles are firm; the exact emoji↔category mapping and prompt wording are explicitly ship-and-refine.
