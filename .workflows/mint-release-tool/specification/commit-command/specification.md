@@ -213,6 +213,29 @@ pre_tag = "npm ci && npm run build"
 
 **Reconciliation owed by the release spec (cross-spec hand-off).** This verb-namespaced shape *revises* release's already-concluded flat config layout (`notes_context` → `[release].context`, `notes_prompt` → `[release].prompt`, `[hooks]` → `[release.hooks]`, every flat release key moves under `[release]`, shared engine keys lift to the top). Cheap now (no code exists). Commit's spec **depends on** that restructured shape; the migration itself is the release spec's to absorb (formalised in Dependencies).
 
+## CLI Surface & Flags
+
+```
+mint commit [flags]
+
+  -a, --all          stage tracked changes first (git commit -a semantics)
+  -A, --add-all      stage everything incl. untracked first (git add -A)
+  -p, --push         push after committing (no push without this; no config default)
+      --no-ai        skip AI; drop to $EDITOR
+  -y, --yes          skip the review gate (auto-accept)
+      --plain        plain output — global presentation flag, all verbs
+```
+
+**Bundles:** `mint commit -Ap` (add-all + push, gate shown) · `mint commit -Apy` (unattended).
+
+`-p` = push is per-verb (release's `-p` = `--patch`); the cross-verb `-p` divergence is intentional and acceptable (git subcommands carry their own flag meanings).
+
+**Resolved (consciously dropped):**
+
+- **No `--dry-run`.** The review gate already *is* the preview-then-bail affordance (see the message, `n` aborts with zero mutation), and a commit is cheap to `--amend`. Release needs dry-run because it previews a whole irreversible pipeline; commit has no such pipeline.
+- **No `--context` one-time-context flag.** The original shell function had it, but the user has never used it. Interactive `r` (regenerate-with-context) at the gate plus the `[commit].context` config cover the need. Dropped (YAGNI).
+- **No `commit` shim.** `release` gets a per-project shim for muscle memory + `mint` delegation; `commit` is invoked directly as `mint commit` (the user aliases it personally if desired).
+
 ---
 
 ## Working Notes
