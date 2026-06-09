@@ -229,12 +229,16 @@
           "format": "tick",
           "spec_commit": "31b71e7917d758ba13d6cb6c03ce2c3a28dce3d5",
           "task_list_gate_mode": "auto",
-          "author_gate_mode": "gated",
+          "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "cli-presentation-1-1",
-          "task_map": {}
+          "task": "cli-presentation-1-2",
+          "task_map": {
+            "cli-presentation-1-1": "tick-98e6cd",
+            "cli-presentation-1": "tick-3a97a3"
+          },
+          "external_id": "tick-46068c"
         }
       }
     }
