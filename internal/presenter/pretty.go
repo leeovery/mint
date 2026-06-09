@@ -30,14 +30,6 @@ const stageColumn = 11
 // are flush-left; everything else indents under them.
 const stageIndent = "  "
 
-// decorativeRuleWidth is the fixed cap width the notes rules render to. The spec
-// caps decorative rules at min(terminalWidth, ~50) so they cannot overflow and
-// wrap into junk; this task renders at the fixed cap and does NOT detect terminal
-// width. Phase 4 (task cli-presentation-4-7) hardens the width SOURCE to
-// min(terminalWidth, cap) and reuses THIS constant as the cap — hence the named
-// constant rather than a magic number.
-const decorativeRuleWidth = 50
-
 // ruleChar is the box-drawing horizontal line (U+2500) the decorative notes rules
 // are built from. It is layout, not colour — it survives a colour downgrade.
 const ruleChar = "─"
@@ -102,6 +94,18 @@ type PrettyPresenter struct {
 	// DetectStdinTTY(os.Stdin) at the same one site the -y flag is parsed (a later
 	// main/cmd task) via WithInteractiveStdin — the same deferral as -y.
 	stdinInteractive bool
+	// termWidth is the detected terminal width feeding the decorative notes rules'
+	// width source. ShowNotes sizes the titled and closing rules to
+	// ruleWidth(termWidth) == min(termWidth, ruleCap), the SINGLE width concession
+	// pretty mode makes (everything else wraps naturally — never truncated).
+	//
+	// The DEFAULT is 0 (the bool/int zero value, no explicit setting needed):
+	// ruleWidth(0) == ruleCap, so a presenter constructed without WithTermWidth
+	// renders the SAME fixed-cap rule task 2-5 did — keeping every existing 2-5
+	// ShowNotes layout test green unchanged. Production sets it in NewForStartup
+	// (which holds the stdout *os.File) via detectTermWidth when the selected mode is
+	// pretty; tests inject narrow/wide/tiny/undetectable widths via WithTermWidth.
+	termWidth int
 
 	// Styles are derived once from the renderer so every render shares the same
 	// colour profile. Under a no-colour profile lipgloss renders these as the bare
@@ -281,6 +285,19 @@ func (p *PrettyPresenter) WithInput(in io.Reader) *PrettyPresenter {
 // (and its external test, via the exported StageSpinner interface) can build one.
 func (p *PrettyPresenter) WithSpinnerFactory(factory func(out io.Writer, text string) StageSpinner) *PrettyPresenter {
 	p.newSpinner = factory
+	return p
+}
+
+// WithTermWidth sets the detected terminal width feeding the decorative notes
+// rules' width source and returns the presenter so it chains onto any constructor,
+// mirroring WithYes/WithSpinnerFactory. It is the TEST SEAM for the width axis: a
+// test injects a narrow/wide/tiny/undetectable width so the rule capping
+// (min(width, ruleCap)) is asserted without a real terminal. Production sets it in
+// NewForStartup from detectTermWidth(stdout) when the selected mode is pretty. The
+// constructor default is 0 (undetectable), which ruleWidth maps to the cap — the
+// same fixed rule task 2-5 rendered.
+func (p *PrettyPresenter) WithTermWidth(w int) *PrettyPresenter {
+	p.termWidth = w
 	return p
 }
 
@@ -616,27 +633,33 @@ func padVerb(verb string, column int) string {
 // line. A body line that reads like a delimiter is written verbatim; the real
 // closing rule still follows (rules are positional, never content-matched).
 func (p *PrettyPresenter) ShowNotes(notes Notes) {
-	p.writef("%s\n", p.dim.Render(notesTitledRule(notes.Version)))
+	width := ruleWidth(p.termWidth)
+	p.writef("%s\n", p.dim.Render(notesTitledRule(notes.Version, width)))
 	writeNotesBody(p.out, notes.Body)
-	p.writef("%s\n", p.dim.Render(notesClosingRule()))
+	p.writef("%s\n", p.dim.Render(notesClosingRule(width)))
 }
 
 // notesTitledRule builds the opener rule: the "── release notes · v{X} " title
-// prefix filled with U+2500 up to decorativeRuleWidth. The fill count is clamped
-// to a minimum of one so a title prefix longer than the cap (version strings are
-// short, so this is just defensive) never produces a negative repeat count.
-func notesTitledRule(version string) string {
+// prefix filled with U+2500 up to width — the CAPPED width ruleWidth(termWidth) ==
+// min(termWidth, ruleCap), so the rule neither overflows a narrow terminal nor
+// exceeds the cap on a wide one. The fill count is clamped to a minimum of one so a
+// title prefix longer than the capped width (a genuinely tiny terminal, or a very
+// long version string) never produces a negative repeat count — the title is kept
+// in full and is never truncated; only the trailing fill is clamped.
+func notesTitledRule(version string, width int) string {
 	prefix := ruleChar + ruleChar + " release notes · v" + version + " "
-	fill := decorativeRuleWidth - displayWidth(prefix)
+	fill := width - displayWidth(prefix)
 	if fill < 1 {
 		fill = 1
 	}
 	return prefix + strings.Repeat(ruleChar, fill)
 }
 
-// notesClosingRule builds the closing rule: U+2500 repeated to the cap width.
-func notesClosingRule() string {
-	return strings.Repeat(ruleChar, decorativeRuleWidth)
+// notesClosingRule builds the closing rule: U+2500 repeated to the capped width
+// (ruleWidth(termWidth)), so it matches the titled rule's bound — never overflowing
+// a narrow terminal nor exceeding the cap.
+func notesClosingRule(width int) string {
+	return strings.Repeat(ruleChar, width)
 }
 
 // displayWidth counts the runes in s — the column count for the ASCII/box-drawing

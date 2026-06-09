@@ -1132,10 +1132,12 @@ const prettyNotesBody = "Faster cold starts and a calmer log.\n" +
 	"🐛 Fixes\n" +
 	"- Stop double-flush on SIGTERM"
 
-// decorativeRuleWidthForTest is the fixed cap the pretty rules render to this
-// phase, duplicated here so the tests can build the exact expected rule strings.
-// It tracks presenter.decorativeRuleWidth (an unexported constant); the
-// byte-identity tests below do not depend on it, only the exact-layout ones do.
+// decorativeRuleWidthForTest is the width the DEFAULT pretty presenter renders its
+// rules to, duplicated here so the tests can build the exact expected rule strings.
+// A presenter constructed without WithTermWidth has termWidth 0, and ruleWidth(0)
+// returns presenter.ruleCap (the unexported cap, 50) — so these layout tests assert
+// the fixed-cap rule. The byte-identity tests below do not depend on it, only the
+// exact-layout ones do.
 const decorativeRuleWidthForTest = 50
 
 // notesTitledRule builds the expected titled opener rule for a version: the
