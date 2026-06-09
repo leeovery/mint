@@ -233,10 +233,11 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "cli-presentation-1-2",
+          "task": "cli-presentation-1-3",
           "task_map": {
             "cli-presentation-1-1": "tick-98e6cd",
-            "cli-presentation-1": "tick-3a97a3"
+            "cli-presentation-1": "tick-3a97a3",
+            "cli-presentation-1-2": "tick-d51c3d"
           },
           "external_id": "tick-46068c"
         }
