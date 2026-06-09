@@ -153,6 +153,24 @@ The push-failure decision plus the gate-abort refinement give one coherent rule:
 
 This is the deliberate opposite of `mint release`'s auto-unwind model. The reason is the staging-safety concern: a local commit verb must never risk the user's working/staged state. There is **no destructive cleanup path at all** — failures either left nothing behind (pre-accept) or leave a clean forward-only commit the user can act on manually (post-accept).
 
+## Preflight & Safety
+
+A commit is a frequent, low-stakes, *local* act — most of release's strict gates are actively wrong for it. Commit's preflight is minimal.
+
+**Commit runs only:**
+
+1. **Git repo present** — anchored at the repo root (same resolution as release).
+2. **Something to commit** — after staging; empty → fail loud (see Staging).
+
+**Gates commit deliberately DROPS (and why):**
+
+- **Clean-working-tree — dropped.** Commit exists *to* operate on a dirty tree; the release gate is the direct opposite of commit's purpose.
+- **On-release-branch — dropped.** Commits legitimately happen on feature branches all day.
+- **Remote-in-sync (behind/diverged) — dropped.** You commit while behind origin constantly; blocking that would be absurd.
+- **No pre-push gate even with `-p`.** Consistent with the auto-push decision — mint doesn't gate the commit on push-ability; it attempts the push and *reports* failure. No remote-sync precheck.
+
+This makes commit's safety posture the inverse of release's: release forces a known-good, clean, in-sync starting state because it is high-consequence; commit assumes a messy in-progress tree because that is its entire reason to exist.
+
 ---
 
 ## Working Notes
