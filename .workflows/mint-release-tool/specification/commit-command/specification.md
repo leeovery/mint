@@ -138,6 +138,21 @@ Commit reuses the cli-presentation `Continue?` gate rendering (`y`/`n`/`e`/`r`, 
 
 **The gate-abort refinement (key design correction).** Originally the flow staged `-a`/`-A` *before* the gate, which meant aborting would leave a mint-altered worktree — wrong; "abort" must mean the whole run is abandoned with no trace. The fix — **mint mutates nothing until accept** (staging deferred) — is the cross-cutting property that runs through the lifecycle, staging, and the never-unwind invariant.
 
+## Auto-push Behaviour
+
+- **Push is opt-in via `-p` / `--push`** (default: no push). **Flag-only — no config default** ("we never push without the `-p` flag"). `-p` is per-verb (release uses `-p` for `--patch`); the cross-verb `-p` divergence is intentional and acceptable (git subcommands carry their own flag meanings).
+- **Push failure → keep the commit, warn clearly, do NOT unwind.** On a failed push (rejected, remote moved, no upstream, network), mint leaves the commit in place and reports clearly with the fix (re-run the push). Rationale: a push is a trivially repeatable manual fix, whereas unwinding the commit is messy and risky — the user may have had files staged before running `mint commit`, and resetting/unstaging could clobber that pre-existing state. Push is **not** an atomic point-of-no-return with unwind; it is a best-effort final step whose failure is reported, not repaired.
+- **Upstream handling:** defer to git. `mint commit -p` runs a normal `git push` (current branch → its configured upstream). No upstream set → git's own failure, surfaced via the warn-clearly rule (*"commit is in place; set an upstream and push"*). mint adds no special upstream logic.
+
+## Invariant — *mutate nothing until accept; never unwind after*
+
+The push-failure decision plus the gate-abort refinement give one coherent rule:
+
+- **Before gate-accept, mint mutates nothing** — staging (`-a`/`-A`) is deferred to accept, so abort returns the user to their exact pre-`mint` state (their own prior staging untouched).
+- **After accept, mint never unwinds a completed commit** — on a failed push it leaves the commit and reports clearly; it never unstages, resets, or rewrites.
+
+This is the deliberate opposite of `mint release`'s auto-unwind model. The reason is the staging-safety concern: a local commit verb must never risk the user's working/staged state. There is **no destructive cleanup path at all** — failures either left nothing behind (pre-accept) or leave a clean forward-only commit the user can act on manually (post-accept).
+
 ---
 
 ## Working Notes
