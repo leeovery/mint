@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 2
 phase: Gap Analysis
@@ -27,9 +27,9 @@ The `e` / edit gate action is a **separate path** (loop-back, explicitly *not* s
 This is a clarity/consistency gap rather than a missing decision — both editor paths almost certainly want the same resolution chain — but as written an implementer has to decide it, and could get it wrong.
 
 **Proposed Addition**:
-[leave blank until discussed]
+Generalised the "Editor resolution" subsection to apply to *every* editor mint opens (both fallback and the gate's `e` action) — same git resolution chain. Added no-launchable-editor behaviour split by whether a message candidate exists: fallback → fail loud; `e` → graceful degrade (warn, re-render gate with unedited message preserved). Updated the `e` gate line to reference the shared resolution chain.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. Both editor paths share one resolution chain (consistency); `e`'s degrade fits "refinement step, never empty commit."
 
 ---
