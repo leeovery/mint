@@ -124,6 +124,22 @@
           "release-notes-quality.md"
         ]
       }
+    },
+    "planning": {
+      "items": {
+        "mint-release-tool": {
+          "status": "in-progress",
+          "format": "tick",
+          "spec_commit": "645046172e3eba1b16b6975c289b780a72a4240a",
+          "task_list_gate_mode": "gated",
+          "author_gate_mode": "gated",
+          "finding_gate_mode": "gated",
+          "review_cycle": 0,
+          "phase": 1,
+          "task": "~",
+          "task_map": {}
+        }
+      }
     }
   },
   "imports": [
