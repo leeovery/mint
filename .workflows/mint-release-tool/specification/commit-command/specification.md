@@ -236,6 +236,28 @@ mint commit [flags]
 - **No `--context` one-time-context flag.** The original shell function had it, but the user has never used it. Interactive `r` (regenerate-with-context) at the gate plus the `[commit].context` config cover the need. Dropped (YAGNI).
 - **No `commit` shim.** `release` gets a per-project shim for muscle memory + `mint` delegation; `commit` is invoked directly as `mint commit` (the user aliases it personally if desired).
 
+## Dependencies
+
+Prerequisites that must exist before implementation can begin:
+
+### Required
+
+| Dependency | Why Blocked | What's Unblocked When It Exists |
+|------------|-------------|--------------------------------|
+| **CLI Presentation** (`cli-presentation` spec) | Commit renders *all* output and its review gate through the `Presenter` seam — pretty/plain by `isatty`/`--plain`, `-y` auto-accept, the `Continue?` gate rendering, and the shared non-TTY forbidden-combo rule. None of commit's interactive flow can be built without this seam. | The entire commit presentation surface: gate rendering, pretty/plain modes, `--plain`/`-y` handling, and the fail-loud forbidden-combo behaviour. |
+
+### Partial Requirement
+
+| Dependency | Why Blocked | Minimum Scope Needed |
+|------------|-------------|---------------------|
+| **Mint Release Tool** (`mint-release-tool` spec) | Commit consumes the shared, content-agnostic AI engine and the verb-namespaced config — both established/restructured by the release spec. L2 (the engine), L1's `diff_exclude`/`max_diff_lines` logic, `git_safe`, and the `[commit]` config table cannot be built until these shared pieces exist in their reconciled form. | The shared AI engine (L1 context builder + L2 message engine), `git_safe` lock-resilient git, and the **verb-namespaced config restructure** (shared engine keys at top + per-verb tables, hooks nested under their verb). Commit does **not** depend on the release spine, version detection, tags, changelog, or publish. |
+
+### Notes
+
+- **Build order:** CLI Presentation → Mint Release Tool (establishes engine, config, consumes Presenter) → Commit. Commit is the last of the three to be implementable because it reuses all of the shared primitives.
+- **Designed clean, not retrofitted:** the three-layer engine split is *designed* in commit's discussion but is owed to the release spec as a reconciliation. Commit's L3 glue (Conventional Commits prompt, `[commit]` knobs, commit sinks) is the only engine-related code unique to commit; it can be written as soon as L1/L2 exist.
+- **Config reconciliation is the release spec's to absorb:** commit only depends on the *result* (the verb-namespaced shape). It introduces no migration work of its own.
+
 ---
 
 ## Working Notes
