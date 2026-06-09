@@ -211,13 +211,29 @@ func stageTrailing(s StageSuccess) string {
 // red ✗, the padded stage name, then the message) AND duplicates the one-line
 // "✗ {stage}  {message}" summary to err — unstyled, since stderr is a
 // redirect-visibility channel, not a styled surface — so a failure cannot
-// silently vanish under redirection. The captured-output body (s.Output) is
-// narration → out only; when later phases render it below this line, it MUST NOT
-// be duplicated to err — only the one-line summary goes there.
+// silently vanish under redirection.
+//
+// When the engine captured underlying-command output (s.Output non-empty), the
+// captured body is rendered to OUT ONLY, below the ✗ line — NO box, consistent
+// with the boxless notes treatment. The body is written through the
+// package-shared writeNotesBody helper UNCHANGED — byte-for-byte verbatim, the
+// same bytes the plain presenter writes — so internal newlines/blank lines are
+// preserved and a body line that reads like a delimiter survives as-is. Styling
+// is intentionally MINIMAL: the body bytes are load-bearing, so they are written
+// flush and unstyled (no dim wrap), which keeps them verbatim and means a colour
+// downgrade leaves them untouched.
+//
+// The captured body is narration → out only and is NEVER duplicated to err: only
+// the one-line summary goes there. An empty Output renders NO body block — the ✗
+// line stands alone.
 func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	glyph := p.failure.Render("✗")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), s.Message)
 	p.errf("✗ %s  %s\n", s.Name, s.Message)
+	if s.Output == "" {
+		return
+	}
+	writeNotesBody(p.out, s.Output)
 }
 
 // Warn renders a standalone amber warning line to out — two-space indent, the

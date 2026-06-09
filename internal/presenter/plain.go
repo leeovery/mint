@@ -94,12 +94,32 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 
 // StageFailed renders the one-line failure summary "{stage}: FAILED - {message}"
 // to out (the narration) AND duplicates that same one-line summary to err so a
-// failure cannot silently vanish under redirection. The captured-output body
-// (s.Output) is narration → out only; when later phases render it, it MUST NOT be
-// duplicated to err — only the one-line summary goes there.
+// failure cannot silently vanish under redirection.
+//
+// When the engine captured underlying-command output (s.Output non-empty), the
+// captured body is rendered to OUT ONLY, below the FAILED line, wrapped in the
+// sliceable "--- output ---" … "--- end output ---" delimiters — mirroring the
+// notes block so a reader/agent can extract it. The body is written through the
+// package-shared writeNotesBody helper UNCHANGED — byte-for-byte verbatim — so a
+// body line that itself reads like a delimiter is written through as-is; the real
+// closing delimiter still follows (delimiters are positional, never
+// content-matched). An empty Output renders NO delimiter block — the FAILED line
+// stands alone.
+//
+// The captured body is narration → out only and is NEVER duplicated to err: only
+// the one-line summary goes there. The synthesised delimiter lines are byte-pure
+// ASCII; the body may legitimately contain non-ASCII engine content, which is
+// rendered verbatim (the plain byte-purity guard scans synthesised narration, not
+// this engine-supplied body).
 func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.writef("%s: FAILED - %s\n", s.Name, s.Message)
 	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
+	if s.Output == "" {
+		return
+	}
+	p.writef("--- output ---\n")
+	writeNotesBody(p.out, s.Output)
+	p.writef("--- end output ---\n")
 }
 
 // Warn renders the structured warning as "{label}: WARN - {message}" to out (the

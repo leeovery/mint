@@ -257,6 +257,121 @@ func TestPlainPresenterStageFailedRendersOneLineSummary(t *testing.T) {
 	}
 }
 
+// capturedOutput is the worked-example captured underlying-command output shared
+// across the StageFailed body tests: multi-line git chatter with an internal
+// blank line, mirroring the real engine-buffered output a failure surfaces.
+const capturedOutput = "fatal: failed to push some refs to 'origin'\n" +
+	"\n" +
+	"hint: Updates were rejected because the remote contains work\n" +
+	"hint: that you do not have locally."
+
+// TestPlainPresenterStageFailedRendersDelimitedOutputBlock is the core plain
+// acceptance for captured output: below the FAILED line, the captured body is
+// written to OUT wrapped in the sliceable "--- output ---" … "--- end output ---"
+// delimiters (mirroring the notes block) so a reader/agent can extract it. The
+// body bytes are untouched between the delimiters.
+func TestPlainPresenterStageFailedRendersDelimitedOutputBlock(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved", Output: capturedOutput})
+	})
+
+	want := "tag/push: FAILED - push rejected: remote moved\n" +
+		"--- output ---\n" +
+		capturedOutput + "\n" +
+		"--- end output ---\n"
+	if got := out.String(); got != want {
+		t.Errorf("StageFailed captured-output block mismatch\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// TestPlainPresenterStageFailedSummaryToStderrWithoutBody proves the stream
+// contract: the one-line FAILED summary reaches err, but the captured body does
+// NOT — neither its bytes nor the output delimiters leak to stderr. Only the
+// one-line summary is duplicated there for redirect-visibility.
+func TestPlainPresenterStageFailedSummaryToStderrWithoutBody(t *testing.T) {
+	_, errBuf := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved", Output: capturedOutput})
+	})
+
+	wantErr := "tag/push: FAILED - push rejected: remote moved\n"
+	if got := errBuf.String(); got != wantErr {
+		t.Errorf("stderr = %q, want exactly the one-line summary %q", got, wantErr)
+	}
+	for _, frag := range []string{"--- output ---", "--- end output ---"} {
+		if strings.Contains(errBuf.String(), frag) {
+			t.Errorf("output delimiter %q leaked to stderr = %q", frag, errBuf.String())
+		}
+	}
+	for _, line := range strings.Split(capturedOutput, "\n") {
+		if line != "" && strings.Contains(errBuf.String(), line) {
+			t.Errorf("captured body line %q leaked to stderr = %q", line, errBuf.String())
+		}
+	}
+}
+
+// TestPlainPresenterStageFailedEmptyOutputRendersFailedLineAlone covers the
+// empty-output edge: with no captured output the FAILED line stands alone — no
+// "--- output ---"/"--- end output ---" pair, no empty block.
+func TestPlainPresenterStageFailedEmptyOutputRendersFailedLineAlone(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved", Output: ""})
+	})
+
+	want := "tag/push: FAILED - push rejected: remote moved\n"
+	got := out.String()
+	if got != want {
+		t.Errorf("empty-output StageFailed = %q, want %q", got, want)
+	}
+	for _, frag := range []string{"--- output ---", "--- end output ---"} {
+		if strings.Contains(got, frag) {
+			t.Errorf("empty output must render no delimiter %q, got %q", frag, got)
+		}
+	}
+}
+
+// TestPlainPresenterStageFailedDelimiterLikeBodyLineIsVerbatim covers the
+// delimiter-collision edge: a captured-body line that itself reads like the
+// closing "--- end output ---" delimiter is written through verbatim, and the
+// REAL closing delimiter still follows it. Delimiters are positional, never
+// content-matched.
+func TestPlainPresenterStageFailedDelimiterLikeBodyLineIsVerbatim(t *testing.T) {
+	body := "real chatter\n--- end output ---\nstill chatter"
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "boom", Output: body})
+	})
+
+	want := "tag/push: FAILED - boom\n" +
+		"--- output ---\n" +
+		body + "\n" +
+		"--- end output ---\n"
+	if got := out.String(); got != want {
+		t.Errorf("delimiter-like body line not written verbatim\n got: %q\nwant: %q", got, want)
+	}
+	// The real closing delimiter is the LAST line — the body's lookalike does not
+	// short-circuit it.
+	if !strings.HasSuffix(out.String(), "still chatter\n--- end output ---\n") {
+		t.Errorf("real closing delimiter must follow the verbatim body, got %q", out.String())
+	}
+}
+
+// TestPlainPresenterStageFailedMultiLineBlankLinesPreserved covers the multi-line
+// edge: a captured body with internal blank lines round-trips exactly within the
+// delimiters — no collapsing, no re-wrapping.
+func TestPlainPresenterStageFailedMultiLineBlankLinesPreserved(t *testing.T) {
+	body := "line one\n\n\nline four after two blanks"
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "boom", Output: body})
+	})
+
+	want := "tag/push: FAILED - boom\n" +
+		"--- output ---\n" +
+		body + "\n" +
+		"--- end output ---\n"
+	if got := out.String(); got != want {
+		t.Errorf("multi-line blank lines not preserved\n got: %q\nwant: %q", got, want)
+	}
+}
+
 // TestPlainPresenterWarnRendersLabelPrefixedToBothStreams is the core plain Warn
 // acceptance: a structured Warning renders the "{label}: WARN - {message}" line to
 // BOTH the out narration AND err (stderr), so a warning is visible in the captured

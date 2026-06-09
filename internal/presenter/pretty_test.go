@@ -695,6 +695,126 @@ func TestPrettyPresenterWarnDoesNotSuppressSuccessEndOfRunLine(t *testing.T) {
 	}
 }
 
+// prettyCapturedOutput is the worked-example captured underlying-command output
+// shared across the pretty StageFailed body tests: multi-line git chatter with an
+// internal blank line.
+const prettyCapturedOutput = "fatal: failed to push some refs to 'origin'\n" +
+	"\n" +
+	"hint: Updates were rejected because the remote contains work\n" +
+	"hint: that you do not have locally."
+
+// TestPrettyPresenterStageFailedRendersCapturedOutputBelowGlyphLine is the core
+// pretty acceptance for captured output: below the red ✗ line, the captured body
+// is rendered to OUT verbatim (no box). The no-colour profile keeps the assertion
+// on layout — the ✗ line then each captured-body line, in order.
+func TestPrettyPresenterStageFailedRendersCapturedOutputBelowGlyphLine(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved", Output: prettyCapturedOutput})
+	})
+
+	got := out.String()
+	glyphLine := "  ✗ tag/push"
+	glyphIdx := strings.Index(got, glyphLine)
+	if glyphIdx < 0 {
+		t.Fatalf("✗ failure line %q not found:\n%q", glyphLine, got)
+	}
+	// The captured body follows the ✗ line — verbatim, so each source line appears
+	// after the glyph line.
+	bodyIdx := strings.Index(got, prettyCapturedOutput)
+	if bodyIdx < 0 {
+		t.Fatalf("captured body not rendered verbatim below the ✗ line:\n%q", got)
+	}
+	if bodyIdx <= glyphIdx {
+		t.Errorf("captured body must follow the ✗ line: glyph=%d body=%d\n%q", glyphIdx, bodyIdx, got)
+	}
+}
+
+// TestPrettyPresenterStageFailedSummaryToStderrWithoutBody proves the stream
+// contract: the one-line summary reaches err, but the multi-line captured body
+// does NOT — only the summary is duplicated to stderr for redirect-visibility.
+func TestPrettyPresenterStageFailedSummaryToStderrWithoutBody(t *testing.T) {
+	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
+	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.Ascii)
+	p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved", Output: prettyCapturedOutput})
+
+	// The captured body reaches out (narration) ...
+	if !strings.Contains(out.String(), prettyCapturedOutput) {
+		t.Errorf("captured body missing from stdout narration:\n%q", out.String())
+	}
+	// ... but err carries ONLY the one-line summary, never the body.
+	wantErr := "✗ tag/push  push rejected: remote moved\n"
+	if got := errBuf.String(); got != wantErr {
+		t.Errorf("stderr = %q, want exactly the one-line summary %q", got, wantErr)
+	}
+	for _, line := range strings.Split(prettyCapturedOutput, "\n") {
+		if line != "" && strings.Contains(errBuf.String(), line) {
+			t.Errorf("captured body line %q leaked to stderr = %q", line, errBuf.String())
+		}
+	}
+}
+
+// TestPrettyPresenterStageFailedEmptyOutputRendersGlyphLineAlone covers the
+// empty-output edge: with no captured output the ✗ line stands alone — no body
+// block follows it.
+func TestPrettyPresenterStageFailedEmptyOutputRendersGlyphLineAlone(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved", Output: ""})
+	})
+
+	// The name is padStage-padded to the stage column (8-char "tag/push" → three
+	// trailing spaces to reach column 11), matching the existing StageFailed line.
+	want := "  ✗ tag/push   push rejected: remote moved\n"
+	if got := out.String(); got != want {
+		t.Errorf("empty-output StageFailed = %q, want exactly the ✗ line alone %q", got, want)
+	}
+}
+
+// TestPrettyPresenterStageFailedDelimiterLikeBodyLineIsVerbatim covers the
+// delimiter-collision edge in pretty mode: a captured-body line that reads like a
+// plain closing delimiter is written through verbatim — pretty renders no such
+// delimiter of its own, so the line simply survives in the body unchanged.
+func TestPrettyPresenterStageFailedDelimiterLikeBodyLineIsVerbatim(t *testing.T) {
+	body := "real chatter\n--- end output ---\nstill chatter"
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "boom", Output: body})
+	})
+
+	if !strings.Contains(out.String(), body) {
+		t.Errorf("delimiter-like captured body not written verbatim in pretty:\n%q", out.String())
+	}
+}
+
+// TestPrettyPresenterStageFailedMultiLineBlankLinesPreserved covers the
+// multi-line edge: a captured body with internal blank lines round-trips exactly
+// below the ✗ line — no collapsing, no re-wrapping, no truncation.
+func TestPrettyPresenterStageFailedMultiLineBlankLinesPreserved(t *testing.T) {
+	body := "line one\n\n\nline four after two blanks"
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "boom", Output: body})
+	})
+
+	if !strings.Contains(out.String(), body) {
+		t.Errorf("multi-line blank lines not preserved verbatim in pretty:\n%q", out.String())
+	}
+}
+
+// TestPrettyPresenterStageFailedBodySurvivesColourDowngrade asserts the captured
+// body bytes survive the no-colour profile intact: even if the presenter wraps the
+// body in a dim style, the colour downgrade leaves the verbatim body text in place
+// (styling is additive; the body bytes are load-bearing).
+func TestPrettyPresenterStageFailedBodySurvivesColourDowngrade(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "boom", Output: prettyCapturedOutput})
+	})
+
+	if bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("downgraded failure block leaked an SGR code:\n%q", out.String())
+	}
+	if !strings.Contains(out.String(), prettyCapturedOutput) {
+		t.Errorf("captured body not preserved verbatim under colour downgrade:\n%q", out.String())
+	}
+}
+
 // prettyNotesBody mirrors the plain test's worked-example notes body: a lead
 // line, a blank line, then the emoji-headed Features/Fixes sections. Shared here
 // so the pretty/plain byte-identity assertions render the same source bytes.

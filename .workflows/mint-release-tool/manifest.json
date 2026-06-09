@@ -372,7 +372,7 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 2,
-          "current_task": "cli-presentation-2-7",
+          "current_task": "cli-presentation-2-8",
           "completed_tasks": [
             "cli-presentation-1-1",
             "cli-presentation-1-2",
@@ -385,7 +385,8 @@
             "cli-presentation-2-3",
             "cli-presentation-2-4",
             "cli-presentation-2-5",
-            "cli-presentation-2-6"
+            "cli-presentation-2-6",
+            "cli-presentation-2-7"
           ],
           "completed_phases": [
             1
