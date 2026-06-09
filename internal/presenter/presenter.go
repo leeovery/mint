@@ -137,6 +137,29 @@ type Presenter interface {
 	// menu, the -y gate skip, and the fail-loud forbidden-combination check — each
 	// replacing/extending the stub without churning this signature.
 	Prompt(gate Gate) (Choice, error)
+	// SuspendSpinner and ResumeSpinner are ENGINE-CALLABLE control hooks the engine
+	// invokes AROUND its OWN $EDITOR hand-off (the presenter never detects or invokes
+	// the editor — per the Phase-3 render-only Prompt contract the engine owns the
+	// e/r re-entry loop and the $EDITOR hand-off). $EDITOR takes over the terminal, so
+	// the engine calls SuspendSpinner to stop the pretty spinner's animation before
+	// handing off — releasing the terminal so the editor session is animation-free —
+	// and ResumeSpinner to restart it on the SAME stage line afterwards.
+	//
+	// Both are SAFE NO-OPS when no spinner is active, and both are no-ops in plain
+	// (which never animates). They are a plain stop-then-start — no alt-screen, no
+	// screen-clear — consistent with the linear print-style narration, and they
+	// preserve the one-spinner-at-a-time invariant: after any number of suspend/resume
+	// cycles there is still at most one spinner. A stage that completes
+	// (StageSucceeded/StageFailed) while suspended clears the suspended state, so a
+	// later ResumeSpinner does not resurrect a spinner for an already-completed stage.
+	//
+	// These hooks suspend/resume the presenter's OWN animation only; the presenter
+	// imports no os/exec and spawns no subprocess (guarded by a test).
+	SuspendSpinner()
+	// ResumeSpinner restarts the spinner suspended by SuspendSpinner on the same
+	// stage line (see SuspendSpinner). It is a no-op when nothing was suspended and in
+	// plain mode.
+	ResumeSpinner()
 	// InitResult renders one init outcome — a created or skipped target — in the
 	// shared cross-verb vocabulary (pretty: "✓ created {target}" / "· skipped
 	// {target} ({reason})"; plain: "{target}: created" / "{target}: skipped

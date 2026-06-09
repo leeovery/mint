@@ -28,6 +28,8 @@ const (
 	KindShowNotes
 	KindShowVersion
 	KindPrompt
+	KindSuspendSpinner
+	KindResumeSpinner
 	KindInitResult
 	KindRunFinished
 )
@@ -55,6 +57,10 @@ func (k EventKind) String() string {
 		return "ShowVersion"
 	case KindPrompt:
 		return "Prompt"
+	case KindSuspendSpinner:
+		return "SuspendSpinner"
+	case KindResumeSpinner:
+		return "ResumeSpinner"
 	case KindInitResult:
 		return "InitResult"
 	case KindRunFinished:
@@ -184,6 +190,23 @@ func (r *RecordingPresenter) Prompt(gate presenter.Gate) (presenter.Choice, erro
 		return choice, nil
 	}
 	return gate.Default, nil
+}
+
+// SuspendSpinner records the engine's request to stop the spinner around its own
+// $EDITOR hand-off. The hook carries no payload (it is a control signal, not
+// narration), so the recorded Event is just the Kind — recorded rather than
+// dropped so an engine-driven test can assert the suspend/resume ORDERING around
+// the hand-off (e.g. SuspendSpinner precedes the e/r work and ResumeSpinner
+// follows). The recorder itself runs no spinner, so this has no other effect.
+func (r *RecordingPresenter) SuspendSpinner() {
+	r.Events = append(r.Events, Event{Kind: KindSuspendSpinner})
+}
+
+// ResumeSpinner records the engine's request to restart the spinner after its own
+// $EDITOR hand-off — the paired control signal to SuspendSpinner (see above),
+// recorded as a payload-less Event so the ordering is assertable.
+func (r *RecordingPresenter) ResumeSpinner() {
+	r.Events = append(r.Events, Event{Kind: KindResumeSpinner})
 }
 
 // InitResult records the init outcome event with its full payload — the

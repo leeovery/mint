@@ -27,6 +27,8 @@ func (p *nopPresenter) Unwound(presenter.Unwind)              {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
 func (p *nopPresenter) ShowNotes(presenter.Notes)             {}
 func (p *nopPresenter) ShowVersion(presenter.Version)         {}
+func (p *nopPresenter) SuspendSpinner()                       {}
+func (p *nopPresenter) ResumeSpinner()                        {}
 func (p *nopPresenter) InitResult(presenter.InitOutcome)      {}
 func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
 func (p *nopPresenter) Prompt(g presenter.Gate) (presenter.Choice, error) {
@@ -50,6 +52,8 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.ShowPlan(presenter.Plan{})
 	p.ShowNotes(presenter.Notes{})
 	p.ShowVersion(presenter.Version{})
+	p.SuspendSpinner()
+	p.ResumeSpinner()
 	p.InitResult(presenter.InitOutcome{})
 	p.RunFinished(presenter.RunResult{})
 	if _, err := p.Prompt(presenter.Gate{}); err != nil {

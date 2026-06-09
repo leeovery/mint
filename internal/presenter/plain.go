@@ -151,6 +151,17 @@ func (p *PlainPresenter) StageStarted(s StageStart) {
 	p.writef("%s: generating...\n", s.Name)
 }
 
+// SuspendSpinner and ResumeSpinner are NO-OPS in plain mode — plain never animates
+// (a stage emits exactly one terse line on its transition), so there is nothing to
+// suspend or resume around the engine's $EDITOR hand-off. They produce NO output and
+// never error, satisfying the engine-callable interface uniformly across both render
+// modes without plain pulling in any animation. The presenter does not invoke
+// $EDITOR; these hooks only exist for the pretty spinner's sake.
+func (p *PlainPresenter) SuspendSpinner() {}
+
+// ResumeSpinner is the plain no-op pair of SuspendSpinner (see above).
+func (p *PlainPresenter) ResumeSpinner() {}
+
 // StageSucceeded renders a stage's single completion line as "{stage}: {detail}",
 // falling back to "{stage}: ok" when no detail travels with the event. A blocking
 // stage additionally carries an elapsed suffix " ({elapsed})" after the

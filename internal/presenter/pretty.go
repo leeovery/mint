@@ -144,6 +144,26 @@ type PrettyPresenter struct {
 	// state on the per-run presenter instance (mirroring terminalFailure), so there is
 	// no shared mutable global.
 	activeSpinner StageSpinner
+	// activeSpinnerText is the dim start text the active spinner was created with —
+	// remembered so SuspendSpinner can carry it over to suspendedText and ResumeSpinner
+	// can recreate the spinner on the SAME stage line. It is set wherever a spinner is
+	// created (StageStarted and ResumeSpinner) and is only meaningful while
+	// activeSpinner is non-nil.
+	activeSpinnerText string
+
+	// spinnerSuspended records that SuspendSpinner stopped the active spinner around
+	// the engine's $EDITOR hand-off and is awaiting a ResumeSpinner. It is the flag
+	// that lets ResumeSpinner know whether to recreate a spinner: set true only when a
+	// spinner was actually running at suspend time (a suspend with no active spinner
+	// is a safe no-op that leaves this false). It is CLEARED both by ResumeSpinner
+	// (after recreating the spinner) and by StageSucceeded/StageFailed via stopSpinner
+	// (so a stage that completes WHILE suspended is not resurrected by a later
+	// ResumeSpinner). Per-run construction state, like activeSpinner.
+	spinnerSuspended bool
+	// suspendedText is the dim start text of the spinner SuspendSpinner stopped,
+	// remembered so ResumeSpinner recreates the spinner on the SAME stage line with
+	// the identical text. It is only meaningful while spinnerSuspended is true.
+	suspendedText string
 }
 
 // Compile-time proof the pretty presenter satisfies the seam it renders.
@@ -323,23 +343,78 @@ func (p *PrettyPresenter) StageStarted(s StageStart) {
 	}
 	p.stopSpinner()
 	startText := p.dim.Render(s.Name)
+	p.activeSpinnerText = startText
 	p.activeSpinner = p.newSpinner(p.out, startText)
 	p.activeSpinner.Start()
 }
 
-// stopSpinner stops the active stage spinner (clearing its line in place) and resets
-// the handle to nil. It is a no-op when no spinner is running, so completion events
-// for short (non-spinner) stages — and a defensive double-stop — are safe. Called by
-// StageStarted (defensively before a new spinner) and by StageSucceeded/StageFailed
-// (before the ✓/✗ line is printed in the cleared place). The real spinner's Stop is
-// synchronous, so after this returns no further frame is written and the completion
-// line is not interleaved with animation.
+// stopSpinner stops the active stage spinner (clearing its line in place), resets
+// the handle to nil, AND clears any pending suspend state. It is a no-op for the
+// handle when no spinner is running, so completion events for short (non-spinner)
+// stages — and a defensive double-stop — are safe. Called by StageStarted
+// (defensively before a new spinner) and by StageSucceeded/StageFailed (before the
+// ✓/✗ line is printed in the cleared place). The real spinner's Stop is synchronous,
+// so after this returns no further frame is written and the completion line is not
+// interleaved with animation.
+//
+// Clearing spinnerSuspended here is what makes a stage that COMPLETES WHILE SUSPENDED
+// safe: when SuspendSpinner has already stopped the spinner (activeSpinner nil) and a
+// StageSucceeded/StageFailed then fires, the active-handle stop is a no-op but the
+// suspend flag is still cleared, so a later ResumeSpinner does NOT resurrect a spinner
+// for the already-completed stage. SuspendSpinner deliberately sets spinnerSuspended
+// AFTER its own stop (it does not route through stopSpinner), so its own flag is never
+// clobbered.
 func (p *PrettyPresenter) stopSpinner() {
+	p.spinnerSuspended = false
 	if p.activeSpinner == nil {
 		return
 	}
 	p.activeSpinner.Stop()
 	p.activeSpinner = nil
+}
+
+// SuspendSpinner stops the active stage spinner around the engine's $EDITOR
+// hand-off, releasing the terminal so the editor session is ANIMATION-FREE — no
+// frame is written between this and ResumeSpinner. It is ENGINE-DRIVEN: the engine
+// owns the e/r re-entry loop and invokes $EDITOR; this hook only suspends the
+// presenter's OWN animation on command (the presenter never detects or invokes the
+// editor).
+//
+// When a spinner is active it Stop()s it directly (NOT via stopSpinner, which would
+// clear the suspend flag), REMEMBERS the spinner's start text so ResumeSpinner can
+// recreate it on the SAME stage line, nils the active handle, and sets
+// spinnerSuspended. When NO spinner is active it does NOTHING — a safe no-op that
+// leaves spinnerSuspended false, so a paired ResumeSpinner also no-ops. The stop is a
+// plain stop (no alt-screen, no screen-clear), consistent with the linear narration,
+// and it preserves the one-spinner-at-a-time invariant (the handle is nil after).
+func (p *PrettyPresenter) SuspendSpinner() {
+	if p.activeSpinner == nil {
+		return
+	}
+	p.activeSpinner.Stop()
+	p.suspendedText = p.activeSpinnerText
+	p.activeSpinner = nil
+	p.spinnerSuspended = true
+}
+
+// ResumeSpinner restarts the spinner SuspendSpinner stopped, recreating it on the
+// SAME stage line via the remembered start text and Start()ing exactly one — so the
+// one-spinner-at-a-time invariant holds across any number of suspend/resume cycles.
+// It clears spinnerSuspended once resumed.
+//
+// When nothing was suspended (spinnerSuspended false — either no spinner was active
+// at the paired SuspendSpinner, or the stage already completed while suspended and
+// cleared the flag) it does NOTHING: no spinner is created or started, so a completed
+// stage is never resurrected. The restart is a plain Start (no alt-screen, no
+// screen-clear).
+func (p *PrettyPresenter) ResumeSpinner() {
+	if !p.spinnerSuspended {
+		return
+	}
+	p.activeSpinner = p.newSpinner(p.out, p.suspendedText)
+	p.activeSpinnerText = p.suspendedText
+	p.activeSpinner.Start()
+	p.spinnerSuspended = false
 }
 
 // StageSucceeded first STOPS the active stage spinner (if any) — the spinner clears
