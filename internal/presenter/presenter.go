@@ -90,6 +90,18 @@ type Presenter interface {
 	// BYTE-FOR-BYTE VERBATIM in both modes (see Notes) — only the surrounding
 	// delimiters differ.
 	ShowNotes(notes Notes)
+	// ShowVersion renders the resolved version. It is THE PAYLOAD EXCEPTION: version
+	// is the one verb whose output is a VALUE, not narration, so its plain output is
+	// a RAW VALUE (not the key:value narration every other plain line uses) — the
+	// bare value plus a single trailing newline and nothing else — so `$(mint
+	// version)` consumes it cleanly. Pretty MAY dress it ("{leaf} mint v{value}")
+	// since styling is additive only in pretty; the bare value is the floor.
+	//
+	// Narration → out ONLY; the value never goes to err. version has NO interactive
+	// gate (it never calls Prompt) and NO release-style brand footer / "done:" line
+	// (the engine never calls RunFinished for version) — the value line IS the
+	// terminal output.
+	ShowVersion(v Version)
 	// Prompt is RENDER-ONLY: it renders the gate's DECLARED choice set (the
 	// vertical menu + the Question prompt), reads ONE line of input, and returns a
 	// single DECLARED Choice. It NEVER invokes $EDITOR or claude — the engine owns
@@ -265,6 +277,27 @@ type Notes struct {
 	// Body is the release-notes content, written byte-for-byte verbatim in both
 	// modes. The empty string is legal (bare delimiters, no invented content).
 	Body string
+}
+
+// Version is the ShowVersion payload: the engine-resolved version value plus the
+// engine-supplied brand leaf, for the one payload verb (version's output is a
+// value, not narration).
+//
+// Value is the resolved version (e.g. "1.4.0"), the load-bearing datum. Plain
+// writes it as the BARE value (no "v" prefix, no glyph) so `$(mint version)`
+// consumes it cleanly; pretty dresses it as "v{Value}" inside the brand line — the
+// "v" prefix is a PRETTY-only decoration, never part of the plain value.
+//
+// Leaf mirrors RunInfo.Leaf / RunResult.Leaf: the engine-supplied brand glyph,
+// defaulting to 🌿 when empty. Plain IGNORES it (the bare value carries no brand);
+// pretty renders it as the brand leaf, consistent with the other brand lines.
+type Version struct {
+	// Value is the resolved version, rendered verbatim. Plain writes it bare; pretty
+	// prefixes a decorative "v".
+	Value string
+	// Leaf is the engine-supplied brand glyph for the pretty brand line, defaulting
+	// to 🌿 when empty. Plain never reads it.
+	Leaf string
 }
 
 // RunInfo carries the start-of-run payload. Action is the engine-supplied verb

@@ -292,6 +292,20 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 	p.writef("--- end notes ---\n")
 }
 
+// ShowVersion writes the bare version value plus a single trailing newline to OUT
+// ONLY — "{value}\n" and NOTHING else. This is the deliberate PAYLOAD EXCEPTION to
+// plain's "key: value" narration: version's output is a VALUE, not narration, so it
+// carries NO "version:" prefix, NO "v" prefix, NO glyph, NO ANSI, and no second
+// line. That exact framing is the load-bearing contract for `$(mint version)` —
+// command substitution strips the single trailing newline, leaving exactly the
+// value. The value is passed through %s (never interpreted as a format string) and
+// is engine content rendered verbatim; the only framing this synthesises is the one
+// trailing newline. version has no gate and no release footer — this line is the
+// terminal output, narration → out only (never err).
+func (p *PlainPresenter) ShowVersion(v Version) {
+	p.writef("%s\n", v.Value)
+}
+
 // Prompt drives the shared line-read input loop for the plain gate: it renders a
 // terse prompt, reads ONE line, and returns a declared Choice. Empty Enter selects
 // the gate's Default; case-insensitive input maps to a declared key; unrecognised

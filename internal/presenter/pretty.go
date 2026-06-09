@@ -518,6 +518,24 @@ const defaultMarker = " [default]"
 // substring even under colour, and survives a colour downgrade as bare "› ".
 const promptMarker = "› "
 
+// ShowVersion renders the dressed version line to OUT ONLY: the engine-supplied
+// brand leaf (default 🌿 via leafOrDefault), the "mint" brand, and the value with a
+// decorative "v" prefix — "{leaf} mint v{value}", matching the worked spec form
+// "🌿 mint v1.4.0". It is flush-left like the other brand lines.
+//
+// Styling is ADDITIVE only: the whole line is dim-styled through the lipgloss
+// renderer (the subdued brand tone), but the layout — the leaf, "mint", and the
+// load-bearing "v{value}" — survives a colour downgrade as bare text, so under a
+// no-colour profile the line is exactly "{leaf} mint v{value}" with no SGR codes and
+// the value stays present and legible. The "v" prefix is PRETTY-only (plain writes
+// the bare value). version has no gate and no release footer — this line is the
+// terminal output, narration → out only (never err).
+func (p *PrettyPresenter) ShowVersion(v Version) {
+	leaf := leafOrDefault(v.Leaf)
+	line := fmt.Sprintf("%s mint v%s", leaf, v.Value)
+	p.writef("%s\n", p.dim.Render(line))
+}
+
 // Prompt drives the SAME shared line-read input loop the plain presenter uses
 // (readChoice/parseChoice): empty Enter selects the gate's Default, case-insensitive
 // input maps to a declared key, unrecognised input re-prompts, and EOF returns a

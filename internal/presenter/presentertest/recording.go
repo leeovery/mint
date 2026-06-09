@@ -26,6 +26,7 @@ const (
 	KindUnwound
 	KindShowPlan
 	KindShowNotes
+	KindShowVersion
 	KindPrompt
 	KindInitResult
 	KindRunFinished
@@ -50,6 +51,8 @@ func (k EventKind) String() string {
 		return "ShowPlan"
 	case KindShowNotes:
 		return "ShowNotes"
+	case KindShowVersion:
+		return "ShowVersion"
 	case KindPrompt:
 		return "Prompt"
 	case KindInitResult:
@@ -77,6 +80,7 @@ type Event struct {
 	Unwound        presenter.Unwind
 	ShowPlan       presenter.Plan
 	ShowNotes      presenter.Notes
+	ShowVersion    presenter.Version
 	Prompt         presenter.Gate
 	InitResult     presenter.InitOutcome
 	RunFinished    presenter.RunResult
@@ -153,6 +157,13 @@ func (r *RecordingPresenter) ShowPlan(plan presenter.Plan) {
 // rendering.
 func (r *RecordingPresenter) ShowNotes(notes presenter.Notes) {
 	r.Events = append(r.Events, Event{Kind: KindShowNotes, ShowNotes: notes})
+}
+
+// ShowVersion records the version event with its full payload — value and brand
+// leaf — so an engine-driven test can round-trip the version event independent of
+// any rendering.
+func (r *RecordingPresenter) ShowVersion(v presenter.Version) {
+	r.Events = append(r.Events, Event{Kind: KindShowVersion, ShowVersion: v})
 }
 
 // Prompt records the gate (its full declared payload) so an engine-driven test
