@@ -158,15 +158,38 @@ func (p *PrettyPresenter) StageStarted(s StageStart) {
 // StageSucceeded renders the success stage line: two-space indent, a green ✓,
 // the stage name padded to a column, then the engine-supplied detail. The detail
 // is rendered verbatim (it may already contain a "→" from the engine — the
-// presenter never synthesises it). The elapsed suffix " ({elapsed})" is appended
+// presenter never synthesises it). The elapsed suffix "({elapsed})" is appended
 // on blocking stages only; short stages render the detail without it.
+//
+// When nothing trails the name — an empty Detail on a short stage — the name is
+// emitted unpadded so the column's trailing spaces never become a
+// trailing-whitespace artefact (the padding exists only to align a following
+// detail; with nothing following it is noise).
 func (p *PrettyPresenter) StageSucceeded(s StageSuccess) {
 	glyph := p.success.Render("✓")
-	detail := s.Detail
-	if s.Blocking {
-		detail = fmt.Sprintf("%s (%s)", detail, formatElapsed(s.Elapsed))
+	trailing := stageTrailing(s)
+	if trailing == "" {
+		p.writef("%s%s %s\n", stageIndent, glyph, s.Name)
+		return
 	}
-	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), detail)
+	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), trailing)
+}
+
+// stageTrailing builds the text that follows the padded stage name: the
+// engine-supplied detail, with the compact "({elapsed})" appended on blocking
+// stages only. Detail and elapsed are joined with a single space only when both
+// are present, so an empty-detail blocking stage renders "({elapsed})" flush at
+// the column with no stray leading space, and a short empty-detail stage returns
+// the empty string (signalling the caller to drop the column padding entirely).
+func stageTrailing(s StageSuccess) string {
+	if !s.Blocking {
+		return s.Detail
+	}
+	elapsed := fmt.Sprintf("(%s)", formatElapsed(s.Elapsed))
+	if s.Detail == "" {
+		return elapsed
+	}
+	return s.Detail + " " + elapsed
 }
 
 // StageFailed renders the styled failure stage line to out (two-space indent, a

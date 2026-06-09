@@ -161,6 +161,105 @@ func TestPrettyPresenterElapsedRendersOnlyOnBlockingStages(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterStageSucceededDetailOnlyHasNoArtefact locks the empty-detail
+// edge cases: a stage success carrying no Detail renders the glyph and stage name
+// with NO trailing-whitespace / empty-slot artefact, and (when blocking) appends
+// the elapsed with no stray leading space before it.
+func TestPrettyPresenterStageSucceededDetailOnlyHasNoArtefact(t *testing.T) {
+	tests := []struct {
+		name     string
+		stage    string
+		blocking bool
+		elapsed  time.Duration
+		want     string
+	}{
+		{
+			name:  "short detail-less stage has no trailing whitespace",
+			stage: "x",
+			want:  "  ✓ x\n",
+		},
+		{
+			name:     "blocking detail-less stage shows elapsed with no leading space",
+			stage:    "x",
+			blocking: true,
+			elapsed:  1100 * time.Millisecond,
+			// Two-space indent, ✓, then "x" padded into the 11-wide stage column
+			// (one char + ten spaces) and the elapsed placed flush at the column —
+			// no stray leading space before "(".
+			want: "  ✓ x          (1.1s)\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+				p.StageSucceeded(presenter.StageSuccess{
+					Name:     tt.stage,
+					Detail:   "",
+					Elapsed:  tt.elapsed,
+					Blocking: tt.blocking,
+				})
+			})
+
+			got := out.String()
+			if got != tt.want {
+				t.Errorf("detail-less stage line = %q, want %q", got, tt.want)
+			}
+			// Belt-and-braces: no line carries trailing whitespace before its newline.
+			for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+				if strings.TrimRight(line, " ") != line {
+					t.Errorf("line carries a trailing-whitespace artefact: %q", line)
+				}
+			}
+		})
+	}
+}
+
+// TestPrettyPresenterStageNamesPadToCommonColumn renders two stage successes with
+// different-length names and asserts their detail text starts at the same column —
+// the "padded to a column so successive lines align" rule.
+func TestPrettyPresenterStageNamesPadToCommonColumn(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageSucceeded(presenter.StageSuccess{Name: "version", Detail: "v1.3.2 → v1.4.0 (minor)"})
+		p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: "clean · on main"})
+	})
+
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected two stage lines, got %d:\n%q", len(lines), out.String())
+	}
+
+	col0 := strings.Index(lines[0], "v1.3.2")
+	col1 := strings.Index(lines[1], "clean")
+	if col0 < 0 || col1 < 0 {
+		t.Fatalf("detail text not found in stage lines:\n%q", out.String())
+	}
+	if col0 != col1 {
+		t.Errorf("detail columns misaligned: version detail at %d, preflight detail at %d\n%q", col0, col1, out.String())
+	}
+}
+
+// TestPrettyPresenterStageColumnSurvivesColourDowngrade forces the no-colour
+// profile and asserts the ✓ glyph, two-space indent, and the column padding (so
+// the detail starts at the aligned column) all survive while no SGR codes leak.
+func TestPrettyPresenterStageColumnSurvivesColourDowngrade(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageSucceeded(presenter.StageSuccess{Name: "prep", Detail: "pre_tag: npm ci && npm run build", Elapsed: 2300 * time.Millisecond, Blocking: true})
+	})
+
+	got := out.String()
+	if bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("downgraded stage line leaked an SGR code:\n%q", got)
+	}
+	// Two-space indent, glyph, name padded into the column, then the detail.
+	want := "  ✓ prep       pre_tag: npm ci && npm run build (2.3s)\n"
+	if got != want {
+		t.Errorf("downgraded stage line = %q, want %q", got, want)
+	}
+}
+
 // TestPrettyPresenterStartLineUsesEngineAction proves the brand top line renders
 // the engine-supplied verb word from RunInfo — never a hardcoded "releasing" — so
 // regenerate narrates "… › regenerating v{X}".
