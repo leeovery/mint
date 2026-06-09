@@ -58,21 +58,35 @@ func (p *PlainPresenter) RunStarted(info RunInfo) {
 // StageStarted emits plain's spinner-equivalent: a terse start line for a
 // blocking (long/slow) stage only, so a live-tail consumer isn't staring at
 // silence through a multi-second wait. Short stages stay silent until completion.
-// The exact long-stage wording is hardened in Phase 2; the skeleton honours the
-// flag with simple ASCII narration.
+// The wording is presenter-synthesised narration, so it stays byte-pure ASCII —
+// "generating..." with an ASCII ellipsis, not the U+2026 glyph the pretty spinner
+// uses (the spec's "wording refinable" latitude; the byte-purity guard is fixed).
 func (p *PlainPresenter) StageStarted(s StageStart) {
 	if !s.Blocking {
 		return
 	}
-	p.writef("%s: ...\n", s.Name)
+	p.writef("%s: generating...\n", s.Name)
 }
 
-// StageSucceeded renders a stage's completion as "{stage}: {detail}", falling
-// back to "{stage}: ok" when no detail travels with the event.
+// StageSucceeded renders a stage's single completion line as "{stage}: {detail}",
+// falling back to "{stage}: ok" when no detail travels with the event. A blocking
+// stage additionally carries an elapsed suffix " ({elapsed})" after the
+// detail/ok text — the same long/blocking gate the pretty presenter uses. The
+// suffix is gated on Blocking, not on the Elapsed value: a short stage never shows
+// elapsed even with a non-zero duration, and a blocking stage that finished under
+// the timer's resolution still renders "(0.0s)" rather than suppressing it.
 func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 	detail := s.Detail
 	if detail == "" {
 		detail = "ok"
+	}
+	if s.Blocking {
+		// formatElapsed (in pretty.go) is the package-shared "{seconds}s" helper —
+		// same compact one-decimal form both presenters render. The suffix is gated
+		// on Blocking, not the Elapsed value, so a zero duration still renders
+		// "(0.0s)" rather than being suppressed.
+		p.writef("%s: %s (%s)\n", s.Name, detail, formatElapsed(s.Elapsed))
+		return
 	}
 	p.writef("%s: %s\n", s.Name, detail)
 }

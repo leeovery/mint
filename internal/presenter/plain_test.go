@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mint/internal/presenter"
 )
@@ -147,7 +148,7 @@ func TestPlainPresenterStageStartedHonoursBlocking(t *testing.T) {
 		want     string
 	}{
 		{name: "short stage emits nothing on start", blocking: false, want: ""},
-		{name: "blocking stage emits a terse start line", blocking: true, want: "notes: ...\n"},
+		{name: "blocking stage emits a terse start line", blocking: true, want: "notes: generating...\n"},
 	}
 
 	for _, tt := range tests {
@@ -162,6 +163,83 @@ func TestPlainPresenterStageStartedHonoursBlocking(t *testing.T) {
 				t.Errorf("StageStarted blocking=%v = %q, want %q", tt.blocking, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestPlainPresenterStageSucceededElapsedSuffix proves the elapsed suffix is gated
+// on Blocking, not on the Elapsed value: a blocking stage's completion line carries
+// ({elapsed}); a short stage's never does — even when an Elapsed travels with it.
+func TestPlainPresenterStageSucceededElapsedSuffix(t *testing.T) {
+	tests := []struct {
+		name    string
+		success presenter.StageSuccess
+		want    string
+	}{
+		{
+			name:    "blocking with detail appends elapsed after detail",
+			success: presenter.StageSuccess{Name: "notes", Detail: "generated", Elapsed: 1100 * time.Millisecond, Blocking: true},
+			want:    "notes: generated (1.1s)\n",
+		},
+		{
+			name:    "blocking without detail appends elapsed after ok",
+			success: presenter.StageSuccess{Name: "preflight", Detail: "", Elapsed: 2300 * time.Millisecond, Blocking: true},
+			want:    "preflight: ok (2.3s)\n",
+		},
+		{
+			name:    "short stage carries no elapsed even when Elapsed is set",
+			success: presenter.StageSuccess{Name: "preflight", Detail: "clean", Elapsed: 5 * time.Second, Blocking: false},
+			want:    "preflight: clean\n",
+		},
+		{
+			name:    "blocking with zero elapsed still renders an elapsed suffix",
+			success: presenter.StageSuccess{Name: "notes", Detail: "generated", Elapsed: 0, Blocking: true},
+			want:    "notes: generated (0.0s)\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, _ := drive(func(p *presenter.PlainPresenter) {
+				p.StageSucceeded(tt.success)
+			})
+
+			if got := out.String(); got != tt.want {
+				t.Errorf("StageSucceeded(%+v) = %q, want %q", tt.success, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPlainPresenterShortStageEmitsOnlyCompletionLine drives a full short-stage
+// transition (start then success, both Blocking==false) and asserts exactly one
+// line — the completion — with no start line and no elapsed suffix.
+func TestPlainPresenterShortStageEmitsOnlyCompletionLine(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageStarted(presenter.StageStart{Name: "preflight", Blocking: false})
+		p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: "clean", Blocking: false})
+	})
+
+	want := "preflight: clean\n"
+	if got := out.String(); got != want {
+		t.Errorf("short stage output = %q, want %q", got, want)
+	}
+}
+
+// TestPlainPresenterLongStageEmitsStartThenCompletion drives a full blocking-stage
+// transition and asserts two lines in order — the terse start line then the
+// completion line — with the completion carrying the elapsed suffix.
+func TestPlainPresenterLongStageEmitsStartThenCompletion(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
+		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Elapsed: 1100 * time.Millisecond, Blocking: true})
+	})
+
+	want := "notes: generating...\n" +
+		"notes: generated (1.1s)\n"
+	if got := out.String(); got != want {
+		t.Errorf("long stage output = %q, want %q", got, want)
 	}
 }
 
