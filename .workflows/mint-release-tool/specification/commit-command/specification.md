@@ -127,7 +127,7 @@ When **no editor in the chain resolves to a launchable program**, behaviour depe
 **The editor save *is* the accept event.** On the fallback path the editor replaces the `Continue?` gate (git-like):
 
 - **No separate `Continue?` gate.** The gate governs the *AI-generated* message only; the fallback path uses the editor itself as the review. A non-empty save = accept; quit/empty = abort. (This reconciles "`--no-ai` behaves like plain `git commit`" with "gate ON by default" — the gate is AI-path-only.)
-- **Staging applies on save.** Same "stage on accept" rule, where *save* is the accept: the editor opens against the real (unstaged) state; only on a non-empty save does mint apply `-a`/`-A` staging, then commit. Mutate-nothing-until-accept holds.
+- **Staging applies on save.** Same "stage on accept" rule, where *save* is the accept: the editor opens against the real (unstaged) state; only on a non-empty save does mint apply `-a`/`-A` staging, then commit. **`-p` push then runs as normal** (a non-empty save is a full accept, so `mint commit -Ap --no-ai` stages, commits, and pushes). Mutate-nothing-until-accept holds.
 - **Empty/aborted editor = true no-op.** No staging applied, no commit, no push (even with `-p`). Nothing was mutated, so there is nothing to clean up.
 
 **Regeneration failure routes here too.** If the user presses `r` (regenerate-with-context) at the gate and the regeneration fails after its one retry, mint treats it as any other AI failure → the `$EDITOR` fallback. One consistent rule: any failed AI generation lands at the editor. No special "re-show the prior message" path. (Under `-y`/non-TTY this is moot — `r` is an interactive-only gate action.)
