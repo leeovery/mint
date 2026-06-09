@@ -173,7 +173,7 @@ total: 5
   - **One generic warn**: emit a single warn via the consumed Presenter — the commit is in place and the push is repeatable (re-run to retry). The **same** warn fires for every cause; do NOT branch the warn text on the cause.
   - **Verbatim stderr pass-through**: render git's own stderr **verbatim** beneath the warn, via the consumed Presenter stderr pass-through. Do NOT reformat, summarise, or parse git's stderr — git's specific hint (set-upstream, non-fast-forward, etc.) stays visible only through the pass-through.
   - **No cause classification**: a single failure branch handles rejected, remote-moved, no-upstream, and network identically — no detection of "no upstream" or any other cause, no per-cause message. The *"set an upstream and push"* line is git's (via pass-through), not mint's.
-- The push remains **repeatable**: mint reports failure but performs no cleanup, so re-running the push by hand is the documented fix. The overall command may exit with a non-zero/failure status to signal the push failed, but the **commit stays in place**.
+- The push remains **repeatable**: mint reports failure but performs no cleanup, so re-running the push by hand is the documented fix. On a push failure the overall command **exits non-zero** (the push step failed) so scripted/CI callers can detect it — but the **commit stays in place** (forward-only, never unwound); the non-zero status signals only the failed push, not a failed commit.
 - Apply this handling to the **one** shared push step so both the gate-accept (5-2) and editor save-as-accept (5-3) pushes get identical warn/never-unwind behaviour.
 - Tests use the fake runner (scripted `git push` failure with canned stderr) + recording presenter: assert exactly **one** warn (same text across rejected / remote-moved / no-upstream / network scenarios), the canned stderr appears **verbatim** beneath it, **no** `git reset`/`revert`/`restore`/unstage/amend is recorded, the commit remains, and the no-upstream scenario surfaces git's hint via pass-through (no mint-authored per-cause message).
 
@@ -185,9 +185,11 @@ total: 5
 - [ ] The no-upstream case surfaces git's own hint **via the verbatim pass-through**, not a mint-authored "set an upstream" message.
 - [ ] The commit stays **forward-only** and the push is **repeatable** (re-running the push by hand is the fix).
 - [ ] The failure handling wraps the **single shared push step**, so gate-accept (5-2) and editor-accept (5-3) pushes behave identically on failure.
+- [ ] On a push failure the overall command **exits non-zero** (deterministic — signalling only the failed push) while the commit remains in place.
 
 **Tests**:
 - `"a rejected (non-fast-forward) push keeps the commit and emits the generic warn"`
+- `"a push failure exits non-zero while leaving the commit in place"`
 - `"a no-upstream push failure emits the same generic warn (no per-cause message)"`
 - `"a network push failure emits the same generic warn"`
 - `"git's stderr is passed through verbatim beneath the warn"`

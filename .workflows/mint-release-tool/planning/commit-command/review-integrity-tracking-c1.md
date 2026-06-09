@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 1
 phase: Plan Integrity Review
@@ -37,7 +37,7 @@ The findings below are the only gaps worth raising. One is Important (a foundati
 - Build the editor open as a **reusable file-roundtrip routine** (the routine 3-3/3-4 reuse and 4-1's `e` pre-fills): (1) write the **initial buffer** to a temp file — empty/template here, but the routine must accept a caller-supplied initial message so 4-1's `e` can pre-fill the current message into the same routine; (2) invoke the **resolved editor argv from 3-1** against the temp-file path (`<editor-argv> <tempfile>` — 3-1 may return a multi-word command such as `code --wait`, so split/launch it as an argv with the path appended, do **not** feed the message via stdin); (3) wait for the editor to exit; (4) read the saved temp file back as the resulting buffer. The routine returns the saved buffer (and whether the editor exited normally) for the save-as-accept / empty-save decision below; it does not itself stage or commit.
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
@@ -62,7 +62,7 @@ The findings below are the only gaps worth raising. One is Important (a foundati
 - Determine "empty" the way git does for the editor flow: a buffer whose content is **only whitespace** (or has no content at all) is empty ⇒ abort. (Mirror plain `git commit`'s empty-message-aborts behaviour. Because the buffer opens with no synthetic stub or comment scaffolding, there are no `#`-comment lines to strip here — emptiness is purely whitespace-only/no-content; downstream tasks (4-2) reuse this same whitespace-only rule.)
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
@@ -88,7 +88,7 @@ The findings below are the only gaps worth raising. One is Important (a foundati
   - **Non-TTY stdin** (no `-y`) → fail loud — reuse the **consumed** forbidden-combo condition the Presenter already exposes (per 1-5); do NOT re-implement isatty detection. Gate the editor's interactivity on the **same Presenter stdin determination** the gate uses — do NOT introduce a separate stdout/controlling-terminal (`/dev/tty`) probe for the editor path. A run the Presenter classifies as non-interactive (non-TTY stdin, no `-y`) is the no-message-source case here regardless of stdout.
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
@@ -113,7 +113,7 @@ The findings below are the only gaps worth raising. One is Important (a foundati
 - The push remains **repeatable**: mint reports failure but performs no cleanup, so re-running the push by hand is the documented fix. On a push failure the overall command **exits non-zero** (the push step failed) so scripted/CI callers can detect it — but the **commit stays in place** (forward-only, never unwound); the non-zero status signals only the failed push, not a failed commit. Add an acceptance criterion and test asserting the deterministic exit status.
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**: Pairs with a new acceptance-criterion/test bullet — see proposed addition below if approved.
 
 ---
@@ -138,7 +138,7 @@ The findings below are the only gaps worth raising. One is Important (a foundati
 - [ ] The composed input is: prompt + staged diff content, in that order, and nothing else — and this ordering holds under the `[commit].prompt` override too (the override replaces the **prompt** segment only; mint still appends the diff in the same trailing position, never dropping or re-ordering it).
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---

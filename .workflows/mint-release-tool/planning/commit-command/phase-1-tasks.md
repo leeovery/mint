@@ -79,7 +79,7 @@ total: 6
 - Do NOT assemble the diff, apply `diff_exclude`/`max_diff_lines`, or call the transport here — those are 1-3 (L1) and the consumed L2.
 
 **Acceptance Criteria**:
-- [ ] The composed input is: prompt + staged diff content, in that order, and nothing else.
+- [ ] The composed input is: prompt + staged diff content, in that order, and nothing else — and this ordering holds under the `[commit].prompt` override too (the override replaces the **prompt** segment only; mint still appends the diff in the same trailing position, never dropping or re-ordering it).
 - [ ] The default prompt instructs a Conventional Commits `type: description` subject (imperative, concise) with an optional wrapped body for the *why*.
 - [ ] The default prompt instructs the AI to **infer the `type`** from the diff.
 - [ ] The default prompt instructs **scope omitted by default** (no `(scope)` guessing).
