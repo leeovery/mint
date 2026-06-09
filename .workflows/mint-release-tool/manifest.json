@@ -128,7 +128,7 @@
     "planning": {
       "items": {
         "mint-release-tool": {
-          "status": "in-progress",
+          "status": "completed",
           "format": "tick",
           "spec_commit": "17154471712cbf07df31ba3521c6fe04303c5ca5",
           "task_list_gate_mode": "auto",
