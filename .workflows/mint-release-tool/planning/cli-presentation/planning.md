@@ -19,6 +19,18 @@ approved_at: 2026-06-09
 - [ ] Narration is written to stdout and the stream split is wired and tested
 - [ ] `plain` emits no ANSI, glyphs, or animation and pulls in no UI library; `pretty` styles via `lipgloss` and relies on its colour auto-downgrade when piped or on a colour-incapable TTY
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-1-1 | Define the Presenter interface with the minimal event set | none |
+| cli-presentation-1-2 | Recording/fake presenter for event assertions | zero events recorded, multiple stages in sequence |
+| cli-presentation-1-3 | Startup render-mode selection (TTY detection, no sniffing) | --plain on a TTY still selects plain, piped/redirected stdout selects plain, LANG/LC_*/TERM/CI/NO_COLOR set but ignored |
+| cli-presentation-1-4 | Plain presenter renders the minimal stage sequence | no ANSI/glyph/animation bytes in output, no UI-library import |
+| cli-presentation-1-5 | Pretty presenter renders the minimal stage sequence via lipgloss | colour auto-downgrade emits no colour codes on non-colour-capable TTY, layout/glyphs preserved under downgrade |
+| cli-presentation-1-6 | Wire and verify the stdout/stderr stream split | failure summary on stderr and in stdout narration, narration absent from stderr on success |
+
 ### Phase 2: Run Narration — Stages, Plan, Notes, Warnings, Unwind
 status: approved
 approved_at: 2026-06-09
