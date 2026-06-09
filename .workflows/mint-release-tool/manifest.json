@@ -233,7 +233,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 2,
-          "task": "cli-presentation-2-3",
+          "task": "cli-presentation-2-4",
           "task_map": {
             "cli-presentation-1-1": "tick-98e6cd",
             "cli-presentation-1": "tick-3a97a3",
@@ -244,7 +244,8 @@
             "cli-presentation-1-6": "tick-b5b766",
             "cli-presentation-2": "tick-96a40d",
             "cli-presentation-2-1": "tick-ff9cb4",
-            "cli-presentation-2-2": "tick-1b07bb"
+            "cli-presentation-2-2": "tick-1b07bb",
+            "cli-presentation-2-3": "tick-07d1e4"
           },
           "external_id": "tick-46068c"
         }
