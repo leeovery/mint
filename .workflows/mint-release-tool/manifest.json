@@ -315,7 +315,19 @@
             "commit-command-5-4": "tick-803aaf",
             "commit-command-5-5": "tick-d1c608"
           },
-          "external_id": "tick-82909f"
+          "external_id": "tick-82909f",
+          "external_dependencies": {
+            "cli-presentation": {
+              "description": "Commit renders all output and its review gate through the Presenter seam — pretty/plain by isatty/--plain, -y auto-accept, the Continue? gate rendering, and the shared non-TTY forbidden-combo rule. None of commit's interactive flow can be built without this seam.",
+              "state": "resolved",
+              "internal_id": "cli-presentation-3-1"
+            },
+            "mint-release-tool": {
+              "description": "Commit consumes the shared content-agnostic AI engine (L1 context builder + L2 message engine), git_safe lock-resilient git, and the verb-namespaced config restructure (shared engine keys at top + per-verb tables). These shared pieces must exist in their reconciled form before commit's L3 glue and [commit] config table can be built.",
+              "state": "resolved",
+              "internal_id": "mint-release-tool-2-1"
+            }
+          }
         }
       }
     }
