@@ -49,6 +49,20 @@ approved_at: 2026-06-09
 - [ ] `StageFailed` carries the message and captured underlying-command output; both modes render the captured output (`plain` wrapped in sliceable delimiters); the one-line `FAILED` summary additionally goes to stderr while the multi-line captured body does not
 - [ ] `Unwound` is a first-class event with its own glyph (`↩`) and rendering in both modes; the success end-of-run line is suppressed on failure/abort runs
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-2-1 | Extend StageStarted/StageSucceeded payloads with long/blocking flag, detail, and engine-supplied elapsed | short stage carries no elapsed, long flag present but zero elapsed, detail empty |
+| cli-presentation-2-2 | Plain stage narration — start line for long/blocking stages only, completion line per stage | short stage emits no start line, long stage emits start then completion, completion with no detail renders `{stage}: ok` |
+| cli-presentation-2-3 | Pretty stage narration — stage line with detail and conditional elapsed | elapsed omitted on short stage, detail-only line, long stage shows elapsed |
+| cli-presentation-2-4 | ShowPlan renders structured steps — pretty bulleted block, plain semicolon-joined one-liner | single step, empty plan with no steps, step with empty target |
+| cli-presentation-2-5 | ShowNotes renders byte-identical body with per-mode delimiters | empty body, body with emoji headers, body containing delimiter-like lines, multi-line body with blank lines |
+| cli-presentation-2-6 | Warn renders structured label + message in both modes and to stderr | empty message, multiple warnings in sequence, warn on an otherwise-successful run |
+| cli-presentation-2-7 | StageFailed renders captured underlying output; FAILED summary to stderr, captured body not | empty captured output, captured output containing delimiter-like lines, multi-line captured output, FAILED summary on stderr without captured body |
+| cli-presentation-2-8 | Unwound first-class event with `↩` glyph; suppress success end-of-run line on failure/abort | unwound after a stage failure, unwound after an abort with no prior failure, success end-of-run line absent when Unwound fired |
+
 ### Phase 3: Interactive Gating — Prompt, Input Model & `-y` Orthogonality
 status: approved
 approved_at: 2026-06-09
