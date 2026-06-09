@@ -1,8 +1,10 @@
 package presenter
 
 import (
+	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -63,6 +65,15 @@ type PrettyPresenter struct {
 	// profile for deterministic colour-on / colour-off assertions.
 	renderer *lipgloss.Renderer
 
+	// in is the gate INPUT stream (os.Stdin in production), injected so Prompt is
+	// testable without a real terminal — the same input axis as the plain
+	// presenter. It is wrapped ONCE in the persistent reader below.
+	in io.Reader
+	// reader is the single persistent buffered wrapper around in, constructed
+	// lazily on the first Prompt read so bytes bufio reads ahead survive across a
+	// re-prompt (a fresh wrapper per read would drop them).
+	reader *bufio.Reader
+
 	// Styles are derived once from the renderer so every render shares the same
 	// colour profile. Under a no-colour profile lipgloss renders these as the bare
 	// text, preserving layout and glyphs without emitting any ANSI escape.
@@ -97,9 +108,11 @@ var _ Presenter = (*PrettyPresenter)(nil)
 // renderer is bound to out so lipgloss auto-detects (and auto-downgrades) the
 // terminal's colour capabilities — the production path needs no explicit profile.
 // The err writer is accepted now to keep the constructor signature stable across
-// phases; this task narrates only to out.
+// phases; this task narrates only to out. Gate input defaults to os.Stdin (the
+// production default); tests inject a scripted reader via
+// NewPrettyPresenterWithInput.
 func NewPrettyPresenter(out, err io.Writer) *PrettyPresenter {
-	return newPrettyPresenter(out, err, lipgloss.NewRenderer(out))
+	return newPrettyPresenter(out, err, os.Stdin, lipgloss.NewRenderer(out))
 }
 
 // NewPrettyPresenterWithProfile constructs a PrettyPresenter whose renderer is
@@ -107,7 +120,8 @@ func NewPrettyPresenter(out, err io.Writer) *PrettyPresenter {
 // seam for out-only assertions: tests pass termenv.TrueColor/ANSI to assert ANSI
 // codes are emitted, or termenv.Ascii to assert the colour auto-downgrade emits
 // none while layout and glyphs survive. Use NewPrettyPresenterWithErr when the
-// stderr split itself is under test.
+// stderr split itself is under test. Gate input defaults to os.Stdin; use
+// NewPrettyPresenterWithInput to script Prompt.
 func NewPrettyPresenterWithProfile(out io.Writer, profile termenv.Profile) *PrettyPresenter {
 	return NewPrettyPresenterWithErr(out, nil, profile)
 }
@@ -116,20 +130,32 @@ func NewPrettyPresenterWithProfile(out io.Writer, profile termenv.Profile) *Pret
 // to the given colour profile AND whose err writer is wired. It is the test seam
 // for the stream-split contract: forcing colour on out while capturing err proves
 // the stderr summary stays unstyled by design — not merely because lipgloss
-// auto-downgrades on a non-TTY buffer.
+// auto-downgrades on a non-TTY buffer. Gate input defaults to os.Stdin.
 func NewPrettyPresenterWithErr(out, err io.Writer, profile termenv.Profile) *PrettyPresenter {
 	renderer := lipgloss.NewRenderer(out)
 	renderer.SetColorProfile(profile)
-	return newPrettyPresenter(out, err, renderer)
+	return newPrettyPresenter(out, err, os.Stdin, renderer)
+}
+
+// NewPrettyPresenterWithInput is the test seam for the gate input axis: it forces
+// the colour profile (like NewPrettyPresenterWithProfile, out-only) AND injects
+// the input reader so Prompt can be driven from a scripted strings.Reader without
+// a real terminal. Production uses NewPrettyPresenter, which defaults in to
+// os.Stdin.
+func NewPrettyPresenterWithInput(out io.Writer, profile termenv.Profile, in io.Reader) *PrettyPresenter {
+	renderer := lipgloss.NewRenderer(out)
+	renderer.SetColorProfile(profile)
+	return newPrettyPresenter(out, nil, in, renderer)
 }
 
 // newPrettyPresenter is the shared constructor core: it derives the styles from
 // the supplied renderer so colour-on and colour-off paths build identically and
 // differ only in the renderer's profile.
-func newPrettyPresenter(out, err io.Writer, renderer *lipgloss.Renderer) *PrettyPresenter {
+func newPrettyPresenter(out, err io.Writer, in io.Reader, renderer *lipgloss.Renderer) *PrettyPresenter {
 	return &PrettyPresenter{
 		out:      out,
 		err:      err,
+		in:       in,
 		renderer: renderer,
 		success:  renderer.NewStyle().Foreground(lipgloss.Color("2")),   // green
 		failure:  renderer.NewStyle().Foreground(lipgloss.Color("1")),   // red
@@ -412,17 +438,26 @@ func displayWidth(s string) int {
 	return len([]rune(s))
 }
 
-// Prompt is the STUB for the pretty gate: it returns the gate's Default with a
-// nil error and renders nothing. This locks the interface and the documented
-// fallback; the real pretty behaviour layers in later — the vertical menu
-// rendering (task 3-4: options above the question, "[default]" beside its action,
-// the "Continue? ›" prompt last) replaces this, line-read input (3-3) is read
-// then, the -y gate skip (3-5) bypasses it, and the fail-loud
-// forbidden-combination check (3-6) populates the error. It reads gate.Default
-// (always a member of the declared set) and so hardcodes no y/n/e/r choice set;
-// it does NOT read stdin here (stdin wiring arrives in 3-2/3-3).
+// Prompt drives the SAME shared line-read input loop the plain presenter uses
+// (readChoice/parseChoice): empty Enter selects the gate's Default, case-insensitive
+// input maps to a declared key, unrecognised input re-prompts, and EOF returns a
+// non-nil error rather than silently default-accepting. Only the render closure is
+// mode-specific.
+//
+// This phase renders a MINIMAL pretty prompt — "{Question} [y/n/e/r] ›" with the
+// hint built from the gate's DECLARED keys (not a hardcoded set) — so the loop has
+// a visible prompt to re-render. The FULL pretty vertical menu (options above the
+// question, "[default]" beside its action) is task 3-4 and is intentionally NOT
+// built here; the -y gate skip (3-5) bypasses this entirely. The "›" marker is
+// dim-styled like the other secondary narration and survives a colour downgrade as
+// bare text.
 func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
-	return gate.Default, nil
+	reader := bufferedReader(p.in, &p.reader)
+	render := func() {
+		line := fmt.Sprintf("%s%s [%s] ›", stageIndent, gate.Question, plainKeyHint(gate))
+		p.writef("%s\n", p.dim.Render(line))
+	}
+	return readChoice(reader, render, gate)
 }
 
 // RunFinished renders the bottom brand line, flush-left:

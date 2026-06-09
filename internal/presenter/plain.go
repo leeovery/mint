@@ -1,8 +1,10 @@
 package presenter
 
 import (
+	"bufio"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -19,6 +21,16 @@ type PlainPresenter struct {
 	// for redirect-visibility — the full narration still goes to out. A clean run
 	// writes nothing to err.
 	err io.Writer
+	// in is the gate INPUT stream (os.Stdin in production). It is injected so
+	// Prompt is testable without a real terminal: tests pass a strings.Reader
+	// script. It is wrapped ONCE in a persistent bufio.Reader (reader, below) so
+	// buffered bytes survive across re-prompt reads.
+	in io.Reader
+	// reader is the single persistent buffered wrapper around in, constructed
+	// lazily on the first Prompt read. Reusing one bufio.Reader for every read is
+	// essential: a fresh wrapper per read would drop bytes bufio read ahead into
+	// its buffer, losing the next line across a re-prompt.
+	reader *bufio.Reader
 	// terminalFailure records that the run has hit a terminal failure or abort —
 	// set by StageFailed (a failed stage) and by Unwound (a failure or gate-n
 	// abort). It makes the presenter STATEFUL per run: when set, RunFinished
@@ -36,9 +48,19 @@ var _ Presenter = (*PlainPresenter)(nil)
 
 // NewPlainPresenter constructs a PlainPresenter writing narration to out and the
 // one-line failure/warning summary additionally to err (stdout/stderr in
-// production). The split is fixed regardless of render mode.
+// production). The split is fixed regardless of render mode. Gate input defaults
+// to os.Stdin (the production default); tests inject a scripted reader via
+// NewPlainPresenterWithInput.
 func NewPlainPresenter(out, err io.Writer) *PlainPresenter {
-	return &PlainPresenter{out: out, err: err}
+	return NewPlainPresenterWithInput(out, err, os.Stdin)
+}
+
+// NewPlainPresenterWithInput is the test seam for the gate input axis: it is
+// NewPlainPresenter with the input reader injected, so Prompt can be driven from a
+// scripted strings.Reader without a real terminal. Production uses
+// NewPlainPresenter, which defaults in to os.Stdin.
+func NewPlainPresenterWithInput(out, err io.Writer, in io.Reader) *PlainPresenter {
+	return &PlainPresenter{out: out, err: err, in: in}
 }
 
 // writef writes one narration line to out. A Presenter method returns nothing —
@@ -220,16 +242,23 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 	p.writef("--- end notes ---\n")
 }
 
-// Prompt is the STUB for the plain gate: it returns the gate's Default with a nil
-// error and renders nothing. This locks the interface and the documented
-// fallback; the real plain behaviour layers in later — line-read input parsing
-// (task 3-3) replaces the canned return, the -y gate skip (3-5) bypasses it, and
-// the fail-loud forbidden-combination check (3-6) populates the error. It reads
-// gate.Default (always a member of the declared set) and so hardcodes no
-// y/n/e/r choice set; it does NOT read stdin here (stdin wiring arrives in
-// 3-2/3-3).
+// Prompt drives the shared line-read input loop for the plain gate: it renders a
+// terse prompt, reads ONE line, and returns a declared Choice. Empty Enter selects
+// the gate's Default; case-insensitive input maps to a declared key; unrecognised
+// input re-prompts; EOF returns a non-nil error rather than silently
+// default-accepting. The parse/loop core is shared with the pretty presenter
+// (readChoice/parseChoice) — only the render closure differs.
+//
+// The plain render is a single terse line "{Question} [y/n/e/r]" with the hint
+// built from the gate's DECLARED keys (not a hardcoded set), so the two-choice
+// reuse gate renders "[y/n]". It is byte-pure ASCII — the pretty vertical menu is
+// task 3-4 and is not built here. The -y gate skip (3-5) bypasses this entirely.
 func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
-	return gate.Default, nil
+	reader := bufferedReader(p.in, &p.reader)
+	render := func() {
+		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))
+	}
+	return readChoice(reader, render, gate)
 }
 
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is

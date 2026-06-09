@@ -2,6 +2,7 @@ package presenter_test
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/muesli/termenv"
@@ -140,12 +141,14 @@ func TestRecorderReturnsScriptedChoice(t *testing.T) {
 	}
 }
 
-// TestPlainPromptStubReturnsDefault locks the documented stub behaviour: the
-// plain Prompt returns the gate's Default with a nil error so the real input
-// parsing (3-3), -y skip (3-5), and fail-loud (3-6) visibly replace it.
-func TestPlainPromptStubReturnsDefault(t *testing.T) {
-	p := presenter.NewPlainPresenter(&bytes.Buffer{}, &bytes.Buffer{})
+// TestPlainPromptReadsDefaultOnEmptyEnter proves the plain Prompt now drives the
+// real line-read loop (the stub that returned gate.Default with no input is
+// replaced in task 3-3): an injected empty-Enter line selects the gate's Default.
+// The full input matrix lives in prompt_test.go; this guards the constructor wiring
+// from gate_test's vantage.
+func TestPlainPromptReadsDefaultOnEmptyEnter(t *testing.T) {
 	gate := presenter.ReuseConfirmGate()
+	p := presenter.NewPlainPresenterWithInput(&bytes.Buffer{}, &bytes.Buffer{}, strings.NewReader("\n"))
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -156,12 +159,12 @@ func TestPlainPromptStubReturnsDefault(t *testing.T) {
 	}
 }
 
-// TestPrettyPromptStubReturnsDefault locks the same documented stub behaviour for
-// the pretty presenter: return the gate's Default with a nil error, with the real
-// vertical menu (3-4) replacing it later.
-func TestPrettyPromptStubReturnsDefault(t *testing.T) {
-	p := presenter.NewPrettyPresenterWithProfile(&bytes.Buffer{}, termenv.Ascii)
+// TestPrettyPromptReadsDefaultOnEmptyEnter proves the same for the pretty Prompt:
+// the stub is replaced by the shared line-read loop, and an injected empty-Enter
+// line selects the gate's Default (the full vertical menu is task 3-4).
+func TestPrettyPromptReadsDefaultOnEmptyEnter(t *testing.T) {
 	gate := presenter.NotesReviewGate()
+	p := presenter.NewPrettyPresenterWithInput(&bytes.Buffer{}, termenv.Ascii, strings.NewReader("\n"))
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
