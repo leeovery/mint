@@ -141,12 +141,12 @@ total: 6
 
 **Solution**: Implement a `PlainPresenter` satisfying `Presenter` that renders the minimal stage sequence (start-of-run → a stage success → end-of-run) as terse lowercase `key: value` lines using only `fmt`, writing narration to an injected `io.Writer`.
 
-**Outcome**: Given an event stream, `PlainPresenter` emits the spec's plain lines (`mint: releasing {project} v{X}`, `{stage}: {detail}`/`{stage}: ok`, `done: {project} v{X} {url}`) with zero ANSI/glyph/animation bytes and no UI-library import.
+**Outcome**: Given an event stream, `PlainPresenter` emits the spec's plain lines (`mint: {action} {project} v{X}` — e.g. `mint: releasing acme v1.4.0` — `{stage}: {detail}`/`{stage}: ok`, `done: {project} v{X} {url}`) with the start-of-run action word taken from the engine-supplied `RunInfo.Action` (not hardcoded), and with zero ANSI/glyph/animation bytes and no UI-library import.
 
 **Do**:
 - Create `internal/presenter/plain.go` with `type PlainPresenter struct { out io.Writer; err io.Writer }` and a constructor `NewPlainPresenter(out, err io.Writer) *PlainPresenter`. (The `err` writer is wired fully in Task cli-presentation-1-6; accept it now so the constructor is stable.)
 - Implement the minimal methods using only `fmt.Fprintf(p.out, …)`:
-  - `RunStarted` → `mint: releasing {project} v{X}`.
+  - `RunStarted` → `mint: {action} {project} v{X}`, where `{action}` is the **engine-supplied** action word from `RunInfo.Action` (`releasing` for `release`, `regenerating` for `regenerate`) — render the supplied action, do **not** hardcode `releasing` (the same start-of-run event is reused for `regenerate` per cli-presentation-4-2, which requires the plain line `mint: regenerating {project} v{X}`). This mirrors the pretty brand line in cli-presentation-1-5 and honours 1-1's "no presenter code hardcodes the literal `releasing`."
   - `StageStarted` → emit a terse start line **only when `Blocking` is true** (e.g. `{name}: …`); short stages emit nothing on start. (Full long/blocking start-line wording is hardened in Phase 2; for the skeleton, honour the flag.)
   - `StageSucceeded` → `{stage}: {detail}` (or `{stage}: ok` when detail is empty).
   - `StageFailed` → `{stage}: FAILED - {message}` (captured-output delimiter block is a Phase 2 concern; the one-line summary is enough for the skeleton — stderr duplication wired in Task cli-presentation-1-6).
@@ -157,12 +157,14 @@ total: 6
 **Acceptance Criteria**:
 - [ ] `PlainPresenter` satisfies `Presenter` and writes narration to the injected `out` writer.
 - [ ] A minimal sequence (`RunStarted` → `StageSucceeded` → `RunFinished`) produces the expected terse lines in order.
+- [ ] The plain start-of-run line renders the engine-supplied `RunInfo.Action` word (e.g. `mint: releasing {project} v{X}` for `release`); no plain presenter code hardcodes the literal `releasing` (so `regenerate` renders `mint: regenerating {project} v{X}` per cli-presentation-4-2).
 - [ ] Output contains **no** ESC (`0x1b`) byte, no braille/emoji glyphs, and no carriage-return animation — verified by scanning the captured bytes (no ANSI/glyph/animation edge case).
 - [ ] The `internal/presenter` plain code path imports no UI library (verified by inspecting imports / a build-constraint or dependency assertion) — `plain` mode pulls in no UI library.
 - [ ] A short (non-blocking) `StageStarted` emits no start line; a blocking `StageStarted` does.
 
 **Tests**:
 - `"it renders the minimal stage sequence as terse key:value lines"` — capture into a `bytes.Buffer`, assert exact line sequence for start-of-run → stage success → end-of-run.
+- `"the start-of-run line renders the engine-supplied action word"` — `RunStarted{Action:"regenerating", Project:"acme", Version:"1.4.0"}` → `mint: regenerating acme v1.4.0`; `Action:"releasing"` → `mint: releasing acme v1.4.0` (no hardcoded `releasing`).
 - `"it emits no ANSI, glyph, or animation bytes"` — assert the buffer contains no `0x1b`, no `\r`, and no characters above the basic ASCII set used by the contract (no ANSI/glyph/animation).
 - `"it omits a start line for short stages and emits one for blocking stages"` — drive both, assert presence/absence.
 - `"the plain package imports no UI library"` — a guard test (e.g. parse the package's imports or assert no `lipgloss`/spinner dependency is reachable from plain).
@@ -173,7 +175,8 @@ total: 6
 
 **Context**:
 > The `plain` presenter renders the same `Presenter` events as terse, token-efficient text — no animation, no glyphs, no colour. `key: value` lines, lowercase, one per stage on completion. Start line for long/blocking stages only.
-> Per-event rendering (plain): start of run → `mint: releasing {project} v{X}`; `StageSucceeded` → `{stage}: ok` / `{stage}: {detail}`; `StageFailed` → `{stage}: FAILED - {message}`; end of run → `done: {project} v{X} {url}`.
+> Per-event rendering (plain): start of run → `mint: releasing {project} v{X}` (the release-shaped instance — the `{action}` word is engine-supplied and verb-shaped, so `regenerate` renders `mint: regenerating {project} v{X}`); `StageSucceeded` → `{stage}: ok` / `{stage}: {detail}`; `StageFailed` → `{stage}: FAILED - {message}`; end of run → `done: {project} v{X} {url}`.
+> Applies to every verb — `release`, `regenerate`, `init`, `version` all emit through the same `Presenter`; the start-of-run action word is therefore verb-shaped from `RunInfo.Action` (cli-presentation-1-1), not a release-only literal.
 > `plain` mode pulls in no UI library — just `fmt` lines. That is the point of token-efficiency.
 > Exact wording is refinable; the byte-purity (no ANSI/glyph/animation) and the no-UI-library constraints are the hard requirements for this task.
 

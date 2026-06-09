@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 3
 phase: Traceability Review
@@ -81,7 +81,7 @@ Add a corresponding test to the Tests list:
 
 > - `"the start-of-run line renders the engine-supplied action word"` — `RunStarted{Action:"regenerating", Project:"acme", Version:"1.4.0"}` → `mint: regenerating acme v1.4.0`; `Action:"releasing"` → `mint: releasing acme v1.4.0` (no hardcoded `releasing`).
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
