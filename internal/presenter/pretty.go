@@ -438,26 +438,77 @@ func displayWidth(s string) int {
 	return len([]rune(s))
 }
 
+// menuIndent is the four-space indent every gate menu option line carries — one
+// level deeper than the two-space prompt/question indent, nesting the options
+// under the (later-printed) "{Question} › " line, matching the spec's worked
+// example which indents the y/n/e/r options four spaces.
+const menuIndent = "    "
+
+// defaultMarker is the suffix appended to the one option line whose key equals the
+// gate's Default, flagging the empty-Enter accept path (the spec's "[default]"
+// beside its action). It carries a leading space so it reads as " [default]" after
+// the action text; it is plain layout (not styled), so it survives a colour
+// downgrade verbatim and stays a contiguous substring under colour.
+const defaultMarker = " [default]"
+
+// promptMarker is the "› " cursor marker that ends the prompt line. It is dim
+// (secondary narration, like the Plan header and notes rules) and is styled as ONE
+// unit — glyph plus its trailing space — so the "› " pair stays a contiguous
+// substring even under colour, and survives a colour downgrade as bare "› ".
+const promptMarker = "› "
+
 // Prompt drives the SAME shared line-read input loop the plain presenter uses
 // (readChoice/parseChoice): empty Enter selects the gate's Default, case-insensitive
 // input maps to a declared key, unrecognised input re-prompts, and EOF returns a
 // non-nil error rather than silently default-accepting. Only the render closure is
 // mode-specific.
 //
-// This phase renders a MINIMAL pretty prompt — "{Question} [y/n/e/r] ›" with the
-// hint built from the gate's DECLARED keys (not a hardcoded set) — so the loop has
-// a visible prompt to re-render. The FULL pretty vertical menu (options above the
-// question, "[default]" beside its action) is task 3-4 and is intentionally NOT
-// built here; the -y gate skip (3-5) bypasses this entirely. The "›" marker is
-// dim-styled like the other secondary narration and survives a colour downgrade as
-// bare text.
+// The pretty render is the FULL vertical menu (renderGate): the gate's declared
+// choices listed in order ABOVE the question, "[default]" beside the default
+// choice's action, a blank line, then the "{Question} › " prompt line LAST. The
+// shared loop calls renderGate on EVERY pass — including after unrecognised input —
+// so the menu is redrawn linearly (it scrolls; no screen-clearing, no alt-screen)
+// for free. The -y gate skip (task 3-5) bypasses this entirely.
 func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
 	reader := bufferedReader(p.in, &p.reader)
-	render := func() {
-		line := fmt.Sprintf("%s%s [%s] ›", stageIndent, gate.Question, plainKeyHint(gate))
-		p.writef("%s\n", p.dim.Render(line))
-	}
+	render := func() { p.renderGate(gate) }
 	return readChoice(reader, render, gate)
+}
+
+// renderGate writes the pretty vertical menu for one gate to out: one option line
+// per declared choice (in declared order), a blank line, then the question prompt
+// line. The menu is built ENTIRELY from gate.Choices — there is no hardcoded
+// y/n/e/r list — so a two-choice gate renders two option lines and reordering the
+// gate reorders the menu. The "[default]" marker is placed by comparing each
+// choice's Key to gate.Default, so it lands on whatever choice the gate declares as
+// its default (not always y).
+//
+// Styling is deliberately MINIMAL and layout-preserving: only the option KEY and
+// the "› " prompt marker are dim-styled (the secondary-narration tone shared with
+// the Plan header and notes rules); the action text, the " [default]" marker, the
+// indentation, and the question text stay PLAIN. Under a colour downgrade lipgloss
+// emits no ANSI, so the whole menu survives as plain text; under colour the styled
+// spans carry ANSI while every structural substring (each option line's action,
+// " [default]", "{Question}", "› ") stays contiguous and intact.
+//
+// The prompt line is written WITHOUT a trailing newline — the cursor sits after
+// "› " for the line-read, matching the worked example's "  Continue? › ".
+func (p *PrettyPresenter) renderGate(g Gate) {
+	for _, choice := range g.Choices {
+		p.writef("%s%s  %s%s\n", menuIndent, p.dim.Render(string(choice.Key)), choice.Action, defaultSuffix(choice.Key, g.Default))
+	}
+	p.writef("\n")
+	p.writef("%s%s %s", stageIndent, g.Question, p.dim.Render(promptMarker))
+}
+
+// defaultSuffix returns the " [default]" marker when this choice key is the gate's
+// default, and the empty string otherwise — so exactly the default option line is
+// marked.
+func defaultSuffix(key, def Choice) string {
+	if key == def {
+		return defaultMarker
+	}
+	return ""
 }
 
 // RunFinished renders the bottom brand line, flush-left:
