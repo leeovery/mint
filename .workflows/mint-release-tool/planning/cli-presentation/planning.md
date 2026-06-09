@@ -112,3 +112,16 @@ approved_at: 2026-06-09
 - [ ] Pretty spinner lifecycle: one spinner at a time on the current stage line, started on `StageStarted` and replaced in place by the `✓`/`✗` line on completion; underlying command output is buffered (not streamed through the spinner) and printed below `✗` on failure; `plain` never animates
 - [ ] The spinner is stopped before `$EDITOR` takes over the terminal and resumed after (engine-driven hand-off)
 - [ ] Width robustness: decorative rules capped at `min(terminalWidth, ~50)`; everything else wraps naturally and never truncates; fixed short stage lines stay fixed
+
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-4-1 | init renders created/skipped lines in the shared vocabulary (no gate, no brand footer) | all created, all skipped (exist), mixed created+skipped, --force overwrite narrated as created, no release-style footer emitted |
+| cli-presentation-4-2 | regenerate per-version narration with verb-shaped closing summary (omits url; --all oldest→newest, one block each) | single version, --all multiple versions in oldest→newest order, --all single version, closing summary omits url field, reuse-confirm vs fresh-notes path per block |
+| cli-presentation-4-3 | version payload exception — plain bare value, pretty dressed | plain emits bare value only (no narration/glyph/trailing decoration), pretty dressed form, clean command-substitution consumption (no extra bytes) |
+| cli-presentation-4-4 | Verb-shaped, success-only end-of-run line (release footer with url; regenerate without url; suppressed on failure) | release footer with url, regenerate close without url, init has no footer, failure run suppresses success line, abort run suppresses success line |
+| cli-presentation-4-5 | Pretty spinner lifecycle — single spinner started on StageStarted, replaced in place by ✓/✗; output buffered, printed below ✗ | spinner replaced by ✓ on success, replaced by ✗ on failure, captured output below ✗ only, one spinner at a time across sequential stages, plain emits no animation frames, short non-spinner stage unaffected |
+| cli-presentation-4-6 | Spinner stop/resume around the engine-driven `$EDITOR` hand-off | stop before hand-off then resume after, no active spinner at hand-off, repeated edit passes each stop/resume cleanly, plain no-op |
+| cli-presentation-4-7 | Width robustness — decorative rules capped at min(terminalWidth, ~50), wrap-never-truncate, fixed stage lines stay fixed | terminal narrower than cap, terminal wider than cap, undetectable width falls back to cap, long notes line wraps (never truncates), fixed stage line unchanged, tiny terminal remains a --plain case |
