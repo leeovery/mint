@@ -82,7 +82,8 @@ approved_at: 2026-06-09
 - [ ] `Prompt` is render-only — it returns the choice and never invokes `$EDITOR` or `claude`; the engine owns the `e`/`r` re-entry loop and re-rendering on each `ShowNotes`/`Prompt` pass is linear (scrolls, no screen-clearing or alt-screen)
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
