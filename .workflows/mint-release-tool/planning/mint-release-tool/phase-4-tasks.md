@@ -1,7 +1,7 @@
 ---
 phase: 4
 phase_name: Robustness — Lock Resilience, Recovery, Dry-Run Caching & Publisher Resolution
-total: 10
+total: 11
 ---
 
 ## mint-release-tool-4-1 | approved
@@ -305,6 +305,54 @@ total: 10
 > Bump selection: "`--set-version X.Y.Z` — explicit version escape hatch (e.g. a deliberate 1.x → 2.0.0 jump)." `--set-version` rules: "Mutually exclusive with bump flags. `--set-version` combined with `-p`/`-m`/`-M` is an error ('can't combine `--set-version` with a bump flag') — no silent precedence… Must be valid 3-part semver AND strictly greater than the current latest tag. A backwards/equal jump is rejected by default even if the target tag is free, because a lower version sorts below 'latest' and corrupts tag-as-truth. (This sits on top of the free-tag preflight check, which catches an equal/existing tag.) Forward-only today; no downgrade override. A `--force`-style 're-tag an old line' escape is YAGNI and deliberately not built now." Hook env: "`MINT_BUMP` … `explicit` when `--set-version` was used." Tag grammar: strict SemVer 2.0.0, three numeric segments only.
 
 **Spec Reference**: `.workflows/mint-release-tool/specification/mint-release-tool/specification.md` — "Stage 1 → Bump selection / `--set-version` rules", "Hooks → Invocation & context (injected env vars)".
+
+## mint-release-tool-4-7a | approved
+
+### Task mint-release-tool-4-7a: `--dry-run` core — read-only run, skip all mutations, print the full plan
+
+**Problem**: The `-d`/`--dry-run` flag's core behaviour is owned by no task. The hook-skip dimension (task 3-11) and the note-caching (tasks 4-7/4-8) both exist and both explicitly defer the "broader plan-printing/no-mutation behaviour" to a dry-run-owning task that does not exist; the forward-path wiring (tasks 1-11, 2-16) likewise defers `--dry-run` to "later phases." Without this task, `mint release --dry-run` would run the read-only preflight and notes but then perform the real commit/tag/push/provider-release mutations the caching tasks (4-7/4-8) assume are already suppressed, and it would never print the plan the spec promises.
+
+**Solution**: Implement the `--dry-run` flag's core semantics in the release orchestrator: run the read-only preflight, compute the version, generate the AI notes preview, and **print the full plan** (the commits mint would make, the tag, and what it would publish), while **skipping every mutation** — the release-bookkeeping commit, any `pre_tag` artifact commit, the annotated tag, `git push --atomic`, and the provider release. Hooks are already skipped + reported and `MINT_DRY_RUN=1` is set by task 3-11; the note preview is cached by task 4-7. This task adds the no-mutation guard and the plan print, and registers the flag's behaviour, so 4-7/4-8 sit on a real dry-run.
+
+**Solution note**: This task owns the no-mutation guard and the plan-print only. The hook-skip + `MINT_DRY_RUN` env (3-11) and the note caching write/reuse (4-7/4-8) already exist — do NOT reimplement them; this task makes the dry run real so those tasks' "skips all mutations" assumption holds.
+
+**Outcome**: `mint release --dry-run` runs the read-only preflight, computes the next version, generates the notes preview, and prints the full plan (the commits it would make, the tag, and the publish target) via the Presenter, then exits having made **no** commit, tag, push, or provider release. Hooks are skipped and reported (3-11); the notes preview is cached (4-7). The repo is byte-for-byte unchanged after a dry run.
+
+**Do**:
+- Register the `-d`/`--dry-run` flag's behaviour on `mint release` in the orchestrator (the flag surface was reserved in task 1-11). Thread a `dryRun` state through the spine.
+- Run the **read-only** stages normally: preflight gates (Phase 1), version determination (incl. `--set-version` validation, task 4-6), and notes generation/preview (Phase 2 engine).
+- **Skip every mutation** when `dryRun` is set: do not create the release-bookkeeping commit (task 1-9/3-7), the `pre_tag` artifact commit (task 3-3, already prevented because 3-11 skips the hook), the annotated tag (task 1-10), `git push --atomic` (task 1-10), or the provider release (`Publisher.CreateRelease`, task 1-8). Guard at each mutation point so a dry run never reaches the lock-resilient mutation wrapper (task 4-1).
+- **Print the full plan** via the Presenter: the commit(s) mint would make (and their subjects), the tag it would create, and what it would publish (provider target, or that publishing is downgraded/disabled). Reuse the plan-summary the gate already shows (task 2-12) plus the would-do mutations.
+- Confirm hooks are skipped and reported and `MINT_DRY_RUN=1` (task 3-11) under this flag — this task does not re-implement that, it relies on it.
+- Confirm the notes preview is generated and cached (task 4-7) under this flag.
+- Do NOT skip or alter the notes-review gate's orthogonality (task 4-8 already specifies `-y` skips on both runs; an interactive dry run still shows the plan/notes).
+
+**Acceptance Criteria**:
+- [ ] `mint release --dry-run` makes no commit, no tag, no push, and no provider release.
+- [ ] `--dry-run` prints the full plan: the commit(s) it would make, the tag, and the publish target.
+- [ ] The read-only preflight runs and the version is computed under `--dry-run`.
+- [ ] The AI notes preview is generated under `--dry-run` (and cached per task 4-7).
+- [ ] Hooks are skipped and reported and `MINT_DRY_RUN=1` under `--dry-run` (reusing task 3-11).
+- [ ] The repo is unchanged after a dry run (no mutation reaches the lock-resilient wrapper).
+
+**Tests**:
+- `"--dry-run makes no commit, tag, push, or provider release"`
+- `"--dry-run prints the full plan (commits, tag, publish target)"`
+- `"--dry-run runs the read-only preflight and computes the version"`
+- `"--dry-run generates the notes preview"`
+- `"--dry-run skips hooks and reports them (via task 3-11) with MINT_DRY_RUN=1"`
+- `"the repo is unchanged after a dry run"`
+
+**Edge Cases**:
+- All mutations skipped (commit / tag / push / provider release).
+- Full plan printed (commits + tag + publish target).
+- Notes preview still generated (and cached).
+- Hooks skipped + reported; `MINT_DRY_RUN=1`.
+
+**Context**:
+> Dry-Run semantics: "Does: read-only preflight, compute the version, generate the AI notes preview (Change Map + diff → AI), and print the full plan — the commits it would make, the tag, and what it would publish. Skips: all mutations (commit / tag / push / provider release) and all hooks (they have side effects) — and reports that hooks were skipped." CLI flags: `-d, --dry-run`. The hook-skip + `MINT_DRY_RUN` env is task 3-11; the note caching is tasks 4-7/4-8; this task adds the no-mutation guard and the plan-print so those sit on a real dry run.
+
+**Spec Reference**: `.workflows/mint-release-tool/specification/mint-release-tool/specification.md` — "Dry-Run (`-d` / `--dry-run`) → Semantics", "CLI Surface & Flags → `mint release` flags".
 
 ## mint-release-tool-4-7 | approved
 

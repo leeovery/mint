@@ -133,8 +133,8 @@
           "spec_commit": "17154471712cbf07df31ba3521c6fe04303c5ca5",
           "task_list_gate_mode": "auto",
           "author_gate_mode": "auto",
-          "finding_gate_mode": "gated",
-          "review_cycle": 0,
+          "finding_gate_mode": "auto",
+          "review_cycle": 1,
           "phase": 7,
           "task": "~",
           "task_map": {
@@ -213,7 +213,8 @@
             "mint-release-tool-6-5": "tick-d7d24f",
             "mint-release-tool-6-6": "tick-fc5838",
             "mint-release-tool-6-7": "tick-8108d6",
-            "mint-release-tool-6-8": "tick-ce95dd"
+            "mint-release-tool-6-8": "tick-ce95dd",
+            "mint-release-tool-4-7a": "tick-9dfd51"
           },
           "external_id": "tick-d4f773",
           "external_dependencies": {

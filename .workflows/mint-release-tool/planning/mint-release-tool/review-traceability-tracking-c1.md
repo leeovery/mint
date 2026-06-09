@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 1
 phase: Traceability Review
@@ -87,7 +87,7 @@ Phase 4 detail file (`phase-4-tasks.md`) task:
 
 **Spec Reference**: `.workflows/mint-release-tool/specification/mint-release-tool/specification.md` — "Dry-Run (`-d` / `--dry-run`) → Semantics", "CLI Surface & Flags → `mint release` flags".
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Added task mint-release-tool-4-7a (tick-9dfd51) to Phase 4, sequenced before 4-7. Added explicit tick dependencies so 4-7 (tick-e05a91) and 4-8 (tick-1a1226) are blocked by 4-7a, since 4-7a was created last but must run first.
 
 ---
