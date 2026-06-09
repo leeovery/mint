@@ -3,7 +3,8 @@
 ## Phases
 
 ### Phase 1: Walking Skeleton — Bare Commit, End-to-End
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: A bare `mint commit` (staged-only) generates a Conventional Commits message from the staged diff and commits it — threading the commit-specific L3 glue through the consumed L1/L2 AI engine, the Presenter `Continue?` gate, git_safe, and the `[commit]` config table.
 
@@ -18,7 +19,8 @@ status: draft
 - [ ] No `commit_prefix` / 🌿 branding appears anywhere in the commit message text
 
 ### Phase 2: Staging Model — `-a` / `-A` with Deferred Staging
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Add `-a`/`--all` (tracked modifications + deletions) and `-A`/`--add-all` (everything including untracked), computing the would-be-committed diff read-only for message generation and applying `git add` only after gate-accept.
 
@@ -32,7 +34,8 @@ status: draft
 - [ ] `mint commit -A` on a pristine tree reports "nothing to commit, working tree clean"
 
 ### Phase 3: $EDITOR Fallback — Unified No-AI Degradation Path
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Route all three "no AI message" cases — `--no-ai`, AI-generation failure after retry, and an oversized diff (`max_diff_lines` exceeded) — to `$EDITOR` with save-as-accept, reconciled with deferred staging and the `-y`/non-TTY forbidden-combo posture.
 
@@ -46,7 +49,8 @@ status: draft
 - [ ] When no editor in the chain is launchable on the fallback path, mint fails loud (there is no message to fall back to)
 
 ### Phase 4: Interactive Gate Actions — Edit and Regenerate
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Add the `e` (edit, loop back to gate) and `r` (regenerate-with-context) gate actions, including the one-time context line-read via the Presenter and regeneration-failure routing.
 
@@ -59,7 +63,8 @@ status: draft
 - [ ] `e` when no editor in the chain is launchable graceful-degrades: warn the editor could not launch and re-render the gate with the unedited message preserved (treat `e` as a no-op)
 
 ### Phase 5: Auto-push — `-p` with Warn-Don't-Unwind
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Add `-p`/`--push` to push after a completed commit, applying the post-accept never-unwind invariant on push failure and completing the `mint commit -Ap` / `-Apy` ergonomic target.
 
