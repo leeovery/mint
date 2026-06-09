@@ -81,6 +81,20 @@ approved_at: 2026-06-09
 - [ ] `regenerate` source/target prompts use the same line-read model, render terse `key: value` in `plain`, skip under `-y` using provided flags/defaults with an auto-accept echo, and obey the forbidden-combination rule
 - [ ] `Prompt` is render-only — it returns the choice and never invokes `$EDITOR` or `claude`; the engine owns the `e`/`r` re-entry loop and re-rendering on each `ShowNotes`/`Prompt` pass is linear (scrolls, no screen-clearing or alt-screen)
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-3-1 | Gate model with declared choice set rendered/returned by Prompt | four-choice notes-review gate, two-choice reuse confirm, gate declaring a non-y default, choice outside the declared set |
+| cli-presentation-3-2 | Stdin-TTY detection independent of stdout render-mode detection | stdin non-TTY while stdout TTY, stdout non-TTY while stdin TTY, both non-TTY, no environment sniffing |
+| cli-presentation-3-3 | Line-read input model — case-insensitive parse, empty-Enter default, re-prompt loop | empty Enter selects default, uppercase N maps to n, unrecognised x/a/q re-prompts (never accepts), whitespace-only line, repeated unrecognised then valid choice, EOF on stdin |
+| cli-presentation-3-4 | Pretty Prompt vertical-menu rendering — options above question, [default] beside action, prompt last | two-choice confirm renders only y/n, [default] marker on declared default action, prompt redrawn after bad input |
+| cli-presentation-3-5 | `-y` skip with rendered auto-accept echo in both modes | menu not drawn under -y, plain `notes: accepted (-y)`, pretty concise accept line, reuse-confirm auto-accepted, returns default without reading stdin |
+| cli-presentation-3-6 | Forbidden-combination fail-loud (non-TTY stdin without `-y`) surfaced through Presenter and to stderr | non-TTY stdin without -y fails (no stdin block), styled failure in pretty, terse failure in plain, also to stderr, render mode still chosen on stdout |
+| cli-presentation-3-7 | Regenerate source/target prompts reuse the line-read model, skip under `-y`, obey forbidden-combination | unrecognised input re-prompts, plain terse `key: value` lines, -y echoes chosen source/target, non-TTY without -y fails loud, flag/default used when skipped |
+| cli-presentation-3-8 | Render-only Prompt contract — engine owns the `e`/`r` re-entry loop, linear re-render | `e` returns no presenter side effect, `r` returns no presenter side effect, repeated ShowNotes+Prompt passes scroll (no screen-clear/alt-screen), loop ends on y/n |
+
 ### Phase 4: Cross-Verb Rendering, Spinner Lifecycle & Width Robustness
 status: approved
 approved_at: 2026-06-09
