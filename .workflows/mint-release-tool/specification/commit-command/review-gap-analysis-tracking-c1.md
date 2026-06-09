@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 1
 phase: Gap Analysis
@@ -17,20 +17,13 @@ topic: commit-command
 **Affects**: Interactive Review Gate; `$EDITOR` Fallback — Path Semantics
 
 **Details**:
-Two different `$EDITOR`-save semantics coexist in the spec without reconciling the overlap.
-
-- The **fallback path** (`--no-ai`, AI failure, oversized diff) defines "the editor save *is* the accept event" — non-empty save commits immediately, no further gate.
-- The **gate `e` choice** says: "edit the message in `$EDITOR`, used verbatim." It does not say what happens *after* the editor closes. The cli-presentation seam this gate is built on is explicit that on `e` the engine "re-calls `ShowNotes` with the refreshed body and `Prompt` again, looping until `y`/`n`" — i.e. `e` returns to the gate, it is NOT save-as-accept.
-
-So the same physical act (editing in `$EDITOR` and saving) means "accept and commit" on the fallback path but "return to the gate for another `Continue?`" on the `e` path. An implementer cannot tell whether commit's `e` should follow cli-presentation's loop-back contract or the commit spec's save-as-accept rule. The spec needs to state explicitly that `e` loops back to the gate (inheriting the seam) while only the fallback editor is save-as-accept — or whichever is intended.
-
-A secondary sub-question falls out: if `e`'s editor is loop-back, and the user *empties* the message and saves under `e`, what happens? (Re-prompt? Abort? Keep prior body?) The fallback path defines empty-save = abort, but `e` has no stated empty-save behaviour.
+Two different `$EDITOR`-save semantics coexisted without reconciliation: the fallback path defines "save = accept," while the gate's `e` choice left post-editor behaviour unstated. The cli-presentation seam's contract is loop-back (re-render the gate after `e`).
 
 **Proposed Addition**:
-{leave blank until discussed}
+Clarified `e` in Interactive Review Gate: `e` opens `$EDITOR` pre-filled, on save returns to the `Continue?` gate with the edited message shown verbatim (seam loop-back — NOT save-as-accept; only the fallback editor is save-as-accept). Empty save under `e` discards the edit and preserves the prior message (`e` is a refinement step, never a message source — can never produce an empty commit).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. Grounded in the cli-presentation seam's loop-back contract; reconciles with the fallback path's distinct save-as-accept rule.
 
 ---
 
@@ -41,15 +34,13 @@ A secondary sub-question falls out: if `e`'s editor is loop-back, and the user *
 **Affects**: Interactive Review Gate (`r` choice)
 
 **Details**:
-The spec defines `r` as "re-run the AI with a one-time context line" and calls this "the 'context injection' affordance from the user's original commit shell function." But it never specifies *how the user supplies that context line* after pressing `r`: is there a follow-up free-text prompt (type the context, press Enter)? Is it read through the same Presenter line-read model used for the gate? What happens on an empty context line (treat as plain regenerate, or re-prompt)?
-
-The cli-presentation seam describes `r` only as "re-running generation via `claude`" and does not itself define a context-entry prompt — that input step is commit-specific (release's `r` is a plain regenerate with no context line). Because the `--context` flag was consciously dropped in favour of "interactive `r` covers the need," the interactive context-entry mechanism is the *only* surviving path for one-time context, yet its UX is undefined. An implementer would have to invent the prompt, its rendering, and its empty-input behaviour.
+`r` was defined as "re-run the AI with a one-time context line" but the context-entry UX was undefined. Since `--context` was consciously dropped, interactive `r` is the only surviving one-time-context path.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added to `r`: after `r`, mint prompts for a single free-text context line via the Presenter's line-read (same input model as the gate); Enter submits. The line is injected as one-time context (not persisted). Empty line = plain re-roll (no injected context). Regeneration runs the engine's one retry; failure → `$EDITOR` fallback.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. Uses the existing Presenter line-read model; empty-line = plain regenerate keeps it forgiving.
 
 ---
 
@@ -60,17 +51,13 @@ The cli-presentation seam describes `r` only as "re-running generation via `clau
 **Affects**: Commit Message Format (`$EDITOR` fallback case 3); Commit Flow / Lifecycle (stages 2–3)
 
 **Details**:
-Case 3 of the fallback ("`max_diff_lines` exceeded → fall back to `$EDITOR`") must be detected *before* the L2 AI call (you don't generate, then fall back). The lifecycle lists "Build context (L1)" then "Generate (L2)" but never states that L1 surfaces the over-limit condition and short-circuits L2 into the fallback. Compounding this, the fallback section says the over-limit case opens the editor "with a clear note," whereas `--no-ai` opens with "an empty/template message" — so the oversized case is a *generate-skip*, not a *generate-fail*, and that distinction (caught at L1, never reaching L2) is left implicit.
-
-This matters because the `-y`/non-TTY fail-loud rule keys off "a fallback fires." An implementer needs to know the over-limit check runs at L1, decides the fallback, and *then* the TTY/`-y` forbidden-combo check applies — the same as `--no-ai`. Without stating the ordering, an implementer could wire the limit check after the AI call (wasting the call) or miss that the oversized case must also fail loud under `-y`.
-
-(Note: the line-counting mechanics of `max_diff_lines` themselves — excluded paths don't count, ~lines-as-token-proxy — are settled in the release/engine spec and reused; this finding is only about *commit's* branch ordering, which is commit-specific because commit falls back rather than aborts.)
+Case 3 (oversized → fallback) must be detected before the L2 call, and is a generate-skip not a generate-fail. The ordering and its interaction with the `-y`/non-TTY fail-loud rule were implicit.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added "Detection ordering for the oversized case" to Commit Message Format: `max_diff_lines` is evaluated at L1 (after `diff_exclude`, before any L2 call); over-limit short-circuits L2 (generate-skip, like `--no-ai`) → `$EDITOR` fallback; the `-y`/non-TTY forbidden-combo check then applies as for `--no-ai`.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. Consistent with the three-layer engine boundary and the fail-loud forbidden-combo rule.
 
 ---
 
@@ -81,15 +68,13 @@ This matters because the `-y`/non-TTY fail-loud rule keys off "a fallback fires.
 **Affects**: `$EDITOR` Fallback — Path Semantics; Interactive Review Gate (`e` choice)
 
 **Details**:
-Every fallback path and the gate's `e` choice depend on `$EDITOR` being launchable. The spec carefully handles the *no-TTY* case (fail loud) but never addresses the *no-`$EDITOR`* case: what happens on an interactive TTY when the `$EDITOR` environment variable is unset/empty or points to a non-executable? This is a real, common boundary on fresh machines/CI shells that still have a TTY.
-
-Git itself has a defined fallback chain (`GIT_EDITOR` → `core.editor` → `VISUAL` → `EDITOR` → built-in default like `vi`). The commit spec, which positions the fallback as "behaving like plain `git commit`," should state whether mint defers to git's editor resolution (so `git commit` opens whatever git would open), resolves `$EDITOR` itself, or fails loud when nothing is set. As written, an implementer must guess the resolution chain and the unset-variable behaviour.
+The no-TTY case was handled but the no-`$EDITOR`-on-a-TTY case (fresh machines/CI shells) was not. Git has a defined editor-resolution chain.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added "Editor resolution" to Fallback Semantics: mint resolves the editor using git's own order (`GIT_EDITOR` → `core.editor` → `$VISUAL` → `$EDITOR` → git's built-in default), so unset `$EDITOR` is not itself an error on a TTY. Fail loud only when no TTY/`-y`, or when no editor resolves to a launchable program. mint opens the editor itself (not via `git commit`) because staging is deferred to save-as-accept.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. "Behave like plain git commit" → reuse git's resolution chain; reconciled with deferred-staging (mint can't delegate to `git commit`).
 
 ---
 
@@ -100,46 +85,46 @@ Git itself has a defined fallback chain (`GIT_EDITOR` → `core.editor` → `VIS
 **Affects**: Staging Model; CLI Surface & Flags
 
 **Details**:
-`-a` (`--all`, tracked-only) and `-A` (`--add-all`, includes untracked) are mutually distinct staging modes, but the spec never says what happens if both are supplied (`mint commit -aA`). Options an implementer would have to choose between: error out as a conflicting-flags case; let `-A` win (superset); let `-a` win; or last-flag-wins. Since the two flags are deliberately separated to resolve the tracked-vs-untracked tension, the both-supplied case is a plausible user slip that needs a defined resolution rather than an implementer coin-flip.
+`-a` and `-A` are distinct staging modes; the both-supplied case (`mint commit -aA`) had no defined resolution.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added to Staging Model: `-a` and `-A` are mutually exclusive; supplying both is a conflicting-flags error → fail loud before any work (*"`-a` and `-A` cannot be combined; `-A` already includes `-a`'s changes"*).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. Fail-loud on contradictory input matches mint's posture; chosen over silent last-flag/superset-wins.
 
 ---
 
-### 6. Push under non-default upstream remotes / branch-tracking is delegated to git, but the "no upstream" UX message overlaps the warn-clearly rule ambiguously
+### 6. Push-failure message classification ambiguous (no-upstream UX overlaps the generic warn-clearly rule)
 
 **Source**: Specification analysis
 **Category**: Gap/Ambiguity
 **Affects**: Auto-push Behaviour
 
 **Details**:
-The Auto-push section says, for no upstream, surface "git's own failure" via the warn-clearly rule with the example *"commit is in place; set an upstream and push"*. But it also says mint "adds no special upstream logic" and runs "a normal `git push`." A normal `git push` with no upstream on modern git prints a hint and a non-zero exit — but whether mint should pass through git's verbatim stderr, replace it with mint's own *"commit is in place; set an upstream…"* line, or both, is not pinned down. The other push-failure causes (rejected, remote moved, network) are bundled under the same "report clearly with the fix (re-run the push)" rule, but only the no-upstream case gets a bespoke message example — leaving the *other* failure causes' exact user-facing text unspecified (do they all get "re-run the push," or cause-specific guidance?). An implementer needs to know whether mint classifies push-failure causes (and emits tailored fixes) or emits one generic warn for all of them with git's output attached.
+Only the no-upstream case had a bespoke message example; whether mint classifies push-failure causes or emits one generic warn with git's output attached was unspecified.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added to Auto-push: mint does not classify push-failure causes — one generic warn for all (commit in place; re-run the push), with git's stderr passed through verbatim beneath it. The "set an upstream" line is illustrative of git's pass-through, not a mint-authored per-cause message.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. Single rule (keep commit, surface git output, push is repeatable) matches the no-special-logic stance.
 
 ---
 
-### 7. `-A`/`-a` empty-staging diagnostic: which of the two git-flavoured messages fires is underspecified for the staging-flag case
+### 7. `-A`/`-a` empty-staging diagnostic: which git-flavoured message fires is underspecified
 
 **Source**: Specification analysis
 **Category**: Gap/Ambiguity
 **Affects**: Staging Model (Empty-staging handling)
 
 **Details**:
-The empty-staging section distinguishes two messages: "nothing to commit, working tree clean" (genuinely clean) vs. the "no changes staged — use `-a`/`-A`/`git add`" guidance (dirty-but-unstaged, bare `mint commit`). It then says "`-A`/`-a` that stage nothing land here too" — but doesn't say *which* of the two messages they get. If a user runs `mint commit -a` on a tree whose only changes are untracked files, `-a` (tracked-only) stages nothing, yet the tree is *not* clean and the "use `-a`/`-A`" guidance would be partly nonsensical (they already passed `-a`; the real fix is `-A`). Likewise `mint commit -A` on a genuinely clean tree should presumably yield "working tree clean." The mapping from {which flag, what's actually present} → {which message} is the part an implementer must get right to "mirror git's messaging," and it is left to interpretation.
+"`-A`/`-a` that stage nothing land here too" didn't say which of the two messages they get. The {which flag, what's present} → {which message} mapping was left to interpretation.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Rewrote the empty-staging distinction: which message fires is determined by the actual tree state after the requested staging mode, not the flag. Genuinely clean → "working tree clean". Changes exist but mode staged none → guidance naming the modes that would help; specifically, `-a` that staged nothing because only untracked changes exist points at `-A`/`--add-all`.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-resolved. Makes "mirror git's messaging" precise for the staging-flag cases.
 
 ---

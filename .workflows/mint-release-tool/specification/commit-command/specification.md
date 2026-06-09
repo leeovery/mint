@@ -72,15 +72,18 @@ What goes into the commit. The design tension: the user's habit is `git add .` (
 - **Default = staged-only.** Commit the index exactly as staged. Respects deliberate staging; mint never decides *what* goes in unless asked.
 - **`-a` / `--all` = `git commit -a`** — tracked modifications + deletions, no untracked. Muscle-memory faithful.
 - **`-A` / `--add-all` = `git add -A` then commit** — everything including untracked. This is the user's `git add .` habit in one shot.
+- **`-a` and `-A` are mutually exclusive.** Supplying both (`mint commit -aA`) is a conflicting-flags error → **fail loud** before any work (*"`-a` and `-A` cannot be combined; `-A` already includes `-a`'s changes"*). Consistent with the fail-loud posture for contradictory input — mint never silently picks a winner.
 - **Staging is deferred to gate-accept.** With `-a`/`-A`, mint computes the would-be-committed diff *read-only* for message generation, and only runs `git add` after the user accepts. Aborting an `-a`/`-A` run leaves the index exactly as it was — mint never leaves a half-staged worktree behind.
 - **Flags bundle:** `mint commit -Ap` = add-all + push with a minted message — the headline ergonomic target.
 
 **Empty-staging handling — fail loud, mirroring git's messaging:**
 
 - Empty staging (nothing to commit after staging) → **fail loud**; never invoke the AI on an empty diff. `-A`/`-a` that stage nothing land here too.
-- Distinguish the two empty cases exactly as git does:
-  - Genuinely clean tree → "nothing to commit, working tree clean".
-  - Dirty-but-unstaged tree (bare `mint commit`, nothing in the index) → guide the user — mint's flavour of git's `no changes added to commit`, e.g. *"no changes staged — use `-a`/`--all`, `-A`/`--add-all`, or `git add`"*.
+- Distinguish the two empty cases exactly as git does. **Which message fires is determined by the *actual* tree state after the requested staging mode, not by the flag passed:**
+  - **Genuinely clean tree** (the chosen mode had nothing it could ever stage, and the index is empty) → *"nothing to commit, working tree clean"*. (E.g. `mint commit -A` on a pristine tree.)
+  - **Changes exist but the chosen mode staged none** → guide the user — mint's flavour of git's `no changes added to commit` — naming the modes that *would* help:
+    - Bare `mint commit` with unstaged changes → *"no changes staged — use `-a`/`--all`, `-A`/`--add-all`, or `git add`"*.
+    - `mint commit -a` when the only changes are **untracked** (so tracked-only `-a` staged nothing) → point specifically at `-A`/`--add-all` (the mode that would include them), e.g. *"no tracked changes to stage — use `-A`/`--add-all` to include untracked files"*.
 
 **Rationale:** the original commit shell function did not do its own `git add` (commit-only); the staging affordance is a deliberate enhancement in mint, not a port. The `git add .` habit (untracked included) is what tipped the choice to two flags — a faithful `-a` alone would silently drop new files, so the explicit `-A` covers the everything-case without overloading `-a`.
 
@@ -105,6 +108,8 @@ Three cases converge on dropping to `$EDITOR` with an empty/template message (be
 2. **AI generation failure** — if the AI errors or returns nothing usable after the engine's one retry, fall back to `$EDITOR` rather than abort. Low-stakes; the user is at the terminal anyway.
 3. **`max_diff_lines` exceeded** — commit does **not** abort (release's notes-failure model is too harsh for a routine large commit). Fall back to `$EDITOR` with a clear note (*"diff too large to summarise — opening editor"*). `diff_exclude` still applies first, so excluded noise doesn't push a diff over the limit.
 
+**Detection ordering for the oversized case.** `max_diff_lines` is evaluated at **L1**, after `diff_exclude` filtering and **before any L2 call**. An over-limit diff short-circuits L2 entirely — it is a generate-*skip* (like `--no-ai`), not a generate-*failure* — and routes straight to the `$EDITOR` fallback. The `-y`/non-TTY forbidden-combo check (below) then applies exactly as for `--no-ai`: an unattended run that hits the oversized fallback has no message source and **fails loud**. (The line-counting mechanics of `max_diff_lines` themselves are settled in the shared engine spec and reused; only commit's fall-back-rather-than-abort branch is commit-specific.)
+
 (The detailed semantics of the `$EDITOR` path — TTY requirement, save-as-accept, regeneration failure routing — are specified next.)
 
 ## `$EDITOR` Fallback — Path Semantics
@@ -112,6 +117,8 @@ Three cases converge on dropping to `$EDITOR` with an empty/template message (be
 The three "no AI message" cases (`--no-ai`, AI-generation failure, oversized diff) all drop to `$EDITOR`. This path is reconciled with the deferred-staging model, the gate, and the `-y`/non-TTY posture.
 
 **Requires a TTY.** `$EDITOR` is inherently interactive. When a fallback fires under `-y` or non-TTY stdin (e.g. `mint commit -Apy --no-ai`, or `-Apy` when the AI fails / the diff is oversized), mint **fails loud** (*"no AI message and no interactive editor available"*) — it never hangs and never commits an empty message. This extends the gate's forbidden-combo philosophy (unattended + needs-human → fail loud) to the editor path. An unattended run with no message source is contradictory: `--no-ai` unattended has nothing to commit with, and an unattended user wants the AI anyway. **There is no `-m`/`--message` escape** — anyone needing unattended-with-own-message uses plain `git commit`; `mint commit` is for *minted* messages.
+
+**Editor resolution.** mint resolves which editor to launch using **git's own resolution order** (`GIT_EDITOR` → `core.editor` → `$VISUAL` → `$EDITOR` → git's built-in default), so the fallback opens whatever `git commit` would open. `$EDITOR` being unset is therefore *not* by itself an error on a TTY — git's default still applies. mint fails loud on the editor path only when there is no TTY / `-y` (handled above), or when no editor in the chain resolves to a launchable program at all. mint opens the editor itself (rather than delegating to `git commit`) because staging must be deferred until the save-as-accept event.
 
 **The editor save *is* the accept event.** On the fallback path the editor replaces the `Continue?` gate (git-like):
 
@@ -129,8 +136,8 @@ Commit reuses the cli-presentation `Continue?` gate rendering (`y`/`n`/`e`/`r`, 
 
 - **`y` / accept** → stage (if `-a`/`-A`) then commit; then push if `-p`.
 - **`n` / abort** → do nothing. **No auto-unwind needed** — nothing has been mutated yet (staging deferred to accept), so abort is a true no-op back to the pre-`mint` state.
-- **`e` / edit** → edit the message in `$EDITOR`, used verbatim.
-- **`r` / regenerate with context** → re-run the AI with a one-time context line. This *is* the "context injection" affordance from the user's original commit shell function. (Regeneration failure → `$EDITOR` fallback, per Fallback Semantics.)
+- **`e` / edit** → open the message in `$EDITOR` pre-filled with the current message; on save, **return to the `Continue?` gate** with the edited message shown, used verbatim (no AI reprocessing). This follows the cli-presentation seam's loop-back contract — `e` re-renders the gate, it is *not* save-as-accept (only the fallback editor is save-as-accept). From the re-rendered gate the user may accept (`y`), abort (`n`), edit again (`e`), or regenerate (`r`). An empty save under `e` discards the edit and re-renders the gate with the **prior message preserved** — `e` is a refinement step, never a message source, so it can never produce an empty commit.
+- **`r` / regenerate with context** → re-run the AI with a one-time context line. This *is* the "context injection" affordance from the user's original commit shell function. After `r`, mint prompts for a single free-text context line (rendered via the Presenter's line-read — the same input model as the gate); Enter submits. The line is injected as one-time context into the regeneration prompt and is **not persisted**. An empty line regenerates with no injected context (a plain re-roll). Regeneration runs the engine's normal one retry; failure routes to the `$EDITOR` fallback (per Fallback Semantics).
 
 **Posture — gate ON by default.** Interactive runs show the message + `Continue?`; `-y` skips it (auto-accept); the shared forbidden-combo rule applies (non-TTY stdin + no `-y` → fail loud). Chosen for consistency with release and the presentation model, and because seeing the minted message before it sticks is the point. The frequent one-liner stays fast via `-y` (`mint commit -Apy`).
 
@@ -143,6 +150,7 @@ Commit reuses the cli-presentation `Continue?` gate rendering (`y`/`n`/`e`/`r`, 
 - **Push is opt-in via `-p` / `--push`** (default: no push). **Flag-only — no config default** ("we never push without the `-p` flag"). `-p` is per-verb (release uses `-p` for `--patch`); the cross-verb `-p` divergence is intentional and acceptable (git subcommands carry their own flag meanings).
 - **Push failure → keep the commit, warn clearly, do NOT unwind.** On a failed push (rejected, remote moved, no upstream, network), mint leaves the commit in place and reports clearly with the fix (re-run the push). Rationale: a push is a trivially repeatable manual fix, whereas unwinding the commit is messy and risky — the user may have had files staged before running `mint commit`, and resetting/unstaging could clobber that pre-existing state. Push is **not** an atomic point-of-no-return with unwind; it is a best-effort final step whose failure is reported, not repaired.
 - **Upstream handling:** defer to git. `mint commit -p` runs a normal `git push` (current branch → its configured upstream). No upstream set → git's own failure, surfaced via the warn-clearly rule (*"commit is in place; set an upstream and push"*). mint adds no special upstream logic.
+- **mint does not classify push-failure causes.** On *any* push failure (rejected, remote moved, no upstream, network) it emits **one generic warn** — the commit is in place; re-run the push to retry — with **git's own stderr passed through verbatim** beneath it, so git's specific hint (set-upstream, non-fast-forward, etc.) stays visible. The *"set an upstream and push"* line is illustrative of git's pass-through, not a mint-authored per-cause message. One rule for all causes: keep the commit, surface git's output, tell the user the commit is safe and the push is repeatable.
 
 ## Invariant — *mutate nothing until accept; never unwind after*
 
