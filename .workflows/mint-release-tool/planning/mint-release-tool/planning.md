@@ -21,7 +21,8 @@ approved_at: 2026-06-09
 - [ ] All external commands (`git`, `gh`, `claude`) run behind the `CommandRunner` seam and are mocked in tests
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
