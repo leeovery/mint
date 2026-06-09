@@ -115,7 +115,7 @@ approved_at: 2026-06-09
 status: approved
 approved_at: 2026-06-09
 
-**Goal**: The forward pipeline is production-hardened — lock-resilient git on every mutation, surgical auto-unwind on pre-PONR failure, the `--autostash`/`--any-branch`/`--set-version` escape hatches, dry-run note caching for deterministic preview→ship, and full provider auto-detection with safe downgrade.
+**Goal**: The forward pipeline is production-hardened — lock-resilient git on every mutation, surgical auto-unwind on pre-PONR failure, the `--autostash`/`--any-branch`/`--set-version` escape hatches, the `--dry-run` core (read-only run, no mutations, full plan printed) plus dry-run note caching for deterministic preview→ship, and full provider auto-detection with safe downgrade.
 
 **Why this order**: This is the hardening layer over the now-complete forward pipeline. It refines failure and edge behaviour rather than adding new user-facing capabilities, so it belongs after the forward path's capabilities are all in place and before the separate regenerate command.
 
@@ -123,7 +123,8 @@ approved_at: 2026-06-09
 - [ ] All git mutations are wrapped in lock resilience (retry on a contended `.git` lock; clear a provably-stale lock)
 - [ ] Pre-PONR failures auto-unwind surgically (delete the tag created, reset the N commits) to the exact clean starting state and report what was undone; post-PONR never unwinds — publish failure warns and points to the heal path
 - [ ] `--autostash` stashes `--include-untracked` before the run and restores after unwind, leaving the stash intact and warning on pop conflict; `--any-branch` bypasses the branch gate; `--set-version X.Y.Z` validated (mutually exclusive with bump flags, valid 3-part, strictly greater than latest)
-- [ ] `--dry-run` generates the notes preview and caches it; the real run reuses on a key match (hash of post-`diff_exclude` diff + computed version + prompt/`context`), regenerates + reports on miss, with ~1h TTL, gitignored and never committed; the review gate is unaffected
+- [ ] `--dry-run` runs the read-only preflight, computes the version, generates the notes preview, and prints the full plan (the commits it would make, the tag, and the publish target) while skipping every mutation (commit/tag/push/provider release) and all hooks (reported skipped) — the repo is unchanged after a dry run
+- [ ] `--dry-run` caches the notes preview; the real run reuses on a key match (hash of post-`diff_exclude` diff + computed version + prompt/`context`), regenerates + reports on miss, with ~1h TTL, gitignored and never committed; the review gate is unaffected
 - [ ] Provider is auto-detected from the remote host (`github.com` → GitHub); an unknown `provider` value, an unmatched host, or no remote with `publish = true` warns loudly and downgrades to tag + push only — never silently assumes GitHub, never strands a pushed tag
 
 #### Tasks

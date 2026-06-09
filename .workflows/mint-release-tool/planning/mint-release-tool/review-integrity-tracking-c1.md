@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 1
 phase: Plan Integrity Review
@@ -55,7 +55,7 @@ The traceability cycle added task `mint-release-tool-4-7a` — the core `--dry-r
 - [ ] Provider is auto-detected from the remote host (`github.com` → GitHub); an unknown `provider` value, an unmatched host, or no remote with `publish = true` warns loudly and downgrades to tag + push only — never silently assumes GitHub, never strands a pushed tag
 ```
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied — Phase 4 Goal updated to name the --dry-run core, and the dry-run acceptance split into a no-mutation/plan-print bullet plus the caching bullet.
 
 ---
