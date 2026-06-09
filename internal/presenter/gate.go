@@ -81,13 +81,23 @@ type Gate struct {
 	// Question is the prompt text rendered last, below the menu (e.g. "Continue?").
 	Question string
 	// Subject names what this gate is accepting — "notes" for the notes-review and
-	// reuse-confirm gates, later "source"/"target" for regenerate's selection
-	// prompts. It is the SUBJECT of the -y auto-accept echo: when the gate is
-	// skipped under -y the presenter renders "{Subject}: accepted (-y)" from this
-	// field, so the echo word is carried in the payload and NO renderer hardcodes
-	// "notes". It plays no part in the interactive render (the menu reads Question
-	// and Choices), only in the skip echo.
+	// reuse-confirm gates, "source"/"target" for regenerate's selection prompts. It
+	// is the LEFT side of the -y auto-accept echo: when the gate is skipped under -y
+	// the presenter renders "{Subject}: {AcceptEcho} (-y)" from this field, so the
+	// echo subject is carried in the payload and NO renderer hardcodes "notes". It
+	// plays no part in the interactive render (the menu reads Question and Choices),
+	// only in the skip echo.
 	Subject string
+	// AcceptEcho is the word/value shown after the subject in the -y auto-accept
+	// echo: the presenter renders "{Subject}: {AcceptEcho} (-y)" (plain) /
+	// "✓ {Subject}  {AcceptEcho} (-y)" (pretty). For the notes/reuse gates it is the
+	// fixed word "accepted" (so the echo reads "notes: accepted (-y)"); for the
+	// source/target gates it is the CHOSEN value — the engine-set flag/default —
+	// so a captured log shows which source/target was used ("source: github (-y)").
+	// Carrying it in the payload generalises the echo word per gate; no renderer
+	// hardcodes "accepted". The value must stay byte-pure ASCII for the plain echo
+	// (the notes word and the option keys both are).
+	AcceptEcho string
 	// Choices is the ordered set of offered choices; the order is the render order.
 	Choices []GateChoice
 	// Default is the choice that fires on a deliberate empty Enter. It must be a
@@ -127,6 +137,10 @@ func NotesReviewGate() Gate {
 	return Gate{
 		Question: "Continue?",
 		Subject:  "notes",
+		// "accepted" keeps the notes echo "notes: accepted (-y)" after the echo word
+		// was generalised onto AcceptEcho (the source/target gates carry their chosen
+		// value here instead).
+		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept & proceed"},
 			{Key: ChoiceNo, Action: "abort"},
@@ -145,13 +159,50 @@ func ReuseConfirmGate() Gate {
 	return Gate{
 		Question: "Continue?",
 		// The reuse confirm is also a notes-acceptance gate in the same Continue?
-		// vocabulary, so its -y echo is "notes: accepted (-y)" — same subject as the
-		// notes-review gate.
-		Subject: "notes",
+		// vocabulary, so its -y echo is "notes: accepted (-y)" — same subject and
+		// AcceptEcho word as the notes-review gate.
+		Subject:    "notes",
+		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept & proceed"},
 			{Key: ChoiceNo, Action: "abort"},
 		},
 		Default: ChoiceYes,
+	}
+}
+
+// SourceGate is regenerate's interactive SOURCE selection prompt, expressed as a
+// Gate so it flows through the same Prompt(gate) method as the notes gate — the
+// shared line-read loop, the -y skip+echo, and the forbidden-combination fail-loud
+// path. It is an ENUMERATED choice set: options are the engine-supplied available
+// sources as GateChoice keys (no free-form value entry), and def is the
+// engine-supplied default (from the source flag/default). The Question is the terse
+// "Source?" form, which renders well as a plain key:value-style prompt line
+// ("Source? [github/gitlab]"). AcceptEcho is the chosen value string(def), so the
+// -y echo reads "source: {chosen} (-y)" and a captured log shows which source was
+// used. The presenter invents none of these — they all arrive via the args.
+func SourceGate(options []GateChoice, def Choice) Gate {
+	return Gate{
+		Question:   "Source?",
+		Subject:    "source",
+		AcceptEcho: string(def),
+		Choices:    options,
+		Default:    def,
+	}
+}
+
+// TargetGate is regenerate's interactive TARGET selection prompt, the target
+// counterpart of SourceGate: same enumerated-choice, shared-Prompt wiring. options
+// are the engine-supplied available targets and def the engine-supplied default
+// (from the target flag/default). The Question is the terse "Target?" form
+// ("Target? [stable/beta]" in plain); Subject is "target"; AcceptEcho is the chosen
+// value so the -y echo reads "target: {chosen} (-y)".
+func TargetGate(options []GateChoice, def Choice) Gate {
+	return Gate{
+		Question:   "Target?",
+		Subject:    "target",
+		AcceptEcho: string(def),
+		Choices:    options,
+		Default:    def,
 	}
 }

@@ -298,19 +298,21 @@ func TestGateSubjectSetByConstructors(t *testing.T) {
 	}
 }
 
-// TestPromptEchoesGateSubjectNotHardcoded proves the presenter renders the echo
-// from gate.Subject — a gate carrying a different subject ("source") yields
-// "source: accepted (-y)" (plain) / "  ✓ source  accepted (-y)" (pretty), proving
-// "notes" is not hardcoded in the presenter.
-func TestPromptEchoesGateSubjectNotHardcoded(t *testing.T) {
+// TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded proves the presenter renders
+// BOTH halves of the -y echo from the gate payload — gate.Subject AND gate.AcceptEcho
+// — not hardcoded "notes"/"accepted". A gate carrying subject "source" and echo word
+// "github" yields "source: github (-y)" (plain) / "  ✓ source  github (-y)" (pretty),
+// so a renderer hardcoding either word would fail.
+func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 	gate := presenter.Gate{
-		Question: "Continue?",
-		Subject:  "source",
+		Question:   "Source?",
+		Subject:    "source",
+		AcceptEcho: "github",
 		Choices: []presenter.GateChoice{
-			{Key: presenter.ChoiceYes, Action: "accept & proceed"},
-			{Key: presenter.ChoiceNo, Action: "abort"},
+			{Key: presenter.Choice("github"), Action: "GitHub"},
+			{Key: presenter.Choice("gitlab"), Action: "GitLab"},
 		},
-		Default: presenter.ChoiceYes,
+		Default: presenter.Choice("github"),
 	}
 
 	out := &bytes.Buffer{}
@@ -318,8 +320,8 @@ func TestPromptEchoesGateSubjectNotHardcoded(t *testing.T) {
 	if _, err := plain.Prompt(gate); err != nil {
 		t.Fatalf("plain Prompt under -y returned error: %v", err)
 	}
-	if got := out.String(); got != "source: accepted (-y)\n" {
-		t.Errorf("plain subject echo = %q, want %q", got, "source: accepted (-y)\n")
+	if got := out.String(); got != "source: github (-y)\n" {
+		t.Errorf("plain subject echo = %q, want %q", got, "source: github (-y)\n")
 	}
 
 	prettyOut := &bytes.Buffer{}
@@ -327,8 +329,8 @@ func TestPromptEchoesGateSubjectNotHardcoded(t *testing.T) {
 	if _, err := pretty.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
 	}
-	if got := prettyOut.String(); got != "  ✓ source  accepted (-y)\n" {
-		t.Errorf("pretty subject accept line = %q, want %q", got, "  ✓ source  accepted (-y)\n")
+	if got := prettyOut.String(); got != "  ✓ source  github (-y)\n" {
+		t.Errorf("pretty subject accept line = %q, want %q", got, "  ✓ source  github (-y)\n")
 	}
 }
 

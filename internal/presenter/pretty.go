@@ -534,18 +534,19 @@ const promptMarker = "› "
 // Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the vertical menu is
 // not rendered and the input stream is NOT read at all. Instead the auto-accept is
 // communicated as a RENDERED event — a concise accept line in the run's success
-// vocabulary, "  ✓ {Subject}  accepted (-y)" (two-space indent, the green ✓ glyph
-// like every other success line, one space, the subject, two spaces, the
-// auto-accept text) — written to OUT only, never an err copy. This is the
-// fixed-2-space concise form (NOT padStage column alignment): the line stands on
-// its own at the gate point rather than aligning to the run's stage column, and the
-// chosen form matches the spec's literal "✓ notes  accepted (-y)" example. The
-// Subject travels in the gate payload, so the echo word is never hardcoded here.
-// The gate's declared default is returned with a nil error.
+// vocabulary, "  ✓ {Subject}  {AcceptEcho} (-y)" (two-space indent, the green ✓
+// glyph like every other success line, one space, the subject, two spaces, the
+// echo word) — written to OUT only, never an err copy. This is the fixed-2-space
+// concise form (NOT padStage column alignment): the line stands on its own at the
+// gate point rather than aligning to the run's stage column, and the chosen form
+// matches the spec's literal "✓ notes  accepted (-y)" example. Both the Subject and
+// the echo word (AcceptEcho — "accepted" for notes, the chosen value for
+// source/target) travel in the gate payload, so neither is hardcoded here. The
+// gate's declared default is returned with a nil error.
 func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
 	if p.yes {
 		glyph := p.success.Render("✓")
-		p.writef("%s%s %s  accepted (-y)\n", stageIndent, glyph, gate.Subject)
+		p.writef("%s%s %s  %s (-y)\n", stageIndent, glyph, gate.Subject, gate.AcceptEcho)
 		return gate.Default, nil
 	}
 	if !p.stdinInteractive {

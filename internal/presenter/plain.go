@@ -306,13 +306,14 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 //
 // Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the menu is not
 // rendered and the input stream is NOT read at all. Instead the auto-accept is
-// communicated as a RENDERED event — the byte-pure ASCII echo "{Subject}: accepted
-// (-y)" to OUT only (narration, never an err copy) — and the gate's declared
-// default is returned with a nil error. The Subject travels in the gate payload, so
-// the echo word is never hardcoded here.
+// communicated as a RENDERED event — the byte-pure ASCII echo "{Subject}:
+// {AcceptEcho} (-y)" to OUT only (narration, never an err copy) — and the gate's
+// declared default is returned with a nil error. Both the Subject AND the echo word
+// (AcceptEcho — "accepted" for notes, the chosen value for source/target) travel in
+// the gate payload, so neither is hardcoded here.
 func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 	if p.yes {
-		p.writef("%s: accepted (-y)\n", gate.Subject)
+		p.writef("%s: %s (-y)\n", gate.Subject, gate.AcceptEcho)
 		return gate.Default, nil
 	}
 	if !p.stdinInteractive {
