@@ -171,6 +171,48 @@ A commit is a frequent, low-stakes, *local* act — most of release's strict gat
 
 This makes commit's safety posture the inverse of release's: release forces a known-good, clean, in-sync starting state because it is high-consequence; commit assumes a messy in-progress tree because that is its entire reason to exist.
 
+## Config Schema
+
+With mint now multi-verb, the config shape is **verb-namespaced tables + shared engine keys** (not flat-with-prefixes). Shared engine keys sit at the top *because* they serve every verb; each verb gets its own table.
+
+```toml
+# Engine-level — shared by every verb
+ai_command     = "claude -p"
+diff_exclude   = ["skills/**/knowledge.cjs", "*.min.js"]
+max_diff_lines = 50000
+
+[release]
+tag_prefix       = "v"
+commit_prefix    = "🌿"
+release_branch   = "main"
+changelog        = true
+publish          = true
+context          = "..."      # was notes_context
+prompt           = "..."      # was notes_prompt
+on_notes_failure = "abort"
+# version_file, version_pattern, provider, ...
+
+[commit]
+context = "Conventional Commits; dev-workflow toolkit."   # inject into the commit prompt
+prompt  = ".mint/commit-prompt.md"                        # full prompt override
+
+[release.hooks]                                           # hooks nest under the owning verb
+pre_tag = "npm ci && npm run build"
+```
+
+**Commit's config surface:**
+- **Reused (shared) keys:** `ai_command`, `diff_exclude`, `max_diff_lines` — same values serve both verbs.
+- **Commit-specific keys:** `[commit].context` (context-inject knob) and `[commit].prompt` (full prompt override). Both optional, typed, fail-loud — consistent with the existing config model.
+
+**Hooks nest under the owning verb.** Top-level is strictly shared-engine, so a top-level `[hooks]` would contradict the "top-level = shared by every verb" rule. Commit defines **no** hook points (release owns `preflight`/`pre_tag`/`post_release`, mapped to its spine), so there is no `[commit.hooks]` today; it is the natural slot if commit ever gains hooks.
+
+**Deliberately NOT added for commit:**
+- No push config — push is flag-only `-p`, never a default.
+- No `on_notes_failure` analogue — commit's failure path is always the `$EDITOR` fallback.
+- No scope toggle, no per-verb `ai_command`/`max_diff_lines` override — steer via `[commit].context`/`prompt`; promote to a `[commit]` key only if a real need appears.
+
+**Reconciliation owed by the release spec (cross-spec hand-off).** This verb-namespaced shape *revises* release's already-concluded flat config layout (`notes_context` → `[release].context`, `notes_prompt` → `[release].prompt`, `[hooks]` → `[release.hooks]`, every flat release key moves under `[release]`, shared engine keys lift to the top). Cheap now (no code exists). Commit's spec **depends on** that restructured shape; the migration itself is the release spec's to absorb (formalised in Dependencies).
+
 ---
 
 ## Working Notes
