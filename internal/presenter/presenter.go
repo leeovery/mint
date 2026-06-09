@@ -92,6 +92,24 @@ type Presenter interface {
 	// with the refreshed body, and re-calls Prompt, looping until y/n; see the
 	// regenerate flow). The presenter only re-renders on each pass.
 	//
+	// The render-only contract is explicit and load-bearing:
+	//
+	//   - On a returned e (edit) or r (regenerate) the presenter does NOTHING beyond
+	//     returning that Choice — it spawns no subprocess, invokes no $EDITOR, and
+	//     runs no claude/regeneration. The "edit in $EDITOR"/"regenerate" strings are
+	//     display LABELS and doc comments only; the package imports no os/exec or any
+	//     subprocess-spawning package (guarded by a test). The work is the ENGINE's.
+	//   - The ENGINE owns the e/r re-entry loop end to end: on e/r it does the
+	//     edit/regenerate work, re-calls ShowNotes with the refreshed body, then
+	//     re-calls Prompt — looping until the choice is y or n, which exits the loop.
+	//   - Rendering is LINEAR (print-style, append-only): each re-entry pass re-prints
+	//     the notes block + gate BELOW the previous output; it scrolls. There is NO
+	//     screen-clearing, NO alt-screen, and NO cursor-home overwrite — mint is not a
+	//     Bubble Tea / full-screen TUI. (lipgloss SGR colour codes in pretty are not
+	//     screen control and are fine; the ban is specifically on clear/alt-screen/home
+	//     sequences.) The pretty spinner stop/resume around the $EDITOR hand-off is a
+	//     separate, engine-driven concern (Phase 4), not part of this render contract.
+	//
 	// The error return carries the forbidden-combination / EOF failure surfaced in
 	// later phases (non-TTY stdin without -y fails loud; EOF on input). It is
 	// declared now so the signature is stable across those phases.
