@@ -120,8 +120,82 @@ type Presenter interface {
 	// menu, the -y gate skip, and the fail-loud forbidden-combination check — each
 	// replacing/extending the stub without churning this signature.
 	Prompt(gate Gate) (Choice, error)
+	// InitResult renders one init outcome — a created or skipped target — in the
+	// shared cross-verb vocabulary (pretty: "✓ created {target}" / "· skipped
+	// {target} ({reason})"; plain: "{target}: created" / "{target}: skipped
+	// ({reason})"). It is narration → out ONLY; it never writes to err.
+	//
+	// Per the event-payload principle the ENGINE resolves created-vs-skipped and,
+	// for a skip, supplies the --force reason text; the presenter NEVER decides the
+	// Action or knows --force semantics. A --force overwrite arrives as InitCreated
+	// (the engine resolved it) and is narrated as a plain created line — the
+	// presenter does not special-case --force.
+	//
+	// init has NO interactive gate (it never calls Prompt — its safety is structural
+	// via non-clobber + --force, not a prompt) and NO release-style brand footer /
+	// "done:" line: its created/skipped lines ARE the terminal output. The presenter
+	// does not special-case init for the footer; rather the engine simply never calls
+	// RunFinished or Prompt on an init run.
+	InitResult(r InitOutcome)
 	// RunFinished renders the end-of-run success line.
 	RunFinished(r RunResult)
+}
+
+// InitAction is the engine-resolved disposition of one init target: it was either
+// created (written fresh, or overwritten under --force) or skipped (it already
+// existed and --force was not passed). It is a typed action the engine ALWAYS sets
+// explicitly on the InitOutcome — the presenter renders whichever action it is
+// handed and never resolves the disposition itself.
+//
+// iota makes the zero value InitCreated. That is intentional and safe here:
+// InitAction never travels as a default-constructed zero value — the engine sets it
+// explicitly on every outcome — so the zero-value identity carries no hidden
+// "unset" meaning to guard against.
+type InitAction int
+
+const (
+	// InitCreated is the created disposition: the target was written fresh, or
+	// overwritten under --force. Both render as the created line — the presenter does
+	// not distinguish a fresh write from a --force overwrite (the engine resolved
+	// both to InitCreated).
+	InitCreated InitAction = iota
+	// InitSkipped is the skipped disposition: the target already existed and --force
+	// was not passed. It renders the skipped notice with the engine-supplied Reason.
+	InitSkipped
+)
+
+// String renders the action word ("created"/"skipped") used in both the rendered
+// narration and readable test output. An unknown value (never produced by the
+// engine) renders "unknown" so a drifted action is self-evident rather than a bare
+// integer.
+func (a InitAction) String() string {
+	switch a {
+	case InitCreated:
+		return "created"
+	case InitSkipped:
+		return "skipped"
+	default:
+		return "unknown"
+	}
+}
+
+// InitOutcome is the InitResult payload: the engine-resolved disposition of one
+// init target. Action is created-vs-skipped (engine-resolved — the presenter never
+// decides it); Target is the file/path the action applied to, rendered verbatim;
+// Reason is the engine-supplied skip explanation (e.g. "exists, use --force"),
+// rendered VERBATIM and only meaningful for InitSkipped — a created outcome leaves
+// it empty and the renderers never read it.
+type InitOutcome struct {
+	// Action is the engine-resolved disposition rendered as its action word. The
+	// engine sets it explicitly on every outcome; the presenter renders it.
+	Action InitAction
+	// Target is the file/path the action applied to (e.g. ".mint.toml", "release"),
+	// rendered verbatim.
+	Target string
+	// Reason is the engine-supplied skip explanation, rendered verbatim and only
+	// meaningful for InitSkipped. The presenter synthesises no part of it and never
+	// reads it for a created outcome.
+	Reason string
 }
 
 // PlanStep is one structured step of the plan the engine is about to perform: an

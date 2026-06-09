@@ -343,6 +343,26 @@ func (p *PlainPresenter) failNotInteractive() (Choice, error) {
 	return "", ErrNotInteractive
 }
 
+// InitResult renders one init outcome to OUT ONLY in plain's "{target}: {action}"
+// vocabulary: "{target}: created" for InitCreated, "{target}: skipped ({reason})"
+// for InitSkipped. The action word follows the target (the plain key:value form),
+// which is the reverse of pretty's "{glyph} {action-word} {target}" word order — the
+// spec fixes the order per mode. The engine-supplied Reason is rendered VERBATIM; the
+// presenter synthesises no reason text and reads Reason only for a skip.
+//
+// init has no gate and no release-style footer — these created/skipped lines ARE the
+// terminal output. InitResult is narration → out only and is never duplicated to err
+// (init carries no failure/warning semantics). The synthesised parts ("{target}: ",
+// "created", "skipped (", ")") are byte-pure ASCII — the pretty "·" middot and "✓"
+// glyph are PRETTY-only; the target and reason are engine content rendered verbatim.
+func (p *PlainPresenter) InitResult(r InitOutcome) {
+	if r.Action == InitSkipped {
+		p.writef("%s: skipped (%s)\n", r.Target, r.Reason)
+		return
+	}
+	p.writef("%s: created\n", r.Target)
+}
+
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is
 // "done: {project} v{X} {url}"; verbs that publish no release leave URL empty, so
 // the line collapses to "done: {project} v{X}" with no dangling trailing space.

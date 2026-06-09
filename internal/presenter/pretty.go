@@ -613,6 +613,38 @@ func defaultSuffix(key, def Choice) string {
 	return ""
 }
 
+// initSkipGlyph is the NEUTRAL middot (U+00B7) the pretty init skipped notice
+// leads with. A skip is neither a success nor a failure, so it deliberately uses
+// none of the load-bearing status glyphs (✓ success, ✗ failure, ⚠ warn, ↩ unwind):
+// it is a neutral notice, and the middot reads as a quiet bullet. It is styled
+// through the dim style (the same subdued, secondary-narration tone shared with the
+// Plan header and notes rules), which suits a non-status notice; the glyph and the
+// layout that follows survive a colour downgrade as bare text.
+const initSkipGlyph = "·"
+
+// InitResult renders one init outcome to OUT ONLY in pretty's "{glyph} {action-word}
+// {target}" vocabulary — the word order is glyph-led, the reverse of plain's
+// "{target}: {action}". A created outcome renders "  ✓ created {target}": two-space
+// indent, the GREEN ✓ (the success style shared with StageSucceeded), the action word
+// "created", then the target. A skipped outcome renders
+// "  · skipped {target} ({reason})": two-space indent, the dim NEUTRAL middot (a skip
+// is neither success nor failure — see initSkipGlyph), "skipped", the target, then
+// " ({reason})" with the engine-supplied Reason rendered VERBATIM.
+//
+// Only the leading glyph is styled (green ✓ / dim ·); the action word, target, and
+// reason stay plain layout, so the whole line survives a colour downgrade as bare
+// text. init has no gate and no release-style footer — these lines ARE the terminal
+// output. InitResult is narration → out only and is never duplicated to err.
+func (p *PrettyPresenter) InitResult(r InitOutcome) {
+	if r.Action == InitSkipped {
+		glyph := p.dim.Render(initSkipGlyph)
+		p.writef("%s%s skipped %s (%s)\n", stageIndent, glyph, r.Target, r.Reason)
+		return
+	}
+	glyph := p.success.Render("✓")
+	p.writef("%s%s created %s\n", stageIndent, glyph, r.Target)
+}
+
 // RunFinished renders the bottom brand line, flush-left:
 // "{leaf} released {project} v{X} · {url}". The leaf is engine-supplied (default
 // 🌿). When URL is empty (e.g. regenerate, which publishes no release) the

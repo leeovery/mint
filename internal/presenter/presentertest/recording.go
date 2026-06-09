@@ -27,6 +27,7 @@ const (
 	KindShowPlan
 	KindShowNotes
 	KindPrompt
+	KindInitResult
 	KindRunFinished
 )
 
@@ -51,6 +52,8 @@ func (k EventKind) String() string {
 		return "ShowNotes"
 	case KindPrompt:
 		return "Prompt"
+	case KindInitResult:
+		return "InitResult"
 	case KindRunFinished:
 		return "RunFinished"
 	default:
@@ -75,6 +78,7 @@ type Event struct {
 	ShowPlan       presenter.Plan
 	ShowNotes      presenter.Notes
 	Prompt         presenter.Gate
+	InitResult     presenter.InitOutcome
 	RunFinished    presenter.RunResult
 }
 
@@ -169,6 +173,13 @@ func (r *RecordingPresenter) Prompt(gate presenter.Gate) (presenter.Choice, erro
 		return choice, nil
 	}
 	return gate.Default, nil
+}
+
+// InitResult records the init outcome event with its full payload — the
+// engine-resolved action, target, and reason — so an engine-driven test can
+// round-trip the init outcome independent of any rendering.
+func (r *RecordingPresenter) InitResult(o presenter.InitOutcome) {
+	r.Events = append(r.Events, Event{Kind: KindInitResult, InitResult: o})
 }
 
 // RunFinished records the end-of-run event.
