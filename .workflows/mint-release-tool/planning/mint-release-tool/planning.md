@@ -93,6 +93,24 @@ approved_at: 2026-06-09
 - [ ] Diff exclusion via git `:(exclude)`: always-exclude `CHANGELOG.md`, `diff_exclude` glob array, and strategy-aware `version_file` handling; exclusion is path-based; `max_diff_lines` excludes excluded paths
 - [ ] Commit graph supports up to two commits (hook artifacts then bookkeeping) with no-op safety (no empty commits); `--dry-run` skips all hooks and reports they were skipped
 
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-3-1 | Hook runner foundation (sh -c, repo root, MINT_* env, string\|array) | string single command, array run in order, first non-zero exit stops the sequence, MINT_BUMP=explicit for --set-version, empty/absent hook → no-op |
+| mint-release-tool-3-2 | preflight hook (runs after built-in gates, aborts on non-zero) | runs after built-in gates pass, non-zero → clean abort pre-mutation, absent hook → skipped, array first failure aborts |
+| mint-release-tool-3-3 | pre_tag hook execution & artifact commit (commit-interplay rule) | hook dirties tree → own commit, clean tree → no commit, hook makes its own commit + hands back clean → nothing committed, non-zero exit → clean abort, gitignored outputs don't count as dirty |
+| mint-release-tool-3-4 | post_release hook (warn-only on failure) | non-zero → warn only, runs after publish, absent → skipped, array continues semantics post-PONR |
+| mint-release-tool-3-5 | Version-file projection — plain mode (whole file is the version) | file absent → created, file already holds target version → no-op (no empty commit), trailing newline handling |
+| mint-release-tool-3-6 | Version-file projection — embedded mode (version_pattern) | pattern matches nothing → abort before tag, multiple matches → all replaced, already at target version → no-op, {version} placeholder substitution |
+| mint-release-tool-3-7 | Bookkeeping commit folds changelog + version-file projection | both changelog and version file change → one commit, version unchanged but changelog changes → still commits, nothing net-changed → no empty commit |
+| mint-release-tool-3-8 | Up-to-two-commit graph (hook-artifact then bookkeeping) | hook commit + bookkeeping commit (two), no hook dirt → one commit, neither dirty → zero commits, tag always points at bookkeeping/HEAD |
+| mint-release-tool-3-9 | Configurable diff_exclude globs (on top of built-in CHANGELOG.md) | multiple globs, glob matches nothing, force-added gitignored file still excluded by glob, excluded paths not counted toward max_diff_lines, combined with CHANGELOG.md exclusion |
+| mint-release-tool-3-10 | Strategy-aware version_file diff exclusion (plain excludes, embedded doesn't) | plain mode → version_file excluded, embedded mode → version_file NOT excluded, no version_file → nothing added, forward path inherently unchanged so no effect, version_file also in diff_exclude |
+| mint-release-tool-3-11 | --dry-run skips all hooks and reports skipped | all three hook points skipped + reported, MINT_DRY_RUN=1 injected, no artifact commit when hooks skipped, dry-run note caching out of scope (Phase 4) |
+
 ### Phase 4: Robustness — Lock Resilience, Recovery, Dry-Run Caching & Publisher Resolution
 status: approved
 approved_at: 2026-06-09
