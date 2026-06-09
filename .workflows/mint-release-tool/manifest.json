@@ -275,7 +275,7 @@
         "commit-command": {
           "status": "in-progress",
           "format": "tick",
-          "spec_commit": "a2c31614d7cb99d3bdca607cd369363ba92c4b97",
+          "spec_commit": "2c45165c0c633c8d4344fff5b8b9a7d372f447f0",
           "task_list_gate_mode": "gated",
           "author_gate_mode": "gated",
           "finding_gate_mode": "gated",
