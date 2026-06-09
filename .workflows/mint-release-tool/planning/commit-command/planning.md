@@ -46,6 +46,17 @@ approved_at: 2026-06-09
 - [ ] Empty-staging fails loud with the message determined by actual tree state after the requested mode: clean-tree vs. "no changes staged" vs. tracked-only `-a` on untracked-only changes pointing at `-A`
 - [ ] `mint commit -A` on a pristine tree reports "nothing to commit, working tree clean"
 
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| commit-command-2-1 | Parse `-a`/`-A` flags with mutual-exclusion fail-loud | `-aA` combined fails loud before any read/AI work, `-A` alone, `-a` alone, neither given keeps default staged-only behaviour |
+| commit-command-2-2 | Compute the would-be-staged diff read-only per mode | `-a` captures tracked mods + deletions excluding untracked, `-A` includes untracked, deletions captured under both modes, index left unmutated after computation, `diff_exclude` + `max_diff_lines` apply to the would-be-staged diff |
+| commit-command-2-3 | Defer staging to gate-accept; abort leaves the index untouched | abort (`n`) leaves index exactly as pre-`mint` (pre-existing user staging untouched), accept applies `git add` for the mode then commits in that order, `-y` auto-accept applies staging, default mode runs no `git add` |
+| commit-command-2-4 | Flag-aware empty-staging messaging matrix | `-A` on pristine tree → "nothing to commit, working tree clean", bare commit with unstaged changes → "no changes staged — use `-a`/`-A`/git add", `-a` when only untracked changes exist → point at `-A`/`--add-all`, message keyed on actual post-mode tree state not the flag passed, no AI call on any empty case |
+
 ### Phase 3: $EDITOR Fallback — Unified No-AI Degradation Path
 status: approved
 approved_at: 2026-06-09
