@@ -20,6 +20,23 @@ approved_at: 2026-06-09
 - [ ] The engine emits semantic events through the `Presenter` interface, verified with a fake/recording presenter; no concrete renderer is required to build or test the engine
 - [ ] All external commands (`git`, `gh`, `claude`) run behind the `CommandRunner` seam and are mocked in tests
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-1-1 | Project skeleton & CommandRunner seam | non-zero exit captured with stderr, command-not-found surfaced |
+| mint-release-tool-1-2 | Minimal config load (tag_prefix, commit_prefix, release_branch, publish) | file absent → all defaults, only a subset of keys present, comments/blank file |
+| mint-release-tool-1-3 | Version determination from git tags | no matching tags → 0.0.0, non-matching tags ignored (1.2, 1.2.0-rc.1, 1.2.0.4, release-1.2), mixed prefixes, double-digit segments sorted numerically |
+| mint-release-tool-1-4 | Repo root anchoring & release-branch resolution | not a git repo → abort, origin/HEAD unset, release_branch config override |
+| mint-release-tool-1-5 | Local preflight gates (clean tree, on branch, tag-free local) | dirty tracked changes, non-ignored untracked files, gitignored files exempt, not on release branch, tag exists locally |
+| mint-release-tool-1-6 | Network preflight gates (fetch --tags, remote sync, tag-free remote) | behind → abort with count, diverged → abort, ahead → pass, no upstream, tag exists on remote |
+| mint-release-tool-1-7 | Presenter interface & recording fake | none |
+| mint-release-tool-1-8 | Publisher interface & GitHub driver (gh gate when publishing) | publish=false → no gh gate / no publish, gh missing → abort before tag, gh unauthenticated → abort before tag |
+| mint-release-tool-1-9 | First-release body & Record (changelog + bookkeeping commit) | CHANGELOG.md absent → create with KaC preamble, no-op changelog → skip commit |
+| mint-release-tool-1-10 | Annotated tag & atomic push | push rejected → surfaced, no publish attempted |
+| mint-release-tool-1-11 | Release command wiring (end-to-end first-release) | -m → 0.1.0, -M → 1.0.0, default → 0.0.1, publish failure after push → warn only (post-PONR) |
+
 ### Phase 2: AI Release Notes Engine, Change Map & Interactive Review
 status: approved
 approved_at: 2026-06-09
