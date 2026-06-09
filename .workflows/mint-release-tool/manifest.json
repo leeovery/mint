@@ -215,7 +215,13 @@
             "mint-release-tool-6-7": "tick-8108d6",
             "mint-release-tool-6-8": "tick-ce95dd"
           },
-          "external_id": "tick-d4f773"
+          "external_id": "tick-d4f773",
+          "external_dependencies": {
+            "cli-presentation": {
+              "description": "The release run emits semantic events to a Presenter and shows the interactive notes-review gate through it; this spec defers gate rendering and the --plain flag's behaviour to that spec. The engine cannot render output or prompt the gate without the Presenter contract.",
+              "state": "unresolved"
+            }
+          }
         }
       }
     }
