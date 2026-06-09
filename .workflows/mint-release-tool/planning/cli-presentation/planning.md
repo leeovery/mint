@@ -3,7 +3,8 @@
 ## Phases
 
 ### Phase 1: Presenter Seam & Render-Mode Skeleton
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Establish the `Presenter` interface, startup render-mode selection, and minimal `pretty`/`plain` implementations rendering a thin end-to-end stage flow driven by a fake recording engine.
 
@@ -19,7 +20,8 @@ status: draft
 - [ ] `plain` emits no ANSI, glyphs, or animation and pulls in no UI library; `pretty` styles via `lipgloss` and relies on its colour auto-downgrade when piped or on a colour-incapable TTY
 
 ### Phase 2: Run Narration — Stages, Plan, Notes, Warnings, Unwind
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Render the full non-interactive release-run vocabulary in both modes — staged completions with detail and elapsed, the plan block, the verbatim notes block, warnings, failures with captured underlying output, and auto-unwind.
 
@@ -35,7 +37,8 @@ status: draft
 - [ ] `Unwound` is a first-class event with its own glyph (`↩`) and rendering in both modes; the success end-of-run line is suppressed on failure/abort runs
 
 ### Phase 3: Interactive Gating — Prompt, Input Model & `-y` Orthogonality
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Implement the render-only `Prompt` gate with the line-read input model, gate-declared choice sets, `-y` skip with auto-accept echo, the forbidden-combination fail-loud, and the `regenerate` source/target prompts.
 
@@ -51,7 +54,8 @@ status: draft
 - [ ] `Prompt` is render-only — it returns the choice and never invokes `$EDITOR` or `claude`; the engine owns the `e`/`r` re-entry loop and re-rendering on each `ShowNotes`/`Prompt` pass is linear (scrolls, no screen-clearing or alt-screen)
 
 ### Phase 4: Cross-Verb Rendering, Spinner Lifecycle & Width Robustness
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Complete consistent rendering across all verbs (`init`, `regenerate`, `version`, and verb-shaped end-of-run lines), the `pretty` spinner lifecycle including `$EDITOR` hand-off, and the light-touch width robustness.
 
