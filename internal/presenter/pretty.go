@@ -645,24 +645,43 @@ func (p *PrettyPresenter) InitResult(r InitOutcome) {
 	p.writef("%s%s created %s\n", stageIndent, glyph, r.Target)
 }
 
-// RunFinished renders the bottom brand line, flush-left:
-// "{leaf} released {project} v{X} · {url}". The leaf is engine-supplied (default
-// 🌿). When URL is empty (e.g. regenerate, which publishes no release) the
-// " · {url}" segment is omitted cleanly with no dangling separator.
-//
-// NOTE: the literal "released" here is the skeleton placeholder; the verb-shaped
-// end-of-run line and regenerate's URL-less variant are owned by a later task.
+// RunFinished renders the bottom brand line, flush-left, dispatching on r.Verb to
+// the verb-shaped closing summary. The leaf is engine-supplied (default 🌿).
 //
 // The bottom brand line is SUCCESS-ONLY: when the run has hit a terminal failure
 // or abort (terminalFailure set by StageFailed or Unwound) this emits NOTHING —
 // there is no failure-flavoured closing brand line. The run has already ended
 // after the ✗/unwound lines; failure is signalled by those lines plus the
-// engine-owned non-zero exit code. The presenter never sets the exit code.
+// engine-owned non-zero exit code. The presenter never sets the exit code. This
+// suppression check runs BEFORE the verb dispatch, so it covers EVERY arm (release
+// and regenerate alike) — a failed/aborted regenerate block suppresses its success
+// closing summary exactly as a release does.
+//
+// Verb dispatch (the verb-shaped closing summary):
+//
+//   - VerbRelease (the iota-0 default, so a Verb-less literal lands here):
+//     "{leaf} released {project} v{X} · {url}". When URL is empty the " · {url}"
+//     segment is omitted cleanly with no dangling separator.
+//   - VerbRegenerate: regenerate publishes no release and has NO URL, so the close
+//     is the URL-less, verb-shaped "{leaf} regenerated {project} {Summary}" — the
+//     {url} field is omitted ENTIRELY (not rendered empty, no dangling " · "). The
+//     verb word "regenerated" mirrors "released"; the engine-supplied Summary is the
+//     single version or, under --all, the set/range/count text, rendered VERBATIM
+//     (the presenter never computes the version set). The --all single-version case
+//     still lands here (Verb=VerbRegenerate), so it renders the set summary, not a
+//     release-style v{X}+url footer.
+//
+// The "released"/"regenerated" words are this method's verb-shaped dispatch arms;
+// 4-4 owns formalising the full dispatch table and any further arms.
 func (p *PrettyPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
 		return
 	}
 	leaf := leafOrDefault(r.Leaf)
+	if r.Verb == VerbRegenerate {
+		p.writef("%s regenerated %s %s\n", leaf, r.Project, r.Summary)
+		return
+	}
 	if r.URL == "" {
 		p.writef("%s released %s v%s\n", leaf, r.Project, r.Version)
 		return

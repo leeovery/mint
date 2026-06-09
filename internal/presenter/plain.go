@@ -363,17 +363,40 @@ func (p *PlainPresenter) InitResult(r InitOutcome) {
 	p.writef("%s: created\n", r.Target)
 }
 
-// RunFinished renders the success-shaped end-of-run line. With a release URL it is
-// "done: {project} v{X} {url}"; verbs that publish no release leave URL empty, so
-// the line collapses to "done: {project} v{X}" with no dangling trailing space.
+// RunFinished renders the success-shaped, VERB-shaped end-of-run line, dispatching
+// on r.Verb.
 //
 // The end-of-run line is SUCCESS-ONLY: when the run has hit a terminal failure or
 // abort (terminalFailure set by StageFailed or Unwound) this emits NOTHING — there
 // is no failure-flavoured "done:" line. The run has already ended after the
 // FAILED/unwound lines; failure is signalled by those lines plus the engine-owned
-// non-zero exit code. The presenter never sets the exit code.
+// non-zero exit code. The presenter never sets the exit code. This suppression
+// check runs BEFORE the verb dispatch, so it covers EVERY arm (release and
+// regenerate alike) — a failed/aborted regenerate block suppresses its success
+// closing summary exactly as a release does.
+//
+// Verb dispatch (the verb-shaped closing summary):
+//
+//   - VerbRelease (the iota-0 default, so a Verb-less literal lands here): the
+//     release-success line "done: {project} v{X} {url}". Verbs that publish no
+//     release leave URL empty, so the line collapses to "done: {project} v{X}" with
+//     no dangling trailing space.
+//   - VerbRegenerate: regenerate publishes no release and has NO URL, so the close
+//     is the URL-less "done: {project} {Summary}" — the {url} field is omitted
+//     ENTIRELY (not rendered empty, no dangling separator). The engine-supplied
+//     Summary is the single version or, under --all, the set/range/count text,
+//     rendered VERBATIM; the presenter never computes the version set. The --all
+//     single-version case still lands here (Verb=VerbRegenerate), so it renders the
+//     set summary, not a release-style v{X}+url footer.
+//
+// 4-4 owns the full verb-shaped dispatch table and the release-arm formalisation;
+// this method ships the regenerate arm and leaves release as the default arm.
 func (p *PlainPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
+		return
+	}
+	if r.Verb == VerbRegenerate {
+		p.writef("done: %s %s\n", r.Project, r.Summary)
 		return
 	}
 	if r.URL == "" {

@@ -248,6 +248,70 @@ func TestRunResultCarriesProjectVersionAndOptionalURL(t *testing.T) {
 	}
 }
 
+// TestRunResultDefaultVerbIsRelease locks the iota-0 invariant: a RunResult
+// literal that sets no Verb defaults to VerbRelease, so every existing
+// (Verb-less) RunResult literal keeps rendering the release closing form. This is
+// the load-bearing guarantee that the new discriminator is additive and breaks no
+// prior RunFinished behaviour.
+func TestRunResultDefaultVerbIsRelease(t *testing.T) {
+	r := presenter.RunResult{Project: "acme", Version: "1.4.0"}
+
+	if r.Verb != presenter.VerbRelease {
+		t.Errorf("zero-value Verb = %v, want VerbRelease (iota 0)", r.Verb)
+	}
+	if presenter.VerbRelease != 0 {
+		t.Errorf("VerbRelease = %d, want 0 (iota-0 so existing literals default to release)", presenter.VerbRelease)
+	}
+}
+
+// TestRunResultCarriesVerbAndSummary proves the end-of-run payload carries the
+// verb discriminator and the engine-supplied closing detail (Summary), so the
+// regenerate arm renders a verb-shaped, engine-summarised closing line. The
+// presenter renders Summary verbatim and never computes the version set.
+func TestRunResultCarriesVerbAndSummary(t *testing.T) {
+	r := presenter.RunResult{
+		Project: "acme",
+		Verb:    presenter.VerbRegenerate,
+		Summary: "v1.2.0–v1.4.0 (3 versions)",
+	}
+
+	if r.Verb != presenter.VerbRegenerate {
+		t.Errorf("Verb = %v, want VerbRegenerate", r.Verb)
+	}
+	if r.Summary != "v1.2.0–v1.4.0 (3 versions)" {
+		t.Errorf("Summary = %q, want the engine-supplied set text verbatim", r.Summary)
+	}
+}
+
+// TestRunResultVerbAndSummaryRoundTripThroughRecorder proves the recorder
+// captures the whole RunResult — including the new Verb and Summary fields — so an
+// engine-driven test can round-trip the regenerate closing payload independent of
+// any rendering. The fields travel automatically because the recorder stores the
+// whole struct.
+func TestRunResultVerbAndSummaryRoundTripThroughRecorder(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+
+	rec.RunFinished(presenter.RunResult{
+		Project: "acme",
+		Verb:    presenter.VerbRegenerate,
+		Summary: "v1.4.0",
+	})
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatalf("no RunFinished event recorded")
+	}
+	if ev.Kind != presentertest.KindRunFinished {
+		t.Fatalf("event kind = %v, want KindRunFinished", ev.Kind)
+	}
+	if ev.RunFinished.Verb != presenter.VerbRegenerate {
+		t.Errorf("recorded Verb = %v, want VerbRegenerate", ev.RunFinished.Verb)
+	}
+	if ev.RunFinished.Summary != "v1.4.0" {
+		t.Errorf("recorded Summary = %q, want %q", ev.RunFinished.Summary, "v1.4.0")
+	}
+}
+
 // TestRunInfoCarriesBrandLeaf proves the start-of-run payload carries the
 // engine-supplied brand leaf so the presenter renders it rather than hardcoding
 // a glyph. The leaf ties to the engine's commit_prefix brand.

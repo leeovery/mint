@@ -54,7 +54,12 @@ func writeNotesBody(w io.Writer, body string) {
 // churning callers — proof the payload structs extend by adding fields. Prompt
 // is the gate seam: its Gate model lives in gate.go.
 type Presenter interface {
-	// RunStarted renders the start-of-run brand/header line.
+	// RunStarted renders the start-of-run brand/header line. Under regenerate's
+	// per-version narration (especially --all, oldest→newest) the engine emits ONE
+	// block per version, each opening with its own RunStarted; the presenter renders
+	// the blocks LINEARLY in emit order and adds NO per-version ordering of its own.
+	// Block ordering is engine-owned — the presenter renders whatever sequence it is
+	// handed.
 	RunStarted(info RunInfo)
 	// StageStarted renders the beginning of a stage (a spinner in pretty; a
 	// terse start line in plain for blocking stages only).
@@ -377,15 +382,58 @@ type Unwind struct {
 	Summary string
 }
 
+// RunVerb is the end-of-run discriminator that selects which verb-shaped closing
+// summary RunFinished renders. The end-of-run line is success-shaped AND
+// verb-shaped: release publishes a versioned release with a URL; regenerate
+// publishes nothing and has no URL, so it renders a URL-less, set-summarising
+// closing line instead.
+//
+// iota makes the ZERO VALUE VerbRelease. That is load-bearing and intentional: a
+// RunResult literal that sets no Verb defaults to the release form, so every
+// existing (Verb-less) RunResult literal — and every prior RunFinished test —
+// keeps rendering the release closing line unchanged. The discriminator is purely
+// additive. Later verbs/arms (init, etc.) extend this enum and the RunFinished
+// dispatch table without churning the default.
+type RunVerb int
+
+const (
+	// VerbRelease is the default closing form (iota 0): the release-success line
+	// "done: {project} v{X} {url}" (plain) / "{leaf} released {project} v{X} · {url}"
+	// (pretty), with the URL omitted when empty. Being iota-0 makes it the zero value,
+	// so a Verb-less RunResult renders this form.
+	VerbRelease RunVerb = iota
+	// VerbRegenerate is the regenerate closing form: a URL-less, verb-shaped summary
+	// "done: {project} {Summary}" (plain) / "{leaf} regenerated {project} {Summary}"
+	// (pretty). The {url} field is omitted ENTIRELY (regenerate publishes no release);
+	// the engine-supplied Summary carries the single version or the --all set/range/count
+	// text, rendered verbatim.
+	VerbRegenerate
+)
+
 // RunResult carries the end-of-run success payload. URL is optional — verbs
 // that do not publish a release (e.g. regenerate) leave it empty.
 //
 // Leaf mirrors RunInfo.Leaf: the engine-supplied brand glyph for the closing
 // brand line, defaulting to 🌿 when empty. It travels on the result so the
 // end-of-run line renders the brand from the payload rather than hardcoding it.
+//
+// Verb selects the verb-shaped closing form (see RunVerb). It defaults to
+// VerbRelease (the iota-0 zero value), so a Verb-less literal renders the release
+// line unchanged — the discriminator is additive. Summary is the engine-supplied
+// closing detail used by the regenerate arm: the single version (e.g. "v1.4.0")
+// or, under --all, the engine-computed set/range/count text. The presenter
+// renders Summary VERBATIM and never computes the version set; it is unused by the
+// release arm (which renders Version + URL).
 type RunResult struct {
 	Project string
 	Version string
 	URL     string
 	Leaf    string
+	// Verb selects which verb-shaped closing summary RunFinished renders. The zero
+	// value VerbRelease keeps every existing Verb-less literal on the release form.
+	Verb RunVerb
+	// Summary is the engine-supplied closing detail rendered verbatim by the
+	// regenerate arm — the single version or the --all set text. The release arm
+	// ignores it (it renders Version + URL instead).
+	Summary string
 }

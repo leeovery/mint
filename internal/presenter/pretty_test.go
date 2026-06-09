@@ -384,6 +384,196 @@ func TestPrettyPresenterBottomBrandOmitsEmptyURLSeparator(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose drives a
+// single-version regenerate: the per-version block reuses the EXISTING events
+// exactly as release does (RunStarted("regenerating") → a stage → ShowNotes →
+// Prompt), then RunFinished{Verb:VerbRegenerate, Summary:"v1.4.0"} renders the
+// URL-less, verb-shaped closing summary "{leaf} regenerated {project} {Summary}".
+// The close must carry NO URL and NO dangling " · " separator.
+func TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "Faster cold starts."})
+		_, _ = p.Prompt(presenter.NotesReviewGate())
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "🌿 mint · acme  ›  regenerating v1.4.0") {
+		t.Errorf("regenerate block start-of-run brand line missing:\n%q", got)
+	}
+	if !strings.Contains(got, "🌿 regenerated acme v1.4.0\n") {
+		t.Errorf("regenerate close = want it to contain %q:\n%q", "🌿 regenerated acme v1.4.0", got)
+	}
+	// The close itself must omit the URL field — no " · {url}" tail after the summary.
+	// (The brand top line and notes rule legitimately use a middot, so the check is
+	// scoped to the summary tail, not the whole output.)
+	if strings.Contains(got, "v1.4.0 · ") {
+		t.Errorf("regenerate close must carry NO dangling separator after the summary:\n%q", got)
+	}
+	if strings.Contains(got, "http") {
+		t.Errorf("regenerate close must carry NO URL:\n%q", got)
+	}
+}
+
+// TestPrettyPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder proves --all
+// renders ONE block per version in ENGINE EMIT ORDER (oldest→newest) and the
+// presenter does NOT reorder: three engine-emitted RunStarted blocks (v1.2.0,
+// v1.3.0, v1.4.0) appear in exactly that order. Block ordering is engine-owned —
+// the presenter renders linearly in emit order.
+func TestPrettyPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.2.0", Action: "regenerating"})
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.3.0", Action: "regenerating"})
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.2.0–v1.4.0 (3 versions)"})
+	})
+
+	got := out.String()
+	idx120 := strings.Index(got, "regenerating v1.2.0")
+	idx130 := strings.Index(got, "regenerating v1.3.0")
+	idx140 := strings.Index(got, "regenerating v1.4.0")
+	if idx120 < 0 || idx130 < 0 || idx140 < 0 {
+		t.Fatalf("one or more regenerate block start lines missing:\n%q", got)
+	}
+	if idx120 >= idx130 || idx130 >= idx140 {
+		t.Errorf("blocks not in engine emit order (oldest→newest): 1.2.0=%d 1.3.0=%d 1.4.0=%d\n%q", idx120, idx130, idx140, got)
+	}
+}
+
+// TestPrettyPresenterRegenerateBlockStartUsesRegeneratingNotReleasing asserts the
+// per-block brand line renders the engine-supplied Action word "regenerating", not
+// "releasing" — the presenter renders the supplied action verbatim.
+func TestPrettyPresenterRegenerateBlockStartUsesRegeneratingNotReleasing(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "🌿 mint · acme  ›  regenerating v1.4.0") {
+		t.Errorf("brand line did not use the engine action 'regenerating':\n%q", got)
+	}
+	if strings.Contains(got, "releasing") {
+		t.Errorf("brand line must NOT say 'releasing' on a regenerate block:\n%q", got)
+	}
+}
+
+// TestPrettyPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter
+// proves the --all SINGLE-version case still renders the regenerate arm: a
+// set-summary close, NOT a release-style v{X}+url footer. The presenter renders the
+// regenerate arm whenever Verb=VerbRegenerate, regardless of block count.
+func TestPrettyPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "1 version (v1.4.0)"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "🌿 regenerated acme 1 version (v1.4.0)\n") {
+		t.Errorf("--all single-version close = want it to contain %q:\n%q", "🌿 regenerated acme 1 version (v1.4.0)", got)
+	}
+	if strings.Contains(got, "released") {
+		t.Errorf("--all single-version regenerate must NOT render a release footer:\n%q", got)
+	}
+	// No " · {url}" tail after the engine-supplied summary.
+	if strings.Contains(got, "(v1.4.0) · ") {
+		t.Errorf("--all single-version regenerate close must carry NO dangling separator after the summary:\n%q", got)
+	}
+}
+
+// TestPrettyPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator asserts the
+// regenerate close omits the {url} field entirely — no URL, no dangling " · "
+// separator — and locks the exact closing line.
+func TestPrettyPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+	})
+
+	got := out.String()
+	if got != "🌿 regenerated acme v1.4.0\n" {
+		t.Errorf("regenerate close = %q, want exactly %q (no url, no dangling separator)", got, "🌿 regenerated acme v1.4.0\n")
+	}
+}
+
+// TestPrettyPresenterFailedRegenerateSuppressesClose proves the Phase-2
+// terminalFailure flag suppresses the regenerate closing summary too: a StageFailed
+// then RunFinished{Verb:VerbRegenerate} renders the ✗ line but NO closing brand
+// summary — the suppression check runs BEFORE the verb dispatch.
+func TestPrettyPresenterFailedRegenerateSuppressesClose(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "notes", Message: "claude failed"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "  ✗ notes") {
+		t.Errorf("✗ line missing:\n%q", got)
+	}
+	if strings.Contains(got, "regenerated") {
+		t.Errorf("regenerate success close must be suppressed after a StageFailed, got:\n%q", got)
+	}
+}
+
+// TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultVerb is the regression
+// guard for the additive discriminator: a RunResult with NO Verb set (default
+// VerbRelease) still renders the release form WITH the URL.
+func TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultVerb(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://github.com/acme/acme/releases/tag/v1.4.0"})
+	})
+
+	if !strings.Contains(out.String(), "🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0\n") {
+		t.Errorf("default-Verb release close changed:\n%q", out.String())
+	}
+}
+
+// TestPrettyPresenterRegenerateFreshNotesBlockRendersFourChoiceGate drives a
+// fresh-notes block: Prompt(NotesReviewGate()) renders the four-choice y/n/e/r
+// vertical menu. The presenter renders whichever gate the engine passes — it does
+// NOT decide reuse-vs-fresh.
+func TestPrettyPresenterRegenerateFreshNotesBlockRendersFourChoiceGate(t *testing.T) {
+	out := &bytes.Buffer{}
+	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader("y\n"))
+	_, _ = p.Prompt(presenter.NotesReviewGate())
+
+	got := out.String()
+	for _, want := range []string{
+		"    y  accept & proceed [default]",
+		"    n  abort",
+		"    e  edit in $EDITOR",
+		"    r  regenerate",
+		"  Continue? › ",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("fresh-notes block four-choice menu missing %q:\n%q", want, got)
+		}
+	}
+}
+
+// TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate drives a
+// reused-notes block: Prompt(ReuseConfirmGate()) renders the two-choice y/n confirm
+// — NO e/r lines, since there are no freshly-generated notes to edit or regenerate.
+func TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate(t *testing.T) {
+	out := &bytes.Buffer{}
+	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader("y\n"))
+	_, _ = p.Prompt(presenter.ReuseConfirmGate())
+
+	got := out.String()
+	if !strings.Contains(got, "    y  accept & proceed [default]") {
+		t.Errorf("reuse confirm y line missing:\n%q", got)
+	}
+	if !strings.Contains(got, "    n  abort") {
+		t.Errorf("reuse confirm n line missing:\n%q", got)
+	}
+	if strings.Contains(got, "    e  ") {
+		t.Errorf("reuse confirm must NOT render an e line:\n%q", got)
+	}
+	if strings.Contains(got, "    r  ") {
+		t.Errorf("reuse confirm must NOT render an r line:\n%q", got)
+	}
+}
+
 // TestPrettyPresenterShowPlanRendersBulletedBlock is the core pretty acceptance:
 // ShowPlan renders a two-space-indented "Plan" header followed by one
 // "    • {verb}<pad>{target}" line per step, verbs padded so targets align at the

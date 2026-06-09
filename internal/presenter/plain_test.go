@@ -611,6 +611,183 @@ func TestPlainPresenterRunFinishedOmitsTrailingSpaceWhenURLEmpty(t *testing.T) {
 	}
 }
 
+// TestPlainPresenterRegenerateSingleVersionRendersBlockThenURLlessClose drives a
+// single-version regenerate: the per-version block reuses the EXISTING events
+// exactly as release does (RunStarted("regenerating") → a stage → ShowNotes →
+// Prompt), then RunFinished{Verb:VerbRegenerate, Summary:"v1.4.0"} renders the
+// URL-less closing summary "done: {project} {Summary}". The block events are
+// asserted to flow through unchanged and the close to carry NO URL.
+func TestPlainPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "Faster cold starts."})
+		_, _ = p.Prompt(presenter.NotesReviewGate())
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+	})
+
+	got := out.String()
+	// The block reuses the release vocabulary, with the regenerate start word.
+	if !strings.Contains(got, "mint: regenerating acme v1.4.0\n") {
+		t.Errorf("regenerate block start-of-run line missing:\n%q", got)
+	}
+	// The closing summary is URL-less: "done: {project} {Summary}", no version+url footer.
+	if !strings.Contains(got, "done: acme v1.4.0\n") {
+		t.Errorf("regenerate close = want it to contain %q:\n%q", "done: acme v1.4.0", got)
+	}
+	if strings.Contains(got, "http") {
+		t.Errorf("regenerate close must carry NO URL:\n%q", got)
+	}
+}
+
+// TestPlainPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter
+// proves the --all SINGLE-version case still renders the regenerate arm: one block
+// + a set-summary close, NOT a release-style v{X}+url footer. The engine sets
+// Verb=VerbRegenerate and the set Summary; the presenter renders the regenerate arm
+// regardless of how many blocks preceded.
+func TestPlainPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "1 version (v1.4.0)"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "done: acme 1 version (v1.4.0)\n") {
+		t.Errorf("--all single-version close = want it to contain %q:\n%q", "done: acme 1 version (v1.4.0)", got)
+	}
+	if strings.Contains(got, "http") {
+		t.Errorf("--all single-version regenerate close must carry NO URL:\n%q", got)
+	}
+}
+
+// TestPlainPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator asserts the
+// regenerate close omits the {url} field entirely — no URL, no dangling trailing
+// space where a URL would sit — regardless of any empty URL on the payload (the
+// regenerate arm never reads URL). The exact line is locked.
+func TestPlainPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+	})
+
+	if got := out.String(); got != "done: acme v1.4.0\n" {
+		t.Errorf("regenerate close = %q, want exactly %q (no url, no dangling separator)", got, "done: acme v1.4.0\n")
+	}
+}
+
+// TestPlainPresenterFailedRegenerateSuppressesClose proves the Phase-2
+// terminalFailure flag suppresses the regenerate success closing summary too: a
+// StageFailed in a regenerate block then RunFinished{Verb:VerbRegenerate} emits the
+// FAILED line but NO closing "done:" summary — the suppression check runs BEFORE
+// the verb dispatch.
+func TestPlainPresenterFailedRegenerateSuppressesClose(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "notes", Message: "claude failed"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "notes: FAILED - claude failed") {
+		t.Errorf("FAILED line missing:\n%q", got)
+	}
+	if strings.Contains(got, "done:") {
+		t.Errorf("regenerate success close must be suppressed after a StageFailed, got:\n%q", got)
+	}
+}
+
+// TestPlainPresenterReleaseRunFinishedUnchangedByDefaultVerb is the regression
+// guard for the additive discriminator: a RunResult with NO Verb set (default
+// VerbRelease) still renders the release form WITH the URL, byte-identical to the
+// pre-discriminator behaviour.
+func TestPlainPresenterReleaseRunFinishedUnchangedByDefaultVerb(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://github.com/acme/acme/releases/tag/v1.4.0"})
+	})
+
+	if got := out.String(); got != "done: acme v1.4.0 https://github.com/acme/acme/releases/tag/v1.4.0\n" {
+		t.Errorf("default-Verb release close changed: %q", got)
+	}
+}
+
+// TestPlainPresenterRegenerateCloseIsBytePureASCII guards the byte-purity contract
+// for the synthesised regenerate close: the "done: " prefix and the spacing are
+// byte-pure ASCII (the Summary here is ASCII so the whole line is asserted).
+func TestPlainPresenterRegenerateCloseIsBytePureASCII(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+	})
+
+	for i, b := range out.Bytes() {
+		switch {
+		case b == 0x1b:
+			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain regenerate close", i)
+		case b == 0x0d:
+			t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain regenerate close", i)
+		case b == '\n':
+			// the only permitted control byte
+		case b < 0x20 || b > 0x7e:
+			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain regenerate close uses", i, b)
+		}
+	}
+}
+
+// TestPlainPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder proves --all
+// renders one block per version in ENGINE EMIT ORDER (oldest→newest) and the
+// presenter does NOT reorder: three engine-emitted RunStarted blocks (v1.2.0,
+// v1.3.0, v1.4.0) render their start lines in exactly that order. Block ordering is
+// engine-owned; the presenter renders linearly in emit order.
+func TestPlainPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.2.0", Action: "regenerating"})
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.3.0", Action: "regenerating"})
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.2.0–v1.4.0 (3 versions)"})
+	})
+
+	got := out.String()
+	idx120 := strings.Index(got, "mint: regenerating acme v1.2.0")
+	idx130 := strings.Index(got, "mint: regenerating acme v1.3.0")
+	idx140 := strings.Index(got, "mint: regenerating acme v1.4.0")
+	if idx120 < 0 || idx130 < 0 || idx140 < 0 {
+		t.Fatalf("one or more regenerate block start lines missing:\n%q", got)
+	}
+	if idx120 >= idx130 || idx130 >= idx140 {
+		t.Errorf("blocks not in engine emit order (oldest→newest): 1.2.0=%d 1.3.0=%d 1.4.0=%d\n%q", idx120, idx130, idx140, got)
+	}
+}
+
+// TestPlainPresenterRegenerateFreshNotesBlockRendersFourChoiceHint drives a
+// fresh-notes regenerate block: Prompt(NotesReviewGate()) renders the four-choice
+// [y/n/e/r] hint. The presenter renders whichever gate the engine passes — it does
+// NOT decide reuse-vs-fresh.
+func TestPlainPresenterRegenerateFreshNotesBlockRendersFourChoiceHint(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	p := presenter.NewPlainPresenterWithInput(out, errBuf, strings.NewReader("y\n"))
+	_, _ = p.Prompt(presenter.NotesReviewGate())
+
+	if !strings.Contains(out.String(), "[y/n/e/r]") {
+		t.Errorf("fresh-notes block hint = %q, want it to contain [y/n/e/r]", out.String())
+	}
+}
+
+// TestPlainPresenterRegenerateReuseNotesBlockRendersTwoChoiceHint drives a
+// reused-notes regenerate block: Prompt(ReuseConfirmGate()) renders only the
+// two-choice [y/n] hint — no e/r.
+func TestPlainPresenterRegenerateReuseNotesBlockRendersTwoChoiceHint(t *testing.T) {
+	out := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	p := presenter.NewPlainPresenterWithInput(out, errBuf, strings.NewReader("y\n"))
+	_, _ = p.Prompt(presenter.ReuseConfirmGate())
+
+	got := out.String()
+	if !strings.Contains(got, "[y/n]") {
+		t.Errorf("reuse-notes block hint = %q, want it to contain [y/n]", got)
+	}
+	if strings.Contains(got, "[y/n/e/r]") {
+		t.Errorf("reuse-notes block hint must NOT contain the four-choice [y/n/e/r]: %q", got)
+	}
+}
+
 // TestPlainPresenterEmitsNoANSIGlyphOrAnimationBytes scans every byte of a full
 // run's narration: no ESC (0x1b) for ANSI, no carriage return (0x0d) for in-place
 // animation, and nothing above the basic ASCII range the plain contract uses.
