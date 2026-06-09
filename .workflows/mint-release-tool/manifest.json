@@ -232,8 +232,8 @@
           "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
-          "phase": 4,
-          "task": "cli-presentation-4-7",
+          "phase": 5,
+          "task": "~",
           "task_map": {
             "cli-presentation-1-1": "tick-98e6cd",
             "cli-presentation-1": "tick-3a97a3",
