@@ -124,3 +124,15 @@ approved_at: 2026-06-09
 - [ ] Any push failure emits one generic warn (commit is in place; re-run the push) with git's stderr passed through verbatim; mint does not classify causes and never unstages, resets, or rewrites
 - [ ] An empty/aborted run (gate `n` or empty editor save) performs no push even with `-p`
 - [ ] No pre-push or remote-sync gate is run; `mint commit -Apy` executes unattended end-to-end
+
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| commit-command-5-1 | Parse the `-p`/`--push` flag (flag-only, no config default) | `-p` absent → no push, `-p` present arms push, no push config key exists or is read, composes in `-Ap` and `-Apy` bundles, push never armed by default |
+| commit-command-5-2 | Push after a successful gate-accept commit | push runs only after the commit succeeds, normal `git push` (current branch → configured upstream) with no special upstream logic, `-p` without a successful commit performs no push, push runs after `-y` auto-accept commit too |
+| commit-command-5-3 | Push after an editor save-as-accept commit | non-empty editor save commits then pushes, `mint commit -Ap --no-ai` end-to-end (stage, commit, push), reuses the single push step (no parallel push call), push runs only after the staging+commit ordering completes |
+| commit-command-5-4 | Warn-don't-unwind on push failure | one generic warn for all causes (rejected, remote moved, no upstream, network), git's stderr passed through verbatim beneath the warn, no cause classification, never unstages/resets/rewrites the commit, commit stays forward-only and the push is repeatable, no-upstream surfaces git's own hint via pass-through |
+| commit-command-5-5 | Suppress push on empty/aborted runs; confirm no pre-push/remote-sync gate | gate `n` with `-p` performs no push (nothing committed), empty/aborted editor save with `-p` performs no push, no pre-push or remote-sync gate runs, `mint commit -Apy` runs unattended end-to-end, no remote-sync precheck blocks the push attempt |
