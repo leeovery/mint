@@ -18,6 +18,18 @@ approved_at: 2026-06-09
 - [ ] Preflight fails loud with no AI call when the index is empty ("nothing to commit, working tree clean")
 - [ ] No `commit_prefix` / 🌿 branding appears anywhere in the commit message text
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| commit-command-1-1 | Read [commit] config table | key absent (context and prompt both optional), wrong type fails loud, prompt-override path unreadable/missing |
+| commit-command-1-2 | Assemble Conventional Commits prompt (L3) | context present injects vs absent, prompt-override fully replaces default, scope omitted by default, no commit_prefix / 🌿 in output |
+| commit-command-1-3 | Bind staged-diff source through L1/L2 (L3 glue) | diff_exclude removes excluded files before generation, max_diff_lines guard applied at L1, L2 one-retry consumed not reimplemented |
+| commit-command-1-4 | Wire bare `mint commit` generate-and-commit thread | AI infers type, scope off by default, commit created via git_safe, message text carries no 🌿 branding |
+| commit-command-1-5 | Integrate the Continue? review gate | Enter accepts, y accepts, n aborts mutating nothing, -y auto-accept skips gate, non-TTY without -y fail-loud |
+| commit-command-1-6 | Minimal preflight: empty-index fail-loud | empty index fails loud with "nothing to commit, working tree clean", no AI call on empty diff, not-a-git-repo fails loud |
+
 ### Phase 2: Staging Model — `-a` / `-A` with Deferred Staging
 status: approved
 approved_at: 2026-06-09
