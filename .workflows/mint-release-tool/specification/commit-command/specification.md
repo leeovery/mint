@@ -257,6 +257,7 @@ Prerequisites that must exist before implementation can begin:
 - **Build order:** CLI Presentation → Mint Release Tool (establishes engine, config, consumes Presenter) → Commit. Commit is the last of the three to be implementable because it reuses all of the shared primitives.
 - **Designed clean, not retrofitted:** the three-layer engine split is *designed* in commit's discussion but is owed to the release spec as a reconciliation. Commit's L3 glue (Conventional Commits prompt, `[commit]` knobs, commit sinks) is the only engine-related code unique to commit; it can be written as soon as L1/L2 exist.
 - **Config reconciliation is the release spec's to absorb:** commit only depends on the *result* (the verb-namespaced shape). It introduces no migration work of its own.
+- **Gate-rendering reconciliation flows through:** the `Continue?` gate rendering commit consumes is the subject of an open reconciliation owed by the release spec (cli-presentation's `[a]/[q]`→`Continue?`, replacing the stale release gate keys). Commit inherits whatever that reconciled rendering becomes — it introduces no gate-rendering work of its own, but its review gate is only as settled as that reconciliation.
 
 ---
 

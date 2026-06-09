@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 1
 phase: Input Review
@@ -28,7 +28,7 @@ This matters because commit's review gate is a hard dependency on cli-presentati
 **Proposed Addition**:
 (leave blank until discussed — likely a Notes bullet under Dependencies stating that the cli-presentation gate reconciliation owed by the release spec, `[a]/[q]`→`Continue?`, applies to commit's gate too since commit consumes the same rendering)
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved. Added as a "Gate-rendering reconciliation flows through" bullet under Dependencies → Notes.
 
 ---
