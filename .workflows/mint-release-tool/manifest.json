@@ -135,8 +135,8 @@
           "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
-          "phase": 3,
-          "task": "mint-release-tool-3-1",
+          "phase": 4,
+          "task": "~",
           "task_map": {
             "mint-release-tool": "tick-d4f773",
             "mint-release-tool-1": "tick-468da7",
@@ -167,7 +167,19 @@
             "mint-release-tool-2-13": "tick-1e1bba",
             "mint-release-tool-2-14": "tick-65d335",
             "mint-release-tool-2-15": "tick-398376",
-            "mint-release-tool-2-16": "tick-429595"
+            "mint-release-tool-2-16": "tick-429595",
+            "mint-release-tool-3": "tick-d83b9f",
+            "mint-release-tool-3-1": "tick-13e07c",
+            "mint-release-tool-3-2": "tick-20f629",
+            "mint-release-tool-3-3": "tick-5bd18c",
+            "mint-release-tool-3-4": "tick-c9b129",
+            "mint-release-tool-3-5": "tick-59d41d",
+            "mint-release-tool-3-6": "tick-f5656a",
+            "mint-release-tool-3-7": "tick-0a250a",
+            "mint-release-tool-3-8": "tick-49a220",
+            "mint-release-tool-3-9": "tick-f2a31a",
+            "mint-release-tool-3-10": "tick-523c3b",
+            "mint-release-tool-3-11": "tick-dd3fde"
           },
           "external_id": "tick-d4f773"
         }
