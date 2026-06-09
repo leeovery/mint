@@ -62,6 +62,14 @@ type GateChoice struct {
 type Gate struct {
 	// Question is the prompt text rendered last, below the menu (e.g. "Continue?").
 	Question string
+	// Subject names what this gate is accepting — "notes" for the notes-review and
+	// reuse-confirm gates, later "source"/"target" for regenerate's selection
+	// prompts. It is the SUBJECT of the -y auto-accept echo: when the gate is
+	// skipped under -y the presenter renders "{Subject}: accepted (-y)" from this
+	// field, so the echo word is carried in the payload and NO renderer hardcodes
+	// "notes". It plays no part in the interactive render (the menu reads Question
+	// and Choices), only in the skip echo.
+	Subject string
 	// Choices is the ordered set of offered choices; the order is the render order.
 	Choices []GateChoice
 	// Default is the choice that fires on a deliberate empty Enter. It must be a
@@ -100,6 +108,7 @@ func (g Gate) Keys() []Choice {
 func NotesReviewGate() Gate {
 	return Gate{
 		Question: "Continue?",
+		Subject:  "notes",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept & proceed"},
 			{Key: ChoiceNo, Action: "abort"},
@@ -117,6 +126,10 @@ func NotesReviewGate() Gate {
 func ReuseConfirmGate() Gate {
 	return Gate{
 		Question: "Continue?",
+		// The reuse confirm is also a notes-acceptance gate in the same Continue?
+		// vocabulary, so its -y echo is "notes: accepted (-y)" — same subject as the
+		// notes-review gate.
+		Subject: "notes",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept & proceed"},
 			{Key: ChoiceNo, Action: "abort"},

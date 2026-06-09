@@ -31,6 +31,15 @@ type PlainPresenter struct {
 	// essential: a fresh wrapper per read would drop bytes bufio read ahead into
 	// its buffer, losing the next line across a re-prompt.
 	reader *bufio.Reader
+	// yes records the -y/--yes gating decision (the gating axis — orthogonal to
+	// render mode and the stream split). When set, Prompt SKIPS the gate entirely:
+	// it neither renders the menu nor reads the input stream, instead emitting the
+	// rendered auto-accept echo and returning the gate's declared default. The
+	// production default is false (interactive); it is set via WithYes at the one
+	// site the -y flag is parsed (a later main/cmd task) and by tests. Threading it
+	// as construction state (not a Prompt parameter) keeps the Prompt(Gate) seam
+	// signature stable across both render modes.
+	yes bool
 	// terminalFailure records that the run has hit a terminal failure or abort —
 	// set by StageFailed (a failed stage) and by Unwound (a failure or gate-n
 	// abort). It makes the presenter STATEFUL per run: when set, RunFinished
@@ -61,6 +70,17 @@ func NewPlainPresenter(out, err io.Writer) *PlainPresenter {
 // NewPlainPresenter, which defaults in to os.Stdin.
 func NewPlainPresenterWithInput(out, err io.Writer, in io.Reader) *PlainPresenter {
 	return &PlainPresenter{out: out, err: err, in: in}
+}
+
+// WithYes sets the -y/--yes gating decision and returns the presenter so it chains
+// onto any constructor (e.g. NewPlainPresenterWithInput(...).WithYes(true)). It is
+// a builder-style setter — kept off the constructors so their signatures stay
+// stable and so task 3-6's stdin-interactive gating signal can be added the same
+// way without a constructor explosion. Production sets it where the -y flag is
+// parsed; the zero value (no call) is the interactive default.
+func (p *PlainPresenter) WithYes(yes bool) *PlainPresenter {
+	p.yes = yes
+	return p
 }
 
 // writef writes one narration line to out. A Presenter method returns nothing —
@@ -252,8 +272,19 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 // The plain render is a single terse line "{Question} [y/n/e/r]" with the hint
 // built from the gate's DECLARED keys (not a hardcoded set), so the two-choice
 // reuse gate renders "[y/n]". It is byte-pure ASCII — the pretty vertical menu is
-// task 3-4 and is not built here. The -y gate skip (3-5) bypasses this entirely.
+// task 3-4 and is not built here.
+//
+// Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the menu is not
+// rendered and the input stream is NOT read at all. Instead the auto-accept is
+// communicated as a RENDERED event — the byte-pure ASCII echo "{Subject}: accepted
+// (-y)" to OUT only (narration, never an err copy) — and the gate's declared
+// default is returned with a nil error. The Subject travels in the gate payload, so
+// the echo word is never hardcoded here.
 func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
+	if p.yes {
+		p.writef("%s: accepted (-y)\n", gate.Subject)
+		return gate.Default, nil
+	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() {
 		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))

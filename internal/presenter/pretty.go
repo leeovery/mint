@@ -73,6 +73,15 @@ type PrettyPresenter struct {
 	// lazily on the first Prompt read so bytes bufio reads ahead survive across a
 	// re-prompt (a fresh wrapper per read would drop them).
 	reader *bufio.Reader
+	// yes records the -y/--yes gating decision (the gating axis — orthogonal to
+	// render mode and the stream split). When set, Prompt SKIPS the gate entirely:
+	// it neither renders the vertical menu nor reads the input stream, instead
+	// emitting the rendered accept line and returning the gate's declared default.
+	// The production default is false (interactive); it is set via WithYes at the
+	// one site the -y flag is parsed (a later main/cmd task) and by tests. Threading
+	// it as construction state (not a Prompt parameter) keeps the Prompt(Gate) seam
+	// signature stable across both render modes.
+	yes bool
 
 	// Styles are derived once from the renderer so every render shares the same
 	// colour profile. Under a no-colour profile lipgloss renders these as the bare
@@ -163,6 +172,27 @@ func newPrettyPresenter(out, err io.Writer, in io.Reader, renderer *lipgloss.Ren
 		dim:      renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
 		unwound:  renderer.NewStyle().Foreground(lipgloss.Color("8")),   // ↩ glyph — dim (no spec colour; subdued recovery tone)
 	}
+}
+
+// WithYes sets the -y/--yes gating decision and returns the presenter so it chains
+// onto any constructor (e.g. NewPrettyPresenterWithInput(...).WithYes(true)). It is
+// a builder-style setter — kept off the constructors so their signatures stay
+// stable and so task 3-6's stdin-interactive gating signal can be added the same
+// way without a constructor explosion. Production sets it where the -y flag is
+// parsed; the zero value (no call) is the interactive default.
+func (p *PrettyPresenter) WithYes(yes bool) *PrettyPresenter {
+	p.yes = yes
+	return p
+}
+
+// WithInput overrides the gate input reader and returns the presenter so it chains
+// onto a constructor that did not take one (e.g. NewPrettyPresenterWithErr, whose
+// stream-split test seam defaults input to os.Stdin). It exists so the stderr-split
+// constructor can be combined with a scripted reader without adding yet another
+// constructor; production never needs it.
+func (p *PrettyPresenter) WithInput(in io.Reader) *PrettyPresenter {
+	p.in = in
+	return p
 }
 
 // writef writes one narration line to out. As with the plain presenter, a write
@@ -468,8 +498,25 @@ const promptMarker = "› "
 // choice's action, a blank line, then the "{Question} › " prompt line LAST. The
 // shared loop calls renderGate on EVERY pass — including after unrecognised input —
 // so the menu is redrawn linearly (it scrolls; no screen-clearing, no alt-screen)
-// for free. The -y gate skip (task 3-5) bypasses this entirely.
+// for free.
+//
+// Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the vertical menu is
+// not rendered and the input stream is NOT read at all. Instead the auto-accept is
+// communicated as a RENDERED event — a concise accept line in the run's success
+// vocabulary, "  ✓ {Subject}  accepted (-y)" (two-space indent, the green ✓ glyph
+// like every other success line, one space, the subject, two spaces, the
+// auto-accept text) — written to OUT only, never an err copy. This is the
+// fixed-2-space concise form (NOT padStage column alignment): the line stands on
+// its own at the gate point rather than aligning to the run's stage column, and the
+// chosen form matches the spec's literal "✓ notes  accepted (-y)" example. The
+// Subject travels in the gate payload, so the echo word is never hardcoded here.
+// The gate's declared default is returned with a nil error.
 func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
+	if p.yes {
+		glyph := p.success.Render("✓")
+		p.writef("%s%s %s  accepted (-y)\n", stageIndent, glyph, gate.Subject)
+		return gate.Default, nil
+	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() { p.renderGate(gate) }
 	return readChoice(reader, render, gate)
