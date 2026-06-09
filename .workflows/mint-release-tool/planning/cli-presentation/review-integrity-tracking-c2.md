@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 2
 phase: Plan Integrity Review
@@ -93,7 +93,7 @@ Paired with findings 1 and 1a: 4-2 currently says regenerate "reuses `RunStarted
 
 > - Confirm `regenerate` needs **no new rendering events** for the per-version blocks — each block reuses `RunStarted`/`StageStarted`/`StageSucceeded`/`StageFailed`/`ShowPlan`/`ShowNotes`/`Prompt` exactly as `release` does. The engine emits one block per version; the presenter renders them linearly in emit order (which the engine has ordered oldest→newest). Do **not** add per-version ordering logic to the presenter — the engine supplies the order. Add a doc note that block ordering is engine-owned. The per-block `RunStarted` carries the engine-supplied `Action` word `regenerating` (the `RunInfo.Action` field established in cli-presentation-1-1/1-5) so the start-of-run brand line reads `🌿 mint · {project}  ›  regenerating v{X}` (pretty) / `mint: regenerating {project} v{X}` (plain) — the presenter renders the supplied action, it does not hardcode `releasing`. Add a test that a regenerate block's start-of-run line uses `regenerating`, not `releasing`.
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---

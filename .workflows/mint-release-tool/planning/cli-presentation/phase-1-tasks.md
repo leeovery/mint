@@ -17,7 +17,7 @@ total: 6
 **Do**:
 - Create the Go module if not present (`go mod init` for the `mint` module) and create package directory `internal/presenter/`.
 - In `internal/presenter/presenter.go` declare `type Presenter interface { ... }` with the minimal methods (illustrative signatures — exact surface is settled here, at implementation):
-  - `RunStarted(info RunInfo)` — start-of-run brand/header line (e.g. carries `Project`, `Version`).
+  - `RunStarted(info RunInfo)` — start-of-run brand/header line. `RunInfo` carries `Project`, `Version`, and an **engine-supplied action word** (`Action string`, e.g. `releasing` for `release`, `regenerating` for `regenerate`) so the start-of-run line is verb-shaped from the payload rather than hardcoding `releasing`. Per the event-payload principle the engine supplies the action word; the presenter renders it and never re-derives the verb. (This mirrors the verb-shaped end-of-run line owned by cli-presentation-4-4 and the engine-supplied brand leaf adopted in cli-presentation-1-5.)
   - `StageStarted(s StageStart)` — carries the stage `Name` and a `Blocking bool` flag (engine knowledge: it knows when it is about to invoke a long/slow command). Plain uses the flag to decide whether to emit a start line; pretty always shows progress.
   - `StageSucceeded(s StageSuccess)` — carries `Name`, `Detail string`, `Elapsed time.Duration`, and `Blocking bool` (so pretty renders `({elapsed})` on long/blocking stages only). The presenter does not time stages.
   - `StageFailed(s StageFailure)` — carries `Name`, `Message string`, and `Output string` (the captured underlying-command output). Rendering of `Output` is exercised in Phase 2; the field exists now so the contract is stable.
@@ -28,6 +28,7 @@ total: 6
 
 **Acceptance Criteria**:
 - [ ] `internal/presenter/presenter.go` declares a `Presenter` interface with the five minimal methods (start-of-run, `StageStarted`, `StageSucceeded`, `StageFailed`, end-of-run).
+- [ ] `RunInfo` carries an engine-supplied `Action` word (e.g. `releasing`/`regenerating`) so the start-of-run line is verb-shaped from the payload; no presenter code hardcodes the literal `releasing`.
 - [ ] `StageStarted` and `StageSucceeded` payloads carry the `Blocking`/long-stage flag; `StageSucceeded` carries an engine-supplied `Elapsed`; `StageFailure` carries both `Message` and captured `Output`.
 - [ ] The package compiles (`go build ./internal/presenter/`) and imports no UI library and no I/O beyond what the type definitions require.
 - [ ] No method derives engine knowledge (no stage-name lists, no timing) — all such data arrives via payloads.
@@ -191,7 +192,7 @@ total: 6
 **Do**:
 - Add `github.com/charmbracelet/lipgloss` to `go.mod`. Create `internal/presenter/pretty.go` with `type PrettyPresenter struct { out io.Writer; err io.Writer; ... }` and constructor `NewPrettyPresenter(out, err io.Writer) *PrettyPresenter`.
 - Implement the minimal methods:
-  - `RunStarted` → top brand line `🌿 mint · {project}  ›  releasing v{X}` (flush-left). The brand leaf is **engine-supplied** (carried on the start-of-run/end-of-run payload, defaulting to `🌿`) rather than hardcoded, honouring the spec's "leaf ties to `commit_prefix`" note and the event-payload principle; render the supplied leaf, do not re-derive it.
+  - `RunStarted` → top brand line `🌿 mint · {project}  ›  {action} v{X}` (flush-left), where `{action}` is the **engine-supplied** action word from `RunInfo` (`releasing` for `release`, `regenerating` for `regenerate`) — render the supplied action, do not hardcode `releasing` (the same start-of-run event is reused for `regenerate` per cli-presentation-4-2). The brand leaf is likewise **engine-supplied** (carried on the start-of-run/end-of-run payload, defaulting to `🌿`) rather than hardcoded, honouring the spec's "leaf ties to `commit_prefix`" note and the event-payload principle; render the supplied leaf, do not re-derive it.
   - `StageSucceeded` → two-space indent, green `✓` glyph, stage name padded to a column, terse detail: `  ✓ {stage}  {detail}`. Render `({elapsed})` only when `Blocking` is true (short stages render detail without elapsed).
   - `StageStarted` → for the skeleton, render a dim stage line (no spinner animation — Phase 4 owns the spinner lifecycle); keep it a single printed line so the flow is linear.
   - `StageFailed` → red `✗ {stage}  {message}` line (captured-output rendering is Phase 2).
@@ -207,6 +208,7 @@ total: 6
 - [ ] With colour **downgraded** (no-colour profile), output contains **no** ANSI colour escape codes, while layout and glyphs (`✓`, brand leaf) are preserved (colour auto-downgrade edge case).
 - [ ] Styling goes exclusively through `lipgloss`; there is no custom `NO_COLOR`/`TERM` check in the pretty path.
 - [ ] The brand leaf is rendered from the engine-supplied payload datum (defaulting to `🌿`), not re-derived/hardcoded in the presenter.
+- [ ] The start-of-run brand line renders the engine-supplied `Action` word from `RunInfo` (not a hardcoded `releasing`).
 
 **Tests**:
 - `"it renders the minimal pretty stage sequence with brand lines and a check glyph"` — capture to a buffer, assert brand top line, `✓` stage line, brand bottom line in order.
