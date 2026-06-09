@@ -663,23 +663,28 @@ func (p *PrettyPresenter) InitResult(r InitOutcome) {
 	p.writef("%s%s created %s\n", stageIndent, glyph, r.Target)
 }
 
-// RunFinished renders the bottom brand line, flush-left, dispatching on r.Verb to
-// the verb-shaped closing summary. The leaf is engine-supplied (default 🌿).
+// RunFinished renders the bottom brand line, flush-left, via an EXHAUSTIVE
+// dispatch on r.Verb — gated FIRST by the success-suppression flag.
 //
-// The bottom brand line is SUCCESS-ONLY: when the run has hit a terminal failure
-// or abort (terminalFailure set by StageFailed or Unwound) this emits NOTHING —
-// there is no failure-flavoured closing brand line. The run has already ended
-// after the ✗/unwound lines; failure is signalled by those lines plus the
-// engine-owned non-zero exit code. The presenter never sets the exit code. This
-// suppression check runs BEFORE the verb dispatch, so it covers EVERY arm (release
-// and regenerate alike) — a failed/aborted regenerate block suppresses its success
-// closing summary exactly as a release does.
+// SUPPRESSION PRECEDES SHAPING. The bottom brand line is SUCCESS-ONLY: when the
+// run has hit a terminal failure or abort (terminalFailure set by StageFailed or
+// Unwound) this emits NOTHING — there is no failure-flavoured closing brand line,
+// even for a release that still carries a URL. The run has already ended after the
+// ✗/unwound lines; failure is signalled by those lines plus the engine-owned
+// non-zero exit code. The presenter never sets the exit code. The suppression
+// check runs BEFORE the verb switch, so it covers EVERY shape — release,
+// regenerate, init, and version alike. Warn does NOT set terminalFailure, so a
+// warn-only run still emits the success footer.
 //
-// Verb dispatch (the verb-shaped closing summary):
+// Verb dispatch (the presenter never re-derives the verb — the shape comes from
+// the payload):
 //
 //   - VerbRelease (the iota-0 default, so a Verb-less literal lands here):
-//     "{leaf} released {project} v{X} · {url}". When URL is empty the " · {url}"
-//     segment is omitted cleanly with no dangling separator.
+//     "{leaf} released {project} v{X} · {url}". The leaf is the ENGINE-SUPPLIED
+//     brand leaf (r.Leaf via leafOrDefault, default 🌿) — never hardcoded — so a
+//     customised commit_prefix brand stays consistent with the start-of-run brand
+//     line. When URL is empty the " · {url}" segment is omitted cleanly with no
+//     dangling separator.
 //   - VerbRegenerate: regenerate publishes no release and has NO URL, so the close
 //     is the URL-less, verb-shaped "{leaf} regenerated {project} {Summary}" — the
 //     {url} field is omitted ENTIRELY (not rendered empty, no dangling " · "). The
@@ -688,18 +693,30 @@ func (p *PrettyPresenter) InitResult(r InitOutcome) {
 //     (the presenter never computes the version set). The --all single-version case
 //     still lands here (Verb=VerbRegenerate), so it renders the set summary, not a
 //     release-style v{X}+url footer.
-//
-// The "released"/"regenerated" words are this method's verb-shaped dispatch arms;
-// 4-4 owns formalising the full dispatch table and any further arms.
+//   - VerbInit, VerbVersion: NO footer — init's created/skipped lines and version's
+//     value line are themselves the terminal output. These arms render NOTHING
+//     (defensive completeness; in practice the engine does not call RunFinished for
+//     init/version).
 func (p *PrettyPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
 		return
 	}
-	leaf := leafOrDefault(r.Leaf)
-	if r.Verb == VerbRegenerate {
-		p.writef("%s regenerated %s %s\n", leaf, r.Project, r.Summary)
-		return
+	switch r.Verb {
+	case VerbRelease:
+		p.renderReleaseFooter(r)
+	case VerbRegenerate:
+		p.writef("%s regenerated %s %s\n", leafOrDefault(r.Leaf), r.Project, r.Summary)
+	case VerbInit, VerbVersion:
+		// No release-style footer: these verbs' own lines are the terminal output.
 	}
+}
+
+// renderReleaseFooter writes the release-success bottom brand line
+// "{leaf} released {project} v{X} · {url}", omitting the " · {url}" segment
+// cleanly when URL is empty so no dangling separator is left. The leaf is the
+// engine-supplied brand leaf (default 🌿 via leafOrDefault).
+func (p *PrettyPresenter) renderReleaseFooter(r RunResult) {
+	leaf := leafOrDefault(r.Leaf)
 	if r.URL == "" {
 		p.writef("%s released %s v%s\n", leaf, r.Project, r.Version)
 		return

@@ -314,6 +314,29 @@ func TestRunResultVerbAndSummaryRoundTripThroughRecorder(t *testing.T) {
 	}
 }
 
+// TestRunVerbIotaOrdering locks the full discriminator ordering: the no-footer
+// shapes VerbInit and VerbVersion are appended AFTER VerbRegenerate, so the
+// load-bearing iota-0 value VerbRelease (and every existing Verb-less literal)
+// is unaffected. The exact values are pinned so a reorder that would shift
+// VerbRelease off zero — silently re-shaping every existing literal — is caught.
+func TestRunVerbIotaOrdering(t *testing.T) {
+	cases := []struct {
+		verb presenter.RunVerb
+		want int
+	}{
+		{presenter.VerbRelease, 0},
+		{presenter.VerbRegenerate, 1},
+		{presenter.VerbInit, 2},
+		{presenter.VerbVersion, 3},
+	}
+
+	for _, c := range cases {
+		if int(c.verb) != c.want {
+			t.Errorf("RunVerb value = %d, want %d", int(c.verb), c.want)
+		}
+	}
+}
+
 // TestRunInfoCarriesBrandLeaf proves the start-of-run payload carries the
 // engine-supplied brand leaf so the presenter renders it rather than hardcoding
 // a glyph. The leaf ties to the engine's commit_prefix brand.

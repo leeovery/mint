@@ -419,14 +419,15 @@ type Unwind struct {
 // summary RunFinished renders. The end-of-run line is success-shaped AND
 // verb-shaped: release publishes a versioned release with a URL; regenerate
 // publishes nothing and has no URL, so it renders a URL-less, set-summarising
-// closing line instead.
+// closing line instead; init and version have no release-style footer at all.
 //
 // iota makes the ZERO VALUE VerbRelease. That is load-bearing and intentional: a
 // RunResult literal that sets no Verb defaults to the release form, so every
 // existing (Verb-less) RunResult literal — and every prior RunFinished test —
 // keeps rendering the release closing line unchanged. The discriminator is purely
-// additive. Later verbs/arms (init, etc.) extend this enum and the RunFinished
-// dispatch table without churning the default.
+// additive: the no-footer shapes are APPENDED after VerbRegenerate, so VerbRelease
+// stays iota-0 and existing literals are unaffected. RunFinished dispatches on
+// this enum as an EXHAUSTIVE switch (suppression first, then the verb arm).
 type RunVerb int
 
 const (
@@ -441,6 +442,19 @@ const (
 	// the engine-supplied Summary carries the single version or the --all set/range/count
 	// text, rendered verbatim.
 	VerbRegenerate
+	// VerbInit is a NO-FOOTER shape: init has no versioned release, so its
+	// created/skipped lines (InitResult) are themselves the terminal output and there
+	// is no release-style brand footer. If RunFinished is ever called with VerbInit it
+	// renders NOTHING — defensive completeness so the dispatch is exhaustive; in
+	// practice the engine simply does not call RunFinished for an init run. Appended
+	// after VerbRegenerate so VerbRelease stays iota-0.
+	VerbInit
+	// VerbVersion is a NO-FOOTER shape: version's value line (ShowVersion) IS its
+	// terminal output, so there is no release-style brand footer. If RunFinished is
+	// ever called with VerbVersion it renders NOTHING — defensive completeness so the
+	// dispatch is exhaustive; in practice the engine does not call RunFinished for a
+	// version run. Appended after VerbRegenerate so VerbRelease stays iota-0.
+	VerbVersion
 )
 
 // RunResult carries the end-of-run success payload. URL is optional — verbs

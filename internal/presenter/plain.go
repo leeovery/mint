@@ -377,24 +377,26 @@ func (p *PlainPresenter) InitResult(r InitOutcome) {
 	p.writef("%s: created\n", r.Target)
 }
 
-// RunFinished renders the success-shaped, VERB-shaped end-of-run line, dispatching
-// on r.Verb.
+// RunFinished renders the success-shaped, VERB-shaped end-of-run line via an
+// EXHAUSTIVE dispatch on r.Verb — gated FIRST by the success-suppression flag.
 //
-// The end-of-run line is SUCCESS-ONLY: when the run has hit a terminal failure or
-// abort (terminalFailure set by StageFailed or Unwound) this emits NOTHING — there
-// is no failure-flavoured "done:" line. The run has already ended after the
+// SUPPRESSION PRECEDES SHAPING. The end-of-run line is SUCCESS-ONLY: when the run
+// has hit a terminal failure or abort (terminalFailure set by StageFailed or
+// Unwound) this emits NOTHING — there is no failure-flavoured "done:" line, even
+// for a release that still carries a URL. The run has already ended after the
 // FAILED/unwound lines; failure is signalled by those lines plus the engine-owned
-// non-zero exit code. The presenter never sets the exit code. This suppression
-// check runs BEFORE the verb dispatch, so it covers EVERY arm (release and
-// regenerate alike) — a failed/aborted regenerate block suppresses its success
-// closing summary exactly as a release does.
+// non-zero exit code. The presenter never sets the exit code. The suppression
+// check runs BEFORE the verb switch, so it covers EVERY shape — release,
+// regenerate, init, and version alike. Warn does NOT set terminalFailure, so a
+// warn-only run still emits the success footer.
 //
-// Verb dispatch (the verb-shaped closing summary):
+// Verb dispatch (the presenter never re-derives the verb — the shape comes from
+// the payload):
 //
 //   - VerbRelease (the iota-0 default, so a Verb-less literal lands here): the
-//     release-success line "done: {project} v{X} {url}". Verbs that publish no
-//     release leave URL empty, so the line collapses to "done: {project} v{X}" with
-//     no dangling trailing space.
+//     release-success footer "done: {project} v{X} {url}". URL is optional — when
+//     empty the line collapses to "done: {project} v{X}" with no dangling trailing
+//     space.
 //   - VerbRegenerate: regenerate publishes no release and has NO URL, so the close
 //     is the URL-less "done: {project} {Summary}" — the {url} field is omitted
 //     ENTIRELY (not rendered empty, no dangling separator). The engine-supplied
@@ -402,17 +404,28 @@ func (p *PlainPresenter) InitResult(r InitOutcome) {
 //     rendered VERBATIM; the presenter never computes the version set. The --all
 //     single-version case still lands here (Verb=VerbRegenerate), so it renders the
 //     set summary, not a release-style v{X}+url footer.
-//
-// 4-4 owns the full verb-shaped dispatch table and the release-arm formalisation;
-// this method ships the regenerate arm and leaves release as the default arm.
+//   - VerbInit, VerbVersion: NO footer — init's created/skipped lines and version's
+//     value line are themselves the terminal output. These arms render NOTHING
+//     (defensive completeness; in practice the engine does not call RunFinished for
+//     init/version).
 func (p *PlainPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
 		return
 	}
-	if r.Verb == VerbRegenerate {
+	switch r.Verb {
+	case VerbRelease:
+		p.renderReleaseFooter(r)
+	case VerbRegenerate:
 		p.writef("done: %s %s\n", r.Project, r.Summary)
-		return
+	case VerbInit, VerbVersion:
+		// No release-style footer: these verbs' own lines are the terminal output.
 	}
+}
+
+// renderReleaseFooter writes the release-success footer "done: {project} v{X}
+// {url}", omitting the trailing " {url}" cleanly when URL is empty so the line
+// never dangles a trailing space.
+func (p *PlainPresenter) renderReleaseFooter(r RunResult) {
 	if r.URL == "" {
 		p.writef("done: %s v%s\n", r.Project, r.Version)
 		return
