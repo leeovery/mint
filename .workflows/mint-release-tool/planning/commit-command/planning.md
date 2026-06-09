@@ -98,6 +98,18 @@ approved_at: 2026-06-09
 - [ ] Regeneration failure after its one retry routes to the `$EDITOR` fallback (no special re-show-prior-message path)
 - [ ] `e` when no editor in the chain is launchable graceful-degrades: warn the editor could not launch and re-render the gate with the unedited message preserved (treat `e` as a no-op)
 
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| commit-command-4-1 | Add the `e` edit action with loop-back to the gate | non-empty save loops back to gate not save-as-accept, edited message used verbatim with no AI reprocessing, multi-line edited body preserved, gate re-renders with edited message and y/n/e/r still available, reuses 3-1 editor resolution (no parallel resolver) |
+| commit-command-4-2 | `e` empty-save discards edit, gate re-renders with prior message preserved | empty save discards the edit and preserves the prior message, whitespace-only save treated as empty per editor contract, repeated `e` then empty-save still preserves the original message, `e` is never a message source so can never produce an empty commit |
+| commit-command-4-3 | `e` graceful-degrade when no editor is launchable | not-launchable signal from 3-1 triggers warn + re-render not fail-loud, unedited message preserved verbatim, distinct from 3-5 fallback fail-loud because a message already exists, gate remains usable (y/n/e/r) after the warn |
+| commit-command-4-4 | Add the `r` regenerate-with-context action (line-read + one-time injection) | non-empty line injected one-time into the regeneration prompt, injected context not persisted to config or subsequent re-rolls, empty line regenerates with no injected context (plain re-roll), Enter submits via the Presenter's line-read, regenerated message returns to the gate, moot under -y/non-TTY (interactive-only action) |
+| commit-command-4-5 | Route `r` regeneration-failure to the $EDITOR fallback | failure after the engine's one retry routes to the 3-3 editor fallback, reuses the 3-3 entry point (no parallel failure handler), no special re-show-prior-message path, fallback save-as-accept semantics unchanged, moot under -y/non-TTY (interactive-only action) |
+
 ### Phase 5: Auto-push — `-p` with Warn-Don't-Unwind
 status: approved
 approved_at: 2026-06-09
