@@ -1,1 +1,93 @@
 # Plan: Mint Release Tool
+
+## Phases
+
+### Phase 1: Walking Skeleton — First-Release Cut, End-to-End
+status: draft
+
+**Goal**: A repo with no tags can run `mint release` and produce `0.0.1` end-to-end — version computed from git tags, core preflight gates passed, the fixed "Initial release." body recorded, an annotated tag created, `git push --atomic`, and a GitHub release published — threading through every architectural seam (CommandRunner, config load, the Presenter interface via a recording fake, and the Publisher interface).
+
+**Why this order**: This is the thinnest complete thread through the whole stack and proves the release spine and the point-of-no-return model at the cheapest possible moment. First-release deliberately needs no AI, no hooks, and no version-file projection, so it isolates the architecture itself. It establishes the seams and patterns every later phase consumes, and honours the cross-spec dependency by building the engine against the Presenter interface (recording fake), not a concrete renderer.
+
+**Acceptance**:
+- [ ] With no matching tags the current version resolves to `0.0.0`; `mint release` → `0.0.1`, `-m` → `0.1.0`, `-M` → `1.0.0`
+- [ ] Tag grammar `^{tag_prefix}(\d+)\.(\d+)\.(\d+)$` (strict 3-part SemVer) parsed; non-matching tags ignored; "latest" is the global numeric maximum; `tag_prefix` default `"v"` read off tags and written back when tagging
+- [ ] Core preflight gates run in order — git repo anchored at `git rev-parse --show-toplevel`, on release branch (auto-derived from `origin/HEAD`), clean working tree (porcelain), target tag free locally and on remote, remote sync (abort if behind/diverged) — and abort cleanly on failure
+- [ ] First-release path writes the fixed body `"Initial release."` with no AI invocation
+- [ ] An annotated tag (subject `{commit_prefix} Release {tag}` + the full body, default prefix 🌿) is created and `git push --atomic origin HEAD {tag}` sends commit(s) + tag together
+- [ ] `gh` install+auth is gated only when actually publishing and before the tag; the GitHub `Publisher.CreateRelease` is invoked behind the `Publisher` interface
+- [ ] The engine emits semantic events through the `Presenter` interface, verified with a fake/recording presenter; no concrete renderer is required to build or test the engine
+- [ ] All external commands (`git`, `gh`, `claude`) run behind the `CommandRunner` seam and are mocked in tests
+
+### Phase 2: AI Release Notes Engine, Change Map & Interactive Review
+status: draft
+
+**Goal**: Releases with a prior tag generate a notes body from the `last_tag..HEAD` diff via the layered AI engine (context assembly vs transport), prepend a computed Change Map, distribute the single body whole to the tag annotation, CHANGELOG.md, and provider release, and gate on the interactive `y`/`n`/`e`/`r` notes review.
+
+**Why this order**: This is mint's core value-add and its heaviest seam set, built on the proven spine from Phase 1. It completes the Presenter cross-spec seam by exercising the four semantic review choices through the interface. It must precede hooks, projection, and regenerate because those consume the notes engine and the single-body distribution model established here.
+
+**Acceptance**:
+- [ ] Context assembly (diff base `last_tag..HEAD`, always-exclude `CHANGELOG.md`, `max_diff_lines` guard default 50000) is cleanly separated from content-agnostic AI transport (prompt + `ai_command` default `claude -p`, validate non-empty/not-error/not-refusal, one retry, ~60s timeout not retried)
+- [ ] A Change Map is computed after exclusion (structural novelty weighted above magnitude, directory/area rollup with notable files called out) and prepended to the AI input
+- [ ] Default notes format is Keep-a-Changelog taxonomy in mint's emoji skin with a TL;DR one-liner; empty sections omitted; "no preamble/meta-commentary" and "ignore version bumps" prompt rules applied
+- [ ] Notes-path precedence resolved: first-release fixed body > degenerate (empty/all-excluded) stub > `--no-ai` fallback body > normal AI path; `on_notes_failure` (abort default / fallback) governs only the normal path
+- [ ] The single body is written whole to the annotated tag (the one read source), the CHANGELOG.md projection, and the provider release — no parsing or per-sink reassembly
+- [ ] Interactive gate offers `y`/`n`/`e`/`r` (`r` omitted on no-AI paths); `e` opens `$VISUAL`→`$EDITOR`→`vi` and uses saved text verbatim (returns to gate if no editor launches); `r` appends a one-time context line and re-runs; `-y`/`--yes` skips the gate
+- [ ] Answering `n` (abort) triggers a full auto-unwind to the exact clean starting state
+
+### Phase 3: Project Prep — Hooks, Version-File Projection & Diff Exclusion
+status: draft
+
+**Goal**: Projects can configure `preflight`/`pre_tag`/`post_release` hooks and a version-file projection, and the diff sent to the AI is shaped by exclusion (built-in `CHANGELOG.md`, `diff_exclude` globs, and the strategy-aware `version_file` rule).
+
+**Why this order**: This adds the project-customisation surface on top of the working notes engine and record stage. `pre_tag` feeds the commit graph built in Phase 1; the version-file projection extends Record; diff exclusion refines the notes input from Phase 2 — so all its dependencies already exist.
+
+**Acceptance**:
+- [ ] Hooks run via `sh -c` from repo root with injected `MINT_*` env vars; value is string or array (sequential, first non-zero aborts for pre-PONR); `post_release` failure warns only
+- [ ] `preflight` hook runs after built-in gates (before mutation); `pre_tag` dirties the tree → mint commits `chore(release): pre-tag artifacts for {tag}` as its own commit; clean tree → no commit
+- [ ] Version-file projection runs in Record: plain mode (whole file is the version) and embedded mode (`version_pattern`); pattern-mismatch aborts before the tag; multiple matches all replaced
+- [ ] Diff exclusion via git `:(exclude)`: always-exclude `CHANGELOG.md`, `diff_exclude` glob array, and strategy-aware `version_file` handling; exclusion is path-based; `max_diff_lines` excludes excluded paths
+- [ ] Commit graph supports up to two commits (hook artifacts then bookkeeping) with no-op safety (no empty commits); `--dry-run` skips all hooks and reports they were skipped
+
+### Phase 4: Robustness — Lock Resilience, Recovery, Dry-Run Caching & Publisher Resolution
+status: draft
+
+**Goal**: The forward pipeline is production-hardened — lock-resilient git on every mutation, surgical auto-unwind on pre-PONR failure, the `--autostash`/`--any-branch`/`--set-version` escape hatches, dry-run note caching for deterministic preview→ship, and full provider auto-detection with safe downgrade.
+
+**Why this order**: This is the hardening layer over the now-complete forward pipeline. It refines failure and edge behaviour rather than adding new user-facing capabilities, so it belongs after the forward path's capabilities are all in place and before the separate regenerate command.
+
+**Acceptance**:
+- [ ] All git mutations are wrapped in lock resilience (retry on a contended `.git` lock; clear a provably-stale lock)
+- [ ] Pre-PONR failures auto-unwind surgically (delete the tag created, reset the N commits) to the exact clean starting state and report what was undone; post-PONR never unwinds — publish failure warns and points to the heal path
+- [ ] `--autostash` stashes `--include-untracked` before the run and restores after unwind, leaving the stash intact and warning on pop conflict; `--any-branch` bypasses the branch gate; `--set-version X.Y.Z` validated (mutually exclusive with bump flags, valid 3-part, strictly greater than latest)
+- [ ] `--dry-run` generates the notes preview and caches it; the real run reuses on a key match (hash of post-`diff_exclude` diff + computed version + prompt/`context`), regenerates + reports on miss, with ~1h TTL, gitignored and never committed; the review gate is unaffected
+- [ ] Provider is auto-detected from the remote host (`github.com` → GitHub); an unknown `provider` value, an unmatched host, or no remote with `publish = true` warns loudly and downgrades to tag + push only — never silently assumes GitHub, never strands a pushed tag
+
+### Phase 5: Regenerate / Backfill (Heal & History Rewrite)
+status: draft
+
+**Goal**: `mint release regenerate <version>` and `--all` non-destructively heal or rewrite the mutable surfaces (provider release body and CHANGELOG.md) from either `--reuse` (tag annotation body) or fresh (re-diff `vX-1..vX` + AI), for one release or a batch, never touching tags.
+
+**Why this order**: Regenerate is a distinct command with its own preflight subset, two-axis source×target contract, and batch semantics. It consumes the notes engine (Phase 2), the Publisher (Phases 1/4), and the record/changelog surfaces (Phases 1–3), so it must follow them.
+
+**Acceptance**:
+- [ ] Two-axis contract enforced: `--reuse` reads the tag body, implies `--target release`, and errors on `--target changelog`; fresh re-diffs `vX-1..vX` with the same exclusion tiers + Change Map and targets `release`/`changelog`/`both`
+- [ ] `<version>` normalised with or without `tag_prefix`; no matching tag → fail loud; oldest release (no `vX-1`) → fixed body `"Initial release."`; `--reuse` against a tag with no annotation body → error (single) / skip-and-report (`--all`)
+- [ ] Argument validation: bare `regenerate` (neither `<version>` nor `--all`) errors; both errors; fresh `-y` without `--target` errors; `--target changelog`/`both` with `changelog = false` aborts up front
+- [ ] Per-verb preflight subset applied: `--reuse` → gh-auth only; fresh changelog/both → gh-auth + clean-tree + branch + remote-sync (not tag-free, no version compute)
+- [ ] Provider create-or-update is automatic (probe per version); fresh runs the notes-review gate (`-y` skips); `git push origin HEAD` is the PONR with reset-on-abort and warn-only on post-push provider failure; `--target both` is not atomic across surfaces
+- [ ] `--all` runs oldest→newest, skip-and-continue with an end summary; whole-file CHANGELOG rebuild with one commit at the end; single-version uses idempotent in-place section replace
+
+### Phase 6: Config Schema & `mint init` Scaffolding
+status: draft
+
+**Goal**: The full verb-namespaced TOML schema is parsed with typed, fail-loud validation, and `mint init` activates mint in a project by scaffolding the commented `.mint.toml` and the `release` shim; `mint version` completes the CLI surface.
+
+**Why this order**: The schema accretes naturally across earlier phases (each consumes its own keys), so this phase consolidates complete validation and ships the activation surface that lets a project adopt mint — a fitting final increment once every key it scaffolds has working behaviour behind it.
+
+**Acceptance**:
+- [ ] Shared engine keys (`ai_command`, `diff_exclude`, `max_diff_lines`) at top level plus `[release]` and `[release.hooks]` tables parsed; zero config yields sensible defaults everywhere
+- [ ] Typed, fail-loud validation: unknown keys and bad types error with clear messages; an unknown `provider` value warns + downgrades rather than erroring
+- [ ] `mint init` drops a commented `.mint.toml` (defaults + present-but-commented optional keys) and an executable `release` shim; idempotent/non-clobbering with a notice; `--force` regenerates; no project auto-detection and no hook/prompt files scaffolded
+- [ ] The `release` shim execs `mint release "$@"` and, when mint is absent, prints the `brew install leeovery/tools/mint` hint and exits non-zero
+- [ ] `mint version` and `mint --version` print mint's own version

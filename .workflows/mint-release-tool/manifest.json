@@ -130,7 +130,7 @@
         "mint-release-tool": {
           "status": "in-progress",
           "format": "tick",
-          "spec_commit": "645046172e3eba1b16b6975c289b780a72a4240a",
+          "spec_commit": "17154471712cbf07df31ba3521c6fe04303c5ca5",
           "task_list_gate_mode": "gated",
           "author_gate_mode": "gated",
           "finding_gate_mode": "gated",
