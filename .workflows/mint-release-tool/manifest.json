@@ -53,10 +53,10 @@
           }
         },
         "commit-command": {
-          "status": "in-progress",
+          "status": "completed",
           "review_cycle": 3,
           "finding_gate_mode": "auto",
-          "date": "2026-06-08",
+          "date": "2026-06-09",
           "sources": {
             "commit-command": {
               "status": "incorporated"
