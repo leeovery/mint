@@ -72,6 +72,18 @@ approved_at: 2026-06-09
 - [ ] Under `-y` or non-TTY stdin, any fallback fires fail-loud ("no AI message and no interactive editor available") — never hangs, never commits an empty message
 - [ ] When no editor in the chain is launchable on the fallback path, mint fails loud (there is no message to fall back to)
 
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| commit-command-3-1 | Resolve the editor via git's resolution order | GIT_EDITOR wins over all, core.editor over $VISUAL/$EDITOR, $VISUAL over $EDITOR, unset $EDITOR falls to git default (not an error on TTY), none in chain launchable returns a not-launchable signal |
+| commit-command-3-2 | `--no-ai` drops to the editor with save-as-accept | non-empty save = accept applies -a/-A staging then commits in order, empty save = no staging/no commit/no mutation, aborted/quit editor = true no-op, default-mode commits index unchanged on save, editor opened by mint itself not delegated to git commit |
+| commit-command-3-3 | Route AI-generation failure to the editor fallback | failure after the engine's one retry routes to editor not abort, distinguished from oversized-skip, save-as-accept semantics reused unchanged, no synthetic stub message inserted |
+| commit-command-3-4 | Route oversized diff (max_diff_lines) to the editor fallback with note | detected at L1 after diff_exclude and before any L2 call, diff_exclude applied first so excluded noise can't push over limit, emits "diff too large to summarise — opening editor", treated as generate-skip not generate-failure, at-limit vs over-limit boundary |
+| commit-command-3-5 | Fail loud when the fallback has no message source | -y + fallback fails loud, non-TTY stdin + fallback fails loud, no launchable editor on TTY fails loud (no message to fall back to), applies identically across all three converging cases, never hangs, never commits an empty message, no -m escape hatch |
+
 ### Phase 4: Interactive Gate Actions — Edit and Regenerate
 status: approved
 approved_at: 2026-06-09
