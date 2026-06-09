@@ -114,7 +114,8 @@ approved_at: 2026-06-09
 - [ ] Width robustness: decorative rules capped at `min(terminalWidth, ~50)`; everything else wraps naturally and never truncates; fixed short stage lines stay fixed
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
