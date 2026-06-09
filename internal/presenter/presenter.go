@@ -48,10 +48,11 @@ func writeNotesBody(w io.Writer, body string) {
 // what it is handed and never re-derives engine knowledge — it holds no
 // hardcoded stage-name lists and times no stages.
 //
-// This is the minimal event set for the walking skeleton: start-of-run, the
-// three per-stage transitions, and end-of-run. The fuller vocabulary (Warn,
-// Unwound, ShowPlan, ShowNotes, Prompt) is added in later phases; the payload
-// structs are designed to extend by adding fields without churning callers.
+// This started as the minimal event set for the walking skeleton (start-of-run,
+// the three per-stage transitions, end-of-run); the fuller vocabulary (Warn,
+// Unwound, ShowPlan, ShowNotes, Prompt) was added in later phases without
+// churning callers — proof the payload structs extend by adding fields. Prompt
+// is the gate seam: its Gate model lives in gate.go.
 type Presenter interface {
 	// RunStarted renders the start-of-run brand/header line.
 	RunStarted(info RunInfo)
@@ -84,6 +85,23 @@ type Presenter interface {
 	// BYTE-FOR-BYTE VERBATIM in both modes (see Notes) — only the surrounding
 	// delimiters differ.
 	ShowNotes(notes Notes)
+	// Prompt is RENDER-ONLY: it renders the gate's DECLARED choice set (the
+	// vertical menu + the Question prompt), reads ONE line of input, and returns a
+	// single DECLARED Choice. It NEVER invokes $EDITOR or claude — the engine owns
+	// the e/r re-entry loop (it does the edit/regenerate work, re-calls ShowNotes
+	// with the refreshed body, and re-calls Prompt, looping until y/n; see the
+	// regenerate flow). The presenter only re-renders on each pass.
+	//
+	// The error return carries the forbidden-combination / EOF failure surfaced in
+	// later phases (non-TTY stdin without -y fails loud; EOF on input). It is
+	// declared now so the signature is stable across those phases.
+	//
+	// This phase ships only the data model + signature: the Plain/Pretty
+	// implementations are STUBS that return gate.Default with a nil error. The real
+	// behaviour layers in later — line-read input parsing, the pretty vertical
+	// menu, the -y gate skip, and the fail-loud forbidden-combination check — each
+	// replacing/extending the stub without churning this signature.
+	Prompt(gate Gate) (Choice, error)
 	// RunFinished renders the end-of-run success line.
 	RunFinished(r RunResult)
 }

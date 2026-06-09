@@ -412,6 +412,19 @@ func displayWidth(s string) int {
 	return len([]rune(s))
 }
 
+// Prompt is the STUB for the pretty gate: it returns the gate's Default with a
+// nil error and renders nothing. This locks the interface and the documented
+// fallback; the real pretty behaviour layers in later — the vertical menu
+// rendering (task 3-4: options above the question, "[default]" beside its action,
+// the "Continue? ›" prompt last) replaces this, line-read input (3-3) is read
+// then, the -y gate skip (3-5) bypasses it, and the fail-loud
+// forbidden-combination check (3-6) populates the error. It reads gate.Default
+// (always a member of the declared set) and so hardcodes no y/n/e/r choice set;
+// it does NOT read stdin here (stdin wiring arrives in 3-2/3-3).
+func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
+	return gate.Default, nil
+}
+
 // RunFinished renders the bottom brand line, flush-left:
 // "{leaf} released {project} v{X} · {url}". The leaf is engine-supplied (default
 // 🌿). When URL is empty (e.g. regenerate, which publishes no release) the

@@ -26,6 +26,7 @@ const (
 	KindUnwound
 	KindShowPlan
 	KindShowNotes
+	KindPrompt
 	KindRunFinished
 )
 
@@ -48,6 +49,8 @@ func (k EventKind) String() string {
 		return "ShowPlan"
 	case KindShowNotes:
 		return "ShowNotes"
+	case KindPrompt:
+		return "Prompt"
 	case KindRunFinished:
 		return "RunFinished"
 	default:
@@ -71,6 +74,7 @@ type Event struct {
 	Unwound        presenter.Unwind
 	ShowPlan       presenter.Plan
 	ShowNotes      presenter.Notes
+	Prompt         presenter.Gate
 	RunFinished    presenter.RunResult
 }
 
@@ -82,6 +86,20 @@ type RecordingPresenter struct {
 	// Events is the ordered log of every recorded call, including interleaving
 	// across kinds. Tests may read it directly or via the accessors below.
 	Events []Event
+	// NextChoices is the FIFO queue of scripted gate answers: each Prompt call pops
+	// the front entry and returns it (with a nil error), letting an engine-driven
+	// test script a sequence of gate responses (e.g. r, r, y across a regenerate
+	// loop). When the queue is empty, Prompt falls back to the gate's own Default —
+	// the sensible no-script default — so a test that only cares about which gate
+	// fired need not script anything. For scripting an error or inspecting the gate,
+	// PromptResult takes precedence; see below.
+	NextChoices []presenter.Choice
+	// PromptResult, when non-nil, fully overrides the answer for EVERY Prompt call:
+	// it is handed the gate and returns the (choice, error) to surface. It takes
+	// precedence over NextChoices and is the hook for scripting an error path or a
+	// gate-dependent answer. When nil, the NextChoices queue (then the gate Default)
+	// decides the choice and the error is always nil.
+	PromptResult func(presenter.Gate) (presenter.Choice, error)
 }
 
 // Compile-time proof the recorder satisfies the interface it records.
@@ -131,6 +149,26 @@ func (r *RecordingPresenter) ShowPlan(plan presenter.Plan) {
 // rendering.
 func (r *RecordingPresenter) ShowNotes(notes presenter.Notes) {
 	r.Events = append(r.Events, Event{Kind: KindShowNotes, ShowNotes: notes})
+}
+
+// Prompt records the gate (its full declared payload) so an engine-driven test
+// can assert which gate fired, then returns a configurable canned answer so the
+// same test can SCRIPT the response and drive the engine's gate logic without any
+// real input. The answer is resolved in precedence order: a non-nil PromptResult
+// hook decides (choice AND error); else the next entry popped from the NextChoices
+// queue (nil error); else the gate's own Default (nil error). The Default fallback
+// keeps an unscripted recorder usable — it returns a member of the declared set.
+func (r *RecordingPresenter) Prompt(gate presenter.Gate) (presenter.Choice, error) {
+	r.Events = append(r.Events, Event{Kind: KindPrompt, Prompt: gate})
+	if r.PromptResult != nil {
+		return r.PromptResult(gate)
+	}
+	if len(r.NextChoices) > 0 {
+		choice := r.NextChoices[0]
+		r.NextChoices = r.NextChoices[1:]
+		return choice, nil
+	}
+	return gate.Default, nil
 }
 
 // RunFinished records the end-of-run event.

@@ -27,6 +27,9 @@ func (p *nopPresenter) Unwound(presenter.Unwind)              {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
 func (p *nopPresenter) ShowNotes(presenter.Notes)             {}
 func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
+func (p *nopPresenter) Prompt(g presenter.Gate) (presenter.Choice, error) {
+	return g.Default, nil
+}
 
 // Compile-time proof that the no-op value satisfies the interface.
 var _ presenter.Presenter = (*nopPresenter)(nil)
@@ -45,6 +48,9 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.ShowPlan(presenter.Plan{})
 	p.ShowNotes(presenter.Notes{})
 	p.RunFinished(presenter.RunResult{})
+	if _, err := p.Prompt(presenter.Gate{}); err != nil {
+		t.Errorf("Prompt returned error: %v", err)
+	}
 }
 
 // TestUnwindCarriesEngineSuppliedSummary proves the Unwind payload carries the

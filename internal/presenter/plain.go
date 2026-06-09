@@ -220,6 +220,18 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 	p.writef("--- end notes ---\n")
 }
 
+// Prompt is the STUB for the plain gate: it returns the gate's Default with a nil
+// error and renders nothing. This locks the interface and the documented
+// fallback; the real plain behaviour layers in later — line-read input parsing
+// (task 3-3) replaces the canned return, the -y gate skip (3-5) bypasses it, and
+// the fail-loud forbidden-combination check (3-6) populates the error. It reads
+// gate.Default (always a member of the declared set) and so hardcodes no
+// y/n/e/r choice set; it does NOT read stdin here (stdin wiring arrives in
+// 3-2/3-3).
+func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
+	return gate.Default, nil
+}
+
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is
 // "done: {project} v{X} {url}"; verbs that publish no release leave URL empty, so
 // the line collapses to "done: {project} v{X}" with no dangling trailing space.
