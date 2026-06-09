@@ -257,6 +257,101 @@ func TestPlainPresenterStageFailedRendersOneLineSummary(t *testing.T) {
 	}
 }
 
+// TestPlainPresenterWarnRendersLabelPrefixedToBothStreams is the core plain Warn
+// acceptance: a structured Warning renders the "{label}: WARN - {message}" line to
+// BOTH the out narration AND err (stderr), so a warning is visible in the captured
+// log and survives redirection. Label and message arrive as separate fields — the
+// presenter never parses a label out of a single combined string.
+func TestPlainPresenterWarnRendersLabelPrefixedToBothStreams(t *testing.T) {
+	out, errBuf := drive(func(p *presenter.PlainPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"})
+	})
+
+	want := "post_release: WARN - hook failed: scripts/notify.sh exited 1\n"
+	if got := out.String(); got != want {
+		t.Errorf("Warn out = %q, want %q", got, want)
+	}
+	if got := errBuf.String(); got != want {
+		t.Errorf("Warn err = %q, want %q", got, want)
+	}
+}
+
+// TestPlainPresenterWarnEmptyMessageRendersLabelPrefix covers the empty-message
+// edge: the label still prefixes the fixed "WARN - " form with nothing after it —
+// no invented message text and no crash. The documented empty form is "x: WARN - ".
+func TestPlainPresenterWarnEmptyMessageRendersLabelPrefix(t *testing.T) {
+	out, errBuf := drive(func(p *presenter.PlainPresenter) {
+		p.Warn(presenter.Warning{Label: "x", Message: ""})
+	})
+
+	want := "x: WARN - \n"
+	if got := out.String(); got != want {
+		t.Errorf("empty-message Warn out = %q, want %q", got, want)
+	}
+	if got := errBuf.String(); got != want {
+		t.Errorf("empty-message Warn err = %q, want %q", got, want)
+	}
+}
+
+// TestPlainPresenterWarnMultipleRenderInSequence covers the multiple-warnings edge:
+// two Warn calls produce two independent lines, in order, in BOTH streams — no
+// collapsing or de-duplication.
+func TestPlainPresenterWarnMultipleRenderInSequence(t *testing.T) {
+	out, errBuf := drive(func(p *presenter.PlainPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
+		p.Warn(presenter.Warning{Label: "cleanup", Message: "temp dir left behind"})
+	})
+
+	want := "post_release: WARN - hook failed\n" +
+		"cleanup: WARN - temp dir left behind\n"
+	if got := out.String(); got != want {
+		t.Errorf("multiple Warn out = %q, want %q", got, want)
+	}
+	if got := errBuf.String(); got != want {
+		t.Errorf("multiple Warn err = %q, want %q", got, want)
+	}
+}
+
+// TestPlainPresenterWarnDoesNotSuppressSuccessEndOfRunLine proves a warning is
+// independent of run state: a warn-only run still ends with the success done line.
+// Warn must not flip the run to failure or suppress the end-of-run line.
+func TestPlainPresenterWarnDoesNotSuppressSuccessEndOfRunLine(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	if !strings.Contains(out.String(), "done: acme v1.4.0 https://example/v1.4.0\n") {
+		t.Errorf("success end-of-run line missing after a warn:\n%q", out.String())
+	}
+}
+
+// TestPlainPresenterWarnEmitsNoANSIGlyphOrAnimationBytes guards the byte-purity
+// contract for the plain WARN line specifically: the synthesised parts (": WARN -
+// ") are byte-pure ASCII — the ⚠ glyph is PRETTY-only and must never appear in
+// plain output. (Label and message here are ASCII so the whole line is asserted
+// byte-pure across both streams.)
+func TestPlainPresenterWarnEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
+	out, errBuf := drive(func(p *presenter.PlainPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"})
+	})
+
+	for _, buf := range []*bytes.Buffer{out, errBuf} {
+		for i, b := range buf.Bytes() {
+			switch {
+			case b == 0x1b:
+				t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain warn output", i)
+			case b == 0x0d:
+				t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain warn output", i)
+			case b == '\n':
+				// the only permitted control byte: a line terminator
+			case b < 0x20 || b > 0x7e:
+				t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain warn contract uses", i, b)
+			}
+		}
+	}
+}
+
 // TestPlainPresenterRunFinishedOmitsTrailingSpaceWhenURLEmpty covers the empty-URL
 // edge case (e.g. regenerate, which publishes no release): the done line must not
 // dangle a trailing space where the URL would be.

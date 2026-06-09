@@ -569,6 +569,132 @@ func TestPrettyPresenterShowPlanColourOnEmitsANSIButKeepsLayout(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterWarnRendersAmberLineToStdout is the core pretty Warn
+// acceptance under colour: the "  ⚠ {label}  {message}" line (two-space indent,
+// amber ⚠ glyph, label, two spaces, message) is written to stdout and carries
+// ANSI SGR codes (the amber styling) while the layout text survives. Label and
+// message arrive as separate fields — never parsed from a single combined string.
+func TestPrettyPresenterWarnRendersAmberLineToStdout(t *testing.T) {
+	out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed (tag is already published): scripts/notify.sh exited 1"})
+	})
+
+	got := out.String()
+	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("colour-on warn line contains no ESC (0x1b) — expected amber SGR codes:\n%q", got)
+	}
+	if !strings.Contains(got, "⚠") {
+		t.Errorf("⚠ glyph missing from warn line:\n%q", got)
+	}
+	for _, frag := range []string{"post_release", "hook failed (tag is already published): scripts/notify.sh exited 1"} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("warn line missing %q:\n%q", frag, got)
+		}
+	}
+}
+
+// TestPrettyPresenterWarnLayoutSurvivesColourDowngrade forces the no-colour profile
+// and asserts the exact warn layout — two-space indent, ⚠ glyph, label, two-space
+// gap, message — with no SGR codes leaking. The amber styling may colour the line,
+// but the layout and glyph survive a downgrade intact.
+func TestPrettyPresenterWarnLayoutSurvivesColourDowngrade(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed (tag is already published): scripts/notify.sh exited 1"})
+	})
+
+	got := out.String()
+	if bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("downgraded warn line leaked an SGR code:\n%q", got)
+	}
+	want := "  ⚠ post_release  hook failed (tag is already published): scripts/notify.sh exited 1\n"
+	if got != want {
+		t.Errorf("downgraded warn line = %q, want %q", got, want)
+	}
+}
+
+// TestPrettyPresenterWarnEmptyMessageHasNoTrailingWhitespace covers the empty-message
+// edge: the line renders "  ⚠ {label}" with NO trailing-whitespace artefact (the
+// two-space gap and the message are dropped when there is no message), and no
+// invented content.
+func TestPrettyPresenterWarnEmptyMessageHasNoTrailingWhitespace(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.Warn(presenter.Warning{Label: "x", Message: ""})
+	})
+
+	got := out.String()
+	want := "  ⚠ x\n"
+	if got != want {
+		t.Errorf("empty-message warn line = %q, want %q", got, want)
+	}
+	for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		if strings.TrimRight(line, " ") != line {
+			t.Errorf("warn line carries a trailing-whitespace artefact: %q", line)
+		}
+	}
+}
+
+// TestPrettyPresenterWarnWritesToBothStreams proves the stream contract for Warn:
+// with colour forced on, the styled amber line reaches stdout (ANSI present) while
+// an UNSTYLED copy reaches err (no ANSI) — stderr is a redirect-visibility channel,
+// not a styled surface, mirroring StageFailed's err summary.
+func TestPrettyPresenterWarnWritesToBothStreams(t *testing.T) {
+	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
+	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.TrueColor)
+	p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"})
+
+	// out carries the styled amber line (colour forced on), so it has ANSI.
+	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("pretty: stdout warn line should be styled (ANSI) under a colour profile:\n%q", out.String())
+	}
+	// err carries the unstyled warn copy, so it must have no ANSI.
+	if bytes.ContainsRune(errBuf.Bytes(), 0x1b) {
+		t.Errorf("pretty: stderr warn copy must be unstyled but contains an ESC (0x1b):\n%q", errBuf.String())
+	}
+	if !strings.Contains(errBuf.String(), "post_release") || !strings.Contains(errBuf.String(), "hook failed: scripts/notify.sh exited 1") {
+		t.Errorf("pretty: stderr warn copy missing label/message:\n%q", errBuf.String())
+	}
+	// The err copy carries the ⚠ glyph too — it is the same text form, just unstyled.
+	if !strings.Contains(errBuf.String(), "⚠") {
+		t.Errorf("pretty: stderr warn copy missing ⚠ glyph:\n%q", errBuf.String())
+	}
+}
+
+// TestPrettyPresenterWarnMultipleRenderInSequence covers the multiple-warnings edge:
+// two Warn calls produce two independent ⚠ lines, in order, in BOTH streams — no
+// collapsing or de-duplication.
+func TestPrettyPresenterWarnMultipleRenderInSequence(t *testing.T) {
+	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
+	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.Ascii)
+	p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
+	p.Warn(presenter.Warning{Label: "cleanup", Message: "temp dir left behind"})
+
+	want := "  ⚠ post_release  hook failed\n" +
+		"  ⚠ cleanup  temp dir left behind\n"
+	if got := out.String(); got != want {
+		t.Errorf("multiple warn out = %q, want %q", got, want)
+	}
+	wantErr := "⚠ post_release  hook failed\n" +
+		"⚠ cleanup  temp dir left behind\n"
+	if got := errBuf.String(); got != wantErr {
+		t.Errorf("multiple warn err = %q, want %q", got, wantErr)
+	}
+}
+
+// TestPrettyPresenterWarnDoesNotSuppressSuccessEndOfRunLine proves a warning is
+// independent of run state in pretty mode: a warn-only run still ends with the
+// success brand line. Warn must not flip the run to failure or suppress the
+// end-of-run line.
+func TestPrettyPresenterWarnDoesNotSuppressSuccessEndOfRunLine(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	if !strings.Contains(out.String(), "released acme v1.4.0") {
+		t.Errorf("success end-of-run brand line missing after a warn:\n%q", out.String())
+	}
+}
+
 // prettyNotesBody mirrors the plain test's worked-example notes body: a lead
 // line, a blank line, then the emoji-headed Features/Fixes sections. Shared here
 // so the pretty/plain byte-identity assertions render the same source bytes.

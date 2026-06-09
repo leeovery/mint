@@ -22,6 +22,7 @@ func (p *nopPresenter) RunStarted(info presenter.RunInfo)     { p.lastRun = info
 func (p *nopPresenter) StageStarted(presenter.StageStart)     {}
 func (p *nopPresenter) StageSucceeded(presenter.StageSuccess) {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)    {}
+func (p *nopPresenter) Warn(presenter.Warning)                {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
 func (p *nopPresenter) ShowNotes(presenter.Notes)             {}
 func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
@@ -38,9 +39,52 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.StageStarted(presenter.StageStart{})
 	p.StageSucceeded(presenter.StageSuccess{})
 	p.StageFailed(presenter.StageFailure{})
+	p.Warn(presenter.Warning{})
 	p.ShowPlan(presenter.Plan{})
 	p.ShowNotes(presenter.Notes{})
 	p.RunFinished(presenter.RunResult{})
+}
+
+// TestWarningCarriesStructuredLabelAndMessage proves the Warn payload carries a
+// structured label and message as SEPARATE fields — the presenter never parses a
+// label out of a single combined string. Both renderings are label-prefixed from
+// these independent inputs.
+func TestWarningCarriesStructuredLabelAndMessage(t *testing.T) {
+	w := presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"}
+
+	if w.Label != "post_release" {
+		t.Errorf("Label = %q, want %q", w.Label, "post_release")
+	}
+	if w.Message != "hook failed: scripts/notify.sh exited 1" {
+		t.Errorf("Message = %q, want %q", w.Message, "hook failed: scripts/notify.sh exited 1")
+	}
+}
+
+// TestWarnPayloadRoundTripsThroughRecorder proves the recorder captures the full
+// Warn payload — label and message — so an engine-driven test can round-trip the
+// warning independent of any rendering.
+func TestWarnPayloadRoundTripsThroughRecorder(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+	w := presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"}
+
+	rec.Warn(w)
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.Kind != presentertest.KindWarn {
+		t.Fatalf("Kind = %v, want %v", ev.Kind, presentertest.KindWarn)
+	}
+	if ev.Warn != w {
+		t.Errorf("Warn = %+v, want %+v", ev.Warn, w)
+	}
+	if ev.Warn.Label != "post_release" {
+		t.Errorf("Label = %q, want %q", ev.Warn.Label, "post_release")
+	}
+	if ev.Warn.Message != "hook failed: scripts/notify.sh exited 1" {
+		t.Errorf("Message = %q, want %q", ev.Warn.Message, "hook failed: scripts/notify.sh exited 1")
+	}
 }
 
 // TestShowNotesPayloadRoundTripsThroughRecorder proves the recorder captures the

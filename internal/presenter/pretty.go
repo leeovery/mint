@@ -68,6 +68,7 @@ type PrettyPresenter struct {
 	// text, preserving layout and glyphs without emitting any ANSI escape.
 	success lipgloss.Style
 	failure lipgloss.Style
+	warn    lipgloss.Style
 	dim     lipgloss.Style
 }
 
@@ -112,9 +113,10 @@ func newPrettyPresenter(out, err io.Writer, renderer *lipgloss.Renderer) *Pretty
 		out:      out,
 		err:      err,
 		renderer: renderer,
-		success:  renderer.NewStyle().Foreground(lipgloss.Color("2")), // green
-		failure:  renderer.NewStyle().Foreground(lipgloss.Color("1")), // red
-		dim:      renderer.NewStyle().Foreground(lipgloss.Color("8")), // bright black / dim
+		success:  renderer.NewStyle().Foreground(lipgloss.Color("2")),   // green
+		failure:  renderer.NewStyle().Foreground(lipgloss.Color("1")),   // red
+		warn:     renderer.NewStyle().Foreground(lipgloss.Color("214")), // amber / orange
+		dim:      renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
 	}
 }
 
@@ -216,6 +218,38 @@ func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	glyph := p.failure.Render("✗")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), s.Message)
 	p.errf("✗ %s  %s\n", s.Name, s.Message)
+}
+
+// Warn renders a standalone amber warning line to out — two-space indent, the
+// amber ⚠ glyph, the label, a two-space gap, then the message — and duplicates an
+// UNSTYLED copy of the same text to err per the stream contract, mirroring
+// StageFailed's err summary (stderr is a redirect-visibility channel, not a styled
+// surface). Label and message are separate engine-supplied fields; the presenter
+// never parses a label out of a combined string.
+//
+// The label is NOT padStage-aligned: warnings are standalone, not part of the
+// aligned stage sequence, so they carry no column padding. Warn is independent of
+// run state — it sets no failure and suppresses no end-of-run line — and multiple
+// Warn calls each render their own line, in order, with no collapsing.
+//
+// Empty-message edge: the line collapses to "{stageIndent}⚠ {label}" (and the err
+// copy to "⚠ {label}") with NO trailing-whitespace artefact — the two-space gap
+// and the message are both dropped when there is no message.
+func (p *PrettyPresenter) Warn(w Warning) {
+	glyph := p.warn.Render("⚠")
+	p.writef("%s%s %s\n", stageIndent, glyph, warnText(w))
+	p.errf("⚠ %s\n", warnText(w))
+}
+
+// warnText builds the layout that follows the ⚠ glyph: the label, then a two-space
+// gap and the message when a message is present. With an empty message it returns
+// just the label so neither the out line nor the err copy dangles a trailing-space
+// artefact where the message would be.
+func warnText(w Warning) string {
+	if w.Message == "" {
+		return w.Label
+	}
+	return w.Label + "  " + w.Message
 }
 
 // planIndent is the four-space indent every plan bullet line carries — one level

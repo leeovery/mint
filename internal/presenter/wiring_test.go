@@ -185,6 +185,77 @@ func TestFailureSummaryAppearsOnBothStdoutAndStderr(t *testing.T) {
 	}
 }
 
+// TestWarnAppearsOnBothStdoutAndStderr drives Warn and asserts the warning is
+// present in BOTH the stdout narration AND the stderr buffer for BOTH modes — per
+// the stream contract, warnings appear in the narration and additionally on stderr
+// for redirect-visibility. Each mode uses its own warn text form.
+func TestWarnAppearsOnBothStdoutAndStderr(t *testing.T) {
+	tests := []struct {
+		name    string
+		mode    presenter.Mode
+		wantOut string
+		wantErr string
+	}{
+		{
+			name:    "plain warn line",
+			mode:    presenter.ModePlain,
+			wantOut: "post_release: WARN - hook failed: scripts/notify.sh exited 1",
+			wantErr: "post_release: WARN - hook failed: scripts/notify.sh exited 1",
+		},
+		{
+			name:    "pretty warn line",
+			mode:    presenter.ModePretty,
+			wantOut: "⚠ post_release",
+			wantErr: "⚠ post_release",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p, out, errBuf := newSplit(tt.mode)
+			p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"})
+
+			if !strings.Contains(out.String(), tt.wantOut) {
+				t.Errorf("%s: warn missing from stdout = %q, want it to contain %q", tt.name, out.String(), tt.wantOut)
+			}
+			if !strings.Contains(errBuf.String(), tt.wantErr) {
+				t.Errorf("%s: warn missing from stderr = %q, want it to contain %q", tt.name, errBuf.String(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestWarnDoesNotSuppressSuccessRunEndLine drives a warn-only successful run
+// (Warn → RunFinished) and asserts the success end-of-run line still renders for
+// BOTH modes — a warning does not flip the run to failure or suppress the
+// success-only closing line (suppression is a separate concern, owned elsewhere).
+func TestWarnDoesNotSuppressSuccessRunEndLine(t *testing.T) {
+	tests := []struct {
+		name    string
+		mode    presenter.Mode
+		wantEnd string
+	}{
+		{name: "plain", mode: presenter.ModePlain, wantEnd: "done: acme v1.4.0"},
+		{name: "pretty", mode: presenter.ModePretty, wantEnd: "released acme v1.4.0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p, out, _ := newSplit(tt.mode)
+			p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
+			p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+
+			if !strings.Contains(out.String(), tt.wantEnd) {
+				t.Errorf("%s: success end-of-run line missing after a warn = %q, want it to contain %q", tt.name, out.String(), tt.wantEnd)
+			}
+		})
+	}
+}
+
 // TestFailureStderrSummaryIsSingleLine asserts the stderr summary is exactly one
 // line for BOTH modes — the contract routes only the one-line summary to stderr,
 // never a multi-line body. (The captured-output body is a Phase 2 addition; this

@@ -62,6 +62,11 @@ type Presenter interface {
 	StageSucceeded(s StageSuccess)
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
+	// Warn renders a structured, label-prefixed warning. It is INDEPENDENT of
+	// StageFailed/Unwound: it does not set failure state and does not suppress the
+	// success end-of-run line. Per the stream contract a warning is narration → out
+	// AND is duplicated to err (stderr) for redirect-visibility.
+	Warn(w Warning)
 	// ShowPlan renders the upcoming plan — the steps mint is about to perform.
 	// It is narration → out only; it never writes to err.
 	ShowPlan(plan Plan)
@@ -206,6 +211,32 @@ type StageFailure struct {
 	Name    string
 	Message string
 	Output  string
+}
+
+// Warning carries the Warn payload: a structured, engine-supplied Label and
+// Message kept as SEPARATE fields. The presenter NEVER parses a label out of a
+// single combined string — both fields arrive independently and both renderings
+// are label-prefixed from them ("{label}: WARN - {message}" in plain, "⚠ {label}
+// {message}" in pretty).
+//
+// A Warn is INDEPENDENT of the stage transitions: it does not set failure state
+// and does not suppress the success end-of-run line — a warn can occur on an
+// otherwise-successful run. Multiple warnings render independently and in order;
+// the presenter never collapses or de-duplicates them.
+//
+// Per the stream contract a warning is narration → out AND is additionally written
+// to err (stderr) for visibility under redirection, mirroring StageFailed's err
+// summary.
+//
+// Edge case: an empty Message is legal — the label still prefixes the fixed
+// "WARN - " form with nothing after it; the presenter invents no message text.
+type Warning struct {
+	// Label is the engine-supplied warning label (e.g. "post_release"), rendered
+	// verbatim as the line's prefix.
+	Label string
+	// Message is the engine-supplied warning text, rendered verbatim. The empty
+	// string is legal and renders the label-prefixed form with no message.
+	Message string
 }
 
 // RunResult carries the end-of-run success payload. URL is optional — verbs

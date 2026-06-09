@@ -102,6 +102,24 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
 }
 
+// Warn renders the structured warning as "{label}: WARN - {message}" to out (the
+// narration) AND duplicates that same one-line summary to err so a warning is
+// visible under redirection — mirroring StageFailed's dual-write. Label and message
+// are separate engine-supplied fields rendered verbatim; the presenter never parses
+// a label out of a combined string.
+//
+// Warn is independent of run state: it does not set failure and does not suppress
+// the success end-of-run line (that suppression is owned elsewhere). Multiple Warn
+// calls each render their own line, in order — there is no collapsing.
+//
+// Empty-message edge: the fixed "{label}: WARN - " prefix renders with nothing
+// after it — no invented message text. The line is synthesised byte-pure ASCII (no
+// ⚠ glyph; that is pretty-only).
+func (p *PlainPresenter) Warn(w Warning) {
+	p.writef("%s: WARN - %s\n", w.Label, w.Message)
+	p.errf("%s: WARN - %s\n", w.Label, w.Message)
+}
+
 // ShowPlan renders the plan as a single terse one-liner: "plan: {step}; {step}; …"
 // where each step is rendered "{verb} {target}" (or just "{verb}" when the target
 // is empty) and the steps are joined by "; ". It derives entirely from the SAME

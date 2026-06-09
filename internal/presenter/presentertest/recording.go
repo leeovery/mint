@@ -22,6 +22,7 @@ const (
 	KindStageStarted
 	KindStageSucceeded
 	KindStageFailed
+	KindWarn
 	KindShowPlan
 	KindShowNotes
 	KindRunFinished
@@ -38,6 +39,8 @@ func (k EventKind) String() string {
 		return "StageSucceeded"
 	case KindStageFailed:
 		return "StageFailed"
+	case KindWarn:
+		return "Warn"
 	case KindShowPlan:
 		return "ShowPlan"
 	case KindShowNotes:
@@ -61,6 +64,7 @@ type Event struct {
 	StageStarted   presenter.StageStart
 	StageSucceeded presenter.StageSuccess
 	StageFailed    presenter.StageFailure
+	Warn           presenter.Warning
 	ShowPlan       presenter.Plan
 	ShowNotes      presenter.Notes
 	RunFinished    presenter.RunResult
@@ -97,6 +101,12 @@ func (r *RecordingPresenter) StageSucceeded(s presenter.StageSuccess) {
 // StageFailed records a stage's failure.
 func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 	r.Events = append(r.Events, Event{Kind: KindStageFailed, StageFailed: s})
+}
+
+// Warn records a warning with its full structured payload — label and message —
+// so an engine-driven test can round-trip the warning independent of any rendering.
+func (r *RecordingPresenter) Warn(w presenter.Warning) {
+	r.Events = append(r.Events, Event{Kind: KindWarn, Warn: w})
 }
 
 // ShowPlan records the plan event with its full structured payload so an
