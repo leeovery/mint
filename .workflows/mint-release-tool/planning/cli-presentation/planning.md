@@ -50,7 +50,8 @@ approved_at: 2026-06-09
 - [ ] `Unwound` is a first-class event with its own glyph (`↩`) and rendering in both modes; the success end-of-run line is suppressed on failure/abort runs
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
