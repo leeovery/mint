@@ -228,12 +228,12 @@
           "status": "in-progress",
           "format": "tick",
           "spec_commit": "31b71e7917d758ba13d6cb6c03ce2c3a28dce3d5",
-          "task_list_gate_mode": "gated",
+          "task_list_gate_mode": "auto",
           "author_gate_mode": "gated",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "~",
+          "task": "cli-presentation-1-1",
           "task_map": {}
         }
       }

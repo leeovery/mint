@@ -20,7 +20,8 @@ approved_at: 2026-06-09
 - [ ] `plain` emits no ANSI, glyphs, or animation and pulls in no UI library; `pretty` styles via `lipgloss` and relies on its colour auto-downgrade when piped or on a colour-incapable TTY
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
