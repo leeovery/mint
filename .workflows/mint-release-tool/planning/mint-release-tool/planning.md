@@ -55,6 +55,28 @@ approved_at: 2026-06-09
 - [ ] Interactive gate offers `y`/`n`/`e`/`r` (`r` omitted on no-AI paths); `e` opens `$VISUAL`→`$EDITOR`→`vi` and uses saved text verbatim (returns to gate if no editor launches); `r` appends a one-time context line and re-runs; `-y`/`--yes` skips the gate
 - [ ] Answering `n` (abort) triggers a full auto-unwind to the exact clean starting state
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-2-1 | AI transport layer (content-agnostic) | empty/whitespace body → retry then fail, error/refusal text → retry then fail, timeout → not retried, ai_command override |
+| mint-release-tool-2-2 | Diff context assembly (last_tag..HEAD, CHANGELOG.md always-excluded) | CHANGELOG.md changes excluded, force-added gitignored file still appears, no source change after exclude |
+| mint-release-tool-2-3 | max_diff_lines guard (default 50000) | exactly 50000 passes, over → notes failure, configurable override, excluded paths not counted |
+| mint-release-tool-2-4 | Change Map salience preamble | new directory/package headline above magnitude, renamed/removed paths, single largest file called out, all changes in one existing area |
+| mint-release-tool-2-5 | Default notes prompt & Keep-a-Changelog emoji-skin format | context inject appended, prompt full-override file, Deprecated/Security opportunistic only on explicit marker |
+| mint-release-tool-2-6 | Normal AI notes path wiring (prior-tag release) | body used whole (no parsing), valid generation passes through unchanged |
+| mint-release-tool-2-7 | on_notes_failure resolution (abort default / fallback) | abort default tags nothing, fallback → commit-subject list, fallback → fixed configurable string, varied failure causes |
+| mint-release-tool-2-8 | Degenerate-diff stub path | all files fell under exclusion, whitespace-only diff, no notable source change, AI never invoked |
+| mint-release-tool-2-9 | --no-ai fallback path | never aborts even when AI would fail, commit-subject list body, fixed-string fallback config |
+| mint-release-tool-2-10 | Notes-path precedence resolution | first-release wins over --no-ai and degenerate, degenerate wins over --no-ai, on_notes_failure only governs normal path |
+| mint-release-tool-2-11 | Single-body distribution to all sinks | changelog=false skips CHANGELOG (tag still carries body), publish=false skips provider, identical body across sinks |
+| mint-release-tool-2-12 | Interactive review gate semantics (y/n/e) | bare Enter → accept, e saved text verbatim (no re-validate), -y skips entirely, gate before any mutation |
+| mint-release-tool-2-13 | Editor resolution for `e` | $VISUAL set, only $EDITOR set, neither → vi, no launchable editor → report and return to gate |
+| mint-release-tool-2-14 | `r` regenerate-with-context (loop) & no-AI gate variant | r omitted on first-release/degenerate/--no-ai paths, multiple r loops, context line not persisted to config |
+| mint-release-tool-2-15 | Abort auto-unwind from the gate (`n`) | unwind back to clean state, identical to pre-push failure path, no tag/commit survives |
+| mint-release-tool-2-16 | End-to-end prior-tag release wiring | generated body flows to all three sinks, gate accept proceeds to record, gate abort leaves repo clean |
+
 ### Phase 3: Project Prep — Hooks, Version-File Projection & Diff Exclusion
 status: approved
 approved_at: 2026-06-09
