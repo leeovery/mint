@@ -319,6 +319,129 @@ func TestPlainPresenterEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 	}
 }
 
+// TestPlainPresenterShowPlanJoinsStepsIntoOneLiner is the core plain acceptance:
+// ShowPlan renders one "plan: …" line with each step rendered "{verb} {target}"
+// and joined by "; " — derived from the SAME structured steps, with no separate
+// pre-formatted/terse field.
+func TestPlainPresenterShowPlanJoinsStepsIntoOneLiner(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "commit", Target: "changelog+version"},
+			{Verb: "tag", Target: "v1.4.0"},
+			{Verb: "push", Target: "--atomic"},
+			{Verb: "publish", Target: "github"},
+		}})
+	})
+
+	want := "plan: commit changelog+version; tag v1.4.0; push --atomic; publish github\n"
+	if got := out.String(); got != want {
+		t.Errorf("ShowPlan = %q, want %q", got, want)
+	}
+}
+
+// TestPlainPresenterShowPlanSingleStepHasNoSeparator covers the single-step edge:
+// exactly one "{verb} {target}" with no "; " separator dangling on either side.
+func TestPlainPresenterShowPlanSingleStepHasNoSeparator(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "tag", Target: "v1.4.0"},
+		}})
+	})
+
+	want := "plan: tag v1.4.0\n"
+	got := out.String()
+	if got != want {
+		t.Errorf("ShowPlan = %q, want %q", got, want)
+	}
+	if strings.Contains(got, ";") {
+		t.Errorf("single-step plan must contain no separator, got %q", got)
+	}
+}
+
+// TestPlainPresenterShowPlanEmptyHasNoDanglingSeparator covers the empty-plan
+// edge: no steps renders exactly "plan:" — no trailing space, no "; ".
+func TestPlainPresenterShowPlanEmptyHasNoDanglingSeparator(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowPlan(presenter.Plan{})
+	})
+
+	want := "plan:\n"
+	got := out.String()
+	if got != want {
+		t.Errorf("empty ShowPlan = %q, want %q", got, want)
+	}
+	if strings.Contains(got, ";") {
+		t.Errorf("empty plan must contain no separator, got %q", got)
+	}
+}
+
+// TestPlainPresenterShowPlanEmptyTargetRendersVerbOnly covers the empty-target
+// edge: a step with no target contributes just "{verb}" — no trailing space.
+func TestPlainPresenterShowPlanEmptyTargetRendersVerbOnly(t *testing.T) {
+	tests := []struct {
+		name  string
+		steps []presenter.PlanStep
+		want  string
+	}{
+		{
+			name:  "single empty-target step renders just the verb",
+			steps: []presenter.PlanStep{{Verb: "publish", Target: ""}},
+			want:  "plan: publish\n",
+		},
+		{
+			name: "empty-target step joined with others has no stray space",
+			steps: []presenter.PlanStep{
+				{Verb: "tag", Target: "v1.4.0"},
+				{Verb: "publish", Target: ""},
+			},
+			want: "plan: tag v1.4.0; publish\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, _ := drive(func(p *presenter.PlainPresenter) {
+				p.ShowPlan(presenter.Plan{Steps: tt.steps})
+			})
+
+			if got := out.String(); got != tt.want {
+				t.Errorf("ShowPlan = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPlainPresenterShowPlanEmitsNoANSIGlyphOrAnimationBytes guards the
+// byte-purity contract for the plan one-liner specifically: the synthesised
+// parts ("plan: ", "; ", spaces) are byte-pure ASCII — the "•" bullet is a
+// PRETTY-only glyph and must never appear in plain output. (The targets are
+// engine-supplied and rendered verbatim; this test uses ASCII targets so the
+// whole line is asserted byte-pure.)
+func TestPlainPresenterShowPlanEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "commit", Target: "changelog+version"},
+			{Verb: "tag", Target: "v1.4.0"},
+			{Verb: "publish", Target: ""},
+		}})
+	})
+
+	for i, b := range out.Bytes() {
+		switch {
+		case b == 0x1b:
+			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain plan output", i)
+		case b == 0x0d:
+			t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain plan output", i)
+		case b == '\n':
+			// the only permitted control byte: a line terminator
+		case b < 0x20 || b > 0x7e:
+			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain plan contract uses", i, b)
+		}
+	}
+}
+
 // TestPlainPresenterImportsNoUILibrary is the dependency guard: it parses the
 // plain presenter's own source and asserts none of its imports name a UI or
 // animation library. Parsing the source (rather than go list -deps) keeps the

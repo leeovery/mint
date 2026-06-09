@@ -1,8 +1,11 @@
 package presenter_test
 
 import (
+	"bytes"
 	"testing"
 	"time"
+
+	"github.com/muesli/termenv"
 
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -19,6 +22,7 @@ func (p *nopPresenter) RunStarted(info presenter.RunInfo)     { p.lastRun = info
 func (p *nopPresenter) StageStarted(presenter.StageStart)     {}
 func (p *nopPresenter) StageSucceeded(presenter.StageSuccess) {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)    {}
+func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
 func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
 
 // Compile-time proof that the no-op value satisfies the interface.
@@ -33,6 +37,7 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.StageStarted(presenter.StageStart{})
 	p.StageSucceeded(presenter.StageSuccess{})
 	p.StageFailed(presenter.StageFailure{})
+	p.ShowPlan(presenter.Plan{})
 	p.RunFinished(presenter.RunResult{})
 }
 
@@ -257,5 +262,70 @@ func TestEmptyDetailIsLegal(t *testing.T) {
 	}
 	if ev.StageSucceeded.Detail != "" {
 		t.Errorf("Detail = %q, want empty", ev.StageSucceeded.Detail)
+	}
+}
+
+// TestShowPlanPayloadRoundTripsThroughRecorder proves the recorder captures the
+// full structured Plan payload — every step's verb and target, in order — so an
+// engine-driven test can assert the plan independent of any rendering.
+func TestShowPlanPayloadRoundTripsThroughRecorder(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+	steps := []presenter.PlanStep{
+		{Verb: "commit", Target: "changelog+version"},
+		{Verb: "tag", Target: "v1.4.0"},
+		{Verb: "publish", Target: ""},
+	}
+
+	rec.ShowPlan(presenter.Plan{Steps: steps})
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.Kind != presentertest.KindShowPlan {
+		t.Fatalf("Kind = %v, want %v", ev.Kind, presentertest.KindShowPlan)
+	}
+	got := ev.ShowPlan.Steps
+	if len(got) != len(steps) {
+		t.Fatalf("recorded %d steps, want %d", len(got), len(steps))
+	}
+	for i, want := range steps {
+		if got[i] != want {
+			t.Errorf("step %d = %+v, want %+v", i, got[i], want)
+		}
+	}
+}
+
+// TestShowPlanSamePayloadFeedsBothModes proves the event-payload principle for
+// ShowPlan: one constructed []PlanStep, handed to BOTH presenters, produces the
+// plain one-liner AND the pretty bulleted block. Neither presenter consumes a
+// separate pre-formatted/terse field — both derive from the same structured
+// steps, so a single payload is sufficient to render both modes.
+func TestShowPlanSamePayloadFeedsBothModes(t *testing.T) {
+	steps := []presenter.PlanStep{
+		{Verb: "commit", Target: "changelog+version"},
+		{Verb: "tag", Target: "v1.4.0"},
+		{Verb: "push", Target: "--atomic"},
+		{Verb: "publish", Target: "github"},
+	}
+
+	plainOut := &bytes.Buffer{}
+	presenter.NewPlainPresenter(plainOut, &bytes.Buffer{}).ShowPlan(presenter.Plan{Steps: steps})
+
+	prettyOut := &bytes.Buffer{}
+	presenter.NewPrettyPresenterWithProfile(prettyOut, termenv.Ascii).ShowPlan(presenter.Plan{Steps: steps})
+
+	wantPlain := "plan: commit changelog+version; tag v1.4.0; push --atomic; publish github\n"
+	if got := plainOut.String(); got != wantPlain {
+		t.Errorf("plain one-liner = %q, want %q", got, wantPlain)
+	}
+
+	wantPretty := "  Plan\n" +
+		"    • commit   changelog+version\n" +
+		"    • tag      v1.4.0\n" +
+		"    • push     --atomic\n" +
+		"    • publish  github\n"
+	if got := prettyOut.String(); got != wantPretty {
+		t.Errorf("pretty block = %q, want %q", got, wantPretty)
 	}
 }

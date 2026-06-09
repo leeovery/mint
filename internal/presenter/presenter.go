@@ -29,8 +29,41 @@ type Presenter interface {
 	StageSucceeded(s StageSuccess)
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
+	// ShowPlan renders the upcoming plan — the steps mint is about to perform.
+	// It is narration → out only; it never writes to err.
+	ShowPlan(plan Plan)
 	// RunFinished renders the end-of-run success line.
 	RunFinished(r RunResult)
+}
+
+// PlanStep is one structured step of the plan the engine is about to perform: an
+// engine-supplied Verb (e.g. "commit", "tag", "push", "publish") and a Target
+// describing what it acts on (e.g. "v1.4.0", "--atomic → origin"). Both fields
+// are engine-supplied and rendered verbatim — the presenter synthesises no part
+// of a step.
+//
+// Target may be empty: a verb that takes no target renders as just the verb in
+// both modes, with no trailing space or separator.
+type PlanStep struct {
+	// Verb is the engine-supplied action word, rendered verbatim.
+	Verb string
+	// Target describes what the verb acts on, rendered verbatim. The empty string
+	// is legal and renders the verb alone.
+	Target string
+}
+
+// Plan is the ShowPlan payload: an ordered list of structured PlanStep values.
+// Per the event-payload principle, BOTH render modes format from this SAME
+// []Steps — there is NO separate pre-formatted or terse field. Pretty renders a
+// bulleted block; plain joins the steps into a "plan: …; …" one-liner. The
+// worked-example abbreviations are illustrative wording the engine supplies in
+// the step targets, not a distinct terse payload.
+//
+// An empty plan (no steps) is legal: plain renders exactly "plan:" with no
+// dangling separator; pretty omits the entire block (no orphan header).
+type Plan struct {
+	// Steps is the ordered list of plan steps. A nil/empty slice is an empty plan.
+	Steps []PlanStep
 }
 
 // RunInfo carries the start-of-run payload. Action is the engine-supplied verb

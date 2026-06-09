@@ -384,6 +384,191 @@ func TestPrettyPresenterBottomBrandOmitsEmptyURLSeparator(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterShowPlanRendersBulletedBlock is the core pretty acceptance:
+// ShowPlan renders a two-space-indented "Plan" header followed by one
+// "    • {verb}<pad>{target}" line per step, verbs padded so targets align at the
+// (longest verb + 2) column. The no-colour profile keeps the assertion on the
+// exact layout/glyphs rather than ANSI bytes.
+func TestPrettyPresenterShowPlanRendersBulletedBlock(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "commit", Target: "CHANGELOG.md + bin/acme"},
+			{Verb: "tag", Target: "v1.4.0 (annotated)"},
+			{Verb: "push", Target: "--atomic → origin"},
+			{Verb: "publish", Target: "GitHub release"},
+		}})
+	})
+
+	// Column = longest verb ("publish", 7) + 2 = 9, so every verb pads to width 9
+	// and the targets all start at the same column — matching the worked example.
+	want := "  Plan\n" +
+		"    • commit   CHANGELOG.md + bin/acme\n" +
+		"    • tag      v1.4.0 (annotated)\n" +
+		"    • push     --atomic → origin\n" +
+		"    • publish  GitHub release\n"
+	if got := out.String(); got != want {
+		t.Errorf("ShowPlan block mismatch\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// TestPrettyPresenterShowPlanTargetsAlign independently asserts the alignment
+// property: regardless of verb length, every target starts at the same column.
+func TestPrettyPresenterShowPlanTargetsAlign(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "commit", Target: "CHANGELOG.md + bin/acme"},
+			{Verb: "tag", Target: "v1.4.0 (annotated)"},
+			{Verb: "push", Target: "--atomic → origin"},
+			{Verb: "publish", Target: "GitHub release"},
+		}})
+	})
+
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	// lines[0] is the "  Plan" header; the bullets follow.
+	bullets := lines[1:]
+	if len(bullets) != 4 {
+		t.Fatalf("expected 4 bullet lines, got %d:\n%q", len(bullets), out.String())
+	}
+	targets := []string{"CHANGELOG.md", "v1.4.0", "--atomic", "GitHub"}
+	col := strings.Index(bullets[0], targets[0])
+	if col < 0 {
+		t.Fatalf("target %q not found in %q", targets[0], bullets[0])
+	}
+	for i, b := range bullets {
+		got := strings.Index(b, targets[i])
+		if got != col {
+			t.Errorf("target column misaligned: line %d %q has target at %d, want %d", i, b, got, col)
+		}
+	}
+}
+
+// TestPrettyPresenterShowPlanSingleStep covers the single-step edge: the header
+// plus exactly one bullet, with the verb padded to its own (only) verb length + 2.
+func TestPrettyPresenterShowPlanSingleStep(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "tag", Target: "v1.4.0"},
+		}})
+	})
+
+	want := "  Plan\n" +
+		"    • tag  v1.4.0\n"
+	got := out.String()
+	if got != want {
+		t.Errorf("single-step plan = %q, want %q", got, want)
+	}
+	if strings.Count(got, "•") != 1 {
+		t.Errorf("single-step plan must render exactly one bullet, got %q", got)
+	}
+}
+
+// TestPrettyPresenterShowPlanEmptyOmitsBlock covers the empty-plan edge: no steps
+// renders nothing at all — no "Plan" header, no bullets, no orphan output.
+func TestPrettyPresenterShowPlanEmptyOmitsBlock(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowPlan(presenter.Plan{})
+	})
+
+	if got := out.String(); got != "" {
+		t.Errorf("empty plan must render no block, got %q", got)
+	}
+}
+
+// TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly covers the empty-target
+// edge: a step whose target is empty renders "    • {verb}" with NO trailing pad
+// or space.
+func TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly(t *testing.T) {
+	tests := []struct {
+		name  string
+		steps []presenter.PlanStep
+		want  string
+	}{
+		{
+			name:  "lone empty-target step renders just the verb",
+			steps: []presenter.PlanStep{{Verb: "publish", Target: ""}},
+			want:  "  Plan\n    • publish\n",
+		},
+		{
+			name: "empty-target step among others has no trailing pad",
+			steps: []presenter.PlanStep{
+				{Verb: "tag", Target: "v1.4.0"},
+				{Verb: "publish", Target: ""},
+			},
+			// Column = longest verb ("publish", 7) + 2 = 9, so "tag" pads to the
+			// column before its target; the empty-target "publish" line drops the
+			// pad entirely (nothing follows the verb).
+			want: "  Plan\n    • tag      v1.4.0\n    • publish\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+				p.ShowPlan(presenter.Plan{Steps: tt.steps})
+			})
+
+			got := out.String()
+			if got != tt.want {
+				t.Errorf("ShowPlan = %q, want %q", got, tt.want)
+			}
+			// No bullet line may carry a trailing-whitespace artefact.
+			for _, line := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+				if strings.TrimRight(line, " ") != line {
+					t.Errorf("line carries a trailing-whitespace artefact: %q", line)
+				}
+			}
+		})
+	}
+}
+
+// TestPrettyPresenterShowPlanLayoutSurvivesColourDowngrade asserts the block's
+// layout (header indent, bullet, padding) survives the no-colour profile with no
+// SGR codes leaking — the bullet/colour may be styled, but the layout must remain.
+func TestPrettyPresenterShowPlanLayoutSurvivesColourDowngrade(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "commit", Target: "CHANGELOG.md + bin/acme"},
+			{Verb: "publish", Target: "GitHub release"},
+		}})
+	})
+
+	got := out.String()
+	if bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("downgraded plan block leaked an SGR code:\n%q", got)
+	}
+	want := "  Plan\n" +
+		"    • commit   CHANGELOG.md + bin/acme\n" +
+		"    • publish  GitHub release\n"
+	if got != want {
+		t.Errorf("downgraded plan block = %q, want %q", got, want)
+	}
+}
+
+// TestPrettyPresenterShowPlanColourOnEmitsANSIButKeepsLayout forces a
+// colour-capable profile and asserts the block carries ANSI SGR escapes (from the
+// styled header/bullet) while the layout text (the "Plan" header, the verbs and
+// targets) survives.
+func TestPrettyPresenterShowPlanColourOnEmitsANSIButKeepsLayout(t *testing.T) {
+	out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "commit", Target: "CHANGELOG.md + bin/acme"},
+			{Verb: "publish", Target: "GitHub release"},
+		}})
+	})
+
+	got := out.String()
+	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("colour-on plan block contains no ESC (0x1b) — expected ANSI SGR codes:\n%q", got)
+	}
+	for _, frag := range []string{"Plan", "•", "commit", "CHANGELOG.md + bin/acme", "publish", "GitHub release"} {
+		if !strings.Contains(got, frag) {
+			t.Errorf("colour-on plan block missing %q:\n%q", frag, got)
+		}
+	}
+}
+
 // TestPrettyPresenterStageStartedRendersStaticLine asserts StageStarted prints a
 // single static (non-animated) stage line — no spinner lifecycle this phase. It is
 // rendered dim under colour and as a plain glyph-less line under downgrade.

@@ -205,6 +205,61 @@ func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	p.errf("✗ %s  %s\n", s.Name, s.Message)
 }
 
+// planIndent is the four-space indent every plan bullet line carries — one level
+// deeper than the two-space stage/header indent, nesting the steps under the
+// "Plan" header. The "•" bullet that follows is a pretty-only glyph (never
+// rendered in plain mode); only the glyph is styled, so this indent and the
+// padding/verb/target that follow stay as plain layout and survive a colour
+// downgrade intact.
+const planIndent = "    "
+
+// ShowPlan renders the plan as a styled bulleted block: a two-space-indented
+// "Plan" header, then one "    • {verb}<pad>{target}" line per step. Verbs pad to
+// a per-plan column — the longest verb in THIS plan plus two spaces — so the
+// targets align (matching the worked example's dynamic alignment). It derives
+// entirely from the SAME structured steps the plain one-liner does.
+//
+// Edge forms: an empty plan omits the ENTIRE block (no header, no bullets — no
+// orphan header); a step with an empty target renders "    • {verb}" with no
+// trailing pad or space. The header and bullet glyph are styled through the
+// lipgloss renderer, but all layout (indents, the bullet, the column padding)
+// survives a colour downgrade as plain text.
+func (p *PrettyPresenter) ShowPlan(plan Plan) {
+	if len(plan.Steps) == 0 {
+		return
+	}
+	p.writef("%s%s\n", stageIndent, p.dim.Render("Plan"))
+	column := planVerbColumn(plan.Steps)
+	bullet := p.dim.Render("•")
+	for _, step := range plan.Steps {
+		if step.Target == "" {
+			p.writef("%s%s %s\n", planIndent, bullet, step.Verb)
+			continue
+		}
+		p.writef("%s%s %s%s\n", planIndent, bullet, padVerb(step.Verb, column), step.Target)
+	}
+}
+
+// planVerbColumn computes the per-plan alignment column: the longest verb in the
+// plan plus a two-space gap, so every target starts at the same column two spaces
+// past the widest verb. The column is dynamic per plan (matching the worked
+// example, where publish=7 sets the column and the shorter verbs pad up to it).
+func planVerbColumn(steps []PlanStep) int {
+	longest := 0
+	for _, step := range steps {
+		if len(step.Verb) > longest {
+			longest = len(step.Verb)
+		}
+	}
+	return longest + 2
+}
+
+// padVerb right-pads a verb with spaces to the given column so the following
+// target aligns across steps.
+func padVerb(verb string, column int) string {
+	return fmt.Sprintf("%-*s", column, verb)
+}
+
 // RunFinished renders the bottom brand line, flush-left:
 // "{leaf} released {project} v{X} · {url}". The leaf is engine-supplied (default
 // 🌿). When URL is empty (e.g. regenerate, which publishes no release) the

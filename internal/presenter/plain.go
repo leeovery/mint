@@ -3,6 +3,7 @@ package presenter
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // PlainPresenter is the token-efficient, agent-friendly Presenter: terse
@@ -99,6 +100,36 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.writef("%s: FAILED - %s\n", s.Name, s.Message)
 	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
+}
+
+// ShowPlan renders the plan as a single terse one-liner: "plan: {step}; {step}; …"
+// where each step is rendered "{verb} {target}" (or just "{verb}" when the target
+// is empty) and the steps are joined by "; ". It derives entirely from the SAME
+// structured steps the pretty block does — there is no separate terse field.
+//
+// Edge forms, all synthesised byte-pure ASCII (the targets are engine-supplied and
+// rendered verbatim): an empty plan renders exactly "plan:" with no trailing space
+// and no separator; an empty-target step contributes just its verb with no trailing
+// space; a single step has no "; " separator at all.
+func (p *PlainPresenter) ShowPlan(plan Plan) {
+	if len(plan.Steps) == 0 {
+		p.writef("plan:\n")
+		return
+	}
+	rendered := make([]string, len(plan.Steps))
+	for i, step := range plan.Steps {
+		rendered[i] = renderPlainStep(step)
+	}
+	p.writef("plan: %s\n", strings.Join(rendered, "; "))
+}
+
+// renderPlainStep renders one step as "{verb} {target}", collapsing to just
+// "{verb}" when the target is empty so no trailing space dangles.
+func renderPlainStep(step PlanStep) string {
+	if step.Target == "" {
+		return step.Verb
+	}
+	return step.Verb + " " + step.Target
 }
 
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is
