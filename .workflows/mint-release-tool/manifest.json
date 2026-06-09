@@ -140,7 +140,8 @@
           "task_map": {
             "mint-release-tool": "tick-d4f773",
             "mint-release-tool-1": "tick-468da7",
-            "mint-release-tool-1-1": "tick-48e81b"
+            "mint-release-tool-1-1": "tick-48e81b",
+            "mint-release-tool-1-2": "tick-c3c732"
           },
           "external_id": "tick-d4f773"
         }
