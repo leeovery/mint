@@ -166,6 +166,30 @@ func TestPlainPresenterStageStartedHonoursBlocking(t *testing.T) {
 	}
 }
 
+// TestPlainPresenterBlockingStageEmitsNoAnimationBytes proves plain never animates
+// even for a blocking stage: a full StageStarted{Blocking:true}→StageSucceeded
+// transition emits no braille frame glyph (⠋⠙⠹…), no carriage return (0x0d), and no
+// ESC animation byte — plain is the non-spinner mode and imports no spinner library.
+func TestPlainPresenterBlockingStageEmitsNoAnimationBytes(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
+		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Elapsed: 1100 * time.Millisecond, Blocking: true})
+	})
+
+	got := out.String()
+	for _, frame := range []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'} {
+		if strings.ContainsRune(got, frame) {
+			t.Errorf("plain emitted a braille spinner frame %q — plain must never animate:\n%q", frame, got)
+		}
+	}
+	if strings.ContainsRune(got, 0x0d) {
+		t.Errorf("plain emitted a carriage return (0x0d) — no in-place animation allowed:\n%q", got)
+	}
+	if strings.ContainsRune(got, 0x1b) {
+		t.Errorf("plain emitted an ESC (0x1b) — no animation ANSI allowed:\n%q", got)
+	}
+}
+
 // TestPlainPresenterStageSucceededElapsedSuffix proves the elapsed suffix is gated
 // on Blocking, not on the Elapsed value: a blocking stage's completion line carries
 // ({elapsed}); a short stage's never does — even when an Elapsed travels with it.

@@ -48,8 +48,13 @@ const ruleChar = "─"
 // when the output is piped or the terminal is colour-incapable — the presenter
 // itself performs no NO_COLOR/TERM sniffing.
 //
-// Spinner animation is out of scope this phase: StageStarted renders a single
-// static line so the flow stays linear.
+// Stage progress is a SPINNER (pretty-only): a blocking StageStarted starts a
+// single spinner on the current stage line; the spinner is replaced in place by the
+// ✓/✗ completion line on StageSucceeded/StageFailed. Short (non-blocking) stages
+// emit no start line — only their completion line — consistent with plain and the
+// spec's worked example. The spinner is the briandowns standalone library (NOT
+// Bubble Tea; print-style, no alt-screen), reached only through the injectable
+// newSpinner seam so its timed goroutine never makes lifecycle tests flaky.
 type PrettyPresenter struct {
 	// out receives the narration stream (stdout in production).
 	out io.Writer
@@ -123,6 +128,22 @@ type PrettyPresenter struct {
 	// presenter instance is constructed per run, so this per-run state is sound;
 	// tests construct a fresh presenter per scenario.
 	terminalFailure bool
+
+	// newSpinner builds the stage-progress spinner that animates a blocking stage's
+	// line. It is the INJECTION SEAM that keeps the spinner lifecycle testable: the
+	// constructors default it to the real briandowns wrapper (newBriandownsSpinner),
+	// while a test injects a spy via WithSpinnerFactory so Start/Stop can be asserted
+	// without the real library's timed goroutine and frame output. It is never nil
+	// after construction.
+	newSpinner spinnerFactory
+	// activeSpinner is the SINGLE spinner currently animating, or nil when none is
+	// running — the "one spinner at a time" invariant lives here. A blocking
+	// StageStarted defensively stops any lingering spinner before starting (and
+	// storing) a new one; StageSucceeded/StageFailed stop it and reset this to nil
+	// before rendering the completion line in the cleared place. Held as construction
+	// state on the per-run presenter instance (mirroring terminalFailure), so there is
+	// no shared mutable global.
+	activeSpinner StageSpinner
 }
 
 // Compile-time proof the pretty presenter satisfies the seam it renders.
@@ -190,6 +211,9 @@ func newPrettyPresenter(out, err io.Writer, in io.Reader, renderer *lipgloss.Ren
 		warn:             renderer.NewStyle().Foreground(lipgloss.Color("214")), // amber / orange
 		dim:              renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
 		unwound:          renderer.NewStyle().Foreground(lipgloss.Color("8")),   // ↩ glyph — dim (no spec colour; subdued recovery tone)
+		// Default to the real briandowns spinner factory; a test overrides it via
+		// WithSpinnerFactory. Never left nil so StageStarted can call it unconditionally.
+		newSpinner: newBriandownsSpinner,
 	}
 }
 
@@ -223,6 +247,20 @@ func (p *PrettyPresenter) WithInteractiveStdin(interactive bool) *PrettyPresente
 // constructor; production never needs it.
 func (p *PrettyPresenter) WithInput(in io.Reader) *PrettyPresenter {
 	p.in = in
+	return p
+}
+
+// WithSpinnerFactory overrides the stage-progress spinner factory and returns the
+// presenter so it chains onto any constructor, mirroring WithYes/WithInput. It is
+// the TEST SEAM for the spinner lifecycle: a test injects a spy factory whose
+// spinners record Start/Stop so the lifecycle ("started on a blocking StageStarted,
+// stopped on completion") and the "one spinner at a time" invariant are asserted
+// deterministically, without the real briandowns library's timed goroutine and
+// frame output. Production never calls it — the constructors default the factory to
+// the real briandowns wrapper. The factory type is unexported, so only this package
+// (and its external test, via the exported StageSpinner interface) can build one.
+func (p *PrettyPresenter) WithSpinnerFactory(factory func(out io.Writer, text string) StageSpinner) *PrettyPresenter {
+	p.newSpinner = factory
 	return p
 }
 
@@ -267,26 +305,58 @@ func (p *PrettyPresenter) RunStarted(info RunInfo) {
 	p.writef("%s mint · %s  ›  %s v%s\n", leaf, info.Project, info.Action, info.Version)
 }
 
-// StageStarted renders a single static dim stage line. The spinner lifecycle is a
-// later phase; keeping this one printed line keeps the narration linear. With no
-// detail payload to align to this phase, the name is not column-padded — that
-// avoids trailing whitespace on a line that has nothing after the name.
+// StageStarted starts the pretty stage-progress spinner for a BLOCKING stage, and
+// renders NOTHING for a short one.
+//
+//   - Blocking: start a single spinner on the current stage line, animating the dim
+//     start text (the stage name) — a frame renders as "⠋ {name}". DEFENSIVELY stop
+//     any spinner that is somehow still active first (a malformed event sequence
+//     could leave one running), so there are never two concurrent spinners. The
+//     handle is stored in activeSpinner; the matching StageSucceeded/StageFailed
+//     stops it. The braille frame is the library's; the text is the dim start text.
+//   - Non-blocking: render NOTHING — no spinner, no static line. This REPLACES the
+//     Phase-1 placeholder static-dim-line: a short stage shows only its ✓ completion
+//     line, consistent with plain and the spec's worked example.
 func (p *PrettyPresenter) StageStarted(s StageStart) {
-	line := fmt.Sprintf("%s%s", stageIndent, s.Name)
-	p.writef("%s\n", p.dim.Render(line))
+	if !s.Blocking {
+		return
+	}
+	p.stopSpinner()
+	startText := p.dim.Render(s.Name)
+	p.activeSpinner = p.newSpinner(p.out, startText)
+	p.activeSpinner.Start()
 }
 
-// StageSucceeded renders the success stage line: two-space indent, a green ✓,
-// the stage name padded to a column, then the engine-supplied detail. The detail
-// is rendered verbatim (it may already contain a "→" from the engine — the
-// presenter never synthesises it). The elapsed suffix "({elapsed})" is appended
-// on blocking stages only; short stages render the detail without it.
+// stopSpinner stops the active stage spinner (clearing its line in place) and resets
+// the handle to nil. It is a no-op when no spinner is running, so completion events
+// for short (non-spinner) stages — and a defensive double-stop — are safe. Called by
+// StageStarted (defensively before a new spinner) and by StageSucceeded/StageFailed
+// (before the ✓/✗ line is printed in the cleared place). The real spinner's Stop is
+// synchronous, so after this returns no further frame is written and the completion
+// line is not interleaved with animation.
+func (p *PrettyPresenter) stopSpinner() {
+	if p.activeSpinner == nil {
+		return
+	}
+	p.activeSpinner.Stop()
+	p.activeSpinner = nil
+}
+
+// StageSucceeded first STOPS the active stage spinner (if any) — the spinner clears
+// its line in place — then renders the success stage line in the cleared place:
+// two-space indent, a green ✓, the stage name padded to a column, then the
+// engine-supplied detail. The detail is rendered verbatim (it may already contain a
+// "→" from the engine — the presenter never synthesises it). The elapsed suffix
+// "({elapsed})" is appended on blocking stages only; short stages render the detail
+// without it. The completion-line rendering below is REUSED unchanged from Phase 2;
+// this task only added the spinner stop.
 //
 // When nothing trails the name — an empty Detail on a short stage — the name is
 // emitted unpadded so the column's trailing spaces never become a
 // trailing-whitespace artefact (the padding exists only to align a following
 // detail; with nothing following it is noise).
 func (p *PrettyPresenter) StageSucceeded(s StageSuccess) {
+	p.stopSpinner()
 	glyph := p.success.Render("✓")
 	trailing := stageTrailing(s)
 	if trailing == "" {
@@ -313,11 +383,13 @@ func stageTrailing(s StageSuccess) string {
 	return s.Detail + " " + elapsed
 }
 
-// StageFailed renders the styled failure stage line to out (two-space indent, a
-// red ✗, the padded stage name, then the message) AND duplicates the one-line
-// "✗ {stage}  {message}" summary to err — unstyled, since stderr is a
-// redirect-visibility channel, not a styled surface — so a failure cannot
-// silently vanish under redirection.
+// StageFailed first STOPS the active stage spinner (if any) — the spinner clears
+// its line in place — then renders the styled failure stage line to out (two-space
+// indent, a red ✗, the padded stage name, then the message) in the cleared place,
+// AND duplicates the one-line "✗ {stage}  {message}" summary to err — unstyled,
+// since stderr is a redirect-visibility channel, not a styled surface — so a failure
+// cannot silently vanish under redirection. The ✗-line and captured-body rendering
+// below is REUSED unchanged from Phase 2; this task only added the spinner stop.
 //
 // When the engine captured underlying-command output (s.Output non-empty), the
 // captured body is rendered to OUT ONLY, below the ✗ line — NO box, consistent
@@ -333,6 +405,7 @@ func stageTrailing(s StageSuccess) string {
 // the one-line summary goes there. An empty Output renders NO body block — the ✗
 // line stands alone.
 func (p *PrettyPresenter) StageFailed(s StageFailure) {
+	p.stopSpinner()
 	p.terminalFailure = true
 	glyph := p.failure.Render("✗")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), s.Message)

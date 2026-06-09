@@ -1324,23 +1324,27 @@ func extractNotesBody(t *testing.T, rendered string) string {
 	return strings.Join(lines[1:len(lines)-1], "\n")
 }
 
-// TestPrettyPresenterStageStartedRendersStaticLine asserts StageStarted prints a
-// single static (non-animated) stage line — no spinner lifecycle this phase. It is
-// rendered dim under colour and as a plain glyph-less line under downgrade.
-func TestPrettyPresenterStageStartedRendersStaticLine(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+// TestPrettyPresenterBlockingStageStartedStartsSpinnerNoStaticLine is the updated
+// behaviour for this phase (Phase 4): a BLOCKING StageStarted starts a spinner
+// rather than printing the Phase-1 placeholder static-dim-line. Driven through the
+// spy factory, the spinner is Started and the presenter writes no static "notes"
+// start line of its own (the start text is the spinner's suffix, animated by the
+// library — here the spy writes nothing). This deliberately replaces the old
+// TestPrettyPresenterStageStartedRendersStaticLine: short stages and the spinner now
+// own the start-line behaviour. The full spinner lifecycle is exercised in
+// pretty_spinner_test.go.
+func TestPrettyPresenterBlockingStageStartedStartsSpinnerNoStaticLine(t *testing.T) {
+	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
 		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
 	})
 
-	got := out.String()
-	if !strings.Contains(got, "notes") {
-		t.Errorf("StageStarted line missing the stage name:\n%q", got)
+	if len(tr.created) != 1 || !tr.created[0].started {
+		t.Fatalf("a blocking StageStarted must start exactly one spinner, got created=%d", len(tr.created))
 	}
-	// A single printed line keeps the flow linear: no carriage-return animation.
-	if bytes.ContainsRune(out.Bytes(), 0x0d) {
-		t.Errorf("StageStarted emitted a carriage return (0x0d) — spinner animation is out of scope this phase:\n%q", got)
-	}
-	if strings.Count(got, "\n") != 1 {
-		t.Errorf("StageStarted should print exactly one line, got %d newlines:\n%q", strings.Count(got, "\n"), got)
+	// No Phase-1 placeholder static start line is printed by the presenter itself —
+	// the spy spinner renders nothing, so out is empty (no carriage-return animation
+	// either, since the spy does not animate).
+	if got := out.String(); got != "" {
+		t.Errorf("blocking StageStarted must print no static start line of its own, got %q", got)
 	}
 }
