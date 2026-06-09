@@ -3,7 +3,8 @@
 ## Phases
 
 ### Phase 1: Walking Skeleton — First-Release Cut, End-to-End
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: A repo with no tags can run `mint release` and produce `0.0.1` end-to-end — version computed from git tags, core preflight gates passed, the fixed "Initial release." body recorded, an annotated tag created, `git push --atomic`, and a GitHub release published — threading through every architectural seam (CommandRunner, config load, the Presenter interface via a recording fake, and the Publisher interface).
 
@@ -20,7 +21,8 @@ status: draft
 - [ ] All external commands (`git`, `gh`, `claude`) run behind the `CommandRunner` seam and are mocked in tests
 
 ### Phase 2: AI Release Notes Engine, Change Map & Interactive Review
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Releases with a prior tag generate a notes body from the `last_tag..HEAD` diff via the layered AI engine (context assembly vs transport), prepend a computed Change Map, distribute the single body whole to the tag annotation, CHANGELOG.md, and provider release, and gate on the interactive `y`/`n`/`e`/`r` notes review.
 
@@ -36,7 +38,8 @@ status: draft
 - [ ] Answering `n` (abort) triggers a full auto-unwind to the exact clean starting state
 
 ### Phase 3: Project Prep — Hooks, Version-File Projection & Diff Exclusion
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: Projects can configure `preflight`/`pre_tag`/`post_release` hooks and a version-file projection, and the diff sent to the AI is shaped by exclusion (built-in `CHANGELOG.md`, `diff_exclude` globs, and the strategy-aware `version_file` rule).
 
@@ -50,7 +53,8 @@ status: draft
 - [ ] Commit graph supports up to two commits (hook artifacts then bookkeeping) with no-op safety (no empty commits); `--dry-run` skips all hooks and reports they were skipped
 
 ### Phase 4: Robustness — Lock Resilience, Recovery, Dry-Run Caching & Publisher Resolution
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: The forward pipeline is production-hardened — lock-resilient git on every mutation, surgical auto-unwind on pre-PONR failure, the `--autostash`/`--any-branch`/`--set-version` escape hatches, dry-run note caching for deterministic preview→ship, and full provider auto-detection with safe downgrade.
 
@@ -64,7 +68,8 @@ status: draft
 - [ ] Provider is auto-detected from the remote host (`github.com` → GitHub); an unknown `provider` value, an unmatched host, or no remote with `publish = true` warns loudly and downgrades to tag + push only — never silently assumes GitHub, never strands a pushed tag
 
 ### Phase 5: Regenerate / Backfill (Heal & History Rewrite)
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: `mint release regenerate <version>` and `--all` non-destructively heal or rewrite the mutable surfaces (provider release body and CHANGELOG.md) from either `--reuse` (tag annotation body) or fresh (re-diff `vX-1..vX` + AI), for one release or a batch, never touching tags.
 
@@ -79,7 +84,8 @@ status: draft
 - [ ] `--all` runs oldest→newest, skip-and-continue with an end summary; whole-file CHANGELOG rebuild with one commit at the end; single-version uses idempotent in-place section replace
 
 ### Phase 6: Config Schema & `mint init` Scaffolding
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 **Goal**: The full verb-namespaced TOML schema is parsed with typed, fail-loud validation, and `mint init` activates mint in a project by scaffolding the commented `.mint.toml` and the `release` shim; `mint version` completes the CLI surface.
 
