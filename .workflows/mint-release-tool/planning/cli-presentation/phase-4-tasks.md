@@ -129,7 +129,7 @@ total: 7
 **Outcome**: Given a `version` payload, plain emits exactly the bare value plus a trailing newline (no `version:` prefix, no glyph, no ANSI, no extra lines), and pretty emits a dressed `🌿 mint v{value}` line; `$(mint version)` in plain captures the bare value with no extraneous bytes.
 
 **Do**:
-- In `internal/presenter/presenter.go`, add the payload event. Recommended: `ShowVersion(v Version)` with `type Version struct { Value string }` (the resolved version value, e.g. `1.4.0`). Add the record implementation to `RecordingPresenter`. Document that this is the **payload exception** — the one event whose plain output is a raw value, not `key: value` narration.
+- In `internal/presenter/presenter.go`, add the payload event. Recommended: `ShowVersion(v Version)` with `type Version struct { Value string; Leaf string }` — the resolved version value (e.g. `1.4.0`) plus the engine-supplied brand leaf (defaulting to `🌿`, consistent with cli-presentation-1-5; the plain form ignores it, the pretty form renders it). Add the record implementation to `RecordingPresenter`. Document that this is the **payload exception** — the one event whose plain output is a raw value, not `key: value` narration. (If the brand-leaf decision from cli-presentation-1-5 resolves to a fixed-constant leaf, drop the `Leaf` field and render the literal `🌿` in pretty.)
 - Plain (`internal/presenter/plain.go`) `ShowVersion`: write **exactly** `{value}\n` to `out` — the bare value followed by a single newline. No `version:` prefix, no glyph, no ANSI, no leading/trailing spaces, no second line. This is what `$(mint version)` consumes (command substitution strips the single trailing newline, leaving exactly the value).
 - Pretty (`internal/presenter/pretty.go`) `ShowVersion`: write a dressed line, e.g. `🌿 mint v{value}` (worked spec form), via the lipgloss renderer (the leaf glyph ties to the brand). Pretty styling is **additive** — the value must still be present and legible; colour auto-downgrade applies as elsewhere.
 - The value is narration's payload → `out` only (never stderr; `version` is not an error/warning).
@@ -162,6 +162,7 @@ total: 7
 > Run narration → stdout — stages, the plan, the notes preview, the final summary, and `mint version`'s value. `mint` has no separate data payload, so the narration is its stdout output. (For `version`, the value is the stdout payload.)
 > Gate inventory: `version` — interactive gate? No — prints its value.
 > `version` has no versioned release footer (it is not a release verb; the verb-shaped end-of-run line is release/regenerate only).
+> Brand-leaf provenance: the pretty `🌿 mint v{value}` form uses the engine-supplied brand leaf established in cli-presentation-1-5 (carried on the payload, defaulting to `🌿`), consistent with the event-payload principle and the "leaf ties to `commit_prefix`" note — render the supplied leaf rather than hardcoding it. If a fixed constant leaf is preferred (see the decision raised in 1-5), this task follows the same resolution.
 
 **Spec Reference**: `.workflows/mint-release-tool/specification/cli-presentation/specification.md` — "Cross-Verb Rendering" (`version` — the one payload verb), "Render-Mode Detection & Output Streams" (Output streams — `mint version`'s value), "Gating & `-y` Orthogonality" (gate inventory — `version` no gate).
 
@@ -180,7 +181,7 @@ total: 7
 - Implement the verb-shaped dispatch in both presenters' `RunFinished`, gated **first** by the success-suppression flag (from cli-presentation-2-8):
   1. If the suppression flag is set (a `StageFailed`/`Unwound` fired) → render **nothing** (success-only; no failure-flavoured closing line). This must hold for **every** verb shape.
   2. Else dispatch on the shape:
-     - `release` → pretty `🌿 released {project} v{version} · {url}`; plain `done: {project} v{version} {url}`.
+     - `release` → pretty `🌿 released {project} v{version} · {url}`; plain `done: {project} v{version} {url}`. The leaf glyph (`🌿`) is the engine-supplied brand leaf carried on the end-of-run payload (the `Leaf`/`Brand` field established for `RunResult` in cli-presentation-1-5, defaulting to `🌿`) — render the supplied leaf, do not hardcode it, so a customised `commit_prefix` brand stays consistent across the start-of-run brand line and this footer.
      - `regenerate` → the url-less closing summary owned by cli-presentation-4-2 (pretty brand-style summary minus ` · {url}`; plain `done:`-style line without the URL; `SetSummary` for `--all`). Coordinate with 4-2 so both describe the same single mechanism — this task owns the **dispatch**, 4-2 owns the regenerate **content/`--all` set summary**.
      - `init` → **no** footer (renders nothing; the `created`/`skipped` lines from 4-1 are terminal).
      - `version` → **no** footer (the value from 4-3 is terminal).
@@ -192,6 +193,7 @@ total: 7
 **Acceptance Criteria**:
 - [ ] The end-of-run payload carries a verb/shape discriminator and an optional URL; `RecordingPresenter` captures the shape.
 - [ ] A successful `release` renders `🌿 released {project} v{X} · {url}` (pretty) / `done: {project} v{X} {url}` (plain) — with the URL.
+- [ ] The release footer renders the engine-supplied brand leaf (the `RunResult` `Leaf`/`Brand` field from cli-presentation-1-5, defaulting to `🌿`), not a hardcoded literal.
 - [ ] A successful `regenerate` renders the closing summary **without** the URL (no dangling ` · `) in both modes.
 - [ ] `init` and `version` render **no** end-of-run footer.
 - [ ] When the success-suppression flag is set (failure or abort), `RunFinished` renders **nothing** for every verb shape — suppression precedes shaping.

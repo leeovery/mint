@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 1
 phase: Plan Integrity Review
@@ -51,7 +51,7 @@ Task cli-presentation-4-4 — add to `**Acceptance Criteria**` (after the releas
 Task cli-presentation-4-3 — append to the `**Context**` block:
 > Brand-leaf provenance: the pretty `🌿 mint v{value}` form uses the engine-supplied brand leaf established in cli-presentation-1-5 (carried on the payload, defaulting to `🌿`), consistent with the event-payload principle and the "leaf ties to `commit_prefix`" note — render the supplied leaf rather than hardcoding it. If the user prefers a fixed constant leaf (see the open decision raised in 1-5), this task follows the same resolution.
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
@@ -72,7 +72,7 @@ Following finding 1, if the pretty `version` form renders an engine-supplied lea
 **Proposed** (Task cli-presentation-4-3, `**Do**` — first bullet):
 > - In `internal/presenter/presenter.go`, add the payload event. Recommended: `ShowVersion(v Version)` with `type Version struct { Value string; Leaf string }` — the resolved version value (e.g. `1.4.0`) plus the engine-supplied brand leaf (defaulting to `🌿`, consistent with cli-presentation-1-5; the plain form ignores it, the pretty form renders it). Add the record implementation to `RecordingPresenter`. Document that this is the **payload exception** — the one event whose plain output is a raw value, not `key: value` narration. (If finding-1's open decision resolves to a fixed-constant leaf, drop the `Leaf` field and render the literal `🌿` in pretty.)
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
@@ -93,7 +93,7 @@ Task 2-5 instructs rendering "a fixed-width rule" for the pretty notes titled/cl
 **Proposed** (Task cli-presentation-2-5, `**Do**` — pretty `ShowNotes` bullet, relevant sentence):
 > Decorative-rule width capping (`min(terminalWidth, ~50)`) is a Phase 4 concern — for this task render a **fixed-width rule at the cap constant** (`~50`, the same constant cli-presentation-4-7 will use), not a terminal-derived width; the terminal-width detection and the `min(terminalWidth, cap)` narrowing are deferred to 4-7, which replaces only the width source, not the rule's appearance on a normal-or-wide terminal.
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
@@ -115,7 +115,7 @@ Task 2-5 instructs rendering "a fixed-width rule" for the pretty notes titled/cl
 **Proposed** (Task cli-presentation-3-5, `**Do**` — `Gate.Subject` bullet):
 > - To carry the echo subject without the presenter re-deriving engine knowledge, add a subject/label to the `Gate` model if not already present (e.g. `Gate.Subject string`), set by each constructor: `notes` for `NotesReviewGate()` and `notes` for `ReuseConfirmGate()` (the reuse confirm is also a notes-acceptance gate rendered in the same `Continue?` vocabulary, so its echo is `notes: accepted (-y)` — the source/target gates in cli-presentation-3-7 set `source`/`target`). The presenter renders `{subject}: accepted (-y)` from the payload rather than hardcoding `notes`. Document this addition (it extends 3-1's model). (The exact subject word is refinable, but each constructor must set a concrete value so the `-y` echo line is deterministic and testable.)
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
@@ -136,7 +136,7 @@ Task 2-5 instructs rendering "a fixed-width rule" for the pretty notes titled/cl
 **Proposed** (Task cli-presentation-3-7, `**Do**` — first bullet):
 > - Model the source and target prompts as gates using the 3-1 `Gate` type, treating source/target as an **enumerated declared choice set** (the engine supplies the available sources/targets as `GateChoice` keys, exactly like the y/n/e/r gate), so the shared 3-3 line-read/exact-match-against-declared-keys core applies unchanged — there is no free-form value entry on this path. Provide constructors, e.g. `func SourceGate(options []GateChoice, def Choice) Gate` and `func TargetGate(options []GateChoice, def Choice) Gate`, with the gate `Prompt` text being the source/target question (e.g. `Source?` / `Target?`) and a `Subject` (3-5) of `source` / `target` for the `-y` echo. The declared options and default come from the engine (the available sources/targets and the flag/default) — the presenter does not invent them. (If the engine ever needs free-form value entry rather than a fixed option set, that is a separate parse variant and out of scope for this task.)
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
