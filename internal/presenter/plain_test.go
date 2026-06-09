@@ -11,27 +11,20 @@ import (
 	"mint/internal/presenter"
 )
 
-// productionGoFiles globs the presenter package's non-test .go sources, which the
-// import guard scans. Test files are excluded: they may import anything; the
-// production code is the contract.
-func productionGoFiles(t *testing.T) []string {
+// plainPresenterSources are the non-test sources whose imports the UI-library
+// guard scans. The guard protects the *plain* presenter's defining property —
+// token-efficiency via zero UI dependencies — so it scans only that presenter's
+// own source, not the whole package. The pretty presenter (pretty.go)
+// legitimately imports lipgloss, so it is deliberately excluded; mixing it in
+// would assert a package-wide property the spec never makes.
+func plainPresenterSources(t *testing.T) []string {
 	t.Helper()
 
-	all, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatalf("globbing package sources: %v", err)
+	const src = "plain.go"
+	if _, err := filepath.Glob(src); err != nil {
+		t.Fatalf("globbing %s: %v", src, err)
 	}
-
-	var production []string
-	for _, f := range all {
-		if !strings.HasSuffix(f, "_test.go") {
-			production = append(production, f)
-		}
-	}
-	if len(production) == 0 {
-		t.Fatal("found no non-test .go files to scan — the guard would be vacuous")
-	}
-	return production
+	return []string{src}
 }
 
 // uiLibraryMarkers are import-path fragments that betray a UI/animation library.
@@ -249,14 +242,15 @@ func TestPlainPresenterEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 }
 
 // TestPlainPresenterImportsNoUILibrary is the dependency guard: it parses the
-// presenter package's own source and asserts none of its imports name a UI or
+// plain presenter's own source and asserts none of its imports name a UI or
 // animation library. Parsing the source (rather than go list -deps) keeps the
 // check hermetic and CI-safe while still failing loudly if plain.go ever reaches
-// for lipgloss or a spinner.
+// for lipgloss or a spinner. It scans only plain.go — the pretty presenter is
+// expected to import lipgloss, so a package-wide scan would be wrong.
 func TestPlainPresenterImportsNoUILibrary(t *testing.T) {
 	fset := token.NewFileSet()
 
-	for _, path := range productionGoFiles(t) {
+	for _, path := range plainPresenterSources(t) {
 		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if err != nil {
 			t.Fatalf("parsing %s: %v", path, err)

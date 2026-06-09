@@ -37,10 +37,17 @@ type Presenter interface {
 // word (e.g. "releasing", "regenerating") so the start-of-run line is
 // verb-shaped from the payload rather than hardcoding any literal in the
 // presenter.
+//
+// Leaf is the engine-supplied brand glyph for the brand lines. It ties to the
+// engine's commit_prefix brand, so — per the event-payload principle — the
+// presenter renders the supplied leaf rather than re-deriving or hardcoding one.
+// An empty Leaf defaults to 🌿 at render time, keeping existing callers (and
+// their leaf-less struct literals) working unchanged.
 type RunInfo struct {
 	Project string
 	Version string
 	Action  string
+	Leaf    string
 }
 
 // StageStart carries the StageStarted payload. Blocking is engine knowledge —
@@ -75,8 +82,13 @@ type StageFailure struct {
 
 // RunResult carries the end-of-run success payload. URL is optional — verbs
 // that do not publish a release (e.g. regenerate) leave it empty.
+//
+// Leaf mirrors RunInfo.Leaf: the engine-supplied brand glyph for the closing
+// brand line, defaulting to 🌿 when empty. It travels on the result so the
+// end-of-run line renders the brand from the payload rather than hardcoding it.
 type RunResult struct {
 	Project string
 	Version string
 	URL     string
+	Leaf    string
 }

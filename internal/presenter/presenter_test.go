@@ -119,3 +119,24 @@ func TestRunResultCarriesProjectVersionAndOptionalURL(t *testing.T) {
 		t.Errorf("URL = %q, want %q", r.URL, "https://github.com/acme/acme/releases/tag/v1.4.0")
 	}
 }
+
+// TestRunInfoCarriesBrandLeaf proves the start-of-run payload carries the
+// engine-supplied brand leaf so the presenter renders it rather than hardcoding
+// a glyph. The leaf ties to the engine's commit_prefix brand.
+func TestRunInfoCarriesBrandLeaf(t *testing.T) {
+	info := presenter.RunInfo{Leaf: "🌱"}
+
+	if info.Leaf != "🌱" {
+		t.Errorf("Leaf = %q, want %q", info.Leaf, "🌱")
+	}
+}
+
+// TestRunResultCarriesBrandLeaf proves the end-of-run payload carries the same
+// engine-supplied brand leaf so the closing brand line is rendered, not hardcoded.
+func TestRunResultCarriesBrandLeaf(t *testing.T) {
+	r := presenter.RunResult{Leaf: "🌱"}
+
+	if r.Leaf != "🌱" {
+		t.Errorf("Leaf = %q, want %q", r.Leaf, "🌱")
+	}
+}
