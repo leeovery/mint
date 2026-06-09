@@ -56,7 +56,8 @@ approved_at: 2026-06-09
 - [ ] Answering `n` (abort) triggers a full auto-unwind to the exact clean starting state
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
