@@ -19,7 +19,8 @@ approved_at: 2026-06-09
 - [ ] No `commit_prefix` / 🌿 branding appears anywhere in the commit message text
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-09
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
