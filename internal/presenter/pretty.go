@@ -3,6 +3,7 @@ package presenter
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -26,6 +27,18 @@ const stageColumn = 11
 // stageIndent is the two-space indent every non-brand line carries. Brand lines
 // are flush-left; everything else indents under them.
 const stageIndent = "  "
+
+// decorativeRuleWidth is the fixed cap width the notes rules render to. The spec
+// caps decorative rules at min(terminalWidth, ~50) so they cannot overflow and
+// wrap into junk; this task renders at the fixed cap and does NOT detect terminal
+// width. Phase 4 (task cli-presentation-4-7) hardens the width SOURCE to
+// min(terminalWidth, cap) and reuses THIS constant as the cap — hence the named
+// constant rather than a magic number.
+const decorativeRuleWidth = 50
+
+// ruleChar is the box-drawing horizontal line (U+2500) the decorative notes rules
+// are built from. It is layout, not colour — it survives a colour downgrade.
+const ruleChar = "─"
 
 // PrettyPresenter is the styled, human-facing Presenter: brand lines, colour, and
 // status glyphs rendered as linear print-style narration (no alt-screen, no event
@@ -258,6 +271,55 @@ func planVerbColumn(steps []PlanStep) int {
 // target aligns across steps.
 func padVerb(verb string, column int) string {
 	return fmt.Sprintf("%-*s", column, verb)
+}
+
+// ShowNotes renders the release notes as a titled opener rule, the body verbatim,
+// and a closing rule — NO box (the rounded box was dropped: it forced
+// wrap/truncate on arbitrary-width AI notes and read as clutter). The rules may be
+// dim-styled through the lipgloss renderer, but their layout (the title text and
+// the U+2500 rule characters) survives a colour downgrade; the body is written via
+// the package-shared writeNotesBody helper — UNCHANGED, the same bytes the plain
+// presenter writes — so the body region is provably byte-identical across modes.
+//
+// The body is written flush, NOT indented: the worked example shows the body
+// indented two spaces under the rule, but that indentation is illustrative and is
+// deliberately not applied, because adding indent bytes would break byte-identity
+// (non-negotiable — "what previews is what ships"). The body is NEVER truncated.
+//
+// Edge forms mirror plain: an empty body writes nothing between the rules, so the
+// titled rule is immediately followed by the closing rule — no spurious blank
+// line. A body line that reads like a delimiter is written verbatim; the real
+// closing rule still follows (rules are positional, never content-matched).
+func (p *PrettyPresenter) ShowNotes(notes Notes) {
+	p.writef("%s\n", p.dim.Render(notesTitledRule(notes.Version)))
+	writeNotesBody(p.out, notes.Body)
+	p.writef("%s\n", p.dim.Render(notesClosingRule()))
+}
+
+// notesTitledRule builds the opener rule: the "── release notes · v{X} " title
+// prefix filled with U+2500 up to decorativeRuleWidth. The fill count is clamped
+// to a minimum of one so a title prefix longer than the cap (version strings are
+// short, so this is just defensive) never produces a negative repeat count.
+func notesTitledRule(version string) string {
+	prefix := ruleChar + ruleChar + " release notes · v" + version + " "
+	fill := decorativeRuleWidth - displayWidth(prefix)
+	if fill < 1 {
+		fill = 1
+	}
+	return prefix + strings.Repeat(ruleChar, fill)
+}
+
+// notesClosingRule builds the closing rule: U+2500 repeated to the cap width.
+func notesClosingRule() string {
+	return strings.Repeat(ruleChar, decorativeRuleWidth)
+}
+
+// displayWidth counts the runes in s — the column count for the ASCII/box-drawing
+// rule text the title is built from (each such rune occupies one cell). Counting
+// runes rather than bytes keeps the multi-byte U+2500 characters from inflating
+// the width math, so the rule fills to the intended cap.
+func displayWidth(s string) int {
+	return len([]rune(s))
 }
 
 // RunFinished renders the bottom brand line, flush-left:

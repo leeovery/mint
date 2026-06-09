@@ -23,6 +23,7 @@ func (p *nopPresenter) StageStarted(presenter.StageStart)     {}
 func (p *nopPresenter) StageSucceeded(presenter.StageSuccess) {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)    {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
+func (p *nopPresenter) ShowNotes(presenter.Notes)             {}
 func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
 
 // Compile-time proof that the no-op value satisfies the interface.
@@ -38,7 +39,38 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.StageSucceeded(presenter.StageSuccess{})
 	p.StageFailed(presenter.StageFailure{})
 	p.ShowPlan(presenter.Plan{})
+	p.ShowNotes(presenter.Notes{})
 	p.RunFinished(presenter.RunResult{})
+}
+
+// TestShowNotesPayloadRoundTripsThroughRecorder proves the recorder captures the
+// full Notes payload — version and verbatim body — so an engine-driven test can
+// round-trip the notes independent of any rendering.
+func TestShowNotesPayloadRoundTripsThroughRecorder(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+	notes := presenter.Notes{
+		Version: "1.4.0",
+		Body:    "Faster cold starts.\n\n✨ Features\n- Parallel warm-up",
+	}
+
+	rec.ShowNotes(notes)
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.Kind != presentertest.KindShowNotes {
+		t.Fatalf("Kind = %v, want %v", ev.Kind, presentertest.KindShowNotes)
+	}
+	if ev.ShowNotes != notes {
+		t.Errorf("ShowNotes = %+v, want %+v", ev.ShowNotes, notes)
+	}
+	if ev.ShowNotes.Version != "1.4.0" {
+		t.Errorf("Version = %q, want %q", ev.ShowNotes.Version, "1.4.0")
+	}
+	if ev.ShowNotes.Body != notes.Body {
+		t.Errorf("Body = %q, want %q", ev.ShowNotes.Body, notes.Body)
+	}
 }
 
 func TestStageStartCarriesBlockingFlag(t *testing.T) {

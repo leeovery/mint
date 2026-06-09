@@ -132,6 +132,28 @@ func renderPlainStep(step PlanStep) string {
 	return step.Verb + " " + step.Target
 }
 
+// ShowNotes renders the release notes wrapped in the sliceable plain rules
+// "--- release notes v{X} ---" … "--- end notes ---" so a reader/agent can
+// extract the block reliably. The body is written through the package-shared
+// writeNotesBody helper UNCHANGED — byte-for-byte verbatim, the same bytes the
+// pretty presenter writes — so the body region is provably identical across
+// modes; only these delimiters differ.
+//
+// The synthesised delimiter lines are byte-pure ASCII. The body itself may
+// legitimately contain emoji (e.g. ✨ Features / 🐛 Fixes) — that is engine
+// content rendered verbatim, NOT synthesised narration, so the plain byte-purity
+// guard (which scans only synthesised stage narration) does not apply to it.
+//
+// Edge forms: an empty body writes nothing between the rules, so the opener line
+// is immediately followed by the closer line — no spurious blank line. A body
+// line that itself reads like a delimiter is written verbatim; the real closing
+// delimiter still follows it (delimiters are positional, never content-matched).
+func (p *PlainPresenter) ShowNotes(notes Notes) {
+	p.writef("--- release notes v%s ---\n", notes.Version)
+	writeNotesBody(p.out, notes.Body)
+	p.writef("--- end notes ---\n")
+}
+
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is
 // "done: {project} v{X} {url}"; verbs that publish no release leave URL empty, so
 // the line collapses to "done: {project} v{X}" with no dangling trailing space.

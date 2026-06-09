@@ -442,6 +442,106 @@ func TestPlainPresenterShowPlanEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 	}
 }
 
+// notesBody is the worked-example release-notes body shared across the
+// byte-identity tests: a lead line, a blank line, then the emoji-headed
+// Features/Fixes sections. It deliberately carries the ✨/🐛 emoji headers (which
+// must survive verbatim in both modes) and an internal blank line.
+const notesBody = "Faster cold starts and a calmer log.\n" +
+	"\n" +
+	"✨ Features\n" +
+	"- Parallel warm-up halves boot time\n" +
+	"🐛 Fixes\n" +
+	"- Stop double-flush on SIGTERM"
+
+// TestPlainPresenterShowNotesWrapsBodyInPlainDelimiters is the core plain
+// acceptance: ShowNotes wraps the verbatim body in the sliceable plain rules
+// "--- release notes v{X} ---" … "--- end notes ---", with the body bytes
+// untouched between them.
+func TestPlainPresenterShowNotesWrapsBodyInPlainDelimiters(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: notesBody})
+	})
+
+	want := "--- release notes v1.4.0 ---\n" +
+		notesBody + "\n" +
+		"--- end notes ---\n"
+	if got := out.String(); got != want {
+		t.Errorf("ShowNotes plain delimiters mismatch\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// TestPlainPresenterShowNotesPreservesEmojiHeaders proves the emoji section
+// headers (✨ Features / 🐛 Fixes) are written byte-for-byte — no stripping or
+// transforming — even though plain mode is otherwise byte-pure ASCII. The body is
+// engine content, not synthesised narration, so it carries its emoji through.
+func TestPlainPresenterShowNotesPreservesEmojiHeaders(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: notesBody})
+	})
+
+	got := out.String()
+	for _, header := range []string{"✨ Features", "🐛 Fixes"} {
+		if !strings.Contains(got, header) {
+			t.Errorf("emoji header %q stripped from plain notes body:\n%q", header, got)
+		}
+	}
+}
+
+// TestPlainPresenterShowNotesEmptyBodyRendersBareDelimiters covers the empty-body
+// edge: the opener line is immediately followed by the closer line with NO
+// spurious blank line or invented content between them.
+func TestPlainPresenterShowNotesEmptyBodyRendersBareDelimiters(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: ""})
+	})
+
+	want := "--- release notes v1.4.0 ---\n" +
+		"--- end notes ---\n"
+	if got := out.String(); got != want {
+		t.Errorf("empty-body plain notes = %q, want %q", got, want)
+	}
+}
+
+// TestPlainPresenterShowNotesDelimiterLikeBodyLineIsVerbatim covers the
+// delimiter-collision edge: a body line that itself reads like a closing
+// delimiter is written through verbatim, and the REAL closing delimiter still
+// follows it. Delimiters are positional, never content-matched.
+func TestPlainPresenterShowNotesDelimiterLikeBodyLineIsVerbatim(t *testing.T) {
+	body := "real notes\n--- end notes ---\nstill notes"
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
+	})
+
+	want := "--- release notes v1.4.0 ---\n" +
+		body + "\n" +
+		"--- end notes ---\n"
+	if got := out.String(); got != want {
+		t.Errorf("delimiter-like body line not written verbatim\n got: %q\nwant: %q", got, want)
+	}
+	// The real closing delimiter is the LAST line — the body's lookalike does not
+	// short-circuit it.
+	if !strings.HasSuffix(out.String(), "still notes\n--- end notes ---\n") {
+		t.Errorf("real closing delimiter must follow the verbatim body, got %q", out.String())
+	}
+}
+
+// TestPlainPresenterShowNotesMultiLineBlankLinesPreserved covers the multi-line
+// edge: a body with internal blank lines round-trips exactly — no collapsing, no
+// re-wrapping.
+func TestPlainPresenterShowNotesMultiLineBlankLinesPreserved(t *testing.T) {
+	body := "line one\n\n\nline four after two blanks"
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "2.0.0", Body: body})
+	})
+
+	want := "--- release notes v2.0.0 ---\n" +
+		body + "\n" +
+		"--- end notes ---\n"
+	if got := out.String(); got != want {
+		t.Errorf("multi-line blank lines not preserved\n got: %q\nwant: %q", got, want)
+	}
+}
+
 // TestPlainPresenterImportsNoUILibrary is the dependency guard: it parses the
 // plain presenter's own source and asserts none of its imports name a UI or
 // animation library. Parsing the source (rather than go list -deps) keeps the

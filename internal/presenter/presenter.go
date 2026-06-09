@@ -3,7 +3,40 @@
 // implementation (pretty or plain) decides how they look.
 package presenter
 
-import "time"
+import (
+	"io"
+	"time"
+)
+
+// writeNotesBody writes a release-notes body to w BYTE-FOR-BYTE VERBATIM, the
+// single shared point that guarantees the body region is identical across the
+// plain and pretty presenters (both call this with the UNCHANGED Notes.Body). It
+// is the mechanical heart of the non-negotiable byte-identity invariant: only the
+// surrounding delimiters differ between modes, never the body.
+//
+// It applies NO transformation — no stripping, no emoji handling, no re-wrapping,
+// no truncation, and crucially NO indentation. The pretty worked example shows
+// the body indented two spaces under the rule; that indentation is ILLUSTRATIVE
+// and is deliberately NOT applied here, because adding indent bytes would break
+// byte-identity, which the spec calls non-negotiable ("what previews is what
+// ships"). The decorative rules are framing and are rendered by each presenter
+// separately; the body is written flush and unchanged by this one helper.
+//
+// An empty body writes nothing — the caller's opener is then immediately
+// followed by its closer, with no spurious blank line or invented content. A
+// non-empty body is followed by exactly one newline so the caller's closer
+// starts on its own line regardless of whether the body already ended in one.
+func writeNotesBody(w io.Writer, body string) {
+	if body == "" {
+		return
+	}
+	// Fprint writes the body bytes unchanged; the trailing newline ensures the
+	// closer that follows lands on its own line. The write error has nowhere to
+	// propagate (Presenter methods return nothing) so it is discarded, mirroring
+	// the presenters' writef.
+	_, _ = io.WriteString(w, body)
+	_, _ = io.WriteString(w, "\n")
+}
 
 // Presenter is the dependency-inversion seam for all of mint's output. The
 // engine calls these methods at lifecycle points and nothing else — it never
@@ -32,6 +65,11 @@ type Presenter interface {
 	// ShowPlan renders the upcoming plan — the steps mint is about to perform.
 	// It is narration → out only; it never writes to err.
 	ShowPlan(plan Plan)
+	// ShowNotes renders the generated release notes inside per-mode delimiters.
+	// It is narration → out only; it never writes to err. The body is written
+	// BYTE-FOR-BYTE VERBATIM in both modes (see Notes) — only the surrounding
+	// delimiters differ.
+	ShowNotes(notes Notes)
 	// RunFinished renders the end-of-run success line.
 	RunFinished(r RunResult)
 }
@@ -64,6 +102,40 @@ type PlanStep struct {
 type Plan struct {
 	// Steps is the ordered list of plan steps. A nil/empty slice is an empty plan.
 	Steps []PlanStep
+}
+
+// Notes is the ShowNotes payload: the generated release notes the engine is
+// presenting for review. Version labels the surrounding delimiters; Body is the
+// notes content itself.
+//
+// THE NON-NEGOTIABLE INVARIANT: Body is written BYTE-FOR-BYTE VERBATIM in BOTH
+// render modes — no stripping, no emoji removal, no case-folding, no re-wrapping,
+// no truncation, and NO indentation added. Only the surrounding delimiters
+// differ between plain and pretty; the body region is provably identical across
+// modes (both presenters write Body through the same shared writeNotesBody
+// helper). Transforming the body would contradict the engine's "use the body
+// whole" rule and break the "what previews is what ships" invariant. Emoji
+// section headers (✨ Features, 🐛 Fixes) therefore survive verbatim in plain
+// mode too — the plain byte-purity guard applies to synthesised stage narration,
+// not to this engine-supplied body.
+//
+// Notes are narration → out only, never stderr.
+//
+// Edge cases the renderers must honour (all flow from "verbatim, positional"):
+//
+//   - An empty Body renders the delimiters with NO spurious blank line or
+//     invented content between them (the opener line is immediately followed by
+//     the closer line).
+//   - A Body line that itself looks like a delimiter is written verbatim; the
+//     real closing delimiter still follows it. Delimiters are POSITIONAL, never
+//     content-matched — the body is never escaped or scanned for them.
+//   - Internal blank lines in a multi-line Body are preserved exactly.
+type Notes struct {
+	// Version labels the surrounding delimiters (rendered as "v{Version}").
+	Version string
+	// Body is the release-notes content, written byte-for-byte verbatim in both
+	// modes. The empty string is legal (bare delimiters, no invented content).
+	Body string
 }
 
 // RunInfo carries the start-of-run payload. Action is the engine-supplied verb

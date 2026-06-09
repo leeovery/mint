@@ -569,6 +569,208 @@ func TestPrettyPresenterShowPlanColourOnEmitsANSIButKeepsLayout(t *testing.T) {
 	}
 }
 
+// prettyNotesBody mirrors the plain test's worked-example notes body: a lead
+// line, a blank line, then the emoji-headed Features/Fixes sections. Shared here
+// so the pretty/plain byte-identity assertions render the same source bytes.
+const prettyNotesBody = "Faster cold starts and a calmer log.\n" +
+	"\n" +
+	"✨ Features\n" +
+	"- Parallel warm-up halves boot time\n" +
+	"🐛 Fixes\n" +
+	"- Stop double-flush on SIGTERM"
+
+// decorativeRuleWidthForTest is the fixed cap the pretty rules render to this
+// phase, duplicated here so the tests can build the exact expected rule strings.
+// It tracks presenter.decorativeRuleWidth (an unexported constant); the
+// byte-identity tests below do not depend on it, only the exact-layout ones do.
+const decorativeRuleWidthForTest = 50
+
+// notesTitledRule builds the expected titled opener rule for a version: the
+// "── release notes · v{X} " prefix filled with U+2500 up to the cap width.
+func notesTitledRule(version string) string {
+	prefix := "── release notes · v" + version + " "
+	fill := decorativeRuleWidthForTest - len([]rune(prefix))
+	if fill < 1 {
+		fill = 1
+	}
+	return prefix + strings.Repeat("─", fill)
+}
+
+// notesClosingRule builds the expected closing rule: U+2500 repeated to the cap.
+func notesClosingRule() string {
+	return strings.Repeat("─", decorativeRuleWidthForTest)
+}
+
+// TestPrettyPresenterShowNotesWrapsBodyInTitledRules is the core pretty
+// acceptance: ShowNotes renders a titled opener rule, the body verbatim (flush,
+// NOT indented), and a closing rule — and crucially NO box-drawing border
+// (╭ ╮ ╰ ╯ │) surrounds the body. The no-colour profile keeps the assertion on
+// the exact layout rather than ANSI bytes.
+func TestPrettyPresenterShowNotesWrapsBodyInTitledRules(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: prettyNotesBody})
+	})
+
+	want := notesTitledRule("1.4.0") + "\n" +
+		prettyNotesBody + "\n" +
+		notesClosingRule() + "\n"
+	if got := out.String(); got != want {
+		t.Errorf("ShowNotes titled-rule layout mismatch\n got: %q\nwant: %q", got, want)
+	}
+
+	// No rounded-box border characters may surround the body — the box was dropped.
+	for _, boxChar := range []string{"╭", "╮", "╰", "╯", "│"} {
+		if strings.Contains(out.String(), boxChar) {
+			t.Errorf("box-drawing border char %q present — the rounded box was dropped:\n%q", boxChar, out.String())
+		}
+	}
+}
+
+// TestPrettyPresenterShowNotesPreservesEmojiHeaders proves the emoji section
+// headers survive verbatim in pretty mode too — the body is written through the
+// shared verbatim helper, never stripped or transformed.
+func TestPrettyPresenterShowNotesPreservesEmojiHeaders(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: prettyNotesBody})
+	})
+
+	got := out.String()
+	for _, header := range []string{"✨ Features", "🐛 Fixes"} {
+		if !strings.Contains(got, header) {
+			t.Errorf("emoji header %q stripped from pretty notes body:\n%q", header, got)
+		}
+	}
+}
+
+// TestPrettyPresenterShowNotesEmptyBodyRendersBareRules covers the empty-body
+// edge: the titled rule is immediately followed by the closing rule with NO
+// spurious blank line or invented content between them — consistent with plain.
+func TestPrettyPresenterShowNotesEmptyBodyRendersBareRules(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: ""})
+	})
+
+	want := notesTitledRule("1.4.0") + "\n" +
+		notesClosingRule() + "\n"
+	if got := out.String(); got != want {
+		t.Errorf("empty-body pretty notes = %q, want %q", got, want)
+	}
+}
+
+// TestPrettyPresenterShowNotesDelimiterLikeBodyLineIsVerbatim covers the
+// delimiter-collision edge in pretty mode: a body line that reads like a plain
+// closing delimiter is written through verbatim; the REAL closing rule still
+// follows. Delimiters/rules are positional, never content-matched.
+func TestPrettyPresenterShowNotesDelimiterLikeBodyLineIsVerbatim(t *testing.T) {
+	body := "real notes\n--- end notes ---\nstill notes"
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
+	})
+
+	want := notesTitledRule("1.4.0") + "\n" +
+		body + "\n" +
+		notesClosingRule() + "\n"
+	if got := out.String(); got != want {
+		t.Errorf("delimiter-like body line not written verbatim in pretty\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// TestPrettyPresenterShowNotesMultiLineBlankLinesPreserved covers the multi-line
+// edge: internal blank lines round-trip exactly — no collapsing, no re-wrapping,
+// no truncation.
+func TestPrettyPresenterShowNotesMultiLineBlankLinesPreserved(t *testing.T) {
+	body := "line one\n\n\nline four after two blanks"
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "2.0.0", Body: body})
+	})
+
+	want := notesTitledRule("2.0.0") + "\n" +
+		body + "\n" +
+		notesClosingRule() + "\n"
+	if got := out.String(); got != want {
+		t.Errorf("multi-line blank lines not preserved in pretty\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// TestPrettyPresenterShowNotesRulesSurviveColourDowngrade asserts the rule layout
+// (the title text and the U+2500 rule characters) survives the no-colour profile
+// with no SGR codes leaking — the rules may be dim-styled, but the layout must
+// remain intact under downgrade.
+func TestPrettyPresenterShowNotesRulesSurviveColourDowngrade(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
+	})
+
+	if bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("downgraded notes block leaked an SGR code:\n%q", out.String())
+	}
+	if !strings.Contains(out.String(), "release notes · v1.4.0") {
+		t.Errorf("titled rule text not preserved under colour downgrade:\n%q", out.String())
+	}
+	if !strings.Contains(out.String(), "─") {
+		t.Errorf("rule character U+2500 not preserved under colour downgrade:\n%q", out.String())
+	}
+}
+
+// TestPrettyPresenterShowNotesRulesStyledUnderColour forces a colour-capable
+// profile and asserts the rules carry ANSI SGR escapes (they are dim-styled)
+// while the rule layout text survives — styling is additive, layout is fixed.
+func TestPrettyPresenterShowNotesRulesStyledUnderColour(t *testing.T) {
+	out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
+	})
+
+	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("colour-on notes block contains no ESC (0x1b) — expected dim SGR codes:\n%q", out.String())
+	}
+	if !strings.Contains(out.String(), "release notes · v1.4.0") {
+		t.Errorf("titled rule text missing under colour:\n%q", out.String())
+	}
+}
+
+// TestShowNotesBodyIsByteIdenticalAcrossModes is THE non-negotiable invariant:
+// the same Notes rendered in plain and pretty produce a BYTE-IDENTICAL body
+// region. The body is extracted from each rendering by stripping the
+// mode-specific delimiter/rule lines (the first and last lines) and the two
+// presenters' inner bytes are compared byte-for-byte.
+func TestShowNotesBodyIsByteIdenticalAcrossModes(t *testing.T) {
+	notes := presenter.Notes{Version: "1.4.0", Body: prettyNotesBody}
+
+	plainOut := &bytes.Buffer{}
+	presenter.NewPlainPresenter(plainOut, &bytes.Buffer{}).ShowNotes(notes)
+
+	prettyOut := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.ShowNotes(notes)
+	})
+
+	plainBody := extractNotesBody(t, plainOut.String())
+	prettyBody := extractNotesBody(t, prettyOut.String())
+
+	if plainBody != prettyBody {
+		t.Errorf("notes body differs across modes\nplain : %q\npretty: %q", plainBody, prettyBody)
+	}
+	// And the extracted body must equal the source body byte-for-byte — proving
+	// neither mode mutated it.
+	if plainBody != prettyNotesBody {
+		t.Errorf("plain body mutated the source\n got: %q\nwant: %q", plainBody, prettyNotesBody)
+	}
+}
+
+// extractNotesBody removes the first line (the opener delimiter/rule) and the
+// last line (the closing delimiter/rule) from a rendered notes block, returning
+// the inner body region. Delimiters are positional — exactly the first and last
+// of the rendered lines — so this slice is mode-agnostic and lets the two
+// renderings be compared on body bytes alone.
+func extractNotesBody(t *testing.T, rendered string) string {
+	t.Helper()
+	trimmed := strings.TrimSuffix(rendered, "\n")
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) < 2 {
+		t.Fatalf("rendered notes block has too few lines to extract a body: %q", rendered)
+	}
+	return strings.Join(lines[1:len(lines)-1], "\n")
+}
+
 // TestPrettyPresenterStageStartedRendersStaticLine asserts StageStarted prints a
 // single static (non-animated) stage line — no spinner lifecycle this phase. It is
 // rendered dim under colour and as a plain glyph-less line under downgrade.

@@ -23,6 +23,7 @@ const (
 	KindStageSucceeded
 	KindStageFailed
 	KindShowPlan
+	KindShowNotes
 	KindRunFinished
 )
 
@@ -39,6 +40,8 @@ func (k EventKind) String() string {
 		return "StageFailed"
 	case KindShowPlan:
 		return "ShowPlan"
+	case KindShowNotes:
+		return "ShowNotes"
 	case KindRunFinished:
 		return "RunFinished"
 	default:
@@ -59,6 +62,7 @@ type Event struct {
 	StageSucceeded presenter.StageSuccess
 	StageFailed    presenter.StageFailure
 	ShowPlan       presenter.Plan
+	ShowNotes      presenter.Notes
 	RunFinished    presenter.RunResult
 }
 
@@ -99,6 +103,13 @@ func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 // engine-driven test can round-trip the steps independent of any rendering.
 func (r *RecordingPresenter) ShowPlan(plan presenter.Plan) {
 	r.Events = append(r.Events, Event{Kind: KindShowPlan, ShowPlan: plan})
+}
+
+// ShowNotes records the notes event with its full payload — version and verbatim
+// body — so an engine-driven test can round-trip the notes independent of any
+// rendering.
+func (r *RecordingPresenter) ShowNotes(notes presenter.Notes) {
+	r.Events = append(r.Events, Event{Kind: KindShowNotes, ShowNotes: notes})
 }
 
 // RunFinished records the end-of-run event.
