@@ -16,6 +16,18 @@ import (
 // the failure events, not this error string), so it stays terse.
 var errPromptEOF = errors.New("prompt: input closed before a choice was entered")
 
+// ErrNotInteractive is the EXPORTED sentinel both presenters return from Prompt on
+// the forbidden combination — stdin is NOT a TTY and -y was NOT passed, so an
+// interactive gate can be neither answered nor safely blocked on. It is exported
+// (unlike errPromptEOF) precisely so the engine/main can map THIS path to a
+// non-zero exit via errors.Is; the presenter itself sets no exit code. The
+// failure is ALSO surfaced through the presenter as a rendered failure (styled in
+// pretty, terse in plain) and the one-line summary goes to stderr — this sentinel
+// is the machine-readable companion to that human-facing rendering. The message
+// is the spec's ASCII form (a semicolon, never the em-dash) so the engine-facing
+// string stays byte-pure; the pretty rendering uses the em-dash form separately.
+var ErrNotInteractive = errors.New("stdin is not a TTY; pass -y to run unattended")
+
 // parseChoice is the SHARED, mode-agnostic parse for one line of gate input. It is
 // the single point that turns a raw input line into a declared Choice, used
 // identically by both presenters so the parse can never drift between modes.

@@ -26,6 +26,24 @@ const (
 	ChoiceRegen Choice = "r"
 )
 
+// gateFailLabel is the FIXED label both presenters render for the
+// forbidden-combination gate failure (non-TTY stdin without -y): "gate". It is the
+// gate MECHANISM that is failing, not the gate's Subject (the notes content), so
+// the label is this fixed word rather than gate.Subject — a reader sees the gate
+// itself failed, not that "notes" failed.
+const gateFailLabel = "gate"
+
+// gateNotTTYMessageASCII is the byte-pure ASCII message text for the plain
+// forbidden-combination failure: a semicolon form (NOT the em-dash) so the plain
+// byte-purity guard stays green. The pretty presenter renders the spec's em-dash
+// form (gateNotTTYMessagePretty) instead.
+const gateNotTTYMessageASCII = "not a TTY; pass -y to run unattended"
+
+// gateNotTTYMessagePretty is the spec's message text for the pretty
+// forbidden-combination failure, with the em dash allowed in pretty mode (no
+// byte-purity constraint there). The plain presenter uses the ASCII form above.
+const gateNotTTYMessagePretty = "not a TTY — pass -y to run unattended"
+
 // GateChoice pairs a Choice key with its human-facing action label (e.g.
 // "accept & proceed"). The slice ORDER on a Gate is significant: it is the render
 // order of the vertical menu (the spec lists y, n, e, r top-to-bottom), so a

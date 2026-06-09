@@ -82,6 +82,21 @@ type PrettyPresenter struct {
 	// it as construction state (not a Prompt parameter) keeps the Prompt(Gate) seam
 	// signature stable across both render modes.
 	yes bool
+	// stdinInteractive records whether stdin can host an interactive prompt — the
+	// gating-INPUT axis (is stdin a TTY?), orthogonal to render mode (is stdout a
+	// TTY?) and to -y. When false AND -y is absent, Prompt hits the
+	// FORBIDDEN-COMBINATION rule: it fails loud (rendering a styled ✗ failure +
+	// returning ErrNotInteractive) rather than blocking on a stdin read that never
+	// returns. The render stays STYLED because render mode is selected from stdout,
+	// independently of the non-TTY stdin that triggered the failure.
+	//
+	// The DEFAULT is true (interactive) — set explicitly in newPrettyPresenter's
+	// struct literal, NOT left to the bool zero value — so the existing
+	// interactive-path tests (yes=false, scripted reader) keep hitting the
+	// interactive loop, not the fail path. Production sets it from
+	// DetectStdinTTY(os.Stdin) at the same one site the -y flag is parsed (a later
+	// main/cmd task) via WithInteractiveStdin — the same deferral as -y.
+	stdinInteractive bool
 
 	// Styles are derived once from the renderer so every render shares the same
 	// colour profile. Under a no-colour profile lipgloss renders these as the bare
@@ -166,11 +181,15 @@ func newPrettyPresenter(out, err io.Writer, in io.Reader, renderer *lipgloss.Ren
 		err:      err,
 		in:       in,
 		renderer: renderer,
-		success:  renderer.NewStyle().Foreground(lipgloss.Color("2")),   // green
-		failure:  renderer.NewStyle().Foreground(lipgloss.Color("1")),   // red
-		warn:     renderer.NewStyle().Foreground(lipgloss.Color("214")), // amber / orange
-		dim:      renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
-		unwound:  renderer.NewStyle().Foreground(lipgloss.Color("8")),   // ↩ glyph — dim (no spec colour; subdued recovery tone)
+		// stdinInteractive defaults to true (interactive) explicitly — see the field
+		// doc: the existing interactive-path tests must keep hitting the interactive
+		// loop, not the forbidden-combination fail path.
+		stdinInteractive: true,
+		success:          renderer.NewStyle().Foreground(lipgloss.Color("2")),   // green
+		failure:          renderer.NewStyle().Foreground(lipgloss.Color("1")),   // red
+		warn:             renderer.NewStyle().Foreground(lipgloss.Color("214")), // amber / orange
+		dim:              renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
+		unwound:          renderer.NewStyle().Foreground(lipgloss.Color("8")),   // ↩ glyph — dim (no spec colour; subdued recovery tone)
 	}
 }
 
@@ -182,6 +201,18 @@ func newPrettyPresenter(out, err io.Writer, in io.Reader, renderer *lipgloss.Ren
 // parsed; the zero value (no call) is the interactive default.
 func (p *PrettyPresenter) WithYes(yes bool) *PrettyPresenter {
 	p.yes = yes
+	return p
+}
+
+// WithInteractiveStdin sets the stdin-interactive gating signal and returns the
+// presenter so it chains onto any constructor, mirroring WithYes exactly. It is a
+// builder-style setter — kept off the constructors so their signatures stay stable
+// — so production can thread DetectStdinTTY(os.Stdin) at the same one site the -y
+// flag is parsed (a later main/cmd task). The constructor default is true
+// (interactive); call WithInteractiveStdin(false) to arm the
+// forbidden-combination fail path.
+func (p *PrettyPresenter) WithInteractiveStdin(interactive bool) *PrettyPresenter {
+	p.stdinInteractive = interactive
 	return p
 }
 
@@ -517,9 +548,32 @@ func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
 		p.writef("%s%s %s  accepted (-y)\n", stageIndent, glyph, gate.Subject)
 		return gate.Default, nil
 	}
+	if !p.stdinInteractive {
+		return p.failNotInteractive()
+	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() { p.renderGate(gate) }
 	return readChoice(reader, render, gate)
+}
+
+// failNotInteractive renders the FORBIDDEN-COMBINATION failure (non-TTY stdin
+// without -y) WITHOUT touching the input stream — the whole point is to never
+// block on stdin that will not deliver. It MIRRORS StageFailed's rendering: the
+// styled "  ✗ {label}  {message}" line to OUT (two-space indent, the red ✗ glyph
+// through the failure style, the fixed gateFailLabel padded to the stage column,
+// then the message) AND the UNSTYLED "✗ {label}  {message}" one-line summary to
+// ERR per the stream contract. The label is the fixed gateFailLabel ("gate") —
+// this is the gate MECHANISM failing, not gate.Subject (the notes content). The
+// message is the spec's em-dash form gateNotTTYMessagePretty (the em dash is
+// allowed in pretty). The styling stays from the renderer, which is bound to
+// stdout, so the failure renders STYLED even though it was the non-TTY STDIN that
+// triggered it — the two axes are orthogonal. Prompt returns the exported
+// ErrNotInteractive sentinel; the presenter sets no exit code.
+func (p *PrettyPresenter) failNotInteractive() (Choice, error) {
+	glyph := p.failure.Render("✗")
+	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(gateFailLabel), gateNotTTYMessagePretty)
+	p.errf("✗ %s  %s\n", gateFailLabel, gateNotTTYMessagePretty)
+	return "", ErrNotInteractive
 }
 
 // renderGate writes the pretty vertical menu for one gate to out: one option line

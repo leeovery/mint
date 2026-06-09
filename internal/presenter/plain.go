@@ -40,6 +40,21 @@ type PlainPresenter struct {
 	// as construction state (not a Prompt parameter) keeps the Prompt(Gate) seam
 	// signature stable across both render modes.
 	yes bool
+	// stdinInteractive records whether stdin can host an interactive prompt — the
+	// gating-INPUT axis (is stdin a TTY?), orthogonal to render mode (is stdout a
+	// TTY?) and to -y. When false AND -y is absent, Prompt hits the
+	// FORBIDDEN-COMBINATION rule: it fails loud (rendering a failure + returning
+	// ErrNotInteractive) rather than blocking on a stdin read that never returns.
+	//
+	// The DEFAULT is true (interactive) — set explicitly in the constructor's struct
+	// literal, NOT left to the bool zero value. That matters: the existing
+	// interactive-path tests construct presenters with yes=false and a scripted
+	// reader and must keep hitting the interactive loop, not the new fail path, so
+	// the safe default is "interactive". Production sets it from
+	// DetectStdinTTY(os.Stdin) at the same one site the -y flag is parsed (a later
+	// main/cmd task) via WithInteractiveStdin — the same deferral as -y; the startup
+	// wiring keeps defaulting until then.
+	stdinInteractive bool
 	// terminalFailure records that the run has hit a terminal failure or abort —
 	// set by StageFailed (a failed stage) and by Unwound (a failure or gate-n
 	// abort). It makes the presenter STATEFUL per run: when set, RunFinished
@@ -69,7 +84,10 @@ func NewPlainPresenter(out, err io.Writer) *PlainPresenter {
 // scripted strings.Reader without a real terminal. Production uses
 // NewPlainPresenter, which defaults in to os.Stdin.
 func NewPlainPresenterWithInput(out, err io.Writer, in io.Reader) *PlainPresenter {
-	return &PlainPresenter{out: out, err: err, in: in}
+	// stdinInteractive defaults to true (interactive) explicitly — see the field
+	// doc: the existing interactive-path tests must keep hitting the interactive
+	// loop, not the forbidden-combination fail path.
+	return &PlainPresenter{out: out, err: err, in: in, stdinInteractive: true}
 }
 
 // WithYes sets the -y/--yes gating decision and returns the presenter so it chains
@@ -80,6 +98,18 @@ func NewPlainPresenterWithInput(out, err io.Writer, in io.Reader) *PlainPresente
 // parsed; the zero value (no call) is the interactive default.
 func (p *PlainPresenter) WithYes(yes bool) *PlainPresenter {
 	p.yes = yes
+	return p
+}
+
+// WithInteractiveStdin sets the stdin-interactive gating signal and returns the
+// presenter so it chains onto any constructor, mirroring WithYes exactly. It is a
+// builder-style setter — kept off the constructors so their signatures stay stable
+// — so production can thread DetectStdinTTY(os.Stdin) at the same one site the -y
+// flag is parsed (a later main/cmd task). The constructor default is true
+// (interactive); call WithInteractiveStdin(false) to arm the
+// forbidden-combination fail path.
+func (p *PlainPresenter) WithInteractiveStdin(interactive bool) *PlainPresenter {
+	p.stdinInteractive = interactive
 	return p
 }
 
@@ -285,11 +315,31 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 		p.writef("%s: accepted (-y)\n", gate.Subject)
 		return gate.Default, nil
 	}
+	if !p.stdinInteractive {
+		return p.failNotInteractive()
+	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() {
 		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))
 	}
 	return readChoice(reader, render, gate)
+}
+
+// failNotInteractive renders the FORBIDDEN-COMBINATION failure (non-TTY stdin
+// without -y) WITHOUT touching the input stream — the whole point is to never
+// block on stdin that will not deliver. It reuses the established plain FAILED
+// vocabulary "{label}: FAILED - {message}": the one-line summary goes to OUT (the
+// narration) AND is duplicated to ERR per the stream contract, exactly like
+// StageFailed. The label is the fixed gateFailLabel ("gate") — this is the gate
+// MECHANISM failing, not the gate's Subject (the notes content), so it is NOT
+// gate.Subject. The message is the byte-pure ASCII gateNotTTYMessageASCII (a
+// semicolon, never the em-dash, so the plain byte-purity guard stays green).
+// Prompt then returns the exported ErrNotInteractive sentinel; the presenter sets
+// no exit code.
+func (p *PlainPresenter) failNotInteractive() (Choice, error) {
+	p.writef("%s: FAILED - %s\n", gateFailLabel, gateNotTTYMessageASCII)
+	p.errf("%s: FAILED - %s\n", gateFailLabel, gateNotTTYMessageASCII)
+	return "", ErrNotInteractive
 }
 
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is
