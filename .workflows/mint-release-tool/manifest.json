@@ -271,6 +271,18 @@
             "cli-presentation-4-7": "tick-f3c5b2"
           },
           "external_id": "tick-46068c"
+        },
+        "commit-command": {
+          "status": "in-progress",
+          "format": "tick",
+          "spec_commit": "a2c31614d7cb99d3bdca607cd369363ba92c4b97",
+          "task_list_gate_mode": "gated",
+          "author_gate_mode": "gated",
+          "finding_gate_mode": "gated",
+          "review_cycle": 0,
+          "phase": 1,
+          "task": "~",
+          "task_map": {}
         }
       }
     }
