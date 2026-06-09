@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-09
 cycle: 1
 phase: Traceability Review
@@ -63,7 +63,7 @@ Append to `**Do**` (under the `RunStarted` bullet):
 Add to `**Acceptance Criteria**`:
 - [ ] The brand leaf is rendered from the engine-supplied payload datum (defaulting to `🌿`), not re-derived/hardcoded in the presenter.
 
-**Resolution**: Pending
-**Notes**: Low-severity / confirmatory. If the user prefers the leaf as a fixed presenter constant, this finding can be resolved as "no change" — the literal-leaf reading is consistent with every worked example in the spec.
+**Resolution**: Fixed
+**Notes**: Auto-approved. Applied to Task cli-presentation-1-5 (Context, Do→RunStarted, Acceptance Criteria) in phase-1-tasks.md and tick task tick-c09dc8 — brand leaf is engine-supplied via the start/end-of-run payload, defaulting to `🌿`.
 
 ---

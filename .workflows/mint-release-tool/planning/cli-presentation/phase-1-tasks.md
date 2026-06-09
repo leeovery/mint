@@ -191,7 +191,7 @@ total: 6
 **Do**:
 - Add `github.com/charmbracelet/lipgloss` to `go.mod`. Create `internal/presenter/pretty.go` with `type PrettyPresenter struct { out io.Writer; err io.Writer; ... }` and constructor `NewPrettyPresenter(out, err io.Writer) *PrettyPresenter`.
 - Implement the minimal methods:
-  - `RunStarted` → top brand line `🌿 mint · {project}  ›  releasing v{X}` (flush-left).
+  - `RunStarted` → top brand line `🌿 mint · {project}  ›  releasing v{X}` (flush-left). The brand leaf is **engine-supplied** (carried on the start-of-run/end-of-run payload, defaulting to `🌿`) rather than hardcoded, honouring the spec's "leaf ties to `commit_prefix`" note and the event-payload principle; render the supplied leaf, do not re-derive it.
   - `StageSucceeded` → two-space indent, green `✓` glyph, stage name padded to a column, terse detail: `  ✓ {stage}  {detail}`. Render `({elapsed})` only when `Blocking` is true (short stages render detail without elapsed).
   - `StageStarted` → for the skeleton, render a dim stage line (no spinner animation — Phase 4 owns the spinner lifecycle); keep it a single printed line so the flow is linear.
   - `StageFailed` → red `✗ {stage}  {message}` line (captured-output rendering is Phase 2).
@@ -206,6 +206,7 @@ total: 6
 - [ ] With colour forced **on**, output contains ANSI colour codes around the glyph/text; the layout (indent, glyph, padded name) is present.
 - [ ] With colour **downgraded** (no-colour profile), output contains **no** ANSI colour escape codes, while layout and glyphs (`✓`, brand leaf) are preserved (colour auto-downgrade edge case).
 - [ ] Styling goes exclusively through `lipgloss`; there is no custom `NO_COLOR`/`TERM` check in the pretty path.
+- [ ] The brand leaf is rendered from the engine-supplied payload datum (defaulting to `🌿`), not re-derived/hardcoded in the presenter.
 
 **Tests**:
 - `"it renders the minimal pretty stage sequence with brand lines and a check glyph"` — capture to a buffer, assert brand top line, `✓` stage line, brand bottom line in order.
@@ -221,6 +222,7 @@ total: 6
 > `lipgloss` for all `pretty`-mode styling — colour, the 🌿 brand line, status glyphs, the titled notes rule. It is pure string styling (no event loop), so it composes with the `Presenter` seam, and it auto-downgrades colour when piped (also relied on for colour-incapable TTYs).
 > NOT Bubble Tea / no alt-screen / no full-screen TUI. Print-style linear narration only.
 > Brand lines — Top: `🌿 mint · {project}  ›  releasing v{X}`; Bottom: `🌿 released {project} v{X} · {url}`. Status glyphs: `✓` success (green) · `✗` failure (red) · `⚠` warn (amber) · `↩` auto-unwind. Stage lines: two-space indent, glyph, stage name padded to a column, terse detail.
+> Brand-leaf provenance: the spec notes "the leaf ties to the engine's `commit_prefix` brand." Per the event-payload principle the engine supplies every datum the rendering consumes, so the leaf glyph should arrive in the start-of-run / end-of-run payload (e.g. a `Leaf`/`Brand` field on `RunInfo`/`RunResult`, defaulting to `🌿`) rather than being hardcoded in the presenter — the presenter renders the engine-supplied leaf so a customised `commit_prefix` brand stays consistent. Every worked example uses the default `🌿`; if a fixed constant leaf is preferred, the field can be omitted and the literal `🌿` rendered.
 > A real-but-colour-incapable TTY (`TERM=dumb`) is still selected as `pretty`; `mint` leans on lipgloss's built-in colour auto-downgrade, which emits no colour codes there while keeping layout and glyphs. This is not a third `mint` mode.
 > Spinners are out of scope for this phase — the spinner lifecycle (started on `StageStarted`, replaced in place on completion) is hardened in Phase 4. For the skeleton, `StageStarted` renders a static dim line.
 
