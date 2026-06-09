@@ -136,7 +136,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 5,
-          "task": "~",
+          "task": "mint-release-tool-5-1",
           "task_map": {
             "mint-release-tool": "tick-d4f773",
             "mint-release-tool-1": "tick-468da7",

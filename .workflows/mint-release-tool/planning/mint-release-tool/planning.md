@@ -159,6 +159,26 @@ approved_at: 2026-06-09
 - [ ] Provider create-or-update is automatic (probe per version); fresh runs the notes-review gate (`-y` skips); `git push origin HEAD` is the PONR with reset-on-abort and warn-only on post-push provider failure; `--target both` is not atomic across surfaces
 - [ ] `--all` runs oldest→newest, skip-and-continue with an end summary; whole-file CHANGELOG rebuild with one commit at the end; single-version uses idempotent in-place section replace
 
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-5-1 | regenerate command skeleton & two-axis flag parsing | bare regenerate (neither version nor --all) errors, both version and --all errors, --target value parsing (release\|changelog\|both), unknown --target value |
+| mint-release-tool-5-2 | Source×target axis contract validation | --reuse --target changelog → error, --reuse --target both → error, --target changelog with changelog=false → error, --target both with changelog=false → error, --fresh -y without --target → error, --reuse implies --target release |
+| mint-release-tool-5-3 | Version argument & diff-base resolution | version with tag_prefix, version without tag_prefix, no matching tag → fail loud, oldest release (no vX-1) → fixed "Initial release." no AI, monorepo tag_prefix |
+| mint-release-tool-5-4 | Regenerate preflight subset per verb | reuse → gh-auth only, fresh changelog/both → gh-auth + clean-tree + branch + remote-sync, not tag-free (tags untouched), no version compute, reuse skips git-mutation gates |
+| mint-release-tool-5-5 | Reuse source — read tag annotation body | lightweight tag → no annotation body error, empty/whitespace body → error, "use --fresh" hint, body used whole (deterministic, no parse) |
+| mint-release-tool-5-6 | Fresh source — re-diff vX-1..vX + AI notes | strategy-aware version_file exclusion (plain excludes, embedded doesn't), CHANGELOG.md always-excluded, range contains bookkeeping commit (path exclusion not commit), Change Map reused, oldest release fixed body |
+| mint-release-tool-5-7 | Provider release create-or-update probe | release exists → UpdateRelease, release absent → CreateRelease, resolved per version, behind Publisher interface |
+| mint-release-tool-5-8 | Single-version changelog write (in-place idempotent replace) | existing version section → replaced in place, subject docs(changelog): regenerate notes for {tag}, no net change → no empty commit, no tag cut |
+| mint-release-tool-5-9 | Single-version write, push & recovery | gate abort → reset commit, pre-push failure → reset commit, provider failure after changelog push → warn only, --target both writes changelog then provider (non-atomic), reuse → simple confirm no gate, -y skips confirm |
+| mint-release-tool-5-10 | Interactive default flow (source/target prompts + plan + confirm) | fresh runs notes-review gate before write, reuse → simple confirm only, flags skip questions still confirm, -y skips confirm |
+| mint-release-tool-5-11 | Batch --all single-version regeneration loop | ordering oldest→newest, per-version review gates, -y opts out, mixed update/create across batch, re-runnable no resume state |
+| mint-release-tool-5-12 | Batch --all skip-and-continue & end summary | per-version diff-too-large skipped + reported, --reuse --all missing annotation → skip + report, config error (changelog=false target) aborts whole batch up front, end summary lists skipped versions + reasons, overrides on_notes_failure=abort |
+| mint-release-tool-5-13 | Batch --all whole-file CHANGELOG rebuild (one commit at end) | whole-file rebuild (not in-place) repairs ordering/stray-section drift, natural-order rebuild, one commit+push after all versions reviewed, --all release-only target makes no changelog commit |
+
 ### Phase 6: Config Schema & `mint init` Scaffolding
 status: approved
 approved_at: 2026-06-09
