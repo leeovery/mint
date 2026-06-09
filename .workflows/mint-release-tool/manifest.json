@@ -273,7 +273,7 @@
           "external_id": "tick-46068c"
         },
         "commit-command": {
-          "status": "in-progress",
+          "status": "completed",
           "format": "tick",
           "spec_commit": "2c45165c0c633c8d4344fff5b8b9a7d372f447f0",
           "task_list_gate_mode": "auto",
