@@ -126,6 +126,23 @@ approved_at: 2026-06-09
 - [ ] `--dry-run` generates the notes preview and caches it; the real run reuses on a key match (hash of post-`diff_exclude` diff + computed version + prompt/`context`), regenerates + reports on miss, with ~1h TTL, gitignored and never committed; the review gate is unaffected
 - [ ] Provider is auto-detected from the remote host (`github.com` → GitHub); an unknown `provider` value, an unmatched host, or no remote with `publish = true` warns loudly and downgrades to tag + push only — never silently assumes GitHub, never strands a pushed tag
 
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-4-1 | Lock-resilient git wrapper (git_safe built-in) | contended .git lock → retry then succeed, provably-stale lock → cleared, live/fresh lock not cleared, retries exhausted → surface error, applied to every mutation path |
+| mint-release-tool-4-2 | Surgical pre-PONR auto-unwind (delete tag + reset N commits + report) | zero commits made, one commit, two commits (hook-artifact + bookkeeping), tag created vs not-yet-created, reports each undone item, post-PONR never unwinds |
+| mint-release-tool-4-3 | Gate-abort & pre-push failure route through surgical unwind | gate n → surgical unwind, pre-push git failure → surgical unwind, push succeeds + publish fails → warn only (no unwind), identical clean-state result for n and failure |
+| mint-release-tool-4-4 | --autostash stash/restore with unwind ordering | clean restore after success, restore after abort (unwind then pop), pop conflict → stash kept + warn (WIP never discarded), untracked files stashed, no WIP → no-op |
+| mint-release-tool-4-5 | --any-branch branch-gate bypass | off-branch + flag → passes, off-branch without flag → still aborts, on-branch + flag → no effect |
+| mint-release-tool-4-6 | --set-version explicit version validation (MINT_BUMP=explicit) | combined with -p/-m/-M → error, malformed/non-3-part semver → error, equal to latest → reject, less than latest → reject, greater → accepted, first release (latest 0.0.0), MINT_BUMP=explicit injected |
+| mint-release-tool-4-7 | Dry-run note cache write & key computation | cache dir gitignored/temp, key includes context/prompt, TTL stamp written, repo-scoped key, dry-run still skips hooks |
+| mint-release-tool-4-8 | Real-run cache reuse, miss-regenerate & TTL/gate orthogonality | key match → reuse (no AI call), diff-changed miss → regenerate + report, expired TTL → regenerate, non-excluded pre_tag change → correct miss, excluded hook artifact → still reuse, cached note still shown at gate, -y still skips |
+| mint-release-tool-4-9 | Provider auto-detection from remote host | github.com remote → GitHub driver, SSH github.com URL → GitHub driver, explicit provider config overrides detection, detection behind Publisher interface |
+| mint-release-tool-4-10 | Safe downgrade to tag+push on unresolved provider | unknown provider value → warn + downgrade, GHE/GitLab/Gitea host → warn + downgrade, no remote → warn + downgrade, unmatchable SSH → warn + downgrade, publish=false → silent tag+push (no warn), gh gate skipped so tag never stranded |
+
 ### Phase 5: Regenerate / Backfill (Heal & History Rewrite)
 status: approved
 approved_at: 2026-06-09
