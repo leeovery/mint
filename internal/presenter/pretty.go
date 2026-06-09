@@ -38,8 +38,11 @@ const stageIndent = "  "
 type PrettyPresenter struct {
 	// out receives the narration stream (stdout in production).
 	out io.Writer
-	// err receives errors/warnings per the stream contract. It is accepted now so
-	// the constructor is stable across phases; this task narrates only to out.
+	// err receives the one-line failure/warning summary per the stream contract
+	// (stderr in production), for redirect-visibility. The summary written here is
+	// plain (unstyled) text: stderr is a redirect-visibility channel, not a styled
+	// surface, so it carries no ANSI — keeping it simple and consistent with plain
+	// mode. A clean run writes nothing to err.
 	err io.Writer
 	// renderer is the lipgloss renderer bound to out. Injecting it (rather than
 	// using the package default) is the test seam: production binds it to out so
@@ -68,13 +71,24 @@ func NewPrettyPresenter(out, err io.Writer) *PrettyPresenter {
 }
 
 // NewPrettyPresenterWithProfile constructs a PrettyPresenter whose renderer is
-// forced to the given colour profile. It is the test seam: tests pass
-// termenv.TrueColor/ANSI to assert ANSI codes are emitted, or termenv.Ascii to
-// assert the colour auto-downgrade emits none while layout and glyphs survive.
+// forced to the given colour profile, with no err writer wired. It is the test
+// seam for out-only assertions: tests pass termenv.TrueColor/ANSI to assert ANSI
+// codes are emitted, or termenv.Ascii to assert the colour auto-downgrade emits
+// none while layout and glyphs survive. Use NewPrettyPresenterWithErr when the
+// stderr split itself is under test.
 func NewPrettyPresenterWithProfile(out io.Writer, profile termenv.Profile) *PrettyPresenter {
+	return NewPrettyPresenterWithErr(out, nil, profile)
+}
+
+// NewPrettyPresenterWithErr constructs a PrettyPresenter whose renderer is forced
+// to the given colour profile AND whose err writer is wired. It is the test seam
+// for the stream-split contract: forcing colour on out while capturing err proves
+// the stderr summary stays unstyled by design — not merely because lipgloss
+// auto-downgrades on a non-TTY buffer.
+func NewPrettyPresenterWithErr(out, err io.Writer, profile termenv.Profile) *PrettyPresenter {
 	renderer := lipgloss.NewRenderer(out)
 	renderer.SetColorProfile(profile)
-	return newPrettyPresenter(out, nil, renderer)
+	return newPrettyPresenter(out, err, renderer)
 }
 
 // newPrettyPresenter is the shared constructor core: it derives the styles from
@@ -97,6 +111,20 @@ func newPrettyPresenter(out, err io.Writer, renderer *lipgloss.Renderer) *Pretty
 // place, rather than ignored ad hoc at each call site.
 func (p *PrettyPresenter) writef(format string, args ...any) {
 	_, _ = fmt.Fprintf(p.out, format, args...)
+}
+
+// errf writes one plain (unstyled) line to the err stream (stderr in
+// production). Per the stream contract only the one-line failure/warning summary
+// is duplicated here for redirect-visibility — never the multi-line captured
+// body — and it is intentionally unstyled: stderr is a visibility channel, not a
+// styled surface. The err writer is nil under the profile-forcing test
+// constructor (which exercises only out), so a nil err is a no-op rather than a
+// panic. As with writef, the write error is discarded.
+func (p *PrettyPresenter) errf(format string, args ...any) {
+	if p.err == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(p.err, format, args...)
 }
 
 // leafOrDefault returns the engine-supplied brand leaf, falling back to mint's
@@ -141,12 +169,17 @@ func (p *PrettyPresenter) StageSucceeded(s StageSuccess) {
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), detail)
 }
 
-// StageFailed renders the failure stage line: two-space indent, a red ✗, the
-// padded stage name, then the message. Captured-output rendering below this line
-// is a later phase; this task owns the single ✗ line.
+// StageFailed renders the styled failure stage line to out (two-space indent, a
+// red ✗, the padded stage name, then the message) AND duplicates the one-line
+// "✗ {stage}  {message}" summary to err — unstyled, since stderr is a
+// redirect-visibility channel, not a styled surface — so a failure cannot
+// silently vanish under redirection. The captured-output body (s.Output) is
+// narration → out only; when later phases render it below this line, it MUST NOT
+// be duplicated to err — only the one-line summary goes there.
 func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	glyph := p.failure.Render("✗")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), s.Message)
+	p.errf("✗ %s  %s\n", s.Name, s.Message)
 }
 
 // RunFinished renders the bottom brand line, flush-left:

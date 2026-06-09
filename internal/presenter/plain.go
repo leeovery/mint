@@ -13,18 +13,19 @@ import (
 type PlainPresenter struct {
 	// out receives the narration stream (stdout in production).
 	out io.Writer
-	// err receives errors/warnings per the stream contract. It is accepted now
-	// so the constructor is stable; Task cli-presentation-1-6 wires it fully.
-	// This task narrates only to out, so err may be unused here.
+	// err receives errors/warnings per the stream contract (stderr in
+	// production). Only the one-line failure/warning summary is duplicated here,
+	// for redirect-visibility — the full narration still goes to out. A clean run
+	// writes nothing to err.
 	err io.Writer
 }
 
 // Compile-time proof the plain presenter satisfies the seam it renders.
 var _ Presenter = (*PlainPresenter)(nil)
 
-// NewPlainPresenter constructs a PlainPresenter writing narration to out. The err
-// writer is accepted now to keep the constructor signature stable across phases;
-// Task cli-presentation-1-6 wires stderr duplication of errors/warnings.
+// NewPlainPresenter constructs a PlainPresenter writing narration to out and the
+// one-line failure/warning summary additionally to err (stdout/stderr in
+// production). The split is fixed regardless of render mode.
 func NewPlainPresenter(out, err io.Writer) *PlainPresenter {
 	return &PlainPresenter{out: out, err: err}
 }
@@ -35,6 +36,15 @@ func NewPlainPresenter(out, err io.Writer) *PlainPresenter {
 // than ignored ad hoc at every call site.
 func (p *PlainPresenter) writef(format string, args ...any) {
 	_, _ = fmt.Fprintf(p.out, format, args...)
+}
+
+// errf writes one line to the err stream (stderr in production). Per the stream
+// contract only the one-line failure/warning summary is duplicated here for
+// redirect-visibility; the multi-line captured body never reaches err. As with
+// writef, the write error is discarded — the engine narrates fire-and-forget and
+// a failed write to err has nowhere to propagate.
+func (p *PlainPresenter) errf(format string, args ...any) {
+	_, _ = fmt.Fprintf(p.err, format, args...)
 }
 
 // RunStarted renders the start-of-run line: "mint: {action} {project} v{X}". The
@@ -67,11 +77,14 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 	p.writef("%s: %s\n", s.Name, detail)
 }
 
-// StageFailed renders the one-line failure summary: "{stage}: FAILED - {message}".
-// The captured-output delimiter block and stderr duplication are later-phase
-// concerns; this task owns only the summary line.
+// StageFailed renders the one-line failure summary "{stage}: FAILED - {message}"
+// to out (the narration) AND duplicates that same one-line summary to err so a
+// failure cannot silently vanish under redirection. The captured-output body
+// (s.Output) is narration → out only; when later phases render it, it MUST NOT be
+// duplicated to err — only the one-line summary goes there.
 func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.writef("%s: FAILED - %s\n", s.Name, s.Message)
+	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
 }
 
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is
