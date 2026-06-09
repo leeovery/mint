@@ -280,8 +280,8 @@
           "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
-          "phase": 5,
-          "task": "commit-command-5-1",
+          "phase": 6,
+          "task": "~",
           "task_map": {
             "commit-command": "tick-82909f",
             "commit-command-1": "tick-9275fd",
@@ -307,7 +307,13 @@
             "commit-command-4-2": "tick-0c2776",
             "commit-command-4-3": "tick-2ac895",
             "commit-command-4-4": "tick-6049fb",
-            "commit-command-4-5": "tick-30658f"
+            "commit-command-4-5": "tick-30658f",
+            "commit-command-5": "tick-892cf5",
+            "commit-command-5-1": "tick-beb52c",
+            "commit-command-5-2": "tick-c5c87c",
+            "commit-command-5-3": "tick-50726c",
+            "commit-command-5-4": "tick-803aaf",
+            "commit-command-5-5": "tick-d1c608"
           },
           "external_id": "tick-82909f"
         }
