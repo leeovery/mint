@@ -67,6 +67,15 @@ type Presenter interface {
 	// success end-of-run line. Per the stream contract a warning is narration → out
 	// AND is duplicated to err (stderr) for redirect-visibility.
 	Warn(w Warning)
+	// Unwound renders the auto-unwind event — a FIRST-CLASS event distinct from
+	// StageFailed — narrating what the engine undid after a failure or an abort. It
+	// has its own glyph (↩ in pretty) and renders the engine-supplied Summary
+	// VERBATIM (the presenter does NOT synthesise the "repo clean" tail — that tail
+	// is part of the engine's Summary). Unlike StageFailed/Warn, Unwound is
+	// narration → out ONLY: per the per-event stream table the auto-unwind line is
+	// not duplicated to err. Like StageFailed it marks the run as terminal so the
+	// success end-of-run line is suppressed; the presenter never sets an exit code.
+	Unwound(u Unwind)
 	// ShowPlan renders the upcoming plan — the steps mint is about to perform.
 	// It is narration → out only; it never writes to err.
 	ShowPlan(plan Plan)
@@ -237,6 +246,25 @@ type Warning struct {
 	// Message is the engine-supplied warning text, rendered verbatim. The empty
 	// string is legal and renders the label-prefixed form with no message.
 	Message string
+}
+
+// Unwind carries the Unwound payload: the engine's verbatim "what it undid"
+// summary, narrated after a failed or aborted run. Summary is a single
+// engine-authored string that INCLUDES its own trailing "repo clean" tail (the
+// pretty worked example reads "… — repo clean"; the plain example reads "…; repo
+// clean"). The presenter renders Summary VERBATIM and synthesises NO part of it —
+// in particular it does not append, normalise, or invent the "repo clean" tail,
+// because the tail's exact wording and separator are engine content.
+//
+// Unwound is a first-class event (not a StageFailed). It is the abort path's
+// terminal narration: gate-n produces an Unwound with no prior StageFailed, while
+// a failed stage produces a StageFailed followed by an Unwound. Either way the
+// presenter treats the run as terminal and suppresses the success end-of-run line.
+type Unwind struct {
+	// Summary is the engine-supplied "what it undid" text, rendered verbatim and
+	// INCLUDING its own "repo clean" tail. The empty string is legal and renders the
+	// label-prefixed form with no summary.
+	Summary string
 }
 
 // RunResult carries the end-of-run success payload. URL is optional — verbs

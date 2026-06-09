@@ -70,6 +70,24 @@ type PrettyPresenter struct {
 	failure lipgloss.Style
 	warn    lipgloss.Style
 	dim     lipgloss.Style
+	// unwound styles the ↩ auto-unwind glyph. The spec assigns ↩ no specific
+	// colour, so it is styled DIM (bright-black) — a subdued, recovery-flavoured
+	// tone consistent with the other secondary narration (StageStarted, the Plan
+	// header, the notes rules are all dim) and deliberately not competing with the
+	// load-bearing ✓/✗/⚠ status colours. Like every style here it is layout-safe:
+	// the indent, glyph, and column padding survive a colour downgrade as bare text.
+	unwound lipgloss.Style
+
+	// terminalFailure records that the run has hit a terminal failure or abort —
+	// set by StageFailed (a failed stage) and by Unwound (a failure or gate-n
+	// abort). It makes the presenter STATEFUL per run: when set, RunFinished
+	// suppresses the success bottom brand line, which is SUCCESS-ONLY. There is no
+	// failure-flavoured closing brand line — failure/abort is signalled by the
+	// ✗/unwound lines plus the engine-owned non-zero exit code. Warn does NOT set
+	// this flag (a warn-only run still ends with the success brand line). One
+	// presenter instance is constructed per run, so this per-run state is sound;
+	// tests construct a fresh presenter per scenario.
+	terminalFailure bool
 }
 
 // Compile-time proof the pretty presenter satisfies the seam it renders.
@@ -117,6 +135,7 @@ func newPrettyPresenter(out, err io.Writer, renderer *lipgloss.Renderer) *Pretty
 		failure:  renderer.NewStyle().Foreground(lipgloss.Color("1")),   // red
 		warn:     renderer.NewStyle().Foreground(lipgloss.Color("214")), // amber / orange
 		dim:      renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
+		unwound:  renderer.NewStyle().Foreground(lipgloss.Color("8")),   // ↩ glyph — dim (no spec colour; subdued recovery tone)
 	}
 }
 
@@ -227,6 +246,7 @@ func stageTrailing(s StageSuccess) string {
 // the one-line summary goes there. An empty Output renders NO body block — the ✗
 // line stands alone.
 func (p *PrettyPresenter) StageFailed(s StageFailure) {
+	p.terminalFailure = true
 	glyph := p.failure.Render("✗")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), s.Message)
 	p.errf("✗ %s  %s\n", s.Name, s.Message)
@@ -234,6 +254,26 @@ func (p *PrettyPresenter) StageFailed(s StageFailure) {
 		return
 	}
 	writeNotesBody(p.out, s.Output)
+}
+
+// Unwound renders the auto-unwind line to OUT ONLY, MIRRORING the StageSucceeded
+// line shape exactly: two-space indent, the ↩ glyph styled through the renderer,
+// the literal label "unwound" padded to the stage column, then the engine-supplied
+// summary rendered VERBATIM — INCLUDING its own "— repo clean" tail (the presenter
+// synthesises no tail of its own). The worked example reads
+// "  ↩ unwound    removed tag v1.4.0, reset 2 release commit(s) — repo clean".
+//
+// Per the per-event stream table the auto-unwind line is narration only and is NOT
+// duplicated to err, unlike the ✗/⚠ summaries. Unwound marks the run terminal
+// (setting terminalFailure) so a subsequent RunFinished suppresses the success
+// bottom brand line — covering BOTH the failure path (StageFailed → Unwound) and
+// the abort path (gate-n: Unwound with no prior StageFailed). The ↩ glyph is styled
+// dim; the layout (indent, glyph, column padding) survives a colour downgrade as
+// bare text.
+func (p *PrettyPresenter) Unwound(u Unwind) {
+	p.terminalFailure = true
+	glyph := p.unwound.Render("↩")
+	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage("unwound"), u.Summary)
 }
 
 // Warn renders a standalone amber warning line to out — two-space indent, the
@@ -379,7 +419,16 @@ func displayWidth(s string) int {
 //
 // NOTE: the literal "released" here is the skeleton placeholder; the verb-shaped
 // end-of-run line and regenerate's URL-less variant are owned by a later task.
+//
+// The bottom brand line is SUCCESS-ONLY: when the run has hit a terminal failure
+// or abort (terminalFailure set by StageFailed or Unwound) this emits NOTHING —
+// there is no failure-flavoured closing brand line. The run has already ended
+// after the ✗/unwound lines; failure is signalled by those lines plus the
+// engine-owned non-zero exit code. The presenter never sets the exit code.
 func (p *PrettyPresenter) RunFinished(r RunResult) {
+	if p.terminalFailure {
+		return
+	}
 	leaf := leafOrDefault(r.Leaf)
 	if r.URL == "" {
 		p.writef("%s released %s v%s\n", leaf, r.Project, r.Version)

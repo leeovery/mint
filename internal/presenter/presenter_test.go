@@ -23,6 +23,7 @@ func (p *nopPresenter) StageStarted(presenter.StageStart)     {}
 func (p *nopPresenter) StageSucceeded(presenter.StageSuccess) {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)    {}
 func (p *nopPresenter) Warn(presenter.Warning)                {}
+func (p *nopPresenter) Unwound(presenter.Unwind)              {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
 func (p *nopPresenter) ShowNotes(presenter.Notes)             {}
 func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
@@ -40,9 +41,46 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.StageSucceeded(presenter.StageSuccess{})
 	p.StageFailed(presenter.StageFailure{})
 	p.Warn(presenter.Warning{})
+	p.Unwound(presenter.Unwind{})
 	p.ShowPlan(presenter.Plan{})
 	p.ShowNotes(presenter.Notes{})
 	p.RunFinished(presenter.RunResult{})
+}
+
+// TestUnwindCarriesEngineSuppliedSummary proves the Unwind payload carries the
+// engine's verbatim "what it undid" summary as a single field — including the
+// summary's own "repo clean" tail. The presenter renders it verbatim and never
+// synthesises the tail itself.
+func TestUnwindCarriesEngineSuppliedSummary(t *testing.T) {
+	u := presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"}
+
+	if u.Summary != "removed tag v1.4.0, reset 2 commits; repo clean" {
+		t.Errorf("Summary = %q, want %q", u.Summary, "removed tag v1.4.0, reset 2 commits; repo clean")
+	}
+}
+
+// TestUnwoundPayloadRoundTripsThroughRecorder proves the recorder captures the
+// full Unwind payload so an engine-driven test can round-trip the unwind summary
+// independent of any rendering.
+func TestUnwoundPayloadRoundTripsThroughRecorder(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+	u := presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"}
+
+	rec.Unwound(u)
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.Kind != presentertest.KindUnwound {
+		t.Fatalf("Kind = %v, want %v", ev.Kind, presentertest.KindUnwound)
+	}
+	if ev.Unwound != u {
+		t.Errorf("Unwound = %+v, want %+v", ev.Unwound, u)
+	}
+	if ev.Unwound.Summary != "removed tag v1.4.0, reset 2 commits; repo clean" {
+		t.Errorf("Summary = %q, want %q", ev.Unwound.Summary, "removed tag v1.4.0, reset 2 commits; repo clean")
+	}
 }
 
 // TestWarningCarriesStructuredLabelAndMessage proves the Warn payload carries a

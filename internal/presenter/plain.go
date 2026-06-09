@@ -19,6 +19,16 @@ type PlainPresenter struct {
 	// for redirect-visibility — the full narration still goes to out. A clean run
 	// writes nothing to err.
 	err io.Writer
+	// terminalFailure records that the run has hit a terminal failure or abort —
+	// set by StageFailed (a failed stage) and by Unwound (a failure or gate-n
+	// abort). It makes the presenter STATEFUL per run: when set, RunFinished
+	// suppresses the success end-of-run line, which is SUCCESS-ONLY. There is no
+	// failure-flavoured closing line — failure/abort is signalled by the
+	// FAILED/unwound lines plus the engine-owned non-zero exit code. Warn does NOT
+	// set this flag (a warn-only run still ends with the success line). One
+	// presenter instance is constructed per run via NewPlainPresenter, so this
+	// per-run state is sound; tests construct a fresh presenter per scenario.
+	terminalFailure bool
 }
 
 // Compile-time proof the plain presenter satisfies the seam it renders.
@@ -112,6 +122,7 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 // rendered verbatim (the plain byte-purity guard scans synthesised narration, not
 // this engine-supplied body).
 func (p *PlainPresenter) StageFailed(s StageFailure) {
+	p.terminalFailure = true
 	p.writef("%s: FAILED - %s\n", s.Name, s.Message)
 	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
 	if s.Output == "" {
@@ -120,6 +131,23 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.writef("--- output ---\n")
 	writeNotesBody(p.out, s.Output)
 	p.writef("--- end output ---\n")
+}
+
+// Unwound renders the auto-unwind line "unwound: {summary}" to OUT ONLY — the
+// summary is the engine's verbatim "what it undid" text, rendered as-is INCLUDING
+// its own "; repo clean" tail (the presenter synthesises no tail of its own). Per
+// the per-event stream table the auto-unwind line is narration only and is NOT
+// duplicated to err, unlike the FAILED/WARN summaries.
+//
+// Unwound marks the run terminal (setting terminalFailure) so a subsequent
+// RunFinished suppresses the success end-of-run line — covering BOTH the failure
+// path (StageFailed → Unwound) and the abort path (gate-n: Unwound with no prior
+// StageFailed). The synthesised "unwound: " prefix is byte-pure ASCII; the summary
+// is engine content rendered verbatim (the byte-purity guard scans the synthesised
+// prefix, not the engine summary).
+func (p *PlainPresenter) Unwound(u Unwind) {
+	p.terminalFailure = true
+	p.writef("unwound: %s\n", u.Summary)
 }
 
 // Warn renders the structured warning as "{label}: WARN - {message}" to out (the
@@ -195,7 +223,16 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 // RunFinished renders the success-shaped end-of-run line. With a release URL it is
 // "done: {project} v{X} {url}"; verbs that publish no release leave URL empty, so
 // the line collapses to "done: {project} v{X}" with no dangling trailing space.
+//
+// The end-of-run line is SUCCESS-ONLY: when the run has hit a terminal failure or
+// abort (terminalFailure set by StageFailed or Unwound) this emits NOTHING — there
+// is no failure-flavoured "done:" line. The run has already ended after the
+// FAILED/unwound lines; failure is signalled by those lines plus the engine-owned
+// non-zero exit code. The presenter never sets the exit code.
 func (p *PlainPresenter) RunFinished(r RunResult) {
+	if p.terminalFailure {
+		return
+	}
 	if r.URL == "" {
 		p.writef("done: %s v%s\n", r.Project, r.Version)
 		return

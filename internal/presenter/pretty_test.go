@@ -695,6 +695,123 @@ func TestPrettyPresenterWarnDoesNotSuppressSuccessEndOfRunLine(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterUnwoundRendersGlyphLineWithVerbatimSummary is the core
+// pretty Unwound acceptance: the auto-unwind line mirrors the StageSucceeded line
+// shape — two-space indent, the ↩ glyph, the literal "unwound" padded to the stage
+// column (7 chars → 4 trailing spaces to reach column 11), then the engine-supplied
+// summary VERBATIM, including its own "— repo clean" tail. The no-colour profile
+// keeps the assertion on the exact layout; the colour-on profile proves the glyph
+// is styled. Both are asserted to lock the exact line and the styling.
+func TestPrettyPresenterUnwoundRendersGlyphLineWithVerbatimSummary(t *testing.T) {
+	const summary = "removed tag v1.4.0, reset 2 release commit(s) — repo clean"
+
+	t.Run("colour downgrade renders the exact layout", func(t *testing.T) {
+		t.Parallel()
+
+		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+			p.Unwound(presenter.Unwind{Summary: summary})
+		})
+
+		want := "  ↩ unwound    " + summary + "\n"
+		if got := out.String(); got != want {
+			t.Errorf("unwound line = %q, want %q", got, want)
+		}
+		if bytes.ContainsRune(out.Bytes(), 0x1b) {
+			t.Errorf("downgraded unwound line leaked an SGR code:\n%q", out.String())
+		}
+	})
+
+	t.Run("colour on styles the glyph while layout survives", func(t *testing.T) {
+		t.Parallel()
+
+		out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
+			p.Unwound(presenter.Unwind{Summary: summary})
+		})
+
+		if !bytes.ContainsRune(out.Bytes(), 0x1b) {
+			t.Errorf("colour-on unwound line contains no ESC (0x1b) — expected the ↩ glyph styled:\n%q", out.String())
+		}
+		if !strings.Contains(out.String(), "↩") {
+			t.Errorf("↩ glyph missing from colour-on unwound line:\n%q", out.String())
+		}
+		// The label padded to the column and the verbatim summary survive the styling.
+		if !strings.Contains(out.String(), "unwound    "+summary) {
+			t.Errorf("padded label + verbatim summary missing:\n%q", out.String())
+		}
+	})
+}
+
+// TestPrettyPresenterUnwoundWritesToStdoutOnly proves the stream contract for
+// Unwound: with colour forced on, the styled line reaches stdout (ANSI present)
+// while err stays EMPTY — the auto-unwind line is narration only and is NOT
+// duplicated to stderr, unlike the ✗/⚠ summaries.
+func TestPrettyPresenterUnwoundWritesToStdoutOnly(t *testing.T) {
+	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
+	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.TrueColor)
+	p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
+
+	if !strings.Contains(out.String(), "↩") {
+		t.Errorf("pretty: unwound line missing from stdout:\n%q", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("pretty: Unwound wrote to stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestPrettyPresenterStageFailedThenRunFinishedSuppressesSuccessLine proves the
+// success bottom brand line is SUPPRESSED after a StageFailed: the failure run
+// ends after the ✗ line with no closing brand line.
+func TestPrettyPresenterStageFailedThenRunFinishedSuppressesSuccessLine(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	if strings.Contains(out.String(), "released") {
+		t.Errorf("success brand line must be suppressed after a StageFailed, got:\n%q", out.String())
+	}
+}
+
+// TestPrettyPresenterUnwoundAfterFailureSuppressesSuccessLine proves the failure
+// path in pretty mode: StageFailed → Unwound → RunFinished renders the ✗ and ↩
+// lines but suppresses the closing brand line.
+func TestPrettyPresenterUnwoundAfterFailureSuppressesSuccessLine(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
+		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "  ✗ tag/push") {
+		t.Errorf("✗ line missing:\n%q", got)
+	}
+	if !strings.Contains(got, "  ↩ unwound") {
+		t.Errorf("↩ line missing:\n%q", got)
+	}
+	if strings.Contains(got, "released") {
+		t.Errorf("success brand line must be suppressed after a failure+unwind, got:\n%q", got)
+	}
+}
+
+// TestPrettyPresenterUnwoundAfterAbortSuppressesSuccessLine proves the abort path
+// (gate-n) in pretty mode: an Unwound with NO prior StageFailed still suppresses
+// the closing brand line on the subsequent RunFinished.
+func TestPrettyPresenterUnwoundAfterAbortSuppressesSuccessLine(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "  ↩ unwound") {
+		t.Errorf("↩ line missing:\n%q", got)
+	}
+	if strings.Contains(got, "released") {
+		t.Errorf("success brand line must be suppressed after an abort unwind, got:\n%q", got)
+	}
+}
+
 // prettyCapturedOutput is the worked-example captured underlying-command output
 // shared across the pretty StageFailed body tests: multi-line git chatter with an
 // internal blank line.

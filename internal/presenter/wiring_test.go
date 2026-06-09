@@ -256,6 +256,110 @@ func TestWarnDoesNotSuppressSuccessRunEndLine(t *testing.T) {
 	}
 }
 
+// TestUnwoundAppearsOnStdoutOnly drives Unwound and asserts the auto-unwind line
+// reaches the stdout narration but is ABSENT from stderr, for BOTH modes — unlike
+// FAILED/WARN, the per-event table lists no stderr copy for the auto-unwind line.
+func TestUnwoundAppearsOnStdoutOnly(t *testing.T) {
+	tests := []struct {
+		name    string
+		mode    presenter.Mode
+		wantOut string
+	}{
+		{name: "plain", mode: presenter.ModePlain, wantOut: "unwound: removed tag v1.4.0, reset 2 commits; repo clean"},
+		{name: "pretty", mode: presenter.ModePretty, wantOut: "↩ unwound"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p, out, errBuf := newSplit(tt.mode)
+			p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+
+			if !strings.Contains(out.String(), tt.wantOut) {
+				t.Errorf("%s: unwound missing from stdout = %q, want it to contain %q", tt.name, out.String(), tt.wantOut)
+			}
+			if errBuf.Len() != 0 {
+				t.Errorf("%s: Unwound wrote to stderr = %q, want empty", tt.name, errBuf.String())
+			}
+		})
+	}
+}
+
+// TestStageFailedSuppressesSuccessRunEndLine drives StageFailed → RunFinished and
+// asserts the success end-of-run line is suppressed in BOTH modes — the closing
+// line is success-only; a failed run ends after the ✗/FAILED line.
+func TestStageFailedSuppressesSuccessRunEndLine(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      presenter.Mode
+		notExpect string
+	}{
+		{name: "plain", mode: presenter.ModePlain, notExpect: "done:"},
+		{name: "pretty", mode: presenter.ModePretty, notExpect: "released"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			p, out, _ := newSplit(tt.mode)
+			p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
+			p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+
+			if strings.Contains(out.String(), tt.notExpect) {
+				t.Errorf("%s: success end-of-run line must be suppressed after a StageFailed, got:\n%q", tt.name, out.String())
+			}
+		})
+	}
+}
+
+// TestUnwoundSuppressesSuccessRunEndLine drives the two unwind paths and asserts
+// the success end-of-run line is suppressed in BOTH modes whenever Unwound fired —
+// after a stage failure (StageFailed → Unwound → RunFinished) and after an abort
+// with no prior failure (Unwound → RunFinished, the gate-n path).
+func TestUnwoundSuppressesSuccessRunEndLine(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      presenter.Mode
+		notExpect string
+	}{
+		{name: "plain", mode: presenter.ModePlain, notExpect: "done:"},
+		{name: "pretty", mode: presenter.ModePretty, notExpect: "released"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			t.Run("after a stage failure", func(t *testing.T) {
+				t.Parallel()
+
+				p, out, _ := newSplit(tt.mode)
+				p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
+				p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+				p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+
+				if strings.Contains(out.String(), tt.notExpect) {
+					t.Errorf("%s: success line must be suppressed after failure+unwind, got:\n%q", tt.name, out.String())
+				}
+			})
+
+			t.Run("after an abort with no prior failure", func(t *testing.T) {
+				t.Parallel()
+
+				p, out, _ := newSplit(tt.mode)
+				p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+				p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+
+				if strings.Contains(out.String(), tt.notExpect) {
+					t.Errorf("%s: success line must be suppressed after an abort unwind, got:\n%q", tt.name, out.String())
+				}
+			})
+		})
+	}
+}
+
 // TestFailureStderrSummaryIsSingleLine asserts the stderr summary is exactly one
 // line for BOTH modes — the contract routes only the one-line summary to stderr,
 // never a multi-line body. (The captured-output body is a Phase 2 addition; this

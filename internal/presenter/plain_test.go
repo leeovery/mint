@@ -467,6 +467,114 @@ func TestPlainPresenterWarnEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 	}
 }
 
+// TestPlainPresenterUnwoundRendersSummaryVerbatim is the core plain Unwound
+// acceptance: the auto-unwind line renders "unwound: {summary}" with the
+// engine-supplied summary — including its own "; repo clean" tail — written
+// VERBATIM. The presenter synthesises no tail of its own.
+func TestPlainPresenterUnwoundRendersSummaryVerbatim(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+	})
+
+	want := "unwound: removed tag v1.4.0, reset 2 commits; repo clean\n"
+	if got := out.String(); got != want {
+		t.Errorf("Unwound = %q, want %q", got, want)
+	}
+}
+
+// TestPlainPresenterUnwoundWritesToStdoutOnly proves the stream contract for
+// Unwound: the auto-unwind line reaches OUT (narration) and is ABSENT from err —
+// unlike FAILED/WARN, the auto-unwind line is not duplicated to stderr (the
+// per-event table lists no stderr copy for it).
+func TestPlainPresenterUnwoundWritesToStdoutOnly(t *testing.T) {
+	out, errBuf := drive(func(p *presenter.PlainPresenter) {
+		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+	})
+
+	if !strings.Contains(out.String(), "unwound: removed tag v1.4.0, reset 2 commits; repo clean") {
+		t.Errorf("unwound line missing from stdout: %q", out.String())
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("Unwound wrote to stderr = %q, want empty", errBuf.String())
+	}
+}
+
+// TestPlainPresenterUnwoundPrefixIsBytePureASCII guards the byte-purity contract
+// for the synthesised "unwound: " prefix: it must be pure ASCII — the ↩ glyph is
+// PRETTY-only. (The summary here is ASCII so the whole line is asserted byte-pure.)
+func TestPlainPresenterUnwoundPrefixIsBytePureASCII(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+	})
+
+	for i, b := range out.Bytes() {
+		switch {
+		case b == 0x1b:
+			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain unwound output", i)
+		case b == 0x0d:
+			t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain unwound output", i)
+		case b == '\n':
+			// the only permitted control byte: a line terminator
+		case b < 0x20 || b > 0x7e:
+			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain unwound contract uses", i, b)
+		}
+	}
+}
+
+// TestPlainPresenterStageFailedThenRunFinishedSuppressesSuccessLine proves the
+// success end-of-run line is SUPPRESSED after a StageFailed: the failure run ends
+// after the FAILED line with no "done:" closing line.
+func TestPlainPresenterStageFailedThenRunFinishedSuppressesSuccessLine(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	if strings.Contains(out.String(), "done:") {
+		t.Errorf("success done line must be suppressed after a StageFailed, got:\n%q", out.String())
+	}
+}
+
+// TestPlainPresenterUnwoundAfterFailureSuppressesSuccessLine proves the failure
+// path: StageFailed → Unwound → RunFinished renders the FAILED and unwound lines
+// but suppresses the success "done:" line.
+func TestPlainPresenterUnwoundAfterFailureSuppressesSuccessLine(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
+		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "tag/push: FAILED - push rejected: remote moved") {
+		t.Errorf("FAILED line missing:\n%q", got)
+	}
+	if !strings.Contains(got, "unwound: removed tag v1.4.0, reset 2 commits; repo clean") {
+		t.Errorf("unwound line missing:\n%q", got)
+	}
+	if strings.Contains(got, "done:") {
+		t.Errorf("success done line must be suppressed after a failure+unwind, got:\n%q", got)
+	}
+}
+
+// TestPlainPresenterUnwoundAfterAbortSuppressesSuccessLine proves the abort path
+// (gate-n): an Unwound with NO prior StageFailed still suppresses the success
+// "done:" line on the subsequent RunFinished.
+func TestPlainPresenterUnwoundAfterAbortSuppressesSuccessLine(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "unwound: removed tag v1.4.0, reset 2 commits; repo clean") {
+		t.Errorf("unwound line missing:\n%q", got)
+	}
+	if strings.Contains(got, "done:") {
+		t.Errorf("success done line must be suppressed after an abort unwind, got:\n%q", got)
+	}
+}
+
 // TestPlainPresenterRunFinishedOmitsTrailingSpaceWhenURLEmpty covers the empty-URL
 // edge case (e.g. regenerate, which publishes no release): the done line must not
 // dangle a trailing space where the URL would be.

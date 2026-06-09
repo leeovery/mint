@@ -23,6 +23,7 @@ const (
 	KindStageSucceeded
 	KindStageFailed
 	KindWarn
+	KindUnwound
 	KindShowPlan
 	KindShowNotes
 	KindRunFinished
@@ -41,6 +42,8 @@ func (k EventKind) String() string {
 		return "StageFailed"
 	case KindWarn:
 		return "Warn"
+	case KindUnwound:
+		return "Unwound"
 	case KindShowPlan:
 		return "ShowPlan"
 	case KindShowNotes:
@@ -65,6 +68,7 @@ type Event struct {
 	StageSucceeded presenter.StageSuccess
 	StageFailed    presenter.StageFailure
 	Warn           presenter.Warning
+	Unwound        presenter.Unwind
 	ShowPlan       presenter.Plan
 	ShowNotes      presenter.Notes
 	RunFinished    presenter.RunResult
@@ -107,6 +111,13 @@ func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 // so an engine-driven test can round-trip the warning independent of any rendering.
 func (r *RecordingPresenter) Warn(w presenter.Warning) {
 	r.Events = append(r.Events, Event{Kind: KindWarn, Warn: w})
+}
+
+// Unwound records the auto-unwind event with its full payload — the verbatim
+// summary — so an engine-driven test can round-trip the unwind independent of any
+// rendering.
+func (r *RecordingPresenter) Unwound(u presenter.Unwind) {
+	r.Events = append(r.Events, Event{Kind: KindUnwound, Unwound: u})
 }
 
 // ShowPlan records the plan event with its full structured payload so an
