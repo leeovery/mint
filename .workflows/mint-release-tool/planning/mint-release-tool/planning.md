@@ -193,3 +193,18 @@ approved_at: 2026-06-09
 - [ ] `mint init` drops a commented `.mint.toml` (defaults + present-but-commented optional keys) and an executable `release` shim; idempotent/non-clobbering with a notice; `--force` regenerates; no project auto-detection and no hook/prompt files scaffolded
 - [ ] The `release` shim execs `mint release "$@"` and, when mint is absent, prints the `brew install leeovery/tools/mint` hint and exits non-zero
 - [ ] `mint version` and `mint --version` print mint's own version
+
+#### Tasks
+status: approved
+approved_at: 2026-06-09
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-6-1 | Typed config schema structs (full verb-namespaced shape) | file absent → all defaults, empty/comment-only file → all defaults, partial table present → keys default individually, only top-level keys present |
+| mint-release-tool-6-2 | Fail-loud validation: unknown keys | unknown top-level key, unknown [release] key, unknown [release.hooks] key, top-level [hooks] table rejected (must nest under [release.hooks]), typo'd key surfaced clearly |
+| mint-release-tool-6-3 | Fail-loud validation: bad types | scalar where array expected (diff_exclude), string where bool expected (publish/changelog), string where int expected (max_diff_lines), hook value string vs array both valid, on_notes_failure invalid enum value |
+| mint-release-tool-6-4 | Route earlier-phase as-needed loaders through the validated schema | all earlier-phase keys resolve with prior defaults, unknown provider VALUE warns + downgrades (not a hard error), whole-file validation runs once up front, bad key fails before pipeline work begins |
+| mint-release-tool-6-5 | `.mint.toml` commented-template generation | every scaffolded key validates once uncommented, optional keys present-but-commented with one-line explanation, no project auto-detection (no package.json sniffing), prompt-override file only mentioned in a comment not created |
+| mint-release-tool-6-6 | `release` shim generation | shim file mode executable, mint present → exec mint release "$@" passing args, mint absent → brew install hint + non-zero exit |
+| mint-release-tool-6-7 | `mint init` command (drops both files, idempotent/non-clobbering, --force) | neither file exists → both created, one exists → only the other created + notice, both exist → both skipped with notices, --force regenerates, files written at repo root, no hook/prompt files scaffolded |
+| mint-release-tool-6-8 | `mint version` / `mint --version` | `mint version` subcommand, `mint --version` flag, both print identical version string |
