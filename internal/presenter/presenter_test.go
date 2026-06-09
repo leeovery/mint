@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"mint/internal/presenter"
+	"mint/internal/presenter/presentertest"
 )
 
 // nopPresenter is a trivial no-op implementation used to prove that an ordinary
@@ -138,5 +139,123 @@ func TestRunResultCarriesBrandLeaf(t *testing.T) {
 
 	if r.Leaf != "🌱" {
 		t.Errorf("Leaf = %q, want %q", r.Leaf, "🌱")
+	}
+}
+
+// TestStageStartPayloadRoundTripsThroughRecorder proves the recorder captures the
+// full StageStart payload — name and the engine-supplied blocking flag — so an
+// engine-driven test can assert the flag the renderers depend on.
+func TestStageStartPayloadRoundTripsThroughRecorder(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+
+	rec.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.Kind != presentertest.KindStageStarted {
+		t.Fatalf("Kind = %v, want %v", ev.Kind, presentertest.KindStageStarted)
+	}
+	if ev.StageStarted.Name != "notes" {
+		t.Errorf("Name = %q, want %q", ev.StageStarted.Name, "notes")
+	}
+	if !ev.StageStarted.Blocking {
+		t.Error("Blocking = false, want true")
+	}
+}
+
+// TestStageSuccessPayloadRoundTripsThroughRecorder proves the recorder captures the
+// full extended StageSuccess payload — name, detail, engine-supplied elapsed, and
+// the blocking flag — with no field dropped.
+func TestStageSuccessPayloadRoundTripsThroughRecorder(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+	elapsed := 1100 * time.Millisecond
+
+	rec.StageSucceeded(presenter.StageSuccess{
+		Name:     "notes",
+		Detail:   "generated",
+		Elapsed:  elapsed,
+		Blocking: true,
+	})
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.Kind != presentertest.KindStageSucceeded {
+		t.Fatalf("Kind = %v, want %v", ev.Kind, presentertest.KindStageSucceeded)
+	}
+	if ev.StageSucceeded.Name != "notes" {
+		t.Errorf("Name = %q, want %q", ev.StageSucceeded.Name, "notes")
+	}
+	if ev.StageSucceeded.Detail != "generated" {
+		t.Errorf("Detail = %q, want %q", ev.StageSucceeded.Detail, "generated")
+	}
+	if ev.StageSucceeded.Elapsed != elapsed {
+		t.Errorf("Elapsed = %v, want %v", ev.StageSucceeded.Elapsed, elapsed)
+	}
+	if !ev.StageSucceeded.Blocking {
+		t.Error("Blocking = false, want true")
+	}
+}
+
+// TestShortStageSuccessCarriesNoMeaningfulElapsed locks the first zero-value
+// semantic: a short stage (Blocking==false) carries no meaningful elapsed. The
+// payload does not enforce a zero — renderers honour the flag and must not print
+// elapsed regardless of the Elapsed value. This contract test asserts the field
+// shape only; rendering lives in the pretty/plain tasks.
+func TestShortStageSuccessCarriesNoMeaningfulElapsed(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+
+	rec.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: "ok", Blocking: false})
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.StageSucceeded.Blocking {
+		t.Error("Blocking = true, want false for a short stage")
+	}
+	// The blocking flag — not the Elapsed value — is what gates elapsed rendering.
+	if ev.StageSucceeded.Detail != "ok" {
+		t.Errorf("Detail = %q, want %q", ev.StageSucceeded.Detail, "ok")
+	}
+}
+
+// TestZeroElapsedIsLegalOnBlockingStage locks the second zero-value semantic:
+// Elapsed==0 is legal even when Blocking==true and must NOT be treated as "no
+// elapsed". Constructing and recording such a payload is valid — no panic, no
+// special-casing.
+func TestZeroElapsedIsLegalOnBlockingStage(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+
+	rec.StageSucceeded(presenter.StageSuccess{Name: "notes", Blocking: true, Elapsed: 0})
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if !ev.StageSucceeded.Blocking {
+		t.Error("Blocking = false, want true")
+	}
+	if ev.StageSucceeded.Elapsed != 0 {
+		t.Errorf("Elapsed = %v, want 0", ev.StageSucceeded.Elapsed)
+	}
+}
+
+// TestEmptyDetailIsLegal locks the third zero-value semantic: Detail=="" is legal;
+// the payload supplies no default. Renderers fall back to the ok/detail-less form.
+func TestEmptyDetailIsLegal(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+
+	rec.StageSucceeded(presenter.StageSuccess{Name: "record", Detail: ""})
+
+	ev, ok := rec.At(0)
+	if !ok {
+		t.Fatal("expected one recorded event, got none")
+	}
+	if ev.StageSucceeded.Detail != "" {
+		t.Errorf("Detail = %q, want empty", ev.StageSucceeded.Detail)
 	}
 }

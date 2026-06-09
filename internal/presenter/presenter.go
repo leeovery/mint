@@ -53,20 +53,43 @@ type RunInfo struct {
 // StageStart carries the StageStarted payload. Blocking is engine knowledge —
 // it is set when the engine is about to invoke a long/slow command (e.g. claude
 // or a build hook). Plain uses the flag to decide whether to emit a start line;
-// pretty always shows progress.
+// pretty always shows progress. The presenter never infers Blocking from the
+// stage Name: there is no hardcoded list of long stages here.
 type StageStart struct {
-	Name     string
+	// Name is the engine-supplied stage label rendered verbatim.
+	Name string
+	// Blocking marks a long/slow stage. Renderers consume the flag directly and
+	// never derive it from Name.
 	Blocking bool
 }
 
 // StageSuccess carries the StageSucceeded payload. Elapsed is measured by the
-// engine — the presenter does not time stages. Pretty renders the elapsed time
-// on long/blocking stages only, which is why Blocking travels with the success
-// event too.
+// engine — the presenter does not time stages. Pretty renders ({elapsed}) on
+// long/blocking stages only, which is why Blocking travels with the success
+// event too: it mirrors the StageStart.Blocking flag for the same stage.
+//
+// Zero-value semantics — fixed here so the rendering tasks can rely on them:
+//
+//  1. A short stage (Blocking==false) carries no meaningful elapsed. Renderers
+//     MUST NOT print elapsed for a short stage regardless of the Elapsed value;
+//     the flag, not the duration, gates elapsed rendering.
+//  2. Elapsed==0 is legal even when Blocking==true and MUST NOT be treated as
+//     "no elapsed" — a long stage that completed in under the timer's resolution
+//     still renders as a long stage. There is no sentinel duration.
+//  3. Detail=="" is legal; the payload supplies no default. Renderers fall back
+//     to the ok/detail-less form.
 type StageSuccess struct {
-	Name     string
-	Detail   string
-	Elapsed  time.Duration
+	// Name is the engine-supplied stage label rendered verbatim.
+	Name string
+	// Detail is the engine-supplied completion detail. The empty string is legal
+	// (semantic 3) and means "render the detail-less form".
+	Detail string
+	// Elapsed is the engine-measured stage duration. It is only meaningful when
+	// Blocking is true (semantic 1); zero is a valid duration there (semantic 2),
+	// not a "no elapsed" sentinel.
+	Elapsed time.Duration
+	// Blocking mirrors StageStart.Blocking for the same stage and gates whether a
+	// renderer shows ({elapsed}).
 	Blocking bool
 }
 
