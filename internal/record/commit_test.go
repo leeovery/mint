@@ -113,6 +113,119 @@ func TestCommitBookkeeping_StageFails_SurfacesError(t *testing.T) {
 	}
 }
 
+func TestCommitDirtyTree_DirtyTree_StagesAllAndCommits(t *testing.T) {
+	t.Parallel()
+
+	// When the tree is dirty after a hook, CommitDirtyTree stages everything
+	// (`git -C {dir} add -A`) and commits with the supplied subject through the
+	// CommandRunner seam — no real git. The porcelain probe is non-empty, so a
+	// commit is made and committed=true is reported. All three invocations target
+	// the repo root via `git -C {dir}`.
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: " M bundle.js\n?? new.txt\n"}}, // status --porcelain (dirty)
+		runner.ScriptedCall{}, // add -A
+		runner.ScriptedCall{}, // commit -m
+	)
+
+	const dir = "/repo/root"
+	committed, err := record.CommitDirtyTree(t.Context(), r, dir, "chore(release): pre-tag artifacts for v0.0.1")
+	if err != nil {
+		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
+	}
+	if !committed {
+		t.Errorf("committed = false, want true (dirty tree must produce a commit)")
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 3 {
+		t.Fatalf("invocations = %d, want 3 (status, add, commit)\n got: %v", len(invs), invs)
+	}
+
+	wantStatus := []string{"-C", dir, "status", "--porcelain"}
+	if status := invs[0]; status.Name != "git" || !equalArgs(status.Args, wantStatus) {
+		t.Errorf("status invocation = %s %v, want git %v", status.Name, status.Args, wantStatus)
+	}
+	wantAdd := []string{"-C", dir, "add", "-A"}
+	if add := invs[1]; add.Name != "git" || !equalArgs(add.Args, wantAdd) {
+		t.Errorf("stage invocation = %s %v, want git %v", add.Name, add.Args, wantAdd)
+	}
+	wantCommit := []string{"-C", dir, "commit", "-m", "chore(release): pre-tag artifacts for v0.0.1"}
+	if commit := invs[2]; commit.Name != "git" || !equalArgs(commit.Args, wantCommit) {
+		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
+	}
+}
+
+func TestCommitDirtyTree_CleanTree_CommitsNothing(t *testing.T) {
+	t.Parallel()
+
+	// A clean tree (empty porcelain output) means there is nothing to commit:
+	// CommitDirtyTree probes status, sees no changes, and makes NO add/commit —
+	// reporting committed=false. Only the single status probe runs.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: ""}, nil) // status --porcelain (clean)
+
+	committed, err := record.CommitDirtyTree(t.Context(), r, "/repo", "chore(release): pre-tag artifacts for v0.0.1")
+	if err != nil {
+		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
+	}
+	if committed {
+		t.Errorf("committed = true, want false (clean tree must not commit)")
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 1 {
+		t.Fatalf("invocations = %d, want 1 (only the status probe)\n got: %v", len(invs), invs)
+	}
+	wantStatus := []string{"-C", "/repo", "status", "--porcelain"}
+	if status := invs[0]; status.Name != "git" || !equalArgs(status.Args, wantStatus) {
+		t.Errorf("status invocation = %s %v, want git %v", status.Name, status.Args, wantStatus)
+	}
+}
+
+func TestCommitDirtyTree_StatusProbeFails_SurfacesError(t *testing.T) {
+	t.Parallel()
+
+	// A non-zero `git status --porcelain` exit is surfaced (so the orchestrator can
+	// abort/unwind) and no add/commit follows a failed probe.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stderr: "fatal: not a git repo\n", ExitCode: 128}, errors.New("exit status 128"))
+
+	committed, err := record.CommitDirtyTree(t.Context(), r, "/repo", "subject")
+	if err == nil {
+		t.Fatal("CommitDirtyTree returned nil error, want the status probe failure to surface")
+	}
+	if committed {
+		t.Errorf("committed = true, want false on a failed probe")
+	}
+	if got := len(r.Invocations()); got != 1 {
+		t.Errorf("invocations = %d, want 1 (no add/commit after a failed probe)", got)
+	}
+}
+
+func TestCommitDirtyTree_StageFails_SurfacesErrorBeforeCommit(t *testing.T) {
+	t.Parallel()
+
+	// A dirty tree whose `git add -A` exits non-zero surfaces the error and does NOT
+	// proceed to commit — a failed stage can never produce a commit.
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: " M file\n"}},                           // status --porcelain (dirty)
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("exit status 1")}, // add -A fails
+	)
+
+	committed, err := record.CommitDirtyTree(t.Context(), r, "/repo", "subject")
+	if err == nil {
+		t.Fatal("CommitDirtyTree returned nil error, want the git add failure to surface")
+	}
+	if committed {
+		t.Errorf("committed = true, want false on a failed stage")
+	}
+	if got := len(r.Invocations()); got != 2 {
+		t.Errorf("invocations = %d, want 2 (commit must not run after a failed stage)", got)
+	}
+}
+
 // equalArgs reports whether two argument slices are element-for-element equal, so
 // command-line assertions check the exact argv rather than a substring.
 func equalArgs(got, want []string) bool {

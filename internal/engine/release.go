@@ -218,6 +218,19 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		return surface(p, "preflight", err)
 	}
 
+	// Stage 3 — project prep. The optional pre_tag hook builds/generates artifacts
+	// (e.g. a knowledge bundle) and may dirty the tree; mint then commits whatever it
+	// left dirty as its OWN `chore(release): pre-tag artifacts for {tag}` commit, kept
+	// distinct from the bookkeeping commit. This runs AFTER startingHEAD so the
+	// artifact commit is covered by the auto-unwind, and BEFORE notes so they generate
+	// at the post-hook HEAD. An absent hook is a no-op (no prep, no artifact commit); a
+	// non-zero exit aborts cleanly before any notes/tag/push — routed through the
+	// auto-unwind so a hook that made its own commit before failing is reset back to
+	// startingHEAD.
+	if err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, opts.Bump); err != nil {
+		return surfaceAndUnwind(ctx, deps, "pre_tag", startingHEAD, tag, false, err)
+	}
+
 	// Stage 4 — notes body. resolveBody runs the notes-path PRECEDENCE (SelectBody)
 	// to pick the body + Kind for this run, building the selector from deps.Runner now
 	// that root is resolved. opts.NotesBody is a test-injection override that bypasses
@@ -511,8 +524,54 @@ func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, ta
 // entry for an array) returns a non-nil error the caller surfaces and aborts on.
 // DryRun is fixed to false here; MINT_DRY_RUN skip behaviour is a later phase.
 func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump) error {
-	env := hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), false)
+	env := buildHookEnv(current, next, tag, bump)
 	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
+}
+
+// runPreTagHook runs the project's optional Stage-3 pre_tag hook and then applies
+// the artifact-commit interplay rule. The hook (build/generate artifacts) runs
+// through the shared hooks runner with the same MINT_* env as the preflight hook. An
+// absent value (nil) is a no-op — the runner returns nil and no artifact commit is
+// considered. A non-zero exit (the first non-zero entry for an array) returns a
+// non-nil error the caller routes through the auto-unwind.
+//
+// On hook SUCCESS, mint commits whatever the hook left dirty as its OWN commit
+// (subject `chore(release): pre-tag artifacts for {tag}` — a FIXED chore prefix, NOT
+// the configurable commit_prefix), via record.CommitDirtyTree: a clean tree (empty
+// `git status --porcelain`) commits nothing — which covers a hook that built nothing,
+// a hook that made its own commit, and gitignored-only outputs alike. A commit
+// failure is surfaced for the caller to unwind. The interplay rule applies ONLY after
+// a hook actually ran: an absent hook skips the artifact-commit probe entirely, so
+// the existing no-hook spine is untouched. DryRun is fixed to false here; MINT_DRY_RUN
+// skip behaviour is a later phase.
+func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump) error {
+	if cfg.Release.Hooks.PreTag == nil {
+		return nil
+	}
+
+	env := buildHookEnv(current, next, tag, bump)
+	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
+		return err
+	}
+	_, err := record.CommitDirtyTree(ctx, deps.Runner, root, pretagArtifactSubject(tag))
+	return err
+}
+
+// pretagArtifactSubject builds the FIXED subject for the pre_tag artifact commit. It
+// uses a constant `chore(release):` prefix — NOT the configurable commit_prefix —
+// because the artifact commit is project content (e.g. a rebuilt bundle), distinct
+// from the release bookkeeping commit (`{commit_prefix} Release {tag}`).
+func pretagArtifactSubject(tag string) string {
+	return "chore(release): pre-tag artifacts for " + tag
+}
+
+// buildHookEnv assembles the shared MINT_* hook environment from the run's computed
+// versions (NewVersion = the bare version being released, PreviousVersion = the bare
+// prior latest, VersionTag = the full prefixed tag) and the bump kind. The preflight
+// and pre_tag points share it so they inject an identical env. DryRun is fixed to
+// false; MINT_DRY_RUN skip behaviour is a later phase.
+func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump) hooks.HookEnv {
+	return hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), false)
 }
 
 // hookBump maps the engine's version.Bump onto the hooks package's Bump so the
