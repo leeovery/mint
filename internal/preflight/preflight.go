@@ -6,19 +6,30 @@
 //
 // The local gates, in cheap-first order, are: clean working tree, on the
 // release branch, and the target tag free locally. RunLocalGates runs them in
-// that order and aborts on the first failure. The network gates (remote sync,
-// tag-free remote) and the escape hatches (--autostash, --any-branch) live
-// elsewhere / arrive in a later phase; nothing here mutates.
+// that order and aborts on the first failure. The network half — Fetch (read-only
+// `git fetch --tags`, never a pull), CheckRemoteSync (abort if behind/diverged
+// from upstream), and CheckTagFreeRemote — runs after the local gates; the
+// orchestrator fetches first, then runs the remote checks. The escape hatches
+// (--autostash, --any-branch) live elsewhere; nothing here mutates.
 package preflight
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"mint/internal/runner"
 )
+
+// ErrNoUpstream is the distinguishable condition CheckRemoteSync surfaces when
+// the release branch has no tracking remote configured, so `git rev-list
+// @{u}...HEAD` cannot resolve an upstream. It is deliberately NOT a *GateError:
+// the caller reports "no tracking remote" as its own clearly-distinguishable
+// outcome rather than as a behind/diverged abort, and it is distinct from a
+// missing-binary (ErrCommandNotFound) infrastructure failure.
+var ErrNoUpstream = errors.New("no upstream configured for the release branch")
 
 // GateError is the typed failure a preflight gate returns when its check does
 // not pass. It carries a human-readable abort message the caller renders
@@ -115,6 +126,100 @@ func CheckTagFreeLocal(ctx context.Context, r runner.CommandRunner, tag string) 
 
 	if strings.TrimSpace(res.Stdout) != "" {
 		return newGateError("tag %q already exists locally; bump the version or delete the tag, then re-run", tag)
+	}
+	return nil
+}
+
+// Fetch refreshes the remote refs read-only with `git fetch --tags`, so the
+// complete tag set (Stage 1's source of truth) and the upstream refs are current
+// before "latest" is trusted and before the remote gates run. It is deliberately
+// a fetch, never a pull: mint must never auto-integrate remote commits. A failure
+// (including a missing git binary, which matches ErrCommandNotFound) surfaces
+// as-is so it is never mistaken for a successful fetch.
+func Fetch(ctx context.Context, r runner.CommandRunner) error {
+	if _, err := r.Run(ctx, "git", "fetch", "--tags"); err != nil {
+		return fmt.Errorf("fetching tags and remote refs: %w", err)
+	}
+	return nil
+}
+
+// CheckRemoteSync compares HEAD against the release branch's upstream and aborts
+// the release if local is behind or diverged — never auto-pulling, since silently
+// dragging in unseen remote commits and releasing them must be a conscious act.
+// It runs `git rev-list --left-right --count @{u}...HEAD`, whose output is
+// "<behind>\t<ahead>": behind counts upstream-only commits, ahead counts
+// HEAD-only commits. Behind (>0 behind) or diverged (>0 behind AND >0 ahead)
+// fails with a *GateError naming the behind count and upstream; up-to-date or
+// purely ahead — the expected release state, those being the commits released —
+// passes. A branch with no tracking remote yields ErrNoUpstream (a distinguishable
+// condition, not a gate abort); a missing git binary surfaces as ErrCommandNotFound.
+//
+// releaseBranch names the upstream in the abort message (origin/{releaseBranch});
+// the comparison itself uses @{u}, which resolves HEAD's upstream — HEAD is
+// already guaranteed to be on the release branch by the on-branch gate that runs
+// before this one.
+func CheckRemoteSync(ctx context.Context, r runner.CommandRunner, releaseBranch string) error {
+	res, err := r.Run(ctx, "git", "rev-list", "--left-right", "--count", "@{u}...HEAD")
+	if err != nil {
+		if errors.Is(err, runner.ErrCommandNotFound) {
+			return fmt.Errorf("computing remote sync state: %w", err)
+		}
+		// A non-zero exit here is the no-upstream case: with no tracking branch,
+		// `@{u}` cannot resolve and git fatals with "no upstream configured". Surface
+		// it as the distinguishable ErrNoUpstream condition rather than crashing.
+		return fmt.Errorf("%w: %s", ErrNoUpstream, strings.TrimSpace(res.Stderr))
+	}
+
+	behind, _, err := parseLeftRightCount(res.Stdout)
+	if err != nil {
+		return fmt.Errorf("parsing remote sync count: %w", err)
+	}
+
+	// Any commits behind aborts: behind-only and diverged (also ahead) are both
+	// unsafe to auto-integrate and share the same behind-count message. behind == 0
+	// — up-to-date or purely ahead — passes; ahead is the commits being released.
+	if behind > 0 {
+		return newGateError(
+			"%d commits behind origin/%s — pull and review, then re-run",
+			behind, releaseBranch,
+		)
+	}
+	return nil
+}
+
+// parseLeftRightCount parses the "<behind>\t<ahead>" output of
+// `git rev-list --left-right --count {upstream}...HEAD` into its two counts.
+func parseLeftRightCount(stdout string) (behind, ahead int, err error) {
+	fields := strings.Fields(stdout)
+	if len(fields) != 2 {
+		return 0, 0, fmt.Errorf("unexpected rev-list output %q, want two counts", strings.TrimSpace(stdout))
+	}
+
+	behind, err = strconv.Atoi(fields[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("parsing behind count %q: %w", fields[0], err)
+	}
+	ahead, err = strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("parsing ahead count %q: %w", fields[1], err)
+	}
+	return behind, ahead, nil
+}
+
+// CheckTagFreeRemote enforces that the computed tag does not already exist on the
+// remote, the remote half of the gate-4 free-tag check (the local half is
+// CheckTagFreeLocal). It probes `git ls-remote --tags origin refs/tags/{tag}`: a
+// non-empty result means the remote already carries the tag and the gate aborts;
+// empty output is the PASS case. A missing git binary (ErrCommandNotFound) is a
+// genuine error and surfaces as-is so it is never mistaken for the tag being free.
+func CheckTagFreeRemote(ctx context.Context, r runner.CommandRunner, tag string) error {
+	res, err := r.Run(ctx, "git", "ls-remote", "--tags", "origin", "refs/tags/"+tag)
+	if err != nil {
+		return fmt.Errorf("checking remote for tag %q: %w", tag, err)
+	}
+
+	if strings.TrimSpace(res.Stdout) != "" {
+		return newGateError("tag %q already exists on the remote; bump the version, then re-run", tag)
 	}
 	return nil
 }

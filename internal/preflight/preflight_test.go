@@ -243,6 +243,328 @@ func TestRunLocalGates_CheapFirstAbort(t *testing.T) {
 	}
 }
 
+func TestFetch_RunsFetchTags(t *testing.T) {
+	t.Parallel()
+
+	// Fetch must run `git fetch --tags` so the complete tag set and upstream refs
+	// are current before the remote gates (and before "latest" is trusted). It is
+	// the only command Fetch issues, and it must never be a pull.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: ""}, nil)
+
+	if err := preflight.Fetch(t.Context(), r); err != nil {
+		t.Fatalf("Fetch returned unexpected error: %v", err)
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 1 {
+		t.Fatalf("invocations = %d, want 1", len(invs))
+	}
+	if got := invs[0]; got.Name != "git" ||
+		len(got.Args) != 2 || got.Args[0] != "fetch" || got.Args[1] != "--tags" {
+		t.Errorf("invocation = %+v, want git fetch --tags", got)
+	}
+}
+
+func TestFetch_NeverPulls(t *testing.T) {
+	t.Parallel()
+
+	// mint must NEVER run `git pull`: auto-integration would silently drag in and
+	// release unseen remote commits. Fetch updates refs read-only; assert no pull.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: ""}, nil)
+
+	if err := preflight.Fetch(t.Context(), r); err != nil {
+		t.Fatalf("Fetch returned unexpected error: %v", err)
+	}
+
+	for _, inv := range r.Invocations() {
+		for _, arg := range inv.Args {
+			if arg == "pull" {
+				t.Fatalf("Fetch invoked git pull (%+v); mint must never pull", inv)
+			}
+		}
+	}
+}
+
+func TestFetch_CommandNotFound_IsHardError(t *testing.T) {
+	t.Parallel()
+
+	// A missing git binary is a real infrastructure failure and must surface as-is
+	// so it is never mistaken for a successful fetch.
+	r := runner.NewFakeRunner()
+	r.SeedNotFound("git")
+
+	err := preflight.Fetch(t.Context(), r)
+	if err == nil {
+		t.Fatalf("Fetch returned nil error, want the missing-binary error to surface")
+	}
+	if !errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, want it to match ErrCommandNotFound", err)
+	}
+}
+
+func TestCheckRemoteSync_UpToDate_Passes(t *testing.T) {
+	t.Parallel()
+
+	// `git rev-list --left-right --count @{u}...HEAD` prints "<behind>\t<ahead>".
+	// "0\t0" means up-to-date with upstream — the gate passes and issues exactly the
+	// one rev-list call (never a pull).
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "0\t0\n"}, nil)
+
+	if err := preflight.CheckRemoteSync(t.Context(), r, "main"); err != nil {
+		t.Fatalf("CheckRemoteSync returned unexpected error: %v", err)
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 1 {
+		t.Fatalf("invocations = %d, want 1", len(invs))
+	}
+	if got := invs[0]; got.Name != "git" ||
+		len(got.Args) != 4 ||
+		got.Args[0] != "rev-list" || got.Args[1] != "--left-right" ||
+		got.Args[2] != "--count" || got.Args[3] != "@{u}...HEAD" {
+		t.Errorf("invocation = %+v, want git rev-list --left-right --count @{u}...HEAD", got)
+	}
+}
+
+func TestCheckRemoteSync_AheadOnly_Passes(t *testing.T) {
+	t.Parallel()
+
+	// Purely ahead (0 behind, >0 ahead) is the expected release state — those local
+	// commits are what is being released — so the gate passes.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "0\t3\n"}, nil)
+
+	if err := preflight.CheckRemoteSync(t.Context(), r, "main"); err != nil {
+		t.Fatalf("CheckRemoteSync returned unexpected error for ahead-only: %v", err)
+	}
+}
+
+func TestCheckRemoteSync_Behind_AbortsWithCount(t *testing.T) {
+	t.Parallel()
+
+	// Behind upstream (>0 behind, 0 ahead): auto-pulling would silently drag in
+	// unseen commits, so the gate aborts. The message must carry the behind count
+	// and name the upstream so it is actionable.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "2\t0\n"}, nil)
+
+	err := preflight.CheckRemoteSync(t.Context(), r, "main")
+	if err == nil {
+		t.Fatalf("CheckRemoteSync returned nil error, want a behind-upstream abort")
+	}
+
+	var gateErr *preflight.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want a *GateError", err)
+	}
+	msg := gateErr.Message()
+	if !strings.Contains(msg, "2") {
+		t.Errorf("message = %q, want it to include the behind commit count", msg)
+	}
+	if !strings.Contains(msg, "origin/main") {
+		t.Errorf("message = %q, want it to name the upstream (origin/main)", msg)
+	}
+}
+
+func TestCheckRemoteSync_Diverged_Aborts(t *testing.T) {
+	t.Parallel()
+
+	// Diverged (>0 behind AND >0 ahead): local history has commits the upstream
+	// lacks and vice versa. Integrating must be a conscious act, so the gate aborts
+	// (never auto-pulling), still surfacing the behind count.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "1\t4\n"}, nil)
+
+	err := preflight.CheckRemoteSync(t.Context(), r, "main")
+	if err == nil {
+		t.Fatalf("CheckRemoteSync returned nil error, want a diverged abort")
+	}
+
+	var gateErr *preflight.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want a *GateError", err)
+	}
+	if !strings.Contains(gateErr.Message(), "1") {
+		t.Errorf("message = %q, want it to include the behind commit count", gateErr.Message())
+	}
+}
+
+func TestCheckRemoteSync_NeverPulls(t *testing.T) {
+	t.Parallel()
+
+	// The sync gate computes ahead/behind read-only; it must never invoke git pull
+	// regardless of the result.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "0\t0\n"}, nil)
+
+	if err := preflight.CheckRemoteSync(t.Context(), r, "main"); err != nil {
+		t.Fatalf("CheckRemoteSync returned unexpected error: %v", err)
+	}
+
+	for _, inv := range r.Invocations() {
+		for _, arg := range inv.Args {
+			if arg == "pull" {
+				t.Fatalf("CheckRemoteSync invoked git pull (%+v); mint must never pull", inv)
+			}
+		}
+	}
+}
+
+func TestCheckRemoteSync_NoUpstream_IsDistinguishable(t *testing.T) {
+	t.Parallel()
+
+	// With no tracking branch, `git rev-list @{u}...HEAD` exits non-zero with a
+	// "no upstream configured" fatal on stderr. The gate must surface this as a
+	// clearly-distinguishable condition (ErrNoUpstream) the caller can report — not
+	// crash, and not be confused with a normal behind/diverged GateError abort.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{
+		Stderr:   "fatal: no upstream configured for branch 'main'\n",
+		ExitCode: 128,
+	}, errExit)
+
+	err := preflight.CheckRemoteSync(t.Context(), r, "main")
+	if err == nil {
+		t.Fatalf("CheckRemoteSync returned nil error, want a no-upstream condition")
+	}
+	if !errors.Is(err, preflight.ErrNoUpstream) {
+		t.Errorf("error = %v, want it to match ErrNoUpstream", err)
+	}
+
+	var gateErr *preflight.GateError
+	if errors.As(err, &gateErr) {
+		t.Errorf("error = %v, want the distinct no-upstream condition, not a GateError", err)
+	}
+}
+
+func TestCheckRemoteSync_CommandNotFound_IsHardError(t *testing.T) {
+	t.Parallel()
+
+	// A missing git binary is a genuine infrastructure error, distinct from a
+	// no-upstream condition; it must surface (matching ErrCommandNotFound) and not
+	// be reported as a no-upstream or gate abort.
+	r := runner.NewFakeRunner()
+	r.SeedNotFound("git")
+
+	err := preflight.CheckRemoteSync(t.Context(), r, "main")
+	if err == nil {
+		t.Fatalf("CheckRemoteSync returned nil error, want the missing-binary error to surface")
+	}
+	if !errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, want it to match ErrCommandNotFound", err)
+	}
+	if errors.Is(err, preflight.ErrNoUpstream) {
+		t.Errorf("error = %v, want a hard error, not ErrNoUpstream", err)
+	}
+}
+
+func TestCheckTagFreeRemote_Absent_Passes(t *testing.T) {
+	t.Parallel()
+
+	// `git ls-remote --tags origin refs/tags/{tag}` prints nothing when the tag is
+	// absent on the remote — the PASS case. The gate issues exactly that one call.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: ""}, nil)
+
+	if err := preflight.CheckTagFreeRemote(t.Context(), r, "v1.2.3"); err != nil {
+		t.Fatalf("CheckTagFreeRemote returned unexpected error: %v", err)
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 1 {
+		t.Fatalf("invocations = %d, want 1", len(invs))
+	}
+	if got := invs[0]; got.Name != "git" ||
+		len(got.Args) != 4 ||
+		got.Args[0] != "ls-remote" || got.Args[1] != "--tags" ||
+		got.Args[2] != "origin" || got.Args[3] != "refs/tags/v1.2.3" {
+		t.Errorf("invocation = %+v, want git ls-remote --tags origin refs/tags/v1.2.3", got)
+	}
+}
+
+func TestCheckTagFreeRemote_Exists_Fails(t *testing.T) {
+	t.Parallel()
+
+	// A non-empty ls-remote result (the resolved hash + ref) means the tag already
+	// exists on the remote; the gate must abort, naming the conflicting tag.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{
+		Stdout: "9fceb02d0ae598e95dc970b74767f19372d61af8\trefs/tags/v1.2.3\n",
+	}, nil)
+
+	err := preflight.CheckTagFreeRemote(t.Context(), r, "v1.2.3")
+	if err == nil {
+		t.Fatalf("CheckTagFreeRemote returned nil error, want a tag-exists-on-remote abort")
+	}
+
+	var gateErr *preflight.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want a *GateError", err)
+	}
+	if !strings.Contains(gateErr.Message(), "v1.2.3") {
+		t.Errorf("message = %q, want it to name the existing tag", gateErr.Message())
+	}
+	if !strings.Contains(gateErr.Message(), "remote") {
+		t.Errorf("message = %q, want it to say the tag is on the remote", gateErr.Message())
+	}
+}
+
+func TestCheckTagFreeRemote_CommandNotFound_IsHardError(t *testing.T) {
+	t.Parallel()
+
+	// A missing git binary is a real error, distinct from an empty (tag-absent)
+	// result. It must surface (matching ErrCommandNotFound) and not be a GateError —
+	// so it is never mistaken for the tag being free.
+	r := runner.NewFakeRunner()
+	r.SeedNotFound("git")
+
+	err := preflight.CheckTagFreeRemote(t.Context(), r, "v1.2.3")
+	if err == nil {
+		t.Fatalf("CheckTagFreeRemote returned nil error, want the missing-binary error to surface")
+	}
+	if !errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, want it to match ErrCommandNotFound", err)
+	}
+
+	var gateErr *preflight.GateError
+	if errors.As(err, &gateErr) {
+		t.Errorf("error = %v, want a hard error, not a GateError", err)
+	}
+}
+
+func TestFetchThenRemoteGates_FetchPrecedesChecks(t *testing.T) {
+	t.Parallel()
+
+	// Ordering invariant: `git fetch --tags` must run before the remote checks so the
+	// full tag set and upstream refs are visible. The args-dispatching fake answers
+	// each distinct git invocation and records call order for the assertion.
+	r := &argRunner{responses: map[string]scripted{
+		"fetch --tags": {result: runner.Result{Stdout: ""}},
+		"rev-list --left-right --count @{u}...HEAD": {result: runner.Result{Stdout: "0\t2\n"}},
+		"ls-remote --tags origin refs/tags/v1.2.3":  {result: runner.Result{Stdout: ""}},
+	}}
+
+	if err := preflight.Fetch(t.Context(), r); err != nil {
+		t.Fatalf("Fetch returned unexpected error: %v", err)
+	}
+	if err := preflight.CheckRemoteSync(t.Context(), r, "main"); err != nil {
+		t.Fatalf("CheckRemoteSync returned unexpected error: %v", err)
+	}
+	if err := preflight.CheckTagFreeRemote(t.Context(), r, "v1.2.3"); err != nil {
+		t.Fatalf("CheckTagFreeRemote returned unexpected error: %v", err)
+	}
+
+	if len(r.calls) != 3 {
+		t.Fatalf("calls = %v, want 3", r.calls)
+	}
+	if r.calls[0] != "fetch --tags" {
+		t.Errorf("first call = %q, want the fetch to precede the remote checks", r.calls[0])
+	}
+}
+
 // errExit models a clean ran-and-exited-non-zero, mirroring the real runner's
 // contract where a non-zero exit returns a populated Result with a non-nil error.
 var errExit = errors.New("exit status 1")
