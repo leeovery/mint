@@ -193,18 +193,7 @@ func TestYesSourceEchoIsBytePureASCII(t *testing.T) {
 		t.Fatalf("plain source Prompt under -y returned error: %v", err)
 	}
 
-	for i, b := range out.Bytes() {
-		switch {
-		case b == 0x1b:
-			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into the plain source -y echo", i)
-		case b == 0x0d:
-			t.Errorf("byte %d is CR (0x0d) — carriage-return leaked into the plain source -y echo", i)
-		case b == '\n':
-			// the only permitted control byte: a line terminator
-		case b < 0x20 || b > 0x7e:
-			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain source -y echo uses", i, b)
-		}
-	}
+	assertBytePureASCII(t, out, "plain source -y echo")
 }
 
 // TestSourceGateForbiddenComboFailsLoud proves the source gate reuses the

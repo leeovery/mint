@@ -475,20 +475,7 @@ func TestPlainPresenterWarnEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 		p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"})
 	})
 
-	for _, buf := range []*bytes.Buffer{out, errBuf} {
-		for i, b := range buf.Bytes() {
-			switch {
-			case b == 0x1b:
-				t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain warn output", i)
-			case b == 0x0d:
-				t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain warn output", i)
-			case b == '\n':
-				// the only permitted control byte: a line terminator
-			case b < 0x20 || b > 0x7e:
-				t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain warn contract uses", i, b)
-			}
-		}
-	}
+	assertBytePureASCIIStreams(t, "plain warn output", out, errBuf)
 }
 
 // TestPlainPresenterUnwoundRendersSummaryVerbatim is the core plain Unwound
@@ -531,18 +518,7 @@ func TestPlainPresenterUnwoundPrefixIsBytePureASCII(t *testing.T) {
 		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
 	})
 
-	for i, b := range out.Bytes() {
-		switch {
-		case b == 0x1b:
-			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain unwound output", i)
-		case b == 0x0d:
-			t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain unwound output", i)
-		case b == '\n':
-			// the only permitted control byte: a line terminator
-		case b < 0x20 || b > 0x7e:
-			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain unwound contract uses", i, b)
-		}
-	}
+	assertBytePureASCII(t, out, "plain unwound output")
 }
 
 // TestPlainPresenterStageFailedThenRunFinishedSuppressesSuccessLine proves the
@@ -740,18 +716,7 @@ func TestPlainPresenterRegenerateCloseIsBytePureASCII(t *testing.T) {
 		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
 	})
 
-	for i, b := range out.Bytes() {
-		switch {
-		case b == 0x1b:
-			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain regenerate close", i)
-		case b == 0x0d:
-			t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain regenerate close", i)
-		case b == '\n':
-			// the only permitted control byte
-		case b < 0x20 || b > 0x7e:
-			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain regenerate close uses", i, b)
-		}
-	}
+	assertBytePureASCII(t, out, "plain regenerate close")
 }
 
 // TestPlainPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder proves --all
@@ -824,18 +789,7 @@ func TestPlainPresenterEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 	})
 
-	for i, b := range out.Bytes() {
-		switch {
-		case b == 0x1b:
-			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain output", i)
-		case b == 0x0d:
-			t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain output", i)
-		case b == '\n':
-			// the only permitted control byte: a line terminator
-		case b < 0x20 || b > 0x7e:
-			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain contract uses", i, b)
-		}
-	}
+	assertBytePureASCII(t, out, "plain output")
 }
 
 // TestPlainPresenterShowPlanJoinsStepsIntoOneLiner is the core plain acceptance:
@@ -947,18 +901,7 @@ func TestPlainPresenterShowPlanEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 		}})
 	})
 
-	for i, b := range out.Bytes() {
-		switch {
-		case b == 0x1b:
-			t.Errorf("byte %d is ESC (0x1b) — ANSI escape leaked into plain plan output", i)
-		case b == 0x0d:
-			t.Errorf("byte %d is CR (0x0d) — carriage-return animation leaked into plain plan output", i)
-		case b == '\n':
-			// the only permitted control byte: a line terminator
-		case b < 0x20 || b > 0x7e:
-			t.Errorf("byte %d = 0x%02x is outside the printable ASCII range the plain plan contract uses", i, b)
-		}
-	}
+	assertBytePureASCII(t, out, "plain plan output")
 }
 
 // notesBody is the worked-example release-notes body shared across the

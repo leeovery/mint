@@ -70,20 +70,7 @@ func TestPlainForbiddenComboFailureIsBytePureASCII(t *testing.T) {
 		t.Fatalf("plain Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
 	}
 
-	for label, buf := range map[string]*bytes.Buffer{"out": out, "err": errBuf} {
-		for i, b := range buf.Bytes() {
-			switch {
-			case b == 0x1b:
-				t.Errorf("%s byte %d is ESC (0x1b) — ANSI escape leaked into the plain forbidden-combo failure", label, i)
-			case b == 0x0d:
-				t.Errorf("%s byte %d is CR (0x0d) — carriage-return leaked into the plain forbidden-combo failure", label, i)
-			case b == '\n':
-				// the only permitted control byte: a line terminator
-			case b < 0x20 || b > 0x7e:
-				t.Errorf("%s byte %d = 0x%02x is outside the printable ASCII range the plain forbidden-combo failure uses", label, i, b)
-			}
-		}
-	}
+	assertBytePureASCIIStreams(t, "plain forbidden-combo failure", out, errBuf)
 }
 
 // TestPrettyForbiddenComboStyledFailureToOut proves the pretty presenter renders
