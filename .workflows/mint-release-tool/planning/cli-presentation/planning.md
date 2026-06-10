@@ -163,3 +163,13 @@ approved_at: 2026-06-09
 |-------------|------|------------|
 | cli-presentation-7-1 | Consolidate the prompt/gate test drivers onto the shared gate_helpers_test.go construction seam | one mode-driver table remains (two redundant ones removed), exactly one pretty-prompt driver (drivePrettyPrompt no longer an Ascii-pinned reimplementation), remaining prompt drivers build via plainGate/prettyGate seam, forced colour profile an explicit parameter, render-only screen-control guard still runs under TrueColor (SGR escapes present, no clear/alt-screen), no production .go file in internal/presenter modified, go vet reports no unused helpers/types |
 | cli-presentation-7-2 | Converge the startup wiring so one entry point consumes StartupSignals and threads all axes | one entry point consumes StartupSignals threading Mode/width/-y/StdinInteractive, -y a parameter and stdin-interactive detected from descriptor (not from Mode), non-TTY stdin + -y unset reaches forbidden-combination fail-loud path, -y true auto-confirms without reading stdin, all four stdout/stdin TTY combinations match independently-resolved signals, no main/cmd package introduced, stdin/stdout/stderr are parameters (no os globals), no unused StartupSignals/DetectStartupSignals symbols |
+
+### Phase 8: Analysis (Cycle 4)
+
+**Goal**: Address findings from Analysis (Cycle 4).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-8-1 | Restore the one-place mode-branch/stream-split invariant in presenter wiring | preferred convergence routes both seams through one helper, fallback re-scopes New's doc comment if behaviour would change, NewForStartup still threads mode/width/-y/stdin-interactive, plain still does not probe width, no behaviour change (existing presenter tests pass unmodified), no new exported symbols, change confined to internal/presenter |
