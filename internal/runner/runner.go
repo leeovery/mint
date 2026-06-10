@@ -41,7 +41,18 @@ type Result struct {
 // for a non-zero exit the returned Result remains populated so Stderr and
 // ExitCode are still readable. A missing binary is reported as an error matching
 // ErrCommandNotFound (via errors.Is).
+//
+// RunInteractive is the INTERACTIVE launch seam: it runs name with args wired
+// directly to the real terminal (os.Stdin/os.Stdout/os.Stderr) so a child that
+// takes over the screen — the user's $EDITOR during the review gate's edit
+// choice — owns the terminal for its session. Because the child drives the
+// terminal itself, its output is NOT captured into a Result; the method returns
+// only an error. Like Run, a missing binary is reported as an error matching
+// ErrCommandNotFound (via errors.Is) so the editor launcher can tell "no editor
+// to launch" (return to the gate) apart from "the editor ran and failed"
+// (surface and abort).
 type CommandRunner interface {
 	Run(ctx context.Context, name string, args ...string) (Result, error)
 	RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (Result, error)
+	RunInteractive(ctx context.Context, name string, args ...string) error
 }

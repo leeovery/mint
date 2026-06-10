@@ -620,6 +620,65 @@ func TestRelease_GateEdit_EditorError_Aborts(t *testing.T) {
 	assertNoMutation(t, f)
 }
 
+// TestRelease_GateEdit_EditorUnavailable_ReturnsToGate proves the return-to-gate
+// branch: an `e` choice whose editor cannot be launched (Edit returns
+// ErrEditorReturnToGate — the launcher has already reported the problem via the
+// presenter) does NOT abort. The gate is re-presented with the body UNCHANGED,
+// and a subsequent `y` proceeds — so the run completes and the ORIGINAL body
+// reaches every sink.
+func TestRelease_GateEdit_EditorUnavailable_ReturnsToGate(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	// The editor signals return-to-gate (no editor launchable); it leaves `edited`
+	// empty so a regression that USED its result would surface a wrong body.
+	ed := &fakeEditor{err: engine.ErrEditorReturnToGate}
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptionsWithBody(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// The editor was consulted once (the `e`); the return-to-gate re-presented the
+	// gate, and the subsequent `y` accepted without re-editing.
+	if ed.calls != 1 {
+		t.Errorf("editor Edit calls = %d, want 1", ed.calls)
+	}
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want 2 (edit returns to gate + accepting yes)", got)
+	}
+	// The gate re-presented WITHOUT a re-render (the body did not change): only the
+	// initial ShowNotes fired.
+	if got := countKind(rec, presentertest.KindShowNotes); got != 1 {
+		t.Errorf("ShowNotes count = %d, want 1 (no re-render on return-to-gate)", got)
+	}
+	// No StageFailed / Unwound: return-to-gate is not an abort.
+	if recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("return-to-gate surfaced a StageFailed; it must not abort")
+	}
+	if recorded(rec, presentertest.KindUnwound) {
+		t.Errorf("return-to-gate surfaced an Unwound; it must not abort")
+	}
+
+	// The ORIGINAL body — not the (empty) editor result — reached every sink.
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != phase2Body {
+		t.Errorf("tag annotation body = %q, want ORIGINAL body %q", got, phase2Body)
+	}
+	if got := changelogSectionBody(t, root, "0.0.1"); got != phase2Body {
+		t.Errorf("CHANGELOG body = %q, want ORIGINAL body %q", got, phase2Body)
+	}
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("return-to-gate run did not finish; last event = %v", fin.Kind)
+	}
+}
+
 // TestRelease_GateEdit_NilEditor_Aborts proves the `e` choice with NO editor
 // wired (a misconfiguration — production wires it in task 2-13) surfaces a clean
 // failure and aborts non-zero before any mutation, rather than panicking.

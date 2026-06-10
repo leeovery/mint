@@ -96,7 +96,29 @@ func (f *FakeRunner) RunWith(_ context.Context, stdin io.Reader, name string, ar
 		Args:  args,
 		Stdin: drainStdin(stdin),
 	})
+	return f.outcome(name)
+}
 
+// RunInteractive records the launch (like the other methods, with no stdin) and
+// returns just the seeded outcome's error — the editor double draws nothing, so
+// the captured Result is discarded. It honours the SAME scripting as Run/RunWith
+// (SeedNotFound surfaces ErrCommandNotFound; a seeded error simulates the editor
+// running and failing), so a test can simulate the editor being missing or
+// succeeding without spawning a process.
+func (f *FakeRunner) RunInteractive(_ context.Context, name string, args ...string) error {
+	f.invocations = append(f.invocations, Invocation{
+		Name: name,
+		Args: args,
+	})
+	_, err := f.outcome(name)
+	return err
+}
+
+// outcome resolves the seeded Result/error for name: it consumes the next
+// SeedSequence entry first, then falls back to the name-keyed Seed/SeedNotFound
+// script, and surfaces an unseeded command as an error. It is the shared core of
+// every recorded call so Run, RunWith, and RunInteractive script identically.
+func (f *FakeRunner) outcome(name string) (Result, error) {
 	if seq := f.sequences[name]; len(seq) > 0 {
 		call := seq[0]
 		f.sequences[name] = seq[1:]

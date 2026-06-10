@@ -675,3 +675,9 @@ func (a *argRunner) RunWith(_ context.Context, _ io.Reader, _ string, args ...st
 	}
 	return s.result, s.err
 }
+
+// RunInteractive satisfies the seam; preflight never launches an interactive
+// child, so a call here signals a wiring mistake rather than a scripted outcome.
+func (a *argRunner) RunInteractive(_ context.Context, _ string, _ ...string) error {
+	panic("argRunner.RunInteractive: not expected")
+}

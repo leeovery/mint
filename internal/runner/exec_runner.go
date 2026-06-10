@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 )
 
@@ -74,4 +75,33 @@ func (r *ExecRunner) RunWith(ctx context.Context, stdin io.Reader, name string, 
 
 	// Any other failure (e.g. context cancellation, pipe setup) propagates wrapped.
 	return res, fmt.Errorf("running %q: %w", name, runErr)
+}
+
+// RunInteractive launches name with args wired directly to the real terminal so
+// an interactive child (the user's $EDITOR) owns stdin/stdout/stderr for its
+// session. Unlike Run/RunWith it captures NO pipes — the editor draws to the
+// terminal itself — so it returns only an error. A missing binary is translated
+// to ErrCommandNotFound exactly as Run does, so the editor launcher can branch
+// "no editor to launch" apart from "the editor ran and failed".
+func (r *ExecRunner) RunInteractive(ctx context.Context, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+
+	// Wire the real terminal: the editor owns it for the duration of the session.
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	runErr := cmd.Run()
+	if runErr == nil {
+		return nil
+	}
+
+	// A missing editor surfaces before the process ever starts; report it
+	// distinctly so the launcher can return to the gate rather than abort.
+	if errors.Is(runErr, exec.ErrNotFound) {
+		return fmt.Errorf("running %q: %w", name, ErrCommandNotFound)
+	}
+
+	// Any other failure (non-zero exit, context cancellation) propagates wrapped.
+	return fmt.Errorf("running %q: %w", name, runErr)
 }

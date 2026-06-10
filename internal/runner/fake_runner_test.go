@@ -165,6 +165,58 @@ func TestFakeRunner_UnseededCommandFails(t *testing.T) {
 	}
 }
 
+func TestFakeRunner_RunInteractive_RecordsAndReturnsSeeded(t *testing.T) {
+	t.Parallel()
+
+	fake := runner.NewFakeRunner()
+	fake.Seed("vi", runner.Result{}, nil)
+
+	if err := fake.RunInteractive(t.Context(), "vi", "/tmp/mint-notes-x.md"); err != nil {
+		t.Fatalf("RunInteractive returned unexpected error: %v", err)
+	}
+
+	calls := fake.Invocations()
+	if len(calls) != 1 {
+		t.Fatalf("len(Invocations) = %d, want 1", len(calls))
+	}
+	if calls[0].Name != "vi" {
+		t.Errorf("recorded Name = %q, want %q", calls[0].Name, "vi")
+	}
+	if strings.Join(calls[0].Args, " ") != "/tmp/mint-notes-x.md" {
+		t.Errorf("recorded Args = %v, want [/tmp/mint-notes-x.md]", calls[0].Args)
+	}
+}
+
+func TestFakeRunner_RunInteractive_HonoursSeedNotFound(t *testing.T) {
+	t.Parallel()
+
+	fake := runner.NewFakeRunner()
+	fake.SeedNotFound("ed")
+
+	err := fake.RunInteractive(t.Context(), "ed", "/tmp/mint-notes-y.md")
+
+	if err == nil {
+		t.Fatal("RunInteractive returned nil error for a not-found editor, want non-nil")
+	}
+	if !errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, want it to match ErrCommandNotFound", err)
+	}
+}
+
+func TestFakeRunner_RunInteractive_HonoursSeededError(t *testing.T) {
+	t.Parallel()
+
+	fake := runner.NewFakeRunner()
+	wantErr := errors.New("editor exited non-zero")
+	fake.Seed("vi", runner.Result{ExitCode: 1}, wantErr)
+
+	err := fake.RunInteractive(t.Context(), "vi", "/tmp/mint-notes-z.md")
+
+	if !errors.Is(err, wantErr) {
+		t.Errorf("error = %v, want it to wrap the seeded error", err)
+	}
+}
+
 // FakeRunner must be substitutable for the seam wherever a CommandRunner is
 // consumed; this compile-time check guards that.
 var _ runner.CommandRunner = (*runner.FakeRunner)(nil)

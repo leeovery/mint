@@ -106,6 +106,50 @@ func TestExecRunner_Run_NonZeroExitIsNotCommandNotFound(t *testing.T) {
 	}
 }
 
+func TestExecRunner_RunInteractive_SucceedsForRealBinary(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewExecRunner()
+
+	// `true` exits 0 without producing output; RunInteractive wires the real
+	// stdio (no captured pipes) and must report a clean run with a nil error.
+	if err := r.RunInteractive(t.Context(), "true"); err != nil {
+		t.Fatalf("RunInteractive returned unexpected error: %v", err)
+	}
+}
+
+func TestExecRunner_RunInteractive_CommandNotFound(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewExecRunner()
+
+	err := r.RunInteractive(t.Context(), "mint-no-such-editor-xyz")
+
+	if err == nil {
+		t.Fatal("RunInteractive returned nil error for a missing editor, want non-nil")
+	}
+	// A missing editor must be distinguishable from a launched-but-failed one so
+	// the editor launcher can return to the gate instead of aborting.
+	if !errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, want it to match ErrCommandNotFound", err)
+	}
+}
+
+func TestExecRunner_RunInteractive_NonZeroExitIsNotCommandNotFound(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewExecRunner()
+
+	err := r.RunInteractive(t.Context(), "false")
+
+	if err == nil {
+		t.Fatal("RunInteractive returned nil error for a non-zero exit, want non-nil")
+	}
+	if errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, a launched-but-failed editor must NOT match ErrCommandNotFound", err)
+	}
+}
+
 func TestExecRunner_RunWith_PipesStdin(t *testing.T) {
 	t.Parallel()
 

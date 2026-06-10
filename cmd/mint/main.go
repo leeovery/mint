@@ -60,6 +60,10 @@ func run(args []string) int {
 		Runner:    r,
 		Releaser:  release.NewReleaser(r),
 		Publisher: publish.NewGitHubPublisher(r),
+		// The `e` review-gate choice hands the notes to the real $EDITOR resolution,
+		// launched interactively through the same presenter + runner. The launcher
+		// reports a missing editor and returns to the gate rather than aborting.
+		Editor: engine.NewEditorLauncher(p, r),
 	}
 
 	if err := engine.Release(context.Background(), deps, opts.ReleaseOptions()); err != nil {

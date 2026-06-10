@@ -257,8 +257,12 @@ var errEditorUnavailable = errors.New("edit chosen but no editor is configured")
 //   - ChoiceEdit edits: the editor seam returns the saved text, which REPLACES the
 //     body VERBATIM — no re-parse, no re-validation (a human edit is trusted;
 //     structural validation only ever guards untrusted AI output). The notes are
-//     re-shown and the loop re-prompts. An editor-seam failure (including a missing
-//     editor) is surfaced and aborts rather than blocking the spine.
+//     re-shown and the loop re-prompts. A return-to-gate signal
+//     (ErrEditorReturnToGate — no editor could be launched, already reported by the
+//     launcher) re-presents the gate with the body UNCHANGED, no re-render and no
+//     abort. Any OTHER editor-seam failure (a launched-but-failed editor, the
+//     nil-editor misconfiguration) is surfaced and aborts rather than blocking the
+//     spine.
 func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, body, versionKey string) (string, error) {
 	for {
 		choice, err := ReviewDecision(p, FirstReleaseReviewGate())
@@ -276,7 +280,15 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, body,
 			return "", abort(errGateAborted)
 		case presenter.ChoiceEdit:
 			edited, eerr := editBody(ctx, editor, body)
-			if eerr != nil {
+			switch {
+			case errors.Is(eerr, ErrEditorReturnToGate):
+				// No editor could be launched: the launcher already reported the problem
+				// via the presenter. RE-PRESENT the gate with the body UNCHANGED — this
+				// is not a failure, so do not surface or abort, and do not re-render.
+				continue
+			case eerr != nil:
+				// A genuine edit failure (a launched-but-failed editor, an IO error, or
+				// the nil-editor misconfiguration): surface and abort.
 				return "", surface(p, "edit", eerr)
 			}
 			// Use the edited text VERBATIM — no re-parse, no re-validation — then
