@@ -2,10 +2,11 @@
 // fully optional: zero config yields sensible defaults everywhere, so Load never
 // requires a file to exist.
 //
-// This loads the keys the release pipeline needs so far: the four Phase 1
-// [release] keys (tag_prefix, commit_prefix, release_branch, publish), the
-// top-level max_diff_lines guard, and the Phase 2 notes-engine prompt-control
-// keys ([release].context, [release].prompt). The full schema (shared engine
+// This loads the keys the release pipeline needs so far: the Phase 1 [release]
+// keys (tag_prefix, commit_prefix, release_branch, publish), the changelog
+// toggle ([release].changelog), the top-level max_diff_lines guard, and the
+// Phase 2 notes-engine prompt-control keys ([release].context, [release].prompt).
+// The full schema (shared engine
 // keys, the rest of [release], [release.hooks]) and typed fail-loud validation
 // are consolidated in Phase 6; until then unknown keys are tolerated and ignored
 // rather than rejected.
@@ -32,6 +33,7 @@ const (
 	defaultTagPrefix    = "v"
 	defaultCommitPrefix = "🌿"
 	defaultPublish      = true
+	defaultChangelog    = true
 )
 
 // defaultOnNotesFailure is the out-of-the-box notes-failure policy: "abort" — when
@@ -62,8 +64,10 @@ type Config struct {
 
 // Release holds the [release] table values needed so far: TagPrefix and
 // CommitPrefix feed tag/commit subjects, ReleaseBranch gates the on-branch check
-// (empty = auto-derive), and Publish decides whether to publish a GitHub release
-// or stop at tag + push.
+// (empty = auto-derive), Publish decides whether to publish a GitHub release
+// or stop at tag + push, and Changelog decides whether the CHANGELOG.md
+// projection is written (default true) or skipped — the annotated tag still
+// carries the full body either way.
 //
 // Context and Prompt are the Phase 2 notes-engine prompt-control knobs, carried
 // here as raw TOML strings (both default empty). Context (string-or-file) injects
@@ -86,6 +90,7 @@ type Release struct {
 	CommitPrefix   string
 	ReleaseBranch  string
 	Publish        bool
+	Changelog      bool
 	Context        string
 	Prompt         string
 	OnNotesFailure string
@@ -100,6 +105,7 @@ func defaults() Config {
 			CommitPrefix:   defaultCommitPrefix,
 			ReleaseBranch:  "",
 			Publish:        defaultPublish,
+			Changelog:      defaultChangelog,
 			Context:        "",
 			Prompt:         "",
 			OnNotesFailure: defaultOnNotesFailure,
@@ -110,9 +116,9 @@ func defaults() Config {
 }
 
 // fileShape mirrors the on-disk TOML so absent keys can be told apart from
-// present-but-zero ones. Publish is a *bool because its zero value (false) is a
-// meaningful, explicit choice: nil means "key absent, apply default true" while
-// a non-nil false means "publish disabled". MaxDiffLines is a *int for the same
+// present-but-zero ones. Publish and Changelog are *bool because their zero value
+// (false) is a meaningful, explicit choice: nil means "key absent, apply default
+// true" while a non-nil false means the surface is disabled. MaxDiffLines is a *int for the same
 // reason — nil means "key absent, apply default 50000" while a non-nil value
 // (even 0) is an explicit operator choice. The string fields are decoded onto a
 // struct pre-seeded with defaults, so the decoder only overwrites keys actually
@@ -128,6 +134,7 @@ type releaseShape struct {
 	CommitPrefix   string `toml:"commit_prefix"`
 	ReleaseBranch  string `toml:"release_branch"`
 	Publish        *bool  `toml:"publish"`
+	Changelog      *bool  `toml:"changelog"`
 	Context        string `toml:"context"`
 	Prompt         string `toml:"prompt"`
 	OnNotesFailure string `toml:"on_notes_failure"`
@@ -178,22 +185,28 @@ func resolveMaxDiffLines(v *int) int {
 	return defaultMaxDiffLines
 }
 
-// resolveRelease applies the publish default when the key was absent (nil) and
-// copies the already-defaulted string fields through.
+// resolveRelease applies the publish and changelog defaults when those keys were
+// absent (nil) and copies the already-defaulted string fields through.
 func resolveRelease(shape releaseShape) Release {
-	publish := defaultPublish
-	if shape.Publish != nil {
-		publish = *shape.Publish
-	}
-
 	return Release{
 		TagPrefix:      shape.TagPrefix,
 		CommitPrefix:   shape.CommitPrefix,
 		ReleaseBranch:  shape.ReleaseBranch,
-		Publish:        publish,
+		Publish:        boolOrDefault(shape.Publish, defaultPublish),
+		Changelog:      boolOrDefault(shape.Changelog, defaultChangelog),
 		Context:        shape.Context,
 		Prompt:         shape.Prompt,
 		OnNotesFailure: shape.OnNotesFailure,
 		Fallback:       shape.Fallback,
 	}
+}
+
+// boolOrDefault applies def when the key was absent (nil) and otherwise honours
+// the explicit value — the absent-vs-explicit-false idiom shared by the publish
+// and changelog toggles.
+func boolOrDefault(v *bool, def bool) bool {
+	if v != nil {
+		return *v
+	}
+	return def
 }

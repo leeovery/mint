@@ -120,6 +120,57 @@ func TestLoad_PublishFalse_Honoured(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentChangelog_DefaultsToTrue(t *testing.T) {
+	t.Parallel()
+
+	// [release].changelog gates the CHANGELOG projection. Absent from the file it
+	// defaults to true — the changelog is written out of the box, mirroring publish.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if !cfg.Release.Changelog {
+		t.Errorf("Changelog = %v, want true (absent key defaults to true)", cfg.Release.Changelog)
+	}
+}
+
+func TestLoad_ChangelogFalse_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// changelog=false is the same bool trap as publish: its zero value is also false,
+	// so an explicit false must be distinguished from absent (which defaults to true).
+	writeConfig(t, dir, "[release]\nchangelog = false\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Changelog {
+		t.Errorf("Changelog = %v, want false (explicit false must be honoured)", cfg.Release.Changelog)
+	}
+}
+
+func TestLoad_ChangelogTrue_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit changelog=true is the default value stated explicitly; it must be
+	// carried through as true (not coerced or dropped).
+	writeConfig(t, dir, "[release]\nchangelog = true\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if !cfg.Release.Changelog {
+		t.Errorf("Changelog = %v, want true (explicit true must be honoured)", cfg.Release.Changelog)
+	}
+}
+
 func TestLoad_ExplicitEmptyTagPrefix_Preserved(t *testing.T) {
 	t.Parallel()
 

@@ -33,10 +33,6 @@ import (
 // releaseAction is the engine-supplied verb word for the start-of-run header.
 const releaseAction = "releasing"
 
-// changelogEnabled gates the changelog write. Phase 1 always writes the changelog;
-// the config knob to disable it lands in a later phase.
-const changelogEnabled = true
-
 // ReleaseDeps bundles the orchestrator's injected seams so production wires the
 // real implementations once (at the cmd entry point) and tests drive the whole
 // spine with a RecordingPresenter + a single FakeRunner. The Releaser and
@@ -64,6 +60,13 @@ type ReleaseOptions struct {
 	Bump version.Bump
 	// Now is the injected release timestamp used for the changelog date.
 	Now time.Time
+	// NotesBody is the SELECTED notes body to distribute to every sink — the
+	// Phase-2 seam the SelectBody wiring (task 2-16) fills. Empty means "no
+	// override": Release falls back to the Phase-1 first-release default body,
+	// preserving current behaviour. Whatever value resolves, it flows WHOLE to the
+	// tag annotation, the CHANGELOG section, and the provider release — no parsing,
+	// no splitting, no per-sink reassembly.
+	NotesBody string
 }
 
 // Release runs the Phase 1 first-release spine in strict order and returns nil on
@@ -102,8 +105,15 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		return surface(p, "preflight", err)
 	}
 
-	// Stage 4 — notes body. First-release path is the fixed no-AI body.
-	body := record.FirstReleaseBody
+	// Stage 4 — notes body. The injected NotesBody is the selected body (Phase-2
+	// SelectBody seam); an empty override falls back to the Phase-1 first-release
+	// fixed no-AI body, preserving current behaviour. Whatever resolves here flows
+	// WHOLE to every active sink below — no parsing, no splitting, no per-sink
+	// reassembly.
+	body := opts.NotesBody
+	if body == "" {
+		body = record.FirstReleaseBody
+	}
 	versionKey := next.String("")
 
 	// Emit in SPEC ORDER: RunStarted, ShowPlan, ShowNotes — then the review gate.
@@ -120,8 +130,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		return err
 	}
 
-	// Stage 5 — record: write changelog, then the bookkeeping commit.
-	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, changelogEnabled)
+	// Stage 5 — record: write changelog (gated by the changelog toggle), then the
+	// bookkeeping commit. When changelog=false WriteChangelog no-ops (Changed:false)
+	// so CommitBookkeeping skips the commit — the tag then points at the existing
+	// HEAD and STILL carries the full body via TagAndPush. Nothing durable is lost.
+	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, cfg.Release.Changelog)
 	if err != nil {
 		return surface(p, "record", err)
 	}

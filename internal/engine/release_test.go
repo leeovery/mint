@@ -605,3 +605,288 @@ func writeConfig(t *testing.T, root, contents string) {
 		t.Fatalf("writing %s: %v", path, err)
 	}
 }
+
+// phase2Body is a distinctive multi-line Phase-2-style notes body: a TL;DR plus
+// emoji-headed sections. It exercises body distribution end to end — the exact
+// same bytes must reach the tag annotation, the CHANGELOG section, and the
+// provider release, surviving verbatim with no parsing, splitting, or per-sink
+// reassembly.
+const phase2Body = "TL;DR: ship the body whole to every sink.\n\n" +
+	"## ✨ Features\n" +
+	"- Single body distributed to tag, changelog, and provider release\n\n" +
+	"## 🐛 Fixes\n" +
+	"- No per-sink reassembly; identical bytes everywhere\n"
+
+// patchOptionsWithBody returns the default-bump options with the fixed clock and
+// an injected NotesBody — the Phase-2 seam SelectBody (task 2-16) will later fill.
+func patchOptionsWithBody(body string) engine.ReleaseOptions {
+	return engine.ReleaseOptions{Bump: version.BumpPatch, Now: fixedClock, NotesBody: body}
+}
+
+// stdinOf returns the recorded stdin for the first invocation whose command line
+// matches name+args exactly, failing the test if no such invocation was recorded.
+// It is how body-distribution tests read back what was piped to `git tag -a … -F -`
+// and `gh release create … --notes-file -`.
+func stdinOf(t *testing.T, f *runner.FakeRunner, name string, args ...string) string {
+	t.Helper()
+	want := name + " " + strings.Join(args, " ")
+	for _, inv := range f.Invocations() {
+		if commandLine(inv) == want {
+			return inv.Stdin
+		}
+	}
+	t.Fatalf("no invocation %q recorded; got %v", want, commandLines(f.Invocations()))
+	return ""
+}
+
+// tagAnnotationBody extracts the notes body from a piped `git tag -a … -F -`
+// stdin: the composed message is the `{commit_prefix} Release {tag}` subject, a
+// blank line, then the full body verbatim. Splitting on the first blank line
+// returns the body untouched so tests assert it byte-for-byte.
+func tagAnnotationBody(t *testing.T, f *runner.FakeRunner, tag string) string {
+	t.Helper()
+	message := stdinOf(t, f, "git", "tag", "-a", tag, "-F", "-")
+	_, body, found := strings.Cut(message, "\n\n")
+	if !found {
+		t.Fatalf("tag annotation message has no subject/body separator: %q", message)
+	}
+	return body
+}
+
+// changelogSectionBody reads {root}/CHANGELOG.md and returns the body under the
+// `## [version] - date` header exactly as projected. The section is rendered as
+// `header\n\nbody\n` (renderSection appends a single trailing newline so the next
+// section starts on its own line), so the body is recovered by stripping the
+// header's "\n\n" separator and exactly that one rendering newline — not all
+// trailing newlines, which would corrupt a body that itself ends in "\n".
+func changelogSectionBody(t *testing.T, root, version string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatalf("reading CHANGELOG.md: %v", err)
+	}
+	header := "## [" + version + "] - " + fixedClock.Format("2006-01-02")
+	_, afterHeader, found := strings.Cut(string(data), header)
+	if !found {
+		t.Fatalf("CHANGELOG.md has no section header %q; got:\n%s", header, data)
+	}
+	// afterHeader begins with the header's "\n\n" separator then the body, then the
+	// single trailing newline renderSection appends.
+	body := strings.TrimPrefix(afterHeader, "\n\n")
+	return strings.TrimSuffix(body, "\n")
+}
+
+// TestRelease_SingleBodyToAllSinks proves the same notes body reaches all three
+// sinks verbatim: the annotated tag message, the CHANGELOG section, and the
+// provider release — identical bytes, used whole, no parsing or per-sink
+// reassembly. The body is injected via opts.NotesBody (the SelectBody seam).
+func TestRelease_SingleBodyToAllSinks(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptionsWithBody(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// (a) The annotated tag carries the full body verbatim, after the subject.
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != phase2Body {
+		t.Errorf("tag annotation body = %q, want %q", got, phase2Body)
+	}
+	// (b) The CHANGELOG section carries the same body verbatim.
+	if got := changelogSectionBody(t, root, "0.0.1"); got != phase2Body {
+		t.Errorf("CHANGELOG body = %q, want %q", got, phase2Body)
+	}
+	// (c) The provider release create carries the same body verbatim on stdin.
+	if got := stdinOf(t, f, "gh", "release", "create", "v0.0.1", "--title", "v0.0.1", "--notes-file", "-", "--verify-tag"); got != phase2Body {
+		t.Errorf("provider release body = %q, want %q", got, phase2Body)
+	}
+
+	// The body survived whole: every sink got the exact same multi-line bytes,
+	// proving no parsing/splitting/reassembly diverged any one of them.
+	tagBody := tagAnnotationBody(t, f, "v0.0.1")
+	changelogBody := changelogSectionBody(t, root, "0.0.1")
+	providerBody := stdinOf(t, f, "gh", "release", "create", "v0.0.1", "--title", "v0.0.1", "--notes-file", "-", "--verify-tag")
+	if tagBody != changelogBody || changelogBody != providerBody {
+		t.Errorf("bodies diverged across sinks:\n tag=%q\n changelog=%q\n provider=%q", tagBody, changelogBody, providerBody)
+	}
+}
+
+// TestRelease_EmptyNotesBody_FallsBackToFirstReleaseDefault proves the Phase-2
+// seam preserves current behaviour: an empty opts.NotesBody falls back to the
+// Phase-1 first-release default body, which then flows to every sink. This is the
+// override-absent path the existing 1-x tests rely on.
+func TestRelease_EmptyNotesBody_FallsBackToFirstReleaseDefault(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	// NotesBody is the zero value (""), so the spine must use the first-release body.
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	const want = "Initial release."
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != want {
+		t.Errorf("tag annotation body = %q, want first-release default %q", got, want)
+	}
+	if got := changelogSectionBody(t, root, "0.0.1"); got != want {
+		t.Errorf("CHANGELOG body = %q, want first-release default %q", got, want)
+	}
+	notes, _ := rec.At(2)
+	if notes.ShowNotes.Body != want {
+		t.Errorf("ShowNotes.Body = %q, want first-release default %q", notes.ShowNotes.Body, want)
+	}
+}
+
+// TestRelease_ChangelogDisabled_SkipsChangelogTagStillCarriesBody proves
+// changelog=false skips the CHANGELOG projection (no file written, no bookkeeping
+// commit) while the annotated tag STILL carries the full body — nothing durable is
+// lost. The tag points at the existing HEAD (no empty bookkeeping commit) and the
+// run finishes successfully.
+func TestRelease_ChangelogDisabled_SkipsChangelogTagStillCarriesBody(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "[release]\nchangelog = false\n")
+
+	f := runner.NewFakeRunner()
+	// changelog=false: no `add CHANGELOG.md` / `commit` calls — the sequence runs
+	// the read gates, then tag + push directly. publish defaults true, so gh runs.
+	f.SeedSequence("git",
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list
+		ScriptedOut(""),            // fetch --tags
+		ScriptedOut(""),            // status --porcelain
+		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
+		ScriptedOut("0\t1"),        // rev-list left-right count
+		ScriptedOut(""),            // ls-remote --tags
+		ScriptedOut(""),            // tag -a v0.0.1 -F -
+		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
+	)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptionsWithBody(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// No CHANGELOG.md may have been written.
+	if _, statErr := os.Stat(filepath.Join(root, "CHANGELOG.md")); !os.IsNotExist(statErr) {
+		t.Errorf("CHANGELOG.md was written despite changelog=false (stat err: %v)", statErr)
+	}
+	// No bookkeeping commit (no stage, no commit) may have happened.
+	for _, inv := range f.Invocations() {
+		line := commandLine(inv)
+		if strings.Contains(line, "add CHANGELOG.md") || strings.Contains(line, "commit -m") {
+			t.Errorf("bookkeeping commit ran despite changelog=false: %q", line)
+		}
+	}
+	// The tag STILL carries the full body — the mandatory floor / sole read source.
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != phase2Body {
+		t.Errorf("tag annotation body = %q, want full body %q even with changelog=false", got, phase2Body)
+	}
+	// The run still tags and pushes, then finishes.
+	if !invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", "v0.0.1") {
+		t.Errorf("changelog=false run did not reach the atomic push")
+	}
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("changelog=false run did not finish; last event = %v", fin.Kind)
+	}
+}
+
+// TestRelease_ChangelogDefaultTrue_WritesChangelog pins the toggle default: with
+// no config file, changelog defaults true, so the CHANGELOG projection is written
+// (file created, bookkeeping commit recorded) carrying the body.
+func TestRelease_ChangelogDefaultTrue_WritesChangelog(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptionsWithBody(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// The default-true changelog must produce a CHANGELOG.md carrying the body.
+	if got := changelogSectionBody(t, root, "0.0.1"); got != phase2Body {
+		t.Errorf("CHANGELOG body = %q, want %q (changelog defaults true)", got, phase2Body)
+	}
+	// The bookkeeping commit must have run (the changelog changed).
+	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+		t.Errorf("default-true changelog did not record the bookkeeping commit")
+	}
+}
+
+// TestRelease_PublishDisabled_TagStillCarriesBody proves publish=false skips the
+// provider release while the annotated tag still carries the full injected body
+// (and the changelog projection, default-true, also carries it). The run ends at a
+// successful tag + push.
+func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "[release]\npublish = false\n")
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list
+		ScriptedOut(""),            // fetch --tags
+		ScriptedOut(""),            // status --porcelain
+		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
+		ScriptedOut("0\t1"),        // rev-list left-right count
+		ScriptedOut(""),            // ls-remote --tags
+		ScriptedOut(""),            // -C root add CHANGELOG.md
+		ScriptedOut(""),            // -C root commit -m
+		ScriptedOut(""),            // tag -a v0.0.1 -F -
+		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptionsWithBody(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// No provider release may have been created.
+	if invokedWith(f, "gh", "release", "create", "v0.0.1", "--title", "v0.0.1", "--notes-file", "-", "--verify-tag") {
+		t.Errorf("provider release created despite publish=false")
+	}
+	for _, inv := range f.Invocations() {
+		if inv.Name == "gh" {
+			t.Errorf("gh was invoked with publish=false: %q", commandLine(inv))
+		}
+	}
+	// The tag still carries the full body, and the push still ran.
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != phase2Body {
+		t.Errorf("tag annotation body = %q, want full body %q with publish=false", got, phase2Body)
+	}
+	if !invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", "v0.0.1") {
+		t.Errorf("publish=false run did not reach the atomic push")
+	}
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("publish=false run did not finish; last event = %v", fin.Kind)
+	}
+}
