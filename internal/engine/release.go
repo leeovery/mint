@@ -318,6 +318,18 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		}
 	}
 
+	// Stage 7 — post_release hook. Post-PONR follow-ups (notifications, tap
+	// repository_dispatch). It runs UNCONDITIONALLY: reaching here means the push
+	// already crossed the PONR, so the tag is public whether publish=true or
+	// publish=false, and post-release follow-ups apply either way. Like the publish
+	// failure above, a non-zero exit is WARN-ONLY — it does NOT abort or unwind; the
+	// run still reaches RunFinished and returns nil. This is the ONLY hook point whose
+	// failure is non-fatal (preflight and pre_tag abort); the array stop-on-first-
+	// failure SEQUENCING is identical across points — only the CONSEQUENCE differs.
+	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, opts.Bump); err != nil {
+		warnPostReleaseFailed(p, err)
+	}
+
 	p.RunFinished(presenter.RunResult{
 		Project: projectName(root),
 		Version: versionKey,
@@ -557,6 +569,19 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	return err
 }
 
+// runPostReleaseHook runs the project's optional Stage-7 post_release hook through
+// the shared hooks runner with the same MINT_* env as the other points (reusing
+// buildHookEnv). An absent value (nil) is a no-op — the runner returns nil. A
+// non-zero exit (the first non-zero entry for an array — the stop-on-first-failure
+// SEQUENCING is identical to the other points) returns a non-nil error. UNLIKE
+// preflight/pre_tag, the CONSEQUENCE here is warn-only: the caller does NOT abort or
+// unwind, because by Stage 7 the push has crossed the PONR and the tag is public.
+// DryRun is fixed to false here; MINT_DRY_RUN skip behaviour is a later phase.
+func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump) error {
+	env := buildHookEnv(current, next, tag, bump)
+	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env)
+}
+
 // pretagArtifactSubject builds the FIXED subject for the pre_tag artifact commit. It
 // uses a constant `chore(release):` prefix — NOT the configurable commit_prefix —
 // because the artifact commit is project content (e.g. a rebuilt bundle), distinct
@@ -786,6 +811,32 @@ func warnPublishFailed(p presenter.Presenter, cause error) {
 		Message: "tag is already published; heal with regenerate --reuse",
 		Output:  cause.Error(),
 	})
+}
+
+// warnPostReleaseFailed emits the post-PONR warn-only event for a failed
+// post_release hook: by Stage 7 the push has crossed the point of no return, so the
+// tag is public and mint must NOT unwind. It warns (the spec-fixed message) and the
+// run still finishes successfully. When the failure carries a *hooks.HookError its
+// captured output (the failing entry's stderr) is rendered beneath the warn line, as
+// warnPublishFailed does for the provider error; otherwise the Output is empty.
+func warnPostReleaseFailed(p presenter.Presenter, cause error) {
+	p.Warn(presenter.Warning{
+		Label:   "post_release",
+		Message: "post_release hook failed; tag is already published",
+		Output:  hookFailureOutput(cause),
+	})
+}
+
+// hookFailureOutput extracts the failing hook entry's captured stderr from a
+// *hooks.HookError so the warn can render it verbatim; a cause that is not a
+// HookError (or that captured no stderr) yields the empty string — the common case,
+// which renders no output block.
+func hookFailureOutput(cause error) string {
+	var hookErr *hooks.HookError
+	if errors.As(cause, &hookErr) {
+		return hookErr.Result.Stderr
+	}
+	return ""
 }
 
 // surface renders a stage failure through the presenter and returns the engine's
