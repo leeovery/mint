@@ -718,10 +718,10 @@ func (p *PrettyPresenter) ShowVersion(v Version) {
 }
 
 // Prompt drives the SAME shared line-read input loop the plain presenter uses
-// (readChoice/parseChoice): empty Enter selects the gate's Default, case-insensitive
-// input maps to a declared key, unrecognised input re-prompts, and EOF returns a
-// non-nil error rather than silently default-accepting. Only the render closure is
-// mode-specific.
+// (readChoice/parseChoice): empty Enter (and, per parseChoice, a whitespace-only
+// line that trims to empty) selects the gate's Default, case-insensitive input maps
+// to a declared key, unrecognised input re-prompts, and EOF returns a non-nil error
+// rather than silently default-accepting. Only the render closure is mode-specific.
 //
 // The pretty render is the FULL vertical menu (renderGate): the gate's declared
 // choices listed in order ABOVE the question, "[default]" beside the default

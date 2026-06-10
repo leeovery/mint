@@ -324,11 +324,12 @@ func (p *PlainPresenter) ShowVersion(v Version) {
 }
 
 // Prompt drives the shared line-read input loop for the plain gate: it renders a
-// terse prompt, reads ONE line, and returns a declared Choice. Empty Enter selects
-// the gate's Default; case-insensitive input maps to a declared key; unrecognised
-// input re-prompts; EOF returns a non-nil error rather than silently
-// default-accepting. The parse/loop core is shared with the pretty presenter
-// (readChoice/parseChoice) — only the render closure differs.
+// terse prompt, reads ONE line, and returns a declared Choice. Empty Enter (and, per
+// parseChoice, a whitespace-only line that trims to empty) selects the gate's
+// Default; case-insensitive input maps to a declared key; unrecognised input
+// re-prompts; EOF returns a non-nil error rather than silently default-accepting.
+// The parse/loop core is shared with the pretty presenter (readChoice/parseChoice)
+// — only the render closure differs.
 //
 // The plain render is a single terse line "{Question} [y/n/e/r]" with the hint
 // built from the gate's DECLARED keys (not a hardcoded set), so the two-choice

@@ -266,8 +266,10 @@ func TestPlainPresenterLongStageEmitsStartThenCompletion(t *testing.T) {
 }
 
 // TestPlainPresenterStageFailedRendersOneLineSummary asserts the one-line failure
-// summary. The captured-output delimiter block and stderr duplication are later
-// phases — this task owns only the single summary line.
+// summary in isolation (no captured Output). The captured-output delimiter block
+// and the stderr duplication of the summary are covered by their own sibling tests
+// (TestPlainPresenterStageFailedRendersDelimitedOutputBlock and
+// TestPlainPresenterStageFailedSummaryToStderrWithoutBody).
 func TestPlainPresenterStageFailedRendersOneLineSummary(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})

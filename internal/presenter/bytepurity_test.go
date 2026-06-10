@@ -18,13 +18,13 @@ func assertBytePureASCII(t *testing.T, buf *bytes.Buffer, context string) {
 	for i, b := range buf.Bytes() {
 		switch {
 		case b == 0x1b:
-			t.Errorf("%s: byte %d is ESC (0x1b) — ANSI escape leaked into %s", context, i, context)
+			t.Errorf("%s: byte %d is ESC (0x1b) — ANSI escape leaked into the byte-pure stream", context, i)
 		case b == 0x0d:
-			t.Errorf("%s: byte %d is CR (0x0d) — carriage-return leaked into %s", context, i, context)
+			t.Errorf("%s: byte %d is CR (0x0d) — carriage-return leaked into the byte-pure stream", context, i)
 		case b == '\n':
 			// the only permitted control byte: a line terminator
 		case b < 0x20 || b > 0x7e:
-			t.Errorf("%s: byte %d = 0x%02x is outside the printable ASCII range %s uses", context, i, b, context)
+			t.Errorf("%s: byte %d = 0x%02x is outside the printable ASCII range", context, i, b)
 		}
 	}
 }
