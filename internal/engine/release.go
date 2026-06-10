@@ -146,8 +146,18 @@ type ReleaseDeps struct {
 // passes time.Now(), tests pass a fixed time) so the changelog header is
 // deterministic — Release never calls time.Now() itself.
 type ReleaseOptions struct {
-	// Bump selects which version segment Next increments (default BumpPatch).
+	// Bump selects which version segment Next increments (default BumpPatch). It is
+	// IGNORED when SetVersion is set — the two are mutually exclusive (the CLI rejects
+	// combining --set-version with a bump flag before reaching the engine).
 	Bump version.Bump
+	// SetVersion is the raw --set-version value (e.g. "2.0.0" or "v2.0.0"): when
+	// non-empty it PINS the next version outright, bypassing Next. The engine parses
+	// it as strict 3-part SemVer (reusing the tag-grammar parser, prefix-tolerant per
+	// regenerate's normalisation) and gates it strictly-greater than the current
+	// latest tag — a backwards/equal jump is rejected even if the target tag is free.
+	// On success the run's bump kind is explicit, so MINT_BUMP renders "explicit".
+	// Empty (the default) selects the Bump path.
+	SetVersion string
 	// Now is the injected release timestamp used for the changelog date.
 	Now time.Time
 	// NotesBody is a TEST-INJECTION OVERRIDE for the resolved notes body. In
@@ -238,7 +248,16 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	if err != nil {
 		return surface(p, "version", err)
 	}
-	next := version.Next(current, opts.Bump)
+	// Resolve the next version and its bump KIND from one of two paths: --set-version
+	// PINS an explicit version (parsed strict + gated strictly-greater than current),
+	// otherwise the bump flag COMPUTES it from current. A --set-version failure is a
+	// pre-mutation "version" abort — nothing is tagged yet, so it is a plain surface
+	// with nothing to unwind. The resolved bumpKind flows to every hook env so a pinned
+	// run renders MINT_BUMP=explicit.
+	next, bumpKind, err := resolveNextVersion(current, cfg.Release.TagPrefix, opts)
+	if err != nil {
+		return surface(p, "version", err)
+	}
 	tag := next.String(cfg.Release.TagPrefix)
 
 	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
@@ -277,7 +296,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// the whole release cleanly: it is surfaced as a "preflight" StageFailed. Because
 	// this precedes all mutation there is nothing to unwind — a plain surface, not the
 	// auto-unwind path.
-	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun); err != nil {
+	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -312,7 +331,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// step failed) is reset back to startingHEAD. The committed signal is folded into
 	// made.Commits the moment the artifact commit lands, so it is tracked even if a
 	// LATER stage fails.
-	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun)
+	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun)
 	if artifactCommitted {
 		made.Commits++
 	}
@@ -470,7 +489,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// run still reaches RunFinished and returns nil. This is the ONLY hook point whose
 	// failure is non-fatal (preflight and pre_tag abort); the array stop-on-first-
 	// failure SEQUENCING is identical across points — only the CONSEQUENCE differs.
-	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun); err != nil {
+	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun); err != nil {
 		warnPostReleaseFailed(p, err)
 	}
 
@@ -486,6 +505,40 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 // errGateAborted is the cause for a clean gate-no abort: the user declined the
 // review gate, so the run stops with a non-zero exit but no underlying failure.
 var errGateAborted = errors.New("release aborted at the review gate")
+
+// resolveNextVersion picks this run's next version and its bump KIND from one of two
+// mutually-exclusive paths:
+//
+//   - --set-version (opts.SetVersion non-empty) PINS the version: the value is parsed
+//     as strict 3-part SemVer (version.ParseSemVer, reusing the tag-grammar parser and
+//     tolerating a leading prefix like regenerate's <version>) and then gated
+//     STRICTLY-GREATER than current. The strictly-greater gate sits ON TOP of the
+//     free-tag preflight check: a backwards or equal jump is rejected here even when
+//     the target tag does not exist, because a lower/equal version sorts at-or-below
+//     "latest" and corrupts tag-as-truth. There is deliberately no --force downgrade
+//     override (YAGNI). On success the kind is version.BumpExplicit, so MINT_BUMP
+//     renders "explicit".
+//   - otherwise the version is COMPUTED with version.Next(current, opts.Bump) and the
+//     kind is opts.Bump (patch/minor/major) unchanged.
+//
+// A returned error is a pre-mutation "version" failure for the caller to surface.
+func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptions) (version.SemVer, version.Bump, error) {
+	if opts.SetVersion == "" {
+		return version.Next(current, opts.Bump), opts.Bump, nil
+	}
+
+	pinned, err := version.ParseSemVer(opts.SetVersion, prefix)
+	if err != nil {
+		return version.SemVer{}, 0, err
+	}
+	if !pinned.GreaterThan(current) {
+		return version.SemVer{}, 0, fmt.Errorf(
+			"--set-version %s must be greater than the current latest version %s",
+			pinned.String(""), current.String(""),
+		)
+	}
+	return pinned, version.BumpExplicit, nil
+}
 
 // resolveBody resolves this run's notes body + Kind via the notes-path precedence
 // (SelectBody), returning the generator it built so the caller can bind a per-run
@@ -767,10 +820,13 @@ func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, d
 }
 
 // hookBump maps the engine's version.Bump onto the hooks package's Bump so the
-// MINT_BUMP variable reflects how the version was chosen. --set-version/explicit
-// is a later phase and not reachable yet; an unmapped value falls back to patch.
+// MINT_BUMP variable reflects how the version was chosen. A --set-version run
+// carries version.BumpExplicit and renders to "explicit"; an unmapped value falls
+// back to patch.
 func hookBump(bump version.Bump) hooks.Bump {
 	switch bump {
+	case version.BumpExplicit:
+		return hooks.BumpExplicit
 	case version.BumpMinor:
 		return hooks.BumpMinor
 	case version.BumpMajor:

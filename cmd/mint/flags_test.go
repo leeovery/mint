@@ -101,3 +101,48 @@ func TestParseReleaseFlags_ConflictingBumps(t *testing.T) {
 		}
 	}
 }
+
+// TestParseReleaseFlags_SetVersion threads the --set-version value through to the
+// engine options unparsed (the engine owns parsing + the strictly-greater gate). A
+// bare --set-version (no bump flag) is legal and leaves the bump at its default.
+func TestParseReleaseFlags_SetVersion(t *testing.T) {
+	t.Parallel()
+
+	opts, err := parseReleaseFlags([]string{"--set-version", "2.0.0"})
+	if err != nil {
+		t.Fatalf("parseReleaseFlags returned error: %v", err)
+	}
+	if opts.SetVersion != "2.0.0" {
+		t.Errorf("SetVersion = %q, want %q", opts.SetVersion, "2.0.0")
+	}
+	if got := opts.ReleaseOptions().SetVersion; got != "2.0.0" {
+		t.Errorf("ReleaseOptions().SetVersion = %q, want %q", got, "2.0.0")
+	}
+}
+
+// TestParseReleaseFlags_SetVersionWithBumpFlag rejects combining --set-version with
+// ANY bump flag: it is a usage error with the exact spec message, not silent
+// precedence. Every short and long bump form must conflict.
+func TestParseReleaseFlags_SetVersionWithBumpFlag(t *testing.T) {
+	t.Parallel()
+
+	const wantMsg = "can't combine --set-version with a bump flag"
+	conflicts := [][]string{
+		{"--set-version", "2.0.0", "-p"},
+		{"--set-version", "2.0.0", "--patch"},
+		{"--set-version", "2.0.0", "-m"},
+		{"--set-version", "2.0.0", "--minor"},
+		{"--set-version", "2.0.0", "-M"},
+		{"--set-version", "2.0.0", "--major"},
+	}
+	for _, args := range conflicts {
+		_, err := parseReleaseFlags(args)
+		if err == nil {
+			t.Errorf("parseReleaseFlags(%v) returned nil error, want a conflict error", args)
+			continue
+		}
+		if err.Error() != wantMsg {
+			t.Errorf("parseReleaseFlags(%v) error = %q, want %q", args, err.Error(), wantMsg)
+		}
+	}
+}

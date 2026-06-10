@@ -259,6 +259,119 @@ func TestNext_DefaultBumpIsPatch(t *testing.T) {
 	}
 }
 
+func TestParseSemVer_Valid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		value  string
+		prefix string
+		want   version.SemVer
+	}{
+		{
+			name:   "bare three-part with empty prefix",
+			value:  "1.2.3",
+			prefix: "",
+			want:   version.SemVer{Major: 1, Minor: 2, Patch: 3},
+		},
+		{
+			name:   "zeroes are valid",
+			value:  "0.0.1",
+			prefix: "",
+			want:   version.SemVer{Major: 0, Minor: 0, Patch: 1},
+		},
+		{
+			name:   "double-digit segments",
+			value:  "10.12.3",
+			prefix: "",
+			want:   version.SemVer{Major: 10, Minor: 12, Patch: 3},
+		},
+		{
+			name:   "leading configured prefix is stripped",
+			value:  "v2.0.0",
+			prefix: "v",
+			want:   version.SemVer{Major: 2, Minor: 0, Patch: 0},
+		},
+		{
+			name:   "bare value still parses when a prefix is configured",
+			value:  "2.0.0",
+			prefix: "v",
+			want:   version.SemVer{Major: 2, Minor: 0, Patch: 0},
+		},
+		{
+			name:   "component prefix is stripped",
+			value:  "pkg-name/v1.2.3",
+			prefix: "pkg-name/v",
+			want:   version.SemVer{Major: 1, Minor: 2, Patch: 3},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := version.ParseSemVer(tt.value, tt.prefix)
+			if err != nil {
+				t.Fatalf("ParseSemVer(%q, %q) returned error: %v", tt.value, tt.prefix, err)
+			}
+			if got != tt.want {
+				t.Errorf("ParseSemVer(%q, %q) = %+v, want %+v", tt.value, tt.prefix, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseSemVer_Rejects(t *testing.T) {
+	t.Parallel()
+
+	// Every non-strict-3-part shape must be rejected: the parser reuses the same
+	// strict SemVer 2.0.0 grammar the tag scanner uses, so pre-release, build
+	// metadata, wrong segment counts, and non-numeric segments all fail loudly.
+	invalid := []string{
+		"2.0",        // too few segments
+		"2.0.0.1",    // too many segments
+		"2.0.0-rc.1", // pre-release
+		"2.0.0+b5",   // build metadata
+		"abc",        // non-numeric / not a version
+		"",           // empty
+		"v2.0.0.1",   // prefixed but four segments
+		"1.2.x",      // non-numeric patch
+	}
+	for _, value := range invalid {
+		if _, err := version.ParseSemVer(value, "v"); err == nil {
+			t.Errorf("ParseSemVer(%q, %q) returned nil error, want a rejection", value, "v")
+		}
+	}
+}
+
+func TestSemVer_GreaterThan(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		a    version.SemVer
+		b    version.SemVer
+		want bool
+	}{
+		{name: "greater major", a: version.SemVer{Major: 2}, b: version.SemVer{Major: 1, Minor: 9, Patch: 9}, want: true},
+		{name: "greater minor", a: version.SemVer{Major: 1, Minor: 3}, b: version.SemVer{Major: 1, Minor: 2, Patch: 9}, want: true},
+		{name: "greater patch", a: version.SemVer{Major: 1, Minor: 2, Patch: 4}, b: version.SemVer{Major: 1, Minor: 2, Patch: 3}, want: true},
+		{name: "equal is not greater", a: version.SemVer{Major: 1, Minor: 2, Patch: 3}, b: version.SemVer{Major: 1, Minor: 2, Patch: 3}, want: false},
+		{name: "less is not greater", a: version.SemVer{Major: 1, Minor: 2, Patch: 2}, b: version.SemVer{Major: 1, Minor: 2, Patch: 3}, want: false},
+		{name: "numeric not lexical", a: version.SemVer{Major: 10}, b: version.SemVer{Major: 9, Minor: 9, Patch: 9}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.a.GreaterThan(tt.b); got != tt.want {
+				t.Errorf("%+v.GreaterThan(%+v) = %v, want %v", tt.a, tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSemVer_String_FormatsWithPrefix(t *testing.T) {
 	t.Parallel()
 

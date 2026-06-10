@@ -16,8 +16,16 @@ import (
 // bypass. It is a plain value (no engine types beyond the bump) so flag parsing stays
 // decoupled from the orchestrator; ReleaseOptions converts it into the engine's option struct.
 type releaseFlags struct {
-	// Bump is the resolved version bump (default BumpPatch).
+	// Bump is the resolved version bump (default BumpPatch). It is ignored when
+	// SetVersion is set — the two are mutually exclusive (parseReleaseFlags rejects
+	// combining --set-version with a bump flag rather than applying silent precedence).
 	Bump version.Bump
+	// SetVersion is the raw --set-version value (e.g. "2.0.0" or "v2.0.0"): the
+	// explicit-version escape hatch. It is threaded UNPARSED to the engine, which owns
+	// the strict-SemVer parse and the strictly-greater-than-latest gate (those need the
+	// configured tag_prefix and the resolved latest tag, neither known at flag time).
+	// Empty (the default) selects the bump-flag path.
+	SetVersion string
 	// Yes skips the interactive confirmation/notes-review gate (the presenter
 	// performs the skip inside Prompt).
 	Yes bool
@@ -43,7 +51,7 @@ type releaseFlags struct {
 // ReleaseOptions converts the parsed flags into the engine's run options, binding
 // the production clock (time.Now) so the changelog date is the real release date.
 func (f releaseFlags) ReleaseOptions() engine.ReleaseOptions {
-	return engine.ReleaseOptions{Bump: f.Bump, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash, AnyBranch: f.AnyBranch}
+	return engine.ReleaseOptions{Bump: f.Bump, SetVersion: f.SetVersion, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash, AnyBranch: f.AnyBranch}
 }
 
 // parseReleaseFlags parses the `mint release [bump] [options]` arguments into a
@@ -56,12 +64,14 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
 	var patch, minor, major, yes, plain, noAI, autoStash, anyBranch bool
+	var setVersion string
 	fs.BoolVar(&patch, "p", false, "patch bump (default)")
 	fs.BoolVar(&patch, "patch", false, "patch bump (default)")
 	fs.BoolVar(&minor, "m", false, "minor bump")
 	fs.BoolVar(&minor, "minor", false, "minor bump")
 	fs.BoolVar(&major, "M", false, "major bump")
 	fs.BoolVar(&major, "major", false, "major bump")
+	fs.StringVar(&setVersion, "set-version", "", "explicit version X.Y.Z (mutually exclusive with bump flags)")
 	fs.BoolVar(&yes, "y", false, "skip the confirmation/notes-review gate")
 	fs.BoolVar(&yes, "yes", false, "skip the confirmation/notes-review gate")
 	fs.BoolVar(&plain, "plain", false, "force plain (un-styled) output")
@@ -73,11 +83,25 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 		return releaseFlags{}, err
 	}
 
-	bump, err := resolveBump(patch, minor, major)
+	bump, err := resolveVersionSelection(setVersion, patch, minor, major)
 	if err != nil {
 		return releaseFlags{}, err
 	}
-	return releaseFlags{Bump: bump, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash, AnyBranch: anyBranch}, nil
+	return releaseFlags{Bump: bump, SetVersion: setVersion, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash, AnyBranch: anyBranch}, nil
+}
+
+// resolveVersionSelection enforces the version-selection rules and returns the
+// resolved bump. --set-version and the bump flags are MUTUALLY EXCLUSIVE: combining
+// --set-version with ANY of -p/-m/-M is a usage error (the exact spec message), not
+// silent precedence. With --set-version set and no bump flag, the returned bump is
+// irrelevant (the engine pins the version and ignores it) and left at the default.
+// Without --set-version, selection falls through to resolveBump (the bump flags'
+// own mutual exclusivity).
+func resolveVersionSelection(setVersion string, patch, minor, major bool) (version.Bump, error) {
+	if setVersion != "" && boolsSet(patch, minor, major) > 0 {
+		return 0, fmt.Errorf("can't combine --set-version with a bump flag")
+	}
+	return resolveBump(patch, minor, major)
 }
 
 // resolveBump maps the three mutually-exclusive bump booleans to a version.Bump.

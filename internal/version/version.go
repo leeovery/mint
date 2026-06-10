@@ -38,6 +38,12 @@ const (
 	BumpMinor
 	// BumpMajor increments the major segment and resets minor and patch to zero.
 	BumpMajor
+	// BumpExplicit marks a --set-version run: the next version was PINNED outright
+	// rather than computed from current, so Next is bypassed for it (the spine uses
+	// the parsed version directly). It exists so the chosen kind can flow to the
+	// MINT_BUMP hook env as "explicit"; passing it to Next would (harmlessly) fall to
+	// the patch default, but the spine never does.
+	BumpExplicit
 )
 
 // CurrentVersion lists the repository's tags through the runner, parses those
@@ -52,6 +58,28 @@ func CurrentVersion(ctx context.Context, r runner.CommandRunner, prefix string) 
 	}
 
 	return highestMatching(res.Stdout, prefix), nil
+}
+
+// ParseSemVer parses a single explicit version string (the --set-version value)
+// into a SemVer, REUSING the same strict SemVer 2.0.0 grammar the tag scanner uses
+// (^{prefix}(\d+)\.(\d+)\.(\d+)$). It accepts the value with OR without the
+// configured prefix — `v2.0.0` and `2.0.0` both parse under prefix "v" — mirroring
+// regenerate's <version> normalisation, so a user who habitually types the prefix
+// is not punished; the prefix mint writes back at tag time is owned by String. Any
+// non-3-part shape (`2.0`, `2.0.0.1`), pre-release/build metadata (`2.0.0-rc.1`,
+// `2.0.0+b5`), or non-numeric segment (`abc`, `1.2.x`) is rejected, so explicit
+// versions obey the exact same tag-as-truth grammar as discovered tags.
+func ParseSemVer(value, prefix string) (SemVer, error) {
+	// Strip a leading configured prefix if the caller supplied one (the value is meant
+	// to be bare, but `v2.0.0` is normalised to `2.0.0` under prefix "v"), then match
+	// against the bare strict grammar — the same `(\d+)\.(\d+)\.(\d+)` the tag scanner
+	// uses. A non-empty prefix that is NOT present is left untouched, so a stray suffix
+	// like `v2.0.0.1` still fails the strict match below.
+	bare := regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)$`)
+	if v, ok := parseTag(bare, strings.TrimPrefix(value, prefix)); ok {
+		return v, nil
+	}
+	return SemVer{}, fmt.Errorf("invalid version %q: expected strict 3-part SemVer (MAJOR.MINOR.PATCH)", value)
 }
 
 // Next returns current bumped per bump: patch increments patch; minor increments
@@ -91,7 +119,7 @@ func highestMatching(tagList, prefix string) SemVer {
 		if !ok {
 			continue
 		}
-		if v.greaterThan(highest) {
+		if v.GreaterThan(highest) {
 			highest = v
 		}
 	}
@@ -115,9 +143,10 @@ func parseTag(pattern *regexp.Regexp, tag string) (SemVer, bool) {
 	return SemVer{Major: major, Minor: minor, Patch: patch}, true
 }
 
-// greaterThan reports whether v sorts strictly above other by numeric
-// (Major, Minor, Patch) precedence — not lexical, so v10.0.0 > v9.0.0.
-func (v SemVer) greaterThan(other SemVer) bool {
+// GreaterThan reports whether v sorts strictly above other by numeric
+// (Major, Minor, Patch) precedence — not lexical, so v10.0.0 > v9.0.0. It backs
+// both the highest-tag scan and the --set-version strictly-greater gate.
+func (v SemVer) GreaterThan(other SemVer) bool {
 	switch {
 	case v.Major != other.Major:
 		return v.Major > other.Major

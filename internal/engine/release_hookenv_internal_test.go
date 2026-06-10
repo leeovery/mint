@@ -4,8 +4,36 @@ import (
 	"slices"
 	"testing"
 
+	"mint/internal/hooks"
 	"mint/internal/version"
 )
+
+// TestHookBump_MapsExplicit proves the engine maps an explicit --set-version run to
+// MINT_BUMP=explicit: version.BumpExplicit must render to hooks.BumpExplicit so a
+// pinned version is distinguishable in the hook env from a computed patch/minor/major.
+func TestHookBump_MapsExplicit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		bump version.Bump
+		want hooks.Bump
+	}{
+		{name: "explicit", bump: version.BumpExplicit, want: hooks.BumpExplicit},
+		{name: "patch", bump: version.BumpPatch, want: hooks.BumpPatch},
+		{name: "minor", bump: version.BumpMinor, want: hooks.BumpMinor},
+		{name: "major", bump: version.BumpMajor, want: hooks.BumpMajor},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := hookBump(tt.bump); got != tt.want {
+				t.Errorf("hookBump(%v) = %q, want %q", tt.bump, got, tt.want)
+			}
+		})
+	}
+}
 
 // TestBuildHookEnv_DryRunRendersMintDryRun proves the engine's buildHookEnv threads
 // the dryRun flag into the assembled HookEnv so MINT_DRY_RUN renders "1" under
