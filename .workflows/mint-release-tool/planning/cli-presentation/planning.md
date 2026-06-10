@@ -173,3 +173,14 @@ approved_at: 2026-06-09
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
 | cli-presentation-8-1 | Restore the one-place mode-branch/stream-split invariant in presenter wiring | preferred convergence routes both seams through one helper, fallback re-scopes New's doc comment if behaviour would change, NewForStartup still threads mode/width/-y/stdin-interactive, plain still does not probe width, no behaviour change (existing presenter tests pass unmodified), no new exported symbols, change confined to internal/presenter |
+
+### Phase 9: Analysis (Cycle 5)
+
+**Goal**: Address findings from Analysis (Cycle 5).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-9-1 | Extract shared AST import-scanning guard helper across the two dependency-guard tests | single shared parse-and-scan helper, both guards call it with own sources/markers/match-mode, scanned == 0 defence lives in helper and protects both, plain substring match preserved, prompt exact-equality preserved, no production source modified |
+| cli-presentation-9-2 | Tighten deterministic positive substring assertions to exact line matches | six cited positive assertions tightened to == or full-line HasSuffix, negative/absence Contains checks unchanged, no production source modified, tightened assertions pass against real output |
