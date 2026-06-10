@@ -11,6 +11,11 @@
 // from upstream), and CheckTagFreeRemote — runs after the local gates; the
 // orchestrator fetches first, then runs the remote checks. The escape hatches
 // (--autostash, --any-branch) live elsewhere; nothing here mutates.
+//
+// CheckGhAuth (gate 6 — gh installed + authenticated) is the one CONDITIONAL
+// gate: the orchestrator runs it only when actually publishing a GitHub release,
+// after the other gates and before tag creation, so a missing/unauthenticated gh
+// aborts before any tag is pushed. See CheckGhAuth for the full ordering invariant.
 package preflight
 
 import (
@@ -220,6 +225,41 @@ func CheckTagFreeRemote(ctx context.Context, r runner.CommandRunner, tag string)
 
 	if strings.TrimSpace(res.Stdout) != "" {
 		return newGateError("tag %q already exists on the remote; bump the version, then re-run", tag)
+	}
+	return nil
+}
+
+// CheckGhAuth is gate 6: the GitHub CLI must be installed AND authenticated. It is
+// a CONDITIONAL gate — the orchestrator runs it ONLY when actually publishing a
+// GitHub release (publish=true); when publish=false (tag + push only) it is
+// skipped entirely and nothing here is called.
+//
+// ORDERING INVARIANT (load-bearing): when it runs, this gate runs AFTER the other
+// preflight gates (local + remote) and BEFORE tag creation. Verifying gh up front
+// means a missing or unauthenticated gh aborts the release before any tag is
+// created or pushed, so it can never strand a pushed tag with no release to back
+// it. The orchestrator (a separate task) owns this sequencing; this gate only
+// provides the check.
+//
+// The probe is `gh auth status`, which exits zero when authenticated and non-zero
+// when not. The two failure conditions are deliberately distinguished:
+//
+//   - gh not installed: the runner reports ErrCommandNotFound. This is a missing
+//     prerequisite, surfaced as a *GateError naming "gh not installed".
+//   - gh not authenticated: gh ran and exited non-zero (a populated Result
+//     alongside a non-nil error, per the runner contract). This is an EXPECTED
+//     condition, not an infrastructure crash, so it is branched on and surfaced as
+//     a *GateError naming "gh not authenticated" — NOT re-raised as a raw error.
+func CheckGhAuth(ctx context.Context, r runner.CommandRunner) error {
+	_, err := r.Run(ctx, "gh", "auth", "status")
+	if err != nil {
+		// A missing gh binary is the not-installed prerequisite failure; any other
+		// non-zero exit is gh ran-and-reported not authenticated. Both are clean gate
+		// aborts that must stop the release before the tag.
+		if errors.Is(err, runner.ErrCommandNotFound) {
+			return newGateError("gh is not installed; install GitHub CLI (https://cli.github.com), then re-run — or set publish = false to tag and push only")
+		}
+		return newGateError("gh is not authenticated; run `gh auth login`, then re-run — or set publish = false to tag and push only")
 	}
 	return nil
 }

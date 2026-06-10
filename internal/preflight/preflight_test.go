@@ -565,6 +565,82 @@ func TestFetchThenRemoteGates_FetchPrecedesChecks(t *testing.T) {
 	}
 }
 
+func TestCheckGhAuth_InstalledAndAuthenticated_Passes(t *testing.T) {
+	t.Parallel()
+
+	// gh installed and authenticated: `gh auth status` exits zero. The gate passes
+	// and issues exactly that one probe — the conditional pre-tag gate that the
+	// orchestrator runs only when publishing.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{Stdout: "github.com\n  ✓ Logged in to github.com\n"}, nil)
+
+	if err := preflight.CheckGhAuth(t.Context(), r); err != nil {
+		t.Fatalf("CheckGhAuth returned unexpected error: %v", err)
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 1 {
+		t.Fatalf("invocations = %d, want 1", len(invs))
+	}
+	if got := invs[0]; got.Name != "gh" ||
+		len(got.Args) != 2 || got.Args[0] != "auth" || got.Args[1] != "status" {
+		t.Errorf("invocation = %+v, want gh auth status", got)
+	}
+}
+
+func TestCheckGhAuth_NotInstalled_FailsWithInstallMessage(t *testing.T) {
+	t.Parallel()
+
+	// gh missing: the runner reports ErrCommandNotFound. Because this gate runs
+	// BEFORE the tag, this aborts the release before any tag/push — a missing gh
+	// never strands a pushed tag with no release. The abort is a *GateError naming
+	// the "not installed" condition (distinct from "not authenticated"), not a raw
+	// infrastructure error.
+	r := runner.NewFakeRunner()
+	r.SeedNotFound("gh")
+
+	err := preflight.CheckGhAuth(t.Context(), r)
+	if err == nil {
+		t.Fatalf("CheckGhAuth returned nil error, want a gh-not-installed abort")
+	}
+
+	var gateErr *preflight.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want a *GateError", err)
+	}
+	if !strings.Contains(gateErr.Message(), "not installed") {
+		t.Errorf("message = %q, want it to say gh is not installed", gateErr.Message())
+	}
+}
+
+func TestCheckGhAuth_NotAuthenticated_FailsWithAuthMessage(t *testing.T) {
+	t.Parallel()
+
+	// gh installed but not authenticated: `gh auth status` exits non-zero with a
+	// populated Result alongside a non-nil error (the runner contract). This is an
+	// expected condition, NOT an infrastructure crash, so the gate must branch on the
+	// non-zero exit and abort with a *GateError naming the "not authenticated"
+	// condition — distinct from "not installed" — again before any tag/push.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{
+		Stderr:   "You are not logged into any GitHub hosts. Run gh auth login to authenticate.\n",
+		ExitCode: 1,
+	}, errExit)
+
+	err := preflight.CheckGhAuth(t.Context(), r)
+	if err == nil {
+		t.Fatalf("CheckGhAuth returned nil error, want a gh-not-authenticated abort")
+	}
+
+	var gateErr *preflight.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want a *GateError", err)
+	}
+	if !strings.Contains(gateErr.Message(), "not authenticated") {
+		t.Errorf("message = %q, want it to say gh is not authenticated", gateErr.Message())
+	}
+}
+
 // errExit models a clean ran-and-exited-non-zero, mirroring the real runner's
 // contract where a non-zero exit returns a populated Result with a non-nil error.
 var errExit = errors.New("exit status 1")
