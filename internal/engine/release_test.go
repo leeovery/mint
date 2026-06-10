@@ -1231,6 +1231,16 @@ func writeConfig(t *testing.T, root, contents string) {
 	}
 }
 
+// writeFile seeds an arbitrary repo-relative file under root — used to stage a real
+// source file (e.g. an embedded-mode version_file) the pipeline reads or rewrites.
+func writeFile(t *testing.T, root, name, contents string) {
+	t.Helper()
+	path := root + "/" + name
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("writing %s: %v", path, err)
+	}
+}
+
 // phase2Body is a distinctive multi-line Phase-2-style notes body: a TL;DR plus
 // emoji-headed sections. It exercises body distribution end to end — the exact
 // same bytes must reach the tag annotation, the CHANGELOG section, and the

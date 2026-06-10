@@ -51,6 +51,113 @@ func assertGitDiffInvocation(t *testing.T, r *runner.FakeRunner, want []string) 
 	}
 }
 
+// wantArgsWithTail is wantArgs plus an arbitrary ordered tail of :(exclude) entries —
+// the general form for asserting CHANGELOG.md first, then any globs, then the strategy
+// version_file entry, in the exact order excludePathspecs builds them.
+func wantArgsWithTail(lastTag string, tail ...string) []string {
+	return append(wantArgs(lastTag), tail...)
+}
+
+func TestAssembler_AssembleDiff_PlainModeVersionFile_ExcludedAfterChangelog(t *testing.T) {
+	t.Parallel()
+
+	// PLAIN mode (version_file set, NO version_pattern): the whole file is the version,
+	// pure bookkeeping, so the strategy excludes it. The argv must carry
+	// :(exclude)CHANGELOG.md AND :(exclude)<version_file>, in that order.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
+
+	a := notes.NewAssembler(r, notes.ExcludeConfig{VersionFile: "release.txt"})
+	if _, err := a.AssembleDiff(t.Context(), "v1.0.0"); err != nil {
+		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
+	}
+
+	assertGitDiffInvocation(t, r, wantArgsWithTail("v1.0.0", ":(exclude)release.txt"))
+}
+
+func TestAssembler_AssembleDiff_EmbeddedModeVersionFile_NotExcluded(t *testing.T) {
+	t.Parallel()
+
+	// EMBEDDED mode (version_file + version_pattern): the version line is in real source
+	// we WANT in the notes, so the strategy does NOT exclude it. The argv carries the
+	// built-in :(exclude)CHANGELOG.md but NO :(exclude)<version_file> entry.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "diff --git a/main.go b/main.go\n"}, nil)
+
+	a := notes.NewAssembler(r, notes.ExcludeConfig{
+		VersionFile:    "main.go",
+		VersionPattern: `RELEASE_VERSION="{version}"`,
+	})
+	if _, err := a.AssembleDiff(t.Context(), "v1.0.0"); err != nil {
+		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
+	}
+
+	assertGitDiffInvocation(t, r, wantArgs("v1.0.0"))
+}
+
+func TestAssembler_AssembleDiff_NoVersionFile_AddsNothingForRule(t *testing.T) {
+	t.Parallel()
+
+	// No version_file: the strategy adds nothing. With no globs either, the argv is
+	// EXACTLY the built-in :(exclude)CHANGELOG.md — the Phase-2 baseline reproduced.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
+
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	if _, err := a.AssembleDiff(t.Context(), "v1.0.0"); err != nil {
+		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
+	}
+
+	assertGitDiffInvocation(t, r, wantArgs("v1.0.0"))
+}
+
+func TestAssembler_AssembleDiff_VersionFileEntryFollowsGlobs(t *testing.T) {
+	t.Parallel()
+
+	// ORDER: when both diff_exclude globs and a plain-mode version_file are configured,
+	// the argv is CHANGELOG.md FIRST, then each glob in config order, then the strategy
+	// version_file entry LAST — the order excludePathspecs builds the tiers.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
+
+	a := notes.NewAssembler(r, notes.ExcludeConfig{
+		Globs:       []string{"skills/**/knowledge.cjs", "*.min.js"},
+		VersionFile: "release.txt",
+	})
+	if _, err := a.AssembleDiff(t.Context(), "v2.0.0"); err != nil {
+		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
+	}
+
+	assertGitDiffInvocation(t, r, wantArgsWithTail("v2.0.0",
+		":(exclude)skills/**/knowledge.cjs",
+		":(exclude)*.min.js",
+		":(exclude)release.txt",
+	))
+}
+
+func TestAssembler_AssembleDiff_EmbeddedVersionFileAlsoInGlobs_ExcludedByGlobTier(t *testing.T) {
+	t.Parallel()
+
+	// UNION of tiers: a version_file that is ALSO listed in diff_exclude is excluded by
+	// the GLOB tier regardless of mode. In EMBEDDED mode the strategy rule adds nothing,
+	// yet the explicit glob entry still excludes the file — the glob takes effect. The
+	// argv carries the glob's :(exclude)<version_file> and no duplicate strategy entry.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "diff --git a/main.go b/main.go\n"}, nil)
+
+	a := notes.NewAssembler(r, notes.ExcludeConfig{
+		Globs:          []string{"main.go"},
+		VersionFile:    "main.go",
+		VersionPattern: `RELEASE_VERSION="{version}"`,
+	})
+	if _, err := a.AssembleDiff(t.Context(), "v3.0.0"); err != nil {
+		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
+	}
+
+	// Only ONE :(exclude)main.go (the glob tier) — the embedded strategy adds none.
+	assertGitDiffInvocation(t, r, wantArgsWithTail("v3.0.0", ":(exclude)main.go"))
+}
+
 func TestAssembler_AssembleDiff_DiffsLastTagToHEAD(t *testing.T) {
 	t.Parallel()
 
@@ -60,7 +167,7 @@ func TestAssembler_AssembleDiff_DiffsLastTagToHEAD(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v1.2.3")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -80,7 +187,7 @@ func TestAssembler_AssembleDiff_ExcludesChangelogViaPathspec(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	if _, err := a.AssembleDiff(t.Context(), "v0.9.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -97,7 +204,7 @@ func TestAssembler_AssembleDiff_ConfiguredGlob_AppliedOnTopOfChangelog(t *testin
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, []string{"skills/**/knowledge.cjs"})
+	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}})
 	if _, err := a.AssembleDiff(t.Context(), "v0.9.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -114,7 +221,7 @@ func TestAssembler_AssembleDiff_MultipleGlobs_AllAppliedInOrder(t *testing.T) {
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
 	globs := []string{"skills/**/knowledge.cjs", "*.min.js"}
-	a := notes.NewAssembler(r, globs)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: globs})
 	if _, err := a.AssembleDiff(t.Context(), "v1.5.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -132,7 +239,7 @@ func TestAssembler_AssembleDiff_GlobMatchingNothing_IsHarmless(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, []string{"no/such/path/**"})
+	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"no/such/path/**"}})
 	got, err := a.AssembleDiff(t.Context(), "v2.1.0")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -154,7 +261,7 @@ func TestAssembler_AssembleDiff_ForceAddedTrackedFileMatchingGlob_ExcludedByPath
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil)
 
-	a := notes.NewAssembler(r, []string{"dist/bundle.js"})
+	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"dist/bundle.js"}})
 	if _, err := a.AssembleDiff(t.Context(), "v3.0.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -170,7 +277,7 @@ func TestAssembler_AssembleDiff_AbsentDiffExclude_ExcludesOnlyChangelog(t *testi
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	if _, err := a.AssembleDiff(t.Context(), "v0.8.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -187,7 +294,7 @@ func TestAssembler_AssembleDiff_ChangelogOnlyChange_ReturnsEmptyDiff(t *testing.
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil)
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v2.0.0")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error on empty diff: %v", err)
@@ -210,7 +317,7 @@ func TestAssembler_AssembleDiff_ForceAddedGitignoredFile_PassesGitOutputThrough(
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v1.0.0")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -231,7 +338,7 @@ func TestAssembler_AssembleDiff_ReturnsPostExclusionDiffText(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v3.1.4")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -251,7 +358,7 @@ func TestAssembler_AssembleDiff_CommandNotFound_SurfacesDistinguishableError(t *
 	r := runner.NewFakeRunner()
 	r.SeedNotFound("git")
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v1.0.0")
 	if err == nil {
 		t.Fatalf("AssembleDiff returned nil error, want a command-not-found condition")
@@ -275,7 +382,7 @@ func TestAssembler_AssembleDiff_GitFails_SurfacesError(t *testing.T) {
 		ExitCode: 128,
 	}, errors.New("exit status 128"))
 
-	a := notes.NewAssembler(r, nil)
+	a := notes.NewAssembler(r, notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v9.9.9")
 	if err == nil {
 		t.Fatalf("AssembleDiff returned nil error, want the git failure surfaced")

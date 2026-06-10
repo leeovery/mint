@@ -405,9 +405,17 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 
 	// One Assembler (the single git seam) is shared by the Generator and the Selector
 	// so the degenerate-check diff and the AI path range over the same git, exactly as
-	// NewSelector documents. The configured diff_exclude globs are passed here so the
-	// per-run diff assembly and the Change Map exclude them ON TOP OF CHANGELOG.md.
-	assembler := notes.NewAssembler(deps.Runner, cfg.DiffExclude)
+	// NewSelector documents. The consolidated ExcludeConfig threads BOTH the configured
+	// diff_exclude globs AND the strategy-aware version_file decision here, so the per-run
+	// diff assembly and the Change Map apply the union of tiers ON TOP OF CHANGELOG.md.
+	// On the forward path the version_file rule is inert (notes generate at Stage 4
+	// precedes the version write at Stage 5, so the file is unchanged at notes time) — the
+	// decision is still computed so the regenerate path (Phase 5) inherits it correctly.
+	assembler := notes.NewAssembler(deps.Runner, notes.ExcludeConfig{
+		Globs:          cfg.DiffExclude,
+		VersionFile:    cfg.Release.VersionFile,
+		VersionPattern: cfg.Release.VersionPattern,
+	})
 	generator := notes.NewGenerator(assembler, aiTransport(deps), root)
 	selector := notes.NewSelector(generator, assembler, deps.Runner, root)
 

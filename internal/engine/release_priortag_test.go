@@ -180,6 +180,94 @@ func TestRelease_PriorTag_DiffExcludeGlobsReachDiffAndChangeMapGitCalls(t *testi
 	}
 }
 
+// TestRelease_PriorTag_PlainVersionFile_ExcludeReachesDiffAndChangeMapButIsInert wires
+// a PLAIN-mode version_file (version_file set, NO version_pattern) through the spine: the
+// strategy-aware decision must thread the :(exclude)<version_file> entry into the
+// Assembler so the AssembleDiff git call AND both Change Map git calls carry it ON TOP OF
+// :(exclude)CHANGELOG.md — the decision is COMPUTED here. It is nonetheless INERT on the
+// forward path: notes generate (Stage 4) precedes the version write (Stage 5), so the
+// version file is unchanged at notes time and the produced body is the SAME AI body
+// regardless. The test proves both: the entry rides the argv, and the run finishes with
+// the unchanged body reaching the sinks (no behavioural difference). The rule exists so
+// the regenerate path (Phase 5) inherits a correct decision — not exercised here.
+func TestRelease_PriorTag_PlainVersionFile_ExcludeReachesDiffAndChangeMapButIsInert(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "[release]\nversion_file = \"release.txt\"\n")
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// The plain-mode version_file decision is COMPUTED: the :(exclude)release.txt entry
+	// rides the assemble diff and BOTH Change Map git calls, after :(exclude)CHANGELOG.md.
+	const vf = ":(exclude)release.txt"
+	if !invokedWith(f, "git", "diff", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", vf) {
+		t.Errorf("assemble diff did not carry the plain-mode version_file exclude; got %v", commandLines(f.Invocations()))
+	}
+	if !invokedWith(f, "git", "diff", "--name-status", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", vf) {
+		t.Errorf("change map name-status did not carry the plain-mode version_file exclude; got %v", commandLines(f.Invocations()))
+	}
+	if !invokedWith(f, "git", "diff", "--numstat", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", vf) {
+		t.Errorf("change map numstat did not carry the plain-mode version_file exclude; got %v", commandLines(f.Invocations()))
+	}
+
+	// INERT: the decision changes nothing on the forward path — the unchanged AI body
+	// still reaches the tag annotation and the run finishes.
+	if got := tagAnnotationBody(t, f, nextTag); got != aiBody {
+		t.Errorf("tag annotation body = %q, want unchanged AI body %q (version_file exclude is inert here)", got, aiBody)
+	}
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("plain-version_file run did not finish; last event = %v", fin.Kind)
+	}
+}
+
+// TestRelease_PriorTag_EmbeddedVersionFile_NotExcludedFromDiff wires an EMBEDDED-mode
+// version_file (version_file + version_pattern) through the spine: the strategy does NOT
+// exclude it — it is real source we want in the notes. The argv must carry the built-in
+// :(exclude)CHANGELOG.md but NO :(exclude)<version_file> entry on the assemble diff or
+// the Change Map calls (the lone version-line bump is neutralised by the prompt rule, not
+// by hiding source).
+func TestRelease_PriorTag_EmbeddedVersionFile_NotExcludedFromDiff(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "[release]\nversion_file = \"main.go\"\nversion_pattern = \"RELEASE_VERSION = {version}\"\n")
+	// Embedded mode operates on a REAL source file: seed main.go with a line matching
+	// version_pattern so the Stage-5 version write (downstream of the diff under test)
+	// succeeds and the run completes — keeping the test focused on the diff argv.
+	writeFile(t, root, "main.go", "package main\n\nconst RELEASE_VERSION = 1.2.3\n")
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// The assemble diff carries the built-in CHANGELOG.md exclude but NOT the version_file
+	// — embedded mode keeps the source file in the notes.
+	if !invokedWith(f, "git", "diff", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md") {
+		t.Errorf("assemble diff did not carry the built-in CHANGELOG.md exclude; got %v", commandLines(f.Invocations()))
+	}
+	if invokedWith(f, "git", "diff", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)main.go") {
+		t.Errorf("assemble diff excluded the embedded-mode version_file; embedded source must stay in the notes")
+	}
+}
+
 // TestRelease_PriorTag_NormalAI_EventProtocol asserts the as-built event protocol on
 // the prior-tag NORMAL-AI success path: RunStarted -> ShowPlan -> ShowNotes ->
 // Prompt -> RunFinished. The gate is the four-choice y/n/e/r variant (KindNormalAI).
