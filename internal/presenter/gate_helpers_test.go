@@ -76,3 +76,50 @@ func prettyGate(profile termenv.Profile, in io.Reader, opts gateOpts) (p *presen
 	opts.applyToPretty(p)
 	return p, out, errBuf
 }
+
+// gateResult is what a gateDriver returns from a single Prompt call: the choice,
+// the out/err capture buffers, and the error. Mode-invariant gate properties (e.g.
+// "returns ErrNotInteractive in both modes", "default stdin keeps the interactive
+// path in both modes") read whichever fields they assert and ignore the rest.
+type gateResult struct {
+	choice presenter.Choice
+	out    *bytes.Buffer
+	errBuf *bytes.Buffer
+	err    error
+}
+
+// gateDriver pairs a render-mode name with a one-Prompt driver built on the
+// plainGate/prettyGate construction seams. It lets a GENUINELY mode-invariant gate
+// property be asserted once inside t.Run(d.mode, ...) instead of as two
+// hand-duplicated plain-then-pretty arms. Mode-SPECIFIC gate rendering (the exact
+// plain "FAILED -" line vs the pretty "✗ gate" line, the distinct -y echo bytes)
+// stays in its own dedicated test and is NOT driven through this table. The pretty
+// driver pins the Ascii profile so any text the property does inspect is
+// deterministic regardless of the test runner's TTY.
+type gateDriver struct {
+	mode string
+	run  func(in io.Reader, opts gateOpts, gate presenter.Gate) gateResult
+}
+
+// gateDrivers returns one driver per render mode for the mode-invariant gate
+// properties.
+func gateDrivers() []gateDriver {
+	return []gateDriver{
+		{
+			mode: "plain",
+			run: func(in io.Reader, opts gateOpts, gate presenter.Gate) gateResult {
+				p, out, errBuf := plainGate(in, opts)
+				choice, err := p.Prompt(gate)
+				return gateResult{choice: choice, out: out, errBuf: errBuf, err: err}
+			},
+		},
+		{
+			mode: "pretty",
+			run: func(in io.Reader, opts gateOpts, gate presenter.Gate) gateResult {
+				p, out, errBuf := prettyGate(termenv.Ascii, in, opts)
+				choice, err := p.Prompt(gate)
+				return gateResult{choice: choice, out: out, errBuf: errBuf, err: err}
+			},
+		},
+	}
+}

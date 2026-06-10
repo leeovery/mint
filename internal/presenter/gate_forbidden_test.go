@@ -153,19 +153,19 @@ func TestForbiddenComboRenderModeIndependentOfStdin(t *testing.T) {
 }
 
 // TestForbiddenComboReturnsErrNotInteractive proves Prompt returns the exported
-// ErrNotInteractive sentinel on this path, in both modes, so the engine can map it
-// to a non-zero exit.
+// ErrNotInteractive sentinel on this path, so the engine can map it to a non-zero
+// exit. The sentinel is mode-invariant (only the rendered failure line differs by
+// mode, which dedicated tests cover), so asserted once per mode via the table.
 func TestForbiddenComboReturnsErrNotInteractive(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	plain, _, _ := plainGate(strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
-	if _, err := plain.Prompt(gate); !errors.Is(err, presenter.ErrNotInteractive) {
-		t.Errorf("plain forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", err)
-	}
-
-	pretty, _, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
-	if _, err := pretty.Prompt(gate); !errors.Is(err, presenter.ErrNotInteractive) {
-		t.Errorf("pretty forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", err)
+	for _, d := range gateDrivers() {
+		t.Run(d.mode, func(t *testing.T) {
+			res := d.run(strings.NewReader(""), gateOpts{nonInteractiveStdin: true}, gate)
+			if !errors.Is(res.err, presenter.ErrNotInteractive) {
+				t.Errorf("%s forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", d.mode, res.err)
+			}
+		})
 	}
 }
 
@@ -238,25 +238,21 @@ func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 // TestConstructorsDefaultStdinInteractive proves the constructors default
 // stdinInteractive=true: a presenter built WITHOUT calling WithInteractiveStdin
 // (and without -y) still hits the interactive loop, NOT the new fail path — the
-// default that keeps the existing interactive-path tests green.
+// default that keeps the existing interactive-path tests green. Mode-invariant
+// (the scripted "y\n" returns ChoiceYes without error in either mode), so asserted
+// once per mode via the driver table.
 func TestConstructorsDefaultStdinInteractive(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	plain, _, _ := plainGate(strings.NewReader("y\n"), gateOpts{})
-	choice, err := plain.Prompt(gate)
-	if err != nil {
-		t.Fatalf("plain Prompt (default stdinInteractive) returned error: %v", err)
-	}
-	if choice != presenter.ChoiceYes {
-		t.Errorf("plain Prompt (default stdinInteractive) = %q, want %q (interactive path, not fail)", choice, presenter.ChoiceYes)
-	}
-
-	pretty, _, _ := prettyGate(termenv.Ascii, strings.NewReader("y\n"), gateOpts{})
-	pchoice, perr := pretty.Prompt(gate)
-	if perr != nil {
-		t.Fatalf("pretty Prompt (default stdinInteractive) returned error: %v", perr)
-	}
-	if pchoice != presenter.ChoiceYes {
-		t.Errorf("pretty Prompt (default stdinInteractive) = %q, want %q (interactive path, not fail)", pchoice, presenter.ChoiceYes)
+	for _, d := range gateDrivers() {
+		t.Run(d.mode, func(t *testing.T) {
+			res := d.run(strings.NewReader("y\n"), gateOpts{}, gate)
+			if res.err != nil {
+				t.Fatalf("%s Prompt (default stdinInteractive) returned error: %v", d.mode, res.err)
+			}
+			if res.choice != presenter.ChoiceYes {
+				t.Errorf("%s Prompt (default stdinInteractive) = %q, want %q (interactive path, not fail)", d.mode, res.choice, presenter.ChoiceYes)
+			}
+		})
 	}
 }
