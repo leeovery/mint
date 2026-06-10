@@ -157,6 +157,14 @@ type ReleaseOptions struct {
 	// SelectState so the precedence routes to the commit-subject fallback body and
 	// never calls the AI. It is irrelevant when NotesBody overrides the selector.
 	NoAI bool
+	// DryRun is the --dry-run flag's HOOK dimension: when active, each configured
+	// lifecycle hook (preflight/pre_tag/post_release) is SKIPPED rather than run, and
+	// the skip is reported via the presenter. The assembled hook env still reflects it
+	// (MINT_DRY_RUN=1) even though no hook consumes it under dry-run. The flag's other
+	// dimensions — skipping the Record/tag/push mutations and dry-run note caching —
+	// are Phase 4 and NOT wired here; until then the -d/--dry-run flag is deliberately
+	// left UNWIRED in production (cmd/main), so this field is exercised via tests only.
+	DryRun bool
 }
 
 // Release runs the Phase 1 first-release spine in strict order and returns nil on
@@ -203,7 +211,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// the whole release cleanly: it is surfaced as a "preflight" StageFailed. Because
 	// this precedes all mutation there is nothing to unwind — a plain surface, not the
 	// auto-unwind path.
-	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, opts.Bump); err != nil {
+	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -227,7 +235,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// non-zero exit aborts cleanly before any notes/tag/push — routed through the
 	// auto-unwind so a hook that made its own commit before failing is reset back to
 	// startingHEAD.
-	if err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, opts.Bump); err != nil {
+	if err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun); err != nil {
 		return surfaceAndUnwind(ctx, deps, "pre_tag", startingHEAD, tag, false, err)
 	}
 
@@ -364,7 +372,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// run still reaches RunFinished and returns nil. This is the ONLY hook point whose
 	// failure is non-fatal (preflight and pre_tag abort); the array stop-on-first-
 	// failure SEQUENCING is identical across points — only the CONSEQUENCE differs.
-	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, opts.Bump); err != nil {
+	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun); err != nil {
 		warnPostReleaseFailed(p, err)
 	}
 
@@ -574,16 +582,42 @@ func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, ta
 	return preflight.CheckTagFreeRemote(ctx, r, tag)
 }
 
+// dryRunLabel is the Presenter Warning label every dry-run hook-skip notice rides.
+// The skip notices use the existing Warn seam (the available out-of-band, non-failure
+// notice): a Warn does NOT set failure state or suppress the success line, so a
+// reported skip leaves the run otherwise intact. No NEW presenter event is added.
+const dryRunLabel = "dry-run"
+
+// reportHookSkipped emits the dry-run hook-skip notice for a CONFIGURED point that
+// was not invoked because dry-run is active. The message is "skipping {point} hook"
+// (point = preflight / pre_tag / post_release), kept identical across the three call
+// sites so the convention is consistent. It rides the Warn seam (see dryRunLabel).
+func reportHookSkipped(p presenter.Presenter, point string) {
+	p.Warn(presenter.Warning{Label: dryRunLabel, Message: "skipping " + point + " hook"})
+}
+
 // runPreflightHook runs the project's optional preflight hook through the shared
 // hooks runner. It assembles the MINT_* env from the run's computed versions
 // (NewVersion = the bare version being released, PreviousVersion = the bare prior
-// latest, VersionTag = the full prefixed tag) and the bump kind, then runs the
-// configured [release.hooks].preflight value from the repo root. An absent value
-// (nil) is a no-op — the runner returns nil. A non-zero exit (the first non-zero
-// entry for an array) returns a non-nil error the caller surfaces and aborts on.
-// DryRun is fixed to false here; MINT_DRY_RUN skip behaviour is a later phase.
-func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump) error {
-	env := buildHookEnv(current, next, tag, bump)
+// latest, VersionTag = the full prefixed tag), the bump kind, and the dryRun mode,
+// then runs the configured [release.hooks].preflight value from the repo root. An
+// absent value (nil) is a no-op — the runner returns nil. A non-zero exit (the first
+// non-zero entry for an array) returns a non-nil error the caller surfaces and aborts
+// on.
+//
+// DRY-RUN: when dryRun is active AND the hook is configured (non-nil), the hook is
+// NOT invoked — no `sh -c …` reaches the runner; instead the skip is REPORTED via the
+// presenter and nil is returned. An ABSENT hook stays a silent no-op (no run, no
+// report). The env is still assembled with MINT_DRY_RUN=1 for consistency even though
+// the skipped hook never consumes it.
+func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
+	if dryRun {
+		if cfg.Release.Hooks.Preflight != nil {
+			reportHookSkipped(deps.Presenter, "preflight")
+		}
+		return nil
+	}
+	env := buildHookEnv(current, next, tag, bump, dryRun)
 	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
 }
 
@@ -601,14 +635,34 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 // a hook that made its own commit, and gitignored-only outputs alike. A commit
 // failure is surfaced for the caller to unwind. The interplay rule applies ONLY after
 // a hook actually ran: an absent hook skips the artifact-commit probe entirely, so
-// the existing no-hook spine is untouched. DryRun is fixed to false here; MINT_DRY_RUN
-// skip behaviour is a later phase.
-func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump) error {
+// the existing no-hook spine is untouched.
+//
+// DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT invoked
+// and — crucially — the artifact-commit step is SKIPPED TOO: because the hook never
+// ran, the tree was not dirtied by mint, so NO porcelain probe and NO
+// `chore(release): pre-tag artifacts for {tag}` commit must be produced. The skip is
+// reported via the presenter and the function returns immediately. An ABSENT hook
+// stays a silent no-op (no run, no report, no probe).
+func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
 	if cfg.Release.Hooks.PreTag == nil {
 		return nil
 	}
 
-	env := buildHookEnv(current, next, tag, bump)
+	if dryRun {
+		// Report the skip and return BEFORE the porcelain probe / artifact commit: the
+		// hook did not run, so the tree carries no mint-made changes to commit.
+		//
+		// OUT OF SCOPE (Phase 4): dry-run NOTE CACHING is NOT implemented here. Under a
+		// real dry-run, mint will cache the generated notes keyed by a hash of (the
+		// post-diff_exclude diff + the computed version + prompt/[release].context), with
+		// a ~1h TTL and a gitignored store, so the subsequent real run reuses them. That
+		// caching is deferred entirely to Phase 4; this task covers only the hook
+		// skip-and-report dimension of dry-run.
+		reportHookSkipped(deps.Presenter, "pre_tag")
+		return nil
+	}
+
+	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return err
 	}
@@ -623,9 +677,18 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 // SEQUENCING is identical to the other points) returns a non-nil error. UNLIKE
 // preflight/pre_tag, the CONSEQUENCE here is warn-only: the caller does NOT abort or
 // unwind, because by Stage 7 the push has crossed the PONR and the tag is public.
-// DryRun is fixed to false here; MINT_DRY_RUN skip behaviour is a later phase.
-func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump) error {
-	env := buildHookEnv(current, next, tag, bump)
+//
+// DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT invoked;
+// the skip is REPORTED via the presenter and nil is returned (the caller's warn-only
+// branch is irrelevant — there is no failure). An ABSENT hook stays a silent no-op.
+func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
+	if dryRun {
+		if cfg.Release.Hooks.PostRelease != nil {
+			reportHookSkipped(deps.Presenter, "post_release")
+		}
+		return nil
+	}
+	env := buildHookEnv(current, next, tag, bump, dryRun)
 	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env)
 }
 
@@ -639,11 +702,12 @@ func pretagArtifactSubject(tag string) string {
 
 // buildHookEnv assembles the shared MINT_* hook environment from the run's computed
 // versions (NewVersion = the bare version being released, PreviousVersion = the bare
-// prior latest, VersionTag = the full prefixed tag) and the bump kind. The preflight
-// and pre_tag points share it so they inject an identical env. DryRun is fixed to
-// false; MINT_DRY_RUN skip behaviour is a later phase.
-func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump) hooks.HookEnv {
-	return hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), false)
+// prior latest, VersionTag = the full prefixed tag), the bump kind, and the run's
+// dryRun mode. The preflight and pre_tag points share it so they inject an identical
+// env. dryRun renders to MINT_DRY_RUN=1/0; the builder stays correct even though the
+// hooks are SKIPPED (and so never consume the env) under dry-run.
+func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, dryRun bool) hooks.HookEnv {
+	return hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), dryRun)
 }
 
 // hookBump maps the engine's version.Bump onto the hooks package's Bump so the
