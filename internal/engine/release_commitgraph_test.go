@@ -212,6 +212,7 @@ func TestCommitGraph_OnlyHook_OneArtifactCommitThenTagAtHEAD(t *testing.T) {
 		ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: DIRTY)
 		ScriptedOut(""),               // -C root add -A
 		ScriptedOut(""),               // -C root commit -m chore(release): pre-tag artifacts
+		ScriptedOut(githubRemoteURL),  // remote get-url origin (provider detection)
 		ScriptedOut(""),               // tag -a v0.0.1 -F - (no bookkeeping commit precedes it)
 		ScriptedOut(""),               // push --atomic origin HEAD v0.0.1
 	)
@@ -268,18 +269,19 @@ func TestCommitGraph_Neither_ZeroCommitsThenTagAtExistingHEAD(t *testing.T) {
 	f := runner.NewFakeRunner()
 	// The spine jumps from the startingHEAD capture straight to the tag + push.
 	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),            // tag --list (no tags)
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain (clean)
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1 (absent)
-		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
-		ScriptedOut(""),            // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
-		ScriptedOut(""),            // tag -a v0.0.1 -F - (no commit precedes it)
-		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),              // tag --list (no tags)
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut(""),              // status --porcelain (clean)
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1 (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v0.0.1 -F - (no commit precedes it)
+		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}

@@ -112,8 +112,6 @@ type ReleaseDeps struct {
 	Mutator *git.Mutator
 	// Releaser performs the point-of-no-return tag + atomic push through the same Mutator.
 	Releaser *release.Releaser
-	// Publisher publishes the provider release after the push crosses the PONR.
-	Publisher publish.Publisher
 	// Editor is the OPTIONAL edit seam consulted ONLY on the `e` review-gate choice.
 	// Runs that never reach `e` (every non-interactive and accept/abort path) may
 	// leave it nil; production wires the real $EDITOR resolution (task 2-13). If `e`
@@ -432,8 +430,33 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		made.Commits++
 	}
 
-	// Stage 2 (conditional gate 6) — gh auth, only when publishing, BEFORE the tag.
+	// Stage 6/7 — resolve the publishing driver, then run its conditional gh gate,
+	// only when publishing and BEFORE the tag.
+	//
+	// The Phase 1/2 hardwired "always GitHub when publish=true" selection is gone:
+	// the driver is now AUTO-DETECTED from the release remote's host (overridable by
+	// [release].provider), so a github.com remote — HTTPS or SSH — resolves to the
+	// GitHub driver behind the Publisher interface, and a future GitLab/Gitea driver
+	// slots in with no change here. The resolved publisher is held as the interface
+	// type and used UNCHANGED below for CreateRelease — the orchestrator never names a
+	// concrete driver.
+	//
+	// The gh install/auth gate is conditional on a driver actually being selected and
+	// on publishing proceeding: it runs only for the resolved driver, before the tag,
+	// so a missing/unauthenticated gh never strands a pushed tag waiting on a release
+	// it cannot create. An UNRESOLVED provider (non-github.com host, unsupported value,
+	// or no remote) surfaces ErrProviderUnresolved here; the safe-downgrade-to-tag+push
+	// handling on top of that sentinel is task 4-10. Until then it is a pre-PONR
+	// "preflight" abort — nothing is tagged yet, so it routes through the surgical
+	// unwind exactly like the gh-auth failure beside it.
+	var publisher publish.Publisher
 	if cfg.Release.Publish {
+		resolved, err := resolvePublisher(ctx, deps, cfg)
+		if err != nil {
+			return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
+		}
+		publisher = resolved
+
 		if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
 			// The bookkeeping commit may have moved HEAD; the surgical unwind resets exactly
 			// the commits in made. No tag yet (made.TagCreated false).
@@ -473,10 +496,12 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
-	// already public); the run does not unwind and exits successfully.
+	// already public); the run does not unwind and exits successfully. The release is
+	// created through the resolved Publisher INTERFACE (whichever driver detection
+	// picked), never a concrete type.
 	releaseURL := ""
 	if cfg.Release.Publish {
-		if err := deps.Publisher.CreateRelease(ctx, tag, tag, body); err != nil {
+		if err := publisher.CreateRelease(ctx, tag, tag, body); err != nil {
 			warnPublishFailed(p, err)
 		}
 	}
@@ -641,6 +666,32 @@ func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(res.Stdout), nil
+}
+
+// resolvePublisher selects the publishing driver for this run: it reads the
+// release remote's URL through the runner seam and hands it (with the optional
+// [release].provider override) to publish.ResolvePublisher, which parses the host
+// across the HTTPS/SSH URL forms and picks the driver. It returns the driver
+// behind the Publisher interface so the orchestrator never names a concrete type.
+//
+// A missing remote (`git remote get-url origin` exits non-zero) is treated as an
+// EMPTY remote URL rather than a hard error here, so the resolver's no-remote
+// outcome flows through the SAME ErrProviderUnresolved path as a non-matching
+// host — one unresolved sentinel for task 4-10 to downgrade on.
+func resolvePublisher(ctx context.Context, deps ReleaseDeps, cfg config.Config) (publish.Publisher, error) {
+	return publish.ResolvePublisher(remoteURL(ctx, deps.Runner), cfg.Release.Provider, deps.Runner)
+}
+
+// remoteURL reads the release remote's URL via `git remote get-url origin` through
+// the runner seam. A non-zero exit (no `origin` remote configured) yields the empty
+// string, which the resolver treats as "no remote" — an unresolved outcome rather
+// than a fatal git error, so the no-remote case joins the other unresolved cases.
+func remoteURL(ctx context.Context, r runner.CommandRunner) string {
+	res, err := r.Run(ctx, "git", "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(res.Stdout)
 }
 
 // bookkeepingWillCommit reports whether record.CommitBookkeeping will make a commit

@@ -149,20 +149,21 @@ func TestRelease_SetVersion_GreaterThanLatest_BecomesNext(t *testing.T) {
 	f := runner.NewFakeRunner()
 	// Read gates: a prior tag v1.2.3 exists; the explicit target v2.0.0 is free.
 	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut("v1.2.3\n"),    // tag --list (a prior tag exists)
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain (clean)
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v2.0.0 (absent)
-		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
-		ScriptedOut(""),            // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
-		ScriptedOut(""),            // -C root add CHANGELOG.md
-		ScriptedOut(""),            // -C root commit -m
-		ScriptedOut(""),            // tag -a v2.0.0 -F -
-		ScriptedOut(""),            // push --atomic origin HEAD v2.0.0
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut("v1.2.3\n"),      // tag --list (a prior tag exists)
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut(""),              // status --porcelain (clean)
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v2.0.0 (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v2.0.0 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v2.0.0
 	)
 	f.Seed("gh", runner.Result{}, nil) // gh auth status, then gh release create
 	rec := &presentertest.RecordingPresenter{}
@@ -196,20 +197,21 @@ func TestRelease_SetVersion_FirstRelease_Accepted(t *testing.T) {
 	f := runner.NewFakeRunner()
 	// No tags: latest resolves to 0.0.0; the explicit target v1.0.0 is free.
 	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),            // tag --list (no tags)
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain (clean)
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v1.0.0 (absent)
-		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
-		ScriptedOut(""),            // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
-		ScriptedOut(""),            // -C root add CHANGELOG.md
-		ScriptedOut(""),            // -C root commit -m
-		ScriptedOut(""),            // tag -a v1.0.0 -F -
-		ScriptedOut(""),            // push --atomic origin HEAD v1.0.0
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),              // tag --list (no tags)
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut(""),              // status --porcelain (clean)
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v1.0.0 (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v1.0.0 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v1.0.0
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -239,20 +241,21 @@ func TestRelease_SetVersion_InjectsMintBumpExplicit(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut("v1.2.3\n"),    // tag --list
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain (clean)
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v2.0.0 (absent)
-		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
-		ScriptedOut(""),            // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
-		ScriptedOut(""),            // -C root add CHANGELOG.md
-		ScriptedOut(""),            // -C root commit -m
-		ScriptedOut(""),            // tag -a v2.0.0 -F -
-		ScriptedOut(""),            // push --atomic origin HEAD v2.0.0
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut("v1.2.3\n"),      // tag --list
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut(""),              // status --porcelain (clean)
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v2.0.0 (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v2.0.0 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v2.0.0
 	)
 	f.Seed("sh", runner.Result{}, nil) // preflight hook exits zero
 	f.Seed("gh", runner.Result{}, nil)

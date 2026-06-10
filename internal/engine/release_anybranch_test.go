@@ -35,14 +35,15 @@ func seedAnyBranchHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		// NO rev-parse --abbrev-ref HEAD — the on-branch gate is skipped.
-		ScriptedNonZero(),        // rev-parse -q --verify refs/tags/{tag} (absent)
-		ScriptedOut("0\t1"),      // rev-list left-right count (ahead only)
-		ScriptedOut(""),          // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA), // rev-parse HEAD (capture the clean start)
-		ScriptedOut(""),          // -C root add CHANGELOG.md
-		ScriptedOut(""),          // -C root commit -m
-		ScriptedOut(""),          // tag -a {tag} -F -
-		ScriptedOut(""),          // push --atomic origin HEAD {tag}
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/{tag} (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a {tag} -F -
+		ScriptedOut(""),              // push --atomic origin HEAD {tag}
 	)
 }
 

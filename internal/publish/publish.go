@@ -12,9 +12,11 @@
 // Gitea, …) drop in behind the same interface with zero rework — the interface is
 // the cheap future-proofing; extra drivers are YAGNI until needed.
 //
-// Provider auto-detection from the remote host and the unknown-provider /
-// no-driver loud-downgrade live elsewhere (a later phase); this package assumes
-// the driver has already been chosen.
+// Provider auto-detection from the remote host lives alongside this seam in
+// resolve.go (ResolvePublisher): it parses the remote host across the HTTPS/SSH
+// URL forms (overridable by the provider config) and selects a driver, exposing
+// ErrProviderUnresolved when none matches. The unknown-provider / no-driver
+// loud-downgrade that layers on top of that sentinel lives in a later phase.
 package publish
 
 import (

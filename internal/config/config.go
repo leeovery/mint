@@ -77,6 +77,15 @@ type Config struct {
 // projection is written (default true) or skipped — the annotated tag still
 // carries the full body either way.
 //
+// Provider is the OPTIONAL publishing-driver override (raw [release].provider,
+// default ""). Empty means "auto-detect from the release remote's host"; a
+// non-empty value forces that provider's driver regardless of the host (e.g.
+// "github"). config carries the raw value verbatim — the publish resolver
+// interprets it (a recognised value selects its driver; a recognised-but-
+// unsupported value, e.g. "gitlab", is NOT a config error but routes to the
+// safe-downgrade path). Phase 6's typed validation rejects unknown KEYS / bad
+// TYPES, not unsupported provider VALUES.
+//
 // Context and Prompt are the Phase 2 notes-engine prompt-control knobs, carried
 // here as raw TOML strings (both default empty). Context (string-or-file) injects
 // project guidance into the default prompt; Prompt is a file path that fully
@@ -107,6 +116,7 @@ type Release struct {
 	ReleaseBranch  string
 	Publish        bool
 	Changelog      bool
+	Provider       string
 	Context        string
 	Prompt         string
 	OnNotesFailure string
@@ -137,6 +147,7 @@ func defaults() Config {
 			ReleaseBranch:  "",
 			Publish:        defaultPublish,
 			Changelog:      defaultChangelog,
+			Provider:       "",
 			Context:        "",
 			Prompt:         "",
 			OnNotesFailure: defaultOnNotesFailure,
@@ -169,6 +180,7 @@ type releaseShape struct {
 	ReleaseBranch  string     `toml:"release_branch"`
 	Publish        *bool      `toml:"publish"`
 	Changelog      *bool      `toml:"changelog"`
+	Provider       string     `toml:"provider"`
 	Context        string     `toml:"context"`
 	Prompt         string     `toml:"prompt"`
 	OnNotesFailure string     `toml:"on_notes_failure"`
@@ -242,6 +254,7 @@ func resolveRelease(shape releaseShape) Release {
 		ReleaseBranch:  shape.ReleaseBranch,
 		Publish:        boolOrDefault(shape.Publish, defaultPublish),
 		Changelog:      boolOrDefault(shape.Changelog, defaultChangelog),
+		Provider:       shape.Provider,
 		Context:        shape.Context,
 		Prompt:         shape.Prompt,
 		OnNotesFailure: shape.OnNotesFailure,

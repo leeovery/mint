@@ -120,6 +120,39 @@ func TestLoad_PublishFalse_Honoured(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentProvider_DefaultsToEmpty(t *testing.T) {
+	t.Parallel()
+
+	// [release].provider is the optional publishing-driver override. Absent from the
+	// file it defaults to "" — the sentinel for "auto-detect from the remote host".
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Provider != "" {
+		t.Errorf("Provider = %q, want empty default (auto-detect)", cfg.Release.Provider)
+	}
+}
+
+func TestLoad_ExplicitProvider_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit provider value is carried through verbatim; the publish resolver
+	// interprets it (a recognised value forces that driver over detection).
+	writeConfig(t, dir, "[release]\nprovider = \"github\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Provider != "github" {
+		t.Errorf("Provider = %q, want %q", cfg.Release.Provider, "github")
+	}
+}
+
 func TestLoad_AbsentChangelog_DefaultsToTrue(t *testing.T) {
 	t.Parallel()
 

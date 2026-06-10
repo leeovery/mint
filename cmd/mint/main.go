@@ -1,6 +1,6 @@
 // Command mint is the entry point for the mint release tool. main stays thin: it
 // parses the CLI surface, constructs the production seams ONCE (the presenter, the
-// os/exec runner, the GitHub publisher, the releaser), runs the engine
+// os/exec runner, the releaser), runs the engine
 // orchestrator, and resolves the engine's typed abort into a process exit code.
 // All orchestration lives in the testable internal/engine.Release — main itself
 // performs no release logic, so the spine is driven in tests with a recording
@@ -16,7 +16,6 @@ import (
 	"mint/internal/engine"
 	"mint/internal/git"
 	"mint/internal/presenter"
-	"mint/internal/publish"
 	"mint/internal/release"
 	"mint/internal/runner"
 )
@@ -65,7 +64,6 @@ func run(args []string) int {
 		Runner:    r,
 		Mutator:   mut,
 		Releaser:  release.NewReleaser(mut),
-		Publisher: publish.NewGitHubPublisher(r),
 		// The `e` review-gate choice hands the notes to the real $EDITOR resolution,
 		// launched interactively through the same presenter + runner. The launcher
 		// reports a missing editor and returns to the gate rather than aborting.

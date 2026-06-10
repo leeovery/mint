@@ -71,22 +71,23 @@ func TestRelease_Autostash_StashesBeforeGate_DirtyTreePasses(t *testing.T) {
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),            // tag --list (no tags)
-		stashSaved(),               // stash push --include-untracked (BEFORE the gate)
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain (clean — WIP was stashed)
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1 (absent)
-		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
-		ScriptedOut(""),            // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
-		ScriptedOut(""),            // -C root add CHANGELOG.md
-		ScriptedOut(""),            // -C root commit -m
-		ScriptedOut(""),            // tag -a v0.0.1 -F -
-		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
-		stashPopped(),              // stash pop (restore WIP after success)
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),              // tag --list (no tags)
+		stashSaved(),                 // stash push --include-untracked (BEFORE the gate)
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut(""),              // status --porcelain (clean — WIP was stashed)
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1 (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v0.0.1 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
+		stashPopped(),                // stash pop (restore WIP after success)
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -220,21 +221,22 @@ func TestRelease_Autostash_NoWIP_IsNoOp(t *testing.T) {
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),            // tag --list
-		stashNothing(),             // stash push --include-untracked (NOTHING to stash)
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain (already clean)
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
-		ScriptedOut("0\t1"),        // rev-list left-right count
-		ScriptedOut(""),            // ls-remote --tags
-		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
-		ScriptedOut(""),            // -C root add CHANGELOG.md
-		ScriptedOut(""),            // -C root commit -m
-		ScriptedOut(""),            // tag -a v0.0.1 -F -
-		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),              // tag --list
+		stashNothing(),               // stash push --include-untracked (NOTHING to stash)
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut(""),              // status --porcelain (already clean)
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1
+		ScriptedOut("0\t1"),          // rev-list left-right count
+		ScriptedOut(""),              // ls-remote --tags
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture clean start)
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v0.0.1 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -345,6 +347,7 @@ func seedAutostashHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
+		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -368,6 +371,7 @@ func seedAutostashThroughTag(f *runner.FakeRunner, root, releaseBranch, tag stri
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
+		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 	)
 }

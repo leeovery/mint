@@ -76,10 +76,11 @@ func seedNormalAINotes(f *runner.FakeRunner) {
 // release create are seeded by the caller on the "gh" timeline.
 func seedRecordTagPush(f *runner.FakeRunner, root string) {
 	f.SeedSequence("git",
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // tag -a v1.2.4 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v1.2.4 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v1.2.4
 	)
 }
 

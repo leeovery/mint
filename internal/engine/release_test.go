@@ -14,7 +14,6 @@ import (
 	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
-	"mint/internal/publish"
 	"mint/internal/release"
 	"mint/internal/runner"
 	"mint/internal/version"
@@ -61,10 +60,17 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
+		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
 }
+
+// githubRemoteURL is the github.com remote URL the happy-path git timeline returns
+// for `git remote get-url origin` so provider auto-detection resolves to the GitHub
+// driver (the publish=true default). Tests exercising other hosts/forms script their
+// own remote via seedHappyGitRemote.
+const githubRemoteURL = "https://github.com/acme/widget.git"
 
 // newDeps builds the orchestrator's dependency set around a single FakeRunner so
 // every external call (git via the units, gh via the publisher) is scripted and
@@ -80,7 +86,6 @@ func newDeps(rec *presentertest.RecordingPresenter, f *runner.FakeRunner) engine
 		Runner:    f,
 		Mutator:   mut,
 		Releaser:  release.NewReleaser(mut),
-		Publisher: publish.NewGitHubPublisher(f),
 	}
 }
 
@@ -94,7 +99,6 @@ func newDepsWithMutator(rec *presentertest.RecordingPresenter, f *runner.FakeRun
 		Runner:    f,
 		Mutator:   mut,
 		Releaser:  release.NewReleaser(mut),
-		Publisher: publish.NewGitHubPublisher(f),
 	}
 }
 
@@ -142,6 +146,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git rev-parse HEAD",
 		"git -C " + root + " add CHANGELOG.md",
 		"git -C " + root + " commit -m 🌿 Release v0.0.1",
+		"git remote get-url origin",
 		"gh auth status",
 		"git tag -a v0.0.1 -F -",
 		"git push --atomic origin HEAD v0.0.1",
@@ -247,10 +252,11 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 		ScriptedOut(""),            // ls-remote --tags (free)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
 		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // -C root add CHANGELOG.md — CONTENDED
-		ScriptedOut(""), // -C root add CHANGELOG.md — retry succeeds
-		ScriptedOut(""), // -C root commit -m
-		ScriptedOut(""), // tag -a v0.0.1 -F -
-		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
+		ScriptedOut(""),              // -C root add CHANGELOG.md — retry succeeds
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v0.0.1 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -714,13 +720,15 @@ func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag stri
 }
 
 // seedHappyGitThroughCommit extends seedHappyGitThroughGate through the bookkeeping
-// commit (CHANGELOG add + commit), leaving the spine positioned at the conditional
-// gh-auth gate. The caller seeds whatever the unwind needs next.
+// commit (CHANGELOG add + commit) and the provider-detection remote read (a
+// github.com URL so the GitHub driver resolves), leaving the spine positioned at
+// the conditional gh-auth gate. The caller seeds whatever the unwind needs next.
 func seedHappyGitThroughCommit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 	seedHappyGitThroughGate(f, root, releaseBranch, tag)
 	f.SeedSequence("git",
-		ScriptedOut(""), // -C root add CHANGELOG.md
-		ScriptedOut(""), // -C root commit -m
+		ScriptedOut(""),              // -C root add CHANGELOG.md
+		ScriptedOut(""),              // -C root commit -m
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
 	)
 }
 
@@ -1507,18 +1515,19 @@ func TestRelease_ChangelogDisabled_SkipsChangelogTagStillCarriesBody(t *testing.
 	// changelog=false: no `add CHANGELOG.md` / `commit` calls — the sequence runs
 	// the read gates, then tag + push directly. publish defaults true, so gh runs.
 	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),            // tag --list
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
-		ScriptedOut("0\t1"),        // rev-list left-right count
-		ScriptedOut(""),            // ls-remote --tags
-		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
-		ScriptedOut(""),            // tag -a v0.0.1 -F -
-		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),              // tag --list
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut(""),              // status --porcelain
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1
+		ScriptedOut("0\t1"),          // rev-list left-right count
+		ScriptedOut(""),              // ls-remote --tags
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""),              // tag -a v0.0.1 -F -
+		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
