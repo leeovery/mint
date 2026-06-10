@@ -32,10 +32,23 @@ const (
 	defaultPublish      = true
 )
 
-// Config is the loaded mint configuration. Only the [release] table is populated
-// in Phase 1; the engine-level keys and other verb tables arrive in later phases.
+// defaultMaxDiffLines is the out-of-the-box ceiling for the notes-engine
+// max_diff_lines guard: a post-exclusion diff larger than this is too costly to
+// summarise well, so the AI is skipped. It is a shared engine key, not release
+// specific, so it lives at the top level of Config (see Config.MaxDiffLines).
+const defaultMaxDiffLines = 50000
+
+// Config is the loaded mint configuration. The [release] table plus the
+// shared top-level engine keys read so far are populated; the remaining
+// engine-level keys and other verb tables arrive in later phases.
 type Config struct {
 	Release Release
+
+	// MaxDiffLines is the shared engine-level max_diff_lines guard ceiling (default
+	// 50000). It is top-level — NOT under [release] — because it serves every verb's
+	// notes engine, not just release. The notes size guard compares the
+	// post-exclusion diff's line count against it.
+	MaxDiffLines int
 }
 
 // Release holds the [release] table values needed by the Phase 1 pipeline:
@@ -58,18 +71,22 @@ func defaults() Config {
 			ReleaseBranch: "",
 			Publish:       defaultPublish,
 		},
+		MaxDiffLines: defaultMaxDiffLines,
 	}
 }
 
 // fileShape mirrors the on-disk TOML so absent keys can be told apart from
 // present-but-zero ones. Publish is a *bool because its zero value (false) is a
 // meaningful, explicit choice: nil means "key absent, apply default true" while
-// a non-nil false means "publish disabled". The string fields are decoded onto a
+// a non-nil false means "publish disabled". MaxDiffLines is a *int for the same
+// reason — nil means "key absent, apply default 50000" while a non-nil value
+// (even 0) is an explicit operator choice. The string fields are decoded onto a
 // struct pre-seeded with defaults, so the decoder only overwrites keys actually
 // present in the file — an explicit empty tag_prefix overwrites "v" with "" (a
 // valid prefix-less choice) while an absent key leaves the default intact.
 type fileShape struct {
-	Release releaseShape `toml:"release"`
+	Release      releaseShape `toml:"release"`
+	MaxDiffLines *int         `toml:"max_diff_lines"`
 }
 
 type releaseShape struct {
@@ -107,7 +124,19 @@ func Load(root string) (Config, error) {
 		return Config{}, fmt.Errorf("parsing %s: %w", configFileName, err)
 	}
 
-	return Config{Release: resolveRelease(shape.Release)}, nil
+	return Config{
+		Release:      resolveRelease(shape.Release),
+		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
+	}, nil
+}
+
+// resolveMaxDiffLines applies the 50000 default when the key was absent (nil) and
+// otherwise honours the explicit value (mirroring the publish *bool handling).
+func resolveMaxDiffLines(v *int) int {
+	if v != nil {
+		return *v
+	}
+	return defaultMaxDiffLines
 }
 
 // resolveRelease applies the publish default when the key was absent (nil) and

@@ -40,6 +40,39 @@ func TestLoad_AbsentFile_ReturnsAllDefaults(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentMaxDiffLines_DefaultsTo50000(t *testing.T) {
+	t.Parallel()
+
+	// max_diff_lines is a shared TOP-LEVEL engine key (not under [release]). When
+	// absent it must default to 50000, the cost+quality guard ceiling.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.MaxDiffLines != 50000 {
+		t.Errorf("MaxDiffLines = %d, want default 50000", cfg.MaxDiffLines)
+	}
+}
+
+func TestLoad_ExplicitMaxDiffLines_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit top-level max_diff_lines must override the 50000 default. It sits
+	// above the [release] table, so it is set with no table header.
+	writeConfig(t, dir, "max_diff_lines = 1200\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.MaxDiffLines != 1200 {
+		t.Errorf("MaxDiffLines = %d, want explicit 1200", cfg.MaxDiffLines)
+	}
+}
+
 func TestLoad_SubsetOfKeys_OverridesPresentRestDefault(t *testing.T) {
 	t.Parallel()
 
