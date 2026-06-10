@@ -10,10 +10,11 @@ import (
 	"mint/internal/version"
 )
 
-// releaseFlags is the parsed `mint release` CLI surface for Phase 1: the bump
-// selection, the -y skip, and the global --plain render flag. It is a plain value
-// (no engine types beyond the bump) so flag parsing stays decoupled from the
-// orchestrator; ReleaseOptions converts it into the engine's option struct.
+// releaseFlags is the parsed `mint release` CLI surface: the bump selection, the
+// -y skip, the global --plain render flag, and the --no-ai deliberate AI-skip flag.
+// It is a plain value (no engine types beyond the bump) so flag parsing stays
+// decoupled from the orchestrator; ReleaseOptions converts it into the engine's
+// option struct.
 type releaseFlags struct {
 	// Bump is the resolved version bump (default BumpPatch).
 	Bump version.Bump
@@ -22,12 +23,16 @@ type releaseFlags struct {
 	Yes bool
 	// Plain forces the plain (un-styled) presenter regardless of TTY.
 	Plain bool
+	// NoAI is the --no-ai deliberate-skip flag: it bypasses the AI notes path (after
+	// the first-release and degenerate guards) in favour of the commit-subject
+	// fallback body, never aborting.
+	NoAI bool
 }
 
 // ReleaseOptions converts the parsed flags into the engine's run options, binding
 // the production clock (time.Now) so the changelog date is the real release date.
 func (f releaseFlags) ReleaseOptions() engine.ReleaseOptions {
-	return engine.ReleaseOptions{Bump: f.Bump, Now: time.Now()}
+	return engine.ReleaseOptions{Bump: f.Bump, Now: time.Now(), NoAI: f.NoAI}
 }
 
 // parseReleaseFlags parses the `mint release [bump] [options]` arguments into a
@@ -39,7 +44,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	fs := flag.NewFlagSet("release", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
-	var patch, minor, major, yes, plain bool
+	var patch, minor, major, yes, plain, noAI bool
 	fs.BoolVar(&patch, "p", false, "patch bump (default)")
 	fs.BoolVar(&patch, "patch", false, "patch bump (default)")
 	fs.BoolVar(&minor, "m", false, "minor bump")
@@ -49,6 +54,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	fs.BoolVar(&yes, "y", false, "skip the confirmation/notes-review gate")
 	fs.BoolVar(&yes, "yes", false, "skip the confirmation/notes-review gate")
 	fs.BoolVar(&plain, "plain", false, "force plain (un-styled) output")
+	fs.BoolVar(&noAI, "no-ai", false, "skip the AI notes path; use the commit-subject fallback body")
 
 	if err := fs.Parse(args); err != nil {
 		return releaseFlags{}, err
@@ -58,7 +64,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	if err != nil {
 		return releaseFlags{}, err
 	}
-	return releaseFlags{Bump: bump, Yes: yes, Plain: plain}, nil
+	return releaseFlags{Bump: bump, Yes: yes, Plain: plain, NoAI: noAI}, nil
 }
 
 // resolveBump maps the three mutually-exclusive bump booleans to a version.Bump.

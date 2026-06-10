@@ -19,6 +19,7 @@ func TestParseReleaseFlags(t *testing.T) {
 		wantBump  version.Bump
 		wantYes   bool
 		wantPlain bool
+		wantNoAI  bool
 	}{
 		{name: "no flags defaults to patch", args: nil, wantBump: version.BumpPatch},
 		{name: "short patch", args: []string{"-p"}, wantBump: version.BumpPatch},
@@ -30,7 +31,9 @@ func TestParseReleaseFlags(t *testing.T) {
 		{name: "short yes", args: []string{"-y"}, wantYes: true},
 		{name: "long yes", args: []string{"--yes"}, wantYes: true},
 		{name: "plain", args: []string{"--plain"}, wantPlain: true},
+		{name: "no-ai", args: []string{"--no-ai"}, wantNoAI: true},
 		{name: "minor with yes and plain", args: []string{"-m", "-y", "--plain"}, wantBump: version.BumpMinor, wantYes: true, wantPlain: true},
+		{name: "no-ai with minor and yes", args: []string{"--no-ai", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantNoAI: true},
 	}
 
 	for _, tt := range tests {
@@ -49,6 +52,13 @@ func TestParseReleaseFlags(t *testing.T) {
 			}
 			if opts.Plain != tt.wantPlain {
 				t.Errorf("Plain = %v, want %v", opts.Plain, tt.wantPlain)
+			}
+			if opts.NoAI != tt.wantNoAI {
+				t.Errorf("NoAI = %v, want %v", opts.NoAI, tt.wantNoAI)
+			}
+			// The --no-ai flag must thread through to the engine options.
+			if got := opts.ReleaseOptions().NoAI; got != tt.wantNoAI {
+				t.Errorf("ReleaseOptions().NoAI = %v, want %v", got, tt.wantNoAI)
 			}
 		})
 	}

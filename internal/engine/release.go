@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"mint/internal/ai"
 	"mint/internal/config"
 	"mint/internal/gitrepo"
 	"mint/internal/notes"
@@ -107,10 +108,22 @@ type ReleaseDeps struct {
 	// Regenerator is the OPTIONAL regenerate seam consulted ONLY on the `r`
 	// review-gate choice, which the gate offers ONLY for notes.KindNormalAI. Every
 	// other path (the no-AI Kinds, every non-interactive and accept/abort path) may
-	// leave it nil; production wires the real AI path (task 2-16). If `r` is chosen
-	// with a nil Regenerator (a misconfiguration that should never reach production),
-	// the gate surfaces a clear error and aborts rather than panicking.
+	// leave it nil. In production it is left nil: Release builds a PER-RUN regenerator
+	// closure that binds the run's lastTag + cfg to the resolved Generator (see
+	// resolveBody). When non-nil it OVERRIDES that closure — the test-injection seam
+	// the gate-loop `r` tests drive with a scripted fake. If `r` is chosen with neither
+	// a wired Regenerator nor a Generator (a misconfiguration), the gate surfaces a
+	// clear error and aborts rather than panicking.
 	Regenerator Regenerator
+	// Transport is the OPTIONAL AI transport seam the notes Generator hands its
+	// composed prompt to. It exists so the prior-tag end-to-end tests can drive the
+	// REAL notes path over the FakeRunner while still injecting a recording transport
+	// where they need to script the AI body directly. When nil, Release builds the
+	// production ai.Transport (default `claude -p`) over deps.Runner once root is
+	// resolved — so production leaves it nil and gets the real transport. Wiring the
+	// ai_command / timeout config OVERRIDE is deferred to the Phase 6 schema; the
+	// zero-Config default is used now.
+	Transport notes.Transport
 }
 
 // ReleaseOptions carries the per-run parsed inputs. Bump selects the version
@@ -122,20 +135,27 @@ type ReleaseOptions struct {
 	Bump version.Bump
 	// Now is the injected release timestamp used for the changelog date.
 	Now time.Time
-	// NotesBody is the SELECTED notes body to distribute to every sink — the
-	// Phase-2 seam the SelectBody wiring (task 2-16) fills. Empty means "no
-	// override": Release falls back to the Phase-1 first-release default body,
-	// preserving current behaviour. Whatever value resolves, it flows WHOLE to the
-	// tag annotation, the CHANGELOG section, and the provider release — no parsing,
-	// no splitting, no per-sink reassembly.
+	// NotesBody is a TEST-INJECTION OVERRIDE for the resolved notes body. In
+	// PRODUCTION it is empty: Release resolves the body via the notes-path precedence
+	// (SelectBody). When NON-EMPTY it bypasses the selector and is used verbatim
+	// alongside NotesKind — the seam the body-distribution / gate-loop tests drive to
+	// pin a specific body without scripting the whole notes engine. Whatever value
+	// resolves (override or selector), it flows WHOLE to the tag annotation, the
+	// CHANGELOG section, and the provider release — no parsing, no splitting, no
+	// per-sink reassembly.
 	NotesBody string
-	// NotesKind names which precedence path produced NotesBody — the Phase-2 seam the
-	// SelectBody wiring (task 2-16) fills from SelectBody's returned Kind. It selects
-	// the review gate variant: notes.KindNormalAI offers the four-choice y/n/e/r gate
-	// (the only path with an AI to regenerate), while EVERY other Kind (first-release,
-	// degenerate, --no-ai, fallback) offers the y/n/e variant with no `r`. The zero
-	// value (KindFirstRelease) therefore preserves current behaviour — the y/n/e gate.
+	// NotesKind names which precedence path produced NotesBody — used ONLY alongside
+	// the NotesBody test-injection override. When NotesBody is empty (production),
+	// Release ignores this and uses the Kind SelectBody returns. It selects the review
+	// gate variant: notes.KindNormalAI offers the four-choice y/n/e/r gate (the only
+	// path with an AI to regenerate), while EVERY other Kind (first-release,
+	// degenerate, --no-ai, fallback) offers the y/n/e variant with no `r`.
 	NotesKind notes.Kind
+	// NoAI is the --no-ai flag: a DELIBERATE skip of the AI path (after the
+	// first-release and degenerate guards). It is threaded into the selector's
+	// SelectState so the precedence routes to the commit-subject fallback body and
+	// never calls the AI. It is irrelevant when NotesBody overrides the selector.
+	NoAI bool
 }
 
 // Release runs the Phase 1 first-release spine in strict order and returns nil on
@@ -185,14 +205,15 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		return surface(p, "preflight", err)
 	}
 
-	// Stage 4 — notes body. The injected NotesBody is the selected body (Phase-2
-	// SelectBody seam); an empty override falls back to the Phase-1 first-release
-	// fixed no-AI body, preserving current behaviour. Whatever resolves here flows
-	// WHOLE to every active sink below — no parsing, no splitting, no per-sink
-	// reassembly.
-	body := opts.NotesBody
-	if body == "" {
-		body = record.FirstReleaseBody
+	// Stage 4 — notes body. resolveBody runs the notes-path PRECEDENCE (SelectBody)
+	// to pick the body + Kind for this run, building the selector from deps.Runner now
+	// that root is resolved. opts.NotesBody is a test-injection override that bypasses
+	// the selector. An on_notes_failure=abort failure surfaces and aborts here, BEFORE
+	// any mutation (nothing tagged). Whatever resolves flows WHOLE to every active sink
+	// below — no parsing, no splitting, no per-sink reassembly.
+	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, current, opts)
+	if err != nil {
+		return surface(p, "notes", err)
 	}
 	versionKey := next.String("")
 
@@ -209,8 +230,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// The review gate may EDIT (the `e` choice) or REGENERATE (the `r` choice, only
 	// offered for KindNormalAI) the body; capture the returned final body and thread
 	// IT to every downstream sink. The gate stays positioned BEFORE any mutation
-	// (before Record). opts.NotesKind selects the gate variant (y/n/e vs y/n/e/r).
-	body, err = reviewGate(ctx, p, deps.Editor, deps.Regenerator, opts.NotesKind, body, versionKey)
+	// (before Record). The resolved Kind selects the gate variant (y/n/e vs y/n/e/r);
+	// the per-run regenerator binds this run's lastTag + cfg to the generator so an `r`
+	// re-runs the SAME AI path SelectBody took.
+	regenerator := perRunRegenerator(deps, generator, current.String(cfg.Release.TagPrefix), cfg)
+	body, err = reviewGate(ctx, p, deps.Editor, regenerator, kind, body, versionKey)
 	if err != nil {
 		// A gate-no is a clean USER abort: route it through the shared auto-unwind so it
 		// is treated identically to a pre-push failure (reset whatever mint made this
@@ -280,6 +304,87 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 // errGateAborted is the cause for a clean gate-no abort: the user declined the
 // review gate, so the run stops with a non-zero exit but no underlying failure.
 var errGateAborted = errors.New("release aborted at the review gate")
+
+// resolveBody resolves this run's notes body + Kind via the notes-path precedence
+// (SelectBody), returning the generator it built so the caller can bind a per-run
+// regenerator for the gate's `r` choice. It is the single Stage-4 body decision:
+//
+//   - opts.NotesBody is a TEST-INJECTION OVERRIDE: when non-empty it bypasses the
+//     selector and returns (opts.NotesBody, opts.NotesKind, nil generator, nil). The
+//     gate's `r` is never reached for the no-AI Kinds these overrides use, so a nil
+//     generator is fine; a normal-AI override test supplies its own deps.Regenerator.
+//   - otherwise the selector is built from deps.Runner (now that root is resolved) and
+//     SelectBody runs the precedence over the run's SelectState. A SelectBody error is
+//     an on_notes_failure=abort notes failure: it returns the error for the caller to
+//     surface and abort on, BEFORE any mutation.
+//
+// FirstRelease is detected by comparing current to the zero SemVer — a tagless repo
+// resolves to {0,0,0}. An actual v0.0.0 tag is therefore treated as a first release;
+// that edge is acceptable for Phase 2 (a real v0.0.0 release is not a meaningful case
+// to support, and the selector simply records "Initial release." for it).
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, error) {
+	if opts.NotesBody != "" {
+		return opts.NotesBody, opts.NotesKind, nil, nil
+	}
+
+	// One Assembler (the single git seam) is shared by the Generator and the Selector
+	// so the degenerate-check diff and the AI path range over the same git, exactly as
+	// NewSelector documents.
+	assembler := notes.NewAssembler(deps.Runner)
+	generator := notes.NewGenerator(assembler, aiTransport(deps), root)
+	selector := notes.NewSelector(generator, assembler, deps.Runner, root)
+
+	state := notes.SelectState{
+		FirstRelease: current == version.SemVer{},
+		LastTag:      current.String(cfg.Release.TagPrefix),
+		NoAI:         opts.NoAI,
+	}
+	body, kind, err := selector.SelectBody(ctx, state, cfg)
+	if err != nil {
+		return "", kind, nil, err
+	}
+	return body, kind, generator, nil
+}
+
+// aiTransport resolves the AI transport the notes Generator hands its prompt to:
+// the injected deps.Transport when set (the test seam), else the production
+// ai.Transport (default `claude -p`, zero Config) over the run's runner — so
+// production leaves deps.Transport nil and gets the real transport. Wiring the
+// ai_command / timeout config override is deferred to the Phase 6 schema.
+func aiTransport(deps ReleaseDeps) notes.Transport {
+	if deps.Transport != nil {
+		return deps.Transport
+	}
+	return ai.NewTransport(deps.Runner, ai.Config{})
+}
+
+// regeneratorFunc adapts a plain regenerate closure to the Regenerator seam so the
+// per-run AI regenerator (which must bind this run's lastTag + cfg, known only at run
+// time) can be expressed without a dedicated type at the call site.
+type regeneratorFunc func(ctx context.Context, oneTimeContext string) (string, error)
+
+func (f regeneratorFunc) Regenerate(ctx context.Context, oneTimeContext string) (string, error) {
+	return f(ctx, oneTimeContext)
+}
+
+// perRunRegenerator selects the Regenerator the gate's `r` choice consults. A wired
+// deps.Regenerator OVERRIDES everything (the test-injection seam). Otherwise, when a
+// generator was built (the normal-AI selector path), it returns a per-run closure
+// binding lastTag + cfg to generator.GenerateWithContext — so an `r` re-runs the SAME
+// AI path SelectBody took, with the one-time context appended. When neither is present
+// (an override body, or a no-AI path with no generator), it returns nil; `r` is only
+// offered for KindNormalAI, so the nil is never consulted on the no-AI paths.
+func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, lastTag string, cfg config.Config) Regenerator {
+	if deps.Regenerator != nil {
+		return deps.Regenerator
+	}
+	if generator == nil {
+		return nil
+	}
+	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
+		return generator.GenerateWithContext(ctx, lastTag, cfg, oneTimeContext)
+	})
+}
 
 // resolveHEAD reads the current commit SHA via `git rev-parse HEAD` through the
 // runner seam (every git op goes through the seam). It is used BOTH to capture the
