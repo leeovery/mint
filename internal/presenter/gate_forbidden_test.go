@@ -81,7 +81,7 @@ func TestPrettyForbiddenComboStyledFailureToOut(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.TrueColor, reader).WithInteractiveStdin(false)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(reader)).WithInteractiveStdin(false)
 
 	if _, err := p.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
@@ -107,7 +107,7 @@ func TestPrettyForbiddenComboStyledFailureToOut(t *testing.T) {
 func TestPrettyForbiddenComboFailureShape(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader("")).WithInteractiveStdin(false)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithInteractiveStdin(false)
 
 	if _, err := p.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
@@ -137,8 +137,8 @@ func TestForbiddenComboSummaryToStderrBothModes(t *testing.T) {
 
 	prettyOut := &bytes.Buffer{}
 	prettyErr := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenterWithErr(prettyOut, prettyErr, termenv.Ascii).
-		WithInteractiveStdin(false).WithInput(strings.NewReader(""))
+	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithErr(prettyErr), presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).
+		WithInteractiveStdin(false)
 	if _, err := pretty.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
 	}
@@ -154,7 +154,7 @@ func TestForbiddenComboSummaryToStderrBothModes(t *testing.T) {
 func TestForbiddenComboRenderModeIndependentOfStdin(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.TrueColor, strings.NewReader("")).WithInteractiveStdin(false)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(""))).WithInteractiveStdin(false)
 
 	if _, err := p.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
@@ -175,7 +175,7 @@ func TestForbiddenComboReturnsErrNotInteractive(t *testing.T) {
 		t.Errorf("plain forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", err)
 	}
 
-	pretty := presenter.NewPrettyPresenterWithInput(&bytes.Buffer{}, termenv.Ascii, strings.NewReader("")).WithInteractiveStdin(false)
+	pretty := presenter.NewPrettyPresenter(&bytes.Buffer{}, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithInteractiveStdin(false)
 	if _, err := pretty.Prompt(gate); !errors.Is(err, presenter.ErrNotInteractive) {
 		t.Errorf("pretty forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", err)
 	}
@@ -205,7 +205,7 @@ func TestYesBypassesForbiddenComboBothModes(t *testing.T) {
 
 	prettyOut := &bytes.Buffer{}
 	prettyReader := &failingReader{t: t}
-	pretty := presenter.NewPrettyPresenterWithInput(prettyOut, termenv.Ascii, prettyReader).
+	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(prettyReader)).
 		WithYes(true).WithInteractiveStdin(false)
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
@@ -241,7 +241,7 @@ func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 	}
 
 	prettyOut := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenterWithInput(prettyOut, termenv.Ascii, strings.NewReader("y\n")).
+	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n"))).
 		WithInteractiveStdin(true)
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
@@ -273,7 +273,7 @@ func TestConstructorsDefaultStdinInteractive(t *testing.T) {
 	}
 
 	prettyOut := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenterWithInput(prettyOut, termenv.Ascii, strings.NewReader("y\n"))
+	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
 		t.Fatalf("pretty Prompt (default stdinInteractive) returned error: %v", perr)

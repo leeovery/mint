@@ -56,10 +56,12 @@ type PrettyPresenter struct {
 	// surface, so it carries no ANSI — keeping it simple and consistent with plain
 	// mode. A clean run writes nothing to err.
 	err io.Writer
-	// renderer is the lipgloss renderer bound to out. Injecting it (rather than
-	// using the package default) is the test seam: production binds it to out so
-	// lipgloss auto-detects the terminal's colour profile, while tests force a
-	// profile for deterministic colour-on / colour-off assertions.
+	// renderer is the lipgloss renderer built in the core and bound to out.
+	// Production binds it to out so lipgloss auto-detects the terminal's colour
+	// profile, while tests force a profile via the WithProfile option for
+	// deterministic colour-on / colour-off assertions — the option calls
+	// SetColorProfile on this already-built renderer, so it composes regardless of
+	// option order.
 	renderer *lipgloss.Renderer
 
 	// in is the gate INPUT stream (os.Stdin in production), injected so Prompt is
@@ -173,58 +175,73 @@ type PrettyPresenter struct {
 // Compile-time proof the pretty presenter satisfies the seam it renders.
 var _ Presenter = (*PrettyPresenter)(nil)
 
-// NewPrettyPresenter constructs a PrettyPresenter writing narration to out. The
-// renderer is bound to out so lipgloss auto-detects (and auto-downgrades) the
-// terminal's colour capabilities — the production path needs no explicit profile.
-// The err writer is accepted now to keep the constructor signature stable across
-// phases; this task narrates only to out. Gate input defaults to os.Stdin (the
-// production default); tests inject a scripted reader via
-// NewPrettyPresenterWithInput.
-func NewPrettyPresenter(out, err io.Writer) *PrettyPresenter {
-	return newPrettyPresenter(out, err, os.Stdin, lipgloss.NewRenderer(out))
-}
+// Option configures a PrettyPresenter at construction. Options compose so every
+// capability combination (any subset of forced profile, err writer, scripted
+// input) is expressible through NewPrettyPresenter plus options, without a
+// constructor per axis. Adding a future construction axis adds an Option, not a
+// constructor.
+type Option func(*PrettyPresenter)
 
-// NewPrettyPresenterWithProfile constructs a PrettyPresenter whose renderer is
-// forced to the given colour profile, with no err writer wired. It is the test
-// seam for out-only assertions: tests pass termenv.TrueColor/ANSI to assert ANSI
+// WithProfile forces the lipgloss renderer's colour profile. It is the test seam
+// for deterministic colour assertions: pass termenv.TrueColor/ANSI to assert ANSI
 // codes are emitted, or termenv.Ascii to assert the colour auto-downgrade emits
-// none while layout and glyphs survive. Use NewPrettyPresenterWithErr when the
-// stderr split itself is under test. Gate input defaults to os.Stdin; use
-// NewPrettyPresenterWithInput to script Prompt.
-func NewPrettyPresenterWithProfile(out io.Writer, profile termenv.Profile) *PrettyPresenter {
-	return NewPrettyPresenterWithErr(out, nil, profile)
+// none while layout and glyphs survive. It calls SetColorProfile on the renderer
+// the core already built and bound to out, so it composes with WithErr/WithInput in
+// any order. Production omits it, letting lipgloss auto-detect (and auto-downgrade)
+// the terminal's colour capabilities.
+func WithProfile(profile termenv.Profile) Option {
+	return func(p *PrettyPresenter) {
+		p.renderer.SetColorProfile(profile)
+	}
 }
 
-// NewPrettyPresenterWithErr constructs a PrettyPresenter whose renderer is forced
-// to the given colour profile AND whose err writer is wired. It is the test seam
-// for the stream-split contract: forcing colour on out while capturing err proves
+// WithErr wires the err writer (stderr in production) so the stream-split contract
+// can be asserted: forcing colour on out via WithProfile while capturing err proves
 // the stderr summary stays unstyled by design — not merely because lipgloss
-// auto-downgrades on a non-TTY buffer. Gate input defaults to os.Stdin.
-func NewPrettyPresenterWithErr(out, err io.Writer, profile termenv.Profile) *PrettyPresenter {
-	renderer := lipgloss.NewRenderer(out)
-	renderer.SetColorProfile(profile)
-	return newPrettyPresenter(out, err, os.Stdin, renderer)
+// auto-downgrades on a non-TTY buffer. Without it err defaults to nil, so the err
+// copy is a no-op and only out is exercised.
+func WithErr(err io.Writer) Option {
+	return func(p *PrettyPresenter) {
+		p.err = err
+	}
 }
 
-// NewPrettyPresenterWithInput is the test seam for the gate input axis: it forces
-// the colour profile (like NewPrettyPresenterWithProfile, out-only) AND injects
-// the input reader so Prompt can be driven from a scripted strings.Reader without
-// a real terminal. Production uses NewPrettyPresenter, which defaults in to
-// os.Stdin.
-func NewPrettyPresenterWithInput(out io.Writer, profile termenv.Profile, in io.Reader) *PrettyPresenter {
-	renderer := lipgloss.NewRenderer(out)
-	renderer.SetColorProfile(profile)
-	return newPrettyPresenter(out, nil, in, renderer)
+// WithInput injects the gate input reader so Prompt can be driven from a scripted
+// strings.Reader without a real terminal. Without it in defaults to os.Stdin (the
+// production default).
+func WithInput(in io.Reader) Option {
+	return func(p *PrettyPresenter) {
+		p.in = in
+	}
 }
 
-// newPrettyPresenter is the shared constructor core: it derives the styles from
-// the supplied renderer so colour-on and colour-off paths build identically and
-// differ only in the renderer's profile.
-func newPrettyPresenter(out, err io.Writer, in io.Reader, renderer *lipgloss.Renderer) *PrettyPresenter {
+// NewPrettyPresenter constructs a PrettyPresenter writing narration to out, then
+// applies each option in order. The renderer is built in the core and bound to out
+// so lipgloss auto-detects (and auto-downgrades) the terminal's colour capabilities
+// — the production path needs no options. Every construction axis (forced profile
+// via WithProfile, err writer via WithErr, scripted input via WithInput) is a
+// composable option, so any combination is reachable in one call. Options that
+// touch the renderer act on the already-built renderer, so option order does not
+// matter.
+func NewPrettyPresenter(out io.Writer, opts ...Option) *PrettyPresenter {
+	p := newPrettyPresenter(out)
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
+}
+
+// newPrettyPresenter is the shared constructor core: it builds the default renderer
+// bound to out and derives the styles from it so colour-on and colour-off paths
+// build identically, differing only in the renderer's profile (set later by the
+// WithProfile option). The construction-axis defaults — err=nil, in=os.Stdin — are
+// established here and overridden by options.
+func newPrettyPresenter(out io.Writer) *PrettyPresenter {
+	renderer := lipgloss.NewRenderer(out)
 	return &PrettyPresenter{
 		out:      out,
-		err:      err,
-		in:       in,
+		err:      nil,
+		in:       os.Stdin,
 		renderer: renderer,
 		// stdinInteractive defaults to true (interactive) explicitly — see the field
 		// doc: the existing interactive-path tests must keep hitting the interactive
@@ -242,8 +259,8 @@ func newPrettyPresenter(out, err io.Writer, in io.Reader, renderer *lipgloss.Ren
 }
 
 // WithYes sets the -y/--yes gating decision and returns the presenter so it chains
-// onto any constructor (e.g. NewPrettyPresenterWithInput(...).WithYes(true)). It is
-// a builder-style setter — kept off the constructors so their signatures stay
+// onto a constructor (e.g. NewPrettyPresenter(out, WithInput(r)).WithYes(true)). It
+// is a builder-style setter — kept off the constructor so its signature stays
 // stable and so task 3-6's stdin-interactive gating signal can be added the same
 // way without a constructor explosion. Production sets it where the -y flag is
 // parsed; the zero value (no call) is the interactive default.
@@ -264,18 +281,8 @@ func (p *PrettyPresenter) WithInteractiveStdin(interactive bool) *PrettyPresente
 	return p
 }
 
-// WithInput overrides the gate input reader and returns the presenter so it chains
-// onto a constructor that did not take one (e.g. NewPrettyPresenterWithErr, whose
-// stream-split test seam defaults input to os.Stdin). It exists so the stderr-split
-// constructor can be combined with a scripted reader without adding yet another
-// constructor; production never needs it.
-func (p *PrettyPresenter) WithInput(in io.Reader) *PrettyPresenter {
-	p.in = in
-	return p
-}
-
 // WithSpinnerFactory overrides the stage-progress spinner factory and returns the
-// presenter so it chains onto any constructor, mirroring WithYes/WithInput. It is
+// presenter so it chains onto any constructor, mirroring WithYes. It is
 // the TEST SEAM for the spinner lifecycle: a test injects a spy factory whose
 // spinners record Start/Stop so the lifecycle ("started on a blocking StageStarted,
 // stopped on completion") and the "one spinner at a time" invariant are asserted
@@ -313,9 +320,9 @@ func (p *PrettyPresenter) writef(format string, args ...any) {
 // production). Per the stream contract only the one-line failure/warning summary
 // is duplicated here for redirect-visibility — never the multi-line captured
 // body — and it is intentionally unstyled: stderr is a visibility channel, not a
-// styled surface. The err writer is nil under the profile-forcing test
-// constructor (which exercises only out), so a nil err is a no-op rather than a
-// panic. As with writef, the write error is discarded.
+// styled surface. The err writer is nil when WithErr is not supplied (an out-only
+// test seam), so a nil err is a no-op rather than a panic. As with writef, the
+// write error is discarded.
 func (p *PrettyPresenter) errf(format string, args ...any) {
 	if p.err == nil {
 		return

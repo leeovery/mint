@@ -174,7 +174,7 @@ func TestPrettyPresenterShowVersionWritesToStdoutOnly(t *testing.T) {
 	for _, profile := range []termenv.Profile{termenv.Ascii, termenv.TrueColor} {
 		out := &bytes.Buffer{}
 		errBuf := &bytes.Buffer{}
-		p := presenter.NewPrettyPresenterWithErr(out, errBuf, profile)
+		p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(profile))
 
 		p.ShowVersion(presenter.Version{Value: "1.4.0"})
 

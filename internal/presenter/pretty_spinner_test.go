@@ -69,7 +69,7 @@ func drivePrettySpy(t *testing.T, fn func(p *presenter.PrettyPresenter)) (out *b
 	t.Helper()
 	out = &bytes.Buffer{}
 	tr = &spyTracker{}
-	p := presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii).WithSpinnerFactory(tr.factory())
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithSpinnerFactory(tr.factory())
 	fn(p)
 	return out, tr
 }
@@ -246,7 +246,7 @@ func TestPrettyPresenterNonBlockingStageStartedRendersNothing(t *testing.T) {
 // asserted to carry no braille frame glyph.
 func TestPrettyPresenterSpinnerFramesGoToStdoutNotStderr(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.Ascii)
+	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii))
 	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
 

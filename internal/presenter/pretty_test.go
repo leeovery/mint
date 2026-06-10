@@ -17,7 +17,7 @@ import (
 // deterministic regardless of the test runner's own TTY.
 func drivePretty(profile termenv.Profile, fn func(p *presenter.PrettyPresenter)) *bytes.Buffer {
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithProfile(out, profile)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(profile))
 	fn(p)
 	return out
 }
@@ -27,12 +27,46 @@ func drivePretty(profile termenv.Profile, fn func(p *presenter.PrettyPresenter))
 func TestPrettyPresenterSatisfiesInterface(t *testing.T) {
 	var _ presenter.Presenter = (*presenter.PrettyPresenter)(nil)
 
-	var p presenter.Presenter = presenter.NewPrettyPresenter(&bytes.Buffer{}, &bytes.Buffer{})
+	var p presenter.Presenter = presenter.NewPrettyPresenter(&bytes.Buffer{}, presenter.WithErr(&bytes.Buffer{}))
 	p.RunStarted(presenter.RunInfo{})
 	p.StageStarted(presenter.StageStart{})
 	p.StageSucceeded(presenter.StageSuccess{})
 	p.StageFailed(presenter.StageFailure{})
 	p.RunFinished(presenter.RunResult{})
+}
+
+// TestPrettyPresenterAllOptionsCombineInOneCall proves the previously-awkward
+// combination — force colour AND capture err AND script input — now constructs in a
+// SINGLE NewPrettyPresenter call via three composable options, with no setter
+// chaining to backfill a constructor gap. It drives a gate prompt: WithInput feeds
+// the scripted choice, WithProfile forces colour on, and WithErr captures the err
+// stream. The behaviour must match the old NewPrettyPresenterWithErr(out, err,
+// profile).WithInput(reader) form exactly: the styled menu reaches out (ANSI
+// present), the scripted choice is read and returned, and a clean accept leaves err
+// untouched.
+func TestPrettyPresenterAllOptionsCombineInOneCall(t *testing.T) {
+	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
+	p := presenter.NewPrettyPresenter(out,
+		presenter.WithProfile(termenv.TrueColor),
+		presenter.WithErr(errBuf),
+		presenter.WithInput(strings.NewReader("y\n")),
+	)
+
+	choice, err := p.Prompt(presenter.NotesReviewGate())
+	if err != nil {
+		t.Fatalf("Prompt returned error = %v, want nil", err)
+	}
+	if choice != presenter.NotesReviewGate().Default {
+		t.Errorf("Prompt choice = %q, want the gate default %q", choice, presenter.NotesReviewGate().Default)
+	}
+	// WithProfile forced colour on, so the styled menu carries ANSI on out.
+	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
+		t.Errorf("colour-forced menu carries no ESC (0x1b) on out:\n%q", out.String())
+	}
+	// The scripted choice was read from WithInput, and a clean accept writes nothing to err.
+	if errBuf.Len() != 0 {
+		t.Errorf("clean accept wrote to err = %q, want empty", errBuf.String())
+	}
 }
 
 // TestPrettyPresenterRendersMinimalSequence drives the walking-skeleton sequence
@@ -534,7 +568,7 @@ func TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultVerb(t *testing.T) {
 // NOT decide reuse-vs-fresh.
 func TestPrettyPresenterRegenerateFreshNotesBlockRendersFourChoiceGate(t *testing.T) {
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader("y\n"))
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
 	_, _ = p.Prompt(presenter.NotesReviewGate())
 
 	got := out.String()
@@ -556,7 +590,7 @@ func TestPrettyPresenterRegenerateFreshNotesBlockRendersFourChoiceGate(t *testin
 // — NO e/r lines, since there are no freshly-generated notes to edit or regenerate.
 func TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate(t *testing.T) {
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader("y\n"))
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
 	_, _ = p.Prompt(presenter.ReuseConfirmGate())
 
 	got := out.String()
@@ -829,7 +863,7 @@ func TestPrettyPresenterWarnEmptyMessageHasNoTrailingWhitespace(t *testing.T) {
 // not a styled surface, mirroring StageFailed's err summary.
 func TestPrettyPresenterWarnWritesToBothStreams(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.TrueColor)
+	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.TrueColor))
 	p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"})
 
 	// out carries the styled amber line (colour forced on), so it has ANSI.
@@ -854,7 +888,7 @@ func TestPrettyPresenterWarnWritesToBothStreams(t *testing.T) {
 // collapsing or de-duplication.
 func TestPrettyPresenterWarnMultipleRenderInSequence(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.Ascii)
+	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii))
 	p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
 	p.Warn(presenter.Warning{Label: "cleanup", Message: "temp dir left behind"})
 
@@ -937,7 +971,7 @@ func TestPrettyPresenterUnwoundRendersGlyphLineWithVerbatimSummary(t *testing.T)
 // duplicated to stderr, unlike the ✗/⚠ summaries.
 func TestPrettyPresenterUnwoundWritesToStdoutOnly(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.TrueColor)
+	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.TrueColor))
 	p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
 
 	if !strings.Contains(out.String(), "↩") {
@@ -1041,7 +1075,7 @@ func TestPrettyPresenterStageFailedRendersCapturedOutputBelowGlyphLine(t *testin
 // does NOT — only the summary is duplicated to stderr for redirect-visibility.
 func TestPrettyPresenterStageFailedSummaryToStderrWithoutBody(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.Ascii)
+	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii))
 	p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved", Output: prettyCapturedOutput})
 
 	// The captured body reaches out (narration) ...

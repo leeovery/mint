@@ -402,7 +402,7 @@ func TestFailureStderrSummaryIsUnstyled(t *testing.T) {
 		t.Parallel()
 
 		out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-		p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.TrueColor)
+		p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.TrueColor))
 		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected"})
 
 		// out carries the styled ✗ line (colour forced on), so it has ANSI.

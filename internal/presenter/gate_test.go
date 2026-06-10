@@ -164,7 +164,7 @@ func TestPlainPromptReadsDefaultOnEmptyEnter(t *testing.T) {
 // line selects the gate's Default (the full vertical menu is task 3-4).
 func TestPrettyPromptReadsDefaultOnEmptyEnter(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	p := presenter.NewPrettyPresenterWithInput(&bytes.Buffer{}, termenv.Ascii, strings.NewReader("\n"))
+	p := presenter.NewPrettyPresenter(&bytes.Buffer{}, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("\n")))
 
 	choice, err := p.Prompt(gate)
 	if err != nil {

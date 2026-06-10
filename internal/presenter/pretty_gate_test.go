@@ -17,7 +17,7 @@ import (
 // tests need to force the profile while still scripting the gate input.
 func drivePrettyPromptProfile(input string, gate presenter.Gate, profile termenv.Profile) *bytes.Buffer {
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, profile, strings.NewReader(input))
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(profile), presenter.WithInput(strings.NewReader(input)))
 	_, _ = p.Prompt(gate)
 	return out
 }

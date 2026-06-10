@@ -117,9 +117,9 @@ func assertNoScreenControl(t *testing.T, mode, out string) {
 // promptDriver scripts a single Prompt call against a real presenter of one mode
 // and returns the choice, the cumulative out buffer, and any error. The two
 // constructors are the injected-reader test seams (NewPlainPresenterWithInput /
-// NewPrettyPresenterWithInput) so Prompt is driven without a real terminal; the
-// pretty driver pins the colour profile so the screen-control assertions are
-// deterministic regardless of the test runner's own TTY.
+// NewPrettyPresenter with the WithInput option) so Prompt is driven without a real
+// terminal; the pretty driver pins the colour profile so the screen-control
+// assertions are deterministic regardless of the test runner's own TTY.
 type promptDriver struct {
 	mode string
 	run  func(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error)
@@ -145,7 +145,7 @@ func promptDrivers() []promptDriver {
 			mode: "pretty",
 			run: func(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error) {
 				out := &bytes.Buffer{}
-				p := presenter.NewPrettyPresenterWithInput(out, termenv.TrueColor, strings.NewReader(input))
+				p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(input)))
 				choice, err := p.Prompt(gate)
 				return choice, out, err
 			},
@@ -207,7 +207,7 @@ func simulateEngineLoop(t *testing.T, mode, input string, gate presenter.Gate) (
 	case "plain":
 		p = presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader(input))
 	case "pretty":
-		p = presenter.NewPrettyPresenterWithInput(out, termenv.TrueColor, strings.NewReader(input))
+		p = presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(input)))
 	default:
 		t.Fatalf("unknown mode %q", mode)
 	}

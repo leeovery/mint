@@ -66,7 +66,7 @@ func notesRuleLines(t *testing.T, rendered string) (opener, closer string) {
 // the assertion on display width rather than ANSI bytes.
 func TestPrettyShowNotesRuleSizedToNarrowTerminalWidth(t *testing.T) {
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii).WithTermWidth(30)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(30)
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
 
 	opener, closer := notesRuleLines(t, out.String())
@@ -87,7 +87,7 @@ func TestPrettyShowNotesRuleSizedToNarrowTerminalWidth(t *testing.T) {
 // (50), never sprawling to 200 columns.
 func TestPrettyShowNotesRuleClampsToCapOnWideTerminal(t *testing.T) {
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii).WithTermWidth(200)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(200)
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
 
 	opener, closer := notesRuleLines(t, out.String())
@@ -124,7 +124,7 @@ func TestPrettyShowNotesRuleFallsBackToCapWhenUndetectable(t *testing.T) {
 			t.Parallel()
 
 			out := &bytes.Buffer{}
-			p := tt.apply(presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii))
+			p := tt.apply(presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)))
 			p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
 
 			opener, closer := notesRuleLines(t, out.String())
@@ -146,7 +146,7 @@ func TestPrettyShowNotesRuleFallsBackToCapWhenUndetectable(t *testing.T) {
 func TestPrettyShowNotesTinyTerminalYieldsTinyRuleNoSpecialBranch(t *testing.T) {
 	const body = "Faster cold starts and a calmer log."
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii).WithTermWidth(3)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(3)
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
 
 	opener, closer := notesRuleLines(t, out.String())
@@ -176,7 +176,7 @@ func TestPrettyShowNotesBodyNeverTruncatedRegardlessOfWidth(t *testing.T) {
 	body := "lead in\n" + longLine + "\ntrailing line"
 
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii).WithTermWidth(20)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(20)
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
 
 	got := out.String()
@@ -202,7 +202,7 @@ func TestPrettyShowNotesBodyNeverTruncatedRegardlessOfWidth(t *testing.T) {
 func TestPrettyStageLineByteIdenticalAcrossWidths(t *testing.T) {
 	render := func(width int) string {
 		out := &bytes.Buffer{}
-		p := presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii).WithTermWidth(width)
+		p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(width)
 		p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: "clean · on main · tag free · in sync with origin"})
 		return out.String()
 	}

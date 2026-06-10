@@ -18,7 +18,7 @@ import (
 // established in exactly one place.
 func New(mode Mode, out, err io.Writer) Presenter {
 	if mode == ModePretty {
-		return NewPrettyPresenter(out, err)
+		return NewPrettyPresenter(out, WithErr(err))
 	}
 	return NewPlainPresenter(out, err)
 }
@@ -47,7 +47,7 @@ func New(mode Mode, out, err io.Writer) Presenter {
 func NewForStartup(plainFlag bool, stdout, stderr *os.File) Presenter {
 	mode := DetectMode(plainFlag, stdout)
 	if mode == ModePretty {
-		return NewPrettyPresenter(stdout, stderr).WithTermWidth(detectTermWidth(stdout))
+		return NewPrettyPresenter(stdout, WithErr(stderr)).WithTermWidth(detectTermWidth(stdout))
 	}
 	return New(mode, stdout, stderr)
 }

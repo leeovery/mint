@@ -47,7 +47,7 @@ func TestSuspendStopsSpinnerThenResumeRestartsItOnSameLine(t *testing.T) {
 func TestNoFramesBetweenSuspendAndResume(t *testing.T) {
 	out := &bytes.Buffer{}
 	tr := &spyTracker{}
-	p := presenter.NewPrettyPresenterWithProfile(out, termenv.Ascii).WithSpinnerFactory(tr.factory())
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithSpinnerFactory(tr.factory())
 
 	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
 	p.SuspendSpinner()
@@ -209,7 +209,7 @@ func TestPresenterInterfaceHasSuspendResume(t *testing.T) {
 	p.SuspendSpinner()
 	p.ResumeSpinner()
 
-	var pp presenter.Presenter = presenter.NewPrettyPresenterWithProfile(&bytes.Buffer{}, termenv.Ascii)
+	var pp presenter.Presenter = presenter.NewPrettyPresenter(&bytes.Buffer{}, presenter.WithProfile(termenv.Ascii))
 	pp.SuspendSpinner()
 	pp.ResumeSpinner()
 }

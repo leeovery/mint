@@ -153,7 +153,7 @@ func TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, reader).WithYes(true)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(reader)).WithYes(true)
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine(t *testing.T) {
 func TestPrettyPromptUnderYesDrawsNoMenu(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader("")).WithYes(true)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithYes(true)
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
@@ -197,7 +197,7 @@ func TestPrettyPromptUnderYesEchoesStdoutOnly(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
 	errBuf := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithErr(out, errBuf, termenv.Ascii).WithYes(true).WithInput(strings.NewReader(""))
+	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithYes(true)
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
@@ -214,7 +214,7 @@ func TestPrettyReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 	gate := presenter.ReuseConfirmGate()
 	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, reader).WithYes(true)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(reader)).WithYes(true)
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -237,7 +237,7 @@ func TestPrettyReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 func TestPrettyPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader("y\n"))
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -260,7 +260,7 @@ func TestPrettyPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 func TestPrettyYesAcceptLineColourOnStylesGlyph(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.TrueColor, strings.NewReader("")).WithYes(true)
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(""))).WithYes(true)
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
@@ -314,7 +314,7 @@ func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 	}
 
 	prettyOut := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenterWithInput(prettyOut, termenv.Ascii, strings.NewReader("")).WithYes(true)
+	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithYes(true)
 	if _, err := pretty.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
 	}

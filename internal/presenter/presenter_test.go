@@ -528,7 +528,7 @@ func TestShowPlanSamePayloadFeedsBothModes(t *testing.T) {
 	presenter.NewPlainPresenter(plainOut, &bytes.Buffer{}).ShowPlan(presenter.Plan{Steps: steps})
 
 	prettyOut := &bytes.Buffer{}
-	presenter.NewPrettyPresenterWithProfile(prettyOut, termenv.Ascii).ShowPlan(presenter.Plan{Steps: steps})
+	presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii)).ShowPlan(presenter.Plan{Steps: steps})
 
 	wantPlain := "plan: commit changelog+version; tag v1.4.0; push --atomic; publish github\n"
 	if got := plainOut.String(); got != wantPlain {

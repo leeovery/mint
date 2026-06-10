@@ -28,7 +28,7 @@ func drivePlainPrompt(input string, gate presenter.Gate) (presenter.Choice, *byt
 // test runner's own TTY.
 func drivePrettyPrompt(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error) {
 	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenterWithInput(out, termenv.Ascii, strings.NewReader(input))
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(input)))
 	choice, err := p.Prompt(gate)
 	return choice, out, err
 }

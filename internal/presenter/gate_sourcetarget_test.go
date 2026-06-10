@@ -151,7 +151,7 @@ func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
 
 	prettyOut := &bytes.Buffer{}
 	prettyReader := &failingReader{t: t}
-	pretty := presenter.NewPrettyPresenterWithInput(prettyOut, termenv.Ascii, prettyReader).WithYes(true)
+	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(prettyReader)).WithYes(true)
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
 		t.Fatalf("pretty source Prompt under -y returned error: %v", perr)
