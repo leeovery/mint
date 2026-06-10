@@ -37,18 +37,38 @@ func seedChangeMapGit(t *testing.T, nameStatus, numstat string) *runner.FakeRunn
 	return r
 }
 
+// withExcludes appends one :(exclude)<glob> entry per configured diff_exclude glob,
+// in config order, to a base argv that already ends with :(exclude)CHANGELOG.md —
+// the same on-top-of-CHANGELOG.md layering BuildChangeMap applies to both git calls.
+func withExcludes(base []string, globs ...string) []string {
+	args := append([]string(nil), base...)
+	for _, g := range globs {
+		args = append(args, ":(exclude)"+g)
+	}
+	return args
+}
+
 // assertChangeMapInvocations fails unless exactly the two git calls were recorded,
 // in order (name-status then numstat), each with its exact expected argv — the
 // load-bearing assertion that both calls carry the :(exclude)CHANGELOG.md pathspec.
 func assertChangeMapInvocations(t *testing.T, r *runner.FakeRunner, lastTag string) {
+	t.Helper()
+	assertChangeMapInvocationsWithExcludes(t, r, lastTag)
+}
+
+// assertChangeMapInvocationsWithExcludes is assertChangeMapInvocations parameterised
+// by extra diff_exclude globs: BOTH git calls must carry :(exclude)CHANGELOG.md
+// FOLLOWED BY one :(exclude)<glob> per configured glob, in order. With no globs it is
+// exactly the Phase-2 assertion.
+func assertChangeMapInvocationsWithExcludes(t *testing.T, r *runner.FakeRunner, lastTag string, globs ...string) {
 	t.Helper()
 
 	invs := r.Invocations()
 	if len(invs) != 2 {
 		t.Fatalf("invocations = %d, want 2 (name-status then numstat)", len(invs))
 	}
-	assertGitArgv(t, invs[0], wantNameStatusArgs(lastTag))
-	assertGitArgv(t, invs[1], wantNumstatArgs(lastTag))
+	assertGitArgv(t, invs[0], withExcludes(wantNameStatusArgs(lastTag), globs...))
+	assertGitArgv(t, invs[1], withExcludes(wantNumstatArgs(lastTag), globs...))
 }
 
 // assertGitArgv fails unless the invocation was a `git` call with the exact argv.
@@ -87,7 +107,7 @@ func TestAssembler_BuildChangeMap_NewPackageHeadlinesAboveLargerExistingArea(t *
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v1.0.0")
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -126,7 +146,7 @@ func TestAssembler_BuildChangeMap_ReportsRenamedAndRemovedPaths(t *testing.T) {
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v2.0.0")
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -162,7 +182,7 @@ func TestAssembler_BuildChangeMap_RanksPerAreaChurnAsSupportingMagnitude(t *test
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v3.0.0")
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -195,7 +215,7 @@ func TestAssembler_BuildChangeMap_CallsOutSingleLargestFile(t *testing.T) {
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v4.0.0")
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -228,7 +248,7 @@ func TestAssembler_BuildChangeMap_CallsOutNewTopLevelEntries(t *testing.T) {
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v5.0.0")
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -259,7 +279,7 @@ func TestAssembler_BuildChangeMap_AllInOneExistingArea_RollsUpNoFalseHeadline(t 
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v6.0.0")
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -284,12 +304,65 @@ func TestAssembler_BuildChangeMap_ComputedAfterChangelogExclusion(t *testing.T) 
 	numstat := "5\t5\tapi/a.go\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	if _, err := a.BuildChangeMap(t.Context(), "v7.0.0"); err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
 
 	assertChangeMapInvocations(t, r, "v7.0.0")
+}
+
+func TestAssembler_BuildChangeMap_ConfiguredGlob_AppliedToBothCallsOnTopOfChangelog(t *testing.T) {
+	t.Parallel()
+
+	// A configured diff_exclude glob rides on BOTH the name-status and numstat calls,
+	// as a :(exclude)<glob> entry AFTER the built-in :(exclude)CHANGELOG.md — so the
+	// map is computed over the SAME post-exclusion view the diff uses.
+	nameStatus := "M\tapi/a.go\n"
+	numstat := "5\t5\tapi/a.go\n"
+	r := seedChangeMapGit(t, nameStatus, numstat)
+
+	a := notes.NewAssembler(r, []string{"skills/**/knowledge.cjs"})
+	if _, err := a.BuildChangeMap(t.Context(), "v7.0.0"); err != nil {
+		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
+	}
+
+	assertChangeMapInvocationsWithExcludes(t, r, "v7.0.0", "skills/**/knowledge.cjs")
+}
+
+func TestAssembler_BuildChangeMap_MultipleGlobs_AllAppliedToBothCallsInOrder(t *testing.T) {
+	t.Parallel()
+
+	// Multiple diff_exclude globs ALL apply to BOTH git calls, in config order, after
+	// the built-in CHANGELOG.md exclusion — the map matches the diff's exclusion set.
+	nameStatus := "M\tapi/a.go\n"
+	numstat := "5\t5\tapi/a.go\n"
+	r := seedChangeMapGit(t, nameStatus, numstat)
+
+	globs := []string{"skills/**/knowledge.cjs", "*.min.js"}
+	a := notes.NewAssembler(r, globs)
+	if _, err := a.BuildChangeMap(t.Context(), "v8.0.0"); err != nil {
+		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
+	}
+
+	assertChangeMapInvocationsWithExcludes(t, r, "v8.0.0", globs...)
+}
+
+func TestAssembler_BuildChangeMap_AbsentDiffExclude_ExcludesOnlyChangelog(t *testing.T) {
+	t.Parallel()
+
+	// With no configured globs (nil), BOTH calls reproduce EXACTLY the Phase-2 argv:
+	// the only exclude is :(exclude)CHANGELOG.md, with no extra entries.
+	nameStatus := "M\tapi/a.go\n"
+	numstat := "5\t5\tapi/a.go\n"
+	r := seedChangeMapGit(t, nameStatus, numstat)
+
+	a := notes.NewAssembler(r, nil)
+	if _, err := a.BuildChangeMap(t.Context(), "v9.0.0"); err != nil {
+		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
+	}
+
+	assertChangeMapInvocations(t, r, "v9.0.0")
 }
 
 func TestAssembler_BuildChangeMap_NameStatusGitFails_SurfacesError(t *testing.T) {
@@ -305,7 +378,7 @@ func TestAssembler_BuildChangeMap_NameStatusGitFails_SurfacesError(t *testing.T)
 		},
 	)
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v9.9.9")
 	if err == nil {
 		t.Fatalf("BuildChangeMap returned nil error, want the git failure surfaced")
@@ -324,7 +397,7 @@ func TestAssembler_BuildChangeMap_CommandNotFound_SurfacesDistinguishableError(t
 	r := runner.NewFakeRunner()
 	r.SeedNotFound("git")
 
-	a := notes.NewAssembler(r)
+	a := notes.NewAssembler(r, nil)
 	got, err := a.BuildChangeMap(t.Context(), "v1.0.0")
 	if err == nil {
 		t.Fatalf("BuildChangeMap returned nil error, want a command-not-found condition")

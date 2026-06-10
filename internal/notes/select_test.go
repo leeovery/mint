@@ -21,7 +21,7 @@ import (
 func newSelector(t *testing.T, r *runner.FakeRunner, transport notes.Transport) *notes.Selector {
 	t.Helper()
 	root := t.TempDir()
-	assembler := notes.NewAssembler(r)
+	assembler := notes.NewAssembler(r, nil)
 	gen := notes.NewGenerator(assembler, transport, root)
 	return notes.NewSelector(gen, assembler, r, root)
 }

@@ -438,6 +438,65 @@ func TestLoad_ExplicitVersionPattern_Honoured(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentDiffExclude_DefaultsToEmpty(t *testing.T) {
+	t.Parallel()
+
+	// diff_exclude is a shared TOP-LEVEL engine key (not under [release]) listing
+	// extra globs to exclude from the diff ON TOP OF the built-in CHANGELOG.md.
+	// Absent from the file it must default to empty — only CHANGELOG.md is excluded.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if len(cfg.DiffExclude) != 0 {
+		t.Errorf("DiffExclude = %#v, want empty (absent key → no extra excludes)", cfg.DiffExclude)
+	}
+}
+
+func TestLoad_DiffExcludeArray_DecodesAllGlobsInOrder(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit top-level diff_exclude array of glob strings decodes to a []string
+	// in file order; each entry later becomes a :(exclude)<glob> pathspec. It sits
+	// above the [release] table, so it is set with no table header.
+	writeConfig(t, dir, "diff_exclude = [\"skills/**/knowledge.cjs\", \"*.min.js\"]\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	want := []string{"skills/**/knowledge.cjs", "*.min.js"}
+	if len(cfg.DiffExclude) != len(want) {
+		t.Fatalf("DiffExclude = %#v, want %#v", cfg.DiffExclude, want)
+	}
+	for i := range want {
+		if cfg.DiffExclude[i] != want[i] {
+			t.Errorf("DiffExclude[%d] = %q, want %q (order must be preserved)", i, cfg.DiffExclude[i], want[i])
+		}
+	}
+}
+
+func TestLoad_DiffExcludeSingleGlob_Decodes(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A single-element diff_exclude array decodes to a one-element []string — the
+	// minimal configured-exclude case.
+	writeConfig(t, dir, "diff_exclude = [\"dist/bundle.js\"]\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if len(cfg.DiffExclude) != 1 || cfg.DiffExclude[0] != "dist/bundle.js" {
+		t.Errorf("DiffExclude = %#v, want [\"dist/bundle.js\"]", cfg.DiffExclude)
+	}
+}
+
 func TestLoad_AbsentHooksTable_AllNil(t *testing.T) {
 	t.Parallel()
 

@@ -405,8 +405,9 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 
 	// One Assembler (the single git seam) is shared by the Generator and the Selector
 	// so the degenerate-check diff and the AI path range over the same git, exactly as
-	// NewSelector documents.
-	assembler := notes.NewAssembler(deps.Runner)
+	// NewSelector documents. The configured diff_exclude globs are passed here so the
+	// per-run diff assembly and the Change Map exclude them ON TOP OF CHANGELOG.md.
+	assembler := notes.NewAssembler(deps.Runner, cfg.DiffExclude)
 	generator := notes.NewGenerator(assembler, aiTransport(deps), root)
 	selector := notes.NewSelector(generator, assembler, deps.Runner, root)
 

@@ -60,6 +60,14 @@ type Config struct {
 	// notes engine, not just release. The notes size guard compares the
 	// post-exclusion diff's line count against it.
 	MaxDiffLines int
+
+	// DiffExclude is the shared engine-level list of extra glob pathspecs to exclude
+	// from the diff, ON TOP OF the built-in CHANGELOG.md exclusion. It is top-level —
+	// NOT under [release] — because it serves every verb's notes engine. Each entry is
+	// a git pathspec glob (e.g. "skills/**/knowledge.cjs") the notes engine turns into
+	// a :(exclude)<glob> argument; git performs the matching, mint does no Go-side glob
+	// matching. Absent → nil/empty, so only CHANGELOG.md is excluded.
+	DiffExclude []string
 }
 
 // Release holds the [release] table values needed so far: TagPrefix and
@@ -152,6 +160,7 @@ func defaults() Config {
 type fileShape struct {
 	Release      releaseShape `toml:"release"`
 	MaxDiffLines *int         `toml:"max_diff_lines"`
+	DiffExclude  []string     `toml:"diff_exclude"`
 }
 
 type releaseShape struct {
@@ -211,6 +220,7 @@ func Load(root string) (Config, error) {
 	return Config{
 		Release:      resolveRelease(shape.Release),
 		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
+		DiffExclude:  shape.DiffExclude,
 	}, nil
 }
 

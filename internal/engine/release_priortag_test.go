@@ -143,6 +143,43 @@ func TestRelease_PriorTag_NormalAI_EndToEnd(t *testing.T) {
 	}
 }
 
+// TestRelease_PriorTag_DiffExcludeGlobsReachDiffAndChangeMapGitCalls wires the
+// shared top-level diff_exclude config through the whole spine: a .mint.toml at the
+// repo root carries two globs, and resolveBody must thread them into the Assembler so
+// the AssembleDiff git call AND both Change Map git calls carry each :(exclude)<glob>
+// ON TOP OF the built-in :(exclude)CHANGELOG.md, in config order. git — not Go —
+// performs the exclusion, so the assertion is on the exact git argv.
+func TestRelease_PriorTag_DiffExcludeGlobsReachDiffAndChangeMapGitCalls(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "diff_exclude = [\"skills/**/knowledge.cjs\", \"*.min.js\"]\n")
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// The configured globs ride on top of CHANGELOG.md on the assemble diff and both
+	// Change Map git calls, in config order — git does the exclusion.
+	const g1, g2 = ":(exclude)skills/**/knowledge.cjs", ":(exclude)*.min.js"
+	if !invokedWith(f, "git", "diff", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", g1, g2) {
+		t.Errorf("assemble diff did not carry the configured diff_exclude globs; got %v", commandLines(f.Invocations()))
+	}
+	if !invokedWith(f, "git", "diff", "--name-status", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", g1, g2) {
+		t.Errorf("change map name-status did not carry the configured diff_exclude globs; got %v", commandLines(f.Invocations()))
+	}
+	if !invokedWith(f, "git", "diff", "--numstat", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", g1, g2) {
+		t.Errorf("change map numstat did not carry the configured diff_exclude globs; got %v", commandLines(f.Invocations()))
+	}
+}
+
 // TestRelease_PriorTag_NormalAI_EventProtocol asserts the as-built event protocol on
 // the prior-tag NORMAL-AI success path: RunStarted -> ShowPlan -> ShowNotes ->
 // Prompt -> RunFinished. The gate is the four-choice y/n/e/r variant (KindNormalAI).

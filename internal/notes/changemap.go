@@ -15,12 +15,13 @@ import (
 // it is NOT a restatement of the diff and this task does NOT do the prepend.
 //
 // Two cheap git calls feed it, run cwd-relative like the other engine git calls and
-// AFTER the same built-in CHANGELOG.md exclusion (the :(exclude)CHANGELOG.md
-// pathspec rides on BOTH), so excluded churn never appears in the map:
+// AFTER the SAME exclusion set the diff uses — the built-in :(exclude)CHANGELOG.md
+// plus one :(exclude)<glob> per configured diff_exclude glob (the shared
+// excludePathspecs) rides on BOTH — so excluded churn never appears in the map:
 //
-//   - `git diff --name-status {lastTag}..HEAD -- . :(exclude)CHANGELOG.md` —
+//   - `git diff --name-status {lastTag}..HEAD -- . {excludePathspecs}` —
 //     A/M/D/R status per path, the STRUCTURAL NOVELTY signal.
-//   - `git diff --numstat {lastTag}..HEAD -- . :(exclude)CHANGELOG.md` —
+//   - `git diff --numstat {lastTag}..HEAD -- . {excludePathspecs}` —
 //     {added}\t{removed}\t{path} per file, the MAGNITUDE signal.
 //
 // The rendered map orders salience NOVELTY-FIRST (weighted above magnitude): new
@@ -32,12 +33,15 @@ import (
 // (via errors.Is); any other non-zero git exit is wrapped so an unexpected failure
 // is never mistaken for a degenerate map.
 func (a *Assembler) BuildChangeMap(ctx context.Context, lastTag string) (string, error) {
-	nameStatusRes, err := a.runner.Run(ctx, "git", "diff", "--name-status", lastTag+"..HEAD", "--", ".", changelogExcludePathspec)
+	excludes := a.excludePathspecs()
+	nameStatusArgs := append([]string{"diff", "--name-status", lastTag + "..HEAD", "--", "."}, excludes...)
+	nameStatusRes, err := a.runner.Run(ctx, "git", nameStatusArgs...)
 	if err != nil {
 		return "", fmt.Errorf("building change map name-status for %s..HEAD: %w", lastTag, err)
 	}
 
-	numstatRes, err := a.runner.Run(ctx, "git", "diff", "--numstat", lastTag+"..HEAD", "--", ".", changelogExcludePathspec)
+	numstatArgs := append([]string{"diff", "--numstat", lastTag + "..HEAD", "--", "."}, excludes...)
+	numstatRes, err := a.runner.Run(ctx, "git", numstatArgs...)
 	if err != nil {
 		return "", fmt.Errorf("building change map numstat for %s..HEAD: %w", lastTag, err)
 	}
