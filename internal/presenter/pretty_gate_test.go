@@ -10,14 +10,15 @@ import (
 	"mint/internal/presenter"
 )
 
-// drivePrettyPromptProfile drives a single Prompt call against the pretty
-// presenter with the colour profile under test, returning the captured out
-// buffer. It is the colour-aware sibling of drivePrettyPrompt (which is pinned to
-// Ascii): the menu-structure-survives-downgrade and colour-on-keeps-structure
-// tests need to force the profile while still scripting the gate input.
+// drivePrettyPromptProfile is the single pretty-prompt single-Prompt driver. It
+// builds the pretty presenter via the shared prettyGate construction seam with the
+// colour profile under test, scripts a single Prompt from input, and returns the
+// captured out buffer. Forcing the profile (Ascii for deterministic plain text,
+// TrueColor where ANSI must be present) keeps the menu-structure-survives-downgrade
+// and colour-on-keeps-structure assertions deterministic regardless of the test
+// runner's own TTY.
 func drivePrettyPromptProfile(input string, gate presenter.Gate, profile termenv.Profile) *bytes.Buffer {
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(profile), presenter.WithInput(strings.NewReader(input)))
+	p, out, _ := prettyGate(profile, strings.NewReader(input), gateOpts{})
 	_, _ = p.Prompt(gate)
 	return out
 }

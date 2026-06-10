@@ -161,7 +161,7 @@ func TestForbiddenComboReturnsErrNotInteractive(t *testing.T) {
 
 	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			res := d.run(strings.NewReader(""), gateOpts{nonInteractiveStdin: true}, gate)
+			res := d.run(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true}, gate)
 			if !errors.Is(res.err, presenter.ErrNotInteractive) {
 				t.Errorf("%s forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", d.mode, res.err)
 			}
@@ -246,7 +246,7 @@ func TestConstructorsDefaultStdinInteractive(t *testing.T) {
 
 	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			res := d.run(strings.NewReader("y\n"), gateOpts{}, gate)
+			res := d.run(termenv.Ascii, strings.NewReader("y\n"), gateOpts{}, gate)
 			if res.err != nil {
 				t.Fatalf("%s Prompt (default stdinInteractive) returned error: %v", d.mode, res.err)
 			}

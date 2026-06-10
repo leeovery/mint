@@ -3,6 +3,7 @@ package presenter_test
 import (
 	"bytes"
 	"io"
+	"strings"
 
 	"github.com/muesli/termenv"
 
@@ -78,9 +79,10 @@ func prettyGate(profile termenv.Profile, in io.Reader, opts gateOpts) (p *presen
 }
 
 // gateResult is what a gateDriver returns from a single Prompt call: the choice,
-// the out/err capture buffers, and the error. Mode-invariant gate properties (e.g.
-// "returns ErrNotInteractive in both modes", "default stdin keeps the interactive
-// path in both modes") read whichever fields they assert and ignore the rest.
+// the out/err capture buffers, and the error. Mode-invariant gate/prompt
+// properties (e.g. "returns ErrNotInteractive in both modes", "empty-Enter selects
+// the default in both modes") read whichever fields they assert and ignore the
+// rest.
 type gateResult struct {
 	choice presenter.Choice
 	out    *bytes.Buffer
@@ -88,26 +90,37 @@ type gateResult struct {
 	err    error
 }
 
-// gateDriver pairs a render-mode name with a one-Prompt driver built on the
-// plainGate/prettyGate construction seams. It lets a GENUINELY mode-invariant gate
-// property be asserted once inside t.Run(d.mode, ...) instead of as two
-// hand-duplicated plain-then-pretty arms. Mode-SPECIFIC gate rendering (the exact
-// plain "FAILED -" line vs the pretty "✗ gate" line, the distinct -y echo bytes)
-// stays in its own dedicated test and is NOT driven through this table. The pretty
-// driver pins the Ascii profile so any text the property does inspect is
-// deterministic regardless of the test runner's TTY.
+// gateDriver pairs a render-mode name with the one canonical one-Prompt driver,
+// built on the plainGate/prettyGate construction seams. It lets a GENUINELY
+// mode-invariant gate/prompt property be asserted once inside t.Run(d.mode, ...)
+// instead of as two hand-duplicated plain-then-pretty arms. Mode-SPECIFIC
+// rendering (the exact plain "FAILED -" line vs the pretty "✗ gate" line, the
+// plain [y/n/e/r] hint vs the pretty vertical menu, the distinct -y echo bytes)
+// stays in its own dedicated test and is NOT driven through this table. The
+// pretty colour profile is an explicit parameter (the plain driver ignores it —
+// plain mode has no colour) so each call site states the profile it needs: Ascii
+// for deterministic captured text, TrueColor where the property must hold WHILE
+// SGR colour escapes are present (the render-only screen-control guard).
 type gateDriver struct {
 	mode string
-	run  func(in io.Reader, opts gateOpts, gate presenter.Gate) gateResult
+	run  func(profile termenv.Profile, in io.Reader, opts gateOpts, gate presenter.Gate) gateResult
 }
 
-// gateDrivers returns one driver per render mode for the mode-invariant gate
-// properties.
+// prompt is the prompt-test-shaped convenience over run: it scripts a single
+// Prompt from a string with the default gate options (no -y, interactive stdin) —
+// the shape the prompt tests need — selecting the pretty colour profile (ignored
+// by the plain driver).
+func (d gateDriver) prompt(profile termenv.Profile, input string, gate presenter.Gate) gateResult {
+	return d.run(profile, strings.NewReader(input), gateOpts{}, gate)
+}
+
+// gateDrivers returns one driver per render mode for the mode-invariant
+// gate/prompt properties.
 func gateDrivers() []gateDriver {
 	return []gateDriver{
 		{
 			mode: "plain",
-			run: func(in io.Reader, opts gateOpts, gate presenter.Gate) gateResult {
+			run: func(_ termenv.Profile, in io.Reader, opts gateOpts, gate presenter.Gate) gateResult {
 				p, out, errBuf := plainGate(in, opts)
 				choice, err := p.Prompt(gate)
 				return gateResult{choice: choice, out: out, errBuf: errBuf, err: err}
@@ -115,8 +128,8 @@ func gateDrivers() []gateDriver {
 		},
 		{
 			mode: "pretty",
-			run: func(in io.Reader, opts gateOpts, gate presenter.Gate) gateResult {
-				p, out, errBuf := prettyGate(termenv.Ascii, in, opts)
+			run: func(profile termenv.Profile, in io.Reader, opts gateOpts, gate presenter.Gate) gateResult {
+				p, out, errBuf := prettyGate(profile, in, opts)
 				choice, err := p.Prompt(gate)
 				return gateResult{choice: choice, out: out, errBuf: errBuf, err: err}
 			},

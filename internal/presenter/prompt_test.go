@@ -1,7 +1,6 @@
 package presenter_test
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -10,49 +9,10 @@ import (
 	"mint/internal/presenter"
 )
 
-// drivePlainPrompt constructs a PlainPresenter with the supplied input script and
-// captures its narration, returning the choice and the captured out buffer from a
-// single Prompt call against the given gate, plus any error. Centralising
-// construction keeps each prompt test focused on the input script and the asserted
-// outcome.
-func drivePlainPrompt(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error) {
-	out := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, errBuf, strings.NewReader(input))
-	choice, err := p.Prompt(gate)
-	return choice, out, err
-}
-
-// drivePrettyPrompt mirrors drivePlainPrompt for the pretty presenter, forcing the
-// ASCII profile so the captured prompt text is deterministic regardless of the
-// test runner's own TTY.
-func drivePrettyPrompt(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(input)))
-	choice, err := p.Prompt(gate)
-	return choice, out, err
-}
-
-// promptModeDriver pairs a render-mode name with the matching single-Prompt driver
-// (drivePlainPrompt / drivePrettyPrompt). It mirrors promptDriver in
-// prompt_render_only_test.go but reuses the prompt-test drivers, which force the
-// Ascii profile so captured prompt text stays deterministic.
-type promptModeDriver struct {
-	mode string
-	run  func(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error)
-}
-
-// promptModeDrivers returns one driver per render mode so a genuinely
-// mode-invariant Prompt property is asserted ONCE inside t.Run(d.mode, ...) rather
-// than as two hand-duplicated plain-then-pretty arms that can drift independently.
-// Mode-SPECIFIC rendering (e.g. the plain [y/n/e/r] hint vs the pretty menu) stays
-// in its own dedicated test and is NOT driven through this table.
-func promptModeDrivers() []promptModeDriver {
-	return []promptModeDriver{
-		{mode: "plain", run: drivePlainPrompt},
-		{mode: "pretty", run: drivePrettyPrompt},
-	}
-}
+// The prompt tests drive a single Prompt through the shared gateDrivers() table
+// (see gate_helpers_test.go), selecting termenv.Ascii so captured prompt text is
+// deterministic regardless of the test runner's own TTY. d.prompt(...) is the
+// string-scripted, default-options convenience over the canonical gateDriver.run.
 
 // TestPromptEmptyEnterSelectsDefault locks the empty-Enter contract: a blank line
 // returns the gate's declared Default (y for NotesReviewGate) — the deliberate
@@ -60,14 +20,14 @@ func promptModeDrivers() []promptModeDriver {
 func TestPromptEmptyEnterSelectsDefault(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, _, err := d.run("\n", gate)
-			if err != nil {
-				t.Fatalf("%s Prompt returned error: %v", d.mode, err)
+			res := d.prompt(termenv.Ascii, "\n", gate)
+			if res.err != nil {
+				t.Fatalf("%s Prompt returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceYes {
-				t.Errorf("%s Prompt empty-Enter = %q, want %q", d.mode, choice, presenter.ChoiceYes)
+			if res.choice != presenter.ChoiceYes {
+				t.Errorf("%s Prompt empty-Enter = %q, want %q", d.mode, res.choice, presenter.ChoiceYes)
 			}
 		})
 	}
@@ -88,15 +48,15 @@ func TestPromptIsCaseInsensitive(t *testing.T) {
 		{"Y\n", presenter.ChoiceYes},
 		{"R\n", presenter.ChoiceRegen},
 	}
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
 			for _, tt := range tests {
-				choice, _, err := d.run(tt.input, gate)
-				if err != nil {
-					t.Fatalf("%s Prompt(%q) returned error: %v", d.mode, tt.input, err)
+				res := d.prompt(termenv.Ascii, tt.input, gate)
+				if res.err != nil {
+					t.Fatalf("%s Prompt(%q) returned error: %v", d.mode, tt.input, res.err)
 				}
-				if choice != tt.want {
-					t.Errorf("%s Prompt(%q) = %q, want %q", d.mode, tt.input, choice, tt.want)
+				if res.choice != tt.want {
+					t.Errorf("%s Prompt(%q) = %q, want %q", d.mode, tt.input, res.choice, tt.want)
 				}
 			}
 		})
@@ -111,16 +71,16 @@ func TestPromptIsCaseInsensitive(t *testing.T) {
 func TestPromptUnrecognisedReprompts(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, out, err := d.run("x\nn\n", gate)
-			if err != nil {
-				t.Fatalf("%s Prompt returned error: %v", d.mode, err)
+			res := d.prompt(termenv.Ascii, "x\nn\n", gate)
+			if res.err != nil {
+				t.Fatalf("%s Prompt returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceNo {
-				t.Errorf("%s Prompt = %q, want %q", d.mode, choice, presenter.ChoiceNo)
+			if res.choice != presenter.ChoiceNo {
+				t.Errorf("%s Prompt = %q, want %q", d.mode, res.choice, presenter.ChoiceNo)
 			}
-			if got := strings.Count(out.String(), "Continue?"); got != 2 {
+			if got := strings.Count(res.out.String(), "Continue?"); got != 2 {
 				t.Errorf("%s prompt rendered %d times, want 2 (initial + re-prompt)", d.mode, got)
 			}
 		})
@@ -134,14 +94,14 @@ func TestPromptUnrecognisedReprompts(t *testing.T) {
 func TestPromptOldMuscleMemoryKeysReprompt(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, _, err := d.run("a\nq\ny\n", gate)
-			if err != nil {
-				t.Fatalf("%s Prompt returned error: %v", d.mode, err)
+			res := d.prompt(termenv.Ascii, "a\nq\ny\n", gate)
+			if res.err != nil {
+				t.Fatalf("%s Prompt returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceYes {
-				t.Errorf("%s Prompt = %q, want %q (a/q must re-prompt, never be returned)", d.mode, choice, presenter.ChoiceYes)
+			if res.choice != presenter.ChoiceYes {
+				t.Errorf("%s Prompt = %q, want %q (a/q must re-prompt, never be returned)", d.mode, res.choice, presenter.ChoiceYes)
 			}
 		})
 	}
@@ -153,14 +113,14 @@ func TestPromptOldMuscleMemoryKeysReprompt(t *testing.T) {
 func TestPromptWhitespaceOnlyTreatedAsDefault(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, _, err := d.run("   \n", gate)
-			if err != nil {
-				t.Fatalf("%s Prompt returned error: %v", d.mode, err)
+			res := d.prompt(termenv.Ascii, "   \n", gate)
+			if res.err != nil {
+				t.Fatalf("%s Prompt returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceYes {
-				t.Errorf("%s Prompt whitespace-only = %q, want %q (treated as empty-Enter default)", d.mode, choice, presenter.ChoiceYes)
+			if res.choice != presenter.ChoiceYes {
+				t.Errorf("%s Prompt whitespace-only = %q, want %q (treated as empty-Enter default)", d.mode, res.choice, presenter.ChoiceYes)
 			}
 		})
 	}
@@ -173,16 +133,16 @@ func TestPromptWhitespaceOnlyTreatedAsDefault(t *testing.T) {
 func TestPromptRepeatedUnrecognisedThenValid(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, out, err := d.run("x\nz\n?\nr\n", gate)
-			if err != nil {
-				t.Fatalf("%s Prompt returned error: %v", d.mode, err)
+			res := d.prompt(termenv.Ascii, "x\nz\n?\nr\n", gate)
+			if res.err != nil {
+				t.Fatalf("%s Prompt returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceRegen {
-				t.Errorf("%s Prompt = %q, want %q", d.mode, choice, presenter.ChoiceRegen)
+			if res.choice != presenter.ChoiceRegen {
+				t.Errorf("%s Prompt = %q, want %q", d.mode, res.choice, presenter.ChoiceRegen)
 			}
-			if got := strings.Count(out.String(), "Continue?"); got != 4 {
+			if got := strings.Count(res.out.String(), "Continue?"); got != 4 {
 				t.Errorf("%s prompt rendered %d times, want 4 (initial + three re-prompts)", d.mode, got)
 			}
 		})
@@ -196,21 +156,21 @@ func TestPromptRepeatedUnrecognisedThenValid(t *testing.T) {
 func TestPromptEOFReturnsError(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
 			// "x" with no trailing newline then EOF: the only line is unrecognised,
 			// then the reader hits EOF — must error, must NOT return the default.
-			choice, _, err := d.run("x", gate)
-			if err == nil {
-				t.Fatalf("%s Prompt returned nil error on EOF, want non-nil (choice was %q)", d.mode, choice)
+			res := d.prompt(termenv.Ascii, "x", gate)
+			if res.err == nil {
+				t.Fatalf("%s Prompt returned nil error on EOF, want non-nil (choice was %q)", d.mode, res.choice)
 			}
-			if choice == gate.Default {
-				t.Errorf("%s Prompt default-accepted %q on EOF; must not silently default", d.mode, choice)
+			if res.choice == gate.Default {
+				t.Errorf("%s Prompt default-accepted %q on EOF; must not silently default", d.mode, res.choice)
 			}
 
 			// Immediate EOF (empty input, no line at all) must also error — not be
 			// mistaken for a deliberate empty-Enter default.
-			if _, _, err := d.run("", gate); err == nil {
+			if eof := d.prompt(termenv.Ascii, "", gate); eof.err == nil {
 				t.Errorf("%s Prompt returned nil error on immediate EOF, want non-nil", d.mode)
 			}
 		})
@@ -234,14 +194,16 @@ func TestPromptCoreIsModeAgnostic(t *testing.T) {
 		{"a\nq\ne\n", presenter.ChoiceEdit},
 	}
 	for _, tt := range tests {
-		plainChoice, _, plainErr := drivePlainPrompt(tt.input, gate)
-		prettyChoice, _, prettyErr := drivePrettyPrompt(tt.input, gate)
-
-		if plainErr != nil || prettyErr != nil {
-			t.Fatalf("input %q: plain err=%v pretty err=%v", tt.input, plainErr, prettyErr)
-		}
-		if plainChoice != tt.want || prettyChoice != tt.want {
-			t.Errorf("input %q: plain=%q pretty=%q, want %q (modes must agree)", tt.input, plainChoice, prettyChoice, tt.want)
+		// Drive the SAME input through both real presenters via the shared table and
+		// require every mode to land on the same want — the modes must agree.
+		for _, d := range gateDrivers() {
+			res := d.prompt(termenv.Ascii, tt.input, gate)
+			if res.err != nil {
+				t.Fatalf("input %q: %s err=%v", tt.input, d.mode, res.err)
+			}
+			if res.choice != tt.want {
+				t.Errorf("input %q: %s=%q, want %q (modes must agree)", tt.input, d.mode, res.choice, tt.want)
+			}
 		}
 	}
 }
@@ -253,16 +215,16 @@ func TestPromptCoreIsModeAgnostic(t *testing.T) {
 func TestPromptHonoursReuseGateDeclaredSet(t *testing.T) {
 	gate := presenter.ReuseConfirmGate()
 
-	for _, d := range promptModeDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, out, err := d.run("e\ny\n", gate)
-			if err != nil {
-				t.Fatalf("%s Prompt returned error: %v", d.mode, err)
+			res := d.prompt(termenv.Ascii, "e\ny\n", gate)
+			if res.err != nil {
+				t.Fatalf("%s Prompt returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceYes {
-				t.Errorf("%s Prompt = %q, want %q ('e' is not declared by reuse gate -> re-prompt)", d.mode, choice, presenter.ChoiceYes)
+			if res.choice != presenter.ChoiceYes {
+				t.Errorf("%s Prompt = %q, want %q ('e' is not declared by reuse gate -> re-prompt)", d.mode, res.choice, presenter.ChoiceYes)
 			}
-			if got := strings.Count(out.String(), "Continue?"); got != 2 {
+			if got := strings.Count(res.out.String(), "Continue?"); got != 2 {
 				t.Errorf("%s prompt rendered %d times, want 2 ('e' re-prompts)", d.mode, got)
 			}
 		})
@@ -273,16 +235,20 @@ func TestPromptHonoursReuseGateDeclaredSet(t *testing.T) {
 // declared keys, not a hardcoded y/n/e/r literal: the four-choice gate shows
 // [y/n/e/r] while the two-choice reuse gate shows only [y/n].
 func TestPromptHintUsesDeclaredKeys(t *testing.T) {
-	_, out, _ := drivePlainPrompt("\n", presenter.NotesReviewGate())
+	// The [y/n/e/r] hint is plain-mode-SPECIFIC rendering, so this builds the plain
+	// presenter directly via the shared plainGate construction seam.
+	notes, out, _ := plainGate(strings.NewReader("\n"), gateOpts{})
+	_, _ = notes.Prompt(presenter.NotesReviewGate())
 	if !strings.Contains(out.String(), "[y/n/e/r]") {
 		t.Errorf("plain notes-review hint = %q, want it to contain [y/n/e/r]", out.String())
 	}
 
-	_, out, _ = drivePlainPrompt("\n", presenter.ReuseConfirmGate())
-	if !strings.Contains(out.String(), "[y/n]") {
-		t.Errorf("plain reuse hint = %q, want it to contain [y/n]", out.String())
+	reuse, reuseOut, _ := plainGate(strings.NewReader("\n"), gateOpts{})
+	_, _ = reuse.Prompt(presenter.ReuseConfirmGate())
+	if !strings.Contains(reuseOut.String(), "[y/n]") {
+		t.Errorf("plain reuse hint = %q, want it to contain [y/n]", reuseOut.String())
 	}
-	if strings.Contains(out.String(), "[y/n/e/r]") {
-		t.Errorf("plain reuse hint = %q, must NOT show e/r the gate does not declare", out.String())
+	if strings.Contains(reuseOut.String(), "[y/n/e/r]") {
+		t.Errorf("plain reuse hint = %q, must NOT show e/r the gate does not declare", reuseOut.String())
 	}
 }

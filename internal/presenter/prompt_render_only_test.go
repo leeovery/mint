@@ -114,44 +114,11 @@ func assertNoScreenControl(t *testing.T, mode, out string) {
 	}
 }
 
-// promptDriver scripts a single Prompt call against a real presenter of one mode
-// and returns the choice, the cumulative out buffer, and any error. The two
-// constructors are the injected-reader test seams (NewPlainPresenterWithInput /
-// NewPrettyPresenter with the WithInput option) so Prompt is driven without a real
-// terminal; the pretty driver pins the colour profile so the screen-control
-// assertions are deterministic regardless of the test runner's own TTY.
-type promptDriver struct {
-	mode string
-	run  func(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error)
-}
-
-// promptDrivers returns one driver per render mode so the render-only contract
-// is asserted identically against BOTH real presenters. The pretty driver is run
-// under a colour-CAPABLE profile (TrueColor) deliberately: the screen-control
-// guard must pass even while lipgloss IS emitting SGR colour escapes, proving the
-// guard rejects only clear/alt-screen/home sequences and not all ESC bytes.
-func promptDrivers() []promptDriver {
-	return []promptDriver{
-		{
-			mode: "plain",
-			run: func(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error) {
-				out := &bytes.Buffer{}
-				p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader(input))
-				choice, err := p.Prompt(gate)
-				return choice, out, err
-			},
-		},
-		{
-			mode: "pretty",
-			run: func(input string, gate presenter.Gate) (presenter.Choice, *bytes.Buffer, error) {
-				out := &bytes.Buffer{}
-				p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(input)))
-				choice, err := p.Prompt(gate)
-				return choice, out, err
-			},
-		},
-	}
-}
+// The render-only tests drive a single Prompt through the shared gateDrivers()
+// table (see gate_helpers_test.go), selecting termenv.TrueColor for the pretty
+// driver DELIBERATELY: the screen-control guard must pass even while lipgloss IS
+// emitting SGR colour escapes, proving the guard rejects only clear/alt-screen/
+// home sequences and not all ESC bytes. The plain driver ignores the profile.
 
 // TestPromptEditHasNoPresenterSideEffect locks the e (edit) render-only contract:
 // scripted "e\n" returns ChoiceEdit and the presenter does nothing else — it
@@ -159,14 +126,14 @@ func promptDrivers() []promptDriver {
 // mechanism cannot exist; this proves the choice is returned cleanly). Asserted
 // in BOTH modes against a real presenter.
 func TestPromptEditHasNoPresenterSideEffect(t *testing.T) {
-	for _, d := range promptDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, _, err := d.run("e\n", presenter.NotesReviewGate())
-			if err != nil {
-				t.Fatalf("%s Prompt(e) returned error: %v", d.mode, err)
+			res := d.prompt(termenv.TrueColor, "e\n", presenter.NotesReviewGate())
+			if res.err != nil {
+				t.Fatalf("%s Prompt(e) returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceEdit {
-				t.Errorf("%s Prompt(e) = %q, want %q (render-only: return the choice, the engine owns the edit)", d.mode, choice, presenter.ChoiceEdit)
+			if res.choice != presenter.ChoiceEdit {
+				t.Errorf("%s Prompt(e) = %q, want %q (render-only: return the choice, the engine owns the edit)", d.mode, res.choice, presenter.ChoiceEdit)
 			}
 		})
 	}
@@ -177,14 +144,14 @@ func TestPromptEditHasNoPresenterSideEffect(t *testing.T) {
 // else — it invokes no claude/regeneration and spawns no subprocess. Asserted in
 // BOTH modes against a real presenter.
 func TestPromptRegenHasNoPresenterSideEffect(t *testing.T) {
-	for _, d := range promptDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
-			choice, _, err := d.run("r\n", presenter.NotesReviewGate())
-			if err != nil {
-				t.Fatalf("%s Prompt(r) returned error: %v", d.mode, err)
+			res := d.prompt(termenv.TrueColor, "r\n", presenter.NotesReviewGate())
+			if res.err != nil {
+				t.Fatalf("%s Prompt(r) returned error: %v", d.mode, res.err)
 			}
-			if choice != presenter.ChoiceRegen {
-				t.Errorf("%s Prompt(r) = %q, want %q (render-only: return the choice, the engine owns the regeneration)", d.mode, choice, presenter.ChoiceRegen)
+			if res.choice != presenter.ChoiceRegen {
+				t.Errorf("%s Prompt(r) = %q, want %q (render-only: return the choice, the engine owns the regeneration)", d.mode, res.choice, presenter.ChoiceRegen)
 			}
 		})
 	}
@@ -201,13 +168,19 @@ func TestPromptRegenHasNoPresenterSideEffect(t *testing.T) {
 func simulateEngineLoop(t *testing.T, mode, input string, gate presenter.Gate) (presenter.Choice, []string, string) {
 	t.Helper()
 
-	out := &bytes.Buffer{}
-	var p presenter.Presenter
+	// Construction routes through the shared plainGate/prettyGate seam so the loop
+	// can't drift from the single-Prompt drivers; the presenter is built ONCE so its
+	// narration accumulates across passes. The pretty seam takes TrueColor so SGR
+	// colour escapes ARE present while the screen-control guard still passes.
+	var (
+		p   presenter.Presenter
+		out *bytes.Buffer
+	)
 	switch mode {
 	case "plain":
-		p = presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader(input))
+		p, out, _ = plainGate(strings.NewReader(input), gateOpts{})
 	case "pretty":
-		p = presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(input)))
+		p, out, _ = prettyGate(termenv.TrueColor, strings.NewReader(input), gateOpts{})
 	default:
 		t.Fatalf("unknown mode %q", mode)
 	}
@@ -260,7 +233,7 @@ func bodyForPass(pass int) string {
 // output carries NO clear-screen/alt-screen/cursor-home sequence (the render
 // scrolls, it never overwrites). Asserted in BOTH modes against a real presenter.
 func TestEngineLoopRendersLinearlyAcrossPasses(t *testing.T) {
-	for _, d := range promptDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
 			gate := presenter.NotesReviewGate()
 			choice, bodies, out := simulateEngineLoop(t, d.mode, "e\nr\ny\n", gate)
@@ -304,7 +277,7 @@ func TestEngineLoopRendersLinearlyAcrossPasses(t *testing.T) {
 // on e (engine refreshes the body) then exits on y — two passes, final choice y.
 // Asserted in BOTH modes.
 func TestEngineLoopEndsOnYes(t *testing.T) {
-	for _, d := range promptDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
 			choice, bodies, out := simulateEngineLoop(t, d.mode, "e\ny\n", presenter.NotesReviewGate())
 
@@ -323,7 +296,7 @@ func TestEngineLoopEndsOnYes(t *testing.T) {
 // exits on the first pass with ChoiceNo — one pass, no re-entry. Asserted in BOTH
 // modes.
 func TestEngineLoopEndsOnNo(t *testing.T) {
-	for _, d := range promptDrivers() {
+	for _, d := range gateDrivers() {
 		t.Run(d.mode, func(t *testing.T) {
 			choice, bodies, out := simulateEngineLoop(t, d.mode, "n\n", presenter.NotesReviewGate())
 
