@@ -36,8 +36,9 @@ const (
 
 // defaultOnNotesFailure is the out-of-the-box notes-failure policy: "abort" — when
 // the normal AI path fails, mint fails loud and tags nothing. The opt-in alternative
-// is "fallback" (or any other non-empty value, treated as a fixed fallback body); the
-// notes engine's resolver interprets the value (config carries it verbatim).
+// is "fallback"; the notes engine's resolver interprets the value as MODE-ONLY
+// (abort | fallback). config carries the raw string verbatim (Phase 6 adds typed
+// validation that rejects unknown values).
 const defaultOnNotesFailure = "abort"
 
 // defaultMaxDiffLines is the out-of-the-box ceiling for the notes-engine
@@ -71,9 +72,15 @@ type Config struct {
 // in the notes engine, NOT here — config carries the raw values verbatim.
 //
 // OnNotesFailure is the normal-path notes-failure policy (default "abort"). config
-// carries the raw value verbatim; the notes engine's ResolveFailure interprets it
-// ("" / "abort" → abort; "fallback" → commit-subject fallback; any other non-empty
-// value → that string used as the fixed fallback body).
+// carries the raw value verbatim; the notes engine's ResolveFailure interprets it as
+// MODE-ONLY ("" / "abort" → abort; "fallback" → commit-subject fallback; any other
+// value → abort for now, rejected by Phase 6's typed validation).
+//
+// Fallback is the dedicated fixed-fallback-body string (raw [release].fallback,
+// default ""). It is SHARED by both fallback paths — on_notes_failure=fallback and
+// --no-ai: when non-empty it is used verbatim as the body in place of the
+// commit-subject list. Empty means "no fixed string, use the commit-subject list".
+// Unlike OnNotesFailure (a mode), this carries the body string itself.
 type Release struct {
 	TagPrefix      string
 	CommitPrefix   string
@@ -82,6 +89,7 @@ type Release struct {
 	Context        string
 	Prompt         string
 	OnNotesFailure string
+	Fallback       string
 }
 
 // defaults returns a Config seeded with the Phase 1 default values.
@@ -95,6 +103,7 @@ func defaults() Config {
 			Context:        "",
 			Prompt:         "",
 			OnNotesFailure: defaultOnNotesFailure,
+			Fallback:       "",
 		},
 		MaxDiffLines: defaultMaxDiffLines,
 	}
@@ -122,6 +131,7 @@ type releaseShape struct {
 	Context        string `toml:"context"`
 	Prompt         string `toml:"prompt"`
 	OnNotesFailure string `toml:"on_notes_failure"`
+	Fallback       string `toml:"fallback"`
 }
 
 // Load reads {root}/.mint.toml and returns the Phase 1 config. A missing file is
@@ -184,5 +194,6 @@ func resolveRelease(shape releaseShape) Release {
 		Context:        shape.Context,
 		Prompt:         shape.Prompt,
 		OnNotesFailure: shape.OnNotesFailure,
+		Fallback:       shape.Fallback,
 	}
 }

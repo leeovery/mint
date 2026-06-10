@@ -272,21 +272,56 @@ func TestLoad_ExplicitOnNotesFailureFallback_Honoured(t *testing.T) {
 	}
 }
 
-func TestLoad_ExplicitOnNotesFailureFixedString_Honoured(t *testing.T) {
+func TestLoad_ExplicitOnNotesFailureAnyString_CarriedVerbatim(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	// Any other non-empty value is a fixed fallback body string carried verbatim; the
-	// resolver treats it as the literal fallback body.
-	writeConfig(t, dir, "[release]\non_notes_failure = \"Notes unavailable — see commit history.\"\n")
+	// on_notes_failure is mode-only (abort | fallback); config still carries whatever
+	// raw string the file holds verbatim (Phase 6 adds typed validation that rejects
+	// unknown values — config does not interpret or coerce the value here).
+	writeConfig(t, dir, "[release]\non_notes_failure = \"something-unknown\"\n")
 
 	cfg, err := config.Load(dir)
 	if err != nil {
 		t.Fatalf("Load returned unexpected error: %v", err)
 	}
 
-	if cfg.Release.OnNotesFailure != "Notes unavailable — see commit history." {
-		t.Errorf("OnNotesFailure = %q, want the explicit fixed string", cfg.Release.OnNotesFailure)
+	if cfg.Release.OnNotesFailure != "something-unknown" {
+		t.Errorf("OnNotesFailure = %q, want the raw value carried verbatim", cfg.Release.OnNotesFailure)
+	}
+}
+
+func TestLoad_AbsentFallback_DefaultsToEmpty(t *testing.T) {
+	t.Parallel()
+
+	// [release].fallback is the dedicated fixed-fallback-body key, shared by both the
+	// on_notes_failure=fallback path and --no-ai. Absent from the file it defaults to
+	// the empty string — meaning "no fixed string, use the commit-subject list".
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Fallback != "" {
+		t.Errorf("Fallback = %q, want empty (absent key defaults to empty)", cfg.Release.Fallback)
+	}
+}
+
+func TestLoad_ExplicitFallback_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit [release].fallback is the fixed fallback body string, carried through
+	// verbatim; the notes engine uses it as the literal body for both fallback paths.
+	writeConfig(t, dir, "[release]\nfallback = \"Notes unavailable — see commit history.\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Fallback != "Notes unavailable — see commit history." {
+		t.Errorf("Fallback = %q, want the explicit fixed string", cfg.Release.Fallback)
 	}
 }
 
