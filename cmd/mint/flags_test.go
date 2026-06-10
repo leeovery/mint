@@ -21,6 +21,7 @@ func TestParseReleaseFlags(t *testing.T) {
 		wantPlain     bool
 		wantNoAI      bool
 		wantAutoStash bool
+		wantAnyBranch bool
 	}{
 		{name: "no flags defaults to patch", args: nil, wantBump: version.BumpPatch},
 		{name: "short patch", args: []string{"-p"}, wantBump: version.BumpPatch},
@@ -34,9 +35,11 @@ func TestParseReleaseFlags(t *testing.T) {
 		{name: "plain", args: []string{"--plain"}, wantPlain: true},
 		{name: "no-ai", args: []string{"--no-ai"}, wantNoAI: true},
 		{name: "autostash", args: []string{"--autostash"}, wantAutoStash: true},
+		{name: "any-branch", args: []string{"--any-branch"}, wantAnyBranch: true},
 		{name: "minor with yes and plain", args: []string{"-m", "-y", "--plain"}, wantBump: version.BumpMinor, wantYes: true, wantPlain: true},
 		{name: "no-ai with minor and yes", args: []string{"--no-ai", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantNoAI: true},
 		{name: "autostash with minor and yes", args: []string{"--autostash", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantAutoStash: true},
+		{name: "any-branch with autostash and yes", args: []string{"--any-branch", "--autostash", "-y"}, wantYes: true, wantAutoStash: true, wantAnyBranch: true},
 	}
 
 	for _, tt := range tests {
@@ -62,6 +65,9 @@ func TestParseReleaseFlags(t *testing.T) {
 			if opts.AutoStash != tt.wantAutoStash {
 				t.Errorf("AutoStash = %v, want %v", opts.AutoStash, tt.wantAutoStash)
 			}
+			if opts.AnyBranch != tt.wantAnyBranch {
+				t.Errorf("AnyBranch = %v, want %v", opts.AnyBranch, tt.wantAnyBranch)
+			}
 			// The --no-ai flag must thread through to the engine options.
 			if got := opts.ReleaseOptions().NoAI; got != tt.wantNoAI {
 				t.Errorf("ReleaseOptions().NoAI = %v, want %v", got, tt.wantNoAI)
@@ -69,6 +75,10 @@ func TestParseReleaseFlags(t *testing.T) {
 			// The --autostash flag must thread through to the engine options.
 			if got := opts.ReleaseOptions().AutoStash; got != tt.wantAutoStash {
 				t.Errorf("ReleaseOptions().AutoStash = %v, want %v", got, tt.wantAutoStash)
+			}
+			// The --any-branch flag must thread through to the engine options.
+			if got := opts.ReleaseOptions().AnyBranch; got != tt.wantAnyBranch {
+				t.Errorf("ReleaseOptions().AnyBranch = %v, want %v", got, tt.wantAnyBranch)
 			}
 		})
 	}

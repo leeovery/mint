@@ -211,8 +211,51 @@ func TestRunLocalGates_AllPass(t *testing.T) {
 		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
 	}}
 
-	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3"); err != nil {
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false); err != nil {
 		t.Fatalf("RunLocalGates returned unexpected error: %v", err)
+	}
+}
+
+func TestRunLocalGates_AnyBranch_SkipsOnBranchGate(t *testing.T) {
+	t.Parallel()
+
+	// With anyBranch=true the on-release-branch gate is NOT evaluated: no `git
+	// rev-parse --abbrev-ref HEAD` is issued, even though HEAD is off-branch. The
+	// other local gates (clean tree, tag-free) still run and the driver passes.
+	r := &argRunner{responses: map[string]scripted{
+		"status --porcelain":                     {result: runner.Result{Stdout: ""}},
+		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
+	}}
+
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true); err != nil {
+		t.Fatalf("RunLocalGates returned unexpected error under --any-branch: %v", err)
+	}
+
+	// The branch gate was skipped — the abbrev-ref probe was never issued.
+	for _, c := range r.calls {
+		if c == "rev-parse --abbrev-ref HEAD" {
+			t.Errorf("--any-branch evaluated the on-branch gate; calls = %v", r.calls)
+		}
+	}
+	// The other local gates still ran.
+	if len(r.calls) != 2 {
+		t.Errorf("local-gate calls = %v, want exactly the clean-tree and tag-free probes", r.calls)
+	}
+}
+
+func TestRunLocalGates_AnyBranch_StillRunsCleanTreeGate(t *testing.T) {
+	t.Parallel()
+
+	// --any-branch must NOT weaken the clean-tree gate: a dirty tree still aborts even
+	// with the branch gate bypassed.
+	r := &argRunner{responses: map[string]scripted{
+		"status --porcelain": {result: runner.Result{Stdout: " M file.go\n"}},
+	}}
+
+	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true)
+	var gateErr *preflight.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want the clean-tree *GateError even under --any-branch", err)
 	}
 }
 
@@ -226,7 +269,7 @@ func TestRunLocalGates_CheapFirstAbort(t *testing.T) {
 		"status --porcelain": {result: runner.Result{Stdout: " M file.go\n"}},
 	}}
 
-	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3")
+	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false)
 	if err == nil {
 		t.Fatalf("RunLocalGates returned nil error, want the clean-tree abort")
 	}

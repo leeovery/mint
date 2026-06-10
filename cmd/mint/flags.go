@@ -11,10 +11,10 @@ import (
 )
 
 // releaseFlags is the parsed `mint release` CLI surface: the bump selection, the
-// -y skip, the global --plain render flag, the --no-ai deliberate AI-skip flag, and
-// the --autostash WIP stash/restore escape hatch. It is a plain value (no engine
-// types beyond the bump) so flag parsing stays decoupled from the orchestrator;
-// ReleaseOptions converts it into the engine's option struct.
+// -y skip, the global --plain render flag, the --no-ai deliberate AI-skip flag, the
+// --autostash WIP stash/restore escape hatch, and the --any-branch branch-gate
+// bypass. It is a plain value (no engine types beyond the bump) so flag parsing stays
+// decoupled from the orchestrator; ReleaseOptions converts it into the engine's option struct.
 type releaseFlags struct {
 	// Bump is the resolved version bump (default BumpPatch).
 	Bump version.Bump
@@ -33,12 +33,17 @@ type releaseFlags struct {
 	// the pop). Opt-in, because the release mutates the tree and popping WIP on top can
 	// conflict; opting in is the user asserting it is safe.
 	AutoStash bool
+	// AnyBranch is the --any-branch escape hatch: it bypasses the on-release-branch
+	// preflight gate (the gate is skipped, not evaluated) so a deliberate off-branch
+	// release proceeds. Every other gate still runs; the bypass is reported via the
+	// presenter. Opt-in, because releasing off the release branch is normally a mistake.
+	AnyBranch bool
 }
 
 // ReleaseOptions converts the parsed flags into the engine's run options, binding
 // the production clock (time.Now) so the changelog date is the real release date.
 func (f releaseFlags) ReleaseOptions() engine.ReleaseOptions {
-	return engine.ReleaseOptions{Bump: f.Bump, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash}
+	return engine.ReleaseOptions{Bump: f.Bump, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash, AnyBranch: f.AnyBranch}
 }
 
 // parseReleaseFlags parses the `mint release [bump] [options]` arguments into a
@@ -50,7 +55,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	fs := flag.NewFlagSet("release", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
-	var patch, minor, major, yes, plain, noAI, autoStash bool
+	var patch, minor, major, yes, plain, noAI, autoStash, anyBranch bool
 	fs.BoolVar(&patch, "p", false, "patch bump (default)")
 	fs.BoolVar(&patch, "patch", false, "patch bump (default)")
 	fs.BoolVar(&minor, "m", false, "minor bump")
@@ -62,6 +67,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	fs.BoolVar(&plain, "plain", false, "force plain (un-styled) output")
 	fs.BoolVar(&noAI, "no-ai", false, "skip the AI notes path; use the commit-subject fallback body")
 	fs.BoolVar(&autoStash, "autostash", false, "stash/restore unrelated WIP around the run")
+	fs.BoolVar(&anyBranch, "any-branch", false, "bypass the release-branch gate")
 
 	if err := fs.Parse(args); err != nil {
 		return releaseFlags{}, err
@@ -71,7 +77,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	if err != nil {
 		return releaseFlags{}, err
 	}
-	return releaseFlags{Bump: bump, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash}, nil
+	return releaseFlags{Bump: bump, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash, AnyBranch: anyBranch}, nil
 }
 
 // resolveBump maps the three mutually-exclusive bump booleans to a version.Bump.

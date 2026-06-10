@@ -182,6 +182,15 @@ type ReleaseOptions struct {
 	// mutates the tree, so popping unrelated WIP can conflict — opting in is the user
 	// asserting it is safe. All stash/pop ops flow through the lock-resilient Mutator.
 	AutoStash bool
+	// AnyBranch is the --any-branch escape hatch: when set, the on-release-branch
+	// preflight gate is SKIPPED ENTIRELY (not evaluated — no `git rev-parse
+	// --abbrev-ref HEAD` is issued) so a deliberate off-branch release proceeds. Every
+	// OTHER gate (clean tree, tag-free local/remote, remote sync, gh auth) still runs
+	// unchanged — this flag weakens ONLY the branch gate, nothing else. Without the flag
+	// the branch gate runs exactly as the Phase 1 default (aborting off-branch). The
+	// bypass is reported via the Presenter (a Warn) so an off-branch release is visible.
+	// It composes with --autostash and the rest with no interaction.
+	AnyBranch bool
 	// DryRun is the --dry-run flag's HOOK dimension: when active, each configured
 	// lifecycle hook (preflight/pre_tag/post_release) is SKIPPED rather than run, and
 	// the skip is reported via the presenter. The assembled hook env still reflects it
@@ -247,8 +256,16 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		}
 	}
 
+	// Stage 2 — --any-branch escape hatch: report the branch-gate bypass so a
+	// deliberate off-branch release is visible in the run. The skip itself happens in
+	// runPreflight (the on-branch gate is not evaluated); this rides the Warn seam
+	// (mirroring --autostash) which does not set failure state.
+	if opts.AnyBranch {
+		warnAnyBranchBypass(p)
+	}
+
 	// Stage 2 — preflight. Fetch first, then cheap local gates, then network gates.
-	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag); err != nil {
+	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -601,11 +618,16 @@ func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start
 // gates. The first failure short-circuits and is returned for the caller to
 // surface and abort on. The conditional gh gate is run separately by Release
 // (only when publishing, after the bookkeeping commit and before the tag).
-func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string) error {
+//
+// anyBranch is the --any-branch escape hatch: it is passed to RunLocalGates, which
+// SKIPS the on-release-branch gate when it is true (the gate is not evaluated). It
+// affects ONLY the branch gate — fetch, clean-tree, tag-free, and remote-sync all
+// run unchanged.
+func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch bool) error {
 	if err := preflight.Fetch(ctx, r); err != nil {
 		return err
 	}
-	if err := preflight.RunLocalGates(ctx, r, releaseBranch, tag); err != nil {
+	if err := preflight.RunLocalGates(ctx, r, releaseBranch, tag, anyBranch); err != nil {
 		return err
 	}
 	if err := preflight.CheckRemoteSync(ctx, r, releaseBranch); err != nil {
@@ -969,6 +991,18 @@ func warnPostReleaseFailed(p presenter.Presenter, cause error) {
 		Label:   "post_release",
 		Message: "post_release hook failed; tag is already published",
 		Output:  hookFailureOutput(cause),
+	})
+}
+
+// warnAnyBranchBypass emits the --any-branch observable signal: the on-release-branch
+// gate was bypassed for this run, so a release running off the release branch is
+// visible rather than silent. It rides the existing Warn seam (mirroring
+// warnPopConflict) — a Warn does not set failure state, so the release proceeds and
+// finishes normally; this is informational, not an abort.
+func warnAnyBranchBypass(p presenter.Presenter) {
+	p.Warn(presenter.Warning{
+		Label:   "any-branch",
+		Message: "release-branch gate bypassed (--any-branch); releasing from the current branch",
 	})
 }
 

@@ -65,12 +65,19 @@ func newGateError(format string, args ...any) *GateError {
 // first failure, returning that gate's error without running the rest. A nil
 // return means every local gate passed. Network gates run separately, after
 // these.
-func RunLocalGates(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string) error {
+//
+// anyBranch is the --any-branch escape hatch: when true the on-release-branch gate
+// is SKIPPED ENTIRELY — it is not evaluated, so no `git rev-parse --abbrev-ref HEAD`
+// is issued — letting a deliberate off-branch release proceed. The flag weakens ONLY
+// the branch gate; the clean-tree and tag-free gates always run regardless.
+func RunLocalGates(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch bool) error {
 	if err := CheckCleanTree(ctx, r); err != nil {
 		return err
 	}
-	if err := CheckOnBranch(ctx, r, releaseBranch); err != nil {
-		return err
+	if !anyBranch {
+		if err := CheckOnBranch(ctx, r, releaseBranch); err != nil {
+			return err
+		}
 	}
 	return CheckTagFreeLocal(ctx, r, tag)
 }
