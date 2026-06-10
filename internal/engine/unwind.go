@@ -20,10 +20,11 @@ package engine
 // All git mutations flow through the lock-resilient git.Mutator (task 4-1): a
 // contended `.git` lock during the unwind is retried, a provably-stale lock cleared.
 //
-// WIRING NOTE (task 4-3): rewiring the gate-abort and pre-push failure triggers from
-// the legacy best-effort reset onto THIS operation is a separate task. This task
-// builds and proves the operation against the full range of pre-PONR mutation states
-// (0/1/2 commits; tag created or not).
+// WIRING: the gate-abort and every pre-push failure trigger route through this
+// operation from the spine (see surfaceAndUnwind / the gate-`n` path in release.go),
+// passing the captured StartState and tracked MadeState. The gate-abort and a
+// pre-push git failure are wired identically, so they produce an identical clean
+// state and an identical Unwound summary.
 
 import (
 	"context"

@@ -12,14 +12,20 @@ package engine
 // nothing published. A publish failure AFTER a successful push is WARN-ONLY — the
 // tag is already public, so the run does not unwind; it warns and exits 0.
 //
-// AUTO-UNWIND (Phase 2): a gate-no user abort and any POST-MUTATION pre-PONR failure
-// share ONE clean-reset path (unwind): mint resets whatever it made this run back to
-// the clean starting state captured before the gate (startingHEAD) and narrates an
-// engine-authored Unwound. The two are deliberately identical — a declined gate and
-// a rejected push reset the same way. The PRE-mutation / preflight failures (before
-// startingHEAD is captured) stay plain surface; there is nothing to unwind. Phase 4
-// adds surgical N-commit counting, lock-resilient git wrapping, and --autostash
-// ordering on top of this spine reset.
+// AUTO-UNWIND (Phase 2, made SURGICAL in Phase 4): a gate-no user abort and any
+// POST-MUTATION pre-PONR failure share ONE recovery path — the surgical Unwind (task
+// 4-2). The spine captures the clean StartState (HEAD + target tag) before the gate
+// and TRACKS the MadeState as it proceeds (the count of commits mint made — an
+// optional pre_tag artifact commit and/or the bookkeeping commit — and whether the
+// annotated tag was created). On a gate-no or any pre-push failure it hands those
+// captured inputs to Unwind, which resets EXACTLY the commits mint made and deletes the
+// tag iff mint created it — no HEAD probe, no inference. The two triggers are
+// deliberately identical: a declined gate and a rejected push with the same MadeState
+// produce a byte-identical clean state and Unwound summary. With nothing made the
+// surgical unwind no-ops (no reset, no Unwound). The PRE-mutation / preflight failures
+// (before the StartState is captured) stay plain surface; there is nothing to unwind.
+// All recovery mutations flow through the lock-resilient Mutator (4-1). --autostash
+// pop-after ordering (4-4) layers on top of this wiring.
 
 import (
 	"context"
@@ -225,14 +231,23 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 
 	// Capture the clean starting state NOW: preflight has just confirmed the tree is
 	// clean and HEAD is resolvable, and nothing has mutated yet, so this HEAD is the
-	// unambiguous reset target the auto-unwind returns to. It is captured BEFORE the
-	// gate and any mutation so a gate-abort or any pre-PONR failure can reset back to
-	// exactly here. Failing to resolve it is a plain preflight failure (no mutation
-	// to unwind yet).
+	// unambiguous reset target the surgical unwind returns to. It is captured BEFORE
+	// the gate and any mutation so a gate-abort or any pre-PONR failure can reset back
+	// to exactly here. The target tag is captured alongside it (and confirmed NOT to
+	// pre-exist by preflight's tag-free gates) so the unwind deletes exactly the tag
+	// mint would create. Failing to resolve HEAD is a plain preflight failure (no
+	// mutation to unwind yet).
 	startingHEAD, err := resolveHEAD(ctx, deps.Runner)
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
+	start := StartState{HEAD: startingHEAD, Tag: tag, TagExisted: false}
+
+	// Track what mint actually makes this run (NOT inferred by probing git): each
+	// commit count is bumped as the step that made it runs, and TagCreated is set when
+	// the annotated tag is created. The surgical unwind drives off this state — it
+	// resets exactly made.Commits and deletes the tag iff made.TagCreated.
+	made := MadeState{}
 
 	// Stage 3 — project prep. The optional pre_tag hook builds/generates artifacts
 	// (e.g. a knowledge bundle) and may dirty the tree; mint then commits whatever it
@@ -241,21 +256,29 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// artifact commit is covered by the auto-unwind, and BEFORE notes so they generate
 	// at the post-hook HEAD. An absent hook is a no-op (no prep, no artifact commit); a
 	// non-zero exit aborts cleanly before any notes/tag/push — routed through the
-	// auto-unwind so a hook that made its own commit before failing is reset back to
-	// startingHEAD.
-	if err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun); err != nil {
-		return surfaceAndUnwind(ctx, deps, "pre_tag", startingHEAD, tag, false, err)
+	// surgical unwind so mint's OWN artifact commit (when one landed before the hook
+	// step failed) is reset back to startingHEAD. The committed signal is folded into
+	// made.Commits the moment the artifact commit lands, so it is tracked even if a
+	// LATER stage fails.
+	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, opts.Bump, opts.DryRun)
+	if artifactCommitted {
+		made.Commits++
+	}
+	if err != nil {
+		return surfaceAndUnwind(ctx, deps, "pre_tag", start, made, err)
 	}
 
 	// Stage 4 — notes body. resolveBody runs the notes-path PRECEDENCE (SelectBody)
 	// to pick the body + Kind for this run, building the selector from deps.Runner now
 	// that root is resolved. opts.NotesBody is a test-injection override that bypasses
-	// the selector. An on_notes_failure=abort failure surfaces and aborts here, BEFORE
-	// any mutation (nothing tagged). Whatever resolves flows WHOLE to every active sink
-	// below — no parsing, no splitting, no per-sink reassembly.
+	// the selector. An on_notes_failure=abort failure aborts here. Nothing is tagged
+	// yet, but a pre_tag artifact commit may already be in made, so this routes through
+	// the surgical unwind (not a plain surface) — exactly like every other pre-push
+	// failure — so that artifact commit is reset back to the clean start. Whatever
+	// resolves flows WHOLE to every active sink below — no parsing, no per-sink reassembly.
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, current, opts)
 	if err != nil {
-		return surface(p, "notes", err)
+		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
 	versionKey := next.String("")
 
@@ -278,15 +301,17 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	regenerator := perRunRegenerator(deps, generator, current.String(cfg.Release.TagPrefix), cfg)
 	body, err = reviewGate(ctx, p, deps.Editor, regenerator, kind, body, versionKey)
 	if err != nil {
-		// A gate-no is a clean USER abort: route it through the shared auto-unwind so it
-		// is treated identically to a pre-push failure (reset whatever mint made this
-		// run, narrate an Unwound). No prior StageFailed — declining the gate is not a
-		// stage failure. The gate sits BEFORE the tag, so the tag cannot exist yet
-		// (tagMayExist=false). Every OTHER reviewGate error (edit/regenerate/AskLine/
-		// unexpected) already surfaced its own StageFailed and occurred at the gate
-		// before any mutation, so it keeps its current behaviour — returned as-is.
+		// A gate-no is a clean USER abort: route it through the SAME surgical unwind a
+		// pre-push failure takes, with the SAME captured StartState + tracked MadeState,
+		// so the two are treated identically (reset exactly the commits mint made this
+		// run, narrate an identical Unwound). No prior StageFailed — declining the gate is
+		// not a stage failure. The gate sits BEFORE the tag, so made.TagCreated is still
+		// false; any pre_tag artifact commit already counted in made is reset. Every OTHER
+		// reviewGate error (edit/regenerate/AskLine/unexpected) already surfaced its own
+		// StageFailed and occurred at the gate before any further mutation, so it keeps its
+		// current behaviour — returned as-is.
 		if errors.Is(err, errGateAborted) {
-			return unwind(ctx, deps, startingHEAD, tag, false, errGateAborted)
+			return Unwind(ctx, deps, start, made, errGateAborted)
 		}
 		return err
 	}
@@ -302,9 +327,12 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// version_file is tag-only and no-ops (versionChanged false).
 	versionChanged, err := record.ProjectVersionFile(root, cfg.Release.VersionFile, cfg.Release.VersionPattern, versionKey)
 	if err != nil {
-		// Post-mutation, pre-PONR: route through the shared auto-unwind so any version-file
-		// write (and a moved HEAD) is reset back to the clean start. No tag exists yet.
-		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
+		// Post-mutation, pre-PONR: route through the surgical unwind so any pre_tag
+		// artifact commit already in made is reset back to the clean start. The
+		// version-file projection is a filesystem write that made no commit, so made is
+		// unchanged here; the unwind's reset (when made.Commits>0) discards the projection
+		// along with the artifact commit. No tag exists yet (made.TagCreated false).
+		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 
 	// When changelog=false WriteChangelog no-ops (Changed:false). When the version file
@@ -313,24 +341,32 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// TagAndPush. Nothing durable is lost.
 	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, cfg.Release.Changelog)
 	if err != nil {
-		// Post-mutation, pre-PONR: route through the shared auto-unwind so a half-written
-		// changelog (and any bookkeeping commit) is reset back to the clean start — the
-		// abort path is identical to the pre-push failure path. No tag exists yet.
-		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
+		// Post-mutation, pre-PONR: route through the surgical unwind so any artifact commit
+		// (and a half-written changelog discarded by the reset) is rolled back to the clean
+		// start — the abort path is identical to the pre-push failure path. No tag yet.
+		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 
 	// ONE folded bookkeeping commit stages the changelog and the version file together —
 	// the version file is never given its own separate commit. Kept DISTINCT from the
-	// pre_tag artifact commit (3-3), which precedes it.
+	// pre_tag artifact commit (3-3), which precedes it. It commits IFF something net-
+	// changed (the changelog and/or the version file); that same condition tells the
+	// spine whether HEAD just moved, so made.Commits is bumped exactly when a commit
+	// landed — tracked, not inferred by probing git.
+	bookkeepingCommitted := bookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
 	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
-		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
+		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
+	}
+	if bookkeepingCommitted {
+		made.Commits++
 	}
 
 	// Stage 2 (conditional gate 6) — gh auth, only when publishing, BEFORE the tag.
 	if cfg.Release.Publish {
 		if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
-			// The bookkeeping commit may have moved HEAD; unwind resets it. No tag yet.
-			return surfaceAndUnwind(ctx, deps, "preflight", startingHEAD, tag, false, err)
+			// The bookkeeping commit may have moved HEAD; the surgical unwind resets exactly
+			// the commits in made. No tag yet (made.TagCreated false).
+			return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
 		}
 	}
 
@@ -356,11 +392,13 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// from here the tag is public, so any later failure is warn-only and the run must
 	// NOT unwind.
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
-		// Pre-PONR failure: route through the shared auto-unwind. A push REJECTION means
-		// the local tag was created and must be deleted (tagMayExist); a tag-CREATION
-		// failure means no tag exists, so only the commit is reset.
-		tagMayExist := errors.Is(err, release.ErrPushRejected)
-		return surfaceAndUnwind(ctx, deps, "tag", startingHEAD, tag, tagMayExist, err)
+		// Pre-PONR failure: route through the surgical unwind. A push REJECTION means the
+		// local tag WAS created (TagAndPush wraps it in release.ErrPushRejected), so the
+		// unwind must delete it; a tag-CREATION failure leaves no tag, so only the tracked
+		// commits are reset. Either way the reset is driven by made.Commits — the exact
+		// count mint made this run — not a HEAD probe.
+		made.TagCreated = errors.Is(err, release.ErrPushRejected)
+		return surfaceAndUnwind(ctx, deps, "tag", start, made, err)
 	}
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
@@ -488,9 +526,10 @@ func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, lastTag str
 }
 
 // resolveHEAD reads the current commit SHA via `git rev-parse HEAD` through the
-// runner seam (every git op goes through the seam). It is used BOTH to capture the
-// clean starting state before the gate and to probe the current HEAD inside the
-// unwind, so the two are compared apples-to-apples.
+// runner seam (every git op goes through the seam). It captures the clean starting
+// state before the gate — the exact sha the surgical unwind resets back to. The
+// surgical unwind no longer probes HEAD (it drives off the tracked MadeState), so
+// this is the run's single rev-parse HEAD.
 func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
 	res, err := r.Run(ctx, "git", "rev-parse", "HEAD")
 	if err != nil {
@@ -499,80 +538,27 @@ func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
 	return strings.TrimSpace(res.Stdout), nil
 }
 
-// unwind is the single shared clean-reset used by BOTH the user-abort (gate-no) and
-// the pre-push failure paths, so a declined gate and a rejected push are treated
-// identically: mint rolls back whatever it made THIS run, returning the tree to the
-// exact clean starting state captured before the gate (startingHEAD).
-//
-// It probes the current HEAD: if it MOVED, mint committed this run, so a `git reset
-// --hard {startingHEAD}` returns the tree to the clean start (also discarding any
-// uncommitted churn, e.g. a half-written changelog after a failed commit); if HEAD
-// is unchanged there is nothing to reset. When tagMayExist is true it also deletes
-// the local tag mint created this run (`git tag -d {tag}`, best-effort — a "tag not
-// found" non-zero is not fatal). The engine AUTHORS the whole Unwound Summary
-// (ASCII, semicolon-separated, INCLUDING the "repo clean" tail) and the presenter
-// renders it verbatim; it returns abort(reason) so the engine owns the non-zero
-// exit. It emits NO StageFailed (stage-failure callers emit that first via
-// surfaceAndUnwind; the gate-no path emits none).
-//
-// Phase 4 hardening: the reset and tag-delete MUTATIONS now flow through the
-// lock-resilient Mutator (a contended .git lock is retried, a stale lock cleared).
-// Precise N-commit surgical counting beyond a simple reset and --autostash
-// stash/restore ordering remain SEPARATE Phase 4 tasks. This is the spine reset.
-func unwind(ctx context.Context, deps ReleaseDeps, startingHEAD, tag string, tagMayExist bool, reason error) error {
-	commitReset := false
-	if current, err := resolveHEAD(ctx, deps.Runner); err != nil || current != startingHEAD {
-		// On a probe error the safe move is still to reset to the known-clean start; on a
-		// moved HEAD the reset is mandatory. Either way reset to the captured starting
-		// state. The reset is a MUTATION, so it flows through the lock-resilient Mutator
-		// (a contended .git lock during the unwind is retried, a stale lock cleared). A
-		// reset failure is best-effort here; the abort still carries the original reason.
-		_, _ = deps.Mutator.Mutate(ctx, nil, "git", "reset", "--hard", startingHEAD)
-		commitReset = true
-	}
-
-	tagDeleted := false
-	if tagMayExist {
-		// Best-effort: a "tag not found" non-zero is not fatal — the goal is that no tag
-		// mint made this run survives the abort. The delete is a MUTATION, so it too flows
-		// through the lock-resilient Mutator.
-		_, _ = deps.Mutator.Mutate(ctx, nil, "git", "tag", "-d", tag)
-		tagDeleted = true
-	}
-
-	deps.Presenter.Unwound(presenter.Unwind{Summary: unwindSummary(commitReset, tagDeleted, tag)})
-	return abort(reason)
-}
-
-// unwindSummary authors the engine-owned Unwound Summary describing what the unwind
-// undid, INCLUDING the trailing "repo clean" tail. It is ASCII and semicolon-joined
-// (matching the existing "…; repo clean" style) so the plain presenter stays
-// byte-pure; the presenter renders it VERBATIM and never synthesises the tail.
-func unwindSummary(commitReset, tagDeleted bool, tag string) string {
-	const tail = "; repo clean"
-	switch {
-	case commitReset && tagDeleted:
-		return "reset the release commit and deleted tag " + tag + tail
-	case commitReset:
-		return "reset the release commit" + tail
-	case tagDeleted:
-		return "deleted tag " + tag + tail
-	default:
-		return "nothing to undo" + tail
-	}
+// bookkeepingWillCommit reports whether record.CommitBookkeeping will make a commit
+// for the given net-change signals — exactly when the changelog and/or the configured
+// version file changed. It mirrors CommitBookkeeping's own no-op rule so the spine can
+// fold the resulting commit into MadeState the moment it lands, WITHOUT re-probing git:
+// the spine tracks what it made rather than inferring it from a HEAD comparison.
+func bookkeepingWillCommit(versionFile string, changelogChanged, versionChanged bool) bool {
+	return changelogChanged || (versionChanged && versionFile != "")
 }
 
 // surfaceAndUnwind handles a post-mutation, pre-PONR STAGE failure: it surfaces the
-// StageFailed first (so the failed stage is shown) and then routes through the
-// shared unwind, so the abort path after a bookkeeping commit is identical to the
-// pre-push failure path (the commit is reset). It is the stage-failure sibling of
-// the gate-no path, which calls unwind directly with no StageFailed.
-func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage, startingHEAD, tag string, tagMayExist bool, cause error) error {
+// StageFailed first (so the failed stage is shown) and then routes through the SAME
+// surgical Unwind (4-2) the gate-no path takes, so the abort path after a commit is
+// identical to the pre-push failure path — exactly the tracked commits are reset and
+// the tag deleted iff made.TagCreated. It is the stage-failure sibling of the gate-no
+// path, which calls Unwind directly with no StageFailed.
+func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start StartState, made MadeState, cause error) error {
 	deps.Presenter.StageFailed(presenter.StageFailure{
 		Name:    stage,
 		Message: failureMessage(cause),
 	})
-	return unwind(ctx, deps, startingHEAD, tag, tagMayExist, cause)
+	return Unwind(ctx, deps, start, made, cause)
 }
 
 // runPreflight runs the Stage 2 gate chain in the spec's order: fetch (read-only,
@@ -635,28 +621,31 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 // runPreTagHook runs the project's optional Stage-3 pre_tag hook and then applies
 // the artifact-commit interplay rule. The hook (build/generate artifacts) runs
 // through the shared hooks runner with the same MINT_* env as the preflight hook. An
-// absent value (nil) is a no-op — the runner returns nil and no artifact commit is
-// considered. A non-zero exit (the first non-zero entry for an array) returns a
-// non-nil error the caller routes through the auto-unwind.
+// absent value (nil) is a no-op — the runner returns nil, no artifact commit is
+// considered, and committed is false. A non-zero exit (the first non-zero entry for an
+// array) returns a non-nil error the caller routes through the surgical unwind.
 //
 // On hook SUCCESS, mint commits whatever the hook left dirty as its OWN commit
 // (subject `chore(release): pre-tag artifacts for {tag}` — a FIXED chore prefix, NOT
 // the configurable commit_prefix), via record.CommitDirtyTree: a clean tree (empty
 // `git status --porcelain`) commits nothing — which covers a hook that built nothing,
-// a hook that made its own commit, and gitignored-only outputs alike. A commit
-// failure is surfaced for the caller to unwind. The interplay rule applies ONLY after
-// a hook actually ran: an absent hook skips the artifact-commit probe entirely, so
-// the existing no-hook spine is untouched.
+// a hook that made its own commit, and gitignored-only outputs alike. The returned
+// committed reports whether an artifact commit actually landed, so the caller can fold
+// it into MadeState for the surgical unwind (CommitDirtyTree returns committed=true
+// ONLY after a successful commit, so committed is never true alongside a non-nil
+// error). A commit failure is surfaced for the caller to unwind. The interplay rule
+// applies ONLY after a hook actually ran: an absent hook skips the artifact-commit
+// probe entirely, so the existing no-hook spine is untouched.
 //
 // DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT invoked
 // and — crucially — the artifact-commit step is SKIPPED TOO: because the hook never
 // ran, the tree was not dirtied by mint, so NO porcelain probe and NO
-// `chore(release): pre-tag artifacts for {tag}` commit must be produced. The skip is
-// reported via the presenter and the function returns immediately. An ABSENT hook
-// stays a silent no-op (no run, no report, no probe).
-func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
+// `chore(release): pre-tag artifacts for {tag}` commit must be produced (committed is
+// false). The skip is reported via the presenter and the function returns immediately.
+// An ABSENT hook stays a silent no-op (no run, no report, no probe).
+func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) (bool, error) {
 	if cfg.Release.Hooks.PreTag == nil {
-		return nil
+		return false, nil
 	}
 
 	if dryRun {
@@ -670,15 +659,14 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 		// caching is deferred entirely to Phase 4; this task covers only the hook
 		// skip-and-report dimension of dry-run.
 		reportHookSkipped(deps.Presenter, "pre_tag")
-		return nil
+		return false, nil
 	}
 
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
-		return err
+		return false, err
 	}
-	_, err := record.CommitDirtyTree(ctx, deps.Mutator, root, pretagArtifactSubject(tag))
-	return err
+	return record.CommitDirtyTree(ctx, deps.Mutator, root, pretagArtifactSubject(tag))
 }
 
 // runPostReleaseHook runs the project's optional Stage-7 post_release hook through

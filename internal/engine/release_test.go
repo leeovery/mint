@@ -466,7 +466,10 @@ func TestRelease_PromptError_AbortsNonZero(t *testing.T) {
 }
 
 // TestRelease_GateNo_AbortsNonZero proves answering "no" at the review gate aborts
-// the run (non-zero exit) before any mutation, surfacing an Unwound and stopping.
+// the run (non-zero exit) before any mutation. The gate sits before any commit/tag,
+// so the surgical unwind has nothing to undo (zero MadeState): it issues no git
+// mutation and — per the surgical contract — emits NO Unwound (the repo never left
+// the clean start). The run still aborts non-zero with nothing published.
 func TestRelease_GateNo_AbortsNonZero(t *testing.T) {
 	t.Parallel()
 
@@ -479,37 +482,31 @@ func TestRelease_GateNo_AbortsNonZero(t *testing.T) {
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
-	if err == nil {
-		t.Fatalf("Release returned nil error, want a gate-no abort")
+
+	assertAbortNonZero(t, err)
+	// Nothing was made before the gate, so the surgical unwind no-ops: no Unwound, no
+	// reset, no tag delete — the repo was already clean.
+	if recorded(rec, presentertest.KindUnwound) {
+		t.Errorf("gate-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
-	var abort *engine.AbortError
-	if !errors.As(err, &abort) {
-		t.Fatalf("err is not an *engine.AbortError: %v", err)
-	}
-	if abort.ExitCode == 0 {
-		t.Errorf("abort ExitCode = 0, want non-zero")
-	}
-	if !recorded(rec, presentertest.KindUnwound) {
-		t.Errorf("gate-no did not surface an Unwound event")
+	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("gate-no before any mutation issued a `git reset`; nothing to reset")
 	}
 	assertNoMutation(t, f)
 }
 
-// TestRelease_GateNo_UnwindsNothingToUndo proves the gate-n auto-unwind BEFORE any
-// mutation: the unwind's current-HEAD probe returns the SAME starting SHA the
-// pre-gate capture recorded, so nothing moved and there is nothing to reset. The
-// run surfaces an engine-authored Unwound Summary reporting nothing to undo AND
-// ending in the "repo clean" tail, issues NO `git reset --hard` and NO mutation,
-// returns a non-zero *AbortError, and emits NO success end-of-run line after the
-// Unwound.
-func TestRelease_GateNo_UnwindsNothingToUndo(t *testing.T) {
+// TestRelease_GateNo_NoMutation_SurgicalNoOp proves the gate-n surgical unwind BEFORE
+// any mutation is a clean NO-OP: with zero MadeState (no commits, no tag) the surgical
+// unwind issues NO git command — and crucially NO `git rev-parse HEAD` probe, since the
+// reset is driven by the tracked MadeState, not a HEAD comparison — and emits NO
+// Unwound (the repo never left the clean start). The run still aborts non-zero with
+// nothing published and no success end-of-run line.
+func TestRelease_GateNo_NoMutation_SurgicalNoOp(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
-	// The unwind's current-HEAD probe returns the SAME starting SHA → nothing moved.
-	f.SeedSequence("git", ScriptedOut(startingSHA))
 	rec := &presentertest.RecordingPresenter{
 		NextChoices: []presenter.Choice{presenter.ChoiceNo},
 	}
@@ -517,43 +514,50 @@ func TestRelease_GateNo_UnwindsNothingToUndo(t *testing.T) {
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
 
 	assertAbortNonZero(t, err)
-	// The Unwound carries the engine-authored "nothing to undo" Summary including the
-	// repo-clean tail, rendered verbatim by the presenter.
-	if got, want := unwoundSummary(t, rec), "nothing to undo; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	// The surgical unwind no-ops with nothing made: no Unwound at all.
+	if recorded(rec, presentertest.KindUnwound) {
+		t.Errorf("gate-n before mutation emitted an Unwound; the surgical unwind no-ops when nothing was made")
 	}
-	// No reset was issued — nothing moved, so there is nothing to undo.
+	// No reset, and no HEAD probe beyond the single pre-gate capture — the surgical
+	// unwind is driven by MadeState, never a rev-parse compare.
 	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
 		t.Errorf("gate-n before mutation issued a `git reset --hard`; nothing should be reset")
+	}
+	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 1 {
+		t.Errorf("rev-parse HEAD count = %d, want 1 (the pre-gate capture only; the unwind probes no HEAD)", got)
 	}
 	// No tag was deleted (the gate sits before the tag).
 	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
 		t.Errorf("gate-n before mutation deleted a tag; no tag was created")
 	}
 	assertNoMutation(t, f)
-	assertNoFinishAfterUnwound(t, rec)
+	// No RunFinished success line follows the aborted run.
+	for _, k := range rec.Kinds() {
+		if k == presentertest.KindRunFinished {
+			t.Errorf("a RunFinished followed a gate-n abort; an aborted run emits no success line; kinds = %v", rec.Kinds())
+		}
+	}
 }
 
 // TestRelease_PushRejected_ResetsCommitAndDeletesTag proves a push REJECTION
-// (post-Record, pre-PONR) routes through the shared unwind AFTER a StageFailed: the
-// bookkeeping commit moved HEAD, so the unwind's current-HEAD probe returns a
-// DIFFERENT SHA and the engine issues `git reset --hard {startingSHA}`; because the
-// rejection means the local tag was created, the engine also deletes it with `git
-// tag -d {tag}`. The Unwound Summary (engine-authored) mentions the reset AND the
-// deleted tag AND the repo-clean tail, a StageFailed precedes the Unwound, the run
-// returns a non-zero *AbortError, and no success end-of-run line follows.
+// (post-Record, pre-PONR) routes through the surgical unwind AFTER a StageFailed: the
+// tracked MadeState (one bookkeeping commit, tag created via release.ErrPushRejected)
+// drives a `git reset --hard {startingSHA}` and a `git tag -d {tag}` — no HEAD probe.
+// The Unwound Summary (engine-authored) names the reset commit AND the deleted tag AND
+// the repo-clean tail, a StageFailed precedes the Unwound, the run returns a non-zero
+// *AbortError, and no success end-of-run line follows.
 func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughTag(f, root, "main", "v0.0.1")
-	// The atomic push is REJECTED (ran-and-exited-non-zero), then the unwind runs.
+	// The atomic push is REJECTED (ran-and-exited-non-zero), then the surgical unwind
+	// runs — tag-delete first, then reset, driven by MadeState (no HEAD probe).
 	f.SeedSequence("git",
-		pushRejected(),        // push --atomic origin HEAD v0.0.1 (rejected)
-		ScriptedOut(movedSHA), // unwind: rev-parse HEAD (HEAD moved by the commit)
-		ScriptedOut(""),       // unwind: reset --hard startingSHA
-		ScriptedOut(""),       // unwind: tag -d v0.0.1
+		pushRejected(),  // push --atomic origin HEAD v0.0.1 (rejected)
+		ScriptedOut(""), // unwind: tag -d v0.0.1
+		ScriptedOut(""), // unwind: reset --hard startingSHA
 	)
 	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
 	rec := &presentertest.RecordingPresenter{}
@@ -571,7 +575,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	}
 	// A StageFailed precedes the Unwound (a failed stage, then the unwind narration).
 	assertStageFailedThenUnwound(t, rec)
-	if got, want := unwoundSummary(t, rec), "reset the release commit and deleted tag v0.0.1; repo clean"; got != want {
+	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
 	assertNoFinishAfterUnwound(t, rec)
@@ -579,20 +583,21 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 
 // TestRelease_GhAuthFails_ResetsCommit proves a post-Record, pre-tag failure (the
 // conditional gh-auth gate fails after the bookkeeping commit but before the tag)
-// routes through the shared unwind AFTER a StageFailed: the commit moved HEAD, so
-// the unwind resets to the starting SHA. No tag was created, so NO `git tag -d` is
-// issued. The Summary mentions the reset and the repo-clean tail (but no deleted
-// tag), a StageFailed precedes the Unwound, and no success line follows.
+// routes through the surgical unwind AFTER a StageFailed: the tracked MadeState (one
+// bookkeeping commit, no tag) drives a `git reset --hard {startingSHA}` with NO HEAD
+// probe and NO `git tag -d` (no tag was created). The Summary names the reset commit
+// and the repo-clean tail, a StageFailed precedes the Unwound, and no success line
+// follows.
 func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughCommit(f, root, "main", "v0.0.1")
-	// The gh-auth gate fails after the bookkeeping commit; the unwind then runs.
+	// The gh-auth gate fails after the bookkeeping commit; the surgical unwind resets
+	// the one tracked commit (no HEAD probe).
 	f.SeedSequence("git",
-		ScriptedOut(movedSHA), // unwind: rev-parse HEAD (HEAD moved by the commit)
-		ScriptedOut(""),       // unwind: reset --hard startingSHA
+		ScriptedOut(""), // unwind: reset --hard startingSHA
 	)
 	f.Seed("gh", runner.Result{ExitCode: 1}, errors.New("gh: not authenticated"))
 	rec := &presentertest.RecordingPresenter{}
@@ -607,75 +612,78 @@ func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
 	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
 		t.Errorf("gh-auth-failure unwind deleted a tag; no tag was created yet")
 	}
+	// No HEAD probe inside the unwind — only the single pre-gate capture.
+	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 1 {
+		t.Errorf("rev-parse HEAD count = %d, want 1 (the pre-gate capture only)", got)
+	}
 	assertStageFailedThenUnwound(t, rec)
-	if got, want := unwoundSummary(t, rec), "reset the release commit; repo clean"; got != want {
+	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
 	assertNoFinishAfterUnwound(t, rec)
 }
 
 // TestRelease_AbortPathMatchesPrePushFailurePath proves the spec invariant that a
-// user-abort (gate n) and a pre-push git failure are treated IDENTICALLY: both end
-// in a KindUnwound, and when HEAD moved both issue the SAME `git reset --hard
-// {startingSHA}`. The gate-n case ran before any mutation (HEAD unchanged → no
-// reset, "nothing to undo"); the push-rejection case ran after the commit (HEAD
-// moved → reset). Either way the terminal narration is an Unwound and the reset
-// (when needed) targets the exact captured starting state.
+// user-abort (gate n) and a pre-push git failure flow through the SAME surgical unwind:
+// each calls Unwind with its captured StartState + tracked MadeState, and the recovery
+// is driven by what mint actually made — not a HEAD probe. The gate-n case here ran
+// before any mutation (zero MadeState → the surgical unwind no-ops: no Unwound, no
+// reset, the repo never left clean); the push-rejection case ran after the commit (one
+// tracked commit + a created tag → reset to the captured starting SHA + tag delete).
+// Both abort non-zero; the reset, when issued, targets the exact captured starting
+// state. The matched-MadeState identity (byte-identical clean-state + summary) is
+// proven by TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary.
 func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	t.Parallel()
 
-	// Gate-n: aborts before mutation, ends in Unwound, no reset (nothing moved).
+	// Gate-n: aborts before mutation, zero MadeState, surgical no-op (no Unwound, no reset).
 	gateRoot := t.TempDir()
 	gateRunner := runner.NewFakeRunner()
 	seedHappyGitThroughGate(gateRunner, gateRoot, "main", "v0.0.1")
-	gateRunner.SeedSequence("git", ScriptedOut(startingSHA)) // unwind probe: unchanged
 	gateRec := &presentertest.RecordingPresenter{
 		NextChoices: []presenter.Choice{presenter.ChoiceNo},
 	}
 	gateErr := engine.Release(t.Context(), newDeps(gateRec, gateRunner), patchOptions())
 
-	// Pre-push failure: the push is rejected after the commit, ends in Unwound, resets.
+	// Pre-push failure: the push is rejected after the commit (one tracked commit + tag),
+	// so the surgical unwind resets to the starting SHA and deletes the tag.
 	pushRoot := t.TempDir()
 	pushRunner := runner.NewFakeRunner()
 	seedHappyGitThroughTag(pushRunner, pushRoot, "main", "v0.0.1")
 	pushRunner.SeedSequence("git",
-		pushRejected(),        // push rejected
-		ScriptedOut(movedSHA), // unwind probe: HEAD moved
-		ScriptedOut(""),       // reset --hard
-		ScriptedOut(""),       // tag -d
+		pushRejected(),  // push rejected
+		ScriptedOut(""), // unwind: tag -d
+		ScriptedOut(""), // unwind: reset --hard
 	)
 	pushRunner.Seed("gh", runner.Result{}, nil)
 	pushRec := &presentertest.RecordingPresenter{}
 	pushErr := engine.Release(t.Context(), newDeps(pushRec, pushRunner), patchOptions())
 
-	// Both abort non-zero and both terminate on an Unwound (the shared abort path).
+	// Both abort non-zero through the same surgical path.
 	assertAbortNonZero(t, gateErr)
 	assertAbortNonZero(t, pushErr)
-	if !recorded(gateRec, presentertest.KindUnwound) {
-		t.Errorf("gate-n abort did not end in an Unwound")
+	// Gate-n made nothing, so the surgical unwind no-ops: no Unwound, no reset.
+	if recorded(gateRec, presentertest.KindUnwound) {
+		t.Errorf("gate-n abort emitted an Unwound despite making nothing; the surgical unwind no-ops")
 	}
+	if invokedWith(gateRunner, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("gate-n abort reset despite making nothing")
+	}
+	// The pre-push path made a commit + tag, so it resets to the shared starting SHA and
+	// narrates an Unwound.
 	if !recorded(pushRec, presentertest.KindUnwound) {
 		t.Errorf("pre-push failure did not end in an Unwound")
 	}
-	// The pre-push path moved HEAD, so it issues the shared reset to the starting SHA;
-	// the gate-n path moved nothing, so it issues none — same reset target, applied
-	// only when HEAD actually moved.
 	if !invokedWith(pushRunner, "git", "reset", "--hard", startingSHA) {
 		t.Errorf("pre-push failure did not reset to the shared starting SHA")
-	}
-	if invokedWith(gateRunner, "git", "reset", "--hard", startingSHA) {
-		t.Errorf("gate-n abort reset despite nothing moving")
 	}
 }
 
 // startingSHA is the fixed SHA the pre-gate `git rev-parse HEAD` capture returns —
-// the clean starting state the unwind resets back to. movedSHA is a DIFFERENT SHA
-// the unwind's later probe returns once mint's bookkeeping commit has moved HEAD,
-// so the unwind detects the move and resets.
-const (
-	startingSHA = "startsha"
-	movedSHA    = "movedsha"
-)
+// the exact clean starting state the surgical unwind resets back to. The surgical
+// unwind drives off the tracked MadeState (not a HEAD probe), so there is no
+// "moved HEAD" sha to script inside the unwind anymore.
+const startingSHA = "startsha"
 
 // pushRejected models a ran-and-rejected atomic push: a populated non-zero Result
 // wrapped in release.ErrPushRejected, so the engine's tagMayExist branch fires (the
@@ -973,8 +981,9 @@ found:
 
 // TestRelease_GateEditThenNo proves the loop honours a `no` after an edit: an
 // `e` (which consults the editor) followed by `n` re-shows the notes, then
-// aborts (Unwound, non-zero exit) before any mutation — the edited body never
-// reaches a sink because nothing is mutated.
+// aborts non-zero before any mutation — the edited body never reaches a sink because
+// nothing is mutated. The gate sits before any commit/tag, so the surgical unwind has
+// zero MadeState and no-ops: it emits NO Unwound (the repo never left clean).
 func TestRelease_GateEditThenNo(t *testing.T) {
 	t.Parallel()
 
@@ -988,18 +997,11 @@ func TestRelease_GateEditThenNo(t *testing.T) {
 	}
 
 	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptions())
-	if err == nil {
-		t.Fatalf("Release returned nil error, want an edit-then-no abort")
-	}
-	var abort *engine.AbortError
-	if !errors.As(err, &abort) {
-		t.Fatalf("err is not an *engine.AbortError: %v", err)
-	}
-	if abort.ExitCode == 0 {
-		t.Errorf("abort ExitCode = 0, want non-zero")
-	}
-	if !recorded(rec, presentertest.KindUnwound) {
-		t.Errorf("edit-then-no did not surface an Unwound event")
+
+	assertAbortNonZero(t, err)
+	// Nothing was made before the gate, so the surgical unwind no-ops — no Unwound.
+	if recorded(rec, presentertest.KindUnwound) {
+		t.Errorf("edit-then-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
 	assertNoMutation(t, f)
 }

@@ -353,8 +353,9 @@ func TestRelease_PriorTag_GateAccept_ProceedsToRecord(t *testing.T) {
 }
 
 // TestRelease_PriorTag_GateAbort_LeavesRepoClean proves the gate-n abort on the
-// prior-tag path ends in Unwound, leaves the repo clean (no mutation), and aborts
-// non-zero — the same auto-unwind path as first-release.
+// prior-tag path leaves the repo clean (no mutation) and aborts non-zero — the same
+// surgical-unwind path as first-release. The gate sits before any commit/tag, so the
+// surgical unwind has zero MadeState and no-ops: no Unwound, no reset, no HEAD probe.
 func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 	t.Parallel()
 
@@ -363,8 +364,6 @@ func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
 	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
-	// The unwind's current-HEAD probe returns the SAME starting SHA -> nothing moved.
-	f.SeedSequence("git", ScriptedOut(startingSHA))
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
 		NextChoices: []presenter.Choice{presenter.ChoiceNo},
@@ -373,11 +372,20 @@ func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 	err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions())
 
 	assertAbortNonZero(t, err)
-	if !recorded(rec, presentertest.KindUnwound) {
-		t.Errorf("prior-tag gate-no did not surface an Unwound event")
+	// Nothing was made before the gate, so the surgical unwind no-ops — no Unwound.
+	if recorded(rec, presentertest.KindUnwound) {
+		t.Errorf("prior-tag gate-no before any mutation emitted an Unwound; nothing was made to undo")
+	}
+	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("prior-tag gate-no issued a `git reset`; nothing to reset")
 	}
 	assertNoMutation(t, f)
-	assertNoFinishAfterUnwound(t, rec)
+	// No RunFinished success line follows the aborted run.
+	for _, k := range rec.Kinds() {
+		if k == presentertest.KindRunFinished {
+			t.Errorf("a RunFinished followed the gate-n abort; kinds = %v", rec.Kinds())
+		}
+	}
 }
 
 // TestRelease_PriorTag_UnderYes_PromptFiresOnceAndProceeds proves the engine ALWAYS
@@ -615,8 +623,11 @@ func TestRelease_PriorTag_PublishFailsAfterPush_WarnsOnly(t *testing.T) {
 
 // TestRelease_PriorTag_NotesFailureAbort_AbortsBeforeMutation proves an
 // on_notes_failure=abort notes failure (the AI returns empty/invalid after retry)
-// surfaces and aborts BEFORE any mutation — nothing tagged. SelectBody's abort error
-// is routed through surface (StageFailed) and the run exits non-zero.
+// surfaces and aborts. With no pre_tag hook nothing was committed, so the surgical
+// unwind it routes through has zero MadeState and no-ops (no reset, no Unwound): the
+// run surfaces a StageFailed and exits non-zero with nothing tagged. (The case where a
+// pre_tag artifact commit precedes the notes failure — so the surgical unwind resets it
+// — is proven by TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets.)
 func TestRelease_PriorTag_NotesFailureAbort_AbortsBeforeMutation(t *testing.T) {
 	t.Parallel()
 

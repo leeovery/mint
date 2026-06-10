@@ -312,10 +312,16 @@ func TestRelease_PreTagHook_NonZeroAbortsBeforeTag(t *testing.T) {
 	}
 }
 
-// TestRelease_PreTagHook_NonZeroAfterOwnCommit_ResetsToStartingHEAD proves that when
-// a pre_tag hook makes its OWN commit then exits non-zero, the auto-unwind resets to
-// startingHEAD: the post-mutation pre-PONR abort path discards the hook's commit.
-func TestRelease_PreTagHook_NonZeroAfterOwnCommit_ResetsToStartingHEAD(t *testing.T) {
+// TestRelease_PreTagHook_NonZero_SurgicalNoOpsOnZeroMadeState proves the surgical
+// model's boundary when a pre_tag hook exits non-zero: because the hook failed BEFORE
+// mint's own artifact commit (record.CommitDirtyTree never runs), mint made ZERO
+// tracked commits this run. The surgical unwind is driven by that tracked MadeState —
+// not a HEAD probe — so with nothing mint made to undo it NO-OPS: it issues no `git
+// reset`, no HEAD probe, and emits NO Unwound. The run still surfaces the pre_tag
+// StageFailed and aborts non-zero with nothing tagged or pushed. (Per the approved
+// surgical design, mint counts only the commits IT made — a hook's own internal commit
+// is outside MadeState; the hook is expected to be idempotent and re-run next time.)
+func TestRelease_PreTagHook_NonZero_SurgicalNoOpsOnZeroMadeState(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -323,12 +329,8 @@ func TestRelease_PreTagHook_NonZeroAfterOwnCommit_ResetsToStartingHEAD(t *testin
 
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
-	// The hook committed then failed → HEAD moved. The unwind probes HEAD (moved) and
-	// resets back to startingHEAD.
-	f.SeedSequence("git",
-		ScriptedOut("movedsha"), // unwind: rev-parse HEAD (MOVED — the hook committed)
-		ScriptedOut(""),         // unwind: reset --hard {startingHEAD}
-	)
+	// The hook exits non-zero; mint never reaches its own artifact commit, so MadeState
+	// is zero and the surgical unwind issues no further git commands.
 	f.Seed("sh", runner.Result{ExitCode: 1}, errors.New("exit status 1"))
 	rec := &presentertest.RecordingPresenter{}
 
@@ -338,11 +340,17 @@ func TestRelease_PreTagHook_NonZeroAfterOwnCommit_ResetsToStartingHEAD(t *testin
 	if name := stageFailedName(t, rec); name != "pre_tag" {
 		t.Errorf("StageFailed.Name = %q, want %q", name, "pre_tag")
 	}
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
-		t.Errorf("a moved HEAD after the hook's own commit was not reset to startingHEAD; got %v", commandLines(f.Invocations()))
+	// Zero MadeState → surgical no-op: no reset, no Unwound, no HEAD probe beyond capture.
+	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("a `git reset` ran though mint made no tracked commit; the surgical unwind no-ops on zero MadeState")
+	}
+	if recorded(rec, presentertest.KindUnwound) {
+		t.Errorf("an Unwound fired though mint made nothing to undo; the surgical unwind no-ops on zero MadeState")
+	}
+	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 1 {
+		t.Errorf("rev-parse HEAD count = %d, want 1 (the pre-gate capture only; the unwind probes no HEAD)", got)
 	}
 	assertNoMutation(t, f)
-	assertStageFailedThenUnwound(t, rec)
 }
 
 // TestRelease_PreTagHook_AbsentSkipped proves an absent pre_tag hook leaves the
