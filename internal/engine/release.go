@@ -171,6 +171,17 @@ type ReleaseOptions struct {
 	// SelectState so the precedence routes to the commit-subject fallback body and
 	// never calls the AI. It is irrelevant when NotesBody overrides the selector.
 	NoAI bool
+	// AutoStash is the --autostash escape hatch: when set, mint runs `git stash push
+	// --include-untracked` BEFORE the clean-tree gate (so a dirty tree passes the gate)
+	// and restores the WIP with `git stash pop` afterward — on success AND on
+	// abort/failure. On an abort the restore is layered ON TOP of the surgical unwind:
+	// the unwind returns the repo to its clean starting state first, THEN the pop applies
+	// the WIP, so the WIP is never popped against mint's release commits. A no-WIP run is
+	// a no-op (nothing stashed → nothing popped); a pop conflict leaves the stash intact
+	// and warns rather than discarding the user's work. It is OPT-IN because the release
+	// mutates the tree, so popping unrelated WIP can conflict — opting in is the user
+	// asserting it is safe. All stash/pop ops flow through the lock-resilient Mutator.
+	AutoStash bool
 	// DryRun is the --dry-run flag's HOOK dimension: when active, each configured
 	// lifecycle hook (preflight/pre_tag/post_release) is SKIPPED rather than run, and
 	// the skip is reported via the presenter. The assembled hook env still reflects it
@@ -186,6 +197,15 @@ type ReleaseOptions struct {
 // code (the failure is surfaced through the presenter first). A publish failure
 // AFTER a successful push is warn-only — it surfaces a Warn and returns nil,
 // because the tag is already public and mint never unwinds post-PONR.
+//
+// --autostash (4-4) layers into Stage 2: when set, mint stashes the working tree
+// BEFORE the clean-tree gate (so the gate observes a clean tree) and restores it with
+// a DEFERRED `git stash pop` that runs when Release returns. Because the surgical
+// unwind runs inline before any abort return and the deferred pop runs after, the
+// load-bearing unwind-then-pop ordering holds for EVERY abort path by construction: on
+// a pre-PONR abort the repo is already back at its clean starting state by the time the
+// pop applies the WIP on top. A no-WIP run is a no-op (nothing stashed → no deferred
+// pop); a pop conflict warns and leaves the stash intact (never discarded).
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p := deps.Presenter
 
@@ -211,6 +231,21 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 	next := version.Next(current, opts.Bump)
 	tag := next.String(cfg.Release.TagPrefix)
+
+	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
+	// gate so a dirty tree passes (opt-in; without the flag a dirty tree still aborts at
+	// the gate below). The DEFERRED pop restores the WIP when Release returns — on
+	// success on top of the released state, on abort on top of the surgically-unwound
+	// clean state. Deferring is load-bearing: the surgical unwind runs inline before any
+	// abort return, so by the time this deferred pop fires the repo is already back at
+	// its clean starting state — unwind-then-pop holds for every abort path. A no-WIP
+	// tree stashes nothing (no pop is owed and none is deferred); a pop conflict warns
+	// and leaves the stash intact.
+	if opts.AutoStash {
+		if autostashPush(ctx, deps) {
+			defer autostashPop(ctx, deps)
+		}
+	}
 
 	// Stage 2 — preflight. Fetch first, then cheap local gates, then network gates.
 	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag); err != nil {

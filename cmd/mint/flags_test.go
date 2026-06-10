@@ -14,12 +14,13 @@ func TestParseReleaseFlags(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		args      []string
-		wantBump  version.Bump
-		wantYes   bool
-		wantPlain bool
-		wantNoAI  bool
+		name          string
+		args          []string
+		wantBump      version.Bump
+		wantYes       bool
+		wantPlain     bool
+		wantNoAI      bool
+		wantAutoStash bool
 	}{
 		{name: "no flags defaults to patch", args: nil, wantBump: version.BumpPatch},
 		{name: "short patch", args: []string{"-p"}, wantBump: version.BumpPatch},
@@ -32,8 +33,10 @@ func TestParseReleaseFlags(t *testing.T) {
 		{name: "long yes", args: []string{"--yes"}, wantYes: true},
 		{name: "plain", args: []string{"--plain"}, wantPlain: true},
 		{name: "no-ai", args: []string{"--no-ai"}, wantNoAI: true},
+		{name: "autostash", args: []string{"--autostash"}, wantAutoStash: true},
 		{name: "minor with yes and plain", args: []string{"-m", "-y", "--plain"}, wantBump: version.BumpMinor, wantYes: true, wantPlain: true},
 		{name: "no-ai with minor and yes", args: []string{"--no-ai", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantNoAI: true},
+		{name: "autostash with minor and yes", args: []string{"--autostash", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantAutoStash: true},
 	}
 
 	for _, tt := range tests {
@@ -56,9 +59,16 @@ func TestParseReleaseFlags(t *testing.T) {
 			if opts.NoAI != tt.wantNoAI {
 				t.Errorf("NoAI = %v, want %v", opts.NoAI, tt.wantNoAI)
 			}
+			if opts.AutoStash != tt.wantAutoStash {
+				t.Errorf("AutoStash = %v, want %v", opts.AutoStash, tt.wantAutoStash)
+			}
 			// The --no-ai flag must thread through to the engine options.
 			if got := opts.ReleaseOptions().NoAI; got != tt.wantNoAI {
 				t.Errorf("ReleaseOptions().NoAI = %v, want %v", got, tt.wantNoAI)
+			}
+			// The --autostash flag must thread through to the engine options.
+			if got := opts.ReleaseOptions().AutoStash; got != tt.wantAutoStash {
+				t.Errorf("ReleaseOptions().AutoStash = %v, want %v", got, tt.wantAutoStash)
 			}
 		})
 	}
