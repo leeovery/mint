@@ -2,8 +2,6 @@ package presenter_test
 
 import (
 	"bytes"
-	"go/parser"
-	"go/token"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,28 +58,9 @@ func presenterNonTestSources(t *testing.T) []string {
 // loudly if any source ever reaches for os/exec. It MIRRORS the UI-library guard
 // (TestPlainPresenterImportsNoUILibrary) and its go/parser ImportsOnly approach.
 func TestPromptPathImportsNoSubprocessDependency(t *testing.T) {
-	fset := token.NewFileSet()
-
-	scanned := 0
-	for _, path := range presenterNonTestSources(t) {
-		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatalf("parsing %s: %v", path, err)
-		}
-		scanned++
-		for _, imp := range file.Imports {
-			p := strings.Trim(imp.Path.Value, `"`)
-			for _, marker := range subprocessMarkers {
-				if p == marker {
-					t.Errorf("%s imports %q which matches banned subprocess marker %q — the presenter must never spawn an editor/subprocess; the engine owns the e/r work", filepath.Base(path), p, marker)
-				}
-			}
-		}
-	}
-	// Defend against a glob/parse regression silently scanning nothing.
-	if scanned == 0 {
-		t.Fatal("scanned no sources — the subprocess guard never ran")
-	}
+	// Exact-equality matching: a subprocess marker (e.g. "os/exec") names a
+	// precise package, so only an exact import-path match is a violation.
+	assertImportsExclude(t, presenterNonTestSources(t), subprocessMarkers, true)
 }
 
 // screenControlSequences are the terminal control sequences a LINEAR,

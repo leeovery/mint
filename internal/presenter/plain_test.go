@@ -2,8 +2,6 @@ package presenter_test
 
 import (
 	"bytes"
-	"go/parser"
-	"go/token"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1011,20 +1009,7 @@ func TestPlainPresenterShowNotesMultiLineBlankLinesPreserved(t *testing.T) {
 // for lipgloss or a spinner. It scans only plain.go — the pretty presenter is
 // expected to import lipgloss, so a package-wide scan would be wrong.
 func TestPlainPresenterImportsNoUILibrary(t *testing.T) {
-	fset := token.NewFileSet()
-
-	for _, path := range plainPresenterSources(t) {
-		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatalf("parsing %s: %v", path, err)
-		}
-		for _, imp := range file.Imports {
-			p := strings.Trim(imp.Path.Value, `"`)
-			for _, marker := range uiLibraryMarkers {
-				if strings.Contains(p, marker) {
-					t.Errorf("%s imports %q which matches banned UI-library marker %q", filepath.Base(path), p, marker)
-				}
-			}
-		}
-	}
+	// Substring matching: a UI-library marker (e.g. "lipgloss") may appear
+	// anywhere within an import path, so a path fragment is enough to ban it.
+	assertImportsExclude(t, plainPresenterSources(t), uiLibraryMarkers, false)
 }
