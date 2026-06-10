@@ -124,6 +124,33 @@ func TestFakeRunner_RunWith_RecordsStdin(t *testing.T) {
 	}
 }
 
+func TestFakeRunner_SeedSequence_ReturnsOutcomesInCallOrder(t *testing.T) {
+	t.Parallel()
+
+	// Some callers issue several invocations of the SAME binary that must return
+	// DIFFERENT outcomes — e.g. `git tag` succeeds, then `git push` is rejected.
+	// SeedSequence scripts those per-call outcomes in order, since name-keyed Seed
+	// alone cannot tell two calls to the same binary apart.
+	fake := runner.NewFakeRunner()
+	pushErr := errors.New("exit status 1")
+	fake.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{}},
+		runner.ScriptedCall{Result: runner.Result{Stderr: "rejected", ExitCode: 1}, Err: pushErr},
+	)
+
+	if _, err := fake.Run(t.Context(), "git", "tag", "-a", "v1", "-F", "-"); err != nil {
+		t.Fatalf("first call (tag) returned unexpected error: %v", err)
+	}
+
+	res, err := fake.Run(t.Context(), "git", "push", "--atomic", "origin", "HEAD", "v1")
+	if !errors.Is(err, pushErr) {
+		t.Fatalf("second call (push) error = %v, want it to wrap the seeded push error", err)
+	}
+	if res.ExitCode != 1 {
+		t.Errorf("ExitCode = %d, want 1", res.ExitCode)
+	}
+}
+
 func TestFakeRunner_UnseededCommandFails(t *testing.T) {
 	t.Parallel()
 

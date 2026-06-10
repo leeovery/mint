@@ -23,6 +23,15 @@ type scriptedResult struct {
 	notFound bool
 }
 
+// ScriptedCall is one outcome in a SeedSequence: the Result and error a single
+// call to a command should return. It exists so tests can script several calls to
+// the same binary that must return different outcomes (e.g. `git tag` succeeds,
+// then `git push` is rejected) — something name-keyed Seed cannot express.
+type ScriptedCall struct {
+	Result Result
+	Err    error
+}
+
 // FakeRunner is the in-memory CommandRunner test double. It never spawns a
 // process: callers Seed each command name with the Result/error it should
 // return, and every call is recorded in order for later assertion. It matches on
@@ -30,12 +39,16 @@ type scriptedResult struct {
 // which is sufficient for the engine's scripted-tool tests.
 type FakeRunner struct {
 	scripts     map[string]scriptedResult
+	sequences   map[string][]ScriptedCall
 	invocations []Invocation
 }
 
 // NewFakeRunner returns an empty FakeRunner with no seeded commands.
 func NewFakeRunner() *FakeRunner {
-	return &FakeRunner{scripts: make(map[string]scriptedResult)}
+	return &FakeRunner{
+		scripts:   make(map[string]scriptedResult),
+		sequences: make(map[string][]ScriptedCall),
+	}
 }
 
 // Compile-time assertion that FakeRunner satisfies the seam.
@@ -46,6 +59,16 @@ var _ CommandRunner = (*FakeRunner)(nil)
 // (the Result stays readable alongside the error, matching the real runner).
 func (f *FakeRunner) Seed(name string, result Result, err error) {
 	f.scripts[name] = scriptedResult{result: result, err: err}
+}
+
+// SeedSequence registers an ordered list of outcomes for name: each successive
+// call to name consumes the next ScriptedCall, so several calls to the same binary
+// can return different outcomes (e.g. `git tag` succeeds, then `git push` is
+// rejected). The sequence is consumed before the name-keyed Seed fallback; once it
+// is exhausted, calls fall through to the static Seed/SeedNotFound script (or the
+// unseeded-command error if none was set).
+func (f *FakeRunner) SeedSequence(name string, calls ...ScriptedCall) {
+	f.sequences[name] = append(f.sequences[name], calls...)
 }
 
 // SeedNotFound registers name as a missing binary: future calls return an error
@@ -73,6 +96,12 @@ func (f *FakeRunner) RunWith(_ context.Context, stdin io.Reader, name string, ar
 		Args:  args,
 		Stdin: drainStdin(stdin),
 	})
+
+	if seq := f.sequences[name]; len(seq) > 0 {
+		call := seq[0]
+		f.sequences[name] = seq[1:]
+		return call.Result, call.Err
+	}
 
 	script, ok := f.scripts[name]
 	if !ok {
