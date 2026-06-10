@@ -181,6 +181,15 @@ func ReuseConfirmGate() Gate {
 // ("Source? [github/gitlab]"). AcceptEcho is the chosen value string(def), so the
 // -y echo reads "source: {chosen} (-y)" and a captured log shows which source was
 // used. The presenter invents none of these — they all arrive via the args.
+//
+// Precondition: the supplied options keys and def MUST be ASCII enumerated values
+// only. The shared parseChoice case-folds the input (strings.ToLower) before
+// matching it against these keys, and AcceptEcho = string(def) must stay byte-pure
+// ASCII for the plain "{Subject}: {AcceptEcho} (-y)" echo. A non-ASCII source value
+// would render the plain echo wrong (or trip the plain byte-purity guard) and would
+// not case-fold reliably. This contract is NOT enforced here — it holds because the
+// engine's source enumeration is ASCII; a future change that broadens source values
+// beyond ASCII must revisit it.
 func SourceGate(options []GateChoice, def Choice) Gate {
 	return Gate{
 		Question:   "Source?",
@@ -197,6 +206,16 @@ func SourceGate(options []GateChoice, def Choice) Gate {
 // (from the target flag/default). The Question is the terse "Target?" form
 // ("Target? [stable/beta]" in plain); Subject is "target"; AcceptEcho is the chosen
 // value so the -y echo reads "target: {chosen} (-y)".
+//
+// Precondition: the supplied options keys and def MUST be ASCII enumerated values
+// only, for the same reason as SourceGate. The shared parseChoice case-folds the
+// input (strings.ToLower) before matching it against these keys, and
+// AcceptEcho = string(def) must stay byte-pure ASCII for the plain
+// "{Subject}: {AcceptEcho} (-y)" echo. A non-ASCII target value would render the
+// plain echo wrong (or trip the plain byte-purity guard) and would not case-fold
+// reliably. This contract is NOT enforced here — it holds because the engine's
+// target enumeration is ASCII; a future change that broadens target values beyond
+// ASCII must revisit it.
 func TargetGate(options []GateChoice, def Choice) Gate {
 	return Gate{
 		Question:   "Target?",
