@@ -131,3 +131,64 @@ func TestResolvePublisher_EmptyRemoteUnresolved(t *testing.T) {
 		t.Errorf("resolved publisher = %v, want nil with no remote and no override", pub)
 	}
 }
+
+// TestResolvePublisher_UnresolvedReason proves the unresolved sentinel carries a
+// distinguishable, human-readable REASON across its four causes so the engine's
+// downgrade warning (task 4-10) can name WHY publishing was skipped — an unknown
+// provider value vs an unmatched host vs no remote vs an unparseable SSH URL. Each
+// case still satisfies errors.Is(err, ErrProviderUnresolved) AND exposes a
+// *publish.UnresolvedError via errors.As whose Reason() is the named cause.
+func TestResolvePublisher_UnresolvedReason(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		remoteURL  string
+		provider   string
+		wantReason string
+	}{
+		{
+			name:       "unknown provider value",
+			remoteURL:  "https://github.com/owner/repo.git",
+			provider:   "gitlab",
+			wantReason: `unsupported provider "gitlab"`,
+		},
+		{
+			name:       "non-github.com host",
+			remoteURL:  "https://gitlab.com/owner/repo.git",
+			wantReason: `unrecognised host "gitlab.com"`,
+		},
+		{
+			name:       "no remote",
+			remoteURL:  "",
+			wantReason: "no remote configured",
+		},
+		{
+			name:       "unparseable ssh url",
+			remoteURL:  "git@nohostcolon",
+			wantReason: `could not determine host from remote "git@nohostcolon"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pub, err := publish.ResolvePublisher(tt.remoteURL, tt.provider, runner.NewFakeRunner())
+			if pub != nil {
+				t.Errorf("resolved publisher = %v, want nil on an unresolved provider", pub)
+			}
+			if !errors.Is(err, publish.ErrProviderUnresolved) {
+				t.Fatalf("error = %v, want it to wrap ErrProviderUnresolved", err)
+			}
+
+			var unresolved *publish.UnresolvedError
+			if !errors.As(err, &unresolved) {
+				t.Fatalf("error = %v, want a *publish.UnresolvedError", err)
+			}
+			if unresolved.Reason() != tt.wantReason {
+				t.Errorf("Reason() = %q, want %q", unresolved.Reason(), tt.wantReason)
+			}
+		})
+	}
+}

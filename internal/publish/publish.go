@@ -15,8 +15,9 @@
 // Provider auto-detection from the remote host lives alongside this seam in
 // resolve.go (ResolvePublisher): it parses the remote host across the HTTPS/SSH
 // URL forms (overridable by the provider config) and selects a driver, exposing
-// ErrProviderUnresolved when none matches. The unknown-provider / no-driver
-// loud-downgrade that layers on top of that sentinel lives in a later phase.
+// ErrProviderUnresolved (wrapped in *UnresolvedError with a named reason) when none
+// matches. The engine layers a loud downgrade-to-tag+push on top of that sentinel
+// rather than ever silently assuming GitHub.
 package publish
 
 import (

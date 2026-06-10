@@ -441,26 +441,42 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// type and used UNCHANGED below for CreateRelease — the orchestrator never names a
 	// concrete driver.
 	//
-	// The gh install/auth gate is conditional on a driver actually being selected and
+	// The gh install/auth gate is conditional on a driver actually being SELECTED and
 	// on publishing proceeding: it runs only for the resolved driver, before the tag,
 	// so a missing/unauthenticated gh never strands a pushed tag waiting on a release
-	// it cannot create. An UNRESOLVED provider (non-github.com host, unsupported value,
-	// or no remote) surfaces ErrProviderUnresolved here; the safe-downgrade-to-tag+push
-	// handling on top of that sentinel is task 4-10. Until then it is a pre-PONR
-	// "preflight" abort — nothing is tagged yet, so it routes through the surgical
-	// unwind exactly like the gh-auth failure beside it.
+	// it cannot create.
+	//
+	// SAFE DOWNGRADE (4-10): an UNRESOLVED provider (non-github.com host, unsupported
+	// value, no remote, or an unparseable SSH URL) is NOT an abort. resolvePublisher
+	// returns ErrProviderUnresolved (a nil Publisher); the spine WARNS loudly — naming
+	// the reason — and DOWNGRADES the run to tag + push ONLY: publisher stays nil, so
+	// the gh gate below is skipped (it gates a selected driver, of which there is none)
+	// and the Stage-7 CreateRelease is skipped too. The annotated tag and the atomic
+	// push still happen, so the pushed tag is never stranded (publishing was simply
+	// never attempted). mint NEVER silently assumes GitHub for an unresolved provider.
+	// This is DISTINCT from publish=false: an explicit opt-out is a SILENT tag + push
+	// (this whole block is skipped), not a warned downgrade. Any OTHER resolution error
+	// remains a pre-PONR "preflight" abort routed through the surgical unwind.
 	var publisher publish.Publisher
 	if cfg.Release.Publish {
 		resolved, err := resolvePublisher(ctx, deps, cfg)
-		if err != nil {
+		switch {
+		case errors.Is(err, publish.ErrProviderUnresolved):
+			warnPublishDowngraded(p, err)
+		case err != nil:
 			return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
+		default:
+			publisher = resolved
 		}
-		publisher = resolved
 
-		if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
-			// The bookkeeping commit may have moved HEAD; the surgical unwind resets exactly
-			// the commits in made. No tag yet (made.TagCreated false).
-			return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
+		// The gh gate gates ONLY an actually-selected driver: on a downgrade publisher is
+		// nil, so it is never reached — keeping the pushed tag from being stranded.
+		if publisher != nil {
+			if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
+				// The bookkeeping commit may have moved HEAD; the surgical unwind resets exactly
+				// the commits in made. No tag yet (made.TagCreated false).
+				return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
+			}
 		}
 	}
 
@@ -498,9 +514,12 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
 	// already public); the run does not unwind and exits successfully. The release is
 	// created through the resolved Publisher INTERFACE (whichever driver detection
-	// picked), never a concrete type.
+	// picked), never a concrete type. It is gated on a publisher actually being
+	// SELECTED, not merely on publish=true: a safe downgrade (provider unresolved)
+	// leaves publisher nil and already warned above, so publishing is skipped here —
+	// the run is tag + push only.
 	releaseURL := ""
-	if cfg.Release.Publish {
+	if publisher != nil {
 		if err := publisher.CreateRelease(ctx, tag, tag, body); err != nil {
 			warnPublishFailed(p, err)
 		}
@@ -677,7 +696,7 @@ func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
 // A missing remote (`git remote get-url origin` exits non-zero) is treated as an
 // EMPTY remote URL rather than a hard error here, so the resolver's no-remote
 // outcome flows through the SAME ErrProviderUnresolved path as a non-matching
-// host — one unresolved sentinel for task 4-10 to downgrade on.
+// host — one unresolved sentinel the spine downgrades on (warn + tag + push only).
 func resolvePublisher(ctx context.Context, deps ReleaseDeps, cfg config.Config) (publish.Publisher, error) {
 	return publish.ResolvePublisher(remoteURL(ctx, deps.Runner), cfg.Release.Provider, deps.Runner)
 }
@@ -1073,6 +1092,31 @@ func editBody(ctx context.Context, editor Editor, current string) (string, error
 		return "", errEditorUnavailable
 	}
 	return editor.Edit(ctx, current)
+}
+
+// warnPublishDowngraded emits the LOUD pre-tag warning when the publishing provider
+// could not be resolved and the run is downgrading to tag + push only. It NAMES the
+// reason (an unsupported provider value, an unrecognised host, no remote, or an
+// unparseable remote) so the user can see WHY publishing was skipped. It rides the
+// Warn seam (which does not set failure state), so the run proceeds to a normal
+// tag + push and finishes successfully — distinct from publish=false, which is a
+// SILENT opt-out with no warning at all.
+func warnPublishDowngraded(p presenter.Presenter, cause error) {
+	p.Warn(presenter.Warning{
+		Label:   "publish skipped",
+		Message: "provider could not be resolved (" + downgradeReason(cause) + "); downgrading to tag + push only",
+	})
+}
+
+// downgradeReason extracts the human-readable cause from a *publish.UnresolvedError
+// so the downgrade warning can name it; a cause that is not an UnresolvedError (it
+// always is on this path) falls back to its Error() text rather than rendering empty.
+func downgradeReason(cause error) string {
+	var unresolved *publish.UnresolvedError
+	if errors.As(cause, &unresolved) {
+		return unresolved.Reason()
+	}
+	return cause.Error()
 }
 
 // warnPublishFailed emits the post-PONR warn-only event: by the time it runs the

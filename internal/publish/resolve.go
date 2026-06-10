@@ -2,6 +2,7 @@ package publish
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -13,9 +14,41 @@ import (
 // unsupported provider value, or no remote URL to detect from. ResolvePublisher
 // returns it (with a nil Publisher) rather than guessing a driver, so the run
 // never silently assumes GitHub. The safe-downgrade-to-tag+push behaviour layered
-// on top of this sentinel lives in a later task; callers branch on it with
-// errors.Is.
+// on top of this sentinel (task 4-10) warns and downgrades; callers branch on it
+// with errors.Is, and read the human-readable cause via *UnresolvedError.Reason()
+// (errors.As).
 var ErrProviderUnresolved = errors.New("publish: provider could not be resolved")
+
+// UnresolvedError is the concrete error ResolvePublisher returns when no driver
+// can be selected. It WRAPS ErrProviderUnresolved (so errors.Is keeps matching the
+// sentinel) and carries a short, human-readable reason naming WHY resolution failed
+// — an unsupported provider value, an unrecognised host, no remote, or an
+// unparseable remote URL — so the engine's safe-downgrade warning (task 4-10) can
+// tell the user which cause downgraded the run to tag + push only.
+type UnresolvedError struct {
+	reason string
+}
+
+// Reason returns the short, display-ready cause of the unresolved outcome (e.g.
+// `unsupported provider "gitlab"` or `unrecognised host "gitlab.com"`).
+func (e *UnresolvedError) Reason() string {
+	return e.reason
+}
+
+// Error renders the sentinel text with the specific reason appended.
+func (e *UnresolvedError) Error() string {
+	return ErrProviderUnresolved.Error() + ": " + e.reason
+}
+
+// Unwrap exposes the sentinel so errors.Is(err, ErrProviderUnresolved) matches.
+func (e *UnresolvedError) Unwrap() error {
+	return ErrProviderUnresolved
+}
+
+// unresolved builds an *UnresolvedError carrying a formatted reason.
+func unresolved(format string, args ...any) error {
+	return &UnresolvedError{reason: fmt.Sprintf(format, args...)}
+}
 
 // githubHost is the one remote host auto-detection maps to the GitHub driver.
 const githubHost = "github.com"
@@ -52,22 +85,31 @@ func ResolvePublisher(remoteURL, providerConfig string, r runner.CommandRunner) 
 
 // resolveByProvider honours an explicit provider override. The only recognised
 // driver is GitHub; any other value is unsupported and returns the unresolved
-// sentinel rather than silently assuming GitHub.
+// error (naming the value) rather than silently assuming GitHub.
 func resolveByProvider(provider string, r runner.CommandRunner) (Publisher, error) {
 	if provider == providerGitHub {
 		return NewGitHubPublisher(r), nil
 	}
-	return nil, ErrProviderUnresolved
+	return nil, unresolved("unsupported provider %q", provider)
 }
 
 // resolveByHost auto-detects the driver from the remote host. A github.com host
-// selects the GitHub driver; an empty URL (no remote) or any other host is
-// unresolved.
+// selects the GitHub driver; otherwise the outcome is unresolved with a reason
+// distinguishing its three causes: no remote at all (empty URL), a remote whose
+// host could not be parsed (a non-URL/unparseable SSH form), or a recognised host
+// that simply has no driver.
 func resolveByHost(remoteURL string, r runner.CommandRunner) (Publisher, error) {
-	if parseHost(remoteURL) == githubHost {
+	if remoteURL == "" {
+		return nil, unresolved("no remote configured")
+	}
+	host := parseHost(remoteURL)
+	if host == "" {
+		return nil, unresolved("could not determine host from remote %q", remoteURL)
+	}
+	if host == githubHost {
 		return NewGitHubPublisher(r), nil
 	}
-	return nil, ErrProviderUnresolved
+	return nil, unresolved("unrecognised host %q", host)
 }
 
 // parseHost extracts the bare host from a git remote URL across the three forms
