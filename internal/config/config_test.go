@@ -181,6 +181,61 @@ func TestLoad_ConfiguredCommitPrefixAndReleaseBranch_Returned(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentContextAndPrompt_DefaultToEmpty(t *testing.T) {
+	t.Parallel()
+
+	// [release].context and [release].prompt are the notes-engine prompt-control
+	// knobs. Absent from the file, both default to the empty string — the "no
+	// inject, default prompt" baseline.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Context != "" {
+		t.Errorf("Context = %q, want empty (absent key defaults to empty)", cfg.Release.Context)
+	}
+	if cfg.Release.Prompt != "" {
+		t.Errorf("Prompt = %q, want empty (absent key defaults to empty)", cfg.Release.Prompt)
+	}
+}
+
+func TestLoad_ExplicitContext_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit [release].context value (a literal string here) must be carried
+	// through verbatim; the notes engine later treats it as string-or-file.
+	writeConfig(t, dir, "[release]\ncontext = \"dev-workflow toolkit; emphasise user-facing changes\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Context != "dev-workflow toolkit; emphasise user-facing changes" {
+		t.Errorf("Context = %q, want the explicit value", cfg.Release.Context)
+	}
+}
+
+func TestLoad_ExplicitPrompt_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit [release].prompt value is a file path carried through verbatim;
+	// the notes engine later reads that file as the full prompt override.
+	writeConfig(t, dir, "[release]\nprompt = \".mint/release-prompt.md\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Prompt != ".mint/release-prompt.md" {
+		t.Errorf("Prompt = %q, want the explicit value", cfg.Release.Prompt)
+	}
+}
+
 func TestLoad_UnknownKeysTolerated(t *testing.T) {
 	t.Parallel()
 

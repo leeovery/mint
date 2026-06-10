@@ -2,11 +2,13 @@
 // fully optional: zero config yields sensible defaults everywhere, so Load never
 // requires a file to exist.
 //
-// This is the Phase 1 slice — only the four [release] keys the walking-skeleton
-// release pipeline needs (tag_prefix, commit_prefix, release_branch, publish).
-// The full schema (shared engine keys, the rest of [release], [release.hooks])
-// and typed fail-loud validation are consolidated in Phase 6; until then unknown
-// keys are tolerated and ignored rather than rejected.
+// This loads the keys the release pipeline needs so far: the four Phase 1
+// [release] keys (tag_prefix, commit_prefix, release_branch, publish), the
+// top-level max_diff_lines guard, and the Phase 2 notes-engine prompt-control
+// keys ([release].context, [release].prompt). The full schema (shared engine
+// keys, the rest of [release], [release.hooks]) and typed fail-loud validation
+// are consolidated in Phase 6; until then unknown keys are tolerated and ignored
+// rather than rejected.
 package config
 
 import (
@@ -51,15 +53,23 @@ type Config struct {
 	MaxDiffLines int
 }
 
-// Release holds the [release] table values needed by the Phase 1 pipeline:
-// TagPrefix and CommitPrefix feed tag/commit subjects, ReleaseBranch gates the
-// on-branch check (empty = auto-derive), and Publish decides whether to publish
-// a GitHub release or stop at tag + push.
+// Release holds the [release] table values needed so far: TagPrefix and
+// CommitPrefix feed tag/commit subjects, ReleaseBranch gates the on-branch check
+// (empty = auto-derive), and Publish decides whether to publish a GitHub release
+// or stop at tag + push.
+//
+// Context and Prompt are the Phase 2 notes-engine prompt-control knobs, carried
+// here as raw TOML strings (both default empty). Context (string-or-file) injects
+// project guidance into the default prompt; Prompt is a file path that fully
+// overrides the default prompt. The string-or-file detection and file reading live
+// in the notes engine, NOT here — config carries the raw values verbatim.
 type Release struct {
 	TagPrefix     string
 	CommitPrefix  string
 	ReleaseBranch string
 	Publish       bool
+	Context       string
+	Prompt        string
 }
 
 // defaults returns a Config seeded with the Phase 1 default values.
@@ -70,6 +80,8 @@ func defaults() Config {
 			CommitPrefix:  defaultCommitPrefix,
 			ReleaseBranch: "",
 			Publish:       defaultPublish,
+			Context:       "",
+			Prompt:        "",
 		},
 		MaxDiffLines: defaultMaxDiffLines,
 	}
@@ -94,6 +106,8 @@ type releaseShape struct {
 	CommitPrefix  string `toml:"commit_prefix"`
 	ReleaseBranch string `toml:"release_branch"`
 	Publish       *bool  `toml:"publish"`
+	Context       string `toml:"context"`
+	Prompt        string `toml:"prompt"`
 }
 
 // Load reads {root}/.mint.toml and returns the Phase 1 config. A missing file is
@@ -152,5 +166,7 @@ func resolveRelease(shape releaseShape) Release {
 		CommitPrefix:  shape.CommitPrefix,
 		ReleaseBranch: shape.ReleaseBranch,
 		Publish:       publish,
+		Context:       shape.Context,
+		Prompt:        shape.Prompt,
 	}
 }
