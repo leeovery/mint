@@ -6,6 +6,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/muesli/termenv v0.16.0
+	github.com/pelletier/go-toml/v2 v2.3.1
 	golang.org/x/term v0.44.0
 )
 
