@@ -376,6 +376,68 @@ func TestLoad_ExplicitFallback_Honoured(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentVersionFileAndPattern_DefaultToEmpty(t *testing.T) {
+	t.Parallel()
+
+	// [release].version_file and [release].version_pattern drive the optional
+	// version-file projection. Absent from the file, both default to the empty
+	// string — meaning "no projection, tag-only" (the out-of-the-box behaviour).
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.VersionFile != "" {
+		t.Errorf("VersionFile = %q, want empty (absent key defaults to empty)", cfg.Release.VersionFile)
+	}
+	if cfg.Release.VersionPattern != "" {
+		t.Errorf("VersionPattern = %q, want empty (absent key defaults to empty)", cfg.Release.VersionPattern)
+	}
+}
+
+func TestLoad_ExplicitVersionFile_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit [release].version_file is the path mint mirrors the version into,
+	// carried through verbatim; Record writes the new version there (plain mode when
+	// no version_pattern is set).
+	writeConfig(t, dir, "[release]\nversion_file = \"release.txt\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.VersionFile != "release.txt" {
+		t.Errorf("VersionFile = %q, want the explicit path", cfg.Release.VersionFile)
+	}
+	if cfg.Release.VersionPattern != "" {
+		t.Errorf("VersionPattern = %q, want empty (no pattern → plain mode)", cfg.Release.VersionPattern)
+	}
+}
+
+func TestLoad_ExplicitVersionPattern_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit [release].version_pattern selects embedded mode (surgical line
+	// replacement); it is carried through verbatim for Record to apply.
+	writeConfig(t, dir, "[release]\nversion_file = \"main.go\"\nversion_pattern = \"RELEASE_VERSION = \\\"{version}\\\"\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.VersionFile != "main.go" {
+		t.Errorf("VersionFile = %q, want %q", cfg.Release.VersionFile, "main.go")
+	}
+	if cfg.Release.VersionPattern != "RELEASE_VERSION = \"{version}\"" {
+		t.Errorf("VersionPattern = %q, want the explicit pattern", cfg.Release.VersionPattern)
+	}
+}
+
 func TestLoad_AbsentHooksTable_AllNil(t *testing.T) {
 	t.Parallel()
 

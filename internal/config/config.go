@@ -85,6 +85,14 @@ type Config struct {
 // --no-ai: when non-empty it is used verbatim as the body in place of the
 // commit-subject list. Empty means "no fixed string, use the commit-subject list".
 // Unlike OnNotesFailure (a mode), this carries the body string itself.
+//
+// VersionFile and VersionPattern are the optional version-file projection knobs
+// (raw [release].version_file / [release].version_pattern, both default ""). They
+// are carried verbatim for the Record stage. VersionFile empty means "tag-only, no
+// projection"; non-empty is the repo-relative path mint mirrors the new version
+// into (a write-only mirror, never a version source). VersionPattern empty selects
+// PLAIN mode (the whole file is the version); non-empty selects EMBEDDED mode
+// (surgical version-line replacement inside a real source file).
 type Release struct {
 	TagPrefix      string
 	CommitPrefix   string
@@ -95,6 +103,8 @@ type Release struct {
 	Prompt         string
 	OnNotesFailure string
 	Fallback       string
+	VersionFile    string
+	VersionPattern string
 	Hooks          Hooks
 }
 
@@ -123,6 +133,8 @@ func defaults() Config {
 			Prompt:         "",
 			OnNotesFailure: defaultOnNotesFailure,
 			Fallback:       "",
+			VersionFile:    "",
+			VersionPattern: "",
 		},
 		MaxDiffLines: defaultMaxDiffLines,
 	}
@@ -152,6 +164,8 @@ type releaseShape struct {
 	Prompt         string     `toml:"prompt"`
 	OnNotesFailure string     `toml:"on_notes_failure"`
 	Fallback       string     `toml:"fallback"`
+	VersionFile    string     `toml:"version_file"`
+	VersionPattern string     `toml:"version_pattern"`
 	Hooks          hooksShape `toml:"hooks"`
 }
 
@@ -222,6 +236,8 @@ func resolveRelease(shape releaseShape) Release {
 		Prompt:         shape.Prompt,
 		OnNotesFailure: shape.OnNotesFailure,
 		Fallback:       shape.Fallback,
+		VersionFile:    shape.VersionFile,
+		VersionPattern: shape.VersionPattern,
 		Hooks: Hooks{
 			Preflight:   shape.Hooks.Preflight,
 			PreTag:      shape.Hooks.PreTag,
