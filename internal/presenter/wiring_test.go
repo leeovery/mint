@@ -2,6 +2,7 @@ package presenter_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -451,19 +452,30 @@ func TestFailureOutputBodyNotDuplicatedToStderr(t *testing.T) {
 	}
 }
 
-// TestNewForStartupWiresStdoutStderrAndMode proves the startup convenience wires
-// the real os.Stdout/os.Stderr handles and selects the mode from the stdout TTY
-// signal. Feeding a non-TTY stdout (/dev/null) deterministically selects plain
-// regardless of the host's own terminal, so the assertion stays CI-safe. The
-// returned value is a usable Presenter writing to the supplied handles.
-func TestNewForStartupWiresStdoutStderrAndMode(t *testing.T) {
-	devNull, err := os.Open(os.DevNull)
+// openDevNull opens a fresh /dev/null *os.File for use as a CI-safe non-TTY
+// handle (stdout selects plain; stdin arms the forbidden-combination path), and
+// registers its close. Each caller gets its own handle so a closed handle in one
+// subtest never affects another.
+func openDevNull(t *testing.T) *os.File {
+	t.Helper()
+	f, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatalf("opening %s: %v", os.DevNull, err)
 	}
-	t.Cleanup(func() { _ = devNull.Close() })
+	t.Cleanup(func() { _ = f.Close() })
+	return f
+}
 
-	p := presenter.NewForStartup(false, devNull, os.Stderr)
+// TestNewForStartupWiresStdoutStderrAndMode proves the converged startup seam
+// wires the real os.Stdout/os.Stderr/os.Stdin handles and selects the mode from
+// the stdout TTY signal. Feeding a non-TTY stdout (/dev/null) deterministically
+// selects plain regardless of the host's own terminal, so the assertion stays
+// CI-safe. The returned value is a usable Presenter writing to the supplied
+// handles.
+func TestNewForStartupWiresStdoutStderrAndMode(t *testing.T) {
+	devNull := openDevNull(t)
+
+	p := presenter.NewForStartup(false, false, devNull, os.Stderr, os.Stdin)
 	if p == nil {
 		t.Fatal("NewForStartup returned nil")
 	}
@@ -472,4 +484,89 @@ func TestNewForStartupWiresStdoutStderrAndMode(t *testing.T) {
 	// line to the provided stdout handle (here /dev/null, discarded), proving the
 	// value is a usable Presenter wired to the handles without panicking.
 	p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing"})
+}
+
+// TestNewForStartupThreadsNonInteractiveStdinToForbiddenCombo proves the
+// converged seam CONSUMES DetectStartupSignals and threads the stdin-interactive
+// signal (NOT the render Mode) into the gating field: built with a non-TTY stdin
+// handle and -y unset, the returned presenter's Prompt reaches the
+// forbidden-combination fail-loud path — returning ErrNotInteractive and writing
+// the one-line failure summary to the err stream. This only fires when
+// signals.StdinInteractive=false was threaded into the gating field; if the seam
+// left the gating axis at its interactive default the Prompt would block on stdin
+// instead of failing loud. (A /dev/null stdout selects ModePlain, which is fine —
+// the fail-loud path is mode-independent.)
+func TestNewForStartupThreadsNonInteractiveStdinToForbiddenCombo(t *testing.T) {
+	stdout := openDevNull(t)
+	stdin := openDevNull(t)
+	errBuf := &bytes.Buffer{}
+
+	// stderr is taken as *os.File for the TTY-probe-shaped signature, but the err
+	// summary is what we assert; route it through a pipe so the buffer captures it.
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	t.Cleanup(func() { _ = errR.Close(); _ = errW.Close() })
+
+	p := presenter.NewForStartup(false, false, stdout, errW, stdin)
+
+	choice, promptErr := p.Prompt(presenter.NotesReviewGate())
+	_ = errW.Close()
+
+	if !errors.Is(promptErr, presenter.ErrNotInteractive) {
+		t.Errorf("NewForStartup (non-TTY stdin, -y unset) Prompt err = %v, want errors.Is(..., ErrNotInteractive)", promptErr)
+	}
+	if choice != "" {
+		t.Errorf("NewForStartup forbidden-combo Prompt returned choice %q, want zero choice", choice)
+	}
+
+	if _, copyErr := errBuf.ReadFrom(errR); copyErr != nil {
+		t.Fatalf("reading err pipe: %v", copyErr)
+	}
+	if !strings.Contains(errBuf.String(), "FAILED") {
+		t.Errorf("NewForStartup forbidden-combo err stream = %q, want the one-line FAILED summary", errBuf.String())
+	}
+}
+
+// TestNewForStartupThreadsYesAutoConfirmsWithoutReadingStdin proves the seam
+// threads the -y parameter onto the returned presenter: built with -y SET and a
+// non-TTY stdin handle, Prompt AUTO-CONFIRMS — returning the gate's declared
+// default and emitting the auto-accept echo — WITHOUT reaching the
+// forbidden-combination path and without reading stdin. -y precedes the
+// stdin-interactive check, so the non-TTY stdin is irrelevant here; the assertion
+// proves the WithYes axis was threaded (otherwise the non-TTY stdin would fail
+// loud instead of auto-confirming).
+func TestNewForStartupThreadsYesAutoConfirmsWithoutReadingStdin(t *testing.T) {
+	stdin := openDevNull(t)
+	gate := presenter.NotesReviewGate()
+
+	// Capture stdout through a pipe so the auto-accept echo is assertable; a
+	// non-TTY pipe stdout selects ModePlain, whose echo is the byte-pure ASCII
+	// "notes: accepted (-y)" line.
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	t.Cleanup(func() { _ = outR.Close(); _ = outW.Close() })
+
+	p := presenter.NewForStartup(false, true, outW, os.Stderr, stdin)
+
+	choice, promptErr := p.Prompt(gate)
+	_ = outW.Close()
+
+	if promptErr != nil {
+		t.Fatalf("NewForStartup (-y set, non-TTY stdin) Prompt returned error: %v", promptErr)
+	}
+	if choice != gate.Default {
+		t.Errorf("NewForStartup (-y set) Prompt = %q, want gate default %q (auto-confirm)", choice, gate.Default)
+	}
+
+	out := &bytes.Buffer{}
+	if _, copyErr := out.ReadFrom(outR); copyErr != nil {
+		t.Fatalf("reading out pipe: %v", copyErr)
+	}
+	if got := out.String(); !strings.Contains(got, "notes: accepted (-y)") {
+		t.Errorf("NewForStartup (-y set) echo = %q, want it to contain the auto-accept echo", got)
+	}
 }

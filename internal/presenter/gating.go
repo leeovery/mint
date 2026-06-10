@@ -56,6 +56,11 @@ type StartupSignals struct {
 // combinations are representable. Neither path sniffs the environment (same ban as
 // Phase 1). Handles are taken as parameters (not the os globals) to keep this
 // unit-testable with /dev/null.
+//
+// It is consumed at the converged startup seam (NewForStartup), which threads
+// signals.Mode onto the render path and signals.StdinInteractive onto the gating
+// field — so the forbidden-combination fail-loud path (non-TTY stdin without -y)
+// is reachable from the one production construction site.
 func DetectStartupSignals(plainFlag bool, stdout, stdin *os.File) StartupSignals {
 	return StartupSignals{
 		Mode:             DetectMode(plainFlag, stdout),

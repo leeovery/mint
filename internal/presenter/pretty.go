@@ -76,10 +76,11 @@ type PrettyPresenter struct {
 	// render mode and the stream split). When set, Prompt SKIPS the gate entirely:
 	// it neither renders the vertical menu nor reads the input stream, instead
 	// emitting the rendered accept line and returning the gate's declared default.
-	// The production default is false (interactive); it is set via WithYes at the
-	// one site the -y flag is parsed (a later main/cmd task) and by tests. Threading
-	// it as construction state (not a Prompt parameter) keeps the Prompt(Gate) seam
-	// signature stable across both render modes.
+	// The production default is false (interactive); it is threaded via WithYes at
+	// the converged startup seam (NewForStartup) from the -y decision the caller
+	// passes, and by tests. Threading it as construction state (not a Prompt
+	// parameter) keeps the Prompt(Gate) seam signature stable across both render
+	// modes.
 	yes bool
 	// stdinInteractive records whether stdin can host an interactive prompt — the
 	// gating-INPUT axis (is stdin a TTY?), orthogonal to render mode (is stdout a
@@ -92,9 +93,10 @@ type PrettyPresenter struct {
 	// The DEFAULT is true (interactive) — set explicitly in newPrettyPresenter's
 	// struct literal, NOT left to the bool zero value — so the existing
 	// interactive-path tests (yes=false, scripted reader) keep hitting the
-	// interactive loop, not the fail path. Production sets it from
-	// DetectStdinTTY(os.Stdin) at the same one site the -y flag is parsed (a later
-	// main/cmd task) via WithInteractiveStdin — the same deferral as -y.
+	// interactive loop, not the fail path. Production threads the detected stdin
+	// signal (DetectStartupSignals' StdinInteractive, from the stdin descriptor) at
+	// the converged startup seam (NewForStartup) via WithInteractiveStdin — the same
+	// place the -y decision is threaded.
 	stdinInteractive bool
 	// termWidth is the detected terminal width feeding the decorative notes rules'
 	// width source. ShowNotes sizes the titled and closing rules to
@@ -261,9 +263,10 @@ func newPrettyPresenter(out io.Writer) *PrettyPresenter {
 // WithYes sets the -y/--yes gating decision and returns the presenter so it chains
 // onto a constructor (e.g. NewPrettyPresenter(out, WithInput(r)).WithYes(true)). It
 // is a builder-style setter — kept off the constructor so its signature stays
-// stable and so task 3-6's stdin-interactive gating signal can be added the same
-// way without a constructor explosion. Production sets it where the -y flag is
-// parsed; the zero value (no call) is the interactive default.
+// stable and so the stdin-interactive gating signal can be added the same way
+// without a constructor explosion. Production threads it at the converged startup
+// seam (NewForStartup) from the caller's -y decision; the zero value (no call) is
+// the interactive default.
 func (p *PrettyPresenter) WithYes(yes bool) *PrettyPresenter {
 	p.yes = yes
 	return p
@@ -271,11 +274,11 @@ func (p *PrettyPresenter) WithYes(yes bool) *PrettyPresenter {
 
 // WithInteractiveStdin sets the stdin-interactive gating signal and returns the
 // presenter so it chains onto any constructor, mirroring WithYes exactly. It is a
-// builder-style setter — kept off the constructors so their signatures stay stable
-// — so production can thread DetectStdinTTY(os.Stdin) at the same one site the -y
-// flag is parsed (a later main/cmd task). The constructor default is true
-// (interactive); call WithInteractiveStdin(false) to arm the
-// forbidden-combination fail path.
+// builder-style setter — kept off the constructors so their signatures stay stable.
+// Production threads the detected stdin signal (DetectStartupSignals'
+// StdinInteractive) at the converged startup seam (NewForStartup), the same place
+// the -y decision is threaded. The constructor default is true (interactive); call
+// WithInteractiveStdin(false) to arm the forbidden-combination fail path.
 func (p *PrettyPresenter) WithInteractiveStdin(interactive bool) *PrettyPresenter {
 	p.stdinInteractive = interactive
 	return p

@@ -23,31 +23,51 @@ func New(mode Mode, out, err io.Writer) Presenter {
 	return NewPlainPresenter(out, err)
 }
 
-// NewForStartup is the default startup convenience: it selects the render mode
-// from the real stdout handle's TTY signal (honouring --plain via plainFlag) and
-// wires stdout for narration and stderr for the failure summary — the production
-// defaults of out = os.Stdout, err = os.Stderr at the one construction site.
+// NewForStartup is the CONVERGED startup seam: the ONE production construction
+// site that resolves BOTH orthogonal axes via DetectStartupSignals and threads all
+// four signals — render Mode, terminal width, the -y gating decision, and the
+// stdin-interactive gating signal — onto the returned presenter. It wires stdout
+// for narration and stderr for the failure summary (the production defaults of
+// out = os.Stdout, err = os.Stderr), with stdin held only to resolve the gating
+// axis. This is the single seam where mode selection, the stream split, width
+// probing, and BOTH gating axes meet, so production never drifts into a parallel
+// path that leaves a gating field at its interactive default.
 //
-// stdout is taken as *os.File (not io.Writer) because DetectMode needs the OS
-// stream type to detect a TTY; *os.File satisfies io.Writer, so it doubles as the
-// narration writer. Accepting the handles as parameters (rather than reaching for
-// the os globals internally) keeps this unit-testable: a test passes a non-TTY
-// handle to drive the plain path deterministically.
+// The render Mode is selected from stdout's TTY signal (honouring --plain via
+// plainFlag); the stdin-interactive signal is detected INDEPENDENTLY from the
+// stdin descriptor (DetectStartupSignals, never re-derived from Mode), so the
+// forbidden-combination fail-loud path — non-TTY stdin without -y — is reachable
+// through this seam. -y is a PARAMETER the caller supplies (the flag is parsed
+// elsewhere); the seam only threads it.
 //
-// Width wiring lives HERE rather than in the New(mode, out, err) seam because this
-// is the one site that holds the stdout *os.File the OS width probe needs, and
-// golang.org/x/term is already this package's TTY dependency. When the selected mode
-// is PRETTY, the terminal width is probed from the stdout handle (detectTermWidth)
-// and applied to the pretty presenter via WithTermWidth so its decorative notes
-// rules cap at min(terminalWidth, ruleCap). For the plain mode the width is
-// irrelevant (plain has no decorative rules and does no width math), so it is not
-// probed — the plain presenter is returned unchanged. detectTermWidth returns 0 on
-// an undetectable width, which ruleWidth maps back to the cap, so even a pretty
-// presenter on a width-less terminal renders the fixed-cap rule.
-func NewForStartup(plainFlag bool, stdout, stderr *os.File) Presenter {
-	mode := DetectMode(plainFlag, stdout)
-	if mode == ModePretty {
-		return NewPrettyPresenter(stdout, WithErr(stderr)).WithTermWidth(detectTermWidth(stdout))
+// All three handles are taken as *os.File (not io.Writer): stdout and stdin so
+// DetectStartupSignals can probe each for a TTY, stderr to mirror them. *os.File
+// satisfies io.Writer, so stdout/stderr double as the narration/summary writers.
+// Accepting the handles as parameters (rather than reaching for the os globals
+// internally) keeps this unit-testable: a test passes non-TTY handles to drive the
+// plain path and the forbidden-combination path deterministically.
+//
+// The four signals are applied on the CONCRETE presenter built in each mode branch
+// (WithYes/WithInteractiveStdin live on the concrete types, not the Presenter
+// interface), then returned as the interface:
+//   - PRETTY: the terminal width is probed from the stdout handle (detectTermWidth)
+//     and applied via WithTermWidth so the decorative notes rules cap at
+//     min(terminalWidth, ruleCap). detectTermWidth returns 0 on an undetectable
+//     width, which ruleWidth maps back to the cap, so a width-less terminal still
+//     renders the fixed-cap rule.
+//   - PLAIN: width is irrelevant (plain has no decorative rules and does no width
+//     math), so it is not probed. The plain presenter keeps its production default
+//     input reader (os.Stdin) — stdin is held here only to resolve the
+//     stdin-interactive signal, not as the gate input stream.
+func NewForStartup(plainFlag, yes bool, stdout, stderr, stdin *os.File) Presenter {
+	signals := DetectStartupSignals(plainFlag, stdout, stdin)
+	if signals.Mode == ModePretty {
+		return NewPrettyPresenter(stdout, WithErr(stderr)).
+			WithTermWidth(detectTermWidth(stdout)).
+			WithYes(yes).
+			WithInteractiveStdin(signals.StdinInteractive)
 	}
-	return New(mode, stdout, stderr)
+	return NewPlainPresenter(stdout, stderr).
+		WithYes(yes).
+		WithInteractiveStdin(signals.StdinInteractive)
 }
