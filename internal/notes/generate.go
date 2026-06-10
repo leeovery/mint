@@ -66,7 +66,23 @@ func (g *Generator) Generate(ctx context.Context, lastTag string, cfg config.Con
 	if err != nil {
 		return "", fmt.Errorf("assembling diff for notes: %w", err)
 	}
+	return g.GenerateFromDiff(ctx, lastTag, diff, cfg)
+}
 
+// GenerateFromDiff is Generate's body over an ALREADY-ASSEMBLED post-exclusion
+// diff: it runs the size guard, change map, prompt compose, and transport on the
+// supplied diff instead of assembling it itself. It exists so the notes-path
+// precedence (SelectBody), which already assembles the diff for the degenerate
+// check, can pass that same diff straight into the AI path — assembling ONCE
+// rather than twice. Generate is the thin wrapper that assembles then calls this,
+// so its behaviour is byte-identical to before; callers needing the assemble +
+// generate in one step keep using Generate.
+//
+// Steps 2-5 of Generate's documented order run here unchanged: CheckDiffSize ->
+// BuildChangeMap -> ResolveInstructions + ComposePrompt -> transport.Generate.
+// The diff IS NOT re-assembled, so the caller is responsible for passing the same
+// post-exclusion diff AssembleDiff would have produced for lastTag.
+func (g *Generator) GenerateFromDiff(ctx context.Context, lastTag, diff string, cfg config.Config) (string, error) {
 	if err := CheckDiffSize(diff, cfg.MaxDiffLines); err != nil {
 		return "", fmt.Errorf("notes size guard: %w", err)
 	}
