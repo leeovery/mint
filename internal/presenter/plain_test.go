@@ -148,7 +148,7 @@ func TestPlainPresenterStageStartedHonoursBlocking(t *testing.T) {
 		want     string
 	}{
 		{name: "short stage emits nothing on start", blocking: false, want: ""},
-		{name: "blocking stage emits a terse start line", blocking: true, want: "notes: generating...\n"},
+		{name: "blocking stage emits a terse start line", blocking: true, want: "notes: running...\n"},
 	}
 
 	for _, tt := range tests {
@@ -260,7 +260,7 @@ func TestPlainPresenterLongStageEmitsStartThenCompletion(t *testing.T) {
 		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Elapsed: 1100 * time.Millisecond, Blocking: true})
 	})
 
-	want := "notes: generating...\n" +
+	want := "notes: running...\n" +
 		"notes: generated (1.1s)\n"
 	if got := out.String(); got != want {
 		t.Errorf("long stage output = %q, want %q", got, want)

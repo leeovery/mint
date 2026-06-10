@@ -141,14 +141,19 @@ func (p *PlainPresenter) RunStarted(info RunInfo) {
 // StageStarted emits plain's spinner-equivalent: a terse start line for a
 // blocking (long/slow) stage only, so a live-tail consumer isn't staring at
 // silence through a multi-second wait. Short stages stay silent until completion.
-// The wording is presenter-synthesised narration, so it stays byte-pure ASCII —
-// "generating..." with an ASCII ellipsis, not the U+2026 glyph the pretty spinner
-// uses (the spec's "wording refinable" latitude; the byte-purity guard is fixed).
+// The start word is a STAGE-AGNOSTIC synthesised verb — "running..." — correct for
+// every named blocking stage (notes generation AND the pre_tag build hook) rather
+// than a stage-specific guess: the StageStart payload carries only Name + Blocking,
+// so the presenter must not invent stage-specific narration (the event-payload
+// principle). It is the plain equivalent of the pretty spinner. Being synthesised,
+// it stays byte-pure ASCII — an ASCII ellipsis ("..."), not the U+2026 glyph the
+// pretty spinner uses (the spec's "wording refinable" latitude; the byte-purity
+// guard is fixed).
 func (p *PlainPresenter) StageStarted(s StageStart) {
 	if !s.Blocking {
 		return
 	}
-	p.writef("%s: generating...\n", s.Name)
+	p.writef("%s: running...\n", s.Name)
 }
 
 // SuspendSpinner and ResumeSpinner are NO-OPS in plain mode — plain never animates
