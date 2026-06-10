@@ -32,6 +32,7 @@ import (
 	"mint/internal/ai"
 	"mint/internal/config"
 	"mint/internal/gitrepo"
+	"mint/internal/hooks"
 	"mint/internal/notes"
 	"mint/internal/preflight"
 	"mint/internal/presenter"
@@ -191,6 +192,18 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 
 	// Stage 2 — preflight. Fetch first, then cheap local gates, then network gates.
 	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag); err != nil {
+		return surface(p, "preflight", err)
+	}
+
+	// Stage 2 — project preflight hook. After mint's built-in gates pass and BEFORE
+	// any mutation (and before startingHEAD is even captured), the project's optional
+	// preflight hook runs for project-specific gates/validation. An absent hook
+	// (cfg.Release.Hooks.Preflight == nil) is a no-op — the runner returns nil for a
+	// nil/empty value. A non-zero exit (for an array, the first non-zero entry) aborts
+	// the whole release cleanly: it is surfaced as a "preflight" StageFailed. Because
+	// this precedes all mutation there is nothing to unwind — a plain surface, not the
+	// auto-unwind path.
+	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, opts.Bump); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -487,6 +500,33 @@ func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, ta
 		return err
 	}
 	return preflight.CheckTagFreeRemote(ctx, r, tag)
+}
+
+// runPreflightHook runs the project's optional preflight hook through the shared
+// hooks runner. It assembles the MINT_* env from the run's computed versions
+// (NewVersion = the bare version being released, PreviousVersion = the bare prior
+// latest, VersionTag = the full prefixed tag) and the bump kind, then runs the
+// configured [release.hooks].preflight value from the repo root. An absent value
+// (nil) is a no-op — the runner returns nil. A non-zero exit (the first non-zero
+// entry for an array) returns a non-nil error the caller surfaces and aborts on.
+// DryRun is fixed to false here; MINT_DRY_RUN skip behaviour is a later phase.
+func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump) error {
+	env := hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), false)
+	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
+}
+
+// hookBump maps the engine's version.Bump onto the hooks package's Bump so the
+// MINT_BUMP variable reflects how the version was chosen. --set-version/explicit
+// is a later phase and not reachable yet; an unmapped value falls back to patch.
+func hookBump(bump version.Bump) hooks.Bump {
+	switch bump {
+	case version.BumpMinor:
+		return hooks.BumpMinor
+	case version.BumpMajor:
+		return hooks.BumpMajor
+	default:
+		return hooks.BumpPatch
+	}
 }
 
 // buildPlan assembles the Phase 1 plan steps in execution order — commit, tag,

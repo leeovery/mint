@@ -95,6 +95,19 @@ type Release struct {
 	Prompt         string
 	OnNotesFailure string
 	Fallback       string
+	Hooks          Hooks
+}
+
+// Hooks carries the RAW parsed [release.hooks] values keyed by lifecycle point.
+// Each is typed `any` because a TOML decoder surfaces a hook entry as a string
+// (one command) or a slice (an ordered list); the hooks package normalises that
+// shape when it runs the hook. A nil field means the key was absent — no hook,
+// a no-op. config does NOT interpret the values; it carries them verbatim for
+// the hook runner.
+type Hooks struct {
+	Preflight   any
+	PreTag      any
+	PostRelease any
 }
 
 // defaults returns a Config seeded with the Phase 1 default values.
@@ -130,15 +143,26 @@ type fileShape struct {
 }
 
 type releaseShape struct {
-	TagPrefix      string `toml:"tag_prefix"`
-	CommitPrefix   string `toml:"commit_prefix"`
-	ReleaseBranch  string `toml:"release_branch"`
-	Publish        *bool  `toml:"publish"`
-	Changelog      *bool  `toml:"changelog"`
-	Context        string `toml:"context"`
-	Prompt         string `toml:"prompt"`
-	OnNotesFailure string `toml:"on_notes_failure"`
-	Fallback       string `toml:"fallback"`
+	TagPrefix      string     `toml:"tag_prefix"`
+	CommitPrefix   string     `toml:"commit_prefix"`
+	ReleaseBranch  string     `toml:"release_branch"`
+	Publish        *bool      `toml:"publish"`
+	Changelog      *bool      `toml:"changelog"`
+	Context        string     `toml:"context"`
+	Prompt         string     `toml:"prompt"`
+	OnNotesFailure string     `toml:"on_notes_failure"`
+	Fallback       string     `toml:"fallback"`
+	Hooks          hooksShape `toml:"hooks"`
+}
+
+// hooksShape mirrors the on-disk [release.hooks] sub-table. Each key is typed
+// `any` so the decoder surfaces whatever TOML shape the value has (a string or
+// an array) verbatim; an absent key leaves the field nil. resolveRelease copies
+// these straight onto Release.Hooks.
+type hooksShape struct {
+	Preflight   any `toml:"preflight"`
+	PreTag      any `toml:"pre_tag"`
+	PostRelease any `toml:"post_release"`
 }
 
 // Load reads {root}/.mint.toml and returns the Phase 1 config. A missing file is
@@ -198,6 +222,11 @@ func resolveRelease(shape releaseShape) Release {
 		Prompt:         shape.Prompt,
 		OnNotesFailure: shape.OnNotesFailure,
 		Fallback:       shape.Fallback,
+		Hooks: Hooks{
+			Preflight:   shape.Hooks.Preflight,
+			PreTag:      shape.Hooks.PreTag,
+			PostRelease: shape.Hooks.PostRelease,
+		},
 	}
 }
 

@@ -376,6 +376,94 @@ func TestLoad_ExplicitFallback_Honoured(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentHooksTable_AllNil(t *testing.T) {
+	t.Parallel()
+
+	// With no [release.hooks] table, all three raw hook values are nil — absent
+	// meaning "no hook". The hook runner treats nil as a no-op.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Hooks.Preflight != nil {
+		t.Errorf("Hooks.Preflight = %v, want nil (absent table)", cfg.Release.Hooks.Preflight)
+	}
+	if cfg.Release.Hooks.PreTag != nil {
+		t.Errorf("Hooks.PreTag = %v, want nil (absent table)", cfg.Release.Hooks.PreTag)
+	}
+	if cfg.Release.Hooks.PostRelease != nil {
+		t.Errorf("Hooks.PostRelease = %v, want nil (absent table)", cfg.Release.Hooks.PostRelease)
+	}
+}
+
+func TestLoad_StringPreflightHook_DecodesToString(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A single-string preflight value decodes to a string, carried verbatim for the
+	// hook runner to normalise to one command entry.
+	writeConfig(t, dir, "[release.hooks]\npreflight = \"scripts/check.sh\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	got, ok := cfg.Release.Hooks.Preflight.(string)
+	if !ok {
+		t.Fatalf("Hooks.Preflight = %#v (%T), want a string", cfg.Release.Hooks.Preflight, cfg.Release.Hooks.Preflight)
+	}
+	if got != "scripts/check.sh" {
+		t.Errorf("Hooks.Preflight = %q, want %q", got, "scripts/check.sh")
+	}
+}
+
+func TestLoad_ArrayPreflightHook_DecodesToSlice(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An array preflight value decodes to a slice of the elements in order, carried
+	// verbatim for the hook runner to normalise to ordered command entries.
+	writeConfig(t, dir, "[release.hooks]\npreflight = [\"a\", \"b\"]\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	got, ok := cfg.Release.Hooks.Preflight.([]any)
+	if !ok {
+		t.Fatalf("Hooks.Preflight = %#v (%T), want a []any slice", cfg.Release.Hooks.Preflight, cfg.Release.Hooks.Preflight)
+	}
+	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
+		t.Errorf("Hooks.Preflight = %#v, want [\"a\", \"b\"]", got)
+	}
+}
+
+func TestLoad_PreTagAndPostReleaseHooks_Decode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// pre_tag and post_release decode the same way (string here) so the 3-3/3-4
+	// wiring tasks have them available with no further config change.
+	writeConfig(t, dir, "[release.hooks]\npre_tag = \"scripts/pre-tag.sh\"\npost_release = \"scripts/post.sh\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	preTag, ok := cfg.Release.Hooks.PreTag.(string)
+	if !ok || preTag != "scripts/pre-tag.sh" {
+		t.Errorf("Hooks.PreTag = %#v, want %q", cfg.Release.Hooks.PreTag, "scripts/pre-tag.sh")
+	}
+	postRelease, ok := cfg.Release.Hooks.PostRelease.(string)
+	if !ok || postRelease != "scripts/post.sh" {
+		t.Errorf("Hooks.PostRelease = %#v, want %q", cfg.Release.Hooks.PostRelease, "scripts/post.sh")
+	}
+}
+
 func TestLoad_UnknownKeysTolerated(t *testing.T) {
 	t.Parallel()
 
