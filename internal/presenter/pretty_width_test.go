@@ -10,41 +10,10 @@ import (
 	"mint/internal/presenter"
 )
 
-// notesTitlePrefix is the fixed title segment the pretty titled rule opens with —
-// "── release notes · v{X} " — before the trailing run of U+2500 fills out to the
-// capped width. The width tests build expected rules by filling this prefix to the
-// asserted width, mirroring the presenter's own notesTitledRule construction.
-func notesTitlePrefix(version string) string {
-	return "── release notes · v" + version + " "
-}
-
-// ruleDisplayWidth counts the display columns of a rendered rule line: the rune
-// count of the line with any ANSI SGR escapes stripped. The decorative rule is
-// built from single-column ASCII/box-drawing runes, so the rune count IS the column
-// width — this lets a test assert "the rule is N columns wide" independent of
-// colour styling.
-func ruleDisplayWidth(line string) int {
-	return len([]rune(stripANSI(line)))
-}
-
-// stripANSI removes CSI SGR escape sequences (ESC '[' … 'm') from s so a rendered
-// line can be measured by display columns regardless of colour styling. It is a
-// minimal stripper sufficient for the dim styling lipgloss emits on the rules.
-func stripANSI(s string) string {
-	var b strings.Builder
-	runes := []rune(s)
-	for i := 0; i < len(runes); i++ {
-		if runes[i] == 0x1b && i+1 < len(runes) && runes[i+1] == '[' {
-			i += 2
-			for i < len(runes) && runes[i] != 'm' {
-				i++
-			}
-			continue
-		}
-		b.WriteRune(runes[i])
-	}
-	return b.String()
-}
+// The title-prefix literal (notesTitlePrefix), the display-width measurement
+// (ruleDisplayWidth), and the ANSI stripper (stripANSI) live in the shared
+// pretty_helpers_test.go so they are defined once and referenced — not re-declared —
+// here.
 
 // notesRuleLines splits a rendered pretty ShowNotes block into its lines (dropping
 // the trailing empty element from the final newline) and returns the titled opener

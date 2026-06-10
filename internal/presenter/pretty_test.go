@@ -1166,29 +1166,10 @@ const prettyNotesBody = "Faster cold starts and a calmer log.\n" +
 	"🐛 Fixes\n" +
 	"- Stop double-flush on SIGTERM"
 
-// decorativeRuleWidthForTest is the width the DEFAULT pretty presenter renders its
-// rules to, duplicated here so the tests can build the exact expected rule strings.
-// A presenter constructed without WithTermWidth has termWidth 0, and ruleWidth(0)
-// returns presenter.ruleCap (the unexported cap, 50) — so these layout tests assert
-// the fixed-cap rule. The byte-identity tests below do not depend on it, only the
-// exact-layout ones do.
-const decorativeRuleWidthForTest = 50
-
-// notesTitledRule builds the expected titled opener rule for a version: the
-// "── release notes · v{X} " prefix filled with U+2500 up to the cap width.
-func notesTitledRule(version string) string {
-	prefix := "── release notes · v" + version + " "
-	fill := decorativeRuleWidthForTest - len([]rune(prefix))
-	if fill < 1 {
-		fill = 1
-	}
-	return prefix + strings.Repeat("─", fill)
-}
-
-// notesClosingRule builds the expected closing rule: U+2500 repeated to the cap.
-func notesClosingRule() string {
-	return strings.Repeat("─", decorativeRuleWidthForTest)
-}
+// The expected titled/closing notes rules (notesTitledRule/notesClosingRule), the
+// title-prefix literal, and the rule-width source live in the shared
+// pretty_helpers_test.go so the prefix + fill/clamp arithmetic and the cap appear
+// exactly once on the test side.
 
 // TestPrettyPresenterShowNotesWrapsBodyInTitledRules is the core pretty
 // acceptance: ShowNotes renders a titled opener rule, the body verbatim (flush,
