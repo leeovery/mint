@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strings"
 
+	"mint/internal/git"
 	"mint/internal/runner"
 )
 
@@ -45,15 +46,18 @@ type Outcome struct {
 }
 
 // Releaser creates the annotated tag and performs the atomic push through the
-// injected CommandRunner. Production wiring passes the os/exec-backed runner;
-// tests pass a FakeRunner so the git invocations are scripted and asserted.
+// injected lock-resilient git Mutator. Both the tag and the push are MUTATIONS, so
+// they flow through Mutate (a contended `.git` lock is retried, a stale lock cleared)
+// rather than the raw runner. Production wiring passes a Mutator over the os/exec
+// runner; tests pass a Mutator over a FakeRunner so the git invocations are scripted
+// and asserted.
 type Releaser struct {
-	runner runner.CommandRunner
+	mutator *git.Mutator
 }
 
-// NewReleaser builds a Releaser that issues its git commands through r.
-func NewReleaser(r runner.CommandRunner) *Releaser {
-	return &Releaser{runner: r}
+// NewReleaser builds a Releaser that issues its git mutations through m.
+func NewReleaser(m *git.Mutator) *Releaser {
+	return &Releaser{mutator: m}
 }
 
 // TagAndPush creates the annotated release tag at the current HEAD and then pushes
@@ -92,7 +96,7 @@ func (rel *Releaser) TagAndPush(ctx context.Context, tag, commitPrefix, body str
 // ErrPushRejected because no push has happened yet.
 func (rel *Releaser) createAnnotatedTag(ctx context.Context, tag, commitPrefix, body string) error {
 	message := composeTagMessage(tag, commitPrefix, body)
-	if _, err := rel.runner.RunWith(ctx, strings.NewReader(message), "git", "tag", "-a", tag, "-F", "-"); err != nil {
+	if _, err := rel.mutator.Mutate(ctx, strings.NewReader(message), "git", "tag", "-a", tag, "-F", "-"); err != nil {
 		return fmt.Errorf("creating annotated tag %q: %w", tag, err)
 	}
 	return nil
@@ -105,7 +109,7 @@ func (rel *Releaser) createAnnotatedTag(ctx context.Context, tag, commitPrefix, 
 // rejected it) is wrapped in ErrPushRejected so the caller can distinguish it from
 // a pre-tag failure and stop without publishing.
 func (rel *Releaser) atomicPush(ctx context.Context, tag string) error {
-	_, err := rel.runner.Run(ctx, "git", "push", "--atomic", "origin", "HEAD", tag)
+	_, err := rel.mutator.Mutate(ctx, nil, "git", "push", "--atomic", "origin", "HEAD", tag)
 	if err == nil {
 		return nil
 	}

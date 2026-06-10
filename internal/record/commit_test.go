@@ -4,9 +4,17 @@ import (
 	"errors"
 	"testing"
 
+	"mint/internal/git"
 	"mint/internal/record"
 	"mint/internal/runner"
 )
+
+// mutator wraps a FakeRunner in a *git.Mutator with the production happy-path
+// defaults: no lock error seeded, so Mutate runs each command once and returns —
+// behaving exactly like the bare runner the record functions used before.
+func mutator(f *runner.FakeRunner) *git.Mutator {
+	return git.NewMutator(f)
+}
 
 func TestCommitBookkeeping_ChangelogOnly_StagesChangelogAndCommitsWithSubject(t *testing.T) {
 	t.Parallel()
@@ -20,7 +28,7 @@ func TestCommitBookkeeping_ChangelogOnly_StagesChangelogAndCommitsWithSubject(t 
 	r.Seed("git", runner.Result{}, nil)
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", true, false); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, false); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -53,7 +61,7 @@ func TestCommitBookkeeping_BothChanged_FoldsIntoOneCommit(t *testing.T) {
 	r.Seed("git", runner.Result{}, nil)
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", true, true); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, true); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -86,7 +94,7 @@ func TestCommitBookkeeping_VersionOnly_StagesVersionFileAndCommits(t *testing.T)
 	r.Seed("git", runner.Result{}, nil)
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", false, true); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", false, true); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -117,7 +125,7 @@ func TestCommitBookkeeping_NeitherChanged_SkipsCommit(t *testing.T) {
 	r := runner.NewFakeRunner()
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", false, false); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", false, false); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -149,7 +157,7 @@ func TestCommitBookkeeping_SubjectHonoursPrefixAndTag(t *testing.T) {
 			r := runner.NewFakeRunner()
 			r.Seed("git", runner.Result{}, nil)
 
-			if err := record.CommitBookkeeping(t.Context(), r, "/repo", tt.commitPrefix, tt.tag, "version.txt", true, false); err != nil {
+			if err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", tt.commitPrefix, tt.tag, "version.txt", true, false); err != nil {
 				t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 			}
 
@@ -171,7 +179,7 @@ func TestCommitBookkeeping_StageFails_SurfacesError(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: pathspec error\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	err := record.CommitBookkeeping(t.Context(), r, "/repo", "🌿", "v0.0.1", "version.txt", true, false)
+	err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "version.txt", true, false)
 	if err == nil {
 		t.Fatal("CommitBookkeeping returned nil error, want the git add failure to surface")
 	}
@@ -196,7 +204,7 @@ func TestCommitDirtyTree_DirtyTree_StagesAllAndCommits(t *testing.T) {
 	)
 
 	const dir = "/repo/root"
-	committed, err := record.CommitDirtyTree(t.Context(), r, dir, "chore(release): pre-tag artifacts for v0.0.1")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), dir, "chore(release): pre-tag artifacts for v0.0.1")
 	if err != nil {
 		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
 	}
@@ -232,7 +240,7 @@ func TestCommitDirtyTree_CleanTree_CommitsNothing(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil) // status --porcelain (clean)
 
-	committed, err := record.CommitDirtyTree(t.Context(), r, "/repo", "chore(release): pre-tag artifacts for v0.0.1")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "chore(release): pre-tag artifacts for v0.0.1")
 	if err != nil {
 		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
 	}
@@ -258,7 +266,7 @@ func TestCommitDirtyTree_StatusProbeFails_SurfacesError(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: not a git repo\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	committed, err := record.CommitDirtyTree(t.Context(), r, "/repo", "subject")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject")
 	if err == nil {
 		t.Fatal("CommitDirtyTree returned nil error, want the status probe failure to surface")
 	}
@@ -281,7 +289,7 @@ func TestCommitDirtyTree_StageFails_SurfacesErrorBeforeCommit(t *testing.T) {
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("exit status 1")}, // add -A fails
 	)
 
-	committed, err := record.CommitDirtyTree(t.Context(), r, "/repo", "subject")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject")
 	if err == nil {
 		t.Fatal("CommitDirtyTree returned nil error, want the git add failure to surface")
 	}

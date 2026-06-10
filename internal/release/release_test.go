@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"mint/internal/git"
 	"mint/internal/release"
 	"mint/internal/runner"
 )
@@ -20,7 +21,7 @@ func TestReleaser_TagAndPush_CreatesAnnotatedTagWithSubjectAndBody(t *testing.T)
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
-	rel := release.NewReleaser(r)
+	rel := release.NewReleaser(git.NewMutator(r))
 
 	_, err := rel.TagAndPush(t.Context(), "v0.0.1", "🌿", "Initial release.")
 	if err != nil {
@@ -55,7 +56,7 @@ func TestReleaser_TagAndPush_PushesAtomicHEADAndTag(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
-	rel := release.NewReleaser(r)
+	rel := release.NewReleaser(git.NewMutator(r))
 
 	if _, err := rel.TagAndPush(t.Context(), "v1.2.3", "🌿", "body"); err != nil {
 		t.Fatalf("TagAndPush returned unexpected error: %v", err)
@@ -85,7 +86,7 @@ func TestReleaser_TagAndPush_PushSuccessSignalsPointOfNoReturn(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
-	rel := release.NewReleaser(r)
+	rel := release.NewReleaser(git.NewMutator(r))
 
 	outcome, err := rel.TagAndPush(t.Context(), "v0.0.1", "🌿", "Initial release.")
 	if err != nil {
@@ -111,7 +112,7 @@ func TestReleaser_TagAndPush_RejectedPush_SurfacesFailureAndDoesNotSignalPONR(t 
 		runner.ScriptedCall{Result: runner.Result{Stderr: "! [rejected] HEAD -> main (fetch first)\n", ExitCode: 1}, Err: errors.New("exit status 1")},
 	)
 
-	rel := release.NewReleaser(r)
+	rel := release.NewReleaser(git.NewMutator(r))
 
 	outcome, err := rel.TagAndPush(t.Context(), "v0.0.1", "🌿", "Initial release.")
 	if err == nil {
@@ -134,7 +135,7 @@ func TestReleaser_TagAndPush_TagCreationFails_DistinguishableFromPushRejection(t
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: tag 'v0.0.1' already exists\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	rel := release.NewReleaser(r)
+	rel := release.NewReleaser(git.NewMutator(r))
 
 	outcome, err := rel.TagAndPush(t.Context(), "v0.0.1", "🌿", "Initial release.")
 	if err == nil {
@@ -162,7 +163,7 @@ func TestReleaser_TagAndPush_GitMissing_DistinctFromPushRejection(t *testing.T) 
 	r := runner.NewFakeRunner()
 	r.SeedNotFound("git")
 
-	rel := release.NewReleaser(r)
+	rel := release.NewReleaser(git.NewMutator(r))
 
 	outcome, err := rel.TagAndPush(t.Context(), "v0.0.1", "🌿", "Initial release.")
 	if err == nil {
@@ -192,7 +193,7 @@ func TestReleaser_TagAndPush_PushReportsCommandNotFound_NotTreatedAsRejection(t 
 		runner.ScriptedCall{Err: fmt.Errorf("running %q: %w", "git", runner.ErrCommandNotFound)},
 	)
 
-	rel := release.NewReleaser(r)
+	rel := release.NewReleaser(git.NewMutator(r))
 
 	outcome, err := rel.TagAndPush(t.Context(), "v0.0.1", "🌿", "Initial release.")
 	if err == nil {
@@ -206,6 +207,38 @@ func TestReleaser_TagAndPush_PushReportsCommandNotFound_NotTreatedAsRejection(t 
 	}
 	if outcome.PointOfNoReturnCrossed {
 		t.Error("outcome.PointOfNoReturnCrossed = true when the push could not run, want false")
+	}
+}
+
+func TestReleaser_TagAndPush_ContendedLockOnTag_RecoversThenSucceeds(t *testing.T) {
+	t.Parallel()
+
+	// The tag and push are MUTATIONS, so they flow through the lock-resilient Mutator.
+	// A contended .git lock on the tag creation that clears within the budget must be
+	// retried transparently, so TagAndPush still completes — proving the release
+	// mutation path is wrapped. The lock is presented as a gone/cleared file (no real
+	// lock on disk), so the Mutator just retries; a no-op backoff keeps the test fast.
+	lockStderr := "fatal: Unable to create '/tmp/.git/index.lock': File exists.\n" +
+		"Another git process seems to be running in this repository.\n"
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // tag attempt 1 — contended
+		runner.ScriptedCall{Result: runner.Result{}}, // tag attempt 2 — succeeds
+		runner.ScriptedCall{Result: runner.Result{}}, // push — succeeds
+	)
+	m := git.NewMutator(r, git.WithBackoff(func(int) {}))
+
+	rel := release.NewReleaser(m)
+
+	outcome, err := rel.TagAndPush(t.Context(), "v0.0.1", "🌿", "Initial release.")
+	if err != nil {
+		t.Fatalf("TagAndPush returned unexpected error after a contended-then-cleared lock: %v", err)
+	}
+	if !outcome.PointOfNoReturnCrossed {
+		t.Error("outcome.PointOfNoReturnCrossed = false, want true (the push succeeded after the lock cleared)")
+	}
+	if got := len(r.Invocations()); got != 3 {
+		t.Errorf("git invocations = %d, want 3 (tag retried once then push)", got)
 	}
 }
 

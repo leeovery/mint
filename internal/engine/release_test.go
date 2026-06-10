@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"mint/internal/engine"
+	"mint/internal/git"
 	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -69,10 +70,30 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 // every external call (git via the units, gh via the publisher) is scripted and
 // recorded on one timeline.
 func newDeps(rec *presentertest.RecordingPresenter, f *runner.FakeRunner) engine.ReleaseDeps {
+	// One Mutator is built from the single FakeRunner and shared by both the engine's
+	// mutation calls and the Releaser, mirroring production wiring. With no lock error
+	// seeded it behaves exactly like the bare runner — every existing spine test passes
+	// unchanged through the wrapper.
+	mut := git.NewMutator(f)
 	return engine.ReleaseDeps{
 		Presenter: rec,
 		Runner:    f,
-		Releaser:  release.NewReleaser(f),
+		Mutator:   mut,
+		Releaser:  release.NewReleaser(mut),
+		Publisher: publish.NewGitHubPublisher(f),
+	}
+}
+
+// newDepsWithMutator builds the dependency set around a caller-supplied Mutator so a
+// test can drive the lock-resilient mutation path deterministically (a no-op backoff,
+// a tuned threshold). The Mutator and Releaser share it, exactly as newDeps and
+// production wire them.
+func newDepsWithMutator(rec *presentertest.RecordingPresenter, f *runner.FakeRunner, mut *git.Mutator) engine.ReleaseDeps {
+	return engine.ReleaseDeps{
+		Presenter: rec,
+		Runner:    f,
+		Mutator:   mut,
+		Releaser:  release.NewReleaser(mut),
 		Publisher: publish.NewGitHubPublisher(f),
 	}
 }
@@ -180,6 +201,91 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	fin, _ := rec.At(4)
 	if fin.RunFinished.Version != "0.0.1" {
 		t.Errorf("RunFinished.Version = %q, want %q", fin.RunFinished.Version, "0.0.1")
+	}
+}
+
+// TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes proves the
+// engine's git MUTATIONS flow through the lock-resilient wrapper: a contended .git
+// lock on the bookkeeping `git add` (a provably-stale lock file on disk) is cleared
+// and the mutation retried, so the spine recovers and the run completes — every
+// downstream stage (tag, push, publish) still runs in order. The read-only probes are
+// untouched (the lock logic only wraps mutations).
+func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	// A provably-stale lock on disk in the repo's .git: an old mtime means the Mutator
+	// clears it (no live holder) and retries the add — deterministic, no backoff sleep.
+	gitDir := filepath.Join(root, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatalf("creating .git dir: %v", err)
+	}
+	lockPath := filepath.Join(gitDir, "index.lock")
+	if err := os.WriteFile(lockPath, []byte("pid 1\n"), 0o644); err != nil {
+		t.Fatalf("writing lock file: %v", err)
+	}
+	staleMtime := fixedClock.Add(-1 * time.Hour)
+	if err := os.Chtimes(lockPath, staleMtime, staleMtime); err != nil {
+		t.Fatalf("setting lock mtime: %v", err)
+	}
+	lockStderr := "fatal: Unable to create '" + lockPath + "': File exists.\n" +
+		"Another git process seems to be running in this repository.\n"
+
+	f := runner.NewFakeRunner()
+	// The happy first-release timeline, with ONE lock-error injected on the bookkeeping
+	// `git add CHANGELOG.md` (attempt 1 contended → retried → succeeds).
+	f.SeedSequence("git",
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedOut(""),            // fetch --tags
+		ScriptedOut(""),            // status --porcelain (clean)
+		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1 (absent)
+		ScriptedOut("0\t1"),        // rev-list left-right count
+		ScriptedOut(""),            // ls-remote --tags (free)
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
+		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // -C root add CHANGELOG.md — CONTENDED
+		ScriptedOut(""), // -C root add CHANGELOG.md — retry succeeds
+		ScriptedOut(""), // -C root commit -m
+		ScriptedOut(""), // tag -a v0.0.1 -F -
+		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
+	)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	// A no-op backoff keeps the test fast; a fixed clock makes the stale-vs-live mtime
+	// comparison deterministic against the on-disk lock.
+	mut := git.NewMutator(f,
+		git.WithBackoff(func(int) {}),
+		git.WithNow(func() time.Time { return fixedClock }),
+	)
+
+	if err := engine.Release(t.Context(), newDepsWithMutator(rec, f, mut), patchOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error after a contended-then-cleared lock: %v", err)
+	}
+
+	// The stale lock was cleared so the retry could take it.
+	if _, err := os.Stat(lockPath); err == nil {
+		t.Error("stale lock file still present, want it cleared before the retry")
+	}
+
+	// The bookkeeping add ran TWICE (contended then retried), and the run still reached
+	// the tag, push and provider release in order.
+	addCount := 0
+	for _, inv := range f.Invocations() {
+		if commandLine(inv) == "git -C "+root+" add CHANGELOG.md" {
+			addCount++
+		}
+	}
+	if addCount != 2 {
+		t.Errorf("bookkeeping `git add` ran %d times, want 2 (contended then a successful retry)", addCount)
+	}
+
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("run did not finish after the lock cleared; last event = %v", fin.Kind)
 	}
 }
 

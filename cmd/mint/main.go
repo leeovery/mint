@@ -14,6 +14,7 @@ import (
 	"os"
 
 	"mint/internal/engine"
+	"mint/internal/git"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/release"
@@ -53,12 +54,17 @@ func run(args []string) int {
 	// site. TTY/mode detection never happens downstream.
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
 
-	// One runner backs every external-command seam.
+	// One runner backs every external-command seam. The lock-resilient git Mutator is
+	// constructed ONCE over that runner and shared by the engine's mutation calls and
+	// the Releaser, so every git mutation (commit, tag, push, reset, tag-delete) retries
+	// a contended .git lock and clears a provably-stale one. Read-only git stays on r.
 	r := runner.NewExecRunner()
+	mut := git.NewMutator(r)
 	deps := engine.ReleaseDeps{
 		Presenter: p,
 		Runner:    r,
-		Releaser:  release.NewReleaser(r),
+		Mutator:   mut,
+		Releaser:  release.NewReleaser(mut),
 		Publisher: publish.NewGitHubPublisher(r),
 		// The `e` review-gate choice hands the notes to the real $EDITOR resolution,
 		// launched interactively through the same presenter + runner. The launcher

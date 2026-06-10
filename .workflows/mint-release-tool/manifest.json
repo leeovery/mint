@@ -450,9 +450,9 @@
         "mint-release-tool": {
           "status": "in-progress",
           "task_gate_mode": "auto",
-          "fix_gate_mode": "gated",
+          "fix_gate_mode": "auto",
           "analysis_gate_mode": "gated",
-          "fix_attempts": 0,
+          "fix_attempts": 1,
           "analysis_cycle_total": 0,
           "analysis_cycle_session": 0,
           "linters": [
@@ -486,7 +486,7 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 4,
-          "current_task": "mint-release-tool-4-1",
+          "current_task": "mint-release-tool-4-2",
           "completed_tasks": [
             "mint-release-tool-1-1",
             "mint-release-tool-1-2",
@@ -525,7 +525,8 @@
             "mint-release-tool-3-8",
             "mint-release-tool-3-9",
             "mint-release-tool-3-10",
-            "mint-release-tool-3-11"
+            "mint-release-tool-3-11",
+            "mint-release-tool-4-1"
           ],
           "completed_phases": [
             1,

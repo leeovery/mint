@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"mint/internal/runner"
+	"mint/internal/git"
 )
 
 // CommitDirtyTree commits whatever a pre_tag hook left dirty as its OWN commit,
@@ -24,8 +24,10 @@ import (
 // A non-zero `git status` or `git add` exit short-circuits before the next step (so
 // a failed probe or stage can never produce a commit) and the error is surfaced for
 // the orchestrator to abort/unwind on.
-func CommitDirtyTree(ctx context.Context, r runner.CommandRunner, dir, subject string) (bool, error) {
-	status, err := r.Run(ctx, "git", "-C", dir, "status", "--porcelain")
+func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string) (bool, error) {
+	// The status probe is a READ, so it goes through the Mutator's plain pass-through
+	// (m.Run) — no lock logic. Only the add/commit mutations carry lock resilience.
+	status, err := m.Run(ctx, "git", "-C", dir, "status", "--porcelain")
 	if err != nil {
 		return false, fmt.Errorf("probing tree status in %s: %w", dir, err)
 	}
@@ -33,10 +35,10 @@ func CommitDirtyTree(ctx context.Context, r runner.CommandRunner, dir, subject s
 		return false, nil
 	}
 
-	if _, err := r.Run(ctx, "git", "-C", dir, "add", "-A"); err != nil {
+	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "add", "-A"); err != nil {
 		return false, fmt.Errorf("staging dirty tree in %s: %w", dir, err)
 	}
-	if _, err := r.Run(ctx, "git", "-C", dir, "commit", "-m", subject); err != nil {
+	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
 		return false, fmt.Errorf("committing dirty tree %q: %w", subject, err)
 	}
 	return true, nil
@@ -64,19 +66,19 @@ func CommitDirtyTree(ctx context.Context, r runner.CommandRunner, dir, subject s
 //
 // This bookkeeping commit is kept DISTINCT from the pre_tag hook-artifact commit
 // (CommitDirtyTree), which precedes it with its own chore subject.
-func CommitBookkeeping(ctx context.Context, r runner.CommandRunner, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool) error {
+func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool) error {
 	paths := bookkeepingPaths(versionFile, changelogChanged, versionChanged)
 	if len(paths) == 0 {
 		return nil
 	}
 
 	addArgs := append([]string{"-C", dir, "add"}, paths...)
-	if _, err := r.Run(ctx, "git", addArgs...); err != nil {
+	if _, err := m.Mutate(ctx, nil, "git", addArgs...); err != nil {
 		return fmt.Errorf("staging %v: %w", paths, err)
 	}
 
 	subject := fmt.Sprintf("%s Release %s", commitPrefix, tag)
-	if _, err := r.Run(ctx, "git", "-C", dir, "commit", "-m", subject); err != nil {
+	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
 		return fmt.Errorf("committing release bookkeeping %q: %w", subject, err)
 	}
 	return nil

@@ -31,6 +31,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/config"
+	"mint/internal/git"
 	"mint/internal/gitrepo"
 	"mint/internal/hooks"
 	"mint/internal/notes"
@@ -94,9 +95,16 @@ type ReleaseDeps struct {
 	// through it and never touches stdout/TTY directly.
 	Presenter presenter.Presenter
 	// Runner is the external-command seam the read-side units (gitrepo, version,
-	// preflight, record) issue git through.
+	// preflight, record reads, notes) issue git through unchanged — read-only git
+	// calls do NOT go through the lock wrapper.
 	Runner runner.CommandRunner
-	// Releaser performs the point-of-no-return tag + atomic push.
+	// Mutator is the lock-resilient git MUTATION wrapper. Every git mutation the engine
+	// drives — the record bookkeeping/artifact commits and the unwind's reset/tag-delete
+	// — flows through it (retry on a contended lock, clear a provably-stale one). It is
+	// constructed ONCE from the raw runner and shared with the Releaser (which wraps the
+	// same Mutator for its tag + push). Read-only probes stay on Runner.
+	Mutator *git.Mutator
+	// Releaser performs the point-of-no-return tag + atomic push through the same Mutator.
 	Releaser *release.Releaser
 	// Publisher publishes the provider release after the push crosses the PONR.
 	Publisher publish.Publisher
@@ -314,7 +322,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// ONE folded bookkeeping commit stages the changelog and the version file together —
 	// the version file is never given its own separate commit. Kept DISTINCT from the
 	// pre_tag artifact commit (3-3), which precedes it.
-	if err := record.CommitBookkeeping(ctx, deps.Runner, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
+	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
 		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
 	}
 
@@ -507,25 +515,28 @@ func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
 // exit. It emits NO StageFailed (stage-failure callers emit that first via
 // surfaceAndUnwind; the gate-no path emits none).
 //
-// Phase 4 hardening is DEFERRED and deliberately NOT implemented here: precise
-// N-commit surgical counting beyond a simple reset, lock-resilient git wrapping, and
-// --autostash stash/restore ordering all land in Phase 4. This is the spine reset.
+// Phase 4 hardening: the reset and tag-delete MUTATIONS now flow through the
+// lock-resilient Mutator (a contended .git lock is retried, a stale lock cleared).
+// Precise N-commit surgical counting beyond a simple reset and --autostash
+// stash/restore ordering remain SEPARATE Phase 4 tasks. This is the spine reset.
 func unwind(ctx context.Context, deps ReleaseDeps, startingHEAD, tag string, tagMayExist bool, reason error) error {
 	commitReset := false
 	if current, err := resolveHEAD(ctx, deps.Runner); err != nil || current != startingHEAD {
 		// On a probe error the safe move is still to reset to the known-clean start; on a
 		// moved HEAD the reset is mandatory. Either way reset to the captured starting
-		// state. A reset failure is best-effort here (Phase 4 adds lock-resilient
-		// wrapping); the abort still carries the original reason.
-		_, _ = deps.Runner.Run(ctx, "git", "reset", "--hard", startingHEAD)
+		// state. The reset is a MUTATION, so it flows through the lock-resilient Mutator
+		// (a contended .git lock during the unwind is retried, a stale lock cleared). A
+		// reset failure is best-effort here; the abort still carries the original reason.
+		_, _ = deps.Mutator.Mutate(ctx, nil, "git", "reset", "--hard", startingHEAD)
 		commitReset = true
 	}
 
 	tagDeleted := false
 	if tagMayExist {
 		// Best-effort: a "tag not found" non-zero is not fatal — the goal is that no tag
-		// mint made this run survives the abort.
-		_, _ = deps.Runner.Run(ctx, "git", "tag", "-d", tag)
+		// mint made this run survives the abort. The delete is a MUTATION, so it too flows
+		// through the lock-resilient Mutator.
+		_, _ = deps.Mutator.Mutate(ctx, nil, "git", "tag", "-d", tag)
 		tagDeleted = true
 	}
 
@@ -666,7 +677,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return err
 	}
-	_, err := record.CommitDirtyTree(ctx, deps.Runner, root, pretagArtifactSubject(tag))
+	_, err := record.CommitDirtyTree(ctx, deps.Mutator, root, pretagArtifactSubject(tag))
 	return err
 }
 
