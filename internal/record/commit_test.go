@@ -8,19 +8,19 @@ import (
 	"mint/internal/runner"
 )
 
-func TestCommitBookkeeping_StagesChangelogAndCommitsWithSubject(t *testing.T) {
+func TestCommitBookkeeping_ChangelogOnly_StagesChangelogAndCommitsWithSubject(t *testing.T) {
 	t.Parallel()
 
-	// The release-bookkeeping commit stages the changelog change and commits with
-	// subject `{commit_prefix} Release {tag}` through the CommandRunner seam — no
-	// real git. Both invocations target the repo root via `git -C {dir}`, and the
-	// commit subject is asserted exactly (the default 🌿 prefix gives `🌿 Release
-	// v0.0.1`).
+	// A changelog-only bookkeeping commit (no version file change) stages JUST the
+	// changelog and commits with subject `{commit_prefix} Release {tag}` through the
+	// CommandRunner seam — no real git. Both invocations target the repo root via
+	// `git -C {dir}`, and the commit subject is asserted exactly (the default 🌿
+	// prefix gives `🌿 Release v0.0.1`).
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{}, nil)
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", true); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", true, false); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -32,13 +32,97 @@ func TestCommitBookkeeping_StagesChangelogAndCommitsWithSubject(t *testing.T) {
 	add := invs[0]
 	wantAdd := []string{"-C", dir, "add", "CHANGELOG.md"}
 	if add.Name != "git" || !equalArgs(add.Args, wantAdd) {
-		t.Errorf("stage invocation = %s %v, want git %v", add.Name, add.Args, wantAdd)
+		t.Errorf("stage invocation = %s %v, want git %v (changelog only, version unchanged)", add.Name, add.Args, wantAdd)
 	}
 
 	commit := invs[1]
 	wantCommit := []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}
 	if commit.Name != "git" || !equalArgs(commit.Args, wantCommit) {
 		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
+	}
+}
+
+func TestCommitBookkeeping_BothChanged_FoldsIntoOneCommit(t *testing.T) {
+	t.Parallel()
+
+	// When BOTH the changelog and the version file changed, they fold into ONE commit:
+	// a single `git -C {dir} add CHANGELOG.md {versionFile}` staging BOTH paths,
+	// followed by a single `git -C {dir} commit -m {commit_prefix} Release {tag}`. The
+	// version file is NEVER given its own separate commit.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{}, nil)
+
+	const dir = "/repo/root"
+	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", true, true); err != nil {
+		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 2 {
+		t.Fatalf("invocations = %d, want 2 (one folded add then one commit)\n got: %v", len(invs), invs)
+	}
+
+	add := invs[0]
+	wantAdd := []string{"-C", dir, "add", "CHANGELOG.md", "version.txt"}
+	if add.Name != "git" || !equalArgs(add.Args, wantAdd) {
+		t.Errorf("stage invocation = %s %v, want git %v (both paths in ONE add)", add.Name, add.Args, wantAdd)
+	}
+
+	commit := invs[1]
+	wantCommit := []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}
+	if commit.Name != "git" || !equalArgs(commit.Args, wantCommit) {
+		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
+	}
+}
+
+func TestCommitBookkeeping_VersionOnly_StagesVersionFileAndCommits(t *testing.T) {
+	t.Parallel()
+
+	// When ONLY the version file changed (the changelog netted no change, e.g.
+	// changelog disabled), the bookkeeping commit stages JUST the version file and
+	// still commits with subject `{commit_prefix} Release {tag}`. The changelog is NOT
+	// staged.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{}, nil)
+
+	const dir = "/repo/root"
+	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", false, true); err != nil {
+		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 2 {
+		t.Fatalf("invocations = %d, want 2 (version-file add then commit)\n got: %v", len(invs), invs)
+	}
+
+	add := invs[0]
+	wantAdd := []string{"-C", dir, "add", "version.txt"}
+	if add.Name != "git" || !equalArgs(add.Args, wantAdd) {
+		t.Errorf("stage invocation = %s %v, want git %v (version file only)", add.Name, add.Args, wantAdd)
+	}
+
+	commit := invs[1]
+	wantCommit := []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}
+	if commit.Name != "git" || !equalArgs(commit.Args, wantCommit) {
+		t.Errorf("commit invocation = %s %v, want git %v", commit.Name, commit.Args, wantCommit)
+	}
+}
+
+func TestCommitBookkeeping_NeitherChanged_SkipsCommit(t *testing.T) {
+	t.Parallel()
+
+	// Combined no-op: when NEITHER the changelog nor the version file changed there is
+	// nothing to stage, so mint creates NO commit (no empty commit) and never touches
+	// the runner — even though a version file path is configured.
+	r := runner.NewFakeRunner()
+
+	const dir = "/repo/root"
+	if err := record.CommitBookkeeping(t.Context(), r, dir, "🌿", "v0.0.1", "version.txt", false, false); err != nil {
+		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
+	}
+
+	if got := len(r.Invocations()); got != 0 {
+		t.Errorf("invocations = %d, want 0 (combined no-op must not stage or commit)", got)
 	}
 }
 
@@ -65,7 +149,7 @@ func TestCommitBookkeeping_SubjectHonoursPrefixAndTag(t *testing.T) {
 			r := runner.NewFakeRunner()
 			r.Seed("git", runner.Result{}, nil)
 
-			if err := record.CommitBookkeeping(t.Context(), r, "/repo", tt.commitPrefix, tt.tag, true); err != nil {
+			if err := record.CommitBookkeeping(t.Context(), r, "/repo", tt.commitPrefix, tt.tag, "version.txt", true, false); err != nil {
 				t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 			}
 
@@ -78,23 +162,6 @@ func TestCommitBookkeeping_SubjectHonoursPrefixAndTag(t *testing.T) {
 	}
 }
 
-func TestCommitBookkeeping_NoChange_SkipsCommit(t *testing.T) {
-	t.Parallel()
-
-	// No-op safety: when the changelog write produced no net change there is
-	// nothing to stage, so mint creates NO commit (no empty commits). The runner is
-	// never touched at all.
-	r := runner.NewFakeRunner()
-
-	if err := record.CommitBookkeeping(t.Context(), r, "/repo", "🌿", "v0.0.1", false); err != nil {
-		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
-	}
-
-	if got := len(r.Invocations()); got != 0 {
-		t.Errorf("invocations = %d, want 0 (no-op changelog must not stage or commit)", got)
-	}
-}
-
 func TestCommitBookkeeping_StageFails_SurfacesError(t *testing.T) {
 	t.Parallel()
 
@@ -104,7 +171,7 @@ func TestCommitBookkeeping_StageFails_SurfacesError(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: pathspec error\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	err := record.CommitBookkeeping(t.Context(), r, "/repo", "🌿", "v0.0.1", true)
+	err := record.CommitBookkeeping(t.Context(), r, "/repo", "🌿", "v0.0.1", "version.txt", true, false)
 	if err == nil {
 		t.Fatal("CommitBookkeeping returned nil error, want the git add failure to surface")
 	}

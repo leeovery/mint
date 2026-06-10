@@ -275,10 +275,26 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		return err
 	}
 
-	// Stage 5 — record: write changelog (gated by the changelog toggle), then the
-	// bookkeeping commit. When changelog=false WriteChangelog no-ops (Changed:false)
-	// so CommitBookkeeping skips the commit — the tag then points at the existing
-	// HEAD and STILL carries the full body via TagAndPush. Nothing durable is lost.
+	// Stage 5 — record: project the version file, write the changelog, then fold BOTH
+	// into one bookkeeping commit.
+	//
+	// The version-file projection runs FIRST (deliberate ordering): in embedded mode a
+	// pattern that matches nothing is a fail-loud abort, and projecting first means that
+	// mismatch fires BEFORE the changelog file is touched — so a clean abort leaves no
+	// partial dirty changelog behind. The projection is filesystem-only (no git), so it
+	// adds no git calls; its change is staged by CommitBookkeeping below. An empty
+	// version_file is tag-only and no-ops (versionChanged false).
+	versionChanged, err := record.ProjectVersionFile(root, cfg.Release.VersionFile, cfg.Release.VersionPattern, versionKey)
+	if err != nil {
+		// Post-mutation, pre-PONR: route through the shared auto-unwind so any version-file
+		// write (and a moved HEAD) is reset back to the clean start. No tag exists yet.
+		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
+	}
+
+	// When changelog=false WriteChangelog no-ops (Changed:false). When the version file
+	// also nets no change, CommitBookkeeping makes NO commit — the tag then points at the
+	// existing HEAD (or any pre_tag artifact commit) and STILL carries the full body via
+	// TagAndPush. Nothing durable is lost.
 	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, cfg.Release.Changelog)
 	if err != nil {
 		// Post-mutation, pre-PONR: route through the shared auto-unwind so a half-written
@@ -286,7 +302,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		// abort path is identical to the pre-push failure path. No tag exists yet.
 		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
 	}
-	if err := record.CommitBookkeeping(ctx, deps.Runner, root, cfg.Release.CommitPrefix, tag, writeResult.Changed); err != nil {
+
+	// ONE folded bookkeeping commit stages the changelog and the version file together —
+	// the version file is never given its own separate commit. Kept DISTINCT from the
+	// pre_tag artifact commit (3-3), which precedes it.
+	if err := record.CommitBookkeeping(ctx, deps.Runner, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
 		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
 	}
 

@@ -42,27 +42,37 @@ func CommitDirtyTree(ctx context.Context, r runner.CommandRunner, dir, subject s
 	return true, nil
 }
 
-// CommitBookkeeping builds the single Phase 1 release-bookkeeping commit: it
-// stages the changelog change and commits it with subject
+// CommitBookkeeping builds the single release-bookkeeping commit, FOLDING the
+// changelog change and the version-file projection into ONE commit with subject
 // `{commitPrefix} Release {tag}` (e.g. the default 🌿 prefix yields
 // `🌿 Release v0.0.1`). Both git invocations target dir (the repo root) via
 // `git -C {dir}` so they are independent of the process working directory.
 //
-// changed is the net-change signal from WriteChangelog: when false there is
-// nothing to stage, so CommitBookkeeping is a no-op and creates NO commit — mint
-// never makes an empty commit. A non-zero `git add` exit short-circuits before
-// the commit so a failed stage can never produce a commit; the error is surfaced
-// for the orchestrator to unwind.
+// changelogChanged and versionChanged are the net-change signals from
+// WriteChangelog and ProjectVersionFile. Only what actually changed is staged: the
+// changelog when changelogChanged, and versionFile when versionChanged (and a
+// versionFile path is configured) — mint never `git add`s an untouched or absent
+// path. Whatever changed is staged in ONE `git -C {dir} add {paths…}` invocation,
+// so the version file is NEVER given its own separate commit — it is always folded
+// here alongside the changelog.
 //
-// Phase 1 records exactly this one commit. The separate hook-artifact commit and
-// the version-file projection fold-in are Phase 3 and deliberately not here.
-func CommitBookkeeping(ctx context.Context, r runner.CommandRunner, dir, commitPrefix, tag string, changed bool) error {
-	if !changed {
+// COMBINED NO-OP: when neither the changelog nor the version file changed there is
+// nothing to stage, so CommitBookkeeping is a no-op and creates NO commit — mint
+// never makes an empty commit. A non-zero `git add` exit short-circuits before the
+// commit so a failed stage can never produce a commit; the error is surfaced for
+// the orchestrator to unwind.
+//
+// This bookkeeping commit is kept DISTINCT from the pre_tag hook-artifact commit
+// (CommitDirtyTree), which precedes it with its own chore subject.
+func CommitBookkeeping(ctx context.Context, r runner.CommandRunner, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool) error {
+	paths := bookkeepingPaths(versionFile, changelogChanged, versionChanged)
+	if len(paths) == 0 {
 		return nil
 	}
 
-	if _, err := r.Run(ctx, "git", "-C", dir, "add", changelogFileName); err != nil {
-		return fmt.Errorf("staging %s: %w", changelogFileName, err)
+	addArgs := append([]string{"-C", dir, "add"}, paths...)
+	if _, err := r.Run(ctx, "git", addArgs...); err != nil {
+		return fmt.Errorf("staging %v: %w", paths, err)
 	}
 
 	subject := fmt.Sprintf("%s Release %s", commitPrefix, tag)
@@ -70,4 +80,19 @@ func CommitBookkeeping(ctx context.Context, r runner.CommandRunner, dir, commitP
 		return fmt.Errorf("committing release bookkeeping %q: %w", subject, err)
 	}
 	return nil
+}
+
+// bookkeepingPaths assembles, in stage order, the paths the bookkeeping commit
+// stages: the changelog when it changed, then the version file when it changed and
+// a path is configured. An empty result is the combined no-op — nothing to stage,
+// so no commit.
+func bookkeepingPaths(versionFile string, changelogChanged, versionChanged bool) []string {
+	var paths []string
+	if changelogChanged {
+		paths = append(paths, changelogFileName)
+	}
+	if versionChanged && versionFile != "" {
+		paths = append(paths, versionFile)
+	}
+	return paths
 }

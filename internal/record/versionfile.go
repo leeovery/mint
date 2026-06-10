@@ -27,6 +27,32 @@ const versionSlot = `\d+\.\d+\.\d+`
 // so errors.Is matches and the message names the file.
 var ErrVersionPatternNoMatch = errors.New("record: version_pattern matched nothing")
 
+// ProjectVersionFile is the single entry point for the version-file projection: it
+// dispatches to the right mode from the configured knobs and reports whether the
+// projection produced a net change on disk.
+//
+//   - versionFile == "" → tag-only: there is NO projection, so it returns
+//     (false, nil) without touching the filesystem.
+//   - versionPattern == "" → PLAIN mode (the whole file IS the version):
+//     ProjectVersionFilePlain.
+//   - otherwise → EMBEDDED mode (surgical version-slot replacement in a real source
+//     file): ProjectVersionFileEmbedded, whose fail-loud ErrVersionPatternNoMatch
+//     (a configured pattern that matches nothing) propagates as the error so the
+//     release aborts during Record, before the tag.
+//
+// Like the mode functions it produces only the filesystem write and the changed
+// signal; the change is staged into the single bookkeeping commit by
+// CommitBookkeeping — there is no separate version-file commit.
+func ProjectVersionFile(root, versionFile, versionPattern, version string) (changed bool, err error) {
+	if versionFile == "" {
+		return false, nil
+	}
+	if versionPattern == "" {
+		return ProjectVersionFilePlain(root, versionFile, version)
+	}
+	return ProjectVersionFileEmbedded(root, versionFile, versionPattern, version)
+}
+
 // ProjectVersionFilePlain mirrors version into the PLAIN-mode version file at
 // {root}/{versionFile} and reports whether it produced a net change on disk.
 //
