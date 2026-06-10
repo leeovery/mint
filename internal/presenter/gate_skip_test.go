@@ -31,10 +31,8 @@ func (r *failingReader) Read(p []byte) (int, error) {
 // declared default, and reads NOTHING from the input reader.
 func TestPlainPromptSkipsGateUnderYesEchoesAcceptedToOut(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPlainPresenterWithInput(out, errBuf, reader).WithYes(true)
+	p, out, _ := plainGate(reader, gateOpts{yes: true})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -55,8 +53,7 @@ func TestPlainPromptSkipsGateUnderYesEchoesAcceptedToOut(t *testing.T) {
 // rendered under -y: no "[y/n/e/r]" hint and no "Continue?" question reach out.
 func TestPlainPromptUnderYesDrawsNoMenu(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("")).WithYes(true)
+	p, out, _ := plainGate(strings.NewReader(""), gateOpts{yes: true})
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("plain Prompt under -y returned error: %v", err)
@@ -74,9 +71,7 @@ func TestPlainPromptUnderYesDrawsNoMenu(t *testing.T) {
 // (stdout) only — stderr is EMPTY after a -y Prompt.
 func TestPlainPromptUnderYesEchoesStdoutOnly(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, errBuf, strings.NewReader("")).WithYes(true)
+	p, _, errBuf := plainGate(strings.NewReader(""), gateOpts{yes: true})
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("plain Prompt under -y returned error: %v", err)
@@ -91,9 +86,8 @@ func TestPlainPromptUnderYesEchoesStdoutOnly(t *testing.T) {
 // menu, and emits the SAME "notes: accepted (-y)" echo (subject "notes").
 func TestPlainReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 	gate := presenter.ReuseConfirmGate()
-	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, reader).WithYes(true)
+	p, out, _ := plainGate(reader, gateOpts{yes: true})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -115,8 +109,7 @@ func TestPlainReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 // scripted choice — the interactive path is UNCHANGED.
 func TestPlainPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("y\n"))
+	p, out, _ := plainGate(strings.NewReader("y\n"), gateOpts{})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -137,8 +130,7 @@ func TestPlainPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 // the synthesised "{subject}: accepted (-y)" echo: it must be pure ASCII — no ESC,
 // no CR, nothing above the printable range — mirroring the other plain guards.
 func TestPlainPromptUnderYesEchoIsBytePureASCII(t *testing.T) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("")).WithYes(true)
+	p, out, _ := plainGate(strings.NewReader(""), gateOpts{yes: true})
 	if _, err := p.Prompt(presenter.NotesReviewGate()); err != nil {
 		t.Fatalf("plain Prompt under -y returned error: %v", err)
 	}
@@ -151,9 +143,8 @@ func TestPlainPromptUnderYesEchoIsBytePureASCII(t *testing.T) {
 // returns the gate's declared default, and reads NOTHING from the input reader.
 func TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(reader)).WithYes(true)
+	p, out, _ := prettyGate(termenv.Ascii, reader, gateOpts{yes: true})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -174,8 +165,7 @@ func TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine(t *testing.T) {
 // under -y: no "Continue? ›" prompt and no option lines reach out.
 func TestPrettyPromptUnderYesDrawsNoMenu(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithYes(true)
+	p, out, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
@@ -195,9 +185,7 @@ func TestPrettyPromptUnderYesDrawsNoMenu(t *testing.T) {
 // narration (stdout) only — the err stream is EMPTY after a -y Prompt.
 func TestPrettyPromptUnderYesEchoesStdoutOnly(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithYes(true)
+	p, _, errBuf := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
@@ -212,9 +200,8 @@ func TestPrettyPromptUnderYesEchoesStdoutOnly(t *testing.T) {
 // menu, and emits the SAME "  ✓ notes  accepted (-y)" accept line (subject "notes").
 func TestPrettyReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 	gate := presenter.ReuseConfirmGate()
-	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(reader)).WithYes(true)
+	p, out, _ := prettyGate(termenv.Ascii, reader, gateOpts{yes: true})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -236,8 +223,7 @@ func TestPrettyReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 // returning the scripted choice — the interactive path is UNCHANGED.
 func TestPrettyPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
+	p, out, _ := prettyGate(termenv.Ascii, strings.NewReader("y\n"), gateOpts{})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -259,8 +245,7 @@ func TestPrettyPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 // accepted (-y)" structure survives as contiguous substrings.
 func TestPrettyYesAcceptLineColourOnStylesGlyph(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(""))).WithYes(true)
+	p, out, _ := prettyGate(termenv.TrueColor, strings.NewReader(""), gateOpts{yes: true})
 
 	if _, err := p.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
@@ -304,8 +289,7 @@ func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 		Default: presenter.Choice("github"),
 	}
 
-	out := &bytes.Buffer{}
-	plain := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("")).WithYes(true)
+	plain, out, _ := plainGate(strings.NewReader(""), gateOpts{yes: true})
 	if _, err := plain.Prompt(gate); err != nil {
 		t.Fatalf("plain Prompt under -y returned error: %v", err)
 	}
@@ -313,8 +297,7 @@ func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 		t.Errorf("plain subject echo = %q, want %q", got, "source: github (-y)\n")
 	}
 
-	prettyOut := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithYes(true)
+	pretty, prettyOut, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
 	if _, err := pretty.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
 	}

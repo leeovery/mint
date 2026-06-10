@@ -81,8 +81,7 @@ func TestTargetGateCarriesEngineSuppliedOptionsAndDefault(t *testing.T) {
 // TWICE (once before the bogus read, once before the valid read).
 func TestSourceGateUnrecognisedInputRePromptsThenAccepts(t *testing.T) {
 	gate := presenter.SourceGate(sourceOptions(), presenter.Choice("github"))
-	out := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("bogus\ngithub\n"))
+	p, out, _ := plainGate(strings.NewReader("bogus\ngithub\n"), gateOpts{})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -100,8 +99,7 @@ func TestSourceGateUnrecognisedInputRePromptsThenAccepts(t *testing.T) {
 // target prompts as terse key:value-style prompt lines with the option-key hint —
 // NOT the pretty vertical menu. The hint is built from the declared option keys.
 func TestPlainSourceTargetRenderTerseKeyValueLines(t *testing.T) {
-	srcOut := &bytes.Buffer{}
-	src := presenter.NewPlainPresenterWithInput(srcOut, &bytes.Buffer{}, strings.NewReader("github\n"))
+	src, srcOut, _ := plainGate(strings.NewReader("github\n"), gateOpts{})
 	if _, err := src.Prompt(presenter.SourceGate(sourceOptions(), presenter.Choice("github"))); err != nil {
 		t.Fatalf("plain source Prompt returned error: %v", err)
 	}
@@ -109,8 +107,7 @@ func TestPlainSourceTargetRenderTerseKeyValueLines(t *testing.T) {
 		t.Errorf("plain source prompt = %q, want terse key:value line %q", got, "Source? [github/gitlab]\n")
 	}
 
-	tgtOut := &bytes.Buffer{}
-	tgt := presenter.NewPlainPresenterWithInput(tgtOut, &bytes.Buffer{}, strings.NewReader("stable\n"))
+	tgt, tgtOut, _ := plainGate(strings.NewReader("stable\n"), gateOpts{})
 	if _, err := tgt.Prompt(presenter.TargetGate(targetOptions(), presenter.Choice("stable"))); err != nil {
 		t.Fatalf("plain target Prompt returned error: %v", err)
 	}
@@ -135,9 +132,8 @@ func TestPlainSourceTargetRenderTerseKeyValueLines(t *testing.T) {
 func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
 	gate := presenter.SourceGate(sourceOptions(), presenter.Choice("github"))
 
-	plainOut := &bytes.Buffer{}
 	plainReader := &failingReader{t: t}
-	plain := presenter.NewPlainPresenterWithInput(plainOut, &bytes.Buffer{}, plainReader).WithYes(true)
+	plain, plainOut, _ := plainGate(plainReader, gateOpts{yes: true})
 	choice, err := plain.Prompt(gate)
 	if err != nil {
 		t.Fatalf("plain source Prompt under -y returned error: %v", err)
@@ -149,9 +145,8 @@ func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
 		t.Errorf("plain source -y echo = %q, want %q", got, "source: github (-y)\n")
 	}
 
-	prettyOut := &bytes.Buffer{}
 	prettyReader := &failingReader{t: t}
-	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(prettyReader)).WithYes(true)
+	pretty, prettyOut, _ := prettyGate(termenv.Ascii, prettyReader, gateOpts{yes: true})
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
 		t.Fatalf("pretty source Prompt under -y returned error: %v", perr)
@@ -168,9 +163,8 @@ func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
 // chosen target value: plain "target: stable (-y)".
 func TestYesEchoesChosenTargetPlain(t *testing.T) {
 	gate := presenter.TargetGate(targetOptions(), presenter.Choice("stable"))
-	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, reader).WithYes(true)
+	p, out, _ := plainGate(reader, gateOpts{yes: true})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -187,8 +181,7 @@ func TestYesEchoesChosenTargetPlain(t *testing.T) {
 // TestYesSourceEchoIsBytePureASCII guards that the source -y echo stays byte-pure
 // ASCII (the option keys are ASCII identifiers).
 func TestYesSourceEchoIsBytePureASCII(t *testing.T) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("")).WithYes(true)
+	p, out, _ := plainGate(strings.NewReader(""), gateOpts{yes: true})
 	if _, err := p.Prompt(presenter.SourceGate(sourceOptions(), presenter.Choice("github"))); err != nil {
 		t.Fatalf("plain source Prompt under -y returned error: %v", err)
 	}
@@ -202,10 +195,8 @@ func TestYesSourceEchoIsBytePureASCII(t *testing.T) {
 // reading stdin.
 func TestSourceGateForbiddenComboFailsLoud(t *testing.T) {
 	gate := presenter.SourceGate(sourceOptions(), presenter.Choice("github"))
-	out := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPlainPresenterWithInput(out, errBuf, reader).WithInteractiveStdin(false)
+	p, out, errBuf := plainGate(reader, gateOpts{nonInteractiveStdin: true})
 
 	choice, err := p.Prompt(gate)
 	if !errors.Is(err, presenter.ErrNotInteractive) {
@@ -232,9 +223,8 @@ func TestSourceGateForbiddenComboFailsLoud(t *testing.T) {
 // hardcoded one.
 func TestSourceGateFlagDefaultUsedWhenSkipped(t *testing.T) {
 	gate := presenter.SourceGate(sourceOptions(), presenter.Choice("gitlab"))
-	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, reader).WithYes(true)
+	p, out, _ := plainGate(reader, gateOpts{yes: true})
 
 	choice, err := p.Prompt(gate)
 	if err != nil {
@@ -252,8 +242,7 @@ func TestSourceGateFlagDefaultUsedWhenSkipped(t *testing.T) {
 // "GITHUB\n" maps case-insensitively to Choice("github"); a bare "\n" selects the
 // declared default.
 func TestSourceGateCaseInsensitiveAndEmptyEnterDefault(t *testing.T) {
-	upperOut := &bytes.Buffer{}
-	upper := presenter.NewPlainPresenterWithInput(upperOut, &bytes.Buffer{}, strings.NewReader("GITHUB\n"))
+	upper, _, _ := plainGate(strings.NewReader("GITHUB\n"), gateOpts{})
 	choice, err := upper.Prompt(presenter.SourceGate(sourceOptions(), presenter.Choice("github")))
 	if err != nil {
 		t.Fatalf("plain source Prompt (uppercase) returned error: %v", err)
@@ -262,8 +251,7 @@ func TestSourceGateCaseInsensitiveAndEmptyEnterDefault(t *testing.T) {
 		t.Errorf("source Prompt(\"GITHUB\") = %q, want case-insensitive %q", choice, "github")
 	}
 
-	emptyOut := &bytes.Buffer{}
-	empty := presenter.NewPlainPresenterWithInput(emptyOut, &bytes.Buffer{}, strings.NewReader("\n"))
+	empty, _, _ := plainGate(strings.NewReader("\n"), gateOpts{})
 	dchoice, derr := empty.Prompt(presenter.SourceGate(sourceOptions(), presenter.Choice("gitlab")))
 	if derr != nil {
 		t.Fatalf("plain source Prompt (empty Enter) returned error: %v", derr)
@@ -285,8 +273,7 @@ func TestNotesReuseEchoUnchangedAfterGeneralisation(t *testing.T) {
 		t.Errorf("ReuseConfirmGate().AcceptEcho = %q, want %q", got, "accepted")
 	}
 
-	out := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("")).WithYes(true)
+	p, out, _ := plainGate(strings.NewReader(""), gateOpts{yes: true})
 	if _, err := p.Prompt(presenter.NotesReviewGate()); err != nil {
 		t.Fatalf("plain notes Prompt under -y returned error: %v", err)
 	}

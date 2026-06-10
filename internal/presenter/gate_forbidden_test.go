@@ -24,9 +24,8 @@ import (
 // the reader untripped proves no blocking stdin read occurred.
 func TestPlainForbiddenComboFailsWithoutReadingStdin(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, reader).WithInteractiveStdin(false)
+	p, _, _ := plainGate(reader, gateOpts{nonInteractiveStdin: true})
 
 	choice, err := p.Prompt(gate)
 	if err == nil {
@@ -46,8 +45,7 @@ func TestPlainForbiddenComboFailsWithoutReadingStdin(t *testing.T) {
 // fixed "gate" label and the ASCII message form (no em-dash).
 func TestPlainForbiddenComboTerseFailureToOut(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, &bytes.Buffer{}, strings.NewReader("")).WithInteractiveStdin(false)
+	p, out, _ := plainGate(strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 
 	if _, err := p.Prompt(gate); err == nil {
 		t.Fatalf("plain Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
@@ -63,9 +61,7 @@ func TestPlainForbiddenComboTerseFailureToOut(t *testing.T) {
 // nothing above the printable ASCII range (in particular, the message uses the
 // ASCII "; pass" form, never the em-dash).
 func TestPlainForbiddenComboFailureIsBytePureASCII(t *testing.T) {
-	out := &bytes.Buffer{}
-	errBuf := &bytes.Buffer{}
-	p := presenter.NewPlainPresenterWithInput(out, errBuf, strings.NewReader("")).WithInteractiveStdin(false)
+	p, out, errBuf := plainGate(strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 	if _, err := p.Prompt(presenter.NotesReviewGate()); err == nil {
 		t.Fatalf("plain Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
 	}
@@ -79,9 +75,8 @@ func TestPlainForbiddenComboFailureIsBytePureASCII(t *testing.T) {
 // the spec's em-dash form, mirroring StageFailed's "✗ {label}  {message}" shape.
 func TestPrettyForbiddenComboStyledFailureToOut(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
 	reader := &failingReader{t: t}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(reader)).WithInteractiveStdin(false)
+	p, out, _ := prettyGate(termenv.TrueColor, reader, gateOpts{nonInteractiveStdin: true})
 
 	if _, err := p.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
@@ -106,8 +101,7 @@ func TestPrettyForbiddenComboStyledFailureToOut(t *testing.T) {
 // like the established StageFailed rendering.
 func TestPrettyForbiddenComboFailureShape(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithInteractiveStdin(false)
+	p, out, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 
 	if _, err := p.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
@@ -125,9 +119,7 @@ func TestPrettyForbiddenComboFailureShape(t *testing.T) {
 func TestForbiddenComboSummaryToStderrBothModes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	plainOut := &bytes.Buffer{}
-	plainErr := &bytes.Buffer{}
-	plain := presenter.NewPlainPresenterWithInput(plainOut, plainErr, strings.NewReader("")).WithInteractiveStdin(false)
+	plain, _, plainErr := plainGate(strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 	if _, err := plain.Prompt(gate); err == nil {
 		t.Fatalf("plain Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
 	}
@@ -135,10 +127,7 @@ func TestForbiddenComboSummaryToStderrBothModes(t *testing.T) {
 		t.Errorf("plain forbidden-combo stderr = %q, want the one-line FAILED summary", got)
 	}
 
-	prettyOut := &bytes.Buffer{}
-	prettyErr := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithErr(prettyErr), presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).
-		WithInteractiveStdin(false)
+	pretty, _, prettyErr := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 	if _, err := pretty.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
 	}
@@ -153,8 +142,7 @@ func TestForbiddenComboSummaryToStderrBothModes(t *testing.T) {
 // renders STYLED (ESC present) even though stdin is the non-interactive side.
 func TestForbiddenComboRenderModeIndependentOfStdin(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.TrueColor), presenter.WithInput(strings.NewReader(""))).WithInteractiveStdin(false)
+	p, out, _ := prettyGate(termenv.TrueColor, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 
 	if _, err := p.Prompt(gate); err == nil {
 		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
@@ -170,12 +158,12 @@ func TestForbiddenComboRenderModeIndependentOfStdin(t *testing.T) {
 func TestForbiddenComboReturnsErrNotInteractive(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	plain := presenter.NewPlainPresenterWithInput(&bytes.Buffer{}, &bytes.Buffer{}, strings.NewReader("")).WithInteractiveStdin(false)
+	plain, _, _ := plainGate(strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 	if _, err := plain.Prompt(gate); !errors.Is(err, presenter.ErrNotInteractive) {
 		t.Errorf("plain forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", err)
 	}
 
-	pretty := presenter.NewPrettyPresenter(&bytes.Buffer{}, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader(""))).WithInteractiveStdin(false)
+	pretty, _, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
 	if _, err := pretty.Prompt(gate); !errors.Is(err, presenter.ErrNotInteractive) {
 		t.Errorf("pretty forbidden-combo err = %v, want errors.Is(..., ErrNotInteractive)", err)
 	}
@@ -188,10 +176,8 @@ func TestForbiddenComboReturnsErrNotInteractive(t *testing.T) {
 func TestYesBypassesForbiddenComboBothModes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	plainOut := &bytes.Buffer{}
 	plainReader := &failingReader{t: t}
-	plain := presenter.NewPlainPresenterWithInput(plainOut, &bytes.Buffer{}, plainReader).
-		WithYes(true).WithInteractiveStdin(false)
+	plain, plainOut, _ := plainGate(plainReader, gateOpts{yes: true, nonInteractiveStdin: true})
 	choice, err := plain.Prompt(gate)
 	if err != nil {
 		t.Fatalf("plain Prompt (-y, non-TTY stdin) returned error: %v", err)
@@ -203,10 +189,8 @@ func TestYesBypassesForbiddenComboBothModes(t *testing.T) {
 		t.Errorf("plain -y echo = %q, want the auto-accept echo, NOT a failure", got)
 	}
 
-	prettyOut := &bytes.Buffer{}
 	prettyReader := &failingReader{t: t}
-	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(prettyReader)).
-		WithYes(true).WithInteractiveStdin(false)
+	pretty, prettyOut, _ := prettyGate(termenv.Ascii, prettyReader, gateOpts{yes: true, nonInteractiveStdin: true})
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
 		t.Fatalf("pretty Prompt (-y, non-TTY stdin) returned error: %v", perr)
@@ -226,9 +210,7 @@ func TestYesBypassesForbiddenComboBothModes(t *testing.T) {
 func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	plainOut := &bytes.Buffer{}
-	plain := presenter.NewPlainPresenterWithInput(plainOut, &bytes.Buffer{}, strings.NewReader("y\n")).
-		WithInteractiveStdin(true)
+	plain, plainOut, _ := plainGate(strings.NewReader("y\n"), gateOpts{})
 	choice, err := plain.Prompt(gate)
 	if err != nil {
 		t.Fatalf("plain Prompt (interactive stdin) returned error: %v", err)
@@ -240,9 +222,7 @@ func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 		t.Errorf("plain Prompt (interactive stdin) did not render the menu:\n%q", plainOut.String())
 	}
 
-	prettyOut := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n"))).
-		WithInteractiveStdin(true)
+	pretty, prettyOut, _ := prettyGate(termenv.Ascii, strings.NewReader("y\n"), gateOpts{})
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
 		t.Fatalf("pretty Prompt (interactive stdin) returned error: %v", perr)
@@ -262,8 +242,7 @@ func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 func TestConstructorsDefaultStdinInteractive(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
-	plainOut := &bytes.Buffer{}
-	plain := presenter.NewPlainPresenterWithInput(plainOut, &bytes.Buffer{}, strings.NewReader("y\n"))
+	plain, _, _ := plainGate(strings.NewReader("y\n"), gateOpts{})
 	choice, err := plain.Prompt(gate)
 	if err != nil {
 		t.Fatalf("plain Prompt (default stdinInteractive) returned error: %v", err)
@@ -272,8 +251,7 @@ func TestConstructorsDefaultStdinInteractive(t *testing.T) {
 		t.Errorf("plain Prompt (default stdinInteractive) = %q, want %q (interactive path, not fail)", choice, presenter.ChoiceYes)
 	}
 
-	prettyOut := &bytes.Buffer{}
-	pretty := presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
+	pretty, _, _ := prettyGate(termenv.Ascii, strings.NewReader("y\n"), gateOpts{})
 	pchoice, perr := pretty.Prompt(gate)
 	if perr != nil {
 		t.Fatalf("pretty Prompt (default stdinInteractive) returned error: %v", perr)
