@@ -318,9 +318,27 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		}
 	}
 
-	// Stage 6 — tag + atomic push. A nil error means the atomic push succeeded and
-	// PointOfNoReturnCrossed is set: from here the tag is public, so any later
-	// failure is warn-only and the run must NOT unwind.
+	// Stage 6 — tag + atomic push.
+	//
+	// COMMIT-GRAPH INVARIANT (assembled across stages 3 and 5): this run produces UP
+	// TO TWO commits before the tag — an OPTIONAL pre_tag hook-artifact commit
+	// (`chore(release): pre-tag artifacts for {tag}`, Stage 3, made only when the hook
+	// dirtied the tree) followed by an OPTIONAL release-bookkeeping commit
+	// (`{commit_prefix} Release {tag}`, Stage 5, made only when the changelog and/or
+	// version file netted a change). The annotated tag conceptually points at the
+	// release-bookkeeping commit; because TagAndPush creates it with `git tag -a {tag}`
+	// (which tags the CURRENT HEAD) and HEAD EQUALS the bookkeeping commit whenever one
+	// was made, the tag is correct by construction — no explicit target is passed. When
+	// only the hook-artifact commit was made the tag sits on it; when neither commit was
+	// made the tag sits on the pre-existing HEAD. NO-OP SAFETY: zero, one, or two commits
+	// are all valid and no empty commit is ever created (CommitDirtyTree and
+	// CommitBookkeeping each commit only when there is a real change). The single atomic
+	// push (`git push --atomic origin HEAD {tag}`) sends whatever commits HEAD carries
+	// together with the tag — the one point of no return for the whole graph.
+	//
+	// A nil error means the atomic push succeeded and PointOfNoReturnCrossed is set:
+	// from here the tag is public, so any later failure is warn-only and the run must
+	// NOT unwind.
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
 		// Pre-PONR failure: route through the shared auto-unwind. A push REJECTION means
 		// the local tag was created and must be deleted (tagMayExist); a tag-CREATION
