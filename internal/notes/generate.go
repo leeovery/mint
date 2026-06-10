@@ -62,11 +62,28 @@ func NewGenerator(assembler *Assembler, transport Transport, root string) *Gener
 // the cause PRESERVED (wrapped with %w so errors.Is still matches). The decision
 // of abort-vs-fallback is on_notes_failure routing, NOT this method's concern.
 func (g *Generator) Generate(ctx context.Context, lastTag string, cfg config.Config) (string, error) {
+	return g.GenerateWithContext(ctx, lastTag, cfg, "")
+}
+
+// GenerateWithContext is Generate with a ONE-TIME context line appended to the
+// resolved instructions for THIS generation only. It is the AI support for the
+// review gate's `r` (regenerate) choice: the user supplies a transient nudge
+// ("lead with the auth package"), which is appended to the prompt's instructions
+// before ComposePrompt and flows into this one AI call.
+//
+// The one-time context is TRANSIENT — it is appended to the prompt only and is
+// NEVER written back to cfg/[release].context. cfg is passed by value and is not
+// mutated; the context does not persist beyond this call.
+//
+// An EMPTY oneTimeContext appends nothing and produces a BYTE-IDENTICAL prompt to
+// Generate, so Generate is exactly GenerateWithContext(..., "") and the existing
+// no-context behaviour is unchanged.
+func (g *Generator) GenerateWithContext(ctx context.Context, lastTag string, cfg config.Config, oneTimeContext string) (string, error) {
 	diff, err := g.assembler.AssembleDiff(ctx, lastTag)
 	if err != nil {
 		return "", fmt.Errorf("assembling diff for notes: %w", err)
 	}
-	return g.GenerateFromDiff(ctx, lastTag, diff, cfg)
+	return g.generateFromDiffWithContext(ctx, lastTag, diff, cfg, oneTimeContext)
 }
 
 // GenerateFromDiff is Generate's body over an ALREADY-ASSEMBLED post-exclusion
@@ -83,6 +100,17 @@ func (g *Generator) Generate(ctx context.Context, lastTag string, cfg config.Con
 // The diff IS NOT re-assembled, so the caller is responsible for passing the same
 // post-exclusion diff AssembleDiff would have produced for lastTag.
 func (g *Generator) GenerateFromDiff(ctx context.Context, lastTag, diff string, cfg config.Config) (string, error) {
+	return g.generateFromDiffWithContext(ctx, lastTag, diff, cfg, "")
+}
+
+// generateFromDiffWithContext is the shared body of GenerateFromDiff and
+// GenerateWithContext: it runs steps 2-5 of Generate's documented order over the
+// supplied diff (CheckDiffSize -> BuildChangeMap -> ResolveInstructions +
+// appendOneTimeContext + ComposePrompt -> transport.Generate). The one-time
+// context is appended to the resolved instructions ONLY for this prompt; an empty
+// context appends nothing, so GenerateFromDiff (which passes "") is byte-identical
+// to before.
+func (g *Generator) generateFromDiffWithContext(ctx context.Context, lastTag, diff string, cfg config.Config, oneTimeContext string) (string, error) {
 	if err := CheckDiffSize(diff, cfg.MaxDiffLines); err != nil {
 		return "", fmt.Errorf("notes size guard: %w", err)
 	}
@@ -97,11 +125,22 @@ func (g *Generator) GenerateFromDiff(ctx context.Context, lastTag, diff string, 
 		return "", fmt.Errorf("resolving notes instructions: %w", err)
 	}
 
-	prompt := ComposePrompt(instructions, changeMap, diff)
+	prompt := ComposePrompt(appendOneTimeContext(instructions, oneTimeContext), changeMap, diff)
 
 	body, err := g.transport.Generate(ctx, prompt)
 	if err != nil {
 		return "", fmt.Errorf("generating notes: %w", err)
 	}
 	return body, nil
+}
+
+// appendOneTimeContext appends the transient regenerate nudge to the resolved
+// instructions, separated by a blank line so the AI reads it as a distinct block.
+// An EMPTY context returns the instructions UNCHANGED (byte-identical), so the
+// no-context path adds no separator and Generate stays identical to before.
+func appendOneTimeContext(instructions, oneTimeContext string) string {
+	if oneTimeContext == "" {
+		return instructions
+	}
+	return instructions + "\n\n" + oneTimeContext
 }

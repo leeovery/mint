@@ -511,7 +511,8 @@
             "mint-release-tool-2-10",
             "mint-release-tool-2-11",
             "mint-release-tool-2-12",
-            "mint-release-tool-2-13"
+            "mint-release-tool-2-13",
+            "mint-release-tool-2-14"
           ],
           "completed_phases": [
             1

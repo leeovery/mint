@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/publish"
@@ -1203,4 +1204,428 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 	if fin.Kind != presentertest.KindRunFinished {
 		t.Errorf("publish=false run did not finish; last event = %v", fin.Kind)
 	}
+}
+
+// fakeRegenerator is a scripted Regenerator seam: it captures every one-time
+// context line it was handed and returns successive scripted bodies (one per
+// Regenerate call). It stands in for the real AI-path regeneration (task 2-16) so
+// the gate-loop tests can drive the `r` path without the notes engine.
+type fakeRegenerator struct {
+	// bodies is the FIFO of bodies returned, one per Regenerate call (call i returns
+	// bodies[i]); a multi-r test scripts body1, body2, … to prove the FINAL one wins.
+	bodies []string
+	// err, when non-nil, is returned instead of the next body to drive the
+	// regenerate-failure abort path.
+	err error
+	// gotContexts records the one-time context line each Regenerate call received,
+	// in order — so a test can assert the scripted nudge reached the AI.
+	gotContexts []string
+}
+
+func (r *fakeRegenerator) Regenerate(_ context.Context, oneTimeContext string) (string, error) {
+	r.gotContexts = append(r.gotContexts, oneTimeContext)
+	if r.err != nil {
+		return "", r.err
+	}
+	body := r.bodies[len(r.gotContexts)-1]
+	return body, nil
+}
+
+// regen1Body and regen2Body are distinctive bodies the fake Regenerator returns so
+// the regenerate-path tests can prove the REGENERATED text (not the original, and
+// for the multi-r case the FINAL regeneration) reaches every sink verbatim.
+const regen1Body = "Regenerated #1: lead with the auth package.\n\n" +
+	"## ✨ Added\n- New auth package\n"
+const regen2Body = "Regenerated #2: now emphasise the security fix.\n\n" +
+	"## 🔒 Security\n- Hardened token validation\n"
+
+// normalAIOptions returns the default-bump options with the fixed clock, an
+// injected NotesBody, and NotesKind=KindNormalAI — the seam that selects the
+// four-choice y/n/e/r review gate (the only Kind that offers `r`).
+func normalAIOptions(body string) engine.ReleaseOptions {
+	opts := patchOptionsWithBody(body)
+	opts.NotesKind = notes.KindNormalAI
+	return opts
+}
+
+// newDepsWithRegenerator builds the orchestrator's dependency set with an injected
+// Regenerator seam (the `r` path consults it).
+func newDepsWithRegenerator(rec *presentertest.RecordingPresenter, f *runner.FakeRunner, regen engine.Regenerator) engine.ReleaseDeps {
+	deps := newDeps(rec, f)
+	deps.Regenerator = regen
+	return deps
+}
+
+// TestRelease_GateRegenThenYes proves the normal-AI `r` path: an `r` answer reads
+// a one-time context line via AskLine, hands it to the Regenerator, replaces the
+// body with the regenerated result VERBATIM, re-shows the notes, and re-presents
+// the gate. A subsequent `y` proceeds — and the REGENERATED body, not the
+// original, reaches every sink.
+func TestRelease_GateRegenThenYes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	regen := &fakeRegenerator{bodies: []string{regen1Body}}
+	const contextLine = "Lead with the new auth package."
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+		NextLines:   []string{contextLine},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), normalAIOptions(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// AskLine fired (the one-time context was read through the presenter's input
+	// seam, never stdin directly), and the Regenerator received the scripted line.
+	if got := countKind(rec, presentertest.KindAskLine); got != 1 {
+		t.Errorf("AskLine count = %d, want 1 (the one-time context read)", got)
+	}
+	if len(regen.gotContexts) != 1 {
+		t.Fatalf("Regenerate calls = %d, want 1", len(regen.gotContexts))
+	}
+	if regen.gotContexts[0] != contextLine {
+		t.Errorf("Regenerator received context = %q, want the scripted line %q", regen.gotContexts[0], contextLine)
+	}
+
+	// The notes are re-shown after regeneration (initial + regen re-show) and the
+	// gate is prompted twice (regen, then the accepting yes).
+	if got := countKind(rec, presentertest.KindShowNotes); got != 2 {
+		t.Errorf("ShowNotes count = %d, want 2 (initial + regen re-show)", got)
+	}
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want 2 (regen + re-prompt after regen)", got)
+	}
+
+	// The REGENERATED body — not the original — reaches every sink, verbatim.
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != regen1Body {
+		t.Errorf("tag annotation body = %q, want REGENERATED body %q", got, regen1Body)
+	}
+	if got := changelogSectionBody(t, root, "0.0.1"); got != regen1Body {
+		t.Errorf("CHANGELOG body = %q, want REGENERATED body %q", got, regen1Body)
+	}
+	if got := stdinOf(t, f, "gh", "release", "create", "v0.0.1", "--title", "v0.0.1", "--notes-file", "-", "--verify-tag"); got != regen1Body {
+		t.Errorf("provider release body = %q, want REGENERATED body %q", got, regen1Body)
+	}
+
+	// The regenerated body was re-shown at the gate.
+	if !showedNotesBody(rec, regen1Body) {
+		t.Errorf("no ShowNotes re-render carried the REGENERATED body %q", regen1Body)
+	}
+
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("regen-then-yes did not finish; last event = %v", fin.Kind)
+	}
+}
+
+// showedNotesBody reports whether any recorded ShowNotes carried exactly body.
+func showedNotesBody(rec *presentertest.RecordingPresenter, body string) bool {
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindShowNotes && ev.ShowNotes.Body == body {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRelease_GateRegen_EmptyContext_RegeneratesWithNoExtraContext proves an empty
+// AskLine answer is LEGAL: `r` with a bare-Enter context line regenerates with NO
+// extra context — the Regenerator receives the empty string.
+func TestRelease_GateRegen_EmptyContext_RegeneratesWithNoExtraContext(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	regen := &fakeRegenerator{bodies: []string{regen1Body}}
+	// Empty NextLines: AskLine falls back to "" — the legal "no extra context" answer.
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), normalAIOptions(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	if got := countKind(rec, presentertest.KindAskLine); got != 1 {
+		t.Errorf("AskLine count = %d, want 1 (still asked, empty answer is legal)", got)
+	}
+	if len(regen.gotContexts) != 1 {
+		t.Fatalf("Regenerate calls = %d, want 1", len(regen.gotContexts))
+	}
+	if regen.gotContexts[0] != "" {
+		t.Errorf("Regenerator received context = %q, want empty (no extra context)", regen.gotContexts[0])
+	}
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != regen1Body {
+		t.Errorf("tag annotation body = %q, want REGENERATED body %q", got, regen1Body)
+	}
+}
+
+// TestRelease_GateRegen_InputClosed_AbortsFailLoud proves ErrInputClosed from the
+// AskLine one-time-context read aborts the run fail-loud (non-zero exit, sentinel
+// preserved) before any mutation — the engine never blocks on a closed input.
+func TestRelease_GateRegen_InputClosed_AbortsFailLoud(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	regen := &fakeRegenerator{bodies: []string{regen1Body}}
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen},
+		AskLineResult: func(string) (string, error) {
+			return "", presenter.ErrInputClosed
+		},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), normalAIOptions(phase2Body))
+	if err == nil {
+		t.Fatalf("Release returned nil error, want an input-closed abort")
+	}
+	if !errors.Is(err, presenter.ErrInputClosed) {
+		t.Errorf("err does not wrap presenter.ErrInputClosed: %v", err)
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if abort.ExitCode == 0 {
+		t.Errorf("abort ExitCode = 0, want non-zero")
+	}
+	// The Regenerator was never consulted (the read failed first), and nothing mutated.
+	if len(regen.gotContexts) != 0 {
+		t.Errorf("Regenerate was called %d times despite a closed input read", len(regen.gotContexts))
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_GateMultipleRegen_FinalBodyReachesSinks proves multiple `r` loops:
+// r, r, y regenerates twice (body1 then body2) and the FINAL (body2) reaches every
+// sink — each `r` regenerates and re-shows.
+func TestRelease_GateMultipleRegen_FinalBodyReachesSinks(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	regen := &fakeRegenerator{bodies: []string{regen1Body, regen2Body}}
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceRegen, presenter.ChoiceYes},
+		NextLines:   []string{"first nudge", "second nudge"},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), normalAIOptions(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// Two regenerations happened, each reading its own one-time context line.
+	if len(regen.gotContexts) != 2 {
+		t.Fatalf("Regenerate calls = %d, want 2", len(regen.gotContexts))
+	}
+	if regen.gotContexts[0] != "first nudge" || regen.gotContexts[1] != "second nudge" {
+		t.Errorf("Regenerator contexts = %v, want [first nudge, second nudge]", regen.gotContexts)
+	}
+	if got := countKind(rec, presentertest.KindAskLine); got != 2 {
+		t.Errorf("AskLine count = %d, want 2 (one per regenerate)", got)
+	}
+	// Each `r` re-shows: initial + two regen re-shows = 3 ShowNotes; three prompts.
+	if got := countKind(rec, presentertest.KindShowNotes); got != 3 {
+		t.Errorf("ShowNotes count = %d, want 3 (initial + 2 regen re-shows)", got)
+	}
+	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
+		t.Errorf("Prompt count = %d, want 3 (r, r, y)", got)
+	}
+
+	// The FINAL regeneration (body2) — not body1 — reaches every sink.
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != regen2Body {
+		t.Errorf("tag annotation body = %q, want FINAL regenerated body %q", got, regen2Body)
+	}
+	if got := changelogSectionBody(t, root, "0.0.1"); got != regen2Body {
+		t.Errorf("CHANGELOG body = %q, want FINAL regenerated body %q", got, regen2Body)
+	}
+	if got := stdinOf(t, f, "gh", "release", "create", "v0.0.1", "--title", "v0.0.1", "--notes-file", "-", "--verify-tag"); got != regen2Body {
+		t.Errorf("provider release body = %q, want FINAL regenerated body %q", got, regen2Body)
+	}
+}
+
+// TestRelease_GateRegen_RegeneratorError_Aborts proves a Regenerator failure on
+// the `r` path is surfaced (StageFailed) and aborts non-zero before any mutation —
+// a regenerate failure is fail-loud.
+func TestRelease_GateRegen_RegeneratorError_Aborts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	regen := &fakeRegenerator{err: errors.New("claude timed out")}
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen},
+		NextLines:   []string{"a nudge"},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), normalAIOptions(phase2Body))
+	if err == nil {
+		t.Fatalf("Release returned nil error, want a regenerate-failure abort")
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if abort.ExitCode == 0 {
+		t.Errorf("abort ExitCode = 0, want non-zero")
+	}
+	if !recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("regenerate failure did not surface a StageFailed event")
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_GateRegen_NilRegenerator_Aborts proves the `r` choice with NO
+// Regenerator wired (a misconfiguration — production wires it in task 2-16)
+// surfaces a clean failure and aborts non-zero before any mutation, rather than
+// panicking.
+func TestRelease_GateRegen_NilRegenerator_Aborts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	// No Regenerator wired: newDeps leaves ReleaseDeps.Regenerator nil.
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen},
+		NextLines:   []string{"a nudge"},
+	}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), normalAIOptions(phase2Body))
+	if err == nil {
+		t.Fatalf("Release returned nil error, want a nil-regenerator abort")
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if abort.ExitCode == 0 {
+		t.Errorf("abort ExitCode = 0, want non-zero")
+	}
+	if !recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("nil-regenerator regen did not surface a StageFailed event")
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_NoAIPaths_GateOmitsRegenerate proves the gate variant: on every
+// no-AI Kind (first-release, degenerate, --no-ai) the review gate offered is the
+// y/n/e variant — its declared keys are exactly [y n e], with NO `r` (there is no
+// AI to nudge on those paths). Asserted via the recorded gate's Keys().
+func TestRelease_NoAIPaths_GateOmitsRegenerate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		kind notes.Kind
+	}{
+		{name: "first release", kind: notes.KindFirstRelease},
+		{name: "degenerate", kind: notes.KindDegenerate},
+		{name: "no-ai", kind: notes.KindNoAI},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			f := runner.NewFakeRunner()
+			seedHappyGit(f, root, "main", "v0.0.1")
+			f.Seed("gh", runner.Result{}, nil)
+			// A Regenerator IS wired, to prove `r` is omitted by the GATE, not because
+			// the seam is absent — the no-AI gate never even offers the choice.
+			regen := &fakeRegenerator{bodies: []string{regen1Body}}
+			rec := &presentertest.RecordingPresenter{}
+
+			opts := patchOptionsWithBody(phase2Body)
+			opts.NotesKind = tt.kind
+
+			err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), opts)
+			if err != nil {
+				t.Fatalf("Release returned unexpected error: %v", err)
+			}
+
+			gate := promptGate(t, rec)
+			if got, want := keysOf(gate), []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo, presenter.ChoiceEdit}; !equalChoices(got, want) {
+				t.Errorf("%s gate keys = %v, want the y/n/e variant %v (no r)", tt.name, got, want)
+			}
+			if gate.Has(presenter.ChoiceRegen) {
+				t.Errorf("%s gate offered r; the no-AI gate must omit regenerate", tt.name)
+			}
+		})
+	}
+}
+
+// TestRelease_NormalAI_GateOffersRegenerate proves the complementary case: on the
+// normal-AI Kind the review gate offered is the four-choice y/n/e/r variant — its
+// declared keys are exactly [y n e r].
+func TestRelease_NormalAI_GateOffersRegenerate(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	regen := &fakeRegenerator{bodies: []string{regen1Body}}
+	// Accept immediately (bare-Enter default), so the gate is recorded exactly once.
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), normalAIOptions(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	gate := promptGate(t, rec)
+	want := []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo, presenter.ChoiceEdit, presenter.ChoiceRegen}
+	if got := keysOf(gate); !equalChoices(got, want) {
+		t.Errorf("normal-AI gate keys = %v, want the y/n/e/r variant %v", got, want)
+	}
+}
+
+// promptGate returns the gate carried by the first recorded Prompt event, failing
+// the test if none fired.
+func promptGate(t *testing.T, rec *presentertest.RecordingPresenter) presenter.Gate {
+	t.Helper()
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindPrompt {
+			return ev.Prompt
+		}
+	}
+	t.Fatalf("no Prompt event recorded")
+	return presenter.Gate{}
+}
+
+// keysOf is a thin alias for gate.Keys() reading nicely at the assertion site.
+func keysOf(gate presenter.Gate) []presenter.Choice {
+	return gate.Keys()
+}
+
+// equalChoices reports whether two choice slices are equal in order and contents.
+func equalChoices(a, b []presenter.Choice) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

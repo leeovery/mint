@@ -22,6 +22,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/gitrepo"
+	"mint/internal/notes"
 	"mint/internal/preflight"
 	"mint/internal/presenter"
 	"mint/internal/publish"
@@ -47,6 +48,31 @@ type Editor interface {
 	Edit(ctx context.Context, current string) (string, error)
 }
 
+// Regenerator is the engine's regenerate seam: the `r` review-gate choice hands a
+// ONE-TIME context line to Regenerate and uses the regenerated body it returns as
+// the new notes body. The one-time context is TRANSIENT — it flows into this one
+// AI call only and is NEVER persisted to [release].context. The interface is
+// intentionally tiny so production (task 2-16) can wire the real AI path
+// (notes.Generator.GenerateWithContext over the run's lastTag/cfg) behind it while
+// the gate-loop tests drive a scripted fake. It is defined HERE (the consumer)
+// rather than where it is implemented, per the accept-interfaces convention.
+//
+// It is consulted ONLY on `r`, which the gate offers ONLY for notes.KindNormalAI
+// (the one path the AI produced the body), so the no-AI paths never reach it and
+// may leave the seam nil.
+type Regenerator interface {
+	// Regenerate re-runs the normal AI path with oneTimeContext appended to the
+	// prompt and returns the new body. An empty oneTimeContext is legal (regenerate
+	// with no extra context). A non-nil error means the regeneration failed; the
+	// engine surfaces it and aborts (fail-loud) rather than looping on a broken AI.
+	Regenerate(ctx context.Context, oneTimeContext string) (string, error)
+}
+
+// regenContextPrompt is the AskLine label shown when the user chooses `r`: it asks
+// for the one-time context nudge appended to the regeneration prompt. An empty
+// answer is legal (regenerate with no extra context).
+const regenContextPrompt = "Add one-time context for regeneration (optional):"
+
 // ReleaseDeps bundles the orchestrator's injected seams so production wires the
 // real implementations once (at the cmd entry point) and tests drive the whole
 // spine with a RecordingPresenter + a single FakeRunner. The Releaser and
@@ -69,6 +95,13 @@ type ReleaseDeps struct {
 	// is chosen with a nil Editor (a misconfiguration), the gate surfaces a clear
 	// error and aborts rather than panicking.
 	Editor Editor
+	// Regenerator is the OPTIONAL regenerate seam consulted ONLY on the `r`
+	// review-gate choice, which the gate offers ONLY for notes.KindNormalAI. Every
+	// other path (the no-AI Kinds, every non-interactive and accept/abort path) may
+	// leave it nil; production wires the real AI path (task 2-16). If `r` is chosen
+	// with a nil Regenerator (a misconfiguration that should never reach production),
+	// the gate surfaces a clear error and aborts rather than panicking.
+	Regenerator Regenerator
 }
 
 // ReleaseOptions carries the per-run parsed inputs. Bump selects the version
@@ -87,6 +120,13 @@ type ReleaseOptions struct {
 	// tag annotation, the CHANGELOG section, and the provider release — no parsing,
 	// no splitting, no per-sink reassembly.
 	NotesBody string
+	// NotesKind names which precedence path produced NotesBody — the Phase-2 seam the
+	// SelectBody wiring (task 2-16) fills from SelectBody's returned Kind. It selects
+	// the review gate variant: notes.KindNormalAI offers the four-choice y/n/e/r gate
+	// (the only path with an AI to regenerate), while EVERY other Kind (first-release,
+	// degenerate, --no-ai, fallback) offers the y/n/e variant with no `r`. The zero
+	// value (KindFirstRelease) therefore preserves current behaviour — the y/n/e gate.
+	NotesKind notes.Kind
 }
 
 // Release runs the Phase 1 first-release spine in strict order and returns nil on
@@ -146,10 +186,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
 
-	// The review gate may EDIT the body (the `e` choice); capture the returned
-	// final body and thread IT to every downstream sink. The gate stays positioned
-	// BEFORE any mutation (before Record).
-	body, err = reviewGate(ctx, p, deps.Editor, body, versionKey)
+	// The review gate may EDIT (the `e` choice) or REGENERATE (the `r` choice, only
+	// offered for KindNormalAI) the body; capture the returned final body and thread
+	// IT to every downstream sink. The gate stays positioned BEFORE any mutation
+	// (before Record). opts.NotesKind selects the gate variant (y/n/e vs y/n/e/r).
+	body, err = reviewGate(ctx, p, deps.Editor, deps.Regenerator, opts.NotesKind, body, versionKey)
 	if err != nil {
 		return err
 	}
@@ -241,9 +282,21 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 // fails loud and clean before any mutation.
 var errEditorUnavailable = errors.New("edit chosen but no editor is configured")
 
-// reviewGate runs the first-release y/n/e review gate as the engine-owned
-// re-entry LOOP and returns the (possibly edited) FINAL body the caller threads
-// to every sink. Rendering stays in the presenter; this owns only the semantics.
+// errRegeneratorUnavailable is the cause surfaced when the `r` choice is taken but
+// no Regenerator seam was wired — a misconfiguration that should never reach
+// production (the gate offers `r` only for KindNormalAI, which task 2-16 wires with
+// a Regenerator). It is surfaced rather than panicked so the spine fails loud and
+// clean before any mutation.
+var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator is configured")
+
+// reviewGate runs the notes review gate as the engine-owned re-entry LOOP and
+// returns the (possibly edited or regenerated) FINAL body the caller threads to
+// every sink. Rendering stays in the presenter; this owns only the semantics.
+//
+// The gate VARIANT is selected by kind (gateForKind): notes.KindNormalAI gets the
+// four-choice y/n/e/r gate (an AI produced the body, so regenerating is
+// meaningful), while every other Kind gets the y/n/e gate with no `r`. The SAME
+// selected gate is used on every loop iteration.
 //
 // Each pass reads one decision and acts on it:
 //
@@ -251,7 +304,9 @@ var errEditorUnavailable = errors.New("edit chosen but no editor is configured")
 //     *AbortError carrying a non-zero exit; it is returned as-is (ErrNotInteractive
 //     is pre-rendered by the presenter, ErrInputClosed is surfaced via the abort).
 //   - ChoiceYes (also the bare-Enter default) accepts: the loop RETURNS the current
-//     body so the spine proceeds to Record with exactly the reviewed text.
+//     body so the spine proceeds to Record with exactly the reviewed text. Under -y
+//     the presenter returns the gate Default (ChoiceYes), so the loop accepts
+//     immediately and `r` is never reached — regenerate is interactive-only.
 //   - ChoiceNo aborts: Phase 2 surfaces an Unwound and stops BEFORE any mutation
 //     (the full surgical auto-unwind lands in task 2-15); the run exits non-zero.
 //   - ChoiceEdit edits: the editor seam returns the saved text, which REPLACES the
@@ -263,9 +318,14 @@ var errEditorUnavailable = errors.New("edit chosen but no editor is configured")
 //     abort. Any OTHER editor-seam failure (a launched-but-failed editor, the
 //     nil-editor misconfiguration) is surfaced and aborts rather than blocking the
 //     spine.
-func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, body, versionKey string) (string, error) {
+//   - ChoiceRegen regenerates (only reachable on the four-choice gate): see
+//     regenerateBody. It reads a one-time context line via AskLine, re-runs the AI,
+//     REPLACES the body with the regenerated text, re-shows the notes, and LOOPS so
+//     the user may regenerate again or settle on y/n/e.
+func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen Regenerator, kind notes.Kind, body, versionKey string) (string, error) {
+	gate := gateForKind(kind)
 	for {
-		choice, err := ReviewDecision(p, FirstReleaseReviewGate())
+		choice, err := ReviewDecision(p, gate)
 		if err != nil {
 			return "", err
 		}
@@ -295,13 +355,77 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, body,
 			// re-render the notes and loop back to re-prompt.
 			body = edited
 			p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
+		case presenter.ChoiceRegen:
+			// Regenerate (only reachable on the four-choice gate): re-run the AI with a
+			// one-time context line, replace the body, re-show, and loop. Any failure
+			// (closed input, nil seam, regenerate error) is surfaced and aborts.
+			regenerated, rerr := regenerateBody(ctx, p, regen, versionKey)
+			if rerr != nil {
+				return "", rerr
+			}
+			body = regenerated
 		default:
-			// The gate declares only y/n/e and the presenter returns a member of the
-			// declared set; any other choice is a contract violation. Fail loud rather
-			// than spin the loop forever (r regenerate is task 2-14, not handled here).
+			// The gate declares only its own choice set and the presenter returns a
+			// member of it; any other choice is a contract violation. Fail loud rather
+			// than spin the loop forever.
 			return "", surface(p, "review", errUnexpectedChoice(choice))
 		}
 	}
+}
+
+// gateForKind selects the review-gate variant for the precedence path that
+// produced the body: notes.KindNormalAI gets the four-choice y/n/e/r gate (the one
+// path with an AI to regenerate), and EVERY other Kind (first-release, degenerate,
+// --no-ai, fallback) gets the y/n/e gate with no `r` — offering `r` there would be
+// meaningless (no AI to nudge) and, under --no-ai, would contradict the flag.
+func gateForKind(kind notes.Kind) presenter.Gate {
+	if kind == notes.KindNormalAI {
+		return presenter.NotesReviewGate()
+	}
+	return FirstReleaseReviewGate()
+}
+
+// regenerateBody runs the `r` regenerate step and returns the regenerated body.
+// It reads a one-time context line via the presenter's AskLine input seam (the
+// engine NEVER reads stdin directly), an EMPTY answer being legal (regenerate with
+// no extra context), then hands that line to the Regenerator. Each failure mode is
+// fail-loud and surfaced before any mutation:
+//
+//   - AskLine's ErrInputClosed / ErrNotInteractive abort (the read failed; the
+//     engine owns surfacing ErrInputClosed). `r` is interactive-only, so
+//     ErrNotInteractive should be unreachable here — it is defended against anyway.
+//   - a nil Regenerator (a misconfiguration that should never reach production for
+//     KindNormalAI) surfaces a clean error and aborts rather than panicking.
+//   - a Regenerator failure is surfaced and aborts. Richer handling could re-present
+//     the gate on a regenerate failure, but surface+abort keeps the path
+//     deterministic.
+//
+// On success the regenerated body is re-shown (so the user reviews it) and
+// returned; the caller replaces the body and loops the gate.
+func regenerateBody(ctx context.Context, p presenter.Presenter, regen Regenerator, versionKey string) (string, error) {
+	line, err := p.AskLine(regenContextPrompt)
+	if err != nil {
+		// A closed/non-interactive input on the one-time-context read is fail-loud: the
+		// presenter leaves ErrInputClosed unrendered, so the abort (and any closing
+		// narration) is the engine's to surface — done via abort, mirroring ReviewDecision.
+		return "", abort(err)
+	}
+
+	if regen == nil {
+		// `r` was offered (KindNormalAI) but no Regenerator was wired — a
+		// misconfiguration. Surface a clean failure and abort rather than panicking.
+		return "", surface(p, "regenerate", errRegeneratorUnavailable)
+	}
+
+	regenerated, rerr := regen.Regenerate(ctx, line)
+	if rerr != nil {
+		// A regenerate failure is fail-loud: surface and abort.
+		return "", surface(p, "regenerate", rerr)
+	}
+
+	// Re-show the regenerated notes so the user reviews them before the gate re-prompts.
+	p.ShowNotes(presenter.Notes{Version: versionKey, Body: regenerated})
+	return regenerated, nil
 }
 
 // errUnexpectedChoice builds the cause for a review-gate choice outside the gate's

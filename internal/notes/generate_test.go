@@ -295,6 +295,89 @@ func TestGenerator_Generate_TransportNotesFailure_SurfacesTypedFailureCausePrese
 	}
 }
 
+func TestGenerator_GenerateWithContext_AppendsOneTimeContextToPrompt(t *testing.T) {
+	t.Parallel()
+
+	// The one-time context line is APPENDED to the resolved instructions before
+	// ComposePrompt, so it appears in the prompt the transport receives — the AI
+	// reads the nudge as supplementary guidance for this one generation.
+	const oneTime = "Lead with the new auth package; downplay the refactor."
+	diff := "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\n+package auth\n"
+	r := seedNormalPathGit(t, diff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
+	transport := &recordingTransport{body: "notes body"}
+
+	gen := notes.NewGenerator(notes.NewAssembler(r), transport, t.TempDir())
+	got, err := gen.GenerateWithContext(t.Context(), "v1.0.0", normalCfg(), oneTime)
+	if err != nil {
+		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
+	}
+
+	if got != "notes body" {
+		t.Errorf("body = %q, want the AI body %q", got, "notes body")
+	}
+	if prompt := transport.lastPrompt(t); !strings.Contains(prompt, oneTime) {
+		t.Errorf("prompt missing the one-time context %q:\n%s", oneTime, prompt)
+	}
+}
+
+func TestGenerator_GenerateWithContext_EmptyContextIsIdenticalToGenerate(t *testing.T) {
+	t.Parallel()
+
+	// An EMPTY one-time context produces a BYTE-IDENTICAL prompt to Generate: no
+	// append, no extra separator — the empty-context path is exactly the plain path.
+	diff := "diff --git a/core/run.go b/core/run.go\n@@ -1 +1 @@\n-x\n+y\n"
+	const nameStatus = "M\tcore/run.go\n"
+	const numstat = "3\t3\tcore/run.go\n"
+	root := t.TempDir()
+
+	plainRunner := seedNormalPathGit(t, diff, nameStatus, numstat)
+	plainTransport := &recordingTransport{body: "body"}
+	plainGen := notes.NewGenerator(notes.NewAssembler(plainRunner), plainTransport, root)
+	if _, err := plainGen.Generate(t.Context(), "v4.0.0", normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	emptyRunner := seedNormalPathGit(t, diff, nameStatus, numstat)
+	emptyTransport := &recordingTransport{body: "body"}
+	emptyGen := notes.NewGenerator(notes.NewAssembler(emptyRunner), emptyTransport, root)
+	if _, err := emptyGen.GenerateWithContext(t.Context(), "v4.0.0", normalCfg(), ""); err != nil {
+		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
+	}
+
+	if got, want := emptyTransport.lastPrompt(t), plainTransport.lastPrompt(t); got != want {
+		t.Errorf("empty-context prompt differs from Generate:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+func TestGenerator_GenerateWithContext_DoesNotMutateConfigContext(t *testing.T) {
+	t.Parallel()
+
+	// The one-time context is TRANSIENT: it flows into this one prompt only and is
+	// NEVER written back to cfg.Release.Context. The cfg passed in is unchanged
+	// after the call, so it never leaks into [release].context.
+	const oneTime = "Just this once: emphasise the security fix."
+	diff := "diff --git a/a.go b/a.go\n@@ -1 +1 @@\n-a\n+b\n"
+	r := seedNormalPathGit(t, diff, "M\ta.go\n", "1\t1\ta.go\n")
+	transport := &recordingTransport{body: "body"}
+
+	cfg := normalCfg()
+	cfg.Release.Context = "persistent project context"
+
+	gen := notes.NewGenerator(notes.NewAssembler(r), transport, t.TempDir())
+	if _, err := gen.GenerateWithContext(t.Context(), "v8.0.0", cfg, oneTime); err != nil {
+		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Context != "persistent project context" {
+		t.Errorf("cfg.Release.Context = %q, want unchanged %q (one-time context must not persist)",
+			cfg.Release.Context, "persistent project context")
+	}
+	// The one-time context must not have been folded into the persistent context.
+	if strings.Contains(cfg.Release.Context, oneTime) {
+		t.Errorf("cfg.Release.Context absorbed the one-time context %q: %q", oneTime, cfg.Release.Context)
+	}
+}
+
 // assertNormalPathGitOrder fails unless the three git calls were recorded in the
 // normal-path order: AssembleDiff's `git diff` first (no --name-status/--numstat
 // selector), then BuildChangeMap's --name-status, then --numstat — proving
