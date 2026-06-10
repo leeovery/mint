@@ -152,3 +152,14 @@ approved_at: 2026-06-09
 | cli-presentation-6-2 | Consolidate mode-invariant both-arm assertions through promptDrivers table | mode-invariant property asserted once via t.Run(d.mode, ...), mode-specific byte-exact rendering tests kept separate, property set unchanged before/after, reuse Task 1 helpers without hard dependency |
 | cli-presentation-6-3 | Consolidate decorative notes-rule expectation and the ANSI-strip helper into one shared pretty test helper | notes-rule prefix literal + fill/clamp arithmetic appear once, decorative rule width sourced once (no scattered 50), stripANSI/ruleDisplayWidth in one shared file referenced not redefined, exact rendered rule still verified |
 | cli-presentation-6-4 | Add golden full-worked-example transcript test per render mode | plain -y full worked example transcript, pretty full worked example with spy/no-op spinner + fixed profile, asserts composition (spacing, block ordering, gate echo column, footer) not individual events, non-tautological (mutated composition detail fails) |
+
+### Phase 7: Analysis (Cycle 3)
+
+**Goal**: Address findings from Analysis (Cycle 3).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-7-1 | Consolidate the prompt/gate test drivers onto the shared gate_helpers_test.go construction seam | one mode-driver table remains (two redundant ones removed), exactly one pretty-prompt driver (drivePrettyPrompt no longer an Ascii-pinned reimplementation), remaining prompt drivers build via plainGate/prettyGate seam, forced colour profile an explicit parameter, render-only screen-control guard still runs under TrueColor (SGR escapes present, no clear/alt-screen), no production .go file in internal/presenter modified, go vet reports no unused helpers/types |
+| cli-presentation-7-2 | Converge the startup wiring so one entry point consumes StartupSignals and threads all axes | one entry point consumes StartupSignals threading Mode/width/-y/StdinInteractive, -y a parameter and stdin-interactive detected from descriptor (not from Mode), non-TTY stdin + -y unset reaches forbidden-combination fail-loud path, -y true auto-confirms without reading stdin, all four stdout/stdin TTY combinations match independently-resolved signals, no main/cmd package introduced, stdin/stdout/stderr are parameters (no os globals), no unused StartupSignals/DetectStartupSignals symbols |
