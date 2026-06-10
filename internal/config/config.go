@@ -34,6 +34,12 @@ const (
 	defaultPublish      = true
 )
 
+// defaultOnNotesFailure is the out-of-the-box notes-failure policy: "abort" — when
+// the normal AI path fails, mint fails loud and tags nothing. The opt-in alternative
+// is "fallback" (or any other non-empty value, treated as a fixed fallback body); the
+// notes engine's resolver interprets the value (config carries it verbatim).
+const defaultOnNotesFailure = "abort"
+
 // defaultMaxDiffLines is the out-of-the-box ceiling for the notes-engine
 // max_diff_lines guard: a post-exclusion diff larger than this is too costly to
 // summarise well, so the AI is skipped. It is a shared engine key, not release
@@ -63,25 +69,32 @@ type Config struct {
 // project guidance into the default prompt; Prompt is a file path that fully
 // overrides the default prompt. The string-or-file detection and file reading live
 // in the notes engine, NOT here — config carries the raw values verbatim.
+//
+// OnNotesFailure is the normal-path notes-failure policy (default "abort"). config
+// carries the raw value verbatim; the notes engine's ResolveFailure interprets it
+// ("" / "abort" → abort; "fallback" → commit-subject fallback; any other non-empty
+// value → that string used as the fixed fallback body).
 type Release struct {
-	TagPrefix     string
-	CommitPrefix  string
-	ReleaseBranch string
-	Publish       bool
-	Context       string
-	Prompt        string
+	TagPrefix      string
+	CommitPrefix   string
+	ReleaseBranch  string
+	Publish        bool
+	Context        string
+	Prompt         string
+	OnNotesFailure string
 }
 
 // defaults returns a Config seeded with the Phase 1 default values.
 func defaults() Config {
 	return Config{
 		Release: Release{
-			TagPrefix:     defaultTagPrefix,
-			CommitPrefix:  defaultCommitPrefix,
-			ReleaseBranch: "",
-			Publish:       defaultPublish,
-			Context:       "",
-			Prompt:        "",
+			TagPrefix:      defaultTagPrefix,
+			CommitPrefix:   defaultCommitPrefix,
+			ReleaseBranch:  "",
+			Publish:        defaultPublish,
+			Context:        "",
+			Prompt:         "",
+			OnNotesFailure: defaultOnNotesFailure,
 		},
 		MaxDiffLines: defaultMaxDiffLines,
 	}
@@ -102,12 +115,13 @@ type fileShape struct {
 }
 
 type releaseShape struct {
-	TagPrefix     string `toml:"tag_prefix"`
-	CommitPrefix  string `toml:"commit_prefix"`
-	ReleaseBranch string `toml:"release_branch"`
-	Publish       *bool  `toml:"publish"`
-	Context       string `toml:"context"`
-	Prompt        string `toml:"prompt"`
+	TagPrefix      string `toml:"tag_prefix"`
+	CommitPrefix   string `toml:"commit_prefix"`
+	ReleaseBranch  string `toml:"release_branch"`
+	Publish        *bool  `toml:"publish"`
+	Context        string `toml:"context"`
+	Prompt         string `toml:"prompt"`
+	OnNotesFailure string `toml:"on_notes_failure"`
 }
 
 // Load reads {root}/.mint.toml and returns the Phase 1 config. A missing file is
@@ -129,9 +143,10 @@ func Load(root string) (Config, error) {
 	// retain their defaults; only keys present in the document get overwritten.
 	shape := fileShape{
 		Release: releaseShape{
-			TagPrefix:     defaultTagPrefix,
-			CommitPrefix:  defaultCommitPrefix,
-			ReleaseBranch: "",
+			TagPrefix:      defaultTagPrefix,
+			CommitPrefix:   defaultCommitPrefix,
+			ReleaseBranch:  "",
+			OnNotesFailure: defaultOnNotesFailure,
 		},
 	}
 	if err := toml.Unmarshal(data, &shape); err != nil {
@@ -162,11 +177,12 @@ func resolveRelease(shape releaseShape) Release {
 	}
 
 	return Release{
-		TagPrefix:     shape.TagPrefix,
-		CommitPrefix:  shape.CommitPrefix,
-		ReleaseBranch: shape.ReleaseBranch,
-		Publish:       publish,
-		Context:       shape.Context,
-		Prompt:        shape.Prompt,
+		TagPrefix:      shape.TagPrefix,
+		CommitPrefix:   shape.CommitPrefix,
+		ReleaseBranch:  shape.ReleaseBranch,
+		Publish:        publish,
+		Context:        shape.Context,
+		Prompt:         shape.Prompt,
+		OnNotesFailure: shape.OnNotesFailure,
 	}
 }

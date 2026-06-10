@@ -38,6 +38,9 @@ func TestLoad_AbsentFile_ReturnsAllDefaults(t *testing.T) {
 	if !cfg.Release.Publish {
 		t.Errorf("Publish = %v, want true", cfg.Release.Publish)
 	}
+	if cfg.Release.OnNotesFailure != "abort" {
+		t.Errorf("OnNotesFailure = %q, want default %q", cfg.Release.OnNotesFailure, "abort")
+	}
 }
 
 func TestLoad_AbsentMaxDiffLines_DefaultsTo50000(t *testing.T) {
@@ -233,6 +236,57 @@ func TestLoad_ExplicitPrompt_Honoured(t *testing.T) {
 
 	if cfg.Release.Prompt != ".mint/release-prompt.md" {
 		t.Errorf("Prompt = %q, want the explicit value", cfg.Release.Prompt)
+	}
+}
+
+func TestLoad_AbsentOnNotesFailure_DefaultsToAbort(t *testing.T) {
+	t.Parallel()
+
+	// [release].on_notes_failure governs the normal-path notes-failure routing. Absent
+	// from the file it defaults to "abort" — fail loud, tag nothing.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.OnNotesFailure != "abort" {
+		t.Errorf("OnNotesFailure = %q, want default %q", cfg.Release.OnNotesFailure, "abort")
+	}
+}
+
+func TestLoad_ExplicitOnNotesFailureFallback_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit on_notes_failure value must be carried through verbatim; the resolver
+	// in the notes engine interprets the value (abort / fallback / fixed string).
+	writeConfig(t, dir, "[release]\non_notes_failure = \"fallback\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.OnNotesFailure != "fallback" {
+		t.Errorf("OnNotesFailure = %q, want %q", cfg.Release.OnNotesFailure, "fallback")
+	}
+}
+
+func TestLoad_ExplicitOnNotesFailureFixedString_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Any other non-empty value is a fixed fallback body string carried verbatim; the
+	// resolver treats it as the literal fallback body.
+	writeConfig(t, dir, "[release]\non_notes_failure = \"Notes unavailable — see commit history.\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.OnNotesFailure != "Notes unavailable — see commit history." {
+		t.Errorf("OnNotesFailure = %q, want the explicit fixed string", cfg.Release.OnNotesFailure)
 	}
 }
 
