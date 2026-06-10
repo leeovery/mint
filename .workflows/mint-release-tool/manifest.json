@@ -486,7 +486,7 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 3,
-          "current_task": "mint-release-tool-3-6",
+          "current_task": "mint-release-tool-3-7",
           "completed_tasks": [
             "mint-release-tool-1-1",
             "mint-release-tool-1-2",
@@ -519,7 +519,8 @@
             "mint-release-tool-3-2",
             "mint-release-tool-3-3",
             "mint-release-tool-3-4",
-            "mint-release-tool-3-5"
+            "mint-release-tool-3-5",
+            "mint-release-tool-3-6"
           ],
           "completed_phases": [
             1,
