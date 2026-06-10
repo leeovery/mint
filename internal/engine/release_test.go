@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -270,8 +271,25 @@ func TestRelease_AlwaysPromptsUnderYes(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if !recorded(rec, presentertest.KindPrompt) {
-		t.Errorf("engine did not call Prompt; it must always prompt at the gate")
+	// Prompt fires EXACTLY once under -y — the engine never branches around the
+	// call nor prompts again; the auto-accept happens inside Prompt.
+	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
+		t.Errorf("Prompt count = %d, want exactly 1 under -y", got)
+	}
+	// The notes are shown exactly once: no edit re-render, no engine-printed
+	// auto-accept echo. The echo is presenter-rendered inside Prompt, never emitted
+	// by the engine as a separate ShowNotes/ShowMessage event.
+	if got := countKind(rec, presentertest.KindShowNotes); got != 1 {
+		t.Errorf("ShowNotes count = %d, want 1 (no engine-printed auto-accept echo)", got)
+	}
+	if recorded(rec, presentertest.KindShowMessage) {
+		t.Errorf("engine emitted a ShowMessage; the -y auto-accept echo is presenter-rendered, not engine-printed")
+	}
+	// The run proceeds on the returned default with notes as GENERATED — the
+	// original first-release body reaches the sinks unchanged.
+	const want = "Initial release."
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != want {
+		t.Errorf("tag annotation body = %q, want original (as-generated) body %q", got, want)
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.Kind != presentertest.KindRunFinished {
@@ -368,10 +386,82 @@ func TestRelease_GateNo_AbortsNonZero(t *testing.T) {
 	assertNoMutation(t, f)
 }
 
-// TestRelease_GateEditThenYes proves the Phase 1 minimal edit handling: an `e`
-// answer re-shows the notes and re-prompts ONCE; a subsequent `y` proceeds the
-// spine through to a successful release. No $EDITOR is invoked.
-func TestRelease_GateEditThenYes(t *testing.T) {
+// fakeEditor is a scripted Editor seam: it captures the `current` body it was
+// handed and returns a pre-configured edited result (or error). It stands in for
+// the real $EDITOR resolution (task 2-13) so the gate-loop tests can drive the
+// `e` path without launching a real editor.
+type fakeEditor struct {
+	// edited is the body the editor returns on success — distinctive so a test can
+	// prove the EDITED text (not the original) flows downstream.
+	edited string
+	// err, when non-nil, is returned instead of edited to drive the edit-failure path.
+	err error
+	// gotCurrent captures the body the engine passed in as `current`, so a test can
+	// assert the editor received the original (pre-edit) body.
+	gotCurrent string
+	// calls counts how many times Edit was invoked.
+	calls int
+}
+
+func (e *fakeEditor) Edit(_ context.Context, current string) (string, error) {
+	e.calls++
+	e.gotCurrent = current
+	if e.err != nil {
+		return "", e.err
+	}
+	return e.edited, nil
+}
+
+// editedBody is a distinctive multi-line body the fake editor returns so the
+// edit-path tests can prove the EDITED text — not the original — reaches every
+// sink verbatim, with no re-parse or re-validation.
+const editedBody = "Edited by the human: shipped verbatim.\n\n" +
+	"## ✨ Hand-written\n" +
+	"- This body was typed in $EDITOR and must survive untouched\n"
+
+// newDepsWithEditor builds the orchestrator's dependency set with an injected
+// editor seam (the `e` path consults it).
+func newDepsWithEditor(rec *presentertest.RecordingPresenter, f *runner.FakeRunner, ed engine.Editor) engine.ReleaseDeps {
+	deps := newDeps(rec, f)
+	deps.Editor = ed
+	return deps
+}
+
+// TestRelease_GateBareEnterDefault proves a bare Enter (the gate Default,
+// modelled by an empty NextChoices queue) accepts and proceeds to Record and
+// onward to a successful RunFinished. The recorder records exactly one Prompt.
+func TestRelease_GateBareEnterDefault(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	// Empty NextChoices: Prompt returns the gate Default (ChoiceYes) — the bare-Enter
+	// accept path.
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
+		t.Errorf("Prompt count = %d, want 1 (bare Enter accepts on first prompt)", got)
+	}
+	// The run reached Record (the bookkeeping commit) and finished.
+	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+		t.Errorf("bare-Enter accept did not reach Record (no bookkeeping commit)")
+	}
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("bare-Enter accept did not finish; last event = %v", fin.Kind)
+	}
+}
+
+// TestRelease_GateExplicitYes proves an explicit `y` accepts and proceeds to a
+// successful release on the first prompt.
+func TestRelease_GateExplicitYes(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -379,7 +469,7 @@ func TestRelease_GateEditThenYes(t *testing.T) {
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes},
+		NextChoices: []presenter.Choice{presenter.ChoiceYes},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -387,22 +477,88 @@ func TestRelease_GateEditThenYes(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	// The notes are shown twice (initial + re-show on edit) and prompted twice.
+	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
+		t.Errorf("Prompt count = %d, want 1 (explicit y accepts on first prompt)", got)
+	}
+	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
+		t.Errorf("explicit-y accept did not reach Record (no bookkeeping commit)")
+	}
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("explicit-y accept did not finish; last event = %v", fin.Kind)
+	}
+}
+
+// TestRelease_GateEditThenYes proves the real edit semantics: an `e` answer
+// consults the editor seam, replaces the body with the editor's result VERBATIM
+// (no re-parse, no re-validation), re-shows the notes, and re-prompts. A
+// subsequent `y` proceeds — and the EDITED body, not the original, reaches every
+// sink (tag annotation, CHANGELOG, provider release). The editor receives the
+// ORIGINAL body as `current`.
+func TestRelease_GateEditThenYes(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	ed := &fakeEditor{edited: editedBody}
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptionsWithBody(phase2Body))
+	if err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// The editor was consulted once and received the ORIGINAL body as `current`.
+	if ed.calls != 1 {
+		t.Errorf("editor Edit calls = %d, want 1", ed.calls)
+	}
+	if ed.gotCurrent != phase2Body {
+		t.Errorf("editor received current = %q, want the original body %q", ed.gotCurrent, phase2Body)
+	}
+
+	// The notes are re-shown after the edit (initial + edit re-show) and the gate
+	// is prompted twice (edit, then the accepting yes).
 	if got := countKind(rec, presentertest.KindShowNotes); got != 2 {
 		t.Errorf("ShowNotes count = %d, want 2 (initial + edit re-show)", got)
 	}
 	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
-		t.Errorf("Prompt count = %d, want 2 (initial + re-prompt after edit)", got)
+		t.Errorf("Prompt count = %d, want 2 (edit + re-prompt after edit)", got)
 	}
+
+	// The EDITED body — not the original — reaches every sink, verbatim.
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != editedBody {
+		t.Errorf("tag annotation body = %q, want EDITED body %q", got, editedBody)
+	}
+	if got := changelogSectionBody(t, root, "0.0.1"); got != editedBody {
+		t.Errorf("CHANGELOG body = %q, want EDITED body %q", got, editedBody)
+	}
+	if got := stdinOf(t, f, "gh", "release", "create", "v0.0.1", "--title", "v0.0.1", "--notes-file", "-", "--verify-tag"); got != editedBody {
+		t.Errorf("provider release body = %q, want EDITED body %q", got, editedBody)
+	}
+
+	// The edited body re-shown at the gate must be the editor's result.
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindShowNotes && ev.ShowNotes.Body == editedBody {
+			goto found
+		}
+	}
+	t.Errorf("no ShowNotes re-render carried the EDITED body %q", editedBody)
+found:
+
 	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.Kind != presentertest.KindRunFinished {
 		t.Errorf("edit-then-yes did not finish; last event = %v", fin.Kind)
 	}
 }
 
-// TestRelease_GateEditThenNo proves the edit re-prompt still honours a `no`: an
-// `e` followed by `n` re-shows the notes, then aborts (Unwound, non-zero exit)
-// before any mutation.
+// TestRelease_GateEditThenNo proves the loop honours a `no` after an edit: an
+// `e` (which consults the editor) followed by `n` re-shows the notes, then
+// aborts (Unwound, non-zero exit) before any mutation — the edited body never
+// reaches a sink because nothing is mutated.
 func TestRelease_GateEditThenNo(t *testing.T) {
 	t.Parallel()
 
@@ -410,11 +566,12 @@ func TestRelease_GateEditThenNo(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.Seed("gh", runner.Result{}, nil)
+	ed := &fakeEditor{edited: editedBody}
 	rec := &presentertest.RecordingPresenter{
 		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceNo},
 	}
 
-	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptions())
 	if err == nil {
 		t.Fatalf("Release returned nil error, want an edit-then-no abort")
 	}
@@ -427,6 +584,104 @@ func TestRelease_GateEditThenNo(t *testing.T) {
 	}
 	if !recorded(rec, presentertest.KindUnwound) {
 		t.Errorf("edit-then-no did not surface an Unwound event")
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_GateEdit_EditorError_Aborts proves an editor-seam failure on the
+// `e` path is surfaced (StageFailed) and aborts non-zero before any mutation —
+// the spine never blocks on a broken editor.
+func TestRelease_GateEdit_EditorError_Aborts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	ed := &fakeEditor{err: errors.New("no editor on PATH")}
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceEdit},
+	}
+
+	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptions())
+	if err == nil {
+		t.Fatalf("Release returned nil error, want an editor-failure abort")
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if abort.ExitCode == 0 {
+		t.Errorf("abort ExitCode = 0, want non-zero")
+	}
+	if !recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("editor failure did not surface a StageFailed event")
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_GateEdit_NilEditor_Aborts proves the `e` choice with NO editor
+// wired (a misconfiguration — production wires it in task 2-13) surfaces a clean
+// failure and aborts non-zero before any mutation, rather than panicking.
+func TestRelease_GateEdit_NilEditor_Aborts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	// No editor wired: newDeps leaves ReleaseDeps.Editor nil.
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceEdit},
+	}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+	if err == nil {
+		t.Fatalf("Release returned nil error, want a nil-editor abort")
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if abort.ExitCode == 0 {
+		t.Errorf("abort ExitCode = 0, want non-zero")
+	}
+	if !recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("nil-editor edit did not surface a StageFailed event")
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_Gate_UnexpectedChoice_Aborts proves the gate loop refuses to spin
+// on a choice outside the declared y/n/e set (a presenter-contract violation,
+// e.g. an r leaking through before task 2-14): it surfaces a failure and aborts
+// non-zero before any mutation rather than looping forever.
+func TestRelease_Gate_UnexpectedChoice_Aborts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(presenter.Gate) (presenter.Choice, error) {
+			return presenter.ChoiceRegen, nil // r is not in the first-release gate's set
+		},
+	}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+	if err == nil {
+		t.Fatalf("Release returned nil error, want an unexpected-choice abort")
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if abort.ExitCode == 0 {
+		t.Errorf("abort ExitCode = 0, want non-zero")
+	}
+	if !recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("unexpected choice did not surface a StageFailed event")
 	}
 	assertNoMutation(t, f)
 }

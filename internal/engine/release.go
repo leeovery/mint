@@ -16,6 +16,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -33,6 +34,19 @@ import (
 // releaseAction is the engine-supplied verb word for the start-of-run header.
 const releaseAction = "releasing"
 
+// Editor is the engine's edit seam: the `e` review-gate choice hands the current
+// notes body to Edit and uses whatever it returns VERBATIM (no re-parse, no
+// re-validation — a human edit is trusted). The interface is intentionally tiny so
+// production can wire the real $EDITOR resolution (task 2-13) behind it while the
+// gate-loop tests drive a scripted fake. It is defined HERE (the consumer) rather
+// than where it is implemented, per the accept-interfaces convention.
+type Editor interface {
+	// Edit presents the current body to the user's editor and returns the saved
+	// text. A non-nil error means no edit could be obtained (e.g. no editor on PATH);
+	// the engine surfaces it and aborts rather than blocking on an unwired editor.
+	Edit(ctx context.Context, current string) (string, error)
+}
+
 // ReleaseDeps bundles the orchestrator's injected seams so production wires the
 // real implementations once (at the cmd entry point) and tests drive the whole
 // spine with a RecordingPresenter + a single FakeRunner. The Releaser and
@@ -49,6 +63,12 @@ type ReleaseDeps struct {
 	Releaser *release.Releaser
 	// Publisher publishes the provider release after the push crosses the PONR.
 	Publisher publish.Publisher
+	// Editor is the OPTIONAL edit seam consulted ONLY on the `e` review-gate choice.
+	// Runs that never reach `e` (every non-interactive and accept/abort path) may
+	// leave it nil; production wires the real $EDITOR resolution (task 2-13). If `e`
+	// is chosen with a nil Editor (a misconfiguration), the gate surfaces a clear
+	// error and aborts rather than panicking.
+	Editor Editor
 }
 
 // ReleaseOptions carries the per-run parsed inputs. Bump selects the version
@@ -126,7 +146,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
 
-	if err := reviewGate(p, body, versionKey); err != nil {
+	// The review gate may EDIT the body (the `e` choice); capture the returned
+	// final body and thread IT to every downstream sink. The gate stays positioned
+	// BEFORE any mutation (before Record).
+	body, err = reviewGate(ctx, p, deps.Editor, body, versionKey)
+	if err != nil {
 		return err
 	}
 
@@ -211,40 +235,77 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 	return presenter.Plan{Steps: steps}
 }
 
-// reviewGate runs the first-release review gate and decides whether the spine
-// proceeds. It returns nil to proceed, or an *AbortError to stop:
+// errEditorUnavailable is the cause surfaced when the `e` choice is taken but no
+// Editor seam was wired — a misconfiguration that should never reach production
+// (task 2-13 wires the editor). It is surfaced rather than panicked so the spine
+// fails loud and clean before any mutation.
+var errEditorUnavailable = errors.New("edit chosen but no editor is configured")
+
+// reviewGate runs the first-release y/n/e review gate as the engine-owned
+// re-entry LOOP and returns the (possibly edited) FINAL body the caller threads
+// to every sink. Rendering stays in the presenter; this owns only the semantics.
+//
+// Each pass reads one decision and acts on it:
 //
 //   - a Prompt error (ErrNotInteractive / ErrInputClosed) is already an
 //     *AbortError carrying a non-zero exit; it is returned as-is (ErrNotInteractive
 //     is pre-rendered by the presenter, ErrInputClosed is surfaced via the abort).
-//   - ChoiceNo aborts: Phase 1 surfaces an Unwound and stops (the full surgical
-//     auto-unwind lands in Phase 4); the run exits non-zero.
-//   - ChoiceEdit gets the Phase 1 minimal handling: the $EDITOR e/r re-entry loop
-//     is a later phase, so e re-shows the unchanged notes and re-prompts ONCE, then
-//     resolves the resulting choice — the spine never blocks on an unwired editor.
-//   - ChoiceYes proceeds.
-func reviewGate(p presenter.Presenter, body, versionKey string) error {
-	choice, err := ReviewDecision(p, FirstReleaseReviewGate())
-	if err != nil {
-		return err
-	}
-
-	if choice == presenter.ChoiceEdit {
-		// Phase 1 minimal edit handling: re-render the notes and read one more
-		// decision rather than invoking $EDITOR (deferred to a later phase).
-		p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
-		choice, err = ReviewDecision(p, FirstReleaseReviewGate())
+//   - ChoiceYes (also the bare-Enter default) accepts: the loop RETURNS the current
+//     body so the spine proceeds to Record with exactly the reviewed text.
+//   - ChoiceNo aborts: Phase 2 surfaces an Unwound and stops BEFORE any mutation
+//     (the full surgical auto-unwind lands in task 2-15); the run exits non-zero.
+//   - ChoiceEdit edits: the editor seam returns the saved text, which REPLACES the
+//     body VERBATIM — no re-parse, no re-validation (a human edit is trusted;
+//     structural validation only ever guards untrusted AI output). The notes are
+//     re-shown and the loop re-prompts. An editor-seam failure (including a missing
+//     editor) is surfaced and aborts rather than blocking the spine.
+func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, body, versionKey string) (string, error) {
+	for {
+		choice, err := ReviewDecision(p, FirstReleaseReviewGate())
 		if err != nil {
-			return err
+			return "", err
+		}
+
+		switch choice {
+		case presenter.ChoiceYes:
+			// Accept (also the bare-Enter default): proceed with the reviewed body.
+			return body, nil
+		case presenter.ChoiceNo:
+			// Abort on gate-no: surface and stop (full surgical unwind is task 2-15).
+			p.Unwound(presenter.Unwind{Summary: "release aborted at review gate; repo clean"})
+			return "", abort(errGateAborted)
+		case presenter.ChoiceEdit:
+			edited, eerr := editBody(ctx, editor, body)
+			if eerr != nil {
+				return "", surface(p, "edit", eerr)
+			}
+			// Use the edited text VERBATIM — no re-parse, no re-validation — then
+			// re-render the notes and loop back to re-prompt.
+			body = edited
+			p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
+		default:
+			// The gate declares only y/n/e and the presenter returns a member of the
+			// declared set; any other choice is a contract violation. Fail loud rather
+			// than spin the loop forever (r regenerate is task 2-14, not handled here).
+			return "", surface(p, "review", errUnexpectedChoice(choice))
 		}
 	}
+}
 
-	if choice == presenter.ChoiceNo {
-		// Phase 1 abort on gate-no: surface and stop (full surgical unwind is Phase 4).
-		p.Unwound(presenter.Unwind{Summary: "release aborted at review gate; repo clean"})
-		return abort(errGateAborted)
+// errUnexpectedChoice builds the cause for a review-gate choice outside the gate's
+// declared y/n/e set — a presenter-contract violation the loop refuses to ignore.
+func errUnexpectedChoice(choice presenter.Choice) error {
+	return fmt.Errorf("unexpected review-gate choice %q", choice)
+}
+
+// editBody obtains the edited notes from the editor seam. A nil editor on the `e`
+// path is a misconfiguration (task 2-13 wires the real one); rather than
+// panicking it returns errEditorUnavailable so the gate surfaces a clear failure.
+func editBody(ctx context.Context, editor Editor, current string) (string, error) {
+	if editor == nil {
+		return "", errEditorUnavailable
 	}
-	return nil
+	return editor.Edit(ctx, current)
 }
 
 // warnPublishFailed emits the post-PONR warn-only event: by the time it runs the
