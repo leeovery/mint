@@ -10,14 +10,23 @@ package engine
 // PONR ASYMMETRY (load-bearing): every failure in stages 1–8 BEFORE the atomic
 // push succeeds aborts the run (surfaced via the presenter, non-zero exit) with
 // nothing published. A publish failure AFTER a successful push is WARN-ONLY — the
-// tag is already public, so the run does not unwind; it warns and exits 0. The
-// full surgical auto-unwind is a later phase; Phase 1 surfaces and stops.
+// tag is already public, so the run does not unwind; it warns and exits 0.
+//
+// AUTO-UNWIND (Phase 2): a gate-no user abort and any POST-MUTATION pre-PONR failure
+// share ONE clean-reset path (unwind): mint resets whatever it made this run back to
+// the clean starting state captured before the gate (startingHEAD) and narrates an
+// engine-authored Unwound. The two are deliberately identical — a declined gate and
+// a rejected push reset the same way. The PRE-mutation / preflight failures (before
+// startingHEAD is captured) stay plain surface; there is nothing to unwind. Phase 4
+// adds surgical N-commit counting, lock-resilient git wrapping, and --autostash
+// ordering on top of this spine reset.
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"mint/internal/config"
@@ -165,6 +174,17 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		return surface(p, "preflight", err)
 	}
 
+	// Capture the clean starting state NOW: preflight has just confirmed the tree is
+	// clean and HEAD is resolvable, and nothing has mutated yet, so this HEAD is the
+	// unambiguous reset target the auto-unwind returns to. It is captured BEFORE the
+	// gate and any mutation so a gate-abort or any pre-PONR failure can reset back to
+	// exactly here. Failing to resolve it is a plain preflight failure (no mutation
+	// to unwind yet).
+	startingHEAD, err := resolveHEAD(ctx, deps.Runner)
+	if err != nil {
+		return surface(p, "preflight", err)
+	}
+
 	// Stage 4 — notes body. The injected NotesBody is the selected body (Phase-2
 	// SelectBody seam); an empty override falls back to the Phase-1 first-release
 	// fixed no-AI body, preserving current behaviour. Whatever resolves here flows
@@ -192,6 +212,16 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// (before Record). opts.NotesKind selects the gate variant (y/n/e vs y/n/e/r).
 	body, err = reviewGate(ctx, p, deps.Editor, deps.Regenerator, opts.NotesKind, body, versionKey)
 	if err != nil {
+		// A gate-no is a clean USER abort: route it through the shared auto-unwind so it
+		// is treated identically to a pre-push failure (reset whatever mint made this
+		// run, narrate an Unwound). No prior StageFailed — declining the gate is not a
+		// stage failure. The gate sits BEFORE the tag, so the tag cannot exist yet
+		// (tagMayExist=false). Every OTHER reviewGate error (edit/regenerate/AskLine/
+		// unexpected) already surfaced its own StageFailed and occurred at the gate
+		// before any mutation, so it keeps its current behaviour — returned as-is.
+		if errors.Is(err, errGateAborted) {
+			return unwind(ctx, deps, startingHEAD, tag, false, errGateAborted)
+		}
 		return err
 	}
 
@@ -201,16 +231,20 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// HEAD and STILL carries the full body via TagAndPush. Nothing durable is lost.
 	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, cfg.Release.Changelog)
 	if err != nil {
-		return surface(p, "record", err)
+		// Post-mutation, pre-PONR: route through the shared auto-unwind so a half-written
+		// changelog (and any bookkeeping commit) is reset back to the clean start — the
+		// abort path is identical to the pre-push failure path. No tag exists yet.
+		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
 	}
 	if err := record.CommitBookkeeping(ctx, deps.Runner, root, cfg.Release.CommitPrefix, tag, writeResult.Changed); err != nil {
-		return surface(p, "record", err)
+		return surfaceAndUnwind(ctx, deps, "record", startingHEAD, tag, false, err)
 	}
 
 	// Stage 2 (conditional gate 6) — gh auth, only when publishing, BEFORE the tag.
 	if cfg.Release.Publish {
 		if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
-			return surface(p, "preflight", err)
+			// The bookkeeping commit may have moved HEAD; unwind resets it. No tag yet.
+			return surfaceAndUnwind(ctx, deps, "preflight", startingHEAD, tag, false, err)
 		}
 	}
 
@@ -218,7 +252,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// PointOfNoReturnCrossed is set: from here the tag is public, so any later
 	// failure is warn-only and the run must NOT unwind.
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
-		return surface(p, "tag", err)
+		// Pre-PONR failure: route through the shared auto-unwind. A push REJECTION means
+		// the local tag was created and must be deleted (tagMayExist); a tag-CREATION
+		// failure means no tag exists, so only the commit is reset.
+		tagMayExist := errors.Is(err, release.ErrPushRejected)
+		return surfaceAndUnwind(ctx, deps, "tag", startingHEAD, tag, tagMayExist, err)
 	}
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
@@ -242,6 +280,91 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 // errGateAborted is the cause for a clean gate-no abort: the user declined the
 // review gate, so the run stops with a non-zero exit but no underlying failure.
 var errGateAborted = errors.New("release aborted at the review gate")
+
+// resolveHEAD reads the current commit SHA via `git rev-parse HEAD` through the
+// runner seam (every git op goes through the seam). It is used BOTH to capture the
+// clean starting state before the gate and to probe the current HEAD inside the
+// unwind, so the two are compared apples-to-apples.
+func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
+	res, err := r.Run(ctx, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+// unwind is the single shared clean-reset used by BOTH the user-abort (gate-no) and
+// the pre-push failure paths, so a declined gate and a rejected push are treated
+// identically: mint rolls back whatever it made THIS run, returning the tree to the
+// exact clean starting state captured before the gate (startingHEAD).
+//
+// It probes the current HEAD: if it MOVED, mint committed this run, so a `git reset
+// --hard {startingHEAD}` returns the tree to the clean start (also discarding any
+// uncommitted churn, e.g. a half-written changelog after a failed commit); if HEAD
+// is unchanged there is nothing to reset. When tagMayExist is true it also deletes
+// the local tag mint created this run (`git tag -d {tag}`, best-effort — a "tag not
+// found" non-zero is not fatal). The engine AUTHORS the whole Unwound Summary
+// (ASCII, semicolon-separated, INCLUDING the "repo clean" tail) and the presenter
+// renders it verbatim; it returns abort(reason) so the engine owns the non-zero
+// exit. It emits NO StageFailed (stage-failure callers emit that first via
+// surfaceAndUnwind; the gate-no path emits none).
+//
+// Phase 4 hardening is DEFERRED and deliberately NOT implemented here: precise
+// N-commit surgical counting beyond a simple reset, lock-resilient git wrapping, and
+// --autostash stash/restore ordering all land in Phase 4. This is the spine reset.
+func unwind(ctx context.Context, deps ReleaseDeps, startingHEAD, tag string, tagMayExist bool, reason error) error {
+	commitReset := false
+	if current, err := resolveHEAD(ctx, deps.Runner); err != nil || current != startingHEAD {
+		// On a probe error the safe move is still to reset to the known-clean start; on a
+		// moved HEAD the reset is mandatory. Either way reset to the captured starting
+		// state. A reset failure is best-effort here (Phase 4 adds lock-resilient
+		// wrapping); the abort still carries the original reason.
+		_, _ = deps.Runner.Run(ctx, "git", "reset", "--hard", startingHEAD)
+		commitReset = true
+	}
+
+	tagDeleted := false
+	if tagMayExist {
+		// Best-effort: a "tag not found" non-zero is not fatal — the goal is that no tag
+		// mint made this run survives the abort.
+		_, _ = deps.Runner.Run(ctx, "git", "tag", "-d", tag)
+		tagDeleted = true
+	}
+
+	deps.Presenter.Unwound(presenter.Unwind{Summary: unwindSummary(commitReset, tagDeleted, tag)})
+	return abort(reason)
+}
+
+// unwindSummary authors the engine-owned Unwound Summary describing what the unwind
+// undid, INCLUDING the trailing "repo clean" tail. It is ASCII and semicolon-joined
+// (matching the existing "…; repo clean" style) so the plain presenter stays
+// byte-pure; the presenter renders it VERBATIM and never synthesises the tail.
+func unwindSummary(commitReset, tagDeleted bool, tag string) string {
+	const tail = "; repo clean"
+	switch {
+	case commitReset && tagDeleted:
+		return "reset the release commit and deleted tag " + tag + tail
+	case commitReset:
+		return "reset the release commit" + tail
+	case tagDeleted:
+		return "deleted tag " + tag + tail
+	default:
+		return "nothing to undo" + tail
+	}
+}
+
+// surfaceAndUnwind handles a post-mutation, pre-PONR STAGE failure: it surfaces the
+// StageFailed first (so the failed stage is shown) and then routes through the
+// shared unwind, so the abort path after a bookkeeping commit is identical to the
+// pre-push failure path (the commit is reset). It is the stage-failure sibling of
+// the gate-no path, which calls unwind directly with no StageFailed.
+func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage, startingHEAD, tag string, tagMayExist bool, cause error) error {
+	deps.Presenter.StageFailed(presenter.StageFailure{
+		Name:    stage,
+		Message: failureMessage(cause),
+	})
+	return unwind(ctx, deps, startingHEAD, tag, tagMayExist, cause)
+}
 
 // runPreflight runs the Stage 2 gate chain in the spec's order: fetch (read-only,
 // refreshes tags + upstream refs), then the cheap local gates, then the network
@@ -307,8 +430,11 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //     body so the spine proceeds to Record with exactly the reviewed text. Under -y
 //     the presenter returns the gate Default (ChoiceYes), so the loop accepts
 //     immediately and `r` is never reached — regenerate is interactive-only.
-//   - ChoiceNo aborts: Phase 2 surfaces an Unwound and stops BEFORE any mutation
-//     (the full surgical auto-unwind lands in task 2-15); the run exits non-zero.
+//   - ChoiceNo aborts: it returns a clean errGateAborted cause WITHOUT emitting an
+//     Unwound — Release routes the gate-no through the shared auto-unwind (which
+//     authors the Unwound and resets whatever mint made), so a user-abort and a
+//     pre-push failure share one path. The gate sits BEFORE any mutation, so the
+//     unwind finds nothing to reset; the run still exits non-zero.
 //   - ChoiceEdit edits: the editor seam returns the saved text, which REPLACES the
 //     body VERBATIM — no re-parse, no re-validation (a human edit is trusted;
 //     structural validation only ever guards untrusted AI output). The notes are
@@ -335,8 +461,10 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// Accept (also the bare-Enter default): proceed with the reviewed body.
 			return body, nil
 		case presenter.ChoiceNo:
-			// Abort on gate-no: surface and stop (full surgical unwind is task 2-15).
-			p.Unwound(presenter.Unwind{Summary: "release aborted at review gate; repo clean"})
+			// Abort on gate-no: return a CLEAN cause and let Release route it through the
+			// shared auto-unwind (which authors the Unwound and owns the non-zero exit) —
+			// the gate no longer emits its own Unwound, so the user-abort and the pre-push
+			// failure share one reset/narration path.
 			return "", abort(errGateAborted)
 		case presenter.ChoiceEdit:
 			edited, eerr := editBody(ctx, editor, body)

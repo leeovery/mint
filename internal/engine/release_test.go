@@ -57,6 +57,7 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedNonZero(),                    // rev-parse -q --verify refs/tags/{tag} (absent)
 		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
 		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
 		ScriptedOut(""),                      // tag -a {tag} -F -
@@ -117,6 +118,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git rev-parse -q --verify refs/tags/v0.0.1",
 		"git rev-list --left-right --count @{u}...HEAD",
 		"git ls-remote --tags origin refs/tags/v0.0.1",
+		"git rev-parse HEAD",
 		"git -C " + root + " add CHANGELOG.md",
 		"git -C " + root + " commit -m 🌿 Release v0.0.1",
 		"gh auth status",
@@ -385,6 +387,313 @@ func TestRelease_GateNo_AbortsNonZero(t *testing.T) {
 		t.Errorf("gate-no did not surface an Unwound event")
 	}
 	assertNoMutation(t, f)
+}
+
+// TestRelease_GateNo_UnwindsNothingToUndo proves the gate-n auto-unwind BEFORE any
+// mutation: the unwind's current-HEAD probe returns the SAME starting SHA the
+// pre-gate capture recorded, so nothing moved and there is nothing to reset. The
+// run surfaces an engine-authored Unwound Summary reporting nothing to undo AND
+// ending in the "repo clean" tail, issues NO `git reset --hard` and NO mutation,
+// returns a non-zero *AbortError, and emits NO success end-of-run line after the
+// Unwound.
+func TestRelease_GateNo_UnwindsNothingToUndo(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
+	// The unwind's current-HEAD probe returns the SAME starting SHA → nothing moved.
+	f.SeedSequence("git", ScriptedOut(startingSHA))
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+	}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	assertAbortNonZero(t, err)
+	// The Unwound carries the engine-authored "nothing to undo" Summary including the
+	// repo-clean tail, rendered verbatim by the presenter.
+	if got, want := unwoundSummary(t, rec), "nothing to undo; repo clean"; got != want {
+		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	}
+	// No reset was issued — nothing moved, so there is nothing to undo.
+	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("gate-n before mutation issued a `git reset --hard`; nothing should be reset")
+	}
+	// No tag was deleted (the gate sits before the tag).
+	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
+		t.Errorf("gate-n before mutation deleted a tag; no tag was created")
+	}
+	assertNoMutation(t, f)
+	assertNoFinishAfterUnwound(t, rec)
+}
+
+// TestRelease_PushRejected_ResetsCommitAndDeletesTag proves a push REJECTION
+// (post-Record, pre-PONR) routes through the shared unwind AFTER a StageFailed: the
+// bookkeeping commit moved HEAD, so the unwind's current-HEAD probe returns a
+// DIFFERENT SHA and the engine issues `git reset --hard {startingSHA}`; because the
+// rejection means the local tag was created, the engine also deletes it with `git
+// tag -d {tag}`. The Unwound Summary (engine-authored) mentions the reset AND the
+// deleted tag AND the repo-clean tail, a StageFailed precedes the Unwound, the run
+// returns a non-zero *AbortError, and no success end-of-run line follows.
+func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGitThroughTag(f, root, "main", "v0.0.1")
+	// The atomic push is REJECTED (ran-and-exited-non-zero), then the unwind runs.
+	f.SeedSequence("git",
+		pushRejected(),        // push --atomic origin HEAD v0.0.1 (rejected)
+		ScriptedOut(movedSHA), // unwind: rev-parse HEAD (HEAD moved by the commit)
+		ScriptedOut(""),       // unwind: reset --hard startingSHA
+		ScriptedOut(""),       // unwind: tag -d v0.0.1
+	)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	assertAbortNonZero(t, err)
+	// The release commit was reset to the clean starting point.
+	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("push-rejection unwind did not reset to the starting SHA; got %v", commandLines(f.Invocations()))
+	}
+	// The local tag mint created this run was deleted.
+	if !invokedWith(f, "git", "tag", "-d", "v0.0.1") {
+		t.Errorf("push-rejection unwind did not delete the local tag; got %v", commandLines(f.Invocations()))
+	}
+	// A StageFailed precedes the Unwound (a failed stage, then the unwind narration).
+	assertStageFailedThenUnwound(t, rec)
+	if got, want := unwoundSummary(t, rec), "reset the release commit and deleted tag v0.0.1; repo clean"; got != want {
+		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	}
+	assertNoFinishAfterUnwound(t, rec)
+}
+
+// TestRelease_GhAuthFails_ResetsCommit proves a post-Record, pre-tag failure (the
+// conditional gh-auth gate fails after the bookkeeping commit but before the tag)
+// routes through the shared unwind AFTER a StageFailed: the commit moved HEAD, so
+// the unwind resets to the starting SHA. No tag was created, so NO `git tag -d` is
+// issued. The Summary mentions the reset and the repo-clean tail (but no deleted
+// tag), a StageFailed precedes the Unwound, and no success line follows.
+func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGitThroughCommit(f, root, "main", "v0.0.1")
+	// The gh-auth gate fails after the bookkeeping commit; the unwind then runs.
+	f.SeedSequence("git",
+		ScriptedOut(movedSHA), // unwind: rev-parse HEAD (HEAD moved by the commit)
+		ScriptedOut(""),       // unwind: reset --hard startingSHA
+	)
+	f.Seed("gh", runner.Result{ExitCode: 1}, errors.New("gh: not authenticated"))
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	assertAbortNonZero(t, err)
+	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("gh-auth-failure unwind did not reset to the starting SHA; got %v", commandLines(f.Invocations()))
+	}
+	// No tag was created before the gh-auth gate, so none must be deleted.
+	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
+		t.Errorf("gh-auth-failure unwind deleted a tag; no tag was created yet")
+	}
+	assertStageFailedThenUnwound(t, rec)
+	if got, want := unwoundSummary(t, rec), "reset the release commit; repo clean"; got != want {
+		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	}
+	assertNoFinishAfterUnwound(t, rec)
+}
+
+// TestRelease_AbortPathMatchesPrePushFailurePath proves the spec invariant that a
+// user-abort (gate n) and a pre-push git failure are treated IDENTICALLY: both end
+// in a KindUnwound, and when HEAD moved both issue the SAME `git reset --hard
+// {startingSHA}`. The gate-n case ran before any mutation (HEAD unchanged → no
+// reset, "nothing to undo"); the push-rejection case ran after the commit (HEAD
+// moved → reset). Either way the terminal narration is an Unwound and the reset
+// (when needed) targets the exact captured starting state.
+func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
+	t.Parallel()
+
+	// Gate-n: aborts before mutation, ends in Unwound, no reset (nothing moved).
+	gateRoot := t.TempDir()
+	gateRunner := runner.NewFakeRunner()
+	seedHappyGitThroughGate(gateRunner, gateRoot, "main", "v0.0.1")
+	gateRunner.SeedSequence("git", ScriptedOut(startingSHA)) // unwind probe: unchanged
+	gateRec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+	}
+	gateErr := engine.Release(t.Context(), newDeps(gateRec, gateRunner), patchOptions())
+
+	// Pre-push failure: the push is rejected after the commit, ends in Unwound, resets.
+	pushRoot := t.TempDir()
+	pushRunner := runner.NewFakeRunner()
+	seedHappyGitThroughTag(pushRunner, pushRoot, "main", "v0.0.1")
+	pushRunner.SeedSequence("git",
+		pushRejected(),        // push rejected
+		ScriptedOut(movedSHA), // unwind probe: HEAD moved
+		ScriptedOut(""),       // reset --hard
+		ScriptedOut(""),       // tag -d
+	)
+	pushRunner.Seed("gh", runner.Result{}, nil)
+	pushRec := &presentertest.RecordingPresenter{}
+	pushErr := engine.Release(t.Context(), newDeps(pushRec, pushRunner), patchOptions())
+
+	// Both abort non-zero and both terminate on an Unwound (the shared abort path).
+	assertAbortNonZero(t, gateErr)
+	assertAbortNonZero(t, pushErr)
+	if !recorded(gateRec, presentertest.KindUnwound) {
+		t.Errorf("gate-n abort did not end in an Unwound")
+	}
+	if !recorded(pushRec, presentertest.KindUnwound) {
+		t.Errorf("pre-push failure did not end in an Unwound")
+	}
+	// The pre-push path moved HEAD, so it issues the shared reset to the starting SHA;
+	// the gate-n path moved nothing, so it issues none — same reset target, applied
+	// only when HEAD actually moved.
+	if !invokedWith(pushRunner, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("pre-push failure did not reset to the shared starting SHA")
+	}
+	if invokedWith(gateRunner, "git", "reset", "--hard", startingSHA) {
+		t.Errorf("gate-n abort reset despite nothing moving")
+	}
+}
+
+// startingSHA is the fixed SHA the pre-gate `git rev-parse HEAD` capture returns —
+// the clean starting state the unwind resets back to. movedSHA is a DIFFERENT SHA
+// the unwind's later probe returns once mint's bookkeeping commit has moved HEAD,
+// so the unwind detects the move and resets.
+const (
+	startingSHA = "startsha"
+	movedSHA    = "movedsha"
+)
+
+// pushRejected models a ran-and-rejected atomic push: a populated non-zero Result
+// wrapped in release.ErrPushRejected, so the engine's tagMayExist branch fires (the
+// local tag was created before the push was rejected).
+func pushRejected() runner.ScriptedCall {
+	return runner.ScriptedCall{
+		Result: runner.Result{ExitCode: 1},
+		Err:    release.ErrPushRejected,
+	}
+}
+
+// seedHappyGitThroughGate scripts the git timeline up to and including the pre-gate
+// `git rev-parse HEAD` capture — the read stages, the preflight gates, then the
+// starting-SHA capture. The caller seeds whatever the gate/unwind needs next.
+func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag string) {
+	f.SeedSequence("git",
+		ScriptedOut(root),                    // rev-parse --show-toplevel
+		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedOut(""),                      // fetch --tags
+		ScriptedOut(""),                      // status --porcelain (clean)
+		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),                    // rev-parse -q --verify refs/tags/{tag} (absent)
+		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
+		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
+	)
+}
+
+// seedHappyGitThroughCommit extends seedHappyGitThroughGate through the bookkeeping
+// commit (CHANGELOG add + commit), leaving the spine positioned at the conditional
+// gh-auth gate. The caller seeds whatever the unwind needs next.
+func seedHappyGitThroughCommit(f *runner.FakeRunner, root, releaseBranch, tag string) {
+	seedHappyGitThroughGate(f, root, releaseBranch, tag)
+	f.SeedSequence("git",
+		ScriptedOut(""), // -C root add CHANGELOG.md
+		ScriptedOut(""), // -C root commit -m
+	)
+}
+
+// seedHappyGitThroughTag extends seedHappyGitThroughCommit through the gh-auth gate
+// (seeded gh) and the annotated tag, leaving the spine positioned at the atomic
+// push. The caller seeds the push outcome and whatever the unwind needs next.
+func seedHappyGitThroughTag(f *runner.FakeRunner, root, releaseBranch, tag string) {
+	seedHappyGitThroughCommit(f, root, releaseBranch, tag)
+	f.SeedSequence("git",
+		ScriptedOut(""), // tag -a {tag} -F -
+	)
+}
+
+// unwoundSummary returns the Summary of the first recorded Unwound event, failing
+// the test if none fired.
+func unwoundSummary(t *testing.T, rec *presentertest.RecordingPresenter) string {
+	t.Helper()
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindUnwound {
+			return ev.Unwound.Summary
+		}
+	}
+	t.Fatalf("no Unwound event recorded; kinds = %v", rec.Kinds())
+	return ""
+}
+
+// assertAbortNonZero fails the test unless err is a non-zero *engine.AbortError.
+func assertAbortNonZero(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("Release returned nil error, want an abort")
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if abort.ExitCode == 0 {
+		t.Errorf("abort ExitCode = 0, want non-zero")
+	}
+}
+
+// assertStageFailedThenUnwound fails the test unless a KindStageFailed event
+// precedes a KindUnwound event — the post-mutation failure ordering (surface the
+// failed stage, then narrate the unwind).
+func assertStageFailedThenUnwound(t *testing.T, rec *presentertest.RecordingPresenter) {
+	t.Helper()
+	kinds := rec.Kinds()
+	stageFailedAt, unwoundAt := -1, -1
+	for i, k := range kinds {
+		if k == presentertest.KindStageFailed && stageFailedAt == -1 {
+			stageFailedAt = i
+		}
+		if k == presentertest.KindUnwound && unwoundAt == -1 {
+			unwoundAt = i
+		}
+	}
+	if stageFailedAt == -1 {
+		t.Errorf("no StageFailed event recorded; kinds = %v", kinds)
+	}
+	if unwoundAt == -1 {
+		t.Errorf("no Unwound event recorded; kinds = %v", kinds)
+	}
+	if stageFailedAt != -1 && unwoundAt != -1 && stageFailedAt > unwoundAt {
+		t.Errorf("StageFailed (at %d) did not precede Unwound (at %d); kinds = %v", stageFailedAt, unwoundAt, kinds)
+	}
+}
+
+// assertNoFinishAfterUnwound fails the test if any KindRunFinished follows a
+// KindUnwound — an unwound run is terminal and emits no success end-of-run line.
+func assertNoFinishAfterUnwound(t *testing.T, rec *presentertest.RecordingPresenter) {
+	t.Helper()
+	kinds := rec.Kinds()
+	unwoundAt := -1
+	for i, k := range kinds {
+		if k == presentertest.KindUnwound {
+			unwoundAt = i
+			break
+		}
+	}
+	if unwoundAt == -1 {
+		t.Fatalf("no Unwound event recorded; kinds = %v", kinds)
+	}
+	for _, k := range kinds[unwoundAt+1:] {
+		if k == presentertest.KindRunFinished {
+			t.Errorf("a RunFinished followed the Unwound; an unwound run emits no success line; kinds = %v", kinds)
+		}
+	}
 }
 
 // fakeEditor is a scripted Editor seam: it captures the `current` body it was
@@ -877,6 +1186,7 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
@@ -1088,6 +1398,7 @@ func TestRelease_ChangelogDisabled_SkipsChangelogTagStillCarriesBody(t *testing.
 		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)
@@ -1172,6 +1483,7 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
 		ScriptedOut("0\t1"),        // rev-list left-right count
 		ScriptedOut(""),            // ls-remote --tags
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
