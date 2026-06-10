@@ -173,11 +173,11 @@ func TestPrettyPresenterInitCreatedColourOnEmitsANSI(t *testing.T) {
 	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
 		t.Errorf("colour-on init created line contains no ESC (0x1b) — expected green SGR codes:\n%q", got)
 	}
-	if !strings.Contains(got, "✓") {
-		t.Errorf("✓ glyph missing from init created line:\n%q", got)
-	}
-	if !strings.Contains(got, "created .mint.toml") {
-		t.Errorf("action word + target missing from init created line:\n%q", got)
+	// Strip the colour codes and assert the COMPLETE deterministic line — the whole
+	// indent + glyph + action word + target survives the styling, asserted exactly
+	// rather than by bare inner fragments.
+	if stripped, want := stripANSI(got), "  ✓ created .mint.toml\n"; stripped != want {
+		t.Errorf("colour-on init created line (ANSI stripped) = %q, want %q", stripped, want)
 	}
 	if !strings.Contains(got, "  \x1b[") {
 		t.Errorf("two-space indent before the styled glyph missing:\n%q", got)
@@ -196,11 +196,11 @@ func TestPrettyPresenterInitSkippedColourOnEmitsANSI(t *testing.T) {
 	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
 		t.Errorf("colour-on init skipped line contains no ESC (0x1b) — expected dim SGR codes:\n%q", got)
 	}
-	if !strings.Contains(got, "·") {
-		t.Errorf("middot glyph missing from init skipped line:\n%q", got)
-	}
-	if !strings.Contains(got, "skipped release (exists, use --force)") {
-		t.Errorf("action word + target + verbatim reason missing from init skipped line:\n%q", got)
+	// Strip the colour codes and assert the COMPLETE deterministic line — the whole
+	// indent + middot + action word + target + verbatim reason survives the styling,
+	// asserted exactly rather than by bare inner fragments.
+	if stripped, want := stripANSI(got), "  · skipped release (exists, use --force)\n"; stripped != want {
+		t.Errorf("colour-on init skipped line (ANSI stripped) = %q, want %q", stripped, want)
 	}
 }
 

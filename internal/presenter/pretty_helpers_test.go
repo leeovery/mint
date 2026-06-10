@@ -57,6 +57,22 @@ func ruleDisplayWidth(line string) int {
 	return len([]rune(stripANSI(line)))
 }
 
+// hasExactLine reports whether want appears in s as a COMPLETE newline-delimited
+// line — its own whole line, not merely a substring of some longer line. It lets a
+// test assert the FULL deterministic line (indent + key + action + marker) exactly
+// rather than a bare inner fragment, so extra surrounding characters on the line
+// would fail the assertion. s is split on "\n"; the final unterminated segment (e.g.
+// a trailing "  Continue? › " prompt with no newline) is included so a complete line
+// at the end of the buffer still matches.
+func hasExactLine(s, want string) bool {
+	for _, line := range strings.Split(s, "\n") {
+		if line == want {
+			return true
+		}
+	}
+	return false
+}
+
 // stripANSI removes CSI SGR escape sequences (ESC '[' … 'm') from s so a rendered
 // line can be measured by display columns regardless of colour styling. It is a
 // minimal stripper sufficient for the dim styling lipgloss emits on the rules, and

@@ -78,7 +78,9 @@ func TestPrettyGateDefaultMarkerOnDefaultLineOnly(t *testing.T) {
 	out := drivePrettyPromptProfile("y\n", presenter.NotesReviewGate(), termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "    y  accept & proceed [default]") {
+	// Assert the COMPLETE y line — full indent + key + action + marker — exactly,
+	// not a bare inner fragment, by matching it as a whole line of the menu render.
+	if !hasExactLine(got, "    y  accept & proceed [default]") {
 		t.Errorf("[default] marker not on the y (default) line:\n%q", got)
 	}
 	// The marker must appear exactly once across the whole menu render.
@@ -118,7 +120,9 @@ func TestPrettyGateTwoChoiceRendersOnlyYN(t *testing.T) {
 	out := drivePrettyPromptProfile("y\n", presenter.ReuseConfirmGate(), termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "    y  accept & proceed [default]") {
+	// Assert the COMPLETE y line — full indent + key + action + marker — exactly,
+	// not a bare inner fragment, by matching it as a whole line of the menu render.
+	if !hasExactLine(got, "    y  accept & proceed [default]") {
 		t.Errorf("y line missing from reuse confirm menu:\n%q", got)
 	}
 	if !strings.Contains(got, "    n  abort") {
