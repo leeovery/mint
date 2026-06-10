@@ -51,8 +51,19 @@ type Result struct {
 // ErrCommandNotFound (via errors.Is) so the editor launcher can tell "no editor
 // to launch" (return to the gate) apart from "the editor ran and failed"
 // (surface and abort).
+//
+// RunInDir is the WORKING-DIRECTORY + ENV seam: it runs name with args from the
+// directory dir and with env — a slice of "KEY=VALUE" entries — layered ON TOP OF
+// the inherited environment (later entries win on duplicate keys, per os/exec).
+// It exists because hooks execute as `sh -c "<entry>"` from the repo root with
+// mint's MINT_* variables injected, which the plain Run (no cwd, no env) cannot
+// express. Stdout/stderr are captured separately and the exit is translated to
+// Result.ExitCode plus an error exactly as Run does: missing binary →
+// ErrCommandNotFound (via errors.Is); non-zero exit → populated Result + non-nil
+// error; clean exit → populated Result + nil error.
 type CommandRunner interface {
 	Run(ctx context.Context, name string, args ...string) (Result, error)
 	RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (Result, error)
 	RunInteractive(ctx context.Context, name string, args ...string) error
+	RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (Result, error)
 }

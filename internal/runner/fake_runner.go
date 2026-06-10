@@ -9,11 +9,15 @@ import (
 // Invocation is a single recorded call against a FakeRunner. Stdin holds the
 // fully-drained contents piped via RunWith (empty for Run), so tests can assert
 // both that a command ran and what was fed to it — e.g. the AI prompt sent to
-// `claude -p`.
+// `claude -p`. Dir and Env carry the working directory and the injected
+// "KEY=VALUE" env entries passed to RunInDir (both zero for the other methods), so
+// hook tests can assert mint ran each entry from the repo root with MINT_* set.
 type Invocation struct {
 	Name  string
 	Args  []string
 	Stdin string
+	Dir   string
+	Env   []string
 }
 
 // scriptedResult is the pre-seeded outcome for a command name.
@@ -95,6 +99,20 @@ func (f *FakeRunner) RunWith(_ context.Context, stdin io.Reader, name string, ar
 		Name:  name,
 		Args:  args,
 		Stdin: drainStdin(stdin),
+	})
+	return f.outcome(name)
+}
+
+// RunInDir records the call — including the working directory and the injected
+// env entries — and returns the seeded outcome for name. It honours the same
+// per-name Seed/SeedSequence/SeedNotFound scripting as Run, so a hook test can
+// script each entry's exit (e.g. first entry fails) while asserting Dir and Env.
+func (f *FakeRunner) RunInDir(_ context.Context, dir string, env []string, name string, args ...string) (Result, error) {
+	f.invocations = append(f.invocations, Invocation{
+		Name: name,
+		Args: args,
+		Dir:  dir,
+		Env:  env,
 	})
 	return f.outcome(name)
 }

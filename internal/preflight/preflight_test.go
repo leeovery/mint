@@ -681,3 +681,9 @@ func (a *argRunner) RunWith(_ context.Context, _ io.Reader, _ string, args ...st
 func (a *argRunner) RunInteractive(_ context.Context, _ string, _ ...string) error {
 	panic("argRunner.RunInteractive: not expected")
 }
+
+// RunInDir satisfies the seam; preflight never runs a working-directory command
+// (that is the hooks seam), so a call here signals a wiring mistake.
+func (a *argRunner) RunInDir(_ context.Context, _ string, _ []string, _ string, _ ...string) (runner.Result, error) {
+	panic("argRunner.RunInDir: not expected")
+}

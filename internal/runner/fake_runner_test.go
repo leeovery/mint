@@ -217,6 +217,69 @@ func TestFakeRunner_RunInteractive_HonoursSeededError(t *testing.T) {
 	}
 }
 
+func TestFakeRunner_RunInDir_RecordsDirAndEnv(t *testing.T) {
+	t.Parallel()
+
+	// Hooks run via RunInDir from the repo root with MINT_* env layered on; the
+	// fake must record both the working directory and the injected env so tests can
+	// assert mint set them (the other methods leave both zero).
+	fake := runner.NewFakeRunner()
+	fake.Seed("sh", runner.Result{Stdout: "ok"}, nil)
+
+	env := []string{"MINT_NEW_VERSION=1.4.0", "MINT_DRY_RUN=0"}
+	res, err := fake.RunInDir(t.Context(), "/repo/root", env, "sh", "-c", "echo hi")
+
+	if err != nil {
+		t.Fatalf("RunInDir returned unexpected error: %v", err)
+	}
+	if res.Stdout != "ok" {
+		t.Errorf("Stdout = %q, want %q", res.Stdout, "ok")
+	}
+
+	calls := fake.Invocations()
+	if len(calls) != 1 {
+		t.Fatalf("len(Invocations) = %d, want 1", len(calls))
+	}
+	if calls[0].Name != "sh" {
+		t.Errorf("recorded Name = %q, want %q", calls[0].Name, "sh")
+	}
+	if strings.Join(calls[0].Args, " ") != "-c echo hi" {
+		t.Errorf("recorded Args = %v, want [-c echo hi]", calls[0].Args)
+	}
+	if calls[0].Dir != "/repo/root" {
+		t.Errorf("recorded Dir = %q, want %q", calls[0].Dir, "/repo/root")
+	}
+	if strings.Join(calls[0].Env, " ") != strings.Join(env, " ") {
+		t.Errorf("recorded Env = %v, want %v", calls[0].Env, env)
+	}
+}
+
+func TestFakeRunner_RunInDir_HonoursSeedSequence(t *testing.T) {
+	t.Parallel()
+
+	// A hook scripts each entry's exit via the existing per-name sequence scripting;
+	// RunInDir must consume it the same way Run does so the first failure can be
+	// modelled.
+	fake := runner.NewFakeRunner()
+	bang := errors.New("exit status 1")
+	fake.SeedSequence("sh",
+		runner.ScriptedCall{Result: runner.Result{}},
+		runner.ScriptedCall{Result: runner.Result{Stderr: "boom", ExitCode: 1}, Err: bang},
+	)
+
+	if _, err := fake.RunInDir(t.Context(), "/repo", nil, "sh", "-c", "step1"); err != nil {
+		t.Fatalf("first entry returned unexpected error: %v", err)
+	}
+
+	res, err := fake.RunInDir(t.Context(), "/repo", nil, "sh", "-c", "step2")
+	if !errors.Is(err, bang) {
+		t.Fatalf("second entry error = %v, want it to wrap the seeded error", err)
+	}
+	if res.ExitCode != 1 {
+		t.Errorf("ExitCode = %d, want 1", res.ExitCode)
+	}
+}
+
 // FakeRunner must be substitutable for the seam wherever a CommandRunner is
 // consumed; this compile-time check guards that.
 var _ runner.CommandRunner = (*runner.FakeRunner)(nil)

@@ -47,8 +47,34 @@ func (r *ExecRunner) RunWith(ctx context.Context, stdin io.Reader, name string, 
 		cmd.Stdin = stdin
 	}
 
-	runErr := cmd.Run()
+	return translateRun(cmd.Run(), &stdout, &stderr, cmd, name)
+}
 
+// RunInDir executes name with args from working directory dir, with env (a slice
+// of "KEY=VALUE" entries) layered on top of the inherited environment. It is the
+// seam hooks use: each entry runs as `sh -c "<entry>"` from the repo root with
+// mint's MINT_* variables injected. Stdout/stderr are captured separately and the
+// exit is translated exactly as RunWith does (missing binary → ErrCommandNotFound;
+// non-zero exit → populated Result + non-nil error; clean → populated Result + nil
+// error).
+func (r *ExecRunner) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (Result, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	// Layer the extra entries on top of the inherited environment so MINT_* is
+	// injected without dropping the host's PATH etc.
+	cmd.Env = append(os.Environ(), env...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	return translateRun(cmd.Run(), &stdout, &stderr, cmd, name)
+}
+
+// translateRun converts a finished exec.Cmd into the seam's Result/error contract,
+// shared by RunWith and RunInDir so both report missing binaries, non-zero exits,
+// and clean runs identically.
+func translateRun(runErr error, stdout, stderr *bytes.Buffer, cmd *exec.Cmd, name string) (Result, error) {
 	res := Result{
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),

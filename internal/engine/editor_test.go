@@ -266,6 +266,10 @@ func (w *writeBackRunner) RunWith(_ context.Context, _ io.Reader, _ string, _ ..
 	panic("writeBackRunner.RunWith: not expected")
 }
 
+func (w *writeBackRunner) RunInDir(_ context.Context, _ string, _ []string, _ string, _ ...string) (runner.Result, error) {
+	panic("writeBackRunner.RunInDir: not expected")
+}
+
 // pathCapturingRunner is a CommandRunner double whose RunInteractive captures the
 // temp path it was handed (the final arg) and returns a configurable error — so a
 // launch-failure test can assert the launcher still cleaned up the temp file.
@@ -288,4 +292,8 @@ func (p *pathCapturingRunner) Run(_ context.Context, _ string, _ ...string) (run
 
 func (p *pathCapturingRunner) RunWith(_ context.Context, _ io.Reader, _ string, _ ...string) (runner.Result, error) {
 	panic("pathCapturingRunner.RunWith: not expected")
+}
+
+func (p *pathCapturingRunner) RunInDir(_ context.Context, _ string, _ []string, _ string, _ ...string) (runner.Result, error) {
+	panic("pathCapturingRunner.RunInDir: not expected")
 }
