@@ -10,9 +10,11 @@ import (
 )
 
 // dryRunPatchOptions is the default-bump options with the fixed clock and DryRun
-// active — the seam this task exercises until Phase 4 wires the -d/--dry-run flag
-// (and the no-mutation behaviour) together. Mutations still happen here; only the
-// hook skip-and-report dimension is under test.
+// active. These 3-11 tests focus on the HOOK skip-and-report dimension; since 4-7a
+// the same DryRun flag also skips every mutation (commit/tag/push/provider release),
+// so no mutating command is issued here either — but these tests assert only the
+// hook behaviour. The dedicated no-mutation/plan assertions live in
+// release_dryrun_test.go.
 func dryRunPatchOptions() engine.ReleaseOptions {
 	return engine.ReleaseOptions{Bump: version.BumpPatch, Now: fixedClock, DryRun: true}
 }
@@ -34,7 +36,8 @@ func warnWithMessage(t *testing.T, rec *presentertest.RecordingPresenter, want s
 // TestRelease_DryRun_SkipsPreflightHookAndReports proves that under --dry-run a
 // CONFIGURED preflight hook is NOT invoked (no `sh -c "check.sh"` reaches the
 // runner) and the skip is REPORTED via a Warn (label "dry-run", message "skipping
-// preflight hook"). The run otherwise proceeds (mutations still happen this phase).
+// preflight hook"). The run otherwise proceeds; since 4-7a no mutations occur, but
+// this test asserts only the hook-skip behaviour.
 func TestRelease_DryRun_SkipsPreflightHookAndReports(t *testing.T) {
 	t.Parallel()
 

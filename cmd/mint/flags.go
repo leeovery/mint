@@ -46,12 +46,16 @@ type releaseFlags struct {
 	// release proceeds. Every other gate still runs; the bypass is reported via the
 	// presenter. Opt-in, because releasing off the release branch is normally a mistake.
 	AnyBranch bool
+	// DryRun is the -d/--dry-run flag: a read-only run that prints the full plan and
+	// makes no changes (no commit, tag, push, or provider release; hooks are reported-
+	// and-skipped).
+	DryRun bool
 }
 
 // ReleaseOptions converts the parsed flags into the engine's run options, binding
 // the production clock (time.Now) so the changelog date is the real release date.
 func (f releaseFlags) ReleaseOptions() engine.ReleaseOptions {
-	return engine.ReleaseOptions{Bump: f.Bump, SetVersion: f.SetVersion, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash, AnyBranch: f.AnyBranch}
+	return engine.ReleaseOptions{Bump: f.Bump, SetVersion: f.SetVersion, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash, AnyBranch: f.AnyBranch, DryRun: f.DryRun}
 }
 
 // parseReleaseFlags parses the `mint release [bump] [options]` arguments into a
@@ -63,7 +67,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	fs := flag.NewFlagSet("release", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
-	var patch, minor, major, yes, plain, noAI, autoStash, anyBranch bool
+	var patch, minor, major, yes, plain, noAI, autoStash, anyBranch, dryRun bool
 	var setVersion string
 	fs.BoolVar(&patch, "p", false, "patch bump (default)")
 	fs.BoolVar(&patch, "patch", false, "patch bump (default)")
@@ -78,6 +82,8 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	fs.BoolVar(&noAI, "no-ai", false, "skip the AI notes path; use the commit-subject fallback body")
 	fs.BoolVar(&autoStash, "autostash", false, "stash/restore unrelated WIP around the run")
 	fs.BoolVar(&anyBranch, "any-branch", false, "bypass the release-branch gate")
+	fs.BoolVar(&dryRun, "d", false, "read-only run: print the plan, make no changes")
+	fs.BoolVar(&dryRun, "dry-run", false, "read-only run: print the plan, make no changes")
 
 	if err := fs.Parse(args); err != nil {
 		return releaseFlags{}, err
@@ -87,7 +93,7 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	if err != nil {
 		return releaseFlags{}, err
 	}
-	return releaseFlags{Bump: bump, SetVersion: setVersion, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash, AnyBranch: anyBranch}, nil
+	return releaseFlags{Bump: bump, SetVersion: setVersion, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash, AnyBranch: anyBranch, DryRun: dryRun}, nil
 }
 
 // resolveVersionSelection enforces the version-selection rules and returns the

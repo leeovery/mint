@@ -199,13 +199,19 @@ type ReleaseOptions struct {
 	// bypass is reported via the Presenter (a Warn) so an off-branch release is visible.
 	// It composes with --autostash and the rest with no interaction.
 	AnyBranch bool
-	// DryRun is the --dry-run flag's HOOK dimension: when active, each configured
-	// lifecycle hook (preflight/pre_tag/post_release) is SKIPPED rather than run, and
-	// the skip is reported via the presenter. The assembled hook env still reflects it
-	// (MINT_DRY_RUN=1) even though no hook consumes it under dry-run. The flag's other
-	// dimensions — skipping the Record/tag/push mutations and dry-run note caching —
-	// are Phase 4 and NOT wired here; until then the -d/--dry-run flag is deliberately
-	// left UNWIRED in production (cmd/main), so this field is exercised via tests only.
+	// DryRun is the --dry-run flag: a READ-ONLY run that prints the full plan and
+	// touches nothing. When active the read-only stages run NORMALLY (preflight gates,
+	// version determination, notes generation/preview), but every MUTATION is skipped:
+	// each configured lifecycle hook (preflight/pre_tag/post_release) is reported-and-
+	// skipped rather than run (the env still renders MINT_DRY_RUN=1 even though no hook
+	// consumes it), and — at the dry-run boundary after the gate (4-7a) — the
+	// version-file projection, the changelog write, the bookkeeping commit, the
+	// annotated tag, the atomic push, and the provider release are ALL skipped so a dry
+	// run NEVER reaches the lock-resilient Mutator and the repo is byte-for-byte
+	// unchanged. The -d/--dry-run flag is wired in production (cmd/mint) and sets this
+	// field. The remaining dimension — dry-run note CACHING (4-7/4-8) — is a separate,
+	// later concern not handled here; this task only ensures the notes PREVIEW is
+	// generated.
 	DryRun bool
 }
 
@@ -383,6 +389,20 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 			return Unwind(ctx, deps, start, made, errGateAborted)
 		}
 		return err
+	}
+
+	// DRY-RUN BOUNDARY (4-7a): every stage above is READ-ONLY — preflight gates,
+	// version determination, and the notes generation/preview (shown via ShowNotes at
+	// the gate) all ran NORMALLY. From HERE the spine only MUTATES (the bookkeeping
+	// commit, the tag, the atomic push, the provider release), so under --dry-run it
+	// must NOT proceed: a dry run NEVER reaches the lock-resilient Mutator. Instead it
+	// prints the full would-do plan — the commit(s) it would make (with their subjects),
+	// the tag, and the resolved publish target (or that publishing is downgraded /
+	// disabled) — and returns successfully WITHOUT touching the repo. The hook skips
+	// (3-11) already fired above; the version-file projection and changelog write below
+	// are skipped too, so the working tree is byte-for-byte unchanged.
+	if opts.DryRun {
+		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
 	}
 
 	// Stage 5 — record: project the version file, write the changelog, then fold BOTH
@@ -919,6 +939,100 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 		steps = append(steps, presenter.PlanStep{Verb: "publish", Target: tag})
 	}
 	return presenter.Plan{Steps: steps}
+}
+
+// dryRunDowngradedTarget is the publish-step target shown in the dry-run plan when
+// publishing is configured but the provider could NOT be resolved: the run would
+// downgrade to tag + push only. It deliberately does NOT name a provider release, so
+// the plan never implies mint would silently publish to GitHub.
+const dryRunDowngradedTarget = "skipped (provider unresolved)"
+
+// finishDryRun completes a --dry-run after the read-only stages: it resolves the
+// publish TARGET read-only (for the plan only — no gh command is issued and no
+// release is created), prints the full would-do plan via the Presenter, reports the
+// post_release hook skip (the only hook point the real spine reaches AFTER this
+// boundary), and returns nil WITHOUT any mutation. No commit, tag, push, or provider
+// release is reached, so the repo is byte-for-byte unchanged. The preflight and
+// pre_tag hook skips (3-11) already fired above this point.
+func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump) error {
+	p := deps.Presenter
+
+	publishTarget := dryRunPublishTarget(ctx, deps, cfg, tag)
+	p.ShowPlan(buildDryRunPlan(cfg, tag, publishTarget))
+
+	// Report the post_release hook skip too: in a real run it fires at Stage 7 (after
+	// the boundary the dry run stops at), so reusing the 3-11 skip-and-report path here
+	// keeps all three hook points consistently reported under the full dry run. It runs
+	// no `sh` (dryRun=true) and returns nil; an absent hook stays a silent no-op.
+	if err := runPostReleaseHook(ctx, deps, cfg, root, current, next, tag, bumpKind, true); err != nil {
+		return err
+	}
+
+	p.RunFinished(presenter.RunResult{
+		Project: projectName(root),
+		Version: versionKey,
+		Leaf:    cfg.Release.CommitPrefix,
+	})
+	return nil
+}
+
+// dryRunPublishTarget resolves what the dry-run plan reports for the publish step,
+// MIRRORING the real spine's Stage-6 publisher selection but WITHOUT issuing any gh
+// command (it only reads the remote URL for host detection):
+//
+//   - publish=false: returns "" — the plan omits the publish step entirely (an
+//     explicit opt-out, distinct from a downgrade).
+//   - publish=true, provider RESOLVED: returns the tag — the plan names the provider
+//     release that would be created.
+//   - publish=true, provider UNRESOLVED: WARNS (the same loud downgrade signal the
+//     real path emits) and returns the downgraded target — the plan shows publishing
+//     would be skipped, never silently assuming GitHub.
+//
+// Any other resolution error (which the real spine treats as a pre-PONR abort) is
+// also reported as a downgrade here: a dry run never aborts on it, and the plan
+// honestly shows publishing would not proceed.
+func dryRunPublishTarget(ctx context.Context, deps ReleaseDeps, cfg config.Config, tag string) string {
+	if !cfg.Release.Publish {
+		return ""
+	}
+	_, err := resolvePublisher(ctx, deps, cfg)
+	if err != nil {
+		if errors.Is(err, publish.ErrProviderUnresolved) {
+			warnPublishDowngraded(deps.Presenter, err)
+		}
+		return dryRunDowngradedTarget
+	}
+	return tag
+}
+
+// buildDryRunPlan assembles the full would-do plan for a dry run: the commit(s) mint
+// would make WITH their real subjects, the annotated tag, the atomic push, and the
+// publish step (only when a publishTarget is set). A configured pre_tag hook means a
+// real run would ALSO make the artifact commit, so that commit is listed first (it
+// precedes the bookkeeping commit in the real graph). publishTarget is "" for
+// publish=false (no publish step), the tag for a resolved provider, or the downgraded
+// target for an unresolved one.
+func buildDryRunPlan(cfg config.Config, tag, publishTarget string) presenter.Plan {
+	var steps []presenter.PlanStep
+	if cfg.Release.Hooks.PreTag != nil {
+		steps = append(steps, presenter.PlanStep{Verb: "commit", Target: pretagArtifactSubject(tag)})
+	}
+	steps = append(steps,
+		presenter.PlanStep{Verb: "commit", Target: bookkeepingSubject(cfg.Release.CommitPrefix, tag)},
+		presenter.PlanStep{Verb: "tag", Target: tag},
+		presenter.PlanStep{Verb: "push", Target: "--atomic → origin"},
+	)
+	if publishTarget != "" {
+		steps = append(steps, presenter.PlanStep{Verb: "publish", Target: publishTarget})
+	}
+	return presenter.Plan{Steps: steps}
+}
+
+// bookkeepingSubject renders the release-bookkeeping commit subject
+// (`{commitPrefix} Release {tag}`) so the dry-run plan can show the EXACT subject a
+// real run would commit. It mirrors record.CommitBookkeeping's own subject format.
+func bookkeepingSubject(commitPrefix, tag string) string {
+	return fmt.Sprintf("%s Release %s", commitPrefix, tag)
 }
 
 // errEditorUnavailable is the cause surfaced when the `e` choice is taken but no

@@ -22,6 +22,7 @@ func TestParseReleaseFlags(t *testing.T) {
 		wantNoAI      bool
 		wantAutoStash bool
 		wantAnyBranch bool
+		wantDryRun    bool
 	}{
 		{name: "no flags defaults to patch", args: nil, wantBump: version.BumpPatch},
 		{name: "short patch", args: []string{"-p"}, wantBump: version.BumpPatch},
@@ -36,10 +37,13 @@ func TestParseReleaseFlags(t *testing.T) {
 		{name: "no-ai", args: []string{"--no-ai"}, wantNoAI: true},
 		{name: "autostash", args: []string{"--autostash"}, wantAutoStash: true},
 		{name: "any-branch", args: []string{"--any-branch"}, wantAnyBranch: true},
+		{name: "short dry-run", args: []string{"-d"}, wantDryRun: true},
+		{name: "long dry-run", args: []string{"--dry-run"}, wantDryRun: true},
 		{name: "minor with yes and plain", args: []string{"-m", "-y", "--plain"}, wantBump: version.BumpMinor, wantYes: true, wantPlain: true},
 		{name: "no-ai with minor and yes", args: []string{"--no-ai", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantNoAI: true},
 		{name: "autostash with minor and yes", args: []string{"--autostash", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantAutoStash: true},
 		{name: "any-branch with autostash and yes", args: []string{"--any-branch", "--autostash", "-y"}, wantYes: true, wantAutoStash: true, wantAnyBranch: true},
+		{name: "dry-run with minor and yes", args: []string{"-d", "-m", "-y"}, wantBump: version.BumpMinor, wantYes: true, wantDryRun: true},
 	}
 
 	for _, tt := range tests {
@@ -68,6 +72,9 @@ func TestParseReleaseFlags(t *testing.T) {
 			if opts.AnyBranch != tt.wantAnyBranch {
 				t.Errorf("AnyBranch = %v, want %v", opts.AnyBranch, tt.wantAnyBranch)
 			}
+			if opts.DryRun != tt.wantDryRun {
+				t.Errorf("DryRun = %v, want %v", opts.DryRun, tt.wantDryRun)
+			}
 			// The --no-ai flag must thread through to the engine options.
 			if got := opts.ReleaseOptions().NoAI; got != tt.wantNoAI {
 				t.Errorf("ReleaseOptions().NoAI = %v, want %v", got, tt.wantNoAI)
@@ -79,6 +86,10 @@ func TestParseReleaseFlags(t *testing.T) {
 			// The --any-branch flag must thread through to the engine options.
 			if got := opts.ReleaseOptions().AnyBranch; got != tt.wantAnyBranch {
 				t.Errorf("ReleaseOptions().AnyBranch = %v, want %v", got, tt.wantAnyBranch)
+			}
+			// The --dry-run flag must thread through to the engine options.
+			if got := opts.ReleaseOptions().DryRun; got != tt.wantDryRun {
+				t.Errorf("ReleaseOptions().DryRun = %v, want %v", got, tt.wantDryRun)
 			}
 		})
 	}
