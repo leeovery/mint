@@ -28,7 +28,7 @@ var bothModes = []modeCase{
 	{name: "pretty", mode: presenter.ModePretty},
 }
 
-// newSplit constructs a Presenter for the given mode via the single wiring point
+// newSplit constructs a Presenter for the given mode via the raw wiring seam
 // (presenter.New), capturing the out and err streams into separate buffers so a
 // test can assert exactly which stream each line landed on.
 func newSplit(mode presenter.Mode) (p presenter.Presenter, out, errBuf *bytes.Buffer) {

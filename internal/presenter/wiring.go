@@ -5,17 +5,19 @@ import (
 	"os"
 )
 
-// New is the single wiring point where mode selection and the stdout/stderr
-// stream split meet. It returns the Presenter implementation matching the
-// already-selected Mode — ModePretty yields the styled presenter, ModePlain (the
-// zero value, so any unrecognised Mode safely lands here too) yields the terse
-// one — with both writers wired through. Returning the interface type keeps every
-// caller depending on the seam rather than a concrete presenter.
+// New is the raw, lower-level wiring seam: given an ALREADY-selected Mode and the
+// two writers, it returns the matching Presenter implementation — ModePretty
+// yields the styled presenter, ModePlain (the zero value, so any unrecognised Mode
+// safely lands here too) yields the terse one — with both writers wired through.
+// Returning the interface type keeps every caller depending on the seam rather
+// than a concrete presenter. It takes the writers and Mode directly (no TTY
+// probing, no gating axes), so a test can drive either mode deterministically; the
+// production construction site that resolves the signals and threads the gating
+// axes is NewForStartup, not this.
 //
 // The stream contract is fixed and identical across modes: out receives all
 // narration; err receives the one-line failure summary (per StageFailed) and
-// nothing on a successful run. Centralising construction here means the split is
-// established in exactly one place.
+// nothing on a successful run.
 func New(mode Mode, out, err io.Writer) Presenter {
 	if mode == ModePretty {
 		return NewPrettyPresenter(out, WithErr(err))
