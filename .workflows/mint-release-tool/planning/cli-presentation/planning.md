@@ -126,3 +126,16 @@ approved_at: 2026-06-09
 | cli-presentation-4-5 | Pretty spinner lifecycle — single spinner started on StageStarted, replaced in place by ✓/✗; output buffered, printed below ✗ | spinner replaced by ✓ on success, replaced by ✗ on failure, captured output below ✗ only, one spinner at a time across sequential stages, plain emits no animation frames, short non-spinner stage unaffected |
 | cli-presentation-4-6 | Spinner stop/resume around the engine-driven `$EDITOR` hand-off | stop before hand-off then resume after, no active spinner at hand-off, repeated edit passes each stop/resume cleanly, plain no-op |
 | cli-presentation-4-7 | Width robustness — decorative rules capped at min(terminalWidth, ~50), wrap-never-truncate, fixed stage lines stay fixed | terminal narrower than cap, terminal wider than cap, undetectable width falls back to cap, long notes line wraps (never truncates), fixed stage line unchanged, tiny terminal remains a --plain case |
+
+### Phase 5: Analysis (Cycle 1)
+
+**Goal**: Address findings from Analysis (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-5-1 | Extract shared byte-purity ASCII-scan test helper | nine inline copies replaced with one helper, two multi-stream sites assert both out and err, each call retains its per-site context string, negative path (ESC byte) still fails |
+| cli-presentation-5-2 | Neutralise the hardcoded plain blocking-stage start verb | blocking stages emit `{name}: running...`, non-blocking stages stay silent, no "generating" remains in narration or doc comment, ASCII ellipsis preserved (byte-purity guard passes) |
+| cli-presentation-5-3 | Collapse the four pretty constructors into one with functional options | single NewPrettyPresenter with WithProfile/WithErr/WithInput options, three-option combo reachable in one call, removed constructors and WithInput setter gone, production wiring + tests retargeted, rendered output byte-for-byte unchanged |
+| cli-presentation-5-4 | State the ASCII/case-fold precondition on SourceGate/TargetGate | SourceGate and TargetGate doc comments state ASCII-enumerated-values-only precondition with reason, documentation-only (no code change), existing gate tests still pass |

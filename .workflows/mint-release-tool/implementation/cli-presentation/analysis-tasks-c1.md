@@ -6,7 +6,7 @@ total_proposed: 4
 # Analysis Tasks: cli-presentation (Cycle 1)
 
 ## Task 1: Extract shared byte-purity ASCII-scan test helper
-status: pending
+status: approved
 severity: medium
 sources: duplication
 
@@ -42,7 +42,7 @@ sources: duplication
 - Sanity-verify the helper still fails when fed a buffer containing an ESC byte (temporary local check, not committed) to confirm the extraction preserved the negative path.
 
 ## Task 2: Neutralise the hardcoded plain blocking-stage start verb
-status: pending
+status: approved
 severity: medium
 sources: standards
 
@@ -69,7 +69,7 @@ sources: standards
 - The byte-purity assertion covering the start line continues to pass (ASCII ellipsis preserved).
 
 ## Task 3: Collapse the four pretty constructors into one with functional options
-status: pending
+status: approved
 severity: medium
 sources: architecture
 
@@ -98,7 +98,7 @@ sources: architecture
 - A test exercising all three options together asserts the previously-awkward combination now constructs in one call and behaves identically.
 
 ## Task 4: State the ASCII/case-fold precondition on SourceGate/TargetGate
-status: pending
+status: approved
 severity: low
 sources: architecture
 

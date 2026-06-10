@@ -268,7 +268,12 @@
             "cli-presentation-4-4": "tick-360314",
             "cli-presentation-4-5": "tick-755ce8",
             "cli-presentation-4-6": "tick-429623",
-            "cli-presentation-4-7": "tick-f3c5b2"
+            "cli-presentation-4-7": "tick-f3c5b2",
+            "cli-presentation-5": "tick-85e1d4",
+            "cli-presentation-5-1": "tick-ae705c",
+            "cli-presentation-5-2": "tick-b4c80c",
+            "cli-presentation-5-3": "tick-c8a3d9",
+            "cli-presentation-5-4": "tick-9c747d"
           },
           "external_id": "tick-46068c"
         },
@@ -337,7 +342,7 @@
           "status": "in-progress",
           "task_gate_mode": "auto",
           "fix_gate_mode": "gated",
-          "analysis_gate_mode": "gated",
+          "analysis_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 1,
           "analysis_cycle_session": 1,
