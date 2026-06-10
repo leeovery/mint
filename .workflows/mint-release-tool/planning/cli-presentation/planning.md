@@ -139,3 +139,16 @@ approved_at: 2026-06-09
 | cli-presentation-5-2 | Neutralise the hardcoded plain blocking-stage start verb | blocking stages emit `{name}: running...`, non-blocking stages stay silent, no "generating" remains in narration or doc comment, ASCII ellipsis preserved (byte-purity guard passes) |
 | cli-presentation-5-3 | Collapse the four pretty constructors into one with functional options | single NewPrettyPresenter with WithProfile/WithErr/WithInput options, three-option combo reachable in one call, removed constructors and WithInput setter gone, production wiring + tests retargeted, rendered output byte-for-byte unchanged |
 | cli-presentation-5-4 | State the ASCII/case-fold precondition on SourceGate/TargetGate | SourceGate and TargetGate doc comments state ASCII-enumerated-values-only precondition with reason, documentation-only (no code change), existing gate tests still pass |
+
+### Phase 6: Analysis (Cycle 2)
+
+**Goal**: Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| cli-presentation-6-1 | Extract shared gate-test construction+capture helpers | plainGate/prettyGate parameterised by -y/interactive-stdin toggles, three gate test files call helpers instead of inlining, arming toggle passed explicitly at every call site, no behavioural change to assertions |
+| cli-presentation-6-2 | Consolidate mode-invariant both-arm assertions through promptDrivers table | mode-invariant property asserted once via t.Run(d.mode, ...), mode-specific byte-exact rendering tests kept separate, property set unchanged before/after, reuse Task 1 helpers without hard dependency |
+| cli-presentation-6-3 | Consolidate decorative notes-rule expectation and the ANSI-strip helper into one shared pretty test helper | notes-rule prefix literal + fill/clamp arithmetic appear once, decorative rule width sourced once (no scattered 50), stripANSI/ruleDisplayWidth in one shared file referenced not redefined, exact rendered rule still verified |
+| cli-presentation-6-4 | Add golden full-worked-example transcript test per render mode | plain -y full worked example transcript, pretty full worked example with spy/no-op spinner + fixed profile, asserts composition (spacing, block ordering, gate echo column, footer) not individual events, non-tautological (mutated composition detail fails) |
