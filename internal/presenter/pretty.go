@@ -260,56 +260,11 @@ func newPrettyPresenter(out io.Writer) *PrettyPresenter {
 	}
 }
 
-// WithYes sets the -y/--yes gating decision and returns the presenter so it chains
-// onto a constructor (e.g. NewPrettyPresenter(out, WithInput(r)).WithYes(true)). It
-// is a builder-style setter — kept off the constructor so its signature stays
-// stable and so the stdin-interactive gating signal can be added the same way
-// without a constructor explosion. Production threads it at the converged startup
-// seam (NewForStartup) from the caller's -y decision; the zero value (no call) is
-// the interactive default.
-func (p *PrettyPresenter) WithYes(yes bool) *PrettyPresenter {
-	p.yes = yes
-	return p
-}
-
-// WithInteractiveStdin sets the stdin-interactive gating signal and returns the
-// presenter so it chains onto any constructor, mirroring WithYes exactly. It is a
-// builder-style setter — kept off the constructors so their signatures stay stable.
-// Production threads the detected stdin signal (DetectStartupSignals'
-// StdinInteractive) at the converged startup seam (NewForStartup), the same place
-// the -y decision is threaded. The constructor default is true (interactive); call
-// WithInteractiveStdin(false) to arm the forbidden-combination fail path.
-func (p *PrettyPresenter) WithInteractiveStdin(interactive bool) *PrettyPresenter {
-	p.stdinInteractive = interactive
-	return p
-}
-
-// WithSpinnerFactory overrides the stage-progress spinner factory and returns the
-// presenter so it chains onto any constructor, mirroring WithYes. It is
-// the TEST SEAM for the spinner lifecycle: a test injects a spy factory whose
-// spinners record Start/Stop so the lifecycle ("started on a blocking StageStarted,
-// stopped on completion") and the "one spinner at a time" invariant are asserted
-// deterministically, without the real briandowns library's timed goroutine and
-// frame output. Production never calls it — the constructors default the factory to
-// the real briandowns wrapper. The factory type is unexported, so only this package
-// (and its external test, via the exported StageSpinner interface) can build one.
-func (p *PrettyPresenter) WithSpinnerFactory(factory func(out io.Writer, text string) StageSpinner) *PrettyPresenter {
-	p.newSpinner = factory
-	return p
-}
-
-// WithTermWidth sets the detected terminal width feeding the decorative notes
-// rules' width source and returns the presenter so it chains onto any constructor,
-// mirroring WithYes/WithSpinnerFactory. It is the TEST SEAM for the width axis: a
-// test injects a narrow/wide/tiny/undetectable width so the rule capping
-// (min(width, ruleCap)) is asserted without a real terminal. Production sets it in
-// NewForStartup from detectTermWidth(stdout) when the selected mode is pretty. The
-// constructor default is 0 (undetectable), which ruleWidth maps to the cap — the
-// same fixed rule task 2-5 rendered.
-func (p *PrettyPresenter) WithTermWidth(w int) *PrettyPresenter {
-	p.termWidth = w
-	return p
-}
+// The gating, spinner-factory, and width fields above are threaded by production
+// in exactly one place — NewForStartup, which sets them directly after
+// construction — so the exported construction surface stays a single idiom:
+// constructors plus functional Options. Tests drive the same fields through
+// test-only chainable shims in export_test.go.
 
 // writef writes one narration line to out. As with the plain presenter, a write
 // error to the output stream has nowhere to propagate (Presenter methods return
@@ -553,10 +508,23 @@ func (p *PrettyPresenter) Unwound(u Unwind) {
 // Empty-message edge: the line collapses to "{stageIndent}⚠ {label}" (and the err
 // copy to "⚠ {label}") with NO trailing-whitespace artefact — the two-space gap
 // and the message are both dropped when there is no message.
+//
+// When the warning carries captured underlying-command output (w.Output
+// non-empty), the captured body is rendered to OUT ONLY, below the ⚠ line — flush
+// and UNSTYLED through the package-shared writeNotesBody helper, byte-for-byte
+// verbatim, exactly mirroring StageFailed's captured-body treatment (the body
+// bytes are load-bearing; no dim wrap, no box). The body is NEVER duplicated to
+// err: only the one-line ⚠ summary goes there. An empty Output renders NO block,
+// and rendering the block does not set failure state — the warn stays
+// non-terminal.
 func (p *PrettyPresenter) Warn(w Warning) {
 	glyph := p.warn.Render("⚠")
 	p.writef("%s%s %s\n", stageIndent, glyph, warnText(w))
 	p.errf("⚠ %s\n", warnText(w))
+	if w.Output == "" {
+		return
+	}
+	writeNotesBody(p.out, w.Output)
 }
 
 // warnText builds the layout that follows the ⚠ glyph: the label, then a two-space
@@ -649,20 +617,28 @@ func (p *PrettyPresenter) ShowNotes(notes Notes) {
 	p.writef("%s\n", p.dim.Render(notesClosingRule(width)))
 }
 
-// notesTitledRule builds the opener rule: the "── release notes · v{X} " title
-// prefix filled with U+2500 up to width — the CAPPED width ruleWidth(termWidth) ==
-// min(termWidth, ruleCap), so the rule neither overflows a narrow terminal nor
-// exceeds the cap on a wide one. The fill count is clamped to a minimum of one so a
-// title prefix longer than the capped width (a genuinely tiny terminal, or a very
-// long version string) never produces a negative repeat count — the title is kept
-// in full and is never truncated; only the trailing fill is clamped.
-func notesTitledRule(version string, width int) string {
-	prefix := ruleChar + ruleChar + " release notes · v" + version + " "
+// titledRule builds a titled opener rule: "── {title} " filled with U+2500 up to
+// width — the CAPPED width ruleWidth(termWidth) == min(termWidth, ruleCap), so
+// the rule neither overflows a narrow terminal nor exceeds the cap on a wide one.
+// The fill count is clamped to a minimum of one so a title longer than the capped
+// width (a genuinely tiny terminal, or a very long title) never produces a
+// negative repeat count — the title is kept in full and is never truncated; only
+// the trailing fill is clamped. It is the shared opener for every titled block:
+// ShowNotes supplies the release-notes title, ShowMessage the engine's verbatim
+// Message.Title.
+func titledRule(title string, width int) string {
+	prefix := ruleChar + ruleChar + " " + title + " "
 	fill := width - displayWidth(prefix)
 	if fill < 1 {
 		fill = 1
 	}
 	return prefix + strings.Repeat(ruleChar, fill)
+}
+
+// notesTitledRule builds the notes opener rule — the shared titledRule with the
+// fixed "release notes · v{X}" title the spec's worked example shows.
+func notesTitledRule(version string, width int) string {
+	return titledRule("release notes · v"+version, width)
 }
 
 // notesClosingRule builds the closing rule: U+2500 repeated to the capped width
@@ -678,6 +654,28 @@ func notesClosingRule(width int) string {
 // the width math, so the rule fills to the intended cap.
 func displayWidth(s string) int {
 	return len([]rune(s))
+}
+
+// ShowMessage renders an engine-titled content block as a titled opener rule, the
+// body verbatim, and a closing rule — the general-purpose sibling of ShowNotes
+// (whose rule hardcodes the release-notes title), sharing its NO-box treatment,
+// its width source (ruleWidth(termWidth) == min(termWidth, ruleCap)), and the
+// dim styling whose layout survives a colour downgrade. The title is engine
+// content rendered VERBATIM in the opener rule; the body is written via the
+// package-shared writeNotesBody helper — UNCHANGED, the same bytes the plain
+// presenter writes — so the body region is provably byte-identical across modes.
+// The body is written flush (never indented, never truncated), preserving the
+// byte-identity invariant.
+//
+// Edge forms mirror ShowNotes exactly: an empty body writes nothing between the
+// rules; a body line that reads like a rule is written verbatim with the real
+// closing rule still following (rules are positional, never content-matched).
+// Narration → out only, never err.
+func (p *PrettyPresenter) ShowMessage(m Message) {
+	width := ruleWidth(p.termWidth)
+	p.writef("%s\n", p.dim.Render(titledRule(m.Title, width)))
+	writeNotesBody(p.out, m.Body)
+	p.writef("%s\n", p.dim.Render(notesClosingRule(width)))
 }
 
 // menuIndent is the four-space indent every gate menu option line carries — one
@@ -749,31 +747,57 @@ func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
 		return gate.Default, nil
 	}
 	if !p.stdinInteractive {
-		return p.failNotInteractive()
+		p.failNotInteractive(gateFailLabel)
+		return "", ErrNotInteractive
 	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() { p.renderGate(gate) }
 	return readChoice(reader, render, gate)
 }
 
+// AskLine renders the free-text prompt in the gate question's vocabulary —
+// "  {prompt} › " (two-space indent, the engine-supplied prompt label verbatim,
+// the dim "› " marker, NO trailing newline so the cursor sits after the marker
+// for the line-read) — and returns ONE raw line via the shared readLine core,
+// stripped of its line terminator but otherwise VERBATIM: the empty string is a
+// legal answer and whitespace is preserved (the engine owns interpretation). It
+// reads through the SAME persistent buffered reader Prompt uses, so a Prompt
+// followed by an AskLine consumes consecutive lines of one stream. Only the
+// marker is styled; the prompt label survives a colour downgrade as bare text.
+//
+// A non-interactive stdin fails loud BEFORE any render or read — the same
+// forbidden-combination rule as Prompt, labelled "input" (the free-text input
+// mechanism, not a gate) — and returns ErrNotInteractive. -y does not bypass the
+// check: free text has no declared default to auto-accept, and engine flows only
+// reach AskLine from an interactive gate choice. EOF with no usable line returns
+// ErrInputClosed, unrendered (the engine owns that failure's surfacing).
+func (p *PrettyPresenter) AskLine(prompt string) (string, error) {
+	if !p.stdinInteractive {
+		p.failNotInteractive(inputFailLabel)
+		return "", ErrNotInteractive
+	}
+	p.writef("%s%s %s", stageIndent, prompt, p.dim.Render(promptMarker))
+	return readLine(bufferedReader(p.in, &p.reader))
+}
+
 // failNotInteractive renders the FORBIDDEN-COMBINATION failure (non-TTY stdin
 // without -y) WITHOUT touching the input stream — the whole point is to never
 // block on stdin that will not deliver. It MIRRORS StageFailed's rendering: the
 // styled "  ✗ {label}  {message}" line to OUT (two-space indent, the red ✗ glyph
-// through the failure style, the fixed gateFailLabel padded to the stage column,
-// then the message) AND the UNSTYLED "✗ {label}  {message}" one-line summary to
-// ERR per the stream contract. The label is the fixed gateFailLabel ("gate") —
-// this is the gate MECHANISM failing, not gate.Subject (the notes content). The
-// message is the spec's em-dash form gateNotTTYMessagePretty (the em dash is
-// allowed in pretty). The styling stays from the renderer, which is bound to
-// stdout, so the failure renders STYLED even though it was the non-TTY STDIN that
-// triggered it — the two axes are orthogonal. Prompt returns the exported
-// ErrNotInteractive sentinel; the presenter sets no exit code.
-func (p *PrettyPresenter) failNotInteractive() (Choice, error) {
+// through the failure style, the label padded to the stage column, then the
+// message) AND the UNSTYLED "✗ {label}  {message}" one-line summary to ERR per
+// the stream contract. The label names the failing MECHANISM — gateFailLabel
+// ("gate") from Prompt, inputFailLabel ("input") from AskLine — never
+// gate.Subject (the notes content). The message is the spec's em-dash form
+// gateNotTTYMessagePretty (the em dash is allowed in pretty). The styling stays
+// from the renderer, which is bound to stdout, so the failure renders STYLED even
+// though it was the non-TTY STDIN that triggered it — the two axes are
+// orthogonal. The caller then returns the exported ErrNotInteractive sentinel;
+// the presenter sets no exit code.
+func (p *PrettyPresenter) failNotInteractive(label string) {
 	glyph := p.failure.Render("✗")
-	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(gateFailLabel), gateNotTTYMessagePretty)
-	p.errf("✗ %s  %s\n", gateFailLabel, gateNotTTYMessagePretty)
-	return "", ErrNotInteractive
+	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(label), gateNotTTYMessagePretty)
+	p.errf("✗ %s  %s\n", label, gateNotTTYMessagePretty)
 }
 
 // renderGate writes the pretty vertical menu for one gate to out: one option line

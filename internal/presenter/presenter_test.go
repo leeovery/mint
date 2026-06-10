@@ -26,6 +26,7 @@ func (p *nopPresenter) Warn(presenter.Warning)                {}
 func (p *nopPresenter) Unwound(presenter.Unwind)              {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
 func (p *nopPresenter) ShowNotes(presenter.Notes)             {}
+func (p *nopPresenter) ShowMessage(presenter.Message)         {}
 func (p *nopPresenter) ShowVersion(presenter.Version)         {}
 func (p *nopPresenter) SuspendSpinner()                       {}
 func (p *nopPresenter) ResumeSpinner()                        {}
@@ -34,6 +35,7 @@ func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
 func (p *nopPresenter) Prompt(g presenter.Gate) (presenter.Choice, error) {
 	return g.Default, nil
 }
+func (p *nopPresenter) AskLine(string) (string, error) { return "", nil }
 
 // Compile-time proof that the no-op value satisfies the interface.
 var _ presenter.Presenter = (*nopPresenter)(nil)
@@ -51,6 +53,7 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.Unwound(presenter.Unwind{})
 	p.ShowPlan(presenter.Plan{})
 	p.ShowNotes(presenter.Notes{})
+	p.ShowMessage(presenter.Message{})
 	p.ShowVersion(presenter.Version{})
 	p.SuspendSpinner()
 	p.ResumeSpinner()
@@ -58,6 +61,9 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	p.RunFinished(presenter.RunResult{})
 	if _, err := p.Prompt(presenter.Gate{}); err != nil {
 		t.Errorf("Prompt returned error: %v", err)
+	}
+	if _, err := p.AskLine("context"); err != nil {
+		t.Errorf("AskLine returned error: %v", err)
 	}
 }
 

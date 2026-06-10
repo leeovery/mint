@@ -32,6 +32,11 @@ const (
 	KindResumeSpinner
 	KindInitResult
 	KindRunFinished
+	// KindShowMessage and KindAskLine are appended after the original vocabulary
+	// (rather than slotted beside their ShowNotes/Prompt siblings) so the earlier
+	// kinds keep their established values.
+	KindShowMessage
+	KindAskLine
 )
 
 // String renders the kind for readable test failure output.
@@ -65,6 +70,10 @@ func (k EventKind) String() string {
 		return "InitResult"
 	case KindRunFinished:
 		return "RunFinished"
+	case KindShowMessage:
+		return "ShowMessage"
+	case KindAskLine:
+		return "AskLine"
 	default:
 		return "Unknown"
 	}
@@ -86,10 +95,14 @@ type Event struct {
 	Unwound        presenter.Unwind
 	ShowPlan       presenter.Plan
 	ShowNotes      presenter.Notes
+	ShowMessage    presenter.Message
 	ShowVersion    presenter.Version
 	Prompt         presenter.Gate
-	InitResult     presenter.InitOutcome
-	RunFinished    presenter.RunResult
+	// AskLine is the engine-supplied prompt label the AskLine call carried (the
+	// scripted ANSWER is configured on the recorder, not stored here).
+	AskLine     string
+	InitResult  presenter.InitOutcome
+	RunFinished presenter.RunResult
 }
 
 // RecordingPresenter satisfies presenter.Presenter by appending every call to a
@@ -114,6 +127,19 @@ type RecordingPresenter struct {
 	// gate-dependent answer. When nil, the NextChoices queue (then the gate Default)
 	// decides the choice and the error is always nil.
 	PromptResult func(presenter.Gate) (presenter.Choice, error)
+	// NextLines is the FIFO queue of scripted free-text answers: each AskLine call
+	// pops the front entry and returns it (with a nil error), mirroring NextChoices
+	// for the free-text seam. When the queue is empty, AskLine falls back to the
+	// empty string with a nil error — the "no input" answer — so an unscripted
+	// recorder stays usable. For scripting an error, AskLineResult takes
+	// precedence; see below.
+	NextLines []string
+	// AskLineResult, when non-nil, fully overrides the answer for EVERY AskLine
+	// call: it is handed the prompt label and returns the (line, error) to surface
+	// — the hook for scripting ErrInputClosed/ErrNotInteractive paths or a
+	// prompt-dependent answer. It takes precedence over NextLines, mirroring
+	// PromptResult's precedence over NextChoices.
+	AskLineResult func(prompt string) (string, error)
 }
 
 // Compile-time proof the recorder satisfies the interface it records.
@@ -165,6 +191,13 @@ func (r *RecordingPresenter) ShowNotes(notes presenter.Notes) {
 	r.Events = append(r.Events, Event{Kind: KindShowNotes, ShowNotes: notes})
 }
 
+// ShowMessage records the titled-message event with its full payload — title and
+// verbatim body — so an engine-driven test can round-trip the message block
+// independent of any rendering.
+func (r *RecordingPresenter) ShowMessage(m presenter.Message) {
+	r.Events = append(r.Events, Event{Kind: KindShowMessage, ShowMessage: m})
+}
+
 // ShowVersion records the version event with its full payload — value and brand
 // leaf — so an engine-driven test can round-trip the version event independent of
 // any rendering.
@@ -190,6 +223,26 @@ func (r *RecordingPresenter) Prompt(gate presenter.Gate) (presenter.Choice, erro
 		return choice, nil
 	}
 	return gate.Default, nil
+}
+
+// AskLine records the free-text ask (its prompt label) so an engine-driven test
+// can assert which ask fired, then returns a configurable scripted answer so the
+// same test can drive the engine's free-text flow without any real input. The
+// answer is resolved in precedence order, mirroring Prompt: a non-nil
+// AskLineResult hook decides (line AND error); else the next entry popped from
+// the NextLines queue (nil error); else the empty string (nil error) — the
+// legal "no input" answer that keeps an unscripted recorder usable.
+func (r *RecordingPresenter) AskLine(prompt string) (string, error) {
+	r.Events = append(r.Events, Event{Kind: KindAskLine, AskLine: prompt})
+	if r.AskLineResult != nil {
+		return r.AskLineResult(prompt)
+	}
+	if len(r.NextLines) > 0 {
+		line := r.NextLines[0]
+		r.NextLines = r.NextLines[1:]
+		return line, nil
+	}
+	return "", nil
 }
 
 // SuspendSpinner records the engine's request to stop the spinner around its own

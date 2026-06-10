@@ -63,6 +63,15 @@ type Presenter interface {
 	RunStarted(info RunInfo)
 	// StageStarted renders the beginning of a stage (a spinner in pretty; a
 	// terse start line in plain for blocking stages only).
+	//
+	// Stream-discipline note for blocking stages: in pretty mode the spinner's
+	// frames are written to out from the spinner's own goroutine until the stage
+	// completes. Between a blocking StageStarted and its StageSucceeded/StageFailed
+	// the engine should therefore emit only SuspendSpinner/ResumeSpinner and the
+	// completion event itself — any other narration (Warn, ShowPlan, …) would
+	// interleave with animation frames on the same stream and garble the display.
+	// Emit such events before the stage starts or after it completes (or wrap them
+	// in SuspendSpinner/ResumeSpinner).
 	StageStarted(s StageStart)
 	// StageSucceeded renders a stage's successful completion.
 	StageSucceeded(s StageSuccess)
@@ -90,6 +99,15 @@ type Presenter interface {
 	// BYTE-FOR-BYTE VERBATIM in both modes (see Notes) — only the surrounding
 	// delimiters differ.
 	ShowNotes(notes Notes)
+	// ShowMessage renders an engine-titled content block inside per-mode
+	// delimiters — the general-purpose sibling of ShowNotes for content that is
+	// not release notes (e.g. a generated commit message presented for review).
+	// The TITLE labels the delimiters and is engine-supplied verbatim; the BODY
+	// is written BYTE-FOR-BYTE VERBATIM in both modes through the same shared
+	// helper ShowNotes uses, so the body region is identical across modes and
+	// "what previews is what ships" holds for this block too (see Message).
+	// Narration → out only; it never writes to err.
+	ShowMessage(m Message)
 	// ShowVersion renders the resolved version. It is THE PAYLOAD EXCEPTION: version
 	// is the one verb whose output is a VALUE, not narration, so its plain output is
 	// a RAW VALUE (not the key:value narration every other plain line uses) — the
@@ -127,16 +145,45 @@ type Presenter interface {
 	//     sequences.) The pretty spinner stop/resume around the $EDITOR hand-off is a
 	//     separate, engine-driven concern (Phase 4), not part of this render contract.
 	//
-	// The error return carries the forbidden-combination / EOF failure surfaced in
-	// later phases (non-TTY stdin without -y fails loud; EOF on input). It is
-	// declared now so the signature is stable across those phases.
+	// Both implementations are FULLY BEHAVIOURAL and share one line-read core
+	// (readChoice/parseChoice): empty Enter selects the gate's Default,
+	// case-insensitive input maps to a declared key, unrecognised input re-prompts,
+	// and only the render closure differs per mode (terse one-liner in plain, the
+	// vertical menu in pretty).
 	//
-	// This phase ships only the data model + signature: the Plain/Pretty
-	// implementations are STUBS that return gate.Default with a nil error. The real
-	// behaviour layers in later — line-read input parsing, the pretty vertical
-	// menu, the -y gate skip, and the fail-loud forbidden-combination check — each
-	// replacing/extending the stub without churning this signature.
+	// The -y skip happens INSIDE this method: a presenter constructed with the -y
+	// decision neither renders the menu nor reads stdin — it emits the rendered
+	// auto-accept echo and returns gate.Default with a nil error. The engine
+	// therefore ALWAYS calls Prompt at a gate point; it never branches around the
+	// call on -y (the echo is a rendered event, not engine-printed text).
+	//
+	// The error return is the machine-readable failure channel, branched via
+	// errors.Is: ErrNotInteractive on the forbidden combination (non-TTY stdin
+	// without -y; ALSO rendered as a fail-loud failure line by the presenter
+	// itself), and ErrInputClosed on EOF mid-gate (NOT rendered — the engine owns
+	// that failure's surfacing; see ErrInputClosed). The presenter never sets an
+	// exit code.
 	Prompt(gate Gate) (Choice, error)
+	// AskLine is the FREE-TEXT input seam: it renders a one-line prompt (the
+	// engine-supplied prompt label, framed per mode), reads ONE raw line from the
+	// SAME persistent input reader Prompt uses, and returns the line VERBATIM with
+	// only the trailing newline (and any preceding carriage return) stripped.
+	// Unlike Prompt there is no choice set, no default, and no re-prompt loop —
+	// the empty string is a legal answer (the engine owns its meaning, e.g. "no
+	// extra context"), and leading/inner/trailing spaces are preserved. The engine
+	// uses it for one-shot free-text asks such as regenerate's one-time context
+	// line; because it shares Prompt's buffered reader, a Prompt followed by an
+	// AskLine consumes consecutive lines of the same stream.
+	//
+	// Input-axis rules: a non-interactive stdin fails loud exactly like Prompt's
+	// forbidden combination — the presenter renders the failure (label "input")
+	// and returns ErrNotInteractive. -y does NOT auto-answer an AskLine (free text
+	// has no declared default to accept); engine flows only reach AskLine from an
+	// interactive gate choice, so under -y it is unreachable by construction. EOF
+	// with no usable line returns ErrInputClosed (NOT rendered — the engine owns
+	// that failure's surfacing); a final line without a trailing newline is still
+	// returned. The prompt is narration → out only.
+	AskLine(prompt string) (string, error)
 	// SuspendSpinner and ResumeSpinner are ENGINE-CALLABLE control hooks the engine
 	// invokes AROUND its OWN $EDITOR hand-off (the presenter never detects or invokes
 	// the editor — per the Phase-3 render-only Prompt contract the engine owns the
@@ -302,6 +349,34 @@ type Notes struct {
 	Body string
 }
 
+// Message is the ShowMessage payload: an engine-titled content block presented
+// inside per-mode delimiters — the general-purpose sibling of Notes for content
+// that is not release notes (e.g. a generated commit message shown for review).
+//
+// Title labels the surrounding delimiters and is engine-supplied, rendered
+// VERBATIM (plain "--- {title} ---" … "--- end {title} ---"; pretty a titled
+// rule). The presenter synthesises only the delimiter framing, never the title
+// text. For the plain delimiters to stay byte-pure the engine supplies ASCII
+// titles (the same convention as the gate Subject/AcceptEcho values).
+//
+// Body carries the SAME non-negotiable invariant as Notes.Body: it is written
+// BYTE-FOR-BYTE VERBATIM in BOTH render modes through the shared writeNotesBody
+// helper — no stripping, no re-wrapping, no truncation, no indentation — so the
+// body region is provably identical across modes and only the delimiters differ.
+// The same edge rules apply: an empty Body renders the delimiters with nothing
+// between them, and a Body line that looks like a delimiter is written verbatim
+// (delimiters are POSITIONAL, never content-matched).
+//
+// Messages are narration → out only, never stderr.
+type Message struct {
+	// Title labels the surrounding delimiters, rendered verbatim (ASCII by the
+	// engine's convention so the plain delimiters stay byte-pure).
+	Title string
+	// Body is the block content, written byte-for-byte verbatim in both modes.
+	// The empty string is legal (bare delimiters, no invented content).
+	Body string
+}
+
 // Version is the ShowVersion payload: the engine-resolved version value plus the
 // engine-supplied brand leaf, for the one payload verb (version's output is a
 // value, not narration).
@@ -417,6 +492,17 @@ type Warning struct {
 	// Message is the engine-supplied warning text, rendered verbatim. The empty
 	// string is legal and renders the label-prefixed form with no message.
 	Message string
+	// Output is optional captured underlying-command output (e.g. git's stderr
+	// from a failed-but-non-fatal push) rendered VERBATIM beneath the warn line —
+	// the warn-flavoured counterpart of StageFailure.Output, for failures the
+	// engine deliberately keeps non-terminal. It is narration → out ONLY and is
+	// NEVER duplicated to err: the stream contract's "one-line summary to stderr"
+	// applies to the warn line alone. Rendering mirrors StageFailed's captured
+	// body exactly — plain wraps it in the sliceable "--- output ---" delimiters,
+	// pretty writes it flush and unstyled — via the shared verbatim helper. The
+	// empty string (the common case) renders NO block; rendering it through Warn
+	// does not set failure state.
+	Output string
 }
 
 // Unwind carries the Unwound payload: the engine's verbatim "what it undid"

@@ -90,30 +90,6 @@ func NewPlainPresenterWithInput(out, err io.Writer, in io.Reader) *PlainPresente
 	return &PlainPresenter{out: out, err: err, in: in, stdinInteractive: true}
 }
 
-// WithYes sets the -y/--yes gating decision and returns the presenter so it chains
-// onto any constructor (e.g. NewPlainPresenterWithInput(...).WithYes(true)). It is
-// a builder-style setter — kept off the constructors so their signatures stay
-// stable and so the stdin-interactive gating signal can be added the same way
-// without a constructor explosion. Production threads it at the converged startup
-// seam (NewForStartup) from the caller's -y decision; the zero value (no call) is
-// the interactive default.
-func (p *PlainPresenter) WithYes(yes bool) *PlainPresenter {
-	p.yes = yes
-	return p
-}
-
-// WithInteractiveStdin sets the stdin-interactive gating signal and returns the
-// presenter so it chains onto any constructor, mirroring WithYes exactly. It is a
-// builder-style setter — kept off the constructors so their signatures stay stable.
-// Production threads the detected stdin signal (DetectStartupSignals'
-// StdinInteractive) at the converged startup seam (NewForStartup), the same place
-// the -y decision is threaded. The constructor default is true (interactive); call
-// WithInteractiveStdin(false) to arm the forbidden-combination fail path.
-func (p *PlainPresenter) WithInteractiveStdin(interactive bool) *PlainPresenter {
-	p.stdinInteractive = interactive
-	return p
-}
-
 // writef writes one narration line to out. A Presenter method returns nothing —
 // the engine narrates fire-and-forget — so a write error to the output stream has
 // nowhere to propagate and is deliberately discarded here, in one place, rather
@@ -252,9 +228,24 @@ func (p *PlainPresenter) Unwound(u Unwind) {
 // Empty-message edge: the fixed "{label}: WARN - " prefix renders with nothing
 // after it — no invented message text. The line is synthesised byte-pure ASCII (no
 // ⚠ glyph; that is pretty-only).
+//
+// When the warning carries captured underlying-command output (w.Output
+// non-empty), the captured body is rendered to OUT ONLY, below the WARN line,
+// wrapped in the same sliceable "--- output ---" … "--- end output ---"
+// delimiters StageFailed uses, with the body written through the package-shared
+// writeNotesBody helper UNCHANGED — byte-for-byte verbatim, delimiters positional
+// (never content-matched). The body is NEVER duplicated to err: only the one-line
+// WARN summary goes there. An empty Output renders NO block, and rendering the
+// block does not set failure state — the warn stays non-terminal.
 func (p *PlainPresenter) Warn(w Warning) {
 	p.writef("%s: WARN - %s\n", w.Label, w.Message)
 	p.errf("%s: WARN - %s\n", w.Label, w.Message)
+	if w.Output == "" {
+		return
+	}
+	p.writef("--- output ---\n")
+	writeNotesBody(p.out, w.Output)
+	p.writef("--- end output ---\n")
 }
 
 // ShowPlan renders the plan as a single terse one-liner: "plan: {step}; {step}; …"
@@ -309,6 +300,25 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 	p.writef("--- end notes ---\n")
 }
 
+// ShowMessage renders an engine-titled content block wrapped in the sliceable
+// plain delimiters "--- {title} ---" … "--- end {title} ---" — the
+// general-purpose sibling of ShowNotes (whose delimiters hardcode the
+// release-notes framing). The title is engine content rendered VERBATIM in both
+// delimiter lines (ASCII by the engine's convention so the synthesised lines stay
+// byte-pure); the body is written through the package-shared writeNotesBody
+// helper UNCHANGED — byte-for-byte verbatim, the same bytes the pretty presenter
+// writes — so the body region is provably identical across modes.
+//
+// Edge forms mirror ShowNotes exactly: an empty body writes nothing between the
+// delimiters; a body line that itself reads like a delimiter is written verbatim
+// with the real closer still following (delimiters are positional, never
+// content-matched). Narration → out only, never err.
+func (p *PlainPresenter) ShowMessage(m Message) {
+	p.writef("--- %s ---\n", m.Title)
+	writeNotesBody(p.out, m.Body)
+	p.writef("--- end %s ---\n", m.Title)
+}
+
 // ShowVersion writes the bare version value plus a single trailing newline to OUT
 // ONLY — "{value}\n" and NOTHING else. This is the deliberate PAYLOAD EXCEPTION to
 // plain's "key: value" narration: version's output is a VALUE, not narration, so it
@@ -349,7 +359,8 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 		return gate.Default, nil
 	}
 	if !p.stdinInteractive {
-		return p.failNotInteractive()
+		p.failNotInteractive(gateFailLabel)
+		return "", ErrNotInteractive
 	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() {
@@ -358,21 +369,45 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 	return readChoice(reader, render, gate)
 }
 
+// AskLine renders the terse free-text prompt "{prompt}: " (no trailing newline —
+// the cursor sits after the colon for the line-read) and returns ONE raw line via
+// the shared readLine core, stripped of its line terminator but otherwise
+// VERBATIM — the empty string is a legal answer and whitespace is preserved (the
+// engine owns interpretation). It reads through the SAME persistent buffered
+// reader Prompt uses, so a Prompt followed by an AskLine consumes consecutive
+// lines of one stream. The synthesised framing (": ") is byte-pure ASCII; the
+// prompt label is engine content rendered verbatim.
+//
+// A non-interactive stdin fails loud BEFORE any render or read — the same
+// forbidden-combination rule as Prompt, labelled "input" (the free-text input
+// mechanism, not a gate) — and returns ErrNotInteractive. -y does not bypass the
+// check: free text has no declared default to auto-accept, and engine flows only
+// reach AskLine from an interactive gate choice. EOF with no usable line returns
+// ErrInputClosed, unrendered (the engine owns that failure's surfacing).
+func (p *PlainPresenter) AskLine(prompt string) (string, error) {
+	if !p.stdinInteractive {
+		p.failNotInteractive(inputFailLabel)
+		return "", ErrNotInteractive
+	}
+	p.writef("%s: ", prompt)
+	return readLine(bufferedReader(p.in, &p.reader))
+}
+
 // failNotInteractive renders the FORBIDDEN-COMBINATION failure (non-TTY stdin
 // without -y) WITHOUT touching the input stream — the whole point is to never
 // block on stdin that will not deliver. It reuses the established plain FAILED
 // vocabulary "{label}: FAILED - {message}": the one-line summary goes to OUT (the
 // narration) AND is duplicated to ERR per the stream contract, exactly like
-// StageFailed. The label is the fixed gateFailLabel ("gate") — this is the gate
-// MECHANISM failing, not the gate's Subject (the notes content), so it is NOT
-// gate.Subject. The message is the byte-pure ASCII gateNotTTYMessageASCII (a
-// semicolon, never the em-dash, so the plain byte-purity guard stays green).
-// Prompt then returns the exported ErrNotInteractive sentinel; the presenter sets
-// no exit code.
-func (p *PlainPresenter) failNotInteractive() (Choice, error) {
-	p.writef("%s: FAILED - %s\n", gateFailLabel, gateNotTTYMessageASCII)
-	p.errf("%s: FAILED - %s\n", gateFailLabel, gateNotTTYMessageASCII)
-	return "", ErrNotInteractive
+// StageFailed. The label names the failing MECHANISM — gateFailLabel ("gate") from
+// Prompt, inputFailLabel ("input") from AskLine — never the gate's Subject (the
+// notes content): a reader sees the mechanism failed, not that "notes" failed.
+// The message is the byte-pure ASCII gateNotTTYMessageASCII (a semicolon, never
+// the em-dash, so the plain byte-purity guard stays green). The caller then
+// returns the exported ErrNotInteractive sentinel; the presenter sets no exit
+// code.
+func (p *PlainPresenter) failNotInteractive(label string) {
+	p.writef("%s: FAILED - %s\n", label, gateNotTTYMessageASCII)
+	p.errf("%s: FAILED - %s\n", label, gateNotTTYMessageASCII)
 }
 
 // InitResult renders one init outcome to OUT ONLY in plain's "{target}: {action}"

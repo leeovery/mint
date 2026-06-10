@@ -49,27 +49,31 @@ func New(mode Mode, out, err io.Writer) Presenter {
 // internally) keeps this unit-testable: a test passes non-TTY handles to drive the
 // plain path and the forbidden-combination path deterministically.
 //
-// The four signals are applied on the CONCRETE presenter built in each mode branch
-// (WithYes/WithInteractiveStdin live on the concrete types, not the Presenter
-// interface), then returned as the interface:
+// The stdin handle serves BOTH input roles: it is probed for the
+// stdin-interactive gating signal AND wired through as the gate/line-read input
+// stream, so the detected signal and the stream actually read can never diverge —
+// whatever handle was judged interactive is the handle Prompt/AskLine read.
+//
+// The signals are threaded as fields on the CONCRETE presenter built in each mode
+// branch (the gating axes live on the concrete types, not the Presenter
+// interface — production threads them only here), then returned as the interface:
 //   - PRETTY: the terminal width is probed from the stdout handle (detectTermWidth)
-//     and applied via WithTermWidth so the decorative notes rules cap at
-//     min(terminalWidth, ruleCap). detectTermWidth returns 0 on an undetectable
-//     width, which ruleWidth maps back to the cap, so a width-less terminal still
-//     renders the fixed-cap rule.
+//     so the decorative notes rules cap at min(terminalWidth, ruleCap).
+//     detectTermWidth returns 0 on an undetectable width, which ruleWidth maps
+//     back to the cap, so a width-less terminal still renders the fixed-cap rule.
 //   - PLAIN: width is irrelevant (plain has no decorative rules and does no width
-//     math), so it is not probed. The plain presenter keeps its production default
-//     input reader (os.Stdin) — stdin is held here only to resolve the
-//     stdin-interactive signal, not as the gate input stream.
+//     math), so it is not probed.
 func NewForStartup(plainFlag, yes bool, stdout, stderr, stdin *os.File) Presenter {
 	signals := DetectStartupSignals(plainFlag, stdout, stdin)
 	if signals.Mode == ModePretty {
-		return NewPrettyPresenter(stdout, WithErr(stderr)).
-			WithTermWidth(detectTermWidth(stdout)).
-			WithYes(yes).
-			WithInteractiveStdin(signals.StdinInteractive)
+		p := NewPrettyPresenter(stdout, WithErr(stderr), WithInput(stdin))
+		p.termWidth = detectTermWidth(stdout)
+		p.yes = yes
+		p.stdinInteractive = signals.StdinInteractive
+		return p
 	}
-	return NewPlainPresenter(stdout, stderr).
-		WithYes(yes).
-		WithInteractiveStdin(signals.StdinInteractive)
+	p := NewPlainPresenterWithInput(stdout, stderr, stdin)
+	p.yes = yes
+	p.stdinInteractive = signals.StdinInteractive
+	return p
 }

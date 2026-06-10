@@ -33,6 +33,13 @@ const (
 // itself failed, not that "notes" failed.
 const gateFailLabel = "gate"
 
+// inputFailLabel is the FIXED label both presenters render when AskLine hits the
+// same forbidden combination: "input". An AskLine is not a gate (no choice set, no
+// default), so its fail-loud line names the free-text input mechanism rather than
+// the gate — the message text and dual out+err rendering are otherwise identical
+// to the gate failure's.
+const inputFailLabel = "input"
+
 // gateNotTTYMessageASCII is the byte-pure ASCII message text for the plain
 // forbidden-combination failure: a semicolon form (NOT the em-dash) so the plain
 // byte-purity guard stays green. The pretty presenter renders the spec's em-dash

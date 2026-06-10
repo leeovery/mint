@@ -7,19 +7,25 @@ import (
 	"strings"
 )
 
-// errPromptEOF is returned by the read-and-loop core when the input stream hits
-// EOF with no usable valid line. It is deliberately NON-NIL and distinct from a
-// declared Choice so the caller fails loud rather than silently default-accepting
-// — the underpinning of the fail-loud / unattended-without-`-y` behaviour: an
-// empty Enter selects the default, but a closed stream must NOT be mistaken for
-// one. The exact text is engine-facing only (the presenter surfaces failures via
-// the failure events, not this error string), so it stays terse.
-var errPromptEOF = errors.New("prompt: input closed before a choice was entered")
+// ErrInputClosed is the EXPORTED sentinel the input seam (Prompt's shared
+// read-and-loop core, and AskLine) returns when the input stream hits EOF with no
+// usable line. It is deliberately NON-NIL and distinct from a declared Choice so
+// the caller fails loud rather than silently default-accepting — the underpinning
+// of the fail-loud / unattended-without-`-y` behaviour: an empty Enter selects the
+// default, but a closed stream must NOT be mistaken for one.
+//
+// It is exported so the engine can branch on it via errors.Is, exactly like
+// ErrNotInteractive. Unlike ErrNotInteractive, this path renders NOTHING through
+// the presenter: the forbidden combination is a predictable startup state the
+// presenter narrates itself, whereas EOF arrives mid-interaction where the ENGINE
+// owns the failure semantics (abort, exit code, any closing narration) — the
+// presenter only reports the closed stream through this error.
+var ErrInputClosed = errors.New("prompt: input closed before a choice was entered")
 
 // ErrNotInteractive is the EXPORTED sentinel both presenters return from Prompt on
 // the forbidden combination — stdin is NOT a TTY and -y was NOT passed, so an
 // interactive gate can be neither answered nor safely blocked on. It is exported
-// (unlike errPromptEOF) precisely so the engine/main can map THIS path to a
+// precisely so the engine/main can map THIS path to a
 // non-zero exit via errors.Is; the presenter itself sets no exit code. The
 // failure is ALSO surfaced through the presenter as a rendered failure (styled in
 // pretty, terse in plain) and the one-line summary goes to stderr — this sentinel
@@ -38,9 +44,12 @@ var ErrNotInteractive = errors.New("stdin is not a TTY; pass -y to run unattende
 //     Enter — ordinary CLI line-read behaviour.
 //   - An empty (or whitespace-only) line returns g.Default, true — the empty-Enter
 //     accept path. g.Default is always a member of the declared set.
-//   - Otherwise the trimmed input is lower-cased and compared against each declared
-//     key (the keys are themselves lowercase, so this is a case-fold compare, NOT a
-//     hardcoded set). On a match the declared key is returned with true.
+//   - Otherwise the trimmed input is compared CASE-INSENSITIVELY (strings.EqualFold)
+//     against each declared key, in declared order, and on a match the DECLARED key
+//     is returned with true — the canonical key, never the raw input. Folding both
+//     sides (rather than lower-casing the input and comparing verbatim) means a
+//     gate that declares a mixed-case key is still selectable; nothing here
+//     hardcodes a set or a casing convention.
 //   - Any input that matches no declared key returns ("", false) so the caller
 //     re-prompts; an unrecognised key is NEVER mapped to a choice and NEVER
 //     silently accepted as the default.
@@ -49,9 +58,10 @@ func parseChoice(line string, g Gate) (Choice, bool) {
 	if trimmed == "" {
 		return g.Default, true
 	}
-	candidate := Choice(strings.ToLower(trimmed))
-	if g.Has(candidate) {
-		return candidate, true
+	for _, key := range g.Keys() {
+		if strings.EqualFold(trimmed, string(key)) {
+			return key, true
+		}
 	}
 	return "", false
 }
@@ -68,7 +78,7 @@ func parseChoice(line string, g Gate) (Choice, bool) {
 // EOF handling is the load-bearing safety property: bufio.Reader.ReadString
 // returns the bytes read so far ALONGSIDE io.EOF, so a final line with no trailing
 // newline ("y" then EOF) is still parsed. Only when EOF arrives with no usable
-// line (an empty trailing read) does this return errPromptEOF — never a silent
+// line (an empty trailing read) does this return ErrInputClosed — never a silent
 // default-accept. A genuine empty Enter ("\n") is a real line, not EOF, so it
 // still selects the default.
 func readChoice(reader *bufio.Reader, render func(), g Gate) (Choice, error) {
@@ -82,16 +92,37 @@ func readChoice(reader *bufio.Reader, render func(), g Gate) (Choice, error) {
 			// A non-empty but unrecognised line: re-prompt. If that line also
 			// arrived with EOF, the next ReadString returns "" + io.EOF below.
 			if err != nil {
-				return "", errPromptEOF
+				return "", ErrInputClosed
 			}
 			continue
 		}
 		// No bytes read. On EOF this is the closed-stream case (fail loud); any
 		// other read error is likewise unusable input.
 		if err != nil {
-			return "", errPromptEOF
+			return "", ErrInputClosed
 		}
 	}
+}
+
+// readLine is the SHARED free-text read core both presenters drive from AskLine.
+// It reads ONE raw line from the persistent buffered reader and returns it with
+// only the line terminator stripped — the trailing "\n" and any preceding "\r"
+// (a CRLF terminal) — otherwise VERBATIM: leading, inner, and trailing spaces are
+// preserved and the empty string is a legal result (a deliberate empty Enter).
+//
+// EOF handling mirrors readChoice: bufio.Reader.ReadString returns the bytes read
+// so far ALONGSIDE io.EOF, so a final line with no trailing newline is still
+// returned as the answer. Only when EOF (or any other read error) arrives with NO
+// bytes does this return ErrInputClosed — a closed stream is never mistaken for a
+// deliberate empty answer.
+func readLine(reader *bufio.Reader) (string, error) {
+	line, err := reader.ReadString('\n')
+	if line == "" && err != nil {
+		return "", ErrInputClosed
+	}
+	line = strings.TrimSuffix(line, "\n")
+	line = strings.TrimSuffix(line, "\r")
+	return line, nil
 }
 
 // plainKeyHint builds the slash-joined key hint (e.g. "y/n/e/r") from the gate's
