@@ -116,6 +116,10 @@ func TestRelease_Downgrade_UnknownProviderValue(t *testing.T) {
 	if fin.Kind != presentertest.KindRunFinished {
 		t.Errorf("downgrade run did not finish; last event = %v", fin.Kind)
 	}
+	// A downgrade publishes no provider release, so the footer carries NO URL.
+	if fin.RunFinished.URL != "" {
+		t.Errorf("RunFinished.URL = %q, want empty on a no-publish downgrade", fin.RunFinished.URL)
+	}
 }
 
 // TestRelease_Downgrade_NonGitHubHost proves auto-detection with no matching driver

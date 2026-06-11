@@ -623,8 +623,15 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// the run is tag + push only.
 	releaseURL := ""
 	if publisher != nil {
-		if err := publisher.CreateRelease(ctx, tag, tag, body); err != nil {
+		// CreateRelease returns the published release URL (parsed from the driver's
+		// stdout); thread it into RunResult.URL so the success footer renders the real
+		// URL. A publish FAILURE is warn-only and leaves releaseURL empty (no bogus URL
+		// in the footer); a downgrade leaves publisher nil so releaseURL stays empty too.
+		url, err := publisher.CreateRelease(ctx, tag, tag, body)
+		if err != nil {
 			warnPublishFailed(p, err)
+		} else {
+			releaseURL = url
 		}
 	}
 

@@ -23,8 +23,14 @@ func TestGitHubPublisher_CreateRelease_InvokesGhReleaseCreate(t *testing.T) {
 	p := publish.NewGitHubPublisher(r)
 
 	const body = "## What's changed\n\n- Added the thing\n- Fixed the other thing\n"
-	if err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", body); err != nil {
+	url, err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", body)
+	if err != nil {
 		t.Fatalf("CreateRelease returned unexpected error: %v", err)
+	}
+	// `gh release create` prints the created release URL to stdout; CreateRelease must
+	// return it (TrimSpace-d) so the success footer can render the real release URL.
+	if want := "https://github.com/acme/widget/releases/tag/v1.2.3"; url != want {
+		t.Errorf("url = %q, want the trimmed gh stdout %q", url, want)
 	}
 
 	invs := r.Invocations()
@@ -45,6 +51,26 @@ func TestGitHubPublisher_CreateRelease_InvokesGhReleaseCreate(t *testing.T) {
 	}
 }
 
+func TestGitHubPublisher_CreateRelease_EmptyStdoutEmptyURLNoError(t *testing.T) {
+	t.Parallel()
+
+	// When `gh release create` prints nothing to stdout, CreateRelease returns an
+	// empty URL and NO error — an absent URL is not a failure, the footer simply
+	// renders without one.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{Stdout: ""}, nil)
+
+	p := publish.NewGitHubPublisher(r)
+
+	url, err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
+	if err != nil {
+		t.Fatalf("CreateRelease returned unexpected error: %v", err)
+	}
+	if url != "" {
+		t.Errorf("url = %q, want empty when gh prints no stdout", url)
+	}
+}
+
 func TestGitHubPublisher_CreateRelease_DistinctTitleAndTag(t *testing.T) {
 	t.Parallel()
 
@@ -56,7 +82,7 @@ func TestGitHubPublisher_CreateRelease_DistinctTitleAndTag(t *testing.T) {
 
 	p := publish.NewGitHubPublisher(r)
 
-	if err := p.CreateRelease(t.Context(), "v2.0.0", "Release 2.0.0", "body"); err != nil {
+	if _, err := p.CreateRelease(t.Context(), "v2.0.0", "Release 2.0.0", "body"); err != nil {
 		t.Fatalf("CreateRelease returned unexpected error: %v", err)
 	}
 
@@ -82,9 +108,12 @@ func TestGitHubPublisher_CreateRelease_GhFails_SurfacesError(t *testing.T) {
 
 	p := publish.NewGitHubPublisher(r)
 
-	err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
+	url, err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
 	if err == nil {
 		t.Fatal("CreateRelease returned nil error, want the gh failure to surface")
+	}
+	if url != "" {
+		t.Errorf("url = %q, want empty alongside the surfaced gh failure", url)
 	}
 }
 
@@ -102,8 +131,14 @@ func TestGitHubPublisher_UpdateRelease_InvokesGhReleaseEdit(t *testing.T) {
 	p := publish.NewGitHubPublisher(r)
 
 	const body = "## What's changed\n\n- Added the thing\n- Fixed the other thing\n"
-	if err := p.UpdateRelease(t.Context(), "v1.2.3", "v1.2.3", body); err != nil {
+	url, err := p.UpdateRelease(t.Context(), "v1.2.3", "v1.2.3", body)
+	if err != nil {
 		t.Fatalf("UpdateRelease returned unexpected error: %v", err)
+	}
+	// `gh release edit` prints the updated release URL to stdout; UpdateRelease must
+	// return it (TrimSpace-d), mirroring CreateRelease.
+	if want := "https://github.com/acme/widget/releases/tag/v1.2.3"; url != want {
+		t.Errorf("url = %q, want the trimmed gh stdout %q", url, want)
 	}
 
 	invs := r.Invocations()
@@ -124,6 +159,25 @@ func TestGitHubPublisher_UpdateRelease_InvokesGhReleaseEdit(t *testing.T) {
 	}
 }
 
+func TestGitHubPublisher_UpdateRelease_EmptyStdoutEmptyURLNoError(t *testing.T) {
+	t.Parallel()
+
+	// As with CreateRelease, an empty `gh release edit` stdout yields an empty URL and
+	// NO error — an absent URL is not a failure.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{Stdout: ""}, nil)
+
+	p := publish.NewGitHubPublisher(r)
+
+	url, err := p.UpdateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
+	if err != nil {
+		t.Fatalf("UpdateRelease returned unexpected error: %v", err)
+	}
+	if url != "" {
+		t.Errorf("url = %q, want empty when gh prints no stdout", url)
+	}
+}
+
 func TestGitHubPublisher_UpdateRelease_GhFails_SurfacesError(t *testing.T) {
 	t.Parallel()
 
@@ -139,9 +193,12 @@ func TestGitHubPublisher_UpdateRelease_GhFails_SurfacesError(t *testing.T) {
 
 	p := publish.NewGitHubPublisher(r)
 
-	err := p.UpdateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
+	url, err := p.UpdateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
 	if err == nil {
 		t.Fatal("UpdateRelease returned nil error, want the gh failure to surface")
+	}
+	if url != "" {
+		t.Errorf("url = %q, want empty alongside the surfaced gh failure", url)
 	}
 }
 
@@ -280,7 +337,7 @@ func TestGitHubPublisher_OnlyPublishesWhenEnabled(t *testing.T) {
 			p := publish.NewGitHubPublisher(r)
 
 			if tt.publish {
-				if err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", "body"); err != nil {
+				if _, err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", "body"); err != nil {
 					t.Fatalf("CreateRelease returned unexpected error: %v", err)
 				}
 			}

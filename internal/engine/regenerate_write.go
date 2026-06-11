@@ -160,7 +160,9 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 	// post-PONR warn-only case (the changelog is already public). For --target
 	// release there is no push, so a failure is surfaced as a plain abort.
 	if req.Target.writesProvider() {
-		if err := DispatchRelease(ctx, publisher, req.Tag, req.Tag, body); err != nil {
+		// Regenerate's close carries no footer URL, so the dispatched release URL is
+		// discarded here — only the forward release path threads it into RunResult.URL.
+		if _, err := DispatchRelease(ctx, publisher, req.Tag, req.Tag, body); err != nil {
 			if pushed {
 				// Post-PONR: the changelog is already public, so never unwind — warn and
 				// point at the heal path, exactly as the forward path's post-push failure.

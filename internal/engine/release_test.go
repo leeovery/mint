@@ -219,6 +219,36 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	}
 }
 
+// TestRelease_PublishURLThreadsToRunFinished proves the success-footer seam is
+// CLOSED end-to-end: the release URL `gh release create` prints to stdout is parsed
+// by the publisher and threaded into RunResult.URL, so the success footer renders a
+// real, non-empty URL rather than an empty segment.
+func TestRelease_PublishURLThreadsToRunFinished(t *testing.T) {
+	t.Parallel()
+
+	const releaseURL = "https://github.com/acme/widget/releases/tag/v0.0.1"
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	// `gh release create` prints the created release URL to stdout; the publisher must
+	// parse it and the engine must thread it into RunResult.URL.
+	f.Seed("gh", runner.Result{Stdout: releaseURL + "\n"}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), patchOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Fatalf("last event = %v, want RunFinished", fin.Kind)
+	}
+	if fin.RunFinished.URL != releaseURL {
+		t.Errorf("RunFinished.URL = %q, want the publisher's release URL %q", fin.RunFinished.URL, releaseURL)
+	}
+}
+
 // TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes proves the
 // engine's git MUTATIONS flow through the lock-resilient wrapper: a contended .git
 // lock on the bookkeeping `git add` (a provably-stale lock file on disk) is cleared
@@ -1287,6 +1317,11 @@ func TestRelease_PublishFailsAfterPush_WarnsOnly(t *testing.T) {
 	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.Kind != presentertest.KindRunFinished {
 		t.Errorf("run did not finish after warn-only publish failure; last event = %v", fin.Kind)
+	}
+	// A failed publish has no release URL — the footer must render NO URL (empty), not
+	// a bogus one.
+	if fin.RunFinished.URL != "" {
+		t.Errorf("RunFinished.URL = %q, want empty after a warn-only publish failure", fin.RunFinished.URL)
 	}
 }
 

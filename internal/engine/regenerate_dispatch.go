@@ -33,10 +33,14 @@ import (
 // anything that is NOT a clean "release absent") is surfaced WITHOUT dispatching
 // either write, so the dispatch never silently falls back to create-or-update on a
 // real failure. The user is never prompted to choose.
-func DispatchRelease(ctx context.Context, p publish.Publisher, tag, title, body string) error {
+//
+// It returns the created/updated release URL the routed write reported, so the
+// forward release path can thread it into the success footer; on a probe failure the
+// URL is empty alongside the error.
+func DispatchRelease(ctx context.Context, p publish.Publisher, tag, title, body string) (string, error) {
 	exists, err := p.ReleaseExists(ctx, tag)
 	if err != nil {
-		return fmt.Errorf("probing provider release for tag %s: %w", tag, err)
+		return "", fmt.Errorf("probing provider release for tag %s: %w", tag, err)
 	}
 	if exists {
 		return p.UpdateRelease(ctx, tag, title, body)

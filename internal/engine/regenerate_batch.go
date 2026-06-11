@@ -261,7 +261,10 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// transparently mixes updates and creates. A changelog-only target skips the provider
 	// entirely — its surface is the end-of-batch whole-file CHANGELOG rebuild (task 5-13).
 	if req.Target.writesProvider() {
-		if err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, reviewed); err != nil {
+		// The batch's closing Summary carries no URL (regenerate publishes a set, not a
+		// single release with a footer URL), so the dispatched release URL is discarded
+		// here — only the forward release path threads it into RunResult.URL.
+		if _, err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, reviewed); err != nil {
 			return RegeneratedVersion{}, nil, surface(p, "publish", err)
 		}
 	}

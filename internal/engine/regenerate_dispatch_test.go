@@ -25,6 +25,9 @@ type fakePublisher struct {
 	// the dispatched call is recorded), so an ordering test can snapshot external
 	// state (e.g. whether the changelog push already happened) at dispatch time.
 	beforeDispatch func()
+	// url is the release URL CreateRelease/UpdateRelease return — the value the
+	// dispatch/forward path threads into RunResult.URL.
+	url string
 }
 
 type existsOutcome struct {
@@ -55,20 +58,20 @@ func (f *fakePublisher) ReleaseExists(_ context.Context, tag string) (bool, erro
 	return o.exists, o.err
 }
 
-func (f *fakePublisher) CreateRelease(_ context.Context, tag, title, body string) error {
+func (f *fakePublisher) CreateRelease(_ context.Context, tag, title, body string) (string, error) {
 	if f.beforeDispatch != nil {
 		f.beforeDispatch()
 	}
 	f.dispatched = append(f.dispatched, dispatchedCall{method: "create", tag: tag, title: title, body: body})
-	return nil
+	return f.url, nil
 }
 
-func (f *fakePublisher) UpdateRelease(_ context.Context, tag, title, body string) error {
+func (f *fakePublisher) UpdateRelease(_ context.Context, tag, title, body string) (string, error) {
 	if f.beforeDispatch != nil {
 		f.beforeDispatch()
 	}
 	f.dispatched = append(f.dispatched, dispatchedCall{method: "update", tag: tag, title: title, body: body})
-	return nil
+	return f.url, nil
 }
 
 // TestDispatchRelease_ExistingReleaseUpdates proves that when a release EXISTS at
@@ -80,7 +83,7 @@ func TestDispatchRelease_ExistingReleaseUpdates(t *testing.T) {
 	f := newFakePublisher()
 	f.seedExists("v1.2.3", true, nil)
 
-	if err := engine.DispatchRelease(t.Context(), f, "v1.2.3", "v1.2.3", "the body"); err != nil {
+	if _, err := engine.DispatchRelease(t.Context(), f, "v1.2.3", "v1.2.3", "the body"); err != nil {
 		t.Fatalf("DispatchRelease returned unexpected error: %v", err)
 	}
 
@@ -104,7 +107,7 @@ func TestDispatchRelease_AbsentReleaseCreates(t *testing.T) {
 	f := newFakePublisher()
 	f.seedExists("v1.2.3", false, nil)
 
-	if err := engine.DispatchRelease(t.Context(), f, "v1.2.3", "v1.2.3", "the body"); err != nil {
+	if _, err := engine.DispatchRelease(t.Context(), f, "v1.2.3", "v1.2.3", "the body"); err != nil {
 		t.Fatalf("DispatchRelease returned unexpected error: %v", err)
 	}
 
@@ -132,7 +135,7 @@ func TestDispatchRelease_ResolvesPerVersion(t *testing.T) {
 	f.seedExists("v2.0.0", false, nil) // absent release → create
 
 	for _, tag := range []string{"v1.0.0", "v2.0.0"} {
-		if err := engine.DispatchRelease(t.Context(), f, tag, tag, "body for "+tag); err != nil {
+		if _, err := engine.DispatchRelease(t.Context(), f, tag, tag, "body for "+tag); err != nil {
 			t.Fatalf("DispatchRelease(%s) returned unexpected error: %v", tag, err)
 		}
 	}
@@ -159,7 +162,7 @@ func TestDispatchRelease_ProbeErrorSurfacesWithoutDispatch(t *testing.T) {
 	f := newFakePublisher()
 	f.seedExists("v1.2.3", false, probeErr)
 
-	err := engine.DispatchRelease(t.Context(), f, "v1.2.3", "v1.2.3", "the body")
+	_, err := engine.DispatchRelease(t.Context(), f, "v1.2.3", "v1.2.3", "the body")
 	if err == nil {
 		t.Fatal("DispatchRelease returned nil error, want the probe failure surfaced")
 	}
@@ -179,7 +182,42 @@ func TestDispatchRelease_AcceptsPublisherInterface(t *testing.T) {
 	t.Parallel()
 
 	var p publish.Publisher = newFakePublisher()
-	if err := engine.DispatchRelease(t.Context(), p, "v1.0.0", "v1.0.0", "body"); err != nil {
+	if _, err := engine.DispatchRelease(t.Context(), p, "v1.0.0", "v1.0.0", "body"); err != nil {
 		t.Fatalf("DispatchRelease returned unexpected error: %v", err)
+	}
+}
+
+// TestDispatchRelease_ReturnsPublisherURL proves the dispatch returns the release URL
+// the routed publisher reported (create AND update paths), so the forward path can
+// thread it into RunResult.URL.
+func TestDispatchRelease_ReturnsPublisherURL(t *testing.T) {
+	t.Parallel()
+
+	const wantURL = "https://github.com/acme/widget/releases/tag/v1.2.3"
+
+	tests := []struct {
+		name   string
+		exists bool
+	}{
+		{name: "create path returns URL", exists: false},
+		{name: "update path returns URL", exists: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := newFakePublisher()
+			f.url = wantURL
+			f.seedExists("v1.2.3", tt.exists, nil)
+
+			url, err := engine.DispatchRelease(t.Context(), f, "v1.2.3", "v1.2.3", "the body")
+			if err != nil {
+				t.Fatalf("DispatchRelease returned unexpected error: %v", err)
+			}
+			if url != wantURL {
+				t.Errorf("url = %q, want the publisher's URL %q", url, wantURL)
+			}
+		})
 	}
 }

@@ -35,10 +35,16 @@ import (
 // cheap to implement.
 //
 // CreateRelease publishes a brand-new provider release for tag, with the given
-// title and full notes body. UpdateRelease overwrites the release for an existing
-// tag (the heal/regenerate --reuse path recreates a provider release from the tag
-// annotation); it is part of the seam from the start so drivers implement the
-// whole contract, but it is exercised by a later phase.
+// title and full notes body, and returns the created release's URL. UpdateRelease
+// overwrites the release for an existing tag (the heal/regenerate --reuse path
+// recreates a provider release from the tag annotation) and returns the updated
+// release's URL; it is part of the seam from the start so drivers implement the
+// whole contract.
+//
+// Both return the release URL so the release-success footer can render the real
+// release URL the driver published to. An empty URL is valid (the driver simply has
+// none to report) and is NOT an error; on a genuine publish failure the driver
+// returns an empty URL alongside the wrapped error.
 //
 // ReleaseExists is the heal/regenerate create-or-update PROBE: it reports whether a
 // provider release already exists at tag so DispatchRelease can pick UpdateRelease
@@ -46,8 +52,8 @@ import (
 // NO error; a genuine probe failure (missing CLI, auth/network) is surfaced so the
 // dispatch never silently defaults to create on a real failure.
 type Publisher interface {
-	CreateRelease(ctx context.Context, tag, title, body string) error
-	UpdateRelease(ctx context.Context, tag, title, body string) error
+	CreateRelease(ctx context.Context, tag, title, body string) (url string, err error)
+	UpdateRelease(ctx context.Context, tag, title, body string) (url string, err error)
 	ReleaseExists(ctx context.Context, tag string) (bool, error)
 }
 
@@ -84,8 +90,13 @@ func NewGitHubPublisher(r runner.CommandRunner) *GitHubPublisher {
 // A non-zero gh exit (the runner returns a populated Result alongside a non-nil
 // error) surfaces as an error so the orchestrator can warn and point at the heal
 // path; mint never unwinds a published tag.
-func (p *GitHubPublisher) CreateRelease(ctx context.Context, tag, title, body string) error {
-	_, err := p.runner.RunWith(
+//
+// On success `gh release create` prints the created release URL to stdout; the
+// trimmed stdout is returned as the URL so the success footer renders the real
+// release URL. An empty stdout yields an empty URL with no error (the URL is
+// optional, not a failure); on a gh failure the URL is empty alongside the error.
+func (p *GitHubPublisher) CreateRelease(ctx context.Context, tag, title, body string) (string, error) {
+	res, err := p.runner.RunWith(
 		ctx,
 		strings.NewReader(body),
 		"gh", "release", "create", tag,
@@ -94,9 +105,9 @@ func (p *GitHubPublisher) CreateRelease(ctx context.Context, tag, title, body st
 		"--verify-tag",
 	)
 	if err != nil {
-		return fmt.Errorf("creating GitHub release for tag %q: %w", tag, err)
+		return "", fmt.Errorf("creating GitHub release for tag %q: %w", tag, err)
 	}
-	return nil
+	return strings.TrimSpace(res.Stdout), nil
 }
 
 // notFoundMarker is the substring `gh release view` writes to stderr when no
@@ -154,8 +165,12 @@ func (p *GitHubPublisher) ReleaseExists(ctx context.Context, tag string) (bool, 
 // A non-zero gh exit (the runner returns a populated Result alongside a non-nil
 // error) surfaces as a wrapped error so the orchestrator can warn rather than
 // report a false success.
-func (p *GitHubPublisher) UpdateRelease(ctx context.Context, tag, title, body string) error {
-	_, err := p.runner.RunWith(
+//
+// On success `gh release edit` prints the updated release URL to stdout; the trimmed
+// stdout is returned as the URL, mirroring CreateRelease. An empty stdout yields an
+// empty URL with no error; on a gh failure the URL is empty alongside the error.
+func (p *GitHubPublisher) UpdateRelease(ctx context.Context, tag, title, body string) (string, error) {
+	res, err := p.runner.RunWith(
 		ctx,
 		strings.NewReader(body),
 		"gh", "release", "edit", tag,
@@ -164,7 +179,7 @@ func (p *GitHubPublisher) UpdateRelease(ctx context.Context, tag, title, body st
 		"--verify-tag",
 	)
 	if err != nil {
-		return fmt.Errorf("updating GitHub release for tag %q: %w", tag, err)
+		return "", fmt.Errorf("updating GitHub release for tag %q: %w", tag, err)
 	}
-	return nil
+	return strings.TrimSpace(res.Stdout), nil
 }
