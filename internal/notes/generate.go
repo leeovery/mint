@@ -58,7 +58,7 @@ func NewGenerator(assembler *Assembler, transport Transport, root string) *Gener
 // The body is returned WHOLE: no parsing, splitting, label extraction, or
 // per-sink reassembly — a valid generation passes through byte-identical. Typed
 // notes failures (ErrDiffTooLarge from the guard; ai.ErrTimeout /
-// ai.ErrCommandMissing / ai.ErrNotesFailure from the transport) are surfaced with
+// ai.ErrCommandMissing / ai.ErrGenerationFailed from the transport) are surfaced with
 // the cause PRESERVED (wrapped with %w so errors.Is still matches). The decision
 // of abort-vs-fallback is on_notes_failure routing, NOT this method's concern.
 func (g *Generator) Generate(ctx context.Context, lastTag string, cfg config.Config) (string, error) {

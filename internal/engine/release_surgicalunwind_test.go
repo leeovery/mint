@@ -264,7 +264,7 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 	)
 	f.Seed("sh", runner.Result{}, nil)
 	// The notes selector then runs the AI path; the AI returns empty on both attempts
-	// → ai.ErrNotesFailure → default abort mode → notes failure AFTER the artifact commit.
+	// → ai.ErrGenerationFailed → default abort mode → notes failure AFTER the artifact commit.
 	seedNormalAINotes(f)
 	f.Seed("claude", runner.Result{Stdout: ""}, nil)
 	// The surgical unwind then resets the one tracked artifact commit.

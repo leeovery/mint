@@ -125,7 +125,7 @@ func TestResolveFailure_Fallback_ReturnsCommitSubjectListBody(t *testing.T) {
 	r := seedCommitSubjects(t, subjects)
 	rel := config.Release{OnNotesFailure: "fallback"}
 
-	body, err := notes.ResolveFailure(t.Context(), r, ai.ErrNotesFailure, "v2.0.0", rel)
+	body, err := notes.ResolveFailure(t.Context(), r, ai.ErrGenerationFailed, "v2.0.0", rel)
 	if err != nil {
 		t.Fatalf("ResolveFailure returned unexpected error in fallback mode: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestResolveFailure_FallbackEmptyLog_ReturnsNonEmptyFloor(t *testing.T) {
 	r.Seed("git", runner.Result{Stdout: "   \n\t\n"}, nil) // whitespace-only log.
 	rel := config.Release{OnNotesFailure: "fallback"}
 
-	body, err := notes.ResolveFailure(t.Context(), r, ai.ErrNotesFailure, "v4.0.0", rel)
+	body, err := notes.ResolveFailure(t.Context(), r, ai.ErrGenerationFailed, "v4.0.0", rel)
 	if err != nil {
 		t.Fatalf("ResolveFailure returned unexpected error in fallback mode: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestResolveFailure_VariedCauses_RouteThroughBothModes(t *testing.T) {
 	}{
 		{"timeout", ai.ErrTimeout, "AI timed out"},
 		{"missing tool", ai.ErrCommandMissing, "AI tool not installed"},
-		{"empty after retry", ai.ErrNotesFailure, "AI returned empty/invalid notes after retry"},
+		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty/invalid notes after retry"},
 		{"diff too large", notes.ErrDiffTooLarge, "diff too large"},
 	}
 

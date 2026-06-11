@@ -221,7 +221,7 @@ func TestSelector_SelectBody_OnNotesFailureGovernsOnlyNormalAIPath_Fallback(t *t
 	// routes through ResolveFailure and returns the fallback body with KindFallback.
 	const diff = "diff --git a/a.go b/a.go\n@@ -1 +1 @@\n-a\n+b\n"
 	const subjects = "Recovered subject one\nRecovered subject two\n"
-	transport := &recordingTransport{err: ai.ErrNotesFailure}
+	transport := &recordingTransport{err: ai.ErrGenerationFailed}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},           // degenerate-check assemble.

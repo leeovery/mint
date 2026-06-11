@@ -123,7 +123,7 @@ func TestNoAIBody_SharesFallbackBuilderWithOnNotesFailureFallback(t *testing.T) 
 			resolveRel := tc.rel
 			resolveRel.OnNotesFailure = "fallback"
 			resolveRunner := newFallbackRunner(t, tc.subjects)
-			resolveBody, resolveErr := notes.ResolveFailure(t.Context(), resolveRunner, ai.ErrNotesFailure, "v5.0.0", resolveRel)
+			resolveBody, resolveErr := notes.ResolveFailure(t.Context(), resolveRunner, ai.ErrGenerationFailed, "v5.0.0", resolveRel)
 			if resolveErr != nil {
 				t.Fatalf("ResolveFailure returned unexpected error: %v", resolveErr)
 			}

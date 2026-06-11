@@ -648,7 +648,7 @@ func TestRelease_PriorTag_NotesFailureAbort_AbortsBeforeMutation(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
-	// The AI returns empty on BOTH attempts -> ai.ErrNotesFailure; default abort mode
+	// The AI returns empty on BOTH attempts -> ai.ErrGenerationFailed; default abort mode
 	// then propagates the abort out of SelectBody.
 	f.Seed("claude", runner.Result{Stdout: ""}, nil)
 	rec := &presentertest.RecordingPresenter{}

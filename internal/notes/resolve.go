@@ -112,7 +112,7 @@ func causeText(failure error) string {
 		return "diff too large"
 	case errors.Is(failure, ai.ErrCommandMissing):
 		return "AI tool not installed"
-	case errors.Is(failure, ai.ErrNotesFailure):
+	case errors.Is(failure, ai.ErrGenerationFailed):
 		return "AI returned empty/invalid notes after retry"
 	default:
 		return failure.Error()

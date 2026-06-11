@@ -307,18 +307,18 @@ func TestGenerator_Generate_TransportNotesFailure_SurfacesTypedFailureCausePrese
 	t.Parallel()
 
 	// A transport bad-content failure surfaces as a typed notes failure with the
-	// cause preserved — errors.Is(returned, ai.ErrNotesFailure) holds.
+	// cause preserved — errors.Is(returned, ai.ErrGenerationFailed) holds.
 	diff := "diff --git a/a.go b/a.go\n@@ -1 +1 @@\n-a\n+b\n"
 	r := seedNormalPathGit(t, diff, "M\ta.go\n", "1\t1\ta.go\n")
-	transport := &recordingTransport{err: ai.ErrNotesFailure}
+	transport := &recordingTransport{err: ai.ErrGenerationFailed}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.Generate(t.Context(), "v7.0.0", normalCfg())
 	if err == nil {
-		t.Fatal("Generate returned nil error on a transport notes failure, want ai.ErrNotesFailure surfaced")
+		t.Fatal("Generate returned nil error on a transport notes failure, want ai.ErrGenerationFailed surfaced")
 	}
-	if !errors.Is(err, ai.ErrNotesFailure) {
-		t.Errorf("error = %v, want it to match ai.ErrNotesFailure (cause preserved)", err)
+	if !errors.Is(err, ai.ErrGenerationFailed) {
+		t.Errorf("error = %v, want it to match ai.ErrGenerationFailed (cause preserved)", err)
 	}
 	if got != "" {
 		t.Errorf("body = %q, want empty on a transport failure", got)

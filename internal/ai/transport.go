@@ -1,6 +1,6 @@
 // Package ai is mint's content-agnostic AI transport — the "message out" half of
-// the notes engine's two-part layering (context assembly is git-aware and lives
-// elsewhere). A Transport takes a FINISHED prompt string and an ai_command, runs
+// the engine's two-part layering (context assembly is git-aware, verb-specific,
+// and lives elsewhere). A Transport takes a FINISHED prompt string and an ai_command, runs
 // the command through the runner.CommandRunner seam (prompt on stdin, body on
 // stdout), applies sanity validation, retries once on bad content, and returns the
 // body or a typed failure. It knows nothing about git, diffs, tags, or the Change
@@ -20,18 +20,18 @@ import (
 	"mint/internal/runner"
 )
 
-// The transport returns TYPED, DISTINGUISHABLE causes so the on_notes_failure
-// routing (a later task) can branch on what went wrong. All three are exposed as
-// sentinels matched with errors.Is.
+// The transport returns TYPED, DISTINGUISHABLE causes so callers can branch on
+// what went wrong (release's on_notes_failure routing; commit's own failure
+// handling). All three are exposed as sentinels matched with errors.Is.
 var (
-	// ErrNotesFailure is a bad-content failure that SURVIVED the single retry:
+	// ErrGenerationFailed is a bad-content failure that SURVIVED the single retry:
 	// empty, whitespace-only, or a non-zero command exit on BOTH attempts. It is the
 	// "the AI could not produce a usable body" condition.
-	ErrNotesFailure = errors.New("ai notes generation failed")
+	ErrGenerationFailed = errors.New("ai generation failed")
 
 	// ErrTimeout is the per-attempt deadline expiring (a hung call). It is reported
 	// immediately and NOT retried — retrying a hung call only risks a second full
-	// timeout — so it is kept distinct from the bad-content ErrNotesFailure.
+	// timeout — so it is kept distinct from the bad-content ErrGenerationFailed.
 	ErrTimeout = errors.New("ai command timed out")
 
 	// ErrCommandMissing is the ai_command binary not being found on PATH. Re-invoking
@@ -46,7 +46,7 @@ const defaultAICommand = "claude -p"
 
 // Config holds the operator-tunable transport settings.
 //
-// AICommand is the command invoked to generate notes (default `claude -p` when
+// AICommand is the command invoked to generate content (default `claude -p` when
 // empty). It is whitespace-split into name + args; see Generate for why a simple
 // split is sufficient.
 //
@@ -107,7 +107,7 @@ func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
 //   - A missing binary (errors.Is runner.ErrCommandNotFound) is reported immediately
 //     as ErrCommandMissing and NOT retried.
 //   - Bad CONTENT (empty, whitespace-only, or a non-zero exit) is retried EXACTLY
-//     ONCE; if the second attempt is still bad it becomes ErrNotesFailure. A good
+//     ONCE; if the second attempt is still bad it becomes ErrGenerationFailed. A good
 //     attempt (first or second) returns its body UNCHANGED.
 func (t *Transport) Generate(ctx context.Context, prompt string) (string, error) {
 	name, args := parseCommand(t.command)
@@ -130,10 +130,10 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 		if cause := classifyFatal(err); cause != nil {
 			return "", cause
 		}
-		return "", ErrNotesFailure
+		return "", ErrGenerationFailed
 	}
 	if !isValid(body) {
-		return "", ErrNotesFailure
+		return "", ErrGenerationFailed
 	}
 	return body, nil
 }

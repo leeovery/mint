@@ -130,7 +130,7 @@ func TestTransport_Generate_RetriesOnceThenFailsOnBadContent(t *testing.T) {
 
 	// Bad CONTENT — empty, whitespace-only, or a non-zero exit (error/refusal) —
 	// triggers EXACTLY ONE retry. If the second attempt is still bad, Generate returns
-	// the bad-content notes failure (ErrNotesFailure) and the command was invoked
+	// the bad-content notes failure (ErrGenerationFailed) and the command was invoked
 	// exactly twice (the original + one retry, no more).
 	tests := []struct {
 		name   string
@@ -150,8 +150,8 @@ func TestTransport_Generate_RetriesOnceThenFailsOnBadContent(t *testing.T) {
 			r.Seed("claude", tt.result, tt.err)
 
 			_, err := newTransport(r).Generate(t.Context(), "p")
-			if !errors.Is(err, ai.ErrNotesFailure) {
-				t.Fatalf("error = %v, want it to match ErrNotesFailure", err)
+			if !errors.Is(err, ai.ErrGenerationFailed) {
+				t.Fatalf("error = %v, want it to match ErrGenerationFailed", err)
 			}
 			// Timeout and missing-tool are NOT this failure — keep them distinguishable.
 			if errors.Is(err, ai.ErrTimeout) {
@@ -237,8 +237,8 @@ func TestTransport_Generate_DoesNotRetryTimeout(t *testing.T) {
 	if !errors.Is(err, ai.ErrTimeout) {
 		t.Fatalf("error = %v, want it to match ErrTimeout", err)
 	}
-	if errors.Is(err, ai.ErrNotesFailure) {
-		t.Errorf("timeout failure must be distinguishable from the bad-content ErrNotesFailure")
+	if errors.Is(err, ai.ErrGenerationFailed) {
+		t.Errorf("timeout failure must be distinguishable from the bad-content ErrGenerationFailed")
 	}
 	if n := len(r.Invocations()); n != 1 {
 		t.Errorf("invocations = %d, want 1 (a timeout is not retried)", n)
@@ -254,7 +254,7 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	// because the runner now wraps ctx.Err() does classifyFatal see
 	// context.DeadlineExceeded and return ErrTimeout rather than misreading the kill as
 	// bad content. This asserts ONLY the timing-robust classification — that a real
-	// deadline kill maps to ErrTimeout and is distinguishable from ErrNotesFailure.
+	// deadline kill maps to ErrTimeout and is distinguishable from ErrGenerationFailed.
 	//
 	// The "exactly one invocation / no retry on timeout" behaviour is covered
 	// deterministically by TestTransport_Generate_DoesNotRetryTimeout (FakeRunner), so
@@ -284,8 +284,8 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	if !errors.Is(err, ai.ErrTimeout) {
 		t.Fatalf("error = %v, want it to match ErrTimeout", err)
 	}
-	if errors.Is(err, ai.ErrNotesFailure) {
-		t.Errorf("a real timeout must be distinguishable from the bad-content ErrNotesFailure")
+	if errors.Is(err, ai.ErrGenerationFailed) {
+		t.Errorf("a real timeout must be distinguishable from the bad-content ErrGenerationFailed")
 	}
 }
 
@@ -303,8 +303,8 @@ func TestTransport_Generate_DoesNotRetryMissingTool(t *testing.T) {
 	if !errors.Is(err, ai.ErrCommandMissing) {
 		t.Fatalf("error = %v, want it to match ErrCommandMissing", err)
 	}
-	if errors.Is(err, ai.ErrNotesFailure) {
-		t.Errorf("missing-tool failure must be distinguishable from the bad-content ErrNotesFailure")
+	if errors.Is(err, ai.ErrGenerationFailed) {
+		t.Errorf("missing-tool failure must be distinguishable from the bad-content ErrGenerationFailed")
 	}
 	if errors.Is(err, ai.ErrTimeout) {
 		t.Errorf("missing-tool failure must be distinguishable from ErrTimeout")
