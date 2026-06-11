@@ -45,16 +45,19 @@ func main() {
 // CLI parse error.
 func run(args []string) int {
 	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a
-	// top-level verb; classifyCommand resolves the route. The init/version verbs are
-	// reserved for later phases; an unknown command is a usage error.
+	// top-level verb; `init` is a top-level verb; classifyCommand resolves the route.
+	// The version verb is reserved for a later phase; an unknown command is a usage
+	// error.
 	kind, rest := classifyCommand(args)
 	switch kind {
 	case commandRelease:
 		return runRelease(rest)
 	case commandRegenerate:
 		return runRegenerate(rest)
+	case commandInit:
+		return runInit(rest)
 	default:
-		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release` and `mint release regenerate` are wired)")
+		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release`, `mint release regenerate`, and `mint init` are wired)")
 		return usageExitCode
 	}
 }
@@ -241,15 +244,25 @@ const (
 	// commandRegenerate is the `mint release regenerate …` subcommand — a
 	// subcommand of release, never a top-level verb.
 	commandRegenerate
+	// commandInit is the `mint init` scaffolding verb — a top-level verb that drops
+	// the `.mint.toml` template and `release` shim into a project.
+	commandInit
 )
 
 // classifyCommand resolves the route for an invocation's args and returns the
-// route plus the remaining args for that route's parser. `release` with no
-// subcommand is the cut action; `release regenerate` routes to the regenerate
-// subcommand (so regenerate is reachable ONLY under release, never top-level);
-// anything else is commandUnknown. It is pure — no execution, no parsing.
+// route plus the remaining args for that route's parser. `init` is a top-level
+// verb; `release` with no subcommand is the cut action; `release regenerate`
+// routes to the regenerate subcommand (so regenerate is reachable ONLY under
+// release, never top-level); anything else is commandUnknown. It is pure — no
+// execution, no parsing.
 func classifyCommand(args []string) (commandKind, []string) {
-	if len(args) == 0 || args[0] != "release" {
+	if len(args) == 0 {
+		return commandUnknown, nil
+	}
+	if args[0] == "init" {
+		return commandInit, args[1:]
+	}
+	if args[0] != "release" {
 		return commandUnknown, nil
 	}
 	rest := args[1:]

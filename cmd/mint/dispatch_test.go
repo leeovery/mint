@@ -47,6 +47,18 @@ func TestClassifyCommand(t *testing.T) {
 			wantKind: commandRelease,
 			wantRest: []string{},
 		},
+		{
+			name:     "init is a top-level verb",
+			args:     []string{"init"},
+			wantKind: commandInit,
+			wantRest: []string{},
+		},
+		{
+			name:     "init carries its flags through",
+			args:     []string{"init", "--force"},
+			wantKind: commandInit,
+			wantRest: []string{"--force"},
+		},
 	}
 
 	for _, tt := range tests {
