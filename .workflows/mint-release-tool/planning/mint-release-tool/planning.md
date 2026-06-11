@@ -265,3 +265,13 @@ approved_at: 2026-06-09
 | mint-release-tool-10-7 | Fix the production timeout misclassification (promoted bug) | real context-deadline kill from exec.CommandContext satisfies errors.Is(err, context.DeadlineExceeded), AI transport classifies as non-retried timeout (single invocation) |
 | mint-release-tool-10-8 | Fix the whitespace-only $EDITOR panic (promoted bug) | EDITOR=" " (whitespace-only) does not panic, run launches vi (fall-through) or returns to gate with Warn + ErrEditorReturnToGate, temp file cleaned up |
 | mint-release-tool-10-9 | Stop blocking-stage spinner leaks across Warn (promoted bug, extended) | --all notes-failure skip on last/only version emits skipped + summary with no live spinner, real-run cache-reuse/miss/unreadable notices appear without spinner, normal blocking stage still shows and stops its spinner |
+
+### Phase 11: Analysis (Cycle 5)
+
+**Goal**: Address findings from Analysis (Cycle 5).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-11-1 | Gate regenerate gh-auth on the resolved publisher, not the bare target | downgraded provider-writing run (nil publisher) skips CheckGhAuth, resolved-publisher provider-writing run still runs CheckGhAuth, CommitsAndPushes selected solely from target.writesChangelog() unaffected by publisher presence, forward/regenerate downgrade behaviour identical, changelog-only selection unchanged |

@@ -237,7 +237,9 @@
             "mint-release-tool-10-6": "tick-39ef13",
             "mint-release-tool-10-7": "tick-e16bf3",
             "mint-release-tool-10-8": "tick-78e5cc",
-            "mint-release-tool-10-9": "tick-b45604"
+            "mint-release-tool-10-9": "tick-b45604",
+            "mint-release-tool-11": "tick-7bb4d5",
+            "mint-release-tool-11-1": "tick-394e24"
           },
           "external_id": "tick-d4f773",
           "external_dependencies": {
@@ -474,7 +476,7 @@
           "status": "in-progress",
           "task_gate_mode": "auto",
           "fix_gate_mode": "auto",
-          "analysis_gate_mode": "gated",
+          "analysis_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 5,
           "analysis_cycle_session": 1,

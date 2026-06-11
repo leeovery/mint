@@ -6,7 +6,7 @@ total_proposed: 1
 # Analysis Tasks: mint-release-tool (Cycle 5)
 
 ## Task 1: Gate regenerate gh-auth on the resolved publisher, not the bare target
-status: pending
+status: approved
 severity: medium
 sources: architecture
 
