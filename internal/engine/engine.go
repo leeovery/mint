@@ -30,6 +30,7 @@ package engine
 
 import (
 	"fmt"
+	"time"
 
 	"mint/internal/presenter"
 )
@@ -150,4 +151,34 @@ func EmitNotes(p presenter.Presenter, notes presenter.Notes) {
 // string, and the presenter prefixes the label from its own field. Thin mapper.
 func EmitWarning(p presenter.Presenter, warning presenter.Warning) {
 	p.Warn(warning)
+}
+
+// emitGateSucceeded narrates a read-only gate's successful completion: a
+// NON-blocking StageSucceeded with no StageStarted (the cheap gates animate no
+// spinner, so they need only a completion line). Elapsed is left zero — the
+// non-blocking flag tells the presenter not to render a duration regardless.
+func emitGateSucceeded(p presenter.Presenter, name string) {
+	p.StageSucceeded(presenter.StageSuccess{Name: name})
+}
+
+// emitBlockingStageStarted narrates the START of a BLOCKING stage — a long/slow
+// step (notes generation, the pre_tag build hook, the atomic push) — by emitting a
+// StageStarted with Blocking:true so the pretty spinner animates, and starts the
+// engine-side elapsed timer. It returns a completion closure that, when the stage
+// succeeds, emits the matching StageSucceeded carrying the engine-MEASURED Elapsed
+// (the engine times the stage; the presenter never does) and Blocking:true so the
+// success event mirrors the start. A FAILED stage simply does not call the closure
+// — its StageFailed narrates the stage instead — so a non-success path emits no
+// StageSucceeded. The wall-clock measurement uses the standard time package: this is
+// production code timing the real product, not the deterministic workflow harness.
+func emitBlockingStageStarted(p presenter.Presenter, name string) func() {
+	p.StageStarted(presenter.StageStart{Name: name, Blocking: true})
+	started := time.Now()
+	return func() {
+		p.StageSucceeded(presenter.StageSuccess{
+			Name:     name,
+			Elapsed:  time.Since(started),
+			Blocking: true,
+		})
+	}
 }

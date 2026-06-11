@@ -162,13 +162,22 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		}
 	}
 
-	// The presenter event timeline must emit in spec order: RunStarted, ShowPlan,
-	// ShowNotes, Prompt — then end on RunFinished (success).
+	// The presenter event timeline must emit in spine order. RunStarted OPENS the run;
+	// then the read-only gates (version, preflight) narrate their completion; then the
+	// blocking notes stage brackets its spinner; then the existing ShowPlan, ShowNotes,
+	// Prompt block fires in order; then the blocking push stage brackets its spinner
+	// before the run finishes. (No pre_tag stage here — no hook is configured.)
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindStageSucceeded, // version (read-only gate completion)
+		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindStageStarted,   // notes (blocking)
+		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
 		presentertest.KindPrompt,
+		presentertest.KindStageStarted,   // push (blocking)
+		presentertest.KindStageSucceeded, // push
 		presentertest.KindRunFinished,
 	}
 	gotKinds := rec.Kinds()
@@ -181,8 +190,9 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		}
 	}
 
-	// RunStarted carries the engine-set Action and Leaf (from commit_prefix).
-	start, _ := rec.At(0)
+	// RunStarted carries the engine-set Action and Leaf (from commit_prefix). It now
+	// OPENS the run, ahead of every stage event.
+	start, _ := rec.At(indexOfKind(rec, presentertest.KindRunStarted))
 	if start.RunStarted.Action != "releasing" {
 		t.Errorf("RunStarted.Action = %q, want %q", start.RunStarted.Action, "releasing")
 	}
@@ -197,13 +207,13 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	}
 
 	// ShowNotes carries the fixed first-release body.
-	notes, _ := rec.At(2)
+	notes, _ := rec.At(indexOfKind(rec, presentertest.KindShowNotes))
 	if notes.ShowNotes.Body != "Initial release." {
 		t.Errorf("ShowNotes.Body = %q, want %q", notes.ShowNotes.Body, "Initial release.")
 	}
 
-	// RunFinished carries the resolved version.
-	fin, _ := rec.At(4)
+	// RunFinished carries the resolved version — the terminal event of the run.
+	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.RunFinished.Version != "0.0.1" {
 		t.Errorf("RunFinished.Version = %q, want %q", fin.RunFinished.Version, "0.0.1")
 	}
@@ -1494,7 +1504,7 @@ func TestRelease_EmptyNotesBody_FallsBackToFirstReleaseDefault(t *testing.T) {
 	if got := changelogSectionBody(t, root, "0.0.1"); got != want {
 		t.Errorf("CHANGELOG body = %q, want first-release default %q", got, want)
 	}
-	notes, _ := rec.At(2)
+	notes, _ := rec.At(indexOfKind(rec, presentertest.KindShowNotes))
 	if notes.ShowNotes.Body != want {
 		t.Errorf("ShowNotes.Body = %q, want first-release default %q", notes.ShowNotes.Body, want)
 	}

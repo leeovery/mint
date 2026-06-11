@@ -263,10 +263,16 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	}
 
 	// Plain push — `git push origin HEAD`, NOT the forward `--atomic … {tag}` (no tag
-	// is involved). This is the point of no return for the changelog surface.
+	// is involved). This is the point of no return for the changelog surface, and it
+	// round-trips the network, so narrate it as a BLOCKING stage: a blocking
+	// StageStarted (spinner) before the push and a StageSucceeded carrying the
+	// engine-measured Elapsed once it crosses the PONR. A failure routes through
+	// resetAndAbort, which surfaces a StageFailed instead, so no StageSucceeded fires.
+	pushDone := emitBlockingStageStarted(p, "push")
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
 		return false, resetAndAbort(ctx, deps, startingHEAD, committed, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
 	}
+	pushDone()
 	return true, nil
 }
 

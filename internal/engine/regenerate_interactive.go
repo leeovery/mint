@@ -148,21 +148,31 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		return err
 	}
 
-	// Produce the body for the resolved source BEFORE the confirm — the notes-review
-	// gate (fresh) reviews this body. A production failure aborts before the plan.
-	body, err := req.ProduceBody(ctx, source)
-	if err != nil {
-		return surface(p, "notes", err)
-	}
-
-	// Start-of-run header + plan summary, shown BEFORE the confirm (the spec order:
-	// asks source, asks target, shows the plan, confirms).
+	// RunStarted OPENS the run, with the plan summary beneath it — both BEFORE the notes
+	// stage, mirroring the batch processOneVersion ordering (RunStarted → plan → notes
+	// stage). RunInfo here depends ONLY on the resolved axes + req facts (project, version
+	// key, action), none of which depend on the produced body, so the header leads the
+	// blocking notes stage that follows. (The spec order still holds: source/target were
+	// asked above, the plan shows here, the confirm fires inside RegenerateWrite.)
 	p.RunStarted(presenter.RunInfo{
 		Project: req.Project,
 		Version: req.VersionKey,
 		Action:  regenerateAction,
 	})
 	p.ShowPlan(regeneratePlan(source, target, req.Tag))
+
+	// Produce the body for the resolved source BEFORE the confirm — the notes-review
+	// gate (fresh) reviews this body. A production failure aborts before the confirm.
+	// Body production is BLOCKING (a fresh source re-diffs + calls the AI), so narrate
+	// it with a blocking StageStarted (spinner) and a StageSucceeded carrying the
+	// engine-measured Elapsed once the body resolves; a failure surfaces a StageFailed
+	// (via surface) and emits no StageSucceeded.
+	notesDone := emitBlockingStageStarted(p, "notes")
+	body, err := req.ProduceBody(ctx, source)
+	if err != nil {
+		return surface(p, "notes", err)
+	}
+	notesDone()
 
 	// Delegate to the 5-9 write path: it shows the notes, runs the source-appropriate
 	// confirm/review gate (fresh → notes-review, reuse → simple confirm), and writes.

@@ -120,8 +120,10 @@ func TestRelease_DryRun_RunsReadOnlyPreflightAndComputesVersion(t *testing.T) {
 			t.Errorf("dry-run did not run read-only preflight probe: git %v", want)
 		}
 	}
-	// The version is computed: RunStarted carries the resolved bare version.
-	start, _ := rec.At(0)
+	// The version is computed: RunStarted carries the resolved bare version. It now
+	// follows the read-only gate completions and the blocking notes stage, so locate it
+	// by kind rather than a fixed index.
+	start, _ := rec.At(indexOfKind(rec, presentertest.KindRunStarted))
 	if start.RunStarted.Version != "0.0.1" {
 		t.Errorf("RunStarted.Version = %q, want computed %q", start.RunStarted.Version, "0.0.1")
 	}

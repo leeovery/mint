@@ -289,11 +289,21 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
+	// The event timeline OPENS with RunStarted, then narrates the read-only gates
+	// (version, preflight), then the blocking notes stage, then the existing
+	// ShowPlan/ShowNotes/Prompt block, then the blocking push stage, then RunFinished.
+	// No pre_tag stage — the prior-tag normal-AI path configures no hook.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindStageSucceeded, // version (read-only gate completion)
+		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindStageStarted,   // notes (blocking)
+		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
 		presentertest.KindPrompt,
+		presentertest.KindStageStarted,   // push (blocking)
+		presentertest.KindStageSucceeded, // push
 		presentertest.KindRunFinished,
 	}
 	gotKinds := rec.Kinds()
@@ -307,7 +317,7 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 	}
 
 	// The notes shown are the AI body (resolved by the selector, not a fixed default).
-	notesEv, _ := rec.At(2)
+	notesEv, _ := rec.At(indexOfKind(rec, presentertest.KindShowNotes))
 	if notesEv.ShowNotes.Body != aiBody {
 		t.Errorf("ShowNotes.Body = %q, want AI body %q", notesEv.ShowNotes.Body, aiBody)
 	}
@@ -570,7 +580,9 @@ func TestRelease_PriorTag_Degenerate_EndToEnd(t *testing.T) {
 	if got := tagAnnotationBody(t, f, nextTag); got != want {
 		t.Errorf("tag annotation body = %q, want degenerate StubBody %q", got, want)
 	}
-	notesEv, _ := rec.At(2)
+	// ShowNotes now sits at index 6 (after the version/preflight gate completions, the
+	// blocking notes stage pair, RunStarted, and ShowPlan).
+	notesEv, _ := rec.At(6)
 	if notesEv.ShowNotes.Body != want {
 		t.Errorf("ShowNotes.Body = %q, want degenerate StubBody %q", notesEv.ShowNotes.Body, want)
 	}

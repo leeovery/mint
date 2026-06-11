@@ -310,6 +310,28 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		return surface(p, "version", err)
 	}
 	tag := next.String(cfg.Release.TagPrefix)
+	// versionKey is the bare next version (no tag prefix) — the changelog/notes key, the
+	// RunStarted header version, AND the third cache-key component. It is computed HERE at
+	// Stage 1 (the version is resolved) so RunStarted can lead the run; resolveBody later
+	// reuses it to recompute the dry-run cache key for the real-run reuse lookup.
+	versionKey := next.String("")
+
+	// RunStarted OPENS the run: the brand header renders first, with every stage line
+	// beneath it (the spec worked example, the presenter golden transcript). Its payload
+	// depends ONLY on Stage-1 facts — the project name, the resolved version, the action
+	// verb, and the commit_prefix leaf — none of which depend on the notes body, the
+	// pre_tag hook, or preflight, so it leads the version/preflight/pre_tag/notes stage
+	// events that follow. (ShowPlan/ShowNotes still fire after the notes body resolves.)
+	p.RunStarted(presenter.RunInfo{
+		Project: projectName(root),
+		Version: versionKey,
+		Action:  releaseAction,
+		Leaf:    cfg.Release.CommitPrefix,
+	})
+
+	// Stage 1 narration: the version gate is read-only (no spinner), so it emits a
+	// completion line only — no StageStarted.
+	emitGateSucceeded(p, "version")
 
 	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
 	// gate so a dirty tree passes (opt-in; without the flag a dirty tree still aborts at
@@ -350,6 +372,10 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun); err != nil {
 		return surface(p, "preflight", err)
 	}
+	// Stage 2 narration: the preflight gates are read-only (no spinner), so emit a
+	// completion line only — no StageStarted. Fired once both the built-in gates and
+	// the project preflight hook have passed (Stage 2 complete).
+	emitGateSucceeded(p, "preflight")
 
 	// Capture the clean starting state NOW: preflight has just confirmed the tree is
 	// clean and HEAD is resolvable, and nothing has mutated yet, so this HEAD is the
@@ -398,22 +424,22 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// the surgical unwind (not a plain surface) — exactly like every other pre-push
 	// failure — so that artifact commit is reset back to the clean start. Whatever
 	// resolves flows WHOLE to every active sink below — no parsing, no per-sink reassembly.
-	// versionKey is the bare next version (no tag prefix) — the changelog/notes key AND
-	// the third cache-key component, so it is computed BEFORE resolveBody, which needs
-	// it to recompute the dry-run cache key for the real-run reuse lookup.
-	versionKey := next.String("")
+	// (versionKey was computed at Stage 1 so RunStarted could lead the run; resolveBody
+	// reuses it to recompute the dry-run cache key for the real-run reuse lookup.)
+	//
+	// Stage 4 is BLOCKING: generating notes can call the AI (~60s). Narrate it with a
+	// blocking StageStarted (spinner) and a StageSucceeded carrying the engine-measured
+	// Elapsed once the body resolves.
+	notesDone := emitBlockingStageStarted(p, "notes")
 	body, kind, generator, cacheInputs, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
+	notesDone()
 
-	// Emit in SPEC ORDER: RunStarted, ShowPlan, ShowNotes — then the review gate.
-	p.RunStarted(presenter.RunInfo{
-		Project: projectName(root),
-		Version: versionKey,
-		Action:  releaseAction,
-		Leaf:    cfg.Release.CommitPrefix,
-	})
+	// Emit in SPEC ORDER: ShowPlan, ShowNotes — then the review gate. RunStarted already
+	// led the run at Stage 1, so only the plan + notes (which depend on the resolved body)
+	// fire here.
 	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
 
@@ -571,6 +597,12 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// A nil error means the atomic push succeeded and PointOfNoReturnCrossed is set:
 	// from here the tag is public, so any later failure is warn-only and the run must
 	// NOT unwind.
+	// Stage 6 is BLOCKING: the tag + atomic push round-trips the network. Narrate it
+	// with a blocking StageStarted (spinner) and a StageSucceeded carrying the
+	// engine-measured Elapsed once the push crosses the PONR. On failure the
+	// StageFailed surfaced by surfaceAndUnwind narrates the stage instead, so no
+	// StageSucceeded fires.
+	pushDone := emitBlockingStageStarted(p, "push")
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
 		// Pre-PONR failure: route through the surgical unwind. A push REJECTION means the
 		// local tag WAS created (TagAndPush wraps it in release.ErrPushRejected), so the
@@ -580,6 +612,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		made.TagCreated = errors.Is(err, release.ErrPushRejected)
 		return surfaceAndUnwind(ctx, deps, "tag", start, made, err)
 	}
+	pushDone()
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
 	// already public); the run does not unwind and exits successfully. The release is
@@ -996,11 +1029,22 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 		return false, nil
 	}
 
+	// Stage 3 is BLOCKING: the hook may build/generate for a while, so narrate it
+	// with a blocking StageStarted (which animates the spinner) and a StageSucceeded
+	// carrying the engine-measured Elapsed once both the hook and its artifact commit
+	// land. The events fire ONLY here — when a hook is configured and actually runs —
+	// so a hookless run (returned above) narrates no pre_tag stage.
+	done := emitBlockingStageStarted(deps.Presenter, "pre_tag")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, err
 	}
-	return record.CommitDirtyTree(ctx, deps.Mutator, root, pretagArtifactSubject(tag))
+	committed, err := record.CommitDirtyTree(ctx, deps.Mutator, root, pretagArtifactSubject(tag))
+	if err != nil {
+		return committed, err
+	}
+	done()
+	return committed, nil
 }
 
 // runPostReleaseHook runs the project's optional Stage-7 post_release hook through
@@ -1271,18 +1315,29 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// failure share one reset/narration path.
 			return "", abort(errGateAborted)
 		case presenter.ChoiceEdit:
+			// Narrate the edit as a BLOCKING stage so the editor's own
+			// SuspendSpinner/ResumeSpinner bracket (editor.go) suspends a GENUINELY ACTIVE
+			// spinner over its $EDITOR hand-off. The StageStarted fires BEFORE editBody so
+			// the spinner is live when the launcher suspends it; the matching
+			// StageSucceeded fires once the edit completes (or returns to the gate) to stop
+			// it, while a genuine edit failure surfaces a StageFailed (which stops it) and
+			// emits no StageSucceeded.
+			editDone := emitBlockingStageStarted(p, "edit")
 			edited, eerr := editBody(ctx, editor, body)
 			switch {
 			case errors.Is(eerr, ErrEditorReturnToGate):
 				// No editor could be launched: the launcher already reported the problem
-				// via the presenter. RE-PRESENT the gate with the body UNCHANGED — this
-				// is not a failure, so do not surface or abort, and do not re-render.
+				// via the presenter. Close the edit stage (stopping the spinner) and
+				// RE-PRESENT the gate with the body UNCHANGED — this is not a failure, so do
+				// not surface or abort, and do not re-render.
+				editDone()
 				continue
 			case eerr != nil:
 				// A genuine edit failure (a launched-but-failed editor, an IO error, or
 				// the nil-editor misconfiguration): surface and abort.
 				return "", surface(p, "edit", eerr)
 			}
+			editDone()
 			// Use the edited text VERBATIM — no re-parse, no re-validation — then
 			// re-render the notes and loop back to re-prompt.
 			body = edited

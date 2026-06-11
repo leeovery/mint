@@ -228,10 +228,17 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// Produce the version's body for the resolved source BEFORE the gate — the
 	// notes-review gate (fresh) reviews this body. A notes-production failure (e.g. a
 	// diff over max_diff_lines) is CAUGHT and skipped rather than aborting the batch.
+	// Body production is BLOCKING (a fresh source re-diffs + calls the AI per version),
+	// so narrate it with a blocking StageStarted (spinner) and a StageSucceeded
+	// carrying the engine-measured Elapsed once the body resolves; a per-version skip
+	// (production failure) closes the stage with no StageSucceeded — the skip Warn
+	// narrates it instead.
+	notesDone := emitBlockingStageStarted(p, "notes")
 	body, err := req.ProduceBody(ctx, req.Source, res)
 	if err != nil {
 		return reportSkip(p, res.Tag, classifyNotesFailure(err))
 	}
+	notesDone()
 
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A

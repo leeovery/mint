@@ -151,8 +151,15 @@ func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingH
 	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "commit", "-m", batchRebuildSubject); err != nil {
 		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("committing batch rebuild %q: %w", batchRebuildSubject, err))
 	}
+	// The end-of-batch push is BLOCKING (it round-trips the network) and is the
+	// regenerate point of no return, so narrate it with a blocking StageStarted
+	// (spinner) and a StageSucceeded carrying the engine-measured Elapsed once it
+	// crosses the PONR. A failure routes through resetAndAbort (StageFailed), so no
+	// StageSucceeded fires.
+	pushDone := emitBlockingStageStarted(deps.Presenter, "push")
 	if _, err := m.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
 		return resetAndAbort(ctx, deps, startingHEAD, true, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
 	}
+	pushDone()
 	return nil
 }
