@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"mint/internal/config"
@@ -618,20 +619,138 @@ func TestLoad_PreTagAndPostReleaseHooks_Decode(t *testing.T) {
 	}
 }
 
-func TestLoad_UnknownKeysTolerated(t *testing.T) {
+func TestLoad_UnknownTopLevelKey_Rejected(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	// Phase 6 adds fail-loud validation; Phase 1 must tolerate unknown keys so the
-	// skeleton runs against forward-looking config without erroring.
-	writeConfig(t, dir, "[release]\ntag_prefix = \"v\"\nversion_file = \"bin/tool\"\nunknown_key = 42\n")
+	// Fail-loud validation (Phase 6): an unknown TOP-LEVEL key (one matching no
+	// shared-engine field) must be rejected with a message naming the key, not
+	// silently ignored.
+	writeConfig(t, dir, "bar = 42\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for unknown top-level key, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "bar") {
+		t.Errorf("error = %q, want it to name the unknown key %q", err.Error(), "bar")
+	}
+}
+
+func TestLoad_UnknownReleaseKey_RejectedNamingReleaseTable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An unknown key inside [release] must be rejected with a message naming both the
+	// key and the [release] table so the offender is unambiguous.
+	writeConfig(t, dir, "[release]\ntag_prefix = \"v\"\nunknown_key = 42\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for unknown [release] key, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "unknown_key") {
+		t.Errorf("error = %q, want it to name the unknown key %q", err.Error(), "unknown_key")
+	}
+	if !strings.Contains(err.Error(), "[release]") {
+		t.Errorf("error = %q, want it to name the [release] table", err.Error())
+	}
+}
+
+func TestLoad_UnknownReleaseHooksKey_RejectedNamingHooksTable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An unknown key inside [release.hooks] must be rejected with a message naming both
+	// the key and the [release.hooks] table.
+	writeConfig(t, dir, "[release.hooks]\npreflight = \"scripts/check.sh\"\nbaz = \"oops\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for unknown [release.hooks] key, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "baz") {
+		t.Errorf("error = %q, want it to name the unknown key %q", err.Error(), "baz")
+	}
+	if !strings.Contains(err.Error(), "[release.hooks]") {
+		t.Errorf("error = %q, want it to name the [release.hooks] table", err.Error())
+	}
+}
+
+func TestLoad_TopLevelHooksTable_RejectedWithNestGuidance(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A TOP-LEVEL [hooks] table is the documented contradiction (hooks must nest under
+	// [release.hooks]). It gets a TARGETED message pointing to [release.hooks], NOT the
+	// generic unknown-key message.
+	writeConfig(t, dir, "[hooks]\npreflight = \"scripts/check.sh\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for top-level [hooks] table, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "[release.hooks]") {
+		t.Errorf("error = %q, want it to guide the user to nest under [release.hooks]", err.Error())
+	}
+}
+
+func TestLoad_TypodKey_SurfacedClearly(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A typo'd key (tag_prefx instead of tag_prefix) must be surfaced by name, not
+	// silently ignored — fail-loud is the whole point of catching typos.
+	writeConfig(t, dir, "[release]\ntag_prefx = \"v\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for typo'd key, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "tag_prefx") {
+		t.Errorf("error = %q, want it to name the typo'd key %q", err.Error(), "tag_prefx")
+	}
+}
+
+func TestLoad_FullyValidFile_LoadsWithoutError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A file containing ONLY valid keys at every level (top-level engine, [release],
+	// [release.hooks]) must still load with no error once strict validation is on.
+	writeConfig(t, dir, `ai_command     = "claude -p"
+diff_exclude   = ["*.min.js"]
+max_diff_lines = 50000
+
+[release]
+tag_prefix       = "v"
+commit_prefix    = "🌿"
+release_branch   = "main"
+version_file     = "bin/tool"
+version_pattern  = 'RELEASE_VERSION="{version}"'
+changelog        = true
+publish          = true
+provider         = "github"
+on_notes_failure = "abort"
+context          = "dev toolkit"
+prompt           = ".mint/notes-prompt.md"
+fallback         = "see history"
+
+[release.hooks]
+preflight    = "scripts/check.sh"
+pre_tag      = ["npm ci", "npm run build"]
+post_release = "scripts/notify.sh"
+`)
 
 	cfg, err := config.Load(dir)
 	if err != nil {
-		t.Fatalf("Load returned unexpected error for unknown keys: %v", err)
+		t.Fatalf("Load returned unexpected error for fully-valid file: %v", err)
 	}
 	if cfg.Release.TagPrefix != "v" {
 		t.Errorf("TagPrefix = %q, want %q", cfg.Release.TagPrefix, "v")
+	}
+	if cfg.Release.Provider != "github" {
+		t.Errorf("Provider = %q, want %q", cfg.Release.Provider, "github")
 	}
 }
 

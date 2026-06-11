@@ -10,18 +10,22 @@
 // and a file that sets only part of a table leaves the unset keys at their
 // defaults individually.
 //
-// Typed fail-loud validation (rejecting unknown keys / bad types) and rewiring the
-// earlier per-key reads through this schema are SEPARATE Phase 6 tasks; this file
-// establishes the consolidated shape and complete default application only. Until
-// validation lands, unknown keys are tolerated and ignored rather than rejected.
+// Load decodes the file STRICTLY: any key matching no field in the canonical schema
+// — at the top level, inside [release], or inside [release.hooks] — is rejected with
+// an actionable message naming the key and its table (a top-level [hooks] table gets
+// targeted guidance to nest under [release.hooks]). This is the unknown-KEYS half of
+// fail-loud validation; bad-TYPE validation, the on_notes_failure enum check, and the
+// provider-VALUE carve-out are SEPARATE Phase 6 tasks and are NOT done here.
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -253,7 +257,18 @@ func Load(root string) (Config, error) {
 			OnNotesFailure: defaultOnNotesFailure,
 		},
 	}
-	if err := toml.Unmarshal(data, &shape); err != nil {
+	// Strict decoding so unknown keys SURFACE rather than being silently ignored,
+	// across all three levels of the canonical schema (top level, [release],
+	// [release.hooks]). DisallowUnknownFields makes the decoder collect every key
+	// matching no struct field into a *toml.StrictMissingError, which translateStrict
+	// turns into mint's actionable message.
+	dec := toml.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&shape); err != nil {
+		var strict *toml.StrictMissingError
+		if errors.As(err, &strict) {
+			return Config{}, translateStrict(strict)
+		}
 		return Config{}, fmt.Errorf("parsing %s: %w", configFileName, err)
 	}
 
@@ -263,6 +278,46 @@ func Load(root string) (Config, error) {
 		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
 		DiffExclude:  shape.DiffExclude,
 	}, nil
+}
+
+// translateStrict turns the decoder's *toml.StrictMissingError (one entry per
+// unknown key, each carrying its full dotted key path) into mint's actionable
+// message. It reports the first offending key — naming both the key and its owning
+// table so the offender is unambiguous — and special-cases a TOP-LEVEL [hooks] table
+// (the documented contradiction) with targeted guidance to nest under
+// [release.hooks].
+func translateStrict(strict *toml.StrictMissingError) error {
+	for _, de := range strict.Errors {
+		key := de.Key()
+		if len(key) == 0 {
+			continue
+		}
+		return fmt.Errorf("invalid %s: %s", configFileName, unknownKeyMessage(key))
+	}
+	// Defensive: a StrictMissingError with no usable key path. Fall back to the
+	// library's own multi-line description so nothing is silently swallowed.
+	return fmt.Errorf("invalid %s: %s", configFileName, strict.String())
+}
+
+// unknownKeyMessage builds the human-readable description for one unknown key,
+// given its full dotted path (e.g. ["release", "foo"]). A top-level [hooks] table
+// gets the targeted nest-guidance variant; every other key names the leaf key and
+// its owning table.
+func unknownKeyMessage(key []string) string {
+	// A top-level [hooks] table contradicts the verb-namespaced shape — hooks must
+	// nest under [release.hooks]. Give that specific guidance instead of the generic
+	// unknown-key message.
+	if key[0] == "hooks" {
+		return "[hooks] is not valid at the top level — nest hooks under [release.hooks]"
+	}
+
+	leaf := key[len(key)-1]
+	if len(key) == 1 {
+		return fmt.Sprintf("unknown top-level key %q", leaf)
+	}
+
+	table := "[" + strings.Join(key[:len(key)-1], ".") + "]"
+	return fmt.Sprintf("unknown key %q in %s", leaf, table)
 }
 
 // resolveAICommand applies the "claude -p" default when the key was absent (nil) and
