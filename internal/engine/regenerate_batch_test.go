@@ -95,13 +95,22 @@ func batchDeps(rec *presentertest.RecordingPresenter, f *runner.FakeRunner) engi
 	return regenWriteDeps(rec, f)
 }
 
+// seedReuseGit seeds the FakeRunner's git seam with a non-empty annotation body so the
+// reuse path's ReadTagBody has-body check passes for EVERY version — the common reuse
+// setup where every tag carries a body (the body-less skip case scripts for-each-ref
+// per call instead). for-each-ref is the only git call the batch reuse path makes, so a
+// single name-keyed seed is sufficient.
+func seedReuseGit(f *runner.FakeRunner) {
+	f.Seed("git", runner.Result{Stdout: "## reuse annotation body\n"}, nil)
+}
+
 // TestRegenerateAll_ProcessesOldestToNewest proves the batch processes versions
 // oldest → newest: the per-version provider dispatch fires in that order.
 func TestRegenerateAll_ProcessesOldestToNewest(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.Seed("git", runner.Result{}, nil)
+	seedReuseGit(f)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)
@@ -126,7 +135,7 @@ func TestRegenerateAll_OneRunStartedBlockPerVersion(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.Seed("git", runner.Result{}, nil)
+	seedReuseGit(f)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)
@@ -157,7 +166,7 @@ func TestRegenerateAll_GeneratesNotesPerVersion(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.Seed("git", runner.Result{}, nil)
+	seedReuseGit(f)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)
@@ -261,7 +270,7 @@ func TestRegenerateAll_MixesUpdateAndCreate(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.Seed("git", runner.Result{}, nil)
+	seedReuseGit(f)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)  // exists → update
 	pub.seedExists(batchV2Tag, false, nil) // absent → create
@@ -292,7 +301,7 @@ func TestRegenerateAll_NoResumeState(t *testing.T) {
 
 	run := func() *fakePublisher {
 		f := runner.NewFakeRunner()
-		f.Seed("git", runner.Result{}, nil)
+		seedReuseGit(f)
 		pub := newFakePublisher()
 		pub.seedExists(batchV1Tag, true, nil)
 		pub.seedExists(batchV2Tag, true, nil)
@@ -327,7 +336,7 @@ func TestRegenerateAll_DeclineAbortsBatch(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
-	f.Seed("git", runner.Result{}, nil)
+	seedReuseGit(f)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)
