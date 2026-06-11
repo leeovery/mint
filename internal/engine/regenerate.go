@@ -49,16 +49,24 @@ type RegenerateGateSet struct {
 	CommitsAndPushes bool
 }
 
-// regenerateGateSet maps a RESOLVED engine target to its preflight gate-set
-// selection — the engine-side analogue of the cmd layer's regenerateGateSet, keyed
-// off the engine's RegenerateTarget rather than the cmd flag enum. The interactive
-// flow uses it to run preflight AFTER the target resolves at the prompt (the cmd
-// layer cannot, since it dispatches before the interactive target is known). A
-// provider-writing target selects gh-auth (CallsProvider); a changelog-committing
-// target selects the clean-tree + on-branch + remote-sync bucket (CommitsAndPushes).
-func regenerateGateSet(target RegenerateTarget) RegenerateGateSet {
+// regenerateGateSet maps a RESOLVED engine target — together with whether the
+// publisher actually RESOLVED — to its preflight gate-set selection. It is the
+// engine-side analogue of the cmd layer's regenerateGateSet, keyed off the engine's
+// RegenerateTarget rather than the cmd flag enum. The interactive and batch flows use
+// it to run preflight AFTER the target resolves (the cmd layer cannot, since it
+// dispatches before the interactive target is known).
+//
+// The gh-auth gate (CallsProvider) requires BOTH a provider-writing target AND a
+// resolved publisher — mirroring the forward spine's `if publisher != nil` guard
+// (release.go). On a DOWNGRADED run (the provider could not be resolved on a
+// non-github / no-remote origin, so the caller threads a nil publisher and the
+// provider write is nil-guarded and skipped) CallsProvider is FALSE, so a dead gh
+// auth can no longer abort a run whose provider write will be skipped anyway. The
+// changelog commit/push bucket (CommitsAndPushes) is selected SOLELY from the target
+// (it touches no provider), so it is unaffected by publisher presence.
+func regenerateGateSet(target RegenerateTarget, publisherResolved bool) RegenerateGateSet {
 	return RegenerateGateSet{
-		CallsProvider:    target.writesProvider(),
+		CallsProvider:    target.writesProvider() && publisherResolved,
 		CommitsAndPushes: target.writesChangelog(),
 	}
 }

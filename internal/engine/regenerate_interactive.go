@@ -159,9 +159,13 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// target is targetUnset until the prompt above resolves it — so the gate set is
 	// derived from the resolved target HERE: an interactive changelog/both runs the
 	// clean-tree + on-branch + remote-sync bucket before committing+pushing, and an
-	// interactive release/both runs gh-auth before the provider write. A failing
-	// applicable gate routes through the same surfaced abort as every other failure.
-	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(target)); err != nil {
+	// interactive release/both runs gh-auth before the provider write. The gh-auth gate
+	// also requires a RESOLVED publisher (publisher != nil): a downgraded run (the
+	// provider could not be resolved upstream, so a nil publisher is threaded and the
+	// provider write is nil-guarded and skipped) does NOT run gh-auth, mirroring the
+	// forward spine's `if publisher != nil` guard. A failing applicable gate routes
+	// through the same surfaced abort as every other failure.
+	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(target, publisher != nil)); err != nil {
 		return err
 	}
 

@@ -9,6 +9,7 @@ import (
 	"mint/internal/engine"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
+	"mint/internal/publish"
 	"mint/internal/runner"
 )
 
@@ -566,6 +567,64 @@ func TestRegenerateRun_FailingGate_AbortsBeforeMutation(t *testing.T) {
 	}
 	if len(pub.dispatched) != 0 {
 		t.Errorf("a failing gate dispatched a provider write %+v; it must abort before any work", pub.dispatched)
+	}
+}
+
+// TestRegenerateRun_DowngradedReuse_SkipsGhAuthGate proves a downgraded
+// `regenerate --reuse` / `--target release` run (the provider could not be resolved
+// on a non-github / no-remote origin, so a NIL publisher is threaded) does NOT run
+// the gh-auth preflight gate: the gate is selected from the resolved publisher, not
+// the bare provider-writing target. A FAILING gh-auth recorder is seeded — if the
+// gate were still selected it would abort — so the run completing proves the gate was
+// skipped, mirroring the forward path's `if publisher != nil` guard. The provider
+// write itself is nil-guarded downstream (warn + skip), so the whole run is a clean
+// downgrade.
+func TestRegenerateRun_DowngradedReuse_SkipsGhAuthGate(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	f := runner.NewFakeRunner()
+	// gh ran would report NOT authenticated — but on a downgrade the gate must NEVER be
+	// reached, so this failing seed must not abort the run.
+	f.Seed("gh", runner.Result{ExitCode: 1}, errors.New("exit status 1"))
+	// A genuinely-nil publish.Publisher interface — the downgrade value the cmd layer
+	// threads (NOT a typed-nil concrete pointer).
+	var pub publish.Publisher
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+
+	req := runReq(engine.SourceOf(engine.RegenerateSourceReuse), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req.ReleaseBranch = regenRunReleaseBranch
+	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
+		t.Fatalf("downgraded --reuse run aborted: %v; the gh-auth gate must be skipped on a nil publisher", err)
+	}
+
+	if ghAuthRan(f) {
+		t.Errorf("a downgraded run ran the gh-auth gate; a nil publisher must skip it (CallsProvider == false)")
+	}
+}
+
+// TestRegenerateRun_ResolvedRelease_RunsGhAuthGate proves a NON-downgraded
+// `regenerate --target release` run (a resolved, non-nil publisher) STILL runs the
+// gh-auth preflight gate exactly as before — the publisher-presence guard only
+// suppresses the gate on a downgrade, never on a healthy run.
+func TestRegenerateRun_ResolvedRelease_RunsGhAuthGate(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	f := runner.NewFakeRunner()
+	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	pub := newFakePublisher()
+	pub.seedExists(regenRunTag, true, nil)
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+
+	req := runReq(engine.SourceOf(engine.RegenerateSourceReuse), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req.ReleaseBranch = regenRunReleaseBranch
+	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
+		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
+	}
+
+	if !ghAuthRan(f) {
+		t.Errorf("a resolved-publisher release run did not run the gh-auth gate; it must (CallsProvider == true)")
 	}
 }
 

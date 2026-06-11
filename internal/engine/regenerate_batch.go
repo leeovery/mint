@@ -120,10 +120,15 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	// mirroring the single-version RegenerateRun: an interactive changelog/both runs the
 	// clean-tree + on-branch + remote-sync bucket before committing+pushing, and an
 	// interactive release/both runs gh-auth before the first provider dispatch. The batch
-	// resolves ONE target for every version, so gating on req.Target IS the conservative
-	// superset of what will be written. A failing applicable gate routes through the same
-	// surfaced abort as every other failure, before the loop starts.
-	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(req.Target)); err != nil {
+	// resolves ONE target — and ONE publisher — for every version, so gating on req.Target
+	// and the batch-level publisher IS the conservative superset of what will be written.
+	// The gh-auth gate also requires a RESOLVED publisher (publisher != nil): a downgraded
+	// batch (the provider could not be resolved upstream, so a nil publisher is threaded
+	// and every per-version provider write is nil-guarded and skipped) does NOT run
+	// gh-auth, mirroring the forward spine's `if publisher != nil` guard. A failing
+	// applicable gate routes through the same surfaced abort as every other failure,
+	// before the loop starts.
+	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(req.Target, publisher != nil)); err != nil {
 		return err
 	}
 	collected, err := RegenerateAll(ctx, deps, publisher, req)
