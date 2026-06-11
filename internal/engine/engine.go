@@ -21,11 +21,6 @@
 //   - ReviewDecision: the decision seam — it calls Prompt(gate) and maps the
 //     presenter's error contract (ErrNotInteractive / ErrInputClosed) to an engine
 //     abort carrying a non-zero exit code (*AbortError).
-//   - EmitPlan / EmitStageFailed / EmitNotes / EmitWarning: thin Phase 1
-//     event->method mappers proving the adoption is real. They each forward an
-//     engine-supplied payload to the matching presenter method and nothing more;
-//     the actual orchestration ORDERING (when each fires, in what release sequence)
-//     belongs to a later orchestrator task.
 package engine
 
 import (
@@ -118,39 +113,6 @@ func ReviewDecision(p presenter.Presenter, gate presenter.Gate) (presenter.Choic
 		return "", abort(err)
 	}
 	return choice, nil
-}
-
-// EmitPlan forwards the Phase 1 plan/version summary to the presenter: the upcoming
-// plan via ShowPlan and the start-of-run header via RunStarted. It is a thin
-// mapper — it supplies no ordering policy of its own beyond emitting the plan
-// before the header — proving the plan/version event maps onto the shipped
-// methods. The release-wide ordering of this relative to other events is the
-// orchestrator's concern.
-func EmitPlan(p presenter.Presenter, plan presenter.Plan, info presenter.RunInfo) {
-	p.ShowPlan(plan)
-	p.RunStarted(info)
-}
-
-// EmitStageFailed forwards a stage/gate failure to the presenter's StageFailed,
-// passing the engine-captured command Output through unchanged. Thin mapper: the
-// engine builds the StageFailure payload; the presenter renders it.
-func EmitStageFailed(p presenter.Presenter, failure presenter.StageFailure) {
-	p.StageFailed(failure)
-}
-
-// EmitNotes forwards the generated release notes to the presenter's ShowNotes for
-// the zero-risk review window. Thin mapper: the body is the engine's, written
-// verbatim by the presenter.
-func EmitNotes(p presenter.Presenter, notes presenter.Notes) {
-	p.ShowNotes(notes)
-}
-
-// EmitWarning forwards a structured warning (including the post-PONR warn-only
-// case) to the presenter's Warn. The Warning's Label and Message stay SEPARATE
-// structured fields end to end — the engine never collapses them into one combined
-// string, and the presenter prefixes the label from its own field. Thin mapper.
-func EmitWarning(p presenter.Presenter, warning presenter.Warning) {
-	p.Warn(warning)
 }
 
 // emitGateSucceeded narrates a read-only gate's successful completion: a
