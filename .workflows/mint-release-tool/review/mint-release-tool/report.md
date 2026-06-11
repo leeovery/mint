@@ -52,8 +52,10 @@ _Open non-blocking items below are **unchanged by the Phase 10–12 remediation*
 
 ### Do now
 
-42. `cmd/mint/regenerate_flags_test.go:5-9` — `TestParseRegenerateFlags`'s doc comment still says "the `--all` / `-y` booleans" and "parse skeleton only", predating the `--plain` addition; append `--plain` to the enumerated surface so the comment matches the asserted columns (Report 10-6)
-43. `internal/engine/editor_test.go:22-25` — the comment block states `ResolveEditor` "checks for non-empty" and treats `""` as "unset"; the check is now `strings.TrimSpace(...) != ""`, so reword to "treats empty-or-blank as unset" to match the behaviour the same test now exercises (Report 10-8)
+_Both items below were **applied** during this remediation review (commit `review(mint-release-tool): apply do-now fixes` — gofmt/vet clean, touched-package tests pass)._
+
+42. `cmd/mint/regenerate_flags_test.go:5-9` — `TestParseRegenerateFlags`'s doc comment still said "the `--all` / `-y` booleans" and "parse skeleton only", predating the `--plain` addition; appended `--plain` to the enumerated surface so the comment matches the asserted columns — **applied** (Report 10-6)
+43. `internal/engine/editor_test.go:22-25` — the comment block stated `ResolveEditor` "checks for non-empty" and treated `""` as "unset"; the check is now `strings.TrimSpace(...) != ""`, so reworded to "treats empty-or-blank as unset" to match the behaviour the same test now exercises — **applied** (Report 10-8)
 
 ### Quick-fixes
 
