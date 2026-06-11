@@ -50,11 +50,11 @@ type RegenerateGateSet struct {
 }
 
 // regenerateGateSet maps a RESOLVED engine target — together with whether the
-// publisher actually RESOLVED — to its preflight gate-set selection. It is the
-// engine-side analogue of the cmd layer's regenerateGateSet, keyed off the engine's
-// RegenerateTarget rather than the cmd flag enum. The interactive and batch flows use
-// it to run preflight AFTER the target resolves (the cmd layer cannot, since it
-// dispatches before the interactive target is known).
+// publisher actually RESOLVED — to its preflight gate-set selection. It is the single
+// engine-owned gate-set selector, keyed off the engine's RegenerateTarget. Gate
+// selection lives here (not in the cmd layer) because the interactive and batch flows
+// run preflight AFTER the target resolves, and the cmd layer dispatches before the
+// interactive target is known.
 //
 // The gh-auth gate (CallsProvider) requires BOTH a provider-writing target AND a
 // resolved publisher — mirroring the forward spine's `if publisher != nil` guard
