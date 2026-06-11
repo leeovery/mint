@@ -70,6 +70,29 @@ func TestRegenerateRunAxes(t *testing.T) {
 	}
 }
 
+// TestNewRegenerateBodyProducer_Reuse proves the single-version body producer binds its
+// fixed Resolution and routes the reuse source through the SHARED Resolution-keyed
+// dispatch (newBatchBodyProducer), reading the tag annotation body verbatim. The reuse
+// read is git-only, so it is exercisable with the FakeRunner without an AI transport.
+// Together with the batch reuse test (TestNewBatchBodyProducer_Reuse) this proves both the
+// single-bound and batch-threaded routes hit the same body dispatch.
+func TestNewRegenerateBodyProducer_Reuse(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{Stdout: "## reuse body\n"}, nil)
+
+	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
+	produce := newRegenerateBodyProducer(f, config.Config{}, t.TempDir(), res)
+	body, err := produce(t.Context(), engine.RegenerateSourceReuse)
+	if err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+	if body != "## reuse body\n" {
+		t.Errorf("reuse body = %q, want the verbatim tag annotation body", body)
+	}
+}
+
 // TestNewRegenerateRegeneratorProducer proves the single-version regenerator producer
 // returns NO regenerator for a reuse source (reuse runs the simple confirm, no review
 // gate) and a non-nil one for a fresh source (backing the gate's `r` choice so it never

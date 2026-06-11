@@ -88,10 +88,11 @@ func resolveBatchAxes(p presenter.Presenter, req regenerateRequest, changelogEna
 	return engine.ResolveRegenerateAxes(p, source, target, changelogEnabled)
 }
 
-// newBatchBodyProducer builds the engine batch ProduceBody closure: per version it
-// dispatches to the matching 5-5 reuse read or 5-6 fresh re-diff+AI producer for the
-// resolved source. It is the batch counterpart of newRegenerateBodyProducer, keyed off
-// the per-version Resolution rather than a single fixed version.
+// newBatchBodyProducer builds the canonical, Resolution-keyed ProduceBody closure: per
+// version it dispatches to the matching 5-5 reuse read or 5-6 fresh re-diff+AI producer
+// for the resolved source. This is the single home of the body reuse/fresh dispatch — the
+// batch path threads each version's Resolution through it, and newRegenerateBodyProducer
+// binds the single-version's fixed Resolution and delegates here.
 func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string) func(context.Context, engine.RegenerateSource, version.Resolution) (string, error) {
 	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution) (string, error) {
 		if source == engine.RegenerateSourceReuse {
@@ -101,12 +102,14 @@ func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string
 	}
 }
 
-// newBatchRegeneratorProducer builds the engine batch ProduceRegenerator closure: per
-// version it binds the per-version fresh regenerator (engine.RegenerateFreshRegenerator
-// over that version's resolved range) for a FRESH source — backing each version's
-// notes-review gate `r` choice — and returns nil for REUSE (the simple confirm has no
-// review gate). It is the batch counterpart of newRegenerateRegeneratorProducer, keyed
-// off the per-version Resolution.
+// newBatchRegeneratorProducer builds the canonical, Resolution-keyed ProduceRegenerator
+// closure: per version it binds the per-version fresh regenerator
+// (engine.RegenerateFreshRegenerator over that version's resolved range) for a FRESH
+// source — backing each version's notes-review gate `r` choice — and returns nil for REUSE
+// (the simple confirm has no review gate). This is the single home of the regenerator
+// reuse/fresh dispatch — the batch path threads each version's Resolution through it, and
+// newRegenerateRegeneratorProducer binds the single-version's fixed Resolution and
+// delegates here.
 func newBatchRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string) func(engine.RegenerateSource, version.Resolution) engine.Regenerator {
 	return func(source engine.RegenerateSource, res version.Resolution) engine.Regenerator {
 		if source == engine.RegenerateSourceReuse {

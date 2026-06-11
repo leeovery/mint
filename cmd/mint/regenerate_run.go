@@ -56,12 +56,14 @@ func regenerateTargetAxis(target regenerateTarget) engine.OptionalRegenerateTarg
 // single-version run: it reads the resolved source and dispatches to the matching 5-5
 // reuse read or 5-6 fresh re-diff+AI producer. The closure is invoked AFTER the source
 // prompt resolves, so an interactively-chosen source produces the right body.
+//
+// It binds the fixed single-version Resolution and delegates to the canonical, Resolution-
+// keyed newBatchBodyProducer so the reuse/fresh dispatch lives in exactly one place; the
+// batch path uses the same producer threaded with each version's Resolution.
 func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(context.Context, engine.RegenerateSource) (string, error) {
+	produce := newBatchBodyProducer(r, cfg, root)
 	return func(ctx context.Context, source engine.RegenerateSource) (string, error) {
-		if source == engine.RegenerateSourceReuse {
-			return engine.ReadReuseBody(ctx, r, res.Tag)
-		}
-		return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res)
+		return produce(ctx, source, res)
 	}
 }
 
@@ -72,11 +74,13 @@ func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root s
 // the simple confirm with no review gate. It is the regenerator counterpart of
 // newRegenerateBodyProducer, invoked AFTER the source resolves so an interactively-chosen
 // fresh source gets a working `r`.
+//
+// It binds the fixed single-version Resolution and delegates to the canonical, Resolution-
+// keyed newBatchRegeneratorProducer so the reuse/fresh dispatch lives in exactly one place;
+// the batch path uses the same producer threaded with each version's Resolution.
 func newRegenerateRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(engine.RegenerateSource) engine.Regenerator {
+	produce := newBatchRegeneratorProducer(r, cfg, root)
 	return func(source engine.RegenerateSource) engine.Regenerator {
-		if source == engine.RegenerateSourceReuse {
-			return nil
-		}
-		return engine.RegenerateFreshRegenerator(r, nil, root, cfg, res)
+		return produce(source, res)
 	}
 }

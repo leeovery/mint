@@ -513,8 +513,8 @@
             ".claude/skills/golang-project-layout",
             ".claude/skills/golang-context"
           ],
-          "current_phase": 11,
-          "current_task": "mint-release-tool-12-2",
+          "current_phase": 12,
+          "current_task": "~",
           "completed_tasks": [
             "mint-release-tool-1-1",
             "mint-release-tool-1-2",
@@ -606,7 +606,8 @@
             "mint-release-tool-10-8",
             "mint-release-tool-10-9",
             "mint-release-tool-11-1",
-            "mint-release-tool-12-1"
+            "mint-release-tool-12-1",
+            "mint-release-tool-12-2"
           ],
           "completed_phases": [
             1,
@@ -619,7 +620,8 @@
             8,
             9,
             10,
-            11
+            11,
+            12
           ],
           "updated": "2026-06-11"
         }
