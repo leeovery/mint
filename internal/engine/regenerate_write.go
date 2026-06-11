@@ -49,6 +49,7 @@ import (
 	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
+	"mint/internal/record"
 	"mint/internal/runner"
 )
 
@@ -120,11 +121,6 @@ type RegenerateWriteRequest struct {
 	// it (the test-injection seam), mirroring the forward path's precedence.
 	Regenerator Regenerator
 }
-
-// regenerateDateLayout is the section-header date layout the forward changelog writer
-// emits (YYYY-MM-DD). The historical date read from the tag is parsed with this same
-// layout so the healed `## [x.y.z] - <date>` header matches existing sections exactly.
-const regenerateDateLayout = "2006-01-02"
 
 // RegenerateWrite runs the single-version regenerate write/push/recovery sequence for
 // one resolved request: gate/confirm by source, then (for a changelog/both target)
@@ -306,7 +302,7 @@ func readHistoricalDate(ctx context.Context, r runner.CommandRunner, tag string)
 	if raw == "" {
 		return time.Time{}, fmt.Errorf("tag %s has no resolvable creation date", tag)
 	}
-	date, err := time.Parse(regenerateDateLayout, raw)
+	date, err := time.Parse(record.ChangelogDateLayout, raw)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("parsing original date %q for tag %s: %w", raw, tag, err)
 	}

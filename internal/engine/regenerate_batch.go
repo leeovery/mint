@@ -116,6 +116,14 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	return rebuildBatchChangelog(ctx, deps, root, req, collected)
 }
 
+// ErrChangelogDisabled is the single owned sentinel both changelog-disabled validators
+// return: the engine's checkBatchTargetConfig (batch) and the cmd-layer
+// validateTargetAgainstChangelog (single). The two validators stay SEPARATE functions
+// — their concrete-enum signatures differ (cmd's regenerateTarget vs engine's
+// RegenerateTarget) and each enforces independently — but they share this one pinned
+// message so the wording can never drift across the single and batch paths.
+var ErrChangelogDisabled = errors.New("changelog is disabled in config")
+
 // checkBatchTargetConfig rejects a changelog-touching target when the changelog is
 // disabled in config — the static config fact that aborts the whole batch up front.
 // It mirrors the cmd-layer validateTargetAgainstChangelog so the rule is identical
@@ -123,7 +131,7 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 // is a no-op.
 func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) error {
 	if !changelogEnabled && target.writesChangelog() {
-		return errors.New("changelog is disabled in config")
+		return ErrChangelogDisabled
 	}
 	return nil
 }

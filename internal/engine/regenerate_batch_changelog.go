@@ -145,8 +145,8 @@ func regeneratedByTag(collected []RegeneratedVersion) map[string]string {
 // 5-9 path uses, run once for the whole batch. The push is the point of no return.
 func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string) error {
 	m := deps.Mutator
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", changelogFileName); err != nil {
-		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("staging %s for batch rebuild: %w", changelogFileName, err))
+	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
+		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("staging %s for batch rebuild: %w", record.ChangelogFileName, err))
 	}
 	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "commit", "-m", batchRebuildSubject); err != nil {
 		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("committing batch rebuild %q: %w", batchRebuildSubject, err))

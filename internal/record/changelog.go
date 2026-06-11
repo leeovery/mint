@@ -12,13 +12,19 @@ import (
 	"mint/internal/fsutil"
 )
 
-// changelogFileName is the fixed name of the changelog at the repo root. mint
+// ChangelogFileName is the fixed name of the changelog at the repo root. record
 // owns this file as a write-only projection — it writes it but never reads it as
-// a source of truth.
-const changelogFileName = "CHANGELOG.md"
+// a source of truth. It is exported as the single owned symbol the engine staging
+// sites reference (`git -C {root} add CHANGELOG.md`), so the written path and the
+// staged path can never drift.
+const ChangelogFileName = "CHANGELOG.md"
 
-// dateLayout formats the section-header date as YYYY-MM-DD (Go's reference date).
-const dateLayout = "2006-01-02"
+// ChangelogDateLayout formats the section-header date as YYYY-MM-DD (Go's reference
+// date). record is the sole writer of the `## [x.y.z] - <date>` header, so this is
+// the canonical layout: it is exported so the engine's regenerate heal parses the
+// historical date back with the SAME layout, keeping a healed header byte-identical
+// to existing record-emitted sections.
+const ChangelogDateLayout = "2006-01-02"
 
 // kacPreamble is the standard Keep a Changelog (1.1.0) header preamble mint writes
 // when creating a new CHANGELOG.md. mint is a generator, not a human-maintained
@@ -72,7 +78,7 @@ func WriteChangelog(dir, version string, date time.Time, body string, enabled bo
 		return WriteResult{Changed: false}, nil
 	}
 
-	path := filepath.Join(dir, changelogFileName)
+	path := filepath.Join(dir, ChangelogFileName)
 
 	existing, err := readExisting(path)
 	if err != nil {
@@ -99,7 +105,7 @@ func readExisting(path string) (string, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", nil
 		}
-		return "", fmt.Errorf("reading %s: %w", changelogFileName, err)
+		return "", fmt.Errorf("reading %s: %w", ChangelogFileName, err)
 	}
 	return string(data), nil
 }
@@ -172,7 +178,7 @@ func indexOfLine(content, prefix string) int {
 // header, a blank line, the full body, and a trailing newline so the next
 // section's header starts on its own line.
 func renderSection(version string, date time.Time, body string) string {
-	return fmt.Sprintf("## [%s] - %s\n\n%s\n", version, date.Format(dateLayout), body)
+	return fmt.Sprintf("## [%s] - %s\n\n%s\n", version, date.Format(ChangelogDateLayout), body)
 }
 
 // splitAtFirstSection partitions content at the first line beginning with the
@@ -221,7 +227,7 @@ func ensureTrailingBlankLine(s string) string {
 // failure with the changelog domain noun so the error names this file.
 func writeAtomic(path, content string) error {
 	if err := fsutil.WriteFile(path, []byte(content), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", changelogFileName, err)
+		return fmt.Errorf("writing %s: %w", ChangelogFileName, err)
 	}
 	return nil
 }

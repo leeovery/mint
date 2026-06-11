@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"mint/internal/engine"
+)
 
 // validateRegenerateRequest applies the semantic source × target axis-contract
 // to a parsed regenerateRequest (task 5-2). It runs AFTER the 5-1 structural
@@ -56,7 +60,7 @@ func validateRegenerateRequest(req regenerateRequest, changelogEnabled bool) (re
 // target, or an enabled changelog, is a no-op.
 func validateTargetAgainstChangelog(target regenerateTarget, changelogEnabled bool) error {
 	if !changelogEnabled && (target == targetChangelog || target == targetBoth) {
-		return fmt.Errorf("changelog is disabled in config")
+		return engine.ErrChangelogDisabled
 	}
 	return nil
 }

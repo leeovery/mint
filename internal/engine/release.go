@@ -884,14 +884,18 @@ func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
 // outcome flows through the SAME ErrProviderUnresolved path as a non-matching
 // host — one unresolved sentinel the spine downgrades on (warn + tag + push only).
 func resolvePublisher(ctx context.Context, deps ReleaseDeps, cfg config.Config) (publish.Publisher, error) {
-	return publish.ResolvePublisher(remoteURL(ctx, deps.Runner), cfg.Release.Provider, deps.Runner)
+	return publish.ResolvePublisher(RemoteURL(ctx, deps.Runner), cfg.Release.Provider, deps.Runner)
 }
 
-// remoteURL reads the release remote's URL via `git remote get-url origin` through
+// RemoteURL reads the release remote's URL via `git remote get-url origin` through
 // the runner seam. A non-zero exit (no `origin` remote configured) yields the empty
 // string, which the resolver treats as "no remote" — an unresolved outcome rather
 // than a fatal git error, so the no-remote case joins the other unresolved cases.
-func remoteURL(ctx context.Context, r runner.CommandRunner) string {
+//
+// It is exported as the single owned reader the cmd regenerate path also calls, so
+// the forward and regenerate publisher resolution share one "empty == unresolved,
+// downgrade rather than fail" implementation rather than copied literals.
+func RemoteURL(ctx context.Context, r runner.CommandRunner) string {
 	res, err := r.Run(ctx, "git", "remote", "get-url", "origin")
 	if err != nil {
 		return ""

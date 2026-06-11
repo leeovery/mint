@@ -91,7 +91,7 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 func bookkeepingPaths(versionFile string, changelogChanged, versionChanged bool) []string {
 	var paths []string
 	if changelogChanged {
-		paths = append(paths, changelogFileName)
+		paths = append(paths, ChangelogFileName)
 	}
 	if versionChanged && versionFile != "" {
 		paths = append(paths, versionFile)

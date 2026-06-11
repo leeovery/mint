@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"mint/internal/engine"
+)
 
 // TestValidateRegenerateRequest covers the Phase 5-2 semantic axis-contract
 // validation that runs AFTER the 5-1 parse, with access to the loaded config's
@@ -163,7 +168,11 @@ func TestValidateRegenerateRequest_Errors(t *testing.T) {
 func TestValidateTargetAgainstChangelog(t *testing.T) {
 	t.Parallel()
 
-	const wantMsg = "changelog is disabled in config"
+	// The validator returns the single owned engine.ErrChangelogDisabled sentinel;
+	// sourcing the expected message from it (rather than a copied literal) makes the
+	// test itself drift-proof against the wording, and errors.Is below proves the
+	// returned error IS that sentinel, not just a string match.
+	wantMsg := engine.ErrChangelogDisabled.Error()
 
 	tests := []struct {
 		name             string
@@ -187,6 +196,8 @@ func TestValidateTargetAgainstChangelog(t *testing.T) {
 			switch {
 			case tt.wantErr && err == nil:
 				t.Fatalf("validateTargetAgainstChangelog(%v, %v) = nil, want %q", tt.target, tt.changelogEnabled, wantMsg)
+			case tt.wantErr && !errors.Is(err, engine.ErrChangelogDisabled):
+				t.Errorf("error = %v, want errors.Is(err, engine.ErrChangelogDisabled)", err)
 			case tt.wantErr && err.Error() != wantMsg:
 				t.Errorf("error = %q, want %q", err.Error(), wantMsg)
 			case !tt.wantErr && err != nil:

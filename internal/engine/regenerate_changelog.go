@@ -35,11 +35,6 @@ import (
 	"mint/internal/record"
 )
 
-// changelogFileName is the fixed repo-root changelog path the regenerate commit stages.
-// It mirrors record's own constant (CHANGELOG.md) so the staged path matches what
-// record.WriteChangelog writes.
-const changelogFileName = "CHANGELOG.md"
-
 // RegenerateChangelog writes the regenerated body for ONE version into CHANGELOG.md via
 // the reused forward in-place section-replace and stages at most one CHANGELOG commit,
 // returning whether a commit was made.
@@ -70,8 +65,8 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 		return false, nil
 	}
 
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", changelogFileName); err != nil {
-		return false, fmt.Errorf("staging %s for %s: %w", changelogFileName, tag, err)
+	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
+		return false, fmt.Errorf("staging %s for %s: %w", record.ChangelogFileName, tag, err)
 	}
 	subject := fmt.Sprintf("docs(changelog): regenerate notes for %s", tag)
 	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "commit", "-m", subject); err != nil {

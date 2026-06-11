@@ -46,7 +46,7 @@ func runRegenerateAll(deps engine.ReleaseDeps, r runner.CommandRunner, cfg confi
 	// A non-github / no-remote host downgrades to an unresolved publisher; the engine's
 	// release-write surfaces that, so pass the resolver result through (nil publisher on
 	// an unresolved provider), exactly as the single-version path does.
-	publisher, _ := publish.ResolvePublisher(regenerateRemoteURL(ctx, r), cfg.Release.Provider, r)
+	publisher, _ := publish.ResolvePublisher(engine.RemoteURL(ctx, r), cfg.Release.Provider, r)
 
 	batch := engine.BatchRegenerateRequest{
 		Source:      source,

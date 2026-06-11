@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"time"
 
@@ -164,7 +163,7 @@ func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg co
 	// A non-github / no-remote host downgrades to an unresolved publisher; the engine's
 	// release-write surfaces that, so pass the resolver result through (nil publisher on
 	// an unresolved provider).
-	publisher, _ := publish.ResolvePublisher(regenerateRemoteURL(ctx, r), cfg.Release.Provider, r)
+	publisher, _ := publish.ResolvePublisher(engine.RemoteURL(ctx, r), cfg.Release.Provider, r)
 
 	source, target := regenerateRunAxes(req)
 	runReq := engine.RegenerateRunRequest{
@@ -186,18 +185,6 @@ func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg co
 		return exitCode(err)
 	}
 	return 0
-}
-
-// regenerateRemoteURL reads the release remote's URL via `git remote get-url origin`
-// through the runner seam, returning "" on any failure (no `origin` remote) — the
-// publisher resolver treats an empty URL as an unresolved provider, downgrading the
-// run rather than failing it, the same way the forward path does.
-func regenerateRemoteURL(ctx context.Context, r runner.CommandRunner) string {
-	res, err := r.Run(ctx, "git", "remote", "get-url", "origin")
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(res.Stdout)
 }
 
 // runRelease wires the production seams and runs the forward release pipeline for

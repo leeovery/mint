@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -248,6 +249,12 @@ func TestRegenerateAllValidated_ConfigErrorAbortsUpFront(t *testing.T) {
 	err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, t.TempDir(), configReq, false)
 
 	assertAbortNonZero(t, err)
+	// The abort carries the single owned engine.ErrChangelogDisabled sentinel — the
+	// same one the cmd-layer validator returns — so the changelog-disabled wording is
+	// pinned to one symbol across the single and batch paths.
+	if !errors.Is(err, engine.ErrChangelogDisabled) {
+		t.Errorf("config abort error = %v, want errors.Is(err, engine.ErrChangelogDisabled)", err)
+	}
 	if len(pub.dispatched) != 0 {
 		t.Errorf("a config-level error dispatched %+v; the batch must abort before any version", pub.dispatched)
 	}

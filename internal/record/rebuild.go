@@ -81,7 +81,7 @@ func PreservedSection(version string) ChangelogSection {
 // already on disk byte-for-byte, nothing is written and Changed is false — the no-op
 // signal the caller uses to skip an empty commit.
 func RebuildChangelog(dir string, sections []ChangelogSection) (WriteResult, error) {
-	path := filepath.Join(dir, changelogFileName)
+	path := filepath.Join(dir, ChangelogFileName)
 
 	existing, err := readExisting(path)
 	if err != nil {
@@ -137,7 +137,7 @@ func sectionText(existing string, s ChangelogSection) (string, error) {
 func preservedSectionText(existing, version string) (string, error) {
 	before, after, found := splitAroundSection(existing, version)
 	if !found {
-		return "", fmt.Errorf("cannot preserve section for %s: not present in %s", version, changelogFileName)
+		return "", fmt.Errorf("cannot preserve section for %s: not present in %s", version, ChangelogFileName)
 	}
 	// The block is everything between the content before the header and the content
 	// after the block — i.e. existing with before and after trimmed off the ends.
