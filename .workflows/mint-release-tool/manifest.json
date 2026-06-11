@@ -214,7 +214,13 @@
             "mint-release-tool-6-6": "tick-fc5838",
             "mint-release-tool-6-7": "tick-8108d6",
             "mint-release-tool-6-8": "tick-ce95dd",
-            "mint-release-tool-4-7a": "tick-9dfd51"
+            "mint-release-tool-4-7a": "tick-9dfd51",
+            "mint-release-tool-7": "tick-340777",
+            "mint-release-tool-7-1": "tick-80e006",
+            "mint-release-tool-7-2": "tick-00b39e",
+            "mint-release-tool-7-3": "tick-756cc0",
+            "mint-release-tool-7-4": "tick-f647d3",
+            "mint-release-tool-7-5": "tick-cc2d7e"
           },
           "external_id": "tick-d4f773",
           "external_dependencies": {
@@ -451,7 +457,7 @@
           "status": "in-progress",
           "task_gate_mode": "auto",
           "fix_gate_mode": "auto",
-          "analysis_gate_mode": "gated",
+          "analysis_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 1,
           "analysis_cycle_session": 1,

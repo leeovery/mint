@@ -210,3 +210,17 @@ approved_at: 2026-06-09
 | mint-release-tool-6-6 | `release` shim generation | shim file mode executable, mint present → exec mint release "$@" passing args, mint absent → brew install hint + non-zero exit |
 | mint-release-tool-6-7 | `mint init` command (drops both files, idempotent/non-clobbering, --force) | neither file exists → both created, one exists → only the other created + notice, both exist → both skipped with notices, --force regenerates, files written at repo root, no hook/prompt files scaffolded |
 | mint-release-tool-6-8 | `mint version` / `mint --version` | `mint version` subcommand, `mint --version` flag, both print identical version string |
+
+### Phase 7: Analysis (Cycle 1)
+
+**Goal**: Address findings from Analysis (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-7-1 | Wire a per-run Regenerator on the regenerate fresh path so the rendered `[r]` choice works | `[r]` on fresh single regenerate, `[r]` on `--all` fresh regenerate, forward Release `r` path unchanged, `e` (edit) still works |
+| mint-release-tool-7-2 | Apply the degenerate-diff guard on the regenerate fresh path | empty/all-excluded `vX-1..vX` fresh diff → StubBody no AI, `--all` degenerate version → StubBody continues, non-degenerate diff still calls transport, shared rule reached by both fresh producers |
+| mint-release-tool-7-3 | Emit StageStarted / StageSucceeded around the release and regenerate stages | blocking stages (notes/pre_tag/push) with Blocking:true, read-only gates narration, regenerate equivalent events, editor suspend/resume wraps live spinner, existing events unchanged |
+| mint-release-tool-7-4 | Extract a single shared atomic-write helper and have all three sites delegate | cleanup-on-error removes temp/target unchanged, domain error wording preserved, paths and 0o644 perms unchanged, notescache writer delegates |
+| mint-release-tool-7-5 | Consolidate copied cross-boundary constants and the remote-URL reader to single owned symbols | shared remote reader resolves publisher, date layout matches emitted sections, written == staged CHANGELOG.md path, both changelog-disabled validators share one sentinel |

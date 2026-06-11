@@ -6,7 +6,7 @@ total_proposed: 5
 # Analysis Tasks: mint-release-tool (Cycle 1)
 
 ## Task 1: Wire a per-run Regenerator on the regenerate fresh path so the rendered `[r]` choice works
-status: pending
+status: approved
 severity: high
 sources: architecture
 
@@ -35,7 +35,7 @@ sources: architecture
 - Forward `Release` regenerate `r` path remains green (regression guard).
 
 ## Task 2: Apply the degenerate-diff guard on the regenerate fresh path
-status: pending
+status: approved
 severity: medium
 sources: standards
 
@@ -62,7 +62,7 @@ sources: standards
 - Fresh regenerate with a non-degenerate diff still invokes transport (regression guard).
 
 ## Task 3: Emit StageStarted / StageSucceeded around the release and regenerate stages
-status: pending
+status: approved
 severity: medium
 sources: architecture
 
@@ -93,7 +93,7 @@ sources: architecture
 - The editor bracket asserts `SuspendSpinner` is called while a stage spinner is active (no longer a no-op).
 
 ## Task 4: Extract a single shared atomic-write helper and have all three sites delegate
-status: pending
+status: approved
 severity: medium
 sources: duplication
 
@@ -122,7 +122,7 @@ sources: duplication
 - notescache writer still writes correctly via the shared helper.
 
 ## Task 5: Consolidate copied cross-boundary constants and the remote-URL reader to single owned symbols
-status: pending
+status: approved
 severity: low
 sources: duplication
 
