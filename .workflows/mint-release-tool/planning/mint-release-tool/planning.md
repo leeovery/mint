@@ -224,3 +224,15 @@ approved_at: 2026-06-09
 | mint-release-tool-7-3 | Emit StageStarted / StageSucceeded around the release and regenerate stages | blocking stages (notes/pre_tag/push) with Blocking:true, read-only gates narration, regenerate equivalent events, editor suspend/resume wraps live spinner, existing events unchanged |
 | mint-release-tool-7-4 | Extract a single shared atomic-write helper and have all three sites delegate | cleanup-on-error removes temp/target unchanged, domain error wording preserved, paths and 0o644 perms unchanged, notescache writer delegates |
 | mint-release-tool-7-5 | Consolidate copied cross-boundary constants and the remote-URL reader to single owned symbols | shared remote reader resolves publisher, date layout matches emitted sections, written == staged CHANGELOG.md path, both changelog-disabled validators share one sentinel |
+
+### Phase 8: Analysis (Cycle 2)
+
+**Goal**: Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-8-1 | Extract shared changelog push/recovery tail for the single-version and batch regenerate paths | successful single-version push reports pushed=true, single-version pre-push failure resets to starting HEAD + "push" StageFailed, batch --all success and pre-push-failure reset behave identically via shared helper, no-op single-version write commits/pushes nothing (short-circuit at call site) |
+| mint-release-tool-8-2 | Close the release-success footer URL seam — feed the real release URL into RunResult.URL | publisher parses URL from gh stdout on create AND update paths, successful release threads URL into RunResult.URL and footer renders in pretty+plain, warn-only post-PONR publish failure renders no URL, downgrade/no-publish run renders no URL |
+| mint-release-tool-8-3 | Remove the orphaned Phase-1 presenter mappers (EmitPlan/EmitStageFailed/EmitNotes/EmitWarning) | four Emit* funcs gone from engine package, no production or test references remain, orchestrator's direct ShowPlan/StageFailed/ShowNotes/Warn calls unchanged, package builds + engine suite passes with the four Emit* tests removed |
