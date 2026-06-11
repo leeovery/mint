@@ -21,6 +21,10 @@ type fakePublisher struct {
 	existsByTag map[string]existsOutcome
 	// dispatched records each routed mutation in call order.
 	dispatched []dispatchedCall
+	// beforeDispatch, when set, fires at the START of each routed mutation (before
+	// the dispatched call is recorded), so an ordering test can snapshot external
+	// state (e.g. whether the changelog push already happened) at dispatch time.
+	beforeDispatch func()
 }
 
 type existsOutcome struct {
@@ -52,11 +56,17 @@ func (f *fakePublisher) ReleaseExists(_ context.Context, tag string) (bool, erro
 }
 
 func (f *fakePublisher) CreateRelease(_ context.Context, tag, title, body string) error {
+	if f.beforeDispatch != nil {
+		f.beforeDispatch()
+	}
 	f.dispatched = append(f.dispatched, dispatchedCall{method: "create", tag: tag, title: title, body: body})
 	return nil
 }
 
 func (f *fakePublisher) UpdateRelease(_ context.Context, tag, title, body string) error {
+	if f.beforeDispatch != nil {
+		f.beforeDispatch()
+	}
 	f.dispatched = append(f.dispatched, dispatchedCall{method: "update", tag: tag, title: title, body: body})
 	return nil
 }
