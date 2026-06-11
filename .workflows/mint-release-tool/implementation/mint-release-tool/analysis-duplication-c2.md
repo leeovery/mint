@@ -1,0 +1,20 @@
+AGENT: duplication
+FINDINGS:
+- FINDING: Single-version and batch changelog write/push/recovery orchestrations are near-duplicates
+  SEVERITY: medium
+  FILES: internal/engine/regenerate_write.go:231-273 (writeAndPushChangelog), internal/engine/regenerate_batch_changelog.go:146-165 (commitAndPushRebuild)
+  DESCRIPTION: Both functions independently sequence the same regenerate-changelog write/push/recovery shape: capture the clean starting HEAD via resolveHEAD, stage+commit CHANGELOG.md, plain-push with the literal `git push origin HEAD` as the point of no return (narrated with the same emitBlockingStageStarted "push" spinner), and route any pre-push failure through resetAndAbort. The only real differences are the commit subject (`docs(changelog): regenerate notes for {tag}` vs the `--all` `docs(changelog): regenerate release notes`) and the no-op short-circuit. The two paths already share resetAndAbort and readHistoricalDate, but the surrounding clean-HEAD-capture -> commit -> plain-push-PONR -> reset orchestration is copied. Because the push form and PONR semantics are load-bearing, two copies risk drifting.
+  RECOMMENDATION: Extract the shared "stage CHANGELOG, plain-push as PONR, reset-on-abort" tail into one engine helper that both call after producing their respective commit — e.g. pushChangelogCommit(ctx, deps, startingHEAD) error — so the `git push origin HEAD` literal, the blocking "push" narration, and the resetAndAbort wiring live in exactly one place. Keep the two commit subjects and the differing no-op short-circuit at the call sites.
+
+- FINDING: Changelog staging command (`git -C {root} add CHANGELOG.md`) duplicated across three commit sites
+  SEVERITY: low
+  FILES: internal/engine/regenerate_changelog.go:68, internal/engine/regenerate_batch_changelog.go:148, internal/record/commit.go:75-94 (CommitBookkeeping)
+  DESCRIPTION: Three independent commit sites assemble the same `git -C {dir} add <CHANGELOG.md>` staging mutation through the Mutator. They correctly already share the record.ChangelogFileName constant so the path cannot drift, and each commit subject is deliberately distinct. The remaining duplication is the stage+commit invocation shape — small (two lines per site) and partly deliberate parallelism, borderline against the Rule of Three.
+  RECOMMENDATION: Optional, lower priority. If the medium-severity helper is extracted, consider also routing the regenerate changelog stage+commit through a single record-owned helper (e.g. record.StageAndCommit(ctx, m, root, paths, subject)). If kept separate, no change needed — the shared ChangelogFileName already prevents the only drift that matters.
+
+- FINDING: Publisher-resolution block + comment duplicated across the two cmd regenerate entry points
+  SEVERITY: low
+  FILES: cmd/mint/main.go:163-166 (runRegenerateSingle), cmd/mint/regenerate_all.go:47-49 (runRegenerateAll)
+  DESCRIPTION: Both regenerate entry points resolve the publishing driver with the identical call `publish.ResolvePublisher(engine.RemoteURL(ctx, r), cfg.Release.Provider, r)`, discard the error (`, _`), and carry a near-identical explanatory comment. The forward path centralised the remote read behind engine.RemoteURL so the literals are not copied, but the resolve-and-discard-error step plus its rationale comment are still duplicated between the single and batch cmd paths.
+  RECOMMENDATION: Extract a tiny cmd-layer helper, e.g. resolveRegeneratePublisher(ctx, r, cfg) publish.Publisher, performing the resolve-and-downgrade-tolerant call once with the rationale comment in one place; have both entry points call it.
+SUMMARY: The largest item is a medium-severity near-duplicate of the changelog write/push/recovery orchestration between the single-version and batch regenerate paths, whose load-bearing PONR/reset shape is copied; two low-severity items (changelog staging idiom, cmd publisher-resolution block) are borderline and optional. notes engine, record rendering, version resolution, publisher host-parsing, and init scaffolding are already well-factored.
