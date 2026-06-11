@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"mint/internal/fsutil"
 )
 
 // versionPlaceholder is the token in version_pattern that marks the version slot,
@@ -195,39 +197,14 @@ func readVersionFileContent(path string) (content string, found bool, err error)
 	return string(data), true, nil
 }
 
-// writeFileAtomic writes content to path via a temp file in the same directory
-// followed by a rename, so a reader never observes a half-written version file. The
-// 0o644 mode matches a normal tracked source file. It mirrors writeAtomic (used for
-// the changelog) but keeps its own temp-file naming and error context so the two
-// write paths stay independent.
+// writeFileAtomic writes content to path crash-safely (temp file + rename) so a
+// reader never observes a half-written version file, with the 0o644 mode of a normal
+// tracked source file. It delegates the shared idiom to fsutil.WriteFile and wraps
+// any failure with the version-file domain noun (and the offending path) so the
+// error names this file.
 func writeFileAtomic(path, content string) error {
-	dir := filepath.Dir(path)
-	base := filepath.Base(path)
-
-	tmp, err := os.CreateTemp(dir, base+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("creating temp version file: %w", err)
-	}
-	tmpName := tmp.Name()
-
-	if _, err := tmp.WriteString(content); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("writing temp version file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("closing temp version file: %w", err)
-	}
-
-	if err := os.Chmod(tmpName, 0o644); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("setting version file mode: %w", err)
-	}
-
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("replacing version file %s: %w", path, err)
+	if err := fsutil.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("writing version file %s: %w", path, err)
 	}
 	return nil
 }

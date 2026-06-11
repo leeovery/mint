@@ -96,7 +96,7 @@ func RebuildChangelog(dir string, sections []ChangelogSection) (WriteResult, err
 	if rebuilt == existing {
 		return WriteResult{Changed: false}, nil
 	}
-	if err := writeAtomic(path, dir, rebuilt); err != nil {
+	if err := writeAtomic(path, rebuilt); err != nil {
 		return WriteResult{}, err
 	}
 	return WriteResult{Changed: true}, nil

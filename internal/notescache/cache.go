@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"mint/internal/fsutil"
 )
 
 // cacheDirName is the repo-relative base for the on-repo cache (e.g. .mint/cache).
@@ -206,22 +208,15 @@ func repoScope(repoRoot string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// writeFileAtomic writes data to path via a temp file + rename so a crash
-// mid-write never leaves a partial entry that a later reuse might read as valid.
+// entryPerm is the on-disk mode for a cache entry: 0o600, the default os.CreateTemp
+// mode the original writer left in place (no chmod), kept so a gitignored cache entry
+// stays owner-only.
+const entryPerm = 0o600
+
+// writeFileAtomic writes data to path crash-safely (temp file + rename) so a crash
+// mid-write never leaves a partial entry that a later reuse might read as valid. It
+// delegates the shared idiom to fsutil.WriteFile; the caller (Write) wraps the
+// returned error with the note-cache context, so it is returned as-is here.
 func writeFileAtomic(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return fsutil.WriteFile(path, data, entryPerm)
 }

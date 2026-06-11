@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"mint/internal/fsutil"
 )
 
 // changelogFileName is the fixed name of the changelog at the repo root. mint
@@ -82,7 +84,7 @@ func WriteChangelog(dir, version string, date time.Time, body string, enabled bo
 		return WriteResult{Changed: false}, nil
 	}
 
-	if err := writeAtomic(path, dir, updated); err != nil {
+	if err := writeAtomic(path, updated); err != nil {
 		return WriteResult{}, err
 	}
 	return WriteResult{Changed: true}, nil
@@ -213,34 +215,13 @@ func ensureTrailingBlankLine(s string) string {
 	}
 }
 
-// writeAtomic writes content to path via a temp file in the same directory
-// followed by a rename, so a reader never observes a half-written changelog. The
-// 0o644 mode matches a normal tracked source file.
-func writeAtomic(path, dir, content string) error {
-	tmp, err := os.CreateTemp(dir, changelogFileName+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("creating temp changelog: %w", err)
-	}
-	tmpName := tmp.Name()
-
-	if _, err := tmp.WriteString(content); err != nil {
-		_ = tmp.Close()
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("writing temp changelog: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("closing temp changelog: %w", err)
-	}
-
-	if err := os.Chmod(tmpName, 0o644); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("setting changelog mode: %w", err)
-	}
-
-	if err := os.Rename(tmpName, path); err != nil {
-		_ = os.Remove(tmpName)
-		return fmt.Errorf("replacing %s: %w", changelogFileName, err)
+// writeAtomic writes content to path crash-safely (temp file + rename) so a reader
+// never observes a half-written changelog, with the 0o644 mode of a normal tracked
+// source file. It delegates the shared idiom to fsutil.WriteFile and wraps any
+// failure with the changelog domain noun so the error names this file.
+func writeAtomic(path, content string) error {
+	if err := fsutil.WriteFile(path, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", changelogFileName, err)
 	}
 	return nil
 }
