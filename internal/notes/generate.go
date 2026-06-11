@@ -150,6 +150,20 @@ func (g *Generator) GenerateFromDiff(ctx context.Context, lastTag, diff string, 
 // appended to the resolved instructions ONLY for this prompt; an empty context appends
 // nothing, so GenerateFromDiff (which passes "") is byte-identical to before.
 func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, diff string, cfg config.Config, oneTimeContext string) (string, error) {
+	// Degenerate guard, shared by EVERY range producer that reaches this core: an
+	// empty/whitespace-only post-exclusion diff returns StubBody with NO AI call —
+	// the same short-circuit the forward path enforces in SelectBody. An empty diff
+	// is the one input the AI reliably hallucinates on, so the rule is path-agnostic.
+	// The fresh `vX-1..vX` range always carries mint's release-bookkeeping commit, so
+	// a version whose only non-excluded change was that bookkeeping lands here with an
+	// empty diff; this guard catches it before the size check, change map, and
+	// transport. GenerateFromDiff (the forward AI path) reaches this core ONLY after
+	// SelectBody has already excluded degenerate diffs, so re-asserting it here is a
+	// harmless, never-true check on that path — the rule lives in ONE place.
+	if IsDegenerate(diff) {
+		return StubBody(), nil
+	}
+
 	if err := CheckDiffSize(diff, cfg.MaxDiffLines); err != nil {
 		return "", fmt.Errorf("notes size guard: %w", err)
 	}

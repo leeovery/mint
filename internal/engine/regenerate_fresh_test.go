@@ -282,6 +282,59 @@ func TestRegenerateFreshBody_AppliesMaxDiffLinesGuard(t *testing.T) {
 	}
 }
 
+func TestRegenerateFreshBody_DegenerateRangeReturnsStubNoAI(t *testing.T) {
+	t.Parallel()
+
+	// The forward degenerate guard (SelectBody -> IsDegenerate -> StubBody) ALSO covers
+	// the fresh producer: an empty/all-excluded post-exclusion vX-1..vX diff returns
+	// notes.StubBody() with NO transport call. The fresh range always carries mint's
+	// release-bookkeeping commit, so a version whose only non-excluded change was that
+	// bookkeeping yields exactly this empty diff — and the AI is never run on it. This is
+	// the function cmd wires as ProduceBody for BOTH single fresh and --all fresh.
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{Stdout: "\n   \t\n"}, nil)
+	tr := &freshTransport{body: "must never be produced"}
+
+	res := version.Resolution{Tag: "v1.5.0", PreviousTag: "v1.4.0"}
+	got, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res)
+	if err != nil {
+		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
+	}
+
+	if got != notes.StubBody() {
+		t.Errorf("body = %q, want the degenerate StubBody %q", got, notes.StubBody())
+	}
+	if tr.calls() != 0 {
+		t.Errorf("transport called %d times, want 0 — the AI must NOT run on a degenerate diff", tr.calls())
+	}
+}
+
+func TestRegenerateFreshRegenerator_DegenerateRangeReturnsStubNoAI(t *testing.T) {
+	t.Parallel()
+
+	// The fresh `r` regenerator inherits the SAME degenerate guard: re-running over an
+	// empty post-exclusion range yields StubBody() with no transport call, regardless of
+	// the user's one-time context — the degenerate signal pre-empts the AI before any
+	// prompt is composed.
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{Stdout: ""}, nil)
+	tr := &freshTransport{body: "must never be produced"}
+
+	res := version.Resolution{Tag: "v1.5.0", PreviousTag: "v1.4.0"}
+	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res)
+	got, err := regen.Regenerate(t.Context(), "lead with auth")
+	if err != nil {
+		t.Fatalf("Regenerate returned unexpected error: %v", err)
+	}
+
+	if got != notes.StubBody() {
+		t.Errorf("body = %q, want the degenerate StubBody %q", got, notes.StubBody())
+	}
+	if tr.calls() != 0 {
+		t.Errorf("transport called %d times, want 0 — the AI must NOT run on a degenerate diff", tr.calls())
+	}
+}
+
 func TestRegenerateFreshBody_SurfacesAIFailure(t *testing.T) {
 	t.Parallel()
 

@@ -325,6 +325,57 @@ func TestGenerator_GenerateFromRangeWithContext_AppendsOneTimeContextOverRange(t
 	assertArgvEqual(t, r.Invocations()[0].Args, wantRangeArgs("v1.3.0..v1.4.0"))
 }
 
+func TestGenerator_GenerateFromRange_DegenerateRangeReturnsStubNoAI(t *testing.T) {
+	t.Parallel()
+
+	// The degenerate guard the forward path enforces (SelectBody -> IsDegenerate)
+	// ALSO covers the fresh range path: an empty/whitespace-only post-exclusion range
+	// diff returns notes.StubBody() with NO transport call — the AI is the one input it
+	// reliably hallucinates on. The fresh `vX-1..vX` range always carries mint's
+	// bookkeeping commit, so an all-excluded version yields exactly this empty diff.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "   \n\n\t\n"}, nil)
+	transport := &recordingTransport{body: "must never be produced"}
+
+	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	got, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000})
+	if err != nil {
+		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
+	}
+
+	if got != notes.StubBody() {
+		t.Errorf("body = %q, want the degenerate StubBody %q", got, notes.StubBody())
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times, want 0 — the AI must NOT run on a degenerate diff", transport.calls())
+	}
+}
+
+func TestGenerator_GenerateFromRangeWithContext_DegenerateRangeReturnsStubNoAI(t *testing.T) {
+	t.Parallel()
+
+	// The `[r]` regenerate-with-context re-run inherits the SAME degenerate guard: an
+	// empty post-exclusion range yields StubBody() with no transport call, regardless of
+	// the one-time context. The degenerate signal pre-empts the AI before any prompt is
+	// composed, so the context is never even reached.
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: ""}, nil)
+	transport := &recordingTransport{body: "must never be produced"}
+
+	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000}, "lead with auth")
+	if err != nil {
+		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
+	}
+
+	if got != notes.StubBody() {
+		t.Errorf("body = %q, want the degenerate StubBody %q", got, notes.StubBody())
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times, want 0 — the AI must NOT run on a degenerate diff", transport.calls())
+	}
+}
+
 func TestGenerator_GenerateFromRangeWithContext_EmptyContextMatchesGenerateFromRange(t *testing.T) {
 	t.Parallel()
 
