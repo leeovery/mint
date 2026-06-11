@@ -357,22 +357,21 @@ func TestLoad_ExplicitOnNotesFailureFallback_Honoured(t *testing.T) {
 	}
 }
 
-func TestLoad_ExplicitOnNotesFailureAnyString_CarriedVerbatim(t *testing.T) {
+func TestLoad_ExplicitOnNotesFailureUnknown_Rejected(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	// on_notes_failure is mode-only (abort | fallback); config still carries whatever
-	// raw string the file holds verbatim (Phase 6 adds typed validation that rejects
-	// unknown values — config does not interpret or coerce the value here).
+	// on_notes_failure is a closed-set enum (abort | fallback). Phase 6's typed
+	// validation rejects any other non-empty value rather than carrying it verbatim —
+	// it is fail-loud, not interpreted later.
 	writeConfig(t, dir, "[release]\non_notes_failure = \"something-unknown\"\n")
 
-	cfg, err := config.Load(dir)
-	if err != nil {
-		t.Fatalf("Load returned unexpected error: %v", err)
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for unknown on_notes_failure, want non-nil")
 	}
-
-	if cfg.Release.OnNotesFailure != "something-unknown" {
-		t.Errorf("OnNotesFailure = %q, want the raw value carried verbatim", cfg.Release.OnNotesFailure)
+	if !strings.Contains(err.Error(), "on_notes_failure") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "on_notes_failure")
 	}
 }
 
@@ -902,5 +901,228 @@ func TestLoad_MalformedTOML_ReturnsError(t *testing.T) {
 
 	if _, err := config.Load(dir); err == nil {
 		t.Fatal("Load returned nil error for malformed TOML, want non-nil")
+	}
+}
+
+func TestLoad_MaxDiffLinesString_RejectedNamingIntegerType(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Fail-loud bad-type validation (Phase 6): max_diff_lines is an integer key. A
+	// string value must be rejected with a message naming both the key and the
+	// expected integer type — not opaque decoder field-path output.
+	writeConfig(t, dir, "max_diff_lines = \"big\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for string max_diff_lines, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "max_diff_lines") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "max_diff_lines")
+	}
+	if !strings.Contains(err.Error(), "integer") {
+		t.Errorf("error = %q, want it to name the expected integer type", err.Error())
+	}
+}
+
+func TestLoad_PublishString_RejectedNamingBooleanType(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// publish is a boolean toggle. A string value must be rejected naming both the
+	// key and the expected boolean type.
+	writeConfig(t, dir, "[release]\npublish = \"yes\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for string publish, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "publish") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "publish")
+	}
+	if !strings.Contains(err.Error(), "boolean") {
+		t.Errorf("error = %q, want it to name the expected boolean type", err.Error())
+	}
+}
+
+func TestLoad_ChangelogString_RejectedNamingBooleanType(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// changelog is the other boolean toggle and must be rejected the same way as
+	// publish when given a string.
+	writeConfig(t, dir, "[release]\nchangelog = \"no\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for string changelog, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "changelog") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "changelog")
+	}
+	if !strings.Contains(err.Error(), "boolean") {
+		t.Errorf("error = %q, want it to name the expected boolean type", err.Error())
+	}
+}
+
+func TestLoad_DiffExcludeScalar_RejectedNamingArrayOfStrings(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// diff_exclude is an array of glob strings. A bare scalar (not an array) must be
+	// rejected naming both the key and the expected array-of-strings shape.
+	writeConfig(t, dir, "diff_exclude = '*.min.js'\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for scalar diff_exclude, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "diff_exclude") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "diff_exclude")
+	}
+	if !strings.Contains(err.Error(), "array of strings") {
+		t.Errorf("error = %q, want it to name the expected array-of-strings type", err.Error())
+	}
+}
+
+func TestLoad_HookValueString_LoadsAndIsConsumable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A hook value given as a single command string must load successfully and stay
+	// in the string shape the hooks runner's normalise consumes.
+	writeConfig(t, dir, "[release.hooks]\npre_tag = \"scripts/check.sh\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error for string hook value: %v", err)
+	}
+	got, ok := cfg.Release.Hooks.PreTag.(string)
+	if !ok || got != "scripts/check.sh" {
+		t.Fatalf("Hooks.PreTag = %#v (%T), want string %q", cfg.Release.Hooks.PreTag, cfg.Release.Hooks.PreTag, "scripts/check.sh")
+	}
+}
+
+func TestLoad_HookValueArrayOfStrings_LoadsAndIsConsumable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A hook value given as an array of command strings must load successfully and
+	// stay in the []any shape the hooks runner's normalise consumes.
+	writeConfig(t, dir, "[release.hooks]\npre_tag = [\"npm ci\", \"npm run build\"]\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error for array hook value: %v", err)
+	}
+	got, ok := cfg.Release.Hooks.PreTag.([]any)
+	if !ok {
+		t.Fatalf("Hooks.PreTag = %#v (%T), want a []any slice", cfg.Release.Hooks.PreTag, cfg.Release.Hooks.PreTag)
+	}
+	want := []string{"npm ci", "npm run build"}
+	if len(got) != len(want) {
+		t.Fatalf("Hooks.PreTag len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Hooks.PreTag[%d] = %v, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLoad_HookValueInteger_RejectedNamingHookKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A hook value of a non-string/non-array type (here an integer) must be rejected
+	// with a message naming the offending hook key.
+	writeConfig(t, dir, "[release.hooks]\npre_tag = 42\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for integer hook value, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "pre_tag") {
+		t.Errorf("error = %q, want it to name the hook key %q", err.Error(), "pre_tag")
+	}
+	if !strings.Contains(err.Error(), "string or an array of strings") {
+		t.Errorf("error = %q, want it to state the valid hook shapes", err.Error())
+	}
+}
+
+func TestLoad_HookValueTable_RejectedNamingHookKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A hook value given as a table is also an invalid shape and must be rejected
+	// naming the offending hook key.
+	writeConfig(t, dir, "[release.hooks.preflight]\nfoo = \"bar\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for table hook value, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "preflight") {
+		t.Errorf("error = %q, want it to name the hook key %q", err.Error(), "preflight")
+	}
+}
+
+func TestLoad_HookValueArrayOfNonStrings_RejectedNamingHookKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An array hook value must contain only strings; an array carrying a non-string
+	// element is an invalid shape and must be rejected naming the offending hook key.
+	writeConfig(t, dir, "[release.hooks]\npost_release = [\"ok\", 7]\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for array-of-non-strings hook value, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "post_release") {
+		t.Errorf("error = %q, want it to name the hook key %q", err.Error(), "post_release")
+	}
+}
+
+func TestLoad_OnNotesFailureInvalid_RejectedListingValidValues(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// on_notes_failure is a closed-set enum (abort | fallback). A correctly-typed but
+	// out-of-set value must fail loud, listing the valid values.
+	writeConfig(t, dir, "[release]\non_notes_failure = \"retry\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for invalid on_notes_failure, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "on_notes_failure") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "on_notes_failure")
+	}
+	if !strings.Contains(err.Error(), "abort") || !strings.Contains(err.Error(), "fallback") {
+		t.Errorf("error = %q, want it to list the valid values abort and fallback", err.Error())
+	}
+}
+
+func TestLoad_OnNotesFailureValidValues_Load(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []string{"abort", "fallback"} {
+		t.Run(want, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// Both members of the closed set must load without error and be carried
+			// through verbatim.
+			writeConfig(t, dir, "[release]\non_notes_failure = \""+want+"\"\n")
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error for on_notes_failure=%q: %v", want, err)
+			}
+			if cfg.Release.OnNotesFailure != want {
+				t.Errorf("OnNotesFailure = %q, want %q", cfg.Release.OnNotesFailure, want)
+			}
+		})
 	}
 }

@@ -13,9 +13,14 @@
 // Load decodes the file STRICTLY: any key matching no field in the canonical schema
 // — at the top level, inside [release], or inside [release.hooks] — is rejected with
 // an actionable message naming the key and its table (a top-level [hooks] table gets
-// targeted guidance to nest under [release.hooks]). This is the unknown-KEYS half of
-// fail-loud validation; bad-TYPE validation, the on_notes_failure enum check, and the
-// provider-VALUE carve-out are SEPARATE Phase 6 tasks and are NOT done here.
+// targeted guidance to nest under [release.hooks]). It also fails loud on bad TYPES:
+// a value that cannot decode into its schema Go type (e.g. a string max_diff_lines, a
+// string publish/changelog, a scalar diff_exclude) is re-wrapped into a mint message
+// naming the key and its expected type; a [release.hooks] entry that is neither a
+// command string nor an array of command strings is rejected naming the hook key; and
+// on_notes_failure is constrained to the closed set abort | fallback. The
+// provider-VALUE carve-out (unsupported-but-recognised provider names) is a SEPARATE
+// Phase 6 task and is NOT done here.
 package config
 
 import (
@@ -46,10 +51,14 @@ const (
 
 // defaultOnNotesFailure is the out-of-the-box notes-failure policy: "abort" — when
 // the normal AI path fails, mint fails loud and tags nothing. The opt-in alternative
-// is "fallback"; the notes engine's resolver interprets the value as MODE-ONLY
-// (abort | fallback). config carries the raw string verbatim (Phase 6 adds typed
-// validation that rejects unknown values).
+// is "fallback". These two are the closed valid set: an absent key defaults to abort
+// and any other non-empty value is rejected by Load (see validateOnNotesFailure).
 const defaultOnNotesFailure = "abort"
+
+// onNotesFailureValues is the closed set of accepted on_notes_failure values. abort
+// (the default) fails loud; fallback opts into the commit-subject / fixed-string
+// fallback body. Any other non-empty value fails loud at load.
+var onNotesFailureValues = []string{"abort", "fallback"}
 
 // defaultMaxDiffLines is the out-of-the-box ceiling for the notes-engine
 // max_diff_lines guard: a post-exclusion diff larger than this is too costly to
@@ -115,10 +124,10 @@ type Config struct {
 // overrides the default prompt. The string-or-file detection and file reading live
 // in the notes engine, NOT here — config carries the raw values verbatim.
 //
-// OnNotesFailure is the normal-path notes-failure policy (default "abort"). config
-// carries the raw value verbatim; the notes engine's ResolveFailure interprets it as
-// MODE-ONLY ("" / "abort" → abort; "fallback" → commit-subject fallback; any other
-// value → abort for now, rejected by Phase 6's typed validation).
+// OnNotesFailure is the normal-path notes-failure policy (default "abort"). Load
+// constrains it to the closed set "abort" | "fallback" (an absent key defaults to
+// abort); the notes engine's ResolveFailure interprets the validated value as
+// MODE-ONLY ("abort" → abort; "fallback" → commit-subject / fixed-string fallback).
 //
 // Fallback is the dedicated fixed-fallback-body string (raw [release].fallback,
 // default ""). It is SHARED by both fallback paths — on_notes_failure=fallback and
@@ -153,11 +162,12 @@ type Release struct {
 // TOML hook value is either a single command string or an ordered array of command
 // strings, and HookValue accepts BOTH at the schema level. Its underlying type is
 // the empty interface, so the decoder surfaces a TOML string as a HookValue carrying
-// a string and a TOML array as a HookValue carrying a slice, both verbatim, while a
-// nil HookValue means the key was absent (no hook, a no-op). config does NOT
-// interpret or normalise the value — the hooks package coerces the carried shape to
-// ordered command strings when it runs the hook, and strict string-vs-array
-// validation is a separate Phase 6 task.
+// a string and a TOML array as a HookValue carrying a slice ([]any of strings), both
+// verbatim, while a nil HookValue means the key was absent (no hook, a no-op). config
+// does NOT normalise the value — the hooks package coerces the carried shape to
+// ordered command strings when it runs the hook — but Load DOES validate the shape:
+// anything else (integer, boolean, table, or an array carrying a non-string element)
+// fails loud naming the hook key.
 type HookValue any
 
 // Hooks carries the RAW parsed [release.hooks] values keyed by lifecycle point.
@@ -269,7 +279,18 @@ func Load(root string) (Config, error) {
 		if errors.As(err, &strict) {
 			return Config{}, translateStrict(strict)
 		}
+		var decErr *toml.DecodeError
+		if errors.As(err, &decErr) {
+			return Config{}, translateTypeError(decErr)
+		}
 		return Config{}, fmt.Errorf("parsing %s: %w", configFileName, err)
+	}
+
+	if err := validateHooks(shape.Release.Hooks); err != nil {
+		return Config{}, err
+	}
+	if err := validateOnNotesFailure(shape.Release.OnNotesFailure); err != nil {
+		return Config{}, err
 	}
 
 	return Config{
@@ -297,6 +318,37 @@ func translateStrict(strict *toml.StrictMissingError) error {
 	// Defensive: a StrictMissingError with no usable key path. Fall back to the
 	// library's own multi-line description so nothing is silently swallowed.
 	return fmt.Errorf("invalid %s: %s", configFileName, strict.String())
+}
+
+// typeErrorMessages maps a schema struct-field path (as it appears in the decoder's
+// *toml.DecodeError text, e.g. "fileShape.MaxDiffLines") to the actionable mint
+// message naming the TOML key and its expected type. The decoder reports a type
+// mismatch by Go field path with a nil Key(), so this lookup re-attaches the
+// user-facing key + type. Each entry covers one schema field whose TOML type is
+// constrained enough to misuse (the bool toggles, the integer guard, the string
+// array).
+var typeErrorMessages = map[string]string{
+	"fileShape.MaxDiffLines": "max_diff_lines must be an integer",
+	"fileShape.DiffExclude":  "diff_exclude must be an array of strings",
+	"releaseShape.Publish":   "publish must be a boolean",
+	"releaseShape.Changelog": "changelog must be a boolean",
+}
+
+// translateTypeError turns the decoder's *toml.DecodeError (a value that cannot
+// unmarshal into its schema Go type) into mint's actionable message naming the key
+// and expected type. The DecodeError carries no usable Key() for type mismatches, so
+// it identifies the offending field by the struct-field path embedded in the error
+// text and maps it via typeErrorMessages; a field not in the map (no constrained
+// type to misuse) falls back to the library's positioned description so nothing is
+// silently swallowed.
+func translateTypeError(decErr *toml.DecodeError) error {
+	text := decErr.Error()
+	for field, msg := range typeErrorMessages {
+		if strings.Contains(text, field+" ") {
+			return fmt.Errorf("invalid %s: %s", configFileName, msg)
+		}
+	}
+	return fmt.Errorf("invalid %s: %s", configFileName, decErr.String())
 }
 
 // unknownKeyMessage builds the human-readable description for one unknown key,
@@ -371,4 +423,67 @@ func boolOrDefault(v *bool, def bool) bool {
 		return *v
 	}
 	return def
+}
+
+// validateHooks fails loud if any [release.hooks] entry is neither a command string
+// nor an array of command strings. The HookValue underlying type is the empty
+// interface, so the decoder surfaces any TOML value verbatim — config rejects the
+// shapes the hooks runner cannot consume (integer, boolean, table, or an array
+// carrying a non-string element) here, naming the offending hook key.
+func validateHooks(hooks hooksShape) error {
+	entries := []struct {
+		key   string
+		value HookValue
+	}{
+		{"preflight", hooks.Preflight},
+		{"pre_tag", hooks.PreTag},
+		{"post_release", hooks.PostRelease},
+	}
+	for _, e := range entries {
+		if !isHookShape(e.value) {
+			return fmt.Errorf(
+				"invalid %s: release.hooks.%s must be a string or an array of strings",
+				configFileName, e.key,
+			)
+		}
+	}
+	return nil
+}
+
+// isHookShape reports whether v is a valid hook value: absent (nil), a single command
+// string, or an array of command strings (the decoder surfaces a TOML array into an
+// interface field as []any). An array is valid only if every element is a string.
+func isHookShape(v HookValue) bool {
+	switch val := v.(type) {
+	case nil, string:
+		return true
+	case []any:
+		for _, item := range val {
+			if _, ok := item.(string); !ok {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+// validateOnNotesFailure fails loud if on_notes_failure is a non-empty value outside
+// the closed set abort | fallback. An empty value is the absent/default case (resolved
+// to abort) and is accepted; this is a closed-set check on an already-correctly-typed
+// string, so the message lists the valid values.
+func validateOnNotesFailure(value string) error {
+	if value == "" {
+		return nil
+	}
+	for _, valid := range onNotesFailureValues {
+		if value == valid {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"invalid %s: on_notes_failure must be one of: %s",
+		configFileName, strings.Join(onNotesFailureValues, ", "),
+	)
 }
