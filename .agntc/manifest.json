@@ -1,8 +1,7 @@
 {
   "leeovery/agentic-workflows": {
-    "ref": "v0.5.8",
-    "commit": "b34b5bc5d9d0608f3ea1b72f994b19e38ef09cce",
-    "installedAt": "2026-06-10T14:35:09.737Z",
+    "ref": "v0.5.10",
+    "commit": "052d70b1b2cf59c2dbad66a50d40c1a2f9e58e2f",
     "agents": [
       "claude"
     ],
@@ -235,6 +234,7 @@
       ".claude/skills/workflow-migrate/scripts/migrations/041-split-analysis-cycle-counter.sh",
       ".claude/skills/workflow-migrate/scripts/migrations/042-allow-workflows-writes.sh",
       ".claude/skills/workflow-migrate/scripts/migrations/043-handled-umbrellas-and-restamp-caches.sh",
+      ".claude/skills/workflow-migrate/scripts/migrations/044-allow-workflows-mv.sh",
       ".claude/skills/workflow-planning-entry/",
       ".claude/skills/workflow-planning-entry/SKILL.md",
       ".claude/skills/workflow-planning-entry/references/",
@@ -464,7 +464,9 @@
       ".claude/agents/workflow-specification-review-gap-analysis.md",
       ".claude/agents/workflow-specification-review-input.md"
     ],
+    "type": "plugin",
     "cloneUrl": "https://github.com/leeovery/agentic-workflows.git",
+    "installedAt": "2026-06-11T20:09:40.235Z",
     "constraint": "^0.5.1"
   }
 }
