@@ -1241,7 +1241,7 @@ func buildDryRunPlan(cfg config.Config, tag, publishTarget string) presenter.Pla
 		steps = append(steps, presenter.PlanStep{Verb: "commit", Target: pretagArtifactSubject(tag)})
 	}
 	steps = append(steps,
-		presenter.PlanStep{Verb: "commit", Target: bookkeepingSubject(cfg.Release.CommitPrefix, tag)},
+		presenter.PlanStep{Verb: "commit", Target: record.BookkeepingSubject(cfg.Release.CommitPrefix, tag)},
 		presenter.PlanStep{Verb: "tag", Target: tag},
 		presenter.PlanStep{Verb: "push", Target: "--atomic → origin"},
 	)
@@ -1249,13 +1249,6 @@ func buildDryRunPlan(cfg config.Config, tag, publishTarget string) presenter.Pla
 		steps = append(steps, presenter.PlanStep{Verb: "publish", Target: publishTarget})
 	}
 	return presenter.Plan{Steps: steps}
-}
-
-// bookkeepingSubject renders the release-bookkeeping commit subject
-// (`{commitPrefix} Release {tag}`) so the dry-run plan can show the EXACT subject a
-// real run would commit. It mirrors record.CommitBookkeeping's own subject format.
-func bookkeepingSubject(commitPrefix, tag string) string {
-	return fmt.Sprintf("%s Release %s", commitPrefix, tag)
 }
 
 // errEditorUnavailable is the cause surfaced when the `e` choice is taken but no

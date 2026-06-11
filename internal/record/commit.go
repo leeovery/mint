@@ -77,11 +77,20 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 		return fmt.Errorf("staging %v: %w", paths, err)
 	}
 
-	subject := fmt.Sprintf("%s Release %s", commitPrefix, tag)
+	subject := BookkeepingSubject(commitPrefix, tag)
 	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
 		return fmt.Errorf("committing release bookkeeping %q: %w", subject, err)
 	}
 	return nil
+}
+
+// BookkeepingSubject is the SINGLE source of the release-bookkeeping commit subject
+// `{commitPrefix} Release {tag}` (e.g. the default 🌿 prefix yields
+// `🌿 Release v0.0.1`). The actual bookkeeping commit (CommitBookkeeping), the
+// dry-run plan, and the annotated-tag subject line all obtain the subject from here,
+// so a format change can never desync the plan or the tag from the real commit.
+func BookkeepingSubject(commitPrefix, tag string) string {
+	return fmt.Sprintf("%s Release %s", commitPrefix, tag)
 }
 
 // bookkeepingPaths assembles, in stage order, the paths the bookkeeping commit

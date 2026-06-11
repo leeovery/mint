@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"mint/internal/git"
+	"mint/internal/record"
 	"mint/internal/runner"
 )
 
@@ -122,6 +123,6 @@ func (rel *Releaser) atomicPush(ctx context.Context, tag string) error {
 // composeTagMessage builds the annotation message: subject
 // `{commitPrefix} Release {tag}`, a blank line, then the full notes body verbatim.
 func composeTagMessage(tag, commitPrefix, body string) string {
-	subject := fmt.Sprintf("%s Release %s", commitPrefix, tag)
+	subject := record.BookkeepingSubject(commitPrefix, tag)
 	return subject + "\n\n" + body
 }
