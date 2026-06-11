@@ -249,32 +249,32 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	t.Parallel()
 
 	// END-TO-END production path: a REAL exec.CommandContext deadline kill — not an
-	// injected DeadlineExceeded wrapper — must classify as a non-retried timeout. A
-	// genuine deadline makes exec.CommandContext SIGKILL the child, surfacing an
-	// *exec.ExitError; only because the runner now wraps ctx.Err() does classifyFatal
-	// see context.DeadlineExceeded and return ErrTimeout WITHOUT a second attempt.
-	// Without the fix the kill is misread as bad content and retried, doubling the
-	// worst-case latency to two full timeouts.
+	// injected DeadlineExceeded wrapper — must classify as a timeout. A genuine deadline
+	// makes exec.CommandContext SIGKILL the child, surfacing an *exec.ExitError; only
+	// because the runner now wraps ctx.Err() does classifyFatal see
+	// context.DeadlineExceeded and return ErrTimeout rather than misreading the kill as
+	// bad content. This asserts ONLY the timing-robust classification — that a real
+	// deadline kill maps to ErrTimeout and is distinguishable from ErrNotesFailure.
+	//
+	// The "exactly one invocation / no retry on timeout" behaviour is covered
+	// deterministically by TestTransport_Generate_DoesNotRetryTimeout (FakeRunner), so
+	// this test deliberately asserts no invocation count: doing so would require a
+	// subprocess side-effect (a marker write) that races process startup against the
+	// deadline and flakes under CPU contention.
 	//
 	// The transport applies its own per-attempt timeout via context.WithTimeout, so a
 	// tiny Config.Timeout against a command that sleeps far longer guarantees the
-	// deadline fires. The ai_command is whitespace-split (no shell quoting), so the
-	// per-attempt body is a standalone executable script — appending a byte on every
-	// invocation, then sleeping past the deadline. Counting the bytes proves the real
-	// subprocess ran exactly ONCE (no retry) — the equivalent of the FakeRunner
-	// invocation count for the real ExecRunner.
+	// deadline fires regardless of load. The ai_command is whitespace-split (no shell
+	// quoting), so the per-attempt body is a standalone executable script that simply
+	// sleeps well past the deadline.
 	dir := t.TempDir()
-	marker := filepath.Join(dir, "invocations")
 	script := filepath.Join(dir, "ai-command")
-	body := fmt.Sprintf("#!/bin/sh\nprintf x >> %q\nsleep 5\n", marker)
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
 		t.Fatalf("writing fake ai_command script: %v", err)
 	}
 
-	// 300ms is generous enough for the subprocess to reliably fork, open the marker,
-	// and write its byte before any deadline kill (a tighter budget races the SIGKILL
-	// against process startup and flakes), yet the 5s sleep guarantees the deadline
-	// still fires mid-sleep so the timeout path is genuinely exercised.
+	// The 5s sleep guarantees the 300ms deadline fires mid-sleep — independent of how
+	// quickly the subprocess starts — so the real timeout path is exercised on every run.
 	tr := ai.NewTransport(runner.NewExecRunner(), ai.Config{
 		AICommand: script,
 		Timeout:   300 * time.Millisecond,
@@ -286,14 +286,6 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	}
 	if errors.Is(err, ai.ErrNotesFailure) {
 		t.Errorf("a real timeout must be distinguishable from the bad-content ErrNotesFailure")
-	}
-
-	got, readErr := os.ReadFile(marker)
-	if readErr != nil {
-		t.Fatalf("reading invocation marker: %v", readErr)
-	}
-	if n := len(got); n != 1 {
-		t.Errorf("subprocess ran %d time(s), want 1 (a timeout is not retried)", n)
 	}
 }
 
