@@ -19,10 +19,10 @@ import (
 // fallback when neither is set. These cases set process env via t.Setenv, which
 // forbids t.Parallel, so they run serially as ordinary subtests.
 func TestResolveEditor_PrefersVisualThenEditorThenVi(t *testing.T) {
-	// An empty string and an unset variable are equivalent for ResolveEditor (it
-	// checks for non-empty), so every case sets both vars explicitly — "" stands in
-	// for "unset" and keeps these t.Setenv subtests serial (t.Setenv forbids
-	// t.Parallel) and free of process-global leakage.
+	// An empty, blank, or unset variable are all equivalent for ResolveEditor (it
+	// treats a value that is empty-or-blank after trimming as unset), so every case
+	// sets both vars explicitly — "" stands in for "unset" and keeps these t.Setenv
+	// subtests serial (t.Setenv forbids t.Parallel) and free of process-global leakage.
 	tests := []struct {
 		name   string
 		visual string

@@ -2,11 +2,12 @@ package main
 
 import "testing"
 
-// TestParseRegenerateFlags covers the Phase 5 `mint release regenerate` flag
-// surface: the optional <version> positional, the --reuse/--fresh source axis
-// (default fresh), the single-value --target axis, and the --all / -y booleans.
-// This is the parse skeleton only — the semantic axis-contract validation
-// (reuse⇒release-only, changelog-disabled, fresh -y needs target) is task 5-2.
+// TestParseRegenerateFlags covers the `mint release regenerate` flag surface:
+// the optional <version> positional, the --reuse/--fresh source axis (default
+// fresh), the single-value --target axis, the --all / -y booleans, and the
+// global --plain presentation flag. This is the parse surface only — the
+// semantic axis-contract validation (reuse⇒release-only, changelog-disabled,
+// fresh -y needs target) is task 5-2.
 func TestParseRegenerateFlags(t *testing.T) {
 	t.Parallel()
 
