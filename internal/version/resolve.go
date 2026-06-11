@@ -3,6 +3,7 @@ package version
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"mint/internal/runner"
 )
@@ -77,6 +78,45 @@ func ResolveRegenerateTarget(ctx context.Context, r runner.CommandRunner, prefix
 	}
 
 	return Resolution{Tag: canonical, PreviousTag: predecessor.String(prefix)}, nil
+}
+
+// ResolveAllRegenerateTargets enumerates EVERY matching tag as a Resolution, ordered
+// OLDEST → NEWEST — the version set a regenerate `--all` batch backfills. It REUSES
+// the single-version machinery throughout: the same `git tag --list` read path, the
+// same prefixed grammar (matchingVersions), and the same numeric sort (GreaterThan),
+// so neither a second parser nor a second sorter exists to drift from the single
+// resolve.
+//
+// Each version is resolved identically to ResolveRegenerateTarget: the oldest matching
+// version has no predecessor and is the FirstRelease; every later version carries the
+// numerically-immediately-prior matching tag as its fresh diff base. Ordering oldest →
+// newest lets the batch rebuild CHANGELOG.md in natural order (task 5-13).
+//
+// A repo with no matching tags yields an empty slice (the batch processes nothing),
+// not an error; a `git tag --list` failure is surfaced.
+func ResolveAllRegenerateTargets(ctx context.Context, r runner.CommandRunner, prefix string) ([]Resolution, error) {
+	res, err := r.Run(ctx, "git", "tag", "--list")
+	if err != nil {
+		return nil, fmt.Errorf("listing git tags: %w", err)
+	}
+
+	matching := matchingVersions(res.Stdout, prefix)
+	sort.Slice(matching, func(i, j int) bool {
+		return matching[j].GreaterThan(matching[i])
+	})
+
+	resolutions := make([]Resolution, 0, len(matching))
+	for i, v := range matching {
+		if i == 0 {
+			resolutions = append(resolutions, Resolution{Tag: v.String(prefix), FirstRelease: true})
+			continue
+		}
+		resolutions = append(resolutions, Resolution{
+			Tag:         v.String(prefix),
+			PreviousTag: matching[i-1].String(prefix),
+		})
+	}
+	return resolutions, nil
 }
 
 // matchingVersions parses tagList (newline-separated tag names) against the
