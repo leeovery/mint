@@ -28,8 +28,8 @@ import (
 // freshBodyOrDiffTooLarge returns a ProduceBody that yields the version's fresh body
 // EXCEPT for failTag, where it returns a wrapped notes.ErrDiffTooLarge — the
 // per-version notes failure the batch must SKIP rather than abort on.
-func freshBodyOrDiffTooLarge(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution) (string, error) {
-	return func(_ context.Context, _ engine.RegenerateSource, res version.Resolution) (string, error) {
+func freshBodyOrDiffTooLarge(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
+	return func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string) (string, error) {
 		if res.Tag == failTag {
 			return "", fmt.Errorf("%w: diff exceeds max_diff_lines (9000 > 800)", notes.ErrDiffTooLarge)
 		}

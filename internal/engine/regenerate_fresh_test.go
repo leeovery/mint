@@ -213,7 +213,7 @@ func TestRegenerateFreshBody_PrependsChangeMapComputedAfterExclusion(t *testing.
 		t.Fatalf("transport called %d times, want 1", tr.calls())
 	}
 	prompt := tr.prompts[0]
-	mapIdx := indexOfSub(prompt, "New package: auth/")
+	mapIdx := indexOfSub(prompt, "New package/dir: auth/")
 	diffIdx := indexOfSub(prompt, "diff --git a/auth/login.go")
 	if mapIdx < 0 || diffIdx < 0 {
 		t.Fatalf("prompt missing Change Map or diff; got:\n%s", prompt)

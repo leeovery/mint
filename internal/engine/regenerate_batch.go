@@ -69,7 +69,11 @@ type BatchRegenerateRequest struct {
 	// ProduceBody yields one version's notes body for the resolved source. It is
 	// injected so the loop stays testable without a real AI transport / tag read;
 	// production wires the 5-5 reuse read or the 5-6 fresh re-diff+AI per version.
-	ProduceBody func(context.Context, RegenerateSource, version.Resolution) (string, error)
+	// reuseBody threads the loop's pre-read annotation body (captured by the reuse
+	// skip check) into the producer so a reuse source consumes it instead of reading
+	// the tag a SECOND time; it is empty for a fresh source and for the
+	// single-version delegation (which never pre-reads, so the producer reads).
+	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, reuseBody string) (string, error)
 	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
 	// gate's `r` choice consults, bound to that version's fresh AI range. Production
 	// returns nil for a reuse source (no review gate) and binds
@@ -247,15 +251,19 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 
 	// reuse --all against a body-less tag is a per-version SKIP (not the single-mode
 	// fail-loud error): read the annotation body up front and skip-and-report when the
-	// tag carries none, so an empty provider release body is never written.
+	// tag carries none, so an empty provider release body is never written. The body
+	// this check read is threaded into ProduceBody below so the reuse producer
+	// consumes it rather than reading the tag a second time — ONE read per tag.
+	var reuseBody string
 	if req.Source == RegenerateSourceReuse {
-		_, hasBody, err := ReadTagBody(ctx, deps.Runner, res.Tag)
+		body, hasBody, err := ReadTagBody(ctx, deps.Runner, res.Tag)
 		if err != nil {
 			return RegeneratedVersion{}, nil, surface(p, "notes", err)
 		}
 		if !hasBody {
 			return reportSkip(p, res.Tag, reasonNoAnnotationBody)
 		}
+		reuseBody = body
 	}
 
 	// Produce the version's body for the resolved source BEFORE the gate — the
@@ -267,7 +275,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// (production failure) closes the stage with no StageSucceeded — the skip Warn
 	// narrates it instead.
 	notesDone := emitBlockingStageStarted(p, "notes")
-	body, err := req.ProduceBody(ctx, req.Source, res)
+	body, err := req.ProduceBody(ctx, req.Source, res, reuseBody)
 	if err != nil {
 		return reportSkip(p, res.Tag, classifyNotesFailure(err))
 	}
@@ -367,7 +375,10 @@ func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRe
 		return body, nil
 	}
 	return gateRegenerate(ctx, deps, RegenerateWriteRequest{
-		Source:      req.Source,
+		Source: req.Source,
+		// Target is inert here today — gateRegenerate keys off Source only — but is
+		// set so the inner request faithfully mirrors the batch's resolved target.
+		Target:      req.Target,
 		Tag:         "",
 		VersionKey:  versionKey,
 		Body:        body,

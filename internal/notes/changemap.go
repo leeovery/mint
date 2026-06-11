@@ -195,7 +195,7 @@ func renderNovelty(changes []pathChange) string {
 	var lines []string
 
 	for _, dir := range newDirectories(changes) {
-		lines = append(lines, "New package: "+dir)
+		lines = append(lines, "New package/dir: "+dir)
 	}
 	for _, c := range changes {
 		switch c.Status {

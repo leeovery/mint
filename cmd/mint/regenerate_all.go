@@ -93,9 +93,15 @@ func resolveBatchAxes(p presenter.Presenter, req regenerateRequest, changelogEna
 // for the resolved source. This is the single home of the body reuse/fresh dispatch — the
 // batch path threads each version's Resolution through it, and newRegenerateBodyProducer
 // binds the single-version's fixed Resolution and delegates here.
-func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string) func(context.Context, engine.RegenerateSource, version.Resolution) (string, error) {
-	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution) (string, error) {
+func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
+	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution, reuseBody string) (string, error) {
 		if source == engine.RegenerateSourceReuse {
+			// The batch loop pre-reads the annotation body for its skip check and
+			// threads it through, so each tag is read ONCE; the single-version
+			// delegation never pre-reads (empty reuseBody) and reads here instead.
+			if reuseBody != "" {
+				return reuseBody, nil
+			}
 			return engine.ReadReuseBody(ctx, r, res.Tag)
 		}
 		return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res)

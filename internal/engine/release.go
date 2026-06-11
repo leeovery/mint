@@ -515,10 +515,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// ONE folded bookkeeping commit stages the changelog and the version file together —
 	// the version file is never given its own separate commit. Kept DISTINCT from the
 	// pre_tag artifact commit (3-3), which precedes it. It commits IFF something net-
-	// changed (the changelog and/or the version file); that same condition tells the
-	// spine whether HEAD just moved, so made.Commits is bumped exactly when a commit
-	// landed — tracked, not inferred by probing git.
-	bookkeepingCommitted := bookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
+	// changed (the changelog and/or the version file); the SHARED record predicate —
+	// the same rule CommitBookkeeping's no-op branch consumes — tells the spine whether
+	// HEAD just moved, so made.Commits is bumped exactly when a commit landed —
+	// tracked, not inferred by probing git.
+	bookkeepingCommitted := record.BookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
 	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
@@ -783,6 +784,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 //     warn (Lookup surfaces it honestly; the degrade decision lives here), and a corrupt
 //     body is never shipped because the AI regenerates fresh.
 func realRunReuse(deps ReleaseDeps, root, versionKey string, opts ReleaseOptions) notes.ReuseFunc {
+	// Guard: a nil NoteCache (no cache wired) yields a nil hook — always generate.
 	if opts.DryRun || deps.NoteCache == nil {
 		return nil
 	}
@@ -952,15 +954,6 @@ func RemoteURL(ctx context.Context, r runner.CommandRunner) string {
 		return ""
 	}
 	return strings.TrimSpace(res.Stdout)
-}
-
-// bookkeepingWillCommit reports whether record.CommitBookkeeping will make a commit
-// for the given net-change signals — exactly when the changelog and/or the configured
-// version file changed. It mirrors CommitBookkeeping's own no-op rule so the spine can
-// fold the resulting commit into MadeState the moment it lands, WITHOUT re-probing git:
-// the spine tracks what it made rather than inferring it from a HEAD comparison.
-func bookkeepingWillCommit(versionFile string, changelogChanged, versionChanged bool) bool {
-	return changelogChanged || (versionChanged && versionFile != "")
 }
 
 // surfaceAndUnwind handles a post-mutation, pre-PONR STAGE failure: it surfaces the

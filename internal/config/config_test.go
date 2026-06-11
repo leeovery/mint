@@ -710,8 +710,46 @@ func TestLoad_TopLevelHooksTable_RejectedWithNestGuidance(t *testing.T) {
 	if err == nil {
 		t.Fatal("Load returned nil error for top-level [hooks] table, want non-nil")
 	}
+	if !strings.Contains(err.Error(), "not valid at the top level") {
+		t.Errorf("error = %q, want the targeted top-level [hooks] message, not the generic unknown-key one", err.Error())
+	}
 	if !strings.Contains(err.Error(), "[release.hooks]") {
 		t.Errorf("error = %q, want it to guide the user to nest under [release.hooks]", err.Error())
+	}
+}
+
+func TestLoad_TypeMismatch_MappedFriendlyMessages(t *testing.T) {
+	t.Parallel()
+
+	// Every constrained key's type mismatch must surface its mapped, actionable
+	// message. This guards against go-toml/v2 changing its DecodeError field-path
+	// text: if a DecodeError matches NONE of the mapped field paths, translation
+	// silently degrades to the raw library description and this test fails loudly.
+	cases := []struct {
+		name string
+		toml string
+		want string
+	}{
+		{"max_diff_lines not an integer", "max_diff_lines = \"lots\"\n", "max_diff_lines must be an integer"},
+		{"diff_exclude not an array", "diff_exclude = \"CHANGELOG.md\"\n", "diff_exclude must be an array of strings"},
+		{"publish not a boolean", "[release]\npublish = \"yes\"\n", "publish must be a boolean"},
+		{"changelog not a boolean", "[release]\nchangelog = \"no\"\n", "changelog must be a boolean"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, tc.toml)
+
+			_, err := config.Load(dir)
+			if err == nil {
+				t.Fatalf("Load returned nil error for %s, want non-nil", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want the mapped message %q (the decoder's field-path text no longer matches the type-message map)", err.Error(), tc.want)
+			}
+		})
 	}
 }
 

@@ -214,7 +214,7 @@ func TestGenerator_GenerateFromRange_AssemblesRangePrependsChangeMapRunsAI(t *te
 	}
 
 	prompt := transport.lastPrompt(t)
-	mapIdx := indexOf(prompt, "New package: auth/")
+	mapIdx := indexOf(prompt, "New package/dir: auth/")
 	diffIdx := indexOf(prompt, "diff --git a/auth/login.go")
 	if mapIdx < 0 {
 		t.Fatalf("prompt missing the Change Map; got:\n%s", prompt)

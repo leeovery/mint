@@ -67,11 +67,13 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string) (
 // This bookkeeping commit is kept DISTINCT from the pre_tag hook-artifact commit
 // (CommitDirtyTree), which precedes it with its own chore subject.
 func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool) error {
-	paths := bookkeepingPaths(versionFile, changelogChanged, versionChanged)
-	if len(paths) == 0 {
+	// The no-op branch consumes the SAME shared predicate the engine spine consults
+	// to fold the resulting commit into its tracked state, so the two can never desync.
+	if !BookkeepingWillCommit(versionFile, changelogChanged, versionChanged) {
 		return nil
 	}
 
+	paths := bookkeepingPaths(versionFile, changelogChanged, versionChanged)
 	addArgs := append([]string{"-C", dir, "add"}, paths...)
 	if _, err := m.Mutate(ctx, nil, "git", addArgs...); err != nil {
 		return fmt.Errorf("staging %v: %w", paths, err)
@@ -91,6 +93,17 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 // so a format change can never desync the plan or the tag from the real commit.
 func BookkeepingSubject(commitPrefix, tag string) string {
 	return fmt.Sprintf("%s Release %s", commitPrefix, tag)
+}
+
+// BookkeepingWillCommit is the SINGLE commit-or-not predicate for the bookkeeping
+// commit: it reports whether CommitBookkeeping will make a commit for the given
+// net-change signals — exactly when bookkeepingPaths yields something to stage (the
+// changelog and/or a configured version file changed). CommitBookkeeping's own no-op
+// branch consumes it, and the engine spine consults it to fold the resulting commit
+// into its MadeState the moment it lands WITHOUT re-probing git — so the spine's
+// commit tracking can never desync from the commit rule.
+func BookkeepingWillCommit(versionFile string, changelogChanged, versionChanged bool) bool {
+	return len(bookkeepingPaths(versionFile, changelogChanged, versionChanged)) > 0
 }
 
 // bookkeepingPaths assembles, in stage order, the paths the bookkeeping commit

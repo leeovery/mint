@@ -44,8 +44,8 @@ func threeVersions() []version.Resolution {
 
 // perVersionBody returns a deterministic body keyed off the version tag and source so
 // a test can assert WHICH body flowed downstream per version without a real AI/tag read.
-func perVersionBody() func(context.Context, engine.RegenerateSource, version.Resolution) (string, error) {
-	return func(_ context.Context, src engine.RegenerateSource, res version.Resolution) (string, error) {
+func perVersionBody() func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
+	return func(_ context.Context, src engine.RegenerateSource, res version.Resolution, _ string) (string, error) {
 		prefix := "fresh"
 		if src == engine.RegenerateSourceReuse {
 			prefix = "reuse"
@@ -201,6 +201,51 @@ func TestRegenerateAll_GeneratesNotesPerVersion(t *testing.T) {
 		if want := "## reuse " + tag + "\n"; bodies[i].Body != want {
 			t.Errorf("collected[%d].Body = %q, want %q", i, bodies[i].Body, want)
 		}
+	}
+}
+
+// TestRegenerateAll_Reuse_ThreadsPreReadBodyIntoProducer proves the loop threads the
+// skip check's pre-read annotation body into ProduceBody — so the reuse producer can
+// consume it instead of re-reading the tag — and the git seam sees exactly ONE
+// for-each-ref read per version.
+func TestRegenerateAll_Reuse_ThreadsPreReadBodyIntoProducer(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	seedReuseGit(f)
+	pub := newFakePublisher()
+	pub.seedExists(batchV1Tag, true, nil)
+	pub.seedExists(batchV2Tag, true, nil)
+	pub.seedExists(batchV3Tag, true, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	var preReads []string
+	req := batchReq(engine.RegenerateSourceReuse, threeVersions(), true)
+	req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, reuseBody string) (string, error) {
+		preReads = append(preReads, reuseBody)
+		return reuseBody, nil
+	}
+
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
+	}
+
+	// Every producer call received the skip check's pre-read body verbatim.
+	want := []string{"## reuse annotation body\n", "## reuse annotation body\n", "## reuse annotation body\n"}
+	if !slices.Equal(preReads, want) {
+		t.Errorf("ProduceBody reuseBody = %v, want the pre-read annotation body per version %v", preReads, want)
+	}
+
+	// ONE annotation read per version: the producer consumed the threaded body, so
+	// the batch never reads a tag twice.
+	var reads int
+	for _, inv := range f.Invocations() {
+		if inv.Name == "git" && len(inv.Args) > 0 && inv.Args[0] == "for-each-ref" {
+			reads++
+		}
+	}
+	if reads != 3 {
+		t.Errorf("for-each-ref reads = %d, want 3 (exactly one annotation read per version)", reads)
 	}
 }
 

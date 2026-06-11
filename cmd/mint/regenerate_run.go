@@ -63,7 +63,9 @@ func regenerateTargetAxis(target regenerateTarget) engine.OptionalRegenerateTarg
 func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(context.Context, engine.RegenerateSource) (string, error) {
 	produce := newBatchBodyProducer(r, cfg, root)
 	return func(ctx context.Context, source engine.RegenerateSource) (string, error) {
-		return produce(ctx, source, res)
+		// The single-version path has no batch skip check, so it never pre-reads the
+		// annotation body — the producer's reuse branch performs the (single) read.
+		return produce(ctx, source, res, "")
 	}
 }
 

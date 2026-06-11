@@ -134,8 +134,9 @@ func TestResolveBatchAxes_Yes_StillPromptsEveryAxis(t *testing.T) {
 
 // TestNewBatchBodyProducer_Reuse proves the batch body producer reads the tag
 // annotation body verbatim for the reuse source — the per-version body the batch
-// dispatches and collects. The reuse read is git-only, so it is exercisable with the
-// FakeRunner without an AI transport.
+// dispatches and collects — when no pre-read body is threaded (the single-version
+// delegation), issuing exactly ONE read. The reuse read is git-only, so it is
+// exercisable with the FakeRunner without an AI transport.
 func TestNewBatchBodyProducer_Reuse(t *testing.T) {
 	t.Parallel()
 
@@ -143,12 +144,36 @@ func TestNewBatchBodyProducer_Reuse(t *testing.T) {
 	f.Seed("git", runner.Result{Stdout: "## reuse body\n"}, nil)
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir())
-	body, err := produce(t.Context(), engine.RegenerateSourceReuse, version.Resolution{Tag: "v1.0.0"})
+	body, err := produce(t.Context(), engine.RegenerateSourceReuse, version.Resolution{Tag: "v1.0.0"}, "")
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
 	if body != "## reuse body\n" {
 		t.Errorf("reuse body = %q, want the verbatim tag annotation body", body)
+	}
+	if got := len(f.Invocations()); got != 1 {
+		t.Errorf("git invocations = %d, want exactly 1 annotation read", got)
+	}
+}
+
+// TestNewBatchBodyProducer_Reuse_ConsumesPreReadBody proves the producer consumes the
+// batch loop's pre-read annotation body for the reuse source WITHOUT reading the tag
+// again — each tag is read once, by the loop's skip check.
+func TestNewBatchBodyProducer_Reuse_ConsumesPreReadBody(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+
+	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir())
+	body, err := produce(t.Context(), engine.RegenerateSourceReuse, version.Resolution{Tag: "v1.0.0"}, "## pre-read body\n")
+	if err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+	if body != "## pre-read body\n" {
+		t.Errorf("reuse body = %q, want the threaded pre-read body verbatim", body)
+	}
+	if got := len(f.Invocations()); got != 0 {
+		t.Errorf("git invocations = %d, want 0 (the pre-read body must not be re-read)", got)
 	}
 }
 

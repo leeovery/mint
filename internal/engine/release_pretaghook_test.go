@@ -292,9 +292,8 @@ func TestRelease_PreTagHook_NonZeroAbortsBeforeTag(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
-	// After the startingHEAD capture the unwind re-probes HEAD; the hook made no
-	// commit, so HEAD is unchanged (still startingSHA) and there is nothing to reset.
-	f.SeedSequence("git", ScriptedOut(startingSHA))                       // unwind: rev-parse HEAD (unchanged)
+	// The unwind drives off the tracked MadeState (it never re-probes HEAD); the
+	// hook made no commit, so made is zero and there is nothing to reset.
 	f.Seed("sh", runner.Result{ExitCode: 1}, errors.New("exit status 1")) // hook exits non-zero
 	rec := &presentertest.RecordingPresenter{}
 
