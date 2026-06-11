@@ -15,8 +15,10 @@ import (
 
 	"time"
 
+	"mint/internal/config"
 	"mint/internal/engine"
 	"mint/internal/git"
+	"mint/internal/gitrepo"
 	"mint/internal/notescache"
 	"mint/internal/presenter"
 	"mint/internal/release"
@@ -54,14 +56,41 @@ func run(args []string) int {
 }
 
 // runRegenerate parses and validates the `mint release regenerate` flag surface.
-// It performs NO mutation or network call — the heal/backfill execution is wired
-// in a later phase, so for now a successful parse reports that the command is not
-// yet executable rather than silently doing nothing.
+// After the structural parse it loads config (to read the changelog toggle) and
+// runs the semantic source × target axis-contract validation: --reuse is
+// release-only and implies --target release, a changelog/both target is rejected
+// when the changelog is disabled, and a fresh -y run needs an explicit --target.
+// It performs NO mutation or network call beyond reading the repo root and
+// config — the heal/backfill execution is wired in a later phase, so for now a
+// successful parse + validation reports that the command is not yet executable
+// rather than silently doing nothing.
 func runRegenerate(rest []string) int {
-	if _, err := parseRegenerateFlags(rest); err != nil {
+	req, err := parseRegenerateFlags(rest)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
 	}
+
+	// The changelog-disabled axis check needs the loaded config; resolve the repo
+	// root and load it the same way the forward release pipeline does (read-only —
+	// no mutation, no network).
+	r := runner.NewExecRunner()
+	root, err := gitrepo.ResolveRoot(context.Background(), r)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+	cfg, err := config.Load(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+
+	if _, err := validateRegenerateRequest(req, cfg.Release.Changelog); err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+
 	fmt.Fprintln(os.Stderr, "mint: `release regenerate` is not yet implemented")
 	return usageExitCode
 }
