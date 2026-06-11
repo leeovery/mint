@@ -243,8 +243,9 @@ func TestRegenerateAllValidated_ConfigErrorAbortsUpFront(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	// changelog disabled + a changelog-touching target is a static config fact.
-	err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub,
-		reuseBatchReq(threeVersions(), true), engine.RegenerateTargetBoth, false)
+	configReq := reuseBatchReq(threeVersions(), true)
+	configReq.Target = engine.RegenerateTargetBoth
+	err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, t.TempDir(), configReq, false)
 
 	assertAbortNonZero(t, err)
 	if len(pub.dispatched) != 0 {
@@ -275,8 +276,9 @@ func TestRegenerateAllValidated_ValidConfigRunsBatch(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	// reuse forces a release-only target, which is config-valid even with changelog off.
-	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub,
-		reuseBatchReq(threeVersions(), true), engine.RegenerateTargetRelease, false); err != nil {
+	validReq := reuseBatchReq(threeVersions(), true)
+	validReq.Target = engine.RegenerateTargetRelease
+	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, t.TempDir(), validReq, false); err != nil {
 		t.Fatalf("a config-valid target must run the batch; got error: %v", err)
 	}
 

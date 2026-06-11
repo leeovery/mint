@@ -54,6 +54,11 @@ type BatchRegenerateRequest struct {
 	// Yes is the -y opt-out: when true the per-version review gate/confirm is SKIPPED
 	// entirely (the engine does not even prompt) so the batch runs fully unattended.
 	Yes bool
+	// Target selects which surface(s) the batch writes: a release/both target dispatches
+	// the per-version provider release in the loop; a changelog/both target drives the
+	// end-of-batch whole-file CHANGELOG rebuild. The zero value (RegenerateTargetRelease)
+	// writes the provider only — the batch's historical default.
+	Target RegenerateTarget
 	// ProduceBody yields one version's notes body for the resolved source. It is
 	// injected so the loop stays testable without a real AI transport / tag read;
 	// production wires the 5-5 reuse read or the 5-6 fresh re-diff+AI per version.
@@ -74,22 +79,35 @@ type RegeneratedVersion struct {
 }
 
 // RegenerateAllValidated is the batch `--all` ENTRY POINT: it runs the static
-// CONFIG-level check UP FRONT — before any version is touched — and only then runs the
-// per-version loop. A config-level fact (a changelog/both target with the changelog
-// DISABLED in config) is NOT a per-version condition, so it aborts the WHOLE batch
-// immediately rather than being skipped per version; the abort surfaces through the
-// presenter as a single stage failure and carries a non-zero exit. A valid config
-// passes straight through to RegenerateAll.
+// CONFIG-level check UP FRONT — before any version is touched — then runs the
+// per-version loop, and finally (for a changelog/both target) performs the END-of-batch
+// whole-file CHANGELOG rebuild + single commit + push. A config-level fact (a
+// changelog/both target with the changelog DISABLED in config) is NOT a per-version
+// condition, so it aborts the WHOLE batch immediately rather than being skipped per
+// version; the abort surfaces through the presenter as a single stage failure and
+// carries a non-zero exit.
+//
+// root is the repo root (the changelog lives at root/CHANGELOG.md). The target is read
+// from req.Target: a release-only target makes NO changelog commit (the loop wrote the
+// provider releases and there is nothing more to do); a changelog/both target drives
+// the whole-file rebuild AFTER the loop so the file is regenerated from every real
+// version's section in ONE commit + push at the end (not one per version).
 //
 // This is the batch counterpart of the cmd-layer validateTargetAgainstChangelog (task
 // 5-2): the same static rule, enforced at the engine boundary so the batch aborts
 // before it starts rather than emitting N per-version skips for one config mistake.
-func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, req BatchRegenerateRequest, target RegenerateTarget, changelogEnabled bool) error {
-	if err := checkBatchTargetConfig(target, changelogEnabled); err != nil {
+func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, changelogEnabled bool) error {
+	if err := checkBatchTargetConfig(req.Target, changelogEnabled); err != nil {
 		return surface(deps.Presenter, "config", err)
 	}
-	_, err := RegenerateAll(ctx, deps, publisher, req)
-	return err
+	collected, err := RegenerateAll(ctx, deps, publisher, req)
+	if err != nil {
+		return err
+	}
+	if !req.Target.writesChangelog() {
+		return nil
+	}
+	return rebuildBatchChangelog(ctx, deps, root, req, collected)
 }
 
 // checkBatchTargetConfig rejects a changelog-touching target when the changelog is
@@ -217,11 +235,14 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 		return RegeneratedVersion{}, nil, err
 	}
 
-	// Dispatch the RELEASE surface for this version: the 5-7 probe resolves
-	// create-vs-update per version, so the batch transparently mixes updates and
-	// creates. The changelog (whole-file rebuild + single end commit) is task 5-13.
-	if err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, reviewed); err != nil {
-		return RegeneratedVersion{}, nil, surface(p, "publish", err)
+	// Dispatch the RELEASE surface for this version when the target writes the provider
+	// (release/both): the 5-7 probe resolves create-vs-update per version, so the batch
+	// transparently mixes updates and creates. A changelog-only target skips the provider
+	// entirely — its surface is the end-of-batch whole-file CHANGELOG rebuild (task 5-13).
+	if req.Target.writesProvider() {
+		if err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, reviewed); err != nil {
+			return RegeneratedVersion{}, nil, surface(p, "publish", err)
+		}
 	}
 
 	return RegeneratedVersion{Resolution: res, Body: reviewed}, nil, nil

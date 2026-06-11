@@ -134,16 +134,10 @@ type RegenerateRunRequest struct {
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
 
-	// Axis 1 — resolve the source: a supplied flag skips the question; otherwise ask.
-	source, err := resolveSource(p, req.Source)
-	if err != nil {
-		return err
-	}
-
-	// Axis 2 — resolve the target: reuse FORCES release (no question); a supplied flag
-	// skips the question; otherwise ask the release/changelog/both target prompt. Both
-	// questions are asked back-to-back (source then target) before any slow work.
-	target, err := resolveTarget(p, source, req.Target, req.ChangelogEnabled)
+	// Resolve both axes — source then target — via the shared resolver: a supplied flag
+	// skips its question, an unset axis is asked, and a reuse source FORCES release (no
+	// target question). Both questions are asked back-to-back before any slow work.
+	source, target, err := ResolveRegenerateAxes(p, req.Source, req.Target, req.ChangelogEnabled)
 	if err != nil {
 		return err
 	}
@@ -178,6 +172,27 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 // regenerateAction is the start-of-run verb word the header renders for a regenerate
 // run, the regenerate counterpart of the forward releaseAction.
 const regenerateAction = "regenerating"
+
+// ResolveRegenerateAxes resolves the source-then-target axes interactively, the SHARED
+// resolution RegenerateRun's own internals (resolveSource/resolveTarget) perform — exposed
+// so the --all batch path can resolve the two axes ONCE up front with the SAME gate idiom
+// instead of silently defaulting them. It asks SourceGate when the source is unset, then —
+// honouring the reuse⇒release axis contract — asks TargetGate when the target is unset and
+// the source is fresh; a reuse source (by flag or chosen at the source prompt) FORCES
+// release and never asks the target question. -y is handled exactly as elsewhere: the
+// engine always calls Prompt and the presenter renders the skip+echo and returns the gate
+// default. It returns the resolved enums or a surfaced gate abort.
+func ResolveRegenerateAxes(p presenter.Presenter, source OptionalRegenerateSource, target OptionalRegenerateTarget, changelogEnabled bool) (RegenerateSource, RegenerateTarget, error) {
+	resolvedSource, err := resolveSource(p, source)
+	if err != nil {
+		return 0, 0, err
+	}
+	resolvedTarget, err := resolveTarget(p, resolvedSource, target, changelogEnabled)
+	if err != nil {
+		return 0, 0, err
+	}
+	return resolvedSource, resolvedTarget, nil
+}
 
 // resolveSource returns the flag-supplied source unchanged, or asks the source prompt
 // (SourceGate, reuse/fresh) when none was supplied. The engine ALWAYS calls Prompt for

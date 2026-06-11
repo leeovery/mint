@@ -59,15 +59,14 @@ func run(args []string) int {
 	}
 }
 
-// runRegenerate parses and validates the `mint release regenerate` flag surface.
-// After the structural parse it loads config (to read the changelog toggle) and
-// runs the semantic source × target axis-contract validation: --reuse is
-// release-only and implies --target release, a changelog/both target is rejected
-// when the changelog is disabled, and a fresh -y run needs an explicit --target.
-// It performs NO mutation or network call beyond reading the repo root and
-// config — the heal/backfill execution is wired in a later phase, so for now a
-// successful parse + validation reports that the command is not yet executable
-// rather than silently doing nothing.
+// runRegenerate parses and validates the `mint release regenerate` flag surface,
+// runs the applicable preflight subset, then dispatches to the single-version
+// interactive run or the --all batch backfill. After the structural parse it loads
+// config (to read the changelog toggle) and runs the semantic source × target
+// axis-contract validation: --reuse is release-only and implies --target release, a
+// changelog/both target is rejected when the changelog is disabled, and a fresh -y
+// run needs an explicit --target. The only mutation/network beyond reading the repo
+// root + config happens inside the dispatched run.
 func runRegenerate(rest []string) int {
 	req, err := parseRegenerateFlags(rest)
 	if err != nil {
@@ -120,11 +119,10 @@ func runRegenerate(rest []string) int {
 		return exitCode(err)
 	}
 
-	// The batch --all backfill is a separate task; only the single-version interactive
-	// run is wired here.
+	// The --all batch backfill (every version, oldest → newest) and the single-version
+	// interactive run share the resolved deps/runner/config/root; dispatch on --all.
 	if validated.All {
-		fmt.Fprintln(os.Stderr, "mint: `release regenerate --all` is not yet implemented")
-		return usageExitCode
+		return runRegenerateAll(deps, r, cfg, root, validated)
 	}
 
 	return runRegenerateSingle(deps, r, cfg, root, validated)
