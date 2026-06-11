@@ -27,7 +27,7 @@ import (
 // surface(s) to rewrite unattended. A supplied flag skips its question; a reuse source
 // FORCES release without asking (the 5-2 axis contract). -y is threaded so the per-version
 // review gates skip; the axis prompts themselves skip+echo inside the presenter under -y.
-func runRegenerateAll(deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root string, req regenerateRequest) int {
+func runRegenerateAll(deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest) int {
 	ctx := context.Background()
 
 	// Resolve both axes ONCE before the batch, via the shared interactive resolver the
@@ -49,13 +49,18 @@ func runRegenerateAll(deps engine.ReleaseDeps, r runner.CommandRunner, cfg confi
 	publisher, _ := publish.ResolvePublisher(engine.RemoteURL(ctx, r), cfg.Release.Provider, r)
 
 	batch := engine.BatchRegenerateRequest{
-		Source:      source,
-		Versions:    versions,
-		Project:     filepath.Base(root),
-		TagPrefix:   cfg.Release.TagPrefix,
-		Yes:         req.Yes,
-		Target:      target,
-		ProduceBody: newBatchBodyProducer(r, cfg, root),
+		Source:    source,
+		Versions:  versions,
+		Project:   filepath.Base(root),
+		TagPrefix: cfg.Release.TagPrefix,
+		Yes:       req.Yes,
+		Target:    target,
+		// The resolved release branch backs the batch preflight on-branch / remote-sync
+		// gates, which run at the RegenerateAllValidated entry point AFTER the interactive
+		// axis prompts above resolve the target — the only point at which a bare `--all`
+		// (no --target) knows which surface(s) it writes.
+		ReleaseBranch: releaseBranch,
+		ProduceBody:   newBatchBodyProducer(r, cfg, root),
 		// Each version's fresh notes-review gate `r` choice consults this per-version
 		// regenerator, bound to that version's resolved range. Without it the rendered
 		// `r` would abort on every interactive fresh `--all` backfill.

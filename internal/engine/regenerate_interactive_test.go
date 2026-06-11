@@ -100,6 +100,7 @@ func TestRegenerateRun_NoFlags_AsksSourceThenTargetThenPlanThenConfirm(t *testin
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	// Script: source=fresh, target=release, confirm=yes.
@@ -138,6 +139,7 @@ func TestRegenerateRun_SourceFlag_SkipsSourceQuestion(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{
@@ -168,6 +170,7 @@ func TestRegenerateRun_TargetFlag_SkipsTargetQuestion(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{
@@ -198,6 +201,7 @@ func TestRegenerateRun_BothFlags_NoYes_StillConfirms(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -223,6 +227,7 @@ func TestRegenerateRun_Yes_AlwaysCallsPrompt(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	// No PromptResult / NextChoices: each Prompt falls back to the gate default, which
@@ -256,6 +261,7 @@ func TestRegenerateRun_Fresh_RunsNotesReviewGate(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -283,6 +289,7 @@ func TestRegenerateRun_Reuse_SimpleConfirmOnly(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, false, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -321,6 +328,7 @@ func TestRegenerateRun_ReuseChosenInteractively_ForcesTargetRelease(t *testing.T
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // resolved target is the provider release → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{
@@ -356,6 +364,7 @@ func TestRegenerateRun_ConfirmDecline_Aborts(t *testing.T) {
 
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
+	f.Seed("gh", runner.Result{}, nil) // resolved target is release → gh-auth preflight gate passes; the confirm is what declines
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{
 		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
@@ -386,6 +395,7 @@ func TestRegenerateRun_BodyProducerError_Surfaces(t *testing.T) {
 
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
+	f.Seed("gh", runner.Result{}, nil) // resolved target is release → gh-auth preflight passes; body production is what fails
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{
 		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
@@ -414,6 +424,174 @@ func TestRegenerateRun_BodyProducerError_Surfaces(t *testing.T) {
 		if s == "notes" {
 			t.Errorf("the confirm gate fired despite a body-production failure; subjects = %v", gateSubjects(rec))
 		}
+	}
+}
+
+// TestRegenerateRun_InteractiveChangelog_RunsCommitPushGates proves that a bare
+// interactive run whose TARGET resolves to changelog at the prompt runs the
+// commits+pushes preflight bucket — clean-tree, on-branch, remote-sync — BEFORE any
+// CHANGELOG commit or push. The target is unset (no --target), so the gate set is
+// resolved from the INTERACTIVE choice, not the empty pre-resolution target.
+func TestRegenerateRun_InteractiveChangelog_RunsCommitPushGates(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, kacPreamble+"\n## ["+regenRunVersionKey+"] - 2024-02-15\n\nStale body.\n")
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		// Preflight commits+pushes bucket (resolved from the interactive changelog choice).
+		ScriptedOut(""),                    // status --porcelain (clean)
+		ScriptedOut(regenRunReleaseBranch), // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedOut(""),                    // fetch --tags
+		ScriptedOut("0\t1"),                // rev-list left-right count (ahead only)
+		// Write path.
+		ScriptedOut("startHEAD"),  // rev-parse HEAD (capture clean start)
+		ScriptedOut("2024-02-15"), // for-each-ref creatordate:short (historical date)
+		ScriptedOut(""),           // add CHANGELOG.md
+		ScriptedOut(""),           // commit
+		ScriptedOut(""),           // push origin HEAD
+	)
+	pub := newFakePublisher()
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
+			switch g.Subject {
+			case "source":
+				return presenter.Choice("fresh"), nil
+			case "target":
+				return presenter.Choice("changelog"), nil
+			default:
+				return presenter.ChoiceYes, nil
+			}
+		},
+	}
+
+	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
+	req.ReleaseBranch = regenRunReleaseBranch
+	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
+		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
+	}
+
+	if !cleanTreeRan(f) {
+		t.Errorf("interactive changelog choice did not run the clean-tree gate")
+	}
+	if !onBranchRan(f) {
+		t.Errorf("interactive changelog choice did not run the on-branch gate")
+	}
+	if !remoteSyncRan(f) {
+		t.Errorf("interactive changelog choice did not run the remote-sync gate")
+	}
+	// The gates must precede the changelog commit/push (the gate set short-circuits a
+	// dirty tree before any mutation; here all gates pass and the write proceeds).
+	assertCommitPushGatesBeforeCommit(t, f)
+}
+
+// TestRegenerateRun_InteractiveRelease_RunsGhAuthBeforeProviderWrite proves a bare
+// interactive run whose TARGET resolves to release at the prompt runs the gh-auth
+// gate BEFORE the provider write. The target is unset, so the gate set is resolved
+// from the interactive choice.
+func TestRegenerateRun_InteractiveRelease_RunsGhAuthBeforeProviderWrite(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // gh auth status (authenticated)
+	pub := newFakePublisher()
+	pub.seedExists(regenRunTag, true, nil)
+	// Snapshot whether gh-auth had run at the moment the provider write dispatches.
+	ghAuthBeforeDispatch := false
+	pub.beforeDispatch = func() { ghAuthBeforeDispatch = ghAuthRan(f) }
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
+			switch g.Subject {
+			case "source":
+				return presenter.Choice("fresh"), nil
+			case "target":
+				return presenter.Choice("release"), nil
+			default:
+				return presenter.ChoiceYes, nil
+			}
+		},
+	}
+
+	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
+	req.ReleaseBranch = regenRunReleaseBranch
+	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
+		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
+	}
+
+	if !ghAuthRan(f) {
+		t.Errorf("interactive release choice did not run the gh-auth gate")
+	}
+	if len(pub.dispatched) != 1 {
+		t.Fatalf("provider dispatched %d times, want exactly 1", len(pub.dispatched))
+	}
+	if !ghAuthBeforeDispatch {
+		t.Errorf("the provider write dispatched BEFORE gh-auth ran; the gate must precede the write")
+	}
+}
+
+// TestRegenerateRun_FailingGate_AbortsBeforeMutation proves a failing APPLICABLE gate
+// (a dirty tree on an interactive changelog choice) aborts non-zero BEFORE any
+// changelog commit/push — the gate set short-circuits before mutation.
+func TestRegenerateRun_FailingGate_AbortsBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(" M CHANGELOG.md"), // status --porcelain (DIRTY → clean-tree fails)
+	)
+	pub := newFakePublisher()
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
+			switch g.Subject {
+			case "source":
+				return presenter.Choice("fresh"), nil
+			case "target":
+				return presenter.Choice("changelog"), nil
+			default:
+				return presenter.ChoiceYes, nil
+			}
+		},
+	}
+
+	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
+	req.ReleaseBranch = regenRunReleaseBranch
+	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req)
+
+	assertAbortNonZero(t, err)
+	if invokedWith(f, "git", "push", "origin", "HEAD") {
+		t.Errorf("a failing gate pushed; the gate must abort before any mutation")
+	}
+	if len(pub.dispatched) != 0 {
+		t.Errorf("a failing gate dispatched a provider write %+v; it must abort before any work", pub.dispatched)
+	}
+}
+
+// regenRunReleaseBranch is the release branch the interactive-run preflight gates
+// resolve on/against.
+const regenRunReleaseBranch = "main"
+
+// assertCommitPushGatesBeforeCommit fails unless the clean-tree gate ran before the
+// first CHANGELOG `git add` — the preflight commits+pushes bucket must precede any
+// changelog mutation.
+func assertCommitPushGatesBeforeCommit(t *testing.T, f *runner.FakeRunner) {
+	t.Helper()
+	cleanTreeAt, addAt := -1, -1
+	for i, inv := range f.Invocations() {
+		if cleanTreeAt == -1 && inv.Name == "git" && slices.Equal(inv.Args, []string{"status", "--porcelain"}) {
+			cleanTreeAt = i
+		}
+		if addAt == -1 && inv.Name == "git" && slices.Contains(inv.Args, "add") && slices.Contains(inv.Args, "CHANGELOG.md") {
+			addAt = i
+		}
+	}
+	if cleanTreeAt == -1 {
+		t.Fatalf("clean-tree gate never ran")
+	}
+	if addAt != -1 && cleanTreeAt > addAt {
+		t.Errorf("clean-tree gate (at %d) ran AFTER the changelog add (at %d); the gate must precede the mutation", cleanTreeAt, addAt)
 	}
 }
 

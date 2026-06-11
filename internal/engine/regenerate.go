@@ -49,6 +49,20 @@ type RegenerateGateSet struct {
 	CommitsAndPushes bool
 }
 
+// regenerateGateSet maps a RESOLVED engine target to its preflight gate-set
+// selection — the engine-side analogue of the cmd layer's regenerateGateSet, keyed
+// off the engine's RegenerateTarget rather than the cmd flag enum. The interactive
+// flow uses it to run preflight AFTER the target resolves at the prompt (the cmd
+// layer cannot, since it dispatches before the interactive target is known). A
+// provider-writing target selects gh-auth (CallsProvider); a changelog-committing
+// target selects the clean-tree + on-branch + remote-sync bucket (CommitsAndPushes).
+func regenerateGateSet(target RegenerateTarget) RegenerateGateSet {
+	return RegenerateGateSet{
+		CallsProvider:    target.writesProvider(),
+		CommitsAndPushes: target.writesChangelog(),
+	}
+}
+
 // RegeneratePreflight runs the regenerate preflight SUBSET for the resolved gate
 // set, aborting cleanly on the first failing APPLICABLE gate BEFORE any work. It
 // reuses the forward gate implementations unchanged — only the SELECTION differs.

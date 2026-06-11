@@ -59,6 +59,13 @@ type BatchRegenerateRequest struct {
 	// end-of-batch whole-file CHANGELOG rebuild. The zero value (RegenerateTargetRelease)
 	// writes the provider only — the batch's historical default.
 	Target RegenerateTarget
+	// ReleaseBranch is the resolved release branch the preflight on-branch and
+	// remote-sync gates check, threaded from the cmd layer's read-only branch
+	// resolution. It backs the batch preflight that runs at the RegenerateAllValidated
+	// entry point AFTER the target resolves at the cmd-layer axis prompts — the cmd
+	// layer cannot run that gate set itself because it dispatches before the interactive
+	// batch target is known, exactly as the single-version RegenerateRunRequest.ReleaseBranch.
+	ReleaseBranch string
 	// ProduceBody yields one version's notes body for the resolved source. It is
 	// injected so the loop stays testable without a real AI transport / tag read;
 	// production wires the 5-5 reuse read or the 5-6 fresh re-diff+AI per version.
@@ -105,6 +112,19 @@ type RegeneratedVersion struct {
 func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, changelogEnabled bool) error {
 	if err := checkBatchTargetConfig(req.Target, changelogEnabled); err != nil {
 		return surface(deps.Presenter, "config", err)
+	}
+	// Preflight the RESOLVED batch target BEFORE any version is processed, any provider
+	// write, or any changelog commit/push. A bare `--all` resolves its target
+	// INTERACTIVELY at the cmd-layer axis prompts (resolveBatchAxes) AFTER the cmd layer
+	// could run preflight, so the gate set is derived from the resolved req.Target HERE —
+	// mirroring the single-version RegenerateRun: an interactive changelog/both runs the
+	// clean-tree + on-branch + remote-sync bucket before committing+pushing, and an
+	// interactive release/both runs gh-auth before the first provider dispatch. The batch
+	// resolves ONE target for every version, so gating on req.Target IS the conservative
+	// superset of what will be written. A failing applicable gate routes through the same
+	// surfaced abort as every other failure, before the loop starts.
+	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(req.Target)); err != nil {
+		return err
 	}
 	collected, err := RegenerateAll(ctx, deps, publisher, req)
 	if err != nil {

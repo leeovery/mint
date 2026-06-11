@@ -25,6 +25,7 @@ func TestRegenerateRun_EmitsBlockingNotesStage(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // release target → gh-auth preflight gate
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
@@ -79,6 +80,7 @@ func TestRegenerateRun_BodyProductionFailure_NoNotesSuccess(t *testing.T) {
 	dir := t.TempDir()
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{}, nil)
+	f.Seed("gh", runner.Result{}, nil) // release target → gh-auth preflight passes; body production is what fails
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 

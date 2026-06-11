@@ -110,6 +110,12 @@ type RegenerateRunRequest struct {
 	VersionKey string
 	// Project is the project name shown in the start-of-run header.
 	Project string
+	// ReleaseBranch is the resolved release branch the preflight on-branch and
+	// remote-sync gates check, threaded from the cmd layer's read-only branch
+	// resolution. It backs the preflight that runs AFTER the target resolves at the
+	// prompt — the cmd layer cannot run that gate set itself because it dispatches
+	// before the interactive target is known.
+	ReleaseBranch string
 	// ChangelogEnabled gates which target options the target prompt offers: when false
 	// the changelog/both options are not offerable (the static config check upstream
 	// already rejects a flag-supplied changelog/both target).
@@ -145,6 +151,17 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// target question). Both questions are asked back-to-back before any slow work.
 	source, target, err := ResolveRegenerateAxes(p, req.Source, req.Target, req.ChangelogEnabled)
 	if err != nil {
+		return err
+	}
+
+	// Preflight the RESOLVED target BEFORE any body production, mutation, or network
+	// write. The cmd layer cannot run this gate set for a bare interactive run — the
+	// target is targetUnset until the prompt above resolves it — so the gate set is
+	// derived from the resolved target HERE: an interactive changelog/both runs the
+	// clean-tree + on-branch + remote-sync bucket before committing+pushing, and an
+	// interactive release/both runs gh-auth before the provider write. A failing
+	// applicable gate routes through the same surfaced abort as every other failure.
+	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(target)); err != nil {
 		return err
 	}
 

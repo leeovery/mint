@@ -28,11 +28,25 @@ const (
 
 // freshChangelogBatchReq builds a fresh `--target changelog` `--all` request (the
 // per-version body is the canned fresh body keyed off the tag), with -y so the loop
-// runs unattended and the rebuild is the only thing under test.
+// runs unattended and the rebuild is the only thing under test. ReleaseBranch is set so
+// the entry-point preflight's on-branch / remote-sync gates resolve against it.
 func freshChangelogBatchReq(versions []version.Resolution, target engine.RegenerateTarget) engine.BatchRegenerateRequest {
 	req := batchReq(engine.RegenerateSourceFresh, versions, true)
 	req.Target = target
+	req.ReleaseBranch = regenReleaseBranch
 	return req
+}
+
+// preflightCommitPushBucket is the git script the entry-point preflight runs for a
+// changelog/both batch target BEFORE the rebuild: clean-tree, on-branch, remote-sync
+// (fetch then left-right count). It precedes every rebuild git call.
+func preflightCommitPushBucket() []runner.ScriptedCall {
+	return []runner.ScriptedCall{
+		ScriptedOut(""),                 // status --porcelain (clean)
+		ScriptedOut(regenReleaseBranch), // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedOut(""),                 // fetch --tags
+		ScriptedOut("0\t1"),             // rev-list left-right count (ahead only)
+	}
 }
 
 // committedSubject returns the -m subject of the single `git commit` the FakeRunner
@@ -68,7 +82,10 @@ func commitCount(f *runner.FakeRunner) int {
 // the add/commit/push. Per-version dispatch is skipped for a changelog-only target, so
 // no per-version git fires in the loop.
 func seedRebuildGit(f *runner.FakeRunner, dates ...string) {
-	calls := []runner.ScriptedCall{ScriptedOut("startHEAD")} // rev-parse HEAD
+	// The entry-point preflight commits+pushes bucket runs FIRST (the target is
+	// changelog), then the rebuild git sequence.
+	calls := preflightCommitPushBucket()
+	calls = append(calls, ScriptedOut("startHEAD")) // rev-parse HEAD
 	for _, d := range dates {
 		calls = append(calls, ScriptedOut(d)) // for-each-ref creatordate:short per version
 	}
@@ -221,7 +238,7 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 	seedChangelog(t, dir, kacPreamble+"\n## [1.0.0] - 2024-01-01\n\nstale v1\n")
 
 	f := runner.NewFakeRunner()
-	f.SeedSequence("git",
+	f.SeedSequence("git", append(preflightCommitPushBucket(),
 		ScriptedOut("startHEAD"), // rev-parse HEAD (captured start)
 		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
@@ -230,7 +247,7 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 		ScriptedOut(""),          // commit (the rebuild commit lands)
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
 		ScriptedOut(""), // reset --hard startHEAD (recovery)
-	)
+	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 
@@ -261,13 +278,13 @@ func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing
 	seedChangelog(t, dir, kacPreamble+"\n## [1.0.0] - 2024-01-01\n\nstale v1\n")
 
 	f := runner.NewFakeRunner()
-	f.SeedSequence("git",
+	f.SeedSequence("git", append(preflightCommitPushBucket(),
 		ScriptedOut("startHEAD"), // rev-parse HEAD (captured start)
 		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
 		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
 		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("fatal: pathspec error")}, // add fails
-	)
+	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 
@@ -295,7 +312,8 @@ func TestRegenerateAllValidated_Release_NoChangelogCommit(t *testing.T) {
 	seedChangelog(t, dir, kacPreamble+"\n## [1.0.0] - 2024-01-01\n\nv1\n")
 
 	f := runner.NewFakeRunner()
-	seedReuseGit(f) // for-each-ref reuse body reads only
+	seedReuseGit(f)                    // for-each-ref reuse body reads only
+	f.Seed("gh", runner.Result{}, nil) // entry-point preflight gh-auth (release target)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)
@@ -304,6 +322,7 @@ func TestRegenerateAllValidated_Release_NoChangelogCommit(t *testing.T) {
 
 	req := batchReq(engine.RegenerateSourceReuse, threeVersions(), true)
 	req.Target = engine.RegenerateTargetRelease
+	req.ReleaseBranch = regenReleaseBranch
 
 	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true); err != nil {
 		t.Fatalf("RegenerateAllValidated returned unexpected error: %v", err)
@@ -334,13 +353,14 @@ func TestRegenerateAllValidated_Changelog_ByteIdenticalNoCommit(t *testing.T) {
 	seedChangelog(t, dir, identical)
 
 	f := runner.NewFakeRunner()
-	// Only the HEAD capture + the three historical-date reads fire; no add/commit/push.
-	f.SeedSequence("git",
+	// The preflight commits+pushes bucket runs first; then only the HEAD capture + the
+	// three historical-date reads fire — no add/commit/push (byte-identical rebuild).
+	f.SeedSequence("git", append(preflightCommitPushBucket(),
 		ScriptedOut("startHEAD"),
 		ScriptedOut(batchV1Date),
 		ScriptedOut(batchV2Date),
 		ScriptedOut(batchV3Date),
-	)
+	)...)
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 

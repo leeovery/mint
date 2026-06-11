@@ -276,6 +276,7 @@ func TestRegenerateAllValidated_ValidConfigRunsBatch(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{Stdout: "## body\n"}, nil)
+	f.Seed("gh", runner.Result{}, nil) // entry-point preflight gh-auth (release target)
 	pub := newFakePublisher()
 	pub.seedExists(batchV1Tag, true, nil)
 	pub.seedExists(batchV2Tag, true, nil)

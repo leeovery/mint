@@ -106,12 +106,12 @@ func runRegenerate(rest []string) int {
 		return usageExitCode
 	}
 
-	// Preflight subset (task 5-4): run only the gates the resolved target needs —
-	// gh-auth when a provider write occurs, clean-tree + on-branch + remote-sync
-	// when the changelog is committed + pushed; never tag-free (regenerate cuts no
-	// tag) and no version compute. A failing applicable gate aborts cleanly BEFORE
-	// any work. The presenter surfaces the abort; resolve the release branch for the
-	// on-branch / remote-sync gates the same read-only way the forward path does.
+	// Resolve the release branch (read-only, the same way the forward path does) for the
+	// preflight on-branch / remote-sync gates. Both dispatch paths consume it: the batch
+	// path preflights here up front (its axes are resolved inside runRegenerateAll); the
+	// single-version path threads it into RegenerateRun, which preflights the RESOLVED
+	// target AFTER the interactive source/target prompts — the only point at which a bare
+	// `regenerate <ver>` (no --target) knows which surface(s) it writes.
 	p := presenter.NewForStartup(false, validated.Yes, os.Stdout, os.Stderr, os.Stdin)
 	releaseBranch, err := gitrepo.ResolveReleaseBranch(context.Background(), r, cfg)
 	if err != nil {
@@ -126,24 +126,28 @@ func runRegenerate(rest []string) int {
 		// the real $EDITOR resolution, launched through the same presenter + runner.
 		Editor: engine.NewEditorLauncher(p, r),
 	}
-	if err := engine.RegeneratePreflight(context.Background(), deps, releaseBranch, regenerateGateSet(validated.Target)); err != nil {
-		return exitCode(err)
-	}
 
 	// The --all batch backfill (every version, oldest → newest) and the single-version
-	// interactive run share the resolved deps/runner/config/root; dispatch on --all.
+	// interactive run share the resolved deps/runner/config/root; both thread the
+	// resolved release branch so the engine can preflight the RESOLVED target subset
+	// AFTER the interactive axis prompts (a bare invocation does not know its surface(s)
+	// until the source/target prompts resolve — the cmd layer cannot run that gate set).
 	if validated.All {
-		return runRegenerateAll(deps, r, cfg, root, validated)
+		return runRegenerateAll(deps, r, cfg, root, releaseBranch, validated)
 	}
 
-	return runRegenerateSingle(deps, r, cfg, root, validated)
+	return runRegenerateSingle(deps, r, cfg, root, releaseBranch, validated)
 }
 
 // runRegenerateSingle executes one single-version interactive regenerate run: it
 // resolves the <version> argument to its canonical tag + fresh diff base (task 5-3),
 // resolves the publishing driver, then runs the interactive default flow (task 5-10) —
-// asking source/target as needed, showing the plan, and confirming before the write.
-func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root string, req regenerateRequest) int {
+// asking source/target as needed, preflighting the RESOLVED target's gate subset,
+// showing the plan, and confirming before the write. releaseBranch threads to the
+// engine for the preflight on-branch / remote-sync gates, which run AFTER the
+// interactive target resolves (a bare `regenerate <ver>` does not know its surface(s)
+// until then).
+func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest) int {
 	ctx := context.Background()
 
 	res, err := version.ResolveRegenerateTarget(ctx, r, cfg.Release.TagPrefix, req.Version)
@@ -172,6 +176,7 @@ func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg co
 		Tag:              res.Tag,
 		VersionKey:       versionKey.String(""),
 		Project:          filepath.Base(root),
+		ReleaseBranch:    releaseBranch,
 		ChangelogEnabled: cfg.Release.Changelog,
 		Yes:              req.Yes,
 		ProduceBody:      newRegenerateBodyProducer(r, cfg, root, res),
