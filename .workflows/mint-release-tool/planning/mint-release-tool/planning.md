@@ -236,3 +236,14 @@ approved_at: 2026-06-09
 | mint-release-tool-8-1 | Extract shared changelog push/recovery tail for the single-version and batch regenerate paths | successful single-version push reports pushed=true, single-version pre-push failure resets to starting HEAD + "push" StageFailed, batch --all success and pre-push-failure reset behave identically via shared helper, no-op single-version write commits/pushes nothing (short-circuit at call site) |
 | mint-release-tool-8-2 | Close the release-success footer URL seam — feed the real release URL into RunResult.URL | publisher parses URL from gh stdout on create AND update paths, successful release threads URL into RunResult.URL and footer renders in pretty+plain, warn-only post-PONR publish failure renders no URL, downgrade/no-publish run renders no URL |
 | mint-release-tool-8-3 | Remove the orphaned Phase-1 presenter mappers (EmitPlan/EmitStageFailed/EmitNotes/EmitWarning) | four Emit* funcs gone from engine package, no production or test references remain, orchestrator's direct ShowPlan/StageFailed/ShowNotes/Warn calls unchanged, package builds + engine suite passes with the four Emit* tests removed |
+
+### Phase 9: Analysis (Cycle 3)
+
+**Goal**: Address findings from Analysis (Cycle 3).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-9-1 | Extract single release-bookkeeping commit-subject builder | three call sites (record.CommitBookkeeping, release.composeTagMessage, engine.bookkeepingSubject) route through record.BookkeepingSubject, no fmt.Sprintf("%s Release %s") literal remains, real commit + tag annotation + dry-run plan subjects observably identical, stale "mirrors ..." comment updated |
+| mint-release-tool-9-2 | Extract shared CHANGELOG stage-and-commit helper for regenerate paths | single helper owns git add CHANGELOG.md + git commit -m subject, single-version still wraps with tag and returns (bool, error), batch still routes through resetAndAbort with startingHEAD and still calls pushChangelogCommit, distinct subjects unchanged |
