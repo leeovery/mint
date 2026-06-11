@@ -8,9 +8,12 @@ package commit
 // carrying that body verbatim through the lock-resilient git_safe sink. The pieces
 // themselves are unchanged — Run CALLS them; it never re-implements their logic.
 //
-// SCOPE (Phase 1 bare path only). The deliberate sequencing points for later tasks
-// are LEFT CLEAN, not built here:
-//   - Review gate (task 1-5) slots between Generate and the commit sink.
+// SCOPE (Phase 1 bare path only). The review gate (task 1-5) is now wired between
+// Generate and the commit sink: the minted message renders, then the Continue? gate
+// is presented through the consumed Presenter — accept on y/Enter proceeds to the
+// commit, decline on n aborts as a true no-op, -y auto-accepts (presenter-internal),
+// and the non-TTY-without-`-y` forbidden combination fails loud. The remaining
+// sequencing points for later tasks are LEFT CLEAN, not built here:
 //   - Empty-index preflight (task 1-6) slots before Generate.
 //   - -a/-A staging (Phase 2), --no-ai/$EDITOR (Phase 3), gate e/r (Phase 4), and
 //     -p push (Phase 5) are NOT implemented. The bare path is STAGED-ONLY — it runs
@@ -23,6 +26,7 @@ package commit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"mint/internal/ai"
@@ -39,6 +43,14 @@ const commitAction = "committing"
 // message. It is ASCII so the plain-mode delimiters stay byte-pure (the same
 // convention as the gate Subject/AcceptEcho values).
 const commitMessageTitle = "commit message"
+
+// errGateAborted is the clean cause for a user `n` decline at the review gate. It is
+// a TRUE no-op cause — nothing was mutated (the gate sits before the commit sink) —
+// so the abort path emits NO StageFailed failure narration. It surfaces only so the
+// run exits non-zero (mapped to exit 1 by cmd/mint's exitCode), telling a caller the
+// commit did not happen; it is distinct from the AI/transport failures that DO
+// narrate a StageFailed.
+var errGateAborted = errors.New("commit aborted at review gate")
 
 // Committer is commit's git-mutation SINK seam: the bare commit's `git commit -F -`
 // flows through it so the mutation is lock-resilient (git_safe), NEVER the raw runner.
@@ -95,9 +107,11 @@ type Deps struct {
 //  2. Generate the conventional-commits message via the L3 Generator: it assembles
 //     the staged diff (commit's L1), applies the size guard, composes the prompt, and
 //     calls the L2 transport. The AI infers the type; scope is off by default; the
-//     body returns verbatim. [Review gate is task 1-5 — its slot is HERE, between
-//     generate and the commit sink.]
-//  3. Create the commit through the git_safe Committer, piping the generated body on
+//     body returns verbatim.
+//  3. Show the minted message (ShowMessage) and present the Continue? review gate
+//     (reviewMessage) — BOTH before the commit sink, so an accept proceeds and a
+//     decline aborts with nothing mutated (the mutate-nothing-until-accept invariant).
+//  4. Create the commit through the git_safe Committer, piping the generated body on
 //     stdin (`git commit -F -`) so the commit message is the minted body BYTE-FOR-BYTE
 //     — no commit_prefix, no branding, no reformatting.
 //
@@ -130,10 +144,22 @@ func Run(ctx context.Context, deps Deps) error {
 		return surface(p, "generate", err)
 	}
 
-	// The minted message is shown for review. The interactive review gate (task 1-5)
-	// slots HERE — between showing the message and the commit sink — so an accept
-	// proceeds to the commit and a decline aborts before any mutation.
+	// The minted message is shown for review, THEN the Continue? gate is presented —
+	// both BEFORE the commit sink, so the core invariant (mutate nothing until accept)
+	// holds: a decline aborts with nothing mutated. The render order is verbatim
+	// message first, gate second.
 	p.ShowMessage(presenter.Message{Title: commitMessageTitle, Body: body})
+
+	accepted, err := reviewMessage(p)
+	if err != nil {
+		return err
+	}
+	if !accepted {
+		// A clean `n` decline: a TRUE no-op (nothing mutated — the gate precedes the
+		// commit). Surface a non-zero abort WITHOUT a StageFailed — a deliberate decline
+		// is not a failure, so it emits no failure narration.
+		return errGateAborted
+	}
 
 	if err := createCommit(ctx, deps, body); err != nil {
 		return surface(p, "commit", err)
@@ -141,6 +167,74 @@ func Run(ctx context.Context, deps Deps) error {
 
 	p.RunFinished(presenter.RunResult{Project: projectName(root)})
 	return nil
+}
+
+// reviewMessage presents the Continue? gate through the consumed Presenter and maps
+// the outcome to an accept/abort decision. It is commit's decision seam — modelled on
+// engine.ReviewDecision: it calls p.Prompt(gate) (the single render-and-read entry
+// point — the gate rendering, line-read input, -y auto-accept echo, and
+// forbidden-combo fail-loud are ALL consumed from the presenter, never re-implemented
+// here) and translates the result:
+//
+//   - ChoiceYes (also the bare-Enter default, and the value the presenter returns
+//     under -y after rendering its auto-accept echo) → accept: return (true, nil) so
+//     Run proceeds to the commit sink.
+//   - ChoiceNo → decline: return (false, nil) so Run aborts as a true no-op.
+//   - A Prompt error is the presenter's machine-readable failure channel:
+//     ErrNotInteractive (the forbidden non-TTY-without-`-y` combination, ALREADY
+//     rendered as a failure line by the presenter) and ErrInputClosed (EOF mid-gate,
+//     NOT rendered by the presenter). ErrNotInteractive is wrapped and returned with
+//     NO further narration (the presenter rendered it); ErrInputClosed is SURFACED via
+//     the StageFailed helper (the presenter rendered nothing, so commit owns its
+//     surfacing). Both preserve the underlying sentinel in the chain (errors.Is) and
+//     map to a non-zero exit.
+//   - Any other returned choice is a presenter-contract violation (Phase 1 declares
+//     only y/n) — surfaced and aborted rather than silently treated as an accept.
+func reviewMessage(p presenter.Presenter) (bool, error) {
+	choice, err := p.Prompt(commitReviewGate())
+	if err != nil {
+		// ErrNotInteractive is pre-rendered by the presenter — wrap and return WITHOUT a
+		// StageFailed. Every other Prompt error (ErrInputClosed and any future case) is
+		// unrendered by contract, so commit surfaces it via the StageFailed helper. Both
+		// keep the sentinel in the chain (%w) for errors.Is and map to a non-zero exit.
+		if errors.Is(err, presenter.ErrNotInteractive) {
+			return false, fmt.Errorf("review gate: %w", err)
+		}
+		return false, surface(p, "review", err)
+	}
+
+	switch choice {
+	case presenter.ChoiceYes:
+		return true, nil
+	case presenter.ChoiceNo:
+		return false, nil
+	default:
+		// The gate declares only y/n and the presenter returns a member of the declared
+		// set; any other choice is a contract violation — fail loud rather than treat an
+		// unknown answer as an accept.
+		return false, surface(p, "review", fmt.Errorf("unexpected review-gate choice %q", choice))
+	}
+}
+
+// commitReviewGate is commit's HAND-BUILT Continue? gate literal. It is deliberately
+// NOT presenter.NotesReviewGate()/ReuseConfirmGate() — those carry Subject "notes",
+// which would make the -y auto-accept echo read "notes: accepted (-y)". Commit's
+// Subject is "message" (echo "message: accepted (-y)") and AcceptEcho is "accepted".
+// Phase 1 offers y/n ONLY (Enter ⇒ y via Default ChoiceYes); the e (edit) and r
+// (regenerate) actions are Phase 4. Nothing in the presenter hardcodes the choice
+// set, so a two-choice literal renders cleanly. The action labels match the spec's
+// gate mapping (accept & proceed / abort).
+func commitReviewGate() presenter.Gate {
+	return presenter.Gate{
+		Question:   "Continue?",
+		Subject:    "message",
+		AcceptEcho: "accepted",
+		Choices: []presenter.GateChoice{
+			{Key: presenter.ChoiceYes, Action: "accept & proceed"},
+			{Key: presenter.ChoiceNo, Action: "abort"},
+		},
+		Default: presenter.ChoiceYes,
+	}
 }
 
 // resolveRoot returns the pre-injected Root when set (the test seam) else resolves

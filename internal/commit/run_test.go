@@ -118,6 +118,7 @@ func TestRun_NarratesThroughRecordingPresenter(t *testing.T) {
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindShowMessage,
+		presentertest.KindPrompt,
 		presentertest.KindRunFinished,
 	}
 	got := rec.Kinds()
@@ -319,6 +320,241 @@ func TestRun_GenerateFailure_AbortsWithoutCommitting(t *testing.T) {
 	if !containsKind(rec.Kinds(), presentertest.KindStageFailed) {
 		t.Errorf("kinds = %v, want a StageFailed", rec.Kinds())
 	}
+}
+
+// TestRun_GateEnterAccepts_CreatesCommit proves a bare-Enter accept (the recorder
+// returns the gate's Default — ChoiceYes — when no answer is scripted) renders the
+// message then the gate via Prompt and proceeds to create the commit carrying the
+// minted body verbatim.
+func TestRun_GateEnterAccepts_CreatesCommit(t *testing.T) {
+	t.Parallel()
+
+	const message = "feat: accept on enter"
+	rec := &presentertest.RecordingPresenter{} // no NextChoices → Prompt returns gate Default (ChoiceYes)
+	r := seedDiffThenCommit("diff --git a/x b/x\n+work")
+	deps := newCommitDeps(rec, r, scriptedTransport(message), t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	commitInv := findCommitInvocation(t, r)
+	if commitInv.Stdin != message {
+		t.Errorf("commit stdin = %q, want the generated body verbatim %q", commitInv.Stdin, message)
+	}
+}
+
+// TestRun_GateYesAccepts_CreatesCommit proves an explicit y answer (scripted via
+// NextChoices) accepts the gate and creates the commit.
+func TestRun_GateYesAccepts_CreatesCommit(t *testing.T) {
+	t.Parallel()
+
+	const message = "feat: accept on y"
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+	r := seedDiffThenCommit("diff --git a/x b/x\n+work")
+	deps := newCommitDeps(rec, r, scriptedTransport(message), t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	commitInv := findCommitInvocation(t, r)
+	if commitInv.Stdin != message {
+		t.Errorf("commit stdin = %q, want the generated body verbatim %q", commitInv.Stdin, message)
+	}
+}
+
+// TestRun_GateNoAborts_MutatesNothing proves an n abort is a true no-op: no
+// `git commit` runs (nothing mutated), and the abort emits NO StageFailed failure
+// narration (a deliberate user decline is not a failure).
+func TestRun_GateNoAborts_MutatesNothing(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceNo}}
+	r := runner.NewFakeRunner()
+	// Only the staged-diff read is scripted; the commit must never be reached.
+	r.Seed("git", runner.Result{Stdout: "diff --git a/x b/x\n+work"}, nil)
+	deps := newCommitDeps(rec, r, scriptedTransport("feat: declined"), t.TempDir())
+
+	err := commit.Run(context.Background(), deps)
+	if err == nil {
+		t.Fatal("Run returned nil on gate-no; want a non-zero abort")
+	}
+
+	if commits := commitInvocations(r); len(commits) != 0 {
+		t.Errorf("gate-no created %d commit(s); abort must mutate nothing", len(commits))
+	}
+	if containsKind(rec.Kinds(), presentertest.KindStageFailed) {
+		t.Errorf("gate-no emitted a StageFailed; a clean abort emits no failure narration: %v", rec.Kinds())
+	}
+}
+
+// TestRun_DashYAutoAccepts_CallsPromptAndCommits proves the -y skip is
+// presenter-internal: the engine STILL calls Prompt (a KindPrompt is recorded) and
+// the auto-accepted gate proceeds to create the commit. The recorder returns the
+// gate Default for an unscripted Prompt, modelling the real presenter's -y echo +
+// Default return.
+func TestRun_DashYAutoAccepts_CallsPromptAndCommits(t *testing.T) {
+	t.Parallel()
+
+	const message = "feat: unattended accept"
+	rec := &presentertest.RecordingPresenter{} // unscripted → Default (ChoiceYes), modelling the -y skip
+	r := seedDiffThenCommit("diff --git a/x b/x\n+work")
+	deps := newCommitDeps(rec, r, scriptedTransport(message), t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if !containsKind(rec.Kinds(), presentertest.KindPrompt) {
+		t.Errorf("kinds = %v, want a Prompt call even under -y (the skip is presenter-internal)", rec.Kinds())
+	}
+	// A recorded commit proves the auto-accepted gate proceeded to the mutation.
+	findCommitInvocation(t, r)
+}
+
+// TestRun_NonTTYWithoutDashY_FailsLoudNoCommit proves the forbidden combination
+// (Prompt returns ErrNotInteractive) maps to a non-zero abort with NO commit, and
+// the underlying sentinel survives in the error chain (errors.Is). The presenter
+// has ALREADY rendered the failure line, so the engine adds NO further StageFailed.
+func TestRun_NonTTYWithoutDashY_FailsLoudNoCommit(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(presenter.Gate) (presenter.Choice, error) {
+			return "", presenter.ErrNotInteractive
+		},
+	}
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "diff --git a/x b/x\n+work"}, nil)
+	deps := newCommitDeps(rec, r, scriptedTransport("feat: unattended"), t.TempDir())
+
+	err := commit.Run(context.Background(), deps)
+	if err == nil {
+		t.Fatal("Run returned nil on the non-TTY-without-y forbidden combo; want a non-zero abort")
+	}
+	if !errors.Is(err, presenter.ErrNotInteractive) {
+		t.Errorf("error = %v, want errors.Is(..., ErrNotInteractive) preserved in the chain", err)
+	}
+	if commits := commitInvocations(r); len(commits) != 0 {
+		t.Errorf("forbidden combo created %d commit(s); it must not commit", len(commits))
+	}
+	if containsKind(rec.Kinds(), presentertest.KindStageFailed) {
+		t.Errorf("forbidden combo emitted a StageFailed; the presenter already rendered the failure line: %v", rec.Kinds())
+	}
+}
+
+// TestRun_InputClosed_SurfacedNoCommit proves EOF mid-input (Prompt returns
+// ErrInputClosed, which the presenter does NOT render) is surfaced by the engine: a
+// non-zero abort preserving the sentinel, with NO commit. Because the presenter
+// rendered nothing, commit narrates the failure itself (a StageFailed).
+func TestRun_InputClosed_SurfacedNoCommit(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(presenter.Gate) (presenter.Choice, error) {
+			return "", presenter.ErrInputClosed
+		},
+	}
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "diff --git a/x b/x\n+work"}, nil)
+	deps := newCommitDeps(rec, r, scriptedTransport("feat: eof"), t.TempDir())
+
+	err := commit.Run(context.Background(), deps)
+	if err == nil {
+		t.Fatal("Run returned nil on ErrInputClosed; want a non-zero abort")
+	}
+	if !errors.Is(err, presenter.ErrInputClosed) {
+		t.Errorf("error = %v, want errors.Is(..., ErrInputClosed) preserved in the chain", err)
+	}
+	if commits := commitInvocations(r); len(commits) != 0 {
+		t.Errorf("ErrInputClosed created %d commit(s); it must not commit", len(commits))
+	}
+	if !containsKind(rec.Kinds(), presentertest.KindStageFailed) {
+		t.Errorf("ErrInputClosed emitted no StageFailed; the presenter renders nothing, so the engine must surface it: %v", rec.Kinds())
+	}
+}
+
+// TestRun_MessageThenGateThenCommit_Ordering proves the strict pre-mutation
+// ordering: ShowMessage (the minted message) renders BEFORE Prompt (the gate), and
+// the gate fires BEFORE any commit mutation. The recorder's Kinds() captures the
+// presenter ordering; the FakeRunner shows the commit ran only after the gate.
+func TestRun_MessageThenGateThenCommit_Ordering(t *testing.T) {
+	t.Parallel()
+
+	const message = "feat: ordered"
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+	r := seedDiffThenCommit("diff --git a/x b/x\n+work")
+	deps := newCommitDeps(rec, r, scriptedTransport(message), t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	msgIdx := indexOfKind(rec.Kinds(), presentertest.KindShowMessage)
+	promptIdx := indexOfKind(rec.Kinds(), presentertest.KindPrompt)
+	if msgIdx < 0 || promptIdx < 0 {
+		t.Fatalf("kinds = %v, want both a ShowMessage and a Prompt", rec.Kinds())
+	}
+	if msgIdx >= promptIdx {
+		t.Errorf("ShowMessage at %d, Prompt at %d; the message must render before the gate (kinds %v)", msgIdx, promptIdx, rec.Kinds())
+	}
+	// The gate is the only path to a commit, so a recorded commit proves the gate
+	// preceded the mutation.
+	findCommitInvocation(t, r)
+}
+
+// TestRun_GateLiteral_CommitSubjectAndChoices proves Run builds its OWN commit Gate
+// literal — Subject "message" (so the -y echo reads "message: accepted (-y)", NOT
+// "notes: …"), AcceptEcho "accepted", Default ChoiceYes, and the y/n choice set with
+// the spec's action labels — NOT a reused NotesReviewGate/ReuseConfirmGate (whose
+// Subject is "notes"). The recorder captures the gate the engine handed to Prompt.
+func TestRun_GateLiteral_CommitSubjectAndChoices(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+	r := seedDiffThenCommit("diff --git a/x b/x\n+work")
+	deps := newCommitDeps(rec, r, scriptedTransport("feat: gate literal"), t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	idx := indexOfKind(rec.Kinds(), presentertest.KindPrompt)
+	if idx < 0 {
+		t.Fatalf("no Prompt recorded; kinds = %v", rec.Kinds())
+	}
+	ev, _ := rec.At(idx)
+	gate := ev.Prompt
+	if gate.Subject != "message" {
+		t.Errorf("gate Subject = %q, want %q (so the -y echo reads \"message: accepted (-y)\", not notes)", gate.Subject, "message")
+	}
+	if gate.AcceptEcho != "accepted" {
+		t.Errorf("gate AcceptEcho = %q, want %q", gate.AcceptEcho, "accepted")
+	}
+	if gate.Default != presenter.ChoiceYes {
+		t.Errorf("gate Default = %q, want ChoiceYes", gate.Default)
+	}
+	wantKeys := []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo}
+	gotKeys := gate.Keys()
+	if len(gotKeys) != len(wantKeys) {
+		t.Fatalf("gate keys = %v, want %v (Phase 1 is y/n only — no e/r)", gotKeys, wantKeys)
+	}
+	for i, want := range wantKeys {
+		if gotKeys[i] != want {
+			t.Errorf("gate key[%d] = %q, want %q", i, gotKeys[i], want)
+		}
+	}
+}
+
+// indexOfKind returns the index of the first occurrence of want in kinds, or -1.
+func indexOfKind(kinds []presentertest.EventKind, want presentertest.EventKind) int {
+	for i, k := range kinds {
+		if k == want {
+			return i
+		}
+	}
+	return -1
 }
 
 // containsKind reports whether kinds contains want.
