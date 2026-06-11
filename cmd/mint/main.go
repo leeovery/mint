@@ -13,8 +13,11 @@ import (
 	"fmt"
 	"os"
 
+	"time"
+
 	"mint/internal/engine"
 	"mint/internal/git"
+	"mint/internal/notescache"
 	"mint/internal/presenter"
 	"mint/internal/release"
 	"mint/internal/runner"
@@ -68,6 +71,11 @@ func run(args []string) int {
 		// launched interactively through the same presenter + runner. The launcher
 		// reports a missing editor and returns to the gate rather than aborting.
 		Editor: engine.NewEditorLauncher(p, r),
+		// The dry-run note cache lives UNDER the repo at {root}/.mint/cache (gitignored,
+		// never committed), repo-scoped and stamped with the wall clock for the ~1h TTL.
+		// A --dry-run writes the generated note here so the subsequent real run reuses
+		// the previewed bytes (reuse is a later task).
+		NoteCache: notescache.NewRepoStore(time.Now),
 	}
 
 	if err := engine.Release(context.Background(), deps, opts.ReleaseOptions()); err != nil {

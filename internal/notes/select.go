@@ -2,6 +2,7 @@ package notes
 
 import (
 	"context"
+	"fmt"
 
 	"mint/internal/config"
 	"mint/internal/record"
@@ -71,6 +72,26 @@ func NewSelector(generator *Generator, assembler *Assembler, r runner.CommandRun
 	return &Selector{generator: generator, assembler: assembler, runner: r, root: root}
 }
 
+// CacheInputs carries the dry-run note-cache key components the NORMAL-AI path
+// produced: the post-diff_exclude diff fed to the AI and the resolved
+// prompt/context instructions. Together with the caller's computed version these
+// are exactly the three fields the cache key hashes (notescache.Key). Cacheable is
+// true ONLY for the normal-AI path — the one path that produced a stochastic AI
+// body worth caching; every other Kind (first-release, degenerate, --no-ai,
+// fallback) leaves it false and the dry-run write is skipped (nothing to cache).
+type CacheInputs struct {
+	// Cacheable is true only when an AI body was produced (KindNormalAI). When false
+	// Diff and Instructions are zero and the caller must not write a cache entry.
+	Cacheable bool
+	// Diff is the post-diff_exclude diff handed to the AI — the SAME filtered diff
+	// the prompt carried, NOT the HEAD sha. It is a cache-key component.
+	Diff string
+	// Instructions is the resolved prompt/context (the [release].prompt override
+	// contents OR the default prompt plus the injected [release].context). A prompt
+	// or context change changes it, so the cache key correctly invalidates.
+	Instructions string
+}
+
 // SelectBody resolves the notes body via the STRICT precedence (each branch
 // returns immediately; on_notes_failure is consulted ONLY in branch 4):
 //
@@ -87,32 +108,50 @@ func NewSelector(generator *Generator, assembler *Assembler, r runner.CommandRun
 // The diff is assembled ONCE (branch 2) and reused by branch 4 via
 // GenerateFromDiff, so branches 2-4 share a single AssembleDiff call.
 func (s *Selector) SelectBody(ctx context.Context, state SelectState, cfg config.Config) (string, Kind, error) {
+	body, kind, _, err := s.SelectBodyWithCacheInputs(ctx, state, cfg)
+	return body, kind, err
+}
+
+// SelectBodyWithCacheInputs is SelectBody plus the dry-run note-cache key inputs.
+// It runs the identical precedence and additionally surfaces, for the NORMAL-AI
+// path only, the post-diff_exclude diff and the resolved prompt/context
+// instructions (CacheInputs) so the caller can compute the cache key WITHOUT
+// re-assembling the diff or re-resolving the prompt. Every non-AI path returns a
+// zero, non-Cacheable CacheInputs (there is no AI body to cache). SelectBody is the
+// thin wrapper that discards the inputs, so its behaviour is byte-identical.
+func (s *Selector) SelectBodyWithCacheInputs(ctx context.Context, state SelectState, cfg config.Config) (string, Kind, CacheInputs, error) {
 	if state.FirstRelease {
-		return record.FirstReleaseBody, KindFirstRelease, nil
+		return record.FirstReleaseBody, KindFirstRelease, CacheInputs{}, nil
 	}
 
 	diff, err := s.assembler.AssembleDiff(ctx, state.LastTag)
 	if err != nil {
-		return "", KindNormalAI, err
+		return "", KindNormalAI, CacheInputs{}, err
 	}
 
 	if IsDegenerate(diff) {
-		return StubBody(), KindDegenerate, nil
+		return StubBody(), KindDegenerate, CacheInputs{}, nil
 	}
 
 	if state.NoAI {
 		body, err := NoAIBody(ctx, s.runner, state.LastTag, cfg.Release)
 		if err != nil {
-			return "", KindNoAI, err
+			return "", KindNoAI, CacheInputs{}, err
 		}
-		return body, KindNoAI, nil
+		return body, KindNoAI, CacheInputs{}, nil
+	}
+
+	instructions, err := ResolveInstructions(s.root, cfg.Release)
+	if err != nil {
+		return "", KindNormalAI, CacheInputs{}, fmt.Errorf("resolving notes instructions for cache key: %w", err)
 	}
 
 	body, err := s.generator.GenerateFromDiff(ctx, state.LastTag, diff, cfg)
 	if err != nil {
-		return s.resolveNormalPathFailure(ctx, err, state.LastTag, cfg.Release)
+		body, kind, ferr := s.resolveNormalPathFailure(ctx, err, state.LastTag, cfg.Release)
+		return body, kind, CacheInputs{}, ferr
 	}
-	return body, KindNormalAI, nil
+	return body, KindNormalAI, CacheInputs{Cacheable: true, Diff: diff, Instructions: instructions}, nil
 }
 
 // resolveNormalPathFailure routes a branch-4 generator failure through the

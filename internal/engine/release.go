@@ -41,6 +41,7 @@ import (
 	"mint/internal/gitrepo"
 	"mint/internal/hooks"
 	"mint/internal/notes"
+	"mint/internal/notescache"
 	"mint/internal/preflight"
 	"mint/internal/presenter"
 	"mint/internal/publish"
@@ -137,6 +138,28 @@ type ReleaseDeps struct {
 	// ai_command / timeout config OVERRIDE is deferred to the Phase 6 schema; the
 	// zero-Config default is used now.
 	Transport notes.Transport
+	// NoteCache is the dry-run note-cache WRITE seam (task 4-7). On a --dry-run that
+	// generated an AI note preview, Release writes the generated body to it keyed by
+	// a hash of (the post-diff_exclude diff + the computed version + the resolved
+	// prompt/context) with a TTL stamp, so the subsequent real run (task 4-8) can
+	// reuse the exact previewed bytes. It is the SOLE filesystem side effect of a dry
+	// run. When nil (the no-cache default used by every non-dry-run test and by tests
+	// that do not assert caching) the write is skipped; production wires a repo-path
+	// notescache.Store, and the cache-write tests inject a temp-dir store so nothing
+	// lands in the real repo.
+	NoteCache NoteCacheWriter
+}
+
+// NoteCacheWriter is the engine's dry-run note-cache WRITE seam: it persists a
+// generated note body under a precomputed key, scoped to a repo root, with its own
+// TTL stamp. It is defined HERE (the consumer) per the accept-interfaces
+// convention; notescache.Store satisfies it. Only the write half is needed for
+// task 4-7 — reuse (a read) is task 4-8.
+type NoteCacheWriter interface {
+	// Write persists body under key for repoRoot. A non-nil error means the cache
+	// entry could not be written; the dry run surfaces it (the cache write is the
+	// dry run's only side effect, so a failure to perform it is worth reporting).
+	Write(repoRoot, key, body string) error
 }
 
 // ReleaseOptions carries the per-run parsed inputs. Bump selects the version
@@ -209,9 +232,10 @@ type ReleaseOptions struct {
 	// annotated tag, the atomic push, and the provider release are ALL skipped so a dry
 	// run NEVER reaches the lock-resilient Mutator and the repo is byte-for-byte
 	// unchanged. The -d/--dry-run flag is wired in production (cmd/mint) and sets this
-	// field. The remaining dimension — dry-run note CACHING (4-7/4-8) — is a separate,
-	// later concern not handled here; this task only ensures the notes PREVIEW is
-	// generated.
+	// field. The ONE intentional side effect (task 4-7): after the notes PREVIEW is
+	// generated, the generated AI note is WRITTEN to the gitignored/temp dry-run cache
+	// (keyed by the post-diff_exclude diff + version + prompt/context) so the
+	// subsequent real run can REUSE it (reuse itself is task 4-8).
 	DryRun bool
 }
 
@@ -351,7 +375,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// the surgical unwind (not a plain surface) — exactly like every other pre-push
 	// failure — so that artifact commit is reset back to the clean start. Whatever
 	// resolves flows WHOLE to every active sink below — no parsing, no per-sink reassembly.
-	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, current, opts)
+	body, kind, generator, cacheInputs, err := resolveBody(ctx, deps, root, cfg, current, opts)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
@@ -402,7 +426,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// (3-11) already fired above; the version-file projection and changelog write below
 	// are skipped too, so the working tree is byte-for-byte unchanged.
 	if opts.DryRun {
-		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
+		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind, body, cacheInputs)
 	}
 
 	// Stage 5 — record: project the version file, write the changelog, then fold BOTH
@@ -621,9 +645,9 @@ func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptio
 // resolves to {0,0,0}. An actual v0.0.0 tag is therefore treated as a first release;
 // that edge is acceptable for Phase 2 (a real v0.0.0 release is not a meaningful case
 // to support, and the selector simply records "Initial release." for it).
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, notes.CacheInputs, error) {
 	if opts.NotesBody != "" {
-		return opts.NotesBody, opts.NotesKind, nil, nil
+		return opts.NotesBody, opts.NotesKind, nil, notes.CacheInputs{}, nil
 	}
 
 	// One Assembler (the single git seam) is shared by the Generator and the Selector
@@ -647,11 +671,15 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		LastTag:      current.String(cfg.Release.TagPrefix),
 		NoAI:         opts.NoAI,
 	}
-	body, kind, err := selector.SelectBody(ctx, state, cfg)
+	// SelectBodyWithCacheInputs runs the identical precedence and additionally
+	// surfaces, for the normal-AI path, the post-diff_exclude diff + resolved
+	// prompt/context the dry-run cache key hashes — assembled/resolved ONCE here, so
+	// the dry-run cache write reuses them without a second diff or prompt read.
+	body, kind, cacheInputs, err := selector.SelectBodyWithCacheInputs(ctx, state, cfg)
 	if err != nil {
-		return "", kind, nil, err
+		return "", kind, nil, notes.CacheInputs{}, err
 	}
-	return body, kind, generator, nil
+	return body, kind, generator, cacheInputs, nil
 }
 
 // aiTransport resolves the AI transport the notes Generator hands its prompt to:
@@ -852,12 +880,13 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 		// Report the skip and return BEFORE the porcelain probe / artifact commit: the
 		// hook did not run, so the tree carries no mint-made changes to commit.
 		//
-		// OUT OF SCOPE (Phase 4): dry-run NOTE CACHING is NOT implemented here. Under a
-		// real dry-run, mint will cache the generated notes keyed by a hash of (the
-		// post-diff_exclude diff + the computed version + prompt/[release].context), with
-		// a ~1h TTL and a gitignored store, so the subsequent real run reuses them. That
-		// caching is deferred entirely to Phase 4; this task covers only the hook
-		// skip-and-report dimension of dry-run.
+		// NOTE-CACHE INTERPLAY (task 4-7): the dry-run note cache is keyed by the
+		// POST-diff_exclude diff, so it is invariant to hook artifacts that fall under
+		// diff_exclude (the normal case) — reuse holds even though this hook is skipped.
+		// If a pre_tag hook changes a NON-excluded (real source) path, the dry-run
+		// (hook-skipped) and real (post-hook) diffs genuinely differ, so the key
+		// correctly misses and the real run regenerates. The cache WRITE happens at the
+		// dry-run boundary (finishDryRun), not here.
 		reportHookSkipped(deps.Presenter, "pre_tag")
 		return false, nil
 	}
@@ -949,16 +978,36 @@ const dryRunDowngradedTarget = "skipped (provider unresolved)"
 
 // finishDryRun completes a --dry-run after the read-only stages: it resolves the
 // publish TARGET read-only (for the plan only — no gh command is issued and no
-// release is created), prints the full would-do plan via the Presenter, reports the
-// post_release hook skip (the only hook point the real spine reaches AFTER this
-// boundary), and returns nil WITHOUT any mutation. No commit, tag, push, or provider
-// release is reached, so the repo is byte-for-byte unchanged. The preflight and
-// pre_tag hook skips (3-11) already fired above this point.
-func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump) error {
+// release is created), prints the full would-do plan via the Presenter, WRITES the
+// generated AI note to the dry-run cache (the SOLE filesystem side effect of a dry
+// run, task 4-7), reports the post_release hook skip (the only hook point the real
+// spine reaches AFTER this boundary), and returns nil WITHOUT any mutation. No
+// commit, tag, push, or provider release is reached, so the working tree (apart from
+// the gitignored/temp cache) is byte-for-byte unchanged. The preflight and pre_tag
+// hook skips (3-11) already fired above this point.
+//
+// body is the generated note preview; cacheInputs carries the post-diff_exclude
+// diff + resolved prompt/context the cache key hashes (alongside versionKey). The
+// cache write happens ONLY when cacheInputs.Cacheable (the normal-AI path produced a
+// stochastic body worth caching) — the non-AI paths have nothing to reuse.
+func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump, body string, cacheInputs notes.CacheInputs) error {
 	p := deps.Presenter
 
 	publishTarget := dryRunPublishTarget(ctx, deps, cfg, tag)
 	p.ShowPlan(buildDryRunPlan(cfg, tag, publishTarget))
+
+	// Write the generated note to the dry-run cache so the subsequent real run can
+	// reuse the EXACT previewed bytes (task 4-8). It is keyed by the post-diff_exclude
+	// diff + the computed version + the resolved prompt/context — NOT the HEAD sha — so
+	// a pre_tag hook moving HEAD between runs (without changing the filtered diff) still
+	// hits. This is the dry run's only side effect; it is skipped for the non-AI paths
+	// (nothing stochastic to cache) and when no cache is wired. A write FAILURE is
+	// warn-only: the preview has already been shown and the dry run made no destructive
+	// change, so a transient cache hiccup must not fail an otherwise-successful dry run
+	// (the only cost is that the real run regenerates instead of reusing).
+	if err := writeDryRunNoteCache(deps, root, versionKey, body, cacheInputs); err != nil {
+		warnNoteCacheFailed(p, err)
+	}
 
 	// Report the post_release hook skip too: in a real run it fires at Stage 7 (after
 	// the boundary the dry run stops at), so reusing the 3-11 skip-and-report path here
@@ -974,6 +1023,20 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 		Leaf:    cfg.Release.CommitPrefix,
 	})
 	return nil
+}
+
+// writeDryRunNoteCache writes the generated note body to the dry-run cache when a
+// cache is wired AND the body is cacheable (the normal-AI path produced it). The
+// key is notescache.Key over the post-diff_exclude diff, the computed version, and
+// the resolved prompt/context — the canonical (non-sha) key the real run reuses on.
+// A nil cache (the no-cache default) or a non-cacheable path (first-release,
+// degenerate, --no-ai) is a clean no-op.
+func writeDryRunNoteCache(deps ReleaseDeps, root, versionKey, body string, cacheInputs notes.CacheInputs) error {
+	if deps.NoteCache == nil || !cacheInputs.Cacheable {
+		return nil
+	}
+	key := notescache.Key(cacheInputs.Diff, versionKey, cacheInputs.Instructions)
+	return deps.NoteCache.Write(root, key, body)
 }
 
 // dryRunPublishTarget resolves what the dry-run plan reports for the publish step,
@@ -1256,6 +1319,18 @@ func warnPostReleaseFailed(p presenter.Presenter, cause error) {
 		Label:   "post_release",
 		Message: "post_release hook failed; tag is already published",
 		Output:  hookFailureOutput(cause),
+	})
+}
+
+// warnNoteCacheFailed emits the warn-only notice when the dry-run note cache write
+// fails: the preview was already shown and the dry run made no destructive change,
+// so the run still finishes successfully — the only consequence is that the
+// subsequent real run regenerates the notes instead of reusing the cached preview.
+func warnNoteCacheFailed(p presenter.Presenter, cause error) {
+	p.Warn(presenter.Warning{
+		Label:   dryRunLabel,
+		Message: "could not cache notes preview; the real run will regenerate",
+		Output:  cause.Error(),
 	})
 }
 
