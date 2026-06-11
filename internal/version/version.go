@@ -106,16 +106,11 @@ func (v SemVer) String(prefix string) string {
 // prefixed strict-SemVer pattern and returns the numeric maximum, or the 0.0.0
 // zero value when none match.
 func highestMatching(tagList, prefix string) SemVer {
-	pattern := regexp.MustCompile(`^` + regexp.QuoteMeta(prefix) + `(\d+)\.(\d+)\.(\d+)$`)
+	pattern := prefixedPattern(prefix)
 
 	var highest SemVer
-	for _, line := range strings.Split(tagList, "\n") {
-		tag := strings.TrimSpace(line)
-		if tag == "" {
-			continue
-		}
-
-		v, ok := parseTag(pattern, tag)
+	for _, line := range splitTags(tagList) {
+		v, ok := parseTag(pattern, line)
 		if !ok {
 			continue
 		}
@@ -125,6 +120,27 @@ func highestMatching(tagList, prefix string) SemVer {
 	}
 
 	return highest
+}
+
+// prefixedPattern compiles the strict 3-part SemVer grammar anchored to the
+// configured prefix (^{prefix}(\d+)\.(\d+)\.(\d+)$). It is the SINGLE source of the
+// recognised tag grammar, shared by the highest-tag scan and regenerate's matching
+// scan so neither drifts from the other.
+func prefixedPattern(prefix string) *regexp.Regexp {
+	return regexp.MustCompile(`^` + regexp.QuoteMeta(prefix) + `(\d+)\.(\d+)\.(\d+)$`)
+}
+
+// splitTags splits `git tag --list` output into trimmed, non-empty tag lines. It
+// is the shared tokeniser for every tag-list scan so the read path's line handling
+// (trailing newline, blank lines) is interpreted identically everywhere.
+func splitTags(tagList string) []string {
+	var tags []string
+	for _, line := range strings.Split(tagList, "\n") {
+		if tag := strings.TrimSpace(line); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
 }
 
 // parseTag matches tag against pattern and converts the three captured numeric
