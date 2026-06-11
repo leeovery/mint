@@ -138,28 +138,51 @@ type ReleaseDeps struct {
 	// ai_command / timeout config OVERRIDE is deferred to the Phase 6 schema; the
 	// zero-Config default is used now.
 	Transport notes.Transport
-	// NoteCache is the dry-run note-cache WRITE seam (task 4-7). On a --dry-run that
-	// generated an AI note preview, Release writes the generated body to it keyed by
-	// a hash of (the post-diff_exclude diff + the computed version + the resolved
-	// prompt/context) with a TTL stamp, so the subsequent real run (task 4-8) can
-	// reuse the exact previewed bytes. It is the SOLE filesystem side effect of a dry
-	// run. When nil (the no-cache default used by every non-dry-run test and by tests
-	// that do not assert caching) the write is skipped; production wires a repo-path
-	// notescache.Store, and the cache-write tests inject a temp-dir store so nothing
-	// lands in the real repo.
-	NoteCache NoteCacheWriter
+	// NoteCache is the dry-run note-cache seam — BOTH the WRITE side (task 4-7) and the
+	// real-run REUSE/READ side (task 4-8). On a --dry-run that generated an AI note
+	// preview, Release writes the generated body keyed by a hash of (the
+	// post-diff_exclude diff + the computed version + the resolved prompt/context) with
+	// a TTL stamp. On the REAL run Release recomputes the SAME key and Looks it up: a
+	// live (within-TTL) match reuses the exact previewed bytes and SKIPS the AI; a miss
+	// (or an expired entry) regenerates. The dry-run write is the SOLE filesystem side
+	// effect of a dry run. When nil (the no-cache default used by tests that do not
+	// assert caching) both the write and the reuse lookup are skipped (the real run
+	// always generates); production wires a repo-path notescache.Store, and the cache
+	// tests inject a temp-dir store so nothing lands in the real repo.
+	NoteCache NoteCache
+}
+
+// NoteCache is the engine's dry-run note-cache seam: the WRITE side that persists a
+// generated preview and the READ side that reuses it on the real run. It composes the
+// segregated writer and reader interfaces, defined HERE (the consumer) per the
+// accept-interfaces convention; notescache.Store satisfies it.
+type NoteCache interface {
+	NoteCacheWriter
+	NoteCacheReader
 }
 
 // NoteCacheWriter is the engine's dry-run note-cache WRITE seam: it persists a
 // generated note body under a precomputed key, scoped to a repo root, with its own
 // TTL stamp. It is defined HERE (the consumer) per the accept-interfaces
-// convention; notescache.Store satisfies it. Only the write half is needed for
-// task 4-7 — reuse (a read) is task 4-8.
+// convention; notescache.Store satisfies it.
 type NoteCacheWriter interface {
 	// Write persists body under key for repoRoot. A non-nil error means the cache
 	// entry could not be written; the dry run surfaces it (the cache write is the
 	// dry run's only side effect, so a failure to perform it is worth reporting).
 	Write(repoRoot, key, body string) error
+}
+
+// NoteCacheReader is the engine's real-run note-cache REUSE seam (task 4-8): it looks
+// up a previously-written preview by its precomputed key, reporting found ONLY for a
+// live (within-TTL) entry. The TTL check lives behind the seam (the store owns the
+// clock), so an EXPIRED entry yields found=false and the real run regenerates rather
+// than ever reusing a stale preview. It is defined HERE (the consumer) per the
+// accept-interfaces convention; notescache.Store satisfies it.
+type NoteCacheReader interface {
+	// Lookup returns the cached entry for (repoRoot, key) and whether a FRESH one
+	// exists. found is true ONLY for an entry within TTL; an absent or expired entry is
+	// (zero, false, nil). A non-nil error is a genuine read/decode failure.
+	Lookup(repoRoot, key string) (notescache.Entry, bool, error)
 }
 
 // ReleaseOptions carries the per-run parsed inputs. Bump selects the version
@@ -375,11 +398,14 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// the surgical unwind (not a plain surface) — exactly like every other pre-push
 	// failure — so that artifact commit is reset back to the clean start. Whatever
 	// resolves flows WHOLE to every active sink below — no parsing, no per-sink reassembly.
-	body, kind, generator, cacheInputs, err := resolveBody(ctx, deps, root, cfg, current, opts)
+	// versionKey is the bare next version (no tag prefix) — the changelog/notes key AND
+	// the third cache-key component, so it is computed BEFORE resolveBody, which needs
+	// it to recompute the dry-run cache key for the real-run reuse lookup.
+	versionKey := next.String("")
+	body, kind, generator, cacheInputs, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
-	versionKey := next.String("")
 
 	// Emit in SPEC ORDER: RunStarted, ShowPlan, ShowNotes — then the review gate.
 	p.RunStarted(presenter.RunInfo{
@@ -645,7 +671,7 @@ func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptio
 // resolves to {0,0,0}. An actual v0.0.0 tag is therefore treated as a first release;
 // that edge is acceptable for Phase 2 (a real v0.0.0 release is not a meaningful case
 // to support, and the selector simply records "Initial release." for it).
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, notes.CacheInputs, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, versionKey string, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, notes.CacheInputs, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, notes.CacheInputs{}, nil
 	}
@@ -671,15 +697,91 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		LastTag:      current.String(cfg.Release.TagPrefix),
 		NoAI:         opts.NoAI,
 	}
-	// SelectBodyWithCacheInputs runs the identical precedence and additionally
-	// surfaces, for the normal-AI path, the post-diff_exclude diff + resolved
-	// prompt/context the dry-run cache key hashes — assembled/resolved ONCE here, so
-	// the dry-run cache write reuses them without a second diff or prompt read.
-	body, kind, cacheInputs, err := selector.SelectBodyWithCacheInputs(ctx, state, cfg)
+	// SelectBodyWithReuse runs the identical precedence and additionally surfaces, for
+	// the normal-AI path, the post-diff_exclude diff + resolved prompt/context the
+	// dry-run cache key hashes — assembled/resolved ONCE here. On the REAL run (not
+	// --dry-run) it consults the reuse hook BEFORE the AI: a live cache match reuses the
+	// previewed bytes and skips the AI. The dry-run WRITE path passes a nil hook (it
+	// always generates the preview to cache), so its behaviour is unchanged.
+	body, kind, cacheInputs, err := selector.SelectBodyWithReuse(ctx, state, cfg, realRunReuse(deps, root, versionKey, opts))
 	if err != nil {
 		return "", kind, nil, notes.CacheInputs{}, err
 	}
 	return body, kind, generator, cacheInputs, nil
+}
+
+// realRunReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path
+// to reuse a dry-run preview, or nil when reuse does not apply: a --dry-run (the WRITE
+// path always generates the preview) or no wired cache. The hook recomputes the SAME
+// cache key the dry run wrote under (the post-diff_exclude diff + the bare version +
+// the resolved prompt/context) and Looks it up:
+//
+//   - a live (within-TTL) match → report the quiet reuse notice and return the cached
+//     body (reused=true), so the selector SKIPS the AI;
+//   - a clean MISS or an expired entry (Lookup found=false, nil error) → report the spec
+//     miss notice ("diff changed since dry-run preview — regenerating notes") and return
+//     reused=false, so the selector regenerates via the AI. A stale note is NEVER shipped.
+//   - a Lookup READ/DECODE error (a corrupt or partial entry, a permissions glitch) →
+//     DEGRADE to regeneration: warn with a DISTINCT message (a corrupt read is a
+//     different situation from a clean miss) and return reused=false. The cache is purely
+//     an optimization, so a read failure must NEVER abort the release — this mirrors the
+//     warn-only WRITE side (writeDryRunNoteCache). The error stays OBSERVABLE via the
+//     warn (Lookup surfaces it honestly; the degrade decision lives here), and a corrupt
+//     body is never shipped because the AI regenerates fresh.
+func realRunReuse(deps ReleaseDeps, root, versionKey string, opts ReleaseOptions) notes.ReuseFunc {
+	if opts.DryRun || deps.NoteCache == nil {
+		return nil
+	}
+	return func(diff, instructions string) (string, bool, error) {
+		key := notescache.Key(diff, versionKey, instructions)
+		entry, found, err := deps.NoteCache.Lookup(root, key)
+		if err != nil {
+			// A read/decode failure degrades to regeneration: warn (distinct from the clean
+			// miss) and regenerate fresh, never abort and never ship a stale/corrupt note.
+			reportNotesCacheUnreadable(deps.Presenter, err)
+			return "", false, nil
+		}
+		if !found {
+			reportNotesRegenerating(deps.Presenter)
+			return "", false, nil
+		}
+		reportNotesReused(deps.Presenter)
+		return entry.Body, true, nil
+	}
+}
+
+// reuseNoticeLabel is the Presenter label for the real-run cache notices (reuse and
+// regenerate). It rides the existing Warn seam (a Warn sets no failure state and does
+// not suppress the success line), so a reported reuse/miss leaves the run otherwise
+// intact — no new presenter event is added.
+const reuseNoticeLabel = "notes"
+
+// reportNotesReused emits the quiet notice that the real run is reusing the previewed
+// dry-run note (a live key match within the TTL). It rides the Warn seam.
+func reportNotesReused(p presenter.Presenter) {
+	p.Warn(presenter.Warning{Label: reuseNoticeLabel, Message: "reusing the previewed notes from the dry-run cache"})
+}
+
+// reportNotesRegenerating emits the SPEC-FIXED miss notice when the real-run cache key
+// does not match a live preview (a changed diff, an absent entry, or an expired one),
+// so the AI regenerates rather than shipping a stale note. The wording is exactly the
+// spec's "diff changed since dry-run preview — regenerating notes".
+func reportNotesRegenerating(p presenter.Presenter) {
+	p.Warn(presenter.Warning{Label: reuseNoticeLabel, Message: "diff changed since dry-run preview — regenerating notes"})
+}
+
+// reportNotesCacheUnreadable emits the DISTINCT notice when the cache entry under the
+// run's key exists but cannot be read/decoded (a corrupt or partial file, a permissions
+// glitch). It is deliberately separate from the clean-miss notice — a read failure is a
+// different situation from a key miss, and reusing the diff-changed wording would
+// mislead. The run degrades to regeneration rather than aborting, mirroring the
+// warn-only WRITE side; the underlying cause rides the Warn's Output for diagnosis.
+func reportNotesCacheUnreadable(p presenter.Presenter, cause error) {
+	p.Warn(presenter.Warning{
+		Label:   reuseNoticeLabel,
+		Message: "could not read cached notes preview; regenerating",
+		Output:  cause.Error(),
+	})
 }
 
 // aiTransport resolves the AI transport the notes Generator hands its prompt to:

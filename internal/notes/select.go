@@ -92,6 +92,17 @@ type CacheInputs struct {
 	Instructions string
 }
 
+// ReuseFunc is the real-run note-cache reuse hook (task 4-8) the selector consults
+// on the NORMAL-AI path AFTER the cache-key inputs (the post-diff_exclude diff and
+// the resolved prompt/context instructions) are known but BEFORE the AI is invoked.
+// Given those inputs it returns a cached body to reuse INSTEAD of generating, with
+// reused=true; reused=false means no live cache match (regenerate via the AI). A
+// non-nil error aborts. The selector knows nothing of the cache, the version, or the
+// clock — the engine closes over those and the selector merely offers the pre-AI
+// interception point so the precedence (and the single diff/instructions resolution)
+// is not duplicated. Returning false is byte-identical to having no hook at all.
+type ReuseFunc func(diff, instructions string) (body string, reused bool, err error)
+
 // SelectBody resolves the notes body via the STRICT precedence (each branch
 // returns immediately; on_notes_failure is consulted ONLY in branch 4):
 //
@@ -118,8 +129,25 @@ func (s *Selector) SelectBody(ctx context.Context, state SelectState, cfg config
 // instructions (CacheInputs) so the caller can compute the cache key WITHOUT
 // re-assembling the diff or re-resolving the prompt. Every non-AI path returns a
 // zero, non-Cacheable CacheInputs (there is no AI body to cache). SelectBody is the
-// thin wrapper that discards the inputs, so its behaviour is byte-identical.
+// thin wrapper that discards the inputs, so its behaviour is byte-identical. It is
+// SelectBodyWithReuse with NO reuse hook (always generate) — the dry-run WRITE path,
+// which generates the preview to cache.
 func (s *Selector) SelectBodyWithCacheInputs(ctx context.Context, state SelectState, cfg config.Config) (string, Kind, CacheInputs, error) {
+	return s.SelectBodyWithReuse(ctx, state, cfg, nil)
+}
+
+// SelectBodyWithReuse runs the identical precedence as SelectBodyWithCacheInputs and,
+// on the NORMAL-AI path ONLY, consults the optional reuse hook AFTER the cache-key
+// inputs (the post-diff_exclude diff + resolved prompt/context instructions) are
+// resolved but BEFORE the AI is invoked. When the hook reports a live cache match the
+// cached body is returned as KindNormalAI and the AI is NEVER called; otherwise (a
+// miss, or a nil hook) the AI generates as before. Either way the returned CacheInputs
+// carry the resolved diff + instructions, so a reused body still surfaces a coherent
+// (Cacheable) key — the real run does not re-write the cache, so this is informational.
+//
+// A nil reuse hook makes this byte-identical to the always-generate path, so the
+// dry-run write path passes nil and gets unchanged behaviour.
+func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, cfg config.Config, reuse ReuseFunc) (string, Kind, CacheInputs, error) {
 	if state.FirstRelease {
 		return record.FirstReleaseBody, KindFirstRelease, CacheInputs{}, nil
 	}
@@ -146,12 +174,27 @@ func (s *Selector) SelectBodyWithCacheInputs(ctx context.Context, state SelectSt
 		return "", KindNormalAI, CacheInputs{}, fmt.Errorf("resolving notes instructions for cache key: %w", err)
 	}
 
+	cacheInputs := CacheInputs{Cacheable: true, Diff: diff, Instructions: instructions}
+
+	// Real-run reuse: with a live cache match the cached body is reused and the AI is
+	// skipped entirely. The hook is consulted ONLY here (the one cacheable path) and
+	// only when wired (the dry-run write path passes nil).
+	if reuse != nil {
+		body, reused, err := reuse(diff, instructions)
+		if err != nil {
+			return "", KindNormalAI, CacheInputs{}, err
+		}
+		if reused {
+			return body, KindNormalAI, cacheInputs, nil
+		}
+	}
+
 	body, err := s.generator.GenerateFromDiff(ctx, state.LastTag, diff, cfg)
 	if err != nil {
 		body, kind, ferr := s.resolveNormalPathFailure(ctx, err, state.LastTag, cfg.Release)
 		return body, kind, CacheInputs{}, ferr
 	}
-	return body, KindNormalAI, CacheInputs{Cacheable: true, Diff: diff, Instructions: instructions}, nil
+	return body, KindNormalAI, cacheInputs, nil
 }
 
 // resolveNormalPathFailure routes a branch-4 generator failure through the

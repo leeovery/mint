@@ -73,8 +73,9 @@ func run(args []string) int {
 		Editor: engine.NewEditorLauncher(p, r),
 		// The dry-run note cache lives UNDER the repo at {root}/.mint/cache (gitignored,
 		// never committed), repo-scoped and stamped with the wall clock for the ~1h TTL.
-		// A --dry-run writes the generated note here so the subsequent real run reuses
-		// the previewed bytes (reuse is a later task).
+		// A --dry-run writes the generated note here; the subsequent real run recomputes
+		// the key, looks it up, and on a live (within-TTL) match reuses the previewed
+		// bytes — skipping the AI. A miss or an expired entry regenerates.
 		NoteCache: notescache.NewRepoStore(time.Now),
 	}
 

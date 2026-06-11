@@ -1,15 +1,17 @@
 // Package notescache is mint's dry-run note cache: the WRITE side that lets a
-// `mint release --dry-run` persist the generated AI note so the subsequent real
-// run can reuse the EXACT bytes that were previewed (reuse itself is task 4-8).
+// `mint release --dry-run` persist the generated AI note, and the READ side
+// (Lookup) that lets the subsequent real run reuse the EXACT bytes that were
+// previewed.
 //
 // The cache KEY is a hash of (the post-diff_exclude diff fed to the AI + the
 // computed next version + the resolved prompt/[release].context) — deliberately
 // NOT the HEAD sha, because a pre_tag hook can move HEAD between the dry run and
 // the real run without changing what would ship. Each entry stores the note body
-// alongside a TTL stamp (the write time) so 4-8 can later enforce the ~1h default
-// TTL. The cache is REPO-SCOPED (entries are namespaced by the resolved repo
-// root, so previews never collide across repos) and lives in a gitignored path so
-// it is NEVER committed.
+// alongside a TTL stamp (the write time) so Lookup can enforce the ~1h default TTL
+// (see TTL): an entry older than the window is treated as absent so a stale preview
+// is never reused. The cache is REPO-SCOPED (entries are namespaced by the resolved
+// repo root, so previews never collide across repos) and lives in a gitignored path
+// so it is NEVER committed.
 package notescache
 
 import (
@@ -34,6 +36,13 @@ const cacheSubdir = "cache"
 
 // entryFileExt is the on-disk extension for a cache entry's JSON document.
 const entryFileExt = ".json"
+
+// TTL is the default freshness window a cached dry-run note may be reused within.
+// It is the dry-run→real-run handoff backstop: long enough for an agent to surface
+// the preview to a human and then run for real, short enough that a forgotten
+// preview cannot resurrect days later. Lookup measures an entry's WrittenAt stamp
+// against the store's injected clock and treats anything older than TTL as absent.
+const TTL = time.Hour
 
 // Entry is a single cached dry-run note: the generated body plus the TTL stamp
 // (the write time). The stamp is recorded so the reuse side (task 4-8) can expire
@@ -120,6 +129,35 @@ func (s *Store) Write(repoRoot, key, body string) error {
 		return fmt.Errorf("writing note cache entry: %w", err)
 	}
 	return nil
+}
+
+// Lookup reads the cache entry for (repoRoot, key) and reports whether a FRESH one
+// exists — the reuse side of the dry-run cache (task 4-8). found is true ONLY when an
+// entry exists for the key AND its WrittenAt stamp is within TTL of the store's
+// injected clock; an absent entry and an EXPIRED entry both yield (Entry{}, false,
+// nil) so the real run regenerates rather than ever shipping a stale preview. The
+// TTL check lives here (not at the caller) because the store owns the clock seam, so
+// tests control expiry by injecting the reading store's now. A genuine read/decode
+// error (a corrupt entry, a permissions failure) propagates so the caller can decide
+// — it is NOT swallowed as a miss.
+func (s *Store) Lookup(repoRoot, key string) (Entry, bool, error) {
+	data, err := os.ReadFile(s.EntryPath(repoRoot, key))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Entry{}, false, nil // a clean miss: regenerate.
+		}
+		return Entry{}, false, fmt.Errorf("reading note cache entry: %w", err)
+	}
+
+	var entry Entry
+	if err := json.Unmarshal(data, &entry); err != nil {
+		return Entry{}, false, fmt.Errorf("decoding note cache entry: %w", err)
+	}
+
+	if s.now().Sub(entry.WrittenAt) > TTL {
+		return Entry{}, false, nil // expired: treat as absent, regenerate.
+	}
+	return entry, true, nil
 }
 
 // EntryPath returns the absolute path of the cache entry file for (repoRoot, key).
