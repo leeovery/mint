@@ -247,3 +247,21 @@ approved_at: 2026-06-09
 |-------------|------|------------|
 | mint-release-tool-9-1 | Extract single release-bookkeeping commit-subject builder | three call sites (record.CommitBookkeeping, release.composeTagMessage, engine.bookkeepingSubject) route through record.BookkeepingSubject, no fmt.Sprintf("%s Release %s") literal remains, real commit + tag annotation + dry-run plan subjects observably identical, stale "mirrors ..." comment updated |
 | mint-release-tool-9-2 | Extract shared CHANGELOG stage-and-commit helper for regenerate paths | single helper owns git add CHANGELOG.md + git commit -m subject, single-version still wraps with tag and returns (bool, error), batch still routes through resetAndAbort with startingHEAD and still calls pushChangelogCommit, distinct subjects unchanged |
+
+### Phase 10: Review Remediation (Cycle 1)
+
+**Goal**: Address findings from Review Remediation (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-10-1 | Close the interactive-regenerate preflight gate bypass | bare interactive changelog/both runs clean-tree/branch/remote-sync before commit+push, bare interactive release/both runs gh-auth before provider write, failing applicable gate aborts before any mutation/network, tag-free and version-compute gates remain excluded |
+| mint-release-tool-10-2 | Fix the nil-Publisher crash on the regenerate paths | regenerate --reuse -y against non-github/no-remote origin no panic, unresolvable provider aborts or downgrades consistent with engine.Release, --all batch takes the same clean path, no regenerate path dereferences nil Publisher |
+| mint-release-tool-10-3 | Add SIGINT/SIGTERM handling | cancelled context mid-spine (pre-PONR) triggers surgical unwind + autostash pop, no cmd entry point uses bare context.Background() for the spine, post-PONR cancellation does not unwind (warn-only) |
+| mint-release-tool-10-4 | Fix Mutator.Mutate retrying with a consumed io.Reader | lock-retried stdin-bearing mutation gets full stdin on second attempt, git tag -a -F - produces full annotation after a retried lock, regenerate --reuse reads back complete annotation, non-stdin (nil) path unchanged |
+| mint-release-tool-10-5 | Stop reporting "repo clean" when the unwind itself failed | failed mid-unwind recovery Mutate yields a Warn naming manual cleanup, summary in that case omits "repo clean", fully-successful unwind still reports "repo clean" |
+| mint-release-tool-10-6 | Parse --plain on the regenerate route | regenerate <ver> --plain accepted (not a usage error) and selects plain presentation, --plain composes with --target/--reuse/--fresh/-y/--all |
+| mint-release-tool-10-7 | Fix the production timeout misclassification (promoted bug) | real context-deadline kill from exec.CommandContext satisfies errors.Is(err, context.DeadlineExceeded), AI transport classifies as non-retried timeout (single invocation) |
+| mint-release-tool-10-8 | Fix the whitespace-only $EDITOR panic (promoted bug) | EDITOR=" " (whitespace-only) does not panic, run launches vi (fall-through) or returns to gate with Warn + ErrEditorReturnToGate, temp file cleaned up |
+| mint-release-tool-10-9 | Stop blocking-stage spinner leaks across Warn (promoted bug, extended) | --all notes-failure skip on last/only version emits skipped + summary with no live spinner, real-run cache-reuse/miss/unreadable notices appear without spinner, normal blocking stage still shows and stops its spinner |

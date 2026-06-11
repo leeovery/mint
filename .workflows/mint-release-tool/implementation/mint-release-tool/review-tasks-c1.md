@@ -3,12 +3,12 @@ scope: mint-release-tool
 cycle: 1
 source: review
 total_proposed: 9
-gate_mode: gated
+gate_mode: auto
 ---
 # Review Tasks: Mint Release Tool (Cycle 1)
 
 ## Task 1: Close the interactive-regenerate preflight gate bypass
-status: pending
+status: approved
 severity: high
 sources: report-5-10, report-5-4
 
@@ -29,7 +29,7 @@ sources: report-5-10, report-5-4
 - Test asserting an interactive provider (`release`/`both`) choice runs gh-auth before the provider write.
 
 ## Task 2: Fix the nil-Publisher crash on the regenerate paths
-status: pending
+status: approved
 severity: high
 sources: report-5-10, report-7-5, report-4-9
 note: Supersedes report Idea #17 (shared ResolvePublisher helper) and quick-fix #13 (cmd-level unresolved-publisher test) — both folded into this task; do not emit them separately.
@@ -50,7 +50,7 @@ note: Supersedes report Idea #17 (shared ResolvePublisher helper) and quick-fix 
 - Test: `--all` (batch) regenerate with an unresolvable provider takes the same clean path.
 
 ## Task 3: Add SIGINT/SIGTERM handling
-status: pending
+status: approved
 severity: high
 sources: report-5-10, external-audit
 
@@ -69,7 +69,7 @@ sources: report-5-10, external-audit
 - Test: a context cancelled mid-spine (before PONR) triggers the unwind path (assert recovery resets / tag delete / autostash pop via the FakeRunner+Mutator seam).
 
 ## Task 4: Fix Mutator.Mutate retrying with a consumed io.Reader
-status: pending
+status: approved
 severity: high
 sources: report-5-10, external-audit
 
@@ -88,7 +88,7 @@ sources: report-5-10, external-audit
 - Test: a lock-retried stdin-bearing mutation receives the full stdin on the second attempt (FakeRunner reports the bytes seen per attempt; assert the retried attempt got the complete payload).
 
 ## Task 5: Stop reporting "repo clean" when the unwind itself failed
-status: pending
+status: approved
 severity: high
 sources: report-5-10, external-audit
 
@@ -107,7 +107,7 @@ sources: report-5-10, external-audit
 - Test: a failed mid-unwind `Mutate` yields a warn and a summary without "repo clean".
 
 ## Task 6: Parse --plain on the regenerate route
-status: pending
+status: approved
 severity: high
 sources: report-5-10, external-audit
 
@@ -125,7 +125,7 @@ sources: report-5-10, external-audit
 - Flag-parse test asserting `--plain` is recognised on the regenerate route and propagates into the presenter startup.
 
 ## Task 7: Fix the production timeout misclassification (promoted bug)
-status: pending
+status: approved
 severity: high
 sources: report-2-1, external-audit
 
@@ -142,7 +142,7 @@ sources: report-2-1, external-audit
 - End-to-end test that a real deadline kill (not an injected DeadlineExceeded wrapper) is classified as a non-retried timeout; assert a single underlying invocation.
 
 ## Task 8: Fix the whitespace-only $EDITOR panic (promoted bug)
-status: pending
+status: approved
 severity: high
 sources: report-2-13, external-audit
 
@@ -160,7 +160,7 @@ sources: report-2-13, external-audit
 - Test: a whitespace-only resolved editor value is handled without panic (asserts the chosen behaviour — fall-through to vi, or Warn + `ErrEditorReturnToGate` + temp cleanup).
 
 ## Task 9: Stop blocking-stage spinner leaks across Warn (promoted bug, extended)
-status: pending
+status: approved
 severity: high
 sources: report-5-12, external-audit
 

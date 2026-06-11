@@ -227,7 +227,17 @@
             "mint-release-tool-8-3": "tick-12826e",
             "mint-release-tool-9": "tick-a0c689",
             "mint-release-tool-9-1": "tick-889457",
-            "mint-release-tool-9-2": "tick-52da1d"
+            "mint-release-tool-9-2": "tick-52da1d",
+            "mint-release-tool-10": "tick-39bec4",
+            "mint-release-tool-10-1": "tick-071c53",
+            "mint-release-tool-10-2": "tick-68a543",
+            "mint-release-tool-10-3": "tick-2d5e27",
+            "mint-release-tool-10-4": "tick-bae80a",
+            "mint-release-tool-10-5": "tick-98026d",
+            "mint-release-tool-10-6": "tick-39ef13",
+            "mint-release-tool-10-7": "tick-e16bf3",
+            "mint-release-tool-10-8": "tick-78e5cc",
+            "mint-release-tool-10-9": "tick-b45604"
           },
           "external_id": "tick-d4f773",
           "external_dependencies": {
