@@ -38,14 +38,37 @@ func main() {
 // engine abort's non-zero ExitCode on a pre-PONR abort, and usageExitCode on a
 // CLI parse error.
 func run(args []string) int {
-	// Phase 1 wires only `mint release`. The subcommand surface (regenerate, init,
-	// version) is reserved for later phases; an unknown command is a usage error.
-	cmd, rest := splitCommand(args)
-	if cmd != "release" {
-		fmt.Fprintf(os.Stderr, "mint: unknown command %q (only `mint release` is wired)\n", cmd)
+	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a
+	// top-level verb; classifyCommand resolves the route. The init/version verbs are
+	// reserved for later phases; an unknown command is a usage error.
+	kind, rest := classifyCommand(args)
+	switch kind {
+	case commandRelease:
+		return runRelease(rest)
+	case commandRegenerate:
+		return runRegenerate(rest)
+	default:
+		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release` and `mint release regenerate` are wired)")
 		return usageExitCode
 	}
+}
 
+// runRegenerate parses and validates the `mint release regenerate` flag surface.
+// It performs NO mutation or network call — the heal/backfill execution is wired
+// in a later phase, so for now a successful parse reports that the command is not
+// yet executable rather than silently doing nothing.
+func runRegenerate(rest []string) int {
+	if _, err := parseRegenerateFlags(rest); err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+	fmt.Fprintln(os.Stderr, "mint: `release regenerate` is not yet implemented")
+	return usageExitCode
+}
+
+// runRelease wires the production seams and runs the forward release pipeline for
+// a parsed `mint release` invocation, returning the process exit code.
+func runRelease(rest []string) int {
 	opts, err := parseReleaseFlags(rest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -85,13 +108,37 @@ func run(args []string) int {
 	return 0
 }
 
-// splitCommand separates the leading subcommand from its arguments. With no args
-// the command is empty (the unknown-command branch reports it as a usage error).
-func splitCommand(args []string) (cmd string, rest []string) {
-	if len(args) == 0 {
-		return "", nil
+// commandKind is the resolved top-level route for an invocation. The zero value
+// is commandUnknown so an unrecognised or empty command is a usage error by
+// default.
+type commandKind int
+
+const (
+	// commandUnknown is an unrecognised or empty command (a usage error). It is the
+	// zero value, so `mint regenerate` (regenerate is NOT a top-level verb) and a
+	// bare `mint` both fall here.
+	commandUnknown commandKind = iota
+	// commandRelease is the forward `mint release [bump]` cut action.
+	commandRelease
+	// commandRegenerate is the `mint release regenerate …` subcommand — a
+	// subcommand of release, never a top-level verb.
+	commandRegenerate
+)
+
+// classifyCommand resolves the route for an invocation's args and returns the
+// route plus the remaining args for that route's parser. `release` with no
+// subcommand is the cut action; `release regenerate` routes to the regenerate
+// subcommand (so regenerate is reachable ONLY under release, never top-level);
+// anything else is commandUnknown. It is pure — no execution, no parsing.
+func classifyCommand(args []string) (commandKind, []string) {
+	if len(args) == 0 || args[0] != "release" {
+		return commandUnknown, nil
 	}
-	return args[0], args[1:]
+	rest := args[1:]
+	if len(rest) > 0 && rest[0] == "regenerate" {
+		return commandRegenerate, rest[1:]
+	}
+	return commandRelease, rest
 }
 
 // exitCode resolves the process exit code for a non-nil Release error: an engine
