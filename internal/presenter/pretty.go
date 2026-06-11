@@ -518,6 +518,19 @@ func (p *PrettyPresenter) Unwound(u Unwind) {
 // and rendering the block does not set failure state — the warn stays
 // non-terminal.
 func (p *PrettyPresenter) Warn(w Warning) {
+	// A Warn may fire WHILE a blocking stage's spinner is still live — the
+	// batch-skip path (a notes-production failure reported via reportSkip with no
+	// StageSucceeded) and the real-run cache reuse/miss/unreadable notices (reported
+	// from inside the live notes stage). Stop the active spinner FIRST so no frame
+	// animates over the ⚠ notice (or the end summary that follows a skip). This is the
+	// SINGLE general fix that covers every current and future Warn site rather than
+	// patching each engine call site. stopSpinner is idempotent (a no-op when no
+	// spinner is running) so a standalone Warn — the common post_release/push case —
+	// is unaffected, and it clears any pending suspend so a later ResumeSpinner cannot
+	// resurrect a stopped spinner. In the cache-reuse path the stage then continues
+	// and its eventual StageSucceeded/StageFailed prints the ✓/✗ line in the cleared
+	// place; in the skip path the stage ends here, so no resume is wanted.
+	p.stopSpinner()
 	glyph := p.warn.Render("⚠")
 	p.writef("%s%s %s\n", stageIndent, glyph, warnText(w))
 	p.errf("⚠ %s\n", warnText(w))

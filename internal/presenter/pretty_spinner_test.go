@@ -240,6 +240,84 @@ func TestPrettyPresenterNonBlockingStageStartedRendersNothing(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterWarnStopsActiveSpinnerBatchSkipPath covers case (a): a
+// notes-production-failure SKIP fires a Warn while a blocking notes stage's spinner
+// is still live (the engine emits StageStarted{Blocking} then, on the failure,
+// reportSkip→Warn WITHOUT a StageSucceeded). The spinner must be stopped BEFORE the
+// ⚠ line so nothing animates over the skip notice or the end summary that follows;
+// the stage ENDS here (skip-and-continue), so the spinner must not be resurrected by
+// a later RunFinished.
+func TestPrettyPresenterWarnStopsActiveSpinnerBatchSkipPath(t *testing.T) {
+	_, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
+		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
+		// The skip path: a Warn with NO StageSucceeded, then the run's end summary.
+		p.Warn(presenter.Warning{Label: "skipped v1.1.0", Message: "diff too large"})
+		p.RunFinished(presenter.RunResult{Verb: presenter.VerbRegenerate, Project: "mint", Summary: "0 regenerated, 1 skipped: v1.1.0 (diff too large)"})
+	})
+
+	if len(tr.created) != 1 {
+		t.Fatalf("expected exactly one spinner created, got %d", len(tr.created))
+	}
+	if !tr.created[0].stopped {
+		t.Errorf("the active spinner must be stopped before the skip Warn line, but it was left running")
+	}
+	if tr.active != 0 {
+		t.Errorf("a spinner was left active across the skip Warn / end summary: active = %d, want 0", tr.active)
+	}
+}
+
+// TestPrettyPresenterWarnStopsActiveSpinnerCacheReusePath covers case (b): a real-run
+// cache-reuse / miss / unreadable notice rides the Warn seam INSIDE the live blocking
+// notes stage (the engine emits StageStarted{Blocking}, the reuse callback fires a
+// Warn mid-stage, then the stage continues and ends with StageSucceeded). The spinner
+// must be stopped BEFORE the ⚠ line so nothing animates over the notice; the stage
+// still terminates correctly on the following StageSucceeded (which prints the ✓
+// line), and never leaves a spinner active.
+func TestPrettyPresenterWarnStopsActiveSpinnerCacheReusePath(t *testing.T) {
+	out := &bytes.Buffer{}
+	tr := &spyTracker{}
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithSpinnerFactory(tr.factory())
+
+	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
+	p.Warn(presenter.Warning{Label: "notes", Message: "reusing the previewed notes from the dry-run cache"})
+	// Capture the spinner state at the MOMENT the Warn fired — it must already be
+	// stopped here, before the stage continues and later StageSucceeds.
+	stoppedAtWarn := tr.created[0].stopped
+	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
+
+	if len(tr.created) != 1 {
+		t.Fatalf("expected exactly one spinner created, got %d", len(tr.created))
+	}
+	if !stoppedAtWarn {
+		t.Errorf("the active spinner must be stopped by the cache-reuse Warn itself, but it was still running when the Warn returned")
+	}
+	if tr.active != 0 {
+		t.Errorf("a spinner was left active after the stage completed: active = %d, want 0", tr.active)
+	}
+	got := out.String()
+	warnIdx := strings.Index(got, "⚠ notes")
+	checkIdx := strings.Index(got, "✓ notes")
+	if warnIdx < 0 || checkIdx < 0 {
+		t.Fatalf("expected both the ⚠ notice and the ✓ completion line:\n%q", got)
+	}
+	if checkIdx <= warnIdx {
+		t.Errorf("the ✓ completion line must follow the ⚠ notice: warn=%d check=%d\n%q", warnIdx, checkIdx, got)
+	}
+}
+
+// TestPrettyPresenterWarnWithNoActiveSpinnerCreatesNone proves the general fix is a
+// safe no-op when no spinner is live: a standalone Warn (the common post_release /
+// push case, fired outside any blocking stage) neither creates nor touches a spinner.
+func TestPrettyPresenterWarnWithNoActiveSpinnerCreatesNone(t *testing.T) {
+	_, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
+		p.Warn(presenter.Warning{Label: "post_release", Message: "hook exited 1"})
+	})
+
+	if len(tr.created) != 0 {
+		t.Errorf("a Warn with no active spinner must create no spinner, got %d", len(tr.created))
+	}
+}
+
 // TestPrettyPresenterSpinnerFramesGoToStdoutNotStderr proves the stream contract
 // for the spinner: spinner frames are narration → stdout, NEVER stderr. The real
 // spinner factory is used (driven start→stop deterministically) and stderr is
