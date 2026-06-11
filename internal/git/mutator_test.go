@@ -316,7 +316,7 @@ func TestMutate_WithStdin_PipesThroughRunWith(t *testing.T) {
 	f.Seed("git", runner.Result{}, nil)
 
 	m := testMutator(f)
-	if _, err := m.Mutate(context.Background(), strings.NewReader("tag body"), "git", "tag", "-a", "v0.0.1", "-F", "-"); err != nil {
+	if _, err := m.Mutate(context.Background(), []byte("tag body"), "git", "tag", "-a", "v0.0.1", "-F", "-"); err != nil {
 		t.Fatalf("Mutate returned unexpected error: %v", err)
 	}
 
@@ -326,6 +326,44 @@ func TestMutate_WithStdin_PipesThroughRunWith(t *testing.T) {
 	}
 	if invs[0].Stdin != "tag body" {
 		t.Errorf("piped stdin = %q, want %q", invs[0].Stdin, "tag body")
+	}
+}
+
+func TestMutate_StdinBearingLockRetry_SecondAttemptGetsFullPayload(t *testing.T) {
+	t.Parallel()
+
+	// REGRESSION: a stdin-bearing mutation that hits a lock and retries must pipe the
+	// FULL stdin on EVERY attempt, not an exhausted/empty reader. `git tag -a … -F -`
+	// reads the annotation body off stdin; if the retry pipes nothing, the tag carries
+	// an empty annotation and regenerate --reuse (whose only source is that annotation)
+	// silently breaks. The first attempt is a (gone) lock so the Mutator just retries;
+	// the FakeRunner records the stdin drained per attempt, and BOTH must be the full body.
+	lockPath := filepath.Join(t.TempDir(), ".git", "index.lock")
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		t.Fatalf("creating .git dir: %v", err)
+	}
+	// Deliberately do NOT create the lock file: gone by classification, so just retry.
+
+	const body = "🌿 Release v0.0.1\n\nInitial release."
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		lockErr(lockPath), // attempt 1 — contended, retried
+		okCall(),          // attempt 2 — succeeds
+	)
+
+	m := testMutator(f)
+	if _, err := m.Mutate(context.Background(), []byte(body), "git", "tag", "-a", "v0.0.1", "-F", "-"); err != nil {
+		t.Fatalf("Mutate returned unexpected error: %v", err)
+	}
+
+	invs := f.Invocations()
+	if len(invs) != 2 {
+		t.Fatalf("invocations = %d, want 2 (contended attempt then a successful retry)", len(invs))
+	}
+	for i, inv := range invs {
+		if inv.Stdin != body {
+			t.Errorf("attempt %d piped stdin = %q, want the full body %q (a retry must not pipe an exhausted reader)", i+1, inv.Stdin, body)
+		}
 	}
 }
 

@@ -22,7 +22,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"mint/internal/git"
 	"mint/internal/record"
@@ -97,7 +96,7 @@ func (rel *Releaser) TagAndPush(ctx context.Context, tag, commitPrefix, body str
 // ErrPushRejected because no push has happened yet.
 func (rel *Releaser) createAnnotatedTag(ctx context.Context, tag, commitPrefix, body string) error {
 	message := composeTagMessage(tag, commitPrefix, body)
-	if _, err := rel.mutator.Mutate(ctx, strings.NewReader(message), "git", "tag", "-a", tag, "-F", "-"); err != nil {
+	if _, err := rel.mutator.Mutate(ctx, []byte(message), "git", "tag", "-a", tag, "-F", "-"); err != nil {
 		return fmt.Errorf("creating annotated tag %q: %w", tag, err)
 	}
 	return nil

@@ -21,6 +21,7 @@
 package git
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -134,16 +135,20 @@ func (m *Mutator) RunWith(ctx context.Context, stdin io.Reader, name string, arg
 	return m.runner.RunWith(ctx, stdin, name, args...)
 }
 
-// Mutate runs a git MUTATION with lock resilience. With a nil stdin it uses Run, else
-// RunWith. On success it returns immediately. On a NON-lock failure it surfaces the
-// result+error unchanged on the first attempt (so e.g. a push rejection still flows
-// through as ErrPushRejected upstream — non-lock errors are never swallowed or
-// retried). On a LOCK-contention failure it classifies the named lock and either
-// clears a provably-stale lock or backs off a live one, then retries within the
-// budget, RE-classifying each attempt. When the budget is exhausted and the lock
-// still blocks it returns the last git failure so the caller aborts — it never hangs
-// and never silently succeeds.
-func (m *Mutator) Mutate(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
+// Mutate runs a git MUTATION with lock resilience. stdin is the command's piped input
+// as raw BYTES, not an io.Reader: a retry must pipe the FULL payload again, and a
+// single shared io.Reader is exhausted after the first attempt — a lock-retried
+// `git tag -a … -F -` would then write an EMPTY annotation. Holding the bytes lets
+// invoke build a fresh reader per attempt (the same discipline ai.Transport documents).
+// With a nil stdin it uses Run, else RunWith. On success it returns immediately. On a
+// NON-lock failure it surfaces the result+error unchanged on the first attempt (so e.g.
+// a push rejection still flows through as ErrPushRejected upstream — non-lock errors are
+// never swallowed or retried). On a LOCK-contention failure it classifies the named lock
+// and either clears a provably-stale lock or backs off a live one, then retries within
+// the budget, RE-classifying each attempt. When the budget is exhausted and the lock
+// still blocks it returns the last git failure so the caller aborts — it never hangs and
+// never silently succeeds.
+func (m *Mutator) Mutate(ctx context.Context, stdin []byte, name string, args ...string) (runner.Result, error) {
 	var (
 		res runner.Result
 		err error
@@ -173,12 +178,14 @@ func (m *Mutator) Mutate(ctx context.Context, stdin io.Reader, name string, args
 }
 
 // invoke runs the underlying command once through the wrapped runner, choosing the
-// stdin-piping seam when stdin is non-nil.
-func (m *Mutator) invoke(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
+// stdin-piping seam when stdin is non-nil. It builds a FRESH bytes.NewReader from the
+// stdin bytes on every call so each retry attempt pipes the complete payload — a reader
+// constructed once and reused would be drained after the first attempt.
+func (m *Mutator) invoke(ctx context.Context, stdin []byte, name string, args ...string) (runner.Result, error) {
 	if stdin == nil {
 		return m.runner.Run(ctx, name, args...)
 	}
-	return m.runner.RunWith(ctx, stdin, name, args...)
+	return m.runner.RunWith(ctx, bytes.NewReader(stdin), name, args...)
 }
 
 // handleLock applies the stale-vs-live decision for one contended attempt: a
