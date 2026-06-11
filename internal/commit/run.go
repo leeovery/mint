@@ -97,6 +97,13 @@ type Deps struct {
 	// no real override file). When empty, Run resolves it via gitrepo.ResolveRoot —
 	// production leaves it empty and gets the real repo root.
 	Root string
+	// Staging is the resolved staging mode (cmd layer resolves the mutually-exclusive
+	// -a/-A flags into it). The zero value StagedOnly is the Phase 1 default — commit
+	// the index exactly as staged, running NO `git add`. The All/AddAll deferred-staging
+	// behaviour (compute the would-be-committed diff read-only, then `git add` only on
+	// gate-accept) is Phase 2 (tasks 2-2/2-3) and consumes this field; this task only
+	// THREADS the resolved value through, leaving the StagedOnly path byte-identical.
+	Staging StagingMode
 }
 
 // Run executes the bare `mint commit` thread, orchestrating the Phase 1 pieces in

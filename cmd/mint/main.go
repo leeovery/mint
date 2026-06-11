@@ -297,6 +297,10 @@ func runCommit(ctx context.Context, rest []string) int {
 		Presenter: p,
 		Runner:    r,
 		Committer: git.NewMutator(r),
+		// Thread the resolved staging mode (StagedOnly by default; All/-a or AddAll/-A
+		// when given) into the orchestrator. Phase 2's deferred-staging tasks consume it;
+		// StagedOnly leaves the bare path unchanged.
+		Staging: opts.Staging,
 	}
 
 	if err := commit.Run(ctx, deps); err != nil {
