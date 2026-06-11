@@ -2,14 +2,18 @@
 // fully optional: zero config yields sensible defaults everywhere, so Load never
 // requires a file to exist.
 //
-// This loads the keys the release pipeline needs so far: the Phase 1 [release]
-// keys (tag_prefix, commit_prefix, release_branch, publish), the changelog
-// toggle ([release].changelog), the top-level max_diff_lines guard, and the
-// Phase 2 notes-engine prompt-control keys ([release].context, [release].prompt).
-// The full schema (shared engine
-// keys, the rest of [release], [release.hooks]) and typed fail-loud validation
-// are consolidated in Phase 6; until then unknown keys are tolerated and ignored
-// rather than rejected.
+// Config is the single CANONICAL schema for the verb-namespaced .mint.toml: the
+// shared engine keys at the top level (ai_command, diff_exclude, max_diff_lines),
+// the [release] table, and the nested [release.hooks] sub-table. Every documented
+// key has its Go type here and a default applied uniformly — on zero config (file
+// absent, empty, or comment-only) every key comes back at its documented default,
+// and a file that sets only part of a table leaves the unset keys at their
+// defaults individually.
+//
+// Typed fail-loud validation (rejecting unknown keys / bad types) and rewiring the
+// earlier per-key reads through this schema are SEPARATE Phase 6 tasks; this file
+// establishes the consolidated shape and complete default application only. Until
+// validation lands, unknown keys are tolerated and ignored rather than rejected.
 package config
 
 import (
@@ -49,11 +53,26 @@ const defaultOnNotesFailure = "abort"
 // specific, so it lives at the top level of Config (see Config.MaxDiffLines).
 const defaultMaxDiffLines = 50000
 
+// defaultAICommand is the out-of-the-box notes transport command: `claude -p`,
+// the AI invocation mint pipes the composed prompt into. It is a shared engine
+// key (every verb's notes engine uses it), so it lives at the top level of Config
+// (see Config.AICommand). An explicit empty value is re-defaulted by the transport
+// itself, not here — config carries whatever the file holds verbatim, applying this
+// default only when the key is absent.
+const defaultAICommand = "claude -p"
+
 // Config is the loaded mint configuration. The [release] table plus the
 // shared top-level engine keys read so far are populated; the remaining
 // engine-level keys and other verb tables arrive in later phases.
 type Config struct {
 	Release Release
+
+	// AICommand is the shared engine-level ai_command notes-transport command (default
+	// "claude -p"). It is top-level — NOT under [release] — because every verb's notes
+	// engine uses the same AI transport. config carries it verbatim; the transport
+	// re-defaults an explicit empty value and whitespace-splits the command into name +
+	// args (it is operator-controlled config, not arbitrary input).
+	AICommand string
 
 	// MaxDiffLines is the shared engine-level max_diff_lines guard ceiling (default
 	// 50000). It is top-level — NOT under [release] — because it serves every verb's
@@ -126,16 +145,23 @@ type Release struct {
 	Hooks          Hooks
 }
 
+// HookValue is the dedicated string-or-array type for a [release.hooks] entry: a
+// TOML hook value is either a single command string or an ordered array of command
+// strings, and HookValue accepts BOTH at the schema level. Its underlying type is
+// the empty interface, so the decoder surfaces a TOML string as a HookValue carrying
+// a string and a TOML array as a HookValue carrying a slice, both verbatim, while a
+// nil HookValue means the key was absent (no hook, a no-op). config does NOT
+// interpret or normalise the value — the hooks package coerces the carried shape to
+// ordered command strings when it runs the hook, and strict string-vs-array
+// validation is a separate Phase 6 task.
+type HookValue any
+
 // Hooks carries the RAW parsed [release.hooks] values keyed by lifecycle point.
-// Each is typed `any` because a TOML decoder surfaces a hook entry as a string
-// (one command) or a slice (an ordered list); the hooks package normalises that
-// shape when it runs the hook. A nil field means the key was absent — no hook,
-// a no-op. config does NOT interpret the values; it carries them verbatim for
-// the hook runner.
+// Each is a HookValue (string-or-array); a nil field means the key was absent.
 type Hooks struct {
-	Preflight   any
-	PreTag      any
-	PostRelease any
+	Preflight   HookValue
+	PreTag      HookValue
+	PostRelease HookValue
 }
 
 // defaults returns a Config seeded with the Phase 1 default values.
@@ -155,6 +181,7 @@ func defaults() Config {
 			VersionFile:    "",
 			VersionPattern: "",
 		},
+		AICommand:    defaultAICommand,
 		MaxDiffLines: defaultMaxDiffLines,
 	}
 }
@@ -170,6 +197,7 @@ func defaults() Config {
 // valid prefix-less choice) while an absent key leaves the default intact.
 type fileShape struct {
 	Release      releaseShape `toml:"release"`
+	AICommand    *string      `toml:"ai_command"`
 	MaxDiffLines *int         `toml:"max_diff_lines"`
 	DiffExclude  []string     `toml:"diff_exclude"`
 }
@@ -190,14 +218,14 @@ type releaseShape struct {
 	Hooks          hooksShape `toml:"hooks"`
 }
 
-// hooksShape mirrors the on-disk [release.hooks] sub-table. Each key is typed
-// `any` so the decoder surfaces whatever TOML shape the value has (a string or
-// an array) verbatim; an absent key leaves the field nil. resolveRelease copies
-// these straight onto Release.Hooks.
+// hooksShape mirrors the on-disk [release.hooks] sub-table. Each key is a HookValue
+// so the decoder surfaces whatever TOML shape the value has (a string or an array)
+// verbatim; an absent key leaves the field nil. resolveRelease copies these straight
+// onto Release.Hooks.
 type hooksShape struct {
-	Preflight   any `toml:"preflight"`
-	PreTag      any `toml:"pre_tag"`
-	PostRelease any `toml:"post_release"`
+	Preflight   HookValue `toml:"preflight"`
+	PreTag      HookValue `toml:"pre_tag"`
+	PostRelease HookValue `toml:"post_release"`
 }
 
 // Load reads {root}/.mint.toml and returns the Phase 1 config. A missing file is
@@ -231,9 +259,20 @@ func Load(root string) (Config, error) {
 
 	return Config{
 		Release:      resolveRelease(shape.Release),
+		AICommand:    resolveAICommand(shape.AICommand),
 		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
 		DiffExclude:  shape.DiffExclude,
 	}, nil
+}
+
+// resolveAICommand applies the "claude -p" default when the key was absent (nil) and
+// otherwise honours the explicit value verbatim (mirroring the max_diff_lines *int
+// handling).
+func resolveAICommand(v *string) string {
+	if v != nil {
+		return *v
+	}
+	return defaultAICommand
 }
 
 // resolveMaxDiffLines applies the 50000 default when the key was absent (nil) and

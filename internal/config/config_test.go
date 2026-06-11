@@ -635,6 +635,144 @@ func TestLoad_UnknownKeysTolerated(t *testing.T) {
 	}
 }
 
+func TestLoad_AbsentAICommand_DefaultsToClaudeP(t *testing.T) {
+	t.Parallel()
+
+	// ai_command is a shared TOP-LEVEL engine key (not under [release]). Absent from
+	// the file it defaults to "claude -p" — the out-of-the-box notes transport command.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.AICommand != "claude -p" {
+		t.Errorf("AICommand = %q, want default %q", cfg.AICommand, "claude -p")
+	}
+}
+
+func TestLoad_ExplicitAICommand_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit top-level ai_command must override the "claude -p" default. It sits
+	// above the [release] table, so it is set with no table header.
+	writeConfig(t, dir, "ai_command = \"llm --model gpt-4 chat\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.AICommand != "llm --model gpt-4 chat" {
+		t.Errorf("AICommand = %q, want explicit %q", cfg.AICommand, "llm --model gpt-4 chat")
+	}
+}
+
+func TestLoad_OnlyTopLevelKeys_ReleaseAndHooksFullyDefaulted(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A file that sets ONLY shared top-level engine keys carries no [release] table at
+	// all: the entire [release] table and the [release.hooks] sub-table must come back
+	// fully defaulted, key by key, exactly as if absent.
+	writeConfig(t, dir, "ai_command = \"custom\"\nmax_diff_lines = 99\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.AICommand != "custom" {
+		t.Errorf("AICommand = %q, want explicit %q", cfg.AICommand, "custom")
+	}
+	if cfg.MaxDiffLines != 99 {
+		t.Errorf("MaxDiffLines = %d, want explicit 99", cfg.MaxDiffLines)
+	}
+	if cfg.Release.TagPrefix != "v" {
+		t.Errorf("Release.TagPrefix = %q, want default %q", cfg.Release.TagPrefix, "v")
+	}
+	if cfg.Release.CommitPrefix != "🌿" {
+		t.Errorf("Release.CommitPrefix = %q, want default %q", cfg.Release.CommitPrefix, "🌿")
+	}
+	if !cfg.Release.Publish {
+		t.Errorf("Release.Publish = %v, want default true", cfg.Release.Publish)
+	}
+	if !cfg.Release.Changelog {
+		t.Errorf("Release.Changelog = %v, want default true", cfg.Release.Changelog)
+	}
+	if cfg.Release.OnNotesFailure != "abort" {
+		t.Errorf("Release.OnNotesFailure = %q, want default %q", cfg.Release.OnNotesFailure, "abort")
+	}
+	if cfg.Release.Hooks.Preflight != nil || cfg.Release.Hooks.PreTag != nil || cfg.Release.Hooks.PostRelease != nil {
+		t.Errorf("Release.Hooks = %#v, want all nil (table fully defaulted/absent)", cfg.Release.Hooks)
+	}
+}
+
+func TestHookValue_DecodesFromStringAndArray(t *testing.T) {
+	t.Parallel()
+
+	// The canonical [release.hooks] fields are typed config.HookValue, a dedicated
+	// string-or-array type: a TOML string decodes to a HookValue carrying a string and
+	// a TOML array decodes to a HookValue carrying a slice. Both shapes are supported at
+	// the schema level now (strict string-vs-array validation is a later task).
+	tests := []struct {
+		name    string
+		body    string
+		field   func(config.Config) config.HookValue
+		wantStr string
+		wantArr []string
+	}{
+		{
+			name:    "string preflight",
+			body:    "[release.hooks]\npreflight = \"scripts/check.sh\"\n",
+			field:   func(c config.Config) config.HookValue { return c.Release.Hooks.Preflight },
+			wantStr: "scripts/check.sh",
+		},
+		{
+			name:    "array pre_tag",
+			body:    "[release.hooks]\npre_tag = [\"npm ci\", \"npm run build\"]\n",
+			field:   func(c config.Config) config.HookValue { return c.Release.Hooks.PreTag },
+			wantArr: []string{"npm ci", "npm run build"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, tt.body)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			got := tt.field(cfg)
+			switch {
+			case tt.wantStr != "":
+				s, ok := got.(string)
+				if !ok || s != tt.wantStr {
+					t.Errorf("HookValue = %#v (%T), want string %q", got, got, tt.wantStr)
+				}
+			case tt.wantArr != nil:
+				arr, ok := got.([]any)
+				if !ok {
+					t.Fatalf("HookValue = %#v (%T), want a []any slice", got, got)
+				}
+				if len(arr) != len(tt.wantArr) {
+					t.Fatalf("HookValue len = %d, want %d", len(arr), len(tt.wantArr))
+				}
+				for i := range tt.wantArr {
+					if arr[i] != tt.wantArr[i] {
+						t.Errorf("HookValue[%d] = %v, want %q", i, arr[i], tt.wantArr[i])
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestLoad_MalformedTOML_ReturnsError(t *testing.T) {
 	t.Parallel()
 
