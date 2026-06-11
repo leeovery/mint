@@ -258,18 +258,34 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return false, nil
 	}
 
-	// Plain push — `git push origin HEAD`, NOT the forward `--atomic … {tag}` (no tag
-	// is involved). This is the point of no return for the changelog surface, and it
-	// round-trips the network, so narrate it as a BLOCKING stage: a blocking
-	// StageStarted (spinner) before the push and a StageSucceeded carrying the
-	// engine-measured Elapsed once it crosses the PONR. A failure routes through
-	// resetAndAbort, which surfaces a StageFailed instead, so no StageSucceeded fires.
-	pushDone := emitBlockingStageStarted(p, "push")
+	// The changelog commit landed: push it (the point of no return) via the shared
+	// regenerate push tail. A successful push crosses the PONR (return pushed=true); a
+	// pre-push failure is already routed through the helper's reset-on-abort.
+	if err := pushChangelogCommit(ctx, deps, startingHEAD); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// pushChangelogCommit is the SHARED regenerate push/recovery tail both the
+// single-version (writeAndPushChangelog) and batch (commitAndPushRebuild) paths invoke
+// after producing their respective CHANGELOG commit. It performs the PLAIN
+// `git push origin HEAD` — NOT the forward `--atomic … {tag}` (no tag is involved) —
+// which is the regenerate POINT OF NO RETURN. The push round-trips the network, so it
+// is narrated as a BLOCKING stage: a blocking StageStarted (spinner) before the push
+// and a StageSucceeded carrying the engine-measured Elapsed once it crosses the PONR.
+// A pre-push failure routes through resetAndAbort, which surfaces a "push" StageFailed
+// (so no StageSucceeded fires) and resets the local CHANGELOG commit back to the
+// captured startingHEAD — both call sites reach this only after a commit landed, so the
+// reset always applies. Keeping the push form, PONR narration, and reset wiring here
+// means the two regenerate paths can no longer drift on push form or recovery.
+func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, startingHEAD string) error {
+	pushDone := emitBlockingStageStarted(deps.Presenter, "push")
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
-		return false, resetAndAbort(ctx, deps, startingHEAD, committed, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
+		return resetAndAbort(ctx, deps, startingHEAD, true, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
 	}
 	pushDone()
-	return true, nil
+	return nil
 }
 
 // resetAndAbort handles a pre-PONR changelog failure: it surfaces the failed stage,

@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -206,6 +207,45 @@ func TestRegenerateAllValidated_Changelog_OneCommitAtEnd(t *testing.T) {
 	}
 	if !invokedWith(f, "git", "push", "origin", "HEAD") {
 		t.Errorf("no plain `git push origin HEAD` at the end of the batch; got %v", commandLines(f.Invocations()))
+	}
+}
+
+// TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit proves the batch
+// end-of-batch push routes through the SAME shared recovery as the single-version
+// path: a pre-push failure resets the rebuilt CHANGELOG commit to the captured
+// starting HEAD, surfaces a "push" StageFailed, and emits NO "push" StageSucceeded.
+func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, kacPreamble+"\n## [1.0.0] - 2024-01-01\n\nstale v1\n")
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut("startHEAD"), // rev-parse HEAD (captured start)
+		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
+		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
+		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		ScriptedOut(""),          // add CHANGELOG.md
+		ScriptedOut(""),          // commit (the rebuild commit lands)
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}, // push fails
+		ScriptedOut(""), // reset --hard startHEAD (recovery)
+	)
+	pub := newFakePublisher()
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir,
+		freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog), true)
+
+	assertAbortNonZero(t, err)
+	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+		t.Errorf("batch pre-push failure did not reset the rebuild commit to the captured start; got %v", commandLines(f.Invocations()))
+	}
+	if stageFailedName(t, rec) != "push" {
+		t.Errorf("batch pre-push failure surfaced StageFailed %q, want \"push\"", stageFailedName(t, rec))
+	}
+	if _, ok := stageSucceeded(rec, "push"); ok {
+		t.Errorf("a batch pre-push FAILURE emitted a push StageSucceeded; success narration is success-only; kinds = %v", rec.Kinds())
 	}
 }
 
