@@ -120,6 +120,14 @@ func (a *Assembler) excludePathspecs() []string {
 	return pathspecs
 }
 
+// forwardRange is the forward path's diff base in git range form: `{lastTag}..HEAD`.
+// The forward AssembleDiff / BuildChangeMap wrappers build it and delegate to the
+// shared arbitrary-range path, so the forward argv stays byte-identical while the
+// regenerate fresh source (Phase 5) feeds its own `vX-1..vX` range to the same path.
+func forwardRange(lastTag string) string {
+	return lastTag + "..HEAD"
+}
+
 // AssembleDiff returns the release diff for lastTag..HEAD with CHANGELOG.md and the
 // configured diff_exclude globs excluded, as git's raw post-exclusion stdout, ready
 // for downstream layering (the Change Map preamble and max_diff_lines cap are applied
@@ -140,11 +148,32 @@ func (a *Assembler) excludePathspecs() []string {
 // A missing git binary is surfaced as a condition matching runner.ErrCommandNotFound
 // (via errors.Is); any other non-zero git exit is surfaced as a wrapped error so an
 // unexpected failure is never mistaken for an empty diff.
+//
+// AssembleDiff is the FORWARD-PATH wrapper: it builds `{lastTag}..HEAD` and delegates
+// to AssembleRange so the exclusion machinery is shared with the regenerate path.
 func (a *Assembler) AssembleDiff(ctx context.Context, lastTag string) (string, error) {
-	args := append([]string{"diff", lastTag + "..HEAD", "--", "."}, a.excludePathspecs()...)
+	return a.AssembleRange(ctx, forwardRange(lastTag))
+}
+
+// AssembleRange is AssembleDiff over an ARBITRARY git range — the regenerate fresh
+// source (Phase 5) feeds it `{PreviousTag}..{Tag}` (5-3's DiffRange) instead of the
+// forward `{lastTag}..HEAD`. Everything else is IDENTICAL: the range is diffed via
+// `git diff {range} -- . {excludePathspecs}` with the SAME exclusion tiers — the
+// built-in :(exclude)CHANGELOG.md, the configured diff_exclude globs, and the
+// strategy-aware version_file decision — so the regenerate diff reproduces the forward
+// path's source view.
+//
+// Exclusion is PATH-based (the :(exclude) pathspecs), NOT commit-based: a range that
+// carries mint's release-bookkeeping commit is diffed in full and the bookkeeping
+// PATHS (CHANGELOG.md + plain-mode version_file) are dropped by the pathspecs — the
+// commit is never subtracted as a commit. The returned text is git's stdout verbatim;
+// an empty post-exclusion diff is NOT an error. A missing git binary matches
+// runner.ErrCommandNotFound via errors.Is; any other non-zero exit is wrapped.
+func (a *Assembler) AssembleRange(ctx context.Context, diffRange string) (string, error) {
+	args := append([]string{"diff", diffRange, "--", "."}, a.excludePathspecs()...)
 	res, err := a.runner.Run(ctx, "git", args...)
 	if err != nil {
-		return "", fmt.Errorf("assembling release diff for %s..HEAD: %w", lastTag, err)
+		return "", fmt.Errorf("assembling release diff for %s: %w", diffRange, err)
 	}
 
 	return res.Stdout, nil

@@ -33,17 +33,29 @@ import (
 // (via errors.Is); any other non-zero git exit is wrapped so an unexpected failure
 // is never mistaken for a degenerate map.
 func (a *Assembler) BuildChangeMap(ctx context.Context, lastTag string) (string, error) {
+	return a.BuildChangeMapForRange(ctx, forwardRange(lastTag))
+}
+
+// BuildChangeMapForRange is BuildChangeMap over an ARBITRARY git range — the
+// regenerate fresh source (Phase 5) feeds it `{PreviousTag}..{Tag}` (5-3's DiffRange).
+// It runs the SAME two git calls (--name-status, --numstat) over the range with the
+// SAME post-exclusion set the diff uses (the shared excludePathspecs: CHANGELOG.md +
+// configured globs + strategy version_file), so the map is computed AFTER exclusion
+// and an excluded path NEVER appears — the regenerate map matches the forward map's
+// ordering and exclusion exactly. BuildChangeMap is the forward wrapper that builds
+// `{lastTag}..HEAD` and delegates here.
+func (a *Assembler) BuildChangeMapForRange(ctx context.Context, diffRange string) (string, error) {
 	excludes := a.excludePathspecs()
-	nameStatusArgs := append([]string{"diff", "--name-status", lastTag + "..HEAD", "--", "."}, excludes...)
+	nameStatusArgs := append([]string{"diff", "--name-status", diffRange, "--", "."}, excludes...)
 	nameStatusRes, err := a.runner.Run(ctx, "git", nameStatusArgs...)
 	if err != nil {
-		return "", fmt.Errorf("building change map name-status for %s..HEAD: %w", lastTag, err)
+		return "", fmt.Errorf("building change map name-status for %s: %w", diffRange, err)
 	}
 
-	numstatArgs := append([]string{"diff", "--numstat", lastTag + "..HEAD", "--", "."}, excludes...)
+	numstatArgs := append([]string{"diff", "--numstat", diffRange, "--", "."}, excludes...)
 	numstatRes, err := a.runner.Run(ctx, "git", numstatArgs...)
 	if err != nil {
-		return "", fmt.Errorf("building change map numstat for %s..HEAD: %w", lastTag, err)
+		return "", fmt.Errorf("building change map numstat for %s: %w", diffRange, err)
 	}
 
 	changes := parseNameStatus(nameStatusRes.Stdout)

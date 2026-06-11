@@ -83,7 +83,28 @@ func (g *Generator) GenerateWithContext(ctx context.Context, lastTag string, cfg
 	if err != nil {
 		return "", fmt.Errorf("assembling diff for notes: %w", err)
 	}
-	return g.generateFromDiffWithContext(ctx, lastTag, diff, cfg, oneTimeContext)
+	return g.generateFromDiffWithContext(ctx, forwardRange(lastTag), diff, cfg, oneTimeContext)
+}
+
+// GenerateFromRange is the REGENERATE FRESH SOURCE path (task 5-6): it produces the AI
+// release-notes body for an ARBITRARY git range — 5-3's `{PreviousTag}..{Tag}` —
+// instead of the forward `{lastTag}..HEAD`. It REUSES the forward orchestration end to
+// end: AssembleRange (the post-exclusion range diff with the SAME exclusion tiers) ->
+// CheckDiffSize (the max_diff_lines guard) -> BuildChangeMapForRange (the Change Map
+// computed AFTER exclusion, prepended to the AI input) -> ComposePrompt ->
+// transport.Generate (the SAME AI validation/retry).
+//
+// The failure is SURFACED (wrapped, errors.Is still matches) exactly as the forward
+// generator — single-mode fresh routes on_notes_failure at a higher layer and 5-12's
+// --all intercepts the surfaced failure for skip-and-continue, so this method must NOT
+// swallow it. The body is returned WHOLE (no parsing/splitting) for the downstream
+// provider/changelog write in later tasks.
+func (g *Generator) GenerateFromRange(ctx context.Context, diffRange string, cfg config.Config) (string, error) {
+	diff, err := g.assembler.AssembleRange(ctx, diffRange)
+	if err != nil {
+		return "", fmt.Errorf("assembling range diff for notes: %w", err)
+	}
+	return g.generateFromDiffWithContext(ctx, diffRange, diff, cfg, "")
 }
 
 // GenerateFromDiff is Generate's body over an ALREADY-ASSEMBLED post-exclusion
@@ -100,22 +121,24 @@ func (g *Generator) GenerateWithContext(ctx context.Context, lastTag string, cfg
 // The diff IS NOT re-assembled, so the caller is responsible for passing the same
 // post-exclusion diff AssembleDiff would have produced for lastTag.
 func (g *Generator) GenerateFromDiff(ctx context.Context, lastTag, diff string, cfg config.Config) (string, error) {
-	return g.generateFromDiffWithContext(ctx, lastTag, diff, cfg, "")
+	return g.generateFromDiffWithContext(ctx, forwardRange(lastTag), diff, cfg, "")
 }
 
-// generateFromDiffWithContext is the shared body of GenerateFromDiff and
-// GenerateWithContext: it runs steps 2-5 of Generate's documented order over the
-// supplied diff (CheckDiffSize -> BuildChangeMap -> ResolveInstructions +
-// appendOneTimeContext + ComposePrompt -> transport.Generate). The one-time
-// context is appended to the resolved instructions ONLY for this prompt; an empty
-// context appends nothing, so GenerateFromDiff (which passes "") is byte-identical
-// to before.
-func (g *Generator) generateFromDiffWithContext(ctx context.Context, lastTag, diff string, cfg config.Config, oneTimeContext string) (string, error) {
+// generateFromDiffWithContext is the shared body of GenerateFromDiff,
+// GenerateWithContext, and GenerateFromRange: it runs steps 2-5 of Generate's
+// documented order over the supplied diff (CheckDiffSize ->
+// BuildChangeMapForRange -> ResolveInstructions + appendOneTimeContext +
+// ComposePrompt -> transport.Generate). diffRange is the git range the Change Map is
+// computed over — `{lastTag}..HEAD` on the forward path, `{PreviousTag}..{Tag}` on the
+// regenerate fresh path — so the map matches the diff exactly. The one-time context is
+// appended to the resolved instructions ONLY for this prompt; an empty context appends
+// nothing, so GenerateFromDiff (which passes "") is byte-identical to before.
+func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, diff string, cfg config.Config, oneTimeContext string) (string, error) {
 	if err := CheckDiffSize(diff, cfg.MaxDiffLines); err != nil {
 		return "", fmt.Errorf("notes size guard: %w", err)
 	}
 
-	changeMap, err := g.assembler.BuildChangeMap(ctx, lastTag)
+	changeMap, err := g.assembler.BuildChangeMapForRange(ctx, diffRange)
 	if err != nil {
 		return "", fmt.Errorf("building change map for notes: %w", err)
 	}
