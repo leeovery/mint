@@ -275,3 +275,14 @@ approved_at: 2026-06-09
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
 | mint-release-tool-11-1 | Gate regenerate gh-auth on the resolved publisher, not the bare target | downgraded provider-writing run (nil publisher) skips CheckGhAuth, resolved-publisher provider-writing run still runs CheckGhAuth, CommitsAndPushes selected solely from target.writesChangelog() unaffected by publisher presence, forward/regenerate downgrade behaviour identical, changelog-only selection unchanged |
+
+### Phase 12: Analysis (Cycle 6)
+
+**Goal**: Address findings from Analysis (Cycle 6).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| mint-release-tool-12-1 | Remove the load-dependent timing flake in the AI transport real-deadline test | no marker file read/write and no invocation-count assertion, still asserts errors.Is(err, ai.ErrTimeout) and not ai.ErrNotesFailure against a real deadline kill, passes under go test -race ./internal/... ./cmd/... repeatably under CPU contention, not-retried-on-timeout still covered by TestTransport_Generate_DoesNotRetryTimeout, no unused imports |
+| mint-release-tool-12-2 | Collapse the four cmd-layer body/regenerator producer closures into two Resolution-keyed producers | reuse-vs-fresh branch appears in exactly one function per concern, single-version producer signatures unchanged for callers, batch caller wiring unchanged in behaviour, build/vet clean, existing cmd/mint tests pass unchanged for single and batch reuse/fresh |

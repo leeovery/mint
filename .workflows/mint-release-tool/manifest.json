@@ -239,7 +239,10 @@
             "mint-release-tool-10-8": "tick-78e5cc",
             "mint-release-tool-10-9": "tick-b45604",
             "mint-release-tool-11": "tick-7bb4d5",
-            "mint-release-tool-11-1": "tick-394e24"
+            "mint-release-tool-11-1": "tick-394e24",
+            "mint-release-tool-12": "tick-8c9b38",
+            "mint-release-tool-12-1": "tick-50ac98",
+            "mint-release-tool-12-2": "tick-db0800"
           },
           "external_id": "tick-d4f773",
           "external_dependencies": {

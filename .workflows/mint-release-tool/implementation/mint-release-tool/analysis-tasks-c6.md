@@ -6,7 +6,7 @@ total_proposed: 2
 # Analysis Tasks: mint-release-tool (Cycle 6)
 
 ## Task 1: Remove the load-dependent timing flake in the AI transport real-deadline test
-status: pending
+status: approved
 severity: high
 sources: standards
 
@@ -37,7 +37,7 @@ sources: standards
 - Run the full race suite that previously reproduced the flake (`go test -race ./internal/... ./cmd/...`), ideally a few iterations, to confirm the marker-not-found failure no longer occurs.
 
 ## Task 2: Collapse the four near-identical cmd-layer body/regenerator producer closures into two Resolution-keyed producers
-status: pending
+status: approved
 severity: medium
 sources: duplication, architecture
 
