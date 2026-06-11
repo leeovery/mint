@@ -86,9 +86,27 @@ func runRegenerate(rest []string) int {
 		return usageExitCode
 	}
 
-	if _, err := validateRegenerateRequest(req, cfg.Release.Changelog); err != nil {
+	validated, err := validateRegenerateRequest(req, cfg.Release.Changelog)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
+	}
+
+	// Preflight subset (task 5-4): run only the gates the resolved target needs —
+	// gh-auth when a provider write occurs, clean-tree + on-branch + remote-sync
+	// when the changelog is committed + pushed; never tag-free (regenerate cuts no
+	// tag) and no version compute. A failing applicable gate aborts cleanly BEFORE
+	// any work. The presenter surfaces the abort; resolve the release branch for the
+	// on-branch / remote-sync gates the same read-only way the forward path does.
+	p := presenter.NewForStartup(false, validated.Yes, os.Stdout, os.Stderr, os.Stdin)
+	releaseBranch, err := gitrepo.ResolveReleaseBranch(context.Background(), r, cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+	deps := engine.ReleaseDeps{Presenter: p, Runner: r}
+	if err := engine.RegeneratePreflight(context.Background(), deps, releaseBranch, regenerateGateSet(validated.Target)); err != nil {
+		return exitCode(err)
 	}
 
 	fmt.Fprintln(os.Stderr, "mint: `release regenerate` is not yet implemented")
