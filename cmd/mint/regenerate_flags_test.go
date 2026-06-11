@@ -11,20 +11,22 @@ func TestParseRegenerateFlags(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		args        []string
-		wantVersion string
-		wantSource  regenerateSource
-		wantTarget  regenerateTarget
-		wantAll     bool
-		wantYes     bool
+		name          string
+		args          []string
+		wantVersion   string
+		wantSource    regenerateSource
+		wantSourceSet bool
+		wantTarget    regenerateTarget
+		wantAll       bool
+		wantYes       bool
 	}{
 		{
-			name:        "version with reuse and target release",
-			args:        []string{"1.4.0", "--reuse", "--target", "release"},
-			wantVersion: "1.4.0",
-			wantSource:  sourceReuse,
-			wantTarget:  targetRelease,
+			name:          "version with reuse and target release",
+			args:          []string{"1.4.0", "--reuse", "--target", "release"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceReuse,
+			wantSourceSet: true,
+			wantTarget:    targetRelease,
 		},
 		{
 			name:        "defaults source to fresh when neither reuse nor fresh given",
@@ -34,10 +36,11 @@ func TestParseRegenerateFlags(t *testing.T) {
 			wantTarget:  targetUnset,
 		},
 		{
-			name:        "explicit fresh resolves to fresh source",
-			args:        []string{"1.4.0", "--fresh"},
-			wantVersion: "1.4.0",
-			wantSource:  sourceFresh,
+			name:          "explicit fresh resolves to fresh source",
+			args:          []string{"1.4.0", "--fresh"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceFresh,
+			wantSourceSet: true,
 		},
 		{
 			name:        "target both parses as a single-flag value",
@@ -54,11 +57,12 @@ func TestParseRegenerateFlags(t *testing.T) {
 			wantTarget:  targetChangelog,
 		},
 		{
-			name:       "all with reuse and target release",
-			args:       []string{"--all", "--reuse", "--target", "release"},
-			wantSource: sourceReuse,
-			wantTarget: targetRelease,
-			wantAll:    true,
+			name:          "all with reuse and target release",
+			args:          []string{"--all", "--reuse", "--target", "release"},
+			wantSource:    sourceReuse,
+			wantSourceSet: true,
+			wantTarget:    targetRelease,
+			wantAll:       true,
 		},
 		{
 			name:       "short yes parses to a boolean",
@@ -75,18 +79,20 @@ func TestParseRegenerateFlags(t *testing.T) {
 			wantYes:    true,
 		},
 		{
-			name:        "version last after reuse and target value",
-			args:        []string{"--reuse", "--target", "release", "1.4.0"},
-			wantVersion: "1.4.0",
-			wantSource:  sourceReuse,
-			wantTarget:  targetRelease,
+			name:          "version last after reuse and target value",
+			args:          []string{"--reuse", "--target", "release", "1.4.0"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceReuse,
+			wantSourceSet: true,
+			wantTarget:    targetRelease,
 		},
 		{
-			name:        "version mid between reuse and target flag",
-			args:        []string{"--reuse", "1.4.0", "--target", "release"},
-			wantVersion: "1.4.0",
-			wantSource:  sourceReuse,
-			wantTarget:  targetRelease,
+			name:          "version mid between reuse and target flag",
+			args:          []string{"--reuse", "1.4.0", "--target", "release"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceReuse,
+			wantSourceSet: true,
+			wantTarget:    targetRelease,
 		},
 		{
 			name:        "target equals form does not mis-split the version",
@@ -131,6 +137,9 @@ func TestParseRegenerateFlags(t *testing.T) {
 			}
 			if req.Source != tt.wantSource {
 				t.Errorf("Source = %v, want %v", req.Source, tt.wantSource)
+			}
+			if req.SourceSet != tt.wantSourceSet {
+				t.Errorf("SourceSet = %v, want %v", req.SourceSet, tt.wantSourceSet)
 			}
 			if req.Target != tt.wantTarget {
 				t.Errorf("Target = %v, want %v", req.Target, tt.wantTarget)

@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"time"
 
@@ -21,8 +23,10 @@ import (
 	"mint/internal/gitrepo"
 	"mint/internal/notescache"
 	"mint/internal/presenter"
+	"mint/internal/publish"
 	"mint/internal/release"
 	"mint/internal/runner"
+	"mint/internal/version"
 )
 
 // usageExitCode is the Unix usage-error code returned for an invalid invocation
@@ -104,13 +108,82 @@ func runRegenerate(rest []string) int {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
 	}
-	deps := engine.ReleaseDeps{Presenter: p, Runner: r}
+	deps := engine.ReleaseDeps{
+		Presenter: p,
+		Runner:    r,
+		Mutator:   git.NewMutator(r),
+		// The `e` review-gate choice on the fresh notes-review gate hands the notes to
+		// the real $EDITOR resolution, launched through the same presenter + runner.
+		Editor: engine.NewEditorLauncher(p, r),
+	}
 	if err := engine.RegeneratePreflight(context.Background(), deps, releaseBranch, regenerateGateSet(validated.Target)); err != nil {
 		return exitCode(err)
 	}
 
-	fmt.Fprintln(os.Stderr, "mint: `release regenerate` is not yet implemented")
-	return usageExitCode
+	// The batch --all backfill is a separate task; only the single-version interactive
+	// run is wired here.
+	if validated.All {
+		fmt.Fprintln(os.Stderr, "mint: `release regenerate --all` is not yet implemented")
+		return usageExitCode
+	}
+
+	return runRegenerateSingle(deps, r, cfg, root, validated)
+}
+
+// runRegenerateSingle executes one single-version interactive regenerate run: it
+// resolves the <version> argument to its canonical tag + fresh diff base (task 5-3),
+// resolves the publishing driver, then runs the interactive default flow (task 5-10) —
+// asking source/target as needed, showing the plan, and confirming before the write.
+func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root string, req regenerateRequest) int {
+	ctx := context.Background()
+
+	res, err := version.ResolveRegenerateTarget(ctx, r, cfg.Release.TagPrefix, req.Version)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+
+	// The bare x.y.z key (no tag prefix) used in the changelog header and the
+	// notes/plan, recovered by re-parsing the canonical tag.
+	versionKey, err := version.ParseSemVer(res.Tag, cfg.Release.TagPrefix)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+
+	// A non-github / no-remote host downgrades to an unresolved publisher; the engine's
+	// release-write surfaces that, so pass the resolver result through (nil publisher on
+	// an unresolved provider).
+	publisher, _ := publish.ResolvePublisher(regenerateRemoteURL(ctx, r), cfg.Release.Provider, r)
+
+	source, target := regenerateRunAxes(req)
+	runReq := engine.RegenerateRunRequest{
+		Source:           source,
+		Target:           target,
+		Tag:              res.Tag,
+		VersionKey:       versionKey.String(""),
+		Project:          filepath.Base(root),
+		ChangelogEnabled: cfg.Release.Changelog,
+		Yes:              req.Yes,
+		ProduceBody:      newRegenerateBodyProducer(r, cfg, root, res),
+	}
+
+	if err := engine.RegenerateRun(ctx, deps, publisher, root, runReq); err != nil {
+		return exitCode(err)
+	}
+	return 0
+}
+
+// regenerateRemoteURL reads the release remote's URL via `git remote get-url origin`
+// through the runner seam, returning "" on any failure (no `origin` remote) — the
+// publisher resolver treats an empty URL as an unresolved provider, downgrading the
+// run rather than failing it, the same way the forward path does.
+func regenerateRemoteURL(ctx context.Context, r runner.CommandRunner) string {
+	res, err := r.Run(ctx, "git", "remote", "get-url", "origin")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(res.Stdout)
 }
 
 // runRelease wires the production seams and runs the forward release pipeline for

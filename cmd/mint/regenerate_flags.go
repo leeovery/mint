@@ -51,6 +51,12 @@ type regenerateRequest struct {
 	// Source is the resolved notes source (default sourceFresh). --reuse and
 	// --fresh are mutually exclusive.
 	Source regenerateSource
+	// SourceSet reports whether a source flag (--reuse or --fresh) was SUPPLIED, as
+	// distinct from the defaulted sourceFresh. The interactive default flow (task
+	// 5-10) skips the source question only when a flag was supplied, so "no flag" must
+	// be distinguishable from an explicit --fresh — which Source alone cannot express
+	// (both resolve to sourceFresh).
+	SourceSet bool
 	// Target is the resolved write surface, or targetUnset when --target is
 	// omitted.
 	Target regenerateTarget
@@ -106,11 +112,12 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 	}
 
 	return regenerateRequest{
-		Version: version,
-		Source:  source,
-		Target:  parsedTarget,
-		All:     all,
-		Yes:     yes,
+		Version:   version,
+		Source:    source,
+		SourceSet: reuse || fresh,
+		Target:    parsedTarget,
+		All:       all,
+		Yes:       yes,
 	}, nil
 }
 
