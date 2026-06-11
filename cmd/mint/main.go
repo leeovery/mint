@@ -125,7 +125,7 @@ func runRegenerate(ctx context.Context, rest []string) int {
 	// single-version path threads it into RegenerateRun, which preflights the RESOLVED
 	// target AFTER the interactive source/target prompts — the only point at which a bare
 	// `regenerate <ver>` (no --target) knows which surface(s) it writes.
-	p := presenter.NewForStartup(false, validated.Yes, os.Stdout, os.Stderr, os.Stdin)
+	p := presenter.NewForStartup(validated.Plain, validated.Yes, os.Stdout, os.Stderr, os.Stdin)
 	releaseBranch, err := gitrepo.ResolveReleaseBranch(ctx, r, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)

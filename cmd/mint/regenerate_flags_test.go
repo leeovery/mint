@@ -19,6 +19,7 @@ func TestParseRegenerateFlags(t *testing.T) {
 		wantTarget    regenerateTarget
 		wantAll       bool
 		wantYes       bool
+		wantPlain     bool
 	}{
 		{
 			name:          "version with reuse and target release",
@@ -122,6 +123,30 @@ func TestParseRegenerateFlags(t *testing.T) {
 			wantSource:  sourceFresh,
 			wantTarget:  targetRelease,
 		},
+		{
+			name:        "plain is recognised on the regenerate route",
+			args:        []string{"1.4.0", "--plain"},
+			wantVersion: "1.4.0",
+			wantSource:  sourceFresh,
+			wantPlain:   true,
+		},
+		{
+			name:          "plain composes with the single-version regenerate flags",
+			args:          []string{"1.4.0", "--reuse", "--target", "release", "-y", "--plain"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceReuse,
+			wantSourceSet: true,
+			wantTarget:    targetRelease,
+			wantYes:       true,
+			wantPlain:     true,
+		},
+		{
+			name:       "plain composes with the all batch flags",
+			args:       []string{"--all", "--plain"},
+			wantSource: sourceFresh,
+			wantAll:    true,
+			wantPlain:  true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -149,6 +174,9 @@ func TestParseRegenerateFlags(t *testing.T) {
 			}
 			if req.Yes != tt.wantYes {
 				t.Errorf("Yes = %v, want %v", req.Yes, tt.wantYes)
+			}
+			if req.Plain != tt.wantPlain {
+				t.Errorf("Plain = %v, want %v", req.Plain, tt.wantPlain)
 			}
 		})
 	}

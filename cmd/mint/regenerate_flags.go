@@ -64,6 +64,10 @@ type regenerateRequest struct {
 	All bool
 	// Yes skips the confirmation / per-version review gate (-y/--yes).
 	Yes bool
+	// Plain forces the plain (un-styled) presenter regardless of TTY. It is the
+	// global --plain render flag — identical name, default, and meaning as the
+	// forward `mint release` route — so it composes with every regenerate flag.
+	Plain bool
 }
 
 // parseRegenerateFlags parses the `mint release regenerate [<version>] [flags]`
@@ -76,7 +80,7 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 	fs := flag.NewFlagSet("regenerate", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
-	var reuse, fresh, all, yes bool
+	var reuse, fresh, all, yes, plain bool
 	var target string
 	fs.BoolVar(&reuse, "reuse", false, "source = tag annotation body (no AI); implies --target release")
 	fs.BoolVar(&fresh, "fresh", false, "source = re-diff + AI (default)")
@@ -84,6 +88,7 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 	fs.BoolVar(&all, "all", false, "regenerate every version, oldest → newest")
 	fs.BoolVar(&yes, "y", false, "skip the confirmation / per-version review gate")
 	fs.BoolVar(&yes, "yes", false, "skip the confirmation / per-version review gate")
+	fs.BoolVar(&plain, "plain", false, "force plain (un-styled) output")
 
 	// The flag package stops at the first non-flag token, so a <version> positional
 	// before any flag would shadow them. Lift the lone positional out first, then
@@ -118,6 +123,7 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 		Target:    parsedTarget,
 		All:       all,
 		Yes:       yes,
+		Plain:     plain,
 	}, nil
 }
 

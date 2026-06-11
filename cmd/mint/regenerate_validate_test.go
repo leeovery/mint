@@ -89,6 +89,25 @@ func TestValidateRegenerateRequest(t *testing.T) {
 	}
 }
 
+// TestValidateRegenerateRequest_PreservesPlain proves the global --plain render
+// flag survives the semantic validation unchanged, so the value parsed on the
+// regenerate route reaches the presenter startup site (main constructs the
+// presenter from validated.Plain). Without this, --plain would parse but the
+// downstream presenter would silently fall back to plain=false.
+func TestValidateRegenerateRequest_PreservesPlain(t *testing.T) {
+	t.Parallel()
+
+	for _, plain := range []bool{true, false} {
+		got, err := validateRegenerateRequest(regenerateRequest{Source: sourceFresh, Target: targetRelease, Plain: plain}, true)
+		if err != nil {
+			t.Fatalf("validateRegenerateRequest(plain=%v) returned error: %v", plain, err)
+		}
+		if got.Plain != plain {
+			t.Errorf("Plain = %v, want %v", got.Plain, plain)
+		}
+	}
+}
+
 // TestValidateRegenerateRequest_Errors covers the fail-loud axis-contract
 // violations with their EXACT spec messages, in the order the validator applies
 // them (most specific message wins).
