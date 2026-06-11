@@ -677,7 +677,7 @@
           ]
         },
         "mint-release-tool": {
-          "status": "in-progress",
+          "status": "completed",
           "reviewed_tasks": [
             "mint-release-tool-1-1",
             "mint-release-tool-1-2",
