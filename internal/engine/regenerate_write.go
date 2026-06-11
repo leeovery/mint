@@ -330,7 +330,12 @@ func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, startingHEAD str
 func resetAndAbort(ctx context.Context, deps ReleaseDeps, startingHEAD string, committed bool, stage string, cause error) error {
 	deps.Presenter.StageFailed(presenter.StageFailure{Name: stage, Message: failureMessage(cause)})
 	if committed {
-		_, _ = deps.Mutator.Mutate(ctx, nil, "git", "reset", "--hard", startingHEAD)
+		// The reset is RECOVERY that must run even when the abort was the parent context's
+		// own cancellation (a SIGINT/SIGTERM pre-PONR abort). Detaching with
+		// context.WithoutCancel keeps the local-only `git reset --hard` from being killed by
+		// the same signal, so the changelog commit is rolled back and the repo left clean —
+		// the regenerate sibling of the forward Unwind's cancellation resilience.
+		_, _ = deps.Mutator.Mutate(context.WithoutCancel(ctx), nil, "git", "reset", "--hard", startingHEAD)
 	}
 	return abort(cause)
 }

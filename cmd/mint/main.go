@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"time"
 
@@ -46,10 +48,21 @@ func run(args []string) int {
 	// `mint --version` is the standard global-flag spelling of the version surface:
 	// it is handled BEFORE command classification (independently of any subcommand)
 	// and routes through the SAME runVersion as the `version` verb, so the two are
-	// byte-identical. It deliberately needs no git repo.
+	// byte-identical. It deliberately needs no git repo — and no signal context, since
+	// it spawns nothing to interrupt.
 	if hasVersionFlag(args) {
 		return runVersion(os.Stdout, os.Stderr, os.Stdin)
 	}
+
+	// Build the ONE signal-cancellable context for the whole run: a Ctrl-C
+	// (os.Interrupt) or SIGTERM cancels it, which threads down through every command's
+	// external-command seam so a long pre-PONR step (the AI call, a hook, the gap before
+	// the atomic push) is interrupted. The engine treats a pre-PONR cancellation as a
+	// failure routed through its surgical unwind (resets, tag delete, autostash pop), so
+	// the repo is left clean; a post-PONR cancellation keeps the existing warn-only
+	// contract. stop() restores the default signal handling on return.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a
 	// top-level verb; `init` and `version` are top-level verbs; classifyCommand
@@ -57,11 +70,11 @@ func run(args []string) int {
 	kind, rest := classifyCommand(args)
 	switch kind {
 	case commandRelease:
-		return runRelease(rest)
+		return runRelease(ctx, rest)
 	case commandRegenerate:
-		return runRegenerate(rest)
+		return runRegenerate(ctx, rest)
 	case commandInit:
-		return runInit(rest)
+		return runInit(ctx, rest)
 	case commandVersion:
 		return runVersion(os.Stdout, os.Stderr, os.Stdin)
 	default:
@@ -78,7 +91,7 @@ func run(args []string) int {
 // changelog/both target is rejected when the changelog is disabled, and a fresh -y
 // run needs an explicit --target. The only mutation/network beyond reading the repo
 // root + config happens inside the dispatched run.
-func runRegenerate(rest []string) int {
+func runRegenerate(ctx context.Context, rest []string) int {
 	req, err := parseRegenerateFlags(rest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -89,7 +102,7 @@ func runRegenerate(rest []string) int {
 	// root and load it the same way the forward release pipeline does (read-only —
 	// no mutation, no network).
 	r := runner.NewExecRunner()
-	root, err := gitrepo.ResolveRoot(context.Background(), r)
+	root, err := gitrepo.ResolveRoot(ctx, r)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
@@ -113,7 +126,7 @@ func runRegenerate(rest []string) int {
 	// target AFTER the interactive source/target prompts — the only point at which a bare
 	// `regenerate <ver>` (no --target) knows which surface(s) it writes.
 	p := presenter.NewForStartup(false, validated.Yes, os.Stdout, os.Stderr, os.Stdin)
-	releaseBranch, err := gitrepo.ResolveReleaseBranch(context.Background(), r, cfg)
+	releaseBranch, err := gitrepo.ResolveReleaseBranch(ctx, r, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
@@ -133,10 +146,10 @@ func runRegenerate(rest []string) int {
 	// AFTER the interactive axis prompts (a bare invocation does not know its surface(s)
 	// until the source/target prompts resolve — the cmd layer cannot run that gate set).
 	if validated.All {
-		return runRegenerateAll(deps, r, cfg, root, releaseBranch, validated)
+		return runRegenerateAll(ctx, deps, r, cfg, root, releaseBranch, validated)
 	}
 
-	return runRegenerateSingle(deps, r, cfg, root, releaseBranch, validated)
+	return runRegenerateSingle(ctx, deps, r, cfg, root, releaseBranch, validated)
 }
 
 // runRegenerateSingle executes one single-version interactive regenerate run: it
@@ -147,9 +160,7 @@ func runRegenerate(rest []string) int {
 // engine for the preflight on-branch / remote-sync gates, which run AFTER the
 // interactive target resolves (a bare `regenerate <ver>` does not know its surface(s)
 // until then).
-func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest) int {
-	ctx := context.Background()
-
+func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest) int {
 	res, err := version.ResolveRegenerateTarget(ctx, r, cfg.Release.TagPrefix, req.Version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -217,7 +228,7 @@ func resolveRegeneratePublisher(ctx context.Context, deps engine.ReleaseDeps, cf
 
 // runRelease wires the production seams and runs the forward release pipeline for
 // a parsed `mint release` invocation, returning the process exit code.
-func runRelease(rest []string) int {
+func runRelease(ctx context.Context, rest []string) int {
 	opts, err := parseReleaseFlags(rest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -251,7 +262,7 @@ func runRelease(rest []string) int {
 		NoteCache: notescache.NewRepoStore(time.Now),
 	}
 
-	if err := engine.Release(context.Background(), deps, opts.ReleaseOptions()); err != nil {
+	if err := engine.Release(ctx, deps, opts.ReleaseOptions()); err != nil {
 		return exitCode(err)
 	}
 	return 0

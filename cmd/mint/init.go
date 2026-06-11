@@ -56,7 +56,7 @@ func parseInitFlags(args []string) (initFlags, error) {
 // init has no interactive gate, so the presenter is constructed non-interactively
 // (yes=true): there is no Prompt to skip, but the flag keeps the construction on the
 // non-interactive axis since init never reads stdin.
-func runInit(rest []string) int {
+func runInit(ctx context.Context, rest []string) int {
 	opts, err := parseInitFlags(rest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -67,7 +67,7 @@ func runInit(rest []string) int {
 	r := runner.NewExecRunner()
 	deps := engine.InitDeps{Presenter: p, Runner: r}
 
-	if err := engine.Init(context.Background(), deps, opts.InitOptions()); err != nil {
+	if err := engine.Init(ctx, deps, opts.InitOptions()); err != nil {
 		return exitCode(err)
 	}
 	return 0

@@ -59,6 +59,13 @@ func autostashPush(ctx context.Context, deps ReleaseDeps) bool {
 // `git stash drop` — it leaves the stash in place and warns (warnPopConflict) so the
 // user's WIP is preserved and they can resolve it manually.
 func autostashPop(ctx context.Context, deps ReleaseDeps) {
+	// The pop is deferred RECOVERY that restores the user's WIP and must run even when the
+	// run aborted because the parent context was cancelled (a SIGINT/SIGTERM pre-PONR
+	// abort). Detaching from cancellation with context.WithoutCancel keeps the restoring
+	// `git stash pop` from being killed by the same signal that triggered the abort, so
+	// the WIP is reapplied (or, on a conflict, preserved + warned) regardless.
+	ctx = context.WithoutCancel(ctx)
+
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "stash", "pop"); err != nil {
 		warnPopConflict(deps.Presenter)
 	}

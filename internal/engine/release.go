@@ -597,6 +597,20 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// A nil error means the atomic push succeeded and PointOfNoReturnCrossed is set:
 	// from here the tag is public, so any later failure is warn-only and the run must
 	// NOT unwind.
+	//
+	// LAST PRE-PONR GATE: a SIGINT/SIGTERM cancellation observed in the window between
+	// the bookkeeping commit and the atomic push (Ctrl-C with no subprocess running, so
+	// no command-level error surfaces it) is caught HERE and routed through the SAME
+	// surgical unwind every pre-push failure takes — resetting the tracked commit(s),
+	// deleting nothing (no tag yet), and letting the deferred autostash pop apply on top
+	// of the clean state. The push is NOT attempted, so the warn-only post-PONR contract
+	// is never entered. A cancellation DURING a pre-PONR subprocess (the AI call, a hook)
+	// already surfaces as that command's error and routes through the same unwind above;
+	// this gate closes the remaining no-subprocess gap.
+	if err := ctx.Err(); err != nil {
+		return surfaceAndUnwind(ctx, deps, "tag", start, made, err)
+	}
+
 	// Stage 6 is BLOCKING: the tag + atomic push round-trips the network. Narrate it
 	// with a blocking StageStarted (spinner) and a StageSucceeded carrying the
 	// engine-measured Elapsed once the push crosses the PONR. On failure the

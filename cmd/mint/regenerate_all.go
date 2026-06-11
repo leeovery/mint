@@ -26,9 +26,7 @@ import (
 // surface(s) to rewrite unattended. A supplied flag skips its question; a reuse source
 // FORCES release without asking (the 5-2 axis contract). -y is threaded so the per-version
 // review gates skip; the axis prompts themselves skip+echo inside the presenter under -y.
-func runRegenerateAll(deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest) int {
-	ctx := context.Background()
-
+func runRegenerateAll(ctx context.Context, deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest) int {
 	// Resolve both axes ONCE before the batch, via the shared interactive resolver the
 	// single-version path uses (replacing the old silent fresh+release defaulting).
 	source, target, err := resolveBatchAxes(deps.Presenter, req, cfg.Release.Changelog)

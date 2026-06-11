@@ -84,6 +84,14 @@ type MadeState struct {
 // this run survives the abort; the abort still carries the original reason. The
 // operation NEVER pushes or publishes: it is pre-PONR recovery only.
 func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, reason error) error {
+	// The unwind is RECOVERY work that must run to completion even when the triggering
+	// failure was the parent context's own cancellation (a SIGINT/SIGTERM pre-PONR
+	// abort). Detaching from cancellation with context.WithoutCancel — while keeping any
+	// values — means the local-only reset/tag-delete still execute and leave the repo
+	// clean; without it the unwind's git commands would be killed by the same signal that
+	// triggered the abort, stranding mint's commit(s) and tag.
+	ctx = context.WithoutCancel(ctx)
+
 	tagDeleted := deleteTagIfMade(ctx, deps, start, made)
 	commitsReset := resetCommitsIfMade(ctx, deps, start, made)
 
