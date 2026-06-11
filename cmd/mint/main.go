@@ -164,10 +164,15 @@ func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg co
 		return usageExitCode
 	}
 
-	// A non-github / no-remote host downgrades to an unresolved publisher; the engine's
-	// release-write surfaces that, so pass the resolver result through (nil publisher on
-	// an unresolved provider).
-	publisher, _ := publish.ResolvePublisher(engine.RemoteURL(ctx, r), cfg.Release.Provider, r)
+	// Resolve the publishing driver through the SHARED engine helper, which handles an
+	// unresolvable provider exactly as the forward engine.Release path does — warn-and-
+	// downgrade (a nil publisher proceeds, the provider write is skipped downstream) or a
+	// clean abort. This REPLACES the former `publisher, _ := …` discard that passed a nil
+	// interface down and crashed DispatchRelease on a non-github / no-remote origin.
+	publisher, code, proceed := resolveRegeneratePublisher(ctx, deps, cfg)
+	if !proceed {
+		return code
+	}
 
 	source, target := regenerateRunAxes(req)
 	runReq := engine.RegenerateRunRequest{
@@ -190,6 +195,24 @@ func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg co
 		return exitCode(err)
 	}
 	return 0
+}
+
+// resolveRegeneratePublisher resolves the publishing driver for a regenerate run via the
+// SHARED engine.ResolvePublisher, which mirrors the forward engine.Release Stage-6
+// handling: a RESOLVED provider yields the driver; an UNRESOLVED provider (a non-github /
+// no-remote origin) WARNS and downgrades to a nil publisher; any other resolution error
+// is a surfaced abort. It collapses that into the cmd layer's three needs: the publisher
+// to thread (nil on a downgrade — the engine write nil-guards it), the exit code, and
+// whether to proceed. It returns proceed=true with a nil publisher on a clean downgrade,
+// and proceed=false with the abort's exit code on a real failure. Both regenerate dispatch
+// paths (single-version and --all) share it so neither can drift back to discarding the
+// resolver error.
+func resolveRegeneratePublisher(ctx context.Context, deps engine.ReleaseDeps, cfg config.Config) (publish.Publisher, int, bool) {
+	publisher, err := engine.ResolvePublisher(ctx, deps, cfg)
+	if err != nil {
+		return nil, exitCode(err), false
+	}
+	return publisher, 0, true
 }
 
 // runRelease wires the production seams and runs the forward release pipeline for

@@ -160,7 +160,18 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 	// --target both this runs AFTER the changelog push, so a failure here is the
 	// post-PONR warn-only case (the changelog is already public). For --target
 	// release there is no push, so a failure is surfaced as a plain abort.
+	//
+	// NIL-GUARD: a downgraded run (the provider could not be resolved — a non-github /
+	// no-remote origin) carries a nil publisher. Skip the provider write with a warn
+	// rather than dereferencing nil in DispatchRelease — mirroring the forward path,
+	// which downgrades to tag + push only and never attempts the provider write. The
+	// changelog (for --target both) was already written above; the provider surface is
+	// simply skipped.
 	if req.Target.writesProvider() {
+		if publisher == nil {
+			warnRegenerateProviderSkipped(p)
+			return nil
+		}
 		// Regenerate's close carries no footer URL, so the dispatched release URL is
 		// discarded here — only the forward release path threads it into RunResult.URL.
 		if _, err := DispatchRelease(ctx, publisher, req.Tag, req.Tag, body); err != nil {
@@ -347,6 +358,20 @@ func readHistoricalDate(ctx context.Context, r runner.CommandRunner, tag string)
 		return time.Time{}, fmt.Errorf("parsing original date %q for tag %s: %w", raw, tag, err)
 	}
 	return date, nil
+}
+
+// warnRegenerateProviderSkipped emits the downgrade notice when a provider-writing
+// target runs with NO resolved publisher (the provider could not be resolved — a
+// non-github / no-remote origin). The provider surface is skipped rather than the run
+// dereferencing a nil Publisher; this rides the Warn seam (no failure state), so the run
+// finishes successfully — the regenerate analogue of the forward path's tag + push only
+// downgrade. The cmd layer already warned the downgrade REASON at resolve time; this
+// second warn names which surface was skipped as a result.
+func warnRegenerateProviderSkipped(p presenter.Presenter) {
+	p.Warn(presenter.Warning{
+		Label:   "publish skipped",
+		Message: "provider could not be resolved; the release surface was not written",
+	})
 }
 
 // warnRegenerateProviderFailed emits the post-PONR warn-only notice when the provider

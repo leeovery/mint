@@ -9,7 +9,6 @@ import (
 	"mint/internal/config"
 	"mint/internal/engine"
 	"mint/internal/presenter"
-	"mint/internal/publish"
 	"mint/internal/runner"
 	"mint/internal/version"
 )
@@ -43,10 +42,15 @@ func runRegenerateAll(deps engine.ReleaseDeps, r runner.CommandRunner, cfg confi
 		return usageExitCode
 	}
 
-	// A non-github / no-remote host downgrades to an unresolved publisher; the engine's
-	// release-write surfaces that, so pass the resolver result through (nil publisher on
-	// an unresolved provider), exactly as the single-version path does.
-	publisher, _ := publish.ResolvePublisher(engine.RemoteURL(ctx, r), cfg.Release.Provider, r)
+	// Resolve the publishing driver through the SHARED engine helper, exactly as the
+	// single-version path does: an unresolvable provider warns and downgrades (a nil
+	// publisher proceeds, every per-version provider write is skipped downstream), any
+	// other resolution error aborts. This REPLACES the former `publisher, _ := …` discard
+	// that crashed the per-version DispatchRelease on a non-github / no-remote origin.
+	publisher, code, proceed := resolveRegeneratePublisher(ctx, deps, cfg)
+	if !proceed {
+		return code
+	}
 
 	batch := engine.BatchRegenerateRequest{
 		Source:    source,

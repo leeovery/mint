@@ -280,11 +280,21 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// (release/both): the 5-7 probe resolves create-vs-update per version, so the batch
 	// transparently mixes updates and creates. A changelog-only target skips the provider
 	// entirely — its surface is the end-of-batch whole-file CHANGELOG rebuild (task 5-13).
+	//
+	// NIL-GUARD: a downgraded batch (the provider could not be resolved — a non-github /
+	// no-remote origin) carries a nil publisher for every version. Skip the provider
+	// dispatch with a warn rather than dereferencing nil in DispatchRelease — mirroring
+	// the forward path's tag + push only downgrade. This is NOT a per-version FAILURE
+	// (the version is still collected for the changelog rebuild and counted as
+	// regenerated): the WHOLE run is downgraded, the same way the single-version path
+	// skips its one provider write.
 	if req.Target.writesProvider() {
-		// The batch's closing Summary carries no URL (regenerate publishes a set, not a
-		// single release with a footer URL), so the dispatched release URL is discarded
-		// here — only the forward release path threads it into RunResult.URL.
-		if _, err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, reviewed); err != nil {
+		if publisher == nil {
+			warnRegenerateProviderSkipped(p)
+		} else if _, err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, reviewed); err != nil {
+			// The batch's closing Summary carries no URL (regenerate publishes a set, not a
+			// single release with a footer URL), so the dispatched release URL is discarded
+			// here — only the forward release path threads it into RunResult.URL.
 			return RegeneratedVersion{}, nil, surface(p, "publish", err)
 		}
 	}

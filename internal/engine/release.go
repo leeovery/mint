@@ -894,6 +894,36 @@ func resolvePublisher(ctx context.Context, deps ReleaseDeps, cfg config.Config) 
 	return publish.ResolvePublisher(RemoteURL(ctx, deps.Runner), cfg.Release.Provider, deps.Runner)
 }
 
+// ResolvePublisher is the SHARED publisher-resolution entry the regenerate cmd paths
+// (single-version and --all) call instead of discarding the resolver error. It performs
+// the SAME safe-downgrade branching the forward engine.Release Stage-6 applies, so the
+// regenerate paths can never again pass a nil Publisher down to DispatchRelease and crash:
+//
+//   - provider RESOLVED: returns the driver behind the Publisher interface, nil error.
+//   - provider UNRESOLVED (ErrProviderUnresolved — a non-github.com host, an unsupported
+//     value, no remote, or an unparseable SSH URL): WARNS loudly (naming the reason) and
+//     returns a nil Publisher with NO error — the run proceeds DOWNGRADED, exactly as the
+//     forward path downgrades to tag + push only. The downstream regenerate write nil-
+//     guards the publisher so the provider surface is simply skipped.
+//   - any OTHER resolution error: surfaces it as a pre-mutation regenerate abort (the
+//     "preflight" stage, matching the regenerate preflight failures) and returns it so the
+//     cmd layer maps it to a non-zero exit.
+//
+// It mirrors the forward spine's choice precisely (warn-and-downgrade vs abort) so the
+// forward and regenerate paths handle an unresolvable provider identically.
+func ResolvePublisher(ctx context.Context, deps ReleaseDeps, cfg config.Config) (publish.Publisher, error) {
+	publisher, err := resolvePublisher(ctx, deps, cfg)
+	switch {
+	case errors.Is(err, publish.ErrProviderUnresolved):
+		warnPublishDowngraded(deps.Presenter, err)
+		return nil, nil
+	case err != nil:
+		return nil, surface(deps.Presenter, regeneratePreflightStage, err)
+	default:
+		return publisher, nil
+	}
+}
+
 // RemoteURL reads the release remote's URL via `git remote get-url origin` through
 // the runner seam. A non-zero exit (no `origin` remote configured) yields the empty
 // string, which the resolver treats as "no remote" — an unresolved outcome rather
