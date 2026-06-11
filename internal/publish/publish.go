@@ -22,6 +22,7 @@ package publish
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -38,9 +39,16 @@ import (
 // tag (the heal/regenerate --reuse path recreates a provider release from the tag
 // annotation); it is part of the seam from the start so drivers implement the
 // whole contract, but it is exercised by a later phase.
+//
+// ReleaseExists is the heal/regenerate create-or-update PROBE: it reports whether a
+// provider release already exists at tag so DispatchRelease can pick UpdateRelease
+// (exists) over CreateRelease (absent) per version. "Absent" is a clean false with
+// NO error; a genuine probe failure (missing CLI, auth/network) is surfaced so the
+// dispatch never silently defaults to create on a real failure.
 type Publisher interface {
 	CreateRelease(ctx context.Context, tag, title, body string) error
 	UpdateRelease(ctx context.Context, tag, title, body string) error
+	ReleaseExists(ctx context.Context, tag string) (bool, error)
 }
 
 // GitHubPublisher is the GitHub Publisher driver. It shells the `gh` CLI through
@@ -91,11 +99,72 @@ func (p *GitHubPublisher) CreateRelease(ctx context.Context, tag, title, body st
 	return nil
 }
 
-// UpdateRelease overwrites the GitHub release for an existing tag. It is part of
-// the Publisher seam from the start so the contract is whole, but it is wired into
-// the run by a later phase (the heal/regenerate --reuse path); Phase 1 only
-// exercises CreateRelease. It is intentionally unimplemented to avoid shipping
-// untested release-mutation behaviour ahead of the phase that drives it.
+// notFoundMarker is the substring `gh release view` writes to stderr when no
+// release exists at the tag. It is the one signal that distinguishes "the release
+// is absent" (a clean false from ReleaseExists) from a genuine probe failure (auth,
+// network, …), which gh reports with different stderr and which ReleaseExists must
+// surface rather than treat as absent.
+const notFoundMarker = "release not found"
+
+// ReleaseExists probes whether a GitHub release exists at tag via
+// `gh release view {tag}` through the CommandRunner, returning true when gh exits
+// zero (the release is present) and false with NO error when gh reports the release
+// is absent.
+//
+// Classification of a non-zero gh exit is the load-bearing distinction the
+// create-or-update dispatch depends on:
+//   - "release not found" in stderr → the release is genuinely ABSENT, so this
+//     returns (false, nil) and the dispatch routes to CreateRelease.
+//   - any other failure — a missing gh binary (ErrCommandNotFound) or any non-zero
+//     exit whose stderr is NOT the not-found marker (auth lapse, network, rate
+//     limit) — is a GENUINE probe failure and is surfaced as an error, so the
+//     dispatch never silently defaults to create-or-update on a real failure.
+//
+// gh distinguishes these for us: an absent release is the not-found marker, whereas
+// other failures carry HTTP/auth stderr — so a marker check is the correct,
+// non-heuristic classification.
+func (p *GitHubPublisher) ReleaseExists(ctx context.Context, tag string) (bool, error) {
+	res, err := p.runner.Run(ctx, "gh", "release", "view", tag)
+	if err == nil {
+		return true, nil
+	}
+	// A missing gh binary is never "release absent" — it is a prerequisite failure.
+	if errors.Is(err, runner.ErrCommandNotFound) {
+		return false, fmt.Errorf("probing GitHub release for tag %q: %w", tag, err)
+	}
+	// gh ran and exited non-zero: only the not-found marker means absent; anything
+	// else (auth, network, …) is a genuine failure that must surface.
+	if strings.Contains(res.Stderr, notFoundMarker) {
+		return false, nil
+	}
+	return false, fmt.Errorf("probing GitHub release for tag %q: %w", tag, err)
+}
+
+// UpdateRelease overwrites the GitHub release for an existing tag via
+// `gh release edit {tag} --title {title} --notes-file - --verify-tag`. It is the
+// create-or-update dispatch's "release exists" branch (the heal/regenerate path
+// recreates a provider release from the tag annotation), mirroring CreateRelease
+// but with the `edit` subcommand.
+//
+// As in CreateRelease, the full notes body is piped on stdin through --notes-file -
+// (RunWith) rather than packed into an argv arg, sidestepping OS arg-length limits
+// and shell-escaping breakage on a long/multiline body; --verify-tag makes gh
+// refuse to edit a release whose tag does not exist on the remote.
+//
+// A non-zero gh exit (the runner returns a populated Result alongside a non-nil
+// error) surfaces as a wrapped error so the orchestrator can warn rather than
+// report a false success.
 func (p *GitHubPublisher) UpdateRelease(ctx context.Context, tag, title, body string) error {
-	return fmt.Errorf("publish: UpdateRelease for tag %q is not yet wired (deferred to the heal/regenerate phase)", tag)
+	_, err := p.runner.RunWith(
+		ctx,
+		strings.NewReader(body),
+		"gh", "release", "edit", tag,
+		"--title", title,
+		"--notes-file", "-",
+		"--verify-tag",
+	)
+	if err != nil {
+		return fmt.Errorf("updating GitHub release for tag %q: %w", tag, err)
+	}
+	return nil
 }
