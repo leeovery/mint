@@ -3,7 +3,10 @@ package main
 import (
 	"testing"
 
+	"mint/internal/config"
 	"mint/internal/engine"
+	"mint/internal/runner"
+	"mint/internal/version"
 )
 
 // TestRegenerateRunAxes maps the cmd-layer source/target selection onto the engine's
@@ -64,5 +67,23 @@ func TestRegenerateRunAxes(t *testing.T) {
 				t.Errorf("target axis = %+v, want %+v", gotTarget, tt.wantTarget)
 			}
 		})
+	}
+}
+
+// TestNewRegenerateRegeneratorProducer proves the single-version regenerator producer
+// returns NO regenerator for a reuse source (reuse runs the simple confirm, no review
+// gate) and a non-nil one for a fresh source (backing the gate's `r` choice so it never
+// aborts with errRegeneratorUnavailable).
+func TestNewRegenerateRegeneratorProducer(t *testing.T) {
+	t.Parallel()
+
+	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
+	produce := newRegenerateRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxDiffLines: 50000}, t.TempDir(), res)
+
+	if got := produce(engine.RegenerateSourceReuse); got != nil {
+		t.Errorf("reuse regenerator = %v, want nil (reuse has no review gate)", got)
+	}
+	if got := produce(engine.RegenerateSourceFresh); got == nil {
+		t.Error("fresh regenerator = nil, want a non-nil per-run regenerator for the `r` choice")
 	}
 }

@@ -111,6 +111,14 @@ type RegenerateWriteRequest struct {
 	// Body is the full regenerated notes body, used WHOLE for both the changelog
 	// section and the provider release.
 	Body string
+	// Regenerator is the PER-RUN regenerate seam the fresh notes-review gate's `r`
+	// choice consults: it re-runs the fresh AI path over the resolved `vX-1..vX` range
+	// with the user's one-time context appended (production binds
+	// notes.Generator.GenerateFromRangeWithContext here, the regenerate analogue of the
+	// forward path's perRunRegenerator). It is meaningful ONLY for a fresh source (reuse
+	// has no review gate); a reuse run leaves it nil. A wired deps.Regenerator OVERRIDES
+	// it (the test-injection seam), mirroring the forward path's precedence.
+	Regenerator Regenerator
 }
 
 // regenerateDateLayout is the section-header date layout the forward changelog writer
@@ -183,7 +191,23 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 	}
 	// Fresh: the notes-review gate. A decline returns errGateAborted (a clean user
 	// abort); the gate sits before the changelog commit, so there is nothing to reset.
-	return reviewGate(ctx, p, deps.Editor, deps.Regenerator, notes.KindNormalAI, req.Body, req.VersionKey)
+	// The `r` choice consults the per-run regenerator (req.Regenerator), bound to this
+	// version's fresh AI range — a wired deps.Regenerator OVERRIDES it (the test seam),
+	// mirroring the forward path's perRunRegenerator precedence.
+	return reviewGate(ctx, p, deps.Editor, regenerateRegenerator(deps, req.Regenerator), notes.KindNormalAI, req.Body, req.VersionKey)
+}
+
+// regenerateRegenerator selects the Regenerator the fresh regenerate gate's `r` choice
+// consults, mirroring the forward path's perRunRegenerator precedence: a wired
+// deps.Regenerator OVERRIDES everything (the test-injection seam), otherwise the
+// per-run regenerator the cmd layer bound to this version's fresh AI range is used. A
+// reuse run never reaches this (it runs the simple confirm, not the review gate), so a
+// nil per-run regenerator on a fresh run is the misconfiguration the gate surfaces.
+func regenerateRegenerator(deps ReleaseDeps, perRun Regenerator) Regenerator {
+	if deps.Regenerator != nil {
+		return deps.Regenerator
+	}
+	return perRun
 }
 
 // reuseConfirm runs the deterministic reuse confirm: the two-choice ReuseConfirmGate

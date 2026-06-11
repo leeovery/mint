@@ -176,6 +176,10 @@ func runRegenerateSingle(deps engine.ReleaseDeps, r runner.CommandRunner, cfg co
 		ChangelogEnabled: cfg.Release.Changelog,
 		Yes:              req.Yes,
 		ProduceBody:      newRegenerateBodyProducer(r, cfg, root, res),
+		// The fresh notes-review gate's `r` choice consults this per-run regenerator,
+		// bound to the resolved range — the regenerate analogue of the forward path's
+		// per-run regenerator. Without it the rendered `r` would abort.
+		ProduceRegenerator: newRegenerateRegeneratorProducer(r, cfg, root, res),
 	}
 
 	if err := engine.RegenerateRun(ctx, deps, publisher, root, runReq); err != nil {

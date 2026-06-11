@@ -302,6 +302,66 @@ func TestRegenerateFreshBody_SurfacesAIFailure(t *testing.T) {
 	}
 }
 
+func TestRegenerateFreshRegenerator_ReRunsFreshAIRangeWithOneTimeContext(t *testing.T) {
+	t.Parallel()
+
+	// The fresh `r` regenerator re-runs the fresh AI path over the resolved vX-1..vX
+	// range with the user's one-time context appended — the regenerate analogue of the
+	// forward path's perRunRegenerator. It must range over the resolved DiffRange (NOT
+	// last_tag..HEAD) and carry the context into the prompt.
+	const oneTime = "Lead with the auth package."
+	diff := "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\n+package auth\n"
+	f := seedFreshGit(diff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
+	tr := &freshTransport{body: "regenerated body"}
+
+	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
+	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res)
+	got, err := regen.Regenerate(t.Context(), oneTime)
+	if err != nil {
+		t.Fatalf("Regenerate returned unexpected error: %v", err)
+	}
+
+	if got != "regenerated body" {
+		t.Errorf("body = %q, want the AI body %q", got, "regenerated body")
+	}
+	if !invokedWith(f, "git", "diff", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md") {
+		t.Errorf("regenerator did not diff the resolved range v1.3.0..v1.4.0; got %v", f.Invocations())
+	}
+	if tr.calls() != 1 {
+		t.Fatalf("transport called %d times, want 1", tr.calls())
+	}
+	if indexOfSub(tr.prompts[0], oneTime) < 0 {
+		t.Errorf("prompt missing the one-time context %q:\n%s", oneTime, tr.prompts[0])
+	}
+}
+
+func TestRegenerateFreshRegenerator_FirstRelease_ReturnsFixedBodyNoAI(t *testing.T) {
+	t.Parallel()
+
+	// The oldest release has no vX-1..vX range, so the regenerator mirrors the fresh
+	// body's first-release rule: it returns the fixed "Initial release." body with NO AI
+	// and NO diff — `r` on a first-release fresh gate never breaks.
+	f := runner.NewFakeRunner()
+	tr := &freshTransport{body: "should not be produced"}
+
+	res := version.Resolution{Tag: "v0.1.0", FirstRelease: true}
+	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res)
+	got, err := regen.Regenerate(t.Context(), "any context")
+	if err != nil {
+		t.Fatalf("Regenerate returned unexpected error: %v", err)
+	}
+
+	if got != record.FirstReleaseBody {
+		t.Errorf("body = %q, want the fixed first-release body %q", got, record.FirstReleaseBody)
+	}
+	if len(f.Invocations()) != 0 {
+		t.Errorf("first-release regenerator made %d git calls, want 0 (no diff)", len(f.Invocations()))
+	}
+	if tr.calls() != 0 {
+		t.Errorf("first-release regenerator called the AI %d times, want 0", tr.calls())
+	}
+}
+
 var errFreshAIFailure = errors.New("ai notes generation failed")
 
 // indexOfSub returns the byte index of sub in s, or -1 when absent.

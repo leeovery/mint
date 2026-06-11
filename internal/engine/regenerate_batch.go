@@ -63,6 +63,12 @@ type BatchRegenerateRequest struct {
 	// injected so the loop stays testable without a real AI transport / tag read;
 	// production wires the 5-5 reuse read or the 5-6 fresh re-diff+AI per version.
 	ProduceBody func(context.Context, RegenerateSource, version.Resolution) (string, error)
+	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
+	// gate's `r` choice consults, bound to that version's fresh AI range. Production
+	// returns nil for a reuse source (no review gate) and binds
+	// notes.Generator.GenerateFromRangeWithContext for a fresh source. When nil (older
+	// tests that never reach `r`) no per-version regenerator is supplied.
+	ProduceRegenerator func(RegenerateSource, version.Resolution) Regenerator
 }
 
 // RegeneratedVersion is one version's produced body collected by the batch loop, in
@@ -230,7 +236,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A
 	// gate DECLINE is a user choice (not a failure), so it propagates and ends the batch.
-	reviewed, err := gatePerVersion(ctx, deps, req, body, versionKey)
+	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey)
 	if err != nil {
 		return RegeneratedVersion{}, nil, err
 	}
@@ -303,16 +309,28 @@ func batchSummary(regenerated int, skipped []skippedVersion) string {
 // batch's -y contract: unlike the single-version path (which always prompts and lets the
 // presenter skip), the batch suppresses the per-version gate so a large backfill does
 // not emit N auto-accepted prompts.
-func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, body, versionKey string) (string, error) {
+func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, res version.Resolution, body, versionKey string) (string, error) {
 	if req.Yes {
 		return body, nil
 	}
 	return gateRegenerate(ctx, deps, RegenerateWriteRequest{
-		Source:     req.Source,
-		Tag:        "",
-		VersionKey: versionKey,
-		Body:       body,
+		Source:      req.Source,
+		Tag:         "",
+		VersionKey:  versionKey,
+		Body:        body,
+		Regenerator: batchRegenerator(req.ProduceRegenerator, req.Source, res),
 	})
+}
+
+// batchRegenerator invokes the batch request's per-version regenerator factory for the
+// resolved source + version, tolerating a nil factory (older callers/tests that never
+// reach the `r` choice) by returning nil. Production wires a factory that returns the
+// fresh AI-range regenerator for a fresh source and nil for reuse.
+func batchRegenerator(produce func(RegenerateSource, version.Resolution) Regenerator, source RegenerateSource, res version.Resolution) Regenerator {
+	if produce == nil {
+		return nil
+	}
+	return produce(source, res)
 }
 
 // batchVersionKey derives a version's bare x.y.z key from its canonical tag by

@@ -60,14 +60,47 @@ func RegenerateFreshBody(ctx context.Context, r runner.CommandRunner, transport 
 		return record.FirstReleaseBody, nil
 	}
 
-	assembler := notes.NewAssembler(r, freshExcludeConfig(cfg))
-	generator := notes.NewGenerator(assembler, resolveFreshTransport(r, transport, cfg), root)
-
-	body, err := generator.GenerateFromRange(ctx, res.DiffRange(), cfg)
+	body, err := freshGenerator(r, transport, root, cfg).GenerateFromRange(ctx, res.DiffRange(), cfg)
 	if err != nil {
 		return "", fmt.Errorf("regenerating fresh notes for %s: %w", res.Tag, err)
 	}
 	return body, nil
+}
+
+// RegenerateFreshRegenerator builds the PER-RUN Regenerator the fresh notes-review
+// gate's `r` choice consults — the regenerate analogue of the forward path's
+// perRunRegenerator. It binds the SAME fresh generator RegenerateFreshBody builds to
+// the version's resolved `{PreviousTag}..{Tag}` range, so an `r` re-runs the IDENTICAL
+// fresh AI path the body producer took, with the user's one-time context appended for
+// that one generation. The one-time context is TRANSIENT (appended to the prompt only,
+// never persisted), exactly as the forward path's `r`.
+//
+// For the oldest release (res.FirstRelease) there is no range to re-diff, so it mirrors
+// RegenerateFreshBody's first-release rule: the fixed first-release body is returned
+// with NO AI and NO diff, regardless of the one-time context — so `r` on a first-release
+// fresh gate is well-defined and never breaks.
+func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution) Regenerator {
+	generator := freshGenerator(r, transport, root, cfg)
+	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
+		if res.FirstRelease {
+			return record.FirstReleaseBody, nil
+		}
+		body, err := generator.GenerateFromRangeWithContext(ctx, res.DiffRange(), cfg, oneTimeContext)
+		if err != nil {
+			return "", fmt.Errorf("regenerating fresh notes for %s: %w", res.Tag, err)
+		}
+		return body, nil
+	})
+}
+
+// freshGenerator builds the notes Generator the fresh regenerate path drives: the
+// Assembler with the consolidated fresh ExcludeConfig (the SAME tiers the forward path
+// uses) over the resolved transport. Both RegenerateFreshBody and
+// RegenerateFreshRegenerator build it identically, so an `r` re-run ranges over exactly
+// what the initial body production did — only the range range/context differ.
+func freshGenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config) *notes.Generator {
+	assembler := notes.NewAssembler(r, freshExcludeConfig(cfg))
+	return notes.NewGenerator(assembler, resolveFreshTransport(r, transport, cfg), root)
 }
 
 // freshExcludeConfig builds the consolidated ExcludeConfig the fresh Assembler layers

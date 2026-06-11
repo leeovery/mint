@@ -56,6 +56,10 @@ func runRegenerateAll(deps engine.ReleaseDeps, r runner.CommandRunner, cfg confi
 		Yes:         req.Yes,
 		Target:      target,
 		ProduceBody: newBatchBodyProducer(r, cfg, root),
+		// Each version's fresh notes-review gate `r` choice consults this per-version
+		// regenerator, bound to that version's resolved range. Without it the rendered
+		// `r` would abort on every interactive fresh `--all` backfill.
+		ProduceRegenerator: newBatchRegeneratorProducer(r, cfg, root),
 	}
 
 	if err := engine.RegenerateAllValidated(ctx, deps, publisher, root, batch, cfg.Release.Changelog); err != nil {
@@ -87,5 +91,20 @@ func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string
 			return engine.ReadReuseBody(ctx, r, res.Tag)
 		}
 		return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res)
+	}
+}
+
+// newBatchRegeneratorProducer builds the engine batch ProduceRegenerator closure: per
+// version it binds the per-version fresh regenerator (engine.RegenerateFreshRegenerator
+// over that version's resolved range) for a FRESH source — backing each version's
+// notes-review gate `r` choice — and returns nil for REUSE (the simple confirm has no
+// review gate). It is the batch counterpart of newRegenerateRegeneratorProducer, keyed
+// off the per-version Resolution.
+func newBatchRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string) func(engine.RegenerateSource, version.Resolution) engine.Regenerator {
+	return func(source engine.RegenerateSource, res version.Resolution) engine.Regenerator {
+		if source == engine.RegenerateSourceReuse {
+			return nil
+		}
+		return engine.RegenerateFreshRegenerator(r, nil, root, cfg, res)
 	}
 }

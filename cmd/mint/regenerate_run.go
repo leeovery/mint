@@ -64,3 +64,19 @@ func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root s
 		return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res)
 	}
 }
+
+// newRegenerateRegeneratorProducer builds the engine.RegenerateRun ProduceRegenerator
+// closure for a single-version run: it binds the per-run fresh regenerator
+// (engine.RegenerateFreshRegenerator over the resolved range) for a FRESH source — the
+// backing for the notes-review gate's `r` choice — and returns nil for REUSE, which runs
+// the simple confirm with no review gate. It is the regenerator counterpart of
+// newRegenerateBodyProducer, invoked AFTER the source resolves so an interactively-chosen
+// fresh source gets a working `r`.
+func newRegenerateRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(engine.RegenerateSource) engine.Regenerator {
+	return func(source engine.RegenerateSource) engine.Regenerator {
+		if source == engine.RegenerateSourceReuse {
+			return nil
+		}
+		return engine.RegenerateFreshRegenerator(r, nil, root, cfg, res)
+	}
+}

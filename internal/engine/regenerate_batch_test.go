@@ -234,6 +234,44 @@ func TestRegenerateAll_PerVersionReviewGateByDefault(t *testing.T) {
 	}
 }
 
+// TestRegenerateAll_Fresh_RegenChoice_InvokesPerVersionRegenerator proves the batch
+// per-version fresh notes-review gate's `r` choice consults the PER-VERSION regenerator
+// supplied by ProduceRegenerator — re-running the fresh AI path with the one-time
+// context appended — and never aborts with errRegeneratorUnavailable.
+func TestRegenerateAll_Fresh_RegenChoice_InvokesPerVersionRegenerator(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{}, nil)
+	pub := newFakePublisher()
+	pub.seedExists(batchV2Tag, true, nil)
+	regen := &fakeRegenerator{bodies: []string{regen1Body}}
+	const contextLine = "Emphasise the security fix."
+	// Single version (v1.1.0): r (regenerate) then y (accept the regenerated body).
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+		NextLines:   []string{contextLine},
+	}
+
+	req := batchReq(engine.RegenerateSourceFresh, []version.Resolution{{Tag: batchV2Tag, PreviousTag: batchV1Tag}}, false)
+	req.ProduceRegenerator = func(_ engine.RegenerateSource, _ version.Resolution) engine.Regenerator {
+		return regen
+	}
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
+	}
+
+	if len(regen.gotContexts) != 1 {
+		t.Fatalf("Regenerate calls = %d, want 1 (the `r` choice)", len(regen.gotContexts))
+	}
+	if regen.gotContexts[0] != contextLine {
+		t.Errorf("Regenerator received context = %q, want the scripted line %q", regen.gotContexts[0], contextLine)
+	}
+	if len(pub.dispatched) != 1 || pub.dispatched[0].body != regen1Body {
+		t.Errorf("provider dispatch = %+v, want the regenerated body %q", pub.dispatched, regen1Body)
+	}
+}
+
 // TestRegenerateAll_YesOptsOutOfPerVersionGate proves -y opts OUT of the per-version
 // gate: NO Prompt fires for any version (the batch runs fully unattended).
 func TestRegenerateAll_YesOptsOutOfPerVersionGate(t *testing.T) {

@@ -152,6 +152,30 @@ func TestNewBatchBodyProducer_Reuse(t *testing.T) {
 	}
 }
 
+// TestNewBatchRegeneratorProducer_Reuse proves the batch regenerator producer returns
+// NO regenerator for a reuse source: reuse runs the simple confirm (no review gate), so
+// the `r` choice never applies.
+func TestNewBatchRegeneratorProducer_Reuse(t *testing.T) {
+	t.Parallel()
+
+	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{}, t.TempDir())
+	if got := produce(engine.RegenerateSourceReuse, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}); got != nil {
+		t.Errorf("reuse regenerator = %v, want nil (reuse has no review gate)", got)
+	}
+}
+
+// TestNewBatchRegeneratorProducer_Fresh proves the batch regenerator producer returns a
+// non-nil regenerator for a fresh source bound to that version's resolved range, so the
+// per-version `r` choice re-runs the fresh AI path (never errRegeneratorUnavailable).
+func TestNewBatchRegeneratorProducer_Fresh(t *testing.T) {
+	t.Parallel()
+
+	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxDiffLines: 50000}, t.TempDir())
+	if got := produce(engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}); got == nil {
+		t.Error("fresh regenerator = nil, want a non-nil per-version regenerator for the `r` choice")
+	}
+}
+
 // batchGateSubjects returns the Subject of each recorded gate in order — the load-bearing
 // way to assert the batch axis prompt sequence.
 func batchGateSubjects(rec *presentertest.RecordingPresenter) []string {

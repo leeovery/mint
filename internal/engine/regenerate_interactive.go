@@ -122,6 +122,12 @@ type RegenerateRunRequest struct {
 	// flow stays testable without a real AI transport / tag read; production wires the
 	// 5-5 reuse read or the 5-6 fresh re-diff+AI here.
 	ProduceBody func(context.Context, RegenerateSource) (string, error)
+	// ProduceRegenerator yields the PER-RUN regenerator the fresh notes-review gate's
+	// `r` choice consults, bound to this version's fresh AI range. It is invoked after
+	// the source resolves; production returns nil for a reuse source (no review gate)
+	// and binds notes.Generator.GenerateFromRangeWithContext for a fresh source. When
+	// nil (older tests that never reach `r`) no per-run regenerator is supplied.
+	ProduceRegenerator func(RegenerateSource) Regenerator
 }
 
 // RegenerateRun runs the interactive default flow for one resolved version: it asks
@@ -160,13 +166,27 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 
 	// Delegate to the 5-9 write path: it shows the notes, runs the source-appropriate
 	// confirm/review gate (fresh → notes-review, reuse → simple confirm), and writes.
+	// The per-run regenerator (bound to this version's fresh AI range) backs the fresh
+	// gate's `r` choice.
 	return RegenerateWrite(ctx, deps, publisher, root, RegenerateWriteRequest{
-		Source:     source,
-		Target:     target,
-		Tag:        req.Tag,
-		VersionKey: req.VersionKey,
-		Body:       body,
+		Source:      source,
+		Target:      target,
+		Tag:         req.Tag,
+		VersionKey:  req.VersionKey,
+		Body:        body,
+		Regenerator: produceRegenerator(req.ProduceRegenerator, source),
 	})
+}
+
+// produceRegenerator invokes the request's per-run regenerator factory for the resolved
+// source, tolerating a nil factory (older callers/tests that never reach the `r`
+// choice) by returning nil. Production wires a factory that returns the fresh AI-range
+// regenerator for a fresh source and nil for reuse (reuse runs no review gate).
+func produceRegenerator(produce func(RegenerateSource) Regenerator, source RegenerateSource) Regenerator {
+	if produce == nil {
+		return nil
+	}
+	return produce(source)
 }
 
 // regenerateAction is the start-of-run verb word the header renders for a regenerate

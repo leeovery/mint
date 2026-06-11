@@ -396,6 +396,81 @@ func TestRegenerateWrite_Reuse_GateDecline_Aborts(t *testing.T) {
 	}
 }
 
+// TestRegenerateWrite_Fresh_RegenChoice_InvokesPerRunRegenerator proves the fresh
+// notes-review gate's `r` choice consults the PER-RUN regenerator carried on the write
+// request — re-running the fresh AI path with the one-time context appended and
+// returning to the gate with the regenerated body. It must NOT abort with
+// errRegeneratorUnavailable: `r` and `e` are peers on this gate.
+func TestRegenerateWrite_Fresh_RegenChoice_InvokesPerRunRegenerator(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{}, nil)
+	pub := newFakePublisher()
+	pub.seedExists(regenWriteTag, true, nil)
+	regen := &fakeRegenerator{bodies: []string{regen1Body}}
+	const contextLine = "Lead with the new auth package."
+	// Script: r (regenerate) then y (accept the regenerated body).
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+		NextLines:   []string{contextLine},
+	}
+
+	req := freshWriteReq(engine.RegenerateTargetRelease)
+	req.Regenerator = regen
+	if err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), pub, dir, req); err != nil {
+		t.Fatalf("RegenerateWrite returned unexpected error: %v", err)
+	}
+
+	// The per-run regenerator was consulted exactly once with the scripted context.
+	if len(regen.gotContexts) != 1 {
+		t.Fatalf("Regenerate calls = %d, want 1", len(regen.gotContexts))
+	}
+	if regen.gotContexts[0] != contextLine {
+		t.Errorf("Regenerator received context = %q, want the scripted line %q", regen.gotContexts[0], contextLine)
+	}
+	// The REGENERATED body, not the original, reached the provider write.
+	if len(pub.dispatched) != 1 || pub.dispatched[0].body != regen1Body {
+		t.Errorf("provider dispatch = %+v, want the regenerated body %q", pub.dispatched, regen1Body)
+	}
+}
+
+// TestRegenerateWrite_Fresh_EditChoice_ConsultsEditor proves the fresh notes-review
+// gate's `e` choice continues to consult the wired Editor seam and threads the edited
+// body downstream — `e` and `r` are peers on this gate (wiring `r` must not regress `e`).
+func TestRegenerateWrite_Fresh_EditChoice_ConsultsEditor(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{}, nil)
+	pub := newFakePublisher()
+	pub.seedExists(regenWriteTag, true, nil)
+	const editedBody = "Hand-edited release notes.\n"
+	ed := &fakeEditor{edited: editedBody}
+	// Script: e (edit) then y (accept the edited body).
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes}}
+
+	deps := regenWriteDeps(rec, f)
+	deps.Editor = ed
+	if err := engine.RegenerateWrite(t.Context(), deps, pub, dir, freshWriteReq(engine.RegenerateTargetRelease)); err != nil {
+		t.Fatalf("RegenerateWrite returned unexpected error: %v", err)
+	}
+
+	if ed.calls != 1 {
+		t.Fatalf("Editor consulted %d times, want 1 (the `e` choice)", ed.calls)
+	}
+	if ed.gotCurrent != regenWriteBody {
+		t.Errorf("Editor received %q, want the original body %q", ed.gotCurrent, regenWriteBody)
+	}
+	if len(pub.dispatched) != 1 || pub.dispatched[0].body != editedBody {
+		t.Errorf("provider dispatch = %+v, want the edited body %q", pub.dispatched, editedBody)
+	}
+}
+
 // regenWriteDeps builds the ReleaseDeps for the write-path tests: a recording
 // presenter, the single FakeRunner, and a Mutator over it (shared with no Releaser —
 // regenerate cuts no tag and uses a plain push, so the Releaser is unused here).

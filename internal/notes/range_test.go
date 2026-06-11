@@ -2,6 +2,7 @@ package notes_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"mint/internal/config"
@@ -290,3 +291,70 @@ func TestGenerator_GenerateFromRange_SurfacesTransportFailure(t *testing.T) {
 }
 
 var errTransportFailure = errors.New("ai notes generation failed")
+
+func TestGenerator_GenerateFromRangeWithContext_AppendsOneTimeContextOverRange(t *testing.T) {
+	t.Parallel()
+
+	// The regenerate fresh `r` path: GenerateFromRangeWithContext re-runs the fresh AI
+	// path over the resolved `vX-1..vX` range with the user's one-time context APPENDED
+	// to the instructions — the range counterpart of GenerateWithContext.
+	const oneTime = "Lead with the new auth package; downplay the refactor."
+	diff := "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\n+package auth\n"
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "A\tauth/login.go\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "20\t0\tauth/login.go\n"}},
+	)
+	transport := &recordingTransport{body: "regenerated body"}
+
+	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.3.0..v1.4.0", config.Config{MaxDiffLines: 50000}, oneTime)
+	if err != nil {
+		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
+	}
+
+	if got != "regenerated body" {
+		t.Errorf("body = %q, want the AI body %q", got, "regenerated body")
+	}
+	prompt := transport.lastPrompt(t)
+	if !strings.Contains(prompt, oneTime) {
+		t.Errorf("prompt missing the one-time context %q:\n%s", oneTime, prompt)
+	}
+	// The diff git call ranged over v1.3.0..v1.4.0, NOT last_tag..HEAD.
+	assertArgvEqual(t, r.Invocations()[0].Args, wantRangeArgs("v1.3.0..v1.4.0"))
+}
+
+func TestGenerator_GenerateFromRangeWithContext_EmptyContextMatchesGenerateFromRange(t *testing.T) {
+	t.Parallel()
+
+	// An EMPTY one-time context produces a BYTE-IDENTICAL prompt to GenerateFromRange,
+	// so the no-context path is exactly the plain range path.
+	diff := "diff --git a/core/run.go b/core/run.go\n@@ -1 +1 @@\n-x\n+y\n"
+	seed := func() *runner.FakeRunner {
+		r := runner.NewFakeRunner()
+		r.SeedSequence("git",
+			runner.ScriptedCall{Result: runner.Result{Stdout: diff}},
+			runner.ScriptedCall{Result: runner.Result{Stdout: "M\tcore/run.go\n"}},
+			runner.ScriptedCall{Result: runner.Result{Stdout: "3\t3\tcore/run.go\n"}},
+		)
+		return r
+	}
+	root := t.TempDir()
+
+	plainTransport := &recordingTransport{body: "body"}
+	plainGen := notes.NewGenerator(notes.NewAssembler(seed(), notes.ExcludeConfig{}), plainTransport, root)
+	if _, err := plainGen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000}); err != nil {
+		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
+	}
+
+	emptyTransport := &recordingTransport{body: "body"}
+	emptyGen := notes.NewGenerator(notes.NewAssembler(seed(), notes.ExcludeConfig{}), emptyTransport, root)
+	if _, err := emptyGen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000}, ""); err != nil {
+		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
+	}
+
+	if got, want := emptyTransport.lastPrompt(t), plainTransport.lastPrompt(t); got != want {
+		t.Errorf("empty-context prompt differs from GenerateFromRange:\n got: %q\nwant: %q", got, want)
+	}
+}

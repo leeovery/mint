@@ -100,11 +100,27 @@ func (g *Generator) GenerateWithContext(ctx context.Context, lastTag string, cfg
 // swallow it. The body is returned WHOLE (no parsing/splitting) for the downstream
 // provider/changelog write in later tasks.
 func (g *Generator) GenerateFromRange(ctx context.Context, diffRange string, cfg config.Config) (string, error) {
+	return g.GenerateFromRangeWithContext(ctx, diffRange, cfg, "")
+}
+
+// GenerateFromRangeWithContext is GenerateFromRange with a ONE-TIME context line
+// appended to the resolved instructions for THIS generation only — the range
+// counterpart of GenerateWithContext. It is the AI support for the regenerate FRESH
+// path's review-gate `r` (regenerate) choice: the user supplies a transient nudge,
+// which is appended to the prompt before ComposePrompt and flows into this one AI call
+// over the resolved `{PreviousTag}..{Tag}` range.
+//
+// The one-time context is TRANSIENT — appended to the prompt only, NEVER written back
+// to cfg/[release].context (cfg is passed by value and not mutated). An EMPTY
+// oneTimeContext appends nothing, so GenerateFromRange is exactly
+// GenerateFromRangeWithContext(..., "") and the existing no-context behaviour is
+// byte-identical.
+func (g *Generator) GenerateFromRangeWithContext(ctx context.Context, diffRange string, cfg config.Config, oneTimeContext string) (string, error) {
 	diff, err := g.assembler.AssembleRange(ctx, diffRange)
 	if err != nil {
 		return "", fmt.Errorf("assembling range diff for notes: %w", err)
 	}
-	return g.generateFromDiffWithContext(ctx, diffRange, diff, cfg, "")
+	return g.generateFromDiffWithContext(ctx, diffRange, diff, cfg, oneTimeContext)
 }
 
 // GenerateFromDiff is Generate's body over an ALREADY-ASSEMBLED post-exclusion
