@@ -59,6 +59,12 @@ func TestClassifyCommand(t *testing.T) {
 			wantKind: commandInit,
 			wantRest: []string{"--force"},
 		},
+		{
+			name:     "version is a top-level verb",
+			args:     []string{"version"},
+			wantKind: commandVersion,
+			wantRest: []string{},
+		},
 	}
 
 	for _, tt := range tests {

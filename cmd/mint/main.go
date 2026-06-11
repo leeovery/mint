@@ -44,10 +44,17 @@ func main() {
 // engine abort's non-zero ExitCode on a pre-PONR abort, and usageExitCode on a
 // CLI parse error.
 func run(args []string) int {
+	// `mint --version` is the standard global-flag spelling of the version surface:
+	// it is handled BEFORE command classification (independently of any subcommand)
+	// and routes through the SAME runVersion as the `version` verb, so the two are
+	// byte-identical. It deliberately needs no git repo.
+	if hasVersionFlag(args) {
+		return runVersion(os.Stdout, os.Stderr, os.Stdin)
+	}
+
 	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a
-	// top-level verb; `init` is a top-level verb; classifyCommand resolves the route.
-	// The version verb is reserved for a later phase; an unknown command is a usage
-	// error.
+	// top-level verb; `init` and `version` are top-level verbs; classifyCommand
+	// resolves the route. An unknown command is a usage error.
 	kind, rest := classifyCommand(args)
 	switch kind {
 	case commandRelease:
@@ -56,8 +63,10 @@ func run(args []string) int {
 		return runRegenerate(rest)
 	case commandInit:
 		return runInit(rest)
+	case commandVersion:
+		return runVersion(os.Stdout, os.Stderr, os.Stdin)
 	default:
-		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release`, `mint release regenerate`, and `mint init` are wired)")
+		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release`, `mint release regenerate`, `mint init`, and `mint version` are wired)")
 		return usageExitCode
 	}
 }
@@ -247,6 +256,10 @@ const (
 	// commandInit is the `mint init` scaffolding verb — a top-level verb that drops
 	// the `.mint.toml` template and `release` shim into a project.
 	commandInit
+	// commandVersion is the `mint version` verb — a top-level verb that prints
+	// mint's OWN tool version. It drives no gate, calls no RunFinished, and needs no
+	// git repo (it never resolves the repo root).
+	commandVersion
 )
 
 // classifyCommand resolves the route for an invocation's args and returns the
@@ -261,6 +274,9 @@ func classifyCommand(args []string) (commandKind, []string) {
 	}
 	if args[0] == "init" {
 		return commandInit, args[1:]
+	}
+	if args[0] == "version" {
+		return commandVersion, args[1:]
 	}
 	if args[0] != "release" {
 		return commandUnknown, nil
