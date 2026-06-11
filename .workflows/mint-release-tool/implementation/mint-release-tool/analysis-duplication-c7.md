@@ -1,0 +1,3 @@
+AGENT: duplication
+FINDINGS: none
+SUMMARY: No significant cross-file duplication detected across the phases 10-12 implementation files. The engine is strongly consolidated — shared stageAndCommitChangelog/pushChangelogCommit/resetAndAbort/readHistoricalDate/DispatchRelease/ResolvePublisher/RemoteURL helpers; the cmd-layer body/regenerator producers were consolidated in cycle 6 (single-version delegates to the canonical Resolution-keyed batch producers); test fakes shared not duplicated. Two structural similarities (the writesProvider nil-guard + DispatchRelease block; the `fmt.Fprintf(os.Stderr, "mint: %v\n", err)` + usageExitCode idiom) evaluated and consciously left below the Rule-of-Three / proportionality threshold.
