@@ -29,15 +29,18 @@ var _ commit.Committer = (*git.Mutator)(nil)
 // commit-defined presenter interface or fake in sight.
 var _ presenter.Presenter = (*presentertest.RecordingPresenter)(nil)
 
-// seedDiffThenCommit returns a FakeRunner scripting the bare-commit thread's two
-// git invocations IN ORDER: the L1 `git diff --cached` read returns diff on stdout,
-// then the `git commit -F -` mutation returns a clean success. The FakeRunner
-// matches on command name only, so a SeedSequence keyed on "git" distinguishes the
-// two same-binary calls (a plain Seed could not — both are `git`).
+// seedDiffThenCommit returns a FakeRunner scripting the bare-commit thread's three
+// git invocations IN ORDER: the empty-index preflight (`git diff --cached
+// --name-only`) reports a non-empty staged index so preflight passes, the L1
+// `git diff --cached` read returns diff on stdout, then the `git commit -F -`
+// mutation returns a clean success. The FakeRunner matches on command name only, so
+// a SeedSequence keyed on "git" distinguishes the same-binary calls (a plain Seed
+// could not — all three are `git`).
 func seedDiffThenCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: diff}}, // git diff --cached
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached
 		runner.ScriptedCall{}, // git commit -F -
 	)
 	return r
@@ -179,6 +182,7 @@ func TestRun_CommitCreatedViaGitSafe(t *testing.T) {
 
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff --cached
 		runner.ScriptedCall{ // git commit attempt 1: lock contention
 			Result: runner.Result{Stderr: "fatal: Unable to create '/nope/.git/index.lock': File exists\nAnother git process seems to be running"},
@@ -234,8 +238,9 @@ func TestRun_MessageCarriesNoBranding(t *testing.T) {
 }
 
 // TestRun_BarePathRunsNoGitAdd proves the bare path is STAGED-ONLY: the only git
-// invocations are the L1 `git diff --cached` read and the `git commit` mutation —
-// NO `git add` (staging is Phase 2). The exact two-call git argv is the assertion.
+// invocations are the empty-index preflight read, the L1 `git diff --cached` read,
+// and the `git commit` mutation — NO `git add` (staging is Phase 2). The exact
+// three-call git argv is the assertion.
 func TestRun_BarePathRunsNoGitAdd(t *testing.T) {
 	t.Parallel()
 
@@ -254,14 +259,17 @@ func TestRun_BarePathRunsNoGitAdd(t *testing.T) {
 	}
 
 	gits := gitInvocations(r)
-	if len(gits) != 2 {
-		t.Fatalf("git invocations = %d (%v), want exactly 2 (diff + commit)", len(gits), gits)
+	if len(gits) != 3 {
+		t.Fatalf("git invocations = %d (%v), want exactly 3 (preflight + diff + commit)", len(gits), gits)
 	}
 	if gits[0].Args[0] != "diff" {
-		t.Errorf("first git call = %v, want the staged-diff read (`git diff …`)", gits[0].Args)
+		t.Errorf("first git call = %v, want the empty-index preflight read (`git diff …`)", gits[0].Args)
 	}
-	if gits[1].Args[0] != "commit" {
-		t.Errorf("second git call = %v, want the commit mutation (`git commit …`)", gits[1].Args)
+	if gits[1].Args[0] != "diff" {
+		t.Errorf("second git call = %v, want the staged-diff read (`git diff …`)", gits[1].Args)
+	}
+	if gits[2].Args[0] != "commit" {
+		t.Errorf("third git call = %v, want the commit mutation (`git commit …`)", gits[2].Args)
 	}
 }
 
@@ -544,6 +552,154 @@ func TestRun_GateLiteral_CommitSubjectAndChoices(t *testing.T) {
 		if gotKeys[i] != want {
 			t.Errorf("gate key[%d] = %q, want %q", i, gotKeys[i], want)
 		}
+	}
+}
+
+// nothingToCommitMessage is git's exact clean-tree line the empty-index preflight
+// must surface verbatim (spec: Staging Model → Empty-staging handling).
+const nothingToCommitMessage = "nothing to commit, working tree clean"
+
+// TestRun_NotAGitRepository_FailsLoudNoAINoCommit proves the not-a-git-repo path is
+// caught at preflight (root resolution) BEFORE any AI call or commit: Root is left
+// empty so Run resolves it via gitrepo.ResolveRoot, and `git rev-parse
+// --show-toplevel` is seeded to fail. The run aborts non-zero, the transport is
+// never called, and no `git commit` runs — with no panic.
+func TestRun_NotAGitRepository_FailsLoudNoAINoCommit(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	r := runner.NewFakeRunner()
+	// `git rev-parse --show-toplevel` fails → gitrepo.ResolveRoot returns ErrNotARepository.
+	r.Seed("git", runner.Result{Stderr: "fatal: not a git repository"}, errExitOne)
+	transport := scriptedTransport("must never be returned (not a repo)")
+	deps := commit.Deps{
+		Presenter: rec,
+		Runner:    r,
+		Committer: git.NewMutator(r),
+		Transport: transport,
+		// Root left empty: Run resolves it via gitrepo.ResolveRoot.
+	}
+
+	err := commit.Run(context.Background(), deps)
+	if err == nil {
+		t.Fatal("Run returned nil for a non-git-repo; want a non-zero preflight abort")
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; not-a-git-repo must short-circuit before any AI call", transport.calls())
+	}
+	if commits := commitInvocations(r); len(commits) != 0 {
+		t.Errorf("not-a-git-repo created %d commit(s); it must never commit", len(commits))
+	}
+}
+
+// TestRun_EmptyStagedIndex_FailsLoudWithGitMessage proves an empty staged index
+// fails loud with git's exact clean-tree line. The preflight read (`git diff
+// --cached --name-only`) reports an empty index (empty stdout), so the run aborts
+// before generate, surfacing the message verbatim through the presenter.
+func TestRun_EmptyStagedIndex_FailsLoudWithGitMessage(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	r := runner.NewFakeRunner()
+	// Empty stdout from the preflight read = nothing staged.
+	r.Seed("git", runner.Result{Stdout: ""}, nil)
+	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned (empty index)"), t.TempDir())
+
+	err := commit.Run(context.Background(), deps)
+	if err == nil {
+		t.Fatal("Run returned nil for an empty staged index; want a non-zero fail-loud abort")
+	}
+	if err.Error() != nothingToCommitMessage {
+		t.Errorf("error = %q, want git's exact clean-tree line %q", err.Error(), nothingToCommitMessage)
+	}
+
+	idx := indexOfKind(rec.Kinds(), presentertest.KindStageFailed)
+	if idx < 0 {
+		t.Fatalf("kinds = %v, want a StageFailed narrating the empty-index abort", rec.Kinds())
+	}
+	ev, _ := rec.At(idx)
+	if ev.StageFailed.Message != nothingToCommitMessage {
+		t.Errorf("StageFailed.Message = %q, want git's exact clean-tree line %q", ev.StageFailed.Message, nothingToCommitMessage)
+	}
+}
+
+// TestRun_EmptyStagedIndex_NoAIInvoked proves the AI is NEVER invoked on an empty
+// staged diff: the preflight short-circuits BEFORE generate, so the transport
+// records zero calls and no commit runs.
+func TestRun_EmptyStagedIndex_NoAIInvoked(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: ""}, nil) // empty index
+	transport := scriptedTransport("must never be returned (empty index)")
+	deps := newCommitDeps(rec, r, transport, t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err == nil {
+		t.Fatal("Run returned nil for an empty staged index; want a non-zero abort")
+	}
+
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; an empty staged diff must short-circuit before any AI call", transport.calls())
+	}
+	if commits := commitInvocations(r); len(commits) != 0 {
+		t.Errorf("empty index created %d commit(s); it must never commit", len(commits))
+	}
+}
+
+// TestRun_NonEmptyStagedIndex_ProceedsToGeneration proves a non-empty staged index
+// passes preflight and proceeds to generation and the commit: the preflight read
+// reports a non-empty index, so the transport IS called and the commit is created.
+func TestRun_NonEmptyStagedIndex_ProceedsToGeneration(t *testing.T) {
+	t.Parallel()
+
+	const message = "feat: proceed past preflight"
+	rec := &presentertest.RecordingPresenter{}
+	r := seedDiffThenCommit("diff --git a/x b/x\n+work")
+	transport := scriptedTransport(message)
+	deps := newCommitDeps(rec, r, transport, t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if transport.calls() != 1 {
+		t.Errorf("transport called %d times; a non-empty staged index must reach generation", transport.calls())
+	}
+	commitInv := findCommitInvocation(t, r)
+	if commitInv.Stdin != message {
+		t.Errorf("commit stdin = %q, want the generated body verbatim %q", commitInv.Stdin, message)
+	}
+}
+
+// TestRun_PreflightRunsBeforeGenerate proves the empty-index preflight read runs
+// BEFORE the L1 staged-diff read that feeds generation: the first git invocation is
+// the preflight read, and only then does the generation diff run. The recorded git
+// order is the assertion.
+func TestRun_PreflightRunsBeforeGenerate(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	r := seedDiffThenCommit("diff --git a/x b/x\n+work")
+	transport := scriptedTransport("feat: ordered preflight")
+	deps := newCommitDeps(rec, r, transport, t.TempDir())
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	gits := gitInvocations(r)
+	if len(gits) < 2 {
+		t.Fatalf("git invocations = %v, want at least the preflight read then the generation diff", gits)
+	}
+	// The preflight read is the empty-index check (`git diff --cached --name-only`);
+	// the second is generation's L1 diff. Both are `git diff`, distinguished by the
+	// preflight carrying --name-only and running first.
+	if !containsArg(gits[0].Args, "--name-only") {
+		t.Errorf("first git call = %v, want the empty-index preflight read (`git diff --cached --name-only`)", gits[0].Args)
+	}
+	if containsArg(gits[1].Args, "--name-only") {
+		t.Errorf("second git call = %v, want generation's L1 diff (not the --name-only preflight read)", gits[1].Args)
 	}
 }
 

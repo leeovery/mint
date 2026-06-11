@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"mint/internal/ai"
 	"mint/internal/config"
@@ -136,8 +137,12 @@ func Run(ctx context.Context, deps Deps) error {
 		Action:  commitAction,
 	})
 
-	// Empty-index preflight (task 1-6) slots HERE — before generate, so the AI is never
-	// invoked on an empty staged diff.
+	// Empty-index preflight (task 1-6) runs HERE — before generate, so the AI is never
+	// invoked on an empty staged diff. A genuinely empty index fails loud with git's
+	// clean-tree message; a non-empty index proceeds.
+	if err := checkStagedIndexNonEmpty(ctx, deps.Runner); err != nil {
+		return surface(p, "preflight", err)
+	}
 
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
@@ -235,6 +240,38 @@ func commitReviewGate() presenter.Gate {
 		},
 		Default: presenter.ChoiceYes,
 	}
+}
+
+// errNothingToCommit is commit's empty-index preflight failure. Its message is git's
+// own clean-tree line VERBATIM ("nothing to commit, working tree clean", per the
+// spec's Empty-staging handling): commit's surface helper renders cause.Error(), so
+// the user sees this exact git-style line with no mint wrapping. It is returned
+// UNWRAPPED so that verbatim text survives to the presenter. Phase 1 covers only the
+// bare (staged-only) path — the flag-aware empty-staging variants (-a/-A) are Phase 2.
+var errNothingToCommit = errors.New("nothing to commit, working tree clean")
+
+// checkStagedIndexNonEmpty is commit's minimal "something to commit" preflight for
+// the bare (staged-only) path: it reads the staged index READ-ONLY via `git diff
+// --cached --name-only` and fails loud when the index is empty. An empty stdout means
+// nothing is staged → errNothingToCommit (git's exact clean-tree line). Non-empty
+// stdout means there is staged content → the check passes and the run proceeds to
+// generate. The read goes through the consumed CommandRunner seam (same seam/idiom as
+// generate's stagedDiff), so it is fully scriptable via the FakeRunner; a genuine git
+// failure is wrapped and surfaced as-is so it is never mistaken for an empty index.
+//
+// This runs BEFORE message generation and short-circuits it, so the AI is never
+// invoked on an empty diff. It is the staged-only check ONLY: the -a/-A would-be-staged
+// distinctions and the richer empty-staging messaging are Phase 2.
+func checkStagedIndexNonEmpty(ctx context.Context, r runner.CommandRunner) error {
+	res, err := r.Run(ctx, "git", "diff", "--cached", "--name-only")
+	if err != nil {
+		return fmt.Errorf("checking staged index: %w", err)
+	}
+
+	if strings.TrimSpace(res.Stdout) == "" {
+		return errNothingToCommit
+	}
+	return nil
 }
 
 // resolveRoot returns the pre-injected Root when set (the test seam) else resolves
