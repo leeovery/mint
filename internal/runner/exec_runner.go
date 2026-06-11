@@ -47,7 +47,7 @@ func (r *ExecRunner) RunWith(ctx context.Context, stdin io.Reader, name string, 
 		cmd.Stdin = stdin
 	}
 
-	return translateRun(cmd.Run(), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, cmd.Run(), &stdout, &stderr, cmd, name)
 }
 
 // RunInDir executes name with args from working directory dir, with env (a slice
@@ -68,13 +68,13 @@ func (r *ExecRunner) RunInDir(ctx context.Context, dir string, env []string, nam
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	return translateRun(cmd.Run(), &stdout, &stderr, cmd, name)
+	return translateRun(ctx, cmd.Run(), &stdout, &stderr, cmd, name)
 }
 
 // translateRun converts a finished exec.Cmd into the seam's Result/error contract,
 // shared by RunWith and RunInDir so both report missing binaries, non-zero exits,
 // and clean runs identically.
-func translateRun(runErr error, stdout, stderr *bytes.Buffer, cmd *exec.Cmd, name string) (Result, error) {
+func translateRun(ctx context.Context, runErr error, stdout, stderr *bytes.Buffer, cmd *exec.Cmd, name string) (Result, error) {
 	res := Result{
 		Stdout: stdout.String(),
 		Stderr: stderr.String(),
@@ -96,6 +96,17 @@ func translateRun(runErr error, stdout, stderr *bytes.Buffer, cmd *exec.Cmd, nam
 		return Result{}, fmt.Errorf("running %q: %w", name, ErrCommandNotFound)
 	}
 
+	// A context deadline/cancel makes exec.CommandContext SIGKILL the child, so
+	// cmd.Run() surfaces an *exec.ExitError ("signal: killed") that hides the real
+	// cause — errors.Is(runErr, DeadlineExceeded) is FALSE on that path. Inspect
+	// ctx.Err() first and wrap that cause so callers (the AI transport's
+	// classifyFatal) can detect a timeout/cancel via errors.Is and avoid retrying a
+	// hung call. This must precede the plain ExitError branch below, otherwise a real
+	// timeout is misread as an ordinary non-zero exit.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return res, fmt.Errorf("running %q: %w", name, ctxErr)
+	}
+
 	// A non-zero exit keeps the populated Result so callers can inspect
 	// Stderr/ExitCode while still branching on the error.
 	var exitErr *exec.ExitError
@@ -103,7 +114,8 @@ func translateRun(runErr error, stdout, stderr *bytes.Buffer, cmd *exec.Cmd, nam
 		return res, fmt.Errorf("running %q: exited with code %d: %w", name, res.ExitCode, runErr)
 	}
 
-	// Any other failure (e.g. context cancellation, pipe setup) propagates wrapped.
+	// Any other failure (e.g. pipe setup, a non-ExitError I/O error) propagates
+	// wrapped. Context deadline/cancel is handled by the ctx.Err() branch above.
 	return res, fmt.Errorf("running %q: %w", name, runErr)
 }
 

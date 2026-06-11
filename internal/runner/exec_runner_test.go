@@ -1,10 +1,12 @@
 package runner_test
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mint/internal/runner"
 )
@@ -72,6 +74,56 @@ func TestExecRunner_Run_NonZeroExit(t *testing.T) {
 	}
 	if res.Stdout != "" {
 		t.Errorf("Stdout = %q, want empty", res.Stdout)
+	}
+}
+
+func TestExecRunner_Run_DeadlineKillMatchesDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewExecRunner()
+
+	// A real context-deadline kill: exec.CommandContext SIGKILLs the child when the
+	// deadline expires, so cmd.Run() returns an *exec.ExitError ("signal: killed"),
+	// NOT context.DeadlineExceeded. The runner must inspect ctx.Err() and wrap the
+	// cause so callers (the AI transport's classifyFatal) can detect the timeout via
+	// errors.Is — otherwise a production ~60s timeout is misclassified as bad content
+	// and retried. This drives the production path with a REAL kill, not an injected
+	// DeadlineExceeded wrapper.
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := r.Run(ctx, "sleep", "5")
+
+	if err == nil {
+		t.Fatal("Run returned nil error for a deadline kill, want non-nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %v, want it to match context.DeadlineExceeded", err)
+	}
+	// A timeout is not a missing binary; keep the two distinguishable.
+	if errors.Is(err, runner.ErrCommandNotFound) {
+		t.Errorf("error = %v, a deadline kill must NOT match ErrCommandNotFound", err)
+	}
+}
+
+func TestExecRunner_Run_NonZeroExitDoesNotMatchDeadlineExceeded(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewExecRunner()
+
+	// Guard the inverse: a normal non-zero exit (the deadline never fired) must stay a
+	// plain command failure and must NOT be misread as a timeout, or every failing
+	// command would be treated as a non-retried timeout.
+	_, err := r.Run(t.Context(), "sh", "-c", "exit 1")
+
+	if err == nil {
+		t.Fatal("Run returned nil error for a non-zero exit, want non-nil")
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("error = %v, a normal non-zero exit must NOT match context.DeadlineExceeded", err)
+	}
+	if errors.Is(err, context.Canceled) {
+		t.Errorf("error = %v, a normal non-zero exit must NOT match context.Canceled", err)
 	}
 }
 
