@@ -80,6 +80,14 @@ const defaultAICommand = "claude -p"
 type Config struct {
 	Release Release
 
+	// Commit holds the [commit] table values: the commit verb's two prompt-control
+	// knobs (Context and Prompt), both optional and defaulting to empty. They are the
+	// commit-specific counterparts of [release]'s Context/Prompt — commit does NOT
+	// reuse the shared top-level engine keys' tables; ai_command/diff_exclude/
+	// max_diff_lines serve commit from the top level. No push/scope/per-verb-engine
+	// override keys exist for commit (spec: "Deliberately NOT added for commit").
+	Commit Commit
+
 	// AICommand is the shared engine-level ai_command notes-transport command (default
 	// "claude -p"). It is top-level — NOT under [release] — because every verb's notes
 	// engine uses the same AI transport. config carries it verbatim; the transport
@@ -158,6 +166,19 @@ type Release struct {
 	Hooks          Hooks
 }
 
+// Commit holds the [commit] table values: the commit verb's two prompt-control
+// knobs, carried here as raw TOML strings (both default empty). Context injects
+// project guidance into the default commit prompt (empty = no injection); Prompt
+// is a file path that fully overrides the default commit prompt (empty = use the
+// default). config carries both verbatim — the configured Prompt file is read by
+// ResolveCommitPrompt at the point of use (assembly, 1-2), NOT here, and a
+// configured-but-unreadable/missing override fails loud there rather than silently
+// falling through to the default.
+type Commit struct {
+	Context string
+	Prompt  string
+}
+
 // HookValue is the dedicated string-or-array type for a [release.hooks] entry: a
 // TOML hook value is either a single command string or an ordered array of command
 // strings, and HookValue accepts BOTH at the schema level. Its underlying type is
@@ -211,9 +232,19 @@ func defaults() Config {
 // valid prefix-less choice) while an absent key leaves the default intact.
 type fileShape struct {
 	Release      releaseShape `toml:"release"`
+	Commit       commitShape  `toml:"commit"`
 	AICommand    *string      `toml:"ai_command"`
 	MaxDiffLines *int         `toml:"max_diff_lines"`
 	DiffExclude  []string     `toml:"diff_exclude"`
+}
+
+// commitShape mirrors the on-disk [commit] table. Both keys are plain strings whose
+// zero value (empty) IS the documented absent default — empty context means no
+// injection, empty prompt means the default prompt — so no *string absent-vs-zero
+// distinction is needed (mirroring releaseShape.Context / releaseShape.Prompt).
+type commitShape struct {
+	Context string `toml:"context"`
+	Prompt  string `toml:"prompt"`
 }
 
 type releaseShape struct {
@@ -295,6 +326,7 @@ func Load(root string) (Config, error) {
 
 	return Config{
 		Release:      resolveRelease(shape.Release),
+		Commit:       resolveCommit(shape.Commit),
 		AICommand:    resolveAICommand(shape.AICommand),
 		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
 		DiffExclude:  shape.DiffExclude,
@@ -332,6 +364,8 @@ var typeErrorMessages = map[string]string{
 	"fileShape.DiffExclude":  "diff_exclude must be an array of strings",
 	"releaseShape.Publish":   "publish must be a boolean",
 	"releaseShape.Changelog": "changelog must be a boolean",
+	"commitShape.Context":    "commit.context must be a string",
+	"commitShape.Prompt":     "commit.prompt must be a string",
 }
 
 // translateTypeError turns the decoder's *toml.DecodeError (a value that cannot
@@ -416,6 +450,16 @@ func resolveRelease(shape releaseShape) Release {
 	}
 }
 
+// resolveCommit copies the [commit] table's raw string knobs through verbatim. Both
+// keys default to empty (the absent baseline: no context injection / default prompt),
+// and an explicit empty value carries the same meaning, so there is nothing to
+// re-default — config carries the raw values and ResolveCommitPrompt reads the Prompt
+// file at the point of use. commitShape and Commit are field-identical, so a direct
+// conversion suffices (unlike resolveRelease, which must re-default *bool toggles).
+func resolveCommit(shape commitShape) Commit {
+	return Commit(shape)
+}
+
 // boolOrDefault applies def when the key was absent (nil) and otherwise honours
 // the explicit value — the absent-vs-explicit-false idiom shared by the publish
 // and changelog toggles.
@@ -487,4 +531,27 @@ func validateOnNotesFailure(value string) error {
 		"invalid %s: on_notes_failure must be one of: %s",
 		configFileName, strings.Join(onNotesFailureValues, ", "),
 	)
+}
+
+// ResolveCommitPrompt resolves cfg.Commit.Prompt into the full prompt-override text
+// commit assembly (1-2) consumes, reading the configured file relative to root. It is
+// the point-of-use read deferred from Load: config carries the raw path verbatim, and
+// the file is only read when a prompt is actually needed.
+//
+//   - Prompt unset (empty) → no override: returns "" with no error, so assembly uses
+//     the default commit prompt.
+//   - Prompt set → it is a FILE PATH whose contents fully OVERRIDE the default commit
+//     prompt. A missing or unreadable file is an error naming the path, NEVER a silent
+//     fall-back to the default — a configured prompt is an explicit operator choice.
+func ResolveCommitPrompt(cfg Config, root string) (string, error) {
+	if cfg.Commit.Prompt == "" {
+		return "", nil
+	}
+
+	path := cfg.Commit.Prompt
+	data, err := os.ReadFile(filepath.Join(root, path))
+	if err != nil {
+		return "", fmt.Errorf("reading commit prompt override %q: %w", path, err)
+	}
+	return string(data), nil
 }

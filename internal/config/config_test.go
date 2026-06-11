@@ -1185,3 +1185,259 @@ func TestLoad_OnNotesFailureValidValues_Load(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_AbsentCommitTable_ContextAndPromptEmpty(t *testing.T) {
+	t.Parallel()
+
+	// [commit].context and [commit].prompt are commit's prompt-control knobs. With no
+	// [commit] table at all (here, an absent file), both must default to the empty
+	// string — the "no inject, default prompt" baseline. Empty is a valid non-error
+	// state, not a failure.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Commit.Context != "" {
+		t.Errorf("Commit.Context = %q, want empty (absent [commit] table defaults to empty)", cfg.Commit.Context)
+	}
+	if cfg.Commit.Prompt != "" {
+		t.Errorf("Commit.Prompt = %q, want empty (absent [commit] table defaults to empty)", cfg.Commit.Prompt)
+	}
+}
+
+func TestLoad_ExplicitCommitContext_Honoured(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit [commit].context string must be carried through verbatim; assembly
+	// (1-2) injects it into the commit prompt.
+	writeConfig(t, dir, "[commit]\ncontext = \"Conventional Commits; dev-workflow toolkit.\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Commit.Context != "Conventional Commits; dev-workflow toolkit." {
+		t.Errorf("Commit.Context = %q, want the explicit value", cfg.Commit.Context)
+	}
+}
+
+func TestLoad_ExplicitCommitPrompt_HonouredAsPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit [commit].prompt value is a file path carried through verbatim;
+	// assembly (1-2) reads that file via ResolveCommitPrompt as the full prompt override.
+	writeConfig(t, dir, "[commit]\nprompt = \".mint/commit-prompt.md\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Commit.Prompt != ".mint/commit-prompt.md" {
+		t.Errorf("Commit.Prompt = %q, want the explicit path", cfg.Commit.Prompt)
+	}
+}
+
+func TestLoad_EmptyCommitContextAndPrompt_AreValid(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A [commit] table present with explicit empty values is a valid non-error state:
+	// empty context means no injection, empty prompt means the default prompt.
+	writeConfig(t, dir, "[commit]\ncontext = \"\"\nprompt = \"\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error for empty commit context/prompt: %v", err)
+	}
+
+	if cfg.Commit.Context != "" {
+		t.Errorf("Commit.Context = %q, want empty (no injection)", cfg.Commit.Context)
+	}
+	if cfg.Commit.Prompt != "" {
+		t.Errorf("Commit.Prompt = %q, want empty (default prompt)", cfg.Commit.Prompt)
+	}
+}
+
+func TestLoad_CommitContextNonString_RejectedNamingKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [commit].context is a string key. A non-string value must fail loud with a
+	// message naming the key (mint's message style, not the go-toml fallback text).
+	writeConfig(t, dir, "[commit]\ncontext = 42\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for non-string commit.context, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "commit.context") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "commit.context")
+	}
+	if !strings.Contains(err.Error(), "string") {
+		t.Errorf("error = %q, want it to name the expected string type", err.Error())
+	}
+}
+
+func TestLoad_CommitPromptNonString_RejectedNamingKey(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [commit].prompt is a string key (a path). A non-string value must fail loud with
+	// the mapped mint-style message naming the key and its expected string type. An
+	// integer is used here because go-toml/v2 embeds the offending struct-field path in
+	// its DecodeError for an integer-into-string mismatch — the signal translateTypeError
+	// maps via typeErrorMessages. (A boolean-into-string mismatch is a separate go-toml
+	// quirk that emits no field path for ANY string key; see
+	// TestLoad_CommitBooleanValue_StillFailsLoud.)
+	writeConfig(t, dir, "[commit]\nprompt = 42\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for non-string commit.prompt, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "commit.prompt") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "commit.prompt")
+	}
+	if !strings.Contains(err.Error(), "string") {
+		t.Errorf("error = %q, want it to name the expected string type", err.Error())
+	}
+}
+
+func TestLoad_CommitBooleanValue_StillFailsLoud(t *testing.T) {
+	t.Parallel()
+
+	// A boolean assigned to a [commit] string key still FAILS LOUD (never silently
+	// accepted) — but go-toml/v2 emits no struct-field path for a boolean-into-string
+	// mismatch (a library quirk shared by EVERY string key, e.g. [release].context /
+	// provider), so translateTypeError cannot map it to the mint-style message and the
+	// decoder's own positioned description is surfaced instead. This test pins that the
+	// fail-loud guarantee holds for the boolean case and that the offending line (which
+	// names the key) is still visible to the user.
+	cases := []struct {
+		name string
+		toml string
+		key  string
+	}{
+		{"boolean context", "[commit]\ncontext = true\n", "context"},
+		{"boolean prompt", "[commit]\nprompt = false\n", "prompt"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, tc.toml)
+
+			_, err := config.Load(dir)
+			if err == nil {
+				t.Fatalf("Load returned nil error for %s, want non-nil (must fail loud)", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("error = %q, want the offending key %q to remain visible", err.Error(), tc.key)
+			}
+		})
+	}
+}
+
+func TestResolveCommitPrompt_AbsentPrompt_ReturnsEmptyNoError(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// No [commit].prompt configured → no override. ResolveCommitPrompt returns the
+	// empty string with no error: assembly (1-2) reads empty as "use the default
+	// commit prompt", never an override.
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	override, err := config.ResolveCommitPrompt(cfg, dir)
+	if err != nil {
+		t.Fatalf("ResolveCommitPrompt returned unexpected error: %v", err)
+	}
+	if override != "" {
+		t.Errorf("override = %q, want empty (no [commit].prompt configured)", override)
+	}
+}
+
+func TestResolveCommitPrompt_ConfiguredPrompt_ReturnsFileContents(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A configured [commit].prompt path that exists is read and its contents returned
+	// verbatim as the full prompt override for assembly.
+	const body = "You are writing a Conventional Commits message.\n"
+	if err := os.WriteFile(filepath.Join(dir, "commit-prompt.md"), []byte(body), 0o644); err != nil {
+		t.Fatalf("writing prompt override file: %v", err)
+	}
+	writeConfig(t, dir, "[commit]\nprompt = \"commit-prompt.md\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	override, err := config.ResolveCommitPrompt(cfg, dir)
+	if err != nil {
+		t.Fatalf("ResolveCommitPrompt returned unexpected error: %v", err)
+	}
+	if override != body {
+		t.Errorf("override = %q, want the file contents %q", override, body)
+	}
+}
+
+func TestResolveCommitPrompt_MissingPromptFile_FailsLoudNamingPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A configured [commit].prompt path that does not exist must fail loud naming the
+	// path — never silently fall through to the default prompt.
+	writeConfig(t, dir, "[commit]\nprompt = \".mint/missing-commit-prompt.md\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	_, err = config.ResolveCommitPrompt(cfg, dir)
+	if err == nil {
+		t.Fatal("ResolveCommitPrompt returned nil error for a missing prompt file, want non-nil")
+	}
+	if !strings.Contains(err.Error(), ".mint/missing-commit-prompt.md") {
+		t.Errorf("error = %q, want it to name the configured path", err.Error())
+	}
+}
+
+func TestResolveCommitPrompt_UnreadablePromptFile_FailsLoudNamingPath(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A configured [commit].prompt path that exists but cannot be read (here, perms
+	// stripped) must fail loud naming the path — never silently fall through to the
+	// default prompt.
+	const name = "unreadable-commit-prompt.md"
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte("secret prompt"), 0o000); err != nil {
+		t.Fatalf("writing unreadable prompt file: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+	writeConfig(t, dir, "[commit]\nprompt = \""+name+"\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	_, err = config.ResolveCommitPrompt(cfg, dir)
+	if err == nil {
+		t.Fatal("ResolveCommitPrompt returned nil error for an unreadable prompt file, want non-nil")
+	}
+	if !strings.Contains(err.Error(), name) {
+		t.Errorf("error = %q, want it to name the configured path %q", err.Error(), name)
+	}
+}
