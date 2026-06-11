@@ -335,7 +335,13 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, startingHEAD string, c
 		// context.WithoutCancel keeps the local-only `git reset --hard` from being killed by
 		// the same signal, so the changelog commit is rolled back and the repo left clean —
 		// the regenerate sibling of the forward Unwind's cancellation resilience.
-		_, _ = deps.Mutator.Mutate(context.WithoutCancel(ctx), nil, "git", "reset", "--hard", startingHEAD)
+		//
+		// A failed reset is no longer swallowed: it surfaces a manual-cleanup Warn naming
+		// the exact `git reset --hard {startingHEAD}` the user must run, so the leftover
+		// CHANGELOG commit is not silently left in place.
+		if _, err := deps.Mutator.Mutate(context.WithoutCancel(ctx), nil, "git", "reset", "--hard", startingHEAD); err != nil {
+			warnUnwindIncomplete(deps.Presenter, "reset HEAD back to "+startingHEAD+" (`git reset --hard "+startingHEAD+"`) to drop the leftover changelog commit", err)
+		}
 	}
 	return abort(cause)
 }

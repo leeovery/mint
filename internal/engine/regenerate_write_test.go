@@ -220,6 +220,42 @@ func TestRegenerateWrite_PrePushFailure_ResetsCommit(t *testing.T) {
 	}
 }
 
+// TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup proves that when the
+// pre-push recovery `git reset --hard` ITSELF fails after a push rejection, the run no
+// longer silently swallows the reset error: it emits a Warn naming the manual cleanup
+// (the reset back to the captured starting HEAD) so the user knows the leftover
+// CHANGELOG commit must be undone by hand. The run still aborts non-zero (the original
+// push failure is the cause).
+func TestRegenerateWrite_RecoveryResetFails_WarnsManualCleanup(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, kacPreamble+"\n## [1.4.0] - 2024-02-15\n\nStale body.\n")
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut("startHEAD"),          // rev-parse HEAD (captured start)
+		ScriptedOut(regenWriteHistorical), // for-each-ref creatordate:short
+		ScriptedOut(""),                   // add
+		ScriptedOut(""),                   // commit (the changelog commit lands)
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")},       // push fails
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("reset --hard exploded")}, // reset recovery FAILS
+	)
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+
+	err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), nil, dir, freshWriteReq(engine.RegenerateTargetChangelog))
+
+	assertAbortNonZero(t, err)
+	if !invokedWith(f, "git", "reset", "--hard", "startHEAD") {
+		t.Fatalf("recovery did not attempt the reset; got %v", commandLines(f.Invocations()))
+	}
+
+	warn := recoveryWarn(t, rec)
+	if !strings.Contains(warn.Warn.Message, "startHEAD") {
+		t.Errorf("recovery Warn does not name the manual reset target; got Message %q", warn.Warn.Message)
+	}
+}
+
 // TestRegenerateWrite_ProviderFailureAfterPush_WarnOnly proves that for --target
 // both, a provider create/update failure AFTER the changelog push is WARN ONLY: the
 // changelog is already public, so the run does not reset and exits successfully.

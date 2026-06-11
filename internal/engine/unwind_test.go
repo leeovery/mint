@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"mint/internal/engine"
@@ -227,6 +228,119 @@ func TestUnwind_ReportsEachUndoneItem(t *testing.T) {
 	// The summary must not lead with a label the presenter already prefixes.
 	if len(summary) >= len("Reverted") && summary[:len("Reverted")] == "Reverted" {
 		t.Errorf("Unwound.Summary leads with a redundant prefix: %q", summary)
+	}
+}
+
+// scriptedMutateFailure models a recovery git mutation that ran and exited non-zero
+// (a NON-lock failure, so the Mutator surfaces it on the first attempt without
+// retrying) — e.g. a `git reset --hard` or `git tag -d` hiccup mid-unwind.
+func scriptedMutateFailure() runner.ScriptedCall {
+	return runner.ScriptedCall{
+		Result: runner.Result{ExitCode: 1},
+		Err:    errors.New("fatal: recovery git command failed"),
+	}
+}
+
+// recoveryWarn returns the first Warn whose label marks a failed unwind recovery
+// (the manual-cleanup notice), failing the test if none was recorded.
+func recoveryWarn(t *testing.T, rec *presentertest.RecordingPresenter) presentertest.Event {
+	t.Helper()
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && ev.Warn.Label == "unwind incomplete" {
+			return ev
+		}
+	}
+	t.Fatalf("no unwind-recovery Warn recorded; kinds = %v", rec.Kinds())
+	return presentertest.Event{}
+}
+
+// TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean proves that when the
+// recovery `git reset --hard` exits non-zero mid-unwind, the unwind does NOT falsely
+// claim "repo clean": it emits a Warn naming the manual cleanup (the reset back to the
+// captured starting sha) and the Unwound summary omits the "; repo clean" tail.
+func TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(""),         // tag -d v0.0.1 (succeeds)
+		scriptedMutateFailure(), // reset --hard startsha (FAILS)
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	start := startState(startingSHA, "v0.0.1")
+	made := engine.MadeState{Commits: 2, TagCreated: true}
+
+	err := engine.Unwind(t.Context(), newDeps(rec, f), start, made, errUnwindReason)
+
+	assertAbortNonZero(t, err)
+
+	warn := recoveryWarn(t, rec)
+	if !strings.Contains(warn.Warn.Message, startingSHA) {
+		t.Errorf("recovery Warn does not name the manual reset target %q; got Message %q", startingSHA, warn.Warn.Message)
+	}
+
+	summary := unwoundSummary(t, rec)
+	if strings.Contains(summary, "repo clean") {
+		t.Errorf("Unwound.Summary falsely claims clean after a failed reset: %q", summary)
+	}
+}
+
+// TestUnwind_TagDeleteFails_WarnsManualCleanupAndSummaryNotClean proves the same for a
+// failed recovery `git tag -d`: the unwind warns naming the tag to delete manually and
+// the summary omits "repo clean".
+func TestUnwind_TagDeleteFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		scriptedMutateFailure(), // tag -d v0.0.1 (FAILS)
+		ScriptedOut(""),         // reset --hard startsha (succeeds)
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	start := startState(startingSHA, "v0.0.1")
+	made := engine.MadeState{Commits: 2, TagCreated: true}
+
+	err := engine.Unwind(t.Context(), newDeps(rec, f), start, made, errUnwindReason)
+
+	assertAbortNonZero(t, err)
+
+	warn := recoveryWarn(t, rec)
+	if !strings.Contains(warn.Warn.Message, "v0.0.1") {
+		t.Errorf("recovery Warn does not name the tag to delete manually; got Message %q", warn.Warn.Message)
+	}
+
+	summary := unwoundSummary(t, rec)
+	if strings.Contains(summary, "repo clean") {
+		t.Errorf("Unwound.Summary falsely claims clean after a failed tag delete: %q", summary)
+	}
+}
+
+// TestUnwind_AllRecoverySucceeds_NoWarnAndReportsClean proves the all-success path is
+// unchanged: no recovery Warn fires and the summary keeps its "repo clean" tail.
+func TestUnwind_AllRecoverySucceeds_NoWarnAndReportsClean(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(""), // tag -d v0.0.1
+		ScriptedOut(""), // reset --hard startsha
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	start := startState(startingSHA, "v0.0.1")
+	made := engine.MadeState{Commits: 2, TagCreated: true}
+
+	err := engine.Unwind(t.Context(), newDeps(rec, f), start, made, errUnwindReason)
+
+	assertAbortNonZero(t, err)
+
+	if recorded(rec, presentertest.KindWarn) {
+		t.Errorf("a fully-successful unwind emitted a recovery Warn; none expected")
+	}
+	if got, want := unwoundSummary(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
+		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
 }
 

@@ -92,58 +92,89 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	// triggered the abort, stranding mint's commit(s) and tag.
 	ctx = context.WithoutCancel(ctx)
 
-	tagDeleted := deleteTagIfMade(ctx, deps, start, made)
-	commitsReset := resetCommitsIfMade(ctx, deps, start, made)
+	tagDeleted, tagOK := deleteTagIfMade(ctx, deps, start, made)
+	commitsReset, resetOK := resetCommitsIfMade(ctx, deps, start, made)
 
 	if tagDeleted || commitsReset {
-		deps.Presenter.Unwound(unwindEvent(start.Tag, made))
+		deps.Presenter.Unwound(unwindEvent(start.Tag, made, tagOK && resetOK))
 	}
 	return abort(reason)
 }
 
 // deleteTagIfMade deletes the local tag mint created this run, returning whether a
-// delete was issued. Pre-PONR the tag was never pushed, so `git tag -d {tag}` (local
-// only) fully removes it. The delete is a MUTATION, so it flows through the
-// lock-resilient Mutator; a "tag not found" non-zero is not fatal.
-func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState) bool {
+// delete was issued AND whether it succeeded. Pre-PONR the tag was never pushed, so
+// `git tag -d {tag}` (local only) fully removes it. The delete is a MUTATION, so it
+// flows through the lock-resilient Mutator. A non-zero exit is no longer discarded: it
+// is surfaced as a manual-cleanup Warn so the user is not told the repo is clean when
+// the tag mint created still lives — the recovery DID NOT complete. The bool pair lets
+// the caller both narrate the issued item and gate the "repo clean" tail.
+func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState) (issued, ok bool) {
 	if !made.TagCreated {
-		return false
+		return false, true
 	}
-	_, _ = deps.Mutator.Mutate(ctx, nil, "git", "tag", "-d", start.Tag)
-	return true
+	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "tag", "-d", start.Tag); err != nil {
+		warnUnwindIncomplete(deps.Presenter, "delete the leftover tag "+start.Tag+" (`git tag -d "+start.Tag+"`)", err)
+		return true, false
+	}
+	return true, true
 }
 
 // resetCommitsIfMade resets HEAD to the captured starting commit when mint made any
-// commits this run, returning whether a reset was issued. It uses the captured sha
-// (not HEAD~N) so the tree returns to the EXACT starting state, discarding mint's
-// release commits and their working-tree changes. The reset is a MUTATION, so it
-// flows through the lock-resilient Mutator; a reset hiccup is best-effort.
-func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState) bool {
+// commits this run, returning whether a reset was issued AND whether it succeeded. It
+// uses the captured sha (not HEAD~N) so the tree returns to the EXACT starting state,
+// discarding mint's release commits and their working-tree changes. The reset is a
+// MUTATION, so it flows through the lock-resilient Mutator. A non-zero exit is no longer
+// discarded: it is surfaced as a manual-cleanup Warn naming the reset target so the user
+// is not told the repo is clean when mint's commit(s) still live — the recovery DID NOT
+// complete.
+func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState) (issued, ok bool) {
 	if made.Commits <= 0 {
-		return false
+		return false, true
 	}
-	_, _ = deps.Mutator.Mutate(ctx, nil, "git", "reset", "--hard", start.HEAD)
-	return true
+	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "reset", "--hard", start.HEAD); err != nil {
+		warnUnwindIncomplete(deps.Presenter, "reset HEAD back to "+start.HEAD+" (`git reset --hard "+start.HEAD+"`)", err)
+		return true, false
+	}
+	return true, true
+}
+
+// warnUnwindIncomplete emits the manual-cleanup notice when a recovery mutation
+// (tag-delete or reset) failed mid-unwind: the repo is NOT clean, so the user must
+// finish the recovery by hand. action names the exact manual step (the git command to
+// run); the failing git error rides the Warn's Output verbatim, mirroring the engine's
+// other captured-output warns (warnPublishFailed et al).
+func warnUnwindIncomplete(p presenter.Presenter, action string, cause error) {
+	p.Warn(presenter.Warning{
+		Label:   "unwind incomplete",
+		Message: "automatic recovery failed; manually " + action,
+		Output:  cause.Error(),
+	})
 }
 
 // unwindEvent builds the Unwound payload whose engine-authored Summary names each
-// undone item.
-func unwindEvent(tag string, made MadeState) presenter.Unwind {
-	return presenter.Unwind{Summary: surgicalSummary(tag, made)}
+// undone item. clean reports whether EVERY recovery mutation succeeded — only then does
+// the summary carry the "; repo clean" tail; a failed reset/tag-delete (already warned
+// with the manual step) drops it so the narration never contradicts the warning.
+func unwindEvent(tag string, made MadeState, clean bool) presenter.Unwind {
+	return presenter.Unwind{Summary: surgicalSummary(tag, made, clean)}
 }
 
 // surgicalSummary authors the engine-owned Unwound Summary describing what the unwind
-// undid — the count of commits reset and the deleted tag — INCLUDING the trailing "; repo
-// clean" tail. It is ASCII and semicolon-joined (matching the existing "…; repo clean"
-// style) so the plain presenter stays byte-pure; the presenter renders it VERBATIM and
-// synthesises no part of it. It never leads with a "Reverted:"-style prefix — the
-// presenter prefixes the line with "unwound", so a prefix here would double-label.
+// ATTEMPTED to undo — the count of commits reset and the deleted tag — and its trailing
+// status tail. When every recovery mutation succeeded (clean) the tail is the original
+// "; repo clean"; when a reset/tag-delete FAILED (clean=false, already warned with the
+// manual step) the tail becomes "; manual cleanup required" so the summary never
+// falsely claims the repo is clean. It is ASCII and semicolon-joined (matching the
+// existing "…; repo clean" style) so the plain presenter stays byte-pure; the presenter
+// renders it VERBATIM and synthesises no part of it. It never leads with a
+// "Reverted:"-style prefix — the presenter prefixes the line with "unwound", so a prefix
+// here would double-label.
 //
 // It is only ever called when something was undone (a commit reset and/or a tag
 // deleted), so the zero/zero case is unreachable here; the operation no-ops before
 // reaching it.
-func surgicalSummary(tag string, made MadeState) string {
-	const tail = "; repo clean"
+func surgicalSummary(tag string, made MadeState, clean bool) string {
+	tail := summaryTail(clean)
 	reset := made.Commits > 0
 	deleted := made.TagCreated
 	switch {
@@ -154,6 +185,17 @@ func surgicalSummary(tag string, made MadeState) string {
 	default:
 		return "deleted tag " + tag + tail
 	}
+}
+
+// summaryTail selects the Unwound summary's trailing status: the "; repo clean"
+// confirmation when all recovery succeeded, or the "; manual cleanup required" notice
+// when a reset/tag-delete failed (the failure was already warned with the exact manual
+// step).
+func summaryTail(clean bool) string {
+	if clean {
+		return "; repo clean"
+	}
+	return "; manual cleanup required"
 }
 
 // commitsPhrase renders the reset-commit count with correct singular/plural grammar:
