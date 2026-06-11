@@ -34,27 +34,26 @@ Tests adequately verify requirements. Uniformly behaviour-focused (exact argv, e
 
 ### Do now
 
-1. Comment / wording fixes that touch no logic:
+_(Applied during review — see commit `review(mint-release-tool): apply do-now fixes`. Items that turned out to touch test logic or were already correct are noted inline.)_
+
+1. Comment / wording fixes that touch no logic — **applied**:
    - `internal/runner/exec_runner.go:81` — note `cmd.ProcessState.ExitCode()` is nil-safe (-1 for unstarted/not-found) so the unconditional call doesn't read as a latent nil-deref (Report 1-1)
    - `internal/notes/assemble.go:112` — state the `2+len(globs)` cap is CHANGELOG + worst-case version_file headroom so it isn't "tightened" to `1+len(...)` (Report 2-2)
-   - `internal/notes/changemap.go:197` — `"New package: "` label vs a directory area; use `"New package/dir: "` or align the doc (Report 2-4)
-   - `internal/notes/degenerate.go:42` — `/ StubBody` single-slash comment → `//` (Report 7-2)
-   - `internal/engine/release_test.go:1244` — `/ (here…)` single-slash comment → `//` (Report 1-11)
-   - `internal/engine/regenerate_write.go:299` — `/ is narrated…` single-slash comment → `//` (Report 5-8)
-2. Stale / misleading test & file comments:
-   - `internal/engine/release_pretaghook_test.go:293-294` and `:13-18` — fix the "unwind re-probes HEAD" comment (surgical unwind drives off MadeState) and note the duplicated `pretagArtifactSubject` mirrors production (Report 3-3)
+   - `internal/notes/degenerate.go:42`, `internal/engine/release_test.go:1244`, `internal/engine/regenerate_write.go:299` — the reported "single-slash `/`" comments were grep artifacts; the actual lines are already correct `//` continuation comments, **no change needed** (Reports 7-2, 1-11, 5-8)
+2. Stale / misleading test & file comments — **applied**:
+   - `internal/engine/release_pretaghook_test.go:13-18` — note the duplicated `pretagArtifactSubject` mirrors production (Report 3-3)
    - `internal/engine/release_downgrade_test.go:30-33` — reword the garbled `seedDowngradeGit` doc (Report 4-10)
-   - `internal/engine/regenerate.go:5` — file-header self-reference disagrees with filename `regenerate.go` (Report 5-4)
    - `internal/engine/regenerate_batch_changelog.go:117` — add a call-site note that the preserved path needs no `dates` entry (Report 5-13)
    - `internal/engine/release_commitgraph_test.go:22-24` — cross-reference `record.BookkeepingSubject`/`pretagArtifactSubject` as the subject source of truth (Report 3-8)
    - `internal/engine/release.go:1386-1387` — reword the `ErrNotInteractive` "unreachable… defended anyway" comment to match the generic `abort` handling (Report 2-14)
-3. Doc comments that omit the strategy-aware `version_file` exclude tier:
+   - `internal/engine/regenerate.go:5` — header self-reference reviewed; text is descriptive and accurate, **no change needed** (Report 5-4)
+3. Doc comments that omit the strategy-aware `version_file` exclude tier — **applied**:
    - `internal/notes/changemap.go:22-26` and `internal/notes/assemble.go:138-144` (Report 5-6)
-4. Config / generator doc tidies:
+4. Config / generator doc tidies — **applied**:
    - `internal/config/config.go:344-352` — note the "one offending field per decode error" invariant so map-iteration order isn't assumed load-bearing (Report 6-1)
-   - `internal/config/config.go:133-136` — align the `Release` struct doc paragraph order with field order (`Fallback`) (Report 6-4)
+   - `internal/config/config.go:133-136` — `Release` struct doc paragraph order already matches field order (`Fallback`), **no change needed** (Report 6-4)
    - `internal/initgen/initgen.go:62` — note the `pre_tag` array-form replaces the string form (only one may be set) (Report 6-5)
-5. `cmd/mint/version.go:37` — note the `NewForStartup(false, true, …)` first arg is `plainFlag` (TTY still governs plain/pretty), not "forces plain" (Report 6-8)
+5. `cmd/mint/version.go:37` — note the `NewForStartup(false, true, …)` first arg is `plainFlag` (TTY still governs plain/pretty), not "forces plain" — **applied** (Report 6-8)
 
 ### Quick-fixes
 
@@ -89,6 +88,8 @@ Tests adequately verify requirements. Uniformly behaviour-focused (exact argv, e
 14. `internal/version/resolve.go:151` — `highestBelow` is an O(n) pass; optionally share predecessor-finding with the `--all` sorted path (Report 5-3)
 15. `cmd/mint/regenerate_flags.go:142` — `--target` as a trailing token with no value falls through to flag's generic error; add a test (or guard for the curated message) (Report 5-1)
 16. `cmd/mint/main.go:45,192` and version paths — add thin end-to-end `run([]string{…})` tests for `runRelease`, `mint version`, and `mint --version` (and replace the tautological byte-identity test) (Reports 1-11, 6-8)
+16a. `internal/notes/changemap.go:197` — rename the rendered `"New package: "` label to `"New package/dir: "` (a directory area, not necessarily a package) AND update the two asserting tests (`range_test.go:217`, `regenerate_fresh_test.go:216`). _Re-tagged from do-now: the label is asserted in tests, so this touches test logic_ (Report 2-4)
+16b. `internal/engine/release_pretaghook_test.go:293-295` — remove the stale `f.SeedSequence("git", ScriptedOut(startingSHA))` (the surgical unwind no longer re-probes HEAD) and fix the accompanying "unwind re-probes HEAD" comment. _Re-tagged from do-now: the comment fix is coupled to the seed removal, which touches test wiring_ (Report 3-3)
 
 ### Ideas
 

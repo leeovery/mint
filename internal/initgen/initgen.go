@@ -59,7 +59,7 @@ on_notes_failure = 'abort'
 # [release.hooks]
 # preflight = 'scripts/check.sh'                   # runs before any release work; failure aborts the release
 # pre_tag = 'npm run build'                        # runs after notes, before the tag (single-command form)
-# pre_tag also accepts an array of commands run in order: ['npm ci', 'npm run build']
+# pre_tag also accepts an array of commands run in order (set ONE pre_tag, not both): ['npm ci', 'npm run build']
 # post_release = 'scripts/notify.sh'               # runs after the release is published
 `
 }

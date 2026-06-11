@@ -340,7 +340,8 @@ var typeErrorMessages = map[string]string{
 // it identifies the offending field by the struct-field path embedded in the error
 // text and maps it via typeErrorMessages; a field not in the map (no constrained
 // type to misuse) falls back to the library's positioned description so nothing is
-// silently swallowed.
+// silently swallowed. The map iteration order is non-deterministic but safe: a single
+// DecodeError names exactly one offending field, so at most one entry can match.
 func translateTypeError(decErr *toml.DecodeError) error {
 	text := decErr.Error()
 	for field, msg := range typeErrorMessages {

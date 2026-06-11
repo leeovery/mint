@@ -76,8 +76,12 @@ func (r *ExecRunner) RunInDir(ctx context.Context, dir string, env []string, nam
 // and clean runs identically.
 func translateRun(runErr error, stdout, stderr *bytes.Buffer, cmd *exec.Cmd, name string) (Result, error) {
 	res := Result{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
+		Stdout: stdout.String(),
+		Stderr: stderr.String(),
+		// ProcessState.ExitCode() is nil-safe: it returns -1 for an unstarted or
+		// not-found process, so reading it unconditionally here (before the runErr
+		// branches below) is not a latent nil-deref. The not-found branch discards
+		// this Result so the -1 never escapes.
 		ExitCode: cmd.ProcessState.ExitCode(),
 	}
 

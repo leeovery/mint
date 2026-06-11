@@ -109,6 +109,9 @@ func NewAssembler(r runner.CommandRunner, exclude ExcludeConfig) *Assembler {
 // by the glob tier regardless of mode; the resulting duplicate (in plain mode) is
 // harmless and not de-duplicated.
 func (a *Assembler) excludePathspecs() []string {
+	// cap = CHANGELOG (1) + globs + worst-case version_file headroom (1); the literal
+	// 2 is that deliberate +1 headroom, not a magic number — do not "tighten" it to
+	// 1+len(...) or the plain-mode version_file entry would force a reallocation.
 	pathspecs := make([]string, 0, 2+len(a.exclude.Globs))
 	pathspecs = append(pathspecs, changelogExcludePathspec)
 	for _, glob := range a.exclude.Globs {
@@ -135,7 +138,9 @@ func forwardRange(lastTag string) string {
 //
 // The diff is produced by `git diff {lastTag}..HEAD -- . {excludePathspecs}`, where
 // excludePathspecs is `:(exclude)CHANGELOG.md` followed by one `:(exclude)<glob>` per
-// configured diff_exclude glob, run cwd-relative like the other engine git calls. GIT
+// configured diff_exclude glob, and — only in PLAIN mode — the strategy-aware
+// `:(exclude)<version_file>` (see excludePathspecs), run cwd-relative like the other
+// engine git calls. GIT
 // performs every exclusion via the :(exclude) pathspecs; mint does no Go-side hunk
 // stripping or glob matching. The returned text is git's stdout verbatim — whatever
 // git emits flows through unfiltered. A consequence: a gitignored-but-force-added file

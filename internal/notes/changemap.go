@@ -16,8 +16,9 @@ import (
 //
 // Two cheap git calls feed it, run cwd-relative like the other engine git calls and
 // AFTER the SAME exclusion set the diff uses — the built-in :(exclude)CHANGELOG.md
-// plus one :(exclude)<glob> per configured diff_exclude glob (the shared
-// excludePathspecs) rides on BOTH — so excluded churn never appears in the map:
+// plus one :(exclude)<glob> per configured diff_exclude glob plus, in PLAIN mode, the
+// strategy-aware :(exclude)<version_file> (the shared excludePathspecs) rides on BOTH —
+// so excluded churn never appears in the map:
 //
 //   - `git diff --name-status {lastTag}..HEAD -- . {excludePathspecs}` —
 //     A/M/D/R status per path, the STRUCTURAL NOVELTY signal.

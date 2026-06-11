@@ -13,6 +13,8 @@ import (
 // pretagArtifactSubject is the FIXED subject mint uses for the pre_tag artifact
 // commit — a `chore(release):` prefix (NOT the configurable commit_prefix),
 // semantically distinct from the bookkeeping `{commit_prefix} Release {tag}` commit.
+// It intentionally mirrors the production producer of the same name (release.go) so the
+// black-box engine_test package stays decoupled; a subject change must update both.
 func pretagArtifactSubject(tag string) string {
 	return "chore(release): pre-tag artifacts for " + tag
 }

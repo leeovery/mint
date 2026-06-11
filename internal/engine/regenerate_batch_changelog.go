@@ -101,6 +101,8 @@ func batchChangelogSections(ctx context.Context, deps ReleaseDeps, req BatchRege
 		body, ok := regenerated[res.Tag]
 		if !ok {
 			// Skipped but real: preserve its existing section verbatim (no data loss).
+			// A preserved section needs no readRegeneratedDates entry — its date rides
+			// the copied block, which is why that first pass reads regenerated tags only.
 			sections = append(sections, record.PreservedSection(key))
 			continue
 		}

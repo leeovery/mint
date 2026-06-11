@@ -23,10 +23,10 @@ import (
 const downgradeWarnLabel = "publish skipped"
 
 // seedDowngradeGit scripts the publish=true first-release "git" timeline that ends
-// at a successful tag + atomic push WITHOUT any gh call — the downgrade shape. It is
-// seedHappyGitRemote minus nothing on the git side (the remote read still happens so
-// provider detection runs); the difference from a published run is that the caller
-// seeds NO gh, because a downgrade must never reach gh.
+// at a successful tag + atomic push WITHOUT any gh call — the downgrade shape. It
+// scripts the full happy git timeline including the remote read (so provider detection
+// still runs); the only difference from a published run is that the caller seeds NO gh,
+// because a downgrade must never reach gh.
 func seedDowngradeGit(f *runner.FakeRunner, root, releaseBranch, tag, remoteURL string) {
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel

@@ -1383,8 +1383,9 @@ func gateForKind(kind notes.Kind) presenter.Gate {
 // fail-loud and surfaced before any mutation:
 //
 //   - AskLine's ErrInputClosed / ErrNotInteractive abort (the read failed; the
-//     engine owns surfacing ErrInputClosed). `r` is interactive-only, so
-//     ErrNotInteractive should be unreachable here — it is defended against anyway.
+//     engine owns surfacing ErrInputClosed). Any AskLine error — including a
+//     defensively-handled ErrNotInteractive, which `r` being interactive-only should
+//     make unreachable — is wrapped by the generic abort; there is no dedicated branch.
 //   - a nil Regenerator (a misconfiguration that should never reach production for
 //     KindNormalAI) surfaces a clean error and aborts rather than panicking.
 //   - a Regenerator failure is surfaced and aborts. Richer handling could re-present

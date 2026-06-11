@@ -18,6 +18,9 @@ import (
 // FakeRunner + RecordingPresenter; the constituent commits (3-3 / 3-7) and the
 // tag+push PONR (Phase 1) are exercised together here as one graph.
 
+// These mirror the production subject producers (record.BookkeepingSubject and
+// pretagArtifactSubject) for v0.0.1 with the default 🌿 prefix — the source of truth a
+// subject-format change must update in lockstep with this test.
 const (
 	commitGraphArtifactSubject    = "chore(release): pre-tag artifacts for v0.0.1"
 	commitGraphBookkeepingSubject = "🌿 Release v0.0.1"

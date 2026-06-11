@@ -33,7 +33,9 @@ func hasVersionFlag(args []string) bool {
 //
 // The presenter is constructed non-interactively (yes=true): version has no Prompt
 // to skip, but the flag keeps the construction on the non-interactive axis since
-// version never reads stdin.
+// version never reads stdin. The first arg (false) is plainFlag, not a force-plain —
+// TTY detection still governs pretty vs plain, so `mint --version` on a terminal still
+// renders the dressed form.
 func runVersion(stdout, stderr, stdin *os.File) int {
 	p := presenter.NewForStartup(false, true, stdout, stderr, stdin)
 	emitVersion(p)
