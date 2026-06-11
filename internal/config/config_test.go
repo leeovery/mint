@@ -154,6 +154,27 @@ func TestLoad_ExplicitProvider_Honoured(t *testing.T) {
 	}
 }
 
+func TestLoad_UnsupportedProviderValue_LoadsCleanNotAConfigError(t *testing.T) {
+	t.Parallel()
+
+	// provider is a normal string key: ANY string is a valid TYPE, so a well-typed but
+	// unsupported value (e.g. "gitlab", which mint has no driver for) MUST load cleanly
+	// — it is NOT a config error. The provider-VALUE carve-out lives in the Phase 4
+	// publish resolver (an unsupported value warns + downgrades to tag + push), NOT in
+	// config validation. config carries the raw value verbatim for the resolver.
+	dir := t.TempDir()
+	writeConfig(t, dir, "[release]\nprovider = \"gitlab\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned %v for an unsupported provider value; it must load cleanly (the value carve-out is the publish resolver's, not config's)", err)
+	}
+
+	if cfg.Release.Provider != "gitlab" {
+		t.Errorf("Provider = %q, want %q carried verbatim for the publish resolver", cfg.Release.Provider, "gitlab")
+	}
+}
+
 func TestLoad_AbsentChangelog_DefaultsToTrue(t *testing.T) {
 	t.Parallel()
 

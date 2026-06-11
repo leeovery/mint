@@ -133,10 +133,10 @@ type ReleaseDeps struct {
 	// composed prompt to. It exists so the prior-tag end-to-end tests can drive the
 	// REAL notes path over the FakeRunner while still injecting a recording transport
 	// where they need to script the AI body directly. When nil, Release builds the
-	// production ai.Transport (default `claude -p`) over deps.Runner once root is
-	// resolved — so production leaves it nil and gets the real transport. Wiring the
-	// ai_command / timeout config OVERRIDE is deferred to the Phase 6 schema; the
-	// zero-Config default is used now.
+	// production ai.Transport over deps.Runner once root is resolved, driving it with
+	// the validated cfg.AICommand (the documented top-level ai_command key, re-defaulting
+	// an empty value to `claude -p`) — so production leaves it nil and gets the real
+	// transport configured by the loaded schema.
 	Transport notes.Transport
 	// NoteCache is the dry-run note-cache seam — BOTH the WRITE side (task 4-7) and the
 	// real-run REUSE/READ side (task 4-8). On a --dry-run that generated an AI note
@@ -689,7 +689,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		VersionFile:    cfg.Release.VersionFile,
 		VersionPattern: cfg.Release.VersionPattern,
 	})
-	generator := notes.NewGenerator(assembler, aiTransport(deps), root)
+	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
 	selector := notes.NewSelector(generator, assembler, deps.Runner, root)
 
 	state := notes.SelectState{
@@ -786,14 +786,17 @@ func reportNotesCacheUnreadable(p presenter.Presenter, cause error) {
 
 // aiTransport resolves the AI transport the notes Generator hands its prompt to:
 // the injected deps.Transport when set (the test seam), else the production
-// ai.Transport (default `claude -p`, zero Config) over the run's runner — so
-// production leaves deps.Transport nil and gets the real transport. Wiring the
-// ai_command / timeout config override is deferred to the Phase 6 schema.
-func aiTransport(deps ReleaseDeps) notes.Transport {
+// ai.Transport over the run's runner — so production leaves deps.Transport nil and
+// gets the real transport. The validated cfg.AICommand drives the invocation (the
+// documented top-level ai_command key): NewTransport whitespace-splits it into name +
+// args and re-defaults an empty value to `claude -p`, so a zero-config run still uses
+// the documented default exactly. (The Phase 6 schema is the single decode +
+// validation pass; this threads its resolved AICommand through to the transport.)
+func aiTransport(deps ReleaseDeps, cfg config.Config) notes.Transport {
 	if deps.Transport != nil {
 		return deps.Transport
 	}
-	return ai.NewTransport(deps.Runner, ai.Config{})
+	return ai.NewTransport(deps.Runner, ai.Config{AICommand: cfg.AICommand})
 }
 
 // regeneratorFunc adapts a plain regenerate closure to the Regenerator seam so the

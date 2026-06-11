@@ -61,7 +61,7 @@ func RegenerateFreshBody(ctx context.Context, r runner.CommandRunner, transport 
 	}
 
 	assembler := notes.NewAssembler(r, freshExcludeConfig(cfg))
-	generator := notes.NewGenerator(assembler, resolveFreshTransport(r, transport), root)
+	generator := notes.NewGenerator(assembler, resolveFreshTransport(r, transport, cfg), root)
 
 	body, err := generator.GenerateFromRange(ctx, res.DiffRange(), cfg)
 	if err != nil {
@@ -85,12 +85,14 @@ func freshExcludeConfig(cfg config.Config) notes.ExcludeConfig {
 }
 
 // resolveFreshTransport mirrors the forward aiTransport seam: the injected transport
-// when set (the test fake), else the production ai.Transport (default `claude -p`,
-// zero Config) over the run's runner — so production passes nil and gets the real
-// transport.
-func resolveFreshTransport(r runner.CommandRunner, transport notes.Transport) notes.Transport {
+// when set (the test fake), else the production ai.Transport over the run's runner —
+// so production passes nil and gets the real transport. The validated cfg.AICommand
+// drives the invocation (the same documented top-level ai_command key the forward path
+// reads); NewTransport re-defaults an empty value to `claude -p`, so a zero-config run
+// uses the documented default exactly.
+func resolveFreshTransport(r runner.CommandRunner, transport notes.Transport, cfg config.Config) notes.Transport {
 	if transport != nil {
 		return transport
 	}
-	return ai.NewTransport(r, ai.Config{})
+	return ai.NewTransport(r, ai.Config{AICommand: cfg.AICommand})
 }
