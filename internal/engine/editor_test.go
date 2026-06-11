@@ -32,6 +32,11 @@ func TestResolveEditor_PrefersVisualThenEditorThenVi(t *testing.T) {
 		{name: "visual preferred over editor", visual: "code --wait", editor: "nano", want: "code --wait"},
 		{name: "editor used when only editor set", visual: "", editor: "nano", want: "nano"},
 		{name: "vi fallback when neither set", visual: "", editor: "", want: "vi"},
+		// A whitespace-only value is treated as unset: strings.Fields would return an
+		// empty slice, so resolution must fall through rather than yield a blank command.
+		{name: "whitespace-only visual falls through to editor", visual: "   ", editor: "nano", want: "nano"},
+		{name: "whitespace-only visual and editor falls through to vi", visual: "   ", editor: "\t ", want: "vi"},
+		{name: "whitespace-only editor falls through to vi", visual: "", editor: " ", want: "vi"},
 	}
 
 	for _, tt := range tests {
@@ -121,6 +126,47 @@ func TestEditorLauncher_Edit_SplitsEditorArgsAndAppendsPath(t *testing.T) {
 	}
 	if !strings.Contains(inv.args[1], "mint-notes-") {
 		t.Errorf("final arg = %q, want the appended temp path", inv.args[1])
+	}
+}
+
+// TestEditorLauncher_Edit_WhitespaceOnlyEditor_FallsThroughToVi proves a
+// whitespace-only resolved editor value (e.g. EDITOR=" ") does NOT panic: it is
+// treated as unset, so resolution falls through to the vi fallback and the
+// launcher hands vi the temp path, consistent with the missing/empty-editor
+// handling. The temp file is cleaned up on the success path.
+func TestEditorLauncher_Edit_WhitespaceOnlyEditor_FallsThroughToVi(t *testing.T) {
+	t.Setenv("VISUAL", "   ")
+	t.Setenv("EDITOR", " ")
+
+	rec := &presentertest.RecordingPresenter{}
+	f := &writeBackRunner{content: "saved\n"}
+
+	launcher := engine.NewEditorLauncher(rec, f)
+	got, err := launcher.Edit(context.Background(), "body\n")
+	if err != nil {
+		t.Fatalf("Edit returned unexpected error: %v", err)
+	}
+	if got != "saved\n" {
+		t.Errorf("Edit returned %q, want the saved text %q", got, "saved\n")
+	}
+
+	if len(f.invocations) != 1 {
+		t.Fatalf("launch count = %d, want 1", len(f.invocations))
+	}
+	inv := f.invocations[0]
+	if inv.name != "vi" {
+		t.Errorf("launched binary = %q, want the vi fallback %q", inv.name, "vi")
+	}
+	if len(inv.args) != 1 {
+		t.Fatalf("launch args = %v, want exactly the temp path", inv.args)
+	}
+	tmpPath := inv.args[0]
+	if !strings.Contains(tmpPath, "mint-notes-") {
+		t.Errorf("temp path = %q, want a mint-notes-* file", tmpPath)
+	}
+	// The temp file is cleaned up on the success path.
+	if _, statErr := os.Stat(tmpPath); !os.IsNotExist(statErr) {
+		t.Errorf("temp file %q still exists after Edit; want it cleaned up (stat err: %v)", tmpPath, statErr)
 	}
 }
 

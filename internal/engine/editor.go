@@ -30,8 +30,12 @@ var ErrEditorReturnToGate = errors.New("editor could not be launched; return to 
 const defaultEditor = "vi"
 
 // ResolveEditor resolves which editor to launch for the `e` review-gate choice,
-// honouring the conventional precedence: $VISUAL (when set and non-empty), then
-// $EDITOR (when set and non-empty), then the "vi" fallback.
+// honouring the conventional precedence: $VISUAL (when set and non-blank), then
+// $EDITOR (when set and non-blank), then the "vi" fallback.
+//
+// A whitespace-only value is treated as unset: strings.Fields would split it
+// into an empty slice (no command to launch), so a blank-after-trim $VISUAL or
+// $EDITOR falls through to the next candidate exactly as an unset variable does.
 //
 // The returned value may carry arguments (e.g. "code --wait"): it is an
 // operator-controlled command line that the launcher splits on whitespace
@@ -39,10 +43,10 @@ const defaultEditor = "vi"
 // final argument. Resolution reads only the value; splitting is the launcher's
 // concern.
 func ResolveEditor() string {
-	if visual := os.Getenv("VISUAL"); visual != "" {
+	if visual := os.Getenv("VISUAL"); strings.TrimSpace(visual) != "" {
 		return visual
 	}
-	if editor := os.Getenv("EDITOR"); editor != "" {
+	if editor := os.Getenv("EDITOR"); strings.TrimSpace(editor) != "" {
 		return editor
 	}
 	return defaultEditor
