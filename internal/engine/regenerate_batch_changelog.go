@@ -144,12 +144,8 @@ func regeneratedByTag(collected []RegeneratedVersion) map[string]string {
 // back to startingHEAD on any pre-push failure — the same recovery the single-version
 // 5-9 path uses, run once for the whole batch. The push is the point of no return.
 func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string) error {
-	m := deps.Mutator
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
-		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("staging %s for batch rebuild: %w", record.ChangelogFileName, err))
-	}
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "commit", "-m", batchRebuildSubject); err != nil {
-		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("committing batch rebuild %q: %w", batchRebuildSubject, err))
+	if err := stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject); err != nil {
+		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("batch rebuild: %w", err))
 	}
 	// The rebuild commit landed: push it (the end-of-batch point of no return) via the
 	// SHARED regenerate push tail — the same plain-push form, blocking "push" narration,

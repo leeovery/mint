@@ -65,12 +65,9 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 		return false, nil
 	}
 
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
-		return false, fmt.Errorf("staging %s for %s: %w", record.ChangelogFileName, tag, err)
-	}
 	subject := fmt.Sprintf("docs(changelog): regenerate notes for %s", tag)
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "commit", "-m", subject); err != nil {
-		return false, fmt.Errorf("committing regenerated changelog %q: %w", subject, err)
+	if err := stageAndCommitChangelog(ctx, m, root, subject); err != nil {
+		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
 	}
 	return true, nil
 }

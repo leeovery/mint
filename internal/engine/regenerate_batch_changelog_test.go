@@ -249,6 +249,42 @@ func TestRegenerateAllValidated_Changelog_PrePushFailure_ResetsCommit(t *testing
 	}
 }
 
+// TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit proves the batch
+// end-of-batch STAGE step routes through the SAME shared recovery as a push failure: a
+// failed `git add CHANGELOG.md` surfaces a "record" StageFailed, aborts non-zero, and
+// (no commit having landed) makes no commit and no push — the stage half of the shared
+// stage/commit helper carries its failed-step context into resetAndAbort.
+func TestRegenerateAllValidated_Changelog_StageFailure_AbortsNoCommit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, kacPreamble+"\n## [1.0.0] - 2024-01-01\n\nstale v1\n")
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut("startHEAD"), // rev-parse HEAD (captured start)
+		ScriptedOut(batchV1Date), // for-each-ref creatordate:short v1
+		ScriptedOut(batchV2Date), // for-each-ref creatordate:short v2
+		ScriptedOut(batchV3Date), // for-each-ref creatordate:short v3
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("fatal: pathspec error")}, // add fails
+	)
+	pub := newFakePublisher()
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir,
+		freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog), true)
+
+	assertAbortNonZero(t, err)
+	if stageFailedName(t, rec) != "record" {
+		t.Errorf("batch stage failure surfaced StageFailed %q, want \"record\"", stageFailedName(t, rec))
+	}
+	for _, inv := range f.Invocations() {
+		if inv.Name == "git" && (slices.Contains(inv.Args, "commit") || slices.Contains(inv.Args, "push")) {
+			t.Errorf("a batch stage failure issued %v; no commit or push must follow a failed stage", inv.Args)
+		}
+	}
+}
+
 // TestRegenerateAllValidated_Release_NoChangelogCommit proves an `--all --target
 // release` run makes NO changelog commit and NO push (it touches only provider
 // releases).

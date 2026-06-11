@@ -46,6 +46,7 @@ import (
 	"strings"
 	"time"
 
+	"mint/internal/git"
 	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
@@ -267,6 +268,27 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return false, err
 	}
 	return true, nil
+}
+
+// stageAndCommitChangelog is the SHARED regenerate stage+commit half both the
+// single-version (RegenerateChangelog) and batch (commitAndPushRebuild) paths invoke to
+// land a CHANGELOG commit: it runs `git -C {root} add CHANGELOG.md` then
+// `git -C {root} commit -m {subject}` through the lock-resilient Mutator, parameterised
+// ONLY by subject so each path keeps its own commit subject. A failed step short-circuits
+// (a failed stage never reaches the commit) and the returned error names which step
+// failed (`staging …` / `committing …`) so each caller can apply its own distinct
+// error-recovery to the returned error — the single-version path wraps it with the tag,
+// the batch path routes it through resetAndAbort. Keeping the stage/commit idiom here
+// means the two regenerate paths can no longer drift on the stage/commit half (the mirror
+// of pushChangelogCommit owning the push/recovery half).
+func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string) error {
+	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
+		return fmt.Errorf("staging %s: %w", record.ChangelogFileName, err)
+	}
+	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "commit", "-m", subject); err != nil {
+		return fmt.Errorf("committing %q: %w", subject, err)
+	}
+	return nil
 }
 
 // pushChangelogCommit is the SHARED regenerate push/recovery tail both the
