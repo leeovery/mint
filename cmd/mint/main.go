@@ -18,6 +18,7 @@ import (
 
 	"time"
 
+	"mint/internal/commit"
 	"mint/internal/config"
 	"mint/internal/engine"
 	"mint/internal/git"
@@ -77,8 +78,10 @@ func run(args []string) int {
 		return runInit(ctx, rest)
 	case commandVersion:
 		return runVersion(os.Stdout, os.Stderr, os.Stdin)
+	case commandCommit:
+		return runCommit(ctx, rest)
 	default:
-		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release`, `mint release regenerate`, `mint init`, and `mint version` are wired)")
+		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release`, `mint release regenerate`, `mint init`, `mint version`, and `mint commit` are wired)")
 		return usageExitCode
 	}
 }
@@ -268,6 +271,40 @@ func runRelease(ctx context.Context, rest []string) int {
 	return 0
 }
 
+// runCommit wires the production seams and runs the bare `mint commit` generate-and-
+// commit thread for a parsed `mint commit` invocation, returning the process exit
+// code. It mirrors runRelease's seam-wiring idiom: construct the presenter ONCE via
+// NewForStartup, one ExecRunner backing the read-side staged-diff seam, and the
+// lock-resilient git Mutator (git_safe) as the commit sink over that same runner. All
+// orchestration lives in the testable commit.Run; main stays thin.
+func runCommit(ctx context.Context, rest []string) int {
+	opts, err := parseCommitFlags(rest)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
+		return usageExitCode
+	}
+
+	// Construct the presenter ONCE at startup — the single production construction
+	// site. TTY/mode detection never happens downstream.
+	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
+
+	// One runner backs the read-side staged-diff seam; the lock-resilient git Mutator
+	// is constructed ONCE over it and serves as the commit sink so the commit mutation
+	// retries a contended .git lock and clears a provably-stale one. Read-only git
+	// (the staged diff) stays on the raw runner.
+	r := runner.NewExecRunner()
+	deps := commit.Deps{
+		Presenter: p,
+		Runner:    r,
+		Committer: git.NewMutator(r),
+	}
+
+	if err := commit.Run(ctx, deps); err != nil {
+		return exitCode(err)
+	}
+	return 0
+}
+
 // commandKind is the resolved top-level route for an invocation. The zero value
 // is commandUnknown so an unrecognised or empty command is a usage error by
 // default.
@@ -290,6 +327,10 @@ const (
 	// mint's OWN tool version. It drives no gate, calls no RunFinished, and needs no
 	// git repo (it never resolves the repo root).
 	commandVersion
+	// commandCommit is the `mint commit` verb — a top-level sibling of `release`
+	// that mints a conventional-commit message from the staged diff and creates the
+	// commit. It does NOT ride the release lifecycle spine.
+	commandCommit
 )
 
 // classifyCommand resolves the route for an invocation's args and returns the
@@ -307,6 +348,9 @@ func classifyCommand(args []string) (commandKind, []string) {
 	}
 	if args[0] == "version" {
 		return commandVersion, args[1:]
+	}
+	if args[0] == "commit" {
+		return commandCommit, args[1:]
 	}
 	if args[0] != "release" {
 		return commandUnknown, nil
