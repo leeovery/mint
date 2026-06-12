@@ -33,6 +33,7 @@ import (
 	"mint/internal/ai"
 	"mint/internal/config"
 	"mint/internal/gitrepo"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/runner"
 )
@@ -44,6 +45,17 @@ const commitAction = "committing"
 // message. It is ASCII so the plain-mode delimiters stay byte-pure (the same
 // convention as the gate Subject/AcceptEcho values).
 const commitMessageTitle = "commit message"
+
+// The oversized-diff fallback note. When commit's L1 size guard reports the
+// (diff_exclude-filtered) diff is over max_diff_lines — a generate-SKIP, distinct from
+// a generate-FAILURE — commit emits this note via the Presenter and routes to the SAME
+// editor fallback as --no-ai. The message is the spec string VERBATIM (Commit Message
+// Format & Prompt → The $EDITOR fallback, case 3), em dash U+2014; the label is a short
+// informational tag prefixed onto the warn line.
+const (
+	oversizedNoteLabel   = "diff"
+	oversizedNoteMessage = "diff too large to summarise — opening editor"
+)
 
 // errGateAborted is the clean cause for a user `n` decline at the review gate. It is
 // a TRUE no-op cause — nothing was mutated (the gate sits before the commit sink) —
@@ -177,12 +189,22 @@ func Run(ctx context.Context, deps Deps) error {
 
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
+		// An over-limit (diff_exclude-filtered) diff is a generate-SKIP, NOT a failure:
+		// commit's L1 size guard returned notes.ErrDiffTooLarge BEFORE any L2 call (the
+		// transport was never reached). A routine large commit must not abort — emit the
+		// oversized NOTE via the Presenter, then route to the SAME editor fallback as
+		// --no-ai (empty buffer, save-as-accept). This carries the note; the AI-failure
+		// branch below does NOT.
+		if errors.Is(err, notes.ErrDiffTooLarge) {
+			p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+			return runEditorFallback(ctx, deps, root, "")
+		}
 		// An AI transport failure (bad content after the transport's one retry, a timeout,
 		// or a missing binary) is NOT an abort for a routine local commit — it routes to the
 		// SAME editor fallback as --no-ai, opened against an EMPTY buffer (no synthetic stub,
-		// no re-show of a partial message). Any OTHER generate error — including
-		// notes.ErrDiffTooLarge, whose oversized-skip path is task 3-4 — keeps the surface
-		// abort. The transport's own bad-content retry is consumed here, never re-run.
+		// no re-show of a partial message), but carries NO oversized note (distinct from the
+		// oversized-skip above). The transport's own bad-content retry is consumed here,
+		// never re-run. Any OTHER generate error keeps the surface abort.
 		if isAITransportFailure(err) {
 			return runEditorFallback(ctx, deps, root, "")
 		}

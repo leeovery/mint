@@ -235,29 +235,37 @@ func TestRun_AIFailure_EditorBufferIsEmptyTemplate(t *testing.T) {
 	}
 }
 
-// TestRun_AIFailure_OversizedDiff_DoesNotRouteToEditor proves the transport-failure
-// route is DISTINCT from the oversized-skip route (3-4): notes.ErrDiffTooLarge does
-// NOT route to the editor via this branch — it still surfaces/aborts. No editor is
-// launched and no commit runs.
-func TestRun_AIFailure_OversizedDiff_DoesNotRouteToEditor(t *testing.T) {
+// TestRun_AIFailure_OversizedDiff_RoutesViaOversizedBranch proves the oversized-skip
+// route is DISTINCT from the transport-failure route: a generate step surfacing
+// notes.ErrDiffTooLarge routes through the OVERSIZED branch (3-4) — it emits the
+// oversized note and falls back to the editor — NOT through the noteless transport-
+// failure branch (3-3). The note's presence is the discriminator: the AI-failure branch
+// never emits it. (The full oversized boundary is exercised end-to-end through the real
+// Generator in run_oversized_test.go; this asserts only the branch boundary.)
+func TestRun_AIFailure_OversizedDiff_RoutesViaOversizedBranch(t *testing.T) {
 	t.Parallel()
 
+	const saved = "feat: human message for an oversized diff\n"
 	rec := &presentertest.RecordingPresenter{}
-	er := &editorRunner{fake: seedAIFailFallback("myedit"), saved: "feat: should never reach the editor\n"}
+	er := &editorRunner{fake: seedAIFailFallback("myedit"), saved: saved}
 	tr := &failTransport{err: fmt.Errorf("commit size guard: %w", notes.ErrDiffTooLarge)}
 
-	err := commit.Run(context.Background(), aiFailDeps(rec, er, tr, commit.StagedOnly, t.TempDir()))
-	if err == nil {
-		t.Fatal("Run returned nil for an oversized diff; want a surface/abort (oversized is 3-4, not this transport-failure branch)")
+	if err := commit.Run(context.Background(), aiFailDeps(rec, er, tr, commit.StagedOnly, t.TempDir())); err != nil {
+		t.Fatalf("Run returned unexpected error: %v; an oversized diff falls back to the editor, it does not abort", err)
 	}
-	if len(er.launches) != 0 {
-		t.Errorf("RunInteractive launched %d time(s) for notes.ErrDiffTooLarge; the oversized-skip route must NOT go through this branch", len(er.launches))
+	if len(er.launches) != 1 {
+		t.Fatalf("RunInteractive launch count = %d, want exactly 1 (oversized routes to the editor)", len(er.launches))
 	}
-	if commits := editorCommitInvocations(er); len(commits) != 0 {
-		t.Errorf("oversized diff created %d commit(s); it must surface/abort, not commit", len(commits))
+	// The oversized NOTE is the discriminator: it proves the oversized branch ran, not the
+	// noteless transport-failure branch.
+	gotNote := false
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && ev.Warn.Message == "diff too large to summarise — opening editor" {
+			gotNote = true
+		}
 	}
-	if !containsKind(rec.Kinds(), presentertest.KindStageFailed) {
-		t.Errorf("kinds = %v, want a StageFailed (oversized surfaces/aborts as today)", rec.Kinds())
+	if !gotNote {
+		t.Errorf("kinds = %v, want a Warn carrying the oversized note (proving the oversized branch, not the noteless AI-failure branch)", rec.Kinds())
 	}
 }
 
