@@ -319,7 +319,7 @@ func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, startingHEAD str
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
 		return resetAndAbort(ctx, deps, startingHEAD, true, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
 	}
-	pushDone()
+	pushDone("pushed to origin")
 	return nil
 }
 

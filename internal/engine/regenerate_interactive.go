@@ -193,7 +193,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	if err != nil {
 		return surface(p, "notes", err)
 	}
-	notesDone()
+	notesDone("generated")
 
 	// Delegate to the 5-9 write path: it shows the notes, runs the source-appropriate
 	// confirm/review gate (fresh → notes-review, reuse → simple confirm), and writes.

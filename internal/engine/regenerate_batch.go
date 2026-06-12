@@ -279,7 +279,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	if err != nil {
 		return reportSkip(p, res.Tag, classifyNotesFailure(err))
 	}
-	notesDone()
+	notesDone("generated")
 
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A

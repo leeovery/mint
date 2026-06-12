@@ -339,3 +339,32 @@ func readEntry(t *testing.T, cacheRoot, repoRoot, key string) notescache.Entry {
 	}
 	return entry
 }
+
+// TestStore_HasEntries reports presence honestly across the three states the reuse
+// path distinguishes: an untouched store (no dir yet) has no entries, a store with a
+// written preview has entries — REGARDLESS of the entry's key or freshness (the
+// caller only asks "did a dry-run ever leave a preview here?") — and an unreadable
+// path reports false rather than erroring.
+func TestStore_HasEntries(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	root := t.TempDir()
+	store := notescache.NewStore(base, func() time.Time { return fixedClock })
+
+	if store.HasEntries(root) {
+		t.Error("HasEntries = true on an untouched store; no dry-run has written anything")
+	}
+
+	if err := store.Write(root, notescache.Key("diff", "1.2.3", "prompt"), "body"); err != nil {
+		t.Fatalf("seeding entry: %v", err)
+	}
+	if !store.HasEntries(root) {
+		t.Error("HasEntries = false after a preview was written")
+	}
+
+	otherRoot := t.TempDir()
+	if store.HasEntries(otherRoot) {
+		t.Error("HasEntries = true for a DIFFERENT repo root; entries are repo-scoped")
+	}
+}

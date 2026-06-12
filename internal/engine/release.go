@@ -183,6 +183,10 @@ type NoteCacheReader interface {
 	// exists. found is true ONLY for an entry within TTL; an absent or expired entry is
 	// (zero, false, nil). A non-nil error is a genuine read/decode failure.
 	Lookup(repoRoot, key string) (notescache.Entry, bool, error)
+	// HasEntries reports whether ANY preview entry (fresh or expired) exists for
+	// repoRoot. The reuse path consults it so a clean miss with no preview at all —
+	// no dry-run ever ran — stays SILENT instead of warning about a changed diff.
+	HasEntries(repoRoot string) bool
 }
 
 // ReleaseOptions carries the per-run parsed inputs. Bump selects the version
@@ -331,7 +335,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 
 	// Stage 1 narration: the version gate is read-only (no spinner), so it emits a
 	// completion line only — no StageStarted.
-	emitGateSucceeded(p, "version")
+	emitGateSucceeded(p, "version", tag+" ("+string(hookBump(bumpKind))+" bump)")
 
 	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
 	// gate so a dirty tree passes (opt-in; without the flag a dirty tree still aborts at
@@ -375,7 +379,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 2 narration: the preflight gates are read-only (no spinner), so emit a
 	// completion line only — no StageStarted. Fired once both the built-in gates and
 	// the project preflight hook have passed (Stage 2 complete).
-	emitGateSucceeded(p, "preflight")
+	emitGateSucceeded(p, "preflight", preflightDetail(releaseBranch, tag, opts.AnyBranch))
 
 	// Capture the clean starting state NOW: preflight has just confirmed the tree is
 	// clean and HEAD is resolvable, and nothing has mutated yet, so this HEAD is the
@@ -435,7 +439,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
-	notesDone()
+	notesDone("generated")
 
 	// Emit in SPEC ORDER: ShowPlan, ShowNotes — then the review gate. RunStarted already
 	// led the run at Stage 1, so only the plan + notes (which depend on the resolved body)
@@ -526,6 +530,10 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	if bookkeepingCommitted {
 		made.Commits++
 	}
+	// Stage 5 narration: the ✓ line names WHAT was just recorded (the artifacts the
+	// bookkeeping commit carried) rather than a bare stage codeword, so the user can
+	// follow the run without knowing mint's stage taxonomy.
+	emitGateSucceeded(p, "record", recordDetail(writeResult.Changed, versionChanged, bookkeepingCommitted))
 
 	// Stage 6/7 — resolve the publishing driver, then run its conditional gh gate,
 	// only when publishing and BEFORE the tag.
@@ -627,7 +635,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		made.TagCreated = errors.Is(err, release.ErrPushRejected)
 		return surfaceAndUnwind(ctx, deps, "tag", start, made, err)
 	}
-	pushDone()
+	pushDone("branch + " + tag + " pushed atomically")
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
 	// already public); the run does not unwind and exits successfully. The release is
@@ -647,6 +655,8 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 			warnPublishFailed(p, err)
 		} else {
 			releaseURL = url
+			// Post-PONR success narration: the release exists on the provider now.
+			emitGateSucceeded(p, "publish", "release published")
 		}
 	}
 
@@ -798,7 +808,14 @@ func realRunReuse(deps ReleaseDeps, root, versionKey string, opts ReleaseOptions
 			return "", false, nil
 		}
 		if !found {
-			reportNotesRegenerating(deps.Presenter)
+			// A clean miss with NO preview in the store means no dry-run ever happened —
+			// the everyday plain-release case, and not worth any notice (warning "diff
+			// changed since dry-run preview" with no preview in existence misleads). The
+			// regenerating notice fires only when a preview EXISTS but no longer matches
+			// (the diff/prompt moved on, or it expired).
+			if deps.NoteCache.HasEntries(root) {
+				reportNotesRegenerating(deps.Presenter)
+			}
 			return "", false, nil
 		}
 		reportNotesReused(deps.Presenter)
@@ -1091,7 +1108,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	if err != nil {
 		return committed, err
 	}
-	done()
+	done("hook completed")
 	return committed, nil
 }
 
@@ -1133,6 +1150,34 @@ func pretagArtifactSubject(tag string) string {
 // hooks are SKIPPED (and so never consume the env) under dry-run.
 func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, dryRun bool) hooks.HookEnv {
 	return hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), dryRun)
+}
+
+// preflightDetail summarises WHICH gates just passed so the preflight ✓ line tells
+// the user what was actually checked, not a stage codeword: the clean tree, the
+// branch gate (or its --any-branch bypass), the free tag, and the remote sync.
+func preflightDetail(releaseBranch, tag string, anyBranch bool) string {
+	branch := "on " + releaseBranch
+	if anyBranch {
+		branch = "branch gate bypassed"
+	}
+	return fmt.Sprintf("tree clean, %s, %s free, origin in sync", branch, tag)
+}
+
+// recordDetail names what the record stage just committed — the changelog and/or
+// the version file — or says plainly that nothing needed recording (a tag-only
+// release with the changelog disabled).
+func recordDetail(changelogChanged, versionChanged, committed bool) string {
+	if !committed {
+		return "nothing to record"
+	}
+	var parts []string
+	if changelogChanged {
+		parts = append(parts, "CHANGELOG.md")
+	}
+	if versionChanged {
+		parts = append(parts, "version file")
+	}
+	return strings.Join(parts, " + ") + " committed"
 }
 
 // hookBump maps the engine's version.Bump onto the hooks package's Bump so the
@@ -1371,14 +1416,14 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 				// via the presenter. Close the edit stage (stopping the spinner) and
 				// RE-PRESENT the gate with the body UNCHANGED — this is not a failure, so do
 				// not surface or abort, and do not re-render.
-				editDone()
+				editDone("notes updated")
 				continue
 			case eerr != nil:
 				// A genuine edit failure (a launched-but-failed editor, an IO error, or
 				// the nil-editor misconfiguration): surface and abort.
 				return "", surface(p, "edit", eerr)
 			}
-			editDone()
+			editDone("notes updated")
 			// Use the edited text VERBATIM — no re-parse, no re-validation — then
 			// re-render the notes and loop back to re-prompt.
 			body = edited

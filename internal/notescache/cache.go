@@ -169,6 +169,25 @@ func (s *Store) EntryPath(repoRoot, key string) string {
 	return filepath.Join(s.cacheDir(repoRoot), key+entryFileExt)
 }
 
+// HasEntries reports whether ANY cache entry file exists for repoRoot — fresh or
+// expired. The real-run reuse path consults it to stay SILENT on a clean miss when
+// no dry-run preview was ever written: warning "diff changed since dry-run preview"
+// without a preview in existence is noise that misleads (observed live on a plain
+// release). Read errors (no dir yet, unreadable dir) report false — absence of
+// evidence of a preview is treated as absence of a preview.
+func (s *Store) HasEntries(repoRoot string) bool {
+	entries, err := os.ReadDir(s.cacheDir(repoRoot))
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 // cacheDir resolves the repo-scoped cache directory. In repo-path mode it is
 // {repoRoot}/.mint/cache (gitignored); otherwise it is {base}/<repo-hash>/cache,
 // namespaced by a hash of the repo root so distinct repos never share a dir.

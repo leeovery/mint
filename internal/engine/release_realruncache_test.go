@@ -486,3 +486,42 @@ func TestRelease_DryRunUnderYes_SkipsGate(t *testing.T) {
 	// The dry run finished and wrote the preview to the cache (the handoff to a real run).
 	readCacheEntry(t, cacheBase, root, cachedKey(priorTagDiff, "1.2.4"))
 }
+
+// TestRelease_RealRun_NoPreviewEver_NoMissNotice proves the EVERYDAY plain release —
+// cache wired but EMPTY, because no dry-run ever ran — emits NO miss notice: there is
+// no preview to have diverged from, so "diff changed since dry-run preview" would
+// mislead (observed live on a release that never had a -d). The notice is reserved
+// for a store that actually HOLDS a preview that no longer matches (the KeyMiss test
+// above). The run itself proceeds identically: the AI generates and the fresh body
+// ships.
+func TestRelease_RealRun_NoPreviewEver_NoMissNotice(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cacheBase := t.TempDir() // wired but EMPTY: no dry-run preview was ever written
+
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	deps := newDepsWithRealRunCache(rec, f, cacheBase, func() time.Time { return realRunClock })
+	if err := engine.Release(t.Context(), deps, priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	if !claudeInvoked(f) {
+		t.Errorf("the AI was not invoked; with no preview the run must generate normally")
+	}
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && ev.Warn.Message == missReportMessage {
+			t.Errorf("the miss notice fired with an EMPTY cache store; no dry-run ever ran, so there is nothing to report:\n%+v", ev.Warn)
+		}
+	}
+	if got := tagAnnotationBody(t, f, nextTag); got != aiBody {
+		t.Errorf("tag annotation body = %q, want the generated body %q", got, aiBody)
+	}
+}

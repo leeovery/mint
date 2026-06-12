@@ -119,8 +119,8 @@ func ReviewDecision(p presenter.Presenter, gate presenter.Gate) (presenter.Choic
 // NON-blocking StageSucceeded with no StageStarted (the cheap gates animate no
 // spinner, so they need only a completion line). Elapsed is left zero — the
 // non-blocking flag tells the presenter not to render a duration regardless.
-func emitGateSucceeded(p presenter.Presenter, name string) {
-	p.StageSucceeded(presenter.StageSuccess{Name: name})
+func emitGateSucceeded(p presenter.Presenter, name, detail string) {
+	p.StageSucceeded(presenter.StageSuccess{Name: name, Detail: detail})
 }
 
 // emitBlockingStageStarted narrates the START of a BLOCKING stage — a long/slow
@@ -136,12 +136,13 @@ func emitGateSucceeded(p presenter.Presenter, name string) {
 // text is the OPTIONAL activity phrase the pretty spinner animates while the
 // stage runs ("generating release notes…") — the state-what-is-happening rule;
 // empty falls back to the stage name.
-func emitBlockingStageStarted(p presenter.Presenter, name, text string) func() {
+func emitBlockingStageStarted(p presenter.Presenter, name, text string) func(detail string) {
 	p.StageStarted(presenter.StageStart{Name: name, Blocking: true, Text: text})
 	started := time.Now()
-	return func() {
+	return func(detail string) {
 		p.StageSucceeded(presenter.StageSuccess{
 			Name:     name,
+			Detail:   detail,
 			Elapsed:  time.Since(started),
 			Blocking: true,
 		})

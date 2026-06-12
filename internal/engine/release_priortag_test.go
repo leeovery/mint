@@ -302,8 +302,10 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
 		presentertest.KindPrompt,
+		presentertest.KindStageSucceeded, // record (what the bookkeeping commit carried)
 		presentertest.KindStageStarted,   // push (blocking)
 		presentertest.KindStageSucceeded, // push
+		presentertest.KindStageSucceeded, // publish (post-PONR success narration)
 		presentertest.KindRunFinished,
 	}
 	gotKinds := rec.Kinds()
