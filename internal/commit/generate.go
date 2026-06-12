@@ -131,10 +131,12 @@ func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, 
 }
 
 // sourceDiff is commit's Layer-1 SOURCE selector: it returns the would-be-committed
-// diff for the resolved StagingMode, applying the SAME cfg.DiffExclude :(exclude)
-// pathspecs to whichever source the mode chooses. Only the source command differs per
-// mode; the post-exclusion result flows into the shared size-guard + compose + L2
-// pipeline unchanged.
+// diff for the resolved StagingMode by rendering and concatenating each source the SHARED
+// sourcesForMode descriptor lists for the mode — the SAME descriptor the preflight
+// emptiness path (wouldStageNothing) consumes, so the dispatch (and the AddAll
+// tracked-then-untracked composition) is defined exactly once. Each source applies the
+// SAME cfg.DiffExclude :(exclude) pathspecs; the post-exclusion result flows into the
+// shared size-guard + compose + L2 pipeline unchanged.
 //
 //   - StagedOnly (the Phase 1 default): the staged diff — `git diff --cached`.
 //   - All (-a): the read-only tracked-vs-HEAD diff (tracked mods + deletions, no
@@ -142,113 +144,95 @@ func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, 
 //   - AddAll (-A): the tracked-vs-HEAD diff plus each untracked file rendered as an
 //     added-file diff — also read-only (no `git add`).
 func (g *Generator) sourceDiff(ctx context.Context, diffExclude []string) (string, error) {
-	switch g.mode {
-	case All:
-		return g.trackedWorktreeDiff(ctx, diffExclude)
-	case AddAll:
-		return g.addAllWorktreeDiff(ctx, diffExclude)
+	var b strings.Builder
+	for _, spec := range sourcesForMode(g.mode) {
+		rendered, err := g.renderSource(ctx, spec, diffExclude)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString(rendered)
+	}
+	return b.String(), nil
+}
+
+// renderSource renders ONE per-mode source spec (from the shared sourcesForMode
+// descriptor) into its L1 diff text, applying the SAME excludePathspecs tail the preflight
+// probe applies (via sourceArgs):
+//
+//   - diffSource: git's stdout IS the diff — `git diff … -- . :(exclude)…`.
+//   - untrackedListSource: enumerate untracked paths (`git ls-files --others … -- .
+//     :(exclude)…`) then render EACH as a read-only addition diff (`git diff --no-index
+//     -- /dev/null <file>`), concatenated in enumeration order.
+//
+// The diff source and untracked-list rendering are unchanged from the prior
+// trackedWorktreeDiff / addAllWorktreeDiff behaviour; only the source SELECTION is now
+// driven by the shared descriptor instead of a per-mode switch.
+func (g *Generator) renderSource(ctx context.Context, spec sourceSpec, diffExclude []string) (string, error) {
+	switch spec.kind {
+	case untrackedListSource:
+		return g.untrackedAdditions(ctx, spec.base, diffExclude)
 	default:
-		return g.stagedDiff(ctx, diffExclude)
+		return g.diffSourceText(ctx, spec.base, diffExclude)
 	}
 }
 
-// stagedDiff is the StagedOnly source: it runs `git diff --cached -- .` plus one
-// :(exclude)<glob> pathspec per configured diff_exclude glob, returning git's raw
-// post-exclusion stdout. The --cached selects the STAGED diff (the index as it
-// stands) — the Phase 1 default, byte-identical to before the modes were added.
+// diffSourceText runs a diffSource — a `git diff …` whose stdout IS the post-exclusion
+// diff — built from the shared base prefix (stagedBaseArgs / trackedBaseArgs) plus the
+// cfg.DiffExclude :(exclude) pathspecs via the single shared sourceArgs composer. The
+// SAME base + exclusion tail feeds the matching preflight probe (which only adds
+// `--name-only`), so the L1 diff and the emptiness probe read one exclusion-filtered
+// source.
 //
-// The :(exclude) mapping mirrors the notes assembler's pattern (one entry per glob,
-// in config order, after `-- .`) but carries ONLY cfg.DiffExclude — commit does not
-// inherit release's hardwired CHANGELOG.md / version_file tiers. git interprets each
-// glob as a pathspec pattern (mint does no Go-side glob matching), so a glob matching
-// nothing is harmless. The returned text is git's stdout verbatim; an empty
-// post-exclusion diff is NOT an error here, and a non-zero git exit is surfaced as a
-// wrapped error so an unexpected failure is never mistaken for an empty diff.
-func (g *Generator) stagedDiff(ctx context.Context, diffExclude []string) (string, error) {
-	args := append([]string{"diff", "--cached", "--", "."}, excludePathspecs(diffExclude)...)
+// Selecting the base prefix is the per-mode source SELECTION (sourcesForMode); the verb,
+// refspec, and `-- .` selector are spelled exactly once (in the *BaseArgs builders).
+// git interprets each glob as a pathspec pattern (mint does no Go-side glob matching), so
+// a glob matching nothing is harmless. The returned text is git's stdout verbatim; an
+// empty post-exclusion diff is NOT an error, and a non-zero git exit is surfaced as a
+// wrapped error so an unexpected failure is never mistaken for an empty diff. Diffing is
+// READ-ONLY — a plain `git diff` reads the object store and the worktree and mutates
+// nothing (no `git add`, the index unchanged).
+func (g *Generator) diffSourceText(ctx context.Context, base, diffExclude []string) (string, error) {
+	args := sourceArgs(base, diffExclude)
 	res, err := g.runner.Run(ctx, "git", args...)
 	if err != nil {
-		return "", fmt.Errorf("running git diff --cached: %w", err)
+		return "", fmt.Errorf("running git %v: %w", args, err)
 	}
 	return res.Stdout, nil
 }
 
-// trackedWorktreeDiff is the All (-a) source: it runs `git diff HEAD -- .` plus the
-// cfg.DiffExclude :(exclude) pathspecs, returning git's raw post-exclusion stdout.
-// Diffing the WORKING TREE against HEAD captures every tracked change — modifications
-// AND deletions, whether staged or unstaged — while excluding untracked files, exactly
-// matching `git commit -a` semantics. It is READ-ONLY: a plain `git diff` reads the
-// object store and the worktree and mutates NOTHING (no `git add`, the index unchanged).
-// An empty post-exclusion diff is not an error; a non-zero git exit is surfaced as a
-// wrapped error so it is never mistaken for an empty diff.
-func (g *Generator) trackedWorktreeDiff(ctx context.Context, diffExclude []string) (string, error) {
-	args := append([]string{"diff", "HEAD", "--", "."}, excludePathspecs(diffExclude)...)
+// untrackedAdditions renders an untrackedListSource — the AddAll (-A) untracked source —
+// into its L1 diff text: enumerate the repo's untracked, non-ignored files from the shared
+// untracked base prefix plus the cfg.DiffExclude :(exclude) pathspecs (so excluded
+// untracked files are never enumerated and never reach the prompt), then render EACH as a
+// read-only added-file diff in enumeration order, matching `git add -A` semantics
+// (everything, including untracked) — all computed READ-ONLY, leaving the index
+// byte-for-byte unchanged.
+//
+// The technique avoids `git add` (and `git add --intent-to-add`, which MUTATES the index)
+// entirely: the enumeration is the shared ls-files prefix the preflight probe reuses
+// VERBATIM, and untrackedAdditionDiff renders each path as `git diff --no-index --
+// /dev/null <file>`, a pure read-only comparison of the file against an empty input. git
+// prints one NUL-free path per line; blank lines (an empty enumeration) yield no
+// additions. A non-zero git exit on the enumeration is surfaced as a wrapped error.
+func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []string) (string, error) {
+	args := sourceArgs(base, diffExclude)
 	res, err := g.runner.Run(ctx, "git", args...)
 	if err != nil {
-		return "", fmt.Errorf("running git diff HEAD: %w", err)
-	}
-	return res.Stdout, nil
-}
-
-// addAllWorktreeDiff is the AddAll (-A) source: the tracked-vs-HEAD diff (mods +
-// deletions) CONCATENATED with each untracked file rendered as an added-file diff,
-// matching `git add -A` semantics (everything, including untracked) — all computed
-// READ-ONLY, leaving the index byte-for-byte unchanged.
-//
-// The technique avoids `git add` (and `git add --intent-to-add`, which MUTATES the
-// index) entirely:
-//  1. trackedWorktreeDiff — the same read-only tracked diff -a uses.
-//  2. untrackedFiles — enumerate untracked paths via `git ls-files --others
-//     --exclude-standard`, scoped by the SAME :(exclude) pathspecs so an excluded
-//     untracked file is never enumerated.
-//  3. untrackedAdditionDiff — render each as `git diff --no-index -- /dev/null <file>`,
-//     a pure read-only comparison of the file against an empty input.
-//
-// The tracked diff comes first, then the untracked additions in enumeration order, so
-// the combined text is a single coherent would-be-staged diff fed to the shared
-// size-guard + compose pipeline.
-func (g *Generator) addAllWorktreeDiff(ctx context.Context, diffExclude []string) (string, error) {
-	tracked, err := g.trackedWorktreeDiff(ctx, diffExclude)
-	if err != nil {
-		return "", err
-	}
-
-	files, err := g.untrackedFiles(ctx, diffExclude)
-	if err != nil {
-		return "", err
+		return "", fmt.Errorf("running git %v: %w", args, err)
 	}
 
 	var b strings.Builder
-	b.WriteString(tracked)
-	for _, file := range files {
-		addition, err := g.untrackedAdditionDiff(ctx, file)
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		if line == "" {
+			continue
+		}
+		addition, err := g.untrackedAdditionDiff(ctx, line)
 		if err != nil {
 			return "", err
 		}
 		b.WriteString(addition)
 	}
 	return b.String(), nil
-}
-
-// untrackedFiles lists the repo's untracked, non-ignored files via `git ls-files
-// --others --exclude-standard -- .` plus the cfg.DiffExclude :(exclude) pathspecs, so
-// excluded untracked files (bundles, lockfiles) are never enumerated and so never reach
-// the prompt. It is read-only. git prints one NUL-free path per line; blank lines (an
-// empty enumeration) yield no files. A non-zero git exit is surfaced as a wrapped error.
-func (g *Generator) untrackedFiles(ctx context.Context, diffExclude []string) ([]string, error) {
-	args := append([]string{"ls-files", "--others", "--exclude-standard", "--", "."}, excludePathspecs(diffExclude)...)
-	res, err := g.runner.Run(ctx, "git", args...)
-	if err != nil {
-		return nil, fmt.Errorf("running git ls-files --others: %w", err)
-	}
-
-	var files []string
-	for _, line := range strings.Split(res.Stdout, "\n") {
-		if line != "" {
-			files = append(files, line)
-		}
-	}
-	return files, nil
 }
 
 // untrackedAdditionDiff renders a single untracked file as an added-file diff via

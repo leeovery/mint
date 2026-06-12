@@ -703,7 +703,8 @@
             "commit-command-6-2",
             "commit-command-6-3",
             "commit-command-6-4",
-            "commit-command-6-5"
+            "commit-command-6-5",
+            "commit-command-7-1"
           ],
           "completed_phases": [
             1,
@@ -711,7 +712,8 @@
             3,
             4,
             5,
-            6
+            6,
+            7
           ]
         }
       }
