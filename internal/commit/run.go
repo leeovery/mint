@@ -883,6 +883,14 @@ func createCommit(ctx context.Context, deps Deps, body string) error {
 // gate abort, a generate failure, an empty/aborted editor) returns BEFORE reaching it,
 // so a run that produced no commit never pushes.
 //
+// NO PRE-PUSH / REMOTE-SYNC GATE (the Preflight & Safety drops, 5-5). The dropped gates
+// — clean-working-tree, on-release-branch, remote-in-sync (behind/diverged), and any
+// pre-push gate — stay dropped: there is deliberately NO `git fetch`, no @{upstream}
+// rev-list/--count behind-ahead probe, and no remote-sync precheck before the push. mint
+// attempts the plain `git push` DIRECTLY and REPORTS a failure (the warn-don't-unwind
+// below), rather than gating the commit on push-ability — which is what lets
+// `mint commit -Apy` run unattended end-to-end.
+//
 // WARN-DON'T-UNWIND on failure (the ONE place — both accept paths reach here). The
 // commit already happened, so a push failure must NEVER unwind it: there is NO
 // reset/revert/restore/unstage/amend and no destructive cleanup of any kind — the
