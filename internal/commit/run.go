@@ -261,8 +261,11 @@ func Run(ctx context.Context, deps Deps) error {
 	// an empty diff. It is staging-mode aware: it computes the would-be-staged emptiness
 	// for deps.Staging READ-ONLY and, when empty, fails loud with the message keyed on the
 	// ACTUAL post-mode tree state (clean tree vs changes-the-mode-could-not-stage). A
-	// non-empty would-be-staged set proceeds.
-	if err := checkSomethingToCommit(ctx, deps.Runner, deps.Staging); err != nil {
+	// non-empty would-be-staged set proceeds. cfg.DiffExclude is threaded in so the
+	// preflight measures the POST-exclusion would-be-staged set — the SAME exclusion-filtered
+	// source the AI's L1 diff consumes — so an all-excluded set fails loud here rather than
+	// reaching generate with a blank post-exclusion diff.
+	if err := checkSomethingToCommit(ctx, deps.Runner, deps.Staging, cfg.DiffExclude); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -669,12 +672,19 @@ var (
 // CommandRunner seam (the same read-only idiom as generate's source helpers), so they are
 // fully scriptable via the FakeRunner.
 //
+// diffExclude (cfg.DiffExclude) is mapped onto the probes via the SAME excludePathspecs
+// helper generate's L1 source uses, so the emptiness verdict and the AI's L1 source diff
+// derive from ONE exclusion-filtered source and cannot drift: an all-excluded
+// staged/changed set is recognised as "nothing to commit" HERE — failing loud before any
+// generate/AI call — rather than passing preflight and reaching the transport with a blank
+// post-exclusion diff.
+//
 // A NON-empty would-be-staged set returns nil → the run proceeds to generate (as before).
 // An EMPTY set selects the failure by the ACTUAL post-mode tree state (probed once with a
 // read-only `git status --porcelain`), NOT the flag passed — so `mint commit -A` on a
 // pristine tree yields the clean-tree message, because an empty -A set means a clean tree.
-func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, mode StagingMode) error {
-	empty, err := wouldStageNothing(ctx, r, mode)
+func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, mode StagingMode, diffExclude []string) error {
+	empty, err := wouldStageNothing(ctx, r, mode, diffExclude)
 	if err != nil {
 		return err
 	}
@@ -686,30 +696,55 @@ func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, mode St
 
 // wouldStageNothing reports whether the resolved StagingMode would stage nothing,
 // computed READ-ONLY from name-only probes (sufficient for emptiness — no diff body is
-// needed). Only the source command differs per mode, mirroring generate's sourceDiff:
+// needed). Only the source command differs per mode, mirroring generate's sourceDiff,
+// and EVERY probe carries the SAME diffExclude :(exclude) pathspecs (via excludePathspecs)
+// the L1 source applies — so the probe measures the POST-exclusion would-be-staged set
+// and an all-excluded set is reported empty here, matching the AI's L1 diff exactly:
 //
-//   - StagedOnly: empty iff `git diff --cached --name-only` is empty (the staged index).
-//   - All (-a): empty iff `git diff HEAD --name-only` is empty (tracked mods + deletions).
-//   - AddAll (-A): empty iff BOTH `git diff HEAD --name-only` AND `git ls-files --others
-//     --exclude-standard` are empty (tracked changes AND untracked files).
+//   - StagedOnly: empty iff `git diff --cached --name-only -- . :(exclude)…` is empty
+//     (the staged index, post-exclusion — mirrors stagedDiff).
+//   - All (-a): empty iff `git diff HEAD --name-only -- . :(exclude)…` is empty (tracked
+//     mods + deletions, post-exclusion — mirrors trackedWorktreeDiff).
+//   - AddAll (-A): empty iff BOTH `git diff HEAD --name-only -- . :(exclude)…` AND
+//     `git ls-files --others --exclude-standard -- . :(exclude)…` are empty (tracked
+//     changes AND untracked files, both post-exclusion — mirrors addAllWorktreeDiff's
+//     trackedWorktreeDiff + untrackedFiles).
 //
 // A genuine git failure is wrapped and surfaced so it is never mistaken for an empty set.
-func wouldStageNothing(ctx context.Context, r runner.CommandRunner, mode StagingMode) (bool, error) {
+func wouldStageNothing(ctx context.Context, r runner.CommandRunner, mode StagingMode, diffExclude []string) (bool, error) {
+	excludes := excludePathspecs(diffExclude)
 	switch mode {
 	case All:
-		return gitOutputEmpty(ctx, r, "diff", "HEAD", "--name-only")
+		return gitOutputEmpty(ctx, r, trackedProbeArgs(excludes)...)
 	case AddAll:
-		trackedEmpty, err := gitOutputEmpty(ctx, r, "diff", "HEAD", "--name-only")
+		trackedEmpty, err := gitOutputEmpty(ctx, r, trackedProbeArgs(excludes)...)
 		if err != nil {
 			return false, err
 		}
 		if !trackedEmpty {
 			return false, nil
 		}
-		return gitOutputEmpty(ctx, r, "ls-files", "--others", "--exclude-standard")
+		return gitOutputEmpty(ctx, r, untrackedProbeArgs(excludes)...)
 	default:
-		return gitOutputEmpty(ctx, r, "diff", "--cached", "--name-only")
+		return gitOutputEmpty(ctx, r, stagedProbeArgs(excludes)...)
 	}
+}
+
+// stagedProbeArgs / trackedProbeArgs / untrackedProbeArgs build the name-only emptiness
+// probes for each staging mode, appending the SAME `-- . :(exclude)…` tail the matching
+// L1 source helper uses (stagedDiff / trackedWorktreeDiff / untrackedFiles). Keeping the
+// `-- .` + excludes suffix identical to generate's argv is what guarantees the preflight
+// and the AI's L1 diff read one exclusion-filtered source.
+func stagedProbeArgs(excludes []string) []string {
+	return append([]string{"diff", "--cached", "--name-only", "--", "."}, excludes...)
+}
+
+func trackedProbeArgs(excludes []string) []string {
+	return append([]string{"diff", "HEAD", "--name-only", "--", "."}, excludes...)
+}
+
+func untrackedProbeArgs(excludes []string) []string {
+	return append([]string{"ls-files", "--others", "--exclude-standard", "--", "."}, excludes...)
 }
 
 // emptyStagingError selects the fail-loud cause for an empty would-be-staged set, keyed on
