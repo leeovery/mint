@@ -315,6 +315,16 @@ func Run(ctx context.Context, deps Deps) error {
 		return surface(p, "commit", err)
 	}
 
+	// Auto-push (Phase 5): the commit succeeded, so when -p is armed push it now —
+	// AFTER the commit, gated strictly on its success. pushAfterCommit is a no-op when
+	// push is disarmed, so an unarmed run reaches RunFinished unchanged.
+	if err := pushAfterCommit(ctx, deps); err != nil {
+		// TODO(5-4): convert to warn-don't-unwind. The commit already happened, so a push
+		// failure must NOT unwind it — 5-4 replaces this interim surface with one generic
+		// warn (commit is in place; re-run the push) carrying git's stderr verbatim.
+		return surface(p, "push", err)
+	}
+
 	p.RunFinished(presenter.RunResult{Project: projectName(root)})
 	return nil
 }
@@ -820,6 +830,38 @@ func stageForMode(ctx context.Context, deps Deps) error {
 func createCommit(ctx context.Context, deps Deps, body string) error {
 	if _, err := deps.Committer.Mutate(ctx, []byte(body), "git", "commit", "-F", "-"); err != nil {
 		return fmt.Errorf("creating commit: %w", err)
+	}
+	return nil
+}
+
+// pushAfterCommit is commit's SINGLE shared auto-push step, called by BOTH accept
+// paths after a successful commit (the gate-accept path here; the editor save-as-accept
+// path in 5-3 reuses this exact routine — not a parallel implementation). It is gated
+// on deps.Push: DISARMED (the default) is a no-op, so an unarmed run is unchanged; ARMED
+// runs a PLAIN `git push` — current branch → its configured upstream, resolved entirely
+// by git. mint adds NO special upstream logic: no -u/--set-upstream, no remote/branch
+// arguments, no current-branch detection or upstream inference. The argv is exactly
+// `git push`.
+//
+// The push is a git mutation/network op, so — like the commit and the deferred staging —
+// it flows through the git_safe Committer (NOT the raw runner): a contended/stale `.git`
+// lock is retried/cleared. stdin is nil — push reads no body.
+//
+// Sequencing makes the "push only after a successful commit" guarantee free: callers
+// invoke pushAfterCommit AFTER createCommit returns nil, and every no-commit path (a
+// gate abort, a generate failure, an empty/aborted editor) returns BEFORE reaching it,
+// so a run that produced no commit never pushes.
+//
+// This is the HAPPY path only. A push FAILURE is surfaced as a plain error here; the
+// caller's interim surface carries a TODO(5-4) — 5-4 converts it to warn-don't-unwind
+// (the commit already happened, so a push failure must never unwind it). Empty/aborted
+// suppression (5-5) is already natural: push is only reached after a successful commit.
+func pushAfterCommit(ctx context.Context, deps Deps) error {
+	if !deps.Push {
+		return nil
+	}
+	if _, err := deps.Committer.Mutate(ctx, nil, "git", "push"); err != nil {
+		return fmt.Errorf("pushing commit: %w", err)
 	}
 	return nil
 }
