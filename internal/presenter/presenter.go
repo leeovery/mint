@@ -564,6 +564,13 @@ const (
 	// dispatch is exhaustive; in practice the engine does not call RunFinished for a
 	// version run. Appended after VerbRegenerate so VerbRelease stays iota-0.
 	VerbVersion
+	// VerbCommit is the commit closing form: version-less and URL-less (a commit
+	// publishes no release), "done: {project} committed" (plain) / "{leaf} committed
+	// {project}" (pretty). Without its own arm a commit RunResult would fall to the
+	// zero-value RELEASE form and close a successful `mint commit` with "released
+	// {project} v" — the wrong verb and a dangling version. Appended last so
+	// VerbRelease stays iota-0.
+	VerbCommit
 )
 
 // RunResult carries the end-of-run success payload. URL is optional — verbs

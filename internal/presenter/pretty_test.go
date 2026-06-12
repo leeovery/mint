@@ -322,6 +322,20 @@ func TestPrettyPresenterStartLineUsesEngineAction(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterStartLineOmitsEmptyVersion proves a version-LESS run (commit
+// announces no version) renders the brand line WITHOUT the " v{X}" segment — never
+// a dangling bare "v" — per the presenter's no-dangling-segment rule.
+func TestPrettyPresenterStartLineOmitsEmptyVersion(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Action: "committing"})
+	})
+
+	want := "🌿 mint · acme  ›  committing\n"
+	if got := out.String(); got != want {
+		t.Errorf("version-less brand line = %q, want exactly %q (no dangling \" v\")", got, want)
+	}
+}
+
 // TestPrettyPresenterBrandLeafComesFromPayload proves the brand leaf is rendered
 // from the engine-supplied payload datum: a supplied leaf is used verbatim, and an
 // empty Leaf defaults to 🌿 rather than being re-derived or hardcoded.

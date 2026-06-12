@@ -110,8 +110,14 @@ func (p *PlainPresenter) errf(format string, args ...any) {
 // RunStarted renders the start-of-run line: "mint: {action} {project} v{X}". The
 // action word is engine-supplied (RunInfo.Action) so the line is verb-shaped —
 // "releasing", "regenerating", … — never a hardcoded literal. The bare payload
-// version is rendered with a "v" prefix.
+// version is rendered with a "v" prefix; a version-LESS run (commit has no version
+// to announce) omits the segment entirely rather than dangling a bare "v" — the
+// same no-dangling-segment rule the success/footer lines follow.
 func (p *PlainPresenter) RunStarted(info RunInfo) {
+	if info.Version == "" {
+		p.writef("mint: %s %s\n", info.Action, info.Project)
+		return
+	}
 	p.writef("mint: %s %s v%s\n", info.Action, info.Project, info.Version)
 }
 
@@ -457,6 +463,8 @@ func (p *PlainPresenter) InitResult(r InitOutcome) {
 //     rendered VERBATIM; the presenter never computes the version set. The --all
 //     single-version case still lands here (Verb=VerbRegenerate), so it renders the
 //     set summary, not a release-style v{X}+url footer.
+//   - VerbCommit: version-less and URL-less — "done: {project} committed". A commit
+//     publishes no release and announces no version, so neither segment renders.
 //   - VerbInit, VerbVersion: NO footer — init's created/skipped lines and version's
 //     value line are themselves the terminal output. These arms render NOTHING
 //     (defensive completeness; in practice the engine does not call RunFinished for
@@ -470,6 +478,10 @@ func (p *PlainPresenter) RunFinished(r RunResult) {
 		p.renderReleaseFooter(r)
 	case VerbRegenerate:
 		p.writef("done: %s %s\n", r.Project, r.Summary)
+	case VerbCommit:
+		// Version-less and URL-less: the commit IS the success, so the close-out
+		// carries only the verb word and the project.
+		p.writef("done: %s committed\n", r.Project)
 	case VerbInit, VerbVersion:
 		// No release-style footer: these verbs' own lines are the terminal output.
 	}

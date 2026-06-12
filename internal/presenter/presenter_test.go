@@ -338,6 +338,7 @@ func TestRunVerbIotaOrdering(t *testing.T) {
 		{presenter.VerbRegenerate, 1},
 		{presenter.VerbInit, 2},
 		{presenter.VerbVersion, 3},
+		{presenter.VerbCommit, 4},
 	}
 
 	for _, c := range cases {

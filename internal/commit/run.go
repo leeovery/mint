@@ -795,7 +795,10 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 		return surfaceOutput(p, "commit", err, res.Stderr)
 	}
 	pushErr := pushAfterCommit(ctx, deps)
-	p.RunFinished(presenter.RunResult{Project: projectName(root)})
+	// VerbCommit selects the commit-shaped close-out (version-less, URL-less,
+	// "committed" not "released") — the zero-value Verb would render the RELEASE
+	// footer with a dangling empty version.
+	p.RunFinished(presenter.RunResult{Project: projectName(root), Verb: presenter.VerbCommit})
 	return pushErr
 }
 

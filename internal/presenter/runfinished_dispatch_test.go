@@ -109,6 +109,38 @@ func TestRunFinishedRegenerateCloseRendersWithoutURL(t *testing.T) {
 	})
 }
 
+// TestRunFinishedCommitCloseRendersVersionless locks the commit arm's close in both
+// modes: version-less and URL-less — plain "done: {project} committed", pretty
+// "{leaf} committed {project}". A Version/URL on the payload must NOT leak in: a
+// commit publishes no release and announces no version, so the arm renders neither
+// segment (and crucially never the release arm's "released … v" with its dangling
+// empty version).
+func TestRunFinishedCommitCloseRendersVersionless(t *testing.T) {
+	t.Run("plain", func(t *testing.T) {
+		t.Parallel()
+
+		out, _ := drive(func(p *presenter.PlainPresenter) {
+			p.RunFinished(presenter.RunResult{Verb: presenter.VerbCommit, Project: "acme"})
+		})
+
+		if got := out.String(); got != "done: acme committed\n" {
+			t.Errorf("plain commit close = %q, want exactly %q (no version, no url)", got, "done: acme committed\n")
+		}
+	})
+
+	t.Run("pretty", func(t *testing.T) {
+		t.Parallel()
+
+		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+			p.RunFinished(presenter.RunResult{Verb: presenter.VerbCommit, Project: "acme"})
+		})
+
+		if got := out.String(); got != "🌿 committed acme\n" {
+			t.Errorf("pretty commit close = %q, want exactly %q (committed, not released; no v segment)", got, "🌿 committed acme\n")
+		}
+	})
+}
+
 // TestRunFinishedInitRendersNoFooter proves the VerbInit no-footer arm: init has
 // no release-style footer, so RunFinished renders NOTHING for VerbInit in both
 // modes (defensive completeness — in practice the engine never calls RunFinished
@@ -251,6 +283,7 @@ func TestRunFinishedSuppressionPrecedesShapingForEveryVerb(t *testing.T) {
 		{"regenerate", presenter.VerbRegenerate},
 		{"init", presenter.VerbInit},
 		{"version", presenter.VerbVersion},
+		{"commit", presenter.VerbCommit},
 	}
 
 	for _, v := range verbs {
@@ -276,7 +309,7 @@ func TestRunFinishedSuppressionPrecedesShapingForEveryVerb(t *testing.T) {
 			})
 
 			got := out.String()
-			if strings.Contains(got, "released") || strings.Contains(got, "regenerated") {
+			if strings.Contains(got, "released") || strings.Contains(got, "regenerated") || strings.Contains(got, "committed") {
 				t.Errorf("pretty %s: terminal-failure run must emit no footer for any shape, got:\n%q", v.name, got)
 			}
 		})

@@ -109,6 +109,20 @@ func TestPlainPresenterStartLineUsesEngineAction(t *testing.T) {
 	}
 }
 
+// TestPlainPresenterStartLineOmitsEmptyVersion proves a version-LESS run (commit
+// announces no version) renders the start line WITHOUT the " v{X}" segment — never
+// a dangling bare "v" — the same no-dangling-segment rule as the "ok" floor below.
+func TestPlainPresenterStartLineOmitsEmptyVersion(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Action: "committing"})
+	})
+
+	want := "mint: committing acme\n"
+	if got := out.String(); got != want {
+		t.Errorf("version-less start line = %q, want exactly %q (no dangling \" v\")", got, want)
+	}
+}
+
 // TestPlainPresenterStageSucceededFallsBackToOk asserts the detail-less success
 // line renders the "ok" floor rather than a dangling "{stage}: ".
 func TestPlainPresenterStageSucceededFallsBackToOk(t *testing.T) {

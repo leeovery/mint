@@ -301,9 +301,15 @@ func leafOrDefault(leaf string) string {
 // RunStarted renders the top brand line, flush-left:
 // "{leaf} mint · {project}  ›  {action} v{X}". The leaf and the action word are
 // both engine-supplied from RunInfo, so the line is brand- and verb-shaped from
-// the payload rather than hardcoding "🌿" or "releasing".
+// the payload rather than hardcoding "🌿" or "releasing". A version-LESS run
+// (commit has no version to announce) omits the " v{X}" segment entirely rather
+// than dangling a bare "v" — the same no-dangling-segment rule the footer follows.
 func (p *PrettyPresenter) RunStarted(info RunInfo) {
 	leaf := leafOrDefault(info.Leaf)
+	if info.Version == "" {
+		p.writef("%s mint · %s  ›  %s\n", leaf, info.Project, info.Action)
+		return
+	}
 	p.writef("%s mint · %s  ›  %s v%s\n", leaf, info.Project, info.Action, info.Version)
 }
 
@@ -911,6 +917,8 @@ func (p *PrettyPresenter) InitResult(r InitOutcome) {
 //     (the presenter never computes the version set). The --all single-version case
 //     still lands here (Verb=VerbRegenerate), so it renders the set summary, not a
 //     release-style v{X}+url footer.
+//   - VerbCommit: version-less and URL-less — "{leaf} committed {project}". A commit
+//     publishes no release and announces no version, so neither segment renders.
 //   - VerbInit, VerbVersion: NO footer — init's created/skipped lines and version's
 //     value line are themselves the terminal output. These arms render NOTHING
 //     (defensive completeness; in practice the engine does not call RunFinished for
@@ -924,6 +932,10 @@ func (p *PrettyPresenter) RunFinished(r RunResult) {
 		p.renderReleaseFooter(r)
 	case VerbRegenerate:
 		p.writef("%s regenerated %s %s\n", leafOrDefault(r.Leaf), r.Project, r.Summary)
+	case VerbCommit:
+		// Version-less and URL-less: mirrors the release brand footer's shape with the
+		// commit verb word ("committed", not "released") and no v{X} segment.
+		p.writef("%s committed %s\n", leafOrDefault(r.Leaf), r.Project)
 	case VerbInit, VerbVersion:
 		// No release-style footer: these verbs' own lines are the terminal output.
 	}
