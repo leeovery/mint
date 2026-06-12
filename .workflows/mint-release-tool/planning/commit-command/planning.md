@@ -150,3 +150,13 @@ approved_at: 2026-06-09
 | commit-command-6-3 | Do not emit the "opening editor" note on the unattended oversized path that fails loud | `-y`/non-TTY oversized path records no "opening editor" Warn and fails loud with the exact spec message mutating nothing, attended (TTY, non-`-y`) oversized path still emits the note and opens the editor, AI-failure trigger still emits no note, no-message-source guard runs before the oversized note |
 | commit-command-6-4 | Consolidate the duplicated commit test-suite scaffolding (invocation-filter helpers and per-file Deps builders) | two shared invocation-filter helpers replace the nine wrappers (no re-rolled Name==git or Args[0]==verb loops), single editor-path Deps builder centralises the `git.NewMutator(...WithBackoff...)` wiring and `StdinInteractive` default, previously-identical/subset builders become thin wrappers or inlined with each scenario's distinct fields preserved, `newCommitDeps` (bare path) stays separate, both raw-runner and `editorRunner.fake` call sites route through the shared helpers, suite passes unchanged with no assertion meaning changed |
 | commit-command-6-5 | Extract a single commitAccept helper to single-source the stage→commit→push accept tail | one `commitAccept` helper holds the stage→commit→push→RunFinished→return-pushErr sequence, neither `Run` nor `runEditorFallback` inlines the tail, gate-accept passes `finalBody` and save-as-accept passes `saved`, identical observable behaviour (same mutations/ordering/error-surfacing, RunFinished always fires, pushErr returned), existing accept-path and push tests pass unchanged |
+
+### Phase 7: Analysis (Cycle 2)
+
+**Goal**: Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| commit-command-7-1 | Structurally single-source the per-mode git source selection shared by the preflight probes and the L1 diff sources | each per-mode argv prefix and the `-- .` selector spelled once and shared by preflight probe and L1 source, preflight probe argv = shared prefix + `--name-only` (diff cases) / shared `ls-files` prefix (untracked), StagingMode→sources mapping (incl. AddAll tracked-then-untracked short-circuit) defined in one place for both emptiness and diff paths, empty-staging preflight cluster + shared selector moved to `internal/commit/preflight.go` with `run.go` no longer containing them, AddAll probe still uses `--name-only` (no untracked file bodies), verbatim empty-staging messages and per-mode emptiness verdicts unchanged, go vet/golangci-lint/commit tests clean |
