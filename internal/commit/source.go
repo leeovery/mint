@@ -106,3 +106,18 @@ func sourcesForMode(mode StagingMode) []sourceSpec {
 func sourceArgs(base, diffExclude []string) []string {
 	return append(append([]string{}, base...), excludePathspecs(diffExclude)...)
 }
+
+// excludePathspecs maps each diff_exclude glob to its :(exclude)<glob> pathspec, in
+// config order. Unlike the notes assembler's union of exclusion tiers, commit carries
+// ONLY the configured globs — there is no built-in CHANGELOG.md or strategy-aware
+// version_file exclusion here (both are release-specific). A nil/empty slice yields no
+// pathspecs, so the bare argv is exactly `git diff --cached -- .`. It lives HERE,
+// beside sourceArgs (its only caller), so the full per-mode argv-assembly surface is
+// colocated in the declared single source of truth.
+func excludePathspecs(diffExclude []string) []string {
+	pathspecs := make([]string, 0, len(diffExclude))
+	for _, glob := range diffExclude {
+		pathspecs = append(pathspecs, ":(exclude)"+glob)
+	}
+	return pathspecs
+}

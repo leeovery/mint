@@ -217,6 +217,67 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 	}
 }
 
+// TestProbeArgs_MatchesNamedBuilders closes the test-vs-production argv gap: production
+// preflight routes through probeArgs(spec, …) while the named per-mode builders
+// (stagedProbeArgs/trackedProbeArgs/untrackedProbeArgs) are test-facing — this pins the
+// two derivations equal for every spec, so an edit to one path that misses the other
+// fails here rather than silently diverging the documented probe argv.
+func TestProbeArgs_MatchesNamedBuilders(t *testing.T) {
+	t.Parallel()
+
+	exclude := []string{"*.min.js"}
+	excludes := excludePathspecs(exclude)
+
+	for _, tc := range []struct {
+		name string
+		spec sourceSpec
+		want []string
+	}{
+		{"staged", sourceSpec{base: stagedBaseArgs(), kind: diffSource}, stagedProbeArgs(excludes)},
+		{"tracked", sourceSpec{base: trackedBaseArgs(), kind: diffSource}, trackedProbeArgs(excludes)},
+		{"untracked", sourceSpec{base: untrackedBaseArgs(), kind: untrackedListSource}, untrackedProbeArgs(excludes)},
+	} {
+		if got := probeArgs(tc.spec, exclude); !argsEqual(got, tc.want) {
+			t.Errorf("%s: probeArgs = %v, want the named builder's %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestGitOutputEmpty_SeparatorOnlyOutputCountsAsEmpty proves the shared emptiness probe
+// treats output consisting only of separators — trailing newlines AND the `-z`
+// enumeration's NUL terminators — as empty, so a degenerate lone-NUL probe result can
+// never be mistaken for "something to commit".
+func TestGitOutputEmpty_SeparatorOnlyOutputCountsAsEmpty(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		stdout string
+		want   bool
+	}{
+		{"empty", "", true},
+		{"newline only", "\n", true},
+		{"lone NUL (empty -z enumeration)", "\x00", true},
+		{"NULs and whitespace", "\x00\n\x00", true},
+		{"real path NUL-terminated", "new.go\x00", false},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := runner.NewFakeRunner()
+			r.Seed("git", runner.Result{Stdout: tc.stdout}, nil)
+			empty, err := gitOutputEmpty(context.Background(), r, "", "ls-files", "--others", "-z")
+			if err != nil {
+				t.Fatalf("gitOutputEmpty returned error: %v", err)
+			}
+			if empty != tc.want {
+				t.Errorf("gitOutputEmpty(%q) = %v, want %v", tc.stdout, empty, tc.want)
+			}
+		})
+	}
+}
+
 // scriptedResults maps a slice of stdout strings to the FakeRunner ScriptedCall sequence.
 func scriptedResults(outs []string) []runner.ScriptedCall {
 	calls := make([]runner.ScriptedCall, 0, len(outs))

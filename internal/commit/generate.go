@@ -277,16 +277,3 @@ func (g *Generator) untrackedAdditionDiff(ctx context.Context, file string) (str
 	}
 	return res.Stdout, nil
 }
-
-// excludePathspecs maps each diff_exclude glob to its :(exclude)<glob> pathspec, in
-// config order. Unlike the notes assembler's union of exclusion tiers, commit carries
-// ONLY the configured globs — there is no built-in CHANGELOG.md or strategy-aware
-// version_file exclusion here (both are release-specific). A nil/empty slice yields no
-// pathspecs, so the bare argv is exactly `git diff --cached -- .`.
-func excludePathspecs(diffExclude []string) []string {
-	pathspecs := make([]string, 0, len(diffExclude))
-	for _, glob := range diffExclude {
-		pathspecs = append(pathspecs, ":(exclude)"+glob)
-	}
-	return pathspecs
-}

@@ -90,9 +90,22 @@ func TestComposePrompt_ContainsOnlyTheTwoParts(t *testing.T) {
 	}
 }
 
+func TestComposePrompt_JoinsWithExactlyOneBlankLine(t *testing.T) {
+	t.Parallel()
+
+	// The doc comment promises instructions and diff joined by exactly one blank
+	// line; pin the precise byte shape so the separator cannot silently drift.
+	if got, want := commit.ComposePrompt("a", "b"), "a\n\nb"; got != want {
+		t.Errorf("ComposePrompt(a, b) = %q, want exactly %q (one blank-line separator)", got, want)
+	}
+}
+
 // defaultPromptRules enumerates the rules the default commit prompt MUST carry,
 // each as a distinct substring the prompt is required to contain. Each entry pins
 // one spec requirement so a regression that drops a rule fails a named subtest.
+// This table is the SINGLE default-prompt coverage surface — the formerly separate
+// per-rule tests are folded in as rows (strongest substring kept per rule) so no
+// rule is double-asserted.
 func defaultPromptRules() []struct{ name, want string } {
 	return []struct{ name, want string }{
 		{"conventional commits standard", "Conventional Commits"},
@@ -101,9 +114,11 @@ func defaultPromptRules() []struct{ name, want string } {
 		{"concise subject", "concise"},
 		{"optional wrapped body for the why", "body"},
 		{"infer the type from the diff", "infer"},
-		{"scope omitted by default", "scope"},
+		{"scope omitted by default", "Omit the scope"},
+		{"no branding", "branding"},
 		{"no preamble", "no preamble"},
 		{"no meta-commentary", "no meta-commentary"},
+		{"message returned directly, no machine wrapper", "Return the commit message directly"},
 	}
 }
 
@@ -117,64 +132,6 @@ func TestDefaultPrompt_CarriesEveryRule(t *testing.T) {
 				t.Errorf("default prompt missing rule %q (substring %q):\n%s", rule.name, rule.want, commit.DefaultPrompt)
 			}
 		})
-	}
-}
-
-func TestDefaultPrompt_RequestsConventionalCommitSubjectWithOptionalBody(t *testing.T) {
-	t.Parallel()
-
-	// The default format is a Conventional Commits `type: description` subject —
-	// imperative and concise — with an optional wrapped body for the why.
-	for _, want := range []string{"Conventional Commits", "type: description", "imperative", "body"} {
-		if !strings.Contains(commit.DefaultPrompt, want) {
-			t.Errorf("default prompt does not request the conventional-commit subject/body shape (missing %q):\n%s", want, commit.DefaultPrompt)
-		}
-	}
-}
-
-func TestDefaultPrompt_InstructsInferTypeFromDiff(t *testing.T) {
-	t.Parallel()
-
-	// The AI must infer the type (feat/fix/chore/docs/…) from the diff.
-	if !strings.Contains(commit.DefaultPrompt, "infer") {
-		t.Errorf("default prompt does not instruct the AI to infer the type:\n%s", commit.DefaultPrompt)
-	}
-	if !strings.Contains(commit.DefaultPrompt, "type") {
-		t.Errorf("default prompt does not mention the type to infer:\n%s", commit.DefaultPrompt)
-	}
-}
-
-func TestDefaultPrompt_InstructsScopeOmittedByDefault(t *testing.T) {
-	t.Parallel()
-
-	// Scope is off by default — the prompt must say to omit it and not to guess it.
-	if !strings.Contains(commit.DefaultPrompt, "scope") {
-		t.Errorf("default prompt does not address scope:\n%s", commit.DefaultPrompt)
-	}
-	if !strings.Contains(commit.DefaultPrompt, "Omit the scope") {
-		t.Errorf("default prompt does not instruct omitting the scope:\n%s", commit.DefaultPrompt)
-	}
-}
-
-func TestDefaultPrompt_ForbidsCommitPrefixAndBranding(t *testing.T) {
-	t.Parallel()
-
-	// No mint branding / commit_prefix and no preamble or meta-commentary in the
-	// message text — a plain conventional-commit message is emitted directly.
-	for _, want := range []string{"branding", "no preamble", "no meta-commentary"} {
-		if !strings.Contains(commit.DefaultPrompt, want) {
-			t.Errorf("default prompt does not forbid branding/preamble (missing %q):\n%s", want, commit.DefaultPrompt)
-		}
-	}
-}
-
-func TestDefaultPrompt_RequestsNoMachineParseableWrapper(t *testing.T) {
-	t.Parallel()
-
-	// The AI returns the commit message DIRECTLY — no machine-parseable wrapper
-	// labels. The prompt must say so explicitly so no wrapper is requested.
-	if !strings.Contains(commit.DefaultPrompt, "Return the commit message directly") {
-		t.Errorf("default prompt does not request the message returned directly (no machine wrapper):\n%s", commit.DefaultPrompt)
 	}
 }
 

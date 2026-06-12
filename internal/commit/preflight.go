@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"mint/internal/runner"
 )
@@ -193,10 +194,16 @@ func emptyStagingError(ctx context.Context, r runner.CommandRunner, root string,
 // its trimmed stdout is empty. It is the shared probe of the emptiness checks: a genuine
 // git failure is wrapped and surfaced (never mistaken for an empty result). Anchoring at
 // root keeps the cwd-relative `-- .` probes whole-tree from any invocation directory.
+// The trim strips NUL alongside whitespace because the untracked probe is a `-z`
+// enumeration (NUL-terminated entries) — output consisting only of separators must
+// count as empty, whatever mix of probe formats this shared helper serves.
 func gitOutputEmpty(ctx context.Context, r runner.CommandRunner, root string, args ...string) (bool, error) {
 	res, err := r.RunInDir(ctx, root, nil, "git", args...)
 	if err != nil {
 		return false, fmt.Errorf("checking %v: %w", args, err)
 	}
-	return strings.TrimSpace(res.Stdout) == "", nil
+	trimmed := strings.TrimFunc(res.Stdout, func(c rune) bool {
+		return c == 0 || unicode.IsSpace(c)
+	})
+	return trimmed == "", nil
 }

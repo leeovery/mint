@@ -7,6 +7,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/commit"
+	"mint/internal/notes"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -208,6 +209,58 @@ func TestRun_AIFailure_PushArmed_EditorSaveCommitsThenPushes(t *testing.T) {
 	pushes := editorPushInvocations(er)
 	if len(pushes) != 1 {
 		t.Fatalf("git push invocations = %d (%v), want exactly 1 after the AI-failure save-as-accept commit", len(pushes), pushes)
+	}
+	commitIdx := editorGitIndexOf(er, "commit")
+	pushIdx := editorGitIndexOf(er, "push")
+	if commitIdx >= pushIdx {
+		t.Errorf("commit at %d, push at %d; the push must run strictly AFTER the commit", commitIdx, pushIdx)
+	}
+}
+
+// TestRun_Oversized_PushArmed_EditorSaveCommitsThenPushes proves the oversized-diff
+// (3-4) editor drop with -p commits THEN pushes on a non-empty save: the size guard
+// skips L2 and routes to the editor (the oversized note is the branch discriminator),
+// the non-empty save commits, then the armed push follows — the named 5-3 AC for the
+// oversized trigger, asserted explicitly rather than only structurally via the shared
+// commitAccept tail.
+func TestRun_Oversized_PushArmed_EditorSaveCommitsThenPushes(t *testing.T) {
+	t.Parallel()
+
+	const saved = "feat: human message for an oversized diff, then push\n"
+	rec := &presentertest.RecordingPresenter{}
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached -- . (L1)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},                    // git var GIT_EDITOR
+		runner.ScriptedCall{}, // git commit -F -
+		runner.ScriptedCall{}, // git push
+	)
+	er := &editorRunner{fake: f, saved: saved}
+	tr := &failTransport{err: fmt.Errorf("commit size guard: %w", notes.ErrDiffTooLarge)}
+	deps := aiFailDeps(rec, er, tr, commit.StagedOnly, t.TempDir())
+	deps.Push = true
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v; an oversized diff falls back to the editor then pushes, it does not abort", err)
+	}
+
+	// The oversized branch ran (not the noteless AI-failure branch): the note fired.
+	gotNote := false
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && ev.Warn.Message == "diff too large to summarise — opening editor" {
+			gotNote = true
+		}
+	}
+	if !gotNote {
+		t.Errorf("kinds = %v, want the oversized note Warn (proving the oversized branch)", rec.Kinds())
+	}
+
+	if got := editorCommitInvocations(er); len(got) != 1 || got[0].Stdin != saved {
+		t.Fatalf("commit invocations = %v, want exactly one carrying the saved body %q", got, saved)
+	}
+	if pushes := editorPushInvocations(er); len(pushes) != 1 {
+		t.Fatalf("git push invocations = %d (%v), want exactly 1 after the oversized save-as-accept commit", len(pushes), pushes)
 	}
 	commitIdx := editorGitIndexOf(er, "commit")
 	pushIdx := editorGitIndexOf(er, "push")

@@ -119,21 +119,6 @@ func editorDeps(rec *presentertest.RecordingPresenter, er *editorRunner, opts ed
 	}
 }
 
-// failLoudDeps builds production-shaped Deps over an editorRunner with the given
-// Yes/StdinInteractive guard inputs. A launchable editor is left SEEDED so a test can
-// prove the guard fires before resolution/launch (the editor is present yet never
-// reached). NoAI is parameterised; Transport is supplied when set.
-func failLoudDeps(rec *presentertest.RecordingPresenter, er *editorRunner, mode commit.StagingMode, root string, yes, stdinInteractive, noAI bool, tr commit.Transport) commit.Deps {
-	return editorDeps(rec, er, editorDepsOptions{
-		Transport:           tr,
-		Root:                root,
-		Staging:             mode,
-		NoAI:                noAI,
-		Yes:                 yes,
-		NonInteractiveStdin: !stdinInteractive,
-	})
-}
-
 // TestRun_FallbackUnderYes_FailsLoud proves a fallback under -y fails loud with the
 // exact spec message across ALL THREE converging triggers (--no-ai, AI-failure,
 // oversized): no editor launch, no staging, no commit. A launchable editor is seeded
@@ -152,7 +137,7 @@ func TestRun_FallbackUnderYes_FailsLoud(t *testing.T) {
 			seed: func() *runner.FakeRunner { return seedPreflightOnly() },
 			root: func(t *testing.T) string { return t.TempDir() },
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
-				return failLoudDeps(rec, er, commit.StagedOnly, root, true, true, true, nil)
+				return editorDeps(rec, er, editorDepsOptions{Root: root, NoAI: true, Yes: true})
 			},
 		},
 		{
@@ -161,7 +146,7 @@ func TestRun_FallbackUnderYes_FailsLoud(t *testing.T) {
 			root: func(t *testing.T) string { return t.TempDir() },
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
 				tr := &failTransport{err: fmt.Errorf("generating commit message: %w", ai.ErrGenerationFailed)}
-				return failLoudDeps(rec, er, commit.StagedOnly, root, true, true, false, tr)
+				return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root, Yes: true})
 			},
 		},
 		{
@@ -170,7 +155,7 @@ func TestRun_FallbackUnderYes_FailsLoud(t *testing.T) {
 			root: oversizedRoot,
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
 				tr := scriptedTransport("must never be returned (L2 was skipped)")
-				return failLoudDeps(rec, er, commit.StagedOnly, root, true, true, false, tr)
+				return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root, Yes: true})
 			},
 		},
 	}
@@ -207,7 +192,7 @@ func TestRun_FallbackUnderNonTTYStdin_FailsLoud(t *testing.T) {
 			seed: func() *runner.FakeRunner { return seedPreflightOnly() },
 			root: func(t *testing.T) string { return t.TempDir() },
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
-				return failLoudDeps(rec, er, commit.StagedOnly, root, false, false, true, nil)
+				return editorDeps(rec, er, editorDepsOptions{Root: root, NoAI: true, NonInteractiveStdin: true})
 			},
 		},
 		{
@@ -216,7 +201,7 @@ func TestRun_FallbackUnderNonTTYStdin_FailsLoud(t *testing.T) {
 			root: func(t *testing.T) string { return t.TempDir() },
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
 				tr := &failTransport{err: fmt.Errorf("generating commit message: %w", ai.ErrGenerationFailed)}
-				return failLoudDeps(rec, er, commit.StagedOnly, root, false, false, false, tr)
+				return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root, NonInteractiveStdin: true})
 			},
 		},
 		{
@@ -225,7 +210,7 @@ func TestRun_FallbackUnderNonTTYStdin_FailsLoud(t *testing.T) {
 			root: oversizedRoot,
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
 				tr := scriptedTransport("must never be returned (L2 was skipped)")
-				return failLoudDeps(rec, er, commit.StagedOnly, root, false, false, false, tr)
+				return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root, NonInteractiveStdin: true})
 			},
 		},
 	}
@@ -256,7 +241,7 @@ func TestRun_FallbackNonTTYStdin_NeverReachesEditorResolution(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	er := &editorRunner{fake: seedPreflightOnly(), saved: "feat: launchable but never reached\n"}
 
-	err := commit.Run(context.Background(), failLoudDeps(rec, er, commit.StagedOnly, t.TempDir(), false, false, true, nil))
+	err := commit.Run(context.Background(), editorDeps(rec, er, editorDepsOptions{Root: t.TempDir(), NoAI: true, NonInteractiveStdin: true}))
 	assertFailLoudNoMutation(t, rec, er, err)
 
 	// The guard fired before editor resolution: only the preflight read ran — no
@@ -293,7 +278,7 @@ func TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud(t *testing.T) {
 			},
 			root: func(t *testing.T) string { return t.TempDir() },
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
-				return failLoudDeps(rec, er, commit.StagedOnly, root, false, true, true, nil)
+				return editorDeps(rec, er, editorDepsOptions{Root: root, NoAI: true})
 			},
 		},
 		{
@@ -308,7 +293,7 @@ func TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud(t *testing.T) {
 			},
 			root: func(t *testing.T) string { return t.TempDir() },
 			deps: func(rec *presentertest.RecordingPresenter, er *editorRunner, root string) commit.Deps {
-				return failLoudDeps(rec, er, commit.StagedOnly, root, false, true, true, nil)
+				return editorDeps(rec, er, editorDepsOptions{Root: root, NoAI: true})
 			},
 		},
 	}
@@ -367,7 +352,7 @@ func TestRun_FallbackOnTTY_AbortedEditor_StaysTrueNoOp(t *testing.T) {
 	// a no-op signal rather than a launch error — so the run reaches the editor and aborts.
 	er := &editorRunner{fake: f, launchErr: errExitOne}
 
-	err := commit.Run(context.Background(), failLoudDeps(rec, er, commit.StagedOnly, t.TempDir(), false, true, true, nil))
+	err := commit.Run(context.Background(), editorDeps(rec, er, editorDepsOptions{Root: t.TempDir(), NoAI: true}))
 	if err == nil {
 		t.Fatal("Run returned nil for an aborted editor; want a non-zero no-op abort")
 	}
@@ -393,7 +378,7 @@ func TestRun_NoAI_TTY_LaunchableEditor_SaveAsAcceptStillWorks(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	er := &editorRunner{fake: seedNoAIDefault("myedit"), saved: saved}
 
-	deps := failLoudDeps(rec, er, commit.StagedOnly, t.TempDir(), false, true, true, nil)
+	deps := editorDeps(rec, er, editorDepsOptions{Root: t.TempDir(), NoAI: true})
 	if err := commit.Run(context.Background(), deps); err != nil {
 		t.Fatalf("Run returned unexpected error on a legitimate interactive run: %v", err)
 	}

@@ -13,11 +13,7 @@ import (
 // mutates nothing before the commit sink, so there is never anything to unwind — a
 // failure is always a plain surface.
 func surface(p presenter.Presenter, stage string, cause error) error {
-	p.StageFailed(presenter.StageFailure{
-		Name:    stage,
-		Message: cause.Error(),
-	})
-	return cause
+	return surfaceOutput(p, stage, cause, "")
 }
 
 // surfaceOutput is surface with the failed command's captured stderr passed through

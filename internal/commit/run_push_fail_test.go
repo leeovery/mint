@@ -360,6 +360,28 @@ func TestRun_PushFailure_EditorAcceptSameGenericWarn(t *testing.T) {
 	assertNoDestructiveGit(t, editorGitInvocations(er))
 }
 
+// TestRun_PushFailure_RunFinishedStillFiresWithOneWarn locks "the warn does not
+// suppress the close-out" on the path where it matters — the FAILED push: the commit
+// is the run's success, so RunFinished still fires alongside exactly ONE generic push
+// warn (and no StageFailed/Unwound), even though Run returns non-nil for the exit code.
+func TestRun_PushFailure_RunFinishedStillFiresWithOneWarn(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+	r := seedDiffThenCommitThenFailedPush("diff --git a/x b/x\n+work", rejectedPushStderr)
+	deps := newCommitDeps(rec, r, scriptedTransport("feat: warn does not suppress close-out"), t.TempDir())
+	deps.Push = true
+
+	if err := commit.Run(context.Background(), deps); err == nil {
+		t.Fatal("Run returned nil on a failed push; want a non-zero abort (the push failed)")
+	}
+
+	if !hasKind(rec, presentertest.KindRunFinished) {
+		t.Errorf("RunFinished did not fire on a failed push; the commit IS the run's success, so the close-out must still run")
+	}
+	solePushWarn(t, rec)
+}
+
 // TestRun_PushSuccess_StillFinishesZeroNoWarn is the 5-2/5-3 happy-path regression: a
 // SUCCESSFUL push still returns nil (exit 0), fires RunFinished, and emits NO warn —
 // the warn-don't-unwind handling never triggers on success.

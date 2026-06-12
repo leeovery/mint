@@ -677,6 +677,28 @@ func TestLoad_UnknownReleaseKey_RejectedNamingReleaseTable(t *testing.T) {
 	}
 }
 
+func TestLoad_UnknownCommitKey_RejectedNamingCommitTable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [commit] deliberately carries ONLY context/prompt — no push/scope keys (push is
+	// FLAG-ONLY by spec). An unknown key — the explicitly-excluded `push` above all —
+	// must be rejected naming both the key and the [commit] table, pinning the
+	// deliberately-excluded-keys guarantee against regression.
+	writeConfig(t, dir, "[commit]\npush = true\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for unknown [commit] key, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "push") {
+		t.Errorf("error = %q, want it to name the unknown key %q", err.Error(), "push")
+	}
+	if !strings.Contains(err.Error(), "[commit]") {
+		t.Errorf("error = %q, want it to name the [commit] table", err.Error())
+	}
+}
+
 func TestLoad_UnknownReleaseHooksKey_RejectedNamingHooksTable(t *testing.T) {
 	t.Parallel()
 
@@ -1415,6 +1437,11 @@ func TestResolveCommitPrompt_MissingPromptFile_FailsLoudNamingPath(t *testing.T)
 
 func TestResolveCommitPrompt_UnreadablePromptFile_FailsLoudNamingPath(t *testing.T) {
 	t.Parallel()
+	if os.Geteuid() == 0 {
+		// root ignores 0o000 permissions, so the unreadable-file premise does not hold
+		// and the assertion would silently pass; skip rather than fake-verify.
+		t.Skip("running as root: stripped permissions do not make the file unreadable")
+	}
 
 	dir := t.TempDir()
 	// A configured [commit].prompt path that exists but cannot be read (here, perms

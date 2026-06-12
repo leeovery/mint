@@ -35,7 +35,12 @@ func TestRun_Oversized_Unattended_NoNote_FailsLoud(t *testing.T) {
 			er := &editorRunner{fake: seedAIPreflightOnly(), saved: "feat: should never be saved\n"}
 			tr := scriptedTransport("must never be returned (L2 was skipped)")
 
-			deps := failLoudDeps(rec, er, commit.StagedOnly, oversizedRoot(t), tt.yes, tt.stdinInteractive, false, tr)
+			deps := editorDeps(rec, er, editorDepsOptions{
+				Transport:           tr,
+				Root:                oversizedRoot(t),
+				Yes:                 tt.yes,
+				NonInteractiveStdin: !tt.stdinInteractive,
+			})
 			err := commit.Run(context.Background(), deps)
 
 			// Standard fail-loud contract: exact message, surfaced once, nothing mutated.
