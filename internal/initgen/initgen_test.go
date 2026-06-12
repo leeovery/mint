@@ -50,6 +50,7 @@ var optionalKeys = []string{
 	"preflight",
 	"pre_tag",
 	"post_release",
+	"[commit]",
 }
 
 func TestMintTOML_OptionalKeysPresentButCommentedWithExplanation(t *testing.T) {

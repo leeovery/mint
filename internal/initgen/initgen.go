@@ -61,5 +61,10 @@ on_notes_failure = 'abort'
 # pre_tag = 'npm run build'                        # runs after notes, before the tag (single-command form)
 # pre_tag also accepts an array of commands run in order (set ONE pre_tag, not both): ['npm ci', 'npm run build']
 # post_release = 'scripts/notify.sh'               # runs after the release is published
+
+# --- mint commit (AI commit messages; both keys optional) ---
+# [commit]
+# context = 'Reference the ticket number if the branch carries one.'  # project guidance injected into the commit-message prompt
+# prompt = '.mint/commit-prompt.md'                # full prompt-override file — create it yourself; mint init does NOT scaffold it
 `
 }
