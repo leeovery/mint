@@ -4,7 +4,7 @@
 
 **AI-minted releases and commits**
 
-A Go CLI that cuts releases and writes commits with AI-generated notes —
+A Go CLI that cuts releases and writes commits with AI-generated notes,
 <br>wrapped in git-safe automation that reviews everything before it mutates anything.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -16,7 +16,7 @@ A Go CLI that cuts releases and writes commits with AI-generated notes —
 
 ---
 
-Mint replaces the per-project release script. `mint release` runs the whole pipeline — version bump, AI release notes, changelog, tag, atomic push, provider release — with a review gate before anything is written. `mint commit` mints a Conventional Commits message from your diff, shows it to you, and commits on accept.
+Mint replaces the per-project release script. `mint release` runs the whole pipeline (version bump, AI release notes, changelog, tag, atomic push, provider release) with a review gate before anything is written. `mint commit` mints a Conventional Commits message from your diff, shows it to you, and commits on accept.
 
 Everything interactive is reviewable, everything unattended fails loud, and nothing touches your repo until you say yes.
 
@@ -26,8 +26,8 @@ Release scripts accrete: bump the version file, regenerate the changelog, rememb
 
 Mint folds that into one binary with one config file:
 
-- **AI does the writing.** Release notes are generated from the actual diff and commit history; commit messages from the staged changes. You review, edit, or regenerate at a gate — the AI never gets the last word.
-- **One atomic point of no return.** Everything before the `git push --atomic` is unwindable: if anything fails pre-push, mint surgically unwinds its own commits, tag, and stash — and only its own — leaving the repo exactly as it found it.
+- **AI does the writing.** Release notes are generated from the actual diff and commit history; commit messages from the staged changes. You review, edit, or regenerate at a gate; the AI never gets the last word.
+- **One atomic point of no return.** Everything before the `git push --atomic` is unwindable: if anything fails pre-push, mint surgically unwinds its own commits, tag, and stash, and only its own, leaving the repo exactly as it found it.
 - **Mutations are lock-safe.** Every git mutation retries past a contended `.git` lock and clears provably stale ones, so a background agent or editor holding the index lock can't blow up a release.
 - **Unattended means unattended.** `-y` runs end to end or fails loud. Mint never hangs on a hidden prompt and never commits an empty message because nobody was there.
 
@@ -52,14 +52,14 @@ mint init                 # drop .mint.toml + the release shim into your repo
 mint release              # cut a patch release: notes → review → tag → push → publish
 mint release -m           # minor bump
 mint commit -a            # stage tracked changes, mint a commit message, review, commit
-mint commit -Apy          # stage everything, auto-accept, push — fully unattended
+mint commit -Apy          # stage everything, auto-accept, push: fully unattended
 ```
 
 ## Commands
 
 ### `init`
 
-Scaffold mint into a repo: writes a commented `.mint.toml` (every key shown at its default, optional keys commented with one-line explanations) and a `release` shim at the git-resolved repo root. Idempotent — existing files are skipped unless `--force`.
+Scaffold mint into a repo: writes a commented `.mint.toml` (every key shown at its default, optional keys commented with one-line explanations) and a `release` shim at the git-resolved repo root. Idempotent: existing files are skipped unless `--force`.
 
 ```bash
 mint init [--force] [--plain]
@@ -104,7 +104,7 @@ mint release -d                     # preview the full plan, change nothing
 
 ### `release regenerate`
 
-Regenerate the notes for an *existing* release and rewrite the chosen surface(s) — the provider release body, `CHANGELOG.md`, or both.
+Regenerate the notes for an *existing* release and rewrite the chosen surface(s): the provider release body, `CHANGELOG.md`, or both.
 
 ```bash
 mint release regenerate <version> [options]
@@ -128,7 +128,7 @@ mint release regenerate --all --target changelog    # rebuild the whole changelo
 
 ### `commit`
 
-Mint an AI-generated Conventional Commits message from the would-be-committed diff, review it at the gate, and create the commit. Nothing is staged or committed until you accept — a decline leaves the index byte-for-byte untouched.
+Mint an AI-generated Conventional Commits message from the would-be-committed diff, review it at the gate, and create the commit. Nothing is staged or committed until you accept; a decline leaves the index byte-for-byte untouched.
 
 ```bash
 mint commit [-a | -A] [-p] [-y] [--no-ai] [--plain]
@@ -147,7 +147,7 @@ Short flags bundle: `-Ap`, `-Apy`, `-ay` all work.
 
 At the gate: **`y`** accept (also Enter), **`n`** abort, **`e`** edit in `$EDITOR` (loops back to the gate), **`r`** regenerate with a one-time context line.
 
-When the AI can't produce a message — `--no-ai`, a transport failure, or a diff over `max_diff_lines` — mint opens `$EDITOR` (resolved via git's own chain: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`) and the save becomes the accept. Unattended runs with no message source fail loud instead.
+When the AI can't produce a message (`--no-ai`, a transport failure, or a diff over `max_diff_lines`), mint opens `$EDITOR` (resolved via git's own chain: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`) and the save becomes the accept. Unattended runs with no message source fail loud instead.
 
 A failed `-p` push never unwinds the commit: mint warns once with git's own stderr passed through verbatim, keeps the commit, and exits non-zero.
 
@@ -168,7 +168,7 @@ Print mint's own version. `mint --version` is equivalent.
 
 ## Configuration
 
-`mint init` writes a commented `.mint.toml` at the repo root. The file is fully optional — every key defaults sensibly.
+`mint init` writes a commented `.mint.toml` at the repo root. The file is fully optional: every key defaults sensibly.
 
 ```toml
 # --- Engine-level keys (shared by every mint verb) ---
@@ -206,7 +206,7 @@ on_notes_failure = 'abort'
 
 | Key | Default | Description |
 |---|---|---|
-| `ai_command` | `claude -p` | the AI invocation — prompt on stdin, message on stdout (see [The AI Transport](#the-ai-transport)) |
+| `ai_command` | `claude -p` | the AI invocation: prompt on stdin, message on stdout (see [The AI Transport](#the-ai-transport)) |
 | `max_diff_lines` | `50000` | diffs over this (post-exclusion) skip the AI |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
 
@@ -231,7 +231,7 @@ on_notes_failure = 'abort'
 
 | Hook | Runs |
 |---|---|
-| `preflight` | before any release work — failure aborts |
+| `preflight` | before any release work; failure aborts |
 | `pre_tag` | after notes, before the tag (string or array of commands) |
 | `post_release` | after the release is published |
 
@@ -242,7 +242,7 @@ on_notes_failure = 'abort'
 | `context` | | project guidance injected into the commit-message prompt |
 | `prompt` | | path to a full commit-prompt override file |
 
-Both verbs share the two-knob model: `context` *injects into* the default prompt; `prompt` *replaces* it. Unknown or mistyped keys fail loud at load — mint never silently ignores config.
+Both verbs share the two-knob model: `context` *injects into* the default prompt; `prompt` *replaces* it. Unknown or mistyped keys fail loud at load; mint never silently ignores config.
 
 ## The AI Transport
 
@@ -259,9 +259,9 @@ The transport applies a 60s per-attempt deadline, retries bad output (empty/non-
 ## Safety Model
 
 - **Mutate nothing until accept.** `mint commit` computes the would-be-committed diff read-only; staging (`git add`) happens only after you accept. Declining is a true no-op.
-- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked; on any pre-push failure (including Ctrl-C) mint removes *its own* commits, tag, and autostash — never your work — and reports exactly what it undid.
+- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked; on any pre-push failure (including Ctrl-C) mint removes *its own* commits, tag, and autostash (never your work) and reports exactly what it undid.
 - **One atomic push.** Branch and tag go up in a single `git push --atomic`; there is no window where the tag exists without its commit.
-- **Never unwind after success.** A failed post-commit push or `post_release` hook warns — with the tool's own output passed through verbatim — and keeps the work.
+- **Never unwind after success.** A failed post-commit push or `post_release` hook warns, with the tool's own output passed through verbatim, and keeps the work.
 - **Lock-resilient mutations.** Every `git` mutation retries contended `.git` locks and clears provably stale ones.
 - **Fail loud, never hang.** Non-TTY without `-y` is a hard error. Unattended runs with no message source abort with one clear line.
 
