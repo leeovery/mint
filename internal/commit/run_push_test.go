@@ -12,7 +12,7 @@ import (
 )
 
 // pushInvocations returns every recorded `git push` invocation, in order — the
-// auto-push step the accept path runs through the git_safe Committer after a
+// auto-push step the accept path runs through the git_safe Mutator after a
 // successful commit when -p is armed.
 func pushInvocations(r *runner.FakeRunner) []runner.Invocation {
 	var pushes []runner.Invocation
@@ -40,9 +40,9 @@ func seedDiffThenCommitThenPush(diff string) *runner.FakeRunner {
 }
 
 // TestRun_PushArmed_PushesAfterGateAcceptCommit proves that with -p armed
-// (Deps.Push true) a plain `git push` runs via the git_safe Committer AFTER a
+// (Deps.Push true) a plain `git push` runs via the git_safe Mutator AFTER a
 // successful gate-accept commit. The push is recorded on the SAME runner the
-// Mutator wraps — proof it flows through the Committer seam, not a side channel.
+// Mutator wraps — proof it flows through the Mutator seam, not a side channel.
 func TestRun_PushArmed_PushesAfterGateAcceptCommit(t *testing.T) {
 	t.Parallel()
 
@@ -177,7 +177,7 @@ func TestRun_PushArmedNoCommit_GenerateFailure_NoPush(t *testing.T) {
 	deps := commit.Deps{
 		Presenter: rec,
 		Runner:    r,
-		Committer: git.NewMutator(r),
+		Mutator:   git.NewMutator(r),
 		Transport: &recordingTransport{err: errExitOne},
 		Root:      t.TempDir(),
 		Push:      true,
@@ -227,7 +227,7 @@ func TestRun_PushArmed_PushesAfterDashYAutoAcceptCommit(t *testing.T) {
 }
 
 // TestRun_PushViaGitSafe_NotRawRunner proves the auto-push flows through the
-// lock-resilient git_safe Committer, not the raw runner: a stale-lock contention on
+// lock-resilient git_safe Mutator, not the raw runner: a stale-lock contention on
 // the first push attempt is RETRIED (the raw runner would surface the first failure).
 // Seeding a lock contention on the first push and a success on the second shows the
 // retry — proof the push goes through the same git_safe wrapper as the commit.
@@ -253,7 +253,7 @@ func TestRun_PushViaGitSafe_NotRawRunner(t *testing.T) {
 		Presenter: rec,
 		Runner:    r,
 		// A no-op backoff keeps the retry deterministic and never sleeps.
-		Committer: git.NewMutator(r, git.WithBackoff(func(int) {})),
+		Mutator:   git.NewMutator(r, git.WithBackoff(func(int) {})),
 		Transport: scriptedTransport(message),
 		Root:      t.TempDir(),
 		Push:      true,

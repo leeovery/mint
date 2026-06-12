@@ -20,7 +20,7 @@ func editDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr commit
 	return commit.Deps{
 		Presenter:        rec,
 		Runner:           er,
-		Committer:        git.NewMutator(er, git.WithBackoff(func(int) {})),
+		Mutator:          git.NewMutator(er, git.WithBackoff(func(int) {})),
 		Transport:        tr,
 		Root:             root,
 		StdinInteractive: true,

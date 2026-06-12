@@ -19,7 +19,7 @@ package commit
 //     -p push (Phase 5) are NOT implemented. The bare path is STAGED-ONLY — it runs
 //     NO `git add`; the only mutation is the commit itself.
 //
-// git_safe is non-negotiable: the commit mutation flows through the Committer seam
+// git_safe is non-negotiable: the commit mutation flows through the Mutator seam
 // (the consumed lock-resilient *git.Mutator in production), NEVER the raw runner — a
 // contended/stale .git lock is retried/cleared so a background agent or editor
 // briefly holding the index lock cannot blow up a commit.
@@ -139,19 +139,27 @@ const (
 // INTERCEPTS this sentinel before it can surface — it carries no user-facing message.
 var errRegenerateFallback = errors.New("commit: regenerate failed, routing to editor fallback")
 
-// Committer is commit's git-mutation SINK seam: the bare commit's `git commit -F -`
-// flows through it so the mutation is lock-resilient (git_safe), NEVER the raw runner.
+// Mutator is commit's git-mutation SINK seam: EVERY git mutation commit makes flows
+// through it so each is lock-resilient (git_safe), NEVER the raw runner. Three distinct
+// mutations route through it — staging (`git add -u`/`git add -A`, stageForMode), the
+// commit itself (`git commit -F -`, createCommit), and the auto-push (`git push`,
+// pushAfterCommit) — and each one needs the lock wrapper, so a background agent or
+// editor briefly holding the `.git` index lock cannot blow up staging, the commit, or
+// the push. It is named to mirror engine.ReleaseDeps.Mutator.
+//
 // It is defined HERE — where it is consumed — so the orchestrator stays decoupled from
 // the git package's concretion: *git.Mutator satisfies it in production (carrying the
 // retry + stale-lock discrimination), while tests inject a fake/real Mutator over a
-// FakeRunner. The signature mirrors git.Mutator.Mutate exactly: the message body is
-// passed as raw BYTES on stdin (a retry must re-pipe the full payload), and the argv
-// follows. Read-only git (commit's L1 staged-diff) stays on the plain Runner — only
-// the mutation needs the wrapper.
-type Committer interface {
-	// Mutate runs a git mutation with lock resilience, piping stdin (the commit body)
-	// as raw bytes when non-nil. It returns the runner Result and a non-nil error on a
-	// non-lock failure or an exhausted retry budget.
+// FakeRunner. The signature mirrors git.Mutator.Mutate exactly: a body (the commit
+// message) is passed as raw BYTES on stdin (a retry must re-pipe the full payload), and
+// the argv follows; staging and push pass nil stdin. Read-only git (commit's L1
+// staged-diff and the would-be-staged probes) stays on the plain Runner — only the
+// mutations need the wrapper.
+type Mutator interface {
+	// Mutate runs a git mutation with lock resilience, piping stdin (the commit body for
+	// `git commit -F -`; nil for `git add`/`git push`) as raw bytes when non-nil. It
+	// returns the runner Result and a non-nil error on a non-lock failure or an exhausted
+	// retry budget.
 	Mutate(ctx context.Context, stdin []byte, name string, args ...string) (runner.Result, error)
 }
 
@@ -168,10 +176,11 @@ type Deps struct {
 	// through unchanged — the read-only `git diff --cached` does NOT go through the
 	// lock wrapper.
 	Runner runner.CommandRunner
-	// Committer is the lock-resilient git MUTATION sink (git_safe). The commit — the
-	// bare path's ONLY mutation — flows through it; production wires *git.Mutator
-	// constructed once over the same Runner.
-	Committer Committer
+	// Mutator is the lock-resilient git MUTATION sink (git_safe). ALL of commit's git
+	// mutations flow through it — staging (`git add`), the commit (`git commit -F -`),
+	// and the auto-push (`git push`) — so each is retried/cleared past a contended/stale
+	// `.git` lock; production wires *git.Mutator constructed once over the same Runner.
+	Mutator Mutator
 	// Transport is the OPTIONAL L2 AI seam the Generator hands its composed prompt to.
 	// It exists so tests can drive the real generate thread over the FakeRunner while
 	// scripting the AI body directly. When nil, Run builds the production ai.Transport
@@ -232,7 +241,7 @@ type Deps struct {
 //  3. Show the minted message (ShowMessage) and present the Continue? review gate
 //     (reviewLoop) — BOTH before the commit sink, so an accept proceeds and a
 //     decline aborts with nothing mutated (the mutate-nothing-until-accept invariant).
-//  4. Create the commit through the git_safe Committer, piping the generated body on
+//  4. Create the commit through the git_safe Mutator, piping the generated body on
 //     stdin (`git commit -F -`) so the commit message is the minted body BYTE-FOR-BYTE
 //     — no commit_prefix, no branding, no reformatting.
 //
@@ -378,7 +387,7 @@ func Run(ctx context.Context, deps Deps) error {
 //     is NO synthetic stub/comment scaffolding, so emptiness is purely whitespace-only
 //     (no #-comment stripping — downstream 4-2 reuses this rule).
 //   - Non-empty save = ACCEPT → apply the mode's deferred staging FIRST, then commit the
-//     saved buffer, in that order, through the git_safe Committer (stage→commit, the
+//     saved buffer, in that order, through the git_safe Mutator (stage→commit, the
 //     same order the gate-accept path uses). Then, when -p is armed (5-1), the SAME
 //     single shared push step the gate-accept path uses (pushAfterCommit, 5-2) runs —
 //     so a non-empty save is a full accept: `mint commit -Ap --no-ai` stages, commits,
@@ -864,7 +873,7 @@ func commitTransport(deps Deps, cfg config.Config) Transport {
 //   - StagedOnly (the default): NO `git add` — commit the existing index exactly as
 //     staged (the Phase 1 path, unchanged).
 //
-// The staging `git add` is a MUTATION, so it flows through the SAME git_safe Committer as
+// The staging `git add` is a MUTATION, so it flows through the SAME git_safe Mutator as
 // the commit (never the raw runner): a contended/stale `.git` index lock is retried/cleared,
 // so a background agent or editor briefly holding the lock cannot blow up the staging step.
 // stdin is nil — `git add` reads no body.
@@ -880,13 +889,13 @@ func stageForMode(ctx context.Context, deps Deps) error {
 		return nil
 	}
 
-	if _, err := deps.Committer.Mutate(ctx, nil, "git", args...); err != nil {
+	if _, err := deps.Mutator.Mutate(ctx, nil, "git", args...); err != nil {
 		return fmt.Errorf("staging changes: %w", err)
 	}
 	return nil
 }
 
-// createCommit creates the commit through the git_safe Committer, piping the
+// createCommit creates the commit through the git_safe Mutator, piping the
 // generated body on stdin via `git commit -F -`. The body is passed as raw BYTES so a
 // lock-retry re-pipes the FULL payload (a shared io.Reader would be drained after the
 // first attempt). Piping via -F - (rather than -m) keeps a multi-line body intact and
@@ -894,7 +903,7 @@ func stageForMode(ctx context.Context, deps Deps) error {
 // BYTE-FOR-BYTE — no commit_prefix, no branding (commit_prefix stays a release-only
 // concern). No `git add` runs: the bare path commits the index exactly as staged.
 func createCommit(ctx context.Context, deps Deps, body string) error {
-	if _, err := deps.Committer.Mutate(ctx, []byte(body), "git", "commit", "-F", "-"); err != nil {
+	if _, err := deps.Mutator.Mutate(ctx, []byte(body), "git", "commit", "-F", "-"); err != nil {
 		return fmt.Errorf("creating commit: %w", err)
 	}
 	return nil
@@ -910,7 +919,7 @@ func createCommit(ctx context.Context, deps Deps, body string) error {
 // `git push`.
 //
 // The push is a git mutation/network op, so — like the commit and the deferred staging —
-// it flows through the git_safe Committer (NOT the raw runner): a contended/stale `.git`
+// it flows through the git_safe Mutator (NOT the raw runner): a contended/stale `.git`
 // lock is retried/cleared. stdin is nil — push reads no body.
 //
 // Sequencing makes the "push only after a successful commit" guarantee free: callers
@@ -943,7 +952,7 @@ func pushAfterCommit(ctx context.Context, deps Deps) error {
 	if !deps.Push {
 		return nil
 	}
-	res, err := deps.Committer.Mutate(ctx, nil, "git", "push")
+	res, err := deps.Mutator.Mutate(ctx, nil, "git", "push")
 	if err != nil {
 		// One generic warn for ALL causes; git's stderr travels verbatim in Output (the
 		// no-upstream "set an upstream" hint comes from git, never mint-authored text). No

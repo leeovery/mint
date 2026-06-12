@@ -18,11 +18,11 @@ import (
 // git_safe sink must retry past.
 var errExitOne = errors.New("exit status 1")
 
-// The lock-resilient git Mutator must satisfy commit's locally-defined Committer
-// sink seam: production wires *git.Mutator (git_safe) as the commit sink, so this
-// compile-time assertion guards the contract — the bare commit MUST go through the
-// lock-resilient wrapper, never the raw runner.
-var _ commit.Committer = (*git.Mutator)(nil)
+// The lock-resilient git Mutator must satisfy commit's locally-defined Mutator
+// sink seam: production wires *git.Mutator (git_safe) as the mutation sink, so this
+// compile-time assertion guards the contract — every commit mutation (stage, commit,
+// push) MUST go through the lock-resilient wrapper, never the raw runner.
+var _ commit.Mutator = (*git.Mutator)(nil)
 
 // The in-test proof commit.Run reports through the AS-BUILT presenter seam — Run
 // accepts presenter.Presenter, so the shipped recorder is a legal argument with no
@@ -62,7 +62,7 @@ func newCommitDeps(rec *presentertest.RecordingPresenter, r *runner.FakeRunner, 
 	return commit.Deps{
 		Presenter: rec,
 		Runner:    r,
-		Committer: git.NewMutator(r),
+		Mutator:   git.NewMutator(r),
 		Transport: tr,
 		Root:      root,
 	}
@@ -170,7 +170,7 @@ func TestRun_InferredTypeAppears_NoScopeByDefault(t *testing.T) {
 }
 
 // TestRun_CommitCreatedViaGitSafe proves the commit mutation flows through the
-// lock-resilient git_safe wrapper, not the raw runner: the wired Committer is the
+// lock-resilient git_safe wrapper, not the raw runner: the wired Mutator is the
 // *git.Mutator, and a lock-contended commit is RETRIED (the raw runner would
 // surface the first failure). Seeding a stale-lock contention on the first commit
 // attempt and a success on the second shows the retry — proof the sink is git_safe.
@@ -195,7 +195,7 @@ func TestRun_CommitCreatedViaGitSafe(t *testing.T) {
 		Presenter: rec,
 		Runner:    r,
 		// A no-op backoff keeps the retry deterministic and never sleeps.
-		Committer: git.NewMutator(r, git.WithBackoff(func(int) {})),
+		Mutator:   git.NewMutator(r, git.WithBackoff(func(int) {})),
 		Transport: scriptedTransport(message),
 		Root:      t.TempDir(),
 	}
@@ -311,7 +311,7 @@ func TestRun_GenerateFailure_AbortsWithoutCommitting(t *testing.T) {
 	deps := commit.Deps{
 		Presenter: rec,
 		Runner:    r,
-		Committer: git.NewMutator(r),
+		Mutator:   git.NewMutator(r),
 		Transport: &recordingTransport{err: errExitOne},
 		Root:      t.TempDir(),
 	}
@@ -577,7 +577,7 @@ func TestRun_NotAGitRepository_FailsLoudNoAINoCommit(t *testing.T) {
 	deps := commit.Deps{
 		Presenter: rec,
 		Runner:    r,
-		Committer: git.NewMutator(r),
+		Mutator:   git.NewMutator(r),
 		Transport: transport,
 		// Root left empty: Run resolves it via gitrepo.ResolveRoot.
 	}

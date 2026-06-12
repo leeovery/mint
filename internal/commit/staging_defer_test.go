@@ -318,7 +318,7 @@ func TestRun_StagingAddRunsViaGitSafe(t *testing.T) {
 		Presenter: rec,
 		Runner:    r,
 		// A no-op backoff keeps the retry deterministic and never sleeps.
-		Committer: git.NewMutator(r, git.WithBackoff(func(int) {})),
+		Mutator:   git.NewMutator(r, git.WithBackoff(func(int) {})),
 		Transport: scriptedTransport(message),
 		Root:      t.TempDir(),
 		Staging:   commit.All,

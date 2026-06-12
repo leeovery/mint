@@ -20,7 +20,7 @@ func noAIDeps(rec *presentertest.RecordingPresenter, er *editorRunner, mode comm
 	return commit.Deps{
 		Presenter: rec,
 		Runner:    er,
-		Committer: git.NewMutator(er, git.WithBackoff(func(int) {})),
+		Mutator:   git.NewMutator(er, git.WithBackoff(func(int) {})),
 		Root:      root,
 		Staging:   mode,
 		NoAI:      true,

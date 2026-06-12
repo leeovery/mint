@@ -304,7 +304,7 @@ func runCommit(ctx context.Context, rest []string) int {
 	deps := commit.Deps{
 		Presenter: p,
 		Runner:    r,
-		Committer: git.NewMutator(r),
+		Mutator:   git.NewMutator(r),
 		// Thread the resolved staging mode (StagedOnly by default; All/-a or AddAll/-A
 		// when given) into the orchestrator. Phase 2's deferred-staging tasks consume it;
 		// StagedOnly leaves the bare path unchanged.

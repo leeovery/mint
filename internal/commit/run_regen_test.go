@@ -51,7 +51,7 @@ func regenDeps(rec *presentertest.RecordingPresenter, r *runner.FakeRunner, tr c
 	return commit.Deps{
 		Presenter:        rec,
 		Runner:           r,
-		Committer:        git.NewMutator(r, git.WithBackoff(func(int) {})),
+		Mutator:          git.NewMutator(r, git.WithBackoff(func(int) {})),
 		Transport:        tr,
 		Root:             root,
 		StdinInteractive: true,

@@ -84,7 +84,7 @@ func TestRun_NoAI_PushArmed_EditorSaveCommitsThenPushes(t *testing.T) {
 // TestRun_NoAI_PushArmed_AddAll_EndToEnd proves `mint commit -Ap --no-ai` runs
 // stage -> commit -> push end-to-end on a non-empty editor save: no AI/transport call
 // (transport is nil under noAIDeps), then `git add -A`, `git commit -F -`, `git push`,
-// in that order, all via the git_safe Committer.
+// in that order, all via the git_safe Mutator.
 func TestRun_NoAI_PushArmed_AddAll_EndToEnd(t *testing.T) {
 	t.Parallel()
 
