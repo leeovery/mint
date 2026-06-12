@@ -210,7 +210,7 @@ func TestShowVersionEmitsNoFooterOrGate(t *testing.T) {
 	if strings.Contains(prettyGot, "released") {
 		t.Errorf("pretty version run emitted a release-style \"released\" footer:\n%q", prettyGot)
 	}
-	for _, marker := range []string{"done:", "Continue?", "› ", "y accept"} {
+	for _, marker := range []string{"done:", "Use these notes?", "› ", "y accept"} {
 		if strings.Contains(plainGot, marker) || strings.Contains(prettyGot, marker) {
 			t.Errorf("version run emitted gate/footer marker %q", marker)
 		}

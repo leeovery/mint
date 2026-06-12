@@ -119,6 +119,12 @@ type PrettyPresenter struct {
 	failure lipgloss.Style
 	warn    lipgloss.Style
 	dim     lipgloss.Style
+	// accent styles the INTERACTIVE affordances — the gate bar's hotkeys — in the
+	// terminal's cyan, the conventional "you can act here" tone (gh uses the same).
+	accent lipgloss.Style
+	// strong styles the gate bar's question in bold: the one line asking the user
+	// something carries the most visual weight on screen.
+	strong lipgloss.Style
 	// unwound styles the ↩ auto-unwind glyph. The spec assigns ↩ no specific
 	// colour, so it is styled DIM (bright-black) — a subdued, recovery-flavoured
 	// tone consistent with the other secondary narration (StageStarted, the Plan
@@ -254,6 +260,8 @@ func newPrettyPresenter(out io.Writer) *PrettyPresenter {
 		failure:          renderer.NewStyle().Foreground(lipgloss.Color("1")),   // red
 		warn:             renderer.NewStyle().Foreground(lipgloss.Color("214")), // amber / orange
 		dim:              renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
+		accent:           renderer.NewStyle().Foreground(lipgloss.Color("6")),   // cyan — interactive hotkeys
+		strong:           renderer.NewStyle().Bold(true),                        // bold — the gate question
 		unwound:          renderer.NewStyle().Foreground(lipgloss.Color("8")),   // ↩ glyph — dim (no spec colour; subdued recovery tone)
 		// Default to the real briandowns spinner factory; a test overrides it via
 		// WithSpinnerFactory. Never left nil so StageStarted can call it unconditionally.
@@ -310,10 +318,10 @@ func leafOrDefault(leaf string) string {
 func (p *PrettyPresenter) RunStarted(info RunInfo) {
 	leaf := leafOrDefault(info.Leaf)
 	if info.Version == "" {
-		p.writef("%s mint %s %s %s\n", leaf, p.dim.Render("›"), info.Action, info.Project)
+		p.writef("%s mint %s %s %s\n\n", leaf, p.dim.Render("›"), info.Action, info.Project)
 		return
 	}
-	p.writef("%s mint %s %s %s v%s\n", leaf, p.dim.Render("›"), info.Action, info.Project, info.Version)
+	p.writef("%s mint %s %s %s v%s\n\n", leaf, p.dim.Render("›"), info.Action, info.Project, info.Version)
 }
 
 // StageStarted starts the pretty stage-progress spinner for a BLOCKING stage, and
@@ -333,10 +341,20 @@ func (p *PrettyPresenter) StageStarted(s StageStart) {
 		return
 	}
 	p.stopSpinner()
-	startText := p.dim.Render(s.Name)
+	startText := p.dim.Render(stageStartText(s))
 	p.activeSpinnerText = startText
 	p.activeSpinner = p.newSpinner(p.out, startText)
 	p.activeSpinner.Start()
+}
+
+// stageStartText resolves the phrase the spinner animates: the engine-supplied
+// activity Text ("generating commit message…") when present, else the stage Name —
+// so a stage without a phrase still narrates.
+func stageStartText(s StageStart) string {
+	if s.Text != "" {
+		return s.Text
+	}
+	return s.Name
 }
 
 // stopSpinner stops the active stage spinner (clearing its line in place), resets
@@ -637,7 +655,7 @@ const (
 // commit message) come from the engine payload, and plain mode still writes the
 // body verbatim for pipes/scripts.
 func (p *PrettyPresenter) renderGutterPanel(title, body string) {
-	p.writef("%s\n", p.dim.Render(gutterPrefix+title))
+	p.writef("\n%s\n", p.dim.Render(gutterPrefix+title))
 	trimmed := strings.TrimRight(body, "\n")
 	if trimmed == "" {
 		return
@@ -871,11 +889,13 @@ func (p *PrettyPresenter) failNotInteractive(label string) {
 // newline — the cursor sits after "› " for the key read (or line read).
 func (p *PrettyPresenter) renderGate(g Gate) {
 	var b strings.Builder
-	b.WriteString(gateBarLabel(g))
-	b.WriteString(p.dim.Render(" ·"))
-	for _, choice := range g.Choices {
-		b.WriteString("  ")
-		b.WriteString(string(choice.Key))
+	b.WriteString(p.strong.Render(g.Question))
+	b.WriteString("  ")
+	for i, choice := range g.Choices {
+		if i > 0 {
+			b.WriteString(p.dim.Render(" · "))
+		}
+		b.WriteString(p.accent.Render(string(choice.Key)))
 		b.WriteString(" ")
 		if choice.Key == g.Default {
 			b.WriteString(choice.Action)
@@ -886,16 +906,6 @@ func (p *PrettyPresenter) renderGate(g Gate) {
 	b.WriteString(" ")
 	b.WriteString(p.dim.Render(promptMarker))
 	p.writef("\n%s", b.String())
-}
-
-// gateBarLabel resolves the bar's leading label: the gate's Subject (the content
-// word — "message", "notes", "source", …) when declared, else the Question with
-// any trailing "?" stripped — so a Subject-less gate still reads naturally.
-func gateBarLabel(g Gate) string {
-	if g.Subject != "" {
-		return g.Subject
-	}
-	return strings.TrimSuffix(g.Question, "?")
 }
 
 // initSkipGlyph is the NEUTRAL middot (U+00B7) the pretty init skipped notice
@@ -972,13 +982,15 @@ func (p *PrettyPresenter) RunFinished(r RunResult) {
 	}
 	switch r.Verb {
 	case VerbRelease:
+		p.writef("\n")
 		p.renderReleaseFooter(r)
 	case VerbRegenerate:
-		p.writef("%s regenerated %s %s\n", leafOrDefault(r.Leaf), r.Project, r.Summary)
+		p.writef("\n%s regenerated %s %s\n", leafOrDefault(r.Leaf), r.Project, r.Summary)
 	case VerbCommit:
 		// Version-less and URL-less: mirrors the release brand footer's shape with the
-		// commit verb word ("committed", not "released") and no v{X} segment.
-		p.writef("%s committed %s\n", leafOrDefault(r.Leaf), r.Project)
+		// commit verb word ("committed", not "released") and no v{X} segment. Every
+		// footer opens with a blank separator line — the close-out is its own block.
+		p.writef("\n%s committed %s\n", leafOrDefault(r.Leaf), r.Project)
 	case VerbInit, VerbVersion:
 		// No release-style footer: these verbs' own lines are the terminal output.
 	}

@@ -188,7 +188,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// it with a blocking StageStarted (spinner) and a StageSucceeded carrying the
 	// engine-measured Elapsed once the body resolves; a failure surfaces a StageFailed
 	// (via surface) and emits no StageSucceeded.
-	notesDone := emitBlockingStageStarted(p, "notes")
+	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…")
 	body, err := req.ProduceBody(ctx, source)
 	if err != nil {
 		return surface(p, "notes", err)

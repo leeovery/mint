@@ -331,7 +331,7 @@ func TestPrettyPresenterStartLineOmitsEmptyVersion(t *testing.T) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Action: "committing"})
 	})
 
-	want := "🌿 mint › committing acme\n"
+	want := "🌿 mint › committing acme\n\n"
 	if got := out.String(); got != want {
 		t.Errorf("version-less brand line = %q, want exactly %q (no dangling \" v\")", got, want)
 	}
@@ -540,8 +540,8 @@ func TestPrettyPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testin
 	})
 
 	got := out.String()
-	if got != "🌿 regenerated acme v1.4.0\n" {
-		t.Errorf("regenerate close = %q, want exactly %q (no url, no dangling separator)", got, "🌿 regenerated acme v1.4.0\n")
+	if got != "\n🌿 regenerated acme v1.4.0\n" {
+		t.Errorf("regenerate close = %q, want exactly %q (no url, no dangling separator)", got, "\n🌿 regenerated acme v1.4.0\n")
 	}
 }
 
@@ -600,7 +600,7 @@ func TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate(t *testing
 	_, _ = p.Prompt(presenter.ReuseConfirmGate())
 
 	got := out.String()
-	if !strings.Contains(got, "\nnotes ·  y accept  n abort › ") {
+	if !strings.Contains(got, "\nUse these notes?  y accept · n abort › ") {
 		t.Errorf("reuse confirm bar missing:\n%q", got)
 	}
 	if strings.Contains(got, " e edit") {
@@ -1174,16 +1174,17 @@ const prettyNotesBody = "Faster cold starts and a calmer log.\n" +
 // once on the test side.
 
 // TestPrettyPresenterShowNotesRendersGutterPanel is the core pretty acceptance:
-// ShowNotes renders a "│ release notes · v{X}" title line, a bare "│" spacer,
-// then every body line behind the "│ " gutter — and crucially NO titled/closing
-// rules (the rule design was dropped) and NO rounded-box corners. The no-colour
-// profile keeps the assertion on the exact layout rather than ANSI bytes.
+// ShowNotes opens with a LEADING blank separator line, then renders a
+// "│ release notes · v{X}" title line, a bare "│" spacer, then every body line
+// behind the "│ " gutter — and crucially NO titled/closing rules (the rule design
+// was dropped) and NO rounded-box corners. The no-colour profile keeps the
+// assertion on the exact layout rather than ANSI bytes.
 func TestPrettyPresenterShowNotesRendersGutterPanel(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: prettyNotesBody})
 	})
 
-	want := "│ release notes · v1.4.0\n" +
+	want := "\n│ release notes · v1.4.0\n" +
 		"│\n" +
 		"│ Faster cold starts and a calmer log.\n" +
 		"│\n" +
@@ -1220,14 +1221,14 @@ func TestPrettyPresenterShowNotesPreservesEmojiHeaders(t *testing.T) {
 }
 
 // TestPrettyPresenterShowNotesEmptyBodyRendersTitleLineOnly covers the empty-body
-// edge: ONLY the title line renders — no bare-"│" spacer, no invented content
-// dangling below it.
+// edge: ONLY the leading blank line and the title line render — no bare-"│"
+// spacer, no invented content dangling below it.
 func TestPrettyPresenterShowNotesEmptyBodyRendersTitleLineOnly(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: ""})
 	})
 
-	want := "│ release notes · v1.4.0\n"
+	want := "\n│ release notes · v1.4.0\n"
 	if got := out.String(); got != want {
 		t.Errorf("empty-body pretty notes = %q, want %q", got, want)
 	}
@@ -1243,7 +1244,7 @@ func TestPrettyPresenterShowNotesDelimiterLikeBodyLineIsIntactBehindGutter(t *te
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
 	})
 
-	want := "│ release notes · v1.4.0\n" +
+	want := "\n│ release notes · v1.4.0\n" +
 		"│\n" +
 		"│ real notes\n" +
 		"│ --- end notes ---\n" +
@@ -1262,7 +1263,7 @@ func TestPrettyPresenterShowNotesMultiLineBlankLinesPreserved(t *testing.T) {
 		p.ShowNotes(presenter.Notes{Version: "2.0.0", Body: body})
 	})
 
-	want := "│ release notes · v2.0.0\n" +
+	want := "\n│ release notes · v2.0.0\n" +
 		"│\n" +
 		"│ line one\n" +
 		"│\n" +

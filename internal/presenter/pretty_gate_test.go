@@ -25,14 +25,15 @@ func drivePrettyPromptProfile(input string, gate presenter.Gate, profile termenv
 	return out
 }
 
-// notesBar is the Ascii render of the NotesReviewGate hotkey bar: the Subject
-// label, the dim separator, every declared key/action pair in order, and the "› "
-// cursor — ONE flush-left line (preceded by a blank separator line), replacing the
-// original stacked vertical menu.
-const notesBar = "\nnotes ·  y accept  n abort  e edit  r regenerate › "
+// notesBar is the Ascii render of the NotesReviewGate hotkey bar: the Question
+// verbatim, then every declared key/action pair in order joined by middot
+// separators, and the "› " cursor — ONE flush-left line (preceded by a blank
+// separator line). The bar is QUESTION-led: the gate's Subject is NOT rendered
+// (it only feeds the -y echo).
+const notesBar = "\nUse these notes?  y accept · n abort · e edit · r regenerate › "
 
 // gateNoSubject is a two-choice gate WITHOUT a Subject, used to prove the bar
-// label falls back to the Question stripped of its "?".
+// renders the Question verbatim — the Subject plays no part in the bar.
 func gateNoSubject() presenter.Gate {
 	return presenter.Gate{
 		Question: "Continue?",
@@ -45,8 +46,8 @@ func gateNoSubject() presenter.Gate {
 }
 
 // TestPrettyGateRendersHotkeyBar locks the bar layout: ONE flush-left line — the
-// Subject label, then every declared key/action pair in declared order, then the
-// "› " cursor — with NO stacked option lines and NO separate question line.
+// Question verbatim, then every declared key/action pair in declared order joined
+// by middot separators, then the "› " cursor — with NO stacked option lines.
 func TestPrettyGateRendersHotkeyBar(t *testing.T) {
 	out := drivePrettyPromptProfile("y\n", presenter.NotesReviewGate(), termenv.Ascii)
 	got := out.String()
@@ -54,22 +55,23 @@ func TestPrettyGateRendersHotkeyBar(t *testing.T) {
 	if !strings.Contains(got, notesBar) {
 		t.Fatalf("hotkey bar not rendered:\nwant substring %q\ngot:\n%q", notesBar, got)
 	}
-	// The stacked-menu form is GONE: no indented option lines, no question line.
-	for _, stale := range []string{"\n    y", "\n    n", "[default]", "Continue?"} {
+	// The stacked-menu form is GONE: no indented option lines, no [default] tag.
+	for _, stale := range []string{"\n    y", "\n    n", "[default]"} {
 		if strings.Contains(got, stale) {
 			t.Errorf("stacked-menu artefact %q must not render in the bar design:\n%q", stale, got)
 		}
 	}
 }
 
-// TestPrettyGateBarLabelFallsBackToQuestion proves a Subject-less gate labels the
-// bar with the Question stripped of its trailing "?" rather than rendering empty.
-func TestPrettyGateBarLabelFallsBackToQuestion(t *testing.T) {
+// TestPrettyGateBarRendersQuestionVerbatim proves the bar leads with the gate's
+// Question rendered VERBATIM — "?" intact, no Subject-derived label, no fallback
+// munging — even on a Subject-less gate.
+func TestPrettyGateBarRendersQuestionVerbatim(t *testing.T) {
 	out := drivePrettyPromptProfile("n\n", gateNoSubject(), termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "\nContinue ·  y accept  n abort › ") {
-		t.Errorf("Subject-less gate must label the bar from the Question:\n%q", got)
+	if !strings.Contains(got, "\nContinue?  y accept · n abort › ") {
+		t.Errorf("Subject-less gate must lead the bar with the Question verbatim:\n%q", got)
 	}
 }
 
@@ -79,7 +81,7 @@ func TestPrettyGateTwoChoiceRendersOnlyDeclared(t *testing.T) {
 	out := drivePrettyPromptProfile("y\n", presenter.ReuseConfirmGate(), termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "\nnotes ·  y accept  n abort › ") {
+	if !strings.Contains(got, "\nUse these notes?  y accept · n abort › ") {
 		t.Errorf("reuse confirm bar missing:\n%q", got)
 	}
 	if strings.Contains(got, " e ") || strings.Contains(got, " r ") {
@@ -114,7 +116,7 @@ func TestPrettyGateBarBuiltFromDeclaredChoices(t *testing.T) {
 	out := drivePrettyPromptProfile("y\n", gate, termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "\nProceed ·  n stop here  y go go go › ") {
+	if !strings.Contains(got, "\nProceed?  n stop here · y go go go › ") {
 		t.Errorf("custom gate bar not rendered from declared choices in declared order:\n%q", got)
 	}
 }
@@ -168,7 +170,7 @@ func TestPrettyGateColourDowngradePreservesStructure(t *testing.T) {
 }
 
 // TestPrettyGateColourOnEmitsANSIButKeepsStructure forces a colour-capable profile
-// and asserts ANSI escapes ARE emitted while the bar structure (the label, every
+// and asserts ANSI escapes ARE emitted while the bar structure (the question, every
 // action word, the › cursor) still survives. Because lipgloss wraps styled spans
 // in ANSI, the structure is asserted as substrings the styling does not split.
 func TestPrettyGateColourOnEmitsANSIButKeepsStructure(t *testing.T) {
@@ -178,7 +180,7 @@ func TestPrettyGateColourOnEmitsANSIButKeepsStructure(t *testing.T) {
 		t.Errorf("colour-on gate output contains no ESC (0x1b) — expected ANSI codes:\n%q", out.String())
 	}
 	got := out.String()
-	for _, want := range []string{"notes", "accept", "abort", "edit", "regenerate", "› "} {
+	for _, want := range []string{"Use these notes?", "accept", "abort", "edit", "regenerate", "› "} {
 		if !strings.Contains(got, want) {
 			t.Errorf("bar structure %q missing under colour-on:\n%q", want, got)
 		}

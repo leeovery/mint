@@ -133,8 +133,11 @@ func emitGateSucceeded(p presenter.Presenter, name string) {
 // — its StageFailed narrates the stage instead — so a non-success path emits no
 // StageSucceeded. The wall-clock measurement uses the standard time package: this is
 // production code timing the real product, not the deterministic workflow harness.
-func emitBlockingStageStarted(p presenter.Presenter, name string) func() {
-	p.StageStarted(presenter.StageStart{Name: name, Blocking: true})
+// text is the OPTIONAL activity phrase the pretty spinner animates while the
+// stage runs ("generating release notes…") — the state-what-is-happening rule;
+// empty falls back to the stage name.
+func emitBlockingStageStarted(p presenter.Presenter, name, text string) func() {
+	p.StageStarted(presenter.StageStart{Name: name, Blocking: true, Text: text})
 	started := time.Now()
 	return func() {
 		p.StageSucceeded(presenter.StageSuccess{

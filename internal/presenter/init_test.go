@@ -320,7 +320,7 @@ func TestPlainPresenterInitRunEmitsNoReleaseFooterOrGate(t *testing.T) {
 	if strings.Contains(got, "🌿") {
 		t.Errorf("init run emitted a release-style brand footer:\n%q", got)
 	}
-	for _, marker := range []string{"Continue?", "[y/n"} {
+	for _, marker := range []string{"Use these notes?", "[y/n"} {
 		if strings.Contains(got, marker) {
 			t.Errorf("init run emitted gate marker %q:\n%q", marker, got)
 		}

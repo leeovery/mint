@@ -24,12 +24,13 @@ import (
 // SNAPSHOTS. The presenters legitimately differ from the snapshot in ways prior
 // tasks established, and these goldens reflect the IMPLEMENTATION's real output:
 //
-//   - Inter-block blank lines: the spec snapshots show decorative blank lines
-//     between blocks (after the brand line, around the notes block, around the
-//     gate). The presenters emit NO such blank lines — each method writes only its
-//     own line(s). The ONLY blank line in either transcript is the separator
-//     renderGate itself writes before the hotkey bar. The goldens are therefore
-//     tightly packed; that packing is exactly the composition being pinned.
+//   - Inter-block blank lines: PLAIN emits NO decorative blank lines — each method
+//     writes only its own line(s), so the plain golden is tightly packed. PRETTY
+//     carries the v2 blank-line rhythm, each blank OWNED by one render site:
+//     RunStarted emits a TRAILING blank line after the brand line, the gutter panel
+//     (ShowNotes/ShowMessage) and the gate bar each open with a LEADING blank line,
+//     and the RunFinished footer opens with a LEADING blank line. That rhythm is
+//     exactly the composition being pinned.
 //   - Plain blocking-start lines: the plain presenter emits "{name}: running..." on
 //     a blocking StageStarted. This sequence drives ONLY StageSucceeded for the
 //     blocking prep/notes stages (NOT StageStarted), matching the spec plain
@@ -95,11 +96,11 @@ func driveWorkedExample(p presenter.Presenter, driveBlocking bool) {
 	p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: transcriptPreflightDetail})
 	p.ShowPlan(transcriptPlan())
 	if driveBlocking {
-		p.StageStarted(presenter.StageStart{Name: "prep", Blocking: true})
+		p.StageStarted(presenter.StageStart{Name: "prep", Blocking: true, Text: "running pre_tag hook…"})
 	}
 	p.StageSucceeded(presenter.StageSuccess{Name: "prep", Detail: transcriptPrepDetail, Elapsed: 2300 * time.Millisecond, Blocking: true})
 	if driveBlocking {
-		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
+		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
 	}
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: transcriptNotesDetail, Elapsed: 1100 * time.Millisecond, Blocking: true})
 	p.ShowNotes(presenter.Notes{Version: transcriptVersion, Body: notesBody})
@@ -168,6 +169,7 @@ func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
 	driveWorkedExample(p, true)
 
 	want := "🌿 mint › releasing acme v1.4.0\n" +
+		"\n" +
 		"✓ version    v1.3.2 → v1.4.0 (minor)\n" +
 		"✓ preflight  clean · on main · tag free · in sync with origin\n" +
 		"Plan\n" +
@@ -177,6 +179,7 @@ func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
 		"    • publish  GitHub release\n" +
 		"✓ prep       pre_tag: npm ci && npm run build (2.3s)\n" +
 		"✓ notes      generated (1.1s)\n" +
+		"\n" +
 		"│ release notes · v1.4.0\n" +
 		"│\n" +
 		"│ Faster cold starts and a calmer log.\n" +
@@ -186,10 +189,11 @@ func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
 		"│ 🐛 Fixes\n" +
 		"│ - Stop double-flush on SIGTERM\n" +
 		"\n" +
-		"notes ·  y accept  n abort  e edit  r regenerate › " +
+		"Use these notes?  y accept · n abort · e edit · r regenerate › " +
 		"✓ record     CHANGELOG.md + bin/acme\n" +
 		"✓ tag/push   v1.4.0 pushed (atomic)\n" +
 		"✓ publish    github release created\n" +
+		"\n" +
 		"🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0\n"
 
 	if got := out.String(); got != want {

@@ -426,6 +426,13 @@ type StageStart struct {
 	// Blocking marks a long/slow stage. Renderers consume the flag directly and
 	// never derive it from Name.
 	Blocking bool
+	// Text is the OPTIONAL engine-supplied activity phrase shown WHILE the stage
+	// runs ("generating commit message…"), per the state-what-is-happening CLI
+	// guideline — the pretty spinner animates it. Empty falls back to Name. The
+	// completion line still uses Name (+Detail), so Text never affects the
+	// success/failure column layout, and plain mode ignores it (its terse
+	// "{name}: running..." start line stays byte-stable for pipes).
+	Text string
 }
 
 // StageSuccess carries the StageSucceeded payload. Elapsed is measured by the

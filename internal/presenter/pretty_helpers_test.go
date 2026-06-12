@@ -29,19 +29,20 @@ func gutterLines(body string) []string {
 }
 
 // assertGutterPanel asserts a rendered pretty gutter panel (Ascii profile)
-// carries the title line "│ {title}", the bare-"│" spacer, and then EXACTLY one
-// gutter line per body line with the content intact — same line count, same
-// order, nothing truncated. It is the shared acceptance for the
-// body-content-intact contract ShowNotes and ShowMessage both honour.
+// opens with its LEADING blank separator line, then carries the title line
+// "│ {title}", the bare-"│" spacer, and then EXACTLY one gutter line per body
+// line with the content intact — same line count, same order, nothing truncated.
+// It is the shared acceptance for the body-content-intact contract ShowNotes and
+// ShowMessage both honour.
 func assertGutterPanel(t *testing.T, rendered, title, body string) {
 	t.Helper()
 
-	want := []string{"│ " + title, "│"}
+	want := []string{"", "│ " + title, "│"}
 	want = append(want, gutterLines(body)...)
 
 	got := strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
 	if len(got) != len(want) {
-		t.Fatalf("gutter panel has %d lines, want %d (title + spacer + one per body line)\n got: %q\nwant: %q", len(got), len(want), got, want)
+		t.Fatalf("gutter panel has %d lines, want %d (leading blank + title + spacer + one per body line)\n got: %q\nwant: %q", len(got), len(want), got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {

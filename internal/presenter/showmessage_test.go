@@ -71,17 +71,17 @@ func TestPlainShowMessageDelimiterLookalikeBodyPassesThrough(t *testing.T) {
 }
 
 // TestPrettyShowMessageRendersGutterPanel proves the pretty block uses the shared
-// gutter-panel treatment ShowNotes uses: a dim "│ {title}" line with the
-// engine-supplied title verbatim, a bare "│" spacer, then every body line behind
-// the "│ " gutter (empty body lines as a bare "│") — no titled/closing rules, no
-// width math. Narration → out only, never err.
+// gutter-panel treatment ShowNotes uses: a leading blank separator line, a dim
+// "│ {title}" line with the engine-supplied title verbatim, a bare "│" spacer,
+// then every body line behind the "│ " gutter (empty body lines as a bare "│") —
+// no titled/closing rules, no width math. Narration → out only, never err.
 func TestPrettyShowMessageRendersGutterPanel(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
 	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithErr(errBuf))
 
 	p.ShowMessage(commitMessage())
 
-	want := "│ commit message\n" +
+	want := "\n│ commit message\n" +
 		"│\n" +
 		"│ feat: add retry to publish\n" +
 		"│\n" +

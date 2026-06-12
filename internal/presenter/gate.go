@@ -142,7 +142,7 @@ func (g Gate) Keys() []Choice {
 // and returns one key.
 func NotesReviewGate() Gate {
 	return Gate{
-		Question: "Continue?",
+		Question: "Use these notes?",
 		Subject:  "notes",
 		// "accepted" keeps the notes echo "notes: accepted (-y)" after the echo word
 		// was generalised onto AcceptEcho (the source/target gates carry their chosen
@@ -164,7 +164,7 @@ func NotesReviewGate() Gate {
 // or regenerate.
 func ReuseConfirmGate() Gate {
 	return Gate{
-		Question: "Continue?",
+		Question: "Use these notes?",
 		// The reuse confirm is also a notes-acceptance gate in the same Continue?
 		// vocabulary, so its -y echo is "notes: accepted (-y)" — same subject and
 		// AcceptEcho word as the notes-review gate.

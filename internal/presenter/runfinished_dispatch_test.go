@@ -43,7 +43,7 @@ func TestRunFinishedReleaseFooterRendersWithURL(t *testing.T) {
 			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", URL: url})
 		})
 
-		want := "🌿 released acme v1.4.0 · " + url + "\n"
+		want := "\n🌿 released acme v1.4.0 · " + url + "\n"
 		if got := out.String(); got != want {
 			t.Errorf("pretty release footer = %q, want %q", got, want)
 		}
@@ -61,8 +61,8 @@ func TestRunFinishedReleaseFooterLeafComesFromPayload(t *testing.T) {
 		leaf string
 		want string
 	}{
-		{name: "supplied leaf used verbatim", leaf: "🌱", want: "🌱 released acme v1.4.0\n"},
-		{name: "empty leaf defaults to mint leaf", leaf: "", want: "🌿 released acme v1.4.0\n"},
+		{name: "supplied leaf used verbatim", leaf: "🌱", want: "\n🌱 released acme v1.4.0\n"},
+		{name: "empty leaf defaults to mint leaf", leaf: "", want: "\n🌿 released acme v1.4.0\n"},
 	}
 
 	for _, tt := range tests {
@@ -103,8 +103,8 @@ func TestRunFinishedRegenerateCloseRendersWithoutURL(t *testing.T) {
 			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRegenerate, Project: "acme", Summary: "v1.4.0"})
 		})
 
-		if got := out.String(); got != "🌿 regenerated acme v1.4.0\n" {
-			t.Errorf("pretty regenerate close = %q, want exactly %q (no url, no dangling separator)", got, "🌿 regenerated acme v1.4.0\n")
+		if got := out.String(); got != "\n🌿 regenerated acme v1.4.0\n" {
+			t.Errorf("pretty regenerate close = %q, want exactly %q (no url, no dangling separator)", got, "\n🌿 regenerated acme v1.4.0\n")
 		}
 	})
 }
@@ -135,8 +135,8 @@ func TestRunFinishedCommitCloseRendersVersionless(t *testing.T) {
 			p.RunFinished(presenter.RunResult{Verb: presenter.VerbCommit, Project: "acme"})
 		})
 
-		if got := out.String(); got != "🌿 committed acme\n" {
-			t.Errorf("pretty commit close = %q, want exactly %q (committed, not released; no v segment)", got, "🌿 committed acme\n")
+		if got := out.String(); got != "\n🌿 committed acme\n" {
+			t.Errorf("pretty commit close = %q, want exactly %q (committed, not released; no v segment)", got, "\n🌿 committed acme\n")
 		}
 	})
 }

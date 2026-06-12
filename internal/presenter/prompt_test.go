@@ -67,8 +67,8 @@ func TestPromptIsCaseInsensitive(t *testing.T) {
 // subsequent valid line is accepted — and that the prompt was rendered TWICE (once
 // for the initial read, once for the re-prompt). The returned choice is
 // mode-invariant; the render count is asserted through the per-mode renderCount
-// marker (plain's "Continue?" question, pretty's bar cursor), once per mode via
-// the table.
+// marker (plain's "Use these notes?" question, pretty's bar cursor), once per
+// mode via the table.
 func TestPromptUnrecognisedReprompts(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
@@ -89,7 +89,7 @@ func TestPromptUnrecognisedReprompts(t *testing.T) {
 }
 
 // TestPromptOldMuscleMemoryKeysReprompt proves the stale engine keys a and q —
-// superseded by the default-yes Continue? gate — are NOT declared by the
+// superseded by the default-yes review gate — are NOT declared by the
 // notes-review gate, so they re-prompt and are NEVER returned; a final y accepts.
 // Mode-invariant, so asserted once per mode via the driver table.
 func TestPromptOldMuscleMemoryKeysReprompt(t *testing.T) {

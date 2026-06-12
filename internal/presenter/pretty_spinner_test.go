@@ -99,6 +99,30 @@ func TestPrettyPresenterSpinnerReplacedByCheckOnSuccess(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterSpinnerAnimatesActivityTextWithNameFallback locks the start
+// text the spinner animates: the engine-supplied activity phrase (StageStart.Text,
+// e.g. "generating release notes…") when present, falling back to the stage Name
+// when the payload carries no phrase. The spy records the text each spinner was
+// created with; the Ascii profile renders the dim styling as bare text.
+func TestPrettyPresenterSpinnerAnimatesActivityTextWithNameFallback(t *testing.T) {
+	_, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
+		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
+		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
+		p.StageStarted(presenter.StageStart{Name: "push", Blocking: true})
+		p.StageSucceeded(presenter.StageSuccess{Name: "push", Detail: "pushed", Blocking: true})
+	})
+
+	if len(tr.created) != 2 {
+		t.Fatalf("expected two spinners (one per blocking stage), got %d", len(tr.created))
+	}
+	if got := tr.created[0].text; got != "generating release notes…" {
+		t.Errorf("spinner text with Text supplied = %q, want the activity phrase %q", got, "generating release notes…")
+	}
+	if got := tr.created[1].text; got != "push" {
+		t.Errorf("spinner text without Text = %q, want the stage name %q (fallback)", got, "push")
+	}
+}
+
 // TestPrettyPresenterSpinnerReplacedByCrossOnFailure is the failure lifecycle: a
 // blocking StageStarted starts a spinner; the subsequent StageFailed stops it and
 // renders the ✗ line in the cleared place. The spy proves Start→Stop; the buffer

@@ -62,7 +62,7 @@ const (
 // — the run's one slow step, so it carries the pretty spinner (plain prints the
 // terse start line). Both the first generation and the gate's `r` regeneration use
 // the SAME stage name: they are the same kind of wait.
-const generateStageName = "message"
+const generateStageName = "commit message"
 
 // The attended AI-failure note. When the transport fails on an ATTENDED run, the
 // editor fallback opens with no other explanation — this warn says why (and stops
@@ -327,7 +327,7 @@ func Run(ctx context.Context, deps Deps) error {
 	// timed completion closure, the two editor-fallback routes via a spinner-stopping
 	// Warn (attended) or the fallback guard's StageFailed (unattended), and a genuine
 	// failure via surface's StageFailed.
-	generated := startGenerateStage(p)
+	generated := startGenerateStage(p, "generating commit message…")
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
 		// An over-limit (diff_exclude-filtered) diff is a generate-SKIP, NOT a failure:
@@ -632,7 +632,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// closes it: success via the timed completion closure, a transport failure via
 			// the spinner-stopping AI-failure Warn (`r` is interactive-only, so this path
 			// is always attended), any other failure via surface's StageFailed.
-			regenDone := startGenerateStage(p)
+			regenDone := startGenerateStage(p, "regenerating commit message…")
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {
 				// A regeneration FAILURE after the transport's one retry (an AI transport
@@ -675,7 +675,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 // regenerate), matching NotesReviewGate's labels so both verbs' bars read alike.
 func commitReviewGate() presenter.Gate {
 	return presenter.Gate{
-		Question:   "Continue?",
+		Question:   "Commit this message?",
 		Subject:    "message",
 		AcceptEcho: "accepted",
 		Choices: []presenter.GateChoice{
@@ -730,8 +730,10 @@ func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, 
 // word ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure paths
 // never call it — their spinner-stopping Warn or StageFailed closes the stage
 // instead.
-func startGenerateStage(p presenter.Presenter) func(detail string) {
-	p.StageStarted(presenter.StageStart{Name: generateStageName, Blocking: true})
+// text is the activity phrase the pretty spinner animates ("generating commit
+// message…" / "regenerating commit message…").
+func startGenerateStage(p presenter.Presenter, text string) func(detail string) {
+	p.StageStarted(presenter.StageStart{Name: generateStageName, Blocking: true, Text: text})
 	started := time.Now()
 	return func(detail string) {
 		p.StageSucceeded(presenter.StageSuccess{

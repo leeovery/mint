@@ -50,7 +50,8 @@ func TestPlainPromptSkipsGateUnderYesEchoesAcceptedToOut(t *testing.T) {
 }
 
 // TestPlainPromptUnderYesDrawsNoMenu proves the plain terse prompt line is NOT
-// rendered under -y: no "[y/n/e/r]" hint and no "Continue?" question reach out.
+// rendered under -y: no "[y/n/e/r]" hint and no "Use these notes?" question reach
+// out.
 func TestPlainPromptUnderYesDrawsNoMenu(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	p, out, _ := plainGate(strings.NewReader(""), gateOpts{yes: true})
@@ -59,7 +60,7 @@ func TestPlainPromptUnderYesDrawsNoMenu(t *testing.T) {
 		t.Fatalf("plain Prompt under -y returned error: %v", err)
 	}
 	got := out.String()
-	if strings.Contains(got, "Continue?") {
+	if strings.Contains(got, "Use these notes?") {
 		t.Errorf("plain -y output drew the question line; the gate must be skipped:\n%q", got)
 	}
 	if strings.Contains(got, "[y/n/e/r]") {
@@ -99,7 +100,7 @@ func TestPlainReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 	if got := out.String(); got != "notes: accepted (-y)\n" {
 		t.Errorf("plain reuse -y echo = %q, want %q", got, "notes: accepted (-y)\n")
 	}
-	if strings.Contains(out.String(), "Continue?") {
+	if strings.Contains(out.String(), "Use these notes?") {
 		t.Errorf("plain reuse -y drew the menu; it must be skipped:\n%q", out.String())
 	}
 }
@@ -118,7 +119,7 @@ func TestPlainPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 	if choice != presenter.ChoiceYes {
 		t.Errorf("plain Prompt (yes=false) = %q, want %q", choice, presenter.ChoiceYes)
 	}
-	if !strings.Contains(out.String(), "Continue?") {
+	if !strings.Contains(out.String(), "Use these notes?") {
 		t.Errorf("plain Prompt (yes=false) did not render the menu:\n%q", out.String())
 	}
 	if strings.Contains(out.String(), "accepted (-y)") {

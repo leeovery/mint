@@ -116,14 +116,14 @@ func (d gateDriver) prompt(profile termenv.Profile, input string, gate presenter
 
 // renderCount counts how many times this mode's gate render appears in out — the
 // per-mode marker that occurs exactly once per render pass. Plain renders its
-// "Continue?" question line each pass; the pretty hotkey bar ends in the "› "
-// cursor, which is styled as ONE unit so the pair stays a contiguous substring
-// even under colour. The re-prompt/loop tests count renders through this seam so
-// they assert the render-once-per-pass property without hardcoding mode-specific
-// layout at every call site.
+// "Use these notes?" question line each pass; the pretty hotkey bar ends in the
+// "› " cursor, which is styled as ONE unit so the pair stays a contiguous
+// substring even under colour. The re-prompt/loop tests count renders through
+// this seam so they assert the render-once-per-pass property without hardcoding
+// mode-specific layout at every call site.
 func (d gateDriver) renderCount(out string) int {
 	if d.mode == "plain" {
-		return strings.Count(out, "Continue?")
+		return strings.Count(out, "Use these notes?")
 	}
 	return strings.Count(out, "› ")
 }

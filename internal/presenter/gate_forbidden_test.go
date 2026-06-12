@@ -219,7 +219,7 @@ func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 	if choice != presenter.ChoiceYes {
 		t.Errorf("plain Prompt (interactive stdin) = %q, want %q", choice, presenter.ChoiceYes)
 	}
-	if !strings.Contains(plainOut.String(), "Continue?") {
+	if !strings.Contains(plainOut.String(), "Use these notes?") {
 		t.Errorf("plain Prompt (interactive stdin) did not render the menu:\n%q", plainOut.String())
 	}
 

@@ -430,7 +430,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 4 is BLOCKING: generating notes can call the AI (~60s). Narrate it with a
 	// blocking StageStarted (spinner) and a StageSucceeded carrying the engine-measured
 	// Elapsed once the body resolves.
-	notesDone := emitBlockingStageStarted(p, "notes")
+	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…")
 	body, kind, generator, cacheInputs, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
@@ -617,7 +617,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// engine-measured Elapsed once the push crosses the PONR. On failure the
 	// StageFailed surfaced by surfaceAndUnwind narrates the stage instead, so no
 	// StageSucceeded fires.
-	pushDone := emitBlockingStageStarted(p, "push")
+	pushDone := emitBlockingStageStarted(p, "push", "pushing branch and tag to origin…")
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
 		// Pre-PONR failure: route through the surgical unwind. A push REJECTION means the
 		// local tag WAS created (TagAndPush wraps it in release.ErrPushRejected), so the
@@ -1082,7 +1082,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// carrying the engine-measured Elapsed once both the hook and its artifact commit
 	// land. The events fire ONLY here — when a hook is configured and actually runs —
 	// so a hookless run (returned above) narrates no pre_tag stage.
-	done := emitBlockingStageStarted(deps.Presenter, "pre_tag")
+	done := emitBlockingStageStarted(deps.Presenter, "pre_tag", "running pre_tag hook…")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, err
@@ -1363,7 +1363,7 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// StageSucceeded fires once the edit completes (or returns to the gate) to stop
 			// it, while a genuine edit failure surfaces a StageFailed (which stops it) and
 			// emits no StageSucceeded.
-			editDone := emitBlockingStageStarted(p, "edit")
+			editDone := emitBlockingStageStarted(p, "edit", "applying edited notes…")
 			edited, eerr := editBody(ctx, editor, body)
 			switch {
 			case errors.Is(eerr, ErrEditorReturnToGate):
