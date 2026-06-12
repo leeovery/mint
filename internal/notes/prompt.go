@@ -77,10 +77,20 @@ Output discipline:
 - Strict: no preamble and no meta-commentary. Do not explain what you are doing, do
   not restate these instructions, do not add a sign-off. Output only the notes.`
 
-// ComposePrompt assembles the final AI input from its three parts, in EXACTLY this
+// OutputReminder is the closing line ComposePrompt appends AFTER the diff. It
+// restates the output contract at the very END of the prompt because recency wins:
+// with the discipline rules buried above a large diff, models drift into narrating
+// before the notes (observed in real `mint commit` runs; the notes prompt shares
+// the same shape, so it gets the same hardening). It applies under a full
+// [release].prompt override too: whatever the instructions, the transport's
+// contract is "the body IS the notes", so the reminder is part of the compose,
+// not the instructions.
+const OutputReminder = "Now output ONLY the release notes themselves, exactly as they should be published: no preamble, no commentary, no explanation, no code fences, nothing before or after the notes."
+
+// ComposePrompt assembles the final AI input from its parts, in EXACTLY this
 // order and nothing else:
 //
-//	{instructions} + {Change Map preamble} + {post-exclusion, capped diff}
+//	{instructions} + {Change Map preamble} + {post-exclusion, capped diff} + {OutputReminder}
 //
 // instructions is the resolved prompt (the default prompt, the default plus an
 // injected [release].context, or a full [release].prompt override — see
@@ -89,11 +99,11 @@ Output discipline:
 // AssembleDiff. The function is PURE: it only orders and joins, performing no IO
 // and no transport — it produces the AI INPUT, never parses the AI output.
 //
-// The parts are separated by a blank line so the AI sees three clearly delimited
+// The parts are separated by a blank line so the AI sees clearly delimited
 // blocks; no labels or machine-parseable wrappers are added (the AI returns the
 // presentation format directly).
 func ComposePrompt(instructions, changeMap, diff string) string {
-	return strings.Join([]string{instructions, changeMap, diff}, "\n\n")
+	return strings.Join([]string{instructions, changeMap, diff, OutputReminder}, "\n\n")
 }
 
 // contextHeader labels the injected [release].context block appended to the

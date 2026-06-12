@@ -60,10 +60,19 @@ Output discipline:
 - Strict: no preamble and no meta-commentary. Do not explain what you are doing, do
   not restate these instructions, do not add a sign-off. Output only the message.`
 
-// ComposePrompt assembles the final AI input from its two parts, in EXACTLY this
+// OutputReminder is the closing line ComposePrompt appends AFTER the diff. It
+// restates the output contract at the very END of the prompt because recency wins:
+// with the discipline rules buried above a large diff, models drift into narrating
+// ("Looks like the diff is provided for me…") before the message — observed in
+// real runs. It applies under a full [commit].prompt override too: whatever the
+// instructions, the transport's contract is "the body IS the commit message", so
+// the reminder is part of the compose, not the instructions.
+const OutputReminder = "Now output ONLY the commit message itself, exactly as it should appear in git history: no preamble, no commentary, no explanation, no code fences, nothing before or after the message."
+
+// ComposePrompt assembles the final AI input from its parts, in EXACTLY this
 // order and nothing else:
 //
-//	{instructions} + {staged diff}
+//	{instructions} + {staged diff} + {OutputReminder}
 //
 // instructions is the resolved prompt (the default prompt, the default plus an
 // injected [commit].context, or a full [commit].prompt override — see
@@ -71,13 +80,14 @@ Output discipline:
 // does not collect it). The function is PURE: it only orders and joins, performing
 // no IO and no transport — it produces the AI INPUT, never parses the AI output.
 //
-// The diff always sits in the trailing position, including under a full prompt
-// override (the override replaces the instructions segment only; the diff is still
-// appended here, never dropped or reordered). The two parts are separated by a blank
-// line so the AI sees two clearly delimited blocks; no labels or machine-parseable
-// wrappers are added (the AI returns the commit message directly).
+// The diff sits between the instructions and the closing OutputReminder, including
+// under a full prompt override (the override replaces the instructions segment
+// only; the diff and reminder are still composed here, never dropped or
+// reordered). The parts are separated by blank lines so the AI sees clearly
+// delimited blocks; no labels or machine-parseable wrappers are added (the AI
+// returns the commit message directly).
 func ComposePrompt(instructions, diff string) string {
-	return strings.Join([]string{instructions, diff}, "\n\n")
+	return strings.Join([]string{instructions, diff, OutputReminder}, "\n\n")
 }
 
 // contextHeader labels the injected [commit].context block appended to the default

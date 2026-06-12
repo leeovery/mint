@@ -126,14 +126,18 @@ func TestComposePrompt_ContainsOnlyTheThreeParts(t *testing.T) {
 		t.Errorf("composed prompt missing diff:\n%s", got)
 	}
 
-	// Stripping the three parts and whitespace leaves only separator characters —
-	// no smuggled extra content beyond the three inputs.
+	// Stripping the three parts, the closing OutputReminder, and whitespace leaves
+	// only separator characters — no smuggled extra content beyond the declared
+	// compose. The reminder must sit LAST (recency is its whole point).
+	if !strings.HasSuffix(got, notes.OutputReminder) {
+		t.Errorf("composed prompt must END with the OutputReminder:\n%s", got)
+	}
 	residue := got
-	for _, part := range []string{instructions, changeMap, diff} {
+	for _, part := range []string{instructions, changeMap, diff, notes.OutputReminder} {
 		residue = strings.Replace(residue, part, "", 1)
 	}
 	if strings.TrimSpace(residue) != "" {
-		t.Errorf("composed prompt carries content beyond the three parts: %q", strings.TrimSpace(residue))
+		t.Errorf("composed prompt carries content beyond the declared parts: %q", strings.TrimSpace(residue))
 	}
 }
 

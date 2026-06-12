@@ -79,24 +79,29 @@ func TestComposePrompt_ContainsOnlyTheTwoParts(t *testing.T) {
 		t.Errorf("composed prompt missing diff:\n%s", got)
 	}
 
-	// Stripping the two parts and whitespace leaves only separator characters — no
-	// smuggled extra content beyond the two inputs.
+	// Stripping the two parts, the closing OutputReminder, and whitespace leaves
+	// only separator characters — no smuggled extra content beyond the declared
+	// compose. The reminder must sit LAST (recency is its whole point).
+	if !strings.HasSuffix(got, commit.OutputReminder) {
+		t.Errorf("composed prompt must END with the OutputReminder:\n%s", got)
+	}
 	residue := got
-	for _, part := range []string{instructions, diff} {
+	for _, part := range []string{instructions, diff, commit.OutputReminder} {
 		residue = strings.Replace(residue, part, "", 1)
 	}
 	if strings.TrimSpace(residue) != "" {
-		t.Errorf("composed prompt carries content beyond the two parts: %q", strings.TrimSpace(residue))
+		t.Errorf("composed prompt carries content beyond the declared parts: %q", strings.TrimSpace(residue))
 	}
 }
 
 func TestComposePrompt_JoinsWithExactlyOneBlankLine(t *testing.T) {
 	t.Parallel()
 
-	// The doc comment promises instructions and diff joined by exactly one blank
-	// line; pin the precise byte shape so the separator cannot silently drift.
-	if got, want := commit.ComposePrompt("a", "b"), "a\n\nb"; got != want {
-		t.Errorf("ComposePrompt(a, b) = %q, want exactly %q (one blank-line separator)", got, want)
+	// The doc comment promises the parts joined by exactly one blank line each, the
+	// OutputReminder last; pin the precise byte shape so the separator cannot
+	// silently drift.
+	if got, want := commit.ComposePrompt("a", "b"), "a\n\nb\n\n"+commit.OutputReminder; got != want {
+		t.Errorf("ComposePrompt(a, b) = %q, want exactly %q (blank-line separators, reminder last)", got, want)
 	}
 }
 
