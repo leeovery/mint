@@ -331,9 +331,10 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 		// and there was no save). No StageFailed narration; just a non-zero abort.
 		return errEditorNoOp
 	}
-	if strings.TrimSpace(saved) == "" {
+	if isEmptyEditorBuffer(saved) {
 		// Empty (whitespace-only) save: a true no-op. No synthetic stub exists, so "empty"
-		// is purely whitespace-only — no #-comment stripping.
+		// is purely whitespace-only — no #-comment stripping (the single 3-2 rule, shared
+		// with the `e` gate action via isEmptyEditorBuffer).
 		return errEditorNoOp
 	}
 
@@ -348,6 +349,21 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 
 	p.RunFinished(presenter.RunResult{Project: projectName(root)})
 	return nil
+}
+
+// isEmptyEditorBuffer is the SINGLE editor-emptiness rule established in 3-2 and shared by
+// every editor consumer: a saved buffer is "empty" iff it is whitespace-only (or has no
+// content at all). There is NO synthetic stub or #-comment scaffolding — the buffer carries
+// only the real message — so emptiness is purely whitespace-only; there is no comment
+// stripping. Both editor paths consume this one rule, but ACT on it differently:
+//
+//   - runEditorFallback (Phase 3, no message exists yet): an empty save = a true no-op
+//     abort (errEditorNoOp) — there is nothing to fall back to.
+//   - reviewLoop's `e` gate action (Phase 4, a message ALREADY exists): an empty save =
+//     a DISCARD of the edit + re-render with the prior message preserved — never an abort,
+//     never a commit, so `e` can never produce an empty commit.
+func isEmptyEditorBuffer(saved string) bool {
+	return strings.TrimSpace(saved) == ""
 }
 
 // reviewLoop is commit's engine-owned Continue? review LOOP — the seam the gate's e
@@ -414,12 +430,20 @@ func reviewLoop(ctx context.Context, deps Deps, body string) (bool, string, erro
 				// UNEDITED message preserved). For now an OpenEditor error surfaces and aborts.
 				return false, body, surface(p, "editor", oerr)
 			}
-			// A non-empty save is the loop-back refinement: replace the in-memory body VERBATIM
-			// and re-render. An empty/whitespace-only save (or an aborted editor, ok=false)
-			// leaves body unchanged, which already preserves the prior message — the discard
-			// MESSAGING is task 4-2; this task only needs the prior message preserved on
-			// loop-back, which an unchanged body gives.
-			if ok && strings.TrimSpace(saved) != "" {
+			// Save outcome under `e`, where a message ALREADY exists:
+			//
+			//   - Non-empty save (ok && !empty) → ADOPT: replace the in-memory body VERBATIM
+			//     (no AI reprocessing) and loop back to re-render the refreshed message.
+			//   - Empty/whitespace-only save, OR an aborted/quit editor (ok=false) → DISCARD:
+			//     leave body UNCHANGED, so the loop-back re-renders the PRIOR message (the
+			//     candidate shown before this `e`) — via ShowMessage(prior) → Prompt — with
+			//     y/n/e still offered. The run CONTINUES; this is NOT the Phase 3 fallback's
+			//     empty=abort (under `e` a message exists, so an empty save is a discard, not
+			//     a no-op). Emptiness is the single 3-2 whitespace-only rule (isEmptyEditorBuffer);
+			//     a quit/abort surfaces as ok=false. Because `e` only ever replaces an existing
+			//     message on a non-empty save and otherwise preserves it, `e` is a refinement
+			//     step that can NEVER produce an empty commit — it is never a message source.
+			if ok && !isEmptyEditorBuffer(saved) {
 				body = saved
 			}
 			// Loop back: re-render the (possibly refreshed) message and re-prompt.
