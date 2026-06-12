@@ -59,7 +59,7 @@ func TestProbeArgv_IsL1SourceArgvPlusNameOnly(t *testing.T) {
 
 	// Untracked (ls-files source): the probe is the shared prefix VERBATIM (no
 	// `--name-only`) — identical to the L1 enumeration argv.
-	if got, want := untrackedProbeArgs(excludes), []string{"ls-files", "--others", "--exclude-standard", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
+	if got, want := untrackedProbeArgs(excludes), []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
 		t.Errorf("untrackedProbeArgs = %v, want %v", got, want)
 	}
 	if got, want := sourceArgs(untrackedBaseArgs(), exclude), untrackedProbeArgs(excludes); !argsEqual(got, want) {
@@ -109,9 +109,9 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 	const nonEmptyDiff = "diff --git a/x b/x\n+work\n"
 	// A non-empty name-only probe output (one path) for the diff-source emptiness probes.
 	const nonEmptyNames = "x\n"
-	// A non-empty untracked enumeration (one path), then its addition diff for the L1
-	// AddAll path.
-	const untrackedName = "new.go\n"
+	// A non-empty untracked enumeration (one NUL-terminated path — the -z format), then
+	// its addition diff for the L1 AddAll path.
+	const untrackedName = "new.go\x00"
 	const untrackedAddition = "diff --git a/new.go b/new.go\n+content\n"
 
 	for _, tc := range []struct {

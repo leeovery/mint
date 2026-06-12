@@ -66,11 +66,15 @@ func trackedBaseArgs() []string {
 }
 
 // untrackedBaseArgs is the AddAll (-A) untracked source prefix: `git ls-files --others
-// --exclude-standard -- .` — the untracked, non-ignored enumeration. Spelled ONCE;
+// --exclude-standard -z -- .` — the untracked, non-ignored enumeration. Spelled ONCE;
 // the L1 untracked render (untrackedAdditions) enumerates from it and untrackedProbeArgs
-// (preflight) reuses it VERBATIM (no `--name-only`).
+// (preflight) reuses it VERBATIM (no `--name-only`). The `-z` is load-bearing: without
+// it git C-quotes unusual paths (non-ASCII, quotes, backslashes — core.quotePath), and
+// the quoted literal would reach `git diff --no-index` as a nonexistent filename; -z
+// emits raw NUL-terminated paths instead. The probe is unaffected (empty output is
+// empty either way).
 func untrackedBaseArgs() []string {
-	return []string{"ls-files", "--others", "--exclude-standard", "--", "."}
+	return []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."}
 }
 
 // sourcesForMode is the SINGLE StagingMode→sources mapping both the emptiness path

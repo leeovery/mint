@@ -619,7 +619,7 @@ func TestGenerator_Generate_AddAllMode_IncludesUntrackedPlusTrackedDiff(t *testi
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		runner.ScriptedCall{Result: runner.Result{Stdout: trackedDiff}},                                                  // git diff HEAD -- .
-		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\n"}},                                                   // git ls-files --others --exclude-standard -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\x00"}},                                                 // git ls-files --others --exclude-standard -z -- .
 		runner.ScriptedCall{Result: runner.Result{Stdout: untrackedDiff, ExitCode: 1}, Err: errors.New("exit status 1")}, // git diff --no-index -- /dev/null new.go (exit 1 = differ)
 	)
 	transport := &recordingTransport{body: "feat: api + new"}
@@ -635,7 +635,7 @@ func TestGenerator_Generate_AddAllMode_IncludesUntrackedPlusTrackedDiff(t *testi
 
 	// Untracked enumeration respects the same scope.
 	ls := findGitArgs0(t, r, "ls-files")
-	assertArgs(t, ls.Args, []string{"ls-files", "--others", "--exclude-standard", "--", "."})
+	assertArgs(t, ls.Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."})
 
 	// Each untracked file is rendered as an added-file diff via --no-index from
 	// /dev/null, leaving the index untouched.
@@ -649,6 +649,40 @@ func TestGenerator_Generate_AddAllMode_IncludesUntrackedPlusTrackedDiff(t *testi
 	}
 	if !strings.Contains(prompt, untrackedDiff) {
 		t.Errorf("-A prompt missing the untracked addition:\n%s", prompt)
+	}
+}
+
+func TestGenerator_Generate_AddAllMode_UnusualFilenamesPassThroughRaw(t *testing.T) {
+	t.Parallel()
+
+	// The -z enumeration disables core.quotePath's C-quoting, so an untracked filename
+	// with non-ASCII (or quotes/backslashes) arrives RAW and NUL-terminated — and must
+	// reach `git diff --no-index` byte-for-byte. Without -z git would emit the quoted
+	// literal "caf\303\251.txt", --no-index would fail "could not access", and the -A
+	// run would abort before any AI/editor. Two entries also pin the NUL split itself.
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                               // git diff HEAD -- . (tracked, empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "café.txt\x00héllo \"x\".go\x00"}}, // git ls-files … -z (raw NUL-terminated paths)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/café.txt b/café.txt\n+bonjour\n", ExitCode: 1}, Err: errors.New("exit status 1")},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/héllo b/héllo\n+x\n", ExitCode: 1}, Err: errors.New("exit status 1")},
+	)
+	transport := &recordingTransport{body: "feat: unicode files"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	var noIndexFiles []string
+	for _, inv := range gitInvocationsGen(r) {
+		if len(inv.Args) >= 5 && inv.Args[0] == "diff" && inv.Args[1] == "--no-index" {
+			noIndexFiles = append(noIndexFiles, inv.Args[len(inv.Args)-1])
+		}
+	}
+	want := []string{"café.txt", `héllo "x".go`}
+	if len(noIndexFiles) != len(want) || noIndexFiles[0] != want[0] || noIndexFiles[1] != want[1] {
+		t.Errorf("--no-index rendered files = %q, want the raw -z paths %q (no C-quoting, NUL split)", noIndexFiles, want)
 	}
 }
 
@@ -731,7 +765,7 @@ func TestGenerator_Generate_AddAllMode_UntrackedRespectsDiffExclude(t *testing.T
 	assertArgs(t, tracked.Args, []string{"diff", "HEAD", "--", ".", ":(exclude)*.min.js"})
 
 	ls := findGitArgs0(t, r, "ls-files")
-	assertArgs(t, ls.Args, []string{"ls-files", "--others", "--exclude-standard", "--", ".", ":(exclude)*.min.js"})
+	assertArgs(t, ls.Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)*.min.js"})
 }
 
 func TestGenerator_Generate_AddAllMode_SizeGuardAppliesToCombinedDiff(t *testing.T) {
@@ -781,7 +815,7 @@ func TestGenerator_Generate_AddAllMode_SurfacesNoIndexAccessError(t *testing.T) 
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"}}, // git diff HEAD -- .
-		runner.ScriptedCall{Result: runner.Result{Stdout: "foo.go\n"}},                                                // git ls-files --others --exclude-standard -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: "foo.go\x00"}},                                              // git ls-files --others --exclude-standard -z -- .
 		runner.ScriptedCall{ // git diff --no-index -- /dev/null foo.go: exit 1 but EMPTY stdout = genuine access error
 			Result: runner.Result{Stdout: "", Stderr: "error: Could not access 'foo.go'", ExitCode: 1},
 			Err:    errors.New("exit status 1"),
@@ -809,7 +843,7 @@ func TestGenerator_Generate_AddAllMode_SurfacesNoIndexOtherNonZeroExit(t *testin
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"}}, // git diff HEAD -- .
-		runner.ScriptedCall{Result: runner.Result{Stdout: "foo.go\n"}},                                                // git ls-files --others --exclude-standard -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: "foo.go\x00"}},                                              // git ls-files --others --exclude-standard -z -- .
 		runner.ScriptedCall{ // git diff --no-index -- /dev/null foo.go: exit 129 = genuine failure
 			Result: runner.Result{Stderr: "usage: git diff --no-index", ExitCode: 129},
 			Err:    errors.New("exit status 129"),

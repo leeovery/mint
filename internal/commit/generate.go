@@ -221,9 +221,13 @@ func (g *Generator) diffSourceText(ctx context.Context, base, diffExclude []stri
 // The technique avoids `git add` (and `git add --intent-to-add`, which MUTATES the index)
 // entirely: the enumeration is the shared ls-files prefix the preflight probe reuses
 // VERBATIM, and untrackedAdditionDiff renders each path as `git diff --no-index --
-// /dev/null <file>`, a pure read-only comparison of the file against an empty input. git
-// prints one NUL-free path per line; blank lines (an empty enumeration) yield no
-// additions. A non-zero git exit on the enumeration is surfaced as a wrapped error.
+// /dev/null <file>`, a pure read-only comparison of the file against an empty input.
+// The prefix carries `-z`, so git emits one RAW NUL-terminated path per entry — without
+// it, core.quotePath C-quotes unusual names (non-ASCII, quotes, backslashes) and the
+// quoted literal would reach --no-index as a nonexistent file. Splitting on NUL keeps
+// every legal git path intact (NUL is the one byte a path cannot contain); empty
+// entries (an empty enumeration, the trailing terminator) yield no additions. A
+// non-zero git exit on the enumeration is surfaced as a wrapped error.
 func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []string) (string, error) {
 	args := sourceArgs(base, diffExclude)
 	res, err := g.runner.RunInDir(ctx, g.root, nil, "git", args...)
@@ -232,11 +236,11 @@ func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []
 	}
 
 	var b strings.Builder
-	for _, line := range strings.Split(res.Stdout, "\n") {
-		if line == "" {
+	for _, file := range strings.Split(res.Stdout, "\x00") {
+		if file == "" {
 			continue
 		}
-		addition, err := g.untrackedAdditionDiff(ctx, line)
+		addition, err := g.untrackedAdditionDiff(ctx, file)
 		if err != nil {
 			return "", err
 		}

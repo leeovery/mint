@@ -245,7 +245,7 @@ func TestRun_AddAllModeAllExcludedUntrackedProbeCarriesExcludePathspecs(t *testi
 	}
 	wantTracked := []string{"diff", "HEAD", "--name-only", "--", ".", ":(exclude)*.min.js"}
 	assertArgs(t, gits[0].Args, wantTracked)
-	wantUntracked := []string{"ls-files", "--others", "--exclude-standard", "--", ".", ":(exclude)*.min.js"}
+	wantUntracked := []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)*.min.js"}
 	assertArgs(t, gits[1].Args, wantUntracked)
 }
 

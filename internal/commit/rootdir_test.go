@@ -71,9 +71,9 @@ func TestRun_AddAll_ReadsAnchoredAtRepoRoot(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                 // tracked probe (empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\n"}},                         // untracked probe (non-empty → proceed)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\x00"}},                       // untracked probe (non-empty → proceed)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                 // L1 tracked diff (empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\n"}},                         // L1 untracked enumeration
+		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\x00"}},                       // L1 untracked enumeration (-z)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/new.go b/new.go\n+x"}}, // addition diff
 		runner.ScriptedCall{}, // git add -A
 		runner.ScriptedCall{}, // git commit -F -
