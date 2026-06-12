@@ -168,7 +168,7 @@ type Deps struct {
 //     calls the L2 transport. The AI infers the type; scope is off by default; the
 //     body returns verbatim.
 //  3. Show the minted message (ShowMessage) and present the Continue? review gate
-//     (reviewMessage) — BOTH before the commit sink, so an accept proceeds and a
+//     (reviewLoop) — BOTH before the commit sink, so an accept proceeds and a
 //     decline aborts with nothing mutated (the mutate-nothing-until-accept invariant).
 //  4. Create the commit through the git_safe Committer, piping the generated body on
 //     stdin (`git commit -F -`) so the commit message is the minted body BYTE-FOR-BYTE
@@ -237,13 +237,13 @@ func Run(ctx context.Context, deps Deps) error {
 		return surface(p, "generate", err)
 	}
 
-	// The minted message is shown for review, THEN the Continue? gate is presented —
-	// both BEFORE the commit sink, so the core invariant (mutate nothing until accept)
-	// holds: a decline aborts with nothing mutated. The render order is verbatim
-	// message first, gate second.
-	p.ShowMessage(presenter.Message{Title: commitMessageTitle, Body: body})
-
-	accepted, err := reviewMessage(p)
+	// The minted message is shown for review and the Continue? gate is presented in the
+	// engine-owned review LOOP — both BEFORE the commit sink, so the core invariant
+	// (mutate nothing until accept) holds: a decline aborts with nothing mutated. The
+	// loop owns the ShowMessage→Prompt render and the gate's e (edit) re-entry: an `e`
+	// non-empty save replaces the in-memory body verbatim and re-renders, so the FINAL
+	// (possibly edited) body is what proceeds to the commit.
+	accepted, finalBody, err := reviewLoop(ctx, deps, body)
 	if err != nil {
 		return err
 	}
@@ -258,12 +258,14 @@ func Run(ctx context.Context, deps Deps) error {
 
 	// On accept, apply the mode's deferred staging FIRST, then commit — in that order.
 	// This is the mutate-nothing-until-accept invariant's mutation half: everything up to
-	// here was read-only, so STAGE→COMMIT is the only point the index is touched.
+	// here was read-only, so STAGE→COMMIT is the only point the index is touched. The
+	// committed body is the FINAL body from the review loop (the edited text verbatim
+	// when the user pressed `e`, else the generated message).
 	if err := stageForMode(ctx, deps); err != nil {
 		return surface(p, "stage", err)
 	}
 
-	if err := createCommit(ctx, deps, body); err != nil {
+	if err := createCommit(ctx, deps, finalBody); err != nil {
 		return surface(p, "commit", err)
 	}
 
@@ -348,17 +350,20 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 	return nil
 }
 
-// reviewMessage presents the Continue? gate through the consumed Presenter and maps
-// the outcome to an accept/abort decision. It is commit's decision seam — modelled on
-// engine.ReviewDecision: it calls p.Prompt(gate) (the single render-and-read entry
-// point — the gate rendering, line-read input, -y auto-accept echo, and
-// forbidden-combo fail-loud are ALL consumed from the presenter, never re-implemented
-// here) and translates the result:
+// reviewLoop is commit's engine-owned Continue? review LOOP — the seam the gate's e
+// (edit) re-entry needs. It owns the ShowMessage→Prompt render so each iteration shows
+// the CURRENT message (the generated body first, the edited body after an `e`) then
+// presents the gate, and translates the outcome:
 //
 //   - ChoiceYes (also the bare-Enter default, and the value the presenter returns
-//     under -y after rendering its auto-accept echo) → accept: return (true, nil) so
-//     Run proceeds to the commit sink.
-//   - ChoiceNo → decline: return (false, nil) so Run aborts as a true no-op.
+//     under -y after rendering its auto-accept echo) → accept: return (true, body, nil)
+//     so Run proceeds to the commit sink with the FINAL body.
+//   - ChoiceNo → decline: return (false, body, nil) so Run aborts as a true no-op.
+//   - ChoiceEdit → open the editor pre-filled with the CURRENT body (via the reusable
+//     OpenEditor roundtrip — 3-1 resolution + the internal SuspendSpinner/ResumeSpinner
+//     bracket). A non-empty save replaces the in-memory body VERBATIM (no ComposePrompt,
+//     no Generator, no L2 — the edit is never reprocessed) and LOOPS BACK: re-render and
+//     re-prompt. It is NOT save-as-accept — nothing stages, commits, or pushes here.
 //   - A Prompt error is the presenter's machine-readable failure channel:
 //     ErrNotInteractive (the forbidden non-TTY-without-`-y` combination, ALREADY
 //     rendered as a failure line by the presenter) and ErrInputClosed (EOF mid-gate,
@@ -367,31 +372,63 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 //     the StageFailed helper (the presenter rendered nothing, so commit owns its
 //     surfacing). Both preserve the underlying sentinel in the chain (errors.Is) and
 //     map to a non-zero exit.
-//   - Any other returned choice is a presenter-contract violation (Phase 1 declares
-//     only y/n) — surfaced and aborted rather than silently treated as an accept.
-func reviewMessage(p presenter.Presenter) (bool, error) {
-	choice, err := p.Prompt(commitReviewGate())
-	if err != nil {
-		// ErrNotInteractive is pre-rendered by the presenter — wrap and return WITHOUT a
-		// StageFailed. Every other Prompt error (ErrInputClosed and any future case) is
-		// unrendered by contract, so commit surfaces it via the StageFailed helper. Both
-		// keep the sentinel in the chain (%w) for errors.Is and map to a non-zero exit.
-		if errors.Is(err, presenter.ErrNotInteractive) {
-			return false, fmt.Errorf("review gate: %w", err)
-		}
-		return false, surface(p, "review", err)
-	}
+//   - Any other returned choice is a presenter-contract violation — surfaced and
+//     aborted rather than silently treated as an accept.
+//
+// The `e` action is interactive-only: under -y the presenter auto-accepts (returns the
+// Default ChoiceYes) and on a non-TTY Prompt returns ErrNotInteractive, so the edit
+// branch is never reached in those modes — no special-casing is needed here.
+func reviewLoop(ctx context.Context, deps Deps, body string) (bool, string, error) {
+	p := deps.Presenter
+	for {
+		// Render-only contract: the presenter NEVER re-shows the message itself; re-showing
+		// the (possibly edited) message is the engine's ShowMessage call. The gate Prompt
+		// renders the MENU only.
+		p.ShowMessage(presenter.Message{Title: commitMessageTitle, Body: body})
 
-	switch choice {
-	case presenter.ChoiceYes:
-		return true, nil
-	case presenter.ChoiceNo:
-		return false, nil
-	default:
-		// The gate declares only y/n and the presenter returns a member of the declared
-		// set; any other choice is a contract violation — fail loud rather than treat an
-		// unknown answer as an accept.
-		return false, surface(p, "review", fmt.Errorf("unexpected review-gate choice %q", choice))
+		choice, err := p.Prompt(commitReviewGate())
+		if err != nil {
+			// ErrNotInteractive is pre-rendered by the presenter — wrap and return WITHOUT a
+			// StageFailed. Every other Prompt error (ErrInputClosed and any future case) is
+			// unrendered by contract, so commit surfaces it via the StageFailed helper. Both
+			// keep the sentinel in the chain (%w) for errors.Is and map to a non-zero exit.
+			if errors.Is(err, presenter.ErrNotInteractive) {
+				return false, body, fmt.Errorf("review gate: %w", err)
+			}
+			return false, body, surface(p, "review", err)
+		}
+
+		switch choice {
+		case presenter.ChoiceYes:
+			return true, body, nil
+		case presenter.ChoiceNo:
+			return false, body, nil
+		case presenter.ChoiceEdit:
+			// Open the editor pre-filled with the CURRENT body. OpenEditor consumes 3-1
+			// ResolveEditor and brackets the $EDITOR hand-off with SuspendSpinner/ResumeSpinner
+			// internally — reused, not re-bracketed here.
+			saved, ok, oerr := OpenEditor(ctx, deps.Runner, p, body)
+			if oerr != nil {
+				// TODO(4-3): convert this interim surface to the not-launchable graceful-degrade
+				// (warn that the editor could not be launched, then re-render the gate with the
+				// UNEDITED message preserved). For now an OpenEditor error surfaces and aborts.
+				return false, body, surface(p, "editor", oerr)
+			}
+			// A non-empty save is the loop-back refinement: replace the in-memory body VERBATIM
+			// and re-render. An empty/whitespace-only save (or an aborted editor, ok=false)
+			// leaves body unchanged, which already preserves the prior message — the discard
+			// MESSAGING is task 4-2; this task only needs the prior message preserved on
+			// loop-back, which an unchanged body gives.
+			if ok && strings.TrimSpace(saved) != "" {
+				body = saved
+			}
+			// Loop back: re-render the (possibly refreshed) message and re-prompt.
+		default:
+			// The gate declares y/n/e and the presenter returns a member of the declared set;
+			// any other choice is a contract violation — fail loud rather than treat an unknown
+			// answer as an accept.
+			return false, body, surface(p, "review", fmt.Errorf("unexpected review-gate choice %q", choice))
+		}
 	}
 }
 
@@ -399,10 +436,11 @@ func reviewMessage(p presenter.Presenter) (bool, error) {
 // NOT presenter.NotesReviewGate()/ReuseConfirmGate() — those carry Subject "notes",
 // which would make the -y auto-accept echo read "notes: accepted (-y)". Commit's
 // Subject is "message" (echo "message: accepted (-y)") and AcceptEcho is "accepted".
-// Phase 1 offers y/n ONLY (Enter ⇒ y via Default ChoiceYes); the e (edit) and r
-// (regenerate) actions are Phase 4. Nothing in the presenter hardcodes the choice
-// set, so a two-choice literal renders cleanly. The action labels match the spec's
-// gate mapping (accept & proceed / abort).
+// The gate offers y/n/e (Enter ⇒ y via Default ChoiceYes): the e (edit) action is
+// added in Phase 4 (task 4-1) and the r (regenerate) action arrives with task 4-4.
+// Nothing in the presenter hardcodes the choice set, so the literal renders WHATEVER
+// it declares. The action labels match the spec's gate mapping (accept & proceed /
+// abort / edit), and the edit label matches NotesReviewGate's "edit in $EDITOR".
 func commitReviewGate() presenter.Gate {
 	return presenter.Gate{
 		Question:   "Continue?",
@@ -411,6 +449,7 @@ func commitReviewGate() presenter.Gate {
 		Choices: []presenter.GateChoice{
 			{Key: presenter.ChoiceYes, Action: "accept & proceed"},
 			{Key: presenter.ChoiceNo, Action: "abort"},
+			{Key: presenter.ChoiceEdit, Action: "edit in $EDITOR"},
 		},
 		Default: presenter.ChoiceYes,
 	}

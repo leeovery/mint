@@ -514,9 +514,11 @@ func TestRun_MessageThenGateThenCommit_Ordering(t *testing.T) {
 
 // TestRun_GateLiteral_CommitSubjectAndChoices proves Run builds its OWN commit Gate
 // literal — Subject "message" (so the -y echo reads "message: accepted (-y)", NOT
-// "notes: …"), AcceptEcho "accepted", Default ChoiceYes, and the y/n choice set with
-// the spec's action labels — NOT a reused NotesReviewGate/ReuseConfirmGate (whose
-// Subject is "notes"). The recorder captures the gate the engine handed to Prompt.
+// "notes: …"), AcceptEcho "accepted", Default ChoiceYes, and the y/n/e choice set in
+// that order with the spec's action labels — NOT a reused NotesReviewGate/
+// ReuseConfirmGate (whose Subject is "notes"). The e (edit) action is added in task
+// 4-1; r (regenerate) arrives with 4-4. The recorder captures the gate the engine
+// handed to Prompt.
 func TestRun_GateLiteral_CommitSubjectAndChoices(t *testing.T) {
 	t.Parallel()
 
@@ -543,10 +545,10 @@ func TestRun_GateLiteral_CommitSubjectAndChoices(t *testing.T) {
 	if gate.Default != presenter.ChoiceYes {
 		t.Errorf("gate Default = %q, want ChoiceYes", gate.Default)
 	}
-	wantKeys := []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo}
+	wantKeys := []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo, presenter.ChoiceEdit}
 	gotKeys := gate.Keys()
 	if len(gotKeys) != len(wantKeys) {
-		t.Fatalf("gate keys = %v, want %v (Phase 1 is y/n only — no e/r)", gotKeys, wantKeys)
+		t.Fatalf("gate keys = %v, want %v (task 4-1 adds e; r is 4-4)", gotKeys, wantKeys)
 	}
 	for i, want := range wantKeys {
 		if gotKeys[i] != want {

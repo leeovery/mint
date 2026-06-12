@@ -26,8 +26,16 @@ type editorRunner struct {
 	saved     string
 	launchErr error
 	launches  []runner.Invocation
+	// saves, when non-empty, supplies a PER-LAUNCH save buffer (saves[i] for the i-th
+	// launch), overriding the single `saved` field — used to script a sequence of edits
+	// across loop-back re-opens (e, e, y). When empty, every launch saves `saved`.
+	saves []string
+	// preFills records, per launch, the temp-file contents the editor was handed
+	// (captured BEFORE the double overwrites it with the save), so a test can assert
+	// each loop-back open's pre-filled buffer independently.
+	preFills []string
 	// onLaunch, when set, is called with the temp-file path at launch time (before
-	// the double overwrites it with `saved`), letting a test capture the pre-filled
+	// the double overwrites it with the save), letting a test capture the pre-filled
 	// buffer the editor was handed.
 	onLaunch func(path string)
 }
@@ -53,20 +61,36 @@ func (e *editorRunner) RunInDir(ctx context.Context, dir string, env []string, n
 }
 
 func (e *editorRunner) RunInteractive(_ context.Context, name string, args ...string) error {
+	idx := len(e.launches)
 	e.launches = append(e.launches, runner.Invocation{Name: name, Args: args})
 	if e.launchErr != nil {
 		return e.launchErr
 	}
 	if len(args) > 0 {
 		path := args[len(args)-1]
+		// Record the pre-filled buffer the editor was handed (before the save-back).
+		if b, readErr := os.ReadFile(path); readErr == nil {
+			e.preFills = append(e.preFills, string(b))
+		} else {
+			e.preFills = append(e.preFills, "")
+		}
 		if e.onLaunch != nil {
 			e.onLaunch(path)
 		}
-		if err := os.WriteFile(path, []byte(e.saved), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(e.saveFor(idx)), 0o600); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// saveFor returns the buffer the i-th launch saves: saves[i] when a per-launch
+// sequence is scripted, else the single `saved` field.
+func (e *editorRunner) saveFor(i int) string {
+	if i < len(e.saves) {
+		return e.saves[i]
+	}
+	return e.saved
 }
 
 // TestOpenEditor_WritesInitialBufferLaunchesResolvedEditorReadsBack proves the
