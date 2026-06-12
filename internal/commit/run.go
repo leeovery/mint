@@ -73,6 +73,19 @@ var errGateAborted = errors.New("commit aborted at review gate")
 // telling a caller the commit did not happen.
 var errEditorNoOp = errors.New("commit aborted: editor closed with no message")
 
+// errNoMessageSource is the fail-loud cause when the editor fallback has no way to
+// produce a message: an unattended run (-y), a non-TTY stdin (the startup-resolved
+// StdinInteractive signal is false), or no launchable editor in git's chain on a TTY.
+// The fallback is inherently interactive, so without a human at a terminal there is
+// nothing to commit with — mint fails loud rather than hang or commit an empty message.
+// It extends the gate's forbidden-combo philosophy to the editor path and applies
+// IDENTICALLY across all three converging triggers (--no-ai, AI-failure, oversized),
+// which all reach runEditorFallback. The message is the spec string VERBATIM (lowercase,
+// no trailing punctuation); it is surfaced (StageFailed) so the cmd layer maps it to a
+// non-zero exit. There is NO -m/--message escape — unattended-with-own-message uses
+// plain `git commit`.
+var errNoMessageSource = errors.New("no AI message and no interactive editor available")
+
 // Committer is commit's git-mutation SINK seam: the bare commit's `git commit -F -`
 // flows through it so the mutation is lock-resilient (git_safe), NEVER the raw runner.
 // It is defined HERE — where it is consumed — so the orchestrator stays decoupled from
@@ -129,6 +142,19 @@ type Deps struct {
 	// A non-empty save applies the mode's deferred staging then commits; an empty save
 	// or an aborted/quit editor is a true no-op. False is the normal AI-generate path.
 	NoAI bool
+	// Yes is the resolved -y (auto-accept) flag, threaded from the cmd layer. The editor
+	// fallback's no-message-source guard reads it: under -y a fallback is unattended with
+	// no human to write a message, so it fails loud rather than launch an editor. (The
+	// gate's own -y auto-accept is presenter-internal; this is the engine-side guard.)
+	Yes bool
+	// StdinInteractive is the run-level startup signal — presenter.DetectStartupSignals(
+	// plainFlag, stdout, stdin).StdinInteractive — resolved ONCE at startup and threaded
+	// here as a boolean (the Presenter interface exposes no accessor for it). The editor
+	// fallback's no-message-source guard reads it: a non-interactive stdin cannot host the
+	// inherently-interactive editor, so a fallback fails loud rather than hang. It is the
+	// SAME determination the gate's non-TTY-without-`-y` fail-loud uses — NOT a separate
+	// /dev/tty/stdout probe and NOT a re-implemented isatty.
+	StdinInteractive bool
 }
 
 // Run executes the bare `mint commit` thread, orchestrating the Phase 1 pieces in
@@ -249,10 +275,23 @@ func Run(ctx context.Context, deps Deps) error {
 // cases converge on (the --no-ai entry is wired here; AI-failure 3-3 and oversized 3-4
 // reuse it unchanged). It opens the editor directly via the reusable OpenEditor
 // roundtrip — initial is the caller-supplied buffer (empty on --no-ai; Phase 4's `e`
-// pre-fills the current message) — and treats the SAVE as the accept event:
+// pre-fills the current message) — and treats the SAVE as the accept event.
 //
-//   - Missing/unlaunchable editor → SURFACED via the surface helper (routing to the
-//     -y/non-TTY fail-loud posture is task 3-5; here it is simply surfaced and aborts).
+// The no-message-source guard runs FIRST, BEFORE any editor launch, so a run with no
+// way to produce a message fails loud rather than hangs or commits empty. It fires when:
+//
+//   - deps.Yes — an unattended -y run has no human to write a message; OR
+//   - !deps.StdinInteractive — a non-TTY stdin (the startup-resolved signal) cannot host
+//     the inherently-interactive editor; OR
+//   - OpenEditor reports no launchable editor in git's chain (ErrNoEditor from 3-1, or
+//     runner.ErrCommandNotFound at launch) on a TTY — there is no message to fall back to.
+//
+// All three collapse to errNoMessageSource (the spec's "no AI message and no interactive
+// editor available"), surfaced and aborted — identically across all three converging
+// triggers, since they all reach here. There is NO -m/--message escape.
+//
+// Past the guard, the SAVE is the accept event:
+//
 //   - Aborted/quit editor (ok=false) → a true no-op: errEditorNoOp, no mutation.
 //   - Whitespace-only save ("empty") → a true no-op: errEditorNoOp, no mutation. There
 //     is NO synthetic stub/comment scaffolding, so emptiness is purely whitespace-only
@@ -264,10 +303,25 @@ func Run(ctx context.Context, deps Deps) error {
 func runEditorFallback(ctx context.Context, deps Deps, root, initial string) error {
 	p := deps.Presenter
 
+	// No-message-source guard, BEFORE any editor launch: an unattended -y run or a non-TTY
+	// stdin (the startup-resolved StdinInteractive signal — the SAME determination the gate
+	// uses, not a separate /dev/tty probe) cannot drive the interactive editor, so there is
+	// no message to commit with. Fail loud rather than launch an editor, stage, commit, or
+	// hang. This extends the gate's forbidden-combo philosophy to the editor path.
+	if deps.Yes || !deps.StdinInteractive {
+		return surface(p, "editor", errNoMessageSource)
+	}
+
 	saved, ok, err := OpenEditor(ctx, deps.Runner, p, initial)
 	if err != nil {
-		// A missing/unlaunchable editor is surfaced and aborts. The -y/non-TTY +
-		// not-launchable fail-loud routing is task 3-5; here it is a plain surface.
+		// No launchable editor in git's chain on a TTY (ErrNoEditor from 3-1, or
+		// runner.ErrCommandNotFound at launch) is the no-message-source case too — there is
+		// no message to fall back to, so fail loud with the SAME spec message rather than
+		// surface the raw resolution/launch error.
+		if errors.Is(err, ErrNoEditor) || errors.Is(err, runner.ErrCommandNotFound) {
+			return surface(p, "editor", errNoMessageSource)
+		}
+		// Any OTHER launch error (a genuine IO failure, etc.) keeps the existing surface.
 		return surface(p, "editor", err)
 	}
 	if !ok {

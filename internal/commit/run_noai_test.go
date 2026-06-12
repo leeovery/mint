@@ -24,6 +24,11 @@ func noAIDeps(rec *presentertest.RecordingPresenter, er *editorRunner, mode comm
 		Root:      root,
 		Staging:   mode,
 		NoAI:      true,
+		// The interactive editor-fallback tests exercise the TTY path: a TTY stdin and no
+		// -y, so the no-message-source fail-loud guard (task 3-5) does NOT fire and the
+		// editor opens. The fail-loud guard's own preconditions are covered in
+		// run_failloud_test.go.
+		StdinInteractive: true,
 	}
 }
 

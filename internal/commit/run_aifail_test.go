@@ -28,6 +28,10 @@ func aiFailDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr comm
 		Transport: tr,
 		Root:      root,
 		Staging:   mode,
+		// These tests exercise the TTY editor-fallback path (a TTY stdin, no -y), so the
+		// no-message-source fail-loud guard (task 3-5) does NOT fire and the AI failure
+		// reaches the editor. The guard's own preconditions live in run_failloud_test.go.
+		StdinInteractive: true,
 	}
 }
 

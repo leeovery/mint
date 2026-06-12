@@ -284,6 +284,14 @@ func runCommit(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
+	// Resolve the run-level startup signals ONCE, each from its own descriptor (stdout
+	// for render Mode, stdin for the gating StdinInteractive). NewForStartup does its own
+	// internal detection over the same inputs (so the presenter's gate posture is
+	// consistent); we additionally surface StdinInteractive as a boolean to the engine's
+	// editor-fallback no-message-source guard, which the Presenter interface exposes no
+	// accessor for.
+	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
+
 	// Construct the presenter ONCE at startup — the single production construction
 	// site. TTY/mode detection never happens downstream.
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
@@ -303,6 +311,11 @@ func runCommit(ctx context.Context, rest []string) int {
 		Staging: opts.Staging,
 		// --no-ai routes past AI generation + the Continue? gate to the $EDITOR fallback.
 		NoAI: opts.NoAI,
+		// Thread the -y flag and the startup-resolved stdin-interactivity signal into the
+		// editor-fallback no-message-source guard: under -y or a non-TTY stdin a fallback
+		// has no human to write a message, so it fails loud rather than hangs.
+		Yes:              opts.Yes,
+		StdinInteractive: signals.StdinInteractive,
 	}
 
 	if err := commit.Run(ctx, deps); err != nil {
