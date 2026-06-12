@@ -13,10 +13,9 @@ import (
 // flags the presenter consumes at startup: --plain forces un-styled output, and
 // -y/--yes auto-accepts. Phase 2 adds the staging selectors -a/--all and -A/--add-all,
 // resolved into a single commit.StagingMode. Phase 3 adds --no-ai, which skips AI
-// generation and the Continue? gate and drops to the $EDITOR fallback. The push (-p)
-// flag is a LATER phase and is deliberately NOT parsed here — adding it before its
-// behaviour exists would advertise a no-op flag. It is a plain value so flag parsing
-// stays decoupled from the orchestrator.
+// generation and the Continue? gate and drops to the $EDITOR fallback. Phase 5 adds
+// -p/--push, which arms a push after a successful commit. All are plain values so flag
+// parsing stays decoupled from the orchestrator.
 type commitFlags struct {
 	// Yes auto-accepts the review gate; the presenter performs the skip inside Prompt.
 	Yes bool
@@ -31,6 +30,12 @@ type commitFlags struct {
 	// $EDITOR fallback, where the editor save IS the accept event. False is the normal
 	// AI-generate path.
 	NoAI bool
+	// Push selects -p/--push: arm a push after a successful commit. Push is FLAG-ONLY —
+	// "we never push without the -p flag" — so there is deliberately NO push config
+	// default; this flag is the sole source of the armed value. Default false = disarmed
+	// (no push). The push itself fires only after a successful commit (gating is Phase 5's
+	// later tasks); this flag merely carries the armed value.
+	Push bool
 }
 
 // parseCommitFlags parses the `mint commit [options]` arguments into a commitFlags.
@@ -47,7 +52,7 @@ func parseCommitFlags(args []string) (commitFlags, error) {
 	fs := flag.NewFlagSet("commit", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
-	var yes, plain, all, addAll, noAI bool
+	var yes, plain, all, addAll, noAI, push bool
 	fs.BoolVar(&yes, "y", false, "skip the review gate (auto-accept)")
 	fs.BoolVar(&yes, "yes", false, "skip the review gate (auto-accept)")
 	fs.BoolVar(&plain, "plain", false, "force plain (un-styled) output")
@@ -56,6 +61,12 @@ func parseCommitFlags(args []string) (commitFlags, error) {
 	fs.BoolVar(&addAll, "A", false, "stage everything incl. untracked first (git add -A)")
 	fs.BoolVar(&addAll, "add-all", false, "stage everything incl. untracked first (git add -A)")
 	fs.BoolVar(&noAI, "no-ai", false, "skip AI generation; write the message in $EDITOR")
+	// -p/--push set the same push var (the paired short/long pattern -a/--all and -y/--yes
+	// use). Registering -p as a defined single-letter flag also lets the short-flag
+	// pre-expansion fold it into bundles, so -Ap → -A -p and -Apy → -A -p -y. Push is
+	// flag-only — no config default is read or defaulted; this flag is the sole source.
+	fs.BoolVar(&push, "p", false, "push after committing (no push without this; no config default)")
+	fs.BoolVar(&push, "push", false, "push after committing (no push without this; no config default)")
 
 	if err := fs.Parse(expandShortFlagBundles(args, fs)); err != nil {
 		return commitFlags{}, err
@@ -65,7 +76,7 @@ func parseCommitFlags(args []string) (commitFlags, error) {
 	if err != nil {
 		return commitFlags{}, err
 	}
-	return commitFlags{Yes: yes, Plain: plain, Staging: staging, NoAI: noAI}, nil
+	return commitFlags{Yes: yes, Plain: plain, Staging: staging, NoAI: noAI, Push: push}, nil
 }
 
 // resolveStagingMode maps the two mutually-exclusive staging booleans to a

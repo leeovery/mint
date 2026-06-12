@@ -185,6 +185,15 @@ type Deps struct {
 	// SAME determination the gate's non-TTY-without-`-y` fail-loud uses — NOT a separate
 	// /dev/tty/stdout probe and NOT a re-implemented isatty.
 	StdinInteractive bool
+	// Push is the resolved -p/--push armed value, threaded from the cmd layer. ARMED
+	// (true) means push after a SUCCESSFUL commit; DISARMED (false, the default) means no
+	// push. Push is FLAG-ONLY — "we never push without the -p flag" — so there is
+	// deliberately NO push config default; the flag is the sole source of this value and
+	// Run never reads a config push key. This task only THREADS the armed value through;
+	// the actual push execution (after the gate-accept commit and the editor-save commit),
+	// the push-failure warn-don't-unwind, and the empty/aborted-run suppression are LATER
+	// Phase 5 tasks (5-2..5-5) that consume this field — none run here.
+	Push bool
 }
 
 // Run executes the bare `mint commit` thread, orchestrating the Phase 1 pieces in

@@ -316,6 +316,10 @@ func runCommit(ctx context.Context, rest []string) int {
 		// has no human to write a message, so it fails loud rather than hangs.
 		Yes:              opts.Yes,
 		StdinInteractive: signals.StdinInteractive,
+		// Thread the -p/--push armed value (flag-only; no config default). Phase 5's later
+		// tasks consume it to push after a successful commit; disarmed leaves the path
+		// push-free.
+		Push: opts.Push,
 	}
 
 	if err := commit.Run(ctx, deps); err != nil {
