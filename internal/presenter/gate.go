@@ -149,9 +149,9 @@ func NotesReviewGate() Gate {
 		// value here instead).
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
-			{Key: ChoiceYes, Action: "accept & proceed"},
+			{Key: ChoiceYes, Action: "accept"},
 			{Key: ChoiceNo, Action: "abort"},
-			{Key: ChoiceEdit, Action: "edit in $EDITOR"},
+			{Key: ChoiceEdit, Action: "edit"},
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
 		Default: ChoiceYes,
@@ -171,7 +171,7 @@ func ReuseConfirmGate() Gate {
 		Subject:    "notes",
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
-			{Key: ChoiceYes, Action: "accept & proceed"},
+			{Key: ChoiceYes, Action: "accept"},
 			{Key: ChoiceNo, Action: "abort"},
 		},
 		Default: ChoiceYes,

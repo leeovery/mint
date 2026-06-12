@@ -30,9 +30,9 @@ func TestNotesReviewGateDeclaresFourChoices(t *testing.T) {
 	}
 
 	wantActions := map[presenter.Choice]string{
-		presenter.ChoiceYes:   "accept & proceed",
+		presenter.ChoiceYes:   "accept",
 		presenter.ChoiceNo:    "abort",
-		presenter.ChoiceEdit:  "edit in $EDITOR",
+		presenter.ChoiceEdit:  "edit",
 		presenter.ChoiceRegen: "regenerate",
 	}
 	for _, choice := range gate.Choices {

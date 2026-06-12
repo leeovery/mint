@@ -160,9 +160,9 @@ func TestPlainPromptThenAskLineConsumeConsecutiveLines(t *testing.T) {
 }
 
 // TestPrettyAskLineRendersPromptMarkerAndReturnsLine proves the pretty free-text
-// ask renders the gate-question vocabulary — "  {prompt} › " with no trailing
-// newline — and returns the typed line. Under the Ascii profile the dim marker
-// downgrades to bare text, so the framing is asserted byte-exactly.
+// ask renders the gate-question vocabulary — "{prompt} › " flush-left with no
+// trailing newline — and returns the typed line. Under the Ascii profile the dim
+// marker downgrades to bare text, so the framing is asserted byte-exactly.
 func TestPrettyAskLineRendersPromptMarkerAndReturnsLine(t *testing.T) {
 	p, out, errBuf := prettyGate(termenv.Ascii, strings.NewReader("free text answer\n"), gateOpts{})
 
@@ -173,8 +173,8 @@ func TestPrettyAskLineRendersPromptMarkerAndReturnsLine(t *testing.T) {
 	if got != "free text answer" {
 		t.Errorf("pretty AskLine = %q, want %q", got, "free text answer")
 	}
-	if out.String() != "  context › " {
-		t.Errorf("pretty AskLine prompt = %q, want %q", out.String(), "  context › ")
+	if out.String() != "context › " {
+		t.Errorf("pretty AskLine prompt = %q, want %q", out.String(), "context › ")
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("pretty AskLine wrote to err: %q; the prompt is narration -> out only", errBuf.String())
@@ -193,7 +193,7 @@ func TestPrettyAskLineNonInteractiveStdinFailsLoud(t *testing.T) {
 	if !errors.Is(err, presenter.ErrNotInteractive) {
 		t.Fatalf("pretty AskLine non-interactive = %v, want ErrNotInteractive", err)
 	}
-	wantOut := "  ✗ input      not a TTY — pass -y to run unattended\n"
+	wantOut := "✗ input      not a TTY — pass -y to run unattended\n"
 	if out.String() != wantOut {
 		t.Errorf("pretty AskLine fail line (out) = %q, want %q", out.String(), wantOut)
 	}

@@ -127,7 +127,7 @@ func TestPlainSourceTargetRenderTerseKeyValueLines(t *testing.T) {
 
 // TestYesEchoesChosenSourcePlainAndPretty proves the -y echo shows the CHOSEN value
 // (not "accepted") for the source gate: plain "source: github (-y)" and pretty
-// "  ✓ source  github (-y)"; the gate's declared default is returned WITHOUT reading
+// "✓ source  github (-y)"; the gate's declared default is returned WITHOUT reading
 // stdin (the failingReader fails the test on any Read).
 func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
 	gate := presenter.SourceGate(sourceOptions(), presenter.Choice("github"))
@@ -154,8 +154,8 @@ func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
 	if pchoice != presenter.Choice("github") {
 		t.Errorf("pretty source Prompt under -y = %q, want declared default %q", pchoice, "github")
 	}
-	if got := prettyOut.String(); got != "  ✓ source  github (-y)\n" {
-		t.Errorf("pretty source -y accept line = %q, want %q", got, "  ✓ source  github (-y)\n")
+	if got := prettyOut.String(); got != "✓ source  github (-y)\n" {
+		t.Errorf("pretty source -y accept line = %q, want %q", got, "✓ source  github (-y)\n")
 	}
 }
 

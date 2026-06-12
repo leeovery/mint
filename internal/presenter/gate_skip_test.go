@@ -139,7 +139,7 @@ func TestPlainPromptUnderYesEchoIsBytePureASCII(t *testing.T) {
 }
 
 // TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine proves the pretty presenter,
-// under -y, emits the concise accept line "  ✓ notes  accepted (-y)\n" to out,
+// under -y, emits the concise accept line "✓ notes  accepted (-y)\n" to out,
 // returns the gate's declared default, and reads NOTHING from the input reader.
 func TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine(t *testing.T) {
 	gate := presenter.NotesReviewGate()
@@ -153,16 +153,16 @@ func TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine(t *testing.T) {
 	if choice != gate.Default {
 		t.Errorf("pretty Prompt under -y = %q, want gate default %q", choice, gate.Default)
 	}
-	if got := out.String(); got != "  ✓ notes  accepted (-y)\n" {
-		t.Errorf("pretty -y accept line = %q, want %q", got, "  ✓ notes  accepted (-y)\n")
+	if got := out.String(); got != "✓ notes  accepted (-y)\n" {
+		t.Errorf("pretty -y accept line = %q, want %q", got, "✓ notes  accepted (-y)\n")
 	}
 	if reader.tripped {
 		t.Error("pretty Prompt under -y read the input reader; it must not")
 	}
 }
 
-// TestPrettyPromptUnderYesDrawsNoMenu proves the pretty vertical menu is NOT drawn
-// under -y: no "Continue? ›" prompt and no option lines reach out.
+// TestPrettyPromptUnderYesDrawsNoMenu proves the pretty hotkey bar is NOT drawn
+// under -y: no "› " cursor and no key/action pairs reach out.
 func TestPrettyPromptUnderYesDrawsNoMenu(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 	p, out, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
@@ -171,12 +171,12 @@ func TestPrettyPromptUnderYesDrawsNoMenu(t *testing.T) {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
 	}
 	got := out.String()
-	if strings.Contains(got, "Continue? ›") {
-		t.Errorf("pretty -y drew the prompt line; the gate must be skipped:\n%q", got)
+	if strings.Contains(got, "› ") {
+		t.Errorf("pretty -y drew the bar cursor; the gate must be skipped:\n%q", got)
 	}
-	for _, opt := range []string{"accept & proceed", "abort", "edit in $EDITOR", "regenerate"} {
+	for _, opt := range []string{"y accept", "n abort", "e edit", "r regenerate"} {
 		if strings.Contains(got, opt) {
-			t.Errorf("pretty -y drew option line %q; the gate must be skipped:\n%q", opt, got)
+			t.Errorf("pretty -y drew bar pair %q; the gate must be skipped:\n%q", opt, got)
 		}
 	}
 }
@@ -197,7 +197,7 @@ func TestPrettyPromptUnderYesEchoesStdoutOnly(t *testing.T) {
 
 // TestPrettyReuseConfirmAutoAcceptedUnderYes proves the two-choice reuse confirm is
 // auto-accepted under -y exactly like the notes gate: returns ChoiceYes, draws no
-// menu, and emits the SAME "  ✓ notes  accepted (-y)" accept line (subject "notes").
+// menu, and emits the SAME "✓ notes  accepted (-y)" accept line (subject "notes").
 func TestPrettyReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 	gate := presenter.ReuseConfirmGate()
 	reader := &failingReader{t: t}
@@ -210,16 +210,16 @@ func TestPrettyReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
 	if choice != presenter.ChoiceYes {
 		t.Errorf("pretty reuse Prompt under -y = %q, want %q", choice, presenter.ChoiceYes)
 	}
-	if got := out.String(); got != "  ✓ notes  accepted (-y)\n" {
-		t.Errorf("pretty reuse -y accept line = %q, want %q", got, "  ✓ notes  accepted (-y)\n")
+	if got := out.String(); got != "✓ notes  accepted (-y)\n" {
+		t.Errorf("pretty reuse -y accept line = %q, want %q", got, "✓ notes  accepted (-y)\n")
 	}
-	if strings.Contains(out.String(), "Continue? ›") {
-		t.Errorf("pretty reuse -y drew the menu; it must be skipped:\n%q", out.String())
+	if strings.Contains(out.String(), "› ") {
+		t.Errorf("pretty reuse -y drew the bar; it must be skipped:\n%q", out.String())
 	}
 }
 
 // TestPrettyPromptInteractivePathUnchangedWhenNotYes is the regression guard: with
-// yes=false the pretty Prompt still renders the vertical menu and reads input,
+// yes=false the pretty Prompt still renders the hotkey bar and reads input,
 // returning the scripted choice — the interactive path is UNCHANGED.
 func TestPrettyPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
@@ -232,8 +232,8 @@ func TestPrettyPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
 	if choice != presenter.ChoiceYes {
 		t.Errorf("pretty Prompt (yes=false) = %q, want %q", choice, presenter.ChoiceYes)
 	}
-	if !strings.Contains(out.String(), "Continue? ›") {
-		t.Errorf("pretty Prompt (yes=false) did not render the menu:\n%q", out.String())
+	if !strings.Contains(out.String(), notesBar) {
+		t.Errorf("pretty Prompt (yes=false) did not render the hotkey bar:\n%q", out.String())
 	}
 	if strings.Contains(out.String(), "accepted (-y)") {
 		t.Errorf("pretty Prompt (yes=false) wrongly emitted the -y accept line:\n%q", out.String())
@@ -275,7 +275,7 @@ func TestGateSubjectSetByConstructors(t *testing.T) {
 // TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded proves the presenter renders
 // BOTH halves of the -y echo from the gate payload — gate.Subject AND gate.AcceptEcho
 // — not hardcoded "notes"/"accepted". A gate carrying subject "source" and echo word
-// "github" yields "source: github (-y)" (plain) / "  ✓ source  github (-y)" (pretty),
+// "github" yields "source: github (-y)" (plain) / "✓ source  github (-y)" (pretty),
 // so a renderer hardcoding either word would fail.
 func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 	gate := presenter.Gate{
@@ -301,8 +301,8 @@ func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 	if _, err := pretty.Prompt(gate); err != nil {
 		t.Fatalf("pretty Prompt under -y returned error: %v", err)
 	}
-	if got := prettyOut.String(); got != "  ✓ source  github (-y)\n" {
-		t.Errorf("pretty subject accept line = %q, want %q", got, "  ✓ source  github (-y)\n")
+	if got := prettyOut.String(); got != "✓ source  github (-y)\n" {
+		t.Errorf("pretty subject accept line = %q, want %q", got, "✓ source  github (-y)\n")
 	}
 }
 

@@ -2,12 +2,6 @@ package presenter
 
 import "io"
 
-// RuleCapForTest exposes the package-internal ruleCap (the decorative notes-rule
-// width cap) to the black-box presenter_test package so the test-side rule helpers
-// source the width from production rather than re-encoding the literal 50. This is a
-// test-only file (compiled only under `go test`); it adds no production surface.
-const RuleCapForTest = ruleCap
-
 // The chainable With* setters below are TEST-ONLY shims for the gating, spinner,
 // and width fields. Production threads these signals in exactly one place — the
 // converged startup seam NewForStartup, which sets the fields directly — so the

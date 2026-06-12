@@ -33,8 +33,8 @@ func TestPrettyUnwoundEmptySummaryRendersGlyphAndLabel(t *testing.T) {
 
 	p.Unwound(presenter.Unwind{})
 
-	if out.String() != "  ↩ unwound    \n" {
-		t.Errorf("pretty empty-summary unwound = %q, want %q", out.String(), "  ↩ unwound    \n")
+	if out.String() != "↩ unwound    \n" {
+		t.Errorf("pretty empty-summary unwound = %q, want %q", out.String(), "↩ unwound    \n")
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+	"golang.org/x/term"
 )
 
 // defaultLeaf is the fallback brand glyph. The engine supplies the leaf in the
@@ -26,13 +27,13 @@ const defaultLeaf = "🌿"
 // still get a single separating space so glyph/name/detail never collide.
 const stageColumn = 11
 
-// stageIndent is the two-space indent every non-brand line carries. Brand lines
+// stageIndent is the indent every non-brand line carries. It is EMPTY — the whole
+// transcript renders flush-left (brand line, stage lines, panels, the gate bar) per
+// the operator's redesign: indentation levels read as clutter, not hierarchy. The
+// constant survives (rather than deleting every call site) so a future indent is a
+// one-line change. Old form: two spaces. Brand lines
 // are flush-left; everything else indents under them.
-const stageIndent = "  "
-
-// ruleChar is the box-drawing horizontal line (U+2500) the decorative notes rules
-// are built from. It is layout, not colour — it survives a colour downgrade.
-const ruleChar = "─"
+const stageIndent = ""
 
 // PrettyPresenter is the styled, human-facing Presenter: brand lines, colour, and
 // status glyphs rendered as linear print-style narration (no alt-screen, no event
@@ -299,18 +300,20 @@ func leafOrDefault(leaf string) string {
 }
 
 // RunStarted renders the top brand line, flush-left:
-// "{leaf} mint · {project}  ›  {action} v{X}". The leaf and the action word are
-// both engine-supplied from RunInfo, so the line is brand- and verb-shaped from
-// the payload rather than hardcoding "🌿" or "releasing". A version-LESS run
-// (commit has no version to announce) omits the " v{X}" segment entirely rather
-// than dangling a bare "v" — the same no-dangling-segment rule the footer follows.
+// "{leaf} mint › {action} {project} v{X}" — the verb-first form of the redesign
+// ("🌿 mint › committing mint", "🌿 mint › releasing acme v1.4.0"). The leaf and
+// the action word are both engine-supplied from RunInfo, so the line is brand- and
+// verb-shaped from the payload rather than hardcoding "🌿" or "releasing". A
+// version-LESS run (commit has no version to announce) omits the " v{X}" segment
+// entirely rather than dangling a bare "v" — the same no-dangling-segment rule the
+// footer follows.
 func (p *PrettyPresenter) RunStarted(info RunInfo) {
 	leaf := leafOrDefault(info.Leaf)
 	if info.Version == "" {
-		p.writef("%s mint · %s  ›  %s\n", leaf, info.Project, info.Action)
+		p.writef("%s mint %s %s %s\n", leaf, p.dim.Render("›"), info.Action, info.Project)
 		return
 	}
-	p.writef("%s mint · %s  ›  %s v%s\n", leaf, info.Project, info.Action, info.Version)
+	p.writef("%s mint %s %s %s v%s\n", leaf, p.dim.Render("›"), info.Action, info.Project, info.Version)
 }
 
 // StageStarted starts the pretty stage-progress spinner for a BLOCKING stage, and
@@ -612,103 +615,57 @@ func padVerb(verb string, column int) string {
 	return fmt.Sprintf("%-*s", column, verb)
 }
 
-// ShowNotes renders the release notes as a titled opener rule, the body verbatim,
-// and a closing rule — NO box (the rounded box was dropped: it forced
-// wrap/truncate on arbitrary-width AI notes and read as clutter). The rules may be
-// dim-styled through the lipgloss renderer, but their layout (the title text and
-// the U+2500 rule characters) survives a colour downgrade; the body is written via
-// the package-shared writeNotesBody helper — UNCHANGED, the same bytes the plain
-// presenter writes — so the body region is provably byte-identical across modes.
-//
-// The body is written flush, NOT indented: the worked example shows the body
-// indented two spaces under the rule, but that indentation is illustrative and is
-// deliberately not applied, because adding indent bytes would break byte-identity
-// (non-negotiable — "what previews is what ships"). The body is NEVER truncated.
-//
-// Edge forms mirror plain: an empty body writes nothing between the rules, so the
-// titled rule is immediately followed by the closing rule — no spurious blank
-// line. A body line that reads like a delimiter is written verbatim; the real
-// closing rule still follows (rules are positional, never content-matched).
-func (p *PrettyPresenter) ShowNotes(notes Notes) {
-	width := ruleWidth(p.termWidth)
-	p.writef("%s\n", p.dim.Render(notesTitledRule(notes.Version, width)))
-	writeNotesBody(p.out, notes.Body)
-	p.writef("%s\n", p.dim.Render(notesClosingRule(width)))
-}
+// gutterPrefix is the left content-gutter glyph every panel body line carries
+// ("│ "), and gutterBare is its form on a blank gutter line. The gutter replaced
+// the titled/closing rules of the original design per the operator's redesign: a
+// dim left bar marks "this block is content, not narration" without drawing
+// box-art above and below it.
+const (
+	gutterPrefix = "│ "
+	gutterBare   = "│"
+)
 
-// titledRule builds a titled opener rule: "── {title} " filled with U+2500 up to
-// width — the CAPPED width ruleWidth(termWidth) == min(termWidth, ruleCap), so
-// the rule neither overflows a narrow terminal nor exceeds the cap on a wide one.
-// The fill count is clamped to a minimum of one so a title longer than the capped
-// width (a genuinely tiny terminal, or a very long title) never produces a
-// negative repeat count — the title is kept in full and is never truncated; only
-// the trailing fill is clamped. It is the shared opener for every titled block:
-// ShowNotes supplies the release-notes title, ShowMessage the engine's verbatim
-// Message.Title.
-func titledRule(title string, width int) string {
-	prefix := ruleChar + ruleChar + " " + title + " "
-	fill := width - displayWidth(prefix)
-	if fill < 1 {
-		fill = 1
+// renderGutterPanel writes a content panel as a dim-guttered block: a dim title
+// line, a bare gutter line, then the body with every line behind the dim "│ "
+// gutter (the gutter is styled; the body text itself stays plain). An empty body
+// renders just the title line — no dangling bare gutter.
+//
+// NOTE: unlike the original rule-based panel, the PRETTY body region is no longer
+// byte-identical to plain's (each line carries the gutter prefix). That trade was
+// made deliberately in the redesign: the gutter is presentation on the TTY preview
+// only — the SHIPPED bytes (tag annotation, changelog, provider release, the
+// commit message) come from the engine payload, and plain mode still writes the
+// body verbatim for pipes/scripts.
+func (p *PrettyPresenter) renderGutterPanel(title, body string) {
+	p.writef("%s\n", p.dim.Render(gutterPrefix+title))
+	trimmed := strings.TrimRight(body, "\n")
+	if trimmed == "" {
+		return
 	}
-	return prefix + strings.Repeat(ruleChar, fill)
+	p.writef("%s\n", p.dim.Render(gutterBare))
+	for _, line := range strings.Split(trimmed, "\n") {
+		if line == "" {
+			p.writef("%s\n", p.dim.Render(gutterBare))
+			continue
+		}
+		p.writef("%s%s\n", p.dim.Render(gutterPrefix), line)
+	}
 }
 
-// notesTitledRule builds the notes opener rule — the shared titledRule with the
-// fixed "release notes · v{X}" title the spec's worked example shows.
-func notesTitledRule(version string, width int) string {
-	return titledRule("release notes · v"+version, width)
+// ShowNotes renders the release notes as a gutter panel titled
+// "release notes · v{X}" — see renderGutterPanel for the form and the
+// byte-identity note. The body is NEVER truncated and wraps naturally.
+func (p *PrettyPresenter) ShowNotes(notes Notes) {
+	p.renderGutterPanel("release notes · v"+notes.Version, notes.Body)
 }
 
-// notesClosingRule builds the closing rule: U+2500 repeated to the capped width
-// (ruleWidth(termWidth)), so it matches the titled rule's bound — never overflowing
-// a narrow terminal nor exceeding the cap.
-func notesClosingRule(width int) string {
-	return strings.Repeat(ruleChar, width)
-}
-
-// displayWidth counts the runes in s — the column count for the ASCII/box-drawing
-// rule text the title is built from (each such rune occupies one cell). Counting
-// runes rather than bytes keeps the multi-byte U+2500 characters from inflating
-// the width math, so the rule fills to the intended cap.
-func displayWidth(s string) int {
-	return len([]rune(s))
-}
-
-// ShowMessage renders an engine-titled content block as a titled opener rule, the
-// body verbatim, and a closing rule — the general-purpose sibling of ShowNotes
-// (whose rule hardcodes the release-notes title), sharing its NO-box treatment,
-// its width source (ruleWidth(termWidth) == min(termWidth, ruleCap)), and the
-// dim styling whose layout survives a colour downgrade. The title is engine
-// content rendered VERBATIM in the opener rule; the body is written via the
-// package-shared writeNotesBody helper — UNCHANGED, the same bytes the plain
-// presenter writes — so the body region is provably byte-identical across modes.
-// The body is written flush (never indented, never truncated), preserving the
-// byte-identity invariant.
-//
-// Edge forms mirror ShowNotes exactly: an empty body writes nothing between the
-// rules; a body line that reads like a rule is written verbatim with the real
-// closing rule still following (rules are positional, never content-matched).
-// Narration → out only, never err.
+// ShowMessage renders an engine-titled content block as a gutter panel — the
+// general-purpose sibling of ShowNotes (whose title hardcodes the release-notes
+// form). The title is engine content rendered VERBATIM; the body is never
+// truncated. Narration → out only, never err.
 func (p *PrettyPresenter) ShowMessage(m Message) {
-	width := ruleWidth(p.termWidth)
-	p.writef("%s\n", p.dim.Render(titledRule(m.Title, width)))
-	writeNotesBody(p.out, m.Body)
-	p.writef("%s\n", p.dim.Render(notesClosingRule(width)))
+	p.renderGutterPanel(m.Title, m.Body)
 }
-
-// menuIndent is the four-space indent every gate menu option line carries — one
-// level deeper than the two-space prompt/question indent, nesting the options
-// under the (later-printed) "{Question} › " line, matching the spec's worked
-// example which indents the y/n/e/r options four spaces.
-const menuIndent = "    "
-
-// defaultMarker is the suffix appended to the one option line whose key equals the
-// gate's Default, flagging the empty-Enter accept path (the spec's "[default]"
-// beside its action). It carries a leading space so it reads as " [default]" after
-// the action text; it is plain layout (not styled), so it survives a colour
-// downgrade verbatim and stays a contiguous substring under colour.
-const defaultMarker = " [default]"
 
 // promptMarker is the "› " cursor marker that ends the prompt line. It is dim
 // (secondary narration, like the Plan header and notes rules) and is styled as ONE
@@ -740,12 +697,13 @@ func (p *PrettyPresenter) ShowVersion(v Version) {
 // to a declared key, unrecognised input re-prompts, and EOF returns a non-nil error
 // rather than silently default-accepting. Only the render closure is mode-specific.
 //
-// The pretty render is the FULL vertical menu (renderGate): the gate's declared
-// choices listed in order ABOVE the question, "[default]" beside the default
-// choice's action, a blank line, then the "{Question} › " prompt line LAST. The
-// shared loop calls renderGate on EVERY pass — including after unrecognised input —
-// so the menu is redrawn linearly (it scrolls; no screen-clearing, no alt-screen)
-// for free.
+// The pretty render is the HOTKEY BAR (renderGate): one flush-left line carrying
+// the label, every declared key/action pair, and the "› " cursor. INPUT is a
+// single KEYPRESS when stdin is a real terminal (raw mode via x/term — no Enter
+// needed; Enter/Space select the default, Ctrl-C/Ctrl-D abort as a closed input,
+// unrecognised keys are ignored), falling back to the shared line-read loop when
+// stdin is not a raw-capable terminal (tests inject plain readers; the loop
+// re-renders the bar after unrecognised lines).
 //
 // Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the vertical menu is
 // not rendered and the input stream is NOT read at all. Instead the auto-accept is
@@ -769,9 +727,81 @@ func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
 		p.failNotInteractive(gateFailLabel)
 		return "", ErrNotInteractive
 	}
+	if f, ok := rawKeyFile(p.in); ok {
+		return p.readKeyChoice(f, gate)
+	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() { p.renderGate(gate) }
 	return readChoice(reader, render, gate)
+}
+
+// rawKeyFile reports whether in can host the single-keypress read: a real
+// *os.File backed by a terminal. Anything else (the scripted readers tests
+// inject, a pipe) falls back to the shared line-read loop.
+func rawKeyFile(in io.Reader) (*os.File, bool) {
+	f, ok := in.(*os.File)
+	if !ok {
+		return nil, false
+	}
+	return f, term.IsTerminal(int(f.Fd()))
+}
+
+// readKeyChoice is the single-KEYPRESS gate read: render the bar once, put the
+// terminal in raw mode, and accept the first byte that resolves to a declared
+// choice — no Enter required. Enter (CR/LF) and Space select the gate's default;
+// Ctrl-C and Ctrl-D restore the terminal and return ErrInputClosed (a clean
+// abort — the engine owns its surfacing, exactly like a closed stream on the
+// line path); any other unrecognised key is IGNORED and the read continues.
+// Because raw mode echoes nothing, the chosen action's text is echoed after the
+// bar's "› " (terminal restored first), so the transcript records what was
+// pressed. If raw mode cannot be entered, the shared line-read loop takes over.
+func (p *PrettyPresenter) readKeyChoice(f *os.File, g Gate) (Choice, error) {
+	p.renderGate(g)
+	fd := int(f.Fd())
+	old, err := term.MakeRaw(fd)
+	if err != nil {
+		return readChoice(bufferedReader(p.in, &p.reader), func() { p.renderGate(g) }, g)
+	}
+
+	buf := make([]byte, 1)
+	for {
+		n, rerr := f.Read(buf)
+		if rerr != nil || n == 0 {
+			_ = term.Restore(fd, old)
+			p.writef("\n")
+			return "", ErrInputClosed
+		}
+		switch b := buf[0]; b {
+		case 0x03, 0x04: // Ctrl-C / Ctrl-D: a deliberate stop, never a default-accept.
+			_ = term.Restore(fd, old)
+			p.writef("\n")
+			return "", ErrInputClosed
+		case '\r', '\n', ' ':
+			_ = term.Restore(fd, old)
+			p.echoKeyChoice(g, g.Default)
+			return g.Default, nil
+		default:
+			if choice, ok := parseChoice(string(rune(b)), g); ok {
+				_ = term.Restore(fd, old)
+				p.echoKeyChoice(g, choice)
+				return choice, nil
+			}
+			// Unrecognised key: ignore and keep reading — no re-render spam.
+		}
+	}
+}
+
+// echoKeyChoice writes the chosen action after the bar's "› " cursor (raw mode
+// echoed nothing), closing the bar line — so the scrollback reads
+// "… e edit  r regenerate › accept".
+func (p *PrettyPresenter) echoKeyChoice(g Gate, c Choice) {
+	for _, choice := range g.Choices {
+		if choice.Key == c {
+			p.writef("%s\n", choice.Action)
+			return
+		}
+	}
+	p.writef("%s\n", string(c))
 }
 
 // AskLine renders the free-text prompt in the gate question's vocabulary —
@@ -819,40 +849,53 @@ func (p *PrettyPresenter) failNotInteractive(label string) {
 	p.errf("✗ %s  %s\n", label, gateNotTTYMessagePretty)
 }
 
-// renderGate writes the pretty vertical menu for one gate to out: one option line
-// per declared choice (in declared order), a blank line, then the question prompt
-// line. The menu is built ENTIRELY from gate.Choices — there is no hardcoded
-// y/n/e/r list — so a two-choice gate renders two option lines and reordering the
-// gate reorders the menu. The "[default]" marker is placed by comparing each
-// choice's Key to gate.Default, so it lands on whatever choice the gate declares as
-// its default (not always y).
+// renderGate writes the pretty HOTKEY BAR for one gate to out — one flush-left
+// line replacing the original stacked vertical menu (dropped in the operator's
+// redesign as clutter):
 //
-// Styling is deliberately MINIMAL and layout-preserving: only the option KEY and
-// the "› " prompt marker are dim-styled (the secondary-narration tone shared with
-// the Plan header and notes rules); the action text, the " [default]" marker, the
-// indentation, and the question text stay PLAIN. Under a colour downgrade lipgloss
-// emits no ANSI, so the whole menu survives as plain text; under colour the styled
-// spans carry ANSI while every structural substring (each option line's action,
-// " [default]", "{Question}", "› ") stays contiguous and intact.
+//	{label} ·  y accept  n abort  e edit  r regenerate ›
 //
-// The prompt line is written WITHOUT a trailing newline — the cursor sits after
-// "› " for the line-read, matching the worked example's "  Continue? › ".
+// The label is the gate's Subject (falling back to the Question stripped of its
+// "?"), and the bar is built ENTIRELY from gate.Choices — there is no hardcoded
+// y/n/e/r list — so a two-choice gate renders two key/action pairs and reordering
+// the gate reorders the bar. The DEFAULT choice (the empty-Enter accept) is marked
+// by weight, not a "[default]" tag: its action text stays plain while every other
+// action is dim.
+//
+// Styling is layout-preserving: the keys and the default action are plain, the
+// separators / non-default actions / "› " marker are dim. Under a colour downgrade
+// lipgloss emits no ANSI, so the whole bar survives as plain text with every
+// structural substring contiguous.
+//
+// The bar opens with a blank separator line and is written WITHOUT a trailing
+// newline — the cursor sits after "› " for the key read (or line read).
 func (p *PrettyPresenter) renderGate(g Gate) {
+	var b strings.Builder
+	b.WriteString(gateBarLabel(g))
+	b.WriteString(p.dim.Render(" ·"))
 	for _, choice := range g.Choices {
-		p.writef("%s%s  %s%s\n", menuIndent, p.dim.Render(string(choice.Key)), choice.Action, defaultSuffix(choice.Key, g.Default))
+		b.WriteString("  ")
+		b.WriteString(string(choice.Key))
+		b.WriteString(" ")
+		if choice.Key == g.Default {
+			b.WriteString(choice.Action)
+		} else {
+			b.WriteString(p.dim.Render(choice.Action))
+		}
 	}
-	p.writef("\n")
-	p.writef("%s%s %s", stageIndent, g.Question, p.dim.Render(promptMarker))
+	b.WriteString(" ")
+	b.WriteString(p.dim.Render(promptMarker))
+	p.writef("\n%s", b.String())
 }
 
-// defaultSuffix returns the " [default]" marker when this choice key is the gate's
-// default, and the empty string otherwise — so exactly the default option line is
-// marked.
-func defaultSuffix(key, def Choice) string {
-	if key == def {
-		return defaultMarker
+// gateBarLabel resolves the bar's leading label: the gate's Subject (the content
+// word — "message", "notes", "source", …) when declared, else the Question with
+// any trailing "?" stripped — so a Subject-less gate still reads naturally.
+func gateBarLabel(g Gate) string {
+	if g.Subject != "" {
+		return g.Subject
 	}
-	return ""
+	return strings.TrimSuffix(g.Question, "?")
 }
 
 // initSkipGlyph is the NEUTRAL middot (U+00B7) the pretty init skipped notice

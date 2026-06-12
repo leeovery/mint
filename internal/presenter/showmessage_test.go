@@ -70,61 +70,54 @@ func TestPlainShowMessageDelimiterLookalikeBodyPassesThrough(t *testing.T) {
 	}
 }
 
-// TestPrettyShowMessageRendersTitledRulesAtCapWidth proves the pretty block uses
-// the shared titled-rule treatment at the capped width: an opener
-// "── {title} ────…" filled to the cap, the body flush between, and a closing
-// rule of exactly the cap width — the same width source ShowNotes uses.
-func TestPrettyShowMessageRendersTitledRulesAtCapWidth(t *testing.T) {
+// TestPrettyShowMessageRendersGutterPanel proves the pretty block uses the shared
+// gutter-panel treatment ShowNotes uses: a dim "│ {title}" line with the
+// engine-supplied title verbatim, a bare "│" spacer, then every body line behind
+// the "│ " gutter (empty body lines as a bare "│") — no titled/closing rules, no
+// width math. Narration → out only, never err.
+func TestPrettyShowMessageRendersGutterPanel(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
 	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithErr(errBuf))
 
-	m := commitMessage()
-	p.ShowMessage(m)
+	p.ShowMessage(commitMessage())
 
-	lines := strings.Split(out.String(), "\n")
-	opener := lines[0]
-	wantPrefix := "── commit message "
-	if !strings.HasPrefix(opener, wantPrefix) {
-		t.Errorf("opener rule = %q, want prefix %q", opener, wantPrefix)
-	}
-	if got := len([]rune(opener)); got != presenter.RuleCapForTest {
-		t.Errorf("opener rule width = %d runes, want the cap %d", got, presenter.RuleCapForTest)
-	}
-	closer := lines[len(lines)-2] // the final element after Split is the empty tail
-	if closer != strings.Repeat("─", presenter.RuleCapForTest) {
-		t.Errorf("closing rule = %q, want %d rule chars", closer, presenter.RuleCapForTest)
-	}
-	wantBody := m.Body + "\n"
-	if !strings.Contains(out.String(), wantBody) {
-		t.Errorf("pretty ShowMessage out %q does not contain the verbatim body %q", out.String(), wantBody)
+	want := "│ commit message\n" +
+		"│\n" +
+		"│ feat: add retry to publish\n" +
+		"│\n" +
+		"│ Retries the gh release call once on a 5xx.\n"
+	if out.String() != want {
+		t.Errorf("pretty ShowMessage out = %q, want %q", out.String(), want)
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("pretty ShowMessage wrote to err: %q; messages are narration -> out only", errBuf.String())
 	}
 }
 
-// TestPrettyShowMessageRespectsNarrowTermWidth proves the rules size to
-// min(termWidth, cap) — the same single width concession ShowNotes makes.
-func TestPrettyShowMessageRespectsNarrowTermWidth(t *testing.T) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(30)
+// TestPrettyShowMessageBodyInFullAtAnyTermWidth proves termWidth no longer
+// affects ShowMessage: at a narrow, a huge, and an undetectable (0) width, every
+// body line still renders in full behind the gutter — the panel does no width
+// math and never truncates.
+func TestPrettyShowMessageBodyInFullAtAnyTermWidth(t *testing.T) {
+	m := commitMessage()
+	for _, width := range []int{30, 2000, 0} {
+		out := &bytes.Buffer{}
+		p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(width)
 
-	p.ShowMessage(commitMessage())
+		p.ShowMessage(m)
 
-	lines := strings.Split(out.String(), "\n")
-	if got := len([]rune(lines[0])); got != 30 {
-		t.Errorf("opener rule width = %d runes, want the narrow terminal width 30", got)
-	}
-	if lines[len(lines)-2] != strings.Repeat("─", 30) {
-		t.Errorf("closing rule = %q, want 30 rule chars", lines[len(lines)-2])
+		assertGutterPanel(t, out.String(), m.Title, m.Body)
 	}
 }
 
-// TestShowMessageBodyIsByteIdenticalAcrossModes proves the body region between
-// the delimiters is the SAME bytes in both modes — both presenters write
-// Message.Body through the shared writeNotesBody helper, so only the framing
-// differs and "what previews is what ships" holds for message blocks too.
-func TestShowMessageBodyIsByteIdenticalAcrossModes(t *testing.T) {
+// TestShowMessageBodyContentIntactAcrossModes pins the REVISED cross-mode
+// contract for message blocks (the old pretty-bytes-identical-to-plain invariant
+// was deliberately traded away for the gutter): (a) PLAIN still writes the body
+// VERBATIM between its delimiters — the shipped bytes are untouched; (b) PRETTY
+// renders every body line's CONTENT intact behind the "│ " gutter — same line
+// count, each non-empty line as "│ {line}", each empty line as a bare "│",
+// nothing truncated or reordered.
+func TestShowMessageBodyContentIntactAcrossModes(t *testing.T) {
 	m := commitMessage()
 
 	plainOut := &bytes.Buffer{}
@@ -132,23 +125,18 @@ func TestShowMessageBodyIsByteIdenticalAcrossModes(t *testing.T) {
 	prettyOut := &bytes.Buffer{}
 	presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii)).ShowMessage(m)
 
-	// extract slices the body region positionally: everything after the first
-	// line (the opener) up to the trailing closer line.
+	// (a) Plain: the body region between the positional delimiters is the source
+	// byte-for-byte.
 	extract := func(s, closer string) string {
 		afterOpener := s[strings.Index(s, "\n")+1:]
 		return strings.TrimSuffix(afterOpener, closer)
 	}
 	plainBody := extract(plainOut.String(), "--- end commit message ---\n")
-	prettyBody := extract(prettyOut.String(), strings.Repeat("─", presenter.RuleCapForTest)+"\n")
-
-	want := m.Body + "\n"
-	if plainBody != want {
+	if want := m.Body + "\n"; plainBody != want {
 		t.Errorf("plain body region = %q, want the verbatim source %q", plainBody, want)
 	}
-	if prettyBody != want {
-		t.Errorf("pretty body region = %q, want the verbatim source %q", prettyBody, want)
-	}
-	if plainBody != prettyBody {
-		t.Errorf("body regions differ across modes: plain %q vs pretty %q", plainBody, prettyBody)
-	}
+
+	// (b) Pretty: title line, bare-"│" spacer, then exactly one gutter line per
+	// body line with the content intact.
+	assertGutterPanel(t, prettyOut.String(), m.Title, m.Body)
 }

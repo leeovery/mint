@@ -26,11 +26,10 @@ import (
 //
 //   - Inter-block blank lines: the spec snapshots show decorative blank lines
 //     between blocks (after the brand line, around the notes block, around the
-//     menu). The presenters emit NO such blank lines — each method writes only its
-//     own line(s). The ONLY blank line in either transcript is the one renderGate
-//     itself writes between the menu options and the question. The goldens are
-//     therefore tightly packed; that packing is exactly the composition being
-//     pinned.
+//     gate). The presenters emit NO such blank lines — each method writes only its
+//     own line(s). The ONLY blank line in either transcript is the separator
+//     renderGate itself writes before the hotkey bar. The goldens are therefore
+//     tightly packed; that packing is exactly the composition being pinned.
 //   - Plain blocking-start lines: the plain presenter emits "{name}: running..." on
 //     a blocking StageStarted. This sequence drives ONLY StageSucceeded for the
 //     blocking prep/notes stages (NOT StageStarted), matching the spec plain
@@ -40,14 +39,12 @@ import (
 //     goldens aligned on one canonical sequence. The pretty golden drives the
 //     blocking StageStarted events (so the spinner lifecycle is exercised) but uses
 //     the spy/no-op spinner factory so NO live ⠋ frame is written.
-//   - Notes body: rendered VERBATIM / flush (writeNotesBody), NOT indented — even
-//     though the pretty snapshot shows the body indented two spaces. Both goldens'
-//     body lines are flush.
-//   - Pretty notes RULES: also flush-left (no two-space stage indent), even though
-//     the pretty snapshot shows them indented under the stage column. ShowNotes
-//     writes the titled/closing rule with no stageIndent, so the golden's rule lines
-//     start at column 0 — another snapshot-vs-implementation reconciliation pinned
-//     here.
+//   - Notes body: in PLAIN, rendered VERBATIM / flush (writeNotesBody) between the
+//     sliceable delimiters. In PRETTY, ShowNotes is a flush-left GUTTER PANEL: a
+//     dim "│ {title}" line, a bare "│" spacer, then every body line behind the
+//     "│ " gutter (empty body lines render as a bare "│") — the titled/closing
+//     rules of the original design are gone. The body CONTENT is intact behind the
+//     gutter; only plain's bytes stay verbatim.
 //   - Pretty colour: forced to termenv.Ascii so the golden is byte-stable layout
 //     with no ANSI — the composition test is about LAYOUT, not colour (colour is
 //     separately tested). stripANSI is therefore unnecessary here.
@@ -153,10 +150,11 @@ func TestPlainGoldenWorkedExampleTranscript(t *testing.T) {
 // TestPrettyGoldenWorkedExampleTranscript drives the full pretty worked-example
 // sequence with a SPY/no-op spinner (so no live ⠋ frame is written) and a fixed
 // Ascii profile (so no ANSI — the golden is stable layout), and a scripted reader
-// ("y\n") so the gate renders the vertical menu and reads y INTERACTIVELY. It
-// asserts the complete composed transcript: brand line, stages, plan, notes block,
-// gate menu + "Continue? › " prompt, record/tag/push/publish stages, then the
-// bottom brand footer. The expected string is reasoned from each event's known
+// ("y\n") so the gate renders the hotkey bar and reads y INTERACTIVELY. It
+// asserts the complete composed transcript: brand line, stages, plan, the notes
+// gutter panel, the blank-line-preceded gate bar (no trailing newline, so the
+// record line follows directly after "› "), record/tag/push/publish stages, then
+// the bottom brand footer. The expected string is reasoned from each event's known
 // pretty rendering, NOT captured-and-compared-to-itself.
 func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
 	out := &bytes.Buffer{}
@@ -169,28 +167,29 @@ func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
 
 	driveWorkedExample(p, true)
 
-	want := "🌿 mint · acme  ›  releasing v1.4.0\n" +
-		"  ✓ version    v1.3.2 → v1.4.0 (minor)\n" +
-		"  ✓ preflight  clean · on main · tag free · in sync with origin\n" +
-		"  Plan\n" +
+	want := "🌿 mint › releasing acme v1.4.0\n" +
+		"✓ version    v1.3.2 → v1.4.0 (minor)\n" +
+		"✓ preflight  clean · on main · tag free · in sync with origin\n" +
+		"Plan\n" +
 		"    • commit   CHANGELOG.md + bin/acme\n" +
 		"    • tag      v1.4.0 (annotated)\n" +
 		"    • push     --atomic → origin\n" +
 		"    • publish  GitHub release\n" +
-		"  ✓ prep       pre_tag: npm ci && npm run build (2.3s)\n" +
-		"  ✓ notes      generated (1.1s)\n" +
-		notesTitledRule(transcriptVersion) + "\n" +
-		notesBody + "\n" +
-		notesClosingRule() + "\n" +
-		"    y  accept & proceed [default]\n" +
-		"    n  abort\n" +
-		"    e  edit in $EDITOR\n" +
-		"    r  regenerate\n" +
+		"✓ prep       pre_tag: npm ci && npm run build (2.3s)\n" +
+		"✓ notes      generated (1.1s)\n" +
+		"│ release notes · v1.4.0\n" +
+		"│\n" +
+		"│ Faster cold starts and a calmer log.\n" +
+		"│\n" +
+		"│ ✨ Features\n" +
+		"│ - Parallel warm-up halves boot time\n" +
+		"│ 🐛 Fixes\n" +
+		"│ - Stop double-flush on SIGTERM\n" +
 		"\n" +
-		"  Continue? › " +
-		"  ✓ record     CHANGELOG.md + bin/acme\n" +
-		"  ✓ tag/push   v1.4.0 pushed (atomic)\n" +
-		"  ✓ publish    github release created\n" +
+		"notes ·  y accept  n abort  e edit  r regenerate › " +
+		"✓ record     CHANGELOG.md + bin/acme\n" +
+		"✓ tag/push   v1.4.0 pushed (atomic)\n" +
+		"✓ publish    github release created\n" +
 		"🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0\n"
 
 	if got := out.String(); got != want {

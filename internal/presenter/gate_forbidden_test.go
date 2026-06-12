@@ -97,7 +97,7 @@ func TestPrettyForbiddenComboStyledFailureToOut(t *testing.T) {
 
 // TestPrettyForbiddenComboFailureShape locks the unstyled structure of the pretty
 // failure line under the Ascii profile (no ANSI): the exact
-// "  ✗ gate       not a TTY — pass -y to run unattended\n" line, padStage-aligned
+// "✗ gate       not a TTY — pass -y to run unattended\n" line, padStage-aligned
 // like the established StageFailed rendering.
 func TestPrettyForbiddenComboFailureShape(t *testing.T) {
 	gate := presenter.NotesReviewGate()
@@ -108,7 +108,7 @@ func TestPrettyForbiddenComboFailureShape(t *testing.T) {
 	}
 	// padStage("gate") right-pads "gate" (4) to stageColumn (11) = 7 trailing
 	// spaces, exactly like every other StageFailed line.
-	want := "  ✗ gate       not a TTY — pass -y to run unattended\n"
+	want := "✗ gate       not a TTY — pass -y to run unattended\n"
 	if got := out.String(); got != want {
 		t.Errorf("pretty forbidden-combo out = %q, want %q", got, want)
 	}
@@ -198,15 +198,16 @@ func TestYesBypassesForbiddenComboBothModes(t *testing.T) {
 	if pchoice != gate.Default {
 		t.Errorf("pretty Prompt (-y, non-TTY stdin) = %q, want gate default %q", pchoice, gate.Default)
 	}
-	if got := prettyOut.String(); got != "  ✓ notes  accepted (-y)\n" {
+	if got := prettyOut.String(); got != "✓ notes  accepted (-y)\n" {
 		t.Errorf("pretty -y accept line = %q, want the auto-accept line, NOT a failure", got)
 	}
 }
 
 // TestInteractiveStdinKeepsInteractivePathBothModes proves precedence branch 3:
 // with -y absent and stdinInteractive=true the interactive line-read path is
-// UNCHANGED — the scripted "y\n" returns ChoiceYes and the menu is drawn — so the
-// new fail branch only fires on the genuine forbidden combination.
+// UNCHANGED — the scripted "y\n" returns ChoiceYes and the gate is drawn (the
+// plain menu / the pretty hotkey bar) — so the new fail branch only fires on the
+// genuine forbidden combination.
 func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
@@ -230,8 +231,8 @@ func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 	if pchoice != presenter.ChoiceYes {
 		t.Errorf("pretty Prompt (interactive stdin) = %q, want %q", pchoice, presenter.ChoiceYes)
 	}
-	if !strings.Contains(prettyOut.String(), "Continue? ›") {
-		t.Errorf("pretty Prompt (interactive stdin) did not render the menu:\n%q", prettyOut.String())
+	if !strings.Contains(prettyOut.String(), notesBar) {
+		t.Errorf("pretty Prompt (interactive stdin) did not render the hotkey bar:\n%q", prettyOut.String())
 	}
 }
 

@@ -10,156 +10,41 @@ import (
 	"mint/internal/presenter"
 )
 
-// The title-prefix literal (notesTitlePrefix), the display-width measurement
-// (ruleDisplayWidth), and the ANSI stripper (stripANSI) live in the shared
-// pretty_helpers_test.go so they are defined once and referenced — not re-declared —
-// here.
+// The gutter-panel expectation helpers (gutterLines/assertGutterPanel) and the
+// ANSI stripper (stripANSI) live in the shared pretty_helpers_test.go so they are
+// defined once and referenced — not re-declared — here.
+//
+// The old rule-sizing tests (narrow/wide/tiny/undetectable rule widths) were
+// DELETED with the titled/closing rules themselves: the gutter panel does no
+// width math, so termWidth no longer affects ShowNotes/ShowMessage at all. What
+// remains width-relevant — the body is NEVER truncated at any width, and stage
+// lines are width-independent — is pinned below.
 
-// notesRuleLines splits a rendered pretty ShowNotes block into its lines (dropping
-// the trailing empty element from the final newline) and returns the titled opener
-// rule (first line) and the closing rule (last line). The body, if any, sits
-// between them; the rules are positional.
-func notesRuleLines(t *testing.T, rendered string) (opener, closer string) {
-	t.Helper()
-	lines := strings.Split(strings.TrimSuffix(rendered, "\n"), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("rendered notes block has too few lines: %q", rendered)
-	}
-	return lines[0], lines[len(lines)-1]
-}
-
-// TestPrettyShowNotesRuleSizedToNarrowTerminalWidth covers the narrower-than-cap
-// edge: with WithTermWidth(30) — narrower than the ~50 cap — both decorative rules
-// render exactly 30 columns wide (no overflow), and the titled rule keeps its title
-// prefix with the trailing U+2500 fill clamped to 30. The no-colour profile keeps
-// the assertion on display width rather than ANSI bytes.
-func TestPrettyShowNotesRuleSizedToNarrowTerminalWidth(t *testing.T) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(30)
-	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
-
-	opener, closer := notesRuleLines(t, out.String())
-
-	if got := ruleDisplayWidth(opener); got != 30 {
-		t.Errorf("narrow titled rule width = %d, want 30:\n%q", got, opener)
-	}
-	if got := ruleDisplayWidth(closer); got != 30 {
-		t.Errorf("narrow closing rule width = %d, want 30:\n%q", got, closer)
-	}
-	if !strings.Contains(stripANSI(opener), notesTitlePrefix("1.4.0")) {
-		t.Errorf("narrow titled rule dropped its title prefix:\n%q", opener)
-	}
-}
-
-// TestPrettyShowNotesRuleClampsToCapOnWideTerminal covers the wider-than-cap edge:
-// with WithTermWidth(200) — far wider than the cap — both rules clamp to the cap
-// (50), never sprawling to 200 columns.
-func TestPrettyShowNotesRuleClampsToCapOnWideTerminal(t *testing.T) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(200)
-	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
-
-	opener, closer := notesRuleLines(t, out.String())
-
-	if got := ruleDisplayWidth(opener); got != 50 {
-		t.Errorf("wide titled rule width = %d, want 50 (cap):\n%q", got, opener)
-	}
-	if got := ruleDisplayWidth(closer); got != 50 {
-		t.Errorf("wide closing rule width = %d, want 50 (cap):\n%q", got, closer)
-	}
-}
-
-// TestPrettyShowNotesRuleFallsBackToCapWhenUndetectable covers the undetectable
-// edge: the default presenter (no WithTermWidth → termWidth 0) and an explicitly
-// undetectable WithTermWidth(0) both render the rule at the full cap (50), the same
-// fixed rule task 2-5 produced.
-func TestPrettyShowNotesRuleFallsBackToCapWhenUndetectable(t *testing.T) {
-	tests := []struct {
-		name  string
-		apply func(p *presenter.PrettyPresenter) *presenter.PrettyPresenter
-	}{
-		{
-			name:  "default presenter (no WithTermWidth)",
-			apply: func(p *presenter.PrettyPresenter) *presenter.PrettyPresenter { return p },
-		},
-		{
-			name:  "explicit undetectable width zero",
-			apply: func(p *presenter.PrettyPresenter) *presenter.PrettyPresenter { return p.WithTermWidth(0) },
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			out := &bytes.Buffer{}
-			p := tt.apply(presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)))
-			p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
-
-			opener, closer := notesRuleLines(t, out.String())
-			if got := ruleDisplayWidth(opener); got != 50 {
-				t.Errorf("undetectable titled rule width = %d, want 50 (cap):\n%q", got, opener)
-			}
-			if got := ruleDisplayWidth(closer); got != 50 {
-				t.Errorf("undetectable closing rule width = %d, want 50 (cap):\n%q", got, closer)
-			}
-		})
-	}
-}
-
-// TestPrettyShowNotesTinyTerminalYieldsTinyRuleNoSpecialBranch covers the tiny
-// edge: WithTermWidth(3) yields a 3-column rule via the SAME min — there is no
-// bespoke tiny-terminal layout. The body still appears in full (wraps naturally,
-// never truncated); --plain is the documented escape hatch for genuinely tiny
-// terminals.
-func TestPrettyShowNotesTinyTerminalYieldsTinyRuleNoSpecialBranch(t *testing.T) {
-	const body = "Faster cold starts and a calmer log."
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(3)
-	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
-
-	opener, closer := notesRuleLines(t, out.String())
-	if got := ruleDisplayWidth(closer); got != 3 {
-		t.Errorf("tiny closing rule width = %d, want 3:\n%q", got, closer)
-	}
-	// The titled rule keeps its title prefix and clamps the fill to ≥ 1 — the title
-	// is longer than 3, so the rule is the prefix plus a single trailing U+2500
-	// (the negative-fill guard), NOT a truncated title. The body is never clipped.
-	if !strings.Contains(stripANSI(opener), notesTitlePrefix("1.4.0")) {
-		t.Errorf("tiny titled rule must keep its full title prefix (no truncation):\n%q", opener)
-	}
-	if !strings.Contains(out.String(), body) {
-		t.Errorf("tiny-terminal body must appear in full (never truncated):\n%q", out.String())
-	}
-}
-
-// TestPrettyShowNotesBodyNeverTruncatedRegardlessOfWidth is the wrap-never-truncate
-// acceptance: a notes body line LONGER than both the cap and a narrow termWidth is
-// rendered in FULL — every byte present, no ellipsis, no clipping. The presenter
-// applies no hard-wrap or truncation to the body; terminal soft-wrap handles long
-// lines. Asserted at a narrow width where a truncating implementation would have
-// dropped bytes.
+// TestPrettyShowNotesBodyNeverTruncatedRegardlessOfWidth is the never-truncate
+// acceptance: a notes body line LONGER than any plausible terminal is rendered in
+// FULL behind the gutter at a narrow, a huge, and an undetectable (0) termWidth —
+// every line present and intact, no ellipsis, no clipping. The presenter applies
+// no hard-wrap or truncation to the body; terminal soft-wrap handles long lines.
 func TestPrettyShowNotesBodyNeverTruncatedRegardlessOfWidth(t *testing.T) {
-	// A single line far longer than ruleCap (50) and far longer than termWidth 20.
 	longLine := strings.Repeat("x", 200) + " end-of-very-long-line-marker"
 	body := "lead in\n" + longLine + "\ntrailing line"
 
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(20)
-	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
+	for _, width := range []int{20, 2000, 0} {
+		out := &bytes.Buffer{}
+		p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(width)
+		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
 
-	got := out.String()
-	// The FULL body bytes must appear contiguously — nothing dropped or wrapped by
-	// the presenter (the presenter never inserts a newline into the body).
-	if !strings.Contains(got, body) {
-		t.Errorf("long body was not rendered verbatim in full:\n%q", got)
-	}
-	// And specifically the tail of the long line survives (no ellipsis/clip).
-	if !strings.Contains(got, "end-of-very-long-line-marker") {
-		t.Errorf("tail of the long notes line was truncated:\n%q", got)
-	}
-	if strings.Contains(got, "…") || strings.Contains(got, "...") {
-		t.Errorf("notes body must not be truncated with an ellipsis:\n%q", got)
+		got := out.String()
+		// Every body line renders in full behind the gutter — the panel is
+		// width-independent, so the same complete layout appears at any width.
+		assertGutterPanel(t, got, "release notes · v1.4.0", body)
+		// And specifically the tail of the long line survives (no ellipsis/clip).
+		if !strings.Contains(got, "│ "+longLine+"\n") {
+			t.Errorf("width %d: long line not rendered in full behind the gutter:\n%q", width, got)
+		}
+		if strings.Contains(got, "…") || strings.Contains(got, "...") {
+			t.Errorf("width %d: notes body must not be truncated with an ellipsis:\n%q", width, got)
+		}
 	}
 }
 

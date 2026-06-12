@@ -216,7 +216,7 @@ func TestPrettyPresenterShortStageStartsNoSpinner(t *testing.T) {
 	if len(tr.created) != 0 {
 		t.Errorf("a short (non-blocking) stage must start NO spinner, got %d created", len(tr.created))
 	}
-	want := "  ✓ preflight  clean · on main\n"
+	want := "✓ preflight  clean · on main\n"
 	if got := out.String(); got != want {
 		t.Errorf("short stage = %q, want only the static ✓ line %q", got, want)
 	}

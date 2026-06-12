@@ -240,9 +240,11 @@ func TestEngineLoopRendersLinearlyAcrossPasses(t *testing.T) {
 				lastIdx = idx
 			}
 
-			// The gate/prompt is re-rendered once per pass (3 passes -> 3 prompts).
-			if n := strings.Count(out, gate.Question); n != len(bodies) {
-				t.Errorf("%s gate question %q appears %d times, want %d (once per pass):\n%q", d.mode, gate.Question, n, len(bodies), out)
+			// The gate/prompt is re-rendered once per pass (3 passes -> 3 prompts),
+			// counted via the per-mode render marker (plain's question line, the
+			// pretty bar's "› " cursor).
+			if n := d.renderCount(out); n != len(bodies) {
+				t.Errorf("%s gate render appears %d times, want %d (once per pass):\n%q", d.mode, n, len(bodies), out)
 			}
 
 			// No screen-clearing / alt-screen / cursor-home — even though pretty is

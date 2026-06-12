@@ -97,7 +97,7 @@ func TestPrettyWarnRendersCapturedOutputFlushBelowOutOnly(t *testing.T) {
 
 	p.Warn(pushWarning())
 
-	wantOut := "  ⚠ push  commit is in place; re-run the push to retry\n" +
+	wantOut := "⚠ push  commit is in place; re-run the push to retry\n" +
 		"remote: permission denied\nfatal: unable to access 'origin'\n"
 	if out.String() != wantOut {
 		t.Errorf("pretty warn out = %q, want %q", out.String(), wantOut)
@@ -116,7 +116,7 @@ func TestPrettyWarnEmptyOutputRendersNoBlock(t *testing.T) {
 
 	p.Warn(presenter.Warning{Label: "post_release", Message: "hook exited 1"})
 
-	want := "  ⚠ post_release  hook exited 1\n"
+	want := "⚠ post_release  hook exited 1\n"
 	if out.String() != want {
 		t.Errorf("pretty warn out = %q, want %q (no output block)", out.String(), want)
 	}

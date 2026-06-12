@@ -81,8 +81,8 @@ func TestPrettyPresenterRendersMinimalSequence(t *testing.T) {
 	})
 
 	got := out.String()
-	topBrand := "🌿 mint · acme  ›  releasing v1.4.0"
-	stageLine := "  ✓ version"
+	topBrand := "🌿 mint › releasing acme v1.4.0"
+	stageLine := "✓ version"
 	bottomBrand := "🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0"
 
 	topIdx := strings.Index(got, topBrand)
@@ -123,12 +123,13 @@ func TestPrettyPresenterColourOnEmitsANSI(t *testing.T) {
 	if !strings.Contains(out.String(), "✓") {
 		t.Errorf("✓ glyph missing from colour-on output:\n%q", out.String())
 	}
-	// Under colour the glyph is ANSI-wrapped, so the indent and the padded name
-	// are asserted around it rather than as one bare literal: the two-space indent
-	// precedes the styled ✓, and the name padded to its column ("version  ")
-	// follows. The detail's engine-supplied → must survive the styling too.
-	if !strings.Contains(out.String(), "  \x1b[") {
-		t.Errorf("two-space indent before the styled glyph missing:\n%q", out.String())
+	// Under colour the glyph is ANSI-wrapped, so the flush-left placement and the
+	// padded name are asserted around it rather than as one bare literal: the
+	// styled ✓ opens its line at column 0 (immediately after the brand line's
+	// newline), and the name padded to its column ("version  ") follows. The
+	// detail's engine-supplied → must survive the styling too.
+	if !strings.Contains(out.String(), "\n\x1b[") {
+		t.Errorf("flush-left styled glyph missing (stage line must start at column 0):\n%q", out.String())
 	}
 	if !strings.Contains(out.String(), "version    v1.3.2 → v1.4.0 (minor)") {
 		t.Errorf("padded stage name + verbatim detail missing:\n%q", out.String())
@@ -155,7 +156,7 @@ func TestPrettyPresenterColourDowngradeEmitsNoANSI(t *testing.T) {
 	if !strings.Contains(out.String(), "🌿") {
 		t.Errorf("brand leaf 🌿 not preserved under colour downgrade:\n%q", out.String())
 	}
-	if !strings.Contains(out.String(), "  ✓ version") {
+	if !strings.Contains(out.String(), "✓ version") {
 		t.Errorf("stage layout not preserved under colour downgrade:\n%q", out.String())
 	}
 }
@@ -210,7 +211,7 @@ func TestPrettyPresenterStageSucceededDetailOnlyHasNoArtefact(t *testing.T) {
 		{
 			name:  "short detail-less stage has no trailing whitespace",
 			stage: "x",
-			want:  "  ✓ x\n",
+			want:  "✓ x\n",
 		},
 		{
 			name:     "blocking detail-less stage shows elapsed with no leading space",
@@ -220,7 +221,7 @@ func TestPrettyPresenterStageSucceededDetailOnlyHasNoArtefact(t *testing.T) {
 			// Two-space indent, ✓, then "x" padded into the 11-wide stage column
 			// (one char + ten spaces) and the elapsed placed flush at the column —
 			// no stray leading space before "(".
-			want: "  ✓ x          (1.1s)\n",
+			want: "✓ x          (1.1s)\n",
 		},
 	}
 
@@ -288,7 +289,7 @@ func TestPrettyPresenterStageColumnSurvivesColourDowngrade(t *testing.T) {
 		t.Errorf("downgraded stage line leaked an SGR code:\n%q", got)
 	}
 	// Two-space indent, glyph, name padded into the column, then the detail.
-	want := "  ✓ prep       pre_tag: npm ci && npm run build (2.3s)\n"
+	want := "✓ prep       pre_tag: npm ci && npm run build (2.3s)\n"
 	if got != want {
 		t.Errorf("downgraded stage line = %q, want %q", got, want)
 	}
@@ -303,8 +304,8 @@ func TestPrettyPresenterStartLineUsesEngineAction(t *testing.T) {
 		action string
 		want   string
 	}{
-		{name: "release verb", action: "releasing", want: "🌿 mint · acme  ›  releasing v1.4.0"},
-		{name: "regenerate verb", action: "regenerating", want: "🌿 mint · acme  ›  regenerating v1.4.0"},
+		{name: "release verb", action: "releasing", want: "🌿 mint › releasing acme v1.4.0"},
+		{name: "regenerate verb", action: "regenerating", want: "🌿 mint › regenerating acme v1.4.0"},
 	}
 
 	for _, tt := range tests {
@@ -330,7 +331,7 @@ func TestPrettyPresenterStartLineOmitsEmptyVersion(t *testing.T) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Action: "committing"})
 	})
 
-	want := "🌿 mint · acme  ›  committing\n"
+	want := "🌿 mint › committing acme\n"
 	if got := out.String(); got != want {
 		t.Errorf("version-less brand line = %q, want exactly %q (no dangling \" v\")", got, want)
 	}
@@ -345,8 +346,8 @@ func TestPrettyPresenterBrandLeafComesFromPayload(t *testing.T) {
 		leaf string
 		want string
 	}{
-		{name: "supplied leaf used verbatim", leaf: "🌱", want: "🌱 mint · acme"},
-		{name: "empty leaf defaults to mint leaf", leaf: "", want: "🌿 mint · acme"},
+		{name: "supplied leaf used verbatim", leaf: "🌱", want: "🌱 mint › releasing acme"},
+		{name: "empty leaf defaults to mint leaf", leaf: "", want: "🌿 mint › releasing acme"},
 	}
 
 	for _, tt := range tests {
@@ -448,7 +449,7 @@ func TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *t
 	})
 
 	got := out.String()
-	if !strings.Contains(got, "🌿 mint · acme  ›  regenerating v1.4.0") {
+	if !strings.Contains(got, "🌿 mint › regenerating acme v1.4.0") {
 		t.Errorf("regenerate block start-of-run brand line missing:\n%q", got)
 	}
 	if !strings.Contains(got, "🌿 regenerated acme v1.4.0\n") {
@@ -479,9 +480,9 @@ func TestPrettyPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder(t *testin
 	})
 
 	got := out.String()
-	idx120 := strings.Index(got, "regenerating v1.2.0")
-	idx130 := strings.Index(got, "regenerating v1.3.0")
-	idx140 := strings.Index(got, "regenerating v1.4.0")
+	idx120 := strings.Index(got, "regenerating acme v1.2.0")
+	idx130 := strings.Index(got, "regenerating acme v1.3.0")
+	idx140 := strings.Index(got, "regenerating acme v1.4.0")
 	if idx120 < 0 || idx130 < 0 || idx140 < 0 {
 		t.Fatalf("one or more regenerate block start lines missing:\n%q", got)
 	}
@@ -499,7 +500,7 @@ func TestPrettyPresenterRegenerateBlockStartUsesRegeneratingNotReleasing(t *test
 	})
 
 	got := out.String()
-	if !strings.Contains(got, "🌿 mint · acme  ›  regenerating v1.4.0") {
+	if !strings.Contains(got, "🌿 mint › regenerating acme v1.4.0") {
 		t.Errorf("brand line did not use the engine action 'regenerating':\n%q", got)
 	}
 	if strings.Contains(got, "releasing") {
@@ -555,7 +556,7 @@ func TestPrettyPresenterFailedRegenerateSuppressesClose(t *testing.T) {
 	})
 
 	got := out.String()
-	if !strings.Contains(got, "  ✗ notes") {
+	if !strings.Contains(got, "✗ notes") {
 		t.Errorf("✗ line missing:\n%q", got)
 	}
 	if strings.Contains(got, "regenerated") {
@@ -578,47 +579,35 @@ func TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultVerb(t *testing.T) {
 
 // TestPrettyPresenterRegenerateFreshNotesBlockRendersFourChoiceGate drives a
 // fresh-notes block: Prompt(NotesReviewGate()) renders the four-choice y/n/e/r
-// vertical menu. The presenter renders whichever gate the engine passes — it does
+// hotkey bar. The presenter renders whichever gate the engine passes — it does
 // NOT decide reuse-vs-fresh.
 func TestPrettyPresenterRegenerateFreshNotesBlockRendersFourChoiceGate(t *testing.T) {
 	out := &bytes.Buffer{}
 	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
 	_, _ = p.Prompt(presenter.NotesReviewGate())
 
-	got := out.String()
-	for _, want := range []string{
-		"    y  accept & proceed [default]",
-		"    n  abort",
-		"    e  edit in $EDITOR",
-		"    r  regenerate",
-		"  Continue? › ",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("fresh-notes block four-choice menu missing %q:\n%q", want, got)
-		}
+	if got := out.String(); !strings.Contains(got, notesBar) {
+		t.Errorf("fresh-notes block four-choice bar missing %q:\n%q", notesBar, got)
 	}
 }
 
 // TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate drives a
-// reused-notes block: Prompt(ReuseConfirmGate()) renders the two-choice y/n confirm
-// — NO e/r lines, since there are no freshly-generated notes to edit or regenerate.
+// reused-notes block: Prompt(ReuseConfirmGate()) renders the two-choice y/n bar
+// — NO e/r pairs, since there are no freshly-generated notes to edit or regenerate.
 func TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate(t *testing.T) {
 	out := &bytes.Buffer{}
 	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("y\n")))
 	_, _ = p.Prompt(presenter.ReuseConfirmGate())
 
 	got := out.String()
-	if !strings.Contains(got, "    y  accept & proceed [default]") {
-		t.Errorf("reuse confirm y line missing:\n%q", got)
+	if !strings.Contains(got, "\nnotes ·  y accept  n abort › ") {
+		t.Errorf("reuse confirm bar missing:\n%q", got)
 	}
-	if !strings.Contains(got, "    n  abort") {
-		t.Errorf("reuse confirm n line missing:\n%q", got)
+	if strings.Contains(got, " e edit") {
+		t.Errorf("reuse confirm must NOT render an e pair:\n%q", got)
 	}
-	if strings.Contains(got, "    e  ") {
-		t.Errorf("reuse confirm must NOT render an e line:\n%q", got)
-	}
-	if strings.Contains(got, "    r  ") {
-		t.Errorf("reuse confirm must NOT render an r line:\n%q", got)
+	if strings.Contains(got, " r regenerate") {
+		t.Errorf("reuse confirm must NOT render an r pair:\n%q", got)
 	}
 }
 
@@ -639,7 +628,7 @@ func TestPrettyPresenterShowPlanRendersBulletedBlock(t *testing.T) {
 
 	// Column = longest verb ("publish", 7) + 2 = 9, so every verb pads to width 9
 	// and the targets all start at the same column — matching the worked example.
-	want := "  Plan\n" +
+	want := "Plan\n" +
 		"    • commit   CHANGELOG.md + bin/acme\n" +
 		"    • tag      v1.4.0 (annotated)\n" +
 		"    • push     --atomic → origin\n" +
@@ -662,7 +651,7 @@ func TestPrettyPresenterShowPlanTargetsAlign(t *testing.T) {
 	})
 
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
-	// lines[0] is the "  Plan" header; the bullets follow.
+	// lines[0] is the "Plan" header; the bullets follow.
 	bullets := lines[1:]
 	if len(bullets) != 4 {
 		t.Fatalf("expected 4 bullet lines, got %d:\n%q", len(bullets), out.String())
@@ -689,7 +678,7 @@ func TestPrettyPresenterShowPlanSingleStep(t *testing.T) {
 		}})
 	})
 
-	want := "  Plan\n" +
+	want := "Plan\n" +
 		"    • tag  v1.4.0\n"
 	got := out.String()
 	if got != want {
@@ -724,7 +713,7 @@ func TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly(t *testing.T) {
 		{
 			name:  "lone empty-target step renders just the verb",
 			steps: []presenter.PlanStep{{Verb: "publish", Target: ""}},
-			want:  "  Plan\n    • publish\n",
+			want:  "Plan\n    • publish\n",
 		},
 		{
 			name: "empty-target step among others has no trailing pad",
@@ -735,7 +724,7 @@ func TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly(t *testing.T) {
 			// Column = longest verb ("publish", 7) + 2 = 9, so "tag" pads to the
 			// column before its target; the empty-target "publish" line drops the
 			// pad entirely (nothing follows the verb).
-			want: "  Plan\n    • tag      v1.4.0\n    • publish\n",
+			want: "Plan\n    • tag      v1.4.0\n    • publish\n",
 		},
 	}
 
@@ -776,7 +765,7 @@ func TestPrettyPresenterShowPlanLayoutSurvivesColourDowngrade(t *testing.T) {
 	if bytes.ContainsRune(out.Bytes(), 0x1b) {
 		t.Errorf("downgraded plan block leaked an SGR code:\n%q", got)
 	}
-	want := "  Plan\n" +
+	want := "Plan\n" +
 		"    • commit   CHANGELOG.md + bin/acme\n" +
 		"    • publish  GitHub release\n"
 	if got != want {
@@ -808,7 +797,7 @@ func TestPrettyPresenterShowPlanColourOnEmitsANSIButKeepsLayout(t *testing.T) {
 }
 
 // TestPrettyPresenterWarnRendersAmberLineToStdout is the core pretty Warn
-// acceptance under colour: the "  ⚠ {label}  {message}" line (two-space indent,
+// acceptance under colour: the "⚠ {label}  {message}" line (two-space indent,
 // amber ⚠ glyph, label, two spaces, message) is written to stdout and carries
 // ANSI SGR codes (the amber styling) while the layout text survives. Label and
 // message arrive as separate fields — never parsed from a single combined string.
@@ -844,14 +833,14 @@ func TestPrettyPresenterWarnLayoutSurvivesColourDowngrade(t *testing.T) {
 	if bytes.ContainsRune(out.Bytes(), 0x1b) {
 		t.Errorf("downgraded warn line leaked an SGR code:\n%q", got)
 	}
-	want := "  ⚠ post_release  hook failed (tag is already published): scripts/notify.sh exited 1\n"
+	want := "⚠ post_release  hook failed (tag is already published): scripts/notify.sh exited 1\n"
 	if got != want {
 		t.Errorf("downgraded warn line = %q, want %q", got, want)
 	}
 }
 
 // TestPrettyPresenterWarnEmptyMessageHasNoTrailingWhitespace covers the empty-message
-// edge: the line renders "  ⚠ {label}" with NO trailing-whitespace artefact (the
+// edge: the line renders "⚠ {label}" with NO trailing-whitespace artefact (the
 // two-space gap and the message are dropped when there is no message), and no
 // invented content.
 func TestPrettyPresenterWarnEmptyMessageHasNoTrailingWhitespace(t *testing.T) {
@@ -860,7 +849,7 @@ func TestPrettyPresenterWarnEmptyMessageHasNoTrailingWhitespace(t *testing.T) {
 	})
 
 	got := out.String()
-	want := "  ⚠ x\n"
+	want := "⚠ x\n"
 	if got != want {
 		t.Errorf("empty-message warn line = %q, want %q", got, want)
 	}
@@ -906,8 +895,8 @@ func TestPrettyPresenterWarnMultipleRenderInSequence(t *testing.T) {
 	p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
 	p.Warn(presenter.Warning{Label: "cleanup", Message: "temp dir left behind"})
 
-	want := "  ⚠ post_release  hook failed\n" +
-		"  ⚠ cleanup  temp dir left behind\n"
+	want := "⚠ post_release  hook failed\n" +
+		"⚠ cleanup  temp dir left behind\n"
 	if got := out.String(); got != want {
 		t.Errorf("multiple warn out = %q, want %q", got, want)
 	}
@@ -950,7 +939,7 @@ func TestPrettyPresenterUnwoundRendersGlyphLineWithVerbatimSummary(t *testing.T)
 			p.Unwound(presenter.Unwind{Summary: summary})
 		})
 
-		want := "  ↩ unwound    " + summary + "\n"
+		want := "↩ unwound    " + summary + "\n"
 		if got := out.String(); got != want {
 			t.Errorf("unwound line = %q, want %q", got, want)
 		}
@@ -1021,10 +1010,10 @@ func TestPrettyPresenterUnwoundAfterFailureSuppressesSuccessLine(t *testing.T) {
 	})
 
 	got := out.String()
-	if !strings.Contains(got, "  ✗ tag/push") {
+	if !strings.Contains(got, "✗ tag/push") {
 		t.Errorf("✗ line missing:\n%q", got)
 	}
-	if !strings.Contains(got, "  ↩ unwound") {
+	if !strings.Contains(got, "↩ unwound") {
 		t.Errorf("↩ line missing:\n%q", got)
 	}
 	if strings.Contains(got, "released") {
@@ -1042,7 +1031,7 @@ func TestPrettyPresenterUnwoundAfterAbortSuppressesSuccessLine(t *testing.T) {
 	})
 
 	got := out.String()
-	if !strings.Contains(got, "  ↩ unwound") {
+	if !strings.Contains(got, "↩ unwound") {
 		t.Errorf("↩ line missing:\n%q", got)
 	}
 	if strings.Contains(got, "released") {
@@ -1068,7 +1057,7 @@ func TestPrettyPresenterStageFailedRendersCapturedOutputBelowGlyphLine(t *testin
 	})
 
 	got := out.String()
-	glyphLine := "  ✗ tag/push"
+	glyphLine := "✗ tag/push"
 	glyphIdx := strings.Index(got, glyphLine)
 	if glyphIdx < 0 {
 		t.Fatalf("✗ failure line %q not found:\n%q", glyphLine, got)
@@ -1118,7 +1107,7 @@ func TestPrettyPresenterStageFailedEmptyOutputRendersGlyphLineAlone(t *testing.T
 
 	// The name is padStage-padded to the stage column (8-char "tag/push" → three
 	// trailing spaces to reach column 11), matching the existing StageFailed line.
-	want := "  ✗ tag/push   push rejected: remote moved\n"
+	want := "✗ tag/push   push rejected: remote moved\n"
 	if got := out.String(); got != want {
 		t.Errorf("empty-output StageFailed = %q, want exactly the ✗ line alone %q", got, want)
 	}
@@ -1180,32 +1169,36 @@ const prettyNotesBody = "Faster cold starts and a calmer log.\n" +
 	"🐛 Fixes\n" +
 	"- Stop double-flush on SIGTERM"
 
-// The expected titled/closing notes rules (notesTitledRule/notesClosingRule), the
-// title-prefix literal, and the rule-width source live in the shared
-// pretty_helpers_test.go so the prefix + fill/clamp arithmetic and the cap appear
-// exactly once on the test side.
+// The expected gutter rendering of a panel body (gutterLines) lives in the shared
+// pretty_helpers_test.go so the "│ {line}" / bare "│" arithmetic appears exactly
+// once on the test side.
 
-// TestPrettyPresenterShowNotesWrapsBodyInTitledRules is the core pretty
-// acceptance: ShowNotes renders a titled opener rule, the body verbatim (flush,
-// NOT indented), and a closing rule — and crucially NO box-drawing border
-// (╭ ╮ ╰ ╯ │) surrounds the body. The no-colour profile keeps the assertion on
-// the exact layout rather than ANSI bytes.
-func TestPrettyPresenterShowNotesWrapsBodyInTitledRules(t *testing.T) {
+// TestPrettyPresenterShowNotesRendersGutterPanel is the core pretty acceptance:
+// ShowNotes renders a "│ release notes · v{X}" title line, a bare "│" spacer,
+// then every body line behind the "│ " gutter — and crucially NO titled/closing
+// rules (the rule design was dropped) and NO rounded-box corners. The no-colour
+// profile keeps the assertion on the exact layout rather than ANSI bytes.
+func TestPrettyPresenterShowNotesRendersGutterPanel(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: prettyNotesBody})
 	})
 
-	want := notesTitledRule("1.4.0") + "\n" +
-		prettyNotesBody + "\n" +
-		notesClosingRule() + "\n"
+	want := "│ release notes · v1.4.0\n" +
+		"│\n" +
+		"│ Faster cold starts and a calmer log.\n" +
+		"│\n" +
+		"│ ✨ Features\n" +
+		"│ - Parallel warm-up halves boot time\n" +
+		"│ 🐛 Fixes\n" +
+		"│ - Stop double-flush on SIGTERM\n"
 	if got := out.String(); got != want {
-		t.Errorf("ShowNotes titled-rule layout mismatch\n got: %q\nwant: %q", got, want)
+		t.Errorf("ShowNotes gutter-panel layout mismatch\n got: %q\nwant: %q", got, want)
 	}
 
-	// No rounded-box border characters may surround the body — the box was dropped.
-	for _, boxChar := range []string{"╭", "╮", "╰", "╯", "│"} {
-		if strings.Contains(out.String(), boxChar) {
-			t.Errorf("box-drawing border char %q present — the rounded box was dropped:\n%q", boxChar, out.String())
+	// No rounded-box corners and no horizontal rules — both designs were dropped.
+	for _, stale := range []string{"╭", "╮", "╰", "╯", "─"} {
+		if strings.Contains(out.String(), stale) {
+			t.Errorf("stale border/rule char %q present — only the │ gutter renders:\n%q", stale, out.String())
 		}
 	}
 }
@@ -1226,61 +1219,65 @@ func TestPrettyPresenterShowNotesPreservesEmojiHeaders(t *testing.T) {
 	}
 }
 
-// TestPrettyPresenterShowNotesEmptyBodyRendersBareRules covers the empty-body
-// edge: the titled rule is immediately followed by the closing rule with NO
-// spurious blank line or invented content between them — consistent with plain.
-func TestPrettyPresenterShowNotesEmptyBodyRendersBareRules(t *testing.T) {
+// TestPrettyPresenterShowNotesEmptyBodyRendersTitleLineOnly covers the empty-body
+// edge: ONLY the title line renders — no bare-"│" spacer, no invented content
+// dangling below it.
+func TestPrettyPresenterShowNotesEmptyBodyRendersTitleLineOnly(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: ""})
 	})
 
-	want := notesTitledRule("1.4.0") + "\n" +
-		notesClosingRule() + "\n"
+	want := "│ release notes · v1.4.0\n"
 	if got := out.String(); got != want {
 		t.Errorf("empty-body pretty notes = %q, want %q", got, want)
 	}
 }
 
-// TestPrettyPresenterShowNotesDelimiterLikeBodyLineIsVerbatim covers the
-// delimiter-collision edge in pretty mode: a body line that reads like a plain
-// closing delimiter is written through verbatim; the REAL closing rule still
-// follows. Delimiters/rules are positional, never content-matched.
-func TestPrettyPresenterShowNotesDelimiterLikeBodyLineIsVerbatim(t *testing.T) {
+// TestPrettyPresenterShowNotesDelimiterLikeBodyLineIsIntactBehindGutter covers
+// the delimiter-collision edge in pretty mode: a body line that reads like a
+// plain closing delimiter survives with its content INTACT behind the "│ "
+// gutter — never content-matched, never dropped or reordered.
+func TestPrettyPresenterShowNotesDelimiterLikeBodyLineIsIntactBehindGutter(t *testing.T) {
 	body := "real notes\n--- end notes ---\nstill notes"
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: body})
 	})
 
-	want := notesTitledRule("1.4.0") + "\n" +
-		body + "\n" +
-		notesClosingRule() + "\n"
+	want := "│ release notes · v1.4.0\n" +
+		"│\n" +
+		"│ real notes\n" +
+		"│ --- end notes ---\n" +
+		"│ still notes\n"
 	if got := out.String(); got != want {
-		t.Errorf("delimiter-like body line not written verbatim in pretty\n got: %q\nwant: %q", got, want)
+		t.Errorf("delimiter-like body line not intact behind the gutter\n got: %q\nwant: %q", got, want)
 	}
 }
 
 // TestPrettyPresenterShowNotesMultiLineBlankLinesPreserved covers the multi-line
-// edge: internal blank lines round-trip exactly — no collapsing, no re-wrapping,
-// no truncation.
+// edge: internal blank lines round-trip as bare "│" gutter lines — no collapsing,
+// no re-wrapping, no truncation.
 func TestPrettyPresenterShowNotesMultiLineBlankLinesPreserved(t *testing.T) {
 	body := "line one\n\n\nline four after two blanks"
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "2.0.0", Body: body})
 	})
 
-	want := notesTitledRule("2.0.0") + "\n" +
-		body + "\n" +
-		notesClosingRule() + "\n"
+	want := "│ release notes · v2.0.0\n" +
+		"│\n" +
+		"│ line one\n" +
+		"│\n" +
+		"│\n" +
+		"│ line four after two blanks\n"
 	if got := out.String(); got != want {
 		t.Errorf("multi-line blank lines not preserved in pretty\n got: %q\nwant: %q", got, want)
 	}
 }
 
-// TestPrettyPresenterShowNotesRulesSurviveColourDowngrade asserts the rule layout
-// (the title text and the U+2500 rule characters) survives the no-colour profile
-// with no SGR codes leaking — the rules may be dim-styled, but the layout must
+// TestPrettyPresenterShowNotesGutterSurvivesColourDowngrade asserts the panel
+// layout (the title text and the │ gutter glyphs) survives the no-colour profile
+// with no SGR codes leaking — the gutter may be dim-styled, but the layout must
 // remain intact under downgrade.
-func TestPrettyPresenterShowNotesRulesSurviveColourDowngrade(t *testing.T) {
+func TestPrettyPresenterShowNotesGutterSurvivesColourDowngrade(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
 	})
@@ -1288,18 +1285,19 @@ func TestPrettyPresenterShowNotesRulesSurviveColourDowngrade(t *testing.T) {
 	if bytes.ContainsRune(out.Bytes(), 0x1b) {
 		t.Errorf("downgraded notes block leaked an SGR code:\n%q", out.String())
 	}
-	if !strings.Contains(out.String(), "release notes · v1.4.0") {
-		t.Errorf("titled rule text not preserved under colour downgrade:\n%q", out.String())
+	if !strings.Contains(out.String(), "│ release notes · v1.4.0") {
+		t.Errorf("title line not preserved under colour downgrade:\n%q", out.String())
 	}
-	if !strings.Contains(out.String(), "─") {
-		t.Errorf("rule character U+2500 not preserved under colour downgrade:\n%q", out.String())
+	if !strings.Contains(out.String(), "│ hi") {
+		t.Errorf("gutter glyph U+2502 not preserved before the body line under colour downgrade:\n%q", out.String())
 	}
 }
 
-// TestPrettyPresenterShowNotesRulesStyledUnderColour forces a colour-capable
-// profile and asserts the rules carry ANSI SGR escapes (they are dim-styled)
-// while the rule layout text survives — styling is additive, layout is fixed.
-func TestPrettyPresenterShowNotesRulesStyledUnderColour(t *testing.T) {
+// TestPrettyPresenterShowNotesGutterStyledUnderColour forces a colour-capable
+// profile and asserts the gutter carries ANSI SGR escapes (it is dim-styled)
+// while the title text and the body line's TEXT survive contiguous — styling is
+// additive, the content bytes are fixed.
+func TestPrettyPresenterShowNotesGutterStyledUnderColour(t *testing.T) {
 	out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "hi"})
 	})
@@ -1308,16 +1306,21 @@ func TestPrettyPresenterShowNotesRulesStyledUnderColour(t *testing.T) {
 		t.Errorf("colour-on notes block contains no ESC (0x1b) — expected dim SGR codes:\n%q", out.String())
 	}
 	if !strings.Contains(out.String(), "release notes · v1.4.0") {
-		t.Errorf("titled rule text missing under colour:\n%q", out.String())
+		t.Errorf("title text missing under colour:\n%q", out.String())
+	}
+	if !strings.Contains(out.String(), "hi") {
+		t.Errorf("body line text must survive contiguous under colour:\n%q", out.String())
 	}
 }
 
-// TestShowNotesBodyIsByteIdenticalAcrossModes is THE non-negotiable invariant:
-// the same Notes rendered in plain and pretty produce a BYTE-IDENTICAL body
-// region. The body is extracted from each rendering by stripping the
-// mode-specific delimiter/rule lines (the first and last lines) and the two
-// presenters' inner bytes are compared byte-for-byte.
-func TestShowNotesBodyIsByteIdenticalAcrossModes(t *testing.T) {
+// TestShowNotesBodyContentIntactAcrossModes pins the REVISED cross-mode contract
+// (the old pretty-bytes-identical-to-plain invariant was deliberately traded away
+// for the gutter): (a) PLAIN still writes the body VERBATIM between its
+// delimiters — the shipped bytes for pipes/scripts are untouched; (b) PRETTY
+// renders every body line's CONTENT intact behind the "│ " gutter — the same
+// line count, each non-empty line as "│ {line}", each empty line as a bare "│",
+// nothing truncated or reordered.
+func TestShowNotesBodyContentIntactAcrossModes(t *testing.T) {
 	notes := presenter.Notes{Version: "1.4.0", Body: prettyNotesBody}
 
 	plainOut := &bytes.Buffer{}
@@ -1327,24 +1330,21 @@ func TestShowNotesBodyIsByteIdenticalAcrossModes(t *testing.T) {
 		p.ShowNotes(notes)
 	})
 
-	plainBody := extractNotesBody(t, plainOut.String())
-	prettyBody := extractNotesBody(t, prettyOut.String())
-
-	if plainBody != prettyBody {
-		t.Errorf("notes body differs across modes\nplain : %q\npretty: %q", plainBody, prettyBody)
-	}
-	// And the extracted body must equal the source body byte-for-byte — proving
-	// neither mode mutated it.
-	if plainBody != prettyNotesBody {
+	// (a) Plain: the body region between the positional delimiters is the source
+	// byte-for-byte.
+	if plainBody := extractNotesBody(t, plainOut.String()); plainBody != prettyNotesBody {
 		t.Errorf("plain body mutated the source\n got: %q\nwant: %q", plainBody, prettyNotesBody)
 	}
+
+	// (b) Pretty: title line, bare-"│" spacer, then exactly one gutter line per
+	// body line with the content intact.
+	assertGutterPanel(t, prettyOut.String(), "release notes · v1.4.0", prettyNotesBody)
 }
 
-// extractNotesBody removes the first line (the opener delimiter/rule) and the
-// last line (the closing delimiter/rule) from a rendered notes block, returning
-// the inner body region. Delimiters are positional — exactly the first and last
-// of the rendered lines — so this slice is mode-agnostic and lets the two
-// renderings be compared on body bytes alone.
+// extractNotesBody removes the first line (the opener delimiter) and the last
+// line (the closing delimiter) from a rendered PLAIN notes block, returning the
+// inner body region. Plain delimiters are positional — exactly the first and
+// last of the rendered lines — so this slice needs no content matching.
 func extractNotesBody(t *testing.T, rendered string) string {
 	t.Helper()
 	trimmed := strings.TrimSuffix(rendered, "\n")
