@@ -105,6 +105,17 @@ var errEditorNoOp = errors.New("commit aborted: editor closed with no message")
 // plain `git commit`.
 var errNoMessageSource = errors.New("no AI message and no interactive editor available")
 
+// errRegenerateFallback is an INTERNAL routing sentinel — never user-facing. When the
+// gate's `r` regeneration fails after the engine's one retry (an isAITransportFailure),
+// reviewLoop returns this cause so Run routes to the SAME $EDITOR fallback a
+// first-generation AI failure (3-3) takes. The spec mandates one consistent rule: any
+// failed AI generation lands at the editor (no re-show of the pre-r message). The
+// regeneration happens INSIDE reviewLoop, but the fallback must be owned by Run (the
+// same entry point first-generation failures use) so a successful fallback commit exits 0
+// rather than being turned into errGateAborted, and never double-stages/commits. Run
+// INTERCEPTS this sentinel before it can surface — it carries no user-facing message.
+var errRegenerateFallback = errors.New("commit: regenerate failed, routing to editor fallback")
+
 // Committer is commit's git-mutation SINK seam: the bare commit's `git commit -F -`
 // flows through it so the mutation is lock-resilient (git_safe), NEVER the raw runner.
 // It is defined HERE — where it is consumed — so the orchestrator stays decoupled from
@@ -264,6 +275,13 @@ func Run(ctx context.Context, deps Deps) error {
 	// (possibly edited) body is what proceeds to the commit.
 	accepted, finalBody, err := reviewLoop(ctx, deps, cfg, root, body)
 	if err != nil {
+		// A regeneration failure (after the engine's one retry) routes to the SAME editor
+		// fallback as a first-generation AI failure (3-3) — Run owns the call so a successful
+		// fallback commit exits 0 (NOT turned into errGateAborted) and never double-stages.
+		// The editor opens EMPTY/template (no re-show of the pre-r message), exactly like 3-3.
+		if errors.Is(err, errRegenerateFallback) {
+			return runEditorFallback(ctx, deps, root, "")
+		}
 		return err
 	}
 	if !accepted {
@@ -425,9 +443,11 @@ func isEmptyEditorBuffer(saved string) bool {
 //     never persisted, and a subsequent `r` reads a FRESH line. An AskLine
 //     ErrNotInteractive is PRE-rendered by the presenter (wrapped, no StageFailed);
 //     ErrInputClosed (EOF) and any other AskLine error are surfaced by the engine. A
-//     regeneration FAILURE (after the transport's one retry) is — per the spec —
-//     routed to the $EDITOR fallback; that routing is task 4-5, so this task leaves an
-//     interim surface-abort with a TODO(4-5) marker.
+//     regeneration FAILURE (after the transport's one retry — an isAITransportFailure)
+//     is — per the spec — routed to the SAME $EDITOR fallback as any other AI failure
+//     (3-3): the loop returns the internal errRegenerateFallback sentinel and Run owns
+//     the runEditorFallback call (the editor opens EMPTY/template, no re-show of the
+//     pre-r message). A NON-transport regeneration error keeps a defensive surface-abort.
 //
 // The `e` and `r` actions are interactive-only: under -y the presenter auto-accepts
 // (returns the Default ChoiceYes) and on a non-TTY Prompt returns ErrNotInteractive, so
@@ -519,10 +539,18 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// regenerateMessage; commit does not re-run it.
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {
-				// TODO(4-5): route a regeneration FAILURE (after the transport's one retry) to
-				// the $EDITOR fallback (runEditorFallback), the same as any other AI failure.
-				// For now an interim surface-abort keeps the failure fail-loud rather than
-				// silently looping.
+				// A regeneration FAILURE after the transport's one retry (an AI transport
+				// failure: bad content surviving the retry, a timeout, or a missing binary) is
+				// — per the spec — routed to the SAME $EDITOR fallback as any other AI failure
+				// (3-3), NOT a re-show of the pre-r message. Return the internal routing
+				// sentinel so Run owns the fallback call (the same entry point first-generation
+				// failures use): a successful fallback commit exits 0 and never double-stages.
+				if isAITransportFailure(gerr) {
+					return false, body, errRegenerateFallback
+				}
+				// Any OTHER regeneration error (not a transport failure) keeps the defensive
+				// surface-abort — it is unexpected and must fail loud rather than route to the
+				// editor.
 				return false, body, surface(p, "regenerate", gerr)
 			}
 			// Adopt the regenerated body as the new candidate and LOOP BACK: re-render
