@@ -1,0 +1,37 @@
+version: 2
+
+project_name: mint
+
+builds:
+  - id: mint
+    main: ./cmd/mint/
+    binary: mint
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X mint/internal/buildinfo.Version={{.Version}}
+
+archives:
+  - id: mint
+    formats:
+      - tar.gz
+    name_template: "mint_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - none*
+
+changelog:
+  disable: true
+
+# mint dogfoods itself: `mint release` creates the GitHub release (with its
+# AI-generated notes) immediately after the tag push that triggers this pipeline.
+# keep-existing makes goreleaser ATTACH the binaries to that release and leave its
+# name/notes untouched — never replace mint's own notes with goreleaser's.
+release:
+  draft: false
+  mode: keep-existing
