@@ -144,10 +144,12 @@ func Run(ctx context.Context, deps Deps) error {
 		Action:  commitAction,
 	})
 
-	// Empty-index preflight (task 1-6) runs HERE — before generate, so the AI is never
-	// invoked on an empty staged diff. A genuinely empty index fails loud with git's
-	// clean-tree message; a non-empty index proceeds.
-	if err := checkStagedIndexNonEmpty(ctx, deps.Runner); err != nil {
+	// Empty-staging preflight runs HERE — before generate, so the AI is never invoked on
+	// an empty diff. It is staging-mode aware: it computes the would-be-staged emptiness
+	// for deps.Staging READ-ONLY and, when empty, fails loud with the message keyed on the
+	// ACTUAL post-mode tree state (clean tree vs changes-the-mode-could-not-stage). A
+	// non-empty would-be-staged set proceeds.
+	if err := checkSomethingToCommit(ctx, deps.Runner, deps.Staging); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -258,36 +260,119 @@ func commitReviewGate() presenter.Gate {
 	}
 }
 
-// errNothingToCommit is commit's empty-index preflight failure. Its message is git's
-// own clean-tree line VERBATIM ("nothing to commit, working tree clean", per the
-// spec's Empty-staging handling): commit's surface helper renders cause.Error(), so
-// the user sees this exact git-style line with no mint wrapping. It is returned
-// UNWRAPPED so that verbatim text survives to the presenter. Phase 1 covers only the
-// bare (staged-only) path — the flag-aware empty-staging variants (-a/-A) are Phase 2.
-var errNothingToCommit = errors.New("nothing to commit, working tree clean")
-
-// checkStagedIndexNonEmpty is commit's minimal "something to commit" preflight for
-// the bare (staged-only) path: it reads the staged index READ-ONLY via `git diff
-// --cached --name-only` and fails loud when the index is empty. An empty stdout means
-// nothing is staged → errNothingToCommit (git's exact clean-tree line). Non-empty
-// stdout means there is staged content → the check passes and the run proceeds to
-// generate. The read goes through the consumed CommandRunner seam (same seam/idiom as
-// generate's stagedDiff), so it is fully scriptable via the FakeRunner; a genuine git
-// failure is wrapped and surfaced as-is so it is never mistaken for an empty index.
+// The empty-staging preflight failures. Each message is rendered VERBATIM by commit's
+// surface helper (it renders cause.Error()), so the user sees the exact git-style line
+// with no mint wrapping. All three are returned UNWRAPPED so that verbatim text survives
+// to the presenter, and all carry lowercase, punctuation-free messages mirroring git's
+// own diagnostics (per the spec's Empty-staging handling). Which one fires is keyed on
+// the ACTUAL post-mode tree state, NOT the flag passed:
 //
-// This runs BEFORE message generation and short-circuits it, so the AI is never
-// invoked on an empty diff. It is the staged-only check ONLY: the -a/-A would-be-staged
-// distinctions and the richer empty-staging messaging are Phase 2.
-func checkStagedIndexNonEmpty(ctx context.Context, r runner.CommandRunner) error {
-	res, err := r.Run(ctx, "git", "diff", "--cached", "--name-only")
-	if err != nil {
-		return fmt.Errorf("checking staged index: %w", err)
-	}
+//   - errNothingToCommit — git's own clean-tree line VERBATIM: the tree is genuinely
+//     clean (nothing anywhere), so the chosen mode had nothing it could ever stage.
+//   - errNoChangesStaged — bare `mint commit` with unstaged changes but nothing staged:
+//     guide the user to the staging modes (mint's flavour of git's "no changes added to
+//     commit"). The em dash is U+2014.
+//   - errNoTrackedChanges — `mint commit -a` when the only changes are untracked, so the
+//     tracked-only -a staged nothing: point specifically at -A/--add-all (the mode that
+//     would include them). The em dash is U+2014.
+var (
+	errNothingToCommit  = errors.New("nothing to commit, working tree clean")
+	errNoChangesStaged  = errors.New("no changes staged — use -a/--all, -A/--add-all, or git add")
+	errNoTrackedChanges = errors.New("no tracked changes to stage — use -A/--add-all to include untracked files")
+)
 
-	if strings.TrimSpace(res.Stdout) == "" {
+// checkSomethingToCommit is commit's staging-mode-aware "something to commit" preflight.
+// It computes the would-be-staged emptiness for the resolved StagingMode READ-ONLY (no
+// `git add`, no AI) and fails loud when that set is empty, short-circuiting generation so
+// the AI is never invoked on an empty diff. All probes go through the consumed
+// CommandRunner seam (the same read-only idiom as generate's source helpers), so they are
+// fully scriptable via the FakeRunner.
+//
+// A NON-empty would-be-staged set returns nil → the run proceeds to generate (as before).
+// An EMPTY set selects the failure by the ACTUAL post-mode tree state (probed once with a
+// read-only `git status --porcelain`), NOT the flag passed — so `mint commit -A` on a
+// pristine tree yields the clean-tree message, because an empty -A set means a clean tree.
+func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, mode StagingMode) error {
+	empty, err := wouldStageNothing(ctx, r, mode)
+	if err != nil {
+		return err
+	}
+	if !empty {
+		return nil
+	}
+	return emptyStagingError(ctx, r, mode)
+}
+
+// wouldStageNothing reports whether the resolved StagingMode would stage nothing,
+// computed READ-ONLY from name-only probes (sufficient for emptiness — no diff body is
+// needed). Only the source command differs per mode, mirroring generate's sourceDiff:
+//
+//   - StagedOnly: empty iff `git diff --cached --name-only` is empty (the staged index).
+//   - All (-a): empty iff `git diff HEAD --name-only` is empty (tracked mods + deletions).
+//   - AddAll (-A): empty iff BOTH `git diff HEAD --name-only` AND `git ls-files --others
+//     --exclude-standard` are empty (tracked changes AND untracked files).
+//
+// A genuine git failure is wrapped and surfaced so it is never mistaken for an empty set.
+func wouldStageNothing(ctx context.Context, r runner.CommandRunner, mode StagingMode) (bool, error) {
+	switch mode {
+	case All:
+		return gitOutputEmpty(ctx, r, "diff", "HEAD", "--name-only")
+	case AddAll:
+		trackedEmpty, err := gitOutputEmpty(ctx, r, "diff", "HEAD", "--name-only")
+		if err != nil {
+			return false, err
+		}
+		if !trackedEmpty {
+			return false, nil
+		}
+		return gitOutputEmpty(ctx, r, "ls-files", "--others", "--exclude-standard")
+	default:
+		return gitOutputEmpty(ctx, r, "diff", "--cached", "--name-only")
+	}
+}
+
+// emptyStagingError selects the fail-loud cause for an empty would-be-staged set, keyed on
+// the ACTUAL tree state (a read-only `git status --porcelain`), NOT the flag passed:
+//
+//   - Genuinely clean tree (status empty → nothing anywhere) → errNothingToCommit. An
+//     empty -A set ALWAYS lands here (if -A staged nothing, the tree is clean).
+//   - Changes exist but the chosen mode staged none (status non-empty):
+//   - StagedOnly (bare) → errNoChangesStaged.
+//   - All (-a) → errNoTrackedChanges (only untracked remain — tracked changes would have
+//     been captured by -a, so an empty -a set with changes present means they are
+//     untracked; point at -A/--add-all).
+//   - AddAll (-A) → unreachable (an empty -A set ⇒ a clean tree); defensively return the
+//     clean-tree message.
+func emptyStagingError(ctx context.Context, r runner.CommandRunner, mode StagingMode) error {
+	clean, err := gitOutputEmpty(ctx, r, "status", "--porcelain")
+	if err != nil {
+		return err
+	}
+	if clean {
 		return errNothingToCommit
 	}
-	return nil
+
+	switch mode {
+	case All:
+		return errNoTrackedChanges
+	case AddAll:
+		// Unreachable: an empty -A would-be-staged set implies a clean tree, handled above.
+		// Defensive fall-back to the clean-tree message keeps the function total.
+		return errNothingToCommit
+	default:
+		return errNoChangesStaged
+	}
+}
+
+// gitOutputEmpty runs a READ-ONLY git command and reports whether its trimmed stdout is
+// empty. It is the shared probe of the emptiness checks: a genuine git failure is wrapped
+// and surfaced (never mistaken for an empty result).
+func gitOutputEmpty(ctx context.Context, r runner.CommandRunner, args ...string) (bool, error) {
+	res, err := r.Run(ctx, "git", args...)
+	if err != nil {
+		return false, fmt.Errorf("checking %v: %w", args, err)
+	}
+	return strings.TrimSpace(res.Stdout) == "", nil
 }
 
 // resolveRoot returns the pre-injected Root when set (the test seam) else resolves
