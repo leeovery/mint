@@ -74,6 +74,19 @@ func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// FIRST Ctrl-C: graceful — the cancellation threads through every subprocess
+	// seam. SECOND Ctrl-C: fatal — once the context is cancelled, restore default
+	// signal delivery so another interrupt terminates the process immediately. This
+	// is the escape hatch for any read the cancellation cannot reach (the
+	// cooked-mode gate/AskLine stdin reads are not ctx-aware): without it,
+	// NotifyContext keeps intercepting and every subsequent Ctrl-C is swallowed —
+	// observed live as an unkillable gate. stop() is idempotent, so the deferred
+	// call above stays correct on the normal-exit path.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+
 	// `regenerate` is a subcommand of `release` (`mint release regenerate …`), not a
 	// top-level verb; `init` and `version` are top-level verbs; classifyCommand
 	// resolves the route. An unknown command is a usage error.
