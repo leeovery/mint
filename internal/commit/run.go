@@ -57,6 +57,19 @@ const (
 	oversizedNoteMessage = "diff too large to summarise — opening editor"
 )
 
+// The `e` gate-action graceful-degrade warning. When the user presses `e` at the gate
+// but NO editor in git's chain is launchable (the 3-1 not-launchable signal), commit
+// does NOT fail loud — a message candidate already exists — so it warns that the editor
+// could not be launched and re-renders the gate with the UNEDITED message preserved
+// (treating `e` as a no-op). This is the MIRROR of runEditorFallback's errNoMessageSource
+// fail-loud (the no-message-source path): same 3-1 signal, opposite consumer decision.
+// The wording is NOT spec-pinned; it is a clear, lowercase line consistent with the
+// codebase's "could not launch editor" warn precedent (internal/engine/editor.go).
+const (
+	editorNoLaunchWarnLabel   = "editor"
+	editorNoLaunchWarnMessage = "could not launch editor, keeping the message"
+)
+
 // errGateAborted is the clean cause for a user `n` decline at the review gate. It is
 // a TRUE no-op cause — nothing was mutated (the gate sits before the commit sink) —
 // so the abort path emits NO StageFailed failure narration. It surfaces only so the
@@ -425,9 +438,22 @@ func reviewLoop(ctx context.Context, deps Deps, body string) (bool, string, erro
 			// internally — reused, not re-bracketed here.
 			saved, ok, oerr := OpenEditor(ctx, deps.Runner, p, body)
 			if oerr != nil {
-				// TODO(4-3): convert this interim surface to the not-launchable graceful-degrade
-				// (warn that the editor could not be launched, then re-render the gate with the
-				// UNEDITED message preserved). For now an OpenEditor error surfaces and aborts.
+				// Not-launchable signal from 3-1 (ErrNoEditor from resolution, or
+				// runner.ErrCommandNotFound at launch): GRACEFUL DEGRADE. A message candidate
+				// already exists at the gate, so — unlike runEditorFallback's no-message-source
+				// fail-loud (the MIRROR consumer of the SAME signal) — `e` must never fail loud,
+				// abort, or commit. Warn that the editor could not launch and LOOP BACK with body
+				// UNCHANGED: the next iteration re-renders ShowMessage(unedited) → Prompt with the
+				// same y/n/e gate, so `e` is treated as a no-op. `e` is a refinement step that can
+				// never produce an empty commit, so a non-launchable editor simply preserves the
+				// existing message.
+				if errors.Is(oerr, ErrNoEditor) || errors.Is(oerr, runner.ErrCommandNotFound) {
+					p.Warn(presenter.Warning{Label: editorNoLaunchWarnLabel, Message: editorNoLaunchWarnMessage})
+					continue
+				}
+				// Any OTHER OpenEditor error (a genuine IO failure, etc.) is unexpected — surface
+				// and abort. OpenEditor's only err != nil cases ARE the not-launchable ones above,
+				// so this branch is purely defensive.
 				return false, body, surface(p, "editor", oerr)
 			}
 			// Save outcome under `e`, where a message ALREADY exists:
