@@ -7,6 +7,7 @@
 A Go CLI that cuts releases and writes commits with AI-generated notes —
 <br>wrapped in git-safe automation that reviews everything before it mutates anything.
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://go.dev)
 
 [Install](#install) · [Quick Start](#quick-start) · [Commands](#commands) · [Configuration](#configuration) · [The AI Transport](#the-ai-transport) · [Safety Model](#safety-model)
@@ -267,3 +268,7 @@ The transport applies a 60s per-attempt deadline, retries bad output (empty/non-
 ## Output
 
 Mint renders styled output on a TTY and plain byte-pure lines when piped (or under `--plain`). Failures are mirrored to stderr for scripting. Exit codes: `0` success, `1` runtime failure or user abort, `2` usage error.
+
+## License
+
+MIT
