@@ -356,8 +356,11 @@ func Run(ctx context.Context, deps Deps) error {
 //     (no #-comment stripping — downstream 4-2 reuses this rule).
 //   - Non-empty save = ACCEPT → apply the mode's deferred staging FIRST, then commit the
 //     saved buffer, in that order, through the git_safe Committer (stage→commit, the
-//     same order the gate-accept path uses). -p push (Phase 5) is not implemented but the
-//     save-accept path does not preclude it.
+//     same order the gate-accept path uses). Then, when -p is armed (5-1), the SAME
+//     single shared push step the gate-accept path uses (pushAfterCommit, 5-2) runs —
+//     so a non-empty save is a full accept: `mint commit -Ap --no-ai` stages, commits,
+//     AND pushes. The push fires strictly after the stage→commit ordering completes and
+//     is a no-op when push is disarmed.
 func runEditorFallback(ctx context.Context, deps Deps, root, initial string) error {
 	p := deps.Presenter
 
@@ -401,6 +404,19 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 	}
 	if err := createCommit(ctx, deps, saved); err != nil {
 		return surface(p, "commit", err)
+	}
+
+	// Auto-push (Phase 5): the save-as-accept commit succeeded, so — exactly as the
+	// gate-accept path does — when -p is armed push it now via the SAME single shared
+	// push step (pushAfterCommit, not a parallel push). The push fires strictly after
+	// the stage->commit ordering above. pushAfterCommit is a no-op when push is
+	// disarmed, so an unarmed save reaches RunFinished unchanged.
+	if err := pushAfterCommit(ctx, deps); err != nil {
+		// TODO(5-4): convert to warn-don't-unwind. The commit already happened, so a push
+		// failure must NOT unwind it — 5-4 replaces this interim surface (at BOTH call
+		// sites) with one generic warn (commit is in place; re-run the push) carrying
+		// git's stderr verbatim.
+		return surface(p, "push", err)
 	}
 
 	p.RunFinished(presenter.RunResult{Project: projectName(root)})
