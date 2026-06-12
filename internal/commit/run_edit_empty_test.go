@@ -63,6 +63,8 @@ func TestRun_EditEmptySaveDiscardsEditReRendersWithPriorMessage(t *testing.T) {
 	// Re-render ordering: the empty save loops back to a fresh ShowMessage + Prompt.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindStageStarted,
+		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
 		presentertest.KindSuspendSpinner,

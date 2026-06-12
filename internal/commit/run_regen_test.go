@@ -105,12 +105,18 @@ func TestRun_RegenPromptsForContextLineViaAskLine(t *testing.T) {
 	if !containsKind(rec.Kinds(), presentertest.KindAskLine) {
 		t.Fatalf("kinds = %v, want an AskLine recorded for the r context line", rec.Kinds())
 	}
-	// Ordering: ShowMessage, Prompt (r), AskLine, ShowMessage (regenerated), Prompt (y).
+	// Ordering: the blocking "message" stage brackets BOTH generations (the first
+	// generate and the post-AskLine regeneration): ShowMessage, Prompt (r), AskLine,
+	// regenerate stage, ShowMessage (regenerated), Prompt (y).
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindStageStarted,
+		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
 		presentertest.KindAskLine,
+		presentertest.KindStageStarted,
+		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
 		presentertest.KindRunFinished,

@@ -140,6 +140,8 @@ func TestRun_NarratesThroughRecordingPresenter(t *testing.T) {
 
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindStageStarted,
+		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
 		presentertest.KindRunFinished,
@@ -154,7 +156,7 @@ func TestRun_NarratesThroughRecordingPresenter(t *testing.T) {
 		}
 	}
 
-	msg, ok := rec.At(1)
+	msg, ok := rec.At(3)
 	if !ok {
 		t.Fatal("no ShowMessage event recorded")
 	}

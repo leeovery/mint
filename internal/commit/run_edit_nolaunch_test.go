@@ -82,6 +82,8 @@ func TestRun_EditNotLaunchable_WarnsAndReRenders(t *testing.T) {
 	// directly, then the re-render.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindStageStarted,
+		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage, // first render
 		presentertest.KindPrompt,      // first gate → e
 		presentertest.KindWarn,        // editor could not launch
@@ -129,7 +131,7 @@ func TestRun_EditNotLaunchable_PreservesUneditedMessageVerbatim(t *testing.T) {
 	// The re-rendered ShowMessage carries the UNEDITED generated body. The sequence on a
 	// resolution-failure not-launchable signal is RunStarted, ShowMessage, Prompt, Warn,
 	// ShowMessage (the re-render), so the re-rendered ShowMessage is event[4].
-	second, ok := rec.At(4)
+	second, ok := rec.At(6)
 	if !ok || second.Kind != presentertest.KindShowMessage {
 		t.Fatalf("event[4] = %+v, want the re-rendered ShowMessage", second)
 	}

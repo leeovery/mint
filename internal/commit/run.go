@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"mint/internal/ai"
 	"mint/internal/config"
@@ -55,6 +56,22 @@ const commitMessageTitle = "commit message"
 const (
 	oversizedNoteLabel   = "diff"
 	oversizedNoteMessage = "diff too large to summarise — opening editor"
+)
+
+// generateStageName is the blocking stage wrapping the AI generate/regenerate call
+// — the run's one slow step, so it carries the pretty spinner (plain prints the
+// terse start line). Both the first generation and the gate's `r` regeneration use
+// the SAME stage name: they are the same kind of wait.
+const generateStageName = "message"
+
+// The attended AI-failure note. When the transport fails on an ATTENDED run, the
+// editor fallback opens with no other explanation — this warn says why (and stops
+// the live "message" spinner). The unattended path emits NO note: the fallback
+// guard fails loud immediately, and promising an editor that never opens would
+// contradict it (the same gating rule as the oversized note).
+const (
+	aiFailWarnLabel   = "ai"
+	aiFailWarnMessage = "could not generate a message, opening editor"
 )
 
 // The `e` gate-action graceful-degrade warning. When the user presses `e` at the gate
@@ -304,6 +321,13 @@ func Run(ctx context.Context, deps Deps) error {
 		return runEditorFallback(ctx, deps, root, "")
 	}
 
+	// The AI call is the run's one SLOW step, so it gets a blocking stage: the pretty
+	// presenter spins on "message" for its duration (plain prints the terse start
+	// line). EVERY exit from the generate step closes the stage: success via the
+	// timed completion closure, the two editor-fallback routes via a spinner-stopping
+	// Warn (attended) or the fallback guard's StageFailed (unattended), and a genuine
+	// failure via surface's StageFailed.
+	generated := startGenerateStage(p)
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
 		// An over-limit (diff_exclude-filtered) diff is a generate-SKIP, NOT a failure:
@@ -314,7 +338,8 @@ func Run(ctx context.Context, deps Deps) error {
 		// (an attended run): on an unattended run (editorUnavailable — -y or non-TTY) the
 		// fallback fails loud immediately, so emitting the note would promise an editor that
 		// never opens. Gating on the SAME predicate the fallback's guard uses keeps the two
-		// in lock-step. This branch carries the note; the AI-failure branch below does NOT.
+		// in lock-step. (The Warn also stops the live "message" spinner; on the unattended
+		// path the fallback guard's StageFailed closes it instead.)
 		if errors.Is(err, notes.ErrDiffTooLarge) {
 			if !deps.editorUnavailable() {
 				p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
@@ -324,14 +349,21 @@ func Run(ctx context.Context, deps Deps) error {
 		// An AI transport failure (bad content after the transport's one retry, a timeout,
 		// or a missing binary) is NOT an abort for a routine local commit — it routes to the
 		// SAME editor fallback as --no-ai, opened against an EMPTY buffer (no synthetic stub,
-		// no re-show of a partial message), but carries NO oversized note (distinct from the
-		// oversized-skip above). The transport's own bad-content retry is consumed here,
-		// never re-run. Any OTHER generate error keeps the surface abort.
+		// no re-show of a partial message). On an attended run a Warn explains WHY the
+		// editor is opening (and stops the live spinner); the unattended path stays silent
+		// here — the fallback guard fails loud with the single spec message, and a note
+		// promising an editor that never opens would contradict it. The transport's own
+		// bad-content retry is consumed here, never re-run. Any OTHER generate error keeps
+		// the surface abort.
 		if isAITransportFailure(err) {
+			if !deps.editorUnavailable() {
+				p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage})
+			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
 		return surface(p, "generate", err)
 	}
+	generated("generated")
 
 	// The minted message is shown for review and the Continue? gate is presented in the
 	// engine-owned review LOOP — both BEFORE the commit sink, so the core invariant
@@ -595,6 +627,12 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// Re-run the consumed generate path with the one-time context injected (line may
 			// be "" → a plain re-roll). The transport's one retry is consumed inside
 			// regenerateMessage; commit does not re-run it.
+			// The regeneration is the same slow AI wait as the first generation, so it
+			// carries the SAME blocking "message" stage (spinner in pretty). Every exit
+			// closes it: success via the timed completion closure, a transport failure via
+			// the spinner-stopping AI-failure Warn (`r` is interactive-only, so this path
+			// is always attended), any other failure via surface's StageFailed.
+			regenDone := startGenerateStage(p)
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {
 				// A regeneration FAILURE after the transport's one retry (an AI transport
@@ -604,6 +642,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// sentinel so Run owns the fallback call (the same entry point first-generation
 				// failures use): a successful fallback commit exits 0 and never double-stages.
 				if isAITransportFailure(gerr) {
+					p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage})
 					return false, body, errRegenerateFallback
 				}
 				// Any OTHER regeneration error (not a transport failure) keeps the defensive
@@ -611,6 +650,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// editor.
 				return false, body, surface(p, "regenerate", gerr)
 			}
+			regenDone("regenerated")
 			// Adopt the regenerated body as the new candidate and LOOP BACK: re-render
 			// ShowMessage(regenerated) → Prompt with the same y/n/e/r gate. `r` is NOT an
 			// accept — nothing stages, commits, or pushes here.
@@ -631,18 +671,17 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 // The gate offers y/n/e/r (Enter ⇒ y via Default ChoiceYes): the e (edit) action was
 // added in Phase 4 (task 4-1) and the r (regenerate) action in task 4-4. Nothing in
 // the presenter hardcodes the choice set, so the literal renders WHATEVER it declares.
-// The action labels match the spec's gate mapping (accept & proceed / abort / edit /
-// regenerate); the edit and regenerate labels match NotesReviewGate's "edit in
-// $EDITOR" / "regenerate".
+// The action labels are the short hotkey-bar forms (accept / abort / edit /
+// regenerate), matching NotesReviewGate's labels so both verbs' bars read alike.
 func commitReviewGate() presenter.Gate {
 	return presenter.Gate{
 		Question:   "Continue?",
 		Subject:    "message",
 		AcceptEcho: "accepted",
 		Choices: []presenter.GateChoice{
-			{Key: presenter.ChoiceYes, Action: "accept & proceed"},
+			{Key: presenter.ChoiceYes, Action: "accept"},
 			{Key: presenter.ChoiceNo, Action: "abort"},
-			{Key: presenter.ChoiceEdit, Action: "edit in $EDITOR"},
+			{Key: presenter.ChoiceEdit, Action: "edit"},
 			{Key: presenter.ChoiceRegen, Action: "regenerate"},
 		},
 		Default: presenter.ChoiceYes,
@@ -682,6 +721,26 @@ func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root str
 func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, oneTimeContext string) (string, error) {
 	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
 	return generator.GenerateWithContext(ctx, cfg, oneTimeContext)
+}
+
+// startGenerateStage narrates the start of the blocking "message" stage (the AI
+// call — the run's one slow step; the pretty spinner animates it) and starts the
+// elapsed timer, mirroring the engine's emitBlockingStageStarted idiom. The
+// returned closure emits the matching StageSucceeded carrying the caller's detail
+// word ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure paths
+// never call it — their spinner-stopping Warn or StageFailed closes the stage
+// instead.
+func startGenerateStage(p presenter.Presenter) func(detail string) {
+	p.StageStarted(presenter.StageStart{Name: generateStageName, Blocking: true})
+	started := time.Now()
+	return func(detail string) {
+		p.StageSucceeded(presenter.StageSuccess{
+			Name:     generateStageName,
+			Detail:   detail,
+			Elapsed:  time.Since(started),
+			Blocking: true,
+		})
+	}
 }
 
 // isAITransportFailure reports whether err is one of the THREE L2 transport-failure
