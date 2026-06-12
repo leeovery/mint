@@ -105,6 +105,29 @@ var errEditorNoOp = errors.New("commit aborted: editor closed with no message")
 // plain `git commit`.
 var errNoMessageSource = errors.New("no AI message and no interactive editor available")
 
+// errPushFailed is the internal sentinel for a FAILED auto-push under warn-don't-unwind.
+// The commit already happened and is kept untouched; the Warn (below) narrates the
+// failure, so this sentinel carries NO user-facing message and is NEVER surfaced via
+// surface/StageFailed. It exists ONLY to drive a non-zero exit: it is a plain error, so
+// cmd/mint's exitCode (which matches only *engine.AbortError) falls through to the
+// deterministic generic exit 1 — telling scripted/CI callers the push failed while the
+// commit stays in place. The post-accept never-unwind invariant is absolute, so this
+// path runs NO reset/revert/restore/unstage/amend.
+var errPushFailed = errors.New("commit: push failed; commit kept in place")
+
+// The push-failure warn label and generic message. mint does NOT classify the cause —
+// rejected/non-fast-forward, remote-moved, no-upstream, and network ALL get this one
+// generic warn; git's own specific hint (set-upstream, non-fast-forward, etc.) stays
+// visible only via the verbatim Output pass-through of git's stderr. The message is NOT
+// spec-pinned exact (the spec's "set an upstream and push" is illustrative of git's
+// pass-through, not mint-authored text): it is a clear, lowercase line conveying the
+// commit is in place and the push is repeatable. It deliberately omits any per-cause
+// phrasing (no "upstream", no "non-fast-forward").
+const (
+	pushFailWarnLabel   = "push"
+	pushFailWarnMessage = "commit is in place; re-run the push to retry"
+)
+
 // errRegenerateFallback is an INTERNAL routing sentinel — never user-facing. When the
 // gate's `r` regeneration fails after the engine's one retry (an isAITransportFailure),
 // reviewLoop returns this cause so Run routes to the SAME $EDITOR fallback a
@@ -317,16 +340,13 @@ func Run(ctx context.Context, deps Deps) error {
 
 	// Auto-push (Phase 5): the commit succeeded, so when -p is armed push it now —
 	// AFTER the commit, gated strictly on its success. pushAfterCommit is a no-op when
-	// push is disarmed, so an unarmed run reaches RunFinished unchanged.
-	if err := pushAfterCommit(ctx, deps); err != nil {
-		// TODO(5-4): convert to warn-don't-unwind. The commit already happened, so a push
-		// failure must NOT unwind it — 5-4 replaces this interim surface with one generic
-		// warn (commit is in place; re-run the push) carrying git's stderr verbatim.
-		return surface(p, "push", err)
-	}
-
+	// push is disarmed (pushErr nil), and on a FAILED push it warns-don't-unwind (the
+	// commit is kept; it emits the generic warn and returns errPushFailed). The commit
+	// IS the run's success, so RunFinished ALWAYS fires regardless; a failed push then
+	// returns the sentinel → non-zero exit, with the commit left in place.
+	pushErr := pushAfterCommit(ctx, deps)
 	p.RunFinished(presenter.RunResult{Project: projectName(root)})
-	return nil
+	return pushErr
 }
 
 // runEditorFallback is the shared $EDITOR degradation path the three "no AI message"
@@ -408,19 +428,14 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 
 	// Auto-push (Phase 5): the save-as-accept commit succeeded, so — exactly as the
 	// gate-accept path does — when -p is armed push it now via the SAME single shared
-	// push step (pushAfterCommit, not a parallel push). The push fires strictly after
-	// the stage->commit ordering above. pushAfterCommit is a no-op when push is
-	// disarmed, so an unarmed save reaches RunFinished unchanged.
-	if err := pushAfterCommit(ctx, deps); err != nil {
-		// TODO(5-4): convert to warn-don't-unwind. The commit already happened, so a push
-		// failure must NOT unwind it — 5-4 replaces this interim surface (at BOTH call
-		// sites) with one generic warn (commit is in place; re-run the push) carrying
-		// git's stderr verbatim.
-		return surface(p, "push", err)
-	}
-
+	// push step (pushAfterCommit, not a parallel push), which handles a failure with the
+	// SAME warn-don't-unwind behaviour (the commit is kept; one generic warn; git's
+	// stderr verbatim; errPushFailed drives the non-zero exit). The push fires strictly
+	// after the stage->commit ordering above. RunFinished ALWAYS fires (the commit is the
+	// run's success); a failed push returns the sentinel, leaving the commit in place.
+	pushErr := pushAfterCommit(ctx, deps)
 	p.RunFinished(presenter.RunResult{Project: projectName(root)})
-	return nil
+	return pushErr
 }
 
 // isEmptyEditorBuffer is the SINGLE editor-emptiness rule established in 3-2 and shared by
@@ -868,16 +883,34 @@ func createCommit(ctx context.Context, deps Deps, body string) error {
 // gate abort, a generate failure, an empty/aborted editor) returns BEFORE reaching it,
 // so a run that produced no commit never pushes.
 //
-// This is the HAPPY path only. A push FAILURE is surfaced as a plain error here; the
-// caller's interim surface carries a TODO(5-4) — 5-4 converts it to warn-don't-unwind
-// (the commit already happened, so a push failure must never unwind it). Empty/aborted
+// WARN-DON'T-UNWIND on failure (the ONE place — both accept paths reach here). The
+// commit already happened, so a push failure must NEVER unwind it: there is NO
+// reset/revert/restore/unstage/amend and no destructive cleanup of any kind — the
+// post-accept never-unwind invariant is absolute. On ANY push failure (rejected /
+// non-fast-forward, remote moved, no upstream, network) mint does NOT classify the
+// cause: it emits ONE generic warn via the consumed Presenter (Label "push", the
+// generic 'commit is in place; re-run the push' message) with git's OWN captured
+// stderr passed through VERBATIM as Warning.Output — so git's specific hint
+// (set-upstream, non-fast-forward, …) stays visible without any mint reformatting. The
+// Warn does NOT suppress the success close-out and sets no presenter failure state;
+// the non-zero exit comes solely from returning errPushFailed (the commit succeeded —
+// that IS the run's success — so the caller still fires RunFinished). Empty/aborted
 // suppression (5-5) is already natural: push is only reached after a successful commit.
 func pushAfterCommit(ctx context.Context, deps Deps) error {
 	if !deps.Push {
 		return nil
 	}
-	if _, err := deps.Committer.Mutate(ctx, nil, "git", "push"); err != nil {
-		return fmt.Errorf("pushing commit: %w", err)
+	res, err := deps.Committer.Mutate(ctx, nil, "git", "push")
+	if err != nil {
+		// One generic warn for ALL causes; git's stderr travels verbatim in Output (the
+		// no-upstream "set an upstream" hint comes from git, never mint-authored text). No
+		// surface/StageFailed — the warn narrates; errPushFailed only drives the exit code.
+		deps.Presenter.Warn(presenter.Warning{
+			Label:   pushFailWarnLabel,
+			Message: pushFailWarnMessage,
+			Output:  res.Stderr,
+		})
+		return errPushFailed
 	}
 	return nil
 }
