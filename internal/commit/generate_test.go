@@ -89,6 +89,60 @@ func seedStagedDiff(diff string) *runner.FakeRunner {
 	return r
 }
 
+// gitInvocations returns only the recorded `git` calls, in order — the spine of the
+// would-be-staged source assertions where the All/AddAll modes issue several git
+// reads (the FakeRunner matches on name only, so a SeedSequence keyed on "git"
+// distinguishes the same-binary calls and they are told apart here by their argv).
+func gitInvocationsGen(r *runner.FakeRunner) []runner.Invocation {
+	var gits []runner.Invocation
+	for _, inv := range r.Invocations() {
+		if inv.Name == "git" {
+			gits = append(gits, inv)
+		}
+	}
+	return gits
+}
+
+// findGitArgs0 returns the first recorded `git` invocation whose first arg matches
+// arg0 (e.g. "diff", "ls-files"), failing the test if none did — so a mode's source
+// argv can be asserted without depending on call order.
+func findGitArgs0(t *testing.T, r *runner.FakeRunner, arg0 string) runner.Invocation {
+	t.Helper()
+	for _, inv := range gitInvocationsGen(r) {
+		if len(inv.Args) > 0 && inv.Args[0] == arg0 {
+			return inv
+		}
+	}
+	t.Fatalf("no `git %s …` invocation recorded; calls: %+v", arg0, gitInvocationsGen(r))
+	return runner.Invocation{}
+}
+
+// hasGitAdd reports whether any recorded `git` call was an index mutation (`git add
+// …`) — the load-bearing check that the read-only would-be-staged computation never
+// mutated the index.
+func hasGitAdd(r *runner.FakeRunner) bool {
+	for _, inv := range gitInvocationsGen(r) {
+		if len(inv.Args) > 0 && inv.Args[0] == "add" {
+			return true
+		}
+	}
+	return false
+}
+
+// findNoIndex returns the first recorded `git diff --no-index …` invocation (the
+// read-only render of an untracked file as an added-file diff), failing the test if
+// none was made.
+func findNoIndex(t *testing.T, r *runner.FakeRunner) runner.Invocation {
+	t.Helper()
+	for _, inv := range gitInvocationsGen(r) {
+		if len(inv.Args) >= 2 && inv.Args[0] == "diff" && inv.Args[1] == "--no-index" {
+			return inv
+		}
+	}
+	t.Fatalf("no `git diff --no-index …` invocation recorded; calls: %+v", gitInvocationsGen(r))
+	return runner.Invocation{}
+}
+
 // normalCfg is a config with a generous max_diff_lines ceiling and no
 // prompt-control knobs or diff_exclude globs — the common happy-path setup.
 func normalCfg() config.Config {
@@ -116,7 +170,7 @@ func TestGenerator_Generate_ObtainsStagedDiffViaGitDiffCached(t *testing.T) {
 	r := seedStagedDiff(diff)
 	transport := &recordingTransport{body: "feat: add api"}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -138,7 +192,7 @@ func TestGenerator_Generate_DoesNotComputeWouldBeStagedDiff(t *testing.T) {
 	r := seedStagedDiff("diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-a\n+b\n")
 	transport := &recordingTransport{body: "fix: x"}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -169,7 +223,7 @@ func TestGenerator_Generate_DiffExcludeMapsToExcludePathspecs(t *testing.T) {
 	cfg := normalCfg()
 	cfg.DiffExclude = globs
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -200,7 +254,7 @@ func TestGenerator_Generate_ExcludedFilesNeverReachThePrompt(t *testing.T) {
 	cfg := normalCfg()
 	cfg.DiffExclude = []string{"dist/bundle.js"}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -235,7 +289,7 @@ func TestGenerator_Generate_MaxDiffLinesGuardAppliedBeforeTransport(t *testing.T
 	cfg := normalCfg()
 	cfg.MaxDiffLines = 2 // 3 > 2 → over ceiling
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	_, err := gen.Generate(t.Context(), cfg)
 	if err == nil {
 		t.Fatal("Generate returned nil error for an over-ceiling diff, want notes.ErrDiffTooLarge")
@@ -262,7 +316,7 @@ func TestGenerator_Generate_GuardCountsPostExclusionDiff(t *testing.T) {
 	cfg.MaxDiffLines = 2
 	cfg.DiffExclude = []string{"*.min.js"}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error for an at-ceiling diff: %v", err)
 	}
@@ -281,7 +335,7 @@ func TestGenerator_Generate_ReturnsValidatedBodyWhole(t *testing.T) {
 	r := seedStagedDiff(diff)
 	transport := &recordingTransport{body: body}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	got, err := gen.Generate(t.Context(), normalCfg())
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -302,7 +356,7 @@ func TestGenerator_Generate_FeedsComposedPromptWithDefaultInstructionsAndDiff(t 
 	r := seedStagedDiff(diff)
 	transport := &recordingTransport{body: "feat: auth"}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -332,7 +386,7 @@ func TestGenerator_Generate_AppliesCommitPromptKnobs(t *testing.T) {
 	cfg := normalCfg()
 	cfg.Commit = config.Commit{Context: ctxText}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -356,7 +410,7 @@ func TestGenerator_Generate_SurfacesDiffTooLargeDistinctFromGenerationFailure(t 
 	cfg := normalCfg()
 	cfg.MaxDiffLines = 1
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	_, err := gen.Generate(t.Context(), cfg)
 	if err == nil {
 		t.Fatal("Generate returned nil error for an over-ceiling diff")
@@ -391,7 +445,7 @@ func TestGenerator_Generate_SurfacesTransportFailuresTyped(t *testing.T) {
 			r := seedStagedDiff(diff)
 			transport := &recordingTransport{err: tc.err}
 
-			gen := commit.NewGenerator(r, transport, t.TempDir())
+			gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 			_, err := gen.Generate(t.Context(), normalCfg())
 			if err == nil {
 				t.Fatalf("Generate returned nil error, want %v", tc.err)
@@ -426,7 +480,7 @@ func TestGenerator_Generate_ConsumesL2OneRetryNotReimplemented(t *testing.T) {
 	)
 
 	transport := ai.NewTransport(r, ai.Config{AICommand: "claude -p"})
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 
 	got, err := gen.Generate(t.Context(), normalCfg())
 	if err != nil {
@@ -455,6 +509,349 @@ func TestGenerator_Generate_ConsumesL2OneRetryNotReimplemented(t *testing.T) {
 	}
 }
 
+func TestGenerator_Generate_AllMode_UsesTrackedWorktreeDiffExcludingUntracked(t *testing.T) {
+	t.Parallel()
+
+	// -a = `git commit -a` semantics: tracked modifications + deletions, NO untracked.
+	// The read-only would-be-staged source is the tracked-vs-HEAD diff (`git diff HEAD
+	// -- .`), which captures tracked mods + deletions (staged and unstaged) while
+	// excluding untracked files. It must NOT request the untracked enumeration
+	// (ls-files --others) the AddAll mode adds.
+	diff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
+	r := seedStagedDiff(diff)
+	transport := &recordingTransport{body: "feat: api"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.All)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	inv := findGitArgs0(t, r, "diff")
+	want := []string{"diff", "HEAD", "--", "."}
+	assertArgs(t, inv.Args, want)
+
+	// -a never enumerates untracked files.
+	for _, g := range gitInvocationsGen(r) {
+		if len(g.Args) > 0 && g.Args[0] == "ls-files" {
+			t.Errorf("-a enumerated untracked files (`git ls-files …`); -a excludes untracked: %v", g.Args)
+		}
+	}
+}
+
+func TestGenerator_Generate_AllMode_CapturesTrackedDeletion(t *testing.T) {
+	t.Parallel()
+
+	// A deleted tracked file must appear in the -a would-be-staged diff. The
+	// tracked-vs-HEAD diff renders a deletion as a removed-file hunk, so whatever git
+	// returns reaches the prompt — the deletion is present in the generated input.
+	deletionDiff := "diff --git a/gone.go b/gone.go\ndeleted file mode 100644\n--- a/gone.go\n+++ /dev/null\n@@ -1 +0,0 @@\n-package gone\n"
+	r := seedStagedDiff(deletionDiff)
+	transport := &recordingTransport{body: "chore: remove gone"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.All)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	prompt := transport.lastPrompt(t)
+	if !strings.Contains(prompt, "deleted file mode") || !strings.Contains(prompt, "gone.go") {
+		t.Errorf("-a deletion did not reach the prompt:\n%s", prompt)
+	}
+}
+
+func TestGenerator_Generate_AllMode_DiffExcludeAndSizeGuardApply(t *testing.T) {
+	t.Parallel()
+
+	// diff_exclude maps to :(exclude) pathspecs on the -a source argv, and the
+	// max_diff_lines guard (notes.CheckDiffSize) applies to the resulting would-be-
+	// staged diff via commit's OWN L1 glue — same glue as the staged-only path, only
+	// the source command differs.
+	diff := "line a\nline b\nline c\n" // 3 lines
+	r := seedStagedDiff(diff)
+	transport := &recordingTransport{body: "must never be returned"}
+
+	cfg := normalCfg()
+	cfg.DiffExclude = []string{"*.min.js"}
+	cfg.MaxDiffLines = 2 // 3 > 2 → over ceiling
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.All)
+	_, err := gen.Generate(t.Context(), cfg)
+	if err == nil {
+		t.Fatal("Generate returned nil error for an over-ceiling -a diff, want notes.ErrDiffTooLarge")
+	}
+	if !errors.Is(err, notes.ErrDiffTooLarge) {
+		t.Errorf("error = %v, want notes.ErrDiffTooLarge (the shared guard on the -a source)", err)
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; the guard must short-circuit L2 entirely", transport.calls())
+	}
+
+	inv := findGitArgs0(t, r, "diff")
+	want := []string{"diff", "HEAD", "--", ".", ":(exclude)*.min.js"}
+	assertArgs(t, inv.Args, want)
+}
+
+func TestGenerator_Generate_AllMode_RunsNoGitAdd(t *testing.T) {
+	t.Parallel()
+
+	// The read-only would-be-staged computation under -a leaves the index unmutated:
+	// no `git add` (and no `git add --intent-to-add`) ran. Pre-existing user staging is
+	// therefore untouched.
+	r := seedStagedDiff("diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-a\n+b\n")
+	transport := &recordingTransport{body: "fix: x"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.All)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	if hasGitAdd(r) {
+		t.Errorf("the -a would-be-staged computation ran `git add`; it must be read-only: %+v", gitInvocationsGen(r))
+	}
+}
+
+func TestGenerator_Generate_AddAllMode_IncludesUntrackedPlusTrackedDiff(t *testing.T) {
+	t.Parallel()
+
+	// -A = `git add -A` semantics: everything INCLUDING untracked. The read-only source
+	// combines the tracked-vs-HEAD diff with each untracked file rendered as an added-
+	// file diff. The argv sequence is: `git diff HEAD -- .` (tracked), `git ls-files
+	// --others --exclude-standard -- .` (enumerate untracked), then one `git diff
+	// --no-index -- /dev/null <file>` per untracked file. Both the tracked diff and the
+	// untracked additions reach the prompt.
+	trackedDiff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
+	untrackedDiff := "diff --git a/new.go b/new.go\nnew file mode 100644\n--- /dev/null\n+++ b/new.go\n@@ -0,0 +1 @@\n+package newpkg\n"
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: trackedDiff}},                                                  // git diff HEAD -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\n"}},                                                   // git ls-files --others --exclude-standard -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: untrackedDiff, ExitCode: 1}, Err: errors.New("exit status 1")}, // git diff --no-index -- /dev/null new.go (exit 1 = differ)
+	)
+	transport := &recordingTransport{body: "feat: api + new"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	// The tracked source is the tracked-vs-HEAD diff.
+	tracked := findGitArgs0(t, r, "diff")
+	assertArgs(t, tracked.Args, []string{"diff", "HEAD", "--", "."})
+
+	// Untracked enumeration respects the same scope.
+	ls := findGitArgs0(t, r, "ls-files")
+	assertArgs(t, ls.Args, []string{"ls-files", "--others", "--exclude-standard", "--", "."})
+
+	// Each untracked file is rendered as an added-file diff via --no-index from
+	// /dev/null, leaving the index untouched.
+	noIndex := findNoIndex(t, r)
+	assertArgs(t, noIndex.Args, []string{"diff", "--no-index", "--", "/dev/null", "new.go"})
+
+	// Both the tracked diff and the untracked addition reach the prompt.
+	prompt := transport.lastPrompt(t)
+	if !strings.Contains(prompt, trackedDiff) {
+		t.Errorf("-A prompt missing the tracked-vs-HEAD diff:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, untrackedDiff) {
+		t.Errorf("-A prompt missing the untracked addition:\n%s", prompt)
+	}
+}
+
+func TestGenerator_Generate_AddAllMode_CapturesTrackedDeletion(t *testing.T) {
+	t.Parallel()
+
+	// A deleted tracked file appears in the -A diff too: the tracked-vs-HEAD diff
+	// captures the deletion exactly as under -a. With no untracked files (ls-files
+	// empty), the source is just the tracked diff.
+	deletionDiff := "diff --git a/gone.go b/gone.go\ndeleted file mode 100644\n--- a/gone.go\n+++ /dev/null\n@@ -1 +0,0 @@\n-package gone\n"
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: deletionDiff}}, // git diff HEAD -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},           // git ls-files (no untracked)
+	)
+	transport := &recordingTransport{body: "chore: remove gone"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	prompt := transport.lastPrompt(t)
+	if !strings.Contains(prompt, "deleted file mode") || !strings.Contains(prompt, "gone.go") {
+		t.Errorf("-A deletion did not reach the prompt:\n%s", prompt)
+	}
+}
+
+func TestGenerator_Generate_AddAllMode_RunsNoGitAdd(t *testing.T) {
+	t.Parallel()
+
+	// The -A would-be-staged computation is read-only: enumerating + rendering
+	// untracked files runs NO `git add` (no `git add --intent-to-add`), so pre-existing
+	// user-staged content is unchanged after the computation.
+	untrackedDiff := "diff --git a/new.go b/new.go\nnew file mode 100644\n--- /dev/null\n+++ b/new.go\n@@ -0,0 +1 @@\n+package newpkg\n"
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: untrackedDiff, ExitCode: 1}, Err: errors.New("exit status 1")},
+	)
+	transport := &recordingTransport{body: "feat: stuff"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	if hasGitAdd(r) {
+		t.Errorf("the -A would-be-staged computation ran `git add`; it must be read-only: %+v", gitInvocationsGen(r))
+	}
+}
+
+func TestGenerator_Generate_AddAllMode_UntrackedRespectsDiffExclude(t *testing.T) {
+	t.Parallel()
+
+	// diff_exclude applies to BOTH halves of the -A source: the :(exclude) pathspecs
+	// scope the tracked-vs-HEAD diff AND the untracked enumeration, so an excluded
+	// untracked file is never enumerated and never reaches the prompt.
+	trackedDiff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: trackedDiff}}, // git diff HEAD -- . :(exclude)*.min.js
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},          // git ls-files --others --exclude-standard -- . :(exclude)*.min.js (excluded → none)
+	)
+	transport := &recordingTransport{body: "feat: api"}
+
+	cfg := normalCfg()
+	cfg.DiffExclude = []string{"*.min.js"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	if _, err := gen.Generate(t.Context(), cfg); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	tracked := findGitArgs0(t, r, "diff")
+	assertArgs(t, tracked.Args, []string{"diff", "HEAD", "--", ".", ":(exclude)*.min.js"})
+
+	ls := findGitArgs0(t, r, "ls-files")
+	assertArgs(t, ls.Args, []string{"ls-files", "--others", "--exclude-standard", "--", ".", ":(exclude)*.min.js"})
+}
+
+func TestGenerator_Generate_AddAllMode_SizeGuardAppliesToCombinedDiff(t *testing.T) {
+	t.Parallel()
+
+	// The max_diff_lines guard (notes.CheckDiffSize) applies to the COMBINED would-be-
+	// staged diff (tracked diff + untracked additions) via commit's own L1 glue: the
+	// tracked diff alone is within the ceiling, but combined with the untracked
+	// addition it exceeds it, so the transport is never called.
+	trackedDiff := "tracked a\n"          // 1 line
+	untrackedDiff := "added b\nadded c\n" // 2 lines → combined > 2
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: trackedDiff}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: untrackedDiff, ExitCode: 1}, Err: errors.New("exit status 1")},
+	)
+	transport := &recordingTransport{body: "must never be returned"}
+
+	cfg := normalCfg()
+	cfg.MaxDiffLines = 2 // combined (3 lines) > 2
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	_, err := gen.Generate(t.Context(), cfg)
+	if err == nil {
+		t.Fatal("Generate returned nil error for an over-ceiling combined -A diff, want notes.ErrDiffTooLarge")
+	}
+	if !errors.Is(err, notes.ErrDiffTooLarge) {
+		t.Errorf("error = %v, want notes.ErrDiffTooLarge on the combined -A diff", err)
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; the guard must short-circuit L2 entirely", transport.calls())
+	}
+}
+
+func TestGenerator_Generate_AddAllMode_SurfacesNoIndexAccessError(t *testing.T) {
+	t.Parallel()
+
+	// `git diff --no-index` exits 1 in TWO cases: (a) the inputs differ — the NORMAL
+	// success case, with the addition diff on STDOUT; and (b) a genuine error (e.g.
+	// "could not access '<file>'"), which ALSO exits 1 but with EMPTY stdout and a
+	// message on stderr. The discriminator is therefore stdout-non-empty, not the exit
+	// code: an exit-1 with empty stdout (and populated stderr) is a real failure that
+	// must surface as an error so the untracked file is never silently dropped from the
+	// would-be-staged diff — and the transport is never reached.
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"}}, // git diff HEAD -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: "foo.go\n"}},                                                // git ls-files --others --exclude-standard -- .
+		runner.ScriptedCall{ // git diff --no-index -- /dev/null foo.go: exit 1 but EMPTY stdout = genuine access error
+			Result: runner.Result{Stdout: "", Stderr: "error: Could not access 'foo.go'", ExitCode: 1},
+			Err:    errors.New("exit status 1"),
+		},
+	)
+	transport := &recordingTransport{body: "must never be returned"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	_, err := gen.Generate(t.Context(), normalCfg())
+	if err == nil {
+		t.Fatal("Generate returned nil error for a --no-index access error (exit 1, empty stdout), want non-nil")
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; a --no-index access error must short-circuit L2", transport.calls())
+	}
+}
+
+func TestGenerator_Generate_AddAllMode_SurfacesNoIndexOtherNonZeroExit(t *testing.T) {
+	t.Parallel()
+
+	// A NON-differ non-zero exit from `git diff --no-index` (e.g. 129/2 — bad usage or a
+	// genuine git failure) is a real error: it surfaces from Generate and the transport
+	// is never reached. This guards the "any other non-zero exit" failure branch, which
+	// every other seeded --no-index call (all exit 1) leaves untested.
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"}}, // git diff HEAD -- .
+		runner.ScriptedCall{Result: runner.Result{Stdout: "foo.go\n"}},                                                // git ls-files --others --exclude-standard -- .
+		runner.ScriptedCall{ // git diff --no-index -- /dev/null foo.go: exit 129 = genuine failure
+			Result: runner.Result{Stderr: "usage: git diff --no-index", ExitCode: 129},
+			Err:    errors.New("exit status 129"),
+		},
+	)
+	transport := &recordingTransport{body: "must never be returned"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
+	_, err := gen.Generate(t.Context(), normalCfg())
+	if err == nil {
+		t.Fatal("Generate returned nil error for a --no-index exit 129, want non-nil")
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; a genuine --no-index failure must short-circuit L2", transport.calls())
+	}
+}
+
+func TestGenerator_Generate_StagedOnly_StillUsesGitDiffCached(t *testing.T) {
+	t.Parallel()
+
+	// The default StagedOnly mode is byte-identical to Phase 1: the single L1 source is
+	// `git diff --cached -- .`, NOT a would-be-staged worktree diff (no `diff HEAD`, no
+	// ls-files enumeration).
+	diff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
+	r := seedStagedDiff(diff)
+	transport := &recordingTransport{body: "feat: api"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	inv := gitInvocation(t, r)
+	assertArgs(t, inv.Args, []string{"diff", "--cached", "--", "."})
+}
+
 func TestGenerator_Generate_SurfacesL1GitError(t *testing.T) {
 	t.Parallel()
 
@@ -464,7 +861,7 @@ func TestGenerator_Generate_SurfacesL1GitError(t *testing.T) {
 	r.Seed("git", runner.Result{Stderr: "fatal: not a git repository", ExitCode: 128}, errors.New("exit status 128"))
 	transport := &recordingTransport{body: "must never be returned"}
 
-	gen := commit.NewGenerator(r, transport, t.TempDir())
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	_, err := gen.Generate(t.Context(), normalCfg())
 	if err == nil {
 		t.Fatal("Generate returned nil error for a failing git call, want non-nil")

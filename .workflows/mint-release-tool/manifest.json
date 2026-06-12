@@ -628,9 +628,9 @@
         "commit-command": {
           "status": "in-progress",
           "task_gate_mode": "auto",
-          "fix_gate_mode": "gated",
+          "fix_gate_mode": "auto",
           "analysis_gate_mode": "gated",
-          "fix_attempts": 0,
+          "fix_attempts": 1,
           "analysis_cycle_total": 0,
           "analysis_cycle_session": 0,
           "linters": [
@@ -664,7 +664,7 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 2,
-          "current_task": "commit-command-2-2",
+          "current_task": "commit-command-2-3",
           "completed_tasks": [
             "commit-command-1-1",
             "commit-command-1-2",
@@ -672,7 +672,8 @@
             "commit-command-1-4",
             "commit-command-1-5",
             "commit-command-1-6",
-            "commit-command-2-1"
+            "commit-command-2-1",
+            "commit-command-2-2"
           ],
           "completed_phases": [
             1

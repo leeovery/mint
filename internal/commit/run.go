@@ -292,12 +292,14 @@ func resolveRoot(ctx context.Context, deps Deps) (string, error) {
 }
 
 // generateMessage builds the L3 Generator over the run's read runner + resolved
-// transport + root, then generates the conventional-commits body from the staged
-// diff. The transport is the injected deps.Transport when set (the test seam), else
-// the production ai.Transport over the run's runner driven by the validated
+// transport + root + resolved staging mode, then generates the conventional-commits
+// body from the would-be-committed diff. The mode (deps.Staging) selects the L1 source:
+// StagedOnly reads the index, All/AddAll compute the would-be-staged worktree diff
+// read-only. The transport is the injected deps.Transport when set (the test seam),
+// else the production ai.Transport over the run's runner driven by the validated
 // cfg.AICommand — so production leaves deps.Transport nil and gets the real engine.
 func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root string) (string, error) {
-	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root)
+	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
 	return generator.Generate(ctx, cfg)
 }
 
