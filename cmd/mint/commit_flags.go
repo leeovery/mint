@@ -9,13 +9,12 @@ import (
 	"mint/internal/commit"
 )
 
-// commitFlags is the parsed `mint commit` CLI surface. Phase 1 wired the presentation
-// flags the presenter consumes at startup: --plain forces un-styled output, and
-// -y/--yes auto-accepts. Phase 2 adds the staging selectors -a/--all and -A/--add-all,
-// resolved into a single commit.StagingMode. Phase 3 adds --no-ai, which skips AI
-// generation and the Continue? gate and drops to the $EDITOR fallback. Phase 5 adds
-// -p/--push, which arms a push after a successful commit. All are plain values so flag
-// parsing stays decoupled from the orchestrator.
+// commitFlags is the parsed `mint commit` CLI surface: the presentation flags the
+// presenter consumes at startup (--plain forces un-styled output, -y/--yes
+// auto-accepts), the staging selectors -a/--all and -A/--add-all (resolved into a
+// single commit.StagingMode), --no-ai (skip AI generation and the Continue? gate,
+// drop to the $EDITOR fallback), and -p/--push (arm a push after a successful
+// commit). All are plain values so flag parsing stays decoupled from the orchestrator.
 type commitFlags struct {
 	// Yes auto-accepts the review gate; the presenter performs the skip inside Prompt.
 	Yes bool
@@ -33,8 +32,8 @@ type commitFlags struct {
 	// Push selects -p/--push: arm a push after a successful commit. Push is FLAG-ONLY —
 	// "we never push without the -p flag" — so there is deliberately NO push config
 	// default; this flag is the sole source of the armed value. Default false = disarmed
-	// (no push). The push itself fires only after a successful commit (gating is Phase 5's
-	// later tasks); this flag merely carries the armed value.
+	// (no push). The push fires only after a successful commit and warns-don't-unwinds
+	// on failure (the orchestrator's pushAfterCommit owns that contract).
 	Push bool
 }
 

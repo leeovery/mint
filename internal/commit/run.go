@@ -1,28 +1,28 @@
 package commit
 
-// This file is commit's ORCHESTRATOR — the Phase 1 walking-skeleton vertical seam
-// that threads the shipped pieces (config [commit] table, the prompt composer, and
-// the L3 Generator) into a runnable bare `mint commit`. It owns ORDERING for the
-// bare (staged-only, no-flags) path: resolve the repo root, load config, GENERATE the
-// conventional-commits message from the staged diff (L3), then CREATE the commit
-// carrying that body verbatim through the lock-resilient git_safe sink. The pieces
-// themselves are unchanged — Run CALLS them; it never re-implements their logic.
+// This file is commit's ORCHESTRATOR. It owns ORDERING for the whole `mint commit`
+// verb and CALLS the shipped pieces — it never re-implements their logic: resolve the
+// repo root, load config (the shared engine keys + the [commit] table), run the
+// staging-mode-aware empty-staging preflight (preflight.go), GENERATE the
+// conventional-commits message from the mode's would-be-committed diff (the L3
+// Generator in generate.go), present it at the Continue? review gate (y/n/e/r —
+// reviewLoop below), and on accept run the shared stage→commit→push accept tail
+// (commitAccept). Three "no AI message" triggers — --no-ai, an AI transport failure,
+// and an oversized diff — converge on the SAME $EDITOR fallback (runEditorFallback),
+// where the save IS the accept event.
 //
-// SCOPE (Phase 1 bare path only). The review gate (task 1-5) is now wired between
-// Generate and the commit sink: the minted message renders, then the Continue? gate
-// is presented through the consumed Presenter — accept on y/Enter proceeds to the
-// commit, decline on n aborts as a true no-op, -y auto-accepts (presenter-internal),
-// and the non-TTY-without-`-y` forbidden combination fails loud. The remaining
-// sequencing points for later tasks are LEFT CLEAN, not built here:
-//   - Empty-index preflight (task 1-6) slots before Generate.
-//   - -a/-A staging (Phase 2), --no-ai/$EDITOR (Phase 3), gate e/r (Phase 4), and
-//     -p push (Phase 5) are NOT implemented. The bare path is STAGED-ONLY — it runs
-//     NO `git add`; the only mutation is the commit itself.
+// The load-bearing invariant is MUTATE NOTHING UNTIL ACCEPT: every read (preflight
+// probes, the per-mode L1 diff) is computed read-only, the gate and the editor sit
+// BEFORE the mutation half, and the deferred `git add` (-a/-A) runs only inside the
+// accept tail — so any decline/abort leaves the index byte-for-byte untouched. After
+// accept the contract flips to never-unwind: a failed -p push warns and keeps the
+// commit (pushAfterCommit).
 //
-// git_safe is non-negotiable: the commit mutation flows through the Mutator seam
-// (the consumed lock-resilient *git.Mutator in production), NEVER the raw runner — a
-// contended/stale .git lock is retried/cleared so a background agent or editor
-// briefly holding the index lock cannot blow up a commit.
+// git_safe is non-negotiable: every git mutation (the deferred staging, the commit,
+// the push) flows through the Mutator seam (the consumed lock-resilient *git.Mutator
+// in production), NEVER the raw runner — a contended/stale .git lock is
+// retried/cleared so a background agent or editor briefly holding the index lock
+// cannot blow up a commit.
 
 import (
 	"context"
@@ -193,11 +193,11 @@ type Deps struct {
 	// production leaves it empty and gets the real repo root.
 	Root string
 	// Staging is the resolved staging mode (cmd layer resolves the mutually-exclusive
-	// -a/-A flags into it). The zero value StagedOnly is the Phase 1 default — commit
-	// the index exactly as staged, running NO `git add`. The All/AddAll deferred-staging
-	// behaviour (compute the would-be-committed diff read-only, then `git add` only on
-	// gate-accept) is Phase 2 (tasks 2-2/2-3) and consumes this field; this task only
-	// THREADS the resolved value through, leaving the StagedOnly path byte-identical.
+	// -a/-A flags into it). The zero value StagedOnly is the default — commit the index
+	// exactly as staged, running NO `git add`. All/AddAll select the deferred-staging
+	// behaviour: the would-be-committed diff is computed read-only for the preview, and
+	// the mode's `git add -u`/`-A` runs only on accept (stageForMode, inside the
+	// commitAccept tail) — the mutate-nothing-until-accept invariant.
 	Staging StagingMode
 	// NoAI selects the --no-ai degradation path: skip the L3 generate AND the Continue?
 	// gate entirely, opening the editor directly (the editor save IS the accept event).
@@ -221,10 +221,9 @@ type Deps struct {
 	// (true) means push after a SUCCESSFUL commit; DISARMED (false, the default) means no
 	// push. Push is FLAG-ONLY — "we never push without the -p flag" — so there is
 	// deliberately NO push config default; the flag is the sole source of this value and
-	// Run never reads a config push key. This task only THREADS the armed value through;
-	// the actual push execution (after the gate-accept commit and the editor-save commit),
-	// the push-failure warn-don't-unwind, and the empty/aborted-run suppression are LATER
-	// Phase 5 tasks (5-2..5-5) that consume this field — none run here.
+	// Run never reads a config push key. Both accept paths (gate-accept and the editor's
+	// save-as-accept) consume it through the single shared pushAfterCommit step, which
+	// warns-don't-unwinds on failure; no-commit runs never reach it.
 	Push bool
 }
 
@@ -242,26 +241,30 @@ func (d Deps) editorUnavailable() bool {
 	return d.Yes || !d.StdinInteractive
 }
 
-// Run executes the bare `mint commit` thread, orchestrating the Phase 1 pieces in
-// EXACTLY this order:
+// Run executes the `mint commit` thread, orchestrating the pieces in EXACTLY this
+// order:
 //
 //  1. Resolve the repo root (anchored the same way release resolves it) and load
-//     config (for the shared engine keys + the [commit] table). [Empty-index
-//     preflight is task 1-6 — its slot is BEFORE generate.]
-//  2. Generate the conventional-commits message via the L3 Generator: it assembles
-//     the staged diff (commit's L1), applies the size guard, composes the prompt, and
-//     calls the L2 transport. The AI infers the type; scope is off by default; the
-//     body returns verbatim.
-//  3. Show the minted message (ShowMessage) and present the Continue? review gate
-//     (reviewLoop) — BOTH before the commit sink, so an accept proceeds and a
-//     decline aborts with nothing mutated (the mutate-nothing-until-accept invariant).
-//  4. Create the commit through the git_safe Mutator, piping the generated body on
-//     stdin (`git commit -F -`) so the commit message is the minted body BYTE-FOR-BYTE
-//     — no commit_prefix, no branding, no reformatting.
+//     config (for the shared engine keys + the [commit] table).
+//  2. Empty-staging preflight: the staging-mode-aware would-be-staged emptiness check
+//     runs BEFORE generate so the AI is never invoked on an empty diff.
+//  3. Generate the conventional-commits message via the L3 Generator: it assembles
+//     the mode's would-be-committed diff (commit's L1, read-only), applies the size
+//     guard, composes the prompt, and calls the L2 transport. The AI infers the type;
+//     scope is off by default; the body returns verbatim. --no-ai skips this (and the
+//     gate) for the $EDITOR fallback; an AI transport failure or an oversized diff
+//     routes to the SAME fallback.
+//  4. Show the minted message (ShowMessage) and present the Continue? review gate
+//     (reviewLoop, with its e edit and r regenerate re-entries) — BOTH before the
+//     mutation half, so an accept proceeds and a decline aborts with nothing mutated
+//     (the mutate-nothing-until-accept invariant).
+//  5. On accept, run the shared accept tail (commitAccept): the mode's deferred
+//     staging, then the commit through the git_safe Mutator — piping the final body on
+//     stdin (`git commit -F -`) so the commit message lands BYTE-FOR-BYTE (no
+//     commit_prefix, no branding, no reformatting) — then the optional -p push.
 //
 // A failure at any step surfaces through the presenter and aborts with a non-zero exit
-// (an *engine-style abort is owned by the cmd layer's exit mapping). The bare path is
-// staged-only: Run issues NO `git add`.
+// (an *engine-style abort is owned by the cmd layer's exit mapping).
 func Run(ctx context.Context, deps Deps) error {
 	p := deps.Presenter
 
@@ -749,7 +752,8 @@ func stageForMode(ctx context.Context, deps Deps) (runner.Result, error) {
 // first attempt). Piping via -F - (rather than -m) keeps a multi-line body intact and
 // avoids any shell-escaping of the verbatim message. The body reaches git
 // BYTE-FOR-BYTE — no commit_prefix, no branding (commit_prefix stays a release-only
-// concern). No `git add` runs: the bare path commits the index exactly as staged.
+// concern). It runs NO `git add` itself: it commits the index as it stands, which the
+// accept tail's stageForMode has already prepared for the -a/-A modes.
 // On failure the captured Result is returned alongside the error so the caller can pass
 // git's stderr — above all a pre-commit/commit-msg hook's rejection output, which is the
 // only actionable explanation of the failure — through to the StageFailure.
