@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -59,6 +60,11 @@ func parseInitFlags(args []string) (initFlags, error) {
 func runInit(ctx context.Context, rest []string) int {
 	opts, err := parseInitFlags(rest)
 	if err != nil {
+		// -h/--help is a requested action, not a usage error: stdout, exit 0.
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = fmt.Fprint(os.Stdout, initUsage)
+			return 0
+		}
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
 	}

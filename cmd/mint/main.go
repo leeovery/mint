@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -55,6 +56,14 @@ func run(args []string) int {
 		return runVersion(os.Stdout, os.Stderr, os.Stdin)
 	}
 
+	// `mint help` / `mint --help` is the top-level help surface — a requested action,
+	// not a usage error, so it prints to stdout and exits 0. Per-verb help
+	// (`mint <command> --help`) is handled inside each verb's runner via flag.ErrHelp.
+	if isHelpCommand(args) {
+		_, _ = fmt.Fprint(os.Stdout, rootUsage)
+		return 0
+	}
+
 	// Build the ONE signal-cancellable context for the whole run: a Ctrl-C
 	// (os.Interrupt) or SIGTERM cancels it, which threads down through every command's
 	// external-command seam so a long pre-PONR step (the AI call, a hook, the gap before
@@ -97,6 +106,12 @@ func run(args []string) int {
 func runRegenerate(ctx context.Context, rest []string) int {
 	req, err := parseRegenerateFlags(rest)
 	if err != nil {
+		// -h/--help is a requested action, not a usage error: print the usage text to
+		// stdout and exit 0 (the flag set's own dump is discarded at parse time).
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = fmt.Fprint(os.Stdout, regenerateUsage)
+			return 0
+		}
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
 	}
@@ -234,6 +249,11 @@ func resolveRegeneratePublisher(ctx context.Context, deps engine.ReleaseDeps, cf
 func runRelease(ctx context.Context, rest []string) int {
 	opts, err := parseReleaseFlags(rest)
 	if err != nil {
+		// -h/--help is a requested action, not a usage error: stdout, exit 0.
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = fmt.Fprint(os.Stdout, releaseUsage)
+			return 0
+		}
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
 	}
@@ -280,6 +300,11 @@ func runRelease(ctx context.Context, rest []string) int {
 func runCommit(ctx context.Context, rest []string) int {
 	opts, err := parseCommitFlags(rest)
 	if err != nil {
+		// -h/--help is a requested action, not a usage error: stdout, exit 0.
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = fmt.Fprint(os.Stdout, commitUsage)
+			return 0
+		}
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
 		return usageExitCode
 	}
