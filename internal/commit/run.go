@@ -177,6 +177,15 @@ func Run(ctx context.Context, deps Deps) error {
 
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
+		// An AI transport failure (bad content after the transport's one retry, a timeout,
+		// or a missing binary) is NOT an abort for a routine local commit — it routes to the
+		// SAME editor fallback as --no-ai, opened against an EMPTY buffer (no synthetic stub,
+		// no re-show of a partial message). Any OTHER generate error — including
+		// notes.ErrDiffTooLarge, whose oversized-skip path is task 3-4 — keeps the surface
+		// abort. The transport's own bad-content retry is consumed here, never re-run.
+		if isAITransportFailure(err) {
+			return runEditorFallback(ctx, deps, root, "")
+		}
 		return surface(p, "generate", err)
 	}
 
@@ -466,6 +475,20 @@ func resolveRoot(ctx context.Context, deps Deps) (string, error) {
 func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root string) (string, error) {
 	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
 	return generator.Generate(ctx, cfg)
+}
+
+// isAITransportFailure reports whether err is one of the THREE L2 transport-failure
+// sentinels the generate step (1-3) surfaces wrapped: ai.ErrGenerationFailed (bad
+// content surviving the transport's one retry), ai.ErrTimeout, or ai.ErrCommandMissing
+// (both never retried). It is the single routing predicate for "the AI produced no
+// usable message" → the shared $EDITOR fallback, deliberately distinct from the
+// oversized-skip (notes.ErrDiffTooLarge, task 3-4) which is NOT a transport failure and
+// keeps the surface abort. It is a NAMED predicate so Phase 4's `r` (regenerate)
+// failure can reuse the SAME routing entry point.
+func isAITransportFailure(err error) bool {
+	return errors.Is(err, ai.ErrGenerationFailed) ||
+		errors.Is(err, ai.ErrTimeout) ||
+		errors.Is(err, ai.ErrCommandMissing)
 }
 
 // commitTransport resolves the L2 transport: the injected deps.Transport when set
