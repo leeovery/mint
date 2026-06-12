@@ -189,7 +189,7 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 			// Emptiness verdict via the preflight path.
 			rp := runner.NewFakeRunner()
 			rp.SeedSequence("git", scriptedResults(tc.probeOut)...)
-			empty, err := wouldStageNothing(ctx, rp, tc.mode, nil)
+			empty, err := wouldStageNothing(ctx, rp, "", tc.mode, nil)
 			if err != nil {
 				t.Fatalf("wouldStageNothing returned error: %v", err)
 			}

@@ -288,7 +288,7 @@ func Run(ctx context.Context, deps Deps) error {
 	// preflight measures the POST-exclusion would-be-staged set — the SAME exclusion-filtered
 	// source the AI's L1 diff consumes — so an all-excluded set fails loud here rather than
 	// reaching generate with a blank post-exclusion diff.
-	if err := checkSomethingToCommit(ctx, deps.Runner, deps.Staging, cfg.DiffExclude); err != nil {
+	if err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging, cfg.DiffExclude); err != nil {
 		return surface(p, "preflight", err)
 	}
 

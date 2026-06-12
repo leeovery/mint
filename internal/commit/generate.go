@@ -38,7 +38,8 @@ type Transport interface {
 // It holds the CommandRunner (commit's L1 git seam — production passes the
 // os/exec-backed runner, tests a FakeRunner), the L2 Transport (the consumed
 // ai.Transport in production, a recording fake in tests), the repo root (for
-// ResolveInstructions, which reads the optional [commit].prompt override file), and the
+// ResolveInstructions, which reads the optional [commit].prompt override file, AND as
+// the working directory every L1 git read runs from — see sourceDiff), and the
 // resolved StagingMode (which selects the L1 SOURCE — only the source command differs
 // per mode; the :(exclude) exclusion, the size guard, the compose, and the L2 transport
 // are shared across all three).
@@ -143,6 +144,15 @@ func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, 
 //     untracked) — computed WITHOUT mutating the index.
 //   - AddAll (-A): the tracked-vs-HEAD diff plus each untracked file rendered as an
 //     added-file diff — also read-only (no `git add`).
+//
+// EVERY L1 git read runs with the repo ROOT as its working directory (RunInDir(g.root)),
+// because the shared `-- .` selector and the ls-files enumeration are cwd-relative:
+// from a subdirectory a plain Run would scope the PREVIEW to the subtree while the
+// accept-time mutations (`git add -u`/`-A` are whole-tree since git 2.0; `git commit`
+// commits the whole index) stay repo-wide — a reviewed message describing only part of
+// what gets committed. Pinning cwd to the root makes `.` always mean the whole tree, so
+// the preview, the emptiness preflight (which anchors the same way), and the mutations
+// agree no matter where mint was invoked.
 func (g *Generator) sourceDiff(ctx context.Context, diffExclude []string) (string, error) {
 	var b strings.Builder
 	for _, spec := range sourcesForMode(g.mode) {
@@ -193,7 +203,7 @@ func (g *Generator) renderSource(ctx context.Context, spec sourceSpec, diffExclu
 // nothing (no `git add`, the index unchanged).
 func (g *Generator) diffSourceText(ctx context.Context, base, diffExclude []string) (string, error) {
 	args := sourceArgs(base, diffExclude)
-	res, err := g.runner.Run(ctx, "git", args...)
+	res, err := g.runner.RunInDir(ctx, g.root, nil, "git", args...)
 	if err != nil {
 		return "", fmt.Errorf("running git %v: %w", args, err)
 	}
@@ -216,7 +226,7 @@ func (g *Generator) diffSourceText(ctx context.Context, base, diffExclude []stri
 // additions. A non-zero git exit on the enumeration is surfaced as a wrapped error.
 func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []string) (string, error) {
 	args := sourceArgs(base, diffExclude)
-	res, err := g.runner.Run(ctx, "git", args...)
+	res, err := g.runner.RunInDir(ctx, g.root, nil, "git", args...)
 	if err != nil {
 		return "", fmt.Errorf("running git %v: %w", args, err)
 	}
@@ -237,7 +247,9 @@ func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []
 
 // untrackedAdditionDiff renders a single untracked file as an added-file diff via
 // `git diff --no-index -- /dev/null <file>` — a pure read-only comparison against an
-// empty input that NEVER touches the index.
+// empty input that NEVER touches the index. It runs from the repo root (like every L1
+// read), so the root-relative paths the root-anchored ls-files enumeration emits
+// resolve correctly regardless of mint's invocation directory.
 //
 // `git diff --no-index` exits 1 (diffNoIndexFilesDiffer) in TWO cases: (a) the inputs
 // DIFFER — the NORMAL outcome here, with the addition diff on STDOUT; and (b) a GENUINE
@@ -249,7 +261,7 @@ func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []
 // silently dropped from the would-be-staged diff. Any OTHER non-zero exit is likewise a
 // genuine failure and is surfaced wrapped.
 func (g *Generator) untrackedAdditionDiff(ctx context.Context, file string) (string, error) {
-	res, err := g.runner.Run(ctx, "git", "diff", "--no-index", "--", "/dev/null", file)
+	res, err := g.runner.RunInDir(ctx, g.root, nil, "git", "diff", "--no-index", "--", "/dev/null", file)
 	if err != nil {
 		// The differ family (exit 1) is success ONLY when stdout carries a real diff. An
 		// exit-1 with empty stdout is a genuine --no-index error (e.g. could not access

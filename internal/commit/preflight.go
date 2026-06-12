@@ -58,15 +58,20 @@ var (
 // An EMPTY set selects the failure by the ACTUAL post-mode tree state (probed once with a
 // read-only `git status --porcelain`), NOT the flag passed — so `mint commit -A` on a
 // pristine tree yields the clean-tree message, because an empty -A set means a clean tree.
-func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, mode StagingMode, diffExclude []string) error {
-	empty, err := wouldStageNothing(ctx, r, mode, diffExclude)
+//
+// Every probe runs with the repo ROOT as its working directory (root, via RunInDir) —
+// the same anchoring the L1 diff sources use — because the shared `-- .` selector is
+// cwd-relative: from a subdirectory an unanchored probe would miss staging outside the
+// subtree and wrongly fail loud while the whole-index `git commit` had plenty to commit.
+func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode, diffExclude []string) error {
+	empty, err := wouldStageNothing(ctx, r, root, mode, diffExclude)
 	if err != nil {
 		return err
 	}
 	if !empty {
 		return nil
 	}
-	return emptyStagingError(ctx, r, mode)
+	return emptyStagingError(ctx, r, root, mode)
 }
 
 // wouldStageNothing reports whether the resolved StagingMode would stage nothing,
@@ -88,9 +93,9 @@ func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, mode St
 //     changes AND untracked files, both post-exclusion — mirrors the AddAll L1 source).
 //
 // A genuine git failure is wrapped and surfaced so it is never mistaken for an empty set.
-func wouldStageNothing(ctx context.Context, r runner.CommandRunner, mode StagingMode, diffExclude []string) (bool, error) {
+func wouldStageNothing(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode, diffExclude []string) (bool, error) {
 	for _, spec := range sourcesForMode(mode) {
-		empty, err := gitOutputEmpty(ctx, r, probeArgs(spec, diffExclude)...)
+		empty, err := gitOutputEmpty(ctx, r, root, probeArgs(spec, diffExclude)...)
 		if err != nil {
 			return false, err
 		}
@@ -159,8 +164,8 @@ func untrackedProbeArgs(excludes []string) []string {
 //     untracked; point at -A/--add-all).
 //   - AddAll (-A) → unreachable (an empty -A set ⇒ a clean tree); defensively return the
 //     clean-tree message.
-func emptyStagingError(ctx context.Context, r runner.CommandRunner, mode StagingMode) error {
-	clean, err := gitOutputEmpty(ctx, r, "status", "--porcelain")
+func emptyStagingError(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) error {
+	clean, err := gitOutputEmpty(ctx, r, root, "status", "--porcelain")
 	if err != nil {
 		return err
 	}
@@ -180,11 +185,12 @@ func emptyStagingError(ctx context.Context, r runner.CommandRunner, mode Staging
 	}
 }
 
-// gitOutputEmpty runs a READ-ONLY git command and reports whether its trimmed stdout is
-// empty. It is the shared probe of the emptiness checks: a genuine git failure is wrapped
-// and surfaced (never mistaken for an empty result).
-func gitOutputEmpty(ctx context.Context, r runner.CommandRunner, args ...string) (bool, error) {
-	res, err := r.Run(ctx, "git", args...)
+// gitOutputEmpty runs a READ-ONLY git command from the repo root and reports whether
+// its trimmed stdout is empty. It is the shared probe of the emptiness checks: a genuine
+// git failure is wrapped and surfaced (never mistaken for an empty result). Anchoring at
+// root keeps the cwd-relative `-- .` probes whole-tree from any invocation directory.
+func gitOutputEmpty(ctx context.Context, r runner.CommandRunner, root string, args ...string) (bool, error) {
+	res, err := r.RunInDir(ctx, root, nil, "git", args...)
 	if err != nil {
 		return false, fmt.Errorf("checking %v: %w", args, err)
 	}
