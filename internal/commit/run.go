@@ -356,28 +356,12 @@ func Run(ctx context.Context, deps Deps) error {
 		return errGateAborted
 	}
 
-	// On accept, apply the mode's deferred staging FIRST, then commit — in that order.
-	// This is the mutate-nothing-until-accept invariant's mutation half: everything up to
-	// here was read-only, so STAGE→COMMIT is the only point the index is touched. The
-	// committed body is the FINAL body from the review loop (the edited text verbatim
-	// when the user pressed `e`, else the generated message).
-	if err := stageForMode(ctx, deps); err != nil {
-		return surface(p, "stage", err)
-	}
-
-	if err := createCommit(ctx, deps, finalBody); err != nil {
-		return surface(p, "commit", err)
-	}
-
-	// Auto-push (Phase 5): the commit succeeded, so when -p is armed push it now —
-	// AFTER the commit, gated strictly on its success. pushAfterCommit is a no-op when
-	// push is disarmed (pushErr nil), and on a FAILED push it warns-don't-unwind (the
-	// commit is kept; it emits the generic warn and returns errPushFailed). The commit
-	// IS the run's success, so RunFinished ALWAYS fires regardless; a failed push then
-	// returns the sentinel → non-zero exit, with the commit left in place.
-	pushErr := pushAfterCommit(ctx, deps)
-	p.RunFinished(presenter.RunResult{Project: projectName(root)})
-	return pushErr
+	// On accept, run the shared stage→commit→push accept tail with the FINAL body from
+	// the review loop (the edited text verbatim when the user pressed `e`, else the
+	// generated message). commitAccept owns the mutate-nothing-until-accept mutation half
+	// (STAGE→COMMIT is the only point the index is touched) and the warn-don't-unwind
+	// push contract — see its doc comment.
+	return commitAccept(ctx, deps, root, finalBody)
 }
 
 // runEditorFallback is the shared $EDITOR degradation path the three "no AI message"
@@ -450,25 +434,12 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 		return errEditorNoOp
 	}
 
-	// Non-empty save = ACCEPT: apply the mode's deferred staging FIRST, then commit the
-	// saved buffer verbatim — the same STAGE→COMMIT order the gate-accept path uses.
-	if err := stageForMode(ctx, deps); err != nil {
-		return surface(p, "stage", err)
-	}
-	if err := createCommit(ctx, deps, saved); err != nil {
-		return surface(p, "commit", err)
-	}
-
-	// Auto-push (Phase 5): the save-as-accept commit succeeded, so — exactly as the
-	// gate-accept path does — when -p is armed push it now via the SAME single shared
-	// push step (pushAfterCommit, not a parallel push), which handles a failure with the
-	// SAME warn-don't-unwind behaviour (the commit is kept; one generic warn; git's
-	// stderr verbatim; errPushFailed drives the non-zero exit). The push fires strictly
-	// after the stage->commit ordering above. RunFinished ALWAYS fires (the commit is the
-	// run's success); a failed push returns the sentinel, leaving the commit in place.
-	pushErr := pushAfterCommit(ctx, deps)
-	p.RunFinished(presenter.RunResult{Project: projectName(root)})
-	return pushErr
+	// Non-empty save = ACCEPT: run the SAME shared stage→commit→push accept tail the
+	// gate-accept path uses (commitAccept), committing the saved buffer verbatim. Routing
+	// through the one helper keeps the STAGE→COMMIT order, the single shared push step,
+	// the warn-don't-unwind push handling, and the always-fire RunFinished identical
+	// across both accept paths.
+	return commitAccept(ctx, deps, root, saved)
 }
 
 // isEmptyEditorBuffer is the SINGLE editor-emptiness rule established in 3-2 and shared by
@@ -928,6 +899,37 @@ func createCommit(ctx context.Context, deps Deps, body string) error {
 		return fmt.Errorf("creating commit: %w", err)
 	}
 	return nil
+}
+
+// commitAccept is the SINGLE shared accept tail both accept entry points end with — the
+// gate-accept branch (Run) and the save-as-accept branch (runEditorFallback). It runs the
+// ordered stage→commit→push mutation sequence ONCE so the spec's load-bearing invariant
+// (mutate nothing until accept, STAGE→COMMIT ordering, never unwind after) lives in exactly
+// one place and cannot drift between the two paths. Only the committed body differs between
+// callers (the review loop's final body vs the editor's saved buffer), so it is the sole
+// parameter:
+//
+//  1. stageForMode applies the mode's deferred `git add` FIRST (a no-op under StagedOnly);
+//     a staging failure surfaces as a "stage" StageFailed and aborts.
+//  2. createCommit pipes the body to `git commit -F -`; a commit failure surfaces as a
+//     "commit" StageFailed and aborts.
+//  3. pushAfterCommit runs the single shared auto-push (a no-op when -p is disarmed; on a
+//     FAILED push it warns-don't-unwind — the commit is kept and it returns errPushFailed).
+//  4. RunFinished ALWAYS fires: the commit IS the run's success, so the success close-out
+//     runs even when the push failed (the warn-don't-unwind contract).
+//  5. The pushErr is returned: nil on a no-push/successful-push run, errPushFailed on a
+//     failed push → a non-zero exit with the commit left in place.
+func commitAccept(ctx context.Context, deps Deps, root, body string) error {
+	p := deps.Presenter
+	if err := stageForMode(ctx, deps); err != nil {
+		return surface(p, "stage", err)
+	}
+	if err := createCommit(ctx, deps, body); err != nil {
+		return surface(p, "commit", err)
+	}
+	pushErr := pushAfterCommit(ctx, deps)
+	p.RunFinished(presenter.RunResult{Project: projectName(root)})
+	return pushErr
 }
 
 // pushAfterCommit is commit's SINGLE shared auto-push step, called by BOTH accept
