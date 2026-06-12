@@ -342,9 +342,10 @@ func Run(ctx context.Context, deps Deps) error {
 	accepted, finalBody, err := reviewLoop(ctx, deps, cfg, root, body)
 	if err != nil {
 		// A regeneration failure (after the engine's one retry) routes to the SAME editor
-		// fallback as a first-generation AI failure (3-3) — Run owns the call so a successful
-		// fallback commit exits 0 (NOT turned into errGateAborted) and never double-stages.
-		// The editor opens EMPTY/template (no re-show of the pre-r message), exactly like 3-3.
+		// fallback as a first-generation AI failure (3-3) — Run owns the call so the fallback
+		// commit exits per the accept tail (0 on commit success, non-zero only on a failed -p
+		// push), is NOT turned into errGateAborted, and never double-stages. The editor opens
+		// EMPTY/template (no re-show of the pre-r message), exactly like 3-3.
 		if errors.Is(err, errRegenerateFallback) {
 			return runEditorFallback(ctx, deps, root, "")
 		}

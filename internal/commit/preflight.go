@@ -89,7 +89,7 @@ func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root st
 //   - All (-a): empty iff `git diff HEAD --name-only -- . :(exclude)…` is empty (tracked
 //     mods + deletions, post-exclusion — mirrors the tracked L1 source).
 //   - AddAll (-A): empty iff BOTH `git diff HEAD --name-only -- . :(exclude)…` AND
-//     `git ls-files --others --exclude-standard -- . :(exclude)…` are empty (tracked
+//     `git ls-files --others --exclude-standard -z -- . :(exclude)…` are empty (tracked
 //     changes AND untracked files, both post-exclusion — mirrors the AddAll L1 source).
 //
 // A genuine git failure is wrapped and surfaced so it is never mistaken for an empty set.
@@ -140,6 +140,10 @@ func nameOnly(base []string) []string {
 // for symmetry with their historical callers; probeArgs re-derives the same tail via
 // excludePathspecs, so passing already-mapped excludes here is equivalent (the tests use
 // these as the single checkable builders).
+//
+// NOTE: these are test-facing builders. Production preflight routes through probeArgs (see
+// wouldStageNothing → probeArgs) after the 7-1 source-selection restructure; nothing on the
+// live preflight path calls stagedProbeArgs/trackedProbeArgs/untrackedProbeArgs.
 func stagedProbeArgs(excludes []string) []string {
 	return append(nameOnly(stagedBaseArgs()), excludes...)
 }
