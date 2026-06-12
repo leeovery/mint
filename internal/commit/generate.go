@@ -93,6 +93,19 @@ func NewGenerator(r runner.CommandRunner, transport Transport, root string, mode
 // oversized vs generation-failure. Routing failures to $EDITOR / --no-ai is Phase 3 —
 // this method only surfaces the outcome.
 func (g *Generator) Generate(ctx context.Context, cfg config.Config) (string, error) {
+	return g.GenerateWithContext(ctx, cfg, "")
+}
+
+// GenerateWithContext is Generate with the gate's `r` (regenerate-with-context)
+// one-time context augmentation: it runs the IDENTICAL L1 → size-guard → resolve →
+// compose → L2 path, but layers oneTimeContext onto the resolved instructions (ON TOP
+// of any persisted [commit].context) before composing. An EMPTY oneTimeContext is a
+// plain re-roll — no block is injected, so the composed prompt is byte-identical to a
+// normal Generate. The one-time context is a local string only; it is NEVER persisted
+// to cfg/[commit].context. The diff source, the :(exclude) exclusion, and the size
+// guard are unchanged; the transport's one retry is consumed here exactly as Generate
+// consumes it. Generate delegates here with an empty context, so the two share one path.
+func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, oneTimeContext string) (string, error) {
 	diff, err := g.sourceDiff(ctx, cfg.DiffExclude)
 	if err != nil {
 		return "", fmt.Errorf("assembling would-be-committed diff for commit: %w", err)
@@ -106,6 +119,7 @@ func (g *Generator) Generate(ctx context.Context, cfg config.Config) (string, er
 	if err != nil {
 		return "", fmt.Errorf("resolving commit instructions: %w", err)
 	}
+	instructions = injectOneTimeContext(instructions, oneTimeContext)
 
 	prompt := ComposePrompt(instructions, diff)
 

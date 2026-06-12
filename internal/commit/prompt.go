@@ -85,6 +85,12 @@ func ComposePrompt(instructions, diff string) string {
 // diff.
 const contextHeader = "Additional project context (apply the rules above with this in mind):"
 
+// oneTimeContextHeader labels the one-time regenerate context block injected by the
+// gate's `r` (regenerate-with-context) action. It is distinct from contextHeader so
+// the AI reads it as the user's one-shot steer for THIS regeneration only — it is
+// never persisted to [commit].context and is layered ON TOP of any persisted context.
+const oneTimeContextHeader = "Additional one-time context for this regeneration (apply the rules above with this in mind):"
+
 // ResolveInstructions produces the "instructions" half of the AI input from
 // commit's two prompt-control knobs, reading the override file relative to root via
 // config.ResolveCommitPrompt. This is the IO side of prompt assembly (it may read a
@@ -112,12 +118,25 @@ func ResolveInstructions(cfg config.Config, root string) (string, error) {
 	if cfg.Commit.Context == "" {
 		return DefaultPrompt, nil
 	}
-	return injectContext(DefaultPrompt, cfg.Commit.Context), nil
+	return injectContext(DefaultPrompt, contextHeader, cfg.Commit.Context), nil
 }
 
-// injectContext appends the configured context to the default prompt under a
-// labelled header, injecting (never replacing) so every default rule survives
-// alongside the project-specific guidance.
-func injectContext(prompt, context string) string {
-	return prompt + "\n\n" + contextHeader + "\n\n" + context
+// injectContext appends context to prompt under a labelled header, injecting (never
+// replacing) so every prior rule survives alongside the added guidance. The header is
+// a parameter so the SAME idiom serves both the persisted [commit].context block
+// (contextHeader) and the gate's one-time regenerate block (oneTimeContextHeader).
+func injectContext(prompt, header, context string) string {
+	return prompt + "\n\n" + header + "\n\n" + context
+}
+
+// injectOneTimeContext layers the gate's `r` one-time context onto resolved
+// instructions, ON TOP of any already-injected [commit].context, under the
+// oneTimeContextHeader. An EMPTY context is a no-op — a plain re-roll injects no
+// block, so the instructions are byte-identical to a normal generate. The one-time
+// context is a local string only; it is never written back to cfg/[commit].context.
+func injectOneTimeContext(instructions, oneTimeContext string) string {
+	if oneTimeContext == "" {
+		return instructions
+	}
+	return injectContext(instructions, oneTimeContextHeader, oneTimeContext)
 }

@@ -70,6 +70,12 @@ const (
 	editorNoLaunchWarnMessage = "could not launch editor, keeping the message"
 )
 
+// regenContextPrompt is the short free-text prompt the gate's `r` action renders via the
+// presenter's AskLine before regenerating. It cues the user for an optional one-time
+// steer; Enter (an empty line) submits a plain re-roll. The wording is NOT spec-pinned —
+// it is a clear, lowercase line consistent with the codebase's prompt phrasing.
+const regenContextPrompt = "extra context for the regeneration (Enter to skip)"
+
 // errGateAborted is the clean cause for a user `n` decline at the review gate. It is
 // a TRUE no-op cause — nothing was mutated (the gate sits before the commit sink) —
 // so the abort path emits NO StageFailed failure narration. It surfaces only so the
@@ -256,7 +262,7 @@ func Run(ctx context.Context, deps Deps) error {
 	// loop owns the ShowMessage→Prompt render and the gate's e (edit) re-entry: an `e`
 	// non-empty save replaces the in-memory body verbatim and re-renders, so the FINAL
 	// (possibly edited) body is what proceeds to the commit.
-	accepted, finalBody, err := reviewLoop(ctx, deps, body)
+	accepted, finalBody, err := reviewLoop(ctx, deps, cfg, root, body)
 	if err != nil {
 		return err
 	}
@@ -387,12 +393,15 @@ func isEmptyEditorBuffer(saved string) bool {
 //   - ChoiceYes (also the bare-Enter default, and the value the presenter returns
 //     under -y after rendering its auto-accept echo) → accept: return (true, body, nil)
 //     so Run proceeds to the commit sink with the FINAL body.
+//
 //   - ChoiceNo → decline: return (false, body, nil) so Run aborts as a true no-op.
+//
 //   - ChoiceEdit → open the editor pre-filled with the CURRENT body (via the reusable
 //     OpenEditor roundtrip — 3-1 resolution + the internal SuspendSpinner/ResumeSpinner
 //     bracket). A non-empty save replaces the in-memory body VERBATIM (no ComposePrompt,
 //     no Generator, no L2 — the edit is never reprocessed) and LOOPS BACK: re-render and
 //     re-prompt. It is NOT save-as-accept — nothing stages, commits, or pushes here.
+//
 //   - A Prompt error is the presenter's machine-readable failure channel:
 //     ErrNotInteractive (the forbidden non-TTY-without-`-y` combination, ALREADY
 //     rendered as a failure line by the presenter) and ErrInputClosed (EOF mid-gate,
@@ -401,13 +410,29 @@ func isEmptyEditorBuffer(saved string) bool {
 //     the StageFailed helper (the presenter rendered nothing, so commit owns its
 //     surfacing). Both preserve the underlying sentinel in the chain (errors.Is) and
 //     map to a non-zero exit.
+//
 //   - Any other returned choice is a presenter-contract violation — surfaced and
 //     aborted rather than silently treated as an accept.
 //
-// The `e` action is interactive-only: under -y the presenter auto-accepts (returns the
-// Default ChoiceYes) and on a non-TTY Prompt returns ErrNotInteractive, so the edit
-// branch is never reached in those modes — no special-casing is needed here.
-func reviewLoop(ctx context.Context, deps Deps, body string) (bool, string, error) {
+//   - ChoiceRegen → regenerate the message with a one-time free-text context line.
+//     The line is read via the presenter's AskLine free-text seam (the engine NEVER
+//     reads stdin) — Enter submits, and an EMPTY line is legal (a plain re-roll, no
+//     injected context). The line is injected ONE-TIME into the regeneration prompt
+//     (ON TOP of any [commit].context) via regenerateMessage, which re-runs the
+//     consumed generate path (its one retry consumed). On success the regenerated
+//     body becomes the new candidate and LOOPS BACK: re-render and re-prompt. Like
+//     `e` it is NOT an accept — nothing stages, commits, or pushes here. The line is
+//     never persisted, and a subsequent `r` reads a FRESH line. An AskLine
+//     ErrNotInteractive is PRE-rendered by the presenter (wrapped, no StageFailed);
+//     ErrInputClosed (EOF) and any other AskLine error are surfaced by the engine. A
+//     regeneration FAILURE (after the transport's one retry) is — per the spec —
+//     routed to the $EDITOR fallback; that routing is task 4-5, so this task leaves an
+//     interim surface-abort with a TODO(4-5) marker.
+//
+// The `e` and `r` actions are interactive-only: under -y the presenter auto-accepts
+// (returns the Default ChoiceYes) and on a non-TTY Prompt returns ErrNotInteractive, so
+// neither branch is reached in those modes — no special-casing is needed here.
+func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body string) (bool, string, error) {
 	p := deps.Presenter
 	for {
 		// Render-only contract: the presenter NEVER re-shows the message itself; re-showing
@@ -473,8 +498,39 @@ func reviewLoop(ctx context.Context, deps Deps, body string) (bool, string, erro
 				body = saved
 			}
 			// Loop back: re-render the (possibly refreshed) message and re-prompt.
+		case presenter.ChoiceRegen:
+			// Read a single free-text one-time context line via the presenter's AskLine
+			// seam (the engine NEVER reads stdin). Enter submits; an EMPTY line is legal
+			// (a plain re-roll, no injected context). The line is a FRESH local each
+			// iteration, so a subsequent `r` reads a new line and never carries this one
+			// forward — and it is never persisted to cfg/[commit].context.
+			line, aerr := p.AskLine(regenContextPrompt)
+			if aerr != nil {
+				// Mirror the Prompt error handling: ErrNotInteractive is PRE-rendered by the
+				// presenter (wrap WITHOUT a StageFailed); ErrInputClosed (EOF) and any other
+				// AskLine error are unrendered by contract, so the engine surfaces them.
+				if errors.Is(aerr, presenter.ErrNotInteractive) {
+					return false, body, fmt.Errorf("regenerate context: %w", aerr)
+				}
+				return false, body, surface(p, "regenerate", aerr)
+			}
+			// Re-run the consumed generate path with the one-time context injected (line may
+			// be "" → a plain re-roll). The transport's one retry is consumed inside
+			// regenerateMessage; commit does not re-run it.
+			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
+			if gerr != nil {
+				// TODO(4-5): route a regeneration FAILURE (after the transport's one retry) to
+				// the $EDITOR fallback (runEditorFallback), the same as any other AI failure.
+				// For now an interim surface-abort keeps the failure fail-loud rather than
+				// silently looping.
+				return false, body, surface(p, "regenerate", gerr)
+			}
+			// Adopt the regenerated body as the new candidate and LOOP BACK: re-render
+			// ShowMessage(regenerated) → Prompt with the same y/n/e/r gate. `r` is NOT an
+			// accept — nothing stages, commits, or pushes here.
+			body = regenerated
 		default:
-			// The gate declares y/n/e and the presenter returns a member of the declared set;
+			// The gate declares y/n/e/r and the presenter returns a member of the declared set;
 			// any other choice is a contract violation — fail loud rather than treat an unknown
 			// answer as an accept.
 			return false, body, surface(p, "review", fmt.Errorf("unexpected review-gate choice %q", choice))
@@ -486,11 +542,12 @@ func reviewLoop(ctx context.Context, deps Deps, body string) (bool, string, erro
 // NOT presenter.NotesReviewGate()/ReuseConfirmGate() — those carry Subject "notes",
 // which would make the -y auto-accept echo read "notes: accepted (-y)". Commit's
 // Subject is "message" (echo "message: accepted (-y)") and AcceptEcho is "accepted".
-// The gate offers y/n/e (Enter ⇒ y via Default ChoiceYes): the e (edit) action is
-// added in Phase 4 (task 4-1) and the r (regenerate) action arrives with task 4-4.
-// Nothing in the presenter hardcodes the choice set, so the literal renders WHATEVER
-// it declares. The action labels match the spec's gate mapping (accept & proceed /
-// abort / edit), and the edit label matches NotesReviewGate's "edit in $EDITOR".
+// The gate offers y/n/e/r (Enter ⇒ y via Default ChoiceYes): the e (edit) action was
+// added in Phase 4 (task 4-1) and the r (regenerate) action in task 4-4. Nothing in
+// the presenter hardcodes the choice set, so the literal renders WHATEVER it declares.
+// The action labels match the spec's gate mapping (accept & proceed / abort / edit /
+// regenerate); the edit and regenerate labels match NotesReviewGate's "edit in
+// $EDITOR" / "regenerate".
 func commitReviewGate() presenter.Gate {
 	return presenter.Gate{
 		Question:   "Continue?",
@@ -500,6 +557,7 @@ func commitReviewGate() presenter.Gate {
 			{Key: presenter.ChoiceYes, Action: "accept & proceed"},
 			{Key: presenter.ChoiceNo, Action: "abort"},
 			{Key: presenter.ChoiceEdit, Action: "edit in $EDITOR"},
+			{Key: presenter.ChoiceRegen, Action: "regenerate"},
 		},
 		Default: presenter.ChoiceYes,
 	}
@@ -640,6 +698,19 @@ func resolveRoot(ctx context.Context, deps Deps) (string, error) {
 func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root string) (string, error) {
 	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
 	return generator.Generate(ctx, cfg)
+}
+
+// regenerateMessage is the gate's `r` (regenerate-with-context) re-run: it builds the
+// SAME L3 Generator over the run's seams as generateMessage and re-runs the consumed
+// L1 → size-guard → compose → L2 path via GenerateWithContext, layering the one-time
+// context line onto the prompt (ON TOP of any persisted [commit].context). The line is
+// passed verbatim; an EMPTY line is a plain re-roll (no injected block). The transport's
+// own one retry is consumed here exactly as the initial generate consumes it — commit
+// does NOT re-run the retry. The one-time context is a local string only: it is never
+// persisted to cfg/[commit].context, and a subsequent `r` passes a fresh line.
+func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, oneTimeContext string) (string, error) {
+	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
+	return generator.GenerateWithContext(ctx, cfg, oneTimeContext)
 }
 
 // isAITransportFailure reports whether err is one of the THREE L2 transport-failure

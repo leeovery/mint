@@ -870,3 +870,63 @@ func TestGenerator_Generate_SurfacesL1GitError(t *testing.T) {
 		t.Errorf("transport called %d times; an L1 failure must short-circuit L2", transport.calls())
 	}
 }
+
+func TestGenerator_GenerateWithContext_NonEmpty_InjectsOneTimeContextOnTopOfPersisted(t *testing.T) {
+	t.Parallel()
+
+	// The gate's `r` one-time context is injected into the regeneration prompt ON TOP of
+	// the persisted [commit].context: both appear, and the default rules still survive.
+	const persisted = "PERSISTED_CONTEXT_AAA"
+	const oneTime = "ONE_TIME_CONTEXT_BBB"
+	diff := "diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-a\n+b\n"
+	r := seedStagedDiff(diff)
+	transport := &recordingTransport{body: "feat: regenerated"}
+
+	cfg := normalCfg()
+	cfg.Commit.Context = persisted
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
+	if _, err := gen.GenerateWithContext(t.Context(), cfg, oneTime); err != nil {
+		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
+	}
+
+	prompt := transport.lastPrompt(t)
+	if !strings.Contains(prompt, persisted) {
+		t.Errorf("regeneration prompt missing the persisted [commit].context %q:\n%s", persisted, prompt)
+	}
+	if !strings.Contains(prompt, oneTime) {
+		t.Errorf("regeneration prompt missing the one-time context %q:\n%s", oneTime, prompt)
+	}
+	if !strings.Contains(prompt, "Conventional Commits") {
+		t.Errorf("default prompt rules absent after one-time inject:\n%s", prompt)
+	}
+}
+
+func TestGenerator_GenerateWithContext_Empty_EqualsPlainGenerate(t *testing.T) {
+	t.Parallel()
+
+	// An EMPTY one-time context is a plain re-roll: GenerateWithContext(cfg, "") composes
+	// the SAME prompt as Generate(cfg) — no one-time block is injected. Two separate
+	// runners over the same diff/cfg let both prompts be captured and compared.
+	diff := "diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-a\n+b\n"
+	root := t.TempDir()
+	cfg := normalCfg()
+
+	plainR := seedStagedDiff(diff)
+	plainTr := &recordingTransport{body: "feat: x"}
+	plainGen := commit.NewGenerator(plainR, plainTr, root, commit.StagedOnly)
+	if _, err := plainGen.Generate(t.Context(), cfg); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	emptyR := seedStagedDiff(diff)
+	emptyTr := &recordingTransport{body: "feat: x"}
+	emptyGen := commit.NewGenerator(emptyR, emptyTr, root, commit.StagedOnly)
+	if _, err := emptyGen.GenerateWithContext(t.Context(), cfg, ""); err != nil {
+		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
+	}
+
+	if plainTr.lastPrompt(t) != emptyTr.lastPrompt(t) {
+		t.Errorf("empty one-time context changed the prompt; a plain re-roll must equal Generate.\nGenerate:\n%s\nGenerateWithContext(\"\"):\n%s", plainTr.lastPrompt(t), emptyTr.lastPrompt(t))
+	}
+}
