@@ -8,7 +8,6 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/commit"
-	"mint/internal/git"
 	"mint/internal/notes"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -21,18 +20,11 @@ import (
 // test so the generate step fails; NoAI is FALSE (this is the AI path failing, not
 // --no-ai). Root is a TempDir so config.Load reads no real repo config.
 func aiFailDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr commit.Transport, mode commit.StagingMode, root string) commit.Deps {
-	return commit.Deps{
-		Presenter: rec,
-		Runner:    er,
-		Mutator:   git.NewMutator(er, git.WithBackoff(func(int) {})),
-		Transport: tr,
-		Root:      root,
-		Staging:   mode,
-		// These tests exercise the TTY editor-fallback path (a TTY stdin, no -y), so the
-		// no-message-source fail-loud guard (task 3-5) does NOT fire and the AI failure
-		// reaches the editor. The guard's own preconditions live in run_failloud_test.go.
-		StdinInteractive: true,
-	}
+	// These tests exercise the TTY editor-fallback path (a TTY stdin, no -y), so the
+	// no-message-source fail-loud guard (task 3-5) does NOT fire and the AI failure
+	// reaches the editor (StdinInteractive defaults true). The guard's own
+	// preconditions live in run_failloud_test.go.
+	return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root, Staging: mode})
 }
 
 // failTransport is a Transport whose Generate ALWAYS returns the wrapped sentinel,

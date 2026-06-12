@@ -68,16 +68,36 @@ func newCommitDeps(rec *presentertest.RecordingPresenter, r *runner.FakeRunner, 
 	}
 }
 
+// gitInvocationsOf returns only the `git` invocations in invs, in order. It takes an
+// already-extracted invocation slice so ONE helper serves both the raw-runner
+// (r.Invocations()) and editorRunner (er.fake.Invocations()) sources.
+func gitInvocationsOf(invs []runner.Invocation) []runner.Invocation {
+	var gits []runner.Invocation
+	for _, inv := range invs {
+		if inv.Name == "git" {
+			gits = append(gits, inv)
+		}
+	}
+	return gits
+}
+
+// gitVerbInvocations returns only the `git <verb> …` invocations in invs (Name=="git"
+// AND Args[0]==verb), in order — the shared filter behind the add/commit/push
+// per-verb helpers across both the raw-runner and editorRunner sources.
+func gitVerbInvocations(invs []runner.Invocation, verb string) []runner.Invocation {
+	var matched []runner.Invocation
+	for _, inv := range gitInvocationsOf(invs) {
+		if len(inv.Args) > 0 && inv.Args[0] == verb {
+			matched = append(matched, inv)
+		}
+	}
+	return matched
+}
+
 // gitInvocations returns only the recorded `git` invocations, in order — the spine
 // of the staged-only / commit-sink assertions.
 func gitInvocations(r *runner.FakeRunner) []runner.Invocation {
-	var git []runner.Invocation
-	for _, inv := range r.Invocations() {
-		if inv.Name == "git" {
-			git = append(git, inv)
-		}
-	}
-	return git
+	return gitInvocationsOf(r.Invocations())
 }
 
 // TestRun_BareCommit_GeneratesAndCommitsConventionalMessage drives the whole bare
@@ -320,10 +340,8 @@ func TestRun_GenerateFailure_AbortsWithoutCommitting(t *testing.T) {
 		t.Fatal("Run returned nil error, want a generate-failure abort")
 	}
 
-	for _, inv := range r.Invocations() {
-		if inv.Name == "git" && len(inv.Args) > 0 && inv.Args[0] == "commit" {
-			t.Errorf("a `git commit` ran despite generate failure: %v", inv.Args)
-		}
+	if commits := commitInvocations(r); len(commits) != 0 {
+		t.Errorf("a `git commit` ran despite generate failure: %v", commits)
 	}
 	if !containsKind(rec.Kinds(), presentertest.KindStageFailed) {
 		t.Errorf("kinds = %v, want a StageFailed", rec.Kinds())
@@ -725,29 +743,21 @@ func containsKind(kinds []presentertest.EventKind, want presentertest.EventKind)
 	return false
 }
 
-// findCommitInvocation returns the recorded `git commit` invocation, failing the
+// findCommitInvocation returns the first recorded `git commit` invocation, failing the
 // test if none ran.
 func findCommitInvocation(t *testing.T, r *runner.FakeRunner) runner.Invocation {
 	t.Helper()
-	for _, inv := range r.Invocations() {
-		if inv.Name == "git" && len(inv.Args) > 0 && inv.Args[0] == "commit" {
-			return inv
-		}
+	commits := commitInvocations(r)
+	if len(commits) == 0 {
+		t.Fatal("no `git commit` invocation recorded; the commit was never created")
 	}
-	t.Fatal("no `git commit` invocation recorded; the commit was never created")
-	return runner.Invocation{}
+	return commits[0]
 }
 
 // commitInvocations returns every recorded `git commit` invocation, in order — the
 // count proves the lock-resilient retry behaviour of the git_safe sink.
 func commitInvocations(r *runner.FakeRunner) []runner.Invocation {
-	var commits []runner.Invocation
-	for _, inv := range r.Invocations() {
-		if inv.Name == "git" && len(inv.Args) > 0 && inv.Args[0] == "commit" {
-			commits = append(commits, inv)
-		}
-	}
-	return commits
+	return gitVerbInvocations(r.Invocations(), "commit")
 }
 
 // firstLine returns the first line of s (the conventional-commit subject).

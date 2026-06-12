@@ -89,18 +89,12 @@ func seedStagedDiff(diff string) *runner.FakeRunner {
 	return r
 }
 
-// gitInvocations returns only the recorded `git` calls, in order — the spine of the
+// gitInvocationsGen returns only the recorded `git` calls, in order — the spine of the
 // would-be-staged source assertions where the All/AddAll modes issue several git
 // reads (the FakeRunner matches on name only, so a SeedSequence keyed on "git"
 // distinguishes the same-binary calls and they are told apart here by their argv).
 func gitInvocationsGen(r *runner.FakeRunner) []runner.Invocation {
-	var gits []runner.Invocation
-	for _, inv := range r.Invocations() {
-		if inv.Name == "git" {
-			gits = append(gits, inv)
-		}
-	}
-	return gits
+	return gitInvocationsOf(r.Invocations())
 }
 
 // findGitArgs0 returns the first recorded `git` invocation whose first arg matches

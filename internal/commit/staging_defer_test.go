@@ -14,13 +14,7 @@ import (
 // addInvocations returns every recorded `git add` invocation, in order — the deferred
 // staging step the accept path runs (under -a/-A) before the commit mutation.
 func addInvocations(r *runner.FakeRunner) []runner.Invocation {
-	var adds []runner.Invocation
-	for _, inv := range r.Invocations() {
-		if inv.Name == "git" && len(inv.Args) > 0 && inv.Args[0] == "add" {
-			adds = append(adds, inv)
-		}
-	}
-	return adds
+	return gitVerbInvocations(r.Invocations(), "add")
 }
 
 // indexOfGitArgs returns the position (within the ordered `git` invocations) of the

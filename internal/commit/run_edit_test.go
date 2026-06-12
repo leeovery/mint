@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"mint/internal/commit"
-	"mint/internal/git"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -17,14 +16,9 @@ import (
 // staging+commit sink wrapping the SAME runner, and the scripted transport. The run is
 // interactive (StdinInteractive true, no -y) so the `e` gate action is reachable.
 func editDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr commit.Transport, root string) commit.Deps {
-	return commit.Deps{
-		Presenter:        rec,
-		Runner:           er,
-		Mutator:          git.NewMutator(er, git.WithBackoff(func(int) {})),
-		Transport:        tr,
-		Root:             root,
-		StdinInteractive: true,
-	}
+	// The run is interactive (StdinInteractive defaults true, no -y) so the `e` gate
+	// action is reachable. Staging is left at its StagedOnly zero value.
+	return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root})
 }
 
 // seedEditThenAccept scripts the git thread for an `e`-then-`y` AI-path run on a

@@ -81,22 +81,57 @@ func seedAIPreflightOnly() *runner.FakeRunner {
 	return f
 }
 
+// editorDepsOptions carries the per-scenario fields the shared editorDeps builder
+// varies. It is the single options seam over commit.Deps for every editor-path test
+// builder, so the git_safe Mutator wiring and the StdinInteractive default live in one
+// place. The zero value models the common interactive editor-path run: an AI-path run
+// (NoAI false), no -y (Yes false), a TTY stdin (StdinInteractive true, the default),
+// the StagedOnly mode, no root override and no transport. Set NonInteractiveStdin to
+// drive the non-TTY fail-loud preconditions.
+type editorDepsOptions struct {
+	Transport commit.Transport
+	Root      string
+	Staging   commit.StagingMode
+	NoAI      bool
+	Yes       bool
+	// NonInteractiveStdin inverts the StdinInteractive default: the common case is an
+	// interactive TTY (StdinInteractive true), so only the fail-loud non-TTY cases need
+	// to set this. Run sees StdinInteractive == !NonInteractiveStdin.
+	NonInteractiveStdin bool
+}
+
+// editorDeps builds production-shaped Deps over an editorRunner, centralising the
+// lock-resilient git Mutator (git_safe) wiring and the StdinInteractive=true default
+// every editor-path builder shares. A launchable editor is left SEEDED by callers so a
+// test can prove the guard fires before resolution/launch (the editor is present yet
+// never reached). The per-scenario fields come from opts.
+func editorDeps(rec *presentertest.RecordingPresenter, er *editorRunner, opts editorDepsOptions) commit.Deps {
+	return commit.Deps{
+		Presenter:        rec,
+		Runner:           er,
+		Mutator:          git.NewMutator(er, git.WithBackoff(func(int) {})),
+		Transport:        opts.Transport,
+		Root:             opts.Root,
+		Staging:          opts.Staging,
+		NoAI:             opts.NoAI,
+		Yes:              opts.Yes,
+		StdinInteractive: !opts.NonInteractiveStdin,
+	}
+}
+
 // failLoudDeps builds production-shaped Deps over an editorRunner with the given
 // Yes/StdinInteractive guard inputs. A launchable editor is left SEEDED so a test can
 // prove the guard fires before resolution/launch (the editor is present yet never
 // reached). NoAI is parameterised; Transport is supplied when set.
 func failLoudDeps(rec *presentertest.RecordingPresenter, er *editorRunner, mode commit.StagingMode, root string, yes, stdinInteractive, noAI bool, tr commit.Transport) commit.Deps {
-	return commit.Deps{
-		Presenter:        rec,
-		Runner:           er,
-		Mutator:          git.NewMutator(er, git.WithBackoff(func(int) {})),
-		Transport:        tr,
-		Root:             root,
-		Staging:          mode,
-		NoAI:             noAI,
-		Yes:              yes,
-		StdinInteractive: stdinInteractive,
-	}
+	return editorDeps(rec, er, editorDepsOptions{
+		Transport:           tr,
+		Root:                root,
+		Staging:             mode,
+		NoAI:                noAI,
+		Yes:                 yes,
+		NonInteractiveStdin: !stdinInteractive,
+	})
 }
 
 // TestRun_FallbackUnderYes_FailsLoud proves a fallback under -y fails loud with the

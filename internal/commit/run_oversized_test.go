@@ -11,7 +11,6 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/commit"
-	"mint/internal/git"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -100,18 +99,11 @@ func seedPassesToL2(diff string) *runner.FakeRunner {
 // test can assert the transport is NEVER called. NoAI is FALSE — this is the AI path
 // short-circuited by the size guard, not --no-ai.
 func oversizedDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr commit.Transport, mode commit.StagingMode, root string) commit.Deps {
-	return commit.Deps{
-		Presenter: rec,
-		Runner:    er,
-		Mutator:   git.NewMutator(er, git.WithBackoff(func(int) {})),
-		Transport: tr,
-		Root:      root,
-		Staging:   mode,
-		// These tests exercise the TTY editor-fallback path (a TTY stdin, no -y), so the
-		// no-message-source fail-loud guard (task 3-5) does NOT fire and the oversized diff
-		// reaches the editor. The guard's own preconditions live in run_failloud_test.go.
-		StdinInteractive: true,
-	}
+	// These tests exercise the TTY editor-fallback path (a TTY stdin, no -y), so the
+	// no-message-source fail-loud guard (task 3-5) does NOT fire and the oversized diff
+	// reaches the editor (StdinInteractive defaults true). The guard's own
+	// preconditions live in run_failloud_test.go.
+	return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root, Staging: mode})
 }
 
 // warnEvents returns every recorded Warn payload, in order.

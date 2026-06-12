@@ -15,13 +15,7 @@ import (
 // editorRunner's embedded FakeRunner, in order — the SAME shared auto-push step the
 // gate-accept path runs (pushAfterCommit), reused by the editor save-as-accept path.
 func editorPushInvocations(er *editorRunner) []runner.Invocation {
-	var pushes []runner.Invocation
-	for _, inv := range editorGitInvocations(er) {
-		if len(inv.Args) > 0 && inv.Args[0] == "push" {
-			pushes = append(pushes, inv)
-		}
-	}
-	return pushes
+	return gitVerbInvocations(er.fake.Invocations(), "push")
 }
 
 // editorGitIndexOf returns the position (within the ordered editorRunner `git`

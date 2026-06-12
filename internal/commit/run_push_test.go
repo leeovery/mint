@@ -15,13 +15,7 @@ import (
 // auto-push step the accept path runs through the git_safe Mutator after a
 // successful commit when -p is armed.
 func pushInvocations(r *runner.FakeRunner) []runner.Invocation {
-	var pushes []runner.Invocation
-	for _, inv := range r.Invocations() {
-		if inv.Name == "git" && len(inv.Args) > 0 && inv.Args[0] == "push" {
-			pushes = append(pushes, inv)
-		}
-	}
-	return pushes
+	return gitVerbInvocations(r.Invocations(), "push")
 }
 
 // seedDiffThenCommitThenPush scripts the gate-accept thread's git invocations IN

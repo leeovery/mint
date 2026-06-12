@@ -8,7 +8,6 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/commit"
-	"mint/internal/git"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -54,15 +53,9 @@ func (s *sequencedTransport) Generate(_ context.Context, prompt string) (string,
 // the `r` gate action is reachable AND the editor fallback's no-message-source guard
 // does not fire.
 func regenFailDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr commit.Transport, mode commit.StagingMode, root string) commit.Deps {
-	return commit.Deps{
-		Presenter:        rec,
-		Runner:           er,
-		Mutator:          git.NewMutator(er, git.WithBackoff(func(int) {})),
-		Transport:        tr,
-		Root:             root,
-		Staging:          mode,
-		StdinInteractive: true,
-	}
+	// The run is interactive (StdinInteractive defaults true, no -y) so the `r` gate
+	// action is reachable AND the editor fallback's no-message-source guard does not fire.
+	return editorDeps(rec, er, editorDepsOptions{Transport: tr, Root: root, Staging: mode})
 }
 
 // seedRegenFailFallback scripts the git thread for an r-regeneration-failure that

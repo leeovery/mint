@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"mint/internal/commit"
-	"mint/internal/git"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -17,51 +16,26 @@ import (
 // editorRunner. NoAI is set; the transport is left nil (the --no-ai path must never
 // reach it). Root is a TempDir so config.Load reads no real repo config.
 func noAIDeps(rec *presentertest.RecordingPresenter, er *editorRunner, mode commit.StagingMode, root string) commit.Deps {
-	return commit.Deps{
-		Presenter: rec,
-		Runner:    er,
-		Mutator:   git.NewMutator(er, git.WithBackoff(func(int) {})),
-		Root:      root,
-		Staging:   mode,
-		NoAI:      true,
-		// The interactive editor-fallback tests exercise the TTY path: a TTY stdin and no
-		// -y, so the no-message-source fail-loud guard (task 3-5) does NOT fire and the
-		// editor opens. The fail-loud guard's own preconditions are covered in
-		// run_failloud_test.go.
-		StdinInteractive: true,
-	}
+	// NoAI is set; the transport is left nil (the --no-ai path must never reach it). The
+	// interactive editor-fallback tests exercise the TTY path: a TTY stdin and no -y
+	// (StdinInteractive defaults true), so the no-message-source fail-loud guard (task
+	// 3-5) does NOT fire and the editor opens. The guard's own preconditions are covered
+	// in run_failloud_test.go.
+	return editorDeps(rec, er, editorDepsOptions{Root: root, Staging: mode, NoAI: true})
 }
 
 // editorGitInvocations returns the recorded `git` invocations made through the
 // editorRunner's embedded FakeRunner, in order.
 func editorGitInvocations(er *editorRunner) []runner.Invocation {
-	var gits []runner.Invocation
-	for _, inv := range er.fake.Invocations() {
-		if inv.Name == "git" {
-			gits = append(gits, inv)
-		}
-	}
-	return gits
+	return gitInvocationsOf(er.fake.Invocations())
 }
 
 func editorAddInvocations(er *editorRunner) []runner.Invocation {
-	var adds []runner.Invocation
-	for _, inv := range editorGitInvocations(er) {
-		if len(inv.Args) > 0 && inv.Args[0] == "add" {
-			adds = append(adds, inv)
-		}
-	}
-	return adds
+	return gitVerbInvocations(er.fake.Invocations(), "add")
 }
 
 func editorCommitInvocations(er *editorRunner) []runner.Invocation {
-	var commits []runner.Invocation
-	for _, inv := range editorGitInvocations(er) {
-		if len(inv.Args) > 0 && inv.Args[0] == "commit" {
-			commits = append(commits, inv)
-		}
-	}
-	return commits
+	return gitVerbInvocations(er.fake.Invocations(), "commit")
 }
 
 // seedNoAIDefault scripts the --no-ai default-mode git thread on a FakeRunner: the
