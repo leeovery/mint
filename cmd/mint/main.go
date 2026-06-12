@@ -301,6 +301,8 @@ func runCommit(ctx context.Context, rest []string) int {
 		// when given) into the orchestrator. Phase 2's deferred-staging tasks consume it;
 		// StagedOnly leaves the bare path unchanged.
 		Staging: opts.Staging,
+		// --no-ai routes past AI generation + the Continue? gate to the $EDITOR fallback.
+		NoAI: opts.NoAI,
 	}
 
 	if err := commit.Run(ctx, deps); err != nil {

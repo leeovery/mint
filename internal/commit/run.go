@@ -53,6 +53,14 @@ const commitMessageTitle = "commit message"
 // narrate a StageFailed.
 var errGateAborted = errors.New("commit aborted at review gate")
 
+// errEditorNoOp is the clean cause for a true no-op on the --no-ai editor fallback: an
+// empty (whitespace-only) save or an aborted/quit editor. Like errGateAborted it is a
+// TRUE no-op cause — nothing was mutated (the save IS the accept event; an empty/aborted
+// editor never reaches staging or the commit) — so it emits NO StageFailed narration. It
+// surfaces only so the run exits non-zero (mapped to exit 1 by cmd/mint's exitCode),
+// telling a caller the commit did not happen.
+var errEditorNoOp = errors.New("commit aborted: editor closed with no message")
+
 // Committer is commit's git-mutation SINK seam: the bare commit's `git commit -F -`
 // flows through it so the mutation is lock-resilient (git_safe), NEVER the raw runner.
 // It is defined HERE — where it is consumed — so the orchestrator stays decoupled from
@@ -104,6 +112,11 @@ type Deps struct {
 	// gate-accept) is Phase 2 (tasks 2-2/2-3) and consumes this field; this task only
 	// THREADS the resolved value through, leaving the StagedOnly path byte-identical.
 	Staging StagingMode
+	// NoAI selects the --no-ai degradation path: skip the L3 generate AND the Continue?
+	// gate entirely, opening the editor directly (the editor save IS the accept event).
+	// A non-empty save applies the mode's deferred staging then commits; an empty save
+	// or an aborted/quit editor is a true no-op. False is the normal AI-generate path.
+	NoAI bool
 }
 
 // Run executes the bare `mint commit` thread, orchestrating the Phase 1 pieces in
@@ -153,6 +166,15 @@ func Run(ctx context.Context, deps Deps) error {
 		return surface(p, "preflight", err)
 	}
 
+	// --no-ai degradation path: skip L3 generate AND the Continue? gate (the gate is
+	// AI-path-only) and route straight to the editor fallback. The editor save IS the
+	// accept event — a non-empty save applies the deferred staging then commits; an
+	// empty/aborted editor is a true no-op. mint opens the editor itself (staging is
+	// deferred until the save event), against an EMPTY buffer (no synthetic stub).
+	if deps.NoAI {
+		return runEditorFallback(ctx, deps, root, "")
+	}
+
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
 		return surface(p, "generate", err)
@@ -185,6 +207,55 @@ func Run(ctx context.Context, deps Deps) error {
 	}
 
 	if err := createCommit(ctx, deps, body); err != nil {
+		return surface(p, "commit", err)
+	}
+
+	p.RunFinished(presenter.RunResult{Project: projectName(root)})
+	return nil
+}
+
+// runEditorFallback is the shared $EDITOR degradation path the three "no AI message"
+// cases converge on (the --no-ai entry is wired here; AI-failure 3-3 and oversized 3-4
+// reuse it unchanged). It opens the editor directly via the reusable OpenEditor
+// roundtrip — initial is the caller-supplied buffer (empty on --no-ai; Phase 4's `e`
+// pre-fills the current message) — and treats the SAVE as the accept event:
+//
+//   - Missing/unlaunchable editor → SURFACED via the surface helper (routing to the
+//     -y/non-TTY fail-loud posture is task 3-5; here it is simply surfaced and aborts).
+//   - Aborted/quit editor (ok=false) → a true no-op: errEditorNoOp, no mutation.
+//   - Whitespace-only save ("empty") → a true no-op: errEditorNoOp, no mutation. There
+//     is NO synthetic stub/comment scaffolding, so emptiness is purely whitespace-only
+//     (no #-comment stripping — downstream 4-2 reuses this rule).
+//   - Non-empty save = ACCEPT → apply the mode's deferred staging FIRST, then commit the
+//     saved buffer, in that order, through the git_safe Committer (stage→commit, the
+//     same order the gate-accept path uses). -p push (Phase 5) is not implemented but the
+//     save-accept path does not preclude it.
+func runEditorFallback(ctx context.Context, deps Deps, root, initial string) error {
+	p := deps.Presenter
+
+	saved, ok, err := OpenEditor(ctx, deps.Runner, p, initial)
+	if err != nil {
+		// A missing/unlaunchable editor is surfaced and aborts. The -y/non-TTY +
+		// not-launchable fail-loud routing is task 3-5; here it is a plain surface.
+		return surface(p, "editor", err)
+	}
+	if !ok {
+		// Aborted/quit editor: a true no-op — nothing was mutated (the save IS the accept,
+		// and there was no save). No StageFailed narration; just a non-zero abort.
+		return errEditorNoOp
+	}
+	if strings.TrimSpace(saved) == "" {
+		// Empty (whitespace-only) save: a true no-op. No synthetic stub exists, so "empty"
+		// is purely whitespace-only — no #-comment stripping.
+		return errEditorNoOp
+	}
+
+	// Non-empty save = ACCEPT: apply the mode's deferred staging FIRST, then commit the
+	// saved buffer verbatim — the same STAGE→COMMIT order the gate-accept path uses.
+	if err := stageForMode(ctx, deps); err != nil {
+		return surface(p, "stage", err)
+	}
+	if err := createCommit(ctx, deps, saved); err != nil {
 		return surface(p, "commit", err)
 	}
 

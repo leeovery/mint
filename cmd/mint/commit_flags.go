@@ -12,8 +12,9 @@ import (
 // commitFlags is the parsed `mint commit` CLI surface. Phase 1 wired the presentation
 // flags the presenter consumes at startup: --plain forces un-styled output, and
 // -y/--yes auto-accepts. Phase 2 adds the staging selectors -a/--all and -A/--add-all,
-// resolved into a single commit.StagingMode. The push (-p) and AI-skip (--no-ai) flags
-// are LATER phases and are deliberately NOT parsed here — adding them before their
+// resolved into a single commit.StagingMode. Phase 3 adds --no-ai, which skips AI
+// generation and the Continue? gate and drops to the $EDITOR fallback. The push (-p)
+// flag is a LATER phase and is deliberately NOT parsed here — adding it before its
 // behaviour exists would advertise a no-op flag. It is a plain value so flag parsing
 // stays decoupled from the orchestrator.
 type commitFlags struct {
@@ -26,6 +27,10 @@ type commitFlags struct {
 	// = git add -A then commit). -a and -A are mutually exclusive (parseCommitFlags
 	// rejects combining them with the spec's exact message).
 	Staging commit.StagingMode
+	// NoAI selects --no-ai: skip AI generation AND the Continue? gate and drop to the
+	// $EDITOR fallback, where the editor save IS the accept event. False is the normal
+	// AI-generate path.
+	NoAI bool
 }
 
 // parseCommitFlags parses the `mint commit [options]` arguments into a commitFlags.
@@ -42,7 +47,7 @@ func parseCommitFlags(args []string) (commitFlags, error) {
 	fs := flag.NewFlagSet("commit", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
-	var yes, plain, all, addAll bool
+	var yes, plain, all, addAll, noAI bool
 	fs.BoolVar(&yes, "y", false, "skip the review gate (auto-accept)")
 	fs.BoolVar(&yes, "yes", false, "skip the review gate (auto-accept)")
 	fs.BoolVar(&plain, "plain", false, "force plain (un-styled) output")
@@ -50,6 +55,7 @@ func parseCommitFlags(args []string) (commitFlags, error) {
 	fs.BoolVar(&all, "all", false, "stage tracked changes first (git commit -a semantics)")
 	fs.BoolVar(&addAll, "A", false, "stage everything incl. untracked first (git add -A)")
 	fs.BoolVar(&addAll, "add-all", false, "stage everything incl. untracked first (git add -A)")
+	fs.BoolVar(&noAI, "no-ai", false, "skip AI generation; write the message in $EDITOR")
 
 	if err := fs.Parse(expandShortFlagBundles(args, fs)); err != nil {
 		return commitFlags{}, err
@@ -59,7 +65,7 @@ func parseCommitFlags(args []string) (commitFlags, error) {
 	if err != nil {
 		return commitFlags{}, err
 	}
-	return commitFlags{Yes: yes, Plain: plain, Staging: staging}, nil
+	return commitFlags{Yes: yes, Plain: plain, Staging: staging, NoAI: noAI}, nil
 }
 
 // resolveStagingMode maps the two mutually-exclusive staging booleans to a

@@ -21,6 +21,7 @@ func TestParseCommitFlags(t *testing.T) {
 		wantYes     bool
 		wantPlain   bool
 		wantStaging commit.StagingMode
+		wantNoAI    bool
 	}{
 		{name: "no flags", args: nil, wantStaging: commit.StagedOnly},
 		{name: "short yes", args: []string{"-y"}, wantYes: true},
@@ -33,6 +34,9 @@ func TestParseCommitFlags(t *testing.T) {
 		{name: "long add-all", args: []string{"--add-all"}, wantStaging: commit.AddAll},
 		{name: "all with yes and plain", args: []string{"-a", "-y", "--plain"}, wantYes: true, wantPlain: true, wantStaging: commit.All},
 		{name: "add-all with yes", args: []string{"-A", "-y"}, wantYes: true, wantStaging: commit.AddAll},
+		{name: "no-ai", args: []string{"--no-ai"}, wantNoAI: true},
+		{name: "no-ai with all", args: []string{"--no-ai", "-a"}, wantStaging: commit.All, wantNoAI: true},
+		{name: "no-ai with add-all", args: []string{"--no-ai", "-A"}, wantStaging: commit.AddAll, wantNoAI: true},
 	}
 
 	for _, tt := range tests {
@@ -51,6 +55,9 @@ func TestParseCommitFlags(t *testing.T) {
 			}
 			if opts.Staging != tt.wantStaging {
 				t.Errorf("Staging = %v, want %v", opts.Staging, tt.wantStaging)
+			}
+			if opts.NoAI != tt.wantNoAI {
+				t.Errorf("NoAI = %v, want %v", opts.NoAI, tt.wantNoAI)
 			}
 		})
 	}
