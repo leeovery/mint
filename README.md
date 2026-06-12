@@ -91,7 +91,7 @@ mint release [-p | -m | -M | --set-version X.Y.Z] [options]
 | `--any-branch` | bypass the release-branch gate |
 | `--plain` | force plain (un-styled) output |
 
-At the notes review gate: **`y`** accept (also Enter), **`n`** abort, **`e`** edit in `$EDITOR`, **`r`** regenerate.
+At the notes review gate, a single keypress (no Enter needed): **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in `$EDITOR`, **`r`** regenerate, Ctrl-C aborts cleanly.
 
 A `--dry-run` generates and caches the notes (~1 hour); a real run within the window reuses the previewed bytes instead of calling the AI again.
 
@@ -145,7 +145,7 @@ mint commit [-a | -A] [-p] [-y] [--no-ai] [--plain]
 
 Short flags bundle: `-Ap`, `-Apy`, `-ay` all work.
 
-At the gate: **`y`** accept (also Enter), **`n`** abort, **`e`** edit in `$EDITOR` (loops back to the gate), **`r`** regenerate with a one-time context line.
+At the gate, a single keypress (no Enter needed): **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in `$EDITOR` (loops back to the gate), **`r`** regenerate with a one-time context line, Ctrl-C aborts cleanly.
 
 When the AI can't produce a message (`--no-ai`, a transport failure, or a diff over `max_diff_lines`), mint opens `$EDITOR` (resolved via git's own chain: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`) and the save becomes the accept. Unattended runs with no message source fail loud instead.
 
