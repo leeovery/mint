@@ -722,7 +722,9 @@ func commitTransport(deps Deps, cfg config.Config) Transport {
 // the commit (never the raw runner): a contended/stale `.git` index lock is retried/cleared,
 // so a background agent or editor briefly holding the lock cannot blow up the staging step.
 // stdin is nil — `git add` reads no body.
-func stageForMode(ctx context.Context, deps Deps) error {
+// On failure the captured Result is returned alongside the error so the caller can
+// pass git's stderr (e.g. a rejecting hook's output) through to the StageFailure.
+func stageForMode(ctx context.Context, deps Deps) (runner.Result, error) {
 	var args []string
 	switch deps.Staging {
 	case All:
@@ -731,13 +733,14 @@ func stageForMode(ctx context.Context, deps Deps) error {
 		args = []string{"add", "-A"}
 	default:
 		// StagedOnly: commit the index exactly as staged — no `git add`.
-		return nil
+		return runner.Result{}, nil
 	}
 
-	if _, err := deps.Mutator.Mutate(ctx, nil, "git", args...); err != nil {
-		return fmt.Errorf("staging changes: %w", err)
+	res, err := deps.Mutator.Mutate(ctx, nil, "git", args...)
+	if err != nil {
+		return res, fmt.Errorf("staging changes: %w", err)
 	}
-	return nil
+	return res, nil
 }
 
 // createCommit creates the commit through the git_safe Mutator, piping the
@@ -747,11 +750,15 @@ func stageForMode(ctx context.Context, deps Deps) error {
 // avoids any shell-escaping of the verbatim message. The body reaches git
 // BYTE-FOR-BYTE — no commit_prefix, no branding (commit_prefix stays a release-only
 // concern). No `git add` runs: the bare path commits the index exactly as staged.
-func createCommit(ctx context.Context, deps Deps, body string) error {
-	if _, err := deps.Mutator.Mutate(ctx, []byte(body), "git", "commit", "-F", "-"); err != nil {
-		return fmt.Errorf("creating commit: %w", err)
+// On failure the captured Result is returned alongside the error so the caller can pass
+// git's stderr — above all a pre-commit/commit-msg hook's rejection output, which is the
+// only actionable explanation of the failure — through to the StageFailure.
+func createCommit(ctx context.Context, deps Deps, body string) (runner.Result, error) {
+	res, err := deps.Mutator.Mutate(ctx, []byte(body), "git", "commit", "-F", "-")
+	if err != nil {
+		return res, fmt.Errorf("creating commit: %w", err)
 	}
-	return nil
+	return res, nil
 }
 
 // commitAccept is the SINGLE shared accept tail both accept entry points end with — the
@@ -774,11 +781,14 @@ func createCommit(ctx context.Context, deps Deps, body string) error {
 //     failed push → a non-zero exit with the commit left in place.
 func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 	p := deps.Presenter
-	if err := stageForMode(ctx, deps); err != nil {
-		return surface(p, "stage", err)
+	if res, err := stageForMode(ctx, deps); err != nil {
+		// git's captured stderr travels verbatim as the failure Output — the same
+		// pass-through convention the push warn uses — so a hook rejection or git's own
+		// diagnostic explains the failure instead of a bare exit status.
+		return surfaceOutput(p, "stage", err, res.Stderr)
 	}
-	if err := createCommit(ctx, deps, body); err != nil {
-		return surface(p, "commit", err)
+	if res, err := createCommit(ctx, deps, body); err != nil {
+		return surfaceOutput(p, "commit", err, res.Stderr)
 	}
 	pushErr := pushAfterCommit(ctx, deps)
 	p.RunFinished(presenter.RunResult{Project: projectName(root)})

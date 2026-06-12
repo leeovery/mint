@@ -20,6 +20,22 @@ func surface(p presenter.Presenter, stage string, cause error) error {
 	return cause
 }
 
+// surfaceOutput is surface with the failed command's captured stderr passed through
+// VERBATIM as StageFailure.Output. The mutation failures use it (stage/commit) because
+// git's own diagnostics — a pre-commit hook's rejection output above all — are the only
+// actionable explanation of WHY the mutation failed; the bare exit-status message alone
+// renders as an unexplained failure. An empty output degrades to exactly surface's
+// rendering, so callers pass whatever stderr they captured unconditionally. (The push
+// path narrates through Warn with the same verbatim-Output convention.)
+func surfaceOutput(p presenter.Presenter, stage string, cause error, output string) error {
+	p.StageFailed(presenter.StageFailure{
+		Name:    stage,
+		Message: cause.Error(),
+		Output:  output,
+	})
+	return cause
+}
+
 // projectName derives the project label from the repo root's final path segment —
 // the same stand-in release uses for the brand/header lines.
 func projectName(root string) string {
