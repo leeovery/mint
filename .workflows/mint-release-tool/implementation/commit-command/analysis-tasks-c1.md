@@ -6,7 +6,7 @@ total_proposed: 5
 # Analysis Tasks: Commit-Command (Cycle 1)
 
 ## Task 1: Single-source the emptiness verdict from the exclusion-filtered diff so the AI is never invoked on an empty post-exclusion diff
-status: pending
+status: approved
 severity: high
 sources: architecture
 
@@ -35,7 +35,7 @@ sources: architecture
 - Regression: a repo with at least one non-excluded staged change still reaches `Generate` and proceeds normally; a normally-empty staging set still fails loud as before.
 
 ## Task 2: Rename/redocument the Committer seam to reflect it is the lock-resilient sink for ALL commit mutations (stage, commit, push)
-status: pending
+status: approved
 severity: medium
 sources: architecture
 
@@ -63,7 +63,7 @@ sources: architecture
 - No new behavioural test required; correctness is preserved by the existing end-to-end coverage that already exercises stage, commit, and push through this seam.
 
 ## Task 3: Do not emit the "opening editor" note on the unattended oversized path that fails loud
-status: pending
+status: approved
 severity: low
 sources: standards
 
@@ -89,7 +89,7 @@ sources: standards
 - Regression: an attended oversized run still records the "opening editor" note and routes to the editor.
 
 ## Task 4: Consolidate the duplicated commit test-suite scaffolding (invocation-filter helpers and per-file Deps builders)
-status: pending
+status: approved
 severity: medium
 sources: duplication
 
@@ -118,7 +118,7 @@ sources: duplication
 - Spot-check that at least one raw-runner call site and one `editorRunner.fake` call site both route through `gitInvocationsOf`/`gitVerbInvocations` to confirm the single helper serves both sources.
 
 ## Task 5: Extract a single commitAccept helper to single-source the stage→commit→push accept tail
-status: pending
+status: approved
 severity: low
 sources: duplication
 

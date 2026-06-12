@@ -359,7 +359,13 @@
             "commit-command-5-2": "tick-c5c87c",
             "commit-command-5-3": "tick-50726c",
             "commit-command-5-4": "tick-803aaf",
-            "commit-command-5-5": "tick-d1c608"
+            "commit-command-5-5": "tick-d1c608",
+            "commit-command-6": "tick-94bee5",
+            "commit-command-6-1": "tick-22541e",
+            "commit-command-6-2": "tick-f05dc5",
+            "commit-command-6-3": "tick-3efc2a",
+            "commit-command-6-4": "tick-686386",
+            "commit-command-6-5": "tick-2a281f"
           },
           "external_id": "tick-82909f",
           "external_dependencies": {
@@ -629,7 +635,7 @@
           "status": "in-progress",
           "task_gate_mode": "auto",
           "fix_gate_mode": "auto",
-          "analysis_gate_mode": "gated",
+          "analysis_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 1,
           "analysis_cycle_session": 1,
