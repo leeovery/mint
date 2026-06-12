@@ -865,7 +865,7 @@
           ]
         },
         "commit-command": {
-          "status": "in-progress",
+          "status": "completed",
           "reviewed_tasks": [
             "commit-command-1-1",
             "commit-command-1-2",
