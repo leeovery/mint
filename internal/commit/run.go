@@ -167,10 +167,19 @@ func Run(ctx context.Context, deps Deps) error {
 		return err
 	}
 	if !accepted {
-		// A clean `n` decline: a TRUE no-op (nothing mutated — the gate precedes the
-		// commit). Surface a non-zero abort WITHOUT a StageFailed — a deliberate decline
-		// is not a failure, so it emits no failure narration.
+		// A clean `n` decline: a TRUE no-op (nothing mutated — the gate precedes BOTH the
+		// deferred staging and the commit). Surface a non-zero abort WITHOUT a StageFailed
+		// — a deliberate decline is not a failure, so it emits no failure narration. The
+		// return runs BEFORE any `git add`/`git commit`, so abort leaves the index exactly
+		// its pre-mint state (any pre-existing user staging untouched).
 		return errGateAborted
+	}
+
+	// On accept, apply the mode's deferred staging FIRST, then commit — in that order.
+	// This is the mutate-nothing-until-accept invariant's mutation half: everything up to
+	// here was read-only, so STAGE→COMMIT is the only point the index is touched.
+	if err := stageForMode(ctx, deps); err != nil {
+		return surface(p, "stage", err)
 	}
 
 	if err := createCommit(ctx, deps, body); err != nil {
@@ -313,6 +322,40 @@ func commitTransport(deps Deps, cfg config.Config) Transport {
 		return deps.Transport
 	}
 	return ai.NewTransport(deps.Runner, ai.Config{AICommand: cfg.AICommand})
+}
+
+// stageForMode applies the resolved StagingMode's deferred `git add` on the gate-accept
+// path — the mutate-nothing-until-accept invariant deferred this until now, so the read
+// phase (preflight + the read-only would-be-staged diff in generateMessage) never touched
+// the index. It is the staging half of the STAGE→COMMIT order on accept:
+//
+//   - All (-a): `git add -u` — stage tracked modifications + deletions, NO untracked
+//     (`git commit -a` semantics).
+//   - AddAll (-A): `git add -A` — stage everything including untracked (the `git add .`
+//     habit in one shot).
+//   - StagedOnly (the default): NO `git add` — commit the existing index exactly as
+//     staged (the Phase 1 path, unchanged).
+//
+// The staging `git add` is a MUTATION, so it flows through the SAME git_safe Committer as
+// the commit (never the raw runner): a contended/stale `.git` index lock is retried/cleared,
+// so a background agent or editor briefly holding the lock cannot blow up the staging step.
+// stdin is nil — `git add` reads no body.
+func stageForMode(ctx context.Context, deps Deps) error {
+	var args []string
+	switch deps.Staging {
+	case All:
+		args = []string{"add", "-u"}
+	case AddAll:
+		args = []string{"add", "-A"}
+	default:
+		// StagedOnly: commit the index exactly as staged — no `git add`.
+		return nil
+	}
+
+	if _, err := deps.Committer.Mutate(ctx, nil, "git", args...); err != nil {
+		return fmt.Errorf("staging changes: %w", err)
+	}
+	return nil
 }
 
 // createCommit creates the commit through the git_safe Committer, piping the
