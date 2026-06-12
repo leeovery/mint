@@ -65,15 +65,33 @@ func New(mode Mode, out, err io.Writer) Presenter {
 //     math), so it is not probed.
 func NewForStartup(plainFlag, yes bool, stdout, stderr, stdin *os.File) Presenter {
 	signals := DetectStartupSignals(plainFlag, stdout, stdin)
+	errStream := errWriterFor(stdout, stderr)
 	if signals.Mode == ModePretty {
-		p := NewPrettyPresenter(stdout, WithErr(stderr), WithInput(stdin))
+		p := NewPrettyPresenter(stdout, WithErr(errStream), WithInput(stdin))
 		p.termWidth = detectTermWidth(stdout)
 		p.yes = yes
 		p.stdinInteractive = signals.StdinInteractive
 		return p
 	}
-	p := NewPlainPresenterWithInput(stdout, stderr, stdin)
+	p := NewPlainPresenterWithInput(stdout, errStream, stdin)
 	p.yes = yes
 	p.stdinInteractive = signals.StdinInteractive
 	return p
+}
+
+// errWriterFor resolves the failure-summary stream. The err stream exists SOLELY
+// for redirect-visibility — keeping failures on screen when the narration stream
+// is piped away — so when stderr and stdout point at the SAME file (the everyday
+// both-on-one-terminal case, or a `2>&1` merge) the mirror would land right next
+// to the narration copy and every failure would print twice. In that case the
+// summary stream is discarded; with genuinely split streams (stdout piped, stderr
+// on the terminal — or vice versa) the mirror is kept. A Stat failure keeps the
+// mirror: a failure shown twice beats a failure lost.
+func errWriterFor(stdout, stderr *os.File) io.Writer {
+	outInfo, outErr := stdout.Stat()
+	errInfo, errErr := stderr.Stat()
+	if outErr == nil && errErr == nil && os.SameFile(outInfo, errInfo) {
+		return io.Discard
+	}
+	return stderr
 }

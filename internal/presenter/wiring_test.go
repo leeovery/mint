@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -568,5 +569,68 @@ func TestNewForStartupThreadsYesAutoConfirmsWithoutReadingStdin(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, "notes: accepted (-y)") {
 		t.Errorf("NewForStartup (-y set) echo = %q, want it to contain the auto-accept echo", got)
+	}
+}
+
+// TestNewForStartupSameFileStreamsSuppressFailureMirror proves the everyday
+// both-streams-on-one-terminal case renders a failure ONCE: when stdout and
+// stderr resolve to the SAME file (here, two handles on one temp file — the
+// same condition as a shared TTY or a `2>&1` merge), the stderr summary mirror
+// is discarded, so a StageFailed lands in the file exactly once.
+func TestNewForStartupSameFileStreamsSuppressFailureMirror(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "merged")
+	outF, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("creating merged stream: %v", err)
+	}
+	t.Cleanup(func() { _ = outF.Close() })
+	errF, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		t.Fatalf("opening second handle: %v", err)
+	}
+	t.Cleanup(func() { _ = errF.Close() })
+
+	p := presenter.NewForStartup(true, false, outF, errF, os.Stdin)
+	p.StageFailed(presenter.StageFailure{Name: "preflight", Message: "nothing to commit, working tree clean"})
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading merged stream: %v", err)
+	}
+	if n := strings.Count(string(got), "nothing to commit"); n != 1 {
+		t.Errorf("failure rendered %d times on merged streams, want exactly 1:\n%q", n, string(got))
+	}
+}
+
+// TestNewForStartupSplitStreamsKeepFailureMirror proves the redirect case the
+// mirror exists FOR still works: with stdout and stderr on DIFFERENT files
+// (stdout piped away), the stderr summary is kept, so the failure stays
+// visible on the un-redirected stream.
+func TestNewForStartupSplitStreamsKeepFailureMirror(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	outF, err := os.Create(filepath.Join(dir, "out"))
+	if err != nil {
+		t.Fatalf("creating out: %v", err)
+	}
+	t.Cleanup(func() { _ = outF.Close() })
+	errF, err := os.Create(filepath.Join(dir, "err"))
+	if err != nil {
+		t.Fatalf("creating err: %v", err)
+	}
+	t.Cleanup(func() { _ = errF.Close() })
+
+	p := presenter.NewForStartup(true, false, outF, errF, os.Stdin)
+	p.StageFailed(presenter.StageFailure{Name: "preflight", Message: "nothing to commit, working tree clean"})
+
+	errGot, err := os.ReadFile(errF.Name())
+	if err != nil {
+		t.Fatalf("reading err stream: %v", err)
+	}
+	if !strings.Contains(string(errGot), "nothing to commit") {
+		t.Errorf("split streams must keep the stderr mirror, err stream = %q", string(errGot))
 	}
 }
