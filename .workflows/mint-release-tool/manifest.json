@@ -634,7 +634,7 @@
           "updated": "2026-06-11"
         },
         "commit-command": {
-          "status": "in-progress",
+          "status": "completed",
           "task_gate_mode": "auto",
           "fix_gate_mode": "auto",
           "analysis_gate_mode": "auto",
