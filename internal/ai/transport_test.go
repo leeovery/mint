@@ -245,6 +245,31 @@ func TestTransport_Generate_DoesNotRetryTimeout(t *testing.T) {
 	}
 }
 
+func TestTransport_Generate_DoesNotRetryCancel(t *testing.T) {
+	t.Parallel()
+
+	// A CALLER cancellation (Ctrl-C threading down from main's signal.NotifyContext)
+	// is NOT retried — a retry against a dead context can never succeed — and it is
+	// NOT an AI failure: it must propagate as context.Canceled itself, never as one of
+	// the three transport sentinels, so sentinel-routing callers (release's
+	// on_notes_failure, commit's editor fallback) treat it as a plain abort rather
+	// than opening an editor for a user who just pressed Ctrl-C. Simulated by seeding
+	// the error shape the runner produces on a cancel kill (it wraps ctx.Err()).
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{}, fmt.Errorf("running claude: %w", context.Canceled))
+
+	_, err := newTransport(r).Generate(t.Context(), "p")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want it to match context.Canceled", err)
+	}
+	if errors.Is(err, ai.ErrGenerationFailed) || errors.Is(err, ai.ErrTimeout) || errors.Is(err, ai.ErrCommandMissing) {
+		t.Errorf("a cancellation must not match any transport sentinel, got %v", err)
+	}
+	if n := len(r.Invocations()); n != 1 {
+		t.Errorf("invocations = %d, want 1 (a cancellation is not retried)", n)
+	}
+}
+
 func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	t.Parallel()
 

@@ -2,6 +2,7 @@ package commit_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -228,6 +229,47 @@ func TestRun_AIFailure_EditorBufferIsEmptyTemplate(t *testing.T) {
 
 	if opened != "" {
 		t.Errorf("editor opened with buffer %q; the AI-failure buffer must be empty (no synthetic stub, no partial re-show)", opened)
+	}
+}
+
+// TestRun_AIFailure_Cancelled_DoesNotRouteToEditor proves a CALLER cancellation
+// surfacing from the generate step (Ctrl-C threading down from main's
+// signal.NotifyContext — the transport propagates context.Canceled itself, never a
+// transport sentinel) is treated as a plain abort: NO editor launch (the user just
+// asked to stop — opening $EDITOR would be absurd), no mutation, a surfaced
+// "generate" StageFailed, and the cancellation preserved in the returned error.
+func TestRun_AIFailure_Cancelled_DoesNotRouteToEditor(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	// Only the preflight read and the L1 diff are scripted; the editor resolution,
+	// staging, and commit must never be reached on a cancellation.
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},
+	)
+	er := &editorRunner{fake: f}
+	tr := &failTransport{err: fmt.Errorf("generating commit message: running claude: %w", context.Canceled)}
+
+	err := commit.Run(context.Background(), aiFailDeps(rec, er, tr, commit.StagedOnly, t.TempDir()))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run error = %v, want the context.Canceled cause preserved", err)
+	}
+	if len(er.launches) != 0 {
+		t.Errorf("RunInteractive launch count = %d, want 0 (a cancellation never opens the editor)", len(er.launches))
+	}
+	if commits := editorCommitInvocations(er); len(commits) != 0 {
+		t.Errorf("cancellation created %d commit(s); want none", len(commits))
+	}
+	gotSurface := false
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageFailed && ev.StageFailed.Name == "generate" {
+			gotSurface = true
+		}
+	}
+	if !gotSurface {
+		t.Errorf("kinds = %v, want a StageFailed named %q (the cancellation keeps the surface abort)", rec.Kinds(), "generate")
 	}
 }
 

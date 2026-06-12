@@ -102,6 +102,9 @@ func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
 // consumed once — reusing it on the retry would send an empty prompt.
 //
 // Failure routing is by cause:
+//   - A caller cancellation (errors.Is context.Canceled — Ctrl-C at main's
+//     signal.NotifyContext) is reported immediately, propagated UNCHANGED (no
+//     transport sentinel — a cancel is not an AI failure), and NOT retried.
 //   - A timeout (the per-attempt context expiring, errors.Is DeadlineExceeded) is
 //     reported immediately as ErrTimeout and NOT retried.
 //   - A missing binary (errors.Is runner.ErrCommandNotFound) is reported immediately
@@ -152,11 +155,21 @@ func (t *Transport) attempt(ctx context.Context, name string, args []string, pro
 	return res.Stdout, nil
 }
 
-// classifyFatal maps a non-retryable runner error to its distinguishable sentinel,
+// classifyFatal maps a non-retryable runner error to its distinguishable cause,
 // or returns nil for a retryable bad-content error (a plain non-zero exit). A
-// timeout and a missing binary are the two fatal, non-retried causes.
+// timeout, a missing binary, and a caller cancellation are the fatal, non-retried
+// causes.
 func classifyFatal(err error) error {
 	switch {
+	case errors.Is(err, context.Canceled):
+		// The CALLER's context was cancelled (Ctrl-C / SIGTERM via signal.NotifyContext)
+		// — distinct from the per-attempt deadline below: the per-attempt ctx inherits
+		// the parent, so a parent cancel surfaces as Canceled, a genuine hang as
+		// DeadlineExceeded. A retry against a dead context can never succeed, and the
+		// cancellation is NOT an AI failure — so it propagates UNCHANGED (no transport
+		// sentinel) and callers that route the three sentinels (release's
+		// on_notes_failure, commit's editor fallback) treat it as a plain abort instead.
+		return err
 	case errors.Is(err, context.DeadlineExceeded):
 		return fmt.Errorf("%w: %v", ErrTimeout, err)
 	case errors.Is(err, runner.ErrCommandNotFound):
