@@ -228,6 +228,20 @@ type Deps struct {
 	Push bool
 }
 
+// editorUnavailable is the SINGLE "will the interactive editor refuse to open?" predicate.
+// It is true on exactly the unattended runs the $EDITOR fallback cannot serve: an
+// auto-accept -y run (no human to write a message) OR a non-TTY stdin (the startup-resolved
+// StdinInteractive signal — the SAME determination the gate uses, not a separate /dev/tty
+// probe). Defining it ONCE keeps the two consumers in lock-step so they cannot drift:
+//
+//   - runEditorFallback's no-message-source guard fails loud when it is true; AND
+//   - the oversized branch emits the "opening editor" note ONLY when it is false (the editor
+//     will actually open) — so an unattended oversized run fails loud with the single spec
+//     message and no contradictory preceding note.
+func (d Deps) editorUnavailable() bool {
+	return d.Yes || !d.StdinInteractive
+}
+
 // Run executes the bare `mint commit` thread, orchestrating the Phase 1 pieces in
 // EXACTLY this order:
 //
@@ -291,12 +305,17 @@ func Run(ctx context.Context, deps Deps) error {
 	if err != nil {
 		// An over-limit (diff_exclude-filtered) diff is a generate-SKIP, NOT a failure:
 		// commit's L1 size guard returned notes.ErrDiffTooLarge BEFORE any L2 call (the
-		// transport was never reached). A routine large commit must not abort — emit the
-		// oversized NOTE via the Presenter, then route to the SAME editor fallback as
-		// --no-ai (empty buffer, save-as-accept). This carries the note; the AI-failure
-		// branch below does NOT.
+		// transport was never reached). A routine large commit must not abort — route to the
+		// SAME editor fallback as --no-ai (empty buffer, save-as-accept). The oversized NOTE
+		// ("opening editor") is emitted FIRST, but ONLY when the editor will actually open
+		// (an attended run): on an unattended run (editorUnavailable — -y or non-TTY) the
+		// fallback fails loud immediately, so emitting the note would promise an editor that
+		// never opens. Gating on the SAME predicate the fallback's guard uses keeps the two
+		// in lock-step. This branch carries the note; the AI-failure branch below does NOT.
 		if errors.Is(err, notes.ErrDiffTooLarge) {
-			p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+			if !deps.editorUnavailable() {
+				p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
 		// An AI transport failure (bad content after the transport's one retry, a timeout,
@@ -400,8 +419,10 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 	// stdin (the startup-resolved StdinInteractive signal — the SAME determination the gate
 	// uses, not a separate /dev/tty probe) cannot drive the interactive editor, so there is
 	// no message to commit with. Fail loud rather than launch an editor, stage, commit, or
-	// hang. This extends the gate's forbidden-combo philosophy to the editor path.
-	if deps.Yes || !deps.StdinInteractive {
+	// hang. This extends the gate's forbidden-combo philosophy to the editor path. The
+	// editorUnavailable predicate is the SINGLE definition of this condition, shared with the
+	// oversized note gate so "will the editor open?" cannot drift between them.
+	if deps.editorUnavailable() {
 		return surface(p, "editor", errNoMessageSource)
 	}
 
