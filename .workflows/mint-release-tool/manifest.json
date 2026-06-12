@@ -1,7 +1,7 @@
 {
   "name": "mint-release-tool",
   "work_type": "epic",
-  "status": "in-progress",
+  "status": "completed",
   "created": "2026-06-04",
   "description": "Build mint, a reusable configuration-driven Go release tool that replaces the per-project release bash scripts, distributed via Homebrew with per-project config and a project-specific hook system",
   "phases": {
@@ -908,5 +908,6 @@
       "path": "imports/release-tool-design-handoff.md",
       "imported_at": "2026-06-04T15:27:04Z"
     }
-  ]
+  ],
+  "completed_at": "2026-06-12"
 }
