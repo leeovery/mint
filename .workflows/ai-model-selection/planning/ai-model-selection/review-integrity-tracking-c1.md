@@ -48,7 +48,7 @@ This edits Task 1-7 only — the Do paragraph that names the return type, the ma
 **Proposed** (Task ai-model-selection-1-7, **Tests**, the return-type test):
 > - `"its *time.Duration return distinguishes an explicit-zero (no deadline) from a positive/floor value"` — assert the accessor's return type is `*time.Duration` and that an explicit `0` yields a pointer to `0` while a positive/floor case yields a pointer to a positive value (the type Phase 2 assigns directly into `ai.Config.Timeout`).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Approved via auto. Applied to Task 1-7 (tick-f32dd3) and the phase-1-tasks.md mirror: Do bullet, Acceptance Criterion, and Tests line all pin the return type to `*time.Duration`.
 
 ---

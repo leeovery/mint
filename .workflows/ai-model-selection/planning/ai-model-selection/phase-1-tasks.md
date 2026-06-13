@@ -273,7 +273,7 @@ total: 8
 **Outcome**: `cfg.TimeoutFor(VerbRelease)` / `cfg.TimeoutFor(VerbCommit)` resolve the per-verb chain with: explicit `0` honored and stopping fall-through; negative dropped to the next layer; positive used as-is; floor at 60s; and the return distinguishes explicit-`0` from a fallen-through value so Phase 2's boundary can keep "no deadline" reachable only by an operator's explicit `0`.
 
 **Do**:
-- Add `func (c Config) TimeoutFor(verb Verb) <ReturnType>` to `internal/config/config.go`. RETURN TYPE: return `*time.Duration` (or a tiny wrapper) so the Phase 2 `config → ai.Config` boundary can distinguish an explicit `0` ("no deadline") from a positive value and from the floor — the spec mandates "no deadline" be reachable ONLY by an operator's explicit `0`, never by a forgotten/zero-by-omission field. A plain `time.Duration` zero would re-introduce the ambiguity the spec forbids. (If a wrapper type is chosen, define it in `config` and expose whether it is the explicit-zero/no-deadline case.) Document the boundary contract in the accessor comment so Phase 2 wires it correctly.
+- Add `func (c Config) TimeoutFor(verb Verb) *time.Duration` to `internal/config/config.go`. RETURN TYPE is fixed at `*time.Duration` — the plan commits to it (not a wrapper) because Phase 2 depends on it directly: Task 2-2 changes `ai.Config.Timeout` to `*time.Duration` and Tasks 2-3/2-4/2-5 assign this accessor's return to it with NO conversion, so any other return type (a wrapper struct, a plain `time.Duration`) would break those four tasks' "assign directly" contract. The `*time.Duration` distinguishes the three cases the boundary must keep apart: `nil` is never returned by this accessor (the 60s floor guarantees a non-nil result), a pointer to `0` is the operator's explicit "no deadline", and a pointer to a positive value is a real deadline — so the spec's invariant ("no deadline" reachable ONLY by an explicit `0`, never by a forgotten/zero-by-omission field) holds, and a plain `time.Duration` zero (which would re-introduce the absent-vs-explicit ambiguity the spec forbids) is rejected. This satisfies the spec's deferred mechanism ("e.g. `*time.Duration` / a small wrapper") by choosing the `*time.Duration` instance. Document the boundary contract in the accessor comment so Phase 2 wires it correctly.
 - Build the candidate chain for `verb`: per-verb override (carried in Task 1-6), then shared top-level (carried in Task 1-5), then the 60s floor (`DefaultTimeout`). For each candidate in order:
   - absent (nil) → skip to the next candidate;
   - explicit `0` → HONOR it: return the "no deadline" / explicit-zero result and STOP (do not fall through);
@@ -290,7 +290,7 @@ total: 8
 - [ ] A negative `[verb].timeout` DROPS through to the shared top-level, then to the 60s floor (never honored, never collapsed into the zero/no-deadline case).
 - [ ] An absent `[verb].timeout` falls to the shared top-level; an absent shared falls to the 60s floor.
 - [ ] A negative shared `timeout` (with absent per-verb) drops to the 60s floor.
-- [ ] The return type distinguishes an explicit-`0`/no-deadline result from a positive/floor result (so Phase 2's boundary can keep "no deadline" reachable only by explicit `0`).
+- [ ] The accessor returns `*time.Duration` (never a wrapper or a plain `time.Duration`), and that return distinguishes an explicit-`0`/no-deadline result (a pointer to `0`) from a positive/floor result (a pointer to a positive value) — so Phase 2's `ai.Config.Timeout` (also `*time.Duration`, Task 2-2) takes the accessor's return by direct assignment with no conversion, keeping "no deadline" reachable only by an operator's explicit `0`.
 - [ ] With no `.mint.toml`, both verbs resolve to the 60s floor.
 - [ ] `go build ./...`, `gofmt -l .` (prints nothing), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues) all pass.
 
@@ -302,7 +302,7 @@ total: 8
 - `"it falls an absent [verb].timeout through to the shared timeout, then to the 60s floor"`
 - `"it drops a negative shared timeout to the 60s floor"`
 - `"it resolves both verbs to the 60s floor when no .mint.toml exists"`
-- `"its return distinguishes an explicit-zero (no deadline) from a positive/floor value"`
+- `"its *time.Duration return distinguishes an explicit-zero (no deadline) from a positive/floor value"` — assert the accessor's return type is `*time.Duration` and that an explicit `0` yields a pointer to `0` while a positive/floor case yields a pointer to a positive value (the type Phase 2 assigns directly into `ai.Config.Timeout`).
 
 **Edge Cases**:
 - Explicit `0` honored and stops fall-through, not treated as missing (per the task table).
