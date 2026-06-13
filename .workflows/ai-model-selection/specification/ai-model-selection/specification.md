@@ -101,6 +101,20 @@ Because resolution is per-key independent, a verb that overrides `ai_command` to
 
 If you slow the model, you raise the timeout yourself. The supported pattern — override both keys together for a slow verb — is **documented** (README/spec) but **not enforced**. Mint ships the current 60s as the shared default.
 
+### Single source of truth for config defaults
+
+`internal/config` is the single source of truth for config defaults; the project `.mint.toml` overrides. The model is two layers only — **compiled Go constants are the defaults (base layer)** and the **file is the override**. There is no separate defaults *file* (Go idiom: defaults are compiled).
+
+Required shape:
+
+- **One `defaults() Config` constructor in `internal/config`** — the canonical defaults. (Mint already runs a "defaults, overridden by the project file" model: `Load` returns `defaults()` when no `.mint.toml` exists; when a file exists, the decode target is pre-seeded with defaults and only present keys override.)
+- **Layered per-verb lookup centralized in `config`** via typed accessor methods that resolve `verb override → shared top-level → default` — e.g. `cfg.AICommandFor(verb)` / `cfg.TimeoutFor(verb)`. The fallback chain lives in exactly one place; consumers just ask for the resolved value.
+- **The transport carries no defaults.** It runs the concrete command/timeout that config resolves and hands it. The duplicate `defaultAICommand` in `internal/ai/transport.go` is **deleted**; since config's floor always supplies a valid command, the transport never re-defaults. `timeout` is introduced as a net-new config key (today only the transport's `defaultTimeout`, never config-populated). The transport also learns `timeout = 0` ⇒ no deadline (see Resolution value semantics).
+- **`initgen` pulls its template values from `config`** rather than re-typing literals (the pinned default *value* is sourced from the config constant, not re-typed).
+- **No reflection, no global `config()`/`env()` service-locator** — a typed `Config` value passed explicitly, with accessor methods. The `ai`↔`config` decoupling survives: `config` never imports `ai`; consumers map `config.Config` → `ai.Config`.
+
+**De-duplication target.** `defaultAICommand = "claude -p"` is currently duplicated across `internal/config/config.go`, `internal/ai/transport.go`, and `internal/initgen/initgen.go` (plus test pins and both specs). After this work the value lives canonically in `internal/config` and the other sites derive from it. Other `default*` consts (`defaultEditor`, git retry/backoff, the presenter leaf glyph) are operational internals, not config keys — correctly local, left alone.
+
 ---
 
 ## Working Notes
