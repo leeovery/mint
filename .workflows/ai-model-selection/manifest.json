@@ -11,6 +11,22 @@
           "status": "completed"
         }
       }
+    },
+    "specification": {
+      "items": {
+        "ai-model-selection": {
+          "status": "in-progress",
+          "sources": {
+            "ai-model-selection": {
+              "status": "pending"
+            }
+          },
+          "review_cycle": 0,
+          "finding_gate_mode": "gated",
+          "construction_gate_mode": "gated",
+          "date": "2026-06-13"
+        }
+      }
     }
   },
   "seeds": [
