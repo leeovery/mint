@@ -21,7 +21,8 @@ approved_at: 2026-06-13
 - [ ] `go build ./...`, `gofmt -l .` (prints nothing), `go vet ./...`, `go test -race ./...`, and `golangci-lint run` (0 issues) all pass
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-13
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
