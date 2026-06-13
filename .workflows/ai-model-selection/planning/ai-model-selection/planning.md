@@ -20,6 +20,20 @@ approved_at: 2026-06-13
 - [ ] Per-key independence holds: overriding `ai_command` on a verb leaves that verb's `timeout` resolving through shared/floor, and vice-versa
 - [ ] `go build ./...`, `gofmt -l .` (prints nothing), `go vet ./...`, `go test -race ./...`, and `golangci-lint run` (0 issues) all pass
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| ai-model-selection-1-1 | Pin the shipped default AI command to `claude -p --model sonnet` | none |
+| ai-model-selection-1-2 | Define the typed closed verb enum (release, commit; no regenerate) | no regenerate value, no unknown/zero-value verb falling through to shared |
+| ai-model-selection-1-3 | Add the per-verb `ai_command` override to the schema and strict decoding | genuine TOML type mismatch still a strict decode error at Load, unknown sibling keys still rejected |
+| ai-model-selection-1-4 | Add the layered `AICommandFor(verb)` accessor with multi-layer trim-and-skip | blank/whitespace `[verb].ai_command` falls to shared, blank/whitespace shared falls to floor, top-level `ai_command = ''` falls to shipped default, accessor never yields empty |
+| ai-model-selection-1-5 | Add the net-new top-level shared `timeout` key to the schema | absent vs explicit zero distinguished, genuine TOML type mismatch a strict decode error at Load, zero-config resolves to 60s |
+| ai-model-selection-1-6 | Add per-verb `timeout` overrides to the schema and strict decoding | per-verb absent vs explicit zero distinguished, type mismatch still fails loud |
+| ai-model-selection-1-7 | Add the layered `TimeoutFor(verb)` accessor with value semantics | explicit `0` honored and stops fall-through (not missing), negative drops through to floor, unparseable/value-invalid drops through, positive used as-is |
+| ai-model-selection-1-8 | Prove per-key resolution independence across `ai_command` and `timeout` | per-key independence both directions, both verbs |
+
 ### Phase 2: Transport adoption and wiring
 status: approved
 approved_at: 2026-06-13
