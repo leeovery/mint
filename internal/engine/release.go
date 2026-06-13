@@ -441,11 +441,21 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 	notesDone("generated")
 
-	// Emit in SPEC ORDER: ShowPlan, ShowNotes — then the review gate. RunStarted already
-	// led the run at Stage 1, so only the plan + notes (which depend on the resolved body)
-	// fire here.
-	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
+	// A real run shows the plan before the review gate; a dry run prints its own
+	// would-do plan in finishDryRun, so it skips this one to avoid rendering two.
+	if !opts.DryRun {
+		p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
+	}
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
+
+	// A dry run is read-only and non-interactive: everything above is read-only and
+	// everything below mutates, so a dry run stops here — before the review gate — and
+	// prints the would-do plan instead. There is nothing to approve, and the gate's
+	// edit/regenerate actions belong to a real run. It returns without prompting or
+	// touching the repo.
+	if opts.DryRun {
+		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind, body, cacheInputs)
+	}
 
 	// The review gate may EDIT (the `e` choice) or REGENERATE (the `r` choice, only
 	// offered for KindNormalAI) the body; capture the returned final body and thread
@@ -469,20 +479,6 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 			return Unwind(ctx, deps, start, made, errGateAborted)
 		}
 		return err
-	}
-
-	// DRY-RUN BOUNDARY (4-7a): every stage above is READ-ONLY — preflight gates,
-	// version determination, and the notes generation/preview (shown via ShowNotes at
-	// the gate) all ran NORMALLY. From HERE the spine only MUTATES (the bookkeeping
-	// commit, the tag, the atomic push, the provider release), so under --dry-run it
-	// must NOT proceed: a dry run NEVER reaches the lock-resilient Mutator. Instead it
-	// prints the full would-do plan — the commit(s) it would make (with their subjects),
-	// the tag, and the resolved publish target (or that publishing is downgraded /
-	// disabled) — and returns successfully WITHOUT touching the repo. The hook skips
-	// (3-11) already fired above; the version-file projection and changelog write below
-	// are skipped too, so the working tree is byte-for-byte unchanged.
-	if opts.DryRun {
-		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind, body, cacheInputs)
 	}
 
 	// Stage 5 — record: project the version file, write the changelog, then fold BOTH

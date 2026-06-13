@@ -259,7 +259,7 @@ func newPrettyPresenter(out io.Writer) *PrettyPresenter {
 		success:          renderer.NewStyle().Foreground(lipgloss.Color("2")),   // green
 		failure:          renderer.NewStyle().Foreground(lipgloss.Color("1")),   // red
 		warn:             renderer.NewStyle().Foreground(lipgloss.Color("214")), // amber / orange
-		dim:              renderer.NewStyle().Foreground(lipgloss.Color("8")),   // bright black / dim
+		dim:              renderer.NewStyle().Foreground(lipgloss.Color("245")), // mid-grey — dimmed but readable (brighter than ANSI bright-black)
 		accent:           renderer.NewStyle().Foreground(lipgloss.Color("6")),   // cyan — interactive hotkeys
 		strong:           renderer.NewStyle().Bold(true),                        // bold — the gate question
 		unwound:          renderer.NewStyle().Foreground(lipgloss.Color("8")),   // ↩ glyph — dim (no spec colour; subdued recovery tone)
@@ -792,7 +792,12 @@ func (p *PrettyPresenter) readKeyChoice(f *os.File, g Gate) (Choice, error) {
 		return readChoice(bufferedReader(p.in, &p.reader), func() { p.renderGate(g) }, g)
 	}
 
-	buf := make([]byte, 1)
+	// Read a small chunk, not a single byte, so a bare Escape keypress (a lone 0x1b)
+	// is distinguishable from an escape SEQUENCE (an arrow/function key sends 0x1b
+	// followed by more bytes in the same read): a lone Esc declines, a sequence is
+	// ignored. In raw mode (VMIN=1) Read blocks for at least one byte and returns a
+	// whole sequence in one call on any real terminal.
+	buf := make([]byte, 8)
 	for {
 		n, rerr := f.Read(buf)
 		if rerr != nil || n == 0 {
@@ -800,7 +805,22 @@ func (p *PrettyPresenter) readKeyChoice(f *os.File, g Gate) (Choice, error) {
 			p.writef("\n")
 			return "", ErrInputClosed
 		}
-		switch b := buf[0]; b {
+		b := buf[0]
+		if b == 0x1b {
+			if n == 1 {
+				// A lone Esc = decline, the same as the gate's "n" choice. If the gate
+				// declares no decline choice (e.g. an enumerated source/target gate), ignore.
+				if no, ok := declineChoice(g); ok {
+					_ = term.Restore(fd, old)
+					p.echoKeyChoice(g, no)
+					return no, nil
+				}
+				continue
+			}
+			// Esc + more bytes in the same read: an arrow/function-key sequence — ignore.
+			continue
+		}
+		switch b {
 		case 0x03, 0x04: // Ctrl-C / Ctrl-D: a deliberate stop, never a default-accept.
 			_ = term.Restore(fd, old)
 			p.writef("\n")
@@ -818,6 +838,19 @@ func (p *PrettyPresenter) readKeyChoice(f *os.File, g Gate) (Choice, error) {
 			// Unrecognised key: ignore and keep reading — no re-render spam.
 		}
 	}
+}
+
+// declineChoice returns the gate's decline choice (ChoiceNo) when the gate declares
+// it, so the Escape key can map to the same "abort" the "n" key triggers. A gate
+// without a ChoiceNo (an enumerated source/target gate) has no decline, so Escape is
+// ignored there.
+func declineChoice(g Gate) (Choice, bool) {
+	for _, c := range g.Choices {
+		if c.Key == ChoiceNo {
+			return ChoiceNo, true
+		}
+	}
+	return "", false
 }
 
 // echoKeyChoice writes the chosen action after the bar's "› " cursor (raw mode

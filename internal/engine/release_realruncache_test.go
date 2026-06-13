@@ -471,19 +471,23 @@ func TestRelease_RealRun_ReuseUnderYes_SkipsGate(t *testing.T) {
 // the dry run still calls Prompt once (auto-accepted by the presenter default) and
 // finishes, writing the preview to the cache. This pins the "-y skips on BOTH runs"
 // acceptance with the matching dry-run half.
-func TestRelease_DryRunUnderYes_SkipsGate(t *testing.T) {
+func TestRelease_DryRun_NeverReachesTheGate(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	cacheBase := t.TempDir()
-	// No NextChoices: the recorder returns the gate Default (yes), modelling -y.
+	// A dry run is non-interactive: it stops before the review gate. No NextChoices are
+	// scripted because none are consumed — the gate is never reached, even without -y.
 	rec, f := runDryRunNormalAI(t, root, cacheBase, priorTagDiff, aiBody, dryRunOptions())
 	_ = f
 
-	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
-		t.Errorf("dry-run Prompt count = %d, want exactly 1 under -y", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 0 {
+		t.Errorf("dry-run Prompt count = %d, want 0 (a dry run prints the plan and exits without prompting)", got)
 	}
-	// The dry run finished and wrote the preview to the cache (the handoff to a real run).
+	// It still previewed the notes and wrote them to the cache (the handoff to a real run).
+	if got := countKind(rec, presentertest.KindShowNotes); got != 1 {
+		t.Errorf("dry-run ShowNotes count = %d, want 1 (the preview is still shown)", got)
+	}
 	readCacheEntry(t, cacheBase, root, cachedKey(priorTagDiff, "1.2.4"))
 }
 

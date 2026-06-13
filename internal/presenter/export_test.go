@@ -58,3 +58,6 @@ func (p *PrettyPresenter) WithTermWidth(w int) *PrettyPresenter {
 	p.termWidth = w
 	return p
 }
+
+// DeclineChoiceForTest exposes declineChoice (the Escape→"no" mapping) for tests.
+func DeclineChoiceForTest(g Gate) (Choice, bool) { return declineChoice(g) }

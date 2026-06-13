@@ -187,3 +187,25 @@ func TestPrettyGateColourOnEmitsANSIButKeepsStructure(t *testing.T) {
 		}
 	}
 }
+
+// TestDeclineChoiceFindsChoiceNo proves the Escape-key decline maps to the gate's
+// ChoiceNo when declared (the review gates) and reports none for an enumerated gate
+// that declares no decline (where Escape is ignored instead).
+func TestDeclineChoiceFindsChoiceNo(t *testing.T) {
+	t.Parallel()
+
+	if c, ok := presenter.DeclineChoiceForTest(presenter.NotesReviewGate()); !ok || c != presenter.ChoiceNo {
+		t.Errorf("review gate decline = (%q, %v), want (ChoiceNo, true)", c, ok)
+	}
+	enum := presenter.Gate{
+		Question: "Source?",
+		Choices: []presenter.GateChoice{
+			{Key: presenter.Choice("github"), Action: "github"},
+			{Key: presenter.Choice("gitlab"), Action: "gitlab"},
+		},
+		Default: presenter.Choice("github"),
+	}
+	if _, ok := presenter.DeclineChoiceForTest(enum); ok {
+		t.Error("enumerated gate with no ChoiceNo reported a decline; Escape should be ignored there")
+	}
+}
