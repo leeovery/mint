@@ -139,6 +139,32 @@ The README documents:
 
 No breaking-change callout is needed — mint has no users yet.
 
+### Cross-spec reconciliation (commit spec)
+
+Promoting per-verb `ai_command` formally **reverses** the commit-command spec's standing decision: "Deliberately NOT added for commit … promote to a `[commit]` key only if a real need appears." The real need has appeared, so that spec owes the reconciliation.
+
+This is not just a spec-doc edit:
+
+- The as-built `Commit` struct doc comment in `internal/config/config.go` encodes the old "no per-verb override" contract, and CLAUDE.md requires comments stay true to as-built **in the same change**.
+- **Planning must decide the sequencing**: whether the commit-spec revision lands in *this* work unit or is handed to a separate commit-spec pass, and what blocks on what.
+
+### Migration & mechanical carry-overs
+
+These are factual carry-overs with no open decisions — recorded so planning doesn't rediscover them.
+
+**Transport wiring sites (3).** The resolved per-verb command *and* timeout must be threaded where today only `ai.Config{AICommand: cfg.AICommand}` is constructed (with `Timeout` left zero):
+
+- `internal/engine/release.go`,
+- `internal/commit/run.go`,
+- `internal/engine/regenerate_fresh.go` — a *distinct* construction site that must deliberately resolve through `[release]` (per "regenerate rides on `[release]`"), not its own table. An easy miss.
+
+**Test-pin migration.** Changing the shipped default and removing the transport's `defaultAICommand` will break:
+
+- every test that asserts the exact default command/argv (`claude -p` with no `--model`),
+- the initgen "full template loads cleanly" test.
+
+Project test idioms assert exact argv / rendered lines, so these are known, bounded edits — enumerate them in planning.
+
 ---
 
 ## Working Notes
