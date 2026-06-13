@@ -112,6 +112,12 @@ type PrettyPresenter struct {
 	// pretty; tests inject narrow/wide/tiny/undetectable widths via WithTermWidth.
 	termWidth int
 
+	// trailingNL tracks the number of consecutive trailing newlines in the output so
+	// a block-opener (the gate) can avoid stacking a second blank line on top of one
+	// already present (e.g. the brand header's trailing blank). It is fed by writef;
+	// the spinner writes its own frames directly and never immediately precedes a gate.
+	trailingNL int
+
 	// Styles are derived once from the renderer so every render shares the same
 	// colour profile. Under a no-colour profile lipgloss renders these as the bare
 	// text, preserving layout and glyphs without emitting any ANSI escape.
@@ -280,7 +286,28 @@ func newPrettyPresenter(out io.Writer) *PrettyPresenter {
 // nothing — the engine narrates fire-and-forget) so it is discarded here, in one
 // place, rather than ignored ad hoc at each call site.
 func (p *PrettyPresenter) writef(format string, args ...any) {
-	_, _ = fmt.Fprintf(p.out, format, args...)
+	out := fmt.Sprintf(format, args...)
+	_, _ = io.WriteString(p.out, out)
+	p.trackTrailingNewlines(out)
+}
+
+// trackTrailingNewlines maintains trailingNL — the count of consecutive '\n' at the
+// end of everything written so far — so renderGate can collapse a redundant leading
+// blank. A write that is entirely newlines extends the run; any other write resets it
+// to that write's own trailing-newline count.
+func (p *PrettyPresenter) trackTrailingNewlines(out string) {
+	if out == "" {
+		return
+	}
+	n := 0
+	for i := len(out) - 1; i >= 0 && out[i] == '\n'; i-- {
+		n++
+	}
+	if n == len(out) {
+		p.trailingNL += n
+	} else {
+		p.trailingNL = n
+	}
 }
 
 // errf writes one plain (unstyled) line to the err stream (stderr in
@@ -936,8 +963,12 @@ func (p *PrettyPresenter) failNotInteractive(label string) {
 func (p *PrettyPresenter) renderGate(g Gate) {
 	var b strings.Builder
 	// Line 1: the question, bold, on its own — the line that carries the most weight.
-	// A blank line precedes it so the gate reads as its own block.
-	b.WriteString("\n")
+	// One blank line precedes the gate as its own block, UNLESS the output already ends
+	// with a blank line (e.g. the brand header's trailing blank) — adding another would
+	// double the gap.
+	if p.trailingNL < 2 {
+		b.WriteString("\n")
+	}
 	b.WriteString(p.strong.Render(g.Question))
 	b.WriteString("\n")
 	// Line 2: the choices — each "[key] action", the bracketed key in accent (the

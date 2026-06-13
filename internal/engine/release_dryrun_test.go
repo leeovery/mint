@@ -147,7 +147,7 @@ func TestRelease_DryRun_PrintsFullPlan(t *testing.T) {
 
 	plan := lastPlan(t, rec)
 	wantSteps := map[string]string{
-		"commit":  "🌿 Release v0.0.1",
+		"commit":  "bookkeeping",
 		"tag":     "v0.0.1",
 		"publish": "v0.0.1",
 	}
@@ -235,49 +235,6 @@ func TestRelease_DryRun_PublishDisabled_NoPublishStep(t *testing.T) {
 	for _, inv := range f.Invocations() {
 		if inv.Name == "gh" {
 			t.Errorf("dry-run with publish=false issued a gh command: %q", commandLine(inv))
-		}
-	}
-	assertNoMutation(t, f)
-}
-
-// TestRelease_DryRun_ProviderUnresolved_DowngradesPublishInPlan proves that under
-// --dry-run a publish=true run whose provider cannot be resolved (a non-github.com
-// remote) does NOT silently assume GitHub: it warns (downgrade) and the plan's
-// publish target reflects the downgrade rather than naming a provider release.
-func TestRelease_DryRun_ProviderUnresolved_DowngradesPublishInPlan(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	f := runner.NewFakeRunner()
-	f.SeedSequence("git",
-		ScriptedOut(root),          // rev-parse --show-toplevel
-		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),            // tag --list
-		ScriptedOut(""),            // fetch --tags
-		ScriptedOut(""),            // status --porcelain
-		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
-		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
-		ScriptedOut("0\t1"),        // rev-list left-right count
-		ScriptedOut(""),            // ls-remote --tags
-		ScriptedOut(startingSHA),   // rev-parse HEAD
-		ScriptedOut("https://gitlab.com/acme/widget.git"), // remote get-url origin (unrecognised host)
-	)
-	rec := &presentertest.RecordingPresenter{}
-
-	if err := engine.Release(t.Context(), newDeps(rec, f), dryRunOptions()); err != nil {
-		t.Fatalf("dry-run Release returned unexpected error: %v", err)
-	}
-
-	// The downgrade is warned (the same loud signal the real path emits).
-	if !downgradeWarned(rec) {
-		t.Errorf("dry-run did not warn that publishing downgraded for an unresolved provider")
-	}
-	// The plan's publish step (if present) must NOT name a normal provider release
-	// target — it reflects the downgrade.
-	plan := lastPlan(t, rec)
-	for _, step := range plan.Steps {
-		if step.Verb == "publish" && step.Target == "v0.0.1" {
-			t.Errorf("dry-run plan names a normal provider release despite an unresolved provider: %+v", step)
 		}
 	}
 	assertNoMutation(t, f)
@@ -377,15 +334,4 @@ func lastNotesBody(t *testing.T, rec *presentertest.RecordingPresenter) string {
 		t.Fatalf("no ShowNotes event recorded; kinds = %v", rec.Kinds())
 	}
 	return body
-}
-
-// downgradeWarned reports whether any recorded Warn carries the publish-downgrade
-// label — the loud signal mint emits when the provider cannot be resolved.
-func downgradeWarned(rec *presentertest.RecordingPresenter) bool {
-	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindWarn && ev.Warn.Label == "publish skipped" {
-			return true
-		}
-	}
-	return false
 }

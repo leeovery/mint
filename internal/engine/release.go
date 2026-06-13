@@ -333,20 +333,16 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		Leaf:    cfg.Release.CommitPrefix,
 	})
 
-	// Stage 1 — confirm the version before any work. A dry run is non-interactive, so
-	// it only narrates the resolved version; a real run asks the user to confirm the
-	// current→next bump (auto-accepted under -y, declined cleanly on "no"). The gate
-	// runs before preflight and any mutation, so a decline has nothing to unwind.
-	if opts.DryRun {
-		emitGateSucceeded(p, "version", tag+" ("+string(hookBump(bumpKind))+" bump)", versionSentence(tag, bumpKind))
-	} else {
-		choice, derr := ReviewDecision(p, versionConfirmGate(current, next, cfg.Release.TagPrefix, bumpKind))
-		if derr != nil {
-			return derr
-		}
-		if choice == presenter.ChoiceNo {
-			return abort(errReleaseDeclined)
-		}
+	// Stage 1 — confirm the version before any work. A dry run walks the SAME flow as a
+	// real run (it is a faithful preview), so it asks here too; the gate runs before
+	// preflight and any mutation, so a "no" aborts cleanly with nothing to unwind. -y
+	// auto-accepts (inside the presenter).
+	choice, derr := ReviewDecision(p, versionConfirmGate(current, next, cfg.Release.TagPrefix, bumpKind))
+	if derr != nil {
+		return derr
+	}
+	if choice == presenter.ChoiceNo {
+		return abort(errReleaseDeclined)
 	}
 
 	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
@@ -453,21 +449,10 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 	notesDone("generated")
 
-	// A real run shows the plan before the review gate; a dry run prints its own
-	// would-do plan in finishDryRun, so it skips this one to avoid rendering two.
-	if !opts.DryRun {
-		p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
-	}
+	// Show the plan, then the notes — identical in a dry run and a real run; a dry run is
+	// a faithful preview that diverges only at the writes (after the review gate below).
+	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
-
-	// A dry run is read-only and non-interactive: everything above is read-only and
-	// everything below mutates, so a dry run stops here — before the review gate — and
-	// prints the would-do plan instead. There is nothing to approve, and the gate's
-	// edit/regenerate actions belong to a real run. It returns without prompting or
-	// touching the repo.
-	if opts.DryRun {
-		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind, body, cacheInputs)
-	}
 
 	// The review gate may EDIT (the `e` choice) or REGENERATE (the `r` choice, only
 	// offered for KindNormalAI) the body; capture the returned final body and thread
@@ -478,19 +463,25 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	regenerator := perRunRegenerator(deps, generator, current.String(cfg.Release.TagPrefix), cfg)
 	body, err = reviewGate(ctx, p, deps.Editor, regenerator, kind, body, versionKey)
 	if err != nil {
-		// A gate-no is a clean USER abort: route it through the SAME surgical unwind a
-		// pre-push failure takes, with the SAME captured StartState + tracked MadeState,
-		// so the two are treated identically (reset exactly the commits mint made this
-		// run, narrate an identical Unwound). No prior StageFailed — declining the gate is
-		// not a stage failure. The gate sits BEFORE the tag, so made.TagCreated is still
-		// false; any pre_tag artifact commit already counted in made is reset. Every OTHER
-		// reviewGate error (edit/regenerate/AskLine/unexpected) already surfaced its own
-		// StageFailed and occurred at the gate before any further mutation, so it keeps its
-		// current behaviour — returned as-is.
-		if errors.Is(err, errGateAborted) {
+		// A gate-no is a clean USER abort. In a REAL run, route it through the SAME
+		// surgical unwind a pre-push failure takes (reset any pre_tag artifact commit
+		// tracked in made; narrate an identical Unwound). In a DRY run nothing was mutated
+		// (hooks were skipped, no record/tag), so there is nothing to unwind — it is a
+		// plain abort. Every OTHER reviewGate error already surfaced its own StageFailed
+		// and is returned as-is.
+		if errors.Is(err, errGateAborted) && !opts.DryRun {
 			return Unwind(ctx, deps, start, made, errGateAborted)
 		}
 		return err
+	}
+
+	// DRY-RUN BOUNDARY: a dry run has now walked the full interactive flow — version gate,
+	// notes generation, and the review gate (with its edit/regenerate) — EXACTLY as a real
+	// run would. From here the spine only MUTATES, so a dry run stops here and prints the
+	// "no changes made" close-out instead of recording, tagging, pushing, or publishing.
+	// The working tree is byte-for-byte unchanged (hooks were skipped-and-reported above).
+	if opts.DryRun {
+		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind, body, cacheInputs)
 	}
 
 	// Stage 5 — record: project the version file, write the changelog, then fold BOTH
@@ -1217,16 +1208,6 @@ func recordDetail(changelogChanged, versionChanged, committed bool) string {
 	return strings.Join(parts, " + ") + " committed"
 }
 
-// versionSentence is the pretty past-tense narration for the version gate: a
-// --set-version run reads "Set version to {tag}", a bump-flag run "Bumped {bump}
-// version to {tag}".
-func versionSentence(tag string, bumpKind version.Bump) string {
-	if bumpKind == version.BumpExplicit {
-		return "Set version to " + tag
-	}
-	return "Bumped " + string(hookBump(bumpKind)) + " version to " + tag
-}
-
 // recordSentence is the pretty past-tense narration for the record gate: it names
 // what the bookkeeping commit carried, or says plainly nothing needed recording.
 func recordSentence(changelogChanged, versionChanged, committed bool) string {
@@ -1274,18 +1255,13 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 	return presenter.Plan{Steps: steps}
 }
 
-// dryRunDowngradedTarget is the publish-step target shown in the dry-run plan when
-// publishing is configured but the provider could NOT be resolved: the run would
-// downgrade to tag + push only. It deliberately does NOT name a provider release, so
-// the plan never implies mint would silently publish to GitHub.
-const dryRunDowngradedTarget = "skipped (provider unresolved)"
-
 // finishDryRun completes a --dry-run after the read-only stages: it resolves the
 // publish TARGET read-only (for the plan only — no gh command is issued and no
-// release is created), prints the full would-do plan via the Presenter, WRITES the
-// generated AI note to the dry-run cache (the SOLE filesystem side effect of a dry
-// run, task 4-7), reports the post_release hook skip (the only hook point the real
-// spine reaches AFTER this boundary), and returns nil WITHOUT any mutation. No
+// release is created), WRITES the generated AI note to the dry-run cache (the SOLE
+// filesystem side effect of a dry run), reports the post_release hook skip (the only
+// hook point the real spine reaches AFTER this boundary), and returns nil WITHOUT any
+// mutation. The plan and notes were already shown before the review gate, exactly as a
+// real run shows them. No
 // commit, tag, push, or provider release is reached, so the working tree (apart from
 // the gitignored/temp cache) is byte-for-byte unchanged. The preflight and pre_tag
 // hook skips (3-11) already fired above this point.
@@ -1296,9 +1272,6 @@ const dryRunDowngradedTarget = "skipped (provider unresolved)"
 // stochastic body worth caching) — the non-AI paths have nothing to reuse.
 func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump, body string, cacheInputs notes.CacheInputs) error {
 	p := deps.Presenter
-
-	publishTarget := dryRunPublishTarget(ctx, deps, cfg, tag)
-	p.ShowPlan(buildDryRunPlan(cfg, tag, publishTarget))
 
 	// Write the generated note to the dry-run cache so the subsequent real run can
 	// reuse the EXACT previewed bytes (task 4-8). It is keyed by the post-diff_exclude
@@ -1342,57 +1315,6 @@ func writeDryRunNoteCache(deps ReleaseDeps, root, versionKey, body string, cache
 	}
 	key := notescache.Key(cacheInputs.Diff, versionKey, cacheInputs.Instructions)
 	return deps.NoteCache.Write(root, key, body)
-}
-
-// dryRunPublishTarget resolves what the dry-run plan reports for the publish step,
-// MIRRORING the real spine's Stage-6 publisher selection but WITHOUT issuing any gh
-// command (it only reads the remote URL for host detection):
-//
-//   - publish=false: returns "" — the plan omits the publish step entirely (an
-//     explicit opt-out, distinct from a downgrade).
-//   - publish=true, provider RESOLVED: returns the tag — the plan names the provider
-//     release that would be created.
-//   - publish=true, provider UNRESOLVED: WARNS (the same loud downgrade signal the
-//     real path emits) and returns the downgraded target — the plan shows publishing
-//     would be skipped, never silently assuming GitHub.
-//
-// Any other resolution error (which the real spine treats as a pre-PONR abort) is
-// also reported as a downgrade here: a dry run never aborts on it, and the plan
-// honestly shows publishing would not proceed.
-func dryRunPublishTarget(ctx context.Context, deps ReleaseDeps, cfg config.Config, tag string) string {
-	if !cfg.Release.Publish {
-		return ""
-	}
-	_, err := resolvePublisher(ctx, deps, cfg)
-	if err != nil {
-		if errors.Is(err, publish.ErrProviderUnresolved) {
-			warnPublishDowngraded(deps.Presenter, err)
-		}
-		return dryRunDowngradedTarget
-	}
-	return tag
-}
-
-// buildDryRunPlan assembles the full would-do plan for a dry run: the commit(s) mint
-// would make WITH their real subjects, the annotated tag, the atomic push, and the
-// publish step (only when a publishTarget is set). A configured pre_tag hook means a
-// real run would ALSO make the artifact commit, so that commit is listed first (it
-// precedes the bookkeeping commit in the real graph). publishTarget is "" for
-// publish=false (no publish step), the tag for a resolved provider, or the downgraded
-// target for an unresolved one.
-func buildDryRunPlan(cfg config.Config, tag, publishTarget string) presenter.Plan {
-	var steps []presenter.PlanStep
-	if cfg.Release.Hooks.PreTag != nil {
-		steps = append(steps, presenter.PlanStep{Verb: "commit", Target: pretagArtifactSubject(tag)})
-	}
-	steps = append(steps,
-		presenter.PlanStep{Verb: "commit", Target: record.BookkeepingSubject(cfg.Release.CommitPrefix, tag)},
-		presenter.PlanStep{Verb: "tag", Target: tag},
-	)
-	if publishTarget != "" {
-		steps = append(steps, presenter.PlanStep{Verb: "publish", Target: publishTarget})
-	}
-	return presenter.Plan{Steps: steps}
 }
 
 // errEditorUnavailable is the cause surfaced when the `e` choice is taken but no
