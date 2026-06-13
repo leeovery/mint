@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-13
 cycle: 2
 phase: Gap Analysis
@@ -30,8 +30,8 @@ This is a different question from cycle 1's transport conditional-deadline mecha
 **Proposed Addition**:
 {leave blank until discussed}
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 2).
 
 ---
 
@@ -55,7 +55,7 @@ After this work each of these contradicts shipped behavior. Without enumerating 
 **Proposed Addition**:
 {leave blank until discussed}
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 2).
 
 ---

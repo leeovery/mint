@@ -99,6 +99,7 @@ Resolution is per-key **independent** — `ai_command` and `timeout` each fall b
 - A wrong *type* still surfaces as a strict decode error at `Load` (existing schema behaviour) — distinct from a value-invalid drop-through.
 - The transport must learn `timeout = 0` ⇒ no deadline, replacing its current non-positive → 60s re-default.
 - **The transport applies the deadline conditionally.** When the resolved timeout is `0`, the transport **skips `context.WithTimeout` entirely** and runs the attempt on the parent context — it must not pass a zero duration to `WithTimeout` (which fires immediately, producing instant timeouts). The current `Timeout <= 0` defensive re-default is therefore split: `== 0` ⇒ no deadline; positive ⇒ `WithTimeout` with that value. Config guarantees the transport receives only a positive value or an explicit `0` (negatives drop through to the 60s floor in config), so no negative reaches the transport; any residual defensive handling of a negative must **not** collapse it into the `0` no-deadline branch.
+- **The config→`ai.Config` boundary must preserve absent-vs-explicit-zero for `timeout`.** `ai.Config.Timeout` is today a plain `time.Duration` that every wiring site leaves at its zero value, relying on the transport's now-deleted `timeout <= 0 → 60s` self-default. Once that self-default is gone, a `time.Duration` zero is ambiguous — it is both the operator's explicit "no deadline" and the value a wiring site produces by *forgetting* to thread the resolved timeout. **Invariant: "no deadline" must only ever be reachable by an operator's explicit `0`, never by a wiring site omitting the field** — a forgotten field silently running unbounded would invert "fail loud, never hang" by omission. Planning picks the mechanism (e.g. give the boundary field a type that distinguishes nil from explicit-`0`, such as `*time.Duration` / a small wrapper; or a test-pinned contract that all three sites populate `ai.Config.Timeout` from `cfg.TimeoutFor(verb)`), but the invariant is mandatory and all three wiring sites must source the timeout from the accessor (never zero-by-omission).
 
 ### Timeout × model-choice coupling — operator's responsibility
 
@@ -190,6 +191,13 @@ These are factual carry-overs with no open decisions — recorded so planning do
 - the initgen "full template loads cleanly" test.
 
 Project test idioms assert exact argv / rendered lines, so these are known, bounded edits — enumerate them in planning.
+
+**Transport doc-comment migration (same-change, per CLAUDE.md).** The transport's WHY-comments hard-encode the contracts this work deletes and must be corrected in the *same change* — the symmetric obligation to the `Commit` struct comment in *Cross-spec reconciliation*. Enumerated so they aren't missed:
+
+- `Config.AICommand` — "(default `claude -p` when empty)";
+- `Config.Timeout` — "A zero or negative Timeout falls back to the production default.";
+- `NewTransport` — "An empty AICommand resolves to `claude -p` and a non-positive Timeout resolves to the ~60s production default, so the zero Config yields a fully working production transport.";
+- `Generate` / `attempt` — "Each attempt gets its own deadline via `context.WithTimeout(ctx, t.timeout)`" (becomes conditional once `timeout = 0` skips `WithTimeout`).
 
 ---
 
