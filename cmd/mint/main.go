@@ -290,12 +290,13 @@ func runRelease(ctx context.Context, rest []string) int {
 		// launched interactively through the same presenter + runner. The launcher
 		// reports a missing editor and returns to the gate rather than aborting.
 		Editor: engine.NewEditorLauncher(p, r),
-		// The dry-run note cache lives UNDER the repo at {root}/.mint/cache (gitignored,
-		// never committed), repo-scoped and stamped with the wall clock for the ~1h TTL.
-		// A --dry-run writes the generated note here; the subsequent real run recomputes
-		// the key, looks it up, and on a live (within-TTL) match reuses the previewed
-		// bytes — skipping the AI. A miss or an expired entry regenerates.
-		NoteCache: notescache.NewRepoStore(time.Now),
+		// The note cache lives at the USER level (os.UserCacheDir, e.g.
+		// ~/Library/Caches/mint or ~/.cache/mint), in a per-project sub-directory keyed by
+		// the repo path — so no project is polluted with an in-repo cache dir. A run
+		// generates the note, caches it, and a later run for the SAME diff offers to reuse
+		// it; the wall clock stamps the ~1h TTL. If the cache dir can't be resolved the
+		// cache is simply disabled (nil) — it is an optimization, never required.
+		NoteCache: newNoteCache(),
 	}
 
 	if err := engine.Release(ctx, deps, opts.ReleaseOptions()); err != nil {
@@ -421,6 +422,21 @@ func classifyCommand(args []string) (commandKind, []string) {
 		return commandRegenerate, rest[1:]
 	}
 	return commandRelease, rest
+}
+
+// newNoteCache builds the user-level note cache, or nil to disable caching. The cache
+// lives under os.UserCacheDir() (the XDG-correct home for a cache: ~/.cache/mint on
+// Linux, ~/Library/Caches/mint on macOS) so it never pollutes a project with an in-repo
+// directory; the Store namespaces per project by repo path. Returning a true nil
+// interface (not a typed nil) when the dir can't be resolved keeps the engine's
+// `NoteCache == nil` guard correct — caching just turns off, which is fine since it is
+// only an optimization.
+func newNoteCache() engine.NoteCache {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return nil
+	}
+	return notescache.NewStore(filepath.Join(dir, "mint", "cache"), time.Now)
 }
 
 // exitCode resolves the process exit code for a non-nil Release error: an engine

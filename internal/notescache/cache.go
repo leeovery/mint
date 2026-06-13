@@ -10,8 +10,9 @@
 // alongside a TTL stamp (the write time) so Lookup can enforce the ~1h default TTL
 // (see TTL): an entry older than the window is treated as absent so a stale preview
 // is never reused. The cache is REPO-SCOPED (entries are namespaced by the resolved
-// repo root, so previews never collide across repos) and lives in a gitignored path
-// so it is NEVER committed.
+// repo root, so previews never collide across repos) and lives under the user's cache
+// directory (os.UserCacheDir) in a per-project sub-directory — so no project is ever
+// polluted with an in-repo cache dir.
 package notescache
 
 import (
@@ -27,15 +28,6 @@ import (
 
 	"mint/internal/fsutil"
 )
-
-// cacheDirName is the repo-relative base for the on-repo cache (e.g. .mint/cache).
-// The whole .mint dir is gitignored (a single "*" .gitignore at .mint), so a
-// repo-path cache is never committed.
-const cacheDirName = ".mint"
-
-// cacheSubdir is the cache namespace under cacheDirName, keeping the gitignored
-// .mint base free for other future mint state.
-const cacheSubdir = "cache"
 
 // entryFileExt is the on-disk extension for a cache entry's JSON document.
 const entryFileExt = ".json"
@@ -81,34 +73,25 @@ func Key(diff, version, instructions string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// Store writes dry-run note cache entries under a base directory, repo-scoped and
-// stamped with an injected clock. The base may be the system temp dir or a path
-// under the repo; NewRepoStore selects the repo-path form (which also ensures the
-// gitignore guard).
+// Store reads and writes note cache entries under a base directory, namespaced into a
+// per-project sub-directory and stamped with an injected clock. The base is the user
+// cache dir in production and a t.TempDir() in tests, so entries never live inside a
+// repo.
 type Store struct {
-	// base is the cache root the entries live under. When empty the store is in
-	// REPO-PATH mode: entries live under {repoRoot}/.mint/cache and the .mint dir is
-	// gitignored. When set (e.g. an injected temp dir or os.TempDir) entries live
-	// under {base}/<repo-hash>/cache and no repo .gitignore is needed.
+	// base is the cache root the entries live under: production passes the user cache
+	// dir ({UserCacheDir}/mint/cache); tests pass a t.TempDir(). Entries live under
+	// {base}/<repo-scoped sub-dir>, so the cache is never inside any repo.
 	base string
 	// now supplies the TTL write stamp; injected so tests get a deterministic time.
 	now func() time.Time
 }
 
-// NewStore builds a Store rooted at base (a system-temp-style location OUTSIDE the
-// repo): entries are namespaced by a hash of the repo root so caches never collide
-// across repos, and no repo .gitignore is needed because the cache lives outside
-// the repo entirely. now supplies the TTL write stamp.
+// NewStore builds a Store rooted at base (the user cache dir in production, a
+// t.TempDir() in tests): entries are namespaced by a per-project sub-directory so
+// caches never collide across repos and never live inside a repo. now supplies the
+// TTL write stamp.
 func NewStore(base string, now func() time.Time) *Store {
 	return &Store{base: base, now: now}
-}
-
-// NewRepoStore builds a Store whose cache lives UNDER the repo at
-// {repoRoot}/.mint/cache. Because the cache is inside the repo, Write ensures a
-// .gitignore at {repoRoot}/.mint that ignores the whole dir, so the cache is never
-// committed. now supplies the TTL write stamp.
-func NewRepoStore(now func() time.Time) *Store {
-	return &Store{base: "", now: now}
 }
 
 // Write persists body under key for repoRoot, stamping the entry with the store's
@@ -118,9 +101,6 @@ func (s *Store) Write(repoRoot, key, body string) error {
 	dir := s.cacheDir(repoRoot)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating note cache dir %q: %w", dir, err)
-	}
-	if err := s.ensureGitignore(repoRoot); err != nil {
-		return err
 	}
 
 	entry := Entry{Body: body, WrittenAt: s.now()}
@@ -170,35 +150,11 @@ func (s *Store) EntryPath(repoRoot, key string) string {
 	return filepath.Join(s.cacheDir(repoRoot), key+entryFileExt)
 }
 
-// cacheDir resolves the repo-scoped cache directory. In repo-path mode it is
-// {repoRoot}/.mint/cache (gitignored); otherwise it is {base}/<repo-hash>/cache,
-// namespaced by a hash of the repo root so distinct repos never share a dir.
+// cacheDir resolves the per-project cache directory: {base}/<repoScope>, where
+// repoScope is the repo path munged to a readable, filesystem-safe name so distinct
+// repos never share a dir.
 func (s *Store) cacheDir(repoRoot string) string {
-	if s.base == "" {
-		return filepath.Join(repoRoot, cacheDirName, cacheSubdir)
-	}
-	return filepath.Join(s.base, repoScope(repoRoot), cacheSubdir)
-}
-
-// ensureGitignore writes the gitignore guard for a repo-path cache so the .mint
-// dir is never committed. In external-base mode the cache lives outside the repo,
-// so there is nothing to ignore and it is a no-op.
-func (s *Store) ensureGitignore(repoRoot string) error {
-	if s.base != "" {
-		return nil
-	}
-	mintDir := filepath.Join(repoRoot, cacheDirName)
-	if err := os.MkdirAll(mintDir, 0o755); err != nil {
-		return fmt.Errorf("creating cache base %q: %w", mintDir, err)
-	}
-	ignorePath := filepath.Join(mintDir, ".gitignore")
-	if _, err := os.Stat(ignorePath); err == nil {
-		return nil // already guarded; do not clobber an existing entry.
-	}
-	if err := os.WriteFile(ignorePath, []byte("*\n"), 0o644); err != nil {
-		return fmt.Errorf("writing cache .gitignore %q: %w", ignorePath, err)
-	}
-	return nil
+	return filepath.Join(s.base, repoScope(repoRoot))
 }
 
 // Prune deletes every cache entry for repoRoot EXCEPT keepKey's, bounding the
@@ -206,8 +162,7 @@ func (s *Store) ensureGitignore(repoRoot string) error {
 // versions) never accumulate. It is best-effort HOUSEKEEPING: a directory it cannot
 // read is a no-op, and a file it cannot delete is left in place (a leftover entry is
 // harmless — the cache is only an optimization). It removes ONLY this package's own
-// ".json" entries, so the ".gitignore" guard (which lives in the parent .mint dir,
-// not the cache subdir) is never touched.
+// ".json" entries.
 func (s *Store) Prune(repoRoot, keepKey string) {
 	dir := s.cacheDir(repoRoot)
 	entries, err := os.ReadDir(dir)
@@ -223,17 +178,18 @@ func (s *Store) Prune(repoRoot, keepKey string) {
 	}
 }
 
-// repoScope derives a stable, filesystem-safe namespace for repoRoot so an
-// external-base cache keeps each repo's entries apart. It is the hex SHA-256 of
-// the repo root path — collision-free in practice and a valid directory name.
+// repoScope derives the per-project sub-directory name under the cache base from the
+// repo's absolute path — a readable munge (path separators → dashes, like Claude's
+// session-transcript directories) so a human browsing the cache can tell which project
+// a directory belongs to. e.g. /Users/lee/Code/mint → -Users-lee-Code-mint. (Two paths
+// that differ only by a literal dash vs a separator would collide; the cost is at most
+// a cache regenerate, never data loss, so a readable name is preferred to an opaque
+// hash.)
 func repoScope(repoRoot string) string {
-	sum := sha256.Sum256([]byte(repoRoot))
-	return hex.EncodeToString(sum[:])
+	return strings.ReplaceAll(filepath.Clean(repoRoot), string(filepath.Separator), "-")
 }
 
-// entryPerm is the on-disk mode for a cache entry: 0o600, the default os.CreateTemp
-// mode the original writer left in place (no chmod), kept so a gitignored cache entry
-// stays owner-only.
+// entryPerm is the on-disk mode for a cache entry: 0o600, owner-only.
 const entryPerm = 0o600
 
 // writeFileAtomic writes data to path crash-safely (temp file + rename) so a crash

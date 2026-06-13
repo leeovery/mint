@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -143,40 +142,6 @@ func TestStore_Write_RepoScoped(t *testing.T) {
 	}
 	if got := readEntry(t, cacheRoot, repoB, key); got.Body != "body B" {
 		t.Errorf("repoB entry Body = %q, want %q", got.Body, "body B")
-	}
-}
-
-// TestStore_Write_GitignoresCacheDir proves the cache directory under the repo is
-// gitignored so it is NEVER committed: writing an entry ensures a .gitignore in
-// the cache parent that ignores the cache contents.
-func TestStore_Write_GitignoresCacheDir(t *testing.T) {
-	t.Parallel()
-
-	repoRoot := t.TempDir()
-	// A repo-path store (cache lives under the repo, not system temp): the cache dir
-	// MUST be gitignored.
-	store := notescache.NewRepoStore(func() time.Time { return fixedClock })
-
-	diff, version, instructions := keyInputs()
-	key := notescache.Key(diff, version, instructions)
-	if err := store.Write(repoRoot, key, "body"); err != nil {
-		t.Fatalf("Write: %v", err)
-	}
-
-	// The .mint cache base must carry a .gitignore that ignores everything beneath it.
-	ignorePath := filepath.Join(repoRoot, ".mint", ".gitignore")
-	data, err := os.ReadFile(ignorePath)
-	if err != nil {
-		t.Fatalf("reading cache .gitignore at %q: %v", ignorePath, err)
-	}
-	if strings.TrimSpace(string(data)) != "*" {
-		t.Errorf("cache .gitignore = %q, want %q (ignore the whole cache dir)", string(data), "*")
-	}
-	// The entry must live UNDER the gitignored .mint dir.
-	entryPath := store.EntryPath(repoRoot, key)
-	mintDir := filepath.Join(repoRoot, ".mint")
-	if !strings.HasPrefix(entryPath, mintDir+string(os.PathSeparator)) {
-		t.Errorf("entry path %q is not under the gitignored cache dir %q", entryPath, mintDir)
 	}
 }
 
@@ -347,7 +312,7 @@ func TestStore_Prune(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := t.TempDir()
-	store := notescache.NewRepoStore(func() time.Time { return fixedClock })
+	store := notescache.NewStore(t.TempDir(), func() time.Time { return fixedClock })
 
 	// No-op on an untouched store (the cache dir does not exist yet).
 	store.Prune(repoRoot, notescache.Key("d", "1.0.0", "p"))
@@ -363,7 +328,9 @@ func TestStore_Prune(t *testing.T) {
 
 	store.Prune(repoRoot, keepKey)
 
-	cacheDir := filepath.Join(repoRoot, ".mint", "cache")
+	// The cache lives under the store's base (not in the repo), per project; derive the
+	// dir from EntryPath so the test never hardcodes the layout.
+	cacheDir := filepath.Dir(store.EntryPath(repoRoot, keepKey))
 	entries, err := os.ReadDir(cacheDir)
 	if err != nil {
 		t.Fatalf("reading cache dir: %v", err)
@@ -376,12 +343,8 @@ func TestStore_Prune(t *testing.T) {
 		t.Errorf("after prune cache entries = %v, want only %q", got, keepKey+".json")
 	}
 
-	// The kept entry is still readable, and the .gitignore guard survives (it lives in
-	// the parent .mint dir, not the cache subdir).
+	// The kept entry is still readable after the prune.
 	if _, found, err := store.Lookup(repoRoot, keepKey); err != nil || !found {
 		t.Errorf("kept entry not readable after prune (found=%v, err=%v)", found, err)
-	}
-	if _, err := os.Stat(filepath.Join(repoRoot, ".mint", ".gitignore")); err != nil {
-		t.Errorf("prune removed the .gitignore guard: %v", err)
 	}
 }
