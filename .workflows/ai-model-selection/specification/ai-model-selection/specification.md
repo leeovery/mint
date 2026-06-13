@@ -74,6 +74,13 @@ A `timeout` config key is added in the **same layering shape** as `ai_command`: 
 
 **Deferred to planning:** the key's exact TOML representation/units (int seconds vs string duration). The decoding must still distinguish absent from zero (see resolution value semantics).
 
+**Whatever representation is chosen must preserve the value semantics.** The TOML representation is deferred, but it must support the rules in *Resolution value semantics*: distinguishing absent from an explicit zero, honoring zero, and treating negative/unparseable values as value-invalid. *Where* an invalid value is detected depends on the representation:
+
+- **Int seconds** — a non-integer TOML value is a strict decode (type) error at `Load`; a negative integer is a value-invalid drop-through; absent vs zero is a nil pointer vs `0`.
+- **String duration** — an unparseable (`"fast"`) or negative (`"-5s"`) duration decodes as a valid string, so it is a value-invalid drop-through detected at **resolution time**, not a strict decode error; absent vs zero is a nil pointer vs the zero-duration string (`"0s"`/`"0"`).
+
+Only a genuine TOML *type* mismatch (e.g. a table where a scalar is expected) is a strict decode error in both representations.
+
 ### Resolution value semantics
 
 Resolution is per-key **independent** — `ai_command` and `timeout` each fall back through their own `verb → shared → default` chain. The chain treats non-normal values *differently per key*.
@@ -83,6 +90,7 @@ Resolution is per-key **independent** — `ai_command` and `timeout` each fall b
 - Blank / whitespace / invalid / missing at a layer **drops through** to the next layer.
 - The shipped default is the floor, so resolution **always** yields a valid command — `ai_command` is never empty. Even a top-level `ai_command = ''` falls through to the shipped default.
 - Consequently the transport's old "empty → re-default / empty → fail-loud" path becomes **unreachable** and is removed: config's floor always supplies a valid command.
+- **Blank/whitespace detection lives in the config accessor, applied at every layer.** `AICommandFor` trims each candidate and skips it when empty — blank `[verb].ai_command` → try shared; blank shared → fall to the floor. This multi-layer trim-and-skip replaces the transport's old single blank-re-default (which only ever saw one already-resolved value); the whitespace-blank detection moves out of the transport into config. The existing `resolveAICommand` helper (today only nil-vs-present) is folded into / replaced by the accessor so blank-skipping happens in exactly one place across all layers.
 
 **`timeout`:**
 
@@ -90,6 +98,7 @@ Resolution is per-key **independent** — `ai_command` and `timeout` each fall b
 - **Missing or invalid (e.g. negative) drops through** to the next layer; **positive is used as-is**; the floor is the shipped 60s default.
 - A wrong *type* still surfaces as a strict decode error at `Load` (existing schema behaviour) — distinct from a value-invalid drop-through.
 - The transport must learn `timeout = 0` ⇒ no deadline, replacing its current non-positive → 60s re-default.
+- **The transport applies the deadline conditionally.** When the resolved timeout is `0`, the transport **skips `context.WithTimeout` entirely** and runs the attempt on the parent context — it must not pass a zero duration to `WithTimeout` (which fires immediately, producing instant timeouts). The current `Timeout <= 0` defensive re-default is therefore split: `== 0` ⇒ no deadline; positive ⇒ `WithTimeout` with that value. Config guarantees the transport receives only a positive value or an explicit `0` (negatives drop through to the 60s floor in config), so no negative reaches the transport; any residual defensive handling of a negative must **not** collapse it into the `0` no-deadline branch.
 
 ### Timeout × model-choice coupling — operator's responsibility
 
@@ -111,6 +120,7 @@ Required shape:
 
 - **One `defaults() Config` constructor in `internal/config`** — the canonical defaults. (Mint already runs a "defaults, overridden by the project file" model: `Load` returns `defaults()` when no `.mint.toml` exists; when a file exists, the decode target is pre-seeded with defaults and only present keys override.)
 - **Layered per-verb lookup centralized in `config`** via typed accessor methods that resolve `verb override → shared top-level → default` — e.g. `cfg.AICommandFor(verb)` / `cfg.TimeoutFor(verb)`. The fallback chain lives in exactly one place; consumers just ask for the resolved value.
+- **The `verb` parameter is a typed, closed enum defined in `internal/config`** — not a raw string — with exactly two values, one per verb table (`[release]`, `[commit]`). A typed enum gives compile-time safety (no string typos silently falling through to the shared baseline) and makes the regenerate routing un-missable: there is **no** `regenerate` value, so `internal/engine/regenerate_fresh.go` can only pass the *release* verb. The accessor's domain is therefore exhaustive by construction — there is no "unrecognized verb" case to handle. Exact type and constant names are a planning/impl detail.
 - **The transport carries no defaults.** It runs the concrete command/timeout that config resolves and hands it. The duplicate `defaultAICommand` in `internal/ai/transport.go` is **deleted**; since config's floor always supplies a valid command, the transport never re-defaults. `timeout` is introduced as a net-new config key (today only the transport's `defaultTimeout`, never config-populated). The transport also learns `timeout = 0` ⇒ no deadline (see Resolution value semantics).
 - **`initgen` pulls its template values from `config`** rather than re-typing literals (the pinned default *value* is sourced from the config constant, not re-typed).
 - **No reflection, no global `config()`/`env()` service-locator** — a typed `Config` value passed explicitly, with accessor methods. The `ai`↔`config` decoupling survives: `config` never imports `ai`; consumers map `config.Config` → `ai.Config`.
@@ -148,7 +158,21 @@ Promoting per-verb `ai_command` formally **reverses** the commit-command spec's 
 This is not just a spec-doc edit:
 
 - The as-built `Commit` struct doc comment in `internal/config/config.go` encodes the old "no per-verb override" contract, and CLAUDE.md requires comments stay true to as-built **in the same change**.
-- **Planning must decide the sequencing**: whether the commit-spec revision lands in *this* work unit or is handed to a separate commit-spec pass, and what blocks on what.
+
+**In-scope vs deferrable — resolved.** The **code-level** reconciliation is in scope for this work unit: the moment this work adds `[commit].ai_command` / `[commit].timeout`, the `Commit` struct doc comment encoding the old "no per-verb override" contract must be updated in the *same change* (CLAUDE.md requires comments stay true to as-built). Planning must **not** defer the code/comment update — deferring it would ship a comment contradicting shipped code, exactly what CLAUDE.md forbids. Only the **external commit-command spec document** revision (editing that spec's "Deliberately NOT added for commit … promote to a `[commit]` key only if a real need appears" text) may be handed to a separate commit-spec pass. Planning decides only that document-edit sequencing — not whether the in-repo comment update happens here (it does).
+
+### Acceptance criteria — resolution behaviors
+
+The resolution rules imply these individually-testable behaviors (project test idioms assert exact argv / rendered lines, behaviour-level proofs):
+
+- **Per-key independence** — overriding `ai_command` on a verb leaves that verb's `timeout` resolving through the shared/floor (and vice-versa).
+- **`ai_command` never empties out** — a top-level `ai_command = ''` falls through to the shipped default; a blank `[verb].ai_command` falls to shared, then to the floor.
+- **`timeout = 0` honored** — resolves as "no deadline" and stops fall-through (not treated as missing); the transport skips `WithTimeout`.
+- **Negative/invalid `timeout` drops through** — to the 60s floor; a positive value is used as-is.
+- **Regenerate routes through `[release]`** — `internal/engine/regenerate_fresh.go` resolves the release command/timeout; argv asserted to carry the release values, not the bare shared/default (the "easy miss" wiring site).
+- **Pinned default applies for zero-config** — with no `.mint.toml`, both verbs resolve to `claude -p --model sonnet` and the 60s timeout.
+
+These are the feature's expected-behavior checklist (positive coverage). The migration test-pin breakages (the old `claude -p` argv pins, the initgen full-template-loads test) are enumerated separately below.
 
 ### Migration & mechanical carry-overs
 

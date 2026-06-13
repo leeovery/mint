@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-13
 cycle: 1
 phase: Gap Analysis
@@ -29,8 +29,8 @@ Without this, three wiring sites and the accessor signatures cannot be planned i
 **Proposed Addition**:
 _(leave blank until discussed)_
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 1).
 
 ---
 
@@ -57,8 +57,8 @@ The "absent vs zero" distinction the spec mandates is mechanically different per
 **Proposed Addition**:
 _(leave blank until discussed)_
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 1).
 
 ---
 
@@ -79,8 +79,8 @@ This is a concrete behavioral relocation (whitespace-blank detection moving from
 **Proposed Addition**:
 _(leave blank until discussed)_
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 1).
 
 ---
 
@@ -99,8 +99,8 @@ The spec says "The transport must learn `timeout = 0` ⇒ no deadline, replacing
 **Proposed Addition**:
 _(leave blank until discussed)_
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 1).
 
 ---
 
@@ -118,8 +118,8 @@ This is a genuine open decision with a hard dependency, but the spec gives plann
 **Proposed Addition**:
 _(leave blank until discussed)_
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 1).
 
 ---
 
@@ -144,7 +144,7 @@ These read as the implicit acceptance criteria of the feature. Stating them (eve
 **Proposed Addition**:
 _(leave blank until discussed)_
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification (auto-approved, cycle 1).
 
 ---
