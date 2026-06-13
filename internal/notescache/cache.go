@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"mint/internal/fsutil"
@@ -198,6 +199,28 @@ func (s *Store) ensureGitignore(repoRoot string) error {
 		return fmt.Errorf("writing cache .gitignore %q: %w", ignorePath, err)
 	}
 	return nil
+}
+
+// Prune deletes every cache entry for repoRoot EXCEPT keepKey's, bounding the
+// per-project cache to the current diff's note so stale entries (older diffs and
+// versions) never accumulate. It is best-effort HOUSEKEEPING: a directory it cannot
+// read is a no-op, and a file it cannot delete is left in place (a leftover entry is
+// harmless — the cache is only an optimization). It removes ONLY this package's own
+// ".json" entries, so the ".gitignore" guard (which lives in the parent .mint dir,
+// not the cache subdir) is never touched.
+func (s *Store) Prune(repoRoot, keepKey string) {
+	dir := s.cacheDir(repoRoot)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	keep := keepKey + entryFileExt
+	for _, e := range entries {
+		if e.IsDir() || e.Name() == keep || !strings.HasSuffix(e.Name(), entryFileExt) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, e.Name()))
+	}
 }
 
 // repoScope derives a stable, filesystem-safe namespace for repoRoot so an

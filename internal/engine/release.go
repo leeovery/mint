@@ -170,6 +170,11 @@ type NoteCacheWriter interface {
 	// entry could not be written; the dry run surfaces it (the cache write is the
 	// dry run's only side effect, so a failure to perform it is worth reporting).
 	Write(repoRoot, key, body string) error
+	// Prune deletes every cached note for repoRoot except keepKey's, bounding the
+	// per-project cache to the current diff's note so stale entries never accumulate.
+	// Best-effort housekeeping — there is no error to handle (a leftover entry is
+	// harmless; the cache is only an optimization).
+	Prune(repoRoot, keepKey string)
 }
 
 // NoteCacheReader is the engine's real-run note-cache REUSE seam (task 4-8): it looks
@@ -804,11 +809,16 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	// a dry run is a faithful preview, not a separate path. A reused body is already
 	// cached, so it is not re-written; a write failure is warn-only (the cache is an
 	// optimization, never load-bearing).
-	if !reused && cacheInputs.Cacheable && deps.NoteCache != nil {
+	if cacheInputs.Cacheable && deps.NoteCache != nil {
 		key := notescache.Key(cacheInputs.Diff, versionKey, cacheInputs.Instructions)
-		if werr := deps.NoteCache.Write(root, key, body); werr != nil {
-			warnNoteCacheFailed(deps.Presenter, werr)
+		if !reused {
+			if werr := deps.NoteCache.Write(root, key, body); werr != nil {
+				warnNoteCacheFailed(deps.Presenter, werr)
+			}
 		}
+		// Housekeeping: keep only the current diff's note, pruning entries left by earlier
+		// runs (older diffs/versions) so the per-project cache never accumulates.
+		deps.NoteCache.Prune(root, key)
 	}
 	return body, kind, generator, nil
 }

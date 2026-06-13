@@ -339,3 +339,49 @@ func readEntry(t *testing.T, cacheRoot, repoRoot, key string) notescache.Entry {
 	}
 	return entry
 }
+
+// TestStore_Prune proves prune bounds the cache to the kept entry: it deletes every
+// other entry, leaves the kept one intact, never touches the .gitignore guard, and is
+// a no-op on an unwritten cache dir.
+func TestStore_Prune(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	store := notescache.NewRepoStore(func() time.Time { return fixedClock })
+
+	// No-op on an untouched store (the cache dir does not exist yet).
+	store.Prune(repoRoot, notescache.Key("d", "1.0.0", "p"))
+
+	keepKey := notescache.Key("keep-diff", "1.0.0", "prompt")
+	staleA := notescache.Key("stale-A", "1.0.0", "prompt")
+	staleB := notescache.Key("stale-B", "0.9.0", "prompt")
+	for _, k := range []string{keepKey, staleA, staleB} {
+		if err := store.Write(repoRoot, k, "body-"+k); err != nil {
+			t.Fatalf("Write(%s): %v", k, err)
+		}
+	}
+
+	store.Prune(repoRoot, keepKey)
+
+	cacheDir := filepath.Join(repoRoot, ".mint", "cache")
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		t.Fatalf("reading cache dir: %v", err)
+	}
+	var got []string
+	for _, e := range entries {
+		got = append(got, e.Name())
+	}
+	if len(got) != 1 || got[0] != keepKey+".json" {
+		t.Errorf("after prune cache entries = %v, want only %q", got, keepKey+".json")
+	}
+
+	// The kept entry is still readable, and the .gitignore guard survives (it lives in
+	// the parent .mint dir, not the cache subdir).
+	if _, found, err := store.Lookup(repoRoot, keepKey); err != nil || !found {
+		t.Errorf("kept entry not readable after prune (found=%v, err=%v)", found, err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".mint", ".gitignore")); err != nil {
+		t.Errorf("prune removed the .gitignore guard: %v", err)
+	}
+}
