@@ -14,7 +14,7 @@ This feature does three things:
 
 ### Scope boundaries (non-goals)
 
-- **No driver / provider-registry pattern.** Configuring "which AI" plus a model alias, with mint knowing how to invoke each AI, is explicitly dropped (not deferred) — a raw per-verb command string already delivers the multi-AI/multi-command generality with less machinery.
+- **No driver / provider-registry pattern.** Configuring "which AI" plus a model alias, with mint knowing how to invoke each AI, is explicitly dropped (not deferred) — a raw per-verb command string already delivers the multi-AI/multi-command generality with less machinery. The driver's only residual value is ergonomics (typing `haiku` vs the full command), which doesn't justify the cost today; revisit only as sugar over the command string if a future user juggles several AIs frequently.
 - **No environment-variable override layer.** A `MINT_AI_COMMAND`-style third layer is out of scope; the override layer is the project file only. Two layers: compiled defaults ← project file.
 - **No interactive `mint init` prompting.** Surfacing the model choice to operators during scaffolding is a separate, deferred idea. Only init's *static* commented template surfacing the new keys is in scope here.
 - **No coupling protection.** Mint does not auto-bump the timeout, warn, or require paired defaults when a verb overrides the command to a slower model — that is the operator's responsibility (detailed in its own section).
@@ -24,7 +24,7 @@ This feature does three things:
 The shipped default command becomes `claude -p --model sonnet` (today: `claude -p`).
 
 - **Alias form, not a full model ID.** The default pins `--model sonnet`, not a full versioned model ID. Full IDs baked into the binary go stale every model release and would force a rebuild just to track versions; the alias tracks the current version automatically.
-- **Default model is Sonnet.** Sonnet is strong enough for the salience-heavy notes task and comfortably inside the per-attempt deadline. Opus is reserved for explicit per-verb opt-in — never the shipped default.
+- **Default model is Sonnet.** Sonnet is strong enough for the salience-heavy notes task and comfortably inside the per-attempt deadline. Opus is reserved for explicit per-verb opt-in — never the shipped default. Haiku was ruled out by operator preference for both verbs (honest technical read: probably fine for the *bounded* commit task, wrong for the *salience-synthesis* notes task — but moot once rejected outright). Ruling out Haiku collapsed the model space to a single fork — releases on Sonnet vs Opus — with commit settling on Sonnet (Opus overkill for a single bounded staged diff).
 - **Not a breaking change in practice.** Moving the shipped default from bare `claude -p` to `claude -p --model sonnet` would silently switch the model for zero-config operators, but mint is a brand-new project with no users yet — there is nothing to break. **No release-note callout and no runtime signal are required.** The only real migration cost is internal: mint's own test pins that assert the old `claude -p` default (enumerated in the Migration section).
 
 ### Config schema: per-verb `ai_command` override
@@ -37,6 +37,8 @@ The shipped default command becomes `claude -p --model sonnet` (today: `claude -
 **Resolution order:** `[verb].ai_command` → top-level shared `ai_command` → shipped default.
 
 **Mechanism is a full command string per verb**, not a model knob or driver. A raw command string supports any AI / model / flags with zero per-AI machinery — the transport is already content-agnostic. This is what makes a verb able to run a *different AI entirely*, not just a different model.
+
+**Why per-verb config is warranted at all.** Experimentation ("try them and see") is already possible today with the single shared `ai_command` — edit one key, cut a few commits — so wanting to experiment does *not* by itself justify per-verb config. The justification is wanting *different* commands pinned *simultaneously*: a different AI / model / flags per verb.
 
 **Why top-level shared baseline + optional per-verb override (not verb-only defaults):**
 

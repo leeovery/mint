@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-13
 cycle: 1
 phase: Input Review
@@ -25,10 +25,10 @@ This matters because the Sonnet-everywhere choice looks arbitrary without it. Du
 - **Default model is Sonnet.** Sonnet is strong enough for the salience-heavy notes task and comfortably inside the per-attempt deadline. Opus is reserved for explicit per-verb opt-in — never the shipped default.
 
 **Proposed Addition**:
-(leave blank until discussed)
+- **Default model is Sonnet.** Sonnet is strong enough for the salience-heavy notes task and comfortably inside the per-attempt deadline. Opus is reserved for explicit per-verb opt-in — never the shipped default. Haiku was ruled out by operator preference for both verbs (honest technical read: probably fine for the *bounded* commit task, wrong for the *salience-synthesis* notes task — but moot once rejected outright). Ruling out Haiku collapsed the model space to a single fork — releases on Sonnet vs Opus — with commit settling on Sonnet (Opus overkill for a single bounded staged diff).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification verbatim (auto-approved, cycle 1).
 
 ---
 
@@ -51,10 +51,12 @@ This matters because without it the spec's case for the whole feature is incompl
 - Single source of truth: verb-only defaults would bake the shipped default once per verb (more duplication); a single top-level shipped default keeps it canonical.
 
 **Proposed Addition**:
-(leave blank until discussed)
+(Insert a new rationale paragraph immediately before the "Why top-level shared baseline..." block:)
 
-**Resolution**: Pending
-**Notes**:
+**Why per-verb config is warranted at all.** Experimentation ("try them and see") is already possible today with the single shared `ai_command` — edit one key, cut a few commits — so wanting to experiment does *not* by itself justify per-verb config. The justification is wanting *different* commands pinned *simultaneously*: a different AI / model / flags per verb.
+
+**Resolution**: Approved
+**Notes**: Applied to specification verbatim (auto-approved, cycle 1).
 
 ---
 
@@ -73,9 +75,9 @@ This matters because "dropped" without the narrow re-entry trigger reads as a ha
 - **No driver / provider-registry pattern.** Configuring "which AI" plus a model alias, with mint knowing how to invoke each AI, is explicitly dropped (not deferred) — a raw per-verb command string already delivers the multi-AI/multi-command generality with less machinery.
 
 **Proposed Addition**:
-(leave blank until discussed)
+- **No driver / provider-registry pattern.** Configuring "which AI" plus a model alias, with mint knowing how to invoke each AI, is explicitly dropped (not deferred) — a raw per-verb command string already delivers the multi-AI/multi-command generality with less machinery. The driver's only residual value is ergonomics (typing `haiku` vs the full command), which doesn't justify the cost today; revisit only as sugar over the command string if a future user juggles several AIs frequently.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Applied to specification verbatim (auto-approved, cycle 1).
 
 ---
