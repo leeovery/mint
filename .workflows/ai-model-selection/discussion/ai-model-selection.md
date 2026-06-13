@@ -59,7 +59,7 @@ Pin via the **alias form** (`--model sonnet`), **not a full model ID** — full 
 
 **Shared default model = Sonnet** (confirmed) — strong enough for the salience-heavy notes task and comfortably inside the 60s deadline; Opus reserved for explicit per-verb opt-in.
 
-**Breaking change for existing operators — consciously accepted.** Moving the shipped default from bare `claude -p` to `claude -p --model sonnet` silently switches the model for zero-config / bare-`ai_command` users — including anyone who *deliberately* set their CLI default to Opus so mint used it. Accepted for now: predictable, mint-controlled behaviour is the whole point, and a release-note callout covers the upgrade. The *proper* surfacing — letting the operator choose at setup time — rides on the deferred interactive `mint init` feature (logged separately); not built here. (Operators who already wrote a full `--model` command are unaffected.)
+**Not a breaking change in practice — no users yet (decided).** Moving the shipped default from bare `claude -p` to `claude -p --model sonnet` *would* silently switch the model for zero-config users — but mint is a brand-new project with no users yet, so there is nothing to break: **no release-note callout and no runtime signal are needed.** (Had operators existed, the mitigation would have been a release note; the *proper* surfacing — operator choice at setup — rides on the deferred interactive `mint init` feature.) The only real migration cost is internal — mint's own test pins that assert the old default (see Notes for Spec/Planning).
 
 ## Per-Verb Model Differentiation
 
@@ -162,6 +162,14 @@ New config keys must appear in `internal/initgen`'s commented template (project 
 
 Confidence: high. Exact comment wording is a planning/impl detail.
 
+## Notes for Spec/Planning
+
+Factual completeness items carried over from the final review — no open decisions, recorded so spec/planning don't rediscover them:
+
+- **Transport wiring sites (3).** The resolved per-verb command *and* timeout must be threaded where today only `ai.Config{AICommand: cfg.AICommand}` is constructed (Timeout left zero): `internal/engine/release.go`, `internal/commit/run.go`, and `internal/engine/regenerate_fresh.go`. `regenerate_fresh.go` is a *distinct* construction site that must deliberately resolve through `[release]` (per "regenerate rides on `[release]`"), not its own table — an easy miss.
+- **Test-pin migration.** Changing the shipped default and removing the transport's `defaultAICommand` will break every test that asserts the exact default command/argv (`claude -p` with no `--model`), plus the initgen "full template loads cleanly" test. Project test idioms assert exact argv / rendered lines, so these are known, bounded edits — enumerate in planning.
+- **Cross-spec reconciliation sequencing.** Reversing the commit spec's "Deliberately NOT added for commit" is not just a spec-doc edit: the as-built `Commit` struct doc comment (`internal/config/config.go`) encodes the old contract, and CLAUDE.md requires comments stay true to as-built in the same change. Spec must decide whether the commit-spec revision lands in *this* work unit or is handed to a separate commit-spec pass, and what blocks on what.
+
 ## Summary
 
 ### Key Insights
@@ -178,7 +186,7 @@ Confidence: high. Exact comment wording is a planning/impl detail.
 
 ### Current State
 
-- **Decided (all 8 subtopics)**: shared default = Sonnet, alias form; per-verb `ai_command` override (raw command string); per-verb timeout override (coupling is the operator's responsibility); keep top-level shared `ai_command`/timeout + per-verb overrides (config shape); `regenerate` rides on `[release]`; driver dropped; single source of truth = `internal/config` owns defaults, project file overrides, layered accessors resolve per-verb, transport carries no defaults; init scaffolds the new keys with model-agnostic comments + README documents keys/resolution/breaking-change. Shipped-default change is an accepted breaking change (release-note callout).
+- **Decided (all 8 subtopics)**: shared default = Sonnet, alias form; per-verb `ai_command` override (raw command string); per-verb timeout override (coupling is the operator's responsibility); keep top-level shared `ai_command`/timeout + per-verb overrides (config shape); `regenerate` rides on `[release]`; driver dropped; single source of truth = `internal/config` owns defaults, project file overrides, layered accessors resolve per-verb, transport carries no defaults; init scaffolds the new keys with model-agnostic comments + README documents keys/resolution; per-key resolution value semantics (ai_command empty→fall-through; timeout zero=no-limit, invalid→fall-through). Shipped-default change is **not** a breaking change in practice (brand-new project, no users yet) — no release-note/runtime signal; only internal test pins need updating.
 - **Routed out**: interactive `mint init` setup → logged as a separate idea (the proper home for surfacing the model choice to operators). Env-var override layer (Laravel `.env`-style third layer) explicitly out of scope — two layers only (compiled defaults ← project file); addable later if wanted.
 
 ## Triage
