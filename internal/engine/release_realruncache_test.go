@@ -414,17 +414,18 @@ func TestRelease_RealRun_ReusedNote_ShownAtGate(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedRealRunReuseGit(f, root, priorTagDiff)
 	f.Seed("gh", runner.Result{}, nil)
-	// An interactive run that explicitly accepts at the gate.
-	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+	// An interactive run that explicitly accepts at both gates (version, then notes).
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes}}
 
 	deps := newDepsWithRealRunCache(rec, f, cacheBase, func() time.Time { return realRunClock })
 	if err := engine.Release(t.Context(), deps, priorTagNormalAIOptions()); err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	// The gate fired (Prompt recorded) over the REUSED note.
-	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
-		t.Errorf("Prompt count = %d, want exactly 1 (the gate still runs over a reused note)", got)
+	// Both gates fired (Prompt recorded): the version gate, then the notes review gate
+	// over the REUSED note.
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want exactly 2 (version gate + the notes gate over a reused note)", got)
 	}
 	// The note shown at the gate is the REUSED cached body.
 	if got := lastNotesBody(t, rec); got != cachedReuseBody {
@@ -459,8 +460,8 @@ func TestRelease_RealRun_ReuseUnderYes_SkipsGate(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
-		t.Errorf("Prompt count = %d, want exactly 1 under -y (the engine always calls Prompt; the presenter auto-accepts)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want exactly 2 under -y (version + notes gates; the engine always calls Prompt; the presenter auto-accepts)", got)
 	}
 	if got := tagAnnotationBody(t, f, nextTag); got != cachedReuseBody {
 		t.Errorf("tag annotation body = %q, want the reused cached body %q under -y", got, cachedReuseBody)

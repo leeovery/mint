@@ -57,8 +57,10 @@ func stageSucceeded(rec *presentertest.RecordingPresenter, name string) (present
 // TestRelease_EmitsBlockingStageEvents proves the release orchestrator narrates the
 // blocking stages — pre_tag hook, notes generation, and push — with a
 // StageStarted(Blocking:true) before each and a StageSucceeded(Blocking:true,
-// engine-measured Elapsed) after each, in stage order. The read-only gates (version,
-// preflight) emit completion narration too. Existing events are unchanged.
+// engine-measured Elapsed) after each, in stage order. The read-only preflight gate
+// emits completion narration too. (Stage 1's version step is now a confirmation
+// Prompt, not a StageSucceeded narration line, on a real run.) Existing events are
+// unchanged.
 func TestRelease_EmitsBlockingStageEvents(t *testing.T) {
 	t.Parallel()
 
@@ -112,16 +114,23 @@ func TestRelease_EmitsBlockingStageEvents(t *testing.T) {
 		t.Errorf("blocking stage order = pre_tag:%d notes:%d push:%d, want pre_tag < notes < push", preTagAt, notesAt, pushAt)
 	}
 
-	// The read-only gates emit completion narration (non-blocking is acceptable).
-	for _, name := range []string{"version", "preflight"} {
+	// The read-only preflight gate emits completion narration (non-blocking is
+	// acceptable). The version step is a confirmation Prompt on a real run, not a
+	// StageSucceeded line, so it is no longer asserted here.
+	for _, name := range []string{"preflight"} {
 		if _, ok := stageSucceeded(rec, name); !ok {
 			t.Errorf("no StageSucceeded completion narration for read-only gate %q; kinds = %v", name, rec.Kinds())
 		}
 	}
+	// The version step no longer narrates a StageSucceeded on a real run — it is the
+	// version-confirmation Prompt at Stage 1.
+	if _, ok := stageSucceeded(rec, "version"); ok {
+		t.Errorf("version StageSucceeded narrated on a real run; Stage 1 is now a confirmation Prompt")
+	}
 
 	// RunStarted OPENS the block: it must precede the first stage narration event
-	// (the version gate completion at Stage 1). The brand header renders first, with
-	// every stage line — version/preflight/pre_tag/notes — beneath it (the spec worked
+	// (the preflight completion at Stage 2). The brand header renders first, with
+	// every stage line — preflight/pre_tag/notes/push — beneath it (the spec worked
 	// example, and the presenter golden transcript). This pins "RunStarted first" at
 	// the engine layer.
 	runStartedAt := indexOfKind(rec, presentertest.KindRunStarted)
@@ -192,7 +201,8 @@ func TestRelease_EditChoice_SuspendSpinnerWrapsLiveSpinner(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; the rest drive the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceEdit, presenter.ChoiceYes},
 	}
 	// The real EditorLauncher drives the production SuspendSpinner/ResumeSpinner
 	// bracket; the write-back runner simulates the editor saving an edit.

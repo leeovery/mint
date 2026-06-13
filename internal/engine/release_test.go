@@ -169,13 +169,13 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	// before the run finishes. (No pre_tag stage here — no hook is configured.)
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
-		presentertest.KindStageSucceeded, // version (read-only gate completion)
+		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
 		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
-		presentertest.KindPrompt,
+		presentertest.KindPrompt,         // notes review gate
 		presentertest.KindStageSucceeded, // record (what the bookkeeping commit carried)
 		presentertest.KindStageStarted,   // push (blocking)
 		presentertest.KindStageSucceeded, // push
@@ -407,11 +407,12 @@ func invokedWith(f *runner.FakeRunner, name string, args ...string) bool {
 	return false
 }
 
-// TestRelease_AlwaysPromptsUnderYes proves the engine ALWAYS calls Prompt at the
-// review gate — even under -y the recorder records KindPrompt and the run proceeds
-// on the gate's returned default (the -y skip happens inside the presenter, which
-// the recorder models by returning the default). The run reaches a successful
-// RunFinished without any extra branching around the call.
+// TestRelease_AlwaysPromptsUnderYes proves the engine ALWAYS calls Prompt at both
+// gates — the version-confirmation gate and the notes review gate — even under -y:
+// the recorder records a KindPrompt for each and the run proceeds on the gate's
+// returned default (the -y skip happens inside the presenter, which the recorder
+// models by returning the default). The run reaches a successful RunFinished
+// without any extra branching around the calls.
 func TestRelease_AlwaysPromptsUnderYes(t *testing.T) {
 	t.Parallel()
 
@@ -428,10 +429,11 @@ func TestRelease_AlwaysPromptsUnderYes(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	// Prompt fires EXACTLY once under -y — the engine never branches around the
-	// call nor prompts again; the auto-accept happens inside Prompt.
-	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
-		t.Errorf("Prompt count = %d, want exactly 1 under -y", got)
+	// Prompt fires EXACTLY twice under -y — once for the version gate, once for the
+	// notes review gate; the engine never branches around the calls nor prompts
+	// again; the auto-accept happens inside Prompt.
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want exactly 2 under -y (version + notes gates)", got)
 	}
 	// The notes are shown exactly once: no edit re-render, no engine-printed
 	// auto-accept echo. The echo is presenter-rendered inside Prompt, never emitted
@@ -487,7 +489,10 @@ func TestRelease_PromptError_AbortsNonZero(t *testing.T) {
 			seedHappyGit(f, root, "main", "v0.0.1")
 			f.Seed("gh", runner.Result{}, nil)
 			rec := &presentertest.RecordingPresenter{
-				PromptResult: func(presenter.Gate) (presenter.Choice, error) {
+				PromptResult: func(gate presenter.Gate) (presenter.Choice, error) {
+					if gate.Subject == "version" {
+						return presenter.ChoiceYes, nil // accept the version gate; the error fires at the notes gate
+					}
 					return "", tt.injected
 				},
 			}
@@ -526,14 +531,15 @@ func TestRelease_GateNo_AbortsNonZero(t *testing.T) {
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+		// First ChoiceYes accepts the version gate; ChoiceNo declines the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
 
 	assertAbortNonZero(t, err)
-	// Nothing was made before the gate, so the surgical unwind no-ops: no Unwound, no
-	// reset, no tag delete — the repo was already clean.
+	// Nothing was made before the notes gate, so the surgical unwind no-ops: no Unwound,
+	// no reset, no tag delete — the repo was already clean.
 	if recorded(rec, presentertest.KindUnwound) {
 		t.Errorf("gate-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
@@ -556,7 +562,9 @@ func TestRelease_GateNo_NoMutation_SurgicalNoOp(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+		// First ChoiceYes accepts the version gate (so preflight + the pre-gate HEAD
+		// capture run); ChoiceNo then declines the notes review gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -584,6 +592,62 @@ func TestRelease_GateNo_NoMutation_SurgicalNoOp(t *testing.T) {
 		if k == presentertest.KindRunFinished {
 			t.Errorf("a RunFinished followed a gate-n abort; an aborted run emits no success line; kinds = %v", rec.Kinds())
 		}
+	}
+}
+
+// TestRelease_VersionGateNo_AbortsBeforePreflight proves a "no" at the new
+// version-confirmation gate (Stage 1, ahead of preflight) aborts the run cleanly
+// BEFORE any work: no preflight ran (no preflight StageSucceeded), no `rev-parse
+// HEAD` capture, and no mutation. The version gate sits before preflight and before
+// the startingHEAD capture, so a decline has nothing to unwind — a plain non-zero
+// abort with nothing touched. (Mirrors the gate-no decline tests, which assert via
+// the *engine.AbortError + the no-mutation/no-preflight evidence rather than the
+// unexported errReleaseDeclined sentinel, since this is an external test package.)
+func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	// Only the Stage-1 reads run before the version gate: root, release branch, and
+	// the tag list (a prior tag exists, so this is a normal current→next bump). The
+	// decline stops the run before fetch/preflight/HEAD-capture/mutation.
+	f.SeedSequence("git",
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(priorTag+"\n"), // tag --list (a prior tag exists)
+	)
+	rec := &presentertest.RecordingPresenter{
+		// The single ChoiceNo declines the version-confirmation gate (the first prompt).
+		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+	}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	// A non-zero abort, just like the notes-gate decline.
+	assertAbortNonZero(t, err)
+
+	// The version gate fired before preflight: no preflight StageSucceeded was emitted.
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Name == "preflight" {
+			t.Errorf("preflight StageSucceeded fired despite a version-gate decline before preflight")
+		}
+	}
+	// No notes review gate ran (the decline stopped the run at the version gate).
+	if notesGatePrompted(rec) {
+		t.Errorf("notes review gate prompted despite a version-gate decline")
+	}
+	// No HEAD capture: the decline precedes resolveHEAD entirely.
+	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 0 {
+		t.Errorf("rev-parse HEAD count = %d, want 0 (the decline precedes the pre-gate capture)", got)
+	}
+	// Nothing mutated: no commit, tag, push, or publish.
+	if invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v1.2.4") {
+		t.Errorf("a bookkeeping commit ran despite a version-gate decline")
+	}
+	assertNoMutation(t, f)
+	// No success line follows the aborted run.
+	if recorded(rec, presentertest.KindRunFinished) {
+		t.Errorf("a RunFinished followed a version-gate decline; an aborted run emits no success line")
 	}
 }
 
@@ -689,7 +753,8 @@ func TestRelease_AbortPathMatchesPrePushFailurePath(t *testing.T) {
 	gateRunner := runner.NewFakeRunner()
 	seedHappyGitThroughGate(gateRunner, gateRoot, "main", "v0.0.1")
 	gateRec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+		// First ChoiceYes accepts the version gate; ChoiceNo declines the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo},
 	}
 	gateErr := engine.Release(t.Context(), newDeps(gateRec, gateRunner), patchOptions())
 
@@ -920,8 +985,8 @@ func TestRelease_GateBareEnterDefault(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
-		t.Errorf("Prompt count = %d, want 1 (bare Enter accepts on first prompt)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want 2 (bare Enter accepts the version gate then the notes gate)", got)
 	}
 	// The run reached Record (the bookkeeping commit) and finished.
 	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
@@ -943,7 +1008,8 @@ func TestRelease_GateExplicitYes(t *testing.T) {
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; second accepts the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -951,8 +1017,8 @@ func TestRelease_GateExplicitYes(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
-		t.Errorf("Prompt count = %d, want 1 (explicit y accepts on first prompt)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want 2 (explicit y accepts the version gate then the notes gate)", got)
 	}
 	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release v0.0.1") {
 		t.Errorf("explicit-y accept did not reach Record (no bookkeeping commit)")
@@ -978,7 +1044,8 @@ func TestRelease_GateEditThenYes(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 	ed := &fakeEditor{edited: editedBody}
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; the rest drive the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceEdit, presenter.ChoiceYes},
 	}
 
 	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptionsWithBody(phase2Body))
@@ -994,13 +1061,13 @@ func TestRelease_GateEditThenYes(t *testing.T) {
 		t.Errorf("editor received current = %q, want the original body %q", ed.gotCurrent, phase2Body)
 	}
 
-	// The notes are re-shown after the edit (initial + edit re-show) and the gate
-	// is prompted twice (edit, then the accepting yes).
+	// The notes are re-shown after the edit (initial + edit re-show) and prompts
+	// fire three times: the version gate, then the notes edit and the accepting yes.
 	if got := countKind(rec, presentertest.KindShowNotes); got != 2 {
 		t.Errorf("ShowNotes count = %d, want 2 (initial + edit re-show)", got)
 	}
-	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
-		t.Errorf("Prompt count = %d, want 2 (edit + re-prompt after edit)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
+		t.Errorf("Prompt count = %d, want 3 (version gate + edit + re-prompt after edit)", got)
 	}
 
 	// The EDITED body — not the original — reaches every sink, verbatim.
@@ -1043,7 +1110,8 @@ func TestRelease_GateEditThenNo(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 	ed := &fakeEditor{edited: editedBody}
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceNo},
+		// First ChoiceYes accepts the version gate; the rest drive the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceEdit, presenter.ChoiceNo},
 	}
 
 	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptions())
@@ -1068,7 +1136,8 @@ func TestRelease_GateEdit_EditorError_Aborts(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 	ed := &fakeEditor{err: errors.New("no editor on PATH")}
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceEdit},
+		// First ChoiceYes accepts the version gate; ChoiceEdit drives the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceEdit},
 	}
 
 	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptions())
@@ -1105,7 +1174,8 @@ func TestRelease_GateEdit_EditorUnavailable_ReturnsToGate(t *testing.T) {
 	// empty so a regression that USED its result would surface a wrong body.
 	ed := &fakeEditor{err: engine.ErrEditorReturnToGate}
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; the rest drive the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceEdit, presenter.ChoiceYes},
 	}
 
 	err := engine.Release(t.Context(), newDepsWithEditor(rec, f, ed), patchOptionsWithBody(phase2Body))
@@ -1118,8 +1188,8 @@ func TestRelease_GateEdit_EditorUnavailable_ReturnsToGate(t *testing.T) {
 	if ed.calls != 1 {
 		t.Errorf("editor Edit calls = %d, want 1", ed.calls)
 	}
-	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
-		t.Errorf("Prompt count = %d, want 2 (edit returns to gate + accepting yes)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
+		t.Errorf("Prompt count = %d, want 3 (version gate + edit returns to gate + accepting yes)", got)
 	}
 	// The gate re-presented WITHOUT a re-render (the body did not change): only the
 	// initial ShowNotes fired.
@@ -1159,7 +1229,8 @@ func TestRelease_GateEdit_NilEditor_Aborts(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 	// No editor wired: newDeps leaves ReleaseDeps.Editor nil.
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceEdit},
+		// First ChoiceYes accepts the version gate; ChoiceEdit drives the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceEdit},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -1191,7 +1262,10 @@ func TestRelease_Gate_UnexpectedChoice_Aborts(t *testing.T) {
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		PromptResult: func(presenter.Gate) (presenter.Choice, error) {
+		PromptResult: func(gate presenter.Gate) (presenter.Choice, error) {
+			if gate.Subject == "version" {
+				return presenter.ChoiceYes, nil // accept the version gate
+			}
 			return presenter.ChoiceRegen, nil // r is not in the first-release gate's set
 		},
 	}
@@ -1274,11 +1348,25 @@ func TestRelease_FailingGate_AbortsBeforeMutation(t *testing.T) {
 	if !recorded(rec, presentertest.KindStageFailed) {
 		t.Errorf("failing gate did not surface a StageFailed event")
 	}
-	// The gate never ran the review prompt or any mutation.
-	if recorded(rec, presentertest.KindPrompt) {
-		t.Errorf("review gate prompted despite a failing preflight gate")
+	// The notes review gate never ran, nor any mutation. (The version-confirmation
+	// gate fires first, ahead of preflight, and is accepted by default — but the
+	// preflight failure stops the run before the notes review gate.)
+	if notesGatePrompted(rec) {
+		t.Errorf("notes review gate prompted despite a failing preflight gate")
 	}
 	assertNoMutation(t, f)
+}
+
+// notesGatePrompted reports whether the notes review gate (Subject "notes") was
+// presented — distinct from the version-confirmation gate (Subject "version") that
+// now leads every real run ahead of preflight.
+func notesGatePrompted(rec *presentertest.RecordingPresenter) bool {
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindPrompt && ev.Prompt.Subject == "notes" {
+			return true
+		}
+	}
+	return false
 }
 
 // TestRelease_PublishFailsAfterPush_WarnsOnly proves the PONR asymmetry: a publish
@@ -1757,7 +1845,8 @@ func TestRelease_GateRegenThenYes(t *testing.T) {
 	regen := &fakeRegenerator{bodies: []string{regen1Body}}
 	const contextLine = "Lead with the new auth package."
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; the rest drive the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen, presenter.ChoiceYes},
 		NextLines:   []string{contextLine},
 	}
 
@@ -1783,8 +1872,8 @@ func TestRelease_GateRegenThenYes(t *testing.T) {
 	if got := countKind(rec, presentertest.KindShowNotes); got != 2 {
 		t.Errorf("ShowNotes count = %d, want 2 (initial + regen re-show)", got)
 	}
-	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
-		t.Errorf("Prompt count = %d, want 2 (regen + re-prompt after regen)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
+		t.Errorf("Prompt count = %d, want 3 (version gate + regen + re-prompt after regen)", got)
 	}
 
 	// The REGENERATED body — not the original — reaches every sink, verbatim.
@@ -1831,8 +1920,9 @@ func TestRelease_GateRegen_EmptyContext_RegeneratesWithNoExtraContext(t *testing
 	f.Seed("gh", runner.Result{}, nil)
 	regen := &fakeRegenerator{bodies: []string{regen1Body}}
 	// Empty NextLines: AskLine falls back to "" — the legal "no extra context" answer.
+	// First ChoiceYes accepts the version gate; the rest drive the notes gate.
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen, presenter.ChoiceYes},
 	}
 
 	err := engine.Release(t.Context(), newDepsWithRegenerator(rec, f, regen), normalAIOptions(phase2Body))
@@ -1866,7 +1956,8 @@ func TestRelease_GateRegen_InputClosed_AbortsFailLoud(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 	regen := &fakeRegenerator{bodies: []string{regen1Body}}
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceRegen},
+		// First ChoiceYes accepts the version gate; ChoiceRegen drives the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen},
 		AskLineResult: func(string) (string, error) {
 			return "", presenter.ErrInputClosed
 		},
@@ -1905,7 +1996,8 @@ func TestRelease_GateMultipleRegen_FinalBodyReachesSinks(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 	regen := &fakeRegenerator{bodies: []string{regen1Body, regen2Body}}
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceRegen, presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; the rest drive the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen, presenter.ChoiceRegen, presenter.ChoiceYes},
 		NextLines:   []string{"first nudge", "second nudge"},
 	}
 
@@ -1928,8 +2020,8 @@ func TestRelease_GateMultipleRegen_FinalBodyReachesSinks(t *testing.T) {
 	if got := countKind(rec, presentertest.KindShowNotes); got != 3 {
 		t.Errorf("ShowNotes count = %d, want 3 (initial + 2 regen re-shows)", got)
 	}
-	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
-		t.Errorf("Prompt count = %d, want 3 (r, r, y)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 4 {
+		t.Errorf("Prompt count = %d, want 4 (version gate, then r, r, y)", got)
 	}
 
 	// The FINAL regeneration (body2) — not body1 — reaches every sink.
@@ -1956,7 +2048,8 @@ func TestRelease_GateRegen_RegeneratorError_Aborts(t *testing.T) {
 	f.Seed("gh", runner.Result{}, nil)
 	regen := &fakeRegenerator{err: errors.New("claude timed out")}
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceRegen},
+		// First ChoiceYes accepts the version gate; ChoiceRegen drives the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen},
 		NextLines:   []string{"a nudge"},
 	}
 
@@ -1989,8 +2082,9 @@ func TestRelease_GateRegen_NilRegenerator_Aborts(t *testing.T) {
 	seedHappyGit(f, root, "main", "v0.0.1")
 	f.Seed("gh", runner.Result{}, nil)
 	// No Regenerator wired: newDeps leaves ReleaseDeps.Regenerator nil.
+	// First ChoiceYes accepts the version gate; ChoiceRegen drives the notes gate.
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceRegen},
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen},
 		NextLines:   []string{"a nudge"},
 	}
 
@@ -2085,16 +2179,18 @@ func TestRelease_NormalAI_GateOffersRegenerate(t *testing.T) {
 	}
 }
 
-// promptGate returns the gate carried by the first recorded Prompt event, failing
-// the test if none fired.
+// promptGate returns the gate carried by the NOTES review Prompt event (Subject
+// "notes"), skipping the earlier version-confirmation gate (Subject "version"),
+// failing the test if no notes gate fired. The version gate always leads a real
+// run now, so gate-content assertions target the notes gate explicitly.
 func promptGate(t *testing.T, rec *presentertest.RecordingPresenter) presenter.Gate {
 	t.Helper()
 	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindPrompt {
+		if ev.Kind == presentertest.KindPrompt && ev.Prompt.Subject != "version" {
 			return ev.Prompt
 		}
 	}
-	t.Fatalf("no Prompt event recorded")
+	t.Fatalf("no notes Prompt event recorded")
 	return presenter.Gate{}
 }
 

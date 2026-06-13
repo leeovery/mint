@@ -62,7 +62,8 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 	f.Seed("sh", runner.Result{}, nil)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+		// First ChoiceYes accepts the version gate; ChoiceNo declines the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
@@ -194,7 +195,8 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 	gateRunner.Seed("sh", runner.Result{}, nil)
 	gateRunner.Seed("gh", runner.Result{}, nil)
 	gateRec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+		// First ChoiceYes accepts the version gate; ChoiceNo declines the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo},
 	}
 	gateErr := engine.Release(t.Context(), newDeps(gateRec, gateRunner), patchOptions())
 

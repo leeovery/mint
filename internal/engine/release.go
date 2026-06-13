@@ -333,9 +333,21 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		Leaf:    cfg.Release.CommitPrefix,
 	})
 
-	// Stage 1 narration: the version gate is read-only (no spinner), so it emits a
-	// completion line only — no StageStarted.
-	emitGateSucceeded(p, "version", tag+" ("+string(hookBump(bumpKind))+" bump)", versionSentence(tag, bumpKind))
+	// Stage 1 — confirm the version before any work. A dry run is non-interactive, so
+	// it only narrates the resolved version; a real run asks the user to confirm the
+	// current→next bump (auto-accepted under -y, declined cleanly on "no"). The gate
+	// runs before preflight and any mutation, so a decline has nothing to unwind.
+	if opts.DryRun {
+		emitGateSucceeded(p, "version", tag+" ("+string(hookBump(bumpKind))+" bump)", versionSentence(tag, bumpKind))
+	} else {
+		choice, derr := ReviewDecision(p, versionConfirmGate(current, next, cfg.Release.TagPrefix, bumpKind))
+		if derr != nil {
+			return derr
+		}
+		if choice == presenter.ChoiceNo {
+			return abort(errReleaseDeclined)
+		}
+	}
 
 	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
 	// gate so a dirty tree passes (opt-in; without the flag a dirty tree still aborts at
@@ -680,6 +692,35 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 // errGateAborted is the cause for a clean gate-no abort: the user declined the
 // review gate, so the run stops with a non-zero exit but no underlying failure.
 var errGateAborted = errors.New("release aborted at the review gate")
+
+// errReleaseDeclined is the cause for a clean decline at the version-confirmation
+// gate: the user said no to the bump before any work began. Nothing has mutated, so
+// there is nothing to unwind — it is a plain non-zero abort.
+var errReleaseDeclined = errors.New("release declined at the version gate")
+
+// versionConfirmGate builds the version-confirmation gate shown before any work: it
+// states the current→next version and the bump kind and asks the user to confirm.
+// A first release (current 0.0.0) reads "Release {next} (first release)?"; otherwise
+// "Release {current} → {next} ({bump})?". Subject/AcceptEcho drive the -y auto-accept
+// echo ("version: {next} (-y)"). It declares y/n only (no edit/regenerate) and
+// defaults to yes (a bare Enter proceeds).
+func versionConfirmGate(current, next version.SemVer, prefix string, bumpKind version.Bump) presenter.Gate {
+	nextDisplay := next.String(prefix)
+	question := fmt.Sprintf("Release %s → %s (%s)?", current.String(prefix), nextDisplay, hookBump(bumpKind))
+	if current.String("") == "0.0.0" {
+		question = fmt.Sprintf("Release %s (first release)?", nextDisplay)
+	}
+	return presenter.Gate{
+		Question:   question,
+		Subject:    "version",
+		AcceptEcho: nextDisplay,
+		Choices: []presenter.GateChoice{
+			{Key: presenter.ChoiceYes, Action: "yes"},
+			{Key: presenter.ChoiceNo, Action: "no"},
+		},
+		Default: presenter.ChoiceYes,
+	}
+}
 
 // resolveNextVersion picks this run's next version and its bump KIND from one of two
 // mutually-exclusive paths:

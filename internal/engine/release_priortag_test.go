@@ -289,19 +289,20 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	// The event timeline OPENS with RunStarted, then narrates the read-only gates
-	// (version, preflight), then the blocking notes stage, then the existing
-	// ShowPlan/ShowNotes/Prompt block, then the blocking push stage, then RunFinished.
-	// No pre_tag stage — the prior-tag normal-AI path configures no hook.
+	// The event timeline OPENS with RunStarted, then the version-confirmation Prompt
+	// (Stage 1, ahead of preflight), then narrates the read-only preflight gate, then
+	// the blocking notes stage, then the existing ShowPlan/ShowNotes/Prompt block (the
+	// notes review gate), then the blocking push stage, then RunFinished. No pre_tag
+	// stage — the prior-tag normal-AI path configures no hook.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
-		presentertest.KindStageSucceeded, // version (read-only gate completion)
+		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
 		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
-		presentertest.KindPrompt,
+		presentertest.KindPrompt,         // notes review gate
 		presentertest.KindStageSucceeded, // record (what the bookkeeping commit carried)
 		presentertest.KindStageStarted,   // push (blocking)
 		presentertest.KindStageSucceeded, // push
@@ -343,7 +344,8 @@ func TestRelease_PriorTag_GateAccept_ProceedsToRecord(t *testing.T) {
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; second accepts the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions())
@@ -379,13 +381,14 @@ func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceNo},
+		// First ChoiceYes accepts the version gate; ChoiceNo declines the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo},
 	}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions())
 
 	assertAbortNonZero(t, err)
-	// Nothing was made before the gate, so the surgical unwind no-ops — no Unwound.
+	// Nothing was made before the notes gate, so the surgical unwind no-ops — no Unwound.
 	if recorded(rec, presentertest.KindUnwound) {
 		t.Errorf("prior-tag gate-no before any mutation emitted an Unwound; nothing was made to undo")
 	}
@@ -403,8 +406,9 @@ func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 
 // TestRelease_PriorTag_UnderYes_PromptFiresOnceAndProceeds proves the engine ALWAYS
 // calls Prompt on the prior-tag path — even under -y (modelled by an empty
-// NextChoices, so Prompt returns the gate Default). Prompt fires exactly once and
-// the run proceeds to a successful RunFinished on the returned default.
+// NextChoices, so Prompt returns the gate Default). Prompt fires for both gates (the
+// version-confirmation gate and the notes review gate) and the run proceeds to a
+// successful RunFinished on the returned defaults.
 func TestRelease_PriorTag_UnderYes_PromptFiresOnceAndProceeds(t *testing.T) {
 	t.Parallel()
 
@@ -423,8 +427,8 @@ func TestRelease_PriorTag_UnderYes_PromptFiresOnceAndProceeds(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if got := countKind(rec, presentertest.KindPrompt); got != 1 {
-		t.Errorf("Prompt count = %d, want exactly 1 under -y", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
+		t.Errorf("Prompt count = %d, want exactly 2 under -y (version + notes gates)", got)
 	}
 	// The run proceeds on the default with the AI body reaching the sinks.
 	if got := tagAnnotationBody(t, f, nextTag); got != aiBody {
@@ -470,7 +474,8 @@ func TestRelease_PriorTag_RegenViaRealGenerator_EndToEnd(t *testing.T) {
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{
-		NextChoices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+		// First ChoiceYes accepts the version gate; the rest drive the notes gate.
+		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen, presenter.ChoiceYes},
 		NextLines:   []string{"lead with auth"},
 	}
 
@@ -669,9 +674,11 @@ func TestRelease_PriorTag_NotesFailureAbort_AbortsBeforeMutation(t *testing.T) {
 	if !recorded(rec, presentertest.KindStageFailed) {
 		t.Errorf("notes failure did not surface a StageFailed event")
 	}
-	// The gate was never reached and nothing mutated.
-	if recorded(rec, presentertest.KindPrompt) {
-		t.Errorf("review gate prompted despite a notes-failure abort")
+	// The notes review gate was never reached and nothing mutated. (The
+	// version-confirmation gate fires first, ahead of preflight/notes, and is accepted
+	// by default — but the notes failure stops the run before the notes review gate.)
+	if notesGatePrompted(rec) {
+		t.Errorf("notes review gate prompted despite a notes-failure abort")
 	}
 	assertNoMutation(t, f)
 }

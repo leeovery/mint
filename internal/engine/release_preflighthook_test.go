@@ -132,9 +132,11 @@ func TestRelease_PreflightHook_NonZeroAbortsBeforeMutation(t *testing.T) {
 		t.Errorf("non-zero preflight hook emitted an Unwound; it precedes all mutation")
 	}
 	assertNoMutation(t, f)
-	// The review gate never ran (the abort is before the gate).
-	if recorded(rec, presentertest.KindPrompt) {
-		t.Errorf("review gate prompted despite a failing preflight hook")
+	// The notes review gate never ran (the abort is before notes). The Stage 1
+	// version-confirmation gate still prompts ahead of preflight, so this asserts
+	// the NOTES gate specifically, not the absence of all prompts.
+	if notesGatePrompted(rec) {
+		t.Errorf("notes review gate prompted despite a failing preflight hook")
 	}
 }
 

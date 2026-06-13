@@ -309,9 +309,11 @@ func TestRelease_PreTagHook_NonZeroAbortsBeforeTag(t *testing.T) {
 	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
 		t.Errorf("a reset ran though the failing hook moved no HEAD; nothing should be reset")
 	}
-	// Notes never reached the gate — the abort is before notes generation.
-	if recorded(rec, presentertest.KindPrompt) {
-		t.Errorf("review gate prompted despite a failing pre_tag hook (it runs before notes)")
+	// Notes never reached the gate — the abort is before notes generation. The
+	// Stage 1 version-confirmation gate still prompts ahead of the pre_tag hook, so
+	// this asserts the NOTES gate specifically, not the absence of all prompts.
+	if notesGatePrompted(rec) {
+		t.Errorf("notes review gate prompted despite a failing pre_tag hook (it runs before notes)")
 	}
 }
 
