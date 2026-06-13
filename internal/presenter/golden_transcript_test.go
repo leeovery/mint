@@ -189,7 +189,7 @@ func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
 		"│ 🐛 Fixes\n" +
 		"│ - Stop double-flush on SIGTERM\n" +
 		"\n" +
-		"Use these notes?  y accept · n abort · e edit · r regenerate › " +
+		"Use these notes?\n› [y] accept  [n] abort  [e] edit  [r] regenerate" +
 		"✓ record     CHANGELOG.md + bin/acme\n" +
 		"✓ tag/push   v1.4.0 pushed (atomic)\n" +
 		"✓ publish    github release created\n" +

@@ -25,12 +25,12 @@ func drivePrettyPromptProfile(input string, gate presenter.Gate, profile termenv
 	return out
 }
 
-// notesBar is the Ascii render of the NotesReviewGate hotkey bar: the Question
-// verbatim, then every declared key/action pair in order joined by middot
-// separators, and the "› " cursor — ONE flush-left line (preceded by a blank
-// separator line). The bar is QUESTION-led: the gate's Subject is NOT rendered
-// (it only feeds the -y echo).
-const notesBar = "\nUse these notes?  y accept · n abort · e edit · r regenerate › "
+// notesBar is the Ascii render of the NotesReviewGate hotkey bar: a leading blank
+// line, then the Question verbatim on its own line, then a second line of the "› "
+// cursor followed by every declared "[key] action" pair in order joined by TWO
+// spaces. NO trailing newline. The bar is QUESTION-led: the gate's Subject is NOT
+// rendered (it only feeds the -y echo).
+const notesBar = "\nUse these notes?\n› [y] accept  [n] abort  [e] edit  [r] regenerate"
 
 // gateNoSubject is a two-choice gate WITHOUT a Subject, used to prove the bar
 // renders the Question verbatim — the Subject plays no part in the bar.
@@ -70,7 +70,7 @@ func TestPrettyGateBarRendersQuestionVerbatim(t *testing.T) {
 	out := drivePrettyPromptProfile("n\n", gateNoSubject(), termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "\nContinue?  y accept · n abort › ") {
+	if !strings.Contains(got, "\nContinue?\n› [y] accept  [n] abort") {
 		t.Errorf("Subject-less gate must lead the bar with the Question verbatim:\n%q", got)
 	}
 }
@@ -81,10 +81,10 @@ func TestPrettyGateTwoChoiceRendersOnlyDeclared(t *testing.T) {
 	out := drivePrettyPromptProfile("y\n", presenter.ReuseConfirmGate(), termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "\nUse these notes?  y accept · n abort › ") {
+	if !strings.Contains(got, "\nUse these notes?\n› [y] accept  [n] abort") {
 		t.Errorf("reuse confirm bar missing:\n%q", got)
 	}
-	if strings.Contains(got, " e ") || strings.Contains(got, " r ") {
+	if strings.Contains(got, "[e]") || strings.Contains(got, "[r]") {
 		t.Errorf("reuse confirm must NOT render e/r pairs (not declared):\n%q", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestPrettyGateBarBuiltFromDeclaredChoices(t *testing.T) {
 	out := drivePrettyPromptProfile("y\n", gate, termenv.Ascii)
 	got := out.String()
 
-	if !strings.Contains(got, "\nProceed?  n stop here · y go go go › ") {
+	if !strings.Contains(got, "\nProceed?\n› [n] stop here  [y] go go go") {
 		t.Errorf("custom gate bar not rendered from declared choices in declared order:\n%q", got)
 	}
 }

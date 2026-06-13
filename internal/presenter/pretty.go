@@ -442,6 +442,17 @@ func (p *PrettyPresenter) ResumeSpinner() {
 func (p *PrettyPresenter) StageSucceeded(s StageSuccess) {
 	p.stopSpinner()
 	glyph := p.success.Render("✓")
+	// Sentence form (preferred): a full past-tense narration line, with ({elapsed})
+	// appended for a blocking stage. No name column — the sentence carries the
+	// meaning. An empty Sentence falls back to the legacy "{name}  {detail}" column.
+	if s.Sentence != "" {
+		line := s.Sentence
+		if s.Blocking {
+			line += fmt.Sprintf(" (%s)", formatElapsed(s.Elapsed))
+		}
+		p.writef("%s%s %s\n", stageIndent, glyph, line)
+		return
+	}
 	trailing := stageTrailing(s)
 	if trailing == "" {
 		p.writef("%s%s %s\n", stageIndent, glyph, s.Name)
@@ -813,13 +824,18 @@ func (p *PrettyPresenter) readKeyChoice(f *os.File, g Gate) (Choice, error) {
 // echoed nothing), closing the bar line — so the scrollback reads
 // "… e edit  r regenerate › accept".
 func (p *PrettyPresenter) echoKeyChoice(g Gate, c Choice) {
+	// Raw mode echoes nothing, so record the chosen action at the END of the choices
+	// line behind a dim arrow ("… [r] regenerate  → accept"). The bracketed-key bar
+	// leads with the cursor and ends with the last action, so the arrow+action is
+	// the natural place to show what was pressed; the newline closes the gate block.
+	action := string(c)
 	for _, choice := range g.Choices {
 		if choice.Key == c {
-			p.writef("%s\n", choice.Action)
-			return
+			action = choice.Action
+			break
 		}
 	}
-	p.writef("%s\n", string(c))
+	p.writef("%s%s\n", p.dim.Render("  → "), action)
 }
 
 // AskLine renders the free-text prompt in the gate question's vocabulary —
@@ -889,23 +905,29 @@ func (p *PrettyPresenter) failNotInteractive(label string) {
 // newline — the cursor sits after "› " for the key read (or line read).
 func (p *PrettyPresenter) renderGate(g Gate) {
 	var b strings.Builder
+	// Line 1: the question, bold, on its own — the single line that carries the most
+	// weight. A blank line precedes it so the gate reads as its own block.
+	b.WriteString("\n")
 	b.WriteString(p.strong.Render(g.Question))
-	b.WriteString("  ")
+	b.WriteString("\n")
+	// Line 2: the cursor leads, then every declared choice as "[key] action" — the
+	// bracketed key in accent (the thing you press), the default's action bold and
+	// every other action dim, separated by two spaces. No trailing newline: the
+	// cursor sits at the end for the keypress (or line) read.
+	b.WriteString(p.dim.Render(promptMarker))
 	for i, choice := range g.Choices {
 		if i > 0 {
-			b.WriteString(p.dim.Render(" · "))
+			b.WriteString("  ")
 		}
-		b.WriteString(p.accent.Render(string(choice.Key)))
+		b.WriteString(p.accent.Render("[" + string(choice.Key) + "]"))
 		b.WriteString(" ")
 		if choice.Key == g.Default {
-			b.WriteString(choice.Action)
+			b.WriteString(p.strong.Render(choice.Action))
 		} else {
 			b.WriteString(p.dim.Render(choice.Action))
 		}
 	}
-	b.WriteString(" ")
-	b.WriteString(p.dim.Render(promptMarker))
-	p.writef("\n%s", b.String())
+	p.writef("%s", b.String())
 }
 
 // initSkipGlyph is the NEUTRAL middot (U+00B7) the pretty init skipped notice

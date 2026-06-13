@@ -274,7 +274,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// carrying the engine-measured Elapsed once the body resolves; a per-version skip
 	// (production failure) closes the stage with no StageSucceeded — the skip Warn
 	// narrates it instead.
-	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…")
+	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
 	body, err := req.ProduceBody(ctx, req.Source, res, reuseBody)
 	if err != nil {
 		return reportSkip(p, res.Tag, classifyNotesFailure(err))

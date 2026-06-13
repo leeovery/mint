@@ -335,7 +335,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 
 	// Stage 1 narration: the version gate is read-only (no spinner), so it emits a
 	// completion line only — no StageStarted.
-	emitGateSucceeded(p, "version", tag+" ("+string(hookBump(bumpKind))+" bump)")
+	emitGateSucceeded(p, "version", tag+" ("+string(hookBump(bumpKind))+" bump)", versionSentence(tag, bumpKind))
 
 	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
 	// gate so a dirty tree passes (opt-in; without the flag a dirty tree still aborts at
@@ -379,7 +379,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 2 narration: the preflight gates are read-only (no spinner), so emit a
 	// completion line only — no StageStarted. Fired once both the built-in gates and
 	// the project preflight hook have passed (Stage 2 complete).
-	emitGateSucceeded(p, "preflight", preflightDetail(releaseBranch, tag, opts.AnyBranch))
+	emitGateSucceeded(p, "preflight", preflightDetail(releaseBranch, tag, opts.AnyBranch), "Preflight passed: "+preflightDetail(releaseBranch, tag, opts.AnyBranch))
 
 	// Capture the clean starting state NOW: preflight has just confirmed the tree is
 	// clean and HEAD is resolvable, and nothing has mutated yet, so this HEAD is the
@@ -434,7 +434,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 4 is BLOCKING: generating notes can call the AI (~60s). Narrate it with a
 	// blocking StageStarted (spinner) and a StageSucceeded carrying the engine-measured
 	// Elapsed once the body resolves.
-	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…")
+	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
 	body, kind, generator, cacheInputs, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
@@ -533,7 +533,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 5 narration: the ✓ line names WHAT was just recorded (the artifacts the
 	// bookkeeping commit carried) rather than a bare stage codeword, so the user can
 	// follow the run without knowing mint's stage taxonomy.
-	emitGateSucceeded(p, "record", recordDetail(writeResult.Changed, versionChanged, bookkeepingCommitted))
+	emitGateSucceeded(p, "record", recordDetail(writeResult.Changed, versionChanged, bookkeepingCommitted), recordSentence(writeResult.Changed, versionChanged, bookkeepingCommitted))
 
 	// Stage 6/7 — resolve the publishing driver, then run its conditional gh gate,
 	// only when publishing and BEFORE the tag.
@@ -625,7 +625,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// engine-measured Elapsed once the push crosses the PONR. On failure the
 	// StageFailed surfaced by surfaceAndUnwind narrates the stage instead, so no
 	// StageSucceeded fires.
-	pushDone := emitBlockingStageStarted(p, "push", "pushing branch and tag to origin…")
+	pushDone := emitBlockingStageStarted(p, "push", "pushing branch and tag to origin…", "Pushed branch + "+tag+" atomically")
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
 		// Pre-PONR failure: route through the surgical unwind. A push REJECTION means the
 		// local tag WAS created (TagAndPush wraps it in release.ErrPushRejected), so the
@@ -656,7 +656,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		} else {
 			releaseURL = url
 			// Post-PONR success narration: the release exists on the provider now.
-			emitGateSucceeded(p, "publish", "release published")
+			emitGateSucceeded(p, "publish", "release published", "Published the release")
 		}
 	}
 
@@ -1099,7 +1099,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// carrying the engine-measured Elapsed once both the hook and its artifact commit
 	// land. The events fire ONLY here — when a hook is configured and actually runs —
 	// so a hookless run (returned above) narrates no pre_tag stage.
-	done := emitBlockingStageStarted(deps.Presenter, "pre_tag", "running pre_tag hook…")
+	done := emitBlockingStageStarted(deps.Presenter, "pre_tag", "running pre_tag hook…", "Ran the pre_tag hook")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, err
@@ -1178,6 +1178,32 @@ func recordDetail(changelogChanged, versionChanged, committed bool) string {
 		parts = append(parts, "version file")
 	}
 	return strings.Join(parts, " + ") + " committed"
+}
+
+// versionSentence is the pretty past-tense narration for the version gate: a
+// --set-version run reads "Set version to {tag}", a bump-flag run "Bumped {bump}
+// version to {tag}".
+func versionSentence(tag string, bumpKind version.Bump) string {
+	if bumpKind == version.BumpExplicit {
+		return "Set version to " + tag
+	}
+	return "Bumped " + string(hookBump(bumpKind)) + " version to " + tag
+}
+
+// recordSentence is the pretty past-tense narration for the record gate: it names
+// what the bookkeeping commit carried, or says plainly nothing needed recording.
+func recordSentence(changelogChanged, versionChanged, committed bool) string {
+	if !committed {
+		return "Nothing to record"
+	}
+	var parts []string
+	if changelogChanged {
+		parts = append(parts, "CHANGELOG.md")
+	}
+	if versionChanged {
+		parts = append(parts, "version file")
+	}
+	return "Committed " + strings.Join(parts, " + ")
 }
 
 // hookBump maps the engine's version.Bump onto the hooks package's Bump so the
@@ -1408,7 +1434,7 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// StageSucceeded fires once the edit completes (or returns to the gate) to stop
 			// it, while a genuine edit failure surfaces a StageFailed (which stops it) and
 			// emits no StageSucceeded.
-			editDone := emitBlockingStageStarted(p, "edit", "applying edited notes…")
+			editDone := emitBlockingStageStarted(p, "edit", "applying edited notes…", "Applied edited notes")
 			edited, eerr := editBody(ctx, editor, body)
 			switch {
 			case errors.Is(eerr, ErrEditorReturnToGate):

@@ -463,6 +463,15 @@ type StageSuccess struct {
 	// Blocking mirrors StageStart.Blocking for the same stage and gates whether a
 	// renderer shows ({elapsed}).
 	Blocking bool
+	// Sentence is the OPTIONAL human-readable completion line the PRETTY presenter
+	// renders in place of the "{name}  {detail}" column form — a full past-tense
+	// sentence ("Generated release notes", "Pushed branch + v1.4.0 atomically"). It
+	// reads as narration rather than a stage codeword. Pretty appends ({elapsed})
+	// to it for a blocking stage exactly as it would the column form. PLAIN ignores
+	// it entirely and keeps the terse "{name}: {detail}" line (its pipe/log
+	// contract); an empty Sentence makes pretty fall back to the column form too, so
+	// the field is purely additive.
+	Sentence string
 }
 
 // StageFailure carries the StageFailed payload. Output is the underlying

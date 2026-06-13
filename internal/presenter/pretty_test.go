@@ -600,13 +600,13 @@ func TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate(t *testing
 	_, _ = p.Prompt(presenter.ReuseConfirmGate())
 
 	got := out.String()
-	if !strings.Contains(got, "\nUse these notes?  y accept · n abort › ") {
+	if !strings.Contains(got, "\nUse these notes?\n› [y] accept  [n] abort") {
 		t.Errorf("reuse confirm bar missing:\n%q", got)
 	}
-	if strings.Contains(got, " e edit") {
+	if strings.Contains(got, "[e] edit") {
 		t.Errorf("reuse confirm must NOT render an e pair:\n%q", got)
 	}
-	if strings.Contains(got, " r regenerate") {
+	if strings.Contains(got, "[r] regenerate") {
 		t.Errorf("reuse confirm must NOT render an r pair:\n%q", got)
 	}
 }
@@ -1378,5 +1378,29 @@ func TestPrettyPresenterBlockingStageStartedStartsSpinnerNoStaticLine(t *testing
 	// either, since the spy does not animate).
 	if got := out.String(); got != "" {
 		t.Errorf("blocking StageStarted must print no static start line of its own, got %q", got)
+	}
+}
+
+// TestPrettyStageSucceededSentenceForm proves the Sentence field renders as a
+// flush-left "✓ {sentence}" narration line in place of the "{name}  {detail}"
+// column form, with ({elapsed}) appended only for a blocking stage. An empty
+// Sentence falls back to the column form (covered elsewhere).
+func TestPrettyStageSucceededSentenceForm(t *testing.T) {
+	t.Parallel()
+
+	// Non-blocking: no elapsed suffix.
+	gate := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageSucceeded(presenter.StageSuccess{Name: "version", Detail: "v1.4.0 (patch bump)", Sentence: "Bumped patch version to v1.4.0"})
+	})
+	if got, want := gate.String(), "✓ Bumped patch version to v1.4.0\n"; got != want {
+		t.Errorf("non-blocking sentence = %q, want %q (no name column, no elapsed)", got, want)
+	}
+
+	// Blocking: ({elapsed}) appended after the sentence.
+	blk := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Sentence: "Generated release notes", Elapsed: 8200 * time.Millisecond, Blocking: true})
+	})
+	if got, want := blk.String(), "✓ Generated release notes (8.2s)\n"; got != want {
+		t.Errorf("blocking sentence = %q, want %q (sentence + elapsed)", got, want)
 	}
 }

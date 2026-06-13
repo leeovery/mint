@@ -315,7 +315,7 @@ func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject 
 // reset always applies. Keeping the push form, PONR narration, and reset wiring here
 // means the two regenerate paths can no longer drift on push form or recovery.
 func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, startingHEAD string) error {
-	pushDone := emitBlockingStageStarted(deps.Presenter, "push", "pushing to origin…")
+	pushDone := emitBlockingStageStarted(deps.Presenter, "push", "pushing to origin…", "Pushed to origin")
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
 		return resetAndAbort(ctx, deps, startingHEAD, true, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
 	}
