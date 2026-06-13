@@ -115,6 +115,30 @@ Required shape:
 
 **De-duplication target.** `defaultAICommand = "claude -p"` is currently duplicated across `internal/config/config.go`, `internal/ai/transport.go`, and `internal/initgen/initgen.go` (plus test pins and both specs). After this work the value lives canonically in `internal/config` and the other sites derive from it. Other `default*` consts (`defaultEditor`, git retry/backoff, the presenter leaf glyph) are operational internals, not config keys — correctly local, left alone.
 
+### Init template scaffolding
+
+`internal/initgen`'s commented template must surface the new keys (project convention: new config keys appear in the template and are user-facing-documented).
+
+- **Top-level (uncommented, matching other defaulted shared keys):**
+  - bump the scaffolded `ai_command` to `claude -p --model sonnet` — the pinned default *value*, **sourced from the config constant, not re-typed**;
+  - add the new shared `timeout` key at its 60s default.
+- **Per-verb overrides shown commented** under both `[release]` and `[commit]` — `# ai_command = …` and `# timeout = …` — so the override pattern is discoverable (optional → commented, per the template's own convention).
+- **Config comments stay model-agnostic.** Comments describe what a key does and never name a specific model (no sonnet/opus/haiku, no "use a stronger model" steer). The `timeout` hint is framed around *command latency*, not a model — e.g. "raise if your `ai_command` runs slowly." The pinned default *value* still carries `--model sonnet` (that is the decided default value, not a comment). No concrete, model-tied timeout number appears in the scaffold; the mitigation hint is generic and model-free.
+
+Exact comment wording is a planning/impl detail.
+
+### README documentation
+
+The README documents:
+
+- the new keys (`ai_command` at both levels, `timeout` at both levels),
+- the `verb → shared → default` resolution order,
+- the new shipped default value (`claude -p --model sonnet`) — stated as a fact, not a recommendation,
+- the `timeout = 0` ⇒ "no time limit" semantics, including the unbounded-call trade-off,
+- the supported (unenforced) pattern of overriding command and timeout together for a slow verb.
+
+No breaking-change callout is needed — mint has no users yet.
+
 ---
 
 ## Working Notes
