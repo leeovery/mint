@@ -47,7 +47,6 @@ import (
 	"time"
 
 	"mint/internal/git"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/record"
@@ -204,7 +203,7 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 	// The `r` choice consults the per-run regenerator (req.Regenerator), bound to this
 	// version's fresh AI range — a wired deps.Regenerator OVERRIDES it (the test seam),
 	// mirroring the forward path's perRunRegenerator precedence.
-	return reviewGate(ctx, p, deps.Editor, regenerateRegenerator(deps, req.Regenerator), notes.KindNormalAI, req.Body, req.VersionKey)
+	return reviewGate(ctx, p, deps.Editor, regenerateRegenerator(deps, req.Regenerator), presenter.NotesReviewGate(), req.Body, req.VersionKey)
 }
 
 // regenerateRegenerator selects the Regenerator the fresh regenerate gate's `r` choice

@@ -332,18 +332,26 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		Version: versionKey,
 		Action:  releaseAction,
 		Leaf:    cfg.Release.CommitPrefix,
+		DryRun:  opts.DryRun,
 	})
 
-	// Stage 1 — confirm the version before any work. A dry run walks the SAME flow as a
-	// real run (it is a faithful preview), so it asks here too; the gate runs before
-	// preflight and any mutation, so a "no" aborts cleanly with nothing to unwind. -y
-	// auto-accepts (inside the presenter).
-	choice, derr := ReviewDecision(p, versionConfirmGate(current, next, cfg.Release.TagPrefix, bumpKind))
-	if derr != nil {
-		return derr
-	}
-	if choice == presenter.ChoiceNo {
-		return abort(errReleaseDeclined)
+	// Stage 1 — confirm the version before any work. A dry run takes no action, so it
+	// asks for NOTHING: it skips this gate (and the notes-review gate below), previews,
+	// and prints a "no changes made" summary. It still STATES the version it would cut,
+	// as a read-only stage line, so the preview is faithful. A real run confirms here;
+	// the gate runs before preflight and any mutation, so a "no" aborts cleanly with
+	// nothing to unwind. -y auto-accepts (inside the presenter).
+	if opts.DryRun {
+		detail, sentence := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
+		emitGateSucceeded(p, "version", detail, sentence)
+	} else {
+		choice, derr := ReviewDecision(p, versionConfirmGate(current, next, cfg.Release.TagPrefix, bumpKind))
+		if derr != nil {
+			return derr
+		}
+		if choice == presenter.ChoiceNo {
+			return abort(errReleaseDeclined)
+		}
 	}
 
 	// Stage 2 — --autostash escape hatch: stash the working tree BEFORE the clean-tree
@@ -450,39 +458,40 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 	notesDone("generated")
 
-	// Show the plan, then the notes — identical in a dry run and a real run; a dry run is
-	// a faithful preview that diverges only at the writes (after the review gate below).
+	// Show the plan, then the notes — identical in a dry run and a real run up to here;
+	// the two diverge at the DRY-RUN BOUNDARY immediately below.
 	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
 
-	// The review gate may EDIT (the `e` choice) or REGENERATE (the `r` choice, only
-	// offered for KindNormalAI) the body; capture the returned final body and thread
-	// IT to every downstream sink. The gate stays positioned BEFORE any mutation
-	// (before Record). The resolved Kind selects the gate variant (y/n/e vs y/n/e/r);
-	// the per-run regenerator binds this run's lastTag + cfg to the generator so an `r`
-	// re-runs the SAME AI path SelectBody took.
+	// DRY-RUN BOUNDARY: a dry run takes no action, so it asks for nothing — it stops
+	// HERE, before the review gate, having shown the full preview (version, plan, notes),
+	// and prints the "no changes made" close-out instead of prompting, recording,
+	// tagging, pushing, or publishing. The working tree is byte-for-byte unchanged
+	// (hooks were skipped-and-reported above; the notes were generated read-only).
+	if opts.DryRun {
+		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
+	}
+
+	// The review gate is the FINAL gate of a real release: accepting it proceeds straight
+	// through Record → tag → push → publish (there is no further confirmation), which is
+	// why ReleaseReviewGate's wording says "release", not "accept". It may first EDIT (the
+	// `e` choice) or REGENERATE (`r`, normal-AI only) the body; capture the returned final
+	// body and thread IT to every downstream sink. The gate stays positioned BEFORE any
+	// mutation (before Record). gateForKind selects the variant (y/n/e vs y/n/e/r); the
+	// per-run regenerator binds this run's lastTag + cfg to the generator so an `r` re-runs
+	// the SAME AI path SelectBody took.
 	regenerator := perRunRegenerator(deps, generator, current.String(cfg.Release.TagPrefix), cfg)
-	body, err = reviewGate(ctx, p, deps.Editor, regenerator, kind, body, versionKey)
+	body, err = reviewGate(ctx, p, deps.Editor, regenerator, gateForKind(kind), body, versionKey)
 	if err != nil {
-		// A gate-no is a clean USER abort. In a REAL run, route it through the SAME
-		// surgical unwind a pre-push failure takes (reset any pre_tag artifact commit
-		// tracked in made; narrate an identical Unwound). In a DRY run nothing was mutated
-		// (hooks were skipped, no record/tag), so there is nothing to unwind — it is a
-		// plain abort. Every OTHER reviewGate error already surfaced its own StageFailed
-		// and is returned as-is.
-		if errors.Is(err, errGateAborted) && !opts.DryRun {
+		// A gate-no is a clean USER abort: route it through the SAME surgical unwind a
+		// pre-push failure takes (reset any pre_tag artifact commit tracked in made;
+		// narrate an identical Unwound). Every OTHER reviewGate error already surfaced its
+		// own StageFailed and is returned as-is. (A dry run never reaches this gate — it
+		// returned at the boundary above — so there is no DryRun branch here.)
+		if errors.Is(err, errGateAborted) {
 			return Unwind(ctx, deps, start, made, errGateAborted)
 		}
 		return err
-	}
-
-	// DRY-RUN BOUNDARY: a dry run has now walked the full interactive flow — version gate,
-	// notes generation, and the review gate (with its edit/regenerate) — EXACTLY as a real
-	// run would. From here the spine only MUTATES, so a dry run stops here and prints the
-	// "no changes made" close-out instead of recording, tagging, pushing, or publishing.
-	// The working tree is byte-for-byte unchanged (hooks were skipped-and-reported above).
-	if opts.DryRun {
-		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
 	}
 
 	// Stage 5 — record: project the version file, write the changelog, then fold BOTH
@@ -714,6 +723,24 @@ func versionConfirmGate(current, next version.SemVer, prefix string, bumpKind ve
 	}
 }
 
+// versionPreview builds the dry-run "version" stage line's (detail, sentence): the
+// read-only counterpart to versionConfirmGate, stating the version a real run would
+// cut without asking for consent (a dry run prompts for nothing). detail is the terse
+// plain value ("v1.4.0 (minor bump)"); sentence is the pretty narration
+// ("Would release v1.4.0 (minor bump from v1.2.0)"). A first release (current 0.0.0)
+// reads "(first release)" with no from-version, mirroring the gate's first-release
+// wording.
+func versionPreview(current, next version.SemVer, prefix string, bumpKind version.Bump) (detail, sentence string) {
+	nextDisplay := next.String(prefix)
+	if current.String("") == "0.0.0" {
+		return fmt.Sprintf("%s (first release)", nextDisplay),
+			fmt.Sprintf("Would release %s (first release)", nextDisplay)
+	}
+	bump := hookBump(bumpKind)
+	return fmt.Sprintf("%s (%s bump)", nextDisplay, bump),
+		fmt.Sprintf("Would release %s (%s bump from %s)", nextDisplay, bump, current.String(prefix))
+}
+
 // resolveNextVersion picks this run's next version and its bump KIND from one of two
 // mutually-exclusive paths:
 //
@@ -793,22 +820,20 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	}
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
-	// ONCE here). It consults the reuse hook BEFORE the AI — a live cache match offers
-	// the use/regenerate prompt and, on "use", skips the AI. A dry run and a real run
-	// behave identically here; only the final mutation differs.
-	// The reuse hook is identical for a dry run and a real run: both consult the cache
-	// and, on a match, offer the use/regenerate prompt. reused records whether the body
-	// came from the cache so the write below skips a no-op re-write.
+	// ONCE here). It consults the reuse hook BEFORE the AI — a live cache match skips the
+	// AI and reuses the cached body. The hook differs by mode: a real run PROMPTS
+	// (use/regenerate) on a match, a dry run reuses SILENTLY (a dry run asks for nothing).
+	// reused records whether the body came from the cache so the write below skips a
+	// no-op re-write.
 	reused := false
-	body, kind, cacheInputs, err := selector.SelectBodyWithReuse(ctx, state, cfg, cacheReuse(deps, root, versionKey, &reused))
+	body, kind, cacheInputs, err := selector.SelectBodyWithReuse(ctx, state, cfg, cacheReuse(deps, root, versionKey, opts.DryRun, &reused))
 	if err != nil {
 		return "", kind, nil, err
 	}
 	// Cache a freshly-generated, cacheable (normal-AI) body so a LATER run for the SAME
-	// diff can offer to reuse it. This runs identically on a dry run and a real run —
-	// a dry run is a faithful preview, not a separate path. A reused body is already
-	// cached, so it is not re-written; a write failure is warn-only (the cache is an
-	// optimization, never load-bearing).
+	// diff can reuse it (a dry run caches its preview so a following real run reuses it).
+	// A reused body is already cached, so it is not re-written; a write failure is
+	// warn-only (the cache is an optimization, never load-bearing).
 	if cacheInputs.Cacheable && deps.NoteCache != nil {
 		key := notescache.Key(cacheInputs.Diff, versionKey, cacheInputs.Instructions)
 		if !reused {
@@ -823,25 +848,26 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	return body, kind, generator, nil
 }
 
-// realRunReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path
-// to reuse a dry-run preview, or nil when reuse does not apply: a --dry-run (the WRITE
-// path always generates the preview) or no wired cache. The hook recomputes the SAME
-// cache key the dry run wrote under (the post-diff_exclude diff + the bare version +
-// the resolved prompt/context) and Looks it up:
+// cacheReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path to
+// reuse a previously cached note (typically one a prior dry run wrote), or nil when no
+// cache is wired. The hook recomputes the SAME cache key the entry was written under
+// (the post-diff_exclude diff + the bare version + the resolved prompt/context) and
+// Looks it up:
 //
-//   - a live (within-TTL) match → report the quiet reuse notice and return the cached
-//     body (reused=true), so the selector SKIPS the AI;
-//   - a clean MISS or an expired entry (Lookup found=false, nil error) → report the spec
-//     miss notice ("diff changed since dry-run preview — regenerating notes") and return
-//     reused=false, so the selector regenerates via the AI. A stale note is NEVER shipped.
-//   - a Lookup READ/DECODE error (a corrupt or partial entry, a permissions glitch) →
-//     DEGRADE to regeneration: warn with a DISTINCT message (a corrupt read is a
-//     different situation from a clean miss) and return reused=false. The cache is purely
-//     an optimization, so a read failure must NEVER abort the release — this mirrors the
-//     warn-only WRITE side (writeDryRunNoteCache). The error stays OBSERVABLE via the
-//     warn (Lookup surfaces it honestly; the degrade decision lives here), and a corrupt
-//     body is never shipped because the AI regenerates fresh.
-func cacheReuse(deps ReleaseDeps, root, versionKey string, reused *bool) notes.ReuseFunc {
+//   - a clean MISS, an expired entry, or a READ/DECODE error (Lookup found=false, or a
+//     non-nil err from a corrupt/partial entry or a permissions glitch) → return
+//     reused=false so the selector regenerates fresh via the AI. There is nothing to
+//     reuse, so this is SILENT — the "generating release notes…" spinner is the only
+//     narration needed (a changed diff is self-evident: the code changed). A stale or
+//     corrupt body is never shipped (the AI regenerates; the fresh write overwrites a
+//     corrupt entry). The cache is purely an optimization, so a read failure must NEVER
+//     abort the release.
+//   - a live (within-TTL) match → reuse the cached body (reused=true), so the selector
+//     SKIPS the AI. The two modes differ ONLY here: a real run PROMPTS first
+//     (use/regenerate — the spinner is suspended around reuseConfirmGate, so "regenerate"
+//     re-runs the AI under a live spinner; under -y the gate auto-accepts "use"), while a
+//     dry run reuses SILENTLY (a dry run asks for nothing — it is a no-action preview).
+func cacheReuse(deps ReleaseDeps, root, versionKey string, dryRun bool, reused *bool) notes.ReuseFunc {
 	// Guard: a nil NoteCache (no cache wired) yields a nil hook — always generate.
 	if deps.NoteCache == nil {
 		return nil
@@ -850,17 +876,17 @@ func cacheReuse(deps ReleaseDeps, root, versionKey string, reused *bool) notes.R
 		key := notescache.Key(diff, versionKey, instructions)
 		entry, found, err := deps.NoteCache.Lookup(root, key)
 		if err != nil || !found {
-			// No usable cached note for THIS diff — missing, invalidated because the diff
-			// changed, expired, or unreadable. There is nothing to reuse, so generate fresh
-			// SILENTLY: the "generating release notes…" spinner is the only narration
-			// needed (a changed diff is self-evident — the code changed). A corrupt entry
-			// is simply overwritten by the fresh write afterwards.
 			return "", false, nil
 		}
-		// A live preview matches this exact diff. Rather than silently reuse it, ask:
-		// the spinner is suspended for the prompt and resumed after (so a "regenerate"
-		// runs the AI under a live spinner; a "use" closes out moments later). Under -y
-		// the gate auto-accepts the default — use the cached preview.
+		// A live entry matches this exact diff. A dry run reuses it without asking — a
+		// preview prompts for nothing.
+		if dryRun {
+			*reused = true
+			return entry.Body, true, nil
+		}
+		// A real run asks use/regenerate: the spinner is suspended for the prompt and
+		// resumed after (so "regenerate" runs the AI under a live spinner; "use" closes
+		// out moments later). Under -y the gate auto-accepts the default — use the cache.
 		pr := deps.Presenter
 		pr.SuspendSpinner()
 		choice, derr := ReviewDecision(pr, reuseConfirmGate())
@@ -1263,21 +1289,14 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 	return presenter.Plan{Steps: steps}
 }
 
-// finishDryRun completes a --dry-run after the read-only stages: it resolves the
-// publish TARGET read-only (for the plan only — no gh command is issued and no
-// release is created), WRITES the generated AI note to the dry-run cache (the SOLE
-// filesystem side effect of a dry run), reports the post_release hook skip (the only
-// hook point the real spine reaches AFTER this boundary), and returns nil WITHOUT any
-// mutation. The plan and notes were already shown before the review gate, exactly as a
-// real run shows them. No
-// commit, tag, push, or provider release is reached, so the working tree (apart from
-// the gitignored/temp cache) is byte-for-byte unchanged. The preflight and pre_tag
-// hook skips (3-11) already fired above this point.
-//
-// body is the generated note preview; cacheInputs carries the post-diff_exclude
-// diff + resolved prompt/context the cache key hashes (alongside versionKey). The
-// cache write happens ONLY when cacheInputs.Cacheable (the normal-AI path produced a
-// stochastic body worth caching) — the non-AI paths have nothing to reuse.
+// finishDryRun completes a --dry-run at the dry-run boundary: the version line, plan,
+// and notes have all been shown read-only above, and the notes were already
+// generated-and-cached in resolveBody (so a following real run can reuse the preview).
+// It reports the post_release hook skip (the only hook point the real spine reaches
+// AFTER this boundary) and prints the "no changes made" close-out, returning nil
+// WITHOUT any mutation. No commit, tag, push, or provider release is reached, so the
+// working tree is byte-for-byte unchanged (apart from the user-level note cache). The
+// preflight and pre_tag hook skips already fired above this point.
 func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump) error {
 	p := deps.Presenter
 
@@ -1319,10 +1338,11 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 // returns the (possibly edited or regenerated) FINAL body the caller threads to
 // every sink. Rendering stays in the presenter; this owns only the semantics.
 //
-// The gate VARIANT is selected by kind (gateForKind): notes.KindNormalAI gets the
-// four-choice y/n/e/r gate (an AI produced the body, so regenerating is
-// meaningful), while every other Kind gets the y/n/e gate with no `r`. The SAME
-// selected gate is used on every loop iteration.
+// The gate is supplied by the caller: release passes gateForKind(kind)
+// (ReleaseReviewGate's y/n/e/r for normal-AI, FirstReleaseReviewGate's y/n/e
+// otherwise), regenerate passes presenter.NotesReviewGate() (its own wording). The
+// loop is gate-agnostic — it acts on the choice keys the supplied gate declares, and
+// the SAME gate is re-rendered on every iteration.
 //
 // Each pass reads one decision and acts on it:
 //
@@ -1351,8 +1371,7 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //     regenerateBody. It reads a one-time context line via AskLine, re-runs the AI,
 //     REPLACES the body with the regenerated text, re-shows the notes, and LOOPS so
 //     the user may regenerate again or settle on y/n/e.
-func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen Regenerator, kind notes.Kind, body, versionKey string) (string, error) {
-	gate := gateForKind(kind)
+func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen Regenerator, gate presenter.Gate, body, versionKey string) (string, error) {
 	for {
 		choice, err := ReviewDecision(p, gate)
 		if err != nil {
@@ -1422,7 +1441,7 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 // meaningless (no AI to nudge) and, under --no-ai, would contradict the flag.
 func gateForKind(kind notes.Kind) presenter.Gate {
 	if kind == notes.KindNormalAI {
-		return presenter.NotesReviewGate()
+		return presenter.ReleaseReviewGate()
 	}
 	return FirstReleaseReviewGate()
 }

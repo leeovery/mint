@@ -42,6 +42,42 @@ func TestNotesReviewGateDeclaresFourChoices(t *testing.T) {
 	}
 }
 
+// TestReleaseReviewGateSaysRelease proves the release-path notes gate declares the
+// same y/n/e/r set as the regenerate gate but with release-committing wording: the
+// question states releasing and the accept action is "release" (not the bare "accept"
+// of NotesReviewGate), so accepting the FINAL gate of a release reads as the go-ahead.
+func TestReleaseReviewGateSaysRelease(t *testing.T) {
+	gate := presenter.ReleaseReviewGate()
+
+	wantKeys := []presenter.Choice{
+		presenter.ChoiceYes,
+		presenter.ChoiceNo,
+		presenter.ChoiceEdit,
+		presenter.ChoiceRegen,
+	}
+	if got := gate.Keys(); !equalChoices(got, wantKeys) {
+		t.Errorf("Keys() = %v, want %v", got, wantKeys)
+	}
+	if gate.Default != presenter.ChoiceYes {
+		t.Errorf("Default = %q, want %q", gate.Default, presenter.ChoiceYes)
+	}
+	if gate.Question != "Release with these notes?" {
+		t.Errorf("Question = %q, want %q", gate.Question, "Release with these notes?")
+	}
+
+	wantActions := map[presenter.Choice]string{
+		presenter.ChoiceYes:   "release",
+		presenter.ChoiceNo:    "abort",
+		presenter.ChoiceEdit:  "edit",
+		presenter.ChoiceRegen: "regenerate",
+	}
+	for _, choice := range gate.Choices {
+		if want := wantActions[choice.Key]; choice.Action != want {
+			t.Errorf("action for %q = %q, want %q", choice.Key, choice.Action, want)
+		}
+	}
+}
+
 // TestReuseConfirmGateDeclaresTwoChoices proves the reuse confirm declares only
 // y/n with default y and no e/r.
 func TestReuseConfirmGateDeclaresTwoChoices(t *testing.T) {

@@ -344,11 +344,18 @@ func leafOrDefault(leaf string) string {
 // footer follows.
 func (p *PrettyPresenter) RunStarted(info RunInfo) {
 	leaf := leafOrDefault(info.Leaf)
+	// A dry run carries a trailing marker so the whole transcript reads as a preview
+	// from line one: "… releasing acme v1.4.0  · dry run". The marker is dimmed — it
+	// is a standing note, not the headline.
+	marker := ""
+	if info.DryRun {
+		marker = "  " + p.dim.Render("· dry run")
+	}
 	if info.Version == "" {
-		p.writef("%s mint %s %s %s\n\n", leaf, p.dim.Render("›"), info.Action, info.Project)
+		p.writef("%s mint %s %s %s%s\n\n", leaf, p.dim.Render("›"), info.Action, info.Project, marker)
 		return
 	}
-	p.writef("%s mint %s %s %s v%s\n\n", leaf, p.dim.Render("›"), info.Action, info.Project, info.Version)
+	p.writef("%s mint %s %s %s v%s%s\n\n", leaf, p.dim.Render("›"), info.Action, info.Project, info.Version, marker)
 }
 
 // StageStarted starts the pretty stage-progress spinner for a BLOCKING stage, and

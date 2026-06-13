@@ -144,6 +144,37 @@ func TestRelease_PriorTag_NormalAI_EndToEnd(t *testing.T) {
 	}
 }
 
+// TestRelease_PriorTag_NotesGateSaysRelease proves the real release wires the
+// release-committing review gate (ReleaseReviewGate), not the bare-accept regenerate
+// gate: the final notes gate's question states releasing and its accept action is
+// "release", so accepting the FINAL gate reads as the go-ahead, not a mere text OK.
+func TestRelease_PriorTag_NotesGateSaysRelease(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	gate := promptGate(t, rec) // the y/n/e/r notes-review gate
+	if gate.Question != "Release with these notes?" {
+		t.Errorf("notes gate Question = %q, want %q", gate.Question, "Release with these notes?")
+	}
+	for _, gc := range gate.Choices {
+		if gc.Key == presenter.ChoiceYes && gc.Action != "release" {
+			t.Errorf("notes gate accept action = %q, want %q", gc.Action, "release")
+		}
+	}
+}
+
 // TestRelease_PriorTag_DiffExcludeGlobsReachDiffAndChangeMapGitCalls wires the
 // shared top-level diff_exclude config through the whole spine: a .mint.toml at the
 // repo root carries two globs, and resolveBody must thread them into the Assembler so

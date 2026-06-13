@@ -1,11 +1,11 @@
 package engine_test
 
-// This file holds the Phase 4 DRY-RUN NOTE CACHE WRITE tests (task 4-7): under
-// --dry-run, after the AI notes preview is generated, mint writes the generated
-// body to a repo-scoped, gitignored (or temp) cache keyed by a hash of the
+// This file holds the DRY-RUN NOTE CACHE WRITE tests: under --dry-run, after the AI
+// notes preview is generated, mint writes the generated body to the note cache (a
+// user-level, per-project store — a t.TempDir() here) keyed by a hash of the
 // post-diff_exclude diff + the computed version + the resolved prompt/context (NOT
-// the HEAD sha), stamped with a TTL write time. The WRITE half only — reuse is
-// task 4-8.
+// the HEAD sha), stamped with a TTL write time. The dry run reuses a live entry
+// SILENTLY (it asks for nothing); the real run prompts use/regenerate.
 //
 // Tests drive the REAL notes path over the FakeRunner (scripting the diff + the
 // `claude` AI command), recording the preview via the RecordingPresenter, and

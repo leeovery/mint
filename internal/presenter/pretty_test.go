@@ -337,6 +337,26 @@ func TestPrettyPresenterStartLineOmitsEmptyVersion(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterStartLineMarksDryRun proves a dry run carries the "· dry run"
+// marker on the brand line so the whole transcript reads as a preview from line one,
+// and that a non-dry run carries no such marker. The Ascii profile keeps the assertion
+// on the literal text rather than the dim styling.
+func TestPrettyPresenterStartLineMarksDryRun(t *testing.T) {
+	dry := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing", DryRun: true})
+	})
+	if got, want := dry.String(), "🌿 mint › releasing acme v1.4.0  · dry run\n\n"; got != want {
+		t.Errorf("dry-run brand line = %q, want exactly %q", got, want)
+	}
+
+	real := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing"})
+	})
+	if strings.Contains(real.String(), "dry run") {
+		t.Errorf("non-dry brand line carries a dry-run marker: %q", real.String())
+	}
+}
+
 // TestPrettyPresenterBrandLeafComesFromPayload proves the brand leaf is rendered
 // from the engine-supplied payload datum: a supplied leaf is used verbatim, and an
 // empty Leaf defaults to 🌿 rather than being re-derived or hardcoded.

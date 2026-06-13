@@ -50,7 +50,7 @@ func TestFirstReleaseReviewGate_IsYNEOnly(t *testing.T) {
 	}
 
 	wantActions := map[presenter.Choice]string{
-		presenter.ChoiceYes:  "accept & proceed",
+		presenter.ChoiceYes:  "release",
 		presenter.ChoiceNo:   "abort",
 		presenter.ChoiceEdit: "edit in $EDITOR",
 	}

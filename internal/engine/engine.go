@@ -82,11 +82,16 @@ func abort(cause error) *AbortError {
 // action label.
 func FirstReleaseReviewGate() presenter.Gate {
 	return presenter.Gate{
-		Question:   "Continue?",
+		// This is the FINAL gate of a first release — accepting it records, tags,
+		// pushes, and publishes. The wording mirrors ReleaseReviewGate ("[y] release")
+		// so the user is clear acceptance proceeds with the release, not merely approves
+		// the text. It offers y/n/e only (no r) — first-release notes are fixed-body, so
+		// there is no AI to regenerate.
+		Question:   "Release with these notes?",
 		Subject:    "notes",
 		AcceptEcho: "accepted",
 		Choices: []presenter.GateChoice{
-			{Key: presenter.ChoiceYes, Action: "accept & proceed"},
+			{Key: presenter.ChoiceYes, Action: "release"},
 			{Key: presenter.ChoiceNo, Action: "abort"},
 			{Key: presenter.ChoiceEdit, Action: "edit in $EDITOR"},
 		},

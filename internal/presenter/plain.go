@@ -114,11 +114,17 @@ func (p *PlainPresenter) errf(format string, args ...any) {
 // to announce) omits the segment entirely rather than dangling a bare "v" — the
 // same no-dangling-segment rule the success/footer lines follow.
 func (p *PlainPresenter) RunStarted(info RunInfo) {
+	// A dry run carries a trailing " (dry run)" marker so a live-tail/pipe consumer
+	// sees the preview framing from the first line, mirroring the pretty marker.
+	marker := ""
+	if info.DryRun {
+		marker = " (dry run)"
+	}
 	if info.Version == "" {
-		p.writef("mint: %s %s\n", info.Action, info.Project)
+		p.writef("mint: %s %s%s\n", info.Action, info.Project, marker)
 		return
 	}
-	p.writef("mint: %s %s v%s\n", info.Action, info.Project, info.Version)
+	p.writef("mint: %s %s v%s%s\n", info.Action, info.Project, info.Version, marker)
 }
 
 // StageStarted emits plain's spinner-equivalent: a terse start line for a

@@ -413,6 +413,11 @@ type RunInfo struct {
 	Version string
 	Action  string
 	Leaf    string
+	// DryRun marks the run as a --dry-run preview. When set, the start-of-run line
+	// carries a "dry run" marker so the whole transcript is framed as a preview from
+	// the first line — a dry run takes no action and (for release) shows no gates, so
+	// the marker is the user's standing reminder that nothing will be changed.
+	DryRun bool
 }
 
 // StageStart carries the StageStarted payload. Blocking is engine knowledge —

@@ -136,9 +136,11 @@ func (g Gate) Keys() []Choice {
 	return keys
 }
 
-// NotesReviewGate is the four-choice notes-review gate used on release and
-// regenerate-fresh: y/n/e/r in that order, default-yes, with the spec's action
-// labels. The engine owns the e/r re-entry loop — Prompt only renders this set
+// NotesReviewGate is the four-choice notes-review gate used on regenerate-fresh:
+// y/n/e/r in that order, default-yes. Regenerate updates a tag annotation /
+// changelog / provider release — it does NOT cut a release — so its accept reads as
+// a plain "accept" (the release path uses ReleaseReviewGate, whose accept says
+// "release"). The engine owns the e/r re-entry loop — Prompt only renders this set
 // and returns one key.
 func NotesReviewGate() Gate {
 	return Gate{
@@ -150,6 +152,27 @@ func NotesReviewGate() Gate {
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept"},
+			{Key: ChoiceNo, Action: "abort"},
+			{Key: ChoiceEdit, Action: "edit"},
+			{Key: ChoiceRegen, Action: "regenerate"},
+		},
+		Default: ChoiceYes,
+	}
+}
+
+// ReleaseReviewGate is the four-choice notes-review gate on the RELEASE path
+// (normal-AI notes): y/n/e/r, default-yes. It is the FINAL gate of a release — there
+// is no further confirmation, so accepting it records, tags, pushes, and publishes.
+// The wording makes that explicit ("Release with these notes?" / "[y] release")
+// rather than the bare "accept" of the regenerate gate, so the user is never left
+// thinking acceptance only approves the text with a separate go-ahead still to come.
+func ReleaseReviewGate() Gate {
+	return Gate{
+		Question:   "Release with these notes?",
+		Subject:    "notes",
+		AcceptEcho: "accepted",
+		Choices: []GateChoice{
+			{Key: ChoiceYes, Action: "release"},
 			{Key: ChoiceNo, Action: "abort"},
 			{Key: ChoiceEdit, Action: "edit"},
 			{Key: ChoiceRegen, Action: "regenerate"},

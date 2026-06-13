@@ -462,23 +462,56 @@ func TestRelease_RealRun_ReuseUnderYes_SkipsGate(t *testing.T) {
 	}
 }
 
-// TestRelease_DryRunUnderYes_SkipsGate proves -y skips the gate on the DRY run too:
-// the dry run still calls Prompt once (auto-accepted by the presenter default) and
-// finishes, writing the preview to the cache. This pins the "-y skips on BOTH runs"
-// acceptance with the matching dry-run half.
-func TestRelease_DryRun_WalksFullFlowThenStopsBeforeWrites(t *testing.T) {
+// TestRelease_DryRun_KeyMatch_ReusesSilently proves a --dry-run with a cache hit reuses
+// the cached body WITHOUT prompting and WITHOUT calling the AI: a dry run asks for
+// nothing, so unlike the real run (which offers use/regenerate) it reuses silently. The
+// degenerate diff is the only notes git call on the reuse path; `claude` is left
+// unseeded so any AI call would fail the run, and no mutation runs.
+func TestRelease_DryRun_KeyMatch_ReusesSilently(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	cacheBase := t.TempDir()
-	// A dry run is a faithful preview: it walks the SAME interactive flow as a real run
-	// (the version gate, then the notes review gate — both auto-accepting on Default with
-	// no NextChoices scripted), then stops at the write boundary. So both gates fire and
-	// the notes are shown, but nothing mutates.
+	seedCacheEntry(t, cacheBase, root, priorTagDiff, "1.2.4", cachedReuseBody)
+
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	f.SeedSequence("git", ScriptedOut(priorTagDiff)) // degenerate-check diff — the only notes git call on reuse
+	// `claude` UNSEEDED: any AI call would error, proving reuse skipped it.
+	rec := &presentertest.RecordingPresenter{}
+
+	opts := priorTagNormalAIOptions()
+	opts.DryRun = true
+	deps := newDepsWithRealRunCache(rec, f, cacheBase, func() time.Time { return realRunClock })
+	if err := engine.Release(t.Context(), deps, opts); err != nil {
+		t.Fatalf("dry-run Release returned unexpected error: %v", err)
+	}
+
+	if claudeInvoked(f) {
+		t.Errorf("the AI was invoked on a dry-run key match; reuse must skip it")
+	}
+	if got := countKind(rec, presentertest.KindPrompt); got != 0 {
+		t.Errorf("dry-run Prompt count = %d, want 0 (a dry run reuses silently, asking nothing)", got)
+	}
+	if got := lastNotesBody(t, rec); got != cachedReuseBody {
+		t.Errorf("dry-run preview = %q, want the reused cached body %q", got, cachedReuseBody)
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_DryRun_PreviewsWithoutPrompting proves a --dry-run takes no action and so
+// asks for NOTHING: it shows the version line, the plan, and the notes, writes the
+// preview to the cache (the dry-run→real-run handoff), and stops at the write boundary
+// WITHOUT firing a single gate — no version gate, no notes-review gate, no mutation.
+func TestRelease_DryRun_PreviewsWithoutPrompting(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	cacheBase := t.TempDir()
 	rec, f := runDryRunNormalAI(t, root, cacheBase, priorTagDiff, aiBody, dryRunOptions())
 
-	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
-		t.Errorf("dry-run Prompt count = %d, want 2 (version gate + notes gate, both walked)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 0 {
+		t.Errorf("dry-run Prompt count = %d, want 0 (a dry run asks for nothing)", got)
 	}
 	if got := countKind(rec, presentertest.KindShowNotes); got != 1 {
 		t.Errorf("dry-run ShowNotes count = %d, want 1 (the preview is shown)", got)

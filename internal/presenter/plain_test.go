@@ -123,6 +123,18 @@ func TestPlainPresenterStartLineOmitsEmptyVersion(t *testing.T) {
 	}
 }
 
+// TestPlainPresenterStartLineMarksDryRun proves a dry run appends " (dry run)" to the
+// plain start line so a pipe/live-tail consumer sees the preview framing immediately,
+// and a non-dry run carries no marker.
+func TestPlainPresenterStartLineMarksDryRun(t *testing.T) {
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing", DryRun: true})
+	})
+	if got, want := out.String(), "mint: releasing acme v1.4.0 (dry run)\n"; got != want {
+		t.Errorf("dry-run start line = %q, want exactly %q", got, want)
+	}
+}
+
 // TestPlainPresenterStageSucceededFallsBackToOk asserts the detail-less success
 // line renders the "ok" floor rather than a dangling "{stage}: ".
 func TestPlainPresenterStageSucceededFallsBackToOk(t *testing.T) {
