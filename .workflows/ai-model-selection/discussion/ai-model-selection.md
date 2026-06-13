@@ -30,7 +30,7 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
 
 ### Map
 
-  Discussion Map — AI Model Selection (8 subtopics — 6 decided · 1 exploring · 1 pending)
+  Discussion Map — AI Model Selection (8 subtopics — 7 decided · 1 pending)
 
   ┌─ ✓ Pin A Model In The Shipped Default [decided]
   │  └─ ✓ Alias Form Vs Full Model ID [decided]
@@ -38,7 +38,7 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
   │  └─ ✓ Config Shape: Top-Level Shared + Per-Verb Override [decided]
   ├─ ✓ Timeout × Model-Choice Coupling [decided]
   ├─ ✓ Driver-Based AI Config — Dropped [decided]
-  ├─ ◐ Single Source Of Truth For The Default Command [exploring]
+  ├─ ✓ Single Source Of Truth For The Default Command [decided]
   └─ ○ Init Scaffolds The New Config Keys [pending]
 
 ---
@@ -114,6 +114,29 @@ The seed's "ideal world": configure *which AI* + a model alias, with mint knowin
 
 **Dropped** (confidence: high) — not merely deferred-on-YAGNI, but *superseded*. The raw per-verb command string already delivers the multi-AI / multi-command generality the driver was meant for, with less machinery and no provider registry to maintain. The driver's only residual value is ergonomics (typing `haiku` vs the full command), which doesn't justify the cost today. Revisit only as sugar over the command string if a future user juggles several AIs frequently.
 
+## Single Source Of Truth For The Default Command
+
+### Context (verified against code, 2026-06-13)
+
+- **Config is optional, not required.** `config.Load` returns `defaults()` when no `.mint.toml` exists (`config.go:285`); when a file exists, the decode target is pre-seeded with defaults and only present keys override (`config.go:291`). Mint already runs a "defaults, overridden by the project file" model.
+- **Every key has a built-in default**, clustered in `internal/config/config.go` (`defaultTagPrefix`, `defaultCommitPrefix`, `defaultPublish`, `defaultChangelog`, `defaultOnNotesFailure`, `defaultMaxDiffLines`, `defaultAICommand`).
+- **The scattering that matters:** `defaultAICommand = "claude -p"` is **duplicated** in `ai/transport.go:45`, and `defaultTimeout = 60s` lives **only** in the transport. Other `default*` consts (`defaultEditor "vi"`, git retry/backoff, the presenter leaf glyph) are *operational internals, not config keys* — correctly local, left alone.
+
+### Decision
+
+**`internal/config` is the single source of truth for config defaults; the project `.mint.toml` overrides.** (Confidence: high, user-confirmed.) The model is Laravel-shaped with one inversion made explicit: the **compiled Go constants are the defaults (base layer)** and the **file is the override** — there is no separate defaults *file* (Go idiom: defaults are compiled). Two layers only.
+
+Idiomatic Go shape:
+
+- One `defaults() Config` constructor in `internal/config` — the canonical defaults.
+- `Load` decodes the project file *over* a defaults-seeded target (present keys win); missing file → `defaults()`. (Already how mint works.)
+- **Layered per-verb lookup centralized in config** via typed accessor methods that resolve `verb override → shared top-level → default` — e.g. `cfg.AICommandFor(verb)` / `cfg.TimeoutFor(verb)`. The fallback chain lives in exactly one place; consumers just ask for the resolved value.
+- **The transport carries no defaults** — it runs the concrete command/timeout it's handed; empty/zero fails loud. `transport.go:45`'s duplicate `defaultAICommand` is deleted, and the new timeout default moves into `config`.
+- **`initgen` pulls its template values from `config`** rather than re-typing literals.
+- No reflection, no global `config()`/`env()` service-locator — a typed `Config` value passed explicitly with accessor methods. The `ai`↔`config` decoupling survives (config never imports ai; consumers map `config.Config` → `ai.Config`).
+
+**Env-var overrides are out of scope** — the override layer is the file; an environment-variable third layer (`MINT_AI_COMMAND`-style) is a separate, addable feature, not built here.
+
 ## Summary
 
 ### Key Insights
@@ -130,9 +153,9 @@ The seed's "ideal world": configure *which AI* + a model alias, with mint knowin
 
 ### Current State
 
-- **Decided**: shared default = Sonnet, alias form; per-verb `ai_command` override (raw command string); per-verb timeout override (coupling is the operator's responsibility); keep top-level shared `ai_command`/timeout + per-verb overrides (config shape); `regenerate` rides on `[release]`; driver dropped. Shipped-default change is an accepted breaking change (release-note callout).
-- **Pending**: single source of truth for the default command (now *exploring*); init scaffolds the new keys.
-- **Routed out**: interactive `mint init` setup → logged as a separate idea (the proper home for surfacing the model choice to operators).
+- **Decided**: shared default = Sonnet, alias form; per-verb `ai_command` override (raw command string); per-verb timeout override (coupling is the operator's responsibility); keep top-level shared `ai_command`/timeout + per-verb overrides (config shape); `regenerate` rides on `[release]`; driver dropped; single source of truth = `internal/config` owns defaults, project file overrides, layered accessors resolve per-verb, transport carries no defaults. Shipped-default change is an accepted breaking change (release-note callout).
+- **Pending**: init scaffolds the new keys.
+- **Routed out**: interactive `mint init` setup → logged as a separate idea (the proper home for surfacing the model choice to operators). Env-var override layer (Laravel `.env`-style third layer) explicitly out of scope — two layers only (compiled defaults ← project file); addable later if wanted.
 
 ## Triage
 
