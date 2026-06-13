@@ -183,10 +183,6 @@ type NoteCacheReader interface {
 	// exists. found is true ONLY for an entry within TTL; an absent or expired entry is
 	// (zero, false, nil). A non-nil error is a genuine read/decode failure.
 	Lookup(repoRoot, key string) (notescache.Entry, bool, error)
-	// HasEntries reports whether ANY preview entry (fresh or expired) exists for
-	// repoRoot. The reuse path consults it so a clean miss with no preview at all —
-	// no dry-run ever ran — stays SILENT instead of warning about a changed diff.
-	HasEntries(repoRoot string) bool
 }
 
 // ReleaseOptions carries the per-run parsed inputs. Bump selects the version
@@ -843,21 +839,12 @@ func cacheReuse(deps ReleaseDeps, root, versionKey string, reused *bool) notes.R
 	return func(diff, instructions string) (string, bool, error) {
 		key := notescache.Key(diff, versionKey, instructions)
 		entry, found, err := deps.NoteCache.Lookup(root, key)
-		if err != nil {
-			// A read/decode failure degrades to regeneration: warn (distinct from the clean
-			// miss) and regenerate fresh, never abort and never ship a stale/corrupt note.
-			reportNotesCacheUnreadable(deps.Presenter, err)
-			return "", false, nil
-		}
-		if !found {
-			// A clean miss with NO preview in the store means no dry-run ever happened —
-			// the everyday plain-release case, and not worth any notice (warning "diff
-			// changed since dry-run preview" with no preview in existence misleads). The
-			// regenerating notice fires only when a preview EXISTS but no longer matches
-			// (the diff/prompt moved on, or it expired).
-			if deps.NoteCache.HasEntries(root) {
-				reportNotesRegenerating(deps.Presenter)
-			}
+		if err != nil || !found {
+			// No usable cached note for THIS diff — missing, invalidated because the diff
+			// changed, expired, or unreadable. There is nothing to reuse, so generate fresh
+			// SILENTLY: the "generating release notes…" spinner is the only narration
+			// needed (a changed diff is self-evident — the code changed). A corrupt entry
+			// is simply overwritten by the fresh write afterwards.
 			return "", false, nil
 		}
 		// A live preview matches this exact diff. Rather than silently reuse it, ask:
@@ -894,34 +881,6 @@ func reuseConfirmGate() presenter.Gate {
 		},
 		Default: presenter.ChoiceYes,
 	}
-}
-
-// reuseNoticeLabel is the Presenter label for the real-run cache notices (reuse and
-// regenerate). It rides the existing Warn seam (a Warn sets no failure state and does
-// not suppress the success line), so a reported reuse/miss leaves the run otherwise
-// intact — no new presenter event is added.
-const reuseNoticeLabel = "notes"
-
-// reportNotesRegenerating emits the SPEC-FIXED miss notice when the real-run cache key
-// does not match a live preview (a changed diff, an absent entry, or an expired one),
-// so the AI regenerates rather than shipping a stale note. The wording is exactly the
-// spec's "diff changed since dry-run preview — regenerating notes".
-func reportNotesRegenerating(p presenter.Presenter) {
-	p.Warn(presenter.Warning{Label: reuseNoticeLabel, Message: "diff changed since dry-run preview — regenerating notes"})
-}
-
-// reportNotesCacheUnreadable emits the DISTINCT notice when the cache entry under the
-// run's key exists but cannot be read/decoded (a corrupt or partial file, a permissions
-// glitch). It is deliberately separate from the clean-miss notice — a read failure is a
-// different situation from a key miss, and reusing the diff-changed wording would
-// mislead. The run degrades to regeneration rather than aborting, mirroring the
-// warn-only WRITE side; the underlying cause rides the Warn's Output for diagnosis.
-func reportNotesCacheUnreadable(p presenter.Presenter, cause error) {
-	p.Warn(presenter.Warning{
-		Label:   reuseNoticeLabel,
-		Message: "could not read cached notes preview; regenerating",
-		Output:  cause.Error(),
-	})
 }
 
 // aiTransport resolves the AI transport the notes Generator hands its prompt to:

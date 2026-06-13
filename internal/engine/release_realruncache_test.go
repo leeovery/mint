@@ -137,7 +137,7 @@ func reuseConfirmPrompted(rec *presentertest.RecordingPresenter) bool {
 // TestRelease_RealRun_KeyMiss_RegeneratesAndReports proves a key MISS (no entry for
 // the run's key) regenerates via the AI and reports the EXACT spec message; the run
 // proceeds with the FRESH body, never a stale cached one.
-func TestRelease_RealRun_KeyMiss_RegeneratesAndReports(t *testing.T) {
+func TestRelease_RealRun_KeyMiss_RegeneratesSilently(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
@@ -165,9 +165,11 @@ func TestRelease_RealRun_KeyMiss_RegeneratesAndReports(t *testing.T) {
 	if !claudeInvoked(f) {
 		t.Errorf("the AI was not invoked on a key miss; a miss must regenerate")
 	}
-	// The exact spec miss report fired.
-	warnWithMessage(t, rec, missReportMessage)
-	// The FRESH body shipped — the stale cached note was NEVER shipped.
+	// A miss is SILENT — no warn, no "diff changed" notice; the spinner is the only
+	// narration. The FRESH body shipped — the stale cached note was NEVER shipped.
+	if got := countKind(rec, presentertest.KindWarn); got != 0 {
+		t.Errorf("a cache miss emitted %d warn(s); a miss must regenerate silently", got)
+	}
 	if got := tagAnnotationBody(t, f, nextTag); got != aiBody {
 		t.Errorf("tag annotation body = %q, want the freshly generated body %q", got, aiBody)
 	}
@@ -175,15 +177,6 @@ func TestRelease_RealRun_KeyMiss_RegeneratesAndReports(t *testing.T) {
 		t.Errorf("the stale cached body was shipped on a key miss")
 	}
 }
-
-// missReportMessage is the EXACT spec wording for a key miss on the real run.
-const missReportMessage = "diff changed since dry-run preview — regenerating notes"
-
-// corruptReadReportMessage is the DISTINCT warn emitted when the cache entry under the
-// run's key exists but cannot be read/decoded (a corrupt or partial file). It must be
-// separate from missReportMessage — a corrupt read is a different situation from a
-// clean key miss, and reusing the diff-changed wording would be misleading.
-const corruptReadReportMessage = "could not read cached notes preview; regenerating"
 
 // seedCorruptCacheEntry pre-writes an UNDECODABLE entry at the run key's path, exactly
 // where a 4-7 dry-run write would have landed — modelling a partial file from a killed
@@ -242,23 +235,10 @@ func TestRelease_RealRun_CorruptCacheEntry_RegeneratesAndDoesNotAbort(t *testing
 		t.Errorf("tag annotation body = %q, want the freshly generated body %q (corrupt entry not reused)", got, aiBody)
 	}
 
-	// (d) the DISTINCT read-error warning fired — NOT the diff-changed miss message.
-	warnWithMessage(t, rec, corruptReadReportMessage)
-	if hasWarnMessage(rec, missReportMessage) {
-		t.Errorf("the diff-changed miss message fired on a corrupt read; a read error must use its own distinct warning")
+	// (d) a corrupt entry regenerates SILENTLY — like any other miss, no warn.
+	if got := countKind(rec, presentertest.KindWarn); got != 0 {
+		t.Errorf("a corrupt cache entry emitted %d warn(s); it must regenerate silently like any miss", got)
 	}
-}
-
-// hasWarnMessage reports whether any recorded Warn carried the exact message — the
-// negative counterpart to warnWithMessage, used to prove a particular notice did NOT
-// fire (here: a corrupt read must not reuse the diff-changed miss wording).
-func hasWarnMessage(rec *presentertest.RecordingPresenter, message string) bool {
-	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindWarn && ev.Warn.Message == message {
-			return true
-		}
-	}
-	return false
 }
 
 // TestRelease_RealRun_ExpiredTTL_Regenerates proves an entry under the run's key but
@@ -290,7 +270,6 @@ func TestRelease_RealRun_ExpiredTTL_Regenerates(t *testing.T) {
 	if !claudeInvoked(f) {
 		t.Errorf("the AI was not invoked despite an EXPIRED entry; an expired TTL must regenerate")
 	}
-	warnWithMessage(t, rec, missReportMessage)
 	if got := tagAnnotationBody(t, f, nextTag); got != aiBody {
 		t.Errorf("tag annotation body = %q, want the regenerated body %q (expired entry not reused)", got, aiBody)
 	}
@@ -409,7 +388,6 @@ func TestRelease_RealRun_NonExcludedHookChange_Misses(t *testing.T) {
 	if !claudeInvoked(f) {
 		t.Errorf("the AI was not invoked despite a non-excluded hook change; the key should miss and regenerate")
 	}
-	warnWithMessage(t, rec, missReportMessage)
 	if got := tagAnnotationBody(t, f, nextTag); got != aiBody {
 		t.Errorf("tag annotation body = %q, want the regenerated body %q (cached note not reused on a miss)", got, aiBody)
 	}
@@ -539,10 +517,8 @@ func TestRelease_RealRun_NoPreviewEver_NoMissNotice(t *testing.T) {
 	if !claudeInvoked(f) {
 		t.Errorf("the AI was not invoked; with no preview the run must generate normally")
 	}
-	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindWarn && ev.Warn.Message == missReportMessage {
-			t.Errorf("the miss notice fired with an EMPTY cache store; no dry-run ever ran, so there is nothing to report:\n%+v", ev.Warn)
-		}
+	if got := countKind(rec, presentertest.KindWarn); got != 0 {
+		t.Errorf("an empty cache emitted %d warn(s); a first-time generate must be silent", got)
 	}
 	if got := tagAnnotationBody(t, f, nextTag); got != aiBody {
 		t.Errorf("tag annotation body = %q, want the generated body %q", got, aiBody)
