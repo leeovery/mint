@@ -27,6 +27,22 @@
           "date": "2026-06-13"
         }
       }
+    },
+    "planning": {
+      "items": {
+        "ai-model-selection": {
+          "status": "in-progress",
+          "format": "tick",
+          "spec_commit": "0e43df59e5325607c3ab7b17b038f2e040cf6a07",
+          "task_list_gate_mode": "gated",
+          "author_gate_mode": "gated",
+          "finding_gate_mode": "gated",
+          "review_cycle": 0,
+          "phase": 1,
+          "task": "~",
+          "task_map": {}
+        }
+      }
     }
   },
   "seeds": [
