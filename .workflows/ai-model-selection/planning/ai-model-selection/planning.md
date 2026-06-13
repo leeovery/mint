@@ -3,7 +3,8 @@
 ## Phases
 
 ### Phase 1: Config resolution layer
-status: draft
+status: approved
+approved_at: 2026-06-13
 
 **Goal**: Establish `internal/config` as the single source of truth for the AI command and timeout. Add a typed, closed verb enum and the layered accessors `AICommandFor(verb)` / `TimeoutFor(verb)` that resolve each key independently through `verb override → shared top-level → shipped default`. Introduce the net-new top-level-plus-per-verb `timeout` key, promote `ai_command` to per-verb override, and pin the shipped default command to `claude -p --model sonnet` as the canonical constant that all other sites will derive from.
 
@@ -20,7 +21,8 @@ status: draft
 - [ ] `go build ./...`, `gofmt -l .` (prints nothing), `go vet ./...`, `go test -race ./...`, and `golangci-lint run` (0 issues) all pass
 
 ### Phase 2: Transport adoption and wiring
-status: draft
+status: approved
+approved_at: 2026-06-13
 
 **Goal**: Make the AI transport carry no defaults of its own and apply the per-attempt deadline conditionally — `timeout = 0` skips `context.WithTimeout` entirely and runs on the parent context, while a positive value uses `WithTimeout`. Thread the resolved per-verb command and timeout from Phase 1's accessors through all three transport construction sites (`internal/engine/release.go`, `internal/commit/run.go`, `internal/engine/regenerate_fresh.go`), with regenerate deliberately resolving through the release verb. Preserve the absent-vs-explicit-zero invariant at the `config → ai.Config` boundary.
 
@@ -36,7 +38,8 @@ status: draft
 - [ ] `go build ./...`, `gofmt -l .` (prints nothing), `go vet ./...`, `go test -race ./...`, and `golangci-lint run` (0 issues) all pass
 
 ### Phase 3: Operator surfacing and contract reconciliation
-status: draft
+status: approved
+approved_at: 2026-06-13
 
 **Goal**: Surface the new configuration to operators and reconcile the in-repo contract. Update the `internal/initgen` commented template to scaffold the new keys (top-level `ai_command` at the pinned value sourced from the config constant, the shared `timeout` at 60s, and commented per-verb `# ai_command` / `# timeout` overrides under both `[release]` and `[commit]`). Document the keys, resolution order, pinned default, `timeout = 0` semantics, and the unenforced override-both pattern in the README. Update the `Commit` struct doc comment in `internal/config` so it no longer encodes the old "no per-verb override" contract.
 
