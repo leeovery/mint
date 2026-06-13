@@ -80,3 +80,12 @@ approved_at: 2026-06-13
 - [ ] The README documents `ai_command` at both levels, `timeout` at both levels, the `verb → shared → default` resolution order, the new pinned default value as a fact (not a recommendation), the `timeout = 0` ⇒ "no time limit" semantics including the unbounded-call trade-off, and the supported-but-unenforced pattern of overriding command and timeout together for a slow verb
 - [ ] The `Commit` struct doc comment in `internal/config/config.go` no longer asserts "Deliberately NOT added for commit" / the old no-per-verb-override contract, reflecting the now-shipped `[commit].ai_command` / `[commit].timeout`
 - [ ] `go build ./...`, `gofmt -l .` (prints nothing), `go vet ./...`, `go test -race ./...`, and `golangci-lint run` (0 issues) all pass
+
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| ai-model-selection-3-1 | Scaffold the new `ai_command` / `timeout` keys in the initgen commented template | pinned value sourced from the config constant not re-typed, comments stay model-agnostic (no sonnet/opus/haiku, no "stronger model" steer), timeout hint framed around command latency not a model, per-verb overrides shown commented (optional → commented), the "full template loads cleanly" sanity pin updated to the new default, uncomment-loads-cleanly still passes against the Phase 1 schema |
+| ai-model-selection-3-2 | Document the new config surface in the README | pinned default stated as a fact not a recommendation, `timeout = 0` ⇒ no-deadline unbounded-call trade-off documented, override-both-keys-for-a-slow-verb documented as supported-but-unenforced |
+| ai-model-selection-3-3 | Reconcile the `Commit` struct doc comment to the shipped per-verb override | comment reflects as-built (no residual "Deliberately NOT added for commit" / no-per-verb-override claim), external commit-command spec document revision stays out of scope (separate commit-spec pass) |
