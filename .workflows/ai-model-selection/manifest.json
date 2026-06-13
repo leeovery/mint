@@ -39,7 +39,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 2,
-          "task": "~",
+          "task": "ai-model-selection-2-1",
           "task_map": {
             "ai-model-selection-1": "tick-816e70",
             "ai-model-selection-1-1": "tick-b71241",
