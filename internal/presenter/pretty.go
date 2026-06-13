@@ -824,10 +824,9 @@ func (p *PrettyPresenter) readKeyChoice(f *os.File, g Gate) (Choice, error) {
 // echoed nothing), closing the bar line — so the scrollback reads
 // "… e edit  r regenerate › accept".
 func (p *PrettyPresenter) echoKeyChoice(g Gate, c Choice) {
-	// Raw mode echoes nothing, so record the chosen action at the END of the choices
-	// line behind a dim arrow ("… [r] regenerate  → accept"). The bracketed-key bar
-	// leads with the cursor and ends with the last action, so the arrow+action is
-	// the natural place to show what was pressed; the newline closes the gate block.
+	// Raw mode echoes nothing, so write the chosen action right after the "› " cursor
+	// (shell-style: input appears at the prompt), closing the gate block with a
+	// newline — reads as "› accept".
 	action := string(c)
 	for _, choice := range g.Choices {
 		if choice.Key == c {
@@ -835,7 +834,7 @@ func (p *PrettyPresenter) echoKeyChoice(g Gate, c Choice) {
 			break
 		}
 	}
-	p.writef("%s%s\n", p.dim.Render("  → "), action)
+	p.writef("%s\n", action)
 }
 
 // AskLine renders the free-text prompt in the gate question's vocabulary —
@@ -905,16 +904,14 @@ func (p *PrettyPresenter) failNotInteractive(label string) {
 // newline — the cursor sits after "› " for the key read (or line read).
 func (p *PrettyPresenter) renderGate(g Gate) {
 	var b strings.Builder
-	// Line 1: the question, bold, on its own — the single line that carries the most
-	// weight. A blank line precedes it so the gate reads as its own block.
+	// Line 1: the question, bold, on its own — the line that carries the most weight.
+	// A blank line precedes it so the gate reads as its own block.
 	b.WriteString("\n")
 	b.WriteString(p.strong.Render(g.Question))
 	b.WriteString("\n")
-	// Line 2: the cursor leads, then every declared choice as "[key] action" — the
-	// bracketed key in accent (the thing you press), the default's action bold and
-	// every other action dim, separated by two spaces. No trailing newline: the
-	// cursor sits at the end for the keypress (or line) read.
-	b.WriteString(p.dim.Render(promptMarker))
+	// Line 2: the choices — each "[key] action", the bracketed key in accent (the
+	// thing you press), the default's action bold and every other dim, two-space
+	// separated. No cursor here: the options are reference, not the input point.
 	for i, choice := range g.Choices {
 		if i > 0 {
 			b.WriteString("  ")
@@ -927,6 +924,13 @@ func (p *PrettyPresenter) renderGate(g Gate) {
 			b.WriteString(p.dim.Render(choice.Action))
 		}
 	}
+	b.WriteString("\n")
+	// Line 3: the prompt cursor ALONE, in accent so it reads as an active "your turn"
+	// prompt (a dim cursor buried at the end of the options line was easy to miss).
+	// No trailing newline — the keypress (or typed line) lands right after it, and
+	// the chosen action echoes here, shell-style.
+	b.WriteString(p.accent.Render("›"))
+	b.WriteString(" ")
 	p.writef("%s", b.String())
 }
 

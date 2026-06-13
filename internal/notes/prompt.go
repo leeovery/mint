@@ -21,58 +21,53 @@ import (
 // assertable in the tests.
 const DefaultPrompt = `You are writing the release notes for a software release. You are given a
 Change Map (a diff-derived salience summary) followed by the actual code diff.
-Read the WHOLE diff and produce human-facing release notes in the exact format
-described below.
+Read the WHOLE diff and produce concise, human-facing release notes in the exact
+format described below. Changelogs are FOR HUMANS: a reader should grasp what
+changed and why it matters to them, without reading the diff.
 
-Output structure:
+Format — categorized sections using the Keep a Changelog taxonomy, each with an
+emoji header, in this order. Omit empty sections entirely — emit only a section
+that has at least one item:
 
-1. A TL;DR at the very top (one line, or a few lines if needed). The TL;DR is a
-   unified cross-change narrative synthesised from the WHOLE diff — what this
-   release is really about — and sits ABOVE the categorized sections below. It is
-   not a list; it is the through-line that ties the changes together.
+    ✨ Added       — new features and capabilities
+    🔧 Changed     — changes to existing behaviour
+    ⚠️ Deprecated  — features marked for future removal
+    🗑️ Removed     — removed features
+    🐛 Fixed       — bug fixes
+    🔒 Security    — security-relevant changes
 
-2. Categorized sections using the Keep a Changelog taxonomy, each with an emoji
-   header, in this order:
+Each bullet is ONE line and ONE sentence: name the change in plain language, and
+where it helps add the user-facing effect after an em dash. That single line is
+the whole bullet — NO second sentence, NO bold lead-in label, NO sub-bullets, NO
+implementation detail, and NO rationale for how it was built. Aim for a line a
+user understands at a glance, not a fragment they have to decode.
 
-     ✨ Added       — new features and capabilities
-     🔧 Changed     — changes to existing behaviour
-     ⚠️ Deprecated  — features marked for future removal
-     🗑️ Removed     — removed features
-     🐛 Fixed       — bug fixes
-     🔒 Security    — security-relevant changes
+Examples of the right altitude (what to aim for):
 
-   Omit empty sections entirely — only emit a section that has at least one item.
+    - Single-keypress review gates — press y/n/e/r to decide, no Enter needed.
+    - Failures no longer print twice when stdout and stderr share a terminal.
+    - Pin the AI model with ` + "`ai_command = \"claude -p --model sonnet\"`" + `.
 
-Item rules:
+Scope and salience:
 
-- The unit of an entry is the notable item, NOT a file, hunk, or commit. Read the
-  diff, extract each notable item, and file it under its category. One change that
-  adds a feature AND fixes a bug yields TWO items in two sections.
-- Bold the notable features and describe them — celebrate them, do not bury them
-  in a flat list.
-- Ignore version-number bumps and other trivial bookkeeping churn — they are not
-  notable items and must not appear.
+- ONE bullet per notable change — not per file, hunk, or commit. Combine
+  closely-related changes into a single bullet. Ignore version-number bumps and
+  other trivial bookkeeping churn. Most releases are a handful of bullets; do not
+  pad.
+- NO TL;DR, NO summary paragraph, NO preamble — start directly with the first
+  section header.
+- Rank importance using the Change Map: new structure (a whole new package or
+  directory) is the strongest signal — weight it above raw size. But DESCRIBE
+  every change from the DIFF; the Change Map is salience metadata, never content.
 
-Salience discipline:
-
-- rank importance using the Change Map: it tells you which areas are new or large,
-  and new structure (a whole new package or directory) is the strongest headline
-  signal — weight it above raw size. Let the Change Map decide what leads.
-- DESCRIBE every change from the DIFF, never from the Change Map. The Change Map is
-  salience metadata, not content: never narrate a file as a feature merely because
-  it is large or new. The diff is the source of truth for what each item says.
-
-Deprecated and Security are opportunistic:
-
-- Only emit a Deprecated or Security item on an explicit textual marker in the diff
-  — a @deprecated / deprecation annotation for Deprecated; an obvious security
-  surface (authentication, cryptography, input validation, or a CVE-referencing
-  dependency bump) for Security. Do NOT infer them speculatively. These sections
-  are expected to be empty in most releases.
+Deprecated and Security are opportunistic — emit an item ONLY on an explicit
+textual marker in the diff (a @deprecated annotation for Deprecated; an obvious
+auth / cryptography / input-validation / CVE-bump surface for Security). Do NOT
+infer them speculatively. These sections are empty in most releases.
 
 Output discipline:
 
-- Return the notes directly in this presentation format. Do NOT wrap them in any
+- Return the notes directly in this format. Do NOT wrap them in any
   machine-parseable labels, headings, or markers beyond the format above.
 - Strict: no preamble and no meta-commentary. Do not explain what you are doing, do
   not restate these instructions, do not add a sign-off. Output only the notes.`

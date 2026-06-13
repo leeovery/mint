@@ -600,7 +600,7 @@ func TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate(t *testing
 	_, _ = p.Prompt(presenter.ReuseConfirmGate())
 
 	got := out.String()
-	if !strings.Contains(got, "\nUse these notes?\n› [y] accept  [n] abort") {
+	if !strings.Contains(got, "\nUse these notes?\n[y] accept  [n] abort\n› ") {
 		t.Errorf("reuse confirm bar missing:\n%q", got)
 	}
 	if strings.Contains(got, "[e] edit") {

@@ -46,8 +46,9 @@ func assertOrder(t *testing.T, s string, markers ...string) {
 // one spec requirement so a regression that drops a rule fails a named subtest.
 func defaultPromptRules() []struct{ name, want string } {
 	return []struct{ name, want string }{
-		{"tl;dr one-liner", "TL;DR"},
-		{"tl;dr is a cross-change narrative from the whole diff", "cross-change narrative"},
+		{"one line one sentence per bullet", "ONE line and ONE sentence"},
+		{"changelogs are for humans", "FOR HUMANS"},
+		{"no tl;dr", "NO TL;DR"},
 		{"added section emoji header", "✨ Added"},
 		{"changed section emoji header", "🔧 Changed"},
 		{"deprecated section emoji header", "⚠️ Deprecated"},
@@ -55,14 +56,13 @@ func defaultPromptRules() []struct{ name, want string } {
 		{"fixed section emoji header", "🐛 Fixed"},
 		{"security section emoji header", "🔒 Security"},
 		{"omit empty sections", "Omit empty sections"},
-		{"unit of entry is the notable item", "notable item"},
-		{"notable features bolded and described", "Bold"},
+		{"unit of entry is the notable change", "notable change"},
 		{"ignore version-number bumps", "version-number bumps"},
 		{"no preamble", "no preamble"},
 		{"no meta-commentary", "no meta-commentary"},
-		{"rank with the change map", "rank"},
-		{"describe from the diff", "describe"},
-		{"deprecated/security only on explicit marker", "explicit textual marker"},
+		{"rank with the change map", "Rank importance"},
+		{"describe from the diff", "from the DIFF"},
+		{"deprecated/security only on explicit marker", "textual marker"},
 	}
 }
 
@@ -172,7 +172,7 @@ func TestResolveInstructions_ContextString_InjectedNotReplacing(t *testing.T) {
 		t.Errorf("instructions missing injected context string:\n%s", got)
 	}
 	// Default rules must still be present — inject, never replace.
-	if !strings.Contains(got, "TL;DR") || !strings.Contains(got, "✨ Added") {
+	if !strings.Contains(got, "Keep a Changelog") || !strings.Contains(got, "✨ Added") {
 		t.Errorf("default prompt rules absent after context inject:\n%s", got)
 	}
 }
@@ -197,7 +197,7 @@ func TestResolveInstructions_ContextFile_FileContentsInjected(t *testing.T) {
 	if strings.Contains(got, name) {
 		t.Errorf("instructions leaked the context file PATH %q instead of its contents", name)
 	}
-	if !strings.Contains(got, "TL;DR") {
+	if !strings.Contains(got, "✨ Added") {
 		t.Errorf("default prompt rules absent after context-file inject:\n%s", got)
 	}
 }
@@ -220,7 +220,7 @@ func TestResolveInstructions_PromptFile_FullyOverridesDefault(t *testing.T) {
 	if got != override {
 		t.Errorf("instructions = %q, want the override file contents verbatim", got)
 	}
-	if strings.Contains(got, "TL;DR") || strings.Contains(got, "✨ Added") {
+	if strings.Contains(got, "✨ Added") {
 		t.Errorf("default prompt rules leaked into a full override:\n%s", got)
 	}
 }
