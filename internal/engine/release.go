@@ -443,7 +443,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// blocking StageStarted (spinner) and a StageSucceeded carrying the engine-measured
 	// Elapsed once the body resolves.
 	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
-	body, kind, generator, cacheInputs, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts)
+	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
@@ -481,7 +481,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// "no changes made" close-out instead of recording, tagging, pushing, or publishing.
 	// The working tree is byte-for-byte unchanged (hooks were skipped-and-reported above).
 	if opts.DryRun {
-		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind, body, cacheInputs)
+		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
 	}
 
 	// Stage 5 — record: project the version file, write the changelog, then fold BOTH
@@ -764,9 +764,9 @@ func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptio
 // resolves to {0,0,0}. An actual v0.0.0 tag is therefore treated as a first release;
 // that edge is acceptable for Phase 2 (a real v0.0.0 release is not a meaningful case
 // to support, and the selector simply records "Initial release." for it).
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, versionKey string, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, notes.CacheInputs, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, versionKey string, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
-		return opts.NotesBody, opts.NotesKind, nil, notes.CacheInputs{}, nil
+		return opts.NotesBody, opts.NotesKind, nil, nil
 	}
 
 	// One Assembler (the single git seam) is shared by the Generator and the Selector
@@ -790,17 +790,31 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		LastTag:      current.String(cfg.Release.TagPrefix),
 		NoAI:         opts.NoAI,
 	}
-	// SelectBodyWithReuse runs the identical precedence and additionally surfaces, for
-	// the normal-AI path, the post-diff_exclude diff + resolved prompt/context the
-	// dry-run cache key hashes — assembled/resolved ONCE here. On the REAL run (not
-	// --dry-run) it consults the reuse hook BEFORE the AI: a live cache match reuses the
-	// previewed bytes and skips the AI. The dry-run WRITE path passes a nil hook (it
-	// always generates the preview to cache), so its behaviour is unchanged.
-	body, kind, cacheInputs, err := selector.SelectBodyWithReuse(ctx, state, cfg, realRunReuse(deps, root, versionKey, opts))
+	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
+	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
+	// ONCE here). It consults the reuse hook BEFORE the AI — a live cache match offers
+	// the use/regenerate prompt and, on "use", skips the AI. A dry run and a real run
+	// behave identically here; only the final mutation differs.
+	// The reuse hook is identical for a dry run and a real run: both consult the cache
+	// and, on a match, offer the use/regenerate prompt. reused records whether the body
+	// came from the cache so the write below skips a no-op re-write.
+	reused := false
+	body, kind, cacheInputs, err := selector.SelectBodyWithReuse(ctx, state, cfg, cacheReuse(deps, root, versionKey, &reused))
 	if err != nil {
-		return "", kind, nil, notes.CacheInputs{}, err
+		return "", kind, nil, err
 	}
-	return body, kind, generator, cacheInputs, nil
+	// Cache a freshly-generated, cacheable (normal-AI) body so a LATER run for the SAME
+	// diff can offer to reuse it. This runs identically on a dry run and a real run —
+	// a dry run is a faithful preview, not a separate path. A reused body is already
+	// cached, so it is not re-written; a write failure is warn-only (the cache is an
+	// optimization, never load-bearing).
+	if !reused && cacheInputs.Cacheable && deps.NoteCache != nil {
+		key := notescache.Key(cacheInputs.Diff, versionKey, cacheInputs.Instructions)
+		if werr := deps.NoteCache.Write(root, key, body); werr != nil {
+			warnNoteCacheFailed(deps.Presenter, werr)
+		}
+	}
+	return body, kind, generator, nil
 }
 
 // realRunReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path
@@ -821,9 +835,9 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 //     warn-only WRITE side (writeDryRunNoteCache). The error stays OBSERVABLE via the
 //     warn (Lookup surfaces it honestly; the degrade decision lives here), and a corrupt
 //     body is never shipped because the AI regenerates fresh.
-func realRunReuse(deps ReleaseDeps, root, versionKey string, opts ReleaseOptions) notes.ReuseFunc {
+func cacheReuse(deps ReleaseDeps, root, versionKey string, reused *bool) notes.ReuseFunc {
 	// Guard: a nil NoteCache (no cache wired) yields a nil hook — always generate.
-	if opts.DryRun || deps.NoteCache == nil {
+	if deps.NoteCache == nil {
 		return nil
 	}
 	return func(diff, instructions string) (string, bool, error) {
@@ -860,6 +874,7 @@ func realRunReuse(deps ReleaseDeps, root, versionKey string, opts ReleaseOptions
 		if choice == presenter.ChoiceRegen {
 			return "", false, nil
 		}
+		*reused = true
 		return entry.Body, true, nil
 	}
 }
@@ -1294,22 +1309,13 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 // diff + resolved prompt/context the cache key hashes (alongside versionKey). The
 // cache write happens ONLY when cacheInputs.Cacheable (the normal-AI path produced a
 // stochastic body worth caching) — the non-AI paths have nothing to reuse.
-func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump, body string, cacheInputs notes.CacheInputs) error {
+func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root, versionKey string, current, next version.SemVer, tag string, bumpKind version.Bump) error {
 	p := deps.Presenter
 
-	// Write the generated note to the dry-run cache so the subsequent real run can
-	// reuse the EXACT previewed bytes (task 4-8). It is keyed by the post-diff_exclude
-	// diff + the computed version + the resolved prompt/context — NOT the HEAD sha — so
-	// a pre_tag hook moving HEAD between runs (without changing the filtered diff) still
-	// hits. This is the dry run's only side effect; it is skipped for the non-AI paths
-	// (nothing stochastic to cache) and when no cache is wired. A write FAILURE is
-	// warn-only: the preview has already been shown and the dry run made no destructive
-	// change, so a transient cache hiccup must not fail an otherwise-successful dry run
-	// (the only cost is that the real run regenerates instead of reusing).
-	if err := writeDryRunNoteCache(deps, root, versionKey, body, cacheInputs); err != nil {
-		warnNoteCacheFailed(p, err)
-	}
-
+	// The notes were already generated-and-cached (or reused) in resolveBody, exactly as
+	// a real run does — a dry run is not a separate path. So nothing cache-related happens
+	// here; the dry run only reports the post_release hook skip and the close-out.
+	//
 	// Report the post_release hook skip too: in a real run it fires at Stage 7 (after
 	// the boundary the dry run stops at), so reusing the 3-11 skip-and-report path here
 	// keeps all three hook points consistently reported under the full dry run. It runs
@@ -1325,20 +1331,6 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 		DryRun:  true,
 	})
 	return nil
-}
-
-// writeDryRunNoteCache writes the generated note body to the dry-run cache when a
-// cache is wired AND the body is cacheable (the normal-AI path produced it). The
-// key is notescache.Key over the post-diff_exclude diff, the computed version, and
-// the resolved prompt/context — the canonical (non-sha) key the real run reuses on.
-// A nil cache (the no-cache default) or a non-cacheable path (first-release,
-// degenerate, --no-ai) is a clean no-op.
-func writeDryRunNoteCache(deps ReleaseDeps, root, versionKey, body string, cacheInputs notes.CacheInputs) error {
-	if deps.NoteCache == nil || !cacheInputs.Cacheable {
-		return nil
-	}
-	key := notescache.Key(cacheInputs.Diff, versionKey, cacheInputs.Instructions)
-	return deps.NoteCache.Write(root, key, body)
 }
 
 // errEditorUnavailable is the cause surfaced when the `e` choice is taken but no
