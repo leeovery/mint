@@ -52,6 +52,18 @@ approved_at: 2026-06-13
 - [ ] Every test pinning the old `claude -p` (no `--model`) default command/argv is migrated to the new pinned default
 - [ ] `go build ./...`, `gofmt -l .` (prints nothing), `go vet ./...`, `go test -race ./...`, and `golangci-lint run` (0 issues) all pass
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| ai-model-selection-2-1 | Delete the transport's command self-default and correct its comments | blank/whitespace AICommand no longer re-defaulted in transport (config floor guarantees non-empty), empty-name parseCommand path now unreachable from production |
+| ai-model-selection-2-2 | Make `ai.Config.Timeout` carry absent-vs-explicit-zero and apply the per-attempt deadline conditionally | explicit `0` skips `context.WithTimeout` (no instant/immediate timeout), positive uses `WithTimeout` with that value, parent-context cancellation still propagates unchanged on the no-deadline path, residual negative defensive handling must not collapse into the `0` no-deadline branch, "no deadline" reachable only via explicit `0` never by a forgotten/zero-by-omission field |
+| ai-model-selection-2-3 | Thread resolved command + timeout through the release wiring site (`internal/engine/release.go`) | a per-verb `[release]` override drives the argv (not the bare shared/default), timeout sourced from the accessor never zero-by-omission |
+| ai-model-selection-2-4 | Thread resolved command + timeout through the commit wiring site (`internal/commit/run.go`) | a per-verb `[commit]` override drives the argv (not the bare shared/default), timeout sourced from the accessor never zero-by-omission |
+| ai-model-selection-2-5 | Route the regenerate wiring site through the release verb (`internal/engine/regenerate_fresh.go`) | regenerate resolves the `[release]` values (argv asserted to carry release's command/timeout, not the bare shared/default), the easy-miss distinct construction site |
+| ai-model-selection-2-6 | Migrate the old `claude -p` default-argv test pins to `claude -p --model sonnet` | FakeRunner seeds keyed by binary name still match (only exact-argv assertions change), the transport's ex-default-command test now asserts the passed command verbatim rather than a transport default |
+
 ### Phase 3: Operator surfacing and contract reconciliation
 status: approved
 approved_at: 2026-06-13
