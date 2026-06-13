@@ -33,7 +33,7 @@
         "ai-model-selection": {
           "status": "in-progress",
           "format": "tick",
-          "spec_commit": "0e43df59e5325607c3ab7b17b038f2e040cf6a07",
+          "spec_commit": "953a0e406f02495e0e7f7dc229bbfdba7d1dc383",
           "task_list_gate_mode": "gated",
           "author_gate_mode": "gated",
           "finding_gate_mode": "gated",
