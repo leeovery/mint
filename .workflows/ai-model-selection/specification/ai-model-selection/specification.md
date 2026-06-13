@@ -89,6 +89,18 @@ Resolution is per-key **independent** — `ai_command` and `timeout` each fall b
 - A wrong *type* still surfaces as a strict decode error at `Load` (existing schema behaviour) — distinct from a value-invalid drop-through.
 - The transport must learn `timeout = 0` ⇒ no deadline, replacing its current non-positive → 60s re-default.
 
+### Timeout × model-choice coupling — operator's responsibility
+
+Because resolution is per-key independent, a verb that overrides `ai_command` to a slower model but **not** `timeout` silently inherits the 60s shared default — the exact fatal-deadline exposure the override exists to prevent.
+
+**Mint does not protect against this:**
+
+- no auto-bump of the timeout when a slower command is configured,
+- no warning,
+- no paired-defaults requirement (overriding the command does not require also overriding the timeout).
+
+If you slow the model, you raise the timeout yourself. The supported pattern — override both keys together for a slow verb — is **documented** (README/spec) but **not enforced**. Mint ships the current 60s as the shared default.
+
 ---
 
 ## Working Notes
