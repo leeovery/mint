@@ -38,8 +38,8 @@
           "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
-          "phase": 2,
-          "task": "ai-model-selection-2-1",
+          "phase": 3,
+          "task": "~",
           "task_map": {
             "ai-model-selection-1": "tick-816e70",
             "ai-model-selection-1-1": "tick-b71241",
@@ -52,7 +52,11 @@
             "ai-model-selection-1-8": "tick-128334",
             "ai-model-selection-2": "tick-e86e4d",
             "ai-model-selection-2-1": "tick-ecf252",
-            "ai-model-selection-2-2": "tick-d69d1b"
+            "ai-model-selection-2-2": "tick-d69d1b",
+            "ai-model-selection-2-3": "tick-0e0ea8",
+            "ai-model-selection-2-4": "tick-e11223",
+            "ai-model-selection-2-5": "tick-c6b660",
+            "ai-model-selection-2-6": "tick-8d9bca"
           },
           "external_id": "tick-872936"
         }
