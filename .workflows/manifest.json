@@ -2,6 +2,9 @@
   "work_units": {
     "mint-release-tool": {
       "work_type": "feature"
+    },
+    "ai-model-selection": {
+      "work_type": "feature"
     }
   },
   "defaults": {

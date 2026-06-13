@@ -4,7 +4,15 @@
   "status": "in-progress",
   "created": "2026-06-13",
   "description": "Pin a model in mint's default AI command and decide the AI model/command config shape per verb (top-level vs per-verb override)",
-  "phases": {},
+  "phases": {
+    "discussion": {
+      "items": {
+        "ai-model-selection": {
+          "status": "in-progress"
+        }
+      }
+    }
+  },
   "seeds": [
     {
       "path": "seeds/2026-06-11-ai-model-selection.md",
