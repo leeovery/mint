@@ -30,15 +30,15 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
 
 ### Map
 
-  Discussion Map — AI Model Selection (8 subtopics — 5 decided · 1 converging · 2 pending)
+  Discussion Map — AI Model Selection (8 subtopics — 6 decided · 1 exploring · 1 pending)
 
-  ┌─ → Pin A Model In The Shipped Default [converging]
+  ┌─ ✓ Pin A Model In The Shipped Default [decided]
   │  └─ ✓ Alias Form Vs Full Model ID [decided]
   ├─ ✓ Per-Verb Model Differentiation [decided]
   │  └─ ✓ Config Shape: Top-Level Shared + Per-Verb Override [decided]
   ├─ ✓ Timeout × Model-Choice Coupling [decided]
   ├─ ✓ Driver-Based AI Config — Dropped [decided]
-  ├─ ○ Single Source Of Truth For The Default Command [pending]
+  ├─ ◐ Single Source Of Truth For The Default Command [exploring]
   └─ ○ Init Scaffolds The New Config Keys [pending]
 
 ---
@@ -53,11 +53,13 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
 
 `claude -p` inherits whatever model the operator's Claude CLI defaults to — so output quality, cost, and latency silently depend on an external, mutable setting mint doesn't control. Pinning a model in the shipped default removes that dependence.
 
-### Decision (converging)
+### Decision
 
-Pin via the **alias form** (`--model sonnet`), **not a full model ID** — full IDs baked into the binary go stale every model release and would force a rebuild just to track versions; the alias tracks the current version automatically. *(Alias-vs-ID: decided.)*
+Pin via the **alias form** (`--model sonnet`), **not a full model ID** — full IDs baked into the binary go stale every model release and would force a rebuild just to track versions; the alias tracks the current version automatically.
 
-Shared default model leans **Sonnet** — strong enough for the salience-heavy notes task and comfortably inside the 60s deadline; Opus reserved for explicit per-verb opt-in. *(Specific shared model: converging, confirm pending.)*
+**Shared default model = Sonnet** (confirmed) — strong enough for the salience-heavy notes task and comfortably inside the 60s deadline; Opus reserved for explicit per-verb opt-in.
+
+**Breaking change for existing operators — consciously accepted.** Moving the shipped default from bare `claude -p` to `claude -p --model sonnet` silently switches the model for zero-config / bare-`ai_command` users — including anyone who *deliberately* set their CLI default to Opus so mint used it. Accepted for now: predictable, mint-controlled behaviour is the whole point, and a release-note callout covers the upgrade. The *proper* surfacing — letting the operator choose at setup time — rides on the deferred interactive `mint init` feature (logged separately); not built here. (Operators who already wrote a full `--model` command are unaffected.)
 
 ## Per-Verb Model Differentiation
 
@@ -128,10 +130,9 @@ The seed's "ideal world": configure *which AI* + a model alias, with mint knowin
 
 ### Current State
 
-- **Decided**: per-verb `ai_command` override (raw command string); per-verb timeout override; **keep top-level shared `ai_command`/timeout + per-verb overrides** (config shape); driver dropped; alias form over full model ID.
-- **Converging**: shared default model = Sonnet (shape confirmed; specific model not yet).
-- **Pending**: single source of truth for the default command; init scaffolds the new keys.
-- **Routed out**: interactive `mint init` setup → logged as a separate idea.
+- **Decided**: shared default = Sonnet, alias form; per-verb `ai_command` override (raw command string); per-verb timeout override (coupling is the operator's responsibility); keep top-level shared `ai_command`/timeout + per-verb overrides (config shape); `regenerate` rides on `[release]`; driver dropped. Shipped-default change is an accepted breaking change (release-note callout).
+- **Pending**: single source of truth for the default command (now *exploring*); init scaffolds the new keys.
+- **Routed out**: interactive `mint init` setup → logged as a separate idea (the proper home for surfacing the model choice to operators).
 
 ## Triage
 
