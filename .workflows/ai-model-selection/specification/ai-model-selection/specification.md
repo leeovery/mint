@@ -27,6 +27,32 @@ The shipped default command becomes `claude -p --model sonnet` (today: `claude -
 - **Default model is Sonnet.** Sonnet is strong enough for the salience-heavy notes task and comfortably inside the per-attempt deadline. Opus is reserved for explicit per-verb opt-in — never the shipped default.
 - **Not a breaking change in practice.** Moving the shipped default from bare `claude -p` to `claude -p --model sonnet` would silently switch the model for zero-config operators, but mint is a brand-new project with no users yet — there is nothing to break. **No release-note callout and no runtime signal are required.** The only real migration cost is internal: mint's own test pins that assert the old `claude -p` default (enumerated in the Migration section).
 
+### Config schema: per-verb `ai_command` override
+
+`ai_command` is promoted from a shared-only engine key to a key that lives at **both** levels with fallback:
+
+- **Top-level shared `ai_command`** — the baseline (the shipped-default home). Repoints every verb in one line.
+- **Optional per-verb override** — `[release].ai_command` and `[commit].ai_command`.
+
+**Resolution order:** `[verb].ai_command` → top-level shared `ai_command` → shipped default.
+
+**Mechanism is a full command string per verb**, not a model knob or driver. A raw command string supports any AI / model / flags with zero per-AI machinery — the transport is already content-agnostic. This is what makes a verb able to run a *different AI entirely*, not just a different model.
+
+**Why top-level shared baseline + optional per-verb override (not verb-only defaults):**
+
+- "Set once for all verbs" is the common case — one model for both; per-verb is the exception. Verb-only would force editing each verb's key.
+- `ai_command` is already a top-level shared engine key; per-verb override is purely additive — no churn to the "shared keys at top" principle.
+- Single source of truth: verb-only defaults would bake the shipped default once per verb (more duplication); a single top-level shipped default keeps it canonical.
+
+**Verb config space is exactly two tables: `[release]` and `[commit]`.**
+
+- `regenerate` is **not** a separate verb. `mint release regenerate --fresh` re-runs the release-notes task, so it resolves through `[release]`'s `ai_command` — there is no `[regenerate]` table. (Regenerating with a different model than you released with would be odd, and it shares release's salience needs and timeout exposure.)
+- `[commit]` simply mirrors `[release]` — same override keys, same resolution, no commit-specific asymmetry.
+
+**Strict-decoding requirement.** The new per-verb keys must be added to both verb shape structs with `typeErrorMessages` entries, otherwise strict decoding (`DisallowUnknownFields`) rejects them.
+
+**`ai_command` and `timeout` become the first keys living at both levels with fallback** — a small, deliberate new pattern. `max_diff_lines` / `diff_exclude` stay shared-only until their own real need appears.
+
 ---
 
 ## Working Notes
