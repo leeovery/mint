@@ -158,7 +158,7 @@ New config keys must appear in `internal/initgen`'s commented template (project 
 - **Per-verb overrides shown commented** under both `[release]` and `[commit]` — `# ai_command = …` and `# timeout = …` — so the override pattern is discoverable (optional → commented, per the template's own convention).
 - **Config comments stay model-agnostic (user constraint).** Comments describe what a key does and never name a specific model (no sonnet/opus/haiku, no "use a stronger model" steer). The timeout hint is framed around *command latency*, not a model — e.g. "raise if your `ai_command` runs slowly." The pinned default *value* still carries `--model sonnet` (that's the decided default, not a comment).
 - **F9 resolved**: no concrete, model-tied timeout number in the scaffold; the mitigation hint is generic and model-free.
-- **README (F6) in scope**: document the new keys, the `verb → shared → default` resolution order, and the changed shipped default with the breaking-change callout (a factual statement of the new default, not a recommendation).
+- **README (F6) in scope**: document the new keys, the `verb → shared → default` resolution order, and the new shipped default value (a factual statement, not a recommendation). No breaking-change callout needed — mint has no users yet (see *Pin A Model In The Shipped Default*).
 
 Confidence: high. Exact comment wording is a planning/impl detail.
 
@@ -181,8 +181,9 @@ Factual completeness items carried over from the final review — no open decisi
 
 ### Open Threads
 
-- Shared default model (Sonnet) and top-level-vs-verb-only config shape — converging, confirm pending.
+- **Deferred to spec/planning** (deliberate hand-offs, not unresolved decisions): the new keys' exact names, the `timeout` TOML representation/units (int seconds vs string duration), and the exact model-agnostic comment wording. See *Notes for Spec/Planning* for the mechanical carry-overs (the three wiring sites, test-pin migration, cross-spec sequencing).
 - **Interactive `mint init` setup** (prompting for model/AI per verb during scaffolding) — logged as a separate idea for later triage (init UX, broader than models, pulls in interactive-prompt machinery + the fail-loud/non-TTY invariant). The in-scope counterpart — init's static template surfacing the new keys — stays here as the `Init Scaffolds The New Config Keys` subtopic.
+- **Env-var override layer** (Laravel `.env`-style third layer) — explicitly out of scope; addable later as a third layer if a need appears.
 
 ### Current State
 
