@@ -94,6 +94,11 @@ Why not verb-only defaults:
 
 **Mechanical consequences (for spec/planning).** `[commit]` simply mirrors `[release]` — same two override keys (`ai_command`, `timeout`), same resolution, no commit-specific asymmetry. The keys must be added to both verb shape structs with `typeErrorMessages` entries, else strict decoding (`DisallowUnknownFields`) rejects them. This formally **reverses the commit spec's "Deliberately NOT added for commit … promote to a `[commit]` key only if a real need appears"** — the real need has appeared; that spec owes the reconciliation (cross-spec hand-off).
 
+**Resolution value semantics (decided — supersedes the earlier "empty/zero fails loud" phrasing).** The `verb → shared → default` chain treats non-normal values *differently per key*:
+
+- **`ai_command`** — blank / whitespace / invalid / missing at a layer **drops through** to the next layer. The shipped default is the floor, so resolution always yields a valid command; `ai_command` is never empty, and the transport's old empty→re-default / empty→fail-loud path becomes unreachable (even a top-level `ai_command = ''` falls to the shipped default).
+- **`timeout`** — **zero is an explicit, honored value meaning "no time limit"** (disables the per-attempt deadline); it stops the fall-through and **must be documented**, including the trade-off that the operator is opting into an AI call that can run unbounded — a conscious, operator-chosen exception to "fail loud, never hang." **Missing or invalid (e.g. negative) drops through**; positive is used as-is; floor = the shipped 60s default. A wrong *type* still surfaces as a strict decode error at Load (existing schema behaviour), distinct from a value-invalid drop-through. The transport must learn `timeout = 0` ⇒ no deadline, replacing its current non-positive→60s re-default.
+
 ## Timeout × Model-Choice Coupling
 
 ### Context
@@ -135,7 +140,7 @@ Idiomatic Go shape:
 - One `defaults() Config` constructor in `internal/config` — the canonical defaults.
 - `Load` decodes the project file *over* a defaults-seeded target (present keys win); missing file → `defaults()`. (Already how mint works.)
 - **Layered per-verb lookup centralized in config** via typed accessor methods that resolve `verb override → shared top-level → default` — e.g. `cfg.AICommandFor(verb)` / `cfg.TimeoutFor(verb)`. The fallback chain lives in exactly one place; consumers just ask for the resolved value.
-- **The transport carries no defaults** — it runs the concrete command/timeout it's handed; empty/zero fails loud. `transport.go:45`'s duplicate `defaultAICommand` is deleted; `timeout` is introduced as a *net-new* config key (today only `transport.go:64`'s `defaultTimeout`, never config-populated — see the Timeout subtopic correction).
+- **The transport carries no defaults** — it runs the concrete command/timeout config resolves and hands it; config's floor always supplies a valid command, so the transport never re-defaults. `transport.go:45`'s duplicate `defaultAICommand` is deleted; `timeout` is introduced as a *net-new* config key (today only `transport.go:64`'s `defaultTimeout`, never config-populated — see the Timeout subtopic correction). The transport also learns `timeout = 0` ⇒ no deadline (see resolution value semantics).
 - **`initgen` pulls its template values from `config`** rather than re-typing literals.
 - No reflection, no global `config()`/`env()` service-locator — a typed `Config` value passed explicitly with accessor methods. The `ai`↔`config` decoupling survives (config never imports ai; consumers map `config.Config` → `ai.Config`).
 
