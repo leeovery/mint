@@ -53,6 +53,25 @@ The shipped default command becomes `claude -p --model sonnet` (today: `claude -
 
 **`ai_command` and `timeout` become the first keys living at both levels with fallback** — a small, deliberate new pattern. `max_diff_lines` / `diff_exclude` stay shared-only until their own real need appears.
 
+### Config schema: `timeout` key
+
+A `timeout` config key is added in the **same layering shape** as `ai_command`: a top-level shared default plus optional `[release]` / `[commit]` overrides, with resolution `[verb].timeout` → top-level shared `timeout` → shipped default.
+
+**`timeout` is NET-NEW config surface, not a relocated default.** Unlike `ai_command` (an existing top-level config key being de-duplicated), `timeout` today exists *only* as `defaultTimeout` in the transport (`internal/ai/transport.go`) and is **never populated from config** — every wiring site constructs `ai.Config{AICommand: cfg.AICommand}` with `Timeout` left zero, relying on the transport's own self-default. This work therefore introduces a brand-new top-level shared `timeout` key plus the two per-verb overrides, all needing full new-key treatment:
+
+- schema struct field (top-level + both verb shapes),
+- `typeErrorMessages` entry,
+- `defaults()` seeding at the current 60s value,
+- absent-vs-zero / duration decoding.
+
+"Mirror the `ai_command` shape" describes the **layering**, not the effort — `ai_command` is a de-dup/move; `timeout` is genuinely new surface.
+
+**Shipped default = 60s** (the transport's current per-attempt deadline value), seeded in `internal/config`.
+
+**Why `timeout` exists as config at all (model coupling).** Per-verb model freedom and per-verb timeout freedom must travel together. The transport's per-attempt timeout is fatal — a timeout is not retried (the single retry covers empty/error/refusal *content* only). The release verb is both where a slower model (Opus) pays off most (salience synthesis over a whole change map) and where it is most likely to time out (large input), and that failure aborts the release. Without a per-verb timeout knob, pinning a slower model would make it trivial to reliably blow the fatal deadline.
+
+**Deferred to planning:** the key's exact TOML representation/units (int seconds vs string duration). The decoding must still distinguish absent from zero (see resolution value semantics).
+
 ---
 
 ## Working Notes
