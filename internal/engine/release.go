@@ -1226,7 +1226,6 @@ func buildPlan(tag string, publish bool) presenter.Plan {
 	steps := []presenter.PlanStep{
 		{Verb: "commit", Target: "bookkeeping"},
 		{Verb: "tag", Target: tag},
-		{Verb: "push", Target: "--atomic → origin"},
 	}
 	if publish {
 		steps = append(steps, presenter.PlanStep{Verb: "publish", Target: tag})
@@ -1285,6 +1284,7 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 		Project: projectName(root),
 		Version: versionKey,
 		Leaf:    cfg.Release.CommitPrefix,
+		DryRun:  true,
 	})
 	return nil
 }
@@ -1347,7 +1347,6 @@ func buildDryRunPlan(cfg config.Config, tag, publishTarget string) presenter.Pla
 	steps = append(steps,
 		presenter.PlanStep{Verb: "commit", Target: record.BookkeepingSubject(cfg.Release.CommitPrefix, tag)},
 		presenter.PlanStep{Verb: "tag", Target: tag},
-		presenter.PlanStep{Verb: "push", Target: "--atomic → origin"},
 	)
 	if publishTarget != "" {
 		steps = append(steps, presenter.PlanStep{Verb: "publish", Target: publishTarget})

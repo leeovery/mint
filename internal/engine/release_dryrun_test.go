@@ -149,7 +149,6 @@ func TestRelease_DryRun_PrintsFullPlan(t *testing.T) {
 	wantSteps := map[string]string{
 		"commit":  "🌿 Release v0.0.1",
 		"tag":     "v0.0.1",
-		"push":    "--atomic → origin",
 		"publish": "v0.0.1",
 	}
 	for _, step := range plan.Steps {

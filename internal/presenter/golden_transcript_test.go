@@ -172,11 +172,12 @@ func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
 		"\n" +
 		"✓ version    v1.3.2 → v1.4.0 (minor)\n" +
 		"✓ preflight  clean · on main · tag free · in sync with origin\n" +
+		"\n" +
 		"Plan\n" +
-		"    • commit   CHANGELOG.md + bin/acme\n" +
-		"    • tag      v1.4.0 (annotated)\n" +
-		"    • push     --atomic → origin\n" +
-		"    • publish  GitHub release\n" +
+		"  • commit   CHANGELOG.md + bin/acme\n" +
+		"  • tag      v1.4.0 (annotated)\n" +
+		"  • push     --atomic → origin\n" +
+		"  • publish  GitHub release\n" +
 		"✓ prep       pre_tag: npm ci && npm run build (2.3s)\n" +
 		"✓ notes      generated (1.1s)\n" +
 		"\n" +

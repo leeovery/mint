@@ -473,6 +473,11 @@ func (p *PlainPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
 		return
 	}
+	if r.DryRun {
+		// A dry run changed nothing — never claim a release/commit happened.
+		p.writef("dry run: %s v%s — no changes made\n", r.Project, r.Version)
+		return
+	}
 	switch r.Verb {
 	case VerbRelease:
 		p.renderReleaseFooter(r)

@@ -615,4 +615,8 @@ type RunResult struct {
 	// regenerate arm — the single version or the --all set text. The release arm
 	// ignores it (it renders Version + URL instead).
 	Summary string
+	// DryRun marks a dry run's close-out. When set, RunFinished renders a
+	// "no changes made" footer instead of any verb's success line — a dry run
+	// mutated nothing, so it must never claim it released/committed anything.
+	DryRun bool
 }

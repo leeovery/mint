@@ -542,11 +542,11 @@ func TestShowPlanSamePayloadFeedsBothModes(t *testing.T) {
 		t.Errorf("plain one-liner = %q, want %q", got, wantPlain)
 	}
 
-	wantPretty := "Plan\n" +
-		"    • commit   changelog+version\n" +
-		"    • tag      v1.4.0\n" +
-		"    • push     --atomic\n" +
-		"    • publish  github\n"
+	wantPretty := "\nPlan\n" +
+		"  • commit   changelog+version\n" +
+		"  • tag      v1.4.0\n" +
+		"  • push     --atomic\n" +
+		"  • publish  github\n"
 	if got := prettyOut.String(); got != wantPretty {
 		t.Errorf("pretty block = %q, want %q", got, wantPretty)
 	}

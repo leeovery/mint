@@ -612,10 +612,10 @@ func TestPrettyPresenterRegenerateReuseNotesBlockRendersTwoChoiceGate(t *testing
 }
 
 // TestPrettyPresenterShowPlanRendersBulletedBlock is the core pretty acceptance:
-// ShowPlan renders a two-space-indented "Plan" header followed by one
-// "    • {verb}<pad>{target}" line per step, verbs padded so targets align at the
-// (longest verb + 2) column. The no-colour profile keeps the assertion on the
-// exact layout/glyphs rather than ANSI bytes.
+// ShowPlan renders a leading blank line, a flush-left bold "Plan" header, then one
+// "  • {verb}<pad>{target}" line per step (two-space indent), verbs padded so
+// targets align at the (longest verb + 2) column. The no-colour profile keeps the
+// assertion on the exact layout/glyphs rather than ANSI bytes.
 func TestPrettyPresenterShowPlanRendersBulletedBlock(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
@@ -628,11 +628,11 @@ func TestPrettyPresenterShowPlanRendersBulletedBlock(t *testing.T) {
 
 	// Column = longest verb ("publish", 7) + 2 = 9, so every verb pads to width 9
 	// and the targets all start at the same column — matching the worked example.
-	want := "Plan\n" +
-		"    • commit   CHANGELOG.md + bin/acme\n" +
-		"    • tag      v1.4.0 (annotated)\n" +
-		"    • push     --atomic → origin\n" +
-		"    • publish  GitHub release\n"
+	want := "\nPlan\n" +
+		"  • commit   CHANGELOG.md + bin/acme\n" +
+		"  • tag      v1.4.0 (annotated)\n" +
+		"  • push     --atomic → origin\n" +
+		"  • publish  GitHub release\n"
 	if got := out.String(); got != want {
 		t.Errorf("ShowPlan block mismatch\n got: %q\nwant: %q", got, want)
 	}
@@ -651,8 +651,9 @@ func TestPrettyPresenterShowPlanTargetsAlign(t *testing.T) {
 	})
 
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
-	// lines[0] is the "Plan" header; the bullets follow.
-	bullets := lines[1:]
+	// lines[0] is the leading blank line, lines[1] is the "Plan" header; the
+	// bullets follow.
+	bullets := lines[2:]
 	if len(bullets) != 4 {
 		t.Fatalf("expected 4 bullet lines, got %d:\n%q", len(bullets), out.String())
 	}
@@ -678,8 +679,8 @@ func TestPrettyPresenterShowPlanSingleStep(t *testing.T) {
 		}})
 	})
 
-	want := "Plan\n" +
-		"    • tag  v1.4.0\n"
+	want := "\nPlan\n" +
+		"  • tag  v1.4.0\n"
 	got := out.String()
 	if got != want {
 		t.Errorf("single-step plan = %q, want %q", got, want)
@@ -702,7 +703,7 @@ func TestPrettyPresenterShowPlanEmptyOmitsBlock(t *testing.T) {
 }
 
 // TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly covers the empty-target
-// edge: a step whose target is empty renders "    • {verb}" with NO trailing pad
+// edge: a step whose target is empty renders "  • {verb}" with NO trailing pad
 // or space.
 func TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly(t *testing.T) {
 	tests := []struct {
@@ -713,7 +714,7 @@ func TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly(t *testing.T) {
 		{
 			name:  "lone empty-target step renders just the verb",
 			steps: []presenter.PlanStep{{Verb: "publish", Target: ""}},
-			want:  "Plan\n    • publish\n",
+			want:  "\nPlan\n  • publish\n",
 		},
 		{
 			name: "empty-target step among others has no trailing pad",
@@ -724,7 +725,7 @@ func TestPrettyPresenterShowPlanEmptyTargetRendersVerbOnly(t *testing.T) {
 			// Column = longest verb ("publish", 7) + 2 = 9, so "tag" pads to the
 			// column before its target; the empty-target "publish" line drops the
 			// pad entirely (nothing follows the verb).
-			want: "Plan\n    • tag      v1.4.0\n    • publish\n",
+			want: "\nPlan\n  • tag      v1.4.0\n  • publish\n",
 		},
 	}
 
@@ -765,9 +766,9 @@ func TestPrettyPresenterShowPlanLayoutSurvivesColourDowngrade(t *testing.T) {
 	if bytes.ContainsRune(out.Bytes(), 0x1b) {
 		t.Errorf("downgraded plan block leaked an SGR code:\n%q", got)
 	}
-	want := "Plan\n" +
-		"    • commit   CHANGELOG.md + bin/acme\n" +
-		"    • publish  GitHub release\n"
+	want := "\nPlan\n" +
+		"  • commit   CHANGELOG.md + bin/acme\n" +
+		"  • publish  GitHub release\n"
 	if got != want {
 		t.Errorf("downgraded plan block = %q, want %q", got, want)
 	}

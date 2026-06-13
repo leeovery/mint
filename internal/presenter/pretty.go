@@ -589,30 +589,28 @@ func warnText(w Warning) string {
 	return w.Label + "  " + w.Message
 }
 
-// planIndent is the four-space indent every plan bullet line carries — one level
-// deeper than the two-space stage/header indent, nesting the steps under the
-// "Plan" header. The "•" bullet that follows is a pretty-only glyph (never
-// rendered in plain mode); only the glyph is styled, so this indent and the
-// padding/verb/target that follow stay as plain layout and survive a colour
-// downgrade intact.
-const planIndent = "    "
+// planIndent is the two-space indent every plan bullet line carries, nesting the
+// steps a single level under the "Plan" header. The "•" bullet that follows is a
+// pretty-only glyph (never rendered in plain mode); only the glyph is styled, so
+// this indent and the padding/verb/target that follow stay as plain layout and
+// survive a colour downgrade intact.
+const planIndent = "  "
 
-// ShowPlan renders the plan as a styled bulleted block: a two-space-indented
-// "Plan" header, then one "    • {verb}<pad>{target}" line per step. Verbs pad to
-// a per-plan column — the longest verb in THIS plan plus two spaces — so the
-// targets align (matching the worked example's dynamic alignment). It derives
-// entirely from the SAME structured steps the plain one-liner does.
+// ShowPlan renders the plan as its own block: a leading blank line, a bold "Plan"
+// header, then one "  • {verb}<pad>{target}" line per step. Verbs pad to a per-plan
+// column — the longest verb in THIS plan plus two spaces — so the targets align. It
+// derives entirely from the SAME structured steps the plain one-liner does.
 //
-// Edge forms: an empty plan omits the ENTIRE block (no header, no bullets — no
-// orphan header); a step with an empty target renders "    • {verb}" with no
-// trailing pad or space. The header and bullet glyph are styled through the
-// lipgloss renderer, but all layout (indents, the bullet, the column padding)
-// survives a colour downgrade as plain text.
+// Edge forms: an empty plan omits the ENTIRE block (no blank line, no header, no
+// bullets — no orphan header); a step with an empty target renders "  • {verb}" with
+// no trailing pad or space. The header is bold and the bullet glyph dim, but all
+// layout (the blank line, indents, the bullet, the column padding) survives a colour
+// downgrade as plain text.
 func (p *PrettyPresenter) ShowPlan(plan Plan) {
 	if len(plan.Steps) == 0 {
 		return
 	}
-	p.writef("%s%s\n", stageIndent, p.dim.Render("Plan"))
+	p.writef("\n%s%s\n", stageIndent, p.strong.Render("Plan"))
 	column := planVerbColumn(plan.Steps)
 	bullet := p.dim.Render("•")
 	for _, step := range plan.Steps {
@@ -1037,6 +1035,12 @@ func (p *PrettyPresenter) InitResult(r InitOutcome) {
 //     init/version).
 func (p *PrettyPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
+		return
+	}
+	if r.DryRun {
+		// A dry run changed nothing — never render a "released"/"committed" line. State
+		// plainly that it was a preview.
+		p.writef("\n%s dry run %s %s v%s — no changes made\n", leafOrDefault(r.Leaf), p.dim.Render("·"), r.Project, r.Version)
 		return
 	}
 	switch r.Verb {
