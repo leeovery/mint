@@ -112,12 +112,27 @@ func TestRelease_RealRun_KeyMatch_ReusesCachedNote_NoAICall(t *testing.T) {
 	if got := changelogSectionBody(t, root, "1.2.4"); got != cachedReuseBody {
 		t.Errorf("CHANGELOG body = %q, want the reused cached body %q", got, cachedReuseBody)
 	}
-	// The reuse is reported quietly.
-	warnWithMessage(t, rec, reuseReportMessage)
+	// Reuse is now a choice: the reuse-confirm gate fired (version + reuse + notes = 3
+	// prompts), and with no NextChoices it defaulted to "use cached" — skipping the AI.
+	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
+		t.Errorf("Prompt count = %d, want 3 (version, reuse-confirm, notes review)", got)
+	}
+	if !reuseConfirmPrompted(rec) {
+		t.Errorf("no reuse-confirm prompt recorded; a cache match must offer use/regenerate")
+	}
 }
 
-// reuseReportMessage is the quiet notice mint emits when it reuses a previewed note.
-const reuseReportMessage = "reusing the previewed notes from the dry-run cache"
+// reuseConfirmPrompted reports whether the real-run reuse-confirm gate was offered —
+// the y/r gate (it offers regenerate but NOT edit, which distinguishes it from the
+// notes-review gate and the y/n version gate).
+func reuseConfirmPrompted(rec *presentertest.RecordingPresenter) bool {
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindPrompt && ev.Prompt.Has(presenter.ChoiceRegen) && !ev.Prompt.Has(presenter.ChoiceEdit) {
+			return true
+		}
+	}
+	return false
+}
 
 // TestRelease_RealRun_KeyMiss_RegeneratesAndReports proves a key MISS (no entry for
 // the run's key) regenerates via the AI and reports the EXACT spec message; the run
@@ -414,8 +429,9 @@ func TestRelease_RealRun_ReusedNote_ShownAtGate(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedRealRunReuseGit(f, root, priorTagDiff)
 	f.Seed("gh", runner.Result{}, nil)
-	// An interactive run that explicitly accepts at both gates (version, then notes).
-	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes}}
+	// An interactive run accepting at all three gates: version, reuse-confirm (use the
+	// cached preview), then the notes review gate over the reused note.
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes, presenter.ChoiceYes}}
 
 	deps := newDepsWithRealRunCache(rec, f, cacheBase, func() time.Time { return realRunClock })
 	if err := engine.Release(t.Context(), deps, priorTagNormalAIOptions()); err != nil {
@@ -424,8 +440,8 @@ func TestRelease_RealRun_ReusedNote_ShownAtGate(t *testing.T) {
 
 	// Both gates fired (Prompt recorded): the version gate, then the notes review gate
 	// over the REUSED note.
-	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
-		t.Errorf("Prompt count = %d, want exactly 2 (version gate + the notes gate over a reused note)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
+		t.Errorf("Prompt count = %d, want exactly 3 (version, reuse-confirm, notes review over a reused note)", got)
 	}
 	// The note shown at the gate is the REUSED cached body.
 	if got := lastNotesBody(t, rec); got != cachedReuseBody {
@@ -460,11 +476,11 @@ func TestRelease_RealRun_ReuseUnderYes_SkipsGate(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if got := countKind(rec, presentertest.KindPrompt); got != 2 {
-		t.Errorf("Prompt count = %d, want exactly 2 under -y (version + notes gates; the engine always calls Prompt; the presenter auto-accepts)", got)
+	if got := countKind(rec, presentertest.KindPrompt); got != 3 {
+		t.Errorf("Prompt count = %d, want exactly 3 under -y (version + reuse-confirm + notes; the engine always calls Prompt; the presenter auto-accepts)", got)
 	}
 	if got := tagAnnotationBody(t, f, nextTag); got != cachedReuseBody {
-		t.Errorf("tag annotation body = %q, want the reused cached body %q under -y", got, cachedReuseBody)
+		t.Errorf("tag annotation body = %q, want the reused cached body %q under -y (reuse defaults to use-cached)", got, cachedReuseBody)
 	}
 }
 

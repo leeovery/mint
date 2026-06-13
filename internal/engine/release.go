@@ -846,8 +846,38 @@ func realRunReuse(deps ReleaseDeps, root, versionKey string, opts ReleaseOptions
 			}
 			return "", false, nil
 		}
-		reportNotesReused(deps.Presenter)
+		// A live preview matches this exact diff. Rather than silently reuse it, ask:
+		// the spinner is suspended for the prompt and resumed after (so a "regenerate"
+		// runs the AI under a live spinner; a "use" closes out moments later). Under -y
+		// the gate auto-accepts the default — use the cached preview.
+		pr := deps.Presenter
+		pr.SuspendSpinner()
+		choice, derr := ReviewDecision(pr, reuseConfirmGate())
+		pr.ResumeSpinner()
+		if derr != nil {
+			return "", false, derr
+		}
+		if choice == presenter.ChoiceRegen {
+			return "", false, nil
+		}
 		return entry.Body, true, nil
+	}
+}
+
+// reuseConfirmGate is the real-run prompt shown when a dry-run preview matches the
+// current diff: use the cached notes, or regenerate fresh. Default is "use" (a bare
+// Enter, and the -y auto-accept, reuse the preview). It declares y/r only — there is
+// no edit here (the notes-review gate downstream owns editing).
+func reuseConfirmGate() presenter.Gate {
+	return presenter.Gate{
+		Question:   "Cached notes found for this diff — use them?",
+		Subject:    "notes",
+		AcceptEcho: "reused",
+		Choices: []presenter.GateChoice{
+			{Key: presenter.ChoiceYes, Action: "use cached"},
+			{Key: presenter.ChoiceRegen, Action: "regenerate"},
+		},
+		Default: presenter.ChoiceYes,
 	}
 }
 
@@ -856,12 +886,6 @@ func realRunReuse(deps ReleaseDeps, root, versionKey string, opts ReleaseOptions
 // not suppress the success line), so a reported reuse/miss leaves the run otherwise
 // intact — no new presenter event is added.
 const reuseNoticeLabel = "notes"
-
-// reportNotesReused emits the quiet notice that the real run is reusing the previewed
-// dry-run note (a live key match within the TTL). It rides the Warn seam.
-func reportNotesReused(p presenter.Presenter) {
-	p.Warn(presenter.Warning{Label: reuseNoticeLabel, Message: "reusing the previewed notes from the dry-run cache"})
-}
 
 // reportNotesRegenerating emits the SPEC-FIXED miss notice when the real-run cache key
 // does not match a live preview (a changed diff, an absent entry, or an expired one),

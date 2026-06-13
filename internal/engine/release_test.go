@@ -2186,11 +2186,13 @@ func TestRelease_NormalAI_GateOffersRegenerate(t *testing.T) {
 func promptGate(t *testing.T, rec *presentertest.RecordingPresenter) presenter.Gate {
 	t.Helper()
 	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindPrompt && ev.Prompt.Subject != "version" {
+		// The notes-review gate is the only gate offering edit (the version gate is y/n,
+		// the reuse-confirm gate y/r) — so ChoiceEdit identifies it unambiguously.
+		if ev.Kind == presentertest.KindPrompt && ev.Prompt.Has(presenter.ChoiceEdit) {
 			return ev.Prompt
 		}
 	}
-	t.Fatalf("no notes Prompt event recorded")
+	t.Fatalf("no notes-review Prompt event recorded")
 	return presenter.Gate{}
 }
 
