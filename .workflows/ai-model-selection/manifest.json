@@ -35,12 +35,23 @@
           "format": "tick",
           "spec_commit": "953a0e406f02495e0e7f7dc229bbfdba7d1dc383",
           "task_list_gate_mode": "auto",
-          "author_gate_mode": "gated",
+          "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
-          "phase": 1,
-          "task": "ai-model-selection-1-1",
-          "task_map": {}
+          "phase": 2,
+          "task": "~",
+          "task_map": {
+            "ai-model-selection-1": "tick-816e70",
+            "ai-model-selection-1-1": "tick-b71241",
+            "ai-model-selection-1-2": "tick-c244d0",
+            "ai-model-selection-1-3": "tick-d6c0a0",
+            "ai-model-selection-1-4": "tick-7775f8",
+            "ai-model-selection-1-5": "tick-cdc325",
+            "ai-model-selection-1-6": "tick-a2100b",
+            "ai-model-selection-1-7": "tick-f32dd3",
+            "ai-model-selection-1-8": "tick-128334"
+          },
+          "external_id": "tick-872936"
         }
       }
     }
