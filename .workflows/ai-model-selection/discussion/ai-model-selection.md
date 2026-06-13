@@ -88,6 +88,8 @@ Why not verb-only defaults:
 
 `ai_command` and timeout become the first keys living at *both* levels with fallback — a small, deliberate new pattern. `max_diff_lines`/`diff_exclude` stay shared-only until their own real need appears.
 
+**`regenerate` is not a separate verb (decided).** `mint release regenerate --fresh` re-runs the release-notes task, so it resolves through `[release]`'s `ai_command`/timeout — no `[regenerate]` table. Regenerating with a different model than you released with would be odd, and it shares release's salience needs and Opus-on-big-diff timeout exposure. So the per-verb config space is exactly two tables: `[release]` (covers release + regenerate) and `[commit]`. (Confidence: high, user-confirmed.)
+
 ## Timeout × Model-Choice Coupling
 
 ### Context
