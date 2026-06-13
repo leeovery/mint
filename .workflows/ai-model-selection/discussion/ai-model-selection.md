@@ -30,7 +30,7 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
 
 ### Map
 
-  Discussion Map — AI Model Selection (8 subtopics — 7 decided · 1 pending)
+  Discussion Map — AI Model Selection (8 subtopics — 7 decided · 1 exploring)
 
   ┌─ ✓ Pin A Model In The Shipped Default [decided]
   │  └─ ✓ Alias Form Vs Full Model ID [decided]
@@ -39,7 +39,7 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
   ├─ ✓ Timeout × Model-Choice Coupling [decided]
   ├─ ✓ Driver-Based AI Config — Dropped [decided]
   ├─ ✓ Single Source Of Truth For The Default Command [decided]
-  └─ ○ Init Scaffolds The New Config Keys [pending]
+  └─ ◐ Init Scaffolds The New Config Keys [exploring]
 
 ---
 
@@ -91,6 +91,8 @@ Why not verb-only defaults:
 `ai_command` and timeout become the first keys living at *both* levels with fallback — a small, deliberate new pattern. `max_diff_lines`/`diff_exclude` stay shared-only until their own real need appears.
 
 **`regenerate` is not a separate verb (decided).** `mint release regenerate --fresh` re-runs the release-notes task, so it resolves through `[release]`'s `ai_command`/timeout — no `[regenerate]` table. Regenerating with a different model than you released with would be odd, and it shares release's salience needs and Opus-on-big-diff timeout exposure. So the per-verb config space is exactly two tables: `[release]` (covers release + regenerate) and `[commit]`. (Confidence: high, user-confirmed.)
+
+**Mechanical consequences (for spec/planning).** `[commit]` simply mirrors `[release]` — same two override keys (`ai_command`, `timeout`), same resolution, no commit-specific asymmetry. The keys must be added to both verb shape structs with `typeErrorMessages` entries, else strict decoding (`DisallowUnknownFields`) rejects them. This formally **reverses the commit spec's "Deliberately NOT added for commit … promote to a `[commit]` key only if a real need appears"** — the real need has appeared; that spec owes the reconciliation (cross-spec hand-off).
 
 ## Timeout × Model-Choice Coupling
 
