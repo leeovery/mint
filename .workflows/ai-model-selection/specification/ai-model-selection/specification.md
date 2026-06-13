@@ -72,6 +72,23 @@ A `timeout` config key is added in the **same layering shape** as `ai_command`: 
 
 **Deferred to planning:** the key's exact TOML representation/units (int seconds vs string duration). The decoding must still distinguish absent from zero (see resolution value semantics).
 
+### Resolution value semantics
+
+Resolution is per-key **independent** — `ai_command` and `timeout` each fall back through their own `verb → shared → default` chain. The chain treats non-normal values *differently per key*.
+
+**`ai_command`:**
+
+- Blank / whitespace / invalid / missing at a layer **drops through** to the next layer.
+- The shipped default is the floor, so resolution **always** yields a valid command — `ai_command` is never empty. Even a top-level `ai_command = ''` falls through to the shipped default.
+- Consequently the transport's old "empty → re-default / empty → fail-loud" path becomes **unreachable** and is removed: config's floor always supplies a valid command.
+
+**`timeout`:**
+
+- **Zero is an explicit, honored value meaning "no time limit"** — it disables the per-attempt deadline and **stops the fall-through** (it is not treated as missing). This is a conscious, operator-chosen exception to "fail loud, never hang": the operator is opting into an AI call that can run unbounded. It **must be documented**, including that trade-off.
+- **Missing or invalid (e.g. negative) drops through** to the next layer; **positive is used as-is**; the floor is the shipped 60s default.
+- A wrong *type* still surfaces as a strict decode error at `Load` (existing schema behaviour) — distinct from a value-invalid drop-through.
+- The transport must learn `timeout = 0` ⇒ no deadline, replacing its current non-positive → 60s re-default.
+
 ---
 
 ## Working Notes
