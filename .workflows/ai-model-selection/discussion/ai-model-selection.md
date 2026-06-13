@@ -30,7 +30,7 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
 
 ### Map
 
-  Discussion Map — AI Model Selection (8 subtopics — 7 decided · 1 exploring)
+  Discussion Map — AI Model Selection (8 subtopics — all decided)
 
   ┌─ ✓ Pin A Model In The Shipped Default [decided]
   │  └─ ✓ Alias Form Vs Full Model ID [decided]
@@ -39,7 +39,7 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
   ├─ ✓ Timeout × Model-Choice Coupling [decided]
   ├─ ✓ Driver-Based AI Config — Dropped [decided]
   ├─ ✓ Single Source Of Truth For The Default Command [decided]
-  └─ ◐ Init Scaffolds The New Config Keys [exploring]
+  └─ ✓ Init Scaffolds The New Config Keys [decided]
 
 ---
 
@@ -139,6 +139,22 @@ Idiomatic Go shape:
 
 **Env-var overrides are out of scope** — the override layer is the file; an environment-variable third layer (`MINT_AI_COMMAND`-style) is a separate, addable feature, not built here.
 
+## Init Scaffolds The New Config Keys
+
+### Context
+
+New config keys must appear in `internal/initgen`'s commented template (project convention) and be user-facing-documented. Current template: top-level `ai_command = 'claude -p'` + `max_diff_lines`; an uncommented `[release]`; a fully-commented `[commit]` (only `context`/`prompt`).
+
+### Decision
+
+- **Top-level**: bump the scaffolded default to `ai_command = 'claude -p --model sonnet'` (the pinned default *value*, sourced from the config constant — not re-typed), and add the new shared `timeout` key at its 60s default. Both uncommented, matching the other defaulted shared keys.
+- **Per-verb overrides shown commented** under both `[release]` and `[commit]` — `# ai_command = …` and `# timeout = …` — so the override pattern is discoverable (optional → commented, per the template's own convention).
+- **Config comments stay model-agnostic (user constraint).** Comments describe what a key does and never name a specific model (no sonnet/opus/haiku, no "use a stronger model" steer). The timeout hint is framed around *command latency*, not a model — e.g. "raise if your `ai_command` runs slowly." The pinned default *value* still carries `--model sonnet` (that's the decided default, not a comment).
+- **F9 resolved**: no concrete, model-tied timeout number in the scaffold; the mitigation hint is generic and model-free.
+- **README (F6) in scope**: document the new keys, the `verb → shared → default` resolution order, and the changed shipped default with the breaking-change callout (a factual statement of the new default, not a recommendation).
+
+Confidence: high. Exact comment wording is a planning/impl detail.
+
 ## Summary
 
 ### Key Insights
@@ -155,8 +171,7 @@ Idiomatic Go shape:
 
 ### Current State
 
-- **Decided**: shared default = Sonnet, alias form; per-verb `ai_command` override (raw command string); per-verb timeout override (coupling is the operator's responsibility); keep top-level shared `ai_command`/timeout + per-verb overrides (config shape); `regenerate` rides on `[release]`; driver dropped; single source of truth = `internal/config` owns defaults, project file overrides, layered accessors resolve per-verb, transport carries no defaults. Shipped-default change is an accepted breaking change (release-note callout).
-- **Pending**: init scaffolds the new keys.
+- **Decided (all 8 subtopics)**: shared default = Sonnet, alias form; per-verb `ai_command` override (raw command string); per-verb timeout override (coupling is the operator's responsibility); keep top-level shared `ai_command`/timeout + per-verb overrides (config shape); `regenerate` rides on `[release]`; driver dropped; single source of truth = `internal/config` owns defaults, project file overrides, layered accessors resolve per-verb, transport carries no defaults; init scaffolds the new keys with model-agnostic comments + README documents keys/resolution/breaking-change. Shipped-default change is an accepted breaking change (release-note callout).
 - **Routed out**: interactive `mint init` setup → logged as a separate idea (the proper home for surfacing the model choice to operators). Env-var override layer (Laravel `.env`-style third layer) explicitly out of scope — two layers only (compiled defaults ← project file); addable later if wanted.
 
 ## Triage
