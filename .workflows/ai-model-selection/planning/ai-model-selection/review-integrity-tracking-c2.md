@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-13
 cycle: 2
 phase: Plan Integrity Review
@@ -58,8 +58,8 @@ This edits Task 2-2 only — Do bullets 4 and 5, the Outcome, and the affected A
 **Proposed** (Task ai-model-selection-2-2, **Acceptance Criteria**, AC 6 — "No deadline" reachable only via explicit `0`):
 > - [ ] "No deadline" is reachable only via an explicit boundary `&0` (which `NewTransport` maps to a nil internal `deadline` → parent-context path), never by a nil/forgotten `Config.Timeout` — the boundary→internal mapping is explicit (no direct pointer copy), the contract is pinned by a test, and documented in the comment.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Approved via auto. Applied to Task 2-2 (tick-d69d1b) and the phase-2-tasks.md mirror.
 
 ---
 
@@ -87,7 +87,7 @@ This edits Task 2-2's Tests section only — the two `ptrTo(0)` occurrences beco
 **Proposed** (Task ai-model-selection-2-2, **Tests**, the parent-cancellation test):
 > - `"it propagates a parent cancellation unchanged on the no-deadline path"` — with `Timeout: ptrTo(time.Duration(0))` (a typed zero duration, not `ptrTo(0)` which is a `*int`), seed the FakeRunner to return `fmt.Errorf("running claude: %w", context.Canceled)`; assert the error `errors.Is(context.Canceled)` and matches NO transport sentinel, and the command ran exactly once (not retried).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Approved via auto. Applied to Task 2-2 (tick-d69d1b) and the phase-2-tasks.md mirror.
 
 ---
