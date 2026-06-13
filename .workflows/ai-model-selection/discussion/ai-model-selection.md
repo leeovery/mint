@@ -98,6 +98,8 @@ The transport's per-attempt timeout is 60s and a timeout is **fatal — not retr
 
 **Add a per-verb timeout override** (confidence: high, user-confirmed), mirroring the `ai_command` shape: a top-level shared default (the current 60s value) + optional `[release]`/`[commit]` override. Rationale: per-verb model freedom and per-verb timeout freedom must travel together — otherwise we've made it trivial to pin a model that reliably blows the fatal deadline. Key naming and per-attempt semantics are an implementation detail left to spec/planning.
 
+**Coupling is the operator's responsibility (decided).** Resolution is per-key *independent* — `ai_command` and `timeout` each fall back to their own shared default. So a verb that overrides the command to a slow model but *not* the timeout silently inherits the 60s shared default — the exact fatal-deadline exposure the override exists to prevent. Mint does **not** protect against this: no auto-bump, no warning, no paired-defaults requirement. "That's the operator's worry." If you slow the model, you raise the timeout yourself; the supported pattern is documented (README/spec) but not enforced. Mint ships the current 60s as the shared default. (Confidence: high, user-confirmed.)
+
 ## Driver-Based AI Config — Dropped
 
 ### Context
