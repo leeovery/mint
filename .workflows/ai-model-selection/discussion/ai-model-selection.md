@@ -30,12 +30,12 @@ A living index of subtopics tracked during the discussion. Grows as the conversa
 
 ### Map
 
-  Discussion Map — AI Model Selection (8 subtopics — 4 decided · 2 converging · 2 pending)
+  Discussion Map — AI Model Selection (8 subtopics — 5 decided · 1 converging · 2 pending)
 
   ┌─ → Pin A Model In The Shipped Default [converging]
   │  └─ ✓ Alias Form Vs Full Model ID [decided]
   ├─ ✓ Per-Verb Model Differentiation [decided]
-  │  └─ → Config Shape: Top-Level Shared + Per-Verb Override [converging]
+  │  └─ ✓ Config Shape: Top-Level Shared + Per-Verb Override [decided]
   ├─ ✓ Timeout × Model-Choice Coupling [decided]
   ├─ ✓ Driver-Based AI Config — Dropped [decided]
   ├─ ○ Single Source Of Truth For The Default Command [pending]
@@ -76,9 +76,17 @@ The crux. Should release notes and commit messages run different models, and doe
 
 **Per-verb `ai_command` override is warranted — promote it.** (Confidence: high, user-confirmed.) Mechanism: a **full command string per verb**, not a model knob or driver. Resolution order: `[verb].ai_command` → top-level shared `ai_command` → shipped default. Commit leans Sonnet, release leans Sonnet (Opus only on observed need — see timeout coupling).
 
-#### Config shape (child, converging)
+#### Config shape (child) — decided
 
-Open sub-question: keep the top-level shared `ai_command` as the baseline, or drop it for verb-only defaults? **Leaning keep top-level** — it's the one-line "repoint every verb at once" knob (the common case is one model for all), it's the established schema (shared engine key), and decisively it keeps the shipped default in ONE canonical place (verb-only defaults would *multiply* the default string, working directly against the single-source-of-truth goal). Per-verb keys are purely additive overrides. `ai_command` becomes the first key living at both levels with fallback — a small, deliberate new pattern; `max_diff_lines`/`diff_exclude` stay shared-only until their own real need appears.
+**Keep the top-level shared key as the baseline; per-verb keys are optional overrides** (confidence: high, user-confirmed). Applies to *both* `ai_command` and the new timeout key: a top-level shared default (the shipped-default home) + optional `[release]`/`[commit]` overrides. Resolution order: `[verb].<key>` → top-level shared `<key>` → shipped default.
+
+Why not verb-only defaults:
+
+- **"Set once for all verbs" is the common case** — one model for both; per-verb is the exception. The shared key repoints every verb in one line (e.g. swap to a different AI). Verb-only would force editing each verb's key.
+- **Established schema** — `ai_command` is already a top-level shared engine key; per-verb override is purely additive, no churn to the "shared keys at top" principle.
+- **Clincher — single source of truth.** Verb-only defaults bake the shipped default *once per verb* — more duplication, fighting the cleanup we want. A single top-level shipped default keeps it canonical.
+
+`ai_command` and timeout become the first keys living at *both* levels with fallback — a small, deliberate new pattern. `max_diff_lines`/`diff_exclude` stay shared-only until their own real need appears.
 
 ## Timeout × Model-Choice Coupling
 
@@ -112,13 +120,14 @@ The seed's "ideal world": configure *which AI* + a model alias, with mint knowin
 ### Open Threads
 
 - Shared default model (Sonnet) and top-level-vs-verb-only config shape — converging, confirm pending.
-- **Interactive `mint init` setup** (prompting for model/AI per verb during scaffolding) raised as a good idea — likely a *separate feature* (init UX, broader than models, pulls in interactive-prompt machinery + the fail-loud/non-TTY invariant). To be routed/logged; the in-scope piece (init's template surfacing the new keys) stays here as its own subtopic.
+- **Interactive `mint init` setup** (prompting for model/AI per verb during scaffolding) — logged as a separate idea for later triage (init UX, broader than models, pulls in interactive-prompt machinery + the fail-loud/non-TTY invariant). The in-scope counterpart — init's static template surfacing the new keys — stays here as the `Init Scaffolds The New Config Keys` subtopic.
 
 ### Current State
 
-- **Decided**: per-verb `ai_command` override (raw command string); per-verb timeout override; driver dropped; alias form over full model ID.
-- **Converging**: shared default = Sonnet; keep top-level shared `ai_command`/timeout + per-verb overrides.
+- **Decided**: per-verb `ai_command` override (raw command string); per-verb timeout override; **keep top-level shared `ai_command`/timeout + per-verb overrides** (config shape); driver dropped; alias form over full model ID.
+- **Converging**: shared default model = Sonnet (shape confirmed; specific model not yet).
 - **Pending**: single source of truth for the default command; init scaffolds the new keys.
+- **Routed out**: interactive `mint init` setup → logged as a separate idea.
 
 ## Triage
 
