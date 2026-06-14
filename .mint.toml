@@ -5,7 +5,8 @@
 
 # --- Engine-level keys (shared by every mint verb) ---
 
-ai_command = 'claude -p'
+ai_command = 'claude -p --model sonnet'
+timeout = 60  # per-attempt AI deadline in seconds; raise it if your ai_command runs slowly (0 = no limit)
 max_diff_lines = 50000
 
 # diff_exclude = ['skills/**/knowledge.cjs', '*.min.js']  # tracked generated files to keep out of the notes diff
@@ -23,6 +24,8 @@ on_notes_failure = 'abort'
 # provider = 'github'                              # publishing driver to force (default: auto-detected from the remote host)
 # context = 'Emphasise user-facing changes.'       # project guidance injected into the notes prompt
 # prompt = '.mint/notes-prompt.md'                 # full prompt-override file — create it yourself; mint init does NOT scaffold it
+# ai_command = 'claude -p --model sonnet'          # override the AI command for this verb only
+# timeout = 120                                    # override the per-attempt deadline (seconds) for this verb only; raise it if this verb's ai_command runs slowly
 
 # --- Lifecycle hooks (always under [release.hooks], never a top-level [hooks]) ---
 # [release.hooks]
@@ -31,7 +34,9 @@ on_notes_failure = 'abort'
 # pre_tag also accepts an array of commands run in order (set ONE pre_tag, not both): ['npm ci', 'npm run build']
 # post_release = 'scripts/notify.sh'               # runs after the release is published
 
-# --- mint commit (AI commit messages; both keys optional) ---
+# --- mint commit (AI commit messages; all keys optional) ---
 # [commit]
 # context = 'Reference the ticket number if the branch carries one.'  # project guidance injected into the commit-message prompt
 # prompt = '.mint/commit-prompt.md'                # full prompt-override file — create it yourself; mint init does NOT scaffold it
+# ai_command = 'claude -p --model sonnet'          # override the AI command for this verb only
+# timeout = 120                                    # override the per-attempt deadline (seconds) for this verb only; raise it if this verb's ai_command runs slowly
