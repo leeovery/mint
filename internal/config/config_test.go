@@ -1381,6 +1381,220 @@ func TestLoad_CommitBooleanValue_StillFailsLoud(t *testing.T) {
 	}
 }
 
+func TestLoad_ReleaseAICommand_CarriedRawOntoConfig(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [release].ai_command is the optional per-verb override. config carries the raw
+	// value verbatim onto the Release struct (a non-nil pointer to the literal string);
+	// the override-chain resolution against the shared/floor is Task 1-4, not here.
+	writeConfig(t, dir, "[release]\nai_command = \"claude -p --model opus\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.AICommand == nil {
+		t.Fatalf("Release.AICommand = nil, want a non-nil pointer carrying the explicit value")
+	}
+	if *cfg.Release.AICommand != "claude -p --model opus" {
+		t.Errorf("Release.AICommand = %q, want the explicit value carried verbatim", *cfg.Release.AICommand)
+	}
+}
+
+func TestLoad_CommitAICommand_CarriedRawOntoConfig(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [commit].ai_command is the commit-verb mirror of [release].ai_command. config
+	// carries the raw value verbatim onto the Commit struct; resolution is Task 1-4.
+	writeConfig(t, dir, "[commit]\nai_command = \"llm --model gpt-4 chat\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Commit.AICommand == nil {
+		t.Fatalf("Commit.AICommand = nil, want a non-nil pointer carrying the explicit value")
+	}
+	if *cfg.Commit.AICommand != "llm --model gpt-4 chat" {
+		t.Errorf("Commit.AICommand = %q, want the explicit value carried verbatim", *cfg.Commit.AICommand)
+	}
+}
+
+func TestLoad_AbsentPerVerbAICommand_DistinctFromExplicitBlank(t *testing.T) {
+	t.Parallel()
+
+	t.Run("absent is nil", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// With no per-verb ai_command at all, the carried pointer is nil — the absent
+		// sentinel that Task 1-4's resolver treats as "no override, fall through". A
+		// *string (not plain string) is what makes absent distinguishable from blank.
+		writeConfig(t, dir, "[release]\ntag_prefix = \"v\"\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		if cfg.Release.AICommand != nil {
+			t.Errorf("Release.AICommand = %v, want nil (absent key → nil sentinel)", cfg.Release.AICommand)
+		}
+		if cfg.Commit.AICommand != nil {
+			t.Errorf("Commit.AICommand = %v, want nil (absent key → nil sentinel)", cfg.Commit.AICommand)
+		}
+	})
+
+	t.Run("explicit blank is a non-nil empty string", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// An explicit empty ai_command is a non-nil pointer to "" — DISTINCT from absent
+		// (nil). config carries it verbatim, blank or not; blank-SKIPPING is the Task 1-4
+		// accessor's job, NOT this task's.
+		writeConfig(t, dir, "[release]\nai_command = \"\"\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		if cfg.Release.AICommand == nil {
+			t.Fatalf("Release.AICommand = nil, want a non-nil pointer to the explicit empty string")
+		}
+		if *cfg.Release.AICommand != "" {
+			t.Errorf("Release.AICommand = %q, want the explicit empty string carried verbatim", *cfg.Release.AICommand)
+		}
+	})
+}
+
+func TestLoad_IntegerReleaseAICommand_RejectedNamingKeyAndStringType(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [release].ai_command is a string key. An integer value must fail loud with the
+	// mapped mint-style message naming both the key and its expected string type — an
+	// integer-into-string mismatch embeds the struct-field path translateTypeError maps.
+	writeConfig(t, dir, "[release]\nai_command = 42\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for integer release.ai_command, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "release.ai_command") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "release.ai_command")
+	}
+	if !strings.Contains(err.Error(), "string") {
+		t.Errorf("error = %q, want it to name the expected string type", err.Error())
+	}
+}
+
+func TestLoad_IntegerCommitAICommand_RejectedNamingKeyAndStringType(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [commit].ai_command is a string key. An integer value must fail loud with the
+	// mapped mint-style message naming both the key and its expected string type.
+	writeConfig(t, dir, "[commit]\nai_command = 42\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for integer commit.ai_command, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "commit.ai_command") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "commit.ai_command")
+	}
+	if !strings.Contains(err.Error(), "string") {
+		t.Errorf("error = %q, want it to name the expected string type", err.Error())
+	}
+}
+
+func TestLoad_BooleanPerVerbAICommand_StillFailsLoud(t *testing.T) {
+	t.Parallel()
+
+	// A boolean assigned to a per-verb ai_command string key still FAILS LOUD (never
+	// silently accepted) — but go-toml/v2 emits no struct-field path for a
+	// boolean-into-string mismatch (the library quirk pinned by
+	// TestLoad_CommitBooleanValue_StillFailsLoud), so translateTypeError falls back to
+	// the decoder's own positioned description. This pins fail-loud holds and the
+	// offending key stays visible — it deliberately does NOT over-assert the mapped
+	// message for the boolean case.
+	cases := []struct {
+		name string
+		toml string
+		key  string
+	}{
+		{"boolean release.ai_command", "[release]\nai_command = true\n", "ai_command"},
+		{"boolean commit.ai_command", "[commit]\nai_command = false\n", "ai_command"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, tc.toml)
+
+			_, err := config.Load(dir)
+			if err == nil {
+				t.Fatalf("Load returned nil error for %s, want non-nil (must fail loud)", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("error = %q, want the offending key %q to remain visible", err.Error(), tc.key)
+			}
+		})
+	}
+}
+
+func TestLoad_UnknownSiblingKey_StillRejectedAfterAddingAICommand(t *testing.T) {
+	t.Parallel()
+
+	// Adding the recognised per-verb ai_command key must NOT loosen DisallowUnknownFields
+	// for the rest of the table: an unknown sibling alongside a valid ai_command in
+	// [release] / [commit] is still rejected naming the key and its table.
+	cases := []struct {
+		name  string
+		toml  string
+		key   string
+		table string
+	}{
+		{
+			name:  "release sibling",
+			toml:  "[release]\nai_command = \"claude -p\"\nbogus = 1\n",
+			key:   "bogus",
+			table: "[release]",
+		},
+		{
+			name:  "commit sibling",
+			toml:  "[commit]\nai_command = \"claude -p\"\nbogus = 1\n",
+			key:   "bogus",
+			table: "[commit]",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, tc.toml)
+
+			_, err := config.Load(dir)
+			if err == nil {
+				t.Fatalf("Load returned nil error for unknown sibling in %s, want non-nil", tc.table)
+			}
+			if !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("error = %q, want it to name the unknown key %q", err.Error(), tc.key)
+			}
+			if !strings.Contains(err.Error(), tc.table) {
+				t.Errorf("error = %q, want it to name the %s table", err.Error(), tc.table)
+			}
+		})
+	}
+}
+
 func TestResolveCommitPrompt_AbsentPrompt_ReturnsEmptyNoError(t *testing.T) {
 	t.Parallel()
 

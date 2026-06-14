@@ -71,9 +71,9 @@
         "ai-model-selection": {
           "status": "in-progress",
           "task_gate_mode": "auto",
-          "fix_gate_mode": "gated",
+          "fix_gate_mode": "auto",
           "analysis_gate_mode": "gated",
-          "fix_attempts": 0,
+          "fix_attempts": 1,
           "analysis_cycle_total": 0,
           "analysis_cycle_session": 0,
           "linters": [
@@ -107,10 +107,11 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 1,
-          "current_task": "tick-d6c0a0",
+          "current_task": "tick-7775f8",
           "completed_tasks": [
             "ai-model-selection-1-1",
-            "ai-model-selection-1-2"
+            "ai-model-selection-1-2",
+            "ai-model-selection-1-3"
           ]
         }
       }

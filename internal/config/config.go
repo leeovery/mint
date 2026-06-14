@@ -92,11 +92,15 @@ type Config struct {
 	Release Release
 
 	// Commit holds the [commit] table values: the commit verb's two prompt-control
-	// knobs (Context and Prompt), both optional and defaulting to empty. They are the
-	// commit-specific counterparts of [release]'s Context/Prompt — commit does NOT
-	// reuse the shared top-level engine keys' tables; ai_command/diff_exclude/
-	// max_diff_lines serve commit from the top level. No push/scope/per-verb-engine
-	// override keys exist for commit (spec: "Deliberately NOT added for commit").
+	// knobs (Context and Prompt), both optional and defaulting to empty, plus an
+	// optional per-verb ai_command override (AICommand). Context/Prompt are the
+	// commit-specific counterparts of [release]'s Context/Prompt; diff_exclude/
+	// max_diff_lines still serve commit from the top level. Commit now carries a
+	// per-verb engine override (ai_command) — this REVERSES the standing-spec
+	// "Deliberately NOT added for commit" decision, which a real need has triggered.
+	// (The README/initgen surfacing and the external commit-command-spec-document
+	// edit recording the reversal remain for Phase 3; the in-repo comment truth is
+	// reconciled here.)
 	Commit Commit
 
 	// AICommand is the shared engine-level ai_command notes-transport command (the
@@ -162,6 +166,13 @@ type Config struct {
 // into (a write-only mirror, never a version source). VersionPattern empty selects
 // PLAIN mode (the whole file is the version); non-empty selects EMBEDDED mode
 // (surgical version-line replacement inside a real source file).
+//
+// AICommand is the OPTIONAL per-verb ai_command override (raw [release].ai_command). It
+// is a *string so absent (nil) is distinguishable from an explicit empty/blank value —
+// the resolver (1-4) needs that distinction for its blank-skip fall-through. config
+// carries the pointer's value verbatim (nil when absent; the literal string, blank or
+// not, when present); the override chain (verb → shared top-level → shipped default) and
+// blank-skipping are the resolver's job, NOT Load's.
 type Release struct {
 	TagPrefix      string
 	CommitPrefix   string
@@ -175,20 +186,33 @@ type Release struct {
 	Fallback       string
 	VersionFile    string
 	VersionPattern string
+	AICommand      *string
 	Hooks          Hooks
 }
 
 // Commit holds the [commit] table values: the commit verb's two prompt-control
-// knobs, carried here as raw TOML strings (both default empty). Context injects
-// project guidance into the default commit prompt (empty = no injection); Prompt
-// is a file path that fully overrides the default commit prompt (empty = use the
-// default). config carries both verbatim — the configured Prompt file is read by
-// ResolveCommitPrompt at the point of use (assembly, 1-2), NOT here, and a
-// configured-but-unreadable/missing override fails loud there rather than silently
-// falling through to the default.
+// knobs (Context and Prompt) plus an optional per-verb ai_command override
+// (AICommand). Context and Prompt are carried as raw TOML strings (both default
+// empty): Context injects project guidance into the default commit prompt
+// (empty = no injection); Prompt is a file path that fully overrides the default
+// commit prompt (empty = use the default). config carries both verbatim — the
+// configured Prompt file is read by ResolveCommitPrompt at the point of use
+// (assembly, 1-2), NOT here, and a configured-but-unreadable/missing override
+// fails loud there rather than silently falling through to the default. AICommand
+// is a *string (absent → nil), NOT a raw string defaulting empty — see its
+// per-field comment below.
 type Commit struct {
 	Context string
 	Prompt  string
+
+	// AICommand is the OPTIONAL per-verb ai_command override (raw [commit].ai_command),
+	// a *string so absent (nil) is distinguishable from an explicit empty/blank value
+	// (the resolver in 1-4 needs that distinction for blank-skip fall-through). config
+	// carries the value verbatim; the override chain and blank-skipping are the
+	// resolver's job. Adding this key reverses the standing-spec "Deliberately NOT
+	// added for commit" decision; the README/initgen surfacing and the external
+	// commit-command-spec-document edit recording that reversal remain for Phase 3.
+	AICommand *string
 }
 
 // HookValue is the dedicated string-or-array type for a [release.hooks] entry: a
@@ -250,13 +274,18 @@ type fileShape struct {
 	DiffExclude  []string     `toml:"diff_exclude"`
 }
 
-// commitShape mirrors the on-disk [commit] table. Both keys are plain strings whose
-// zero value (empty) IS the documented absent default — empty context means no
+// commitShape mirrors the on-disk [commit] table. Context and Prompt are plain strings
+// whose zero value (empty) IS the documented absent default — empty context means no
 // injection, empty prompt means the default prompt — so no *string absent-vs-zero
 // distinction is needed (mirroring releaseShape.Context / releaseShape.Prompt).
+// AICommand is the optional per-verb ai_command override, a *string so absent (nil) is
+// distinguishable from an explicit empty/blank value — the resolver (1-4) needs that
+// distinction for its blank-skip fall-through. config carries it verbatim; blank-skipping
+// is the accessor's job, not Load's.
 type commitShape struct {
-	Context string `toml:"context"`
-	Prompt  string `toml:"prompt"`
+	Context   string  `toml:"context"`
+	Prompt    string  `toml:"prompt"`
+	AICommand *string `toml:"ai_command"`
 }
 
 type releaseShape struct {
@@ -272,6 +301,7 @@ type releaseShape struct {
 	Fallback       string     `toml:"fallback"`
 	VersionFile    string     `toml:"version_file"`
 	VersionPattern string     `toml:"version_pattern"`
+	AICommand      *string    `toml:"ai_command"`
 	Hooks          hooksShape `toml:"hooks"`
 }
 
@@ -376,8 +406,10 @@ var typeErrorMessages = map[string]string{
 	"fileShape.DiffExclude":  "diff_exclude must be an array of strings",
 	"releaseShape.Publish":   "publish must be a boolean",
 	"releaseShape.Changelog": "changelog must be a boolean",
+	"releaseShape.AICommand": "release.ai_command must be a string",
 	"commitShape.Context":    "commit.context must be a string",
 	"commitShape.Prompt":     "commit.prompt must be a string",
+	"commitShape.AICommand":  "commit.ai_command must be a string",
 }
 
 // translateTypeError turns the decoder's *toml.DecodeError (a value that cannot
@@ -454,6 +486,7 @@ func resolveRelease(shape releaseShape) Release {
 		Fallback:       shape.Fallback,
 		VersionFile:    shape.VersionFile,
 		VersionPattern: shape.VersionPattern,
+		AICommand:      shape.AICommand,
 		Hooks: Hooks{
 			Preflight:   shape.Hooks.Preflight,
 			PreTag:      shape.Hooks.PreTag,
@@ -462,12 +495,16 @@ func resolveRelease(shape releaseShape) Release {
 	}
 }
 
-// resolveCommit copies the [commit] table's raw string knobs through verbatim. Both
-// keys default to empty (the absent baseline: no context injection / default prompt),
+// resolveCommit copies the [commit] table's raw knobs through verbatim. Context and
+// Prompt default to empty (the absent baseline: no context injection / default prompt),
 // and an explicit empty value carries the same meaning, so there is nothing to
 // re-default — config carries the raw values and ResolveCommitPrompt reads the Prompt
-// file at the point of use. commitShape and Commit are field-identical, so a direct
-// conversion suffices (unlike resolveRelease, which must re-default *bool toggles).
+// file at the point of use. AICommand is the optional per-verb override, carried as the
+// raw *string verbatim (nil when absent; the literal value, blank or not, when present)
+// for the resolver in 1-4 — blank-skipping is the accessor's job, not here. commitShape
+// and Commit stay field-identical (the per-verb AICommand override is the SAME *string in
+// both), so a direct conversion suffices (unlike resolveRelease, which must re-default
+// *bool toggles).
 func resolveCommit(shape commitShape) Commit {
 	return Commit(shape)
 }
