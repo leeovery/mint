@@ -201,8 +201,11 @@ type Deps struct {
 	// Transport is the OPTIONAL L2 AI seam the Generator hands its composed prompt to.
 	// It exists so tests can drive the real generate thread over the FakeRunner while
 	// scripting the AI body directly. When nil, Run builds the production ai.Transport
-	// over Runner once config is loaded, driving it with the validated cfg.AICommand —
-	// so production leaves it nil and gets the real transport.
+	// over Runner once config is loaded, driving it with the commit verb's resolved
+	// command + timeout (cfg.AICommandFor(VerbCommit) / cfg.TimeoutFor(VerbCommit) over
+	// the `[commit] → shared → floor` chain) — config owns the default and the
+	// blank-skip / no-deadline semantics, so production leaves it nil and gets the real
+	// transport.
 	Transport Transport
 	// Root is the OPTIONAL pre-resolved repo root (the test-injection seam: tests pass
 	// a TempDir so config.Load reads no real repo config and ResolveInstructions reads
@@ -703,8 +706,9 @@ func resolveRoot(ctx context.Context, deps Deps) (string, error) {
 // body from the would-be-committed diff. The mode (deps.Staging) selects the L1 source:
 // StagedOnly reads the index, All/AddAll compute the would-be-staged worktree diff
 // read-only. The transport is the injected deps.Transport when set (the test seam),
-// else the production ai.Transport over the run's runner driven by the validated
-// cfg.AICommand — so production leaves deps.Transport nil and gets the real engine.
+// else the production ai.Transport over the run's runner driven by the commit verb's
+// per-key resolution (cfg.AICommandFor(VerbCommit) / cfg.TimeoutFor(VerbCommit)) — so
+// production leaves deps.Transport nil and gets the real engine.
 func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root string) (string, error) {
 	generator := NewGenerator(deps.Runner, commitTransport(deps, cfg), root, deps.Staging)
 	return generator.Generate(ctx, cfg)
@@ -761,20 +765,26 @@ func isAITransportFailure(err error) bool {
 }
 
 // commitTransport resolves the L2 transport: the injected deps.Transport when set
-// (the test seam), else the production ai.Transport over the run's runner. The
-// validated cfg.AICommand drives the invocation (the documented top-level ai_command
-// key): NewTransport whitespace-splits it into name + args and re-defaults an empty
-// value to `claude -p`, so a zero-config run still uses the documented default.
+// (the test seam), else the production ai.Transport over the run's runner — so
+// production leaves deps.Transport nil and gets the real engine. The commit verb's
+// per-key resolution supplies BOTH the concrete command and the per-attempt deadline:
+// cfg.AICommandFor(config.VerbCommit) and cfg.TimeoutFor(config.VerbCommit) each walk
+// the chain `[commit] → shared → floor`, so a `[commit].ai_command` / `[commit].timeout`
+// override drives the call and a zero-config run resolves to the shipped floor
+// (claude -p --model sonnet, 60s). Config — not the transport — owns the default and the
+// blank-skip / no-deadline semantics; the transport runs what it is handed
+// (whitespace-splitting the command into name + args). The timeout is sourced from the
+// accessor (a *time.Duration assigned directly to ai.Config.Timeout, never
+// zero-by-omission), so "no deadline" stays reachable ONLY via an operator's explicit
+// `0` — a forgotten field cannot reach the transport.
 func commitTransport(deps Deps, cfg config.Config) Transport {
 	if deps.Transport != nil {
 		return deps.Transport
 	}
-	// TODO(2-3/2-4/2-5): thread config.TimeoutFor(VerbCommit) — temporary compile-bridge
-	// for task 2-2 (which changed ai.Config.Timeout to *time.Duration with a strict
-	// nil-is-wiring-bug guard). A non-nil pointer to the 60s floor keeps this off the nil
-	// (panic) path until the resolved per-verb timeout is wired here.
-	timeout := config.DefaultTimeout
-	return ai.NewTransport(deps.Runner, ai.Config{AICommand: cfg.AICommand, Timeout: &timeout})
+	return ai.NewTransport(deps.Runner, ai.Config{
+		AICommand: cfg.AICommandFor(config.VerbCommit),
+		Timeout:   cfg.TimeoutFor(config.VerbCommit),
+	})
 }
 
 // stageForMode applies the resolved StagingMode's deferred `git add` on the gate-accept
