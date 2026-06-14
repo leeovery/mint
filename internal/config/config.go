@@ -106,9 +106,13 @@ type Config struct {
 	// AICommand is the shared engine-level ai_command notes-transport command (the
 	// pinned default "claude -p --model sonnet", the single canonical source of which
 	// is config.DefaultAICommand). It is top-level — NOT under [release] — because
-	// every verb's notes engine uses the same AI transport. config carries it verbatim;
-	// the transport re-defaults an explicit empty value and whitespace-splits the
-	// command into name + args (it is operator-controlled config, not arbitrary input).
+	// every verb's notes engine uses the same AI transport. config carries it verbatim:
+	// an ABSENT key is seeded with the pinned default, but an explicit empty/blank value
+	// is carried through unchanged (NOT re-defaulted at Load) so AICommandFor's trim-and-
+	// skip is what falls it through to the floor. Blank-skipping and the verb → shared →
+	// floor chain are AICommandFor's job (the single place blank-detection lives); the
+	// transport just whitespace-splits the resolved command into name + args (it is
+	// operator-controlled config, not arbitrary input).
 	AICommand string
 
 	// MaxDiffLines is the shared engine-level max_diff_lines guard ceiling (default
@@ -369,7 +373,7 @@ func Load(root string) (Config, error) {
 	return Config{
 		Release:      resolveRelease(shape.Release),
 		Commit:       resolveCommit(shape.Commit),
-		AICommand:    resolveAICommand(shape.AICommand),
+		AICommand:    aiCommandOrDefault(shape.AICommand),
 		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
 		DiffExclude:  shape.DiffExclude,
 	}, nil
@@ -451,10 +455,55 @@ func unknownKeyMessage(key []string) string {
 	return fmt.Sprintf("unknown key %q in %s", leaf, table)
 }
 
-// resolveAICommand applies the pinned DefaultAICommand when the key was absent (nil)
-// and otherwise honours the explicit value verbatim (mirroring the max_diff_lines
-// *int handling).
-func resolveAICommand(v *string) string {
+// AICommandFor resolves the AI notes-transport command for verb through the layered
+// chain `[verb].ai_command → top-level shared ai_command → shipped DefaultAICommand`.
+// It is the SINGLE place blank-skipping lives: each candidate is trimmed and SKIPPED
+// when its trimmed form is empty, so a blank/whitespace per-verb override falls to the
+// shared value, a blank/whitespace shared value falls to the floor, and the floor
+// (always non-empty) guarantees the result is never empty. The transport's old
+// single-layer empty→re-default is therefore unreachable — config supplies a valid
+// command at every layer.
+//
+// The trim is used ONLY for the empty-check: the RAW (untrimmed) candidate is returned
+// so the operator's exact command survives verbatim (the transport whitespace-splits
+// it into name + args; collapsing internal spacing here would mutate the intended argv).
+//
+// Resolution is per-key independent: this reads only the ai_command candidates and
+// never consults timeout. verb is the closed two-value enum, so the per-verb candidate
+// is selected exhaustively — VerbCommit reads [commit]'s override, every other (i.e.
+// VerbRelease, the zero value) reads [release]'s.
+func (c Config) AICommandFor(verb Verb) string {
+	override := c.Release.AICommand
+	if verb == VerbCommit {
+		override = c.Commit.AICommand
+	}
+
+	// The override → shared chain, each tried in order; the floor is appended last so a
+	// single trim-and-skip loop covers every layer and the non-empty floor makes the
+	// result total (it always satisfies the empty-check).
+	candidates := []string{c.AICommand, DefaultAICommand}
+	if override != nil {
+		candidates = append([]string{*override}, candidates...)
+	}
+
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate) != "" {
+			return candidate
+		}
+	}
+	// Unreachable in practice — DefaultAICommand is a non-empty constant and is always
+	// the last candidate — but a total return keeps the method honest without relying on
+	// the loop's structure.
+	return DefaultAICommand
+}
+
+// aiCommandOrDefault applies the pinned DefaultAICommand when the top-level key was
+// absent (nil) and otherwise carries the explicit value verbatim — including an
+// explicit empty, which Load must NOT re-default so AICommandFor's trim-and-skip is
+// what falls it through to the floor. Blank/whitespace detection does NOT live here:
+// it is the AICommandFor accessor's sole job (this is absent→default only, mirroring
+// the max_diff_lines *int handling).
+func aiCommandOrDefault(v *string) string {
 	if v != nil {
 		return *v
 	}

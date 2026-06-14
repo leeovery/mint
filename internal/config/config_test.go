@@ -1472,6 +1472,236 @@ func TestLoad_AbsentPerVerbAICommand_DistinctFromExplicitBlank(t *testing.T) {
 	})
 }
 
+func TestAICommandFor_PresentNonBlankReleaseOverride_Wins(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A present, non-blank [release].ai_command is the first layer of the chain
+	// (verb → shared → floor), so it wins outright — neither the shared top-level
+	// nor the floor is consulted.
+	writeConfig(t, dir, "ai_command = \"shared-cmd\"\n[release]\nai_command = \"claude -p --model opus\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if got := cfg.AICommandFor(config.VerbRelease); got != "claude -p --model opus" {
+		t.Errorf("AICommandFor(VerbRelease) = %q, want the per-verb override %q", got, "claude -p --model opus")
+	}
+}
+
+func TestAICommandFor_PresentNonBlankCommitOverride_Wins(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// The [commit].ai_command override is the commit-verb mirror: present and
+	// non-blank, it wins over the shared top-level value for VerbCommit.
+	writeConfig(t, dir, "ai_command = \"shared-cmd\"\n[commit]\nai_command = \"llm --model gpt-4 chat\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if got := cfg.AICommandFor(config.VerbCommit); got != "llm --model gpt-4 chat" {
+		t.Errorf("AICommandFor(VerbCommit) = %q, want the per-verb override %q", got, "llm --model gpt-4 chat")
+	}
+}
+
+func TestAICommandFor_BlankPerVerbOverride_FallsToShared(t *testing.T) {
+	t.Parallel()
+
+	// A blank/whitespace [verb].ai_command is a present-but-empty override: the
+	// accessor trims it, finds it empty, and SKIPS it, falling through to the
+	// shared top-level ai_command (which here is an explicit non-default value).
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+	}{
+		{
+			name: "empty release override falls to shared",
+			toml: "ai_command = \"shared-cmd\"\n[release]\nai_command = \"\"\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "whitespace release override falls to shared",
+			toml: "ai_command = \"shared-cmd\"\n[release]\nai_command = \"   \"\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "empty commit override falls to shared",
+			toml: "ai_command = \"shared-cmd\"\n[commit]\nai_command = \"\"\n",
+			verb: config.VerbCommit,
+		},
+		{
+			name: "whitespace commit override falls to shared",
+			toml: "ai_command = \"shared-cmd\"\n[commit]\nai_command = \"\\t \"\n",
+			verb: config.VerbCommit,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			if got := cfg.AICommandFor(tc.verb); got != "shared-cmd" {
+				t.Errorf("AICommandFor = %q, want the shared top-level %q (blank override skipped)", got, "shared-cmd")
+			}
+		})
+	}
+}
+
+func TestAICommandFor_WhitespaceSharedCommand_FallsToFloor(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A whitespace-only shared top-level ai_command is itself a blank candidate:
+	// the accessor trims and skips it too, so both verbs fall through to the
+	// shipped DefaultAICommand floor.
+	writeConfig(t, dir, "ai_command = \"   \"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if got := cfg.AICommandFor(config.VerbRelease); got != config.DefaultAICommand {
+		t.Errorf("AICommandFor(VerbRelease) = %q, want the shipped floor %q", got, config.DefaultAICommand)
+	}
+	if got := cfg.AICommandFor(config.VerbCommit); got != config.DefaultAICommand {
+		t.Errorf("AICommandFor(VerbCommit) = %q, want the shipped floor %q", got, config.DefaultAICommand)
+	}
+}
+
+func TestAICommandFor_TopLevelEmptyCommand_ResolvesToShippedDefault(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit top-level `ai_command = ""` (empty, no per-verb override) must
+	// reach the accessor AS empty — Load must NOT re-default it — so the accessor's
+	// trim-and-skip is what falls it through to DefaultAICommand.
+	writeConfig(t, dir, "ai_command = \"\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if got := cfg.AICommandFor(config.VerbRelease); got != config.DefaultAICommand {
+		t.Errorf("AICommandFor(VerbRelease) = %q, want the shipped default %q", got, config.DefaultAICommand)
+	}
+	if got := cfg.AICommandFor(config.VerbCommit); got != config.DefaultAICommand {
+		t.Errorf("AICommandFor(VerbCommit) = %q, want the shipped default %q", got, config.DefaultAICommand)
+	}
+}
+
+func TestAICommandFor_NeverReturnsEmpty(t *testing.T) {
+	t.Parallel()
+
+	// Across every blank-at-every-layer input the floor guarantees a non-empty
+	// command: the accessor must never yield "" for either verb. This pins the
+	// invariant the transport's old empty→re-default path relied on becoming
+	// unreachable.
+	cases := []struct {
+		name string
+		toml string
+	}{
+		{"all layers blank for release", "ai_command = \"\"\n[release]\nai_command = \"  \"\n"},
+		{"all layers blank for commit", "ai_command = \"  \"\n[commit]\nai_command = \"\"\n"},
+		{"shared blank, no per-verb override", "ai_command = \"\\t\\t\"\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
+				if got := cfg.AICommandFor(verb); got == "" {
+					t.Errorf("AICommandFor(%v) = empty, want a non-empty command (floor guarantees one)", verb)
+				}
+			}
+		})
+	}
+}
+
+func TestAICommandFor_NoConfigFile_ResolvesBothVerbsToPinnedDefault(t *testing.T) {
+	t.Parallel()
+
+	// Zero-config: no .mint.toml at all. Both verbs resolve straight to the pinned
+	// DefaultAICommand floor — the shared top-level is itself the default (seeded by
+	// defaults()), and no per-verb override exists.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if got := cfg.AICommandFor(config.VerbRelease); got != config.DefaultAICommand {
+		t.Errorf("AICommandFor(VerbRelease) = %q, want the pinned default %q", got, config.DefaultAICommand)
+	}
+	if got := cfg.AICommandFor(config.VerbCommit); got != config.DefaultAICommand {
+		t.Errorf("AICommandFor(VerbCommit) = %q, want the pinned default %q", got, config.DefaultAICommand)
+	}
+}
+
+func TestAICommandFor_PreservesRawCommandString(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// The accessor trims ONLY for the empty-check — the returned value is the
+	// operator's RAW string. Internal multi-space runs must survive verbatim (the
+	// transport whitespace-splits it; collapsing here would mutate the operator's
+	// intended argv).
+	const raw = "claude   -p    --model   opus"
+	writeConfig(t, dir, "[release]\nai_command = \"claude   -p    --model   opus\"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if got := cfg.AICommandFor(config.VerbRelease); got != raw {
+		t.Errorf("AICommandFor(VerbRelease) = %q, want the raw command %q (no internal-spacing collapse)", got, raw)
+	}
+}
+
+func TestAICommandFor_ReadsOnlyAICommandCandidates(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Per-key independence by construction: the accessor reads only ai_command
+	// candidates. A leading/trailing-padded shared command is preserved verbatim,
+	// proving the trim is empty-check-only and the value is never re-derived from an
+	// unrelated key.
+	const raw = "  padded-cmd  "
+	writeConfig(t, dir, "ai_command = \"  padded-cmd  \"\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	// Non-blank after trim, so it wins — but the RAW padded string is returned.
+	if got := cfg.AICommandFor(config.VerbRelease); got != raw {
+		t.Errorf("AICommandFor(VerbRelease) = %q, want the raw padded shared command %q", got, raw)
+	}
+}
+
 func TestLoad_IntegerReleaseAICommand_RejectedNamingKeyAndStringType(t *testing.T) {
 	t.Parallel()
 
