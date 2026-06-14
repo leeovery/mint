@@ -9,7 +9,10 @@ ai_command = 'claude -p --model sonnet'
 timeout = 60  # per-attempt AI deadline in seconds; raise it if your ai_command runs slowly (0 = no limit)
 max_diff_lines = 50000
 
-# diff_exclude = ['skills/**/knowledge.cjs', '*.min.js']  # tracked generated files to keep out of the notes diff
+# Keep mint's own workflow/planning artifact trees out of the release-notes diff —
+# tracked but not release-relevant, and large enough that including them blows past
+# the AI model's context window ("Prompt is too long").
+diff_exclude = ['.workflows', '.tick', '.claude', '.agntc', '.agents']
 
 [release]
 tag_prefix = 'v'
