@@ -1,0 +1,15 @@
+{
+  "name": "interactive-mint-init-setup",
+  "work_type": "feature",
+  "status": "in-progress",
+  "created": "2026-06-14",
+  "description": "Make mint init interactive — prompt the operator for config keys during scaffolding and write a tailored .mint.toml, with a non-interactive -y/non-TTY fallback to the static template",
+  "phases": {},
+  "seeds": [
+    {
+      "path": "seeds/2026-06-13-interactive-mint-init-setup.md",
+      "source": "inbox:idea",
+      "seeded_at": "2026-06-14T20:54:44Z"
+    }
+  ]
+}
