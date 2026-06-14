@@ -118,20 +118,26 @@ func freshExcludeConfig(cfg config.Config) notes.ExcludeConfig {
 }
 
 // resolveFreshTransport mirrors the forward aiTransport seam: the injected transport
-// when set (the test fake), else the production ai.Transport over the run's runner —
-// so production passes nil and gets the real transport. The validated cfg.AICommand
-// drives the invocation (the same documented top-level ai_command key the forward path
-// reads); NewTransport re-defaults an empty value to `claude -p`, so a zero-config run
-// uses the documented default exactly.
+// when set (the test fake), else the production ai.Transport over the run's runner — so
+// production passes nil and gets the real transport. This is the EASY-MISS third
+// construction site, and it deliberately resolves through the RELEASE verb:
+// cfg.AICommandFor(config.VerbRelease) and cfg.TimeoutFor(config.VerbRelease) each walk
+// the chain `[release] → shared → floor`. Regenerate re-runs the release-notes task and
+// shares release's salience needs and timeout exposure, and there is NO [regenerate]
+// table — so the fresh-regenerate AI call reads [release], NOT [commit] and NOT the bare
+// shared/default. The closed Verb enum has no `regenerate` value, so VerbRelease is the
+// ONLY verb this site can pass. Config — not the transport — owns the default and the
+// blank-skip / no-deadline semantics; the transport runs what it is handed
+// (whitespace-splitting the resolved command into name + args). The timeout is sourced
+// from the accessor (a *time.Duration assigned directly to ai.Config.Timeout, never
+// zero-by-omission), so "no deadline" stays reachable ONLY via an operator's explicit
+// `[release].timeout = 0` — a forgotten field cannot reach the transport.
 func resolveFreshTransport(r runner.CommandRunner, transport notes.Transport, cfg config.Config) notes.Transport {
 	if transport != nil {
 		return transport
 	}
-	// TODO(2-3/2-4/2-5): thread config.TimeoutFor(VerbRelease) — regenerate rides on
-	// [release], so the resolved timeout must come from the release verb, not its own
-	// table. Temporary compile-bridge for task 2-2 (which changed ai.Config.Timeout to
-	// *time.Duration with a strict nil-is-wiring-bug guard). A non-nil pointer to the 60s
-	// floor keeps this off the nil (panic) path until the resolved timeout is wired here.
-	timeout := config.DefaultTimeout
-	return ai.NewTransport(r, ai.Config{AICommand: cfg.AICommand, Timeout: &timeout})
+	return ai.NewTransport(r, ai.Config{
+		AICommand: cfg.AICommandFor(config.VerbRelease),
+		Timeout:   cfg.TimeoutFor(config.VerbRelease),
+	})
 }

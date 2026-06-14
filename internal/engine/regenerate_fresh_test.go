@@ -415,6 +415,110 @@ func TestRegenerateFreshRegenerator_FirstRelease_ReturnsFixedBodyNoAI(t *testing
 	}
 }
 
+func TestRegenerateFreshBody_ReleaseVerbOverrideDrivesAIInvocation(t *testing.T) {
+	t.Parallel()
+
+	// THE key proof for the easy-miss site: with transport=nil (the PRODUCTION path),
+	// resolveFreshTransport builds the REAL ai.Transport over the FakeRunner and MUST
+	// resolve the AI command through the [release] verb. A [release].ai_command override
+	// ("mybot gen --json") is therefore the binary+args the fresh-regenerate AI call
+	// invokes — proving the construction site routes through config.VerbRelease, not the
+	// bare shared/default. The composed prompt reaches mybot on stdin; the default
+	// `claude` is never invoked.
+	diff := "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\n+package auth\n"
+	body := "## TL;DR\n\nShipped auth.\n"
+	f := seedFreshGit(diff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
+	// The [release].ai_command override's BINARY (mybot) is the runner key — the transport
+	// whitespace-splits "mybot gen --json" into name + args. Seeding the default `claude`
+	// here would never be reached; an unseeded `mybot` would error the run, so the seed
+	// proves the [release] override (not the default) is what gets invoked.
+	f.Seed("mybot", runner.Result{Stdout: body}, nil)
+
+	override := "mybot gen --json"
+	cfg := freshCfg()
+	cfg.Release.AICommand = &override
+	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
+
+	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), cfg, res)
+	if err != nil {
+		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
+	}
+	if got != body {
+		t.Errorf("body = %q, want the AI body %q", got, body)
+	}
+
+	// The assembled prompt reached the release-resolved command on stdin.
+	if stdinOf(t, f, "mybot", "gen", "--json") == "" {
+		t.Errorf("[release].ai_command %q was not invoked with a prompt on stdin", override)
+	}
+	// The default `claude` was never invoked — the fresh-regenerate call resolved [release].
+	if invokedWith(f, "claude", "-p", "--model", "sonnet") {
+		t.Error("default `claude -p --model sonnet` was invoked despite a [release].ai_command override; fresh-regenerate did not route through [release]")
+	}
+}
+
+func TestRegenerateFreshBody_CommitOverrideDoesNotDriveAIInvocation(t *testing.T) {
+	t.Parallel()
+
+	// Independence proof: regenerate reads [release], NEVER [commit]. With a
+	// [commit].ai_command override but NO [release] and NO shared override, the
+	// fresh-regenerate call resolves to the FLOOR (claude -p --model sonnet), NOT
+	// `wrongbot` — the [commit] override cannot leak into the release-routed site.
+	diff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
+	body := "notes"
+	f := seedFreshGit(diff, "M\tapi.go\n", "1\t1\tapi.go\n")
+	// Only the floor `claude` is seeded. If the site mistakenly read [commit], it would
+	// invoke the unseeded `wrongbot` and error the run — so a clean run proves [commit]
+	// did not drive the call.
+	f.Seed("claude", runner.Result{Stdout: body}, nil)
+
+	wrong := "wrongbot"
+	cfg := freshCfg()
+	cfg.Commit.AICommand = &wrong
+	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
+
+	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), cfg, res)
+	if err != nil {
+		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
+	}
+	if got != body {
+		t.Errorf("body = %q, want the AI body %q", got, body)
+	}
+
+	// The floor drove the call; the [commit] override never leaked in.
+	if stdinOf(t, f, "claude", "-p", "--model", "sonnet") == "" {
+		t.Errorf("floor `claude -p --model sonnet` was not invoked with a prompt on stdin")
+	}
+	if invokedWith(f, "wrongbot") {
+		t.Error("[commit].ai_command `wrongbot` drove the fresh-regenerate call; regenerate must read [release], never [commit]")
+	}
+}
+
+func TestRegenerateFreshBody_ZeroConfigResolvesToClaudeFloor(t *testing.T) {
+	t.Parallel()
+
+	// A zero-config fresh-regenerate (no [release]/[commit]/shared ai_command) resolves to
+	// the shipped floor `claude -p --model sonnet` — the production path builds the real
+	// transport over the FakeRunner and invokes exactly the pinned default argv.
+	diff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
+	body := "notes"
+	f := seedFreshGit(diff, "M\tapi.go\n", "1\t1\tapi.go\n")
+	f.Seed("claude", runner.Result{Stdout: body}, nil)
+
+	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
+	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), freshCfg(), res)
+	if err != nil {
+		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
+	}
+	if got != body {
+		t.Errorf("body = %q, want the AI body %q", got, body)
+	}
+
+	if stdinOf(t, f, "claude", "-p", "--model", "sonnet") == "" {
+		t.Errorf("zero-config fresh-regenerate did not invoke the floor `claude -p --model sonnet` with a prompt on stdin")
+	}
+}
+
 var errFreshAIFailure = errors.New("ai notes generation failed")
 
 // indexOfSub returns the byte index of sub in s, or -1 when absent.
