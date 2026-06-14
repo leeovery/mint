@@ -177,7 +177,7 @@ ai_command = 'claude -p --model sonnet'
 timeout = 60  # per-attempt AI deadline in seconds; raise it if your ai_command runs slowly (0 = no limit)
 max_diff_lines = 50000
 
-# diff_exclude = ['skills/**/knowledge.cjs', '*.min.js']
+# diff_exclude = []  # tracked generated files to keep out of the notes diff (glob pathspecs)
 
 [release]
 tag_prefix = 'v'
