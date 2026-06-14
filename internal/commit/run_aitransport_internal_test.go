@@ -8,49 +8,16 @@ package commit
 // transport hands the runner — config's explicit 0 ("no deadline") must reach the
 // transport as a deadline-free context, while a positive override must reach it as a
 // context carrying a deadline. The FakeRunner discards the context, so these timeout
-// proofs use a tiny deadline-recording runner instead. This mirrors the release site's
+// proofs use runner.DeadlineRecordingRunner instead. This mirrors the release site's
 // white-box aiTransport proofs (task 2-3).
 
 import (
-	"context"
-	"io"
 	"testing"
 	"time"
 
 	"mint/internal/config"
 	"mint/internal/runner"
 )
-
-// deadlineCommitRunner is a CommandRunner spy that records the argv and whether the
-// context it was handed carries a deadline — exactly what the transport sets (or omits)
-// via context.WithTimeout for a positive (or zero/no-deadline) timeout.
-type deadlineCommitRunner struct {
-	name        string
-	args        []string
-	hadDeadline bool
-}
-
-func (d *deadlineCommitRunner) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
-	d.name = name
-	d.args = args
-	_, d.hadDeadline = ctx.Deadline()
-	if stdin != nil {
-		_, _ = io.ReadAll(stdin)
-	}
-	return runner.Result{Stdout: "a non-empty body\n"}, nil
-}
-
-func (d *deadlineCommitRunner) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
-	return d.RunWith(ctx, nil, name, args...)
-}
-
-func (d *deadlineCommitRunner) RunInteractive(context.Context, string, ...string) error { return nil }
-
-func (d *deadlineCommitRunner) RunInDir(context.Context, string, []string, string, ...string) (runner.Result, error) {
-	return runner.Result{}, nil
-}
-
-func durationPtr(d time.Duration) *time.Duration { return &d }
 
 // TestCommitTransport_SourcesCommandFromCommitAccessor proves commitTransport threads
 // cfg.AICommandFor(VerbCommit): a [commit].ai_command override is the binary+args the
@@ -63,21 +30,21 @@ func TestCommitTransport_SourcesCommandFromCommitAccessor(t *testing.T) {
 	cfg := config.Config{
 		AICommand: shared,
 		Commit:    config.Commit{AICommand: &override},
-		Timeout:   durationPtr(60 * time.Second),
+		Timeout:   runner.DurationPtr(60 * time.Second),
 	}
 
-	spy := &deadlineCommitRunner{}
+	spy := &runner.DeadlineRecordingRunner{}
 	transport := commitTransport(Deps{Runner: spy}, cfg)
 	if _, err := transport.Generate(t.Context(), "prompt"); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
 
-	if spy.name != "verbbot" {
-		t.Errorf("invoked binary = %q, want the [commit].ai_command override binary %q", spy.name, "verbbot")
+	if spy.Name() != "verbbot" {
+		t.Errorf("invoked binary = %q, want the [commit].ai_command override binary %q", spy.Name(), "verbbot")
 	}
 	wantArgs := []string{"run", "--json"}
-	if len(spy.args) != len(wantArgs) || spy.args[0] != wantArgs[0] || spy.args[1] != wantArgs[1] {
-		t.Errorf("invoked args = %v, want the [commit].ai_command override args %v", spy.args, wantArgs)
+	if len(spy.Args()) != len(wantArgs) || spy.Args()[0] != wantArgs[0] || spy.Args()[1] != wantArgs[1] {
+		t.Errorf("invoked args = %v, want the [commit].ai_command override args %v", spy.Args(), wantArgs)
 	}
 }
 
@@ -94,16 +61,16 @@ func TestCommitTransport_PositiveTimeoutThreadsDeadline(t *testing.T) {
 	cfg := config.Config{
 		AICommand: "claude",
 		Commit:    config.Commit{Timeout: &override},
-		Timeout:   durationPtr(60 * time.Second),
+		Timeout:   runner.DurationPtr(60 * time.Second),
 	}
 
-	spy := &deadlineCommitRunner{}
+	spy := &runner.DeadlineRecordingRunner{}
 	transport := commitTransport(Deps{Runner: spy}, cfg)
 	if _, err := transport.Generate(t.Context(), "prompt"); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
 
-	if !spy.hadDeadline {
+	if !spy.HadDeadline() {
 		t.Errorf("context carried no deadline; a [commit].timeout override must thread a per-attempt deadline through commitTransport")
 	}
 }
@@ -119,16 +86,16 @@ func TestCommitTransport_ExplicitZeroTimeoutThreadsNoDeadline(t *testing.T) {
 	cfg := config.Config{
 		AICommand: "claude",
 		Commit:    config.Commit{Timeout: &zero},
-		Timeout:   durationPtr(60 * time.Second),
+		Timeout:   runner.DurationPtr(60 * time.Second),
 	}
 
-	spy := &deadlineCommitRunner{}
+	spy := &runner.DeadlineRecordingRunner{}
 	transport := commitTransport(Deps{Runner: spy}, cfg)
 	if _, err := transport.Generate(t.Context(), "prompt"); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
 
-	if spy.hadDeadline {
+	if spy.HadDeadline() {
 		t.Errorf("context carried a deadline; a [commit].timeout of explicit 0 must thread NO deadline through commitTransport")
 	}
 }
