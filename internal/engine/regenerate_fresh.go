@@ -127,5 +127,11 @@ func resolveFreshTransport(r runner.CommandRunner, transport notes.Transport, cf
 	if transport != nil {
 		return transport
 	}
-	return ai.NewTransport(r, ai.Config{AICommand: cfg.AICommand})
+	// TODO(2-3/2-4/2-5): thread config.TimeoutFor(VerbRelease) — regenerate rides on
+	// [release], so the resolved timeout must come from the release verb, not its own
+	// table. Temporary compile-bridge for task 2-2 (which changed ai.Config.Timeout to
+	// *time.Duration with a strict nil-is-wiring-bug guard). A non-nil pointer to the 60s
+	// floor keeps this off the nil (panic) path until the resolved timeout is wired here.
+	timeout := config.DefaultTimeout
+	return ai.NewTransport(r, ai.Config{AICommand: cfg.AICommand, Timeout: &timeout})
 }

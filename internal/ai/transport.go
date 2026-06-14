@@ -47,40 +47,78 @@ var (
 // lives once in config.AICommandFor, so the transport never re-defaults it. It is
 // whitespace-split into name + args; see Generate for why a simple split is sufficient.
 //
-// Timeout is the PER-ATTEMPT deadline applied to each invocation (including the
-// retry). It is a configurable field — rather than a hard-coded ~60s — so tests can
-// inject a tiny value and never actually wait a minute. A zero or negative Timeout
-// falls back to the production default.
+// Timeout is the PER-ATTEMPT deadline applied to each invocation (including the retry).
+// It is a *time.Duration so the boundary distinguishes absent from an operator's
+// explicit zero — the transport carries NO default and config owns the floor
+// (config.DefaultTimeout = 60s), so the three meanings are:
+//   - nil  → NOT threaded (a wiring bug; production never produces it because all three
+//     sites source config.TimeoutFor, which never returns nil). NewTransport fails loud
+//     on it rather than running unbounded — see NewTransport.
+//   - &0   → the operator's explicit "no per-attempt deadline": the AI call may run
+//     UNBOUNDED. This is a conscious, operator-chosen exception to "fail loud, never
+//     hang" — the operator opted into an unbounded call (e.g. a slow local model) and
+//     owns that trade-off.
+//   - &positive → the per-attempt deadline applied via context.WithTimeout.
+//
+// Tests inject a tiny &value and never wait the production minute.
 type Config struct {
 	AICommand string
-	Timeout   time.Duration
+	Timeout   *time.Duration
 }
 
-// defaultTimeout is the production per-attempt deadline (~60s) so a hung AI call
-// cannot stall a release. Tests override it via Config.Timeout.
-const defaultTimeout = 60 * time.Second
-
-// Transport runs the AI command through the CommandRunner seam and validates the
-// body. It holds the runner plus the resolved command and per-attempt timeout.
+// Transport runs the AI command through the CommandRunner seam and validates the body.
+// It holds the runner plus the resolved command and the per-attempt deadline carrier.
+//
+// deadline is the INTERNAL representation of whether a per-attempt deadline applies, with
+// polarity INVERSE to Config.Timeout's boundary: nil ⇒ NO per-attempt deadline (run on
+// the parent context), non-nil ⇒ a strictly POSITIVE deadline of that value. NewTransport
+// MAPS Config.Timeout into this (it never copies the boundary pointer through), so the
+// operator's explicit &0 ("no deadline") becomes a nil deadline here.
 type Transport struct {
-	runner  runner.CommandRunner
-	command string
-	timeout time.Duration
+	runner   runner.CommandRunner
+	command  string
+	deadline *time.Duration
 }
 
-// NewTransport builds a Transport over r with cfg. It runs the command config
-// resolves and hands it VERBATIM — config's floor (config.DefaultAICommand) guarantees
-// AICommand is non-empty and the multi-layer blank-skip lives once in
-// config.AICommandFor, so the transport never re-defaults a blank command. A
-// non-positive Timeout still resolves to the ~60s production default. The runner is
-// injected so production wiring passes the os/exec-backed runner and tests pass a
-// FakeRunner.
+// NewTransport builds a Transport over r with cfg. It runs the command config resolves
+// and hands it VERBATIM — config's floor (config.DefaultAICommand) guarantees AICommand
+// is non-empty and the multi-layer blank-skip lives once in config.AICommandFor, so the
+// transport never re-defaults a blank command.
+//
+// It records the resolved per-attempt deadline (or no-deadline) from cfg.Timeout — config
+// owns the default (config.DefaultTimeout = 60s), so the transport no longer re-defaults a
+// non-positive value. cfg.Timeout is MAPPED, not copied, onto the internal deadline carrier
+// (whose nil-means-no-deadline polarity is the inverse of the boundary's):
+//   - cfg.Timeout == nil → a wiring bug (a site forgot to thread the value). It must NOT
+//     silently become "no deadline" — that is the zero-by-omission case the spec forbids —
+//     so NewTransport PANICS. Production never reaches this (all sites source
+//     config.TimeoutFor, which never returns nil); the panic is a programmer-error guard
+//     that keeps "no deadline" reachable only via an operator's explicit &0.
+//   - *cfg.Timeout == 0 (operator's explicit "no deadline") → deadline = nil: the attempt
+//     runs on the parent context with no context.WithTimeout.
+//   - *cfg.Timeout != 0 → deadline = a pointer to that value (a per-attempt deadline). A
+//     stray negative is treated as a deadline (it fires immediately, defensively), NOT
+//     collapsed into the no-deadline branch — a negative is not "no deadline".
+//
+// The runner is injected so production wiring passes the os/exec-backed runner and tests
+// pass a FakeRunner.
 func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
-	timeout := cfg.Timeout
-	if timeout <= 0 {
-		timeout = defaultTimeout
+	if cfg.Timeout == nil {
+		// Zero-by-omission: a wiring site forgot to thread the resolved timeout. Fail loud
+		// — a silent unbounded run would invert "fail loud, never hang". "No deadline" is
+		// reachable only via the operator's explicit &0, never a forgotten field.
+		panic("ai.NewTransport: Config.Timeout is nil; wiring must thread config.TimeoutFor(verb) (use &0 for an explicit no-deadline)")
 	}
-	return &Transport{runner: r, command: cfg.AICommand, timeout: timeout}
+
+	// Map the boundary value onto the internal carrier. Only an explicit 0 is the
+	// no-deadline case; any non-zero value (positive, or a defensive stray negative) is a
+	// per-attempt deadline, so a zero is never passed to context.WithTimeout.
+	var deadline *time.Duration
+	if *cfg.Timeout != 0 {
+		d := *cfg.Timeout
+		deadline = &d
+	}
+	return &Transport{runner: r, command: cfg.AICommand, deadline: deadline}
 }
 
 // Generate runs the AI command with prompt on stdin and returns the body from
@@ -91,10 +129,12 @@ func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
 // quoting or shell metacharacters that a real parser would be needed for — a simple
 // split is sufficient and documented as such.
 //
-// Each attempt gets its own deadline via context.WithTimeout(ctx, t.timeout), so the
-// original call and the retry each get a fresh per-attempt budget. The prompt is
-// piped fresh on every attempt (a new strings.NewReader) because an io.Reader is
-// consumed once — reusing it on the retry would send an empty prompt.
+// Each attempt gets its own deadline via context.WithTimeout ONLY when a positive
+// timeout is set, so the original call and the retry each get a fresh per-attempt
+// budget; when the operator chose 0 (no deadline) the attempt runs on the parent
+// context with no WithTimeout. The prompt is piped fresh on every attempt (a new
+// strings.NewReader) because an io.Reader is consumed once — reusing it on the retry
+// would send an empty prompt.
 //
 // Failure routing is by cause:
 //   - A caller cancellation (errors.Is context.Canceled — Ctrl-C at main's
@@ -136,12 +176,25 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 	return body, nil
 }
 
-// attempt runs a single AI invocation under its own per-attempt deadline, piping a
-// FRESH reader over prompt to stdin (an io.Reader is consumed once, so the retry
-// must re-create it) and returning the captured stdout.
+// attempt runs a single AI invocation, piping a FRESH reader over prompt to stdin (an
+// io.Reader is consumed once, so the retry must re-create it) and returning the captured
+// stdout.
+//
+// The per-attempt deadline is applied CONDITIONALLY off t.deadline (already mapped by
+// NewTransport so nil ⇒ no deadline, non-nil ⇒ a strictly positive value): when t.deadline
+// is nil — the operator's explicit "no deadline" — the attempt runs on the PARENT ctx with
+// no context.WithTimeout (passing a zero duration to WithTimeout would fire instantly, a
+// false timeout). Because the mapping guarantees t.deadline is non-nil only for a positive
+// value, 0 (and a defensive negative) is never handed to WithTimeout. On the parent-ctx
+// path a caller cancellation still surfaces as context.Canceled (classifyFatal propagates
+// it unchanged) — skipping WithTimeout does not change cancellation routing.
 func (t *Transport) attempt(ctx context.Context, name string, args []string, prompt string) (string, error) {
-	attemptCtx, cancel := context.WithTimeout(ctx, t.timeout)
-	defer cancel()
+	attemptCtx := ctx
+	if t.deadline != nil {
+		var cancel context.CancelFunc
+		attemptCtx, cancel = context.WithTimeout(ctx, *t.deadline)
+		defer cancel()
+	}
 
 	res, err := t.runner.RunWith(attemptCtx, strings.NewReader(prompt), name, args...)
 	if err != nil {

@@ -473,7 +473,11 @@ func TestGenerator_Generate_ConsumesL2OneRetryNotReimplemented(t *testing.T) {
 		runner.ScriptedCall{Result: runner.Result{Stdout: good}},
 	)
 
-	transport := ai.NewTransport(r, ai.Config{AICommand: "claude -p"})
+	// ai.Config.Timeout is now a *time.Duration whose nil is the forbidden zero-by-omission
+	// case (NewTransport panics on it); this test is about the L2 retry, not the deadline,
+	// so it passes a generous explicit value (a pointer to the 60s floor) the retry never hits.
+	timeout := config.DefaultTimeout
+	transport := ai.NewTransport(r, ai.Config{AICommand: "claude -p", Timeout: &timeout})
 	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 
 	got, err := gen.Generate(t.Context(), normalCfg())

@@ -107,7 +107,7 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 2,
-          "current_task": "tick-d69d1b",
+          "current_task": "tick-0e0ea8",
           "completed_tasks": [
             "ai-model-selection-1-1",
             "ai-model-selection-1-2",
@@ -117,7 +117,8 @@
             "ai-model-selection-1-6",
             "ai-model-selection-1-7",
             "ai-model-selection-1-8",
-            "ai-model-selection-2-1"
+            "ai-model-selection-2-1",
+            "ai-model-selection-2-2"
           ],
           "completed_phases": [
             1

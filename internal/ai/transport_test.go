@@ -18,13 +18,24 @@ import (
 // field precisely so tests never wait the production ~60s.
 const generousTimeout = time.Minute
 
+// ptrTo returns a pointer to v. ai.Config.Timeout is *time.Duration (the boundary
+// type that distinguishes a forgotten field from an operator's explicit 0), so the
+// content tests construct it with ptrTo(generousTimeout). A literal ptrTo(0) would be
+// a *int and not assignable to the *time.Duration field, so callers pass a typed
+// duration (e.g. ptrTo(time.Duration(0))).
+func ptrTo[T any](v T) *T {
+	return &v
+}
+
 // newTransport builds a Transport over r with an explicit `claude -p` ai_command and
 // a generous per-attempt timeout, the common setup for the content tests. The command
 // is passed explicitly because the transport no longer self-defaults: config resolves
 // the concrete command (its floor is config.DefaultAICommand) and hands it to the
-// transport verbatim, so the test mirrors that by supplying a real command.
+// transport verbatim, so the test mirrors that by supplying a real command. The timeout
+// is a *time.Duration because the boundary now distinguishes absent (nil) from an
+// operator's explicit 0 ("no deadline").
 func newTransport(r runner.CommandRunner) *ai.Transport {
-	return ai.NewTransport(r, ai.Config{AICommand: "claude -p", Timeout: generousTimeout})
+	return ai.NewTransport(r, ai.Config{AICommand: "claude -p", Timeout: ptrTo(generousTimeout)})
 }
 
 func TestTransport_Generate_ReturnsValidBodyUnchanged(t *testing.T) {
@@ -89,7 +100,7 @@ func TestTransport_Generate_RunsPassedAICommandVerbatim(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("mybot", runner.Result{Stdout: "ok\n"}, nil)
 
-	tr := ai.NewTransport(r, ai.Config{AICommand: "mybot gen", Timeout: generousTimeout})
+	tr := ai.NewTransport(r, ai.Config{AICommand: "mybot gen", Timeout: ptrTo(generousTimeout)})
 	if _, err := tr.Generate(t.Context(), "p"); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -122,7 +133,7 @@ func TestTransport_Generate_PassesBlankAICommandThroughUnchanged(t *testing.T) {
 	// without an unseeded-command error.
 	r.Seed("", runner.Result{Stdout: "ok\n"}, nil)
 
-	tr := ai.NewTransport(r, ai.Config{AICommand: "  ", Timeout: generousTimeout})
+	tr := ai.NewTransport(r, ai.Config{AICommand: "  ", Timeout: ptrTo(generousTimeout)})
 	if _, err := tr.Generate(t.Context(), "p"); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -145,7 +156,7 @@ func TestTransport_Generate_HonoursOverriddenAICommand(t *testing.T) {
 
 	tr := ai.NewTransport(r, ai.Config{
 		AICommand: "llm --model gpt-4 chat",
-		Timeout:   generousTimeout,
+		Timeout:   ptrTo(generousTimeout),
 	})
 	if _, err := tr.Generate(t.Context(), "p"); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -322,11 +333,11 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	// subprocess side-effect (a marker write) that races process startup against the
 	// deadline and flakes under CPU contention.
 	//
-	// The transport applies its own per-attempt timeout via context.WithTimeout, so a
-	// tiny Config.Timeout against a command that sleeps far longer guarantees the
-	// deadline fires regardless of load. The ai_command is whitespace-split (no shell
-	// quoting), so the per-attempt body is a standalone executable script that simply
-	// sleeps well past the deadline.
+	// For a POSITIVE Config.Timeout the transport applies its own per-attempt deadline
+	// via context.WithTimeout, so a tiny value against a command that sleeps far longer
+	// guarantees the deadline fires regardless of load. The ai_command is whitespace-split
+	// (no shell quoting), so the per-attempt body is a standalone executable script that
+	// simply sleeps well past the deadline.
 	dir := t.TempDir()
 	script := filepath.Join(dir, "ai-command")
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
@@ -337,7 +348,7 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	// quickly the subprocess starts — so the real timeout path is exercised on every run.
 	tr := ai.NewTransport(runner.NewExecRunner(), ai.Config{
 		AICommand: script,
-		Timeout:   300 * time.Millisecond,
+		Timeout:   ptrTo(300 * time.Millisecond),
 	})
 
 	_, err := tr.Generate(t.Context(), "p")
@@ -347,6 +358,123 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	if errors.Is(err, ai.ErrGenerationFailed) {
 		t.Errorf("a real timeout must be distinguishable from the bad-content ErrGenerationFailed")
 	}
+}
+
+func TestTransport_Generate_ExplicitZeroTimeoutSkipsWithTimeoutRunsOnParentContext(t *testing.T) {
+	t.Parallel()
+
+	// An operator's explicit Timeout: &0 means "NO per-attempt deadline" — the transport
+	// must SKIP context.WithTimeout entirely and run the attempt on the PARENT context.
+	// Passing a zero duration to context.WithTimeout fires the deadline IMMEDIATELY, so a
+	// wrong implementation would report an instant ErrTimeout. This proves the opposite:
+	// against a real (briefly sleeping) script with Timeout: &0, Generate returns the body
+	// successfully — a zero did NOT fire an immediate deadline. Mirrors the real-deadline
+	// test's NewExecRunner + standalone-script setup so a genuine exec deadline (not an
+	// injected wrapper) is the thing being avoided.
+	const body = "no-deadline body\n"
+	dir := t.TempDir()
+	script := filepath.Join(dir, "ai-command")
+	// The script sleeps briefly so an instant 0-duration deadline (if one were applied)
+	// would fire mid-sleep before the body is written; it then prints the body. A skipped
+	// WithTimeout lets the sleep complete and the body return.
+	scriptBody := "#!/bin/sh\nsleep 0.2\nprintf '%s'\n"
+	if err := os.WriteFile(script, []byte(fmt.Sprintf(scriptBody, body)), 0o755); err != nil {
+		t.Fatalf("writing fake ai_command script: %v", err)
+	}
+
+	tr := ai.NewTransport(runner.NewExecRunner(), ai.Config{
+		AICommand: script,
+		Timeout:   ptrTo(time.Duration(0)),
+	})
+
+	got, err := tr.Generate(t.Context(), "p")
+	if err != nil {
+		t.Fatalf("Generate returned unexpected error: %v (a zero timeout must NOT fire an instant deadline)", err)
+	}
+	if errors.Is(err, ai.ErrTimeout) {
+		t.Errorf("a zero (no-deadline) timeout must NOT produce ErrTimeout, got %v", err)
+	}
+	if got != body {
+		t.Errorf("body = %q, want it returned unchanged %q", got, body)
+	}
+}
+
+func TestTransport_Generate_NoDeadlinePathPropagatesParentCancellationUnchanged(t *testing.T) {
+	t.Parallel()
+
+	// On the no-deadline path (Timeout: &0) the attempt runs on the PARENT context, so a
+	// caller cancellation (Ctrl-C threading down from main's signal.NotifyContext) must
+	// still surface as context.Canceled itself — never swallowed, never mapped to a
+	// transport sentinel, and NOT retried (a retry against a dead context can never
+	// succeed). classifyFatal already propagates context.Canceled unchanged; this pins
+	// that skipping WithTimeout does not change that routing. Simulated by seeding the
+	// error shape the runner produces on a cancel kill (it wraps ctx.Err()).
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{}, fmt.Errorf("running claude: %w", context.Canceled))
+
+	tr := ai.NewTransport(r, ai.Config{AICommand: "claude -p", Timeout: ptrTo(time.Duration(0))})
+	_, err := tr.Generate(t.Context(), "p")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want it to match context.Canceled on the no-deadline path", err)
+	}
+	if errors.Is(err, ai.ErrGenerationFailed) || errors.Is(err, ai.ErrTimeout) || errors.Is(err, ai.ErrCommandMissing) {
+		t.Errorf("a cancellation must not match any transport sentinel, got %v", err)
+	}
+	if n := len(r.Invocations()); n != 1 {
+		t.Errorf("invocations = %d, want 1 (a cancellation is not retried)", n)
+	}
+}
+
+func TestTransport_Generate_NegativeTimeoutIsNotNoDeadline(t *testing.T) {
+	t.Parallel()
+
+	// A NEGATIVE timeout must NOT be collapsed into the explicit-0 no-deadline branch — a
+	// negative is not "no deadline". config guarantees the transport only ever receives a
+	// positive value or an explicit 0 (negatives drop through to the 60s floor in
+	// TimeoutFor), so this is defensive: the ONLY no-deadline trigger is an explicit 0. A
+	// negative maps to a per-attempt deadline (which fires immediately, defensively) — it
+	// must never produce an unbounded run on the parent context. Against a real briefly
+	// sleeping script, a negative therefore fires as ErrTimeout (the WithTimeout path),
+	// proving it did NOT take the no-deadline parent-context path the explicit 0 takes.
+	dir := t.TempDir()
+	script := filepath.Join(dir, "ai-command")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
+		t.Fatalf("writing fake ai_command script: %v", err)
+	}
+
+	tr := ai.NewTransport(runner.NewExecRunner(), ai.Config{
+		AICommand: script,
+		Timeout:   ptrTo(-1 * time.Second),
+	})
+
+	_, err := tr.Generate(t.Context(), "p")
+	if !errors.Is(err, ai.ErrTimeout) {
+		t.Fatalf("error = %v, want ErrTimeout — a negative must take the deadline path, never the no-deadline branch", err)
+	}
+}
+
+func TestNewTransport_NilTimeoutIsWiringBugNotSilentNoDeadline(t *testing.T) {
+	t.Parallel()
+
+	// "No deadline" must be reachable ONLY via an operator's explicit &0 — never via a
+	// nil (forgotten/zero-by-omission) Config.Timeout. Production never produces nil (all
+	// three wiring sites source config.TimeoutFor, which never returns nil), so a nil here
+	// is a programming error from a site that forgot to thread the value. NewTransport
+	// fails LOUD on it — a panic (a programmer-error guard) — rather than silently running
+	// the AI call unbounded, which would invert "fail loud, never hang" by omission. This
+	// pins the contract: a nil Config.Timeout panics; it does NOT construct a transport
+	// that silently runs with no deadline.
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: "body\n"}, nil)
+
+	defer func() {
+		if recovered := recover(); recovered == nil {
+			t.Fatalf("NewTransport with a nil Config.Timeout must panic (a forgotten field must not become a silent no-deadline run)")
+		}
+	}()
+
+	// A nil Timeout is the forbidden zero-by-omission case; constructing must fail loud.
+	_ = ai.NewTransport(r, ai.Config{AICommand: "claude -p", Timeout: nil})
 }
 
 func TestTransport_Generate_DoesNotRetryMissingTool(t *testing.T) {
