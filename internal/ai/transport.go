@@ -40,15 +40,12 @@ var (
 	ErrCommandMissing = errors.New("ai command not found")
 )
 
-// defaultAICommand is the out-of-the-box transport command: `claude -p`, piping the
-// composed prompt to stdin and reading the body off stdout.
-const defaultAICommand = "claude -p"
-
 // Config holds the operator-tunable transport settings.
 //
-// AICommand is the command invoked to generate content (default `claude -p` when
-// empty). It is whitespace-split into name + args; see Generate for why a simple
-// split is sufficient.
+// AICommand is the resolved command config hands the transport — config's floor
+// (config.DefaultAICommand) guarantees it is non-empty, and the multi-layer blank-skip
+// lives once in config.AICommandFor, so the transport never re-defaults it. It is
+// whitespace-split into name + args; see Generate for why a simple split is sufficient.
 //
 // Timeout is the PER-ATTEMPT deadline applied to each invocation (including the
 // retry). It is a configurable field — rather than a hard-coded ~60s — so tests can
@@ -71,21 +68,19 @@ type Transport struct {
 	timeout time.Duration
 }
 
-// NewTransport builds a Transport over r with cfg. An empty AICommand resolves to
-// `claude -p` and a non-positive Timeout resolves to the ~60s production default,
-// so the zero Config yields a fully working production transport. The runner is
+// NewTransport builds a Transport over r with cfg. It runs the command config
+// resolves and hands it VERBATIM — config's floor (config.DefaultAICommand) guarantees
+// AICommand is non-empty and the multi-layer blank-skip lives once in
+// config.AICommandFor, so the transport never re-defaults a blank command. A
+// non-positive Timeout still resolves to the ~60s production default. The runner is
 // injected so production wiring passes the os/exec-backed runner and tests pass a
 // FakeRunner.
 func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
-	command := cfg.AICommand
-	if strings.TrimSpace(command) == "" {
-		command = defaultAICommand
-	}
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
-	return &Transport{runner: r, command: command, timeout: timeout}
+	return &Transport{runner: r, command: cfg.AICommand, timeout: timeout}
 }
 
 // Generate runs the AI command with prompt on stdin and returns the body from
@@ -192,10 +187,12 @@ func isValid(body string) bool {
 }
 
 // parseCommand splits an ai_command into its binary name and argument list by
-// whitespace. The command is operator-controlled config (e.g. `claude -p`), so a
-// strings.Fields split is sufficient — it carries no quoting or shell syntax a
-// fuller parser would be needed for. An all-whitespace command (already guarded
-// against in NewTransport) yields an empty name.
+// whitespace. The command is operator-controlled config (e.g. `claude --model sonnet
+// -p`), so a strings.Fields split is sufficient — it carries no quoting or shell syntax a
+// fuller parser would be needed for. Config's floor (config.DefaultAICommand)
+// guarantees a non-empty command, so an empty name is unreachable from production;
+// the empty-fields branch below stays as a defensive no-op (NewTransport no longer
+// guards blank).
 func parseCommand(command string) (name string, args []string) {
 	fields := strings.Fields(command)
 	if len(fields) == 0 {

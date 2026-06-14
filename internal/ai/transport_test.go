@@ -18,10 +18,13 @@ import (
 // field precisely so tests never wait the production ~60s.
 const generousTimeout = time.Minute
 
-// newTransport builds a Transport over r with the default ai_command and a
-// generous per-attempt timeout, the common setup for the content tests.
+// newTransport builds a Transport over r with an explicit `claude -p` ai_command and
+// a generous per-attempt timeout, the common setup for the content tests. The command
+// is passed explicitly because the transport no longer self-defaults: config resolves
+// the concrete command (its floor is config.DefaultAICommand) and hands it to the
+// transport verbatim, so the test mirrors that by supplying a real command.
 func newTransport(r runner.CommandRunner) *ai.Transport {
-	return ai.NewTransport(r, ai.Config{Timeout: generousTimeout})
+	return ai.NewTransport(r, ai.Config{AICommand: "claude -p", Timeout: generousTimeout})
 }
 
 func TestTransport_Generate_ReturnsValidBodyUnchanged(t *testing.T) {
@@ -75,27 +78,59 @@ func TestTransport_Generate_PipesPromptToStdinReadsStdout(t *testing.T) {
 	}
 }
 
-func TestTransport_Generate_DefaultCommandIsClaudeDashP(t *testing.T) {
+func TestTransport_Generate_RunsPassedAICommandVerbatim(t *testing.T) {
 	t.Parallel()
 
-	// With ai_command left unset, the default is `claude -p`: name `claude`, args
-	// `["-p"]`. The split is a simple whitespace split (operator-controlled config),
-	// so the default must parse into exactly that name+args.
+	// The transport runs the ai_command config hands it VERBATIM — it no longer carries
+	// its own default. Config's floor (config.DefaultAICommand) guarantees a non-empty,
+	// already-resolved command, so there is nothing for the transport to re-default. A
+	// custom `mybot gen` must parse into name `mybot` + args `["gen"]` and be invoked
+	// exactly — no `claude` substitution.
 	r := runner.NewFakeRunner()
-	r.Seed("claude", runner.Result{Stdout: "ok\n"}, nil)
+	r.Seed("mybot", runner.Result{Stdout: "ok\n"}, nil)
 
-	// No AICommand set -> default applies.
-	tr := ai.NewTransport(r, ai.Config{Timeout: generousTimeout})
+	tr := ai.NewTransport(r, ai.Config{AICommand: "mybot gen", Timeout: generousTimeout})
 	if _, err := tr.Generate(t.Context(), "p"); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
 
 	inv := r.Invocations()[0]
-	if inv.Name != "claude" {
-		t.Errorf("command = %q, want claude", inv.Name)
+	if inv.Name != "mybot" {
+		t.Errorf("command = %q, want mybot (the passed ai_command, not a re-default)", inv.Name)
 	}
-	if !equalArgs(inv.Args, []string{"-p"}) {
-		t.Errorf("args = %v, want [-p]", inv.Args)
+	if !equalArgs(inv.Args, []string{"gen"}) {
+		t.Errorf("args = %v, want [gen]", inv.Args)
+	}
+	for _, got := range r.Invocations() {
+		if got.Name == "claude" {
+			t.Errorf("transport invoked claude — it must not re-default the passed command")
+		}
+	}
+}
+
+func TestTransport_Generate_PassesBlankAICommandThroughUnchanged(t *testing.T) {
+	t.Parallel()
+
+	// The transport no longer re-defaults a blank/whitespace ai_command to `claude -p`:
+	// config's floor guarantees a non-empty command, so the old blank-re-default path is
+	// dead code and has been removed. A blank command is carried through VERBATIM — it
+	// whitespace-splits to an empty name (the defensive parseCommand no-op), and crucially
+	// the transport must NOT substitute `claude`. Production never reaches this because the
+	// config floor is asserted in the config-layer tests.
+	r := runner.NewFakeRunner()
+	// Seed the empty-name binary that a blank command parses to, so the call resolves
+	// without an unseeded-command error.
+	r.Seed("", runner.Result{Stdout: "ok\n"}, nil)
+
+	tr := ai.NewTransport(r, ai.Config{AICommand: "  ", Timeout: generousTimeout})
+	if _, err := tr.Generate(t.Context(), "p"); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	for _, got := range r.Invocations() {
+		if got.Name == "claude" {
+			t.Errorf("transport substituted claude for a blank command — the blank-re-default must be gone")
+		}
 	}
 }
 
