@@ -12,6 +12,14 @@
 // "No project auto-detection"). The key names, defaults, and value shapes mirror the
 // canonical config schema exactly, and the package's tests prove the full template,
 // once uncommented, loads cleanly through the real config.Load.
+//
+// The pinned default VALUES (ai_command's `claude -p --model sonnet`, timeout's 60s)
+// are the canonical config schema's — config.DefaultAICommand and config.DefaultTimeout
+// are their single source of truth. The template carries them as static literals for
+// readability (initgen does NOT import config — sourcing a compiled constant would not
+// weaken the static-template / no-project-auto-detection contract, but it is not needed),
+// and the package's drift tests PIN those literals equal to the config constants, so a
+// scaffold/schema drift fails the build rather than shipping a stale default.
 package initgen
 
 // MintTOML returns the commented `.mint.toml` scaffolding template as a single
@@ -36,7 +44,8 @@ func MintTOML() string {
 
 # --- Engine-level keys (shared by every mint verb) ---
 
-ai_command = 'claude -p'
+ai_command = 'claude -p --model sonnet'
+timeout = 60  # per-attempt AI deadline in seconds; raise it if your ai_command runs slowly (0 = no limit)
 max_diff_lines = 50000
 
 # diff_exclude = ['skills/**/knowledge.cjs', '*.min.js']  # tracked generated files to keep out of the notes diff
@@ -54,6 +63,8 @@ on_notes_failure = 'abort'
 # provider = 'github'                              # publishing driver to force (default: auto-detected from the remote host)
 # context = 'Emphasise user-facing changes.'       # project guidance injected into the notes prompt
 # prompt = '.mint/notes-prompt.md'                 # full prompt-override file — create it yourself; mint init does NOT scaffold it
+# ai_command = 'claude -p --model sonnet'          # override the AI command for this verb only
+# timeout = 120                                    # override the per-attempt deadline (seconds) for this verb only; raise it if this verb's ai_command runs slowly
 
 # --- Lifecycle hooks (always under [release.hooks], never a top-level [hooks]) ---
 # [release.hooks]
@@ -62,9 +73,11 @@ on_notes_failure = 'abort'
 # pre_tag also accepts an array of commands run in order (set ONE pre_tag, not both): ['npm ci', 'npm run build']
 # post_release = 'scripts/notify.sh'               # runs after the release is published
 
-# --- mint commit (AI commit messages; both keys optional) ---
+# --- mint commit (AI commit messages; all keys optional) ---
 # [commit]
 # context = 'Reference the ticket number if the branch carries one.'  # project guidance injected into the commit-message prompt
 # prompt = '.mint/commit-prompt.md'                # full prompt-override file — create it yourself; mint init does NOT scaffold it
+# ai_command = 'claude -p --model sonnet'          # override the AI command for this verb only
+# timeout = 120                                    # override the per-attempt deadline (seconds) for this verb only; raise it if this verb's ai_command runs slowly
 `
 }
