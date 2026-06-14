@@ -134,8 +134,9 @@ type ReleaseDeps struct {
 	// REAL notes path over the FakeRunner while still injecting a recording transport
 	// where they need to script the AI body directly. When nil, Release builds the
 	// production ai.Transport over deps.Runner once root is resolved, driving it with
-	// the validated cfg.AICommand (the documented top-level ai_command key, re-defaulting
-	// an empty value to `claude -p`) — so production leaves it nil and gets the real
+	// the release verb's resolved command + timeout (cfg.AICommandFor / cfg.TimeoutFor
+	// over the `[release] → shared → floor` chain) — config owns the default and the
+	// blank-skip / no-deadline semantics, so production leaves it nil and gets the real
 	// transport configured by the loaded schema.
 	Transport notes.Transport
 	// NoteCache is the dry-run note-cache seam — BOTH the WRITE side (task 4-7) and the
@@ -922,21 +923,24 @@ func reuseConfirmGate() presenter.Gate {
 // aiTransport resolves the AI transport the notes Generator hands its prompt to:
 // the injected deps.Transport when set (the test seam), else the production
 // ai.Transport over the run's runner — so production leaves deps.Transport nil and
-// gets the real transport. The validated cfg.AICommand drives the invocation (the
-// documented top-level ai_command key): NewTransport whitespace-splits it into name +
-// args and re-defaults an empty value to `claude -p`, so a zero-config run still uses
-// the documented default exactly. (The Phase 6 schema is the single decode +
-// validation pass; this threads its resolved AICommand through to the transport.)
+// gets the real transport. The release verb's per-key resolution supplies BOTH the
+// concrete command and the per-attempt deadline: cfg.AICommandFor(config.VerbRelease)
+// and cfg.TimeoutFor(config.VerbRelease) each walk the chain `[release] → shared → floor`,
+// so a `[release].ai_command` / `[release].timeout` override drives the call and a
+// zero-config run resolves to the shipped floor (claude -p --model sonnet, 60s). Config —
+// not the transport — owns the default and the blank-skip / no-deadline semantics; the
+// transport runs what it is handed (whitespace-splitting the command into name + args).
+// The timeout is sourced from the accessor (a *time.Duration assigned directly to
+// ai.Config.Timeout, never zero-by-omission), so "no deadline" stays reachable ONLY via
+// an operator's explicit `0` — a forgotten field cannot reach the transport.
 func aiTransport(deps ReleaseDeps, cfg config.Config) notes.Transport {
 	if deps.Transport != nil {
 		return deps.Transport
 	}
-	// TODO(2-3/2-4/2-5): thread config.TimeoutFor(VerbRelease) — temporary compile-bridge
-	// for task 2-2 (which changed ai.Config.Timeout to *time.Duration with a strict
-	// nil-is-wiring-bug guard). A non-nil pointer to the 60s floor keeps this off the nil
-	// (panic) path until the resolved per-verb timeout is wired here.
-	timeout := config.DefaultTimeout
-	return ai.NewTransport(deps.Runner, ai.Config{AICommand: cfg.AICommand, Timeout: &timeout})
+	return ai.NewTransport(deps.Runner, ai.Config{
+		AICommand: cfg.AICommandFor(config.VerbRelease),
+		Timeout:   cfg.TimeoutFor(config.VerbRelease),
+	})
 }
 
 // regeneratorFunc adapts a plain regenerate closure to the Regenerator seam so the

@@ -64,6 +64,77 @@ func TestRelease_AICommand_ConfigValueDrivesTransport(t *testing.T) {
 	}
 }
 
+// TestRelease_AICommand_ReleaseVerbOverrideDrivesTransport proves the per-verb
+// [release].ai_command override (NOT just the bare shared top-level key) drives the
+// release notes AI invocation: with a [release].ai_command set, its binary+args are
+// what the production transport runs — sourced through cfg.AICommandFor(VerbRelease).
+// A shared top-level ai_command is also present to prove the per-verb override WINS the
+// resolution (verb override → shared → floor); seeding the shared binary would never be
+// reached, and the unseeded `claude` default is asserted absent.
+func TestRelease_AICommand_ReleaseVerbOverrideDrivesTransport(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "ai_command = \"sharedbot gen\"\n[release]\nai_command = \"mybot gen --json\"\n")
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	// The [release].ai_command override's BINARY (mybot) is the runner key. Seeding the
+	// shared `sharedbot` or the default `claude` here would never be reached; an unseeded
+	// `mybot` would error the run, so the seed proves the per-verb override drives the call.
+	f.Seed("mybot", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// The [release].ai_command override — its binary AND its args — drove the AI call.
+	if got := stdinOf(t, f, "mybot", "gen", "--json"); got == "" {
+		t.Errorf("[release].ai_command %q was not invoked with a prompt on stdin", "mybot gen --json")
+	}
+	// Neither the shared top-level command nor the default was invoked — the per-verb
+	// override won the resolution.
+	if invokedWith(f, "sharedbot", "gen") {
+		t.Errorf("shared `sharedbot gen` was invoked despite a [release].ai_command override; per-verb did not win")
+	}
+	if invokedWith(f, "claude", "-p", "--model", "sonnet") {
+		t.Errorf("default `claude -p --model sonnet` was invoked despite a [release].ai_command override")
+	}
+}
+
+// TestRelease_AICommand_NoReleaseOverrideFallsToShared proves the resolution chain
+// falls a release run with NO [release].ai_command to the shared top-level ai_command:
+// with only a shared key set, that shared command's binary+args drive the release notes
+// AI invocation (cfg.AICommandFor(VerbRelease) resolves verb-absent → shared).
+func TestRelease_AICommand_NoReleaseOverrideFallsToShared(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "ai_command = \"mybot gen\"\n")
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	f.Seed("mybot", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	// With no [release].ai_command, the shared `mybot gen` drove the AI call.
+	if got := stdinOf(t, f, "mybot", "gen"); got == "" {
+		t.Errorf("shared ai_command %q was not invoked with a prompt on stdin", "mybot gen")
+	}
+	if invokedWith(f, "claude", "-p", "--model", "sonnet") {
+		t.Errorf("default `claude -p --model sonnet` was invoked despite a shared ai_command")
+	}
+}
+
 // TestRelease_AICommand_DefaultDrivesTransport proves a zero-config run still uses the
 // documented default `claude -p --model sonnet`: with no ai_command set, the transport
 // invokes the pinned default with the composed prompt on stdin — the consolidation
