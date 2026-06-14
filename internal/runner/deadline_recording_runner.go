@@ -61,7 +61,7 @@ func (d *DeadlineRecordingRunner) RunInDir(context.Context, string, []string, st
 	return Result{}, nil
 }
 
-// DurationPtr returns a pointer to d. It is the shared *time.Duration helper the
-// config-pointer fields (cfg.Timeout, [release]/[commit].timeout) need at their test
-// call sites, consolidating the copy the deadline proofs independently re-authored.
-func DurationPtr(d time.Duration) *time.Duration { return &d }
+// DurationPtr returns a pointer to the given duration. It is the shared *time.Duration
+// helper the config-pointer fields (cfg.Timeout, [release]/[commit].timeout) need at their
+// test call sites, consolidating the copy the deadline proofs independently re-authored.
+func DurationPtr(dur time.Duration) *time.Duration { return &dur }

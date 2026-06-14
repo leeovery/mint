@@ -872,7 +872,7 @@ func TestLoad_ExplicitAICommand_Honoured(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	// An explicit top-level ai_command must override the "claude -p" default. It sits
+	// An explicit top-level ai_command must override the "claude -p --model sonnet" default. It sits
 	// above the [release] table, so it is set with no table header.
 	writeConfig(t, dir, "ai_command = \"llm --model gpt-4 chat\"\n")
 

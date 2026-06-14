@@ -233,8 +233,8 @@ type Release struct {
 // empty): Context injects project guidance into the default commit prompt
 // (empty = no injection); Prompt is a file path that fully overrides the default
 // commit prompt (empty = use the default). config carries both verbatim — the
-// configured Prompt file is read by ResolveCommitPrompt at the point of use
-// (assembly, 1-2), NOT here, and a configured-but-unreadable/missing override
+// configured Prompt file is read by ResolveCommitPrompt at the point of use,
+// NOT here, and a configured-but-unreadable/missing override
 // fails loud there rather than silently falling through to the default. AICommand
 // is a *string and Timeout a *time.Duration (both absent → nil), NOT raw values
 // defaulting to a zero — see their per-field comments below.
