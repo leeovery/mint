@@ -202,6 +202,16 @@ type Config struct {
 // carries the pointer's value verbatim (nil when absent; the literal string, blank or
 // not, when present); the override chain (verb → shared top-level → shipped default) and
 // blank-skipping are the resolver's job, NOT Load's.
+//
+// Timeout is the OPTIONAL per-verb timeout override (raw [release].timeout, integer
+// SECONDS in TOML), carried as a *time.Duration so the per-verb absent-vs-explicit-zero
+// distinction survives to Task 1-7's TimeoutFor accessor: NIL means absent (no override —
+// fall through to the shared top-level / 60s floor), while a NON-NIL value is the
+// operator's explicit per-verb choice carried verbatim — including an explicit 0 ("no
+// deadline", honoured by the accessor, stops fall-through) and any NEGATIVE (carried RAW
+// here; the negative-drop to the floor is 1-7's job, NOT Load's). config seeds NO per-verb
+// timeout default — the absent baseline is "no override" (nil). The seconds → duration
+// conversion happens at the config boundary (resolveTimeout).
 type Release struct {
 	TagPrefix      string
 	CommitPrefix   string
@@ -216,20 +226,21 @@ type Release struct {
 	VersionFile    string
 	VersionPattern string
 	AICommand      *string
+	Timeout        *time.Duration
 	Hooks          Hooks
 }
 
 // Commit holds the [commit] table values: the commit verb's two prompt-control
-// knobs (Context and Prompt) plus an optional per-verb ai_command override
-// (AICommand). Context and Prompt are carried as raw TOML strings (both default
+// knobs (Context and Prompt) plus optional per-verb ai_command and timeout overrides
+// (AICommand, Timeout). Context and Prompt are carried as raw TOML strings (both default
 // empty): Context injects project guidance into the default commit prompt
 // (empty = no injection); Prompt is a file path that fully overrides the default
 // commit prompt (empty = use the default). config carries both verbatim — the
 // configured Prompt file is read by ResolveCommitPrompt at the point of use
 // (assembly, 1-2), NOT here, and a configured-but-unreadable/missing override
 // fails loud there rather than silently falling through to the default. AICommand
-// is a *string (absent → nil), NOT a raw string defaulting empty — see its
-// per-field comment below.
+// is a *string and Timeout a *time.Duration (both absent → nil), NOT raw values
+// defaulting to a zero — see their per-field comments below.
 type Commit struct {
 	Context string
 	Prompt  string
@@ -242,6 +253,17 @@ type Commit struct {
 	// added for commit" decision; the README/initgen surfacing and the external
 	// commit-command-spec-document edit recording that reversal remain for Phase 3.
 	AICommand *string
+
+	// Timeout is the OPTIONAL per-verb timeout override (raw [commit].timeout, integer
+	// SECONDS in TOML), the commit-verb mirror of Release.Timeout. It is a *time.Duration
+	// so absent (nil) is distinguishable from an explicit 0: NIL means no override (fall
+	// through to the shared / 60s floor), while a NON-NIL value is the operator's explicit
+	// per-verb choice carried verbatim — an explicit 0 ("no deadline") or a NEGATIVE
+	// carried RAW (the negative-drop is Task 1-7's accessor job, not Load's). config seeds
+	// NO per-verb timeout default; the seconds → duration conversion happens at the config
+	// boundary (resolveTimeout). Adding this per-verb override is part of the same
+	// commit-command spec reversal as AICommand.
+	Timeout *time.Duration
 }
 
 // HookValue is the dedicated string-or-array type for a [release.hooks] entry: a
@@ -321,11 +343,15 @@ type fileShape struct {
 // AICommand is the optional per-verb ai_command override, a *string so absent (nil) is
 // distinguishable from an explicit empty/blank value — the resolver (1-4) needs that
 // distinction for its blank-skip fall-through. config carries it verbatim; blank-skipping
-// is the accessor's job, not Load's.
+// is the accessor's job, not Load's. Timeout is the optional per-verb timeout override,
+// a *int (integer SECONDS) so absent (nil) is distinguishable from an explicit 0 — the
+// accessor (1-7) needs that distinction to honour 0 ("no deadline") vs falling through;
+// integer seconds makes a non-integer TOML value a strict decode error at Load.
 type commitShape struct {
 	Context   string  `toml:"context"`
 	Prompt    string  `toml:"prompt"`
 	AICommand *string `toml:"ai_command"`
+	Timeout   *int    `toml:"timeout"`
 }
 
 type releaseShape struct {
@@ -342,6 +368,7 @@ type releaseShape struct {
 	VersionFile    string     `toml:"version_file"`
 	VersionPattern string     `toml:"version_pattern"`
 	AICommand      *string    `toml:"ai_command"`
+	Timeout        *int       `toml:"timeout"`
 	Hooks          hooksShape `toml:"hooks"`
 }
 
@@ -449,9 +476,11 @@ var typeErrorMessages = map[string]string{
 	"releaseShape.Publish":   "publish must be a boolean",
 	"releaseShape.Changelog": "changelog must be a boolean",
 	"releaseShape.AICommand": "release.ai_command must be a string",
+	"releaseShape.Timeout":   "release.timeout must be an integer (seconds)",
 	"commitShape.Context":    "commit.context must be a string",
 	"commitShape.Prompt":     "commit.prompt must be a string",
 	"commitShape.AICommand":  "commit.ai_command must be a string",
+	"commitShape.Timeout":    "commit.timeout must be an integer (seconds)",
 }
 
 // translateTypeError turns the decoder's *toml.DecodeError (a value that cannot
@@ -591,6 +620,7 @@ func resolveRelease(shape releaseShape) Release {
 		VersionFile:    shape.VersionFile,
 		VersionPattern: shape.VersionPattern,
 		AICommand:      shape.AICommand,
+		Timeout:        resolveTimeout(shape.Timeout),
 		Hooks: Hooks{
 			Preflight:   shape.Hooks.Preflight,
 			PreTag:      shape.Hooks.PreTag,
@@ -599,18 +629,27 @@ func resolveRelease(shape releaseShape) Release {
 	}
 }
 
-// resolveCommit copies the [commit] table's raw knobs through verbatim. Context and
-// Prompt default to empty (the absent baseline: no context injection / default prompt),
-// and an explicit empty value carries the same meaning, so there is nothing to
-// re-default — config carries the raw values and ResolveCommitPrompt reads the Prompt
-// file at the point of use. AICommand is the optional per-verb override, carried as the
-// raw *string verbatim (nil when absent; the literal value, blank or not, when present)
-// for the resolver in 1-4 — blank-skipping is the accessor's job, not here. commitShape
-// and Commit stay field-identical (the per-verb AICommand override is the SAME *string in
-// both), so a direct conversion suffices (unlike resolveRelease, which must re-default
-// *bool toggles).
+// resolveCommit copies the [commit] table's raw knobs through. Context and Prompt default
+// to empty (the absent baseline: no context injection / default prompt), and an explicit
+// empty value carries the same meaning, so there is nothing to re-default — config carries
+// the raw values and ResolveCommitPrompt reads the Prompt file at the point of use.
+// AICommand is the optional per-verb override, carried as the raw *string verbatim (nil
+// when absent; the literal value, blank or not, when present) for the resolver in 1-4 —
+// blank-skipping is the accessor's job, not here. Timeout is the optional per-verb timeout
+// override: commitShape carries it as a *int (integer seconds) but Commit carries a
+// *time.Duration, so resolveTimeout performs the seconds → duration boundary conversion
+// (nil stays nil; an explicit value, including 0 or a negative, is carried verbatim for
+// 1-7 to interpret). Because those field TYPES now differ, this is an explicit
+// field-by-field copy — the old direct Commit(shape) conversion no longer compiles (it
+// relied on commitShape and Commit being field-identical, which the timeout type boundary
+// breaks), mirroring resolveRelease.
 func resolveCommit(shape commitShape) Commit {
-	return Commit(shape)
+	return Commit{
+		Context:   shape.Context,
+		Prompt:    shape.Prompt,
+		AICommand: shape.AICommand,
+		Timeout:   resolveTimeout(shape.Timeout),
+	}
 }
 
 // boolOrDefault applies def when the key was absent (nil) and otherwise honours

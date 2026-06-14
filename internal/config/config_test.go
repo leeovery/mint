@@ -755,6 +755,8 @@ func TestLoad_TypeMismatch_MappedFriendlyMessages(t *testing.T) {
 	}{
 		{"max_diff_lines not an integer", "max_diff_lines = \"lots\"\n", "max_diff_lines must be an integer"},
 		{"timeout not an integer", "timeout = \"fast\"\n", "timeout must be an integer (seconds)"},
+		{"release.timeout not an integer", "[release]\ntimeout = \"slow\"\n", "release.timeout must be an integer (seconds)"},
+		{"commit.timeout not an integer", "[commit]\ntimeout = \"slow\"\n", "commit.timeout must be an integer (seconds)"},
 		{"diff_exclude not an array", "diff_exclude = \"CHANGELOG.md\"\n", "diff_exclude must be an array of strings"},
 		{"publish not a boolean", "[release]\npublish = \"yes\"\n", "publish must be a boolean"},
 		{"changelog not a boolean", "[release]\nchangelog = \"no\"\n", "changelog must be a boolean"},
@@ -2073,5 +2075,174 @@ func TestLoad_NonIntegerTimeout_RejectedNamingKeyAndIntegerType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "integer") {
 		t.Errorf("error = %q, want it to name the expected integer type", err.Error())
+	}
+}
+
+func TestLoad_ReleaseTimeout_CarriedAsSeconds(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [release].timeout is the optional per-verb override. It is integer seconds in TOML;
+	// config converts it to a time.Duration at the boundary and carries the non-nil pointer
+	// onto the Release struct. The override-chain resolution against the shared/floor is
+	// Task 1-7, not here — this proves only that the key decodes and carries through.
+	writeConfig(t, dir, "[release]\ntimeout = 120\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Timeout == nil {
+		t.Fatalf("Release.Timeout = nil, want a non-nil pointer to 120s")
+	}
+	if *cfg.Release.Timeout != 120*time.Second {
+		t.Errorf("Release.Timeout = %v, want 120s (integer seconds converted to a duration)", *cfg.Release.Timeout)
+	}
+}
+
+func TestLoad_CommitTimeout_CarriedAsSeconds(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// [commit].timeout is the commit-verb mirror of [release].timeout. config converts the
+	// integer seconds to a time.Duration at the boundary and carries the non-nil pointer
+	// onto the Commit struct; resolution is Task 1-7.
+	writeConfig(t, dir, "[commit]\ntimeout = 45\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Commit.Timeout == nil {
+		t.Fatalf("Commit.Timeout = nil, want a non-nil pointer to 45s")
+	}
+	if *cfg.Commit.Timeout != 45*time.Second {
+		t.Errorf("Commit.Timeout = %v, want 45s (integer seconds converted to a duration)", *cfg.Commit.Timeout)
+	}
+}
+
+func TestLoad_AbsentPerVerbTimeout_DistinctFromExplicitZero(t *testing.T) {
+	t.Parallel()
+
+	t.Run("absent is nil", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// With no per-verb timeout at all (a present [release]/[commit] table setting only
+		// an unrelated key), the carried pointer is nil — the absent sentinel Task 1-7's
+		// accessor treats as "no override, fall through to shared/floor". A *time.Duration
+		// (not a plain duration) is what makes absent distinguishable from an explicit zero.
+		writeConfig(t, dir, "[release]\ntag_prefix = \"v\"\n[commit]\ncontext = \"toolkit\"\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		if cfg.Release.Timeout != nil {
+			t.Errorf("Release.Timeout = %v, want nil (absent key → nil sentinel)", cfg.Release.Timeout)
+		}
+		if cfg.Commit.Timeout != nil {
+			t.Errorf("Commit.Timeout = %v, want nil (absent key → nil sentinel)", cfg.Commit.Timeout)
+		}
+	})
+
+	t.Run("explicit zero is a non-nil pointer to 0", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// An explicit `[release].timeout = 0` / `[commit].timeout = 0` is a non-nil pointer
+		// to 0 — DISTINCT from absent (nil). Zero means "no deadline", a conscious operator
+		// choice; config carries it verbatim and Task 1-7's accessor honours it. The
+		// distinction is the whole point of the per-verb *time.Duration field.
+		writeConfig(t, dir, "[release]\ntimeout = 0\n[commit]\ntimeout = 0\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		if cfg.Release.Timeout == nil {
+			t.Fatalf("Release.Timeout = nil, want a non-nil pointer to the explicit zero")
+		}
+		if *cfg.Release.Timeout != 0 {
+			t.Errorf("Release.Timeout = %v, want explicit 0 (carried verbatim, not coerced)", *cfg.Release.Timeout)
+		}
+		if cfg.Commit.Timeout == nil {
+			t.Fatalf("Commit.Timeout = nil, want a non-nil pointer to the explicit zero")
+		}
+		if *cfg.Commit.Timeout != 0 {
+			t.Errorf("Commit.Timeout = %v, want explicit 0 (carried verbatim, not coerced)", *cfg.Commit.Timeout)
+		}
+	})
+}
+
+func TestLoad_NegativePerVerbTimeout_CarriedRaw(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A negative per-verb timeout is carried RAW as a negative duration — the negative-drop
+	// (falling through to the floor) is Task 1-7's accessor job, NOT Load's. config's only
+	// duty here is the seconds → duration boundary conversion, preserving the sign so 1-7 can
+	// interpret it.
+	writeConfig(t, dir, "[release]\ntimeout = -5\n[commit]\ntimeout = -30\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Release.Timeout == nil {
+		t.Fatalf("Release.Timeout = nil, want a non-nil pointer to the raw negative value")
+	}
+	if *cfg.Release.Timeout != -5*time.Second {
+		t.Errorf("Release.Timeout = %v, want -5s carried raw (drop is the accessor's job)", *cfg.Release.Timeout)
+	}
+	if cfg.Commit.Timeout == nil {
+		t.Fatalf("Commit.Timeout = nil, want a non-nil pointer to the raw negative value")
+	}
+	if *cfg.Commit.Timeout != -30*time.Second {
+		t.Errorf("Commit.Timeout = %v, want -30s carried raw (drop is the accessor's job)", *cfg.Commit.Timeout)
+	}
+}
+
+func TestLoad_UnknownSiblingKeyAfterTimeout_StillRejected(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		want string
+	}{
+		{
+			name: "unknown sibling in [release] alongside timeout",
+			toml: "[release]\ntimeout = 90\nbogus = 1\n",
+			want: "bogus",
+		},
+		{
+			name: "unknown sibling in [commit] alongside timeout",
+			toml: "[commit]\ntimeout = 90\nbogus = 1\n",
+			want: "bogus",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// Adding the timeout field to the verb shapes must NOT loosen strict decoding —
+			// an unknown sibling key in the same table is still rejected by name.
+			writeConfig(t, dir, tc.toml)
+
+			_, err := config.Load(dir)
+			if err == nil {
+				t.Fatalf("Load returned nil error for %s, want non-nil", tc.name)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %q, want it to name the unknown key %q", err.Error(), tc.want)
+			}
+		})
 	}
 }
