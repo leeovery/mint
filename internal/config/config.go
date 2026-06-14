@@ -564,6 +564,67 @@ func (c Config) AICommandFor(verb Verb) string {
 	return DefaultAICommand
 }
 
+// TimeoutFor resolves the per-attempt AI deadline for verb through the layered chain
+// `[verb].timeout → top-level shared timeout → shipped DefaultTimeout (60s)`. It is the
+// SINGLE place the timeout value semantics live, mirroring AICommandFor's structure but
+// applying timeout's OWN per-candidate rules (which differ from ai_command's blank-skip):
+//
+//   - ABSENT (nil candidate) → SKIP to the next candidate;
+//   - explicit ZERO → HONOUR it as "no deadline": return a pointer to 0 and STOP (it is
+//     NOT treated as missing — a present shared/floor value below is NOT consulted);
+//   - NEGATIVE (value-invalid) → DROP through to the next candidate (NOT honoured, NOT
+//     collapsed into the zero/no-deadline branch);
+//   - POSITIVE → use it as-is.
+//
+// The 60s floor is the last candidate and is always present, so the result is TOTAL —
+// this accessor never returns nil. A negative per-verb override with no shared value
+// therefore resolves to the 60s floor (negative dropped, floor applied), never to a
+// negative and never to "no deadline".
+//
+// Boundary contract for Phase 2: the return type is *time.Duration precisely so the
+// transport (internal/ai) can distinguish the operator's explicit 0 ("no deadline") from
+// a positive/floor deadline — a pointer to 0 means "no deadline", a pointer to a positive
+// value means a real per-attempt deadline. Phase 2's ai.Config.Timeout is also
+// *time.Duration and takes this accessor's return by DIRECT ASSIGNMENT (no conversion), so
+// "no deadline" stays reachable ONLY via an operator's explicit 0 — never by a wiring site
+// omitting the field. The transport must therefore SKIP context.WithTimeout when the
+// resolved value is the explicit-0/no-deadline case (a zero duration passed to
+// WithTimeout fires immediately) — but that conditional lives in Phase 2, NOT here.
+//
+// Resolution is per-key independent: this reads only the timeout candidates and never
+// consults ai_command. verb is the closed two-value enum, so the per-verb candidate is
+// selected exhaustively — VerbCommit reads [commit]'s override, every other (i.e.
+// VerbRelease, the zero value) reads [release]'s.
+func (c Config) TimeoutFor(verb Verb) *time.Duration {
+	override := c.Release.Timeout
+	if verb == VerbCommit {
+		override = c.Commit.Timeout
+	}
+
+	// The floor is appended last so a single value-semantics loop covers every layer and
+	// the always-present floor makes the result total. The floor is a local copy because
+	// DefaultTimeout is a const (its address cannot be taken).
+	floor := DefaultTimeout
+	candidates := []*time.Duration{override, c.Timeout, &floor}
+
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue // absent → next layer
+		}
+		switch {
+		case *candidate == 0:
+			return candidate // explicit zero honoured ("no deadline") — STOP the chain
+		case *candidate < 0:
+			continue // negative is value-invalid → drop to the next layer
+		default:
+			return candidate // positive used as-is
+		}
+	}
+	// Unreachable in practice — the floor is a non-nil, positive last candidate — but a
+	// total return keeps the method honest without relying on the loop's structure.
+	return &floor
+}
+
 // aiCommandOrDefault applies the pinned DefaultAICommand when the top-level key was
 // absent (nil) and otherwise carries the explicit value verbatim — including an
 // explicit empty, which Load must NOT re-default so AICommandFor's trim-and-skip is

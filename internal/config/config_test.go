@@ -2246,3 +2246,339 @@ func TestLoad_UnknownSiblingKeyAfterTimeout_StillRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestTimeoutFor_PresentPositivePerVerbOverride_UsedAsIs(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+		want time.Duration
+	}{
+		{
+			name: "release override wins",
+			toml: "timeout = 30\n[release]\ntimeout = 120\n",
+			verb: config.VerbRelease,
+			want: 120 * time.Second,
+		},
+		{
+			name: "commit override wins",
+			toml: "timeout = 30\n[commit]\ntimeout = 45\n",
+			verb: config.VerbCommit,
+			want: 45 * time.Second,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// A present, positive [verb].timeout is the first layer of the chain
+			// (verb → shared → floor), so it is used as-is — neither the shared
+			// top-level nor the 60s floor is consulted.
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			got := cfg.TimeoutFor(tc.verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to %v", tc.verb, tc.want)
+			}
+			if *got != tc.want {
+				t.Errorf("TimeoutFor(%v) = %v, want the per-verb override %v", tc.verb, *got, tc.want)
+			}
+		})
+	}
+}
+
+func TestTimeoutFor_ExplicitZeroPerVerb_HonouredAsNoDeadlineStopsFallThrough(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+	}{
+		{
+			name: "release explicit zero stops fall-through past shared",
+			toml: "timeout = 30\n[release]\ntimeout = 0\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "commit explicit zero stops fall-through past shared",
+			toml: "timeout = 30\n[commit]\ntimeout = 0\n",
+			verb: config.VerbCommit,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// An explicit [verb].timeout = 0 means "no deadline": it is HONOURED and
+			// STOPS the fall-through. The present shared timeout (30) must NOT be
+			// consulted — proving the chain halts at the explicit zero, not at a
+			// later layer.
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			got := cfg.TimeoutFor(tc.verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to 0 (no-deadline)", tc.verb)
+			}
+			if *got != 0 {
+				t.Errorf("TimeoutFor(%v) = %v, want explicit 0 honoured (shared 30s NOT consulted)", tc.verb, *got)
+			}
+		})
+	}
+}
+
+func TestTimeoutFor_NegativePerVerb_DropsThroughToShared(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+	}{
+		{
+			name: "negative release drops to shared",
+			toml: "timeout = 30\n[release]\ntimeout = -5\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "negative commit drops to shared",
+			toml: "timeout = 30\n[commit]\ntimeout = -5\n",
+			verb: config.VerbCommit,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// A negative [verb].timeout is value-invalid: it DROPS through to the next
+			// layer (the shared top-level), never honoured, never collapsed into the
+			// zero/no-deadline case.
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			got := cfg.TimeoutFor(tc.verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shared 30s", tc.verb)
+			}
+			if *got != 30*time.Second {
+				t.Errorf("TimeoutFor(%v) = %v, want the shared 30s (negative dropped, not honoured)", tc.verb, *got)
+			}
+		})
+	}
+}
+
+func TestTimeoutFor_NegativePerVerbNoSharedOverride_DropsToSixtySecondFloor(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+	}{
+		{
+			name: "negative release with no shared drops to floor",
+			toml: "[release]\ntimeout = -1\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "negative commit with no shared drops to floor",
+			toml: "[commit]\ntimeout = -1\n",
+			verb: config.VerbCommit,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// A negative [verb].timeout with NO shared override drops past the (absent)
+			// shared layer to the 60s floor — NOT to "no deadline" and NOT to a negative.
+			// This is the negative-drop interacting correctly with the floor.
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			got := cfg.TimeoutFor(tc.verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", tc.verb)
+			}
+			if *got != config.DefaultTimeout {
+				t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (negative dropped, floor applied)", tc.verb, *got, config.DefaultTimeout)
+			}
+		})
+	}
+}
+
+func TestTimeoutFor_AbsentPerVerb_FallsToSharedThenFloor(t *testing.T) {
+	t.Parallel()
+
+	t.Run("absent per-verb falls to the present shared timeout", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// No per-verb timeout (absent) → fall to the shared top-level timeout (90).
+		writeConfig(t, dir, "timeout = 90\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
+			got := cfg.TimeoutFor(verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shared 90s", verb)
+			}
+			if *got != 90*time.Second {
+				t.Errorf("TimeoutFor(%v) = %v, want the shared 90s (absent per-verb fell through)", verb, *got)
+			}
+		}
+	})
+
+	t.Run("absent per-verb and absent shared fall to the 60s floor", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// A present file with no timeout anywhere: the absent per-verb falls to the
+		// absent shared, which falls to the 60s floor. (Load leaves both nil for a
+		// present-file-with-no-timeout, so the accessor applies the floor.)
+		writeConfig(t, dir, "[release]\ntag_prefix = \"v\"\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
+			got := cfg.TimeoutFor(verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", verb)
+			}
+			if *got != config.DefaultTimeout {
+				t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (absent per-verb and shared)", verb, *got, config.DefaultTimeout)
+			}
+		}
+	})
+}
+
+func TestTimeoutFor_NegativeSharedAbsentPerVerb_DropsToSixtySecondFloor(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A negative shared timeout (with absent per-verb) is value-invalid: it drops past
+	// the shared layer to the 60s floor — never honoured, never collapsed to no-deadline.
+	writeConfig(t, dir, "timeout = -10\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
+		got := cfg.TimeoutFor(verb)
+		if got == nil {
+			t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", verb)
+		}
+		if *got != config.DefaultTimeout {
+			t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (negative shared dropped)", verb, *got, config.DefaultTimeout)
+		}
+	}
+}
+
+func TestTimeoutFor_NoConfigFile_ResolvesBothVerbsToSixtySecondFloor(t *testing.T) {
+	t.Parallel()
+
+	// Zero-config: no .mint.toml at all. Both verbs resolve to the 60s floor — the
+	// shared top-level is the seeded default and no per-verb override exists.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
+		got := cfg.TimeoutFor(verb)
+		if got == nil {
+			t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", verb)
+		}
+		if *got != config.DefaultTimeout {
+			t.Errorf("TimeoutFor(%v) = %v, want the shipped 60s floor %v", verb, *got, config.DefaultTimeout)
+		}
+	}
+}
+
+func TestTimeoutFor_ReturnDistinguishesExplicitZeroFromPositiveFloor(t *testing.T) {
+	t.Parallel()
+
+	// The accessor's return type is *time.Duration: an explicit 0 yields a pointer to 0
+	// (the operator's "no deadline"), while a positive/floor case yields a pointer to a
+	// positive value. This distinction is what Phase 2's ai.Config.Timeout (also
+	// *time.Duration) consumes by direct assignment to keep "no deadline" reachable ONLY
+	// by an explicit 0.
+
+	// Compile-time pin of the exact return type: converting the method value to the
+	// precise func signature fails to compile if TimeoutFor ever returns a wrapper or a
+	// plain time.Duration instead of *time.Duration (the type Phase 2 assigns directly).
+	_ = (func(config.Verb) *time.Duration)(config.Config{}.TimeoutFor)
+
+	t.Run("explicit zero is a non-nil pointer to 0", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeConfig(t, dir, "[release]\ntimeout = 0\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		got := cfg.TimeoutFor(config.VerbRelease)
+		if got == nil {
+			t.Fatalf("TimeoutFor(VerbRelease) = nil, want a non-nil *time.Duration to 0")
+		}
+		if *got != 0 {
+			t.Errorf("*TimeoutFor(VerbRelease) = %v, want a pointer to 0 (the explicit no-deadline)", *got)
+		}
+	})
+
+	t.Run("floor case is a non-nil pointer to a positive value", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		writeConfig(t, dir, "[release]\ntag_prefix = \"v\"\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		got := cfg.TimeoutFor(config.VerbRelease)
+		if got == nil {
+			t.Fatalf("TimeoutFor(VerbRelease) = nil, want a non-nil *time.Duration to a positive value")
+		}
+		if *got <= 0 {
+			t.Errorf("*TimeoutFor(VerbRelease) = %v, want a positive value (the 60s floor), not zero/negative", *got)
+		}
+	})
+}
