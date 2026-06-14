@@ -32,7 +32,7 @@ import (
 	"context"
 	"fmt"
 
-	"mint/internal/ai"
+	"mint/internal/aitransport"
 	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/record"
@@ -120,24 +120,19 @@ func freshExcludeConfig(cfg config.Config) notes.ExcludeConfig {
 // resolveFreshTransport mirrors the forward aiTransport seam: the injected transport
 // when set (the test fake), else the production ai.Transport over the run's runner — so
 // production passes nil and gets the real transport. This is the EASY-MISS third
-// construction site, and it deliberately resolves through the RELEASE verb:
-// cfg.AICommandFor(config.VerbRelease) and cfg.TimeoutFor(config.VerbRelease) each walk
-// the chain `[release] → shared → floor`. Regenerate re-runs the release-notes task and
-// shares release's salience needs and timeout exposure, and there is NO [regenerate]
-// table — so the fresh-regenerate AI call reads [release], NOT [commit] and NOT the bare
-// shared/default. The closed Verb enum has no `regenerate` value, so VerbRelease is the
-// ONLY verb this site can pass. Config — not the transport — owns the default and the
-// blank-skip / no-deadline semantics; the transport runs what it is handed
-// (whitespace-splitting the resolved command into name + args). The timeout is sourced
-// from the accessor (a *time.Duration assigned directly to ai.Config.Timeout, never
-// zero-by-omission), so "no deadline" stays reachable ONLY via an operator's explicit
-// `[release].timeout = 0` — a forgotten field cannot reach the transport.
+// construction site, and it deliberately resolves through the RELEASE verb: it calls the
+// shared aitransport.New helper with config.VerbRelease. Regenerate re-runs the
+// release-notes task and shares release's salience needs and timeout exposure, and there
+// is NO [regenerate] table — so the fresh-regenerate AI call reads [release], NOT [commit]
+// and NOT the bare shared/default. The closed Verb enum has no `regenerate` value, so
+// VerbRelease is the ONLY verb this site can pass. The `[release] → shared → floor`
+// resolution and the never-zero-by-omission timeout contract live once in that helper; the
+// injected-transport short-circuit is this site's own (its transport-arg seam differs from
+// the other sites' deps wrappers) and stays here — only the construction expression is
+// shared.
 func resolveFreshTransport(r runner.CommandRunner, transport notes.Transport, cfg config.Config) notes.Transport {
 	if transport != nil {
 		return transport
 	}
-	return ai.NewTransport(r, ai.Config{
-		AICommand: cfg.AICommandFor(config.VerbRelease),
-		Timeout:   cfg.TimeoutFor(config.VerbRelease),
-	})
+	return aitransport.New(r, cfg, config.VerbRelease)
 }

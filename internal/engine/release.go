@@ -35,7 +35,7 @@ import (
 	"strings"
 	"time"
 
-	"mint/internal/ai"
+	"mint/internal/aitransport"
 	"mint/internal/config"
 	"mint/internal/git"
 	"mint/internal/gitrepo"
@@ -923,24 +923,18 @@ func reuseConfirmGate() presenter.Gate {
 // aiTransport resolves the AI transport the notes Generator hands its prompt to:
 // the injected deps.Transport when set (the test seam), else the production
 // ai.Transport over the run's runner — so production leaves deps.Transport nil and
-// gets the real transport. The release verb's per-key resolution supplies BOTH the
-// concrete command and the per-attempt deadline: cfg.AICommandFor(config.VerbRelease)
-// and cfg.TimeoutFor(config.VerbRelease) each walk the chain `[release] → shared → floor`,
-// so a `[release].ai_command` / `[release].timeout` override drives the call and a
-// zero-config run resolves to the shipped floor (claude -p --model sonnet, 60s). Config —
-// not the transport — owns the default and the blank-skip / no-deadline semantics; the
-// transport runs what it is handed (whitespace-splitting the command into name + args).
-// The timeout is sourced from the accessor (a *time.Duration assigned directly to
-// ai.Config.Timeout, never zero-by-omission), so "no deadline" stays reachable ONLY via
-// an operator's explicit `0` — a forgotten field cannot reach the transport.
+// gets the real transport. The production construction goes through the shared
+// aitransport.New helper with config.VerbRelease, so the release verb's per-key
+// resolution supplies BOTH the concrete command and the per-attempt deadline (the
+// `[release] → shared → floor` chain, and the never-zero-by-omission timeout contract,
+// live once in that helper). The injected-transport short-circuit is this site's own
+// (the deps wrapper type differs per site) and stays here — only the construction
+// expression is shared.
 func aiTransport(deps ReleaseDeps, cfg config.Config) notes.Transport {
 	if deps.Transport != nil {
 		return deps.Transport
 	}
-	return ai.NewTransport(deps.Runner, ai.Config{
-		AICommand: cfg.AICommandFor(config.VerbRelease),
-		Timeout:   cfg.TimeoutFor(config.VerbRelease),
-	})
+	return aitransport.New(deps.Runner, cfg, config.VerbRelease)
 }
 
 // regeneratorFunc adapts a plain regenerate closure to the Regenerator seam so the
