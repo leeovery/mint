@@ -173,7 +173,8 @@ Print mint's own version. `mint --version` is equivalent.
 ```toml
 # --- Engine-level keys (shared by every mint verb) ---
 
-ai_command = 'claude -p'
+ai_command = 'claude -p --model sonnet'
+timeout = 60  # per-attempt AI deadline in seconds; raise it if your ai_command runs slowly (0 = no limit)
 max_diff_lines = 50000
 
 # diff_exclude = ['skills/**/knowledge.cjs', '*.min.js']
@@ -191,6 +192,8 @@ on_notes_failure = 'abort'
 # provider = 'github'
 # context = 'Emphasise user-facing changes.'
 # prompt = '.mint/notes-prompt.md'
+# ai_command = 'claude -p --model sonnet'   # override the AI command for this verb only
+# timeout = 120                             # override the per-attempt deadline (seconds) for this verb only
 
 # [release.hooks]
 # preflight = 'scripts/check.sh'
@@ -200,13 +203,18 @@ on_notes_failure = 'abort'
 # [commit]
 # context = 'Reference the ticket number if the branch carries one.'
 # prompt = '.mint/commit-prompt.md'
+# ai_command = 'claude -p --model sonnet'   # override the AI command for this verb only
+# timeout = 120                             # override the per-attempt deadline (seconds) for this verb only
 ```
 
 ### Shared engine keys
 
+`ai_command` and `timeout` live at **both** the shared (top) level and per-verb (`[release]` / `[commit]`); the rest are shared-only. Each of the two resolves per-key independently through `[verb].<key>` → top-level shared `<key>` → shipped default — so a verb override repoints only that key for that verb, and an unset override falls through to the shared value, then to the compiled default.
+
 | Key | Default | Description |
 |---|---|---|
-| `ai_command` | `claude -p` | the AI invocation: prompt on stdin, message on stdout (see [The AI Transport](#the-ai-transport)) |
+| `ai_command` | `claude -p --model sonnet` | the AI invocation: prompt on stdin, message on stdout; resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
+| `timeout` | `60` | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
 | `max_diff_lines` | `50000` | diffs over this (post-exclusion) skip the AI |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
 
@@ -226,6 +234,8 @@ on_notes_failure = 'abort'
 | `fallback` | | fixed fallback body, used verbatim by `on_notes_failure = 'fallback'` and `--no-ai` |
 | `version_file` | | write the new version into this file (omit = tag-only release) |
 | `version_pattern` | | line to replace inside `version_file` (omit = the whole file is the version) |
+| `ai_command` | shared | optional per-verb override of the AI command for `release` only; resolves `[release]` → shared → default |
+| `timeout` | shared | optional per-verb override of the per-attempt AI deadline (seconds) for `release` only; resolves `[release]` → shared → default |
 
 ### `[release.hooks]`
 
@@ -241,6 +251,8 @@ on_notes_failure = 'abort'
 |---|---|---|
 | `context` | | project guidance injected into the commit-message prompt |
 | `prompt` | | path to a full commit-prompt override file |
+| `ai_command` | shared | optional per-verb override of the AI command for `commit` only; resolves `[commit]` → shared → default |
+| `timeout` | shared | optional per-verb override of the per-attempt AI deadline (seconds) for `commit` only; resolves `[commit]` → shared → default |
 
 Both verbs share the two-knob model: `context` *injects into* the default prompt; `prompt` *replaces* it. Unknown or mistyped keys fail loud at load; mint never silently ignores config.
 
@@ -249,12 +261,18 @@ Both verbs share the two-knob model: `context` *injects into* the default prompt
 Mint owns the prompt; the command is just transport. `ai_command` is any executable that reads a finished prompt on **stdin** and writes the message body to **stdout**:
 
 ```toml
-ai_command = 'claude -p'                       # the default
-ai_command = 'claude -p --model sonnet'        # pin a model
+ai_command = 'claude -p --model sonnet'        # the shipped default
+ai_command = 'claude -p --model opus'          # pin a different model
 ai_command = 'llm -m gpt-4o'                   # any CLI with the same stdin/stdout contract
 ```
 
-The transport applies a 60s per-attempt deadline, retries bad output (empty/non-zero exit) exactly once, and routes failures by cause: release follows `on_notes_failure`; commit drops to the `$EDITOR` fallback. A Ctrl-C is a clean abort, never a retry.
+The shipped default pins `--model sonnet` so zero-config behaviour is fixed regardless of the model your Claude CLI happens to default to. Both `ai_command` and `timeout` can be set shared (top-level) or per-verb under `[release]` / `[commit]`, each resolving `[verb]` → shared → default.
+
+The transport applies a per-attempt deadline — `timeout` seconds, default `60` — retries bad output (empty/non-zero exit) exactly once, and routes failures by cause: release follows `on_notes_failure`; commit drops to the `$EDITOR` fallback. A timeout is **fatal**: it is reported immediately and never retried (the single retry covers bad *content* only). A Ctrl-C is a clean abort, never a retry.
+
+Setting `timeout = 0` disables the per-attempt deadline entirely: the AI call then runs **unbounded**. This is a deliberate, operator-chosen exception to mint's "fail loud, never hang" posture — you are opting a slow command into an open-ended run and you own that trade-off.
+
+`ai_command` and `timeout` resolve independently per verb, so overriding one does **not** touch the other. If you pin a slower model for a verb, raise that verb's `timeout` in the **same** `[release]` / `[commit]` table — mint does **not** auto-bump the timeout, warn, or require the pair, so a slow command left under the default `60` will hit the fatal per-attempt deadline. Overriding both keys together for a slow verb is the supported pattern; it is your responsibility, not enforced.
 
 ## Safety Model
 
