@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.3] - 2026-06-14
+
+✨ Added
+
+- Per-verb `ai_command` and `timeout` overrides — set `[release].ai_command`, `[release].timeout`, `[commit].ai_command`, or `[commit].timeout` to repoint either key for one verb without affecting the other.
+- `timeout` config key (integer seconds) — sets the per-attempt AI deadline at the shared top level or per verb; `0` disables the deadline entirely for operators running slow or local models.
+
+🔧 Changed
+
+- Default `ai_command` is now `claude -p --model sonnet` — the model is pinned so zero-config behaviour is predictable regardless of which model your Claude CLI defaults to.
+- Per-attempt AI deadline defaults to 60 seconds and is now configurable; a timeout is fatal and never retried (the single retry covers bad content only).
+- Setting `timeout = 0` disables the per-attempt deadline entirely — the AI call runs unbounded, which is a deliberate operator choice that overrides mint's "fail loud, never hang" posture.
+- `diff_exclude` default in the scaffold is now shown as `[]` with a descriptive comment; mint's own workflow artifact directories are excluded in the project's own `.mint.toml`.
+
 ## [0.0.2] - 2026-06-13
 
 ✨ Added
