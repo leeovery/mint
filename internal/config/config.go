@@ -106,15 +106,13 @@ type Config struct {
 	Release Release
 
 	// Commit holds the [commit] table values: the commit verb's two prompt-control
-	// knobs (Context and Prompt), both optional and defaulting to empty, plus an
-	// optional per-verb ai_command override (AICommand). Context/Prompt are the
-	// commit-specific counterparts of [release]'s Context/Prompt; diff_exclude/
-	// max_diff_lines still serve commit from the top level. Commit now carries a
-	// per-verb engine override (ai_command) — this REVERSES the standing-spec
-	// "Deliberately NOT added for commit" decision, which a real need has triggered.
-	// (The README/initgen surfacing and the external commit-command-spec-document
-	// edit recording the reversal remain for Phase 3; the in-repo comment truth is
-	// reconciled here.)
+	// knobs (Context and Prompt), both optional and defaulting to empty, plus the
+	// per-verb engine overrides ai_command (AICommand) and timeout (Timeout).
+	// Context/Prompt are the commit-specific counterparts of [release]'s
+	// Context/Prompt. The ai_command / timeout overrides resolve through the layered
+	// chain [commit] → shared top-level → shipped default (mirroring [release]); the
+	// other shared engine keys diff_exclude / max_diff_lines stay shared-only and
+	// serve commit from the top level (these two keys have no [commit] override).
 	Commit Commit
 
 	// AICommand is the shared engine-level ai_command notes-transport command (the
@@ -249,9 +247,8 @@ type Commit struct {
 	// a *string so absent (nil) is distinguishable from an explicit empty/blank value
 	// (the resolver in 1-4 needs that distinction for blank-skip fall-through). config
 	// carries the value verbatim; the override chain and blank-skipping are the
-	// resolver's job. Adding this key reverses the standing-spec "Deliberately NOT
-	// added for commit" decision; the README/initgen surfacing and the external
-	// commit-command-spec-document edit recording that reversal remain for Phase 3.
+	// resolver's job. The external commit-command spec-document revision is handled by
+	// a separate commit-spec pass.
 	AICommand *string
 
 	// Timeout is the OPTIONAL per-verb timeout override (raw [commit].timeout, integer
@@ -261,8 +258,8 @@ type Commit struct {
 	// per-verb choice carried verbatim — an explicit 0 ("no deadline") or a NEGATIVE
 	// carried RAW (the negative-drop is Task 1-7's accessor job, not Load's). config seeds
 	// NO per-verb timeout default; the seconds → duration conversion happens at the config
-	// boundary (resolveTimeout). Adding this per-verb override is part of the same
-	// commit-command spec reversal as AICommand.
+	// boundary (resolveTimeout). This per-verb override is the commit-verb counterpart
+	// of AICommand.
 	Timeout *time.Duration
 }
 
