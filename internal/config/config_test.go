@@ -834,18 +834,33 @@ post_release = "scripts/notify.sh"
 	}
 }
 
-func TestLoad_AbsentAICommand_DefaultsToClaudeP(t *testing.T) {
+func TestLoad_AbsentAICommand_DefaultsToClaudeSonnet(t *testing.T) {
 	t.Parallel()
 
 	// ai_command is a shared TOP-LEVEL engine key (not under [release]). Absent from
-	// the file it defaults to "claude -p" — the out-of-the-box notes transport command.
+	// the file it defaults to the pinned "claude -p --model sonnet" — the model is
+	// pinned so zero-config behaviour is predictable rather than inheriting the
+	// operator's mutable Claude CLI default.
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("Load returned unexpected error: %v", err)
 	}
 
-	if cfg.AICommand != "claude -p" {
-		t.Errorf("AICommand = %q, want default %q", cfg.AICommand, "claude -p")
+	if cfg.AICommand != "claude -p --model sonnet" {
+		t.Errorf("AICommand = %q, want default %q", cfg.AICommand, "claude -p --model sonnet")
+	}
+}
+
+func TestDefaultAICommand_ExportedCanonicalValue(t *testing.T) {
+	t.Parallel()
+
+	// DefaultAICommand is the single CANONICAL source of the pinned default command:
+	// it is exported so later sites (the transport, initgen's template) derive the
+	// value from here rather than re-typing the literal. This test pins both that the
+	// constant is referenceable from another package and that its value is the pinned
+	// "claude -p --model sonnet".
+	if config.DefaultAICommand != "claude -p --model sonnet" {
+		t.Errorf("DefaultAICommand = %q, want %q", config.DefaultAICommand, "claude -p --model sonnet")
 	}
 }
 

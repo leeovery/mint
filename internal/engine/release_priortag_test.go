@@ -4,8 +4,8 @@ package engine_test
 // repo WITH a prior tag is driven through the whole spine with the unified notes
 // selector resolving the body from the precedence (no opts.NotesBody override).
 // The AI transport is the REAL ai.Transport over the same FakeRunner, so the
-// `claude -p` call is scripted on the one git/gh/claude timeline — no real
-// process is spawned. The forward-path body-distribution, gate, unwind, and PONR
+// `claude -p --model sonnet` call is scripted on the one git/gh/claude timeline —
+// no real process is spawned. The forward-path body-distribution, gate, unwind, and PONR
 // invariants are re-asserted here on the prior-tag path.
 
 import (
@@ -130,7 +130,7 @@ func TestRelease_PriorTag_NormalAI_EndToEnd(t *testing.T) {
 	}
 	// The claude transport was driven over the FakeRunner (no real process), receiving
 	// the assembled diff in its prompt on stdin.
-	if got := stdinOf(t, f, "claude", "-p"); got == "" {
+	if got := stdinOf(t, f, "claude", "-p", "--model", "sonnet"); got == "" {
 		t.Errorf("claude was not invoked with a prompt on stdin")
 	}
 
@@ -517,7 +517,7 @@ func TestRelease_PriorTag_RegenViaRealGenerator_EndToEnd(t *testing.T) {
 	}
 
 	// The one-time context reached the regenerate prompt's instructions.
-	if got := stdinOf(t, f, "claude", "-p"); got == "" {
+	if got := stdinOf(t, f, "claude", "-p", "--model", "sonnet"); got == "" {
 		t.Errorf("claude was not invoked with a prompt on stdin")
 	}
 	// The REGENERATED body — not the first AI body — reached every sink.

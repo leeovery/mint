@@ -66,13 +66,24 @@ var onNotesFailureValues = []string{"abort", "fallback"}
 // specific, so it lives at the top level of Config (see Config.MaxDiffLines).
 const defaultMaxDiffLines = 50000
 
-// defaultAICommand is the out-of-the-box notes transport command: `claude -p`,
-// the AI invocation mint pipes the composed prompt into. It is a shared engine
-// key (every verb's notes engine uses it), so it lives at the top level of Config
-// (see Config.AICommand). An explicit empty value is re-defaulted by the transport
-// itself, not here — config carries whatever the file holds verbatim, applying this
-// default only when the key is absent.
-const defaultAICommand = "claude -p"
+// DefaultAICommand is the out-of-the-box notes transport command:
+// `claude -p --model sonnet`, the AI invocation mint pipes the composed prompt into.
+// The model is PINNED so zero-config behaviour is predictable — a bare `claude -p`
+// would inherit whatever default model the operator's Claude CLI is set to, an
+// external mutable setting mint does not control, so quality, cost, and latency would
+// vary silently. The pin uses the `sonnet` ALIAS, not a full versioned model ID: the
+// alias tracks the current Sonnet version automatically, whereas a baked-in versioned
+// ID goes stale every model release and would force a rebuild just to track versions.
+//
+// This is the single CANONICAL source of the pinned default value — it is EXPORTED so
+// every other site derives the value from here rather than re-typing the literal (the
+// transport's duplicate self-default and initgen's scaffold literal are removed/sourced
+// from this constant in later phases).
+//
+// It is a shared engine key (every verb's notes engine uses it), so it lives at the
+// top level of Config (see Config.AICommand). config carries whatever the file holds
+// verbatim, applying this default only when the key is absent.
+const DefaultAICommand = "claude -p --model sonnet"
 
 // Config is the loaded mint configuration. The [release] table plus the
 // shared top-level engine keys read so far are populated; the remaining
@@ -88,11 +99,12 @@ type Config struct {
 	// override keys exist for commit (spec: "Deliberately NOT added for commit").
 	Commit Commit
 
-	// AICommand is the shared engine-level ai_command notes-transport command (default
-	// "claude -p"). It is top-level — NOT under [release] — because every verb's notes
-	// engine uses the same AI transport. config carries it verbatim; the transport
-	// re-defaults an explicit empty value and whitespace-splits the command into name +
-	// args (it is operator-controlled config, not arbitrary input).
+	// AICommand is the shared engine-level ai_command notes-transport command (the
+	// pinned default "claude -p --model sonnet", the single canonical source of which
+	// is config.DefaultAICommand). It is top-level — NOT under [release] — because
+	// every verb's notes engine uses the same AI transport. config carries it verbatim;
+	// the transport re-defaults an explicit empty value and whitespace-splits the
+	// command into name + args (it is operator-controlled config, not arbitrary input).
 	AICommand string
 
 	// MaxDiffLines is the shared engine-level max_diff_lines guard ceiling (default
@@ -216,7 +228,7 @@ func defaults() Config {
 			VersionFile:    "",
 			VersionPattern: "",
 		},
-		AICommand:    defaultAICommand,
+		AICommand:    DefaultAICommand,
 		MaxDiffLines: defaultMaxDiffLines,
 	}
 }
@@ -407,14 +419,14 @@ func unknownKeyMessage(key []string) string {
 	return fmt.Sprintf("unknown key %q in %s", leaf, table)
 }
 
-// resolveAICommand applies the "claude -p" default when the key was absent (nil) and
-// otherwise honours the explicit value verbatim (mirroring the max_diff_lines *int
-// handling).
+// resolveAICommand applies the pinned DefaultAICommand when the key was absent (nil)
+// and otherwise honours the explicit value verbatim (mirroring the max_diff_lines
+// *int handling).
 func resolveAICommand(v *string) string {
 	if v != nil {
 		return *v
 	}
-	return defaultAICommand
+	return DefaultAICommand
 }
 
 // resolveMaxDiffLines applies the 50000 default when the key was absent (nil) and

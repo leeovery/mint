@@ -5,8 +5,8 @@ package engine_test
 // the run BEFORE any pipeline work begins.
 //
 //   - ai_command rewiring: the documented top-level ai_command key MUST drive the
-//     notes AI invocation (its name + args reach the runner). The default (claude -p)
-//     still applies on a zero-config run.
+//     notes AI invocation (its name + args reach the runner). The pinned default
+//     (claude -p --model sonnet) still applies on a zero-config run.
 //   - up-front abort: an unknown-key / bad-type config error MUST abort in Stage 1
 //     (config load) BEFORE version determination, preflight, or notes — so NONE of the
 //     pipeline git stages are reached.
@@ -26,7 +26,7 @@ import (
 // TestRelease_AICommand_ConfigValueDrivesTransport proves the documented top-level
 // ai_command key drives the AI invocation: a custom command in .mint.toml is the
 // command the notes transport runs (name + args reach the runner with the composed
-// prompt on stdin), NOT the default `claude -p`. It rides the real prior-tag normal-AI
+// prompt on stdin), NOT the default `claude -p --model sonnet`. It rides the real prior-tag normal-AI
 // path so the transport is the production ai.Transport over the FakeRunner.
 func TestRelease_AICommand_ConfigValueDrivesTransport(t *testing.T) {
 	t.Parallel()
@@ -50,12 +50,12 @@ func TestRelease_AICommand_ConfigValueDrivesTransport(t *testing.T) {
 	}
 
 	// The configured ai_command — its binary AND its args — drove the AI call, with the
-	// composed prompt piped on stdin. The default `claude -p` was never invoked.
+	// composed prompt piped on stdin. The default `claude -p --model sonnet` was never invoked.
 	if got := stdinOf(t, f, "mybot", "gen", "--json"); got == "" {
 		t.Errorf("configured ai_command %q was not invoked with a prompt on stdin", "mybot gen --json")
 	}
-	if invokedWith(f, "claude", "-p") {
-		t.Errorf("default `claude -p` was invoked despite a configured ai_command; config value did not drive the transport")
+	if invokedWith(f, "claude", "-p", "--model", "sonnet") {
+		t.Errorf("default `claude -p --model sonnet` was invoked despite a configured ai_command; config value did not drive the transport")
 	}
 
 	// The body the configured command returned still reaches the sinks unchanged.
@@ -65,9 +65,9 @@ func TestRelease_AICommand_ConfigValueDrivesTransport(t *testing.T) {
 }
 
 // TestRelease_AICommand_DefaultDrivesTransport proves a zero-config run still uses the
-// documented default `claude -p`: with no ai_command set, the transport invokes
-// `claude -p` with the composed prompt on stdin — the consolidation preserves the
-// prior default exactly.
+// documented default `claude -p --model sonnet`: with no ai_command set, the transport
+// invokes the pinned default with the composed prompt on stdin — the consolidation
+// preserves the default exactly.
 func TestRelease_AICommand_DefaultDrivesTransport(t *testing.T) {
 	t.Parallel()
 
@@ -84,8 +84,8 @@ func TestRelease_AICommand_DefaultDrivesTransport(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if got := stdinOf(t, f, "claude", "-p"); got == "" {
-		t.Errorf("default `claude -p` was not invoked with a prompt on stdin")
+	if got := stdinOf(t, f, "claude", "-p", "--model", "sonnet"); got == "" {
+		t.Errorf("default `claude -p --model sonnet` was not invoked with a prompt on stdin")
 	}
 }
 
