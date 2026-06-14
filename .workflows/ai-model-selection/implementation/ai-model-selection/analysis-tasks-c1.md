@@ -6,7 +6,7 @@ total_proposed: 2
 # Analysis Tasks: AI Model Selection (Cycle 1)
 
 ## Task 1: Consolidate the three duplicated transport-construction wiring sites into one shared helper
-status: pending
+status: approved
 severity: medium
 sources: duplication, architecture
 
@@ -37,7 +37,7 @@ sources: duplication, architecture
 - If the shared helper is independently unit-testable in its package, add a focused test that constructs through it for both VerbRelease and VerbCommit and asserts the resulting `ai.Config` carries the accessor-resolved AICommand and Timeout (never zero-by-omission).
 
 ## Task 2: Rewrite forward-looking phase/task comment narration in config/verb to match as-built code
-status: pending
+status: approved
 severity: medium
 sources: standards
 

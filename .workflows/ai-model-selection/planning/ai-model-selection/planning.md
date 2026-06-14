@@ -90,3 +90,14 @@ approved_at: 2026-06-13
 | ai-model-selection-3-1 | Scaffold the new `ai_command` / `timeout` keys in the initgen commented template | pinned value sourced from the config constant not re-typed, comments stay model-agnostic (no sonnet/opus/haiku, no "stronger model" steer), timeout hint framed around command latency not a model, per-verb overrides shown commented (optional → commented), the "full template loads cleanly" sanity pin updated to the new default, uncomment-loads-cleanly still passes against the Phase 1 schema |
 | ai-model-selection-3-2 | Document the new config surface in the README | pinned default stated as a fact not a recommendation, `timeout = 0` ⇒ no-deadline unbounded-call trade-off documented, override-both-keys-for-a-slow-verb documented as supported-but-unenforced |
 | ai-model-selection-3-3 | Reconcile the `Commit` struct doc comment to the shipped per-verb override | comment reflects as-built (no residual "Deliberately NOT added for commit" / no-per-verb-override claim), external commit-command spec document revision stays out of scope (separate commit-spec pass) |
+
+### Phase 4: Analysis (Cycle 1)
+
+**Goal**: Address findings from Analysis (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| ai-model-selection-4-1 | Consolidate the three duplicated transport-construction wiring sites into one shared helper | preserve `config`↔`ai` decoupling (config never imports ai), each site retains its local nil-injected-transport test-seam guard, each site passes its correct verb constant (VerbRelease for aiTransport/resolveFreshTransport, VerbCommit for commitTransport), no argv or rendered-line drift |
+| ai-model-selection-4-2 | Rewrite forward-looking phase/task comment narration in config/verb to match as-built code | comment-only change (no behaviour touched), WHY/contract content preserved (only task/phase tense removed), historical "Phase 1" notes and out-of-scope "Phase 6 provider validation" carve-outs left unchanged |

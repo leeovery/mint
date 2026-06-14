@@ -60,7 +60,10 @@
             "ai-model-selection-3": "tick-78c7cc",
             "ai-model-selection-3-1": "tick-d1b3de",
             "ai-model-selection-3-2": "tick-69162e",
-            "ai-model-selection-3-3": "tick-8e8ef1"
+            "ai-model-selection-3-3": "tick-8e8ef1",
+            "ai-model-selection-4": "tick-a1a06a",
+            "ai-model-selection-4-1": "tick-436c53",
+            "ai-model-selection-4-2": "tick-f538e1"
           },
           "external_id": "tick-872936"
         }
@@ -72,7 +75,7 @@
           "status": "in-progress",
           "task_gate_mode": "auto",
           "fix_gate_mode": "auto",
-          "analysis_gate_mode": "gated",
+          "analysis_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 1,
           "analysis_cycle_session": 1,
