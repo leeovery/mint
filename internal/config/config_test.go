@@ -2582,3 +2582,184 @@ func TestTimeoutFor_ReturnDistinguishesExplicitZeroFromPositiveFloor(t *testing.
 		}
 	})
 }
+
+func TestResolution_OverrideCommandOnly_LeavesTimeoutAtFloor(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+	}{
+		{
+			name: "release command override leaves release timeout at the floor",
+			toml: "[release]\nai_command = \"haiku-cmd\"\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "commit command override leaves commit timeout at the floor",
+			toml: "[commit]\nai_command = \"haiku-cmd\"\n",
+			verb: config.VerbCommit,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// Per-key independence: a verb that overrides ONLY its ai_command (no
+			// per-verb timeout, no shared timeout) must still resolve its timeout
+			// through timeout's OWN chain to the 60s floor. The command override must
+			// not perturb the timeout — the accessors read disjoint fields.
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			if got := cfg.AICommandFor(tc.verb); got != "haiku-cmd" {
+				t.Errorf("AICommandFor(%v) = %q, want the per-verb override %q", tc.verb, got, "haiku-cmd")
+			}
+			got := cfg.TimeoutFor(tc.verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor (unperturbed)", tc.verb)
+			}
+			if *got != config.DefaultTimeout {
+				t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (command override must not perturb timeout)", tc.verb, *got, config.DefaultTimeout)
+			}
+		})
+	}
+}
+
+func TestResolution_OverrideTimeoutOnly_LeavesCommandAtFloor(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+	}{
+		{
+			name: "release timeout override leaves release ai_command at the default floor",
+			toml: "[release]\ntimeout = 120\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "commit timeout override leaves commit ai_command at the default floor",
+			toml: "[commit]\ntimeout = 120\n",
+			verb: config.VerbCommit,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// Per-key independence, the other direction: a verb that overrides ONLY its
+			// timeout (no per-verb ai_command, no shared ai_command override) must still
+			// resolve its command through ai_command's OWN chain to the shipped
+			// DefaultAICommand floor. The timeout override must not perturb the command.
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			got := cfg.TimeoutFor(tc.verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the explicit 120s", tc.verb)
+			}
+			if *got != 120*time.Second {
+				t.Errorf("TimeoutFor(%v) = %v, want the explicit 120s override", tc.verb, *got)
+			}
+			if cmd := cfg.AICommandFor(tc.verb); cmd != config.DefaultAICommand {
+				t.Errorf("AICommandFor(%v) = %q, want the shipped default floor %q (timeout override must not perturb command)", tc.verb, cmd, config.DefaultAICommand)
+			}
+		})
+	}
+}
+
+func TestResolution_PerVerbCommandOverrideWithSharedTimeout_EachKeyOwnChain(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		toml string
+		verb config.Verb
+	}{
+		{
+			name: "release command override + shared timeout",
+			toml: "timeout = 90\n[release]\nai_command = \"haiku-cmd\"\n",
+			verb: config.VerbRelease,
+		},
+		{
+			name: "commit command override + shared timeout",
+			toml: "timeout = 90\n[commit]\nai_command = \"haiku-cmd\"\n",
+			verb: config.VerbCommit,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			// Combined proof that neither chain leaks into the other AND that the shared
+			// layer is consulted independently: a verb overrides its command while only a
+			// SHARED top-level timeout is set. The command must resolve to the per-verb
+			// override (its first layer) and the timeout must resolve to the SHARED value
+			// (its second layer) — each key walking its own verb → shared → floor chain.
+			writeConfig(t, dir, tc.toml)
+
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			if got := cfg.AICommandFor(tc.verb); got != "haiku-cmd" {
+				t.Errorf("AICommandFor(%v) = %q, want the per-verb override %q", tc.verb, got, "haiku-cmd")
+			}
+			got := cfg.TimeoutFor(tc.verb)
+			if got == nil {
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shared 90s", tc.verb)
+			}
+			if *got != 90*time.Second {
+				t.Errorf("TimeoutFor(%v) = %v, want the shared 90s (timeout consults its own shared layer, command chain does not leak)", tc.verb, *got)
+			}
+		})
+	}
+}
+
+func TestResolution_ReleaseOverride_DoesNotPerturbCommitResolution(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// Cross-verb independence: a [release] override of BOTH keys must not affect commit
+	// resolution — each verb reads only its own table. With no [commit] overrides and no
+	// shared values, both commit keys must fall to their shipped floors (DefaultAICommand
+	// and the 60s timeout), proving the release table never bleeds into the commit verb.
+	writeConfig(t, dir, "[release]\nai_command = \"haiku-cmd\"\ntimeout = 120\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if got := cfg.AICommandFor(config.VerbCommit); got != config.DefaultAICommand {
+		t.Errorf("AICommandFor(VerbCommit) = %q, want the shipped default floor %q ([release] override must not bleed into commit)", got, config.DefaultAICommand)
+	}
+	got := cfg.TimeoutFor(config.VerbCommit)
+	if got == nil {
+		t.Fatalf("TimeoutFor(VerbCommit) = nil, want a non-nil pointer to the 60s floor")
+	}
+	if *got != config.DefaultTimeout {
+		t.Errorf("TimeoutFor(VerbCommit) = %v, want the 60s floor %v ([release] override must not bleed into commit)", *got, config.DefaultTimeout)
+	}
+
+	// Sanity: the release override itself still resolves, so the cross-verb check is
+	// proving isolation rather than a no-op config.
+	if got := cfg.AICommandFor(config.VerbRelease); got != "haiku-cmd" {
+		t.Errorf("AICommandFor(VerbRelease) = %q, want the release override %q", got, "haiku-cmd")
+	}
+}
