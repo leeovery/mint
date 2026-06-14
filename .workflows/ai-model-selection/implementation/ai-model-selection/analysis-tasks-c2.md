@@ -6,7 +6,7 @@ total_proposed: 1
 # Analysis Tasks: AI Model Selection (Cycle 2)
 
 ## Task 1: Extract the duplicated context-deadline CommandRunner spy into a shared test double
-status: pending
+status: approved
 severity: medium
 sources: duplication
 

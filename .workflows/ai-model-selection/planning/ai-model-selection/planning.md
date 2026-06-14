@@ -101,3 +101,13 @@ approved_at: 2026-06-13
 |-------------|------|------------|
 | ai-model-selection-4-1 | Consolidate the three duplicated transport-construction wiring sites into one shared helper | preserve `config`↔`ai` decoupling (config never imports ai), each site retains its local nil-injected-transport test-seam guard, each site passes its correct verb constant (VerbRelease for aiTransport/resolveFreshTransport, VerbCommit for commitTransport), no argv or rendered-line drift |
 | ai-model-selection-4-2 | Rewrite forward-looking phase/task comment narration in config/verb to match as-built code | comment-only change (no behaviour touched), WHY/contract content preserved (only task/phase tense removed), historical "Phase 1" notes and out-of-scope "Phase 6 provider validation" carve-outs left unchanged |
+
+### Phase 5: Analysis (Cycle 2)
+
+**Goal**: Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| ai-model-selection-5-1 | Extract the duplicated context-deadline CommandRunner spy into a shared test double | shared double implements the full CommandRunner surface (RunWith/Run/RunInteractive/RunInDir) and records argv plus the context-deadline-present flag exactly as the current copies do, no deadlineRunner/deadlineCommitRunner struct remains in aitransport/engine/commit, single shared *time.Duration pointer helper replaces the three durationPtr redeclarations, no production (non-test) code path changes |
