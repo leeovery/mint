@@ -5,6 +5,9 @@
     },
     "ai-model-selection": {
       "work_type": "feature"
+    },
+    "interactive-mint-init-setup": {
+      "work_type": "feature"
     }
   },
   "defaults": {
