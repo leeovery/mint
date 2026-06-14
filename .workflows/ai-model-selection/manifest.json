@@ -148,7 +148,7 @@
     "review": {
       "items": {
         "ai-model-selection": {
-          "status": "in-progress",
+          "status": "completed",
           "reviewed_tasks": [
             "ai-model-selection-1-1",
             "ai-model-selection-1-2",
