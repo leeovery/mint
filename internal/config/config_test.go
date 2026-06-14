@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"mint/internal/config"
 )
@@ -753,6 +754,7 @@ func TestLoad_TypeMismatch_MappedFriendlyMessages(t *testing.T) {
 		want string
 	}{
 		{"max_diff_lines not an integer", "max_diff_lines = \"lots\"\n", "max_diff_lines must be an integer"},
+		{"timeout not an integer", "timeout = \"fast\"\n", "timeout must be an integer (seconds)"},
 		{"diff_exclude not an array", "diff_exclude = \"CHANGELOG.md\"\n", "diff_exclude must be an array of strings"},
 		{"publish not a boolean", "[release]\npublish = \"yes\"\n", "publish must be a boolean"},
 		{"changelog not a boolean", "[release]\nchangelog = \"no\"\n", "changelog must be a boolean"},
@@ -1925,5 +1927,151 @@ func TestResolveCommitPrompt_UnreadablePromptFile_FailsLoudNamingPath(t *testing
 	}
 	if !strings.Contains(err.Error(), name) {
 		t.Errorf("error = %q, want it to name the configured path %q", err.Error(), name)
+	}
+}
+
+func TestDefaultTimeout_ExportedCanonicalValue(t *testing.T) {
+	t.Parallel()
+
+	// DefaultTimeout is the single CANONICAL source of the shipped per-attempt
+	// deadline (60s) — exported so later phases derive the value from here rather than
+	// re-typing the transport's defaultTimeout literal (which Phase 2 deletes). This
+	// pins both that the constant is referenceable from another package and its value.
+	if config.DefaultTimeout != 60*time.Second {
+		t.Errorf("DefaultTimeout = %v, want %v", config.DefaultTimeout, 60*time.Second)
+	}
+}
+
+func TestLoad_TopLevelTimeout_CarriedAsSeconds(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// timeout is a shared TOP-LEVEL engine key (not under [release]). It is integer
+	// seconds in TOML; config converts it to a time.Duration at the boundary, so a
+	// top-level `timeout = 90` is carried onto Config as 90 seconds.
+	writeConfig(t, dir, "timeout = 90\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Timeout == nil {
+		t.Fatalf("Timeout = nil, want a non-nil pointer to 90s")
+	}
+	if *cfg.Timeout != 90*time.Second {
+		t.Errorf("Timeout = %v, want 90s (integer seconds converted to a duration)", *cfg.Timeout)
+	}
+}
+
+func TestLoad_AbsentTimeout_DistinctFromExplicitZero(t *testing.T) {
+	t.Parallel()
+
+	t.Run("absent in a present file is nil", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// With no top-level timeout key at all (a present file setting only an
+		// unrelated key), the carried pointer is nil — the absent sentinel Task 1-7's
+		// accessor treats as "fall through to the 60s floor". A *time.Duration (not a
+		// plain duration) is what makes absent distinguishable from an explicit zero.
+		writeConfig(t, dir, "max_diff_lines = 1200\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		if cfg.Timeout != nil {
+			t.Errorf("Timeout = %v, want nil (absent key → nil sentinel)", cfg.Timeout)
+		}
+	})
+
+	t.Run("explicit zero is a non-nil pointer to 0", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		// An explicit `timeout = 0` is a non-nil pointer to 0 — DISTINCT from absent
+		// (nil). Zero means "no deadline", a conscious operator choice; config carries
+		// it verbatim and Task 1-7's accessor honours it (stops the fall-through). The
+		// distinction is the whole point of the *time.Duration field.
+		writeConfig(t, dir, "timeout = 0\n")
+
+		cfg, err := config.Load(dir)
+		if err != nil {
+			t.Fatalf("Load returned unexpected error: %v", err)
+		}
+
+		if cfg.Timeout == nil {
+			t.Fatalf("Timeout = nil, want a non-nil pointer to the explicit zero")
+		}
+		if *cfg.Timeout != 0 {
+			t.Errorf("Timeout = %v, want explicit 0 (carried verbatim, not coerced to 60s)", *cfg.Timeout)
+		}
+	})
+}
+
+func TestLoad_AbsentFile_ResolvesShipped60sDefault(t *testing.T) {
+	t.Parallel()
+
+	// With no .mint.toml at all, defaults() seeds the canonical 60s onto Config.Timeout
+	// directly — the zero-config per-attempt deadline. This mirrors how defaults() seeds
+	// the other top-level shared keys (ai_command, max_diff_lines) so a direct reader of
+	// the zero-config Config sees the shipped value, not a bare nil.
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Timeout == nil {
+		t.Fatalf("Timeout = nil, want the shipped 60s default for zero config")
+	}
+	if *cfg.Timeout != config.DefaultTimeout {
+		t.Errorf("Timeout = %v, want the shipped default %v", *cfg.Timeout, config.DefaultTimeout)
+	}
+}
+
+func TestLoad_ExplicitTimeoutZero_CarriedAsDistinguishableExplicitZero(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// An explicit top-level `timeout = 0` must NOT be coerced to the 60s default — it is
+	// a conscious "no deadline" choice that Task 1-7 honours. The decode-onto-shape must
+	// let an explicit 0 win as a non-nil pointer to 0, never collapsing into the absent
+	// (nil → 60s floor) case.
+	writeConfig(t, dir, "timeout = 0\n")
+
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	if cfg.Timeout == nil {
+		t.Fatalf("Timeout = nil, want a non-nil pointer to the explicit zero (not the default)")
+	}
+	if *cfg.Timeout != 0 {
+		t.Errorf("Timeout = %v, want explicit 0 honoured (not coerced to the 60s default)", *cfg.Timeout)
+	}
+}
+
+func TestLoad_NonIntegerTimeout_RejectedNamingKeyAndIntegerType(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// timeout is an integer-seconds key, so a non-integer TOML value (a string here) is
+	// a strict decode (type) error at Load — exactly like max_diff_lines. The friendly
+	// message must name both the key and the expected integer/seconds type, not opaque
+	// decoder field-path output.
+	writeConfig(t, dir, "timeout = \"fast\"\n")
+
+	_, err := config.Load(dir)
+	if err == nil {
+		t.Fatal("Load returned nil error for string timeout, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "timeout") {
+		t.Errorf("error = %q, want it to name the key %q", err.Error(), "timeout")
+	}
+	if !strings.Contains(err.Error(), "integer") {
+		t.Errorf("error = %q, want it to name the expected integer type", err.Error())
 	}
 }

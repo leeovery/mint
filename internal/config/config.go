@@ -3,8 +3,8 @@
 // requires a file to exist.
 //
 // Config is the single CANONICAL schema for the verb-namespaced .mint.toml: the
-// shared engine keys at the top level (ai_command, diff_exclude, max_diff_lines),
-// the [release] table, and the nested [release.hooks] sub-table. Every documented
+// shared engine keys at the top level (ai_command, diff_exclude, max_diff_lines,
+// timeout), the [release] table, and the nested [release.hooks] sub-table. Every documented
 // key has its Go type here and a default applied uniformly — on zero config (file
 // absent, empty, or comment-only) every key comes back at its documented default,
 // and a file that sets only part of a table leaves the unset keys at their
@@ -31,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -85,6 +86,19 @@ const defaultMaxDiffLines = 50000
 // verbatim, applying this default only when the key is absent.
 const DefaultAICommand = "claude -p --model sonnet"
 
+// DefaultTimeout is the shipped per-attempt AI deadline (60s) — the value the transport
+// retries every attempt against. It is the CANONICAL source of that default, mirroring
+// the transport's defaultTimeout literal (which Phase 2 deletes in favour of this), and
+// is EXPORTED so the init template / README and any direct reader derive the value from
+// here rather than re-typing it.
+//
+// timeout is a shared engine key (every verb's notes transport uses it), so it lives at
+// the top level of Config (see Config.Timeout). config seeds this default in defaults()
+// for the zero-config path; an absent key in a PRESENT file leaves Config.Timeout nil so
+// Task 1-7's accessor applies the floor, while an explicit value (including 0) is carried
+// verbatim. The TOML key is integer SECONDS, converted to a time.Duration at the boundary.
+const DefaultTimeout = 60 * time.Second
+
 // Config is the loaded mint configuration. The [release] table plus the
 // shared top-level engine keys read so far are populated; the remaining
 // engine-level keys and other verb tables arrive in later phases.
@@ -120,6 +134,17 @@ type Config struct {
 	// notes engine, not just release. The notes size guard compares the
 	// post-exclusion diff's line count against it.
 	MaxDiffLines int
+
+	// Timeout is the shared engine-level timeout per-attempt AI deadline, carried as a
+	// *time.Duration so the absent-vs-explicit-zero distinction survives to Task 1-7's
+	// TimeoutFor accessor: NIL means absent (the accessor applies the shipped 60s floor),
+	// while a NON-NIL value is the operator's explicit choice carried verbatim — including
+	// an explicit 0 ("no deadline", honoured) and any negative (dropped to the floor in
+	// 1-7). It is top-level — NOT under [release] — because every verb's notes transport
+	// uses the same deadline. The TOML key is integer SECONDS (e.g. `timeout = 90`),
+	// converted to a duration at the config boundary. defaults() seeds DefaultTimeout
+	// directly for the zero-config path so a direct reader sees 60s, not a bare nil.
+	Timeout *time.Duration
 
 	// DiffExclude is the shared engine-level list of extra glob pathspecs to exclude
 	// from the diff, ON TOP OF the built-in CHANGELOG.md exclusion. It is top-level —
@@ -241,6 +266,12 @@ type Hooks struct {
 
 // defaults returns a Config seeded with the Phase 1 default values.
 func defaults() Config {
+	// Timeout is seeded with a pointer to the shipped 60s default so the ZERO-CONFIG path
+	// (no .mint.toml) yields the documented deadline to any direct reader, mirroring the
+	// other top-level keys. A present-file decode does NOT go through here — Load builds a
+	// fresh Config literal where an absent key leaves Timeout nil (floor-applied in 1-7)
+	// and an explicit value wins — so this seed cannot mask a present-file absent-vs-zero.
+	timeout := DefaultTimeout
 	return Config{
 		Release: Release{
 			TagPrefix:      defaultTagPrefix,
@@ -258,6 +289,7 @@ func defaults() Config {
 		},
 		AICommand:    DefaultAICommand,
 		MaxDiffLines: defaultMaxDiffLines,
+		Timeout:      &timeout,
 	}
 }
 
@@ -266,15 +298,19 @@ func defaults() Config {
 // (false) is a meaningful, explicit choice: nil means "key absent, apply default
 // true" while a non-nil false means the surface is disabled. MaxDiffLines is a *int for the same
 // reason — nil means "key absent, apply default 50000" while a non-nil value
-// (even 0) is an explicit operator choice. The string fields are decoded onto a
-// struct pre-seeded with defaults, so the decoder only overwrites keys actually
-// present in the file — an explicit empty tag_prefix overwrites "v" with "" (a
-// valid prefix-less choice) while an absent key leaves the default intact.
+// (even 0) is an explicit operator choice. Timeout is a *int (integer SECONDS) for the
+// SAME reason — nil means "key absent" (the accessor in 1-7 applies the 60s floor) while
+// a non-nil value (even 0) is an explicit operator choice; integer seconds makes a
+// non-integer TOML value a strict decode error at Load, exactly like max_diff_lines. The
+// string fields are decoded onto a struct pre-seeded with defaults, so the decoder only
+// overwrites keys actually present in the file — an explicit empty tag_prefix overwrites
+// "v" with "" (a valid prefix-less choice) while an absent key leaves the default intact.
 type fileShape struct {
 	Release      releaseShape `toml:"release"`
 	Commit       commitShape  `toml:"commit"`
 	AICommand    *string      `toml:"ai_command"`
 	MaxDiffLines *int         `toml:"max_diff_lines"`
+	Timeout      *int         `toml:"timeout"`
 	DiffExclude  []string     `toml:"diff_exclude"`
 }
 
@@ -375,6 +411,7 @@ func Load(root string) (Config, error) {
 		Commit:       resolveCommit(shape.Commit),
 		AICommand:    aiCommandOrDefault(shape.AICommand),
 		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
+		Timeout:      resolveTimeout(shape.Timeout),
 		DiffExclude:  shape.DiffExclude,
 	}, nil
 }
@@ -407,6 +444,7 @@ func translateStrict(strict *toml.StrictMissingError) error {
 // array).
 var typeErrorMessages = map[string]string{
 	"fileShape.MaxDiffLines": "max_diff_lines must be an integer",
+	"fileShape.Timeout":      "timeout must be an integer (seconds)",
 	"fileShape.DiffExclude":  "diff_exclude must be an array of strings",
 	"releaseShape.Publish":   "publish must be a boolean",
 	"releaseShape.Changelog": "changelog must be a boolean",
@@ -517,6 +555,23 @@ func resolveMaxDiffLines(v *int) int {
 		return *v
 	}
 	return defaultMaxDiffLines
+}
+
+// resolveTimeout converts the decoded *int integer seconds into the *time.Duration
+// carried on Config, preserving the absent-vs-explicit distinction the accessor needs.
+// An ABSENT key (nil) stays nil — the present-file no-timeout case Task 1-7's TimeoutFor
+// resolves to the 60s floor; this is DELIBERATELY not pre-defaulted here (the zero-config
+// 60s comes from defaults(), so the seed never masks a present-file absent). A PRESENT
+// value (including an explicit 0, "no deadline", or a negative the 1-7 accessor drops) is
+// carried verbatim as seconds → duration, so absent (nil) is distinguishable from an
+// explicit 0 (a non-nil pointer to 0). Mirrors the max_diff_lines *int nil-vs-present idiom,
+// adding only the seconds→duration boundary conversion.
+func resolveTimeout(seconds *int) *time.Duration {
+	if seconds == nil {
+		return nil
+	}
+	d := time.Duration(*seconds) * time.Second
+	return &d
 }
 
 // resolveRelease applies the publish and changelog defaults when those keys were
