@@ -2,7 +2,7 @@ package config
 
 // Verb is the typed, CLOSED enum identifying which verb table a layered config
 // accessor resolves against. It is the verb parameter the layered accessors
-// (AICommandFor / TimeoutFor, arriving in later tasks) accept — a named int type
+// (AICommandFor / TimeoutFor) accept — a named int type
 // rather than a raw string so callers MUST pass one of the two named constants and a
 // typo cannot silently fall through to the shared baseline.
 //

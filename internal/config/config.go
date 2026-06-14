@@ -40,8 +40,8 @@ import (
 const configFileName = ".mint.toml"
 
 // Default values for the Phase 1 [release] keys. ReleaseBranch's default is the
-// empty string, a sentinel meaning "auto-derive from origin/HEAD" (resolved in
-// task 1-4); an explicit empty value in the file is indistinguishable from this
+// empty string, a sentinel meaning "auto-derive from origin/HEAD" (resolved by the
+// release spine); an explicit empty value in the file is indistinguishable from this
 // and means the same thing.
 const (
 	defaultTagPrefix    = "v"
@@ -77,9 +77,9 @@ const defaultMaxDiffLines = 50000
 // ID goes stale every model release and would force a rebuild just to track versions.
 //
 // This is the single CANONICAL source of the pinned default value — it is EXPORTED so
-// every other site derives the value from here rather than re-typing the literal (the
-// transport's duplicate self-default and initgen's scaffold literal are removed/sourced
-// from this constant in later phases).
+// every other site derives the value from here rather than re-typing the literal: the
+// transport carries no self-default of its own, and initgen's scaffold literal is sourced
+// from this constant.
 //
 // It is a shared engine key (every verb's notes engine uses it), so it lives at the
 // top level of Config (see Config.AICommand). config carries whatever the file holds
@@ -87,21 +87,20 @@ const defaultMaxDiffLines = 50000
 const DefaultAICommand = "claude -p --model sonnet"
 
 // DefaultTimeout is the shipped per-attempt AI deadline (60s) — the value the transport
-// retries every attempt against. It is the CANONICAL source of that default, mirroring
-// the transport's defaultTimeout literal (which Phase 2 deletes in favour of this), and
-// is EXPORTED so the init template / README and any direct reader derive the value from
-// here rather than re-typing it.
+// retries every attempt against. It is the CANONICAL source of that default — the transport
+// carries no defaultTimeout literal of its own — and is EXPORTED so the init template /
+// README and any direct reader derive the value from here rather than re-typing it.
 //
 // timeout is a shared engine key (every verb's notes transport uses it), so it lives at
 // the top level of Config (see Config.Timeout). config seeds this default in defaults()
 // for the zero-config path; an absent key in a PRESENT file leaves Config.Timeout nil so
-// Task 1-7's accessor applies the floor, while an explicit value (including 0) is carried
+// TimeoutFor applies the floor, while an explicit value (including 0) is carried
 // verbatim. The TOML key is integer SECONDS, converted to a time.Duration at the boundary.
 const DefaultTimeout = 60 * time.Second
 
-// Config is the loaded mint configuration. The [release] table plus the
-// shared top-level engine keys read so far are populated; the remaining
-// engine-level keys and other verb tables arrive in later phases.
+// Config is the loaded mint configuration: the [release] and [commit] verb tables
+// plus the shared top-level engine keys (ai_command, max_diff_lines, timeout,
+// diff_exclude).
 type Config struct {
 	Release Release
 
@@ -134,11 +133,11 @@ type Config struct {
 	MaxDiffLines int
 
 	// Timeout is the shared engine-level timeout per-attempt AI deadline, carried as a
-	// *time.Duration so the absent-vs-explicit-zero distinction survives to Task 1-7's
+	// *time.Duration so the absent-vs-explicit-zero distinction survives to the
 	// TimeoutFor accessor: NIL means absent (the accessor applies the shipped 60s floor),
 	// while a NON-NIL value is the operator's explicit choice carried verbatim — including
-	// an explicit 0 ("no deadline", honoured) and any negative (dropped to the floor in
-	// 1-7). It is top-level — NOT under [release] — because every verb's notes transport
+	// an explicit 0 ("no deadline", honoured) and any negative (TimeoutFor drops it to the
+	// floor). It is top-level — NOT under [release] — because every verb's notes transport
 	// uses the same deadline. The TOML key is integer SECONDS (e.g. `timeout = 90`),
 	// converted to a duration at the config boundary. defaults() seeds DefaultTimeout
 	// directly for the zero-config path so a direct reader sees 60s, not a bare nil.
@@ -196,18 +195,18 @@ type Config struct {
 //
 // AICommand is the OPTIONAL per-verb ai_command override (raw [release].ai_command). It
 // is a *string so absent (nil) is distinguishable from an explicit empty/blank value —
-// the resolver (1-4) needs that distinction for its blank-skip fall-through. config
+// AICommandFor needs that distinction for its blank-skip fall-through. config
 // carries the pointer's value verbatim (nil when absent; the literal string, blank or
 // not, when present); the override chain (verb → shared top-level → shipped default) and
-// blank-skipping are the resolver's job, NOT Load's.
+// blank-skipping are AICommandFor's job, NOT Load's.
 //
 // Timeout is the OPTIONAL per-verb timeout override (raw [release].timeout, integer
 // SECONDS in TOML), carried as a *time.Duration so the per-verb absent-vs-explicit-zero
-// distinction survives to Task 1-7's TimeoutFor accessor: NIL means absent (no override —
+// distinction survives to the TimeoutFor accessor: NIL means absent (no override —
 // fall through to the shared top-level / 60s floor), while a NON-NIL value is the
 // operator's explicit per-verb choice carried verbatim — including an explicit 0 ("no
 // deadline", honoured by the accessor, stops fall-through) and any NEGATIVE (carried RAW
-// here; the negative-drop to the floor is 1-7's job, NOT Load's). config seeds NO per-verb
+// here; TimeoutFor drops the negative to the floor, NOT Load). config seeds NO per-verb
 // timeout default — the absent baseline is "no override" (nil). The seconds → duration
 // conversion happens at the config boundary (resolveTimeout).
 type Release struct {
@@ -245,9 +244,9 @@ type Commit struct {
 
 	// AICommand is the OPTIONAL per-verb ai_command override (raw [commit].ai_command),
 	// a *string so absent (nil) is distinguishable from an explicit empty/blank value
-	// (the resolver in 1-4 needs that distinction for blank-skip fall-through). config
-	// carries the value verbatim; the override chain and blank-skipping are the
-	// resolver's job. The external commit-command spec-document revision is handled by
+	// (AICommandFor needs that distinction for blank-skip fall-through). config
+	// carries the value verbatim; the override chain and blank-skipping are
+	// AICommandFor's job. The external commit-command spec-document revision is handled by
 	// a separate commit-spec pass.
 	AICommand *string
 
@@ -256,7 +255,7 @@ type Commit struct {
 	// so absent (nil) is distinguishable from an explicit 0: NIL means no override (fall
 	// through to the shared / 60s floor), while a NON-NIL value is the operator's explicit
 	// per-verb choice carried verbatim — an explicit 0 ("no deadline") or a NEGATIVE
-	// carried RAW (the negative-drop is Task 1-7's accessor job, not Load's). config seeds
+	// carried RAW (TimeoutFor drops the negative, NOT Load). config seeds
 	// NO per-verb timeout default; the seconds → duration conversion happens at the config
 	// boundary (resolveTimeout). This per-verb override is the commit-verb counterpart
 	// of AICommand.
@@ -288,8 +287,8 @@ func defaults() Config {
 	// Timeout is seeded with a pointer to the shipped 60s default so the ZERO-CONFIG path
 	// (no .mint.toml) yields the documented deadline to any direct reader, mirroring the
 	// other top-level keys. A present-file decode does NOT go through here — Load builds a
-	// fresh Config literal where an absent key leaves Timeout nil (floor-applied in 1-7)
-	// and an explicit value wins — so this seed cannot mask a present-file absent-vs-zero.
+	// fresh Config literal where an absent key leaves Timeout nil (TimeoutFor applies the
+	// floor) and an explicit value wins — so this seed cannot mask a present-file absent-vs-zero.
 	timeout := DefaultTimeout
 	return Config{
 		Release: Release{
@@ -318,7 +317,7 @@ func defaults() Config {
 // true" while a non-nil false means the surface is disabled. MaxDiffLines is a *int for the same
 // reason — nil means "key absent, apply default 50000" while a non-nil value
 // (even 0) is an explicit operator choice. Timeout is a *int (integer SECONDS) for the
-// SAME reason — nil means "key absent" (the accessor in 1-7 applies the 60s floor) while
+// SAME reason — nil means "key absent" (TimeoutFor applies the 60s floor) while
 // a non-nil value (even 0) is an explicit operator choice; integer seconds makes a
 // non-integer TOML value a strict decode error at Load, exactly like max_diff_lines. The
 // string fields are decoded onto a struct pre-seeded with defaults, so the decoder only
@@ -338,11 +337,11 @@ type fileShape struct {
 // injection, empty prompt means the default prompt — so no *string absent-vs-zero
 // distinction is needed (mirroring releaseShape.Context / releaseShape.Prompt).
 // AICommand is the optional per-verb ai_command override, a *string so absent (nil) is
-// distinguishable from an explicit empty/blank value — the resolver (1-4) needs that
+// distinguishable from an explicit empty/blank value — AICommandFor needs that
 // distinction for its blank-skip fall-through. config carries it verbatim; blank-skipping
 // is the accessor's job, not Load's. Timeout is the optional per-verb timeout override,
-// a *int (integer SECONDS) so absent (nil) is distinguishable from an explicit 0 — the
-// accessor (1-7) needs that distinction to honour 0 ("no deadline") vs falling through;
+// a *int (integer SECONDS) so absent (nil) is distinguishable from an explicit 0 —
+// TimeoutFor needs that distinction to honour 0 ("no deadline") vs falling through;
 // integer seconds makes a non-integer TOML value a strict decode error at Load.
 type commitShape struct {
 	Context   string  `toml:"context"`
@@ -578,15 +577,17 @@ func (c Config) AICommandFor(verb Verb) string {
 // therefore resolves to the 60s floor (negative dropped, floor applied), never to a
 // negative and never to "no deadline".
 //
-// Boundary contract for Phase 2: the return type is *time.Duration precisely so the
+// Boundary contract with the transport: the return type is *time.Duration precisely so the
 // transport (internal/ai) can distinguish the operator's explicit 0 ("no deadline") from
 // a positive/floor deadline — a pointer to 0 means "no deadline", a pointer to a positive
-// value means a real per-attempt deadline. Phase 2's ai.Config.Timeout is also
+// value means a real per-attempt deadline. ai.Config.Timeout is also
 // *time.Duration and takes this accessor's return by DIRECT ASSIGNMENT (no conversion), so
 // "no deadline" stays reachable ONLY via an operator's explicit 0 — never by a wiring site
-// omitting the field. The transport must therefore SKIP context.WithTimeout when the
+// omitting the field. The transport therefore SKIPS context.WithTimeout when the
 // resolved value is the explicit-0/no-deadline case (a zero duration passed to
-// WithTimeout fires immediately) — but that conditional lives in Phase 2, NOT here.
+// WithTimeout fires immediately) — that conditional lives in the transport, NOT in this
+// accessor, because honouring "no deadline" is a transport-level call wiring concern, not
+// part of resolving the value.
 //
 // Resolution is per-key independent: this reads only the timeout candidates and never
 // consults ai_command. verb is the closed two-value enum, so the per-verb candidate is
@@ -646,10 +647,10 @@ func resolveMaxDiffLines(v *int) int {
 
 // resolveTimeout converts the decoded *int integer seconds into the *time.Duration
 // carried on Config, preserving the absent-vs-explicit distinction the accessor needs.
-// An ABSENT key (nil) stays nil — the present-file no-timeout case Task 1-7's TimeoutFor
+// An ABSENT key (nil) stays nil — the present-file no-timeout case TimeoutFor
 // resolves to the 60s floor; this is DELIBERATELY not pre-defaulted here (the zero-config
 // 60s comes from defaults(), so the seed never masks a present-file absent). A PRESENT
-// value (including an explicit 0, "no deadline", or a negative the 1-7 accessor drops) is
+// value (including an explicit 0, "no deadline", or a negative TimeoutFor drops) is
 // carried verbatim as seconds → duration, so absent (nil) is distinguishable from an
 // explicit 0 (a non-nil pointer to 0). Mirrors the max_diff_lines *int nil-vs-present idiom,
 // adding only the seconds→duration boundary conversion.
@@ -692,12 +693,12 @@ func resolveRelease(shape releaseShape) Release {
 // empty value carries the same meaning, so there is nothing to re-default — config carries
 // the raw values and ResolveCommitPrompt reads the Prompt file at the point of use.
 // AICommand is the optional per-verb override, carried as the raw *string verbatim (nil
-// when absent; the literal value, blank or not, when present) for the resolver in 1-4 —
+// when absent; the literal value, blank or not, when present) for AICommandFor —
 // blank-skipping is the accessor's job, not here. Timeout is the optional per-verb timeout
 // override: commitShape carries it as a *int (integer seconds) but Commit carries a
 // *time.Duration, so resolveTimeout performs the seconds → duration boundary conversion
 // (nil stays nil; an explicit value, including 0 or a negative, is carried verbatim for
-// 1-7 to interpret). Because those field TYPES now differ, this is an explicit
+// TimeoutFor to interpret). Because those field TYPES now differ, this is an explicit
 // field-by-field copy — the old direct Commit(shape) conversion no longer compiles (it
 // relied on commitShape and Commit being field-identical, which the timeout type boundary
 // breaks), mirroring resolveRelease.
