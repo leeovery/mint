@@ -890,7 +890,7 @@
     ],
     "type": "plugin",
     "cloneUrl": "https://github.com/samber/cc-skills-golang.git",
-    "installedAt": "2026-06-14T17:22:48.260Z",
+    "installedAt": "2026-06-15T13:59:12.079Z",
     "constraint": "^1.5.1"
   }
 }
