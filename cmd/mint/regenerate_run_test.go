@@ -5,6 +5,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/engine"
+	"mint/internal/publish"
 	"mint/internal/runner"
 	"mint/internal/version"
 )
@@ -37,9 +38,15 @@ func TestRegenerateRunAxes(t *testing.T) {
 		},
 		{
 			name:       "reuse maps to a present reuse source",
-			req:        regenerateRequest{Source: sourceReuse, SourceSet: true, Target: targetRelease},
-			wantSource: engine.SourceOf(engine.RegenerateSourceReuse),
+			req:        regenerateRequest{Source: sourceTag, SourceSet: true, Target: targetRelease},
+			wantSource: engine.SourceOf(engine.RegenerateSourceTag),
 			wantTarget: engine.TargetOf(engine.RegenerateTargetRelease),
+		},
+		{
+			name:       "from-release maps to a present release source with its chosen target",
+			req:        regenerateRequest{Source: sourceRelease, SourceSet: true, Target: targetChangelog},
+			wantSource: engine.SourceOf(engine.RegenerateSourceRelease),
+			wantTarget: engine.TargetOf(engine.RegenerateTargetChangelog),
 		},
 		{
 			name:       "target changelog maps to a present changelog target",
@@ -83,8 +90,8 @@ func TestNewRegenerateBodyProducer_Reuse(t *testing.T) {
 	f.Seed("git", runner.Result{Stdout: "## reuse body\n"}, nil)
 
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
-	produce := newRegenerateBodyProducer(f, config.Config{}, t.TempDir(), res)
-	body, err := produce(t.Context(), engine.RegenerateSourceReuse)
+	produce := newRegenerateBodyProducer(f, config.Config{}, t.TempDir(), res, publish.NewGitHubPublisher(f))
+	body, err := produce(t.Context(), engine.RegenerateSourceTag)
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -103,7 +110,7 @@ func TestNewRegenerateRegeneratorProducer(t *testing.T) {
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
 	produce := newRegenerateRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxDiffLines: 50000}, t.TempDir(), res)
 
-	if got := produce(engine.RegenerateSourceReuse); got != nil {
+	if got := produce(engine.RegenerateSourceTag); got != nil {
 		t.Errorf("reuse regenerator = %v, want nil (reuse has no review gate)", got)
 	}
 	if got := produce(engine.RegenerateSourceFresh); got == nil {

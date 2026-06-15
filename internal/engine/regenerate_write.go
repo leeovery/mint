@@ -16,8 +16,8 @@ package engine
 //   - RECOVERY (pre-PONR) is LIGHTER than the forward surgical unwind: there is no
 //     tag to delete, so a gate abort (fresh) or any pre-push failure just RESETS the
 //     local CHANGELOG commit (`git reset --hard {startingHEAD}`) back to the clean
-//     start. Reuse-only and release-only runs make no commit, so there is nothing to
-//     reset.
+//     start. A release-only TARGET (any source) makes no commit, so there is nothing
+//     to reset.
 //   - POST-PONR a provider create/update failure AFTER the changelog push is WARN
 //     ONLY — the changelog is already public, so the run never unwinds; the user
 //     re-heals the provider with `--target release`. This is the SAME warn-only
@@ -54,19 +54,33 @@ import (
 )
 
 // RegenerateSource names where a regenerate run sourced its notes body — the axis
-// that drives the gating: fresh notes are reviewable (the full y/n/e/r gate), reuse
-// is deterministic (a simple confirm). It is the engine-level concrete enum so the
-// orchestration never threads the cmd-layer flag types.
+// that drives the gating: fresh notes are reviewable (the full y/n/e/r gate), the two
+// reuse-style sources are deterministic (a simple confirm). It is the engine-level
+// concrete enum so the orchestration never threads the cmd-layer flag types.
 type RegenerateSource int
 
 const (
 	// RegenerateSourceFresh is the re-diff + AI path (5-6): freshly-generated notes
 	// run the notes-review gate before they overwrite live surfaces.
 	RegenerateSourceFresh RegenerateSource = iota
-	// RegenerateSourceReuse is the tag-annotation read path (5-5): deterministic,
+	// RegenerateSourceTag is the tag-annotation read path (5-5): deterministic,
 	// parse-free — a simple confirm, no review gate.
-	RegenerateSourceReuse
+	RegenerateSourceTag
+	// RegenerateSourceRelease reads the EXISTING provider release body back (via the
+	// publish.Publisher ReadReleaseBody seam) as the source — the provider-release
+	// sibling of reuse, used to re-project the published release notes onto the
+	// changelog. Like reuse it is deterministic (no AI), so it runs the simple confirm,
+	// not the review gate.
+	RegenerateSourceRelease
 )
+
+// usesReviewGate reports whether the source produces fresh, editable notes that run
+// the full y/n/e/r notes-review gate. Only fresh does; the deterministic reuse-style
+// sources (tag annotation, provider release) run the simple two-choice confirm because
+// they have no freshly-generated notes to edit or regenerate.
+func (s RegenerateSource) usesReviewGate() bool {
+	return s == RegenerateSourceFresh
+}
 
 // RegenerateTarget names which surface(s) a regenerate run writes — the axis that
 // drives whether the changelog is committed + pushed and whether the provider
@@ -202,7 +216,9 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 	// prompt over an empty preview. Both the single-version (RegenerateWrite) and batch
 	// (gatePerVersion) fresh/reuse paths route through here, so one render covers both.
 	p.ShowNotes(presenter.Notes{Version: req.VersionKey, Body: req.Body})
-	if req.Source == RegenerateSourceReuse {
+	if !req.Source.usesReviewGate() {
+		// Deterministic source (tag annotation or provider release): the simple
+		// two-choice confirm — there are no freshly-generated notes to edit/regenerate.
 		return reuseConfirm(p, req.Body)
 	}
 	// Fresh: the notes-review gate. A decline returns errGateAborted (a clean user

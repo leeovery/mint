@@ -32,8 +32,8 @@ const regeneratePreflightStage = "preflight"
 // cmd-layer source/target enums:
 //
 //   - CallsProvider is set when the run writes the provider release (target
-//     release or both), which requires the gh-auth gate — even for --reuse, since
-//     a dead gh auth is the usual reason you are healing.
+//     release or both), which requires the gh-auth gate — even for a deterministic
+//     source, since a dead gh auth is the usual reason you are healing.
 //   - CommitsAndPushes is set when the run commits + pushes the changelog (target
 //     changelog or both), which requires the clean-tree, on-branch, and
 //     remote-sync gates.
@@ -42,7 +42,7 @@ const regeneratePreflightStage = "preflight"
 // tag, so there is no field that could turn it on.
 type RegenerateGateSet struct {
 	// CallsProvider selects the gh-auth gate: true when the run writes the provider
-	// release (target release or both, including every --reuse run).
+	// release (target release or both, for any source).
 	CallsProvider bool
 	// CommitsAndPushes selects the clean-tree + on-branch + remote-sync gates: true
 	// when the run commits + pushes the changelog (target changelog or both).

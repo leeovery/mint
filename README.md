@@ -104,7 +104,7 @@ mint release -d                     # preview the full plan, change nothing
 
 ### `release regenerate`
 
-Regenerate the notes for an *existing* release and rewrite the chosen surface(s): the provider release body, `CHANGELOG.md`, or both.
+Regenerate the notes for an *existing* release and rewrite the chosen surface(s): the provider release body, `CHANGELOG.md`, or both. The **source** (where the notes come from) and the **target** (what gets written) are independent — any source can write any surface.
 
 ```bash
 mint release regenerate <version> [options]
@@ -113,17 +113,22 @@ mint release regenerate --all [options]
 
 | Flag | Description |
 |---|---|
-| `--reuse` | source = the tag annotation body (no AI); implies `--target release` |
-| `--fresh` | source = re-diff + AI (default) |
+| `--source SOURCE` | where notes come from: `fresh` (re-diff + AI, default), `tag` (annotation body), or `release` (existing provider release body) |
 | `--target SURFACE` | surface(s) to write: `release`, `changelog`, or `both` |
 | `--all` | regenerate every version, oldest → newest |
 | `-y, --yes` | skip the confirmation / per-version review gate |
 | `--plain` | force plain (un-styled) output |
 
+The two axes are symmetric and independent: `--source` picks *where the notes come from*, `--target` picks *what gets written*. The `tag` and `release` sources run no AI — they read existing notes verbatim, which makes them a fast way to *backfill a `CHANGELOG.md`* from tags or releases you already have. `--source release` needs a resolvable provider (e.g. a GitHub origin). Under `-y` a `--target` is required (mint never guesses which live surface to rewrite unattended). In an `--all` run, a version with no usable source (a tag with no annotation, a release with no body, or a diff that fails AI generation) is skipped and reported — the other versions still land.
+
+Targets differ in what they touch: a `changelog` (or `both`) target **commits `CHANGELOG.md` and pushes it**; a `release` target updates the provider release in place with **no git changes**. Regenerated changelog entries keep each version's *original* release date, not today's. `both` is non-atomic — the changelog is committed and pushed first, then the provider release. There are only two surfaces, so `both` is how you write more than one; there is no partial multi-select beyond `release`, `changelog`, or `both`.
+
 ```bash
-mint release regenerate 1.4.0                       # interactive: asks source/target
-mint release regenerate v1.4.0 --reuse              # tag body → GitHub release, no AI
-mint release regenerate --all --target changelog    # rebuild the whole changelog
+mint release regenerate 1.4.0                                    # interactive: asks source then target
+mint release regenerate v1.4.0 --source tag                     # tag body → GitHub release, no AI
+mint release regenerate --all --source tag --target changelog   # build the whole changelog from tag annotations
+mint release regenerate --all --source release --target changelog # …or from the published GitHub releases
+mint release regenerate --all --source fresh --target both      # re-diff every version, rewrite releases + changelog
 ```
 
 ### `commit`

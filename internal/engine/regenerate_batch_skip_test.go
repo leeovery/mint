@@ -16,7 +16,7 @@ import (
 )
 
 // This file pins task 5-12: batch `--all` SKIP-AND-CONTINUE + END SUMMARY. A
-// per-version FAILURE (notes/diff-too-large; `--reuse --all` against a body-less tag)
+// per-version FAILURE (notes/diff-too-large; `--source tag --all` against a body-less tag)
 // is CAUGHT, RECORDED with a human reason, and the loop CONTINUES — consciously
 // OVERRIDING the single-version on_notes_failure=abort default. A CONFIG-level fact
 // (a changelog/both target with changelog=false) aborts the WHOLE batch UP FRONT,
@@ -41,7 +41,7 @@ func freshBodyOrDiffTooLarge(failTag string) func(context.Context, engine.Regene
 // per-version reuse body — the body that flows AFTER the engine's ReadTagBody
 // has-body check passes.
 func reuseBatchReq(versions []version.Resolution, yes bool) engine.BatchRegenerateRequest {
-	return batchReq(engine.RegenerateSourceReuse, versions, yes)
+	return batchReq(engine.RegenerateSourceTag, versions, yes)
 }
 
 // finishEvent returns the single RunFinished the recorder captured, failing if none
@@ -130,7 +130,7 @@ func TestRegenerateAll_DiffTooLargeSummaryReports(t *testing.T) {
 	}
 }
 
-// TestRegenerateAll_ReuseNoAnnotationBodySkipped proves `--reuse --all` against a tag
+// TestRegenerateAll_ReuseNoAnnotationBodySkipped proves `--source tag --all` against a tag
 // with NO annotation body is SKIPPED + reported (NOT the single-mode fail-loud
 // error): the batch continues and the body-less version lands in the skipped list.
 func TestRegenerateAll_ReuseNoAnnotationBodySkipped(t *testing.T) {
@@ -164,7 +164,7 @@ func TestRegenerateAll_ReuseNoAnnotationBodySkipped(t *testing.T) {
 
 	// The end summary names the skipped version with the --all reason variant.
 	fin := finishEvent(t, rec)
-	want := "2 regenerated, 1 skipped: " + batchV2Tag + " (no annotation body — use --fresh)"
+	want := "2 regenerated, 1 skipped: " + batchV2Tag + " (no annotation body — use --source fresh)"
 	if fin.Summary != want {
 		t.Errorf("RunFinished.Summary = %q, want %q", fin.Summary, want)
 	}
@@ -283,7 +283,7 @@ func TestRegenerateAllValidated_ValidConfigRunsBatch(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{}
 
-	// reuse forces a release-only target, which is config-valid even with changelog off.
+	// An explicit release target is config-valid even with the changelog off.
 	validReq := reuseBatchReq(threeVersions(), true)
 	validReq.Target = engine.RegenerateTargetRelease
 	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, t.TempDir(), validReq, false); err != nil {

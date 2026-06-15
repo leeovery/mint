@@ -8,16 +8,15 @@ import (
 	"mint/internal/runner"
 )
 
-// This file pins task 5-5: the regenerate --reuse SOURCE read — reading a tag's
-// annotation body back via ONE deterministic git call and using it WHOLE (no
-// parse). The body is the single source mint ever reads, written by the forward
-// path's annotated tag (`git tag -a … -F -`) as subject + blank line + body, so
-// `git for-each-ref --format=%(contents:body) refs/tags/<tag>` yields exactly the
-// body part.
+// This file pins task 5-5: the regenerate tag SOURCE read (`--source tag`) — reading a
+// tag's annotation body back via ONE deterministic git call and using it WHOLE (no
+// parse). The body is written by the forward path's annotated tag (`git tag -a … -F -`)
+// as subject + blank line + body, so `git for-each-ref --format=%(contents:body)
+// refs/tags/<tag>` yields exactly the body part.
 //
 // ReadTagBody is the low-level read returning (body, hasBody, err) so 5-12's --all
-// mode can branch on hasBody (skip-and-report); ReadReuseBody is single-mode's
-// fail-loud wrapper that turns a missing body into the exact "use --fresh" error.
+// mode can branch on hasBody (skip-and-report); RequireTagBody is single-mode's
+// fail-loud wrapper that turns a missing body into the exact "use --source fresh" error.
 
 const reuseTag = "v1.4.0"
 
@@ -110,31 +109,31 @@ func TestReadTagBody_NoBodyVariants(t *testing.T) {
 	}
 }
 
-// TestReadReuseBody_ReturnsBodyVerbatim proves single mode returns a non-empty body
+// TestRequireTagBody_ReturnsBodyVerbatim proves single mode returns a non-empty body
 // verbatim with no error — the reuse path hands it straight to the provider write.
-func TestReadReuseBody_ReturnsBodyVerbatim(t *testing.T) {
+func TestRequireTagBody_ReturnsBodyVerbatim(t *testing.T) {
 	t.Parallel()
 
 	body := "Release highlights\n\n- one\n- two\n"
 	f := runner.NewFakeRunner()
 	seedForEachRef(f, body)
 
-	got, err := engine.ReadReuseBody(t.Context(), f, reuseTag)
+	got, err := engine.RequireTagBody(t.Context(), f, reuseTag)
 	if err != nil {
-		t.Fatalf("ReadReuseBody returned %v, want nil", err)
+		t.Fatalf("RequireTagBody returned %v, want nil", err)
 	}
 	if got != body {
 		t.Errorf("body = %q, want verbatim %q", got, body)
 	}
 }
 
-// TestReadReuseBody_NoBodyFailsLoud proves single mode fails loud with the EXACT
-// message (em-dash and the `use --fresh` hint) for every "no annotation body"
+// TestRequireTagBody_NoBodyFailsLoud proves single mode fails loud with the EXACT
+// message (em-dash and the `use --source fresh` hint) for every "no annotation body"
 // shape — a lightweight tag, an empty body, and a whitespace-only body.
-func TestReadReuseBody_NoBodyFailsLoud(t *testing.T) {
+func TestRequireTagBody_NoBodyFailsLoud(t *testing.T) {
 	t.Parallel()
 
-	wantErr := "tag " + reuseTag + " has no annotation body — use --fresh"
+	wantErr := "tag " + reuseTag + " has no annotation body — use --source fresh"
 
 	tests := []struct {
 		name   string
@@ -152,9 +151,9 @@ func TestReadReuseBody_NoBodyFailsLoud(t *testing.T) {
 			f := runner.NewFakeRunner()
 			seedForEachRef(f, tt.output)
 
-			body, err := engine.ReadReuseBody(t.Context(), f, reuseTag)
+			body, err := engine.RequireTagBody(t.Context(), f, reuseTag)
 			if err == nil {
-				t.Fatalf("ReadReuseBody returned nil error, want the no-annotation-body failure")
+				t.Fatalf("RequireTagBody returned nil error, want the no-annotation-body failure")
 			}
 			if err.Error() != wantErr {
 				t.Errorf("error = %q, want exactly %q", err.Error(), wantErr)
@@ -166,18 +165,18 @@ func TestReadReuseBody_NoBodyFailsLoud(t *testing.T) {
 	}
 }
 
-// TestReadReuseBody_NoAIOrDiffOnReusePath proves the reuse read touches NOTHING but
+// TestRequireTagBody_NoAIOrDiffOnReusePath proves the reuse read touches NOTHING but
 // the single for-each-ref: no AI invocation and no diff assembly. The claude/gh
 // binaries and every other git command are left unseeded, so any stray call would
 // surface the FakeRunner's unseeded-command error; the read must still succeed.
-func TestReadReuseBody_NoAIOrDiffOnReusePath(t *testing.T) {
+func TestRequireTagBody_NoAIOrDiffOnReusePath(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
 	seedForEachRef(f, "verbatim body")
 
-	if _, err := engine.ReadReuseBody(t.Context(), f, reuseTag); err != nil {
-		t.Fatalf("ReadReuseBody returned %v, want nil", err)
+	if _, err := engine.RequireTagBody(t.Context(), f, reuseTag); err != nil {
+		t.Fatalf("RequireTagBody returned %v, want nil", err)
 	}
 
 	for _, inv := range f.Invocations() {

@@ -17,8 +17,9 @@ import (
 //   - an unset source ASKS via SourceGate, then an unset target ASKS via TargetGate —
 //     source THEN target, in that order;
 //   - a supplied source/target SKIPS its question;
-//   - a reuse source (by flag OR chosen interactively) FORCES target=release and never
-//     asks the target question (the 5-2 axis contract);
+//   - the axes are ORTHOGONAL: no source forces a target, so a reuse/from-release source
+//     with an unset target still ASKS the target question (a deterministic source can
+//     write the changelog, not just the provider release);
 //   - under -y the resolver still calls Prompt at every applicable gate (the presenter
 //     models the skip by returning the gate default).
 
@@ -107,41 +108,54 @@ func TestResolveRegenerateAxes_SuppliedTarget_SkipsTargetQuestion(t *testing.T) 
 	}
 }
 
-// TestResolveRegenerateAxes_ReuseFlag_ForcesReleaseWithoutAsking proves a reuse source
-// flag forces target=release and never asks the target question (the axis contract).
-func TestResolveRegenerateAxes_ReuseFlag_ForcesReleaseWithoutAsking(t *testing.T) {
-	t.Parallel()
-
-	rec := &presentertest.RecordingPresenter{}
-
-	source, target, err := engine.ResolveRegenerateAxes(rec,
-		engine.SourceOf(engine.RegenerateSourceReuse), engine.TargetUnset(), true)
-	if err != nil {
-		t.Fatalf("ResolveRegenerateAxes returned unexpected error: %v", err)
-	}
-	if source != engine.RegenerateSourceReuse {
-		t.Errorf("source = %v, want reuse", source)
-	}
-	if target != engine.RegenerateTargetRelease {
-		t.Errorf("target = %v, want release (reuse forces release)", target)
-	}
-	if got := axisGateSubjects(rec); len(got) != 0 {
-		t.Errorf("gate subjects = %v, want none (reuse flag skips source, forces release without asking)", got)
-	}
-}
-
-// TestResolveRegenerateAxes_ReuseChosenInteractively_ForcesReleaseWithoutAsking proves
-// that when reuse is chosen at the SOURCE PROMPT (no source flag), the target is forced
-// to release and the target question is never asked.
-func TestResolveRegenerateAxes_ReuseChosenInteractively_ForcesReleaseWithoutAsking(t *testing.T) {
+// TestResolveRegenerateAxes_ReuseFlag_AsksTargetWhenUnset proves the axes are
+// orthogonal: a reuse source flag with an UNSET target still ASKS the target question
+// (the source no longer forces release), so reuse can target the changelog.
+func TestResolveRegenerateAxes_ReuseFlag_AsksTargetWhenUnset(t *testing.T) {
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{
 		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
-			if g.Subject == "source" {
-				return presenter.Choice("reuse"), nil
+			if g.Subject == "target" {
+				return presenter.Choice("changelog"), nil
 			}
 			return presenter.ChoiceYes, nil
+		},
+	}
+
+	source, target, err := engine.ResolveRegenerateAxes(rec,
+		engine.SourceOf(engine.RegenerateSourceTag), engine.TargetUnset(), true)
+	if err != nil {
+		t.Fatalf("ResolveRegenerateAxes returned unexpected error: %v", err)
+	}
+	if source != engine.RegenerateSourceTag {
+		t.Errorf("source = %v, want tag", source)
+	}
+	if target != engine.RegenerateTargetChangelog {
+		t.Errorf("target = %v, want changelog (reuse can target the changelog)", target)
+	}
+	if got, want := axisGateSubjects(rec), []string{"target"}; !slices.Equal(got, want) {
+		t.Errorf("gate subjects = %v, want %v (reuse flag skips source but still asks the target)", got, want)
+	}
+}
+
+// TestResolveRegenerateAxes_ReleaseChosenInteractively_AsksTarget proves that when the
+// provider-release source is chosen at the SOURCE PROMPT (no source flag), the target is
+// still asked — source THEN target — and a deterministic source can resolve to the
+// changelog.
+func TestResolveRegenerateAxes_ReleaseChosenInteractively_AsksTarget(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
+			switch g.Subject {
+			case "source":
+				return presenter.Choice("release"), nil
+			case "target":
+				return presenter.Choice("changelog"), nil
+			default:
+				return presenter.ChoiceYes, nil
+			}
 		},
 	}
 
@@ -150,14 +164,14 @@ func TestResolveRegenerateAxes_ReuseChosenInteractively_ForcesReleaseWithoutAski
 	if err != nil {
 		t.Fatalf("ResolveRegenerateAxes returned unexpected error: %v", err)
 	}
-	if source != engine.RegenerateSourceReuse {
-		t.Errorf("source = %v, want reuse", source)
+	if source != engine.RegenerateSourceRelease {
+		t.Errorf("source = %v, want release", source)
 	}
-	if target != engine.RegenerateTargetRelease {
-		t.Errorf("target = %v, want release (reuse chosen interactively forces release)", target)
+	if target != engine.RegenerateTargetChangelog {
+		t.Errorf("target = %v, want changelog (a deterministic source can target the changelog)", target)
 	}
-	if got, want := axisGateSubjects(rec), []string{"source"}; !slices.Equal(got, want) {
-		t.Errorf("gate subjects = %v, want %v (reuse forces release; no target question)", got, want)
+	if got, want := axisGateSubjects(rec), []string{"source", "target"}; !slices.Equal(got, want) {
+		t.Errorf("gate subjects = %v, want %v (source then target — orthogonal axes)", got, want)
 	}
 }
 

@@ -84,7 +84,7 @@ func TestUsageTexts_CoverTheirFlagSets(t *testing.T) {
 		flags []string
 	}{
 		{"release", releaseUsage, []string{"--patch", "--minor", "--major", "--set-version", "--dry-run", "--yes", "--no-ai", "--autostash", "--any-branch", "--plain"}},
-		{"regenerate", regenerateUsage, []string{"--reuse", "--fresh", "--target", "--all", "--yes", "--plain"}},
+		{"regenerate", regenerateUsage, []string{"--source", "--target", "--all", "--yes", "--plain"}},
 		{"commit", commitUsage, []string{"--all", "--add-all", "--push", "--yes", "--no-ai", "--plain"}},
 		{"init", initUsage, []string{"--force", "--plain"}},
 	} {

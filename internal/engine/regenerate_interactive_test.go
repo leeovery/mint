@@ -23,9 +23,10 @@ import (
 //   - flags WITHOUT -y still confirm (the write path's confirm/review gate still runs);
 //   - -y → the engine still calls Prompt at every gate (the recorder models the
 //     presenter-internal skip by returning the gate default); no extra branching;
-//   - fresh → the four-choice notes-review gate runs before writing; reuse → the
-//     two-choice simple confirm only (assert which gate keys appear);
-//   - a reuse source forces target = release (the axis contract honoured interactively).
+//   - fresh → the four-choice notes-review gate runs before writing; the deterministic
+//     sources (reuse, release) → the two-choice simple confirm only (assert the keys);
+//   - the axes are orthogonal — a reuse/release source with an unset target still asks
+//     the target question (no source forces a target).
 
 const (
 	regenRunTag        = "v1.4.0"
@@ -40,7 +41,7 @@ const (
 // real AI/transport or tag read.
 func staticBody() func(context.Context, engine.RegenerateSource) (string, error) {
 	return func(_ context.Context, src engine.RegenerateSource) (string, error) {
-		if src == engine.RegenerateSourceReuse {
+		if src == engine.RegenerateSourceTag {
 			return regenRunReuseBody, nil
 		}
 		return regenRunFreshBody, nil
@@ -280,10 +281,9 @@ func TestRegenerateRun_Fresh_RunsNotesReviewGate(t *testing.T) {
 	}
 }
 
-// TestRegenerateRun_Reuse_SimpleConfirmOnly proves a reuse source runs the
-// two-choice simple confirm (y/n) only — no e/r review gate — and forces
-// target=release (the axis contract honoured interactively: the target question is
-// never asked).
+// TestRegenerateRun_Reuse_SimpleConfirmOnly proves a reuse source runs the two-choice
+// simple confirm (y/n) only — no e/r review gate. With the source and target both
+// supplied (reuse + release), neither axis question is asked, leaving only the confirm.
 func TestRegenerateRun_Reuse_SimpleConfirmOnly(t *testing.T) {
 	t.Parallel()
 
@@ -295,35 +295,33 @@ func TestRegenerateRun_Reuse_SimpleConfirmOnly(t *testing.T) {
 	pub.seedExists(regenRunTag, false, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	// Reuse source supplied, target UNSET: the axis contract forces release, so the
-	// target question must NOT be asked.
+	// Reuse source + release target both supplied: neither axis question is asked.
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceOf(engine.RegenerateSourceReuse), engine.TargetUnset(), false))
+		runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease), false))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
 
-	// Only the confirm gate fires (reuse skips its own source question via the flag,
-	// and the forced release target skips the target question).
+	// Only the confirm gate fires (both axes supplied, so no source/target question).
 	if got, want := gateSubjects(rec), []string{"notes"}; !slices.Equal(got, want) {
-		t.Errorf("reuse gate subjects = %v, want %v (forced target=release, no target question)", got, want)
+		t.Errorf("reuse gate subjects = %v, want %v (both axes supplied, only the confirm)", got, want)
 	}
 	confirm := confirmGate(t, rec)
 	wantKeys := []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo}
 	if !slices.Equal(confirm.Keys(), wantKeys) {
 		t.Errorf("reuse confirm gate keys = %v, want the simple confirm %v (no e/r)", confirm.Keys(), wantKeys)
 	}
-	// The reuse body flowed to the provider create (target forced to release).
+	// The reuse body flowed to the provider create (target=release).
 	if len(pub.dispatched) != 1 || pub.dispatched[0].body != regenRunReuseBody {
 		t.Errorf("provider dispatch = %+v, want one create with the reuse body", pub.dispatched)
 	}
 }
 
-// TestRegenerateRun_ReuseChosenInteractively_ForcesTargetRelease proves the axis
-// contract is honoured even when reuse is chosen at the SOURCE PROMPT (no source
-// flag): once the source resolves to reuse, the target is forced to release and the
-// target question is never asked.
-func TestRegenerateRun_ReuseChosenInteractively_ForcesTargetRelease(t *testing.T) {
+// TestRegenerateRun_TagChosenInteractively_AsksTarget proves the axes are orthogonal
+// even when the tag source is chosen at the SOURCE PROMPT (no source flag): once the
+// source resolves to tag, the target question is STILL asked (the source no longer
+// forces release), and a deterministic source runs the simple confirm.
+func TestRegenerateRun_TagChosenInteractively_AsksTarget(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -334,10 +332,14 @@ func TestRegenerateRun_ReuseChosenInteractively_ForcesTargetRelease(t *testing.T
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{
 		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
-			if g.Subject == "source" {
-				return presenter.Choice("reuse"), nil
+			switch g.Subject {
+			case "source":
+				return presenter.Choice("tag"), nil
+			case "target":
+				return presenter.Choice("release"), nil
+			default:
+				return presenter.ChoiceYes, nil
 			}
-			return presenter.ChoiceYes, nil
 		},
 	}
 
@@ -347,14 +349,14 @@ func TestRegenerateRun_ReuseChosenInteractively_ForcesTargetRelease(t *testing.T
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
 
-	// Source asked (and answered reuse), then NO target question, then the simple
-	// confirm — the axis contract forced release.
-	if got, want := gateSubjects(rec), []string{"source", "notes"}; !slices.Equal(got, want) {
-		t.Errorf("gate subjects = %v, want %v (reuse forces release; no target question)", got, want)
+	// Source asked (answered tag), THEN target asked (answered release), then the
+	// simple confirm — orthogonal axes, no forced target.
+	if got, want := gateSubjects(rec), []string{"source", "target", "notes"}; !slices.Equal(got, want) {
+		t.Errorf("gate subjects = %v, want %v (source then target then confirm — orthogonal axes)", got, want)
 	}
 	confirm := confirmGate(t, rec)
 	if !slices.Equal(confirm.Keys(), []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo}) {
-		t.Errorf("a reuse-chosen run used %v, want the simple confirm", confirm.Keys())
+		t.Errorf("a tag-chosen run used %v, want the simple confirm", confirm.Keys())
 	}
 }
 
@@ -571,7 +573,7 @@ func TestRegenerateRun_FailingGate_AbortsBeforeMutation(t *testing.T) {
 }
 
 // TestRegenerateRun_DowngradedReuse_SkipsGhAuthGate proves a downgraded
-// `regenerate --reuse` / `--target release` run (the provider could not be resolved
+// `regenerate --source tag` / `--target release` run (the provider could not be resolved
 // on a non-github / no-remote origin, so a NIL publisher is threaded) does NOT run
 // the gh-auth preflight gate: the gate is selected from the resolved publisher, not
 // the bare provider-writing target. A FAILING gh-auth recorder is seeded — if the
@@ -592,10 +594,10 @@ func TestRegenerateRun_DowngradedReuse_SkipsGhAuthGate(t *testing.T) {
 	var pub publish.Publisher
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceReuse), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease), false)
 	req.ReleaseBranch = regenRunReleaseBranch
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
-		t.Fatalf("downgraded --reuse run aborted: %v; the gh-auth gate must be skipped on a nil publisher", err)
+		t.Fatalf("downgraded --source tag run aborted: %v; the gh-auth gate must be skipped on a nil publisher", err)
 	}
 
 	if ghAuthRan(f) {
@@ -617,7 +619,7 @@ func TestRegenerateRun_ResolvedRelease_RunsGhAuthGate(t *testing.T) {
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceReuse), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease), false)
 	req.ReleaseBranch = regenRunReleaseBranch
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)

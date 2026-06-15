@@ -61,7 +61,7 @@ func freshWriteReq(target engine.RegenerateTarget) engine.RegenerateWriteRequest
 // target.
 func reuseWriteReq(target engine.RegenerateTarget) engine.RegenerateWriteRequest {
 	return engine.RegenerateWriteRequest{
-		Source:     engine.RegenerateSourceReuse,
+		Source:     engine.RegenerateSourceTag,
 		Target:     target,
 		Tag:        regenWriteTag,
 		VersionKey: regenWriteVersionKey,
@@ -346,7 +346,7 @@ func TestRegenerateWrite_Reuse_SimpleConfirmNoReviewGate(t *testing.T) {
 	pub.seedExists(regenWriteTag, false, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	// reuse implies --target release (release-only, no changelog write).
+	// reuse with a release target: the simple confirm, no changelog write.
 	if err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), pub, dir, reuseWriteReq(engine.RegenerateTargetRelease)); err != nil {
 		t.Fatalf("RegenerateWrite returned unexpected error: %v", err)
 	}

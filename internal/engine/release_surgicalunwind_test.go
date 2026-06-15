@@ -296,7 +296,7 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 // asymmetry holds under the rewired triggers: a publish-create failure AFTER a
 // successful atomic push does NOT route through the surgical unwind. No `git reset`
 // and no `git tag -d` are issued, no Unwound fires, the run warns (pointing to the
-// regenerate --reuse heal path) and still finishes successfully, returning nil.
+// regenerate --source tag heal path) and still finishes successfully, returning nil.
 func TestRelease_PublishFailsAfterPush_NeverUnwinds_Surgical(t *testing.T) {
 	t.Parallel()
 
@@ -329,7 +329,7 @@ func TestRelease_PublishFailsAfterPush_NeverUnwinds_Surgical(t *testing.T) {
 		t.Errorf("post-PONR publish failure did not surface a Warn")
 	}
 	if !publishHealWarnRecorded(rec) {
-		t.Errorf("publish-failure warn did not point to the regenerate --reuse heal path; warns = %v", warnMessages(rec))
+		t.Errorf("publish-failure warn did not point to the regenerate --source tag heal path; warns = %v", warnMessages(rec))
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.Kind != presentertest.KindRunFinished {
@@ -350,10 +350,10 @@ func countCmd(f *runner.FakeRunner, name string, args ...string) int {
 }
 
 // publishHealWarnRecorded reports whether any recorded Warn points to the
-// regenerate --reuse heal path — the spec-fixed post-PONR publish-failure guidance.
+// regenerate --source tag heal path — the spec-fixed post-PONR publish-failure guidance.
 func publishHealWarnRecorded(rec *presentertest.RecordingPresenter) bool {
 	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindWarn && strings.Contains(ev.Warn.Message, "regenerate --reuse") {
+		if ev.Kind == presentertest.KindWarn && strings.Contains(ev.Warn.Message, "regenerate --source tag") {
 			return true
 		}
 	}

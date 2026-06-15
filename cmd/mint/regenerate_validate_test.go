@@ -7,14 +7,13 @@ import (
 	"mint/internal/engine"
 )
 
-// TestValidateRegenerateRequest covers the Phase 5-2 semantic axis-contract
-// validation that runs AFTER the 5-1 parse, with access to the loaded config's
-// changelog bool. It enforces the source × target contract: --reuse is
-// release-only (and implies --target release when unset), --target
-// changelog/both is rejected when the changelog is disabled in config, and a
-// fresh -y run with no --target is rejected because there is no surface to
-// guess unattended. A fresh run WITHOUT -y and without --target is left for the
-// interactive prompt (task 5-10) and does NOT error here.
+// TestValidateRegenerateRequest covers the semantic axis validation that runs AFTER the
+// parse, with access to the loaded config's changelog bool. The source and target axes
+// are ORTHOGONAL — every source (fresh, reuse, from-release) can write every target — so
+// the validator NEVER mutates the target (no implied release) and rejects only a
+// changelog-disabled target or a -y run with no --target. The target passes through
+// unchanged on every success case; a run WITHOUT -y and without --target is left for the
+// interactive prompt and does NOT error here.
 func TestValidateRegenerateRequest(t *testing.T) {
 	t.Parallel()
 
@@ -25,20 +24,32 @@ func TestValidateRegenerateRequest(t *testing.T) {
 		wantTarget       regenerateTarget
 	}{
 		{
-			name:             "reuse with no target resolves target to release",
-			req:              regenerateRequest{Source: sourceReuse, Target: targetUnset},
+			name:             "reuse with no target stays unset (deferred to interactive, not forced to release)",
+			req:              regenerateRequest{Source: sourceTag, Target: targetUnset},
 			changelogEnabled: true,
-			wantTarget:       targetRelease,
+			wantTarget:       targetUnset,
 		},
 		{
-			name:             "reuse target resolution to release is unaffected by -y",
-			req:              regenerateRequest{Source: sourceReuse, Target: targetUnset, Yes: true},
+			name:             "reuse target changelog passes through (orthogonal axes)",
+			req:              regenerateRequest{Source: sourceTag, Target: targetChangelog},
 			changelogEnabled: true,
-			wantTarget:       targetRelease,
+			wantTarget:       targetChangelog,
+		},
+		{
+			name:             "reuse target both passes through",
+			req:              regenerateRequest{Source: sourceTag, Target: targetBoth},
+			changelogEnabled: true,
+			wantTarget:       targetBoth,
+		},
+		{
+			name:             "from-release target changelog passes through",
+			req:              regenerateRequest{Source: sourceRelease, Target: targetChangelog},
+			changelogEnabled: true,
+			wantTarget:       targetChangelog,
 		},
 		{
 			name:             "reuse with explicit target release passes through unchanged",
-			req:              regenerateRequest{Source: sourceReuse, Target: targetRelease},
+			req:              regenerateRequest{Source: sourceTag, Target: targetRelease},
 			changelogEnabled: true,
 			wantTarget:       targetRelease,
 		},
@@ -61,16 +72,16 @@ func TestValidateRegenerateRequest(t *testing.T) {
 			wantTarget:       targetUnset,
 		},
 		{
-			name:             "fresh --all without -y and without target stays unset",
-			req:              regenerateRequest{Source: sourceFresh, Target: targetUnset, All: true},
+			name:             "reuse without -y and without target stays unset (deferred to interactive)",
+			req:              regenerateRequest{Source: sourceTag, Target: targetUnset},
 			changelogEnabled: true,
 			wantTarget:       targetUnset,
 		},
 		{
-			name:             "reuse no target -y with changelog disabled resolves to release without tripping changelog check",
-			req:              regenerateRequest{Source: sourceReuse, Target: targetUnset, Yes: true},
-			changelogEnabled: false,
-			wantTarget:       targetRelease,
+			name:             "fresh --all without -y and without target stays unset",
+			req:              regenerateRequest{Source: sourceFresh, Target: targetUnset, All: true},
+			changelogEnabled: true,
+			wantTarget:       targetUnset,
 		},
 	}
 
@@ -108,9 +119,10 @@ func TestValidateRegenerateRequest_PreservesPlain(t *testing.T) {
 	}
 }
 
-// TestValidateRegenerateRequest_Errors covers the fail-loud axis-contract
-// violations with their EXACT spec messages, in the order the validator applies
-// them (most specific message wins).
+// TestValidateRegenerateRequest_Errors covers the fail-loud violations with their EXACT
+// messages. With the axes orthogonal, only two checks remain: a changelog-disabled
+// target, and a -y run with no --target (for EVERY source — no source has a safe default
+// surface to guess unattended).
 func TestValidateRegenerateRequest_Errors(t *testing.T) {
 	t.Parallel()
 
@@ -120,24 +132,6 @@ func TestValidateRegenerateRequest_Errors(t *testing.T) {
 		changelogEnabled bool
 		wantMsg          string
 	}{
-		{
-			name:             "reuse target changelog errors release-only",
-			req:              regenerateRequest{Source: sourceReuse, Target: targetChangelog},
-			changelogEnabled: true,
-			wantMsg:          "--reuse writes the provider release only; it cannot target the changelog",
-		},
-		{
-			name:             "reuse target both errors release-only",
-			req:              regenerateRequest{Source: sourceReuse, Target: targetBoth},
-			changelogEnabled: true,
-			wantMsg:          "--reuse writes the provider release only; it cannot target the changelog",
-		},
-		{
-			name:             "reuse target changelog with changelog disabled wins release-only over changelog-disabled",
-			req:              regenerateRequest{Source: sourceReuse, Target: targetChangelog},
-			changelogEnabled: false,
-			wantMsg:          "--reuse writes the provider release only; it cannot target the changelog",
-		},
 		{
 			name:             "target changelog with changelog disabled errors",
 			req:              regenerateRequest{Source: sourceFresh, Target: targetChangelog},
@@ -151,16 +145,34 @@ func TestValidateRegenerateRequest_Errors(t *testing.T) {
 			wantMsg:          "changelog is disabled in config",
 		},
 		{
+			name:             "reuse target changelog with changelog disabled errors",
+			req:              regenerateRequest{Source: sourceTag, Target: targetChangelog},
+			changelogEnabled: false,
+			wantMsg:          "changelog is disabled in config",
+		},
+		{
 			name:             "fresh -y without target errors",
 			req:              regenerateRequest{Source: sourceFresh, Target: targetUnset, Yes: true},
 			changelogEnabled: true,
-			wantMsg:          "--target is required with --fresh -y",
+			wantMsg:          "--target is required with -y",
+		},
+		{
+			name:             "reuse -y without target errors (no implied release)",
+			req:              regenerateRequest{Source: sourceTag, Target: targetUnset, Yes: true},
+			changelogEnabled: true,
+			wantMsg:          "--target is required with -y",
+		},
+		{
+			name:             "from-release -y without target errors",
+			req:              regenerateRequest{Source: sourceRelease, Target: targetUnset, Yes: true},
+			changelogEnabled: true,
+			wantMsg:          "--target is required with -y",
 		},
 		{
 			name:             "fresh --all -y without target errors",
 			req:              regenerateRequest{Source: sourceFresh, Target: targetUnset, All: true, Yes: true},
 			changelogEnabled: true,
-			wantMsg:          "--target is required with --fresh -y",
+			wantMsg:          "--target is required with -y",
 		},
 	}
 

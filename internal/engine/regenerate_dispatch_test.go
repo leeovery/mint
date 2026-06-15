@@ -19,6 +19,10 @@ type fakePublisher struct {
 	// existsByTag scripts ReleaseExists per tag: the bool it returns and an optional
 	// probe error. An unscripted tag returns (false, nil) — the absent default.
 	existsByTag map[string]existsOutcome
+	// bodyByTag scripts ReadReleaseBody per tag (the provider-release SOURCE read): the
+	// body, whether it has a usable body, and an optional read error. An unscripted tag
+	// returns ("", false, nil) — the absent default.
+	bodyByTag map[string]releaseBodyOutcome
 	// dispatched records each routed mutation in call order.
 	dispatched []dispatchedCall
 	// beforeDispatch, when set, fires at the START of each routed mutation (before
@@ -35,6 +39,12 @@ type existsOutcome struct {
 	err    error
 }
 
+type releaseBodyOutcome struct {
+	body    string
+	hasBody bool
+	err     error
+}
+
 type dispatchedCall struct {
 	method string // "create" or "update"
 	tag    string
@@ -43,7 +53,10 @@ type dispatchedCall struct {
 }
 
 func newFakePublisher() *fakePublisher {
-	return &fakePublisher{existsByTag: make(map[string]existsOutcome)}
+	return &fakePublisher{
+		existsByTag: make(map[string]existsOutcome),
+		bodyByTag:   make(map[string]releaseBodyOutcome),
+	}
 }
 
 // Compile-time assertion that the double satisfies the seam the dispatch depends on.
@@ -53,9 +66,18 @@ func (f *fakePublisher) seedExists(tag string, exists bool, err error) {
 	f.existsByTag[tag] = existsOutcome{exists: exists, err: err}
 }
 
+func (f *fakePublisher) seedReleaseBody(tag, body string, hasBody bool, err error) {
+	f.bodyByTag[tag] = releaseBodyOutcome{body: body, hasBody: hasBody, err: err}
+}
+
 func (f *fakePublisher) ReleaseExists(_ context.Context, tag string) (bool, error) {
 	o := f.existsByTag[tag]
 	return o.exists, o.err
+}
+
+func (f *fakePublisher) ReadReleaseBody(_ context.Context, tag string) (string, bool, error) {
+	o := f.bodyByTag[tag]
+	return o.body, o.hasBody, o.err
 }
 
 func (f *fakePublisher) CreateRelease(_ context.Context, tag, title, body string) (string, error) {

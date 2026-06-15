@@ -303,6 +303,117 @@ func TestGitHubPublisher_ReleaseExists_MissingGhSurfacesError(t *testing.T) {
 	}
 }
 
+func TestGitHubPublisher_ReadReleaseBody_ReturnsBodyVerbatim(t *testing.T) {
+	t.Parallel()
+
+	// A release that exists makes `gh release view {tag} --json body --template
+	// {{.body}}` exit zero with the body on stdout. ReadReleaseBody must return that
+	// body verbatim, report hasBody=true, and probe via exactly that gh argv.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{Stdout: "## Notes\n\nfixed a bug"}, nil)
+
+	p := publish.NewGitHubPublisher(r)
+
+	body, hasBody, err := p.ReadReleaseBody(t.Context(), "v1.2.3")
+	if err != nil {
+		t.Fatalf("ReadReleaseBody returned unexpected error: %v", err)
+	}
+	if !hasBody {
+		t.Errorf("hasBody = false, want true when the release carries a body")
+	}
+	if body != "## Notes\n\nfixed a bug" {
+		t.Errorf("body = %q, want the release body verbatim", body)
+	}
+
+	invs := r.Invocations()
+	if len(invs) != 1 {
+		t.Fatalf("invocations = %d, want 1", len(invs))
+	}
+	got := invs[0]
+	if got.Name != "gh" {
+		t.Errorf("command = %q, want gh", got.Name)
+	}
+	wantArgs := []string{"release", "view", "v1.2.3", "--json", "body", "--template", "{{.body}}"}
+	if !equalArgs(got.Args, wantArgs) {
+		t.Errorf("args = %v, want %v", got.Args, wantArgs)
+	}
+}
+
+func TestGitHubPublisher_ReadReleaseBody_EmptyBodyReportsNoBody(t *testing.T) {
+	t.Parallel()
+
+	// A release that exists but carries an empty/whitespace-only body must report
+	// hasBody=false (with no error) so the caller never writes an empty body downstream.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{Stdout: "  \n"}, nil)
+
+	p := publish.NewGitHubPublisher(r)
+
+	_, hasBody, err := p.ReadReleaseBody(t.Context(), "v1.2.3")
+	if err != nil {
+		t.Fatalf("ReadReleaseBody returned unexpected error: %v", err)
+	}
+	if hasBody {
+		t.Errorf("hasBody = true, want false for a whitespace-only release body")
+	}
+}
+
+func TestGitHubPublisher_ReadReleaseBody_AbsentReleaseIsCleanNoBody(t *testing.T) {
+	t.Parallel()
+
+	// An absent release makes `gh release view` exit non-zero printing "release not
+	// found"; ReadReleaseBody must classify that as a clean no-body (hasBody=false, no
+	// error) — the --all skip / single fail-loud branch point, not a surfaced failure.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{
+		Stderr:   "release not found\n",
+		ExitCode: 1,
+	}, errors.New("exit status 1"))
+
+	p := publish.NewGitHubPublisher(r)
+
+	_, hasBody, err := p.ReadReleaseBody(t.Context(), "v1.2.3")
+	if err != nil {
+		t.Fatalf("ReadReleaseBody returned unexpected error for an absent release: %v", err)
+	}
+	if hasBody {
+		t.Errorf("hasBody = true, want false when the release is absent")
+	}
+}
+
+func TestGitHubPublisher_ReadReleaseBody_GenuineFailureSurfacesError(t *testing.T) {
+	t.Parallel()
+
+	// A non-zero `gh release view` exit that is NOT a not-found (auth/network) is a
+	// genuine read failure ReadReleaseBody must surface rather than treat as no-body.
+	r := runner.NewFakeRunner()
+	r.Seed("gh", runner.Result{
+		Stderr:   "HTTP 401: Bad credentials\n",
+		ExitCode: 1,
+	}, errors.New("exit status 1"))
+
+	p := publish.NewGitHubPublisher(r)
+
+	if _, _, err := p.ReadReleaseBody(t.Context(), "v1.2.3"); err == nil {
+		t.Fatal("ReadReleaseBody returned nil error, want a genuine read failure surfaced")
+	}
+}
+
+func TestGitHubPublisher_ReadReleaseBody_MissingGhSurfacesError(t *testing.T) {
+	t.Parallel()
+
+	// A missing gh binary is a prerequisite failure (not "release absent"): the runner
+	// reports ErrCommandNotFound, which ReadReleaseBody must surface.
+	r := runner.NewFakeRunner()
+	r.SeedNotFound("gh")
+
+	p := publish.NewGitHubPublisher(r)
+
+	if _, _, err := p.ReadReleaseBody(t.Context(), "v1.2.3"); err == nil {
+		t.Fatal("ReadReleaseBody returned nil error, want the missing-gh failure surfaced")
+	}
+}
+
 func TestGitHubPublisher_SatisfiesPublisher(t *testing.T) {
 	t.Parallel()
 

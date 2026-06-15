@@ -162,10 +162,12 @@ func TestRebuildChangelog_ByteIdenticalReportsNoChange(t *testing.T) {
 	}
 }
 
-// TestRebuildChangelog_PreservedSectionMissing_Errors proves a PreservedSection for a
-// version absent from the existing file is a loud error (the caller asked to preserve a
-// section that does not exist — a programming/data fault, never silently dropped).
-func TestRebuildChangelog_PreservedSectionMissing_Errors(t *testing.T) {
+// TestRebuildChangelog_PreservedSectionMissing_Omitted proves a PreservedSection for a
+// version absent from the existing file is simply OMITTED — there is nothing to
+// preserve — rather than aborting the rebuild. This is the regression guard for the
+// batch bug where one skipped version with no recorded section (a fresh CHANGELOG, or a
+// version that reliably fails AI generation) discarded every other regenerated section.
+func TestRebuildChangelog_PreservedSectionMissing_Omitted(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -173,10 +175,22 @@ func TestRebuildChangelog_PreservedSectionMissing_Errors(t *testing.T) {
 
 	sections := []record.ChangelogSection{
 		record.RenderedSection("2.0.0", rebuildDate(t, 3), "## v2 body\n"),
-		record.PreservedSection("1.0.0"), // not present in the file
+		record.PreservedSection("1.0.0"), // not present in the file — omitted, not fatal
 	}
 
-	if _, err := record.RebuildChangelog(dir, sections); err == nil {
-		t.Fatal("RebuildChangelog returned nil error, want a loud error for a missing preserved section")
+	result, err := record.RebuildChangelog(dir, sections)
+	if err != nil {
+		t.Fatalf("RebuildChangelog returned unexpected error: %v", err)
+	}
+	if !result.Changed {
+		t.Errorf("Changed = false, want true (the 2.0.0 section was re-rendered)")
+	}
+
+	// The rebuilt file carries the rendered 2.0.0 section and NOT the absent 1.0.0 —
+	// the missing preserved section is dropped, the rest survives.
+	got := readChangelog(t, dir)
+	want := kacPreamble + "\n" + "## [2.0.0] - 2024-03-03\n\n## v2 body\n\n"
+	if got != want {
+		t.Errorf("rebuilt CHANGELOG.md =\n%q\nwant the rendered 2.0.0 section with 1.0.0 omitted\n%q", got, want)
 	}
 }

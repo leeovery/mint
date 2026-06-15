@@ -16,7 +16,7 @@ import (
 // cuts a tag, so tag-free NEVER runs, and there is no version compute in any mode.
 //
 // The four concrete cases (driven off the resolved target):
-//   - --reuse / fresh --target release (provider write only) → gh-auth ONLY.
+//   - --source tag / fresh --target release (provider write only) → gh-auth ONLY.
 //   - fresh --target changelog (commits + pushes, no provider) → clean-tree +
 //     on-branch + remote-sync; NO gh-auth.
 //   - fresh --target both → gh-auth + clean-tree + on-branch + remote-sync.
@@ -75,7 +75,7 @@ func tagFreeRemoteRan(f *runner.FakeRunner) bool {
 	return false
 }
 
-// releaseGateSet is the resolved selection for a --reuse / --target release run:
+// releaseGateSet is the resolved selection for a --source tag / --target release run:
 // a provider write only, no git mutation.
 func releaseGateSet() engine.RegenerateGateSet {
 	return engine.RegenerateGateSet{CallsProvider: true}
@@ -93,7 +93,7 @@ func bothGateSet() engine.RegenerateGateSet {
 	return engine.RegenerateGateSet{CallsProvider: true, CommitsAndPushes: true}
 }
 
-// TestRegeneratePreflight_Reuse_GhAuthOnly proves a --reuse / --target release run
+// TestRegeneratePreflight_Reuse_GhAuthOnly proves a --source tag / --target release run
 // runs gh-auth ONLY — no clean-tree, on-branch, remote-sync, or tag-free.
 func TestRegeneratePreflight_Reuse_GhAuthOnly(t *testing.T) {
 	t.Parallel()
@@ -108,16 +108,16 @@ func TestRegeneratePreflight_Reuse_GhAuthOnly(t *testing.T) {
 	}
 
 	if !ghAuthRan(f) {
-		t.Errorf("--reuse did not run gh-auth; it MUST (a dead gh auth is the usual heal reason)")
+		t.Errorf("--source tag did not run gh-auth; it MUST (a dead gh auth is the usual heal reason)")
 	}
 	if cleanTreeRan(f) {
-		t.Errorf("--reuse ran the clean-tree gate; release-only has no git mutation")
+		t.Errorf("--source tag ran the clean-tree gate; release-only has no git mutation")
 	}
 	if onBranchRan(f) {
-		t.Errorf("--reuse ran the on-branch gate; release-only has no git mutation")
+		t.Errorf("--source tag ran the on-branch gate; release-only has no git mutation")
 	}
 	if remoteSyncRan(f) {
-		t.Errorf("--reuse ran the remote-sync gate; release-only has no git mutation")
+		t.Errorf("--source tag ran the remote-sync gate; release-only has no git mutation")
 	}
 	assertNoTagFreeGate(t, f)
 }
@@ -195,7 +195,7 @@ func TestRegeneratePreflight_FreshBoth_AllApplicableGates(t *testing.T) {
 
 // TestRegeneratePreflight_FreshRelease_GhAuthOnly proves a fresh --target release
 // run (provider write only, no changelog commit) runs gh-auth ONLY — the same
-// subset as --reuse.
+// subset as --source tag.
 func TestRegeneratePreflight_FreshRelease_GhAuthOnly(t *testing.T) {
 	t.Parallel()
 
@@ -327,7 +327,7 @@ func TestRegeneratePreflight_NoVersionCompute(t *testing.T) {
 }
 
 // TestRegeneratePreflight_GhAuthFails_OnReuse_Aborts proves a failing APPLICABLE
-// gate aborts cleanly before any work: gh-auth not authenticated on a --reuse run
+// gate aborts cleanly before any work: gh-auth not authenticated on a --source tag run
 // surfaces a StageFailed and aborts non-zero.
 func TestRegeneratePreflight_GhAuthFails_OnReuse_Aborts(t *testing.T) {
 	t.Parallel()
@@ -341,7 +341,7 @@ func TestRegeneratePreflight_GhAuthFails_OnReuse_Aborts(t *testing.T) {
 	assertAbortNonZero(t, err)
 
 	if !recorded(rec, presentertest.KindStageFailed) {
-		t.Errorf("gh-auth failure on --reuse did not surface a StageFailed")
+		t.Errorf("gh-auth failure on --source tag did not surface a StageFailed")
 	}
 }
 

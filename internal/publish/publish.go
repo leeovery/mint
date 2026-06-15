@@ -36,7 +36,7 @@ import (
 //
 // CreateRelease publishes a brand-new provider release for tag, with the given
 // title and full notes body, and returns the created release's URL. UpdateRelease
-// overwrites the release for an existing tag (the heal/regenerate --reuse path
+// overwrites the release for an existing tag (the heal/regenerate --source tag path
 // recreates a provider release from the tag annotation) and returns the updated
 // release's URL; it is part of the seam from the start so drivers implement the
 // whole contract.
@@ -51,10 +51,20 @@ import (
 // (exists) over CreateRelease (absent) per version. "Absent" is a clean false with
 // NO error; a genuine probe failure (missing CLI, auth/network) is surfaced so the
 // dispatch never silently defaults to create on a real failure.
+//
+// ReadReleaseBody is the regenerate provider-release SOURCE read: it returns the
+// published release's body verbatim so a regenerate run can re-project the existing
+// release notes onto the changelog (or back onto the release). It mirrors the tag
+// annotation reuse read (engine.ReadTagBody): hasBody reports whether the release
+// carries a usable body, the single branch point both regenerate modes consume
+// (single → fail loud, --all → skip-and-continue). An ABSENT release is a clean
+// (\"\", false, nil) — there is nothing to read, not a failure; a genuine read
+// failure (missing CLI, auth/network) is surfaced.
 type Publisher interface {
 	CreateRelease(ctx context.Context, tag, title, body string) (url string, err error)
 	UpdateRelease(ctx context.Context, tag, title, body string) (url string, err error)
 	ReleaseExists(ctx context.Context, tag string) (bool, error)
+	ReadReleaseBody(ctx context.Context, tag string) (body string, hasBody bool, err error)
 }
 
 // GitHubPublisher is the GitHub Publisher driver. It shells the `gh` CLI through
@@ -182,4 +192,38 @@ func (p *GitHubPublisher) UpdateRelease(ctx context.Context, tag, title, body st
 		return "", fmt.Errorf("updating GitHub release for tag %q: %w", tag, err)
 	}
 	return strings.TrimSpace(res.Stdout), nil
+}
+
+// ReadReleaseBody reads the published release's body for tag via
+// `gh release view {tag} --json body --template {{.body}}` through the CommandRunner.
+// The `--template` form (not `--jq`) emits the body bytes WITHOUT jq's appended
+// trailing newline, so the body round-trips verbatim — the same verbatim philosophy
+// the tag-annotation reuse read (engine.ReadTagBody) follows.
+//
+// The non-zero classification mirrors ReleaseExists exactly, because an absent release
+// is not a read failure:
+//   - "release not found" in stderr → the release is ABSENT, so this returns
+//     ("", false, nil) and the caller skips (--all) or fails loud (single).
+//   - a missing gh binary (ErrCommandNotFound) or any other non-zero exit (auth,
+//     network) → a GENUINE read failure, surfaced as a wrapped error.
+//
+// hasBody is the trim-and-check-empty signal: a release that exists but carries an
+// empty/whitespace-only body surfaces as ("…", false, nil), so the caller never writes
+// an empty body downstream. The returned body is the RAW template stdout (verbatim,
+// never trimmed); only the hasBody decision trims.
+func (p *GitHubPublisher) ReadReleaseBody(ctx context.Context, tag string) (string, bool, error) {
+	res, err := p.runner.Run(ctx, "gh", "release", "view", tag, "--json", "body", "--template", "{{.body}}")
+	if err != nil {
+		// A missing gh binary is never "release absent" — it is a prerequisite failure.
+		if errors.Is(err, runner.ErrCommandNotFound) {
+			return "", false, fmt.Errorf("reading GitHub release body for tag %q: %w", tag, err)
+		}
+		// gh ran and exited non-zero: only the not-found marker means absent; anything
+		// else (auth, network, …) is a genuine failure that must surface.
+		if strings.Contains(res.Stderr, notFoundMarker) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("reading GitHub release body for tag %q: %w", tag, err)
+	}
+	return res.Stdout, strings.TrimSpace(res.Stdout) != "", nil
 }

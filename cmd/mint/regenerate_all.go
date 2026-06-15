@@ -9,6 +9,7 @@ import (
 	"mint/internal/config"
 	"mint/internal/engine"
 	"mint/internal/presenter"
+	"mint/internal/publish"
 	"mint/internal/runner"
 	"mint/internal/version"
 )
@@ -62,7 +63,7 @@ func runRegenerateAll(ctx context.Context, deps engine.ReleaseDeps, r runner.Com
 		// axis prompts above resolve the target — the only point at which a bare `--all`
 		// (no --target) knows which surface(s) it writes.
 		ReleaseBranch: releaseBranch,
-		ProduceBody:   newBatchBodyProducer(r, cfg, root),
+		ProduceBody:   newBatchBodyProducer(r, cfg, root, publisher),
 		// Each version's fresh notes-review gate `r` choice consults this per-version
 		// regenerator, bound to that version's resolved range. Without it the rendered
 		// `r` would abort on every interactive fresh `--all` backfill.
@@ -79,46 +80,56 @@ func runRegenerateAll(ctx context.Context, deps engine.ReleaseDeps, r runner.Com
 // SHARED engine resolver (engine.ResolveRegenerateAxes), the same gate idiom the
 // single-version interactive flow uses. It maps the validated cmd request onto the
 // engine's optional-axis types (reusing regenerateRunAxes — a supplied flag skips its
-// question, an unset axis is asked), then delegates: an unset source asks SourceGate, an
-// unset target on a fresh source asks TargetGate, and a reuse source forces release
-// without asking (the 5-2 axis contract). It returns the resolved engine enums or a
-// surfaced gate abort.
+// question, an unset axis is asked), then delegates: an unset source asks SourceGate and
+// an unset target asks TargetGate, for every source (the axes are orthogonal — no source
+// forces a target). It returns the resolved engine enums or a surfaced gate abort.
 func resolveBatchAxes(p presenter.Presenter, req regenerateRequest, changelogEnabled bool) (engine.RegenerateSource, engine.RegenerateTarget, error) {
 	source, target := regenerateRunAxes(req)
 	return engine.ResolveRegenerateAxes(p, source, target, changelogEnabled)
 }
 
 // newBatchBodyProducer builds the canonical, Resolution-keyed ProduceBody closure: per
-// version it dispatches to the matching 5-5 reuse read or 5-6 fresh re-diff+AI producer
-// for the resolved source. This is the single home of the body reuse/fresh dispatch — the
-// batch path threads each version's Resolution through it, and newRegenerateBodyProducer
-// binds the single-version's fixed Resolution and delegates here.
-func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
-	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution, reuseBody string) (string, error) {
-		if source == engine.RegenerateSourceReuse {
+// version it dispatches to the matching deterministic read (reuse → tag annotation,
+// release → provider release body) or the fresh re-diff+AI producer for the resolved
+// source. This is the single home of the body source dispatch — the batch path threads
+// each version's Resolution through it, and newRegenerateBodyProducer binds the
+// single-version's fixed Resolution and delegates here. The publisher backs the
+// provider-release read.
+func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string, publisher publish.Publisher) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
+	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution, preReadBody string) (string, error) {
+		switch source {
+		case engine.RegenerateSourceTag:
 			// The batch loop pre-reads the annotation body for its skip check and
 			// threads it through, so each tag is read ONCE; the single-version
-			// delegation never pre-reads (empty reuseBody) and reads here instead.
-			if reuseBody != "" {
-				return reuseBody, nil
+			// delegation never pre-reads (empty preReadBody) and reads here instead.
+			if preReadBody != "" {
+				return preReadBody, nil
 			}
-			return engine.ReadReuseBody(ctx, r, res.Tag)
+			return engine.RequireTagBody(ctx, r, res.Tag)
+		case engine.RegenerateSourceRelease:
+			// As with reuse: the batch pre-reads the release body (one read per version),
+			// the single-version delegation reads here through the Publisher seam.
+			if preReadBody != "" {
+				return preReadBody, nil
+			}
+			return engine.RequireReleaseBody(ctx, publisher, res.Tag)
+		default:
+			return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res)
 		}
-		return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res)
 	}
 }
 
 // newBatchRegeneratorProducer builds the canonical, Resolution-keyed ProduceRegenerator
 // closure: per version it binds the per-version fresh regenerator
 // (engine.RegenerateFreshRegenerator over that version's resolved range) for a FRESH
-// source — backing each version's notes-review gate `r` choice — and returns nil for REUSE
-// (the simple confirm has no review gate). This is the single home of the regenerator
-// reuse/fresh dispatch — the batch path threads each version's Resolution through it, and
-// newRegenerateRegeneratorProducer binds the single-version's fixed Resolution and
-// delegates here.
+// source — backing each version's notes-review gate `r` choice — and returns nil for the
+// deterministic sources (reuse, release), whose simple confirm has no review gate. This
+// is the single home of the regenerator source dispatch — the batch path threads each
+// version's Resolution through it, and newRegenerateRegeneratorProducer binds the
+// single-version's fixed Resolution and delegates here.
 func newBatchRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string) func(engine.RegenerateSource, version.Resolution) engine.Regenerator {
 	return func(source engine.RegenerateSource, res version.Resolution) engine.Regenerator {
-		if source == engine.RegenerateSourceReuse {
+		if source != engine.RegenerateSourceFresh {
 			return nil
 		}
 		return engine.RegenerateFreshRegenerator(r, nil, root, cfg, res)

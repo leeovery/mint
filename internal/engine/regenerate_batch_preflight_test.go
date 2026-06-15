@@ -98,7 +98,7 @@ func TestRegenerateAllValidated_InteractiveRelease_RunsGhAuthBeforeFirstDispatch
 	}
 	rec := &presentertest.RecordingPresenter{}
 
-	req := batchReq(engine.RegenerateSourceReuse, threeVersions(), true)
+	req := batchReq(engine.RegenerateSourceTag, threeVersions(), true)
 	req.Target = engine.RegenerateTargetRelease
 	req.ReleaseBranch = regenReleaseBranch
 	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true); err != nil {
@@ -117,7 +117,7 @@ func TestRegenerateAllValidated_InteractiveRelease_RunsGhAuthBeforeFirstDispatch
 }
 
 // TestRegenerateAllValidated_DowngradedReuse_SkipsGhAuthGate proves a downgraded
-// `regenerate --reuse --all` / `--target release` batch (the provider could not be
+// `regenerate --source tag --all` / `--target release` batch (the provider could not be
 // resolved on a non-github / no-remote origin, so a NIL publisher is threaded for the
 // WHOLE batch) does NOT run the gh-auth preflight gate: the gate is selected from the
 // resolved publisher, not the bare provider-writing target. A FAILING gh-auth recorder
@@ -140,11 +140,11 @@ func TestRegenerateAllValidated_DowngradedReuse_SkipsGhAuthGate(t *testing.T) {
 	var pub publish.Publisher
 	rec := &presentertest.RecordingPresenter{}
 
-	req := batchReq(engine.RegenerateSourceReuse, threeVersions(), true)
+	req := batchReq(engine.RegenerateSourceTag, threeVersions(), true)
 	req.Target = engine.RegenerateTargetRelease
 	req.ReleaseBranch = regenReleaseBranch
 	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true); err != nil {
-		t.Fatalf("downgraded --reuse --all batch aborted: %v; the gh-auth gate must be skipped on a nil publisher", err)
+		t.Fatalf("downgraded --source tag --all batch aborted: %v; the gh-auth gate must be skipped on a nil publisher", err)
 	}
 
 	if ghAuthRan(f) {
@@ -153,7 +153,7 @@ func TestRegenerateAllValidated_DowngradedReuse_SkipsGhAuthGate(t *testing.T) {
 }
 
 // TestRegenerateAllValidated_ResolvedRelease_RunsGhAuthGate proves a NON-downgraded
-// `regenerate --reuse --all` / `--target release` batch (a resolved, non-nil
+// `regenerate --source tag --all` / `--target release` batch (a resolved, non-nil
 // publisher) STILL runs the gh-auth preflight gate exactly as before — the
 // publisher-presence guard only suppresses the gate on a downgrade.
 func TestRegenerateAllValidated_ResolvedRelease_RunsGhAuthGate(t *testing.T) {
@@ -170,7 +170,7 @@ func TestRegenerateAllValidated_ResolvedRelease_RunsGhAuthGate(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{}
 
-	req := batchReq(engine.RegenerateSourceReuse, threeVersions(), true)
+	req := batchReq(engine.RegenerateSourceTag, threeVersions(), true)
 	req.Target = engine.RegenerateTargetRelease
 	req.ReleaseBranch = regenReleaseBranch
 	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true); err != nil {

@@ -27,9 +27,9 @@ func TestClassifyCommand(t *testing.T) {
 		},
 		{
 			name:     "release regenerate routes to the regenerate subcommand",
-			args:     []string{"release", "regenerate", "1.4.0", "--reuse"},
+			args:     []string{"release", "regenerate", "1.4.0", "--source", "tag"},
 			wantKind: commandRegenerate,
-			wantRest: []string{"1.4.0", "--reuse"},
+			wantRest: []string{"1.4.0", "--source", "tag"},
 		},
 		{
 			name:     "bare regenerate is unknown (not a top-level command)",

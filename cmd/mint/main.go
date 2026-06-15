@@ -111,11 +111,12 @@ func run(args []string) int {
 // runRegenerate parses and validates the `mint release regenerate` flag surface,
 // runs the applicable preflight subset, then dispatches to the single-version
 // interactive run or the --all batch backfill. After the structural parse it loads
-// config (to read the changelog toggle) and runs the semantic source × target
-// axis-contract validation: --reuse is release-only and implies --target release, a
-// changelog/both target is rejected when the changelog is disabled, and a fresh -y
-// run needs an explicit --target. The only mutation/network beyond reading the repo
-// root + config happens inside the dispatched run.
+// config (to read the changelog toggle) and runs the semantic axis validation: the
+// source and target axes are orthogonal (any source can write any target), a
+// changelog/both target is rejected when the changelog is disabled, and a -y run needs
+// an explicit --target (no source has a safe default surface to guess unattended). The
+// only mutation/network beyond reading the repo root + config happens inside the
+// dispatched run.
 func runRegenerate(ctx context.Context, rest []string) int {
 	req, err := parseRegenerateFlags(rest)
 	if err != nil {
@@ -226,7 +227,7 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 		ReleaseBranch:    releaseBranch,
 		ChangelogEnabled: cfg.Release.Changelog,
 		Yes:              req.Yes,
-		ProduceBody:      newRegenerateBodyProducer(r, cfg, root, res),
+		ProduceBody:      newRegenerateBodyProducer(r, cfg, root, res, publisher),
 		// The fresh notes-review gate's `r` choice consults this per-run regenerator,
 		// bound to the resolved range — the regenerate analogue of the forward path's
 		// per-run regenerator. Without it the rendered `r` would abort.

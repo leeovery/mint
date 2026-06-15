@@ -1541,7 +1541,7 @@ func downgradeReason(cause error) string {
 func warnPublishFailed(p presenter.Presenter, cause error) {
 	p.Warn(presenter.Warning{
 		Label:   "publish failed",
-		Message: "tag is already published; heal with regenerate --reuse",
+		Message: "tag is already published; heal with regenerate --source tag",
 		Output:  cause.Error(),
 	})
 }

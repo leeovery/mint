@@ -8,6 +8,7 @@ import (
 	"mint/internal/engine"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
+	"mint/internal/publish"
 	"mint/internal/runner"
 	"mint/internal/version"
 )
@@ -48,31 +49,35 @@ func TestResolveBatchAxes_NoFlags_PromptsSourceThenTarget(t *testing.T) {
 	}
 }
 
-// TestResolveBatchAxes_ReuseAll_ForcesReleaseWithoutAsking proves `--reuse --all` forces
-// target=release WITHOUT asking the target question (the 5-2 axis contract). The reuse
-// flag also skips the source question. validateRegenerateRequest has already resolved the
-// reuse-implied release target before this point, so the request arrives with both axes
-// supplied — no gate should fire.
-func TestResolveBatchAxes_ReuseAll_ForcesReleaseWithoutAsking(t *testing.T) {
+// TestResolveBatchAxes_ReuseAll_AsksTargetWhenUnset proves `--source tag --all` with no
+// --target ASKS the target question (the axes are orthogonal — reuse no longer forces
+// release), so a reuse batch can target the changelog. The reuse flag still skips the
+// source question.
+func TestResolveBatchAxes_ReuseAll_AsksTargetWhenUnset(t *testing.T) {
 	t.Parallel()
 
-	rec := &presentertest.RecordingPresenter{}
+	rec := &presentertest.RecordingPresenter{
+		PromptResult: func(g presenter.Gate) (presenter.Choice, error) {
+			if g.Subject == "target" {
+				return presenter.Choice("changelog"), nil
+			}
+			return presenter.ChoiceYes, nil
+		},
+	}
 
-	// As produced by parseRegenerateFlags + validateRegenerateRequest for `--reuse --all`:
-	// SourceSet=true reuse, and the implied target release resolved up front.
-	req := regenerateRequest{Source: sourceReuse, SourceSet: true, Target: targetRelease, All: true}
+	req := regenerateRequest{Source: sourceTag, SourceSet: true, Target: targetUnset, All: true}
 	source, target, err := resolveBatchAxes(rec, req, true)
 	if err != nil {
 		t.Fatalf("resolveBatchAxes returned unexpected error: %v", err)
 	}
-	if source != engine.RegenerateSourceReuse {
-		t.Errorf("source = %v, want reuse", source)
+	if source != engine.RegenerateSourceTag {
+		t.Errorf("source = %v, want tag", source)
 	}
-	if target != engine.RegenerateTargetRelease {
-		t.Errorf("target = %v, want release (reuse forces release)", target)
+	if target != engine.RegenerateTargetChangelog {
+		t.Errorf("target = %v, want changelog (reuse can target the changelog)", target)
 	}
-	if got := batchGateSubjects(rec); len(got) != 0 {
-		t.Errorf("gate subjects = %v, want none (--reuse --all forces release without asking)", got)
+	if got, want := batchGateSubjects(rec), []string{"target"}; !slices.Equal(got, want) {
+		t.Errorf("gate subjects = %v, want %v (reuse skips source but still asks the target)", got, want)
 	}
 }
 
@@ -143,8 +148,8 @@ func TestNewBatchBodyProducer_Reuse(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.Seed("git", runner.Result{Stdout: "## reuse body\n"}, nil)
 
-	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir())
-	body, err := produce(t.Context(), engine.RegenerateSourceReuse, version.Resolution{Tag: "v1.0.0"}, "")
+	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
+	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "")
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -164,8 +169,8 @@ func TestNewBatchBodyProducer_Reuse_ConsumesPreReadBody(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 
-	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir())
-	body, err := produce(t.Context(), engine.RegenerateSourceReuse, version.Resolution{Tag: "v1.0.0"}, "## pre-read body\n")
+	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
+	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "## pre-read body\n")
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -177,6 +182,49 @@ func TestNewBatchBodyProducer_Reuse_ConsumesPreReadBody(t *testing.T) {
 	}
 }
 
+// TestNewBatchBodyProducer_Release proves the release source reads the EXISTING provider
+// release body through the Publisher seam (gh release view), returning it verbatim — the
+// provider-release sibling of the reuse read.
+func TestNewBatchBodyProducer_Release(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.Seed("gh", runner.Result{Stdout: "## release body\n"}, nil)
+
+	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
+	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "")
+	if err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+	if body != "## release body\n" {
+		t.Errorf("release body = %q, want the verbatim provider release body", body)
+	}
+	if got := len(f.Invocations()); got != 1 {
+		t.Errorf("gh invocations = %d, want exactly 1 release read", got)
+	}
+}
+
+// TestNewBatchBodyProducer_Release_ConsumesPreReadBody proves the producer consumes the
+// batch loop's pre-read release body WITHOUT reading the release again — each release is
+// read once, by the loop's skip check.
+func TestNewBatchBodyProducer_Release_ConsumesPreReadBody(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+
+	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
+	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "## pre-read release\n")
+	if err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+	if body != "## pre-read release\n" {
+		t.Errorf("release body = %q, want the threaded pre-read body verbatim", body)
+	}
+	if got := len(f.Invocations()); got != 0 {
+		t.Errorf("gh invocations = %d, want 0 (the pre-read body must not be re-read)", got)
+	}
+}
+
 // TestNewBatchRegeneratorProducer_Reuse proves the batch regenerator producer returns
 // NO regenerator for a reuse source: reuse runs the simple confirm (no review gate), so
 // the `r` choice never applies.
@@ -184,8 +232,20 @@ func TestNewBatchRegeneratorProducer_Reuse(t *testing.T) {
 	t.Parallel()
 
 	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{}, t.TempDir())
-	if got := produce(engine.RegenerateSourceReuse, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}); got != nil {
+	if got := produce(engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}); got != nil {
 		t.Errorf("reuse regenerator = %v, want nil (reuse has no review gate)", got)
+	}
+}
+
+// TestNewBatchRegeneratorProducer_Release proves the batch regenerator producer returns
+// NO regenerator for the release source: like reuse it runs the simple confirm, so the
+// `r` choice never applies.
+func TestNewBatchRegeneratorProducer_Release(t *testing.T) {
+	t.Parallel()
+
+	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{}, t.TempDir())
+	if got := produce(engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}); got != nil {
+		t.Errorf("release regenerator = %v, want nil (the release source has no review gate)", got)
 	}
 }
 

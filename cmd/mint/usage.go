@@ -48,9 +48,11 @@ const regenerateUsage = `usage: mint release regenerate <version> [options]
        mint release regenerate --all [options]
 
 Regenerate the notes for an existing release and rewrite the chosen surface(s).
+Source and target are independent: any source can write any surface.
 
-      --reuse            source = tag annotation body (no AI); implies --target release
-      --fresh            source = re-diff + AI (default)
+      --source SOURCE    notes source: fresh (re-diff + AI), tag (annotation
+                         body), or release (existing provider release body);
+                         tag and release run no AI. Default fresh.
       --target SURFACE   surface(s) to write: release, changelog, or both
       --all              regenerate every version, oldest → newest
   -y, --yes              skip the confirmation / per-version review gate

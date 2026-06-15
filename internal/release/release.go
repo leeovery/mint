@@ -5,7 +5,7 @@
 // touching real git.
 //
 // The tag is always ANNOTATED (`git tag -a … -F -`), never lightweight: the
-// annotation body is the single source mint ever reads later (regenerate --reuse
+// annotation body is the single source mint ever reads later (regenerate --source tag
 // reads it back, parse-free). The atomic push (`git push --atomic origin HEAD
 // {tag}`) is the single point of no return — commits and tag go up together or
 // not at all. On a successful push the returned Outcome signals that the point of

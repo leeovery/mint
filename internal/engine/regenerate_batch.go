@@ -20,7 +20,7 @@ package engine
 // skip-and-continue without restructuring the loop.
 //
 // NO RESUME STATE: the loop reads no checkpoint and writes none — a re-run simply
-// re-processes from the top. `--reuse --all` is deterministic; `--fresh --all`
+// re-processes from the top. `--source tag --all` is deterministic; `--source fresh --all`
 // re-generates (stochastic but harmless).
 
 import (
@@ -40,7 +40,8 @@ import (
 // the -y opt-out, and the injected per-version body producer.
 type BatchRegenerateRequest struct {
 	// Source selects the per-version gating + production: fresh runs the re-diff+AI
-	// producer and the notes-review gate; reuse reads the tag annotation and runs the
+	// producer and the notes-review gate; the deterministic sources read existing notes
+	// (reuse → tag annotation, release → published provider release body) and run the
 	// simple confirm.
 	Source RegenerateSource
 	// Versions is the matching version set to backfill, ordered OLDEST → NEWEST. The
@@ -67,13 +68,14 @@ type BatchRegenerateRequest struct {
 	// batch target is known, exactly as the single-version RegenerateRunRequest.ReleaseBranch.
 	ReleaseBranch string
 	// ProduceBody yields one version's notes body for the resolved source. It is
-	// injected so the loop stays testable without a real AI transport / tag read;
-	// production wires the 5-5 reuse read or the 5-6 fresh re-diff+AI per version.
-	// reuseBody threads the loop's pre-read annotation body (captured by the reuse
-	// skip check) into the producer so a reuse source consumes it instead of reading
-	// the tag a SECOND time; it is empty for a fresh source and for the
-	// single-version delegation (which never pre-reads, so the producer reads).
-	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, reuseBody string) (string, error)
+	// injected so the loop stays testable without a real AI transport / tag / release
+	// read; production wires the reuse read, the provider-release read, or the fresh
+	// re-diff+AI per version. preReadBody threads the loop's pre-read body (captured by
+	// the deterministic-source skip check — tag annotation or release body) into the
+	// producer so a deterministic source consumes it instead of reading the SECOND time;
+	// it is empty for a fresh source and for the single-version delegation (which never
+	// pre-reads, so the producer reads).
+	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string) (string, error)
 	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
 	// gate's `r` choice consults, bound to that version's fresh AI range. Production
 	// returns nil for a reuse source (no review gate) and binds
@@ -116,6 +118,15 @@ type RegeneratedVersion struct {
 func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, changelogEnabled bool) error {
 	if err := checkBatchTargetConfig(req.Target, changelogEnabled); err != nil {
 		return surface(deps.Presenter, "config", err)
+	}
+	// The provider-release source reads every version's existing release through the
+	// Publisher seam, so it is impossible without a resolved provider. A downgraded batch
+	// (non-github / no-remote origin → nil publisher) using this source aborts the WHOLE
+	// run up front — before any version — rather than nil-dereferencing per version. This
+	// is a static precondition like the changelog-disabled check above, not a per-version
+	// skip.
+	if req.Source == RegenerateSourceRelease && publisher == nil {
+		return surface(deps.Presenter, "publish", errReleaseSourceNoPublisher)
 	}
 	// Preflight the RESOLVED batch target BEFORE any version is processed, any provider
 	// write, or any changelog commit/push. A bare `--all` resolves its target
@@ -249,21 +260,18 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	})
 	p.ShowPlan(regeneratePlan(req.Source, RegenerateTargetRelease, res.Tag))
 
-	// reuse --all against a body-less tag is a per-version SKIP (not the single-mode
-	// fail-loud error): read the annotation body up front and skip-and-report when the
-	// tag carries none, so an empty provider release body is never written. The body
-	// this check read is threaded into ProduceBody below so the reuse producer
-	// consumes it rather than reading the tag a second time — ONE read per tag.
-	var reuseBody string
-	if req.Source == RegenerateSourceReuse {
-		body, hasBody, err := ReadTagBody(ctx, deps.Runner, res.Tag)
-		if err != nil {
-			return RegeneratedVersion{}, nil, surface(p, "notes", err)
-		}
-		if !hasBody {
-			return reportSkip(p, res.Tag, reasonNoAnnotationBody)
-		}
-		reuseBody = body
+	// A deterministic source against a body-less version is a per-version SKIP (not the
+	// single-mode fail-loud error): read the existing body up front — the tag annotation
+	// (reuse) or the published release (release) — and skip-and-report when none is
+	// present, so an empty body is never written. The body this check read is threaded
+	// into ProduceBody below so the producer consumes it rather than reading the source a
+	// second time — ONE read per version.
+	preReadBody, skipReason, err := preReadDeterministicBody(ctx, deps, publisher, req.Source, res.Tag)
+	if err != nil {
+		return RegeneratedVersion{}, nil, surface(p, "notes", err)
+	}
+	if skipReason != "" {
+		return reportSkip(p, res.Tag, skipReason)
 	}
 
 	// Produce the version's body for the resolved source BEFORE the gate — the
@@ -275,7 +283,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// (production failure) closes the stage with no StageSucceeded — the skip Warn
 	// narrates it instead.
 	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
-	body, err := req.ProduceBody(ctx, req.Source, res, reuseBody)
+	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody)
 	if err != nil {
 		return reportSkip(p, res.Tag, classifyNotesFailure(err))
 	}
@@ -318,9 +326,12 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 // The human-readable skip reasons shown in the end summary. They are stable strings so
 // the summary reads deterministically and the user can recognise re-run candidates.
 const (
-	// reasonNoAnnotationBody is the reuse --all skip reason for a tag with no
-	// annotation body — the --all variant of single-mode's fail-loud "use --fresh".
-	reasonNoAnnotationBody = "no annotation body — use --fresh"
+	// reasonNoAnnotationBody is the `--source tag --all` skip reason for a tag with no
+	// annotation body — the --all variant of single-mode's fail-loud "use --source fresh".
+	reasonNoAnnotationBody = "no annotation body — use --source fresh"
+	// reasonNoReleaseBody is the `--source release --all` skip reason for a version whose
+	// published release has no body — the variant of reasonNoAnnotationBody.
+	reasonNoReleaseBody = "no release body — use --source fresh"
 	// reasonDiffTooLarge is the skip reason for a notes failure caused by a diff over
 	// max_diff_lines (the distinguishable ErrDiffTooLarge case).
 	reasonDiffTooLarge = "diff too large"
@@ -328,6 +339,41 @@ const (
 	// failure that is not the diff-too-large case.
 	reasonNotesFailed = "notes generation failed"
 )
+
+// preReadDeterministicBody pre-reads a DETERMINISTIC source's body for the batch skip
+// check, returning the body to thread into ProduceBody (so each version's source is read
+// ONCE). A body-less source returns a non-empty skipReason (the loop reports the skip and
+// continues): reuse → the tag annotation (ReadTagBody), release → the published provider
+// release (Publisher.ReadReleaseBody). A fresh source has no pre-read and returns
+// ("", "", nil). A genuine read failure is returned as err for the caller to surface.
+//
+// The release branch dereferences publisher; RegenerateAllValidated guarantees a non-nil
+// publisher for the release source up front (the downgrade precondition), so it is always
+// safe here.
+func preReadDeterministicBody(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, source RegenerateSource, tag string) (body, skipReason string, err error) {
+	switch source {
+	case RegenerateSourceTag:
+		b, hasBody, err := ReadTagBody(ctx, deps.Runner, tag)
+		if err != nil {
+			return "", "", err
+		}
+		if !hasBody {
+			return "", reasonNoAnnotationBody, nil
+		}
+		return b, "", nil
+	case RegenerateSourceRelease:
+		b, hasBody, err := publisher.ReadReleaseBody(ctx, tag)
+		if err != nil {
+			return "", "", err
+		}
+		if !hasBody {
+			return "", reasonNoReleaseBody, nil
+		}
+		return b, "", nil
+	default:
+		return "", "", nil
+	}
+}
 
 // reportSkip narrates a per-version skip as a non-terminal Warn (which does NOT set
 // failure state and does NOT suppress the end summary) and returns the *skippedVersion

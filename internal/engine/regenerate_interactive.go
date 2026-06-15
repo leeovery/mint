@@ -9,14 +9,15 @@ package engine
 // The flow mirrors the spec's "asks source, asks target, shows the plan, confirms":
 //
 //	resolve source (ask iff unset) → produce body for the source →
-//	resolve target (ask iff unset, axis-contract aware) → RunStarted + ShowPlan →
+//	resolve target (ask iff unset) → RunStarted + ShowPlan →
 //	RegenerateWrite (ShowNotes + confirm/review gate + write)
 //
-// AXIS CONTRACT (the 5-2 source × target rule, honoured INTERACTIVELY here): once the
-// source resolves to REUSE — whether by flag or by the source prompt — the target is
-// FORCED to release and the target question is NOT asked (reuse's source IS the notes
-// record, so it can only write the provider release). A fresh source with no --target
-// asks the full release/changelog/both target question.
+// ORTHOGONAL AXES: source and target are independent — ANY source can write ANY target.
+// A source resolves from `--source <fresh|tag|release>` or the source prompt; a target
+// resolves from --target or the target prompt (release/changelog/both, changelog gated
+// by config). A deterministic source (tag, provider release) can target the changelog —
+// e.g. building a CHANGELOG.md from existing tag annotations or published release notes —
+// not just the provider release.
 //
 // -y handling mirrors the forward path: the engine ALWAYS calls Prompt at every gate
 // (source, target, confirm); the -y SKIP happens INSIDE the presenter, which renders
@@ -41,8 +42,9 @@ import (
 // values SourceGate / TargetGate render and parse (case-folded by the presenter), and
 // they double as the gate AcceptEcho so a -y log reads "source: fresh (-y)" etc.
 const (
-	choiceSourceFresh = presenter.Choice("fresh")
-	choiceSourceReuse = presenter.Choice("reuse")
+	choiceSourceFresh   = presenter.Choice("fresh")
+	choiceSourceTag     = presenter.Choice("tag")
+	choiceSourceRelease = presenter.Choice("release")
 
 	choiceTargetRelease   = presenter.Choice("release")
 	choiceTargetChangelog = presenter.Choice("changelog")
@@ -77,7 +79,7 @@ func SourceUnset() OptionalRegenerateSource {
 // load-bearing RegenerateTargetRelease).
 type OptionalRegenerateTarget struct {
 	// set reports whether a --target was supplied. When false the target is resolved
-	// by the target prompt (or forced to release by the reuse axis contract).
+	// by the target prompt — for every source (the axes are orthogonal).
 	set bool
 	// value is the supplied target, meaningful only when set is true.
 	value RegenerateTarget
@@ -88,8 +90,8 @@ func TargetOf(t RegenerateTarget) OptionalRegenerateTarget {
 	return OptionalRegenerateTarget{set: true, value: t}
 }
 
-// TargetUnset is the no-target-flag state — the target is asked interactively (or
-// forced to release when the source is reuse).
+// TargetUnset is the no-target-flag state — the target is asked interactively (for
+// every source; the axes are orthogonal, so no source forces a target).
 func TargetUnset() OptionalRegenerateTarget {
 	return OptionalRegenerateTarget{}
 }
@@ -101,8 +103,8 @@ func TargetUnset() OptionalRegenerateTarget {
 type RegenerateRunRequest struct {
 	// Source is the flag-supplied source or unset (ask the source prompt).
 	Source OptionalRegenerateSource
-	// Target is the flag-supplied target or unset (ask the target prompt, or force
-	// release when the source is reuse).
+	// Target is the flag-supplied target or unset (ask the target prompt). The axes are
+	// orthogonal — the source no longer constrains the target.
 	Target OptionalRegenerateTarget
 	// Tag is the canonical target tag (e.g. "v1.4.0").
 	Tag string
@@ -138,8 +140,9 @@ type RegenerateRunRequest struct {
 
 // RegenerateRun runs the interactive default flow for one resolved version: it asks
 // the source (when unset), produces the body for the resolved source, asks the target
-// (when unset, honouring the reuse⇒release axis contract), shows the start-of-run
-// header + plan summary, then delegates to RegenerateWrite for the confirm/review gate
+// (when unset — the axes are orthogonal, so every source can target any surface), shows
+// the start-of-run header + plan summary, then delegates to RegenerateWrite for the
+// confirm/review gate
 // and the write/push/recovery. It returns whatever RegenerateWrite returns (nil on
 // success, an *AbortError on a confirm decline or pre-push failure, nil-with-warn on a
 // post-push provider failure), or a surfaced abort on a body-production failure.
@@ -152,6 +155,16 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	source, target, err := ResolveRegenerateAxes(p, req.Source, req.Target, req.ChangelogEnabled)
 	if err != nil {
 		return err
+	}
+
+	// The provider-release source reads the EXISTING release through the Publisher seam,
+	// so it is impossible without a resolved provider. A downgraded run (non-github /
+	// no-remote origin → nil publisher) that resolved to this source fails loud here —
+	// before any work — rather than nil-dereferencing in the body producer. The source
+	// can resolve interactively (the source prompt is asked after the publisher is
+	// resolved upstream), so the cmd layer cannot pre-check it; this is its home.
+	if source == RegenerateSourceRelease && publisher == nil {
+		return surface(p, "publish", errReleaseSourceNoPublisher)
 	}
 
 	// Preflight the RESOLVED target BEFORE any body production, mutation, or network
@@ -227,18 +240,17 @@ const regenerateAction = "regenerating"
 // ResolveRegenerateAxes resolves the source-then-target axes interactively, the SHARED
 // resolution RegenerateRun's own internals (resolveSource/resolveTarget) perform — exposed
 // so the --all batch path can resolve the two axes ONCE up front with the SAME gate idiom
-// instead of silently defaulting them. It asks SourceGate when the source is unset, then —
-// honouring the reuse⇒release axis contract — asks TargetGate when the target is unset and
-// the source is fresh; a reuse source (by flag or chosen at the source prompt) FORCES
-// release and never asks the target question. -y is handled exactly as elsewhere: the
-// engine always calls Prompt and the presenter renders the skip+echo and returns the gate
-// default. It returns the resolved enums or a surfaced gate abort.
+// instead of silently defaulting them. It asks SourceGate when the source is unset, then
+// asks TargetGate when the target is unset — for EVERY source (the axes are orthogonal;
+// no source forces a target). -y is handled exactly as elsewhere: the engine always calls
+// Prompt and the presenter renders the skip+echo and returns the gate default. It returns
+// the resolved enums or a surfaced gate abort.
 func ResolveRegenerateAxes(p presenter.Presenter, source OptionalRegenerateSource, target OptionalRegenerateTarget, changelogEnabled bool) (RegenerateSource, RegenerateTarget, error) {
 	resolvedSource, err := resolveSource(p, source)
 	if err != nil {
 		return 0, 0, err
 	}
-	resolvedTarget, err := resolveTarget(p, resolvedSource, target, changelogEnabled)
+	resolvedTarget, err := resolveTarget(p, target, changelogEnabled)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -259,16 +271,11 @@ func resolveSource(p presenter.Presenter, opt OptionalRegenerateSource) (Regener
 	return sourceFromChoice(choice), nil
 }
 
-// resolveTarget returns the resolved target: reuse forces release (no question asked —
-// the axis contract); a flag-supplied target is returned unchanged; otherwise the
-// target prompt (TargetGate) asks among the offerable surfaces. The default offered is
-// release.
-func resolveTarget(p presenter.Presenter, source RegenerateSource, opt OptionalRegenerateTarget, changelogEnabled bool) (RegenerateTarget, error) {
-	// Axis contract: reuse can only write the provider release, so force release and
-	// never ask — even when reuse was chosen interactively at the source prompt.
-	if source == RegenerateSourceReuse {
-		return RegenerateTargetRelease, nil
-	}
+// resolveTarget returns the resolved target: a flag-supplied target is returned
+// unchanged; otherwise the target prompt (TargetGate) asks among the offerable surfaces.
+// The axes are orthogonal — the source never constrains the target — so the same
+// resolution applies to every source. The default offered is release.
+func resolveTarget(p presenter.Presenter, opt OptionalRegenerateTarget, changelogEnabled bool) (RegenerateTarget, error) {
 	if opt.set {
 		return opt.value, nil
 	}
@@ -279,11 +286,14 @@ func resolveTarget(p presenter.Presenter, source RegenerateSource, opt OptionalR
 	return targetFromChoice(choice), nil
 }
 
-// sourceOptions is the ordered source-prompt menu: fresh (the default) then reuse.
+// sourceOptions is the ordered source-prompt menu: fresh (the default), then the two
+// deterministic reuse-style sources — the tag annotation body and the published release
+// body.
 func sourceOptions() []presenter.GateChoice {
 	return []presenter.GateChoice{
 		{Key: choiceSourceFresh, Action: "re-diff + AI"},
-		{Key: choiceSourceReuse, Action: "tag annotation body"},
+		{Key: choiceSourceTag, Action: "tag annotation body"},
+		{Key: choiceSourceRelease, Action: "published release body"},
 	}
 }
 
@@ -304,12 +314,16 @@ func targetOptions(changelogEnabled bool) []presenter.GateChoice {
 }
 
 // sourceFromChoice maps a source-gate Choice to the engine source enum. The gate
-// returns only a declared key, so the reuse key is the only non-fresh case.
+// returns only a declared key; fresh is the default for the (unreachable) other case.
 func sourceFromChoice(c presenter.Choice) RegenerateSource {
-	if c == choiceSourceReuse {
-		return RegenerateSourceReuse
+	switch c {
+	case choiceSourceTag:
+		return RegenerateSourceTag
+	case choiceSourceRelease:
+		return RegenerateSourceRelease
+	default:
+		return RegenerateSourceFresh
 	}
-	return RegenerateSourceFresh
 }
 
 // targetFromChoice maps a target-gate Choice to the engine target enum. The gate
@@ -343,8 +357,12 @@ func regeneratePlan(source RegenerateSource, target RegenerateTarget, tag string
 
 // sourceLabel renders the source word for the plan summary.
 func sourceLabel(source RegenerateSource) string {
-	if source == RegenerateSourceReuse {
-		return string(choiceSourceReuse)
+	switch source {
+	case RegenerateSourceTag:
+		return string(choiceSourceTag)
+	case RegenerateSourceRelease:
+		return string(choiceSourceRelease)
+	default:
+		return string(choiceSourceFresh)
 	}
-	return string(choiceSourceFresh)
 }

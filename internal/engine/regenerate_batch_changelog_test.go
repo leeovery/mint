@@ -197,6 +197,46 @@ func TestRegenerateAllValidated_Changelog_PreservesSkippedSectionVerbatim(t *tes
 	}
 }
 
+// TestRegenerateAllValidated_Changelog_SkippedSectionAbsent_OmittedNotFatal is the
+// regression guard for the batch bug where ONE skipped version with no recorded section
+// discarded every other regenerated section. It mirrors the live failure exactly: a
+// FRESH CHANGELOG (preamble only — the project had no changelog), v2 reliably fails AI
+// generation (skipped), so it has no section to preserve. The rebuild must OMIT v2 and
+// still write v1 + v3 in ONE commit — never abort with "cannot preserve section".
+func TestRegenerateAllValidated_Changelog_SkippedSectionAbsent_OmittedNotFatal(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	// A fresh changelog: just the preamble, no version sections (the project had none).
+	seedChangelog(t, dir, kacPreamble)
+
+	f := runner.NewFakeRunner()
+	// v2 is skipped → no historical-date read for it; v1 and v3 are regenerated.
+	seedRebuildGit(f, batchV1Date, batchV3Date)
+	pub := newFakePublisher()
+	rec := &presentertest.RecordingPresenter{}
+
+	req := freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog)
+	req.ProduceBody = freshBodyOrDiffTooLarge(batchV2Tag) // v2 fails → skipped, never recorded
+
+	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true); err != nil {
+		t.Fatalf("RegenerateAllValidated returned unexpected error (the skipped-but-absent section must be omitted, not fatal): %v", err)
+	}
+
+	// The rebuilt file carries the two regenerated sections; the skipped, never-recorded
+	// v2 (1.1.0) is simply omitted — and the commit still lands.
+	got := readChangelogFile(t, dir)
+	want := kacPreamble + "\n" +
+		"## [2.0.0] - 2024-03-03\n\n## fresh v2.0.0\n\n" +
+		"## [1.0.0] - 2024-01-01\n\n## fresh v1.0.0\n\n"
+	if got != want {
+		t.Errorf("rebuilt CHANGELOG.md =\n%q\nwant v1 + v3 written and the skipped v2 omitted\n%q", got, want)
+	}
+	if got := commitCount(f); got != 1 {
+		t.Errorf("recorded %d changelog commits, want exactly 1 (the regenerated sections still land)", got)
+	}
+}
+
 // TestRegenerateAllValidated_Changelog_OneCommitAtEnd proves the batch makes EXACTLY
 // ONE changelog commit, at the END (subject `docs(changelog): regenerate release
 // notes`) — not one per version.
@@ -320,7 +360,7 @@ func TestRegenerateAllValidated_Release_NoChangelogCommit(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{}
 
-	req := batchReq(engine.RegenerateSourceReuse, threeVersions(), true)
+	req := batchReq(engine.RegenerateSourceTag, threeVersions(), true)
 	req.Target = engine.RegenerateTargetRelease
 	req.ReleaseBranch = regenReleaseBranch
 

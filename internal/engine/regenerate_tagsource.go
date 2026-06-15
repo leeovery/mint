@@ -1,7 +1,7 @@
 package engine
 
-// This file is the regenerate --reuse SOURCE read (task 5-5): reading a tag's
-// annotation body back as the single source mint ever consumes on the reuse path.
+// This file is the regenerate tag SOURCE read (`--source tag`, task 5-5): reading a
+// tag's annotation body back as the source mint consumes on the tag-source path.
 //
 // The forward path writes the annotated tag as `git tag -a … -F -` with the message
 // subject `{commit_prefix} Release {tag}`, a blank line, then the FULL notes body
@@ -9,9 +9,9 @@ package engine
 // refs/tags/<tag>` returns exactly that body part (git splits off the subject and
 // the blank separator), so the read is a single deterministic git call and the body
 // is used WHOLE — no parsing, no splitting, no validation transform. It was already
-// presentation-format when written, so the bytes flow straight to the provider write.
+// presentation-format when written, so the bytes flow straight to the downstream write.
 //
-// The reuse path runs NO AI and assembles NO diff: it touches only this one read.
+// The tag source runs NO AI and assembles NO diff: it touches only this one read.
 
 import (
 	"context"
@@ -26,7 +26,7 @@ import (
 // seam — and returns it WHOLE alongside whether the tag carries an annotation body.
 //
 // hasBody is the single branch point both regenerate modes consume:
-//   - SINGLE mode (ReadReuseBody) turns hasBody=false into a fail-loud error.
+//   - SINGLE mode (RequireTagBody) turns hasBody=false into a fail-loud error.
 //   - --all mode (task 5-12) skips-and-reports on hasBody=false, never writing an
 //     empty provider release body.
 //
@@ -46,22 +46,21 @@ func ReadTagBody(ctx context.Context, r runner.CommandRunner, tag string) (body 
 	return res.Stdout, strings.TrimSpace(res.Stdout) != "", nil
 }
 
-// ReadReuseBody is single-mode's fail-loud wrapper around ReadTagBody: it returns
-// the annotation body verbatim for the downstream provider write, or — when the tag
-// has no annotation body (lightweight, empty, or whitespace-only) — the EXACT
-// fail-loud error the spec pins, so the reuse path stops rather than writing an
-// empty provider release body.
+// RequireTagBody is single-mode's fail-loud wrapper around ReadTagBody: it returns
+// the annotation body verbatim for the downstream write, or — when the tag has no
+// annotation body (lightweight, empty, or whitespace-only) — the EXACT fail-loud
+// error the spec pins, so the tag-source path stops rather than writing an empty body.
 //
 // Single mode does NOT fall back to a fresh re-diff; it directs the user there with
-// the `use --fresh` hint. (Batch --all mode, task 5-12, calls ReadTagBody directly
-// and skips-and-reports instead of failing the whole run.)
-func ReadReuseBody(ctx context.Context, r runner.CommandRunner, tag string) (string, error) {
+// the `use --source fresh` hint. (Batch --all mode, task 5-12, calls ReadTagBody
+// directly and skips-and-reports instead of failing the whole run.)
+func RequireTagBody(ctx context.Context, r runner.CommandRunner, tag string) (string, error) {
 	body, hasBody, err := ReadTagBody(ctx, r, tag)
 	if err != nil {
 		return "", err
 	}
 	if !hasBody {
-		return "", fmt.Errorf("tag %s has no annotation body — use --fresh", tag)
+		return "", fmt.Errorf("tag %s has no annotation body — use --source fresh", tag)
 	}
 	return body, nil
 }

@@ -335,7 +335,7 @@ func TestMutate_StdinBearingLockRetry_SecondAttemptGetsFullPayload(t *testing.T)
 	// REGRESSION: a stdin-bearing mutation that hits a lock and retries must pipe the
 	// FULL stdin on EVERY attempt, not an exhausted/empty reader. `git tag -a … -F -`
 	// reads the annotation body off stdin; if the retry pipes nothing, the tag carries
-	// an empty annotation and regenerate --reuse (whose only source is that annotation)
+	// an empty annotation and regenerate --source tag (whose only source is that annotation)
 	// silently breaks. The first attempt is a (gone) lock so the Mutator just retries;
 	// the FakeRunner records the stdin drained per attempt, and BOTH must be the full body.
 	lockPath := filepath.Join(t.TempDir(), ".git", "index.lock")

@@ -3,11 +3,11 @@ package main
 import "testing"
 
 // TestParseRegenerateFlags covers the `mint release regenerate` flag surface:
-// the optional <version> positional, the --reuse/--fresh source axis (default
-// fresh), the single-value --target axis, the --all / -y booleans, and the
-// global --plain presentation flag. This is the parse surface only — the
-// semantic axis-contract validation (reuse⇒release-only, changelog-disabled,
-// fresh -y needs target) is task 5-2.
+// the optional <version> positional, the single-value --source axis
+// (fresh/tag/release, default fresh), the single-value --target axis, the --all / -y
+// booleans, and the global --plain presentation flag. This is the parse surface only —
+// the semantic axis validation (orthogonal axes, changelog-disabled, -y needs target)
+// lives in validateRegenerateRequest.
 func TestParseRegenerateFlags(t *testing.T) {
 	t.Parallel()
 
@@ -23,25 +23,55 @@ func TestParseRegenerateFlags(t *testing.T) {
 		wantPlain     bool
 	}{
 		{
-			name:          "version with reuse and target release",
-			args:          []string{"1.4.0", "--reuse", "--target", "release"},
+			name:          "version with source tag and target release",
+			args:          []string{"1.4.0", "--source", "tag", "--target", "release"},
 			wantVersion:   "1.4.0",
-			wantSource:    sourceReuse,
+			wantSource:    sourceTag,
 			wantSourceSet: true,
 			wantTarget:    targetRelease,
 		},
 		{
-			name:        "defaults source to fresh when neither reuse nor fresh given",
+			name:        "defaults source to fresh when --source omitted",
 			args:        []string{"1.4.0"},
 			wantVersion: "1.4.0",
 			wantSource:  sourceFresh,
 			wantTarget:  targetUnset,
 		},
 		{
-			name:          "explicit fresh resolves to fresh source",
-			args:          []string{"1.4.0", "--fresh"},
+			name:          "explicit source fresh marks the source supplied",
+			args:          []string{"1.4.0", "--source", "fresh"},
 			wantVersion:   "1.4.0",
 			wantSource:    sourceFresh,
+			wantSourceSet: true,
+		},
+		{
+			name:          "source release resolves to the release source",
+			args:          []string{"1.4.0", "--source", "release"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceRelease,
+			wantSourceSet: true,
+		},
+		{
+			name:          "source release targeting changelog (the migration path)",
+			args:          []string{"--all", "--source", "release", "--target", "changelog"},
+			wantSource:    sourceRelease,
+			wantSourceSet: true,
+			wantTarget:    targetChangelog,
+			wantAll:       true,
+		},
+		{
+			name:          "source tag targeting changelog (orthogonal axes)",
+			args:          []string{"1.4.0", "--source", "tag", "--target", "changelog"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceTag,
+			wantSourceSet: true,
+			wantTarget:    targetChangelog,
+		},
+		{
+			name:          "source equals form does not mis-split the version",
+			args:          []string{"--source=tag", "1.4.0"},
+			wantVersion:   "1.4.0",
+			wantSource:    sourceTag,
 			wantSourceSet: true,
 		},
 		{
@@ -59,9 +89,9 @@ func TestParseRegenerateFlags(t *testing.T) {
 			wantTarget:  targetChangelog,
 		},
 		{
-			name:          "all with reuse and target release",
-			args:          []string{"--all", "--reuse", "--target", "release"},
-			wantSource:    sourceReuse,
+			name:          "all with source tag and target release",
+			args:          []string{"--all", "--source", "tag", "--target", "release"},
+			wantSource:    sourceTag,
 			wantSourceSet: true,
 			wantTarget:    targetRelease,
 			wantAll:       true,
@@ -81,18 +111,18 @@ func TestParseRegenerateFlags(t *testing.T) {
 			wantYes:    true,
 		},
 		{
-			name:          "version last after reuse and target value",
-			args:          []string{"--reuse", "--target", "release", "1.4.0"},
+			name:          "version last after source and target values",
+			args:          []string{"--source", "tag", "--target", "release", "1.4.0"},
 			wantVersion:   "1.4.0",
-			wantSource:    sourceReuse,
+			wantSource:    sourceTag,
 			wantSourceSet: true,
 			wantTarget:    targetRelease,
 		},
 		{
-			name:          "version mid between reuse and target flag",
-			args:          []string{"--reuse", "1.4.0", "--target", "release"},
+			name:          "version mid between source value and target flag",
+			args:          []string{"--source", "tag", "1.4.0", "--target", "release"},
 			wantVersion:   "1.4.0",
-			wantSource:    sourceReuse,
+			wantSource:    sourceTag,
 			wantSourceSet: true,
 			wantTarget:    targetRelease,
 		},
@@ -133,9 +163,9 @@ func TestParseRegenerateFlags(t *testing.T) {
 		},
 		{
 			name:          "plain composes with the single-version regenerate flags",
-			args:          []string{"1.4.0", "--reuse", "--target", "release", "-y", "--plain"},
+			args:          []string{"1.4.0", "--source", "tag", "--target", "release", "-y", "--plain"},
 			wantVersion:   "1.4.0",
-			wantSource:    sourceReuse,
+			wantSource:    sourceTag,
 			wantSourceSet: true,
 			wantTarget:    targetRelease,
 			wantYes:       true,
@@ -183,6 +213,21 @@ func TestParseRegenerateFlags(t *testing.T) {
 	}
 }
 
+// TestParseRegenerateFlags_UnknownSource rejects any --source value other than
+// fresh/tag/release with the exact spec message.
+func TestParseRegenerateFlags_UnknownSource(t *testing.T) {
+	t.Parallel()
+
+	const wantMsg = "invalid --source value provider (expected fresh, tag, or release)"
+	_, err := parseRegenerateFlags([]string{"1.4.0", "--source", "provider"})
+	if err == nil {
+		t.Fatalf("parseRegenerateFlags returned nil error, want %q", wantMsg)
+	}
+	if err.Error() != wantMsg {
+		t.Errorf("error = %q, want %q", err.Error(), wantMsg)
+	}
+}
+
 // TestParseRegenerateFlags_UnknownTarget rejects any --target value other than
 // release/changelog/both with the exact spec message.
 func TestParseRegenerateFlags_UnknownTarget(t *testing.T) {
@@ -225,16 +270,6 @@ func TestParseRegenerateFlags_VersionAndAllIsError(t *testing.T) {
 	}
 	if err.Error() != wantMsg {
 		t.Errorf("error = %q, want %q", err.Error(), wantMsg)
-	}
-}
-
-// TestParseRegenerateFlags_ReuseAndFreshIsError rejects combining --reuse and
-// --fresh: the source axis is mutually exclusive.
-func TestParseRegenerateFlags_ReuseAndFreshIsError(t *testing.T) {
-	t.Parallel()
-
-	if _, err := parseRegenerateFlags([]string{"1.4.0", "--reuse", "--fresh"}); err == nil {
-		t.Error("parseRegenerateFlags(--reuse --fresh) returned nil error, want a conflict error")
 	}
 }
 

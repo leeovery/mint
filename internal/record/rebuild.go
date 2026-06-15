@@ -1,7 +1,6 @@
 package record
 
 import (
-	"fmt"
 	"path/filepath"
 	"time"
 )
@@ -22,12 +21,17 @@ import (
 //     body via renderSection (the same call WriteChangelog uses).
 //   - PRESERVED: a version skipped during the batch — its EXISTING section block is
 //     pulled VERBATIM from the current file so a skipped real release loses no data
-//     (the user-resolved no-data-loss rule).
+//     (the user-resolved no-data-loss rule). When the version has NO section in the
+//     current file there is nothing to lose, so it is simply OMITTED rather than
+//     failing the rebuild — a skipped version that was never recorded (a fresh
+//     CHANGELOG, or one that has never carried that version) must not poison the whole
+//     file and discard every other section. The caller already reports the skip
+//     separately (the batch end summary), so the omission is visible there.
 //
 // Any version with no entry in the list is DROPPED (genuine stray-section drift — a
 // section matching no real version). The caller therefore expresses "regenerated →
-// rendered, skipped-but-real → preserved, stray → omitted" purely by which sections
-// it supplies and in what order.
+// rendered, skipped-but-real → preserved-if-present-else-omitted, stray → omitted"
+// purely by which sections it supplies and in what order.
 
 // changelogSectionKind distinguishes a freshly-rendered section from one preserved
 // verbatim out of the existing file.
@@ -38,6 +42,8 @@ const (
 	sectionRendered changelogSectionKind = iota
 	// sectionPreserved copies the version's existing section block verbatim from the
 	// current file (no re-render — a skipped version keeps its exact recorded notes).
+	// When the version has no section in the current file it is OMITTED (there is
+	// nothing to preserve), never an error.
 	sectionPreserved
 )
 
@@ -61,8 +67,11 @@ func RenderedSection(version string, date time.Time, body string) ChangelogSecti
 
 // PreservedSection is a skipped-but-real version whose EXISTING section block is
 // copied verbatim from the current CHANGELOG.md (no re-render), so the skipped
-// release's recorded notes and original date survive the rebuild untouched. The
-// version's section MUST exist in the current file or RebuildChangelog fails loud.
+// release's recorded notes and original date survive the rebuild untouched. When the
+// version has no section in the current file it is simply OMITTED from the rebuild —
+// a skipped version that was never recorded (a fresh CHANGELOG, or one that has never
+// carried that version) has nothing to preserve, and must not abort the rebuild and
+// discard every other section.
 func PreservedSection(version string) ChangelogSection {
 	return ChangelogSection{kind: sectionPreserved, version: version}
 }
@@ -72,10 +81,10 @@ func PreservedSection(version string) ChangelogSection {
 // the file's content changed.
 //
 // Rendered sections are produced from their version/date/body; preserved sections are
-// copied verbatim from the existing file (failing loud if a preserved version's section
-// is absent). Any existing section with no corresponding entry is dropped — the whole
-// rebuild keeps exactly the supplied sections, which is how ordering is repaired and
-// stray-section drift removed.
+// copied verbatim from the existing file (a preserved version absent from the file is
+// OMITTED — nothing to preserve, never an error). Any existing section with no
+// corresponding entry is dropped — the whole rebuild keeps exactly the supplied
+// sections, which is how ordering is repaired and stray-section drift removed.
 //
 // The write is atomic (temp file + rename). When the rebuilt content matches the file
 // already on disk byte-for-byte, nothing is written and Changed is false — the no-op
@@ -88,10 +97,7 @@ func RebuildChangelog(dir string, sections []ChangelogSection) (WriteResult, err
 		return WriteResult{}, err
 	}
 
-	rebuilt, err := composeChangelog(existing, sections)
-	if err != nil {
-		return WriteResult{}, err
-	}
+	rebuilt := composeChangelog(existing, sections)
 
 	if rebuilt == existing {
 		return WriteResult{Changed: false}, nil
@@ -104,42 +110,42 @@ func RebuildChangelog(dir string, sections []ChangelogSection) (WriteResult, err
 
 // composeChangelog builds the whole-file content: the KaC preamble, a blank separator,
 // then each section's text in order. A rendered section is produced via renderSection;
-// a preserved section's block is extracted verbatim from existing (a loud error when
-// absent). The section texts are concatenated directly — each already carries its own
-// trailing newline(s) from renderSection / the source file — so the composition matches
-// the single-version writer's section spacing exactly.
-func composeChangelog(existing string, sections []ChangelogSection) (string, error) {
+// a preserved section's block is extracted verbatim from existing (an absent preserved
+// version contributes nothing — there is no section to copy). The section texts are
+// concatenated directly — each already carries its own trailing newline(s) from
+// renderSection / the source file — so the composition matches the single-version
+// writer's section spacing exactly.
+func composeChangelog(existing string, sections []ChangelogSection) string {
 	out := kacPreamble + "\n"
 	for _, s := range sections {
-		text, err := sectionText(existing, s)
-		if err != nil {
-			return "", err
-		}
-		out += text
+		out += sectionText(existing, s)
 	}
-	return out, nil
+	return out
 }
 
 // sectionText returns one section's whole-file text: renderSection output for a
-// rendered section, or the version's verbatim existing block for a preserved one.
-func sectionText(existing string, s ChangelogSection) (string, error) {
+// rendered section, or the version's verbatim existing block for a preserved one (the
+// empty string when a preserved version has no section in the current file, so it is
+// omitted from the rebuild).
+func sectionText(existing string, s ChangelogSection) string {
 	if s.kind == sectionPreserved {
 		return preservedSectionText(existing, s.version)
 	}
-	return renderSection(s.version, s.date, s.body), nil
+	return renderSection(s.version, s.date, s.body)
 }
 
 // preservedSectionText extracts version's existing section block verbatim from existing
 // — from its `## [version]` header up to (but not including) the next section header or
-// end of file — reusing splitAroundSection so the parse matches the writer's own. It is
-// a loud error when the version has no section in the current file (the caller asked to
-// preserve a section that does not exist).
-func preservedSectionText(existing, version string) (string, error) {
+// end of file — reusing splitAroundSection so the parse matches the writer's own. When
+// the version has NO section in the current file it returns the empty string: a skipped
+// version that was never recorded has nothing to preserve, so it is omitted from the
+// rebuild rather than aborting it (and discarding every other section).
+func preservedSectionText(existing, version string) string {
 	before, after, found := splitAroundSection(existing, version)
 	if !found {
-		return "", fmt.Errorf("cannot preserve section for %s: not present in %s", version, ChangelogFileName)
+		return ""
 	}
 	// The block is everything between the content before the header and the content
 	// after the block — i.e. existing with before and after trimmed off the ends.
-	return existing[len(before) : len(existing)-len(after)], nil
+	return existing[len(before) : len(existing)-len(after)]
 }
