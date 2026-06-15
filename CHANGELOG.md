@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.5] - 2026-06-15
+
+✨ Added
+
+- New `--source release` option for `mint release regenerate` — reads the existing published GitHub release body verbatim, making it easy to backfill a `CHANGELOG.md` from releases you already have.
+
+🔧 Changed
+
+- `--reuse` and `--fresh` flags replaced by a single `--source <fresh|tag|release>` flag — `--source tag` is the equivalent of the old `--reuse`, and `fresh` remains the default.
+- Source and target axes are now fully independent — any source (`fresh`, `tag`, `release`) can write any target (`release`, `changelog`, `both`); the old constraint that `--reuse` implied `--target release` is removed.
+- `--target` is now required with `-y` for every source, not just `fresh`; no source has a safe default surface to guess unattended.
+- A skipped version with no recorded changelog section is silently omitted from the rebuilt file rather than aborting the entire batch — fixes a bug where one body-less version in a `--all` run discarded every other regenerated section.
+- Post-push publish failure heal message updated to `regenerate --source tag`.
+
 ## [0.0.4] - 2026-06-15
 
 ✨ Added
