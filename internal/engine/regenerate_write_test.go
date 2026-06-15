@@ -507,6 +507,71 @@ func TestRegenerateWrite_Fresh_EditChoice_ConsultsEditor(t *testing.T) {
 	}
 }
 
+// TestRegenerateWrite_Fresh_ShowsNotesBeforeGate proves the fresh notes-review gate
+// is preceded by a ShowNotes render of the produced body — the user must SEE the
+// notes they are accepting/editing/regenerating. The initial render is the caller's:
+// reviewGate re-shows only AFTER an edit/regenerate choice, so without this render the
+// gate would prompt over an empty preview (the reported "Use these notes?" over blank).
+func TestRegenerateWrite_Fresh_ShowsNotesBeforeGate(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{}, nil)
+	pub := newFakePublisher()
+	pub.seedExists(regenWriteTag, true, nil)
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+
+	if err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), pub, dir, freshWriteReq(engine.RegenerateTargetRelease)); err != nil {
+		t.Fatalf("RegenerateWrite returned unexpected error: %v", err)
+	}
+
+	notesAt := indexOfKind(rec, presentertest.KindShowNotes)
+	if notesAt == -1 {
+		t.Fatalf("no ShowNotes recorded before the review gate; kinds = %v", rec.Kinds())
+	}
+	gateAt := indexOfKind(rec, presentertest.KindPrompt)
+	if gateAt == -1 {
+		t.Fatalf("no review-gate Prompt recorded; kinds = %v", rec.Kinds())
+	}
+	if notesAt >= gateAt {
+		t.Errorf("ShowNotes at %d must precede the review gate at %d (the user reviews the body before deciding); kinds = %v", notesAt, gateAt, rec.Kinds())
+	}
+	if body := rec.Events[notesAt].ShowNotes.Body; body != regenWriteBody {
+		t.Errorf("ShowNotes.Body = %q, want the produced body %q", body, regenWriteBody)
+	}
+	if v := rec.Events[notesAt].ShowNotes.Version; v != regenWriteVersionKey {
+		t.Errorf("ShowNotes.Version = %q, want %q", v, regenWriteVersionKey)
+	}
+}
+
+// TestRegenerateWrite_Reuse_ShowsNotesBeforeConfirm proves the reuse path likewise
+// renders the body before its simple confirm — reuse writes the tag-annotation body to
+// live surfaces, so the user must see what will be reused, mirroring the forward path's
+// unconditional ShowNotes-before-gate.
+func TestRegenerateWrite_Reuse_ShowsNotesBeforeConfirm(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{}, nil)
+	pub := newFakePublisher()
+	pub.seedExists(regenWriteTag, true, nil)
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
+
+	if err := engine.RegenerateWrite(t.Context(), regenWriteDeps(rec, f), pub, dir, reuseWriteReq(engine.RegenerateTargetRelease)); err != nil {
+		t.Fatalf("RegenerateWrite returned unexpected error: %v", err)
+	}
+
+	notesAt := indexOfKind(rec, presentertest.KindShowNotes)
+	gateAt := indexOfKind(rec, presentertest.KindPrompt)
+	if notesAt == -1 || gateAt == -1 || notesAt >= gateAt {
+		t.Errorf("ShowNotes (%d) must precede the reuse confirm (%d); kinds = %v", notesAt, gateAt, rec.Kinds())
+	}
+}
+
 // regenWriteDeps builds the ReleaseDeps for the write-path tests: a recording
 // presenter, the single FakeRunner, and a Mutator over it (shared with no Releaser —
 // regenerate cuts no tag and uses a plain push, so the Releaser is unused here).

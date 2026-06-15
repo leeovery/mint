@@ -195,6 +195,13 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 // presenter returns the gate default (ChoiceYes), so the gate accepts immediately.
 func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRequest) (string, error) {
 	p := deps.Presenter
+	// Show the notes BEFORE the gate so the user reviews the body they are accepting —
+	// the regenerate mirror of the forward path's ShowNotes-then-reviewGate adjacency
+	// (release.go). reviewGate re-shows only AFTER an edit/regenerate choice; the INITIAL
+	// render is the caller's, so without this the fresh gate (and the reuse confirm) would
+	// prompt over an empty preview. Both the single-version (RegenerateWrite) and batch
+	// (gatePerVersion) fresh/reuse paths route through here, so one render covers both.
+	p.ShowNotes(presenter.Notes{Version: req.VersionKey, Body: req.Body})
 	if req.Source == RegenerateSourceReuse {
 		return reuseConfirm(p, req.Body)
 	}

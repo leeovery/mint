@@ -644,7 +644,14 @@ func (p *PrettyPresenter) ShowPlan(plan Plan) {
 	if len(plan.Steps) == 0 {
 		return
 	}
-	p.writef("\n%s%s\n", stageIndent, p.strong.Render("Plan"))
+	// One blank line precedes the plan as its own block, UNLESS the output already ends
+	// with a blank line (e.g. RunStarted's trailing blank when the plan follows the brand
+	// header directly, as the regenerate flow does) — adding another would double the gap.
+	// Same collapse the gate bar applies (renderGate).
+	if p.trailingNL < 2 {
+		p.writef("\n")
+	}
+	p.writef("%s%s\n", stageIndent, p.strong.Render("Plan"))
 	column := planVerbColumn(plan.Steps)
 	bullet := p.dim.Render("•")
 	for _, step := range plan.Steps {

@@ -486,6 +486,50 @@ func TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *t
 	}
 }
 
+// TestPrettyPresenterShowPlanAfterRunStartedCollapsesBlank proves the plan block
+// emits a SINGLE blank line after the brand header when it follows RunStarted
+// directly (the regenerate ordering: RunStarted → ShowPlan, with no stage between).
+// RunStarted closes with a trailing blank and ShowPlan opens with its own leading
+// blank; without the collapse the two stack into a double gap above "Plan". ShowPlan
+// suppresses its leading blank when the output already ends blank — the same
+// trailingNL collapse the gate bar applies.
+func TestPrettyPresenterShowPlanAfterRunStartedCollapsesBlank(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "source", Target: "fresh"},
+			{Verb: "release", Target: "v1.4.0"},
+		}})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "🌿 mint › regenerating acme v1.4.0\n\nPlan\n") {
+		t.Errorf("want a SINGLE blank line between the brand header and the plan:\n%q", got)
+	}
+	if strings.Contains(got, "\n\n\nPlan") {
+		t.Errorf("double blank line above the plan (the leading blank was not collapsed):\n%q", got)
+	}
+}
+
+// TestPrettyPresenterShowPlanAfterStageKeepsBlank proves the collapse does NOT eat
+// the plan's leading blank when the plan follows a stage line (the forward release
+// ordering: a stage's ✓ line leaves a single trailing newline, so ShowPlan still
+// opens its own blank-line block). The trailingNL collapse only fires on an already
+// blank tail — one blank precedes the plan here, exactly as before.
+func TestPrettyPresenterShowPlanAfterStageKeepsBlank(t *testing.T) {
+	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+		p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: "clean"})
+		p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{
+			{Verb: "release", Target: "v1.4.0"},
+		}})
+	})
+
+	got := out.String()
+	if !strings.Contains(got, "✓ preflight  clean\n\nPlan\n") {
+		t.Errorf("want the plan's leading blank preserved after a stage line:\n%q", got)
+	}
+}
+
 // TestPrettyPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder proves --all
 // renders ONE block per version in ENGINE EMIT ORDER (oldest→newest) and the
 // presenter does NOT reorder: three engine-emitted RunStarted blocks (v1.2.0,
