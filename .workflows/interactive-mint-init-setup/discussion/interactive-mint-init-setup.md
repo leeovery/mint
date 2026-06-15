@@ -52,10 +52,12 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (9 subtopics — 1 decided · 1 exploring · 7 pending)
+  Discussion Map — Interactive mint init Setup (11 subtopics — 1 decided · 2 converging · 1 exploring · 7 pending)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
-  ├─ ◐ Scope of prompted keys [exploring]
+  ├─ → Scope of prompted keys [converging]
+  │  ├─ → AI prompt flow (model × per-verb) [converging]
+  │  └─ ◐ AI-assisted diff_exclude analysis [exploring]
   ├─ ○ Non-interactive fallback (-y / non-TTY) [pending]
   ├─ ○ Defaults & single source of truth [pending]
   ├─ ○ Output shape of the generated file [pending]
@@ -100,7 +102,11 @@ file genuinely can't make, not re-ask things with good defaults. Confidence: hig
 
 ## Scope of prompted keys
 
-*State: exploring.*
+*State: converging.*
+
+**North star (user, clarified):** make initiating a project *smoother* — first for the
+author, and therefore for everyone. The prompts exist to remove the open-the-file-and-
+hand-edit step for the 1-2 things that actually vary, not to interrogate.
 
 ### Context
 
@@ -142,38 +148,151 @@ has a default everyone accepts.
 | provider / `release_branch` | auto-detected/derived | no — auto-detect wins |
 | `tag_prefix` / `changelog` / `publish` / `commit_prefix` | `v` / true / true / 🌿 | no — leave as active default |
 
-### Journey (so far)
+### Journey
 
 Started from "AI model is the obvious one prompt." User pushed: mint has no model
 concept, it's baked in the command — so a model prompt isn't real unless we invent
-model-knowledge. That exposed the trigger key as a weak prompt and surfaced a better
-one (same/different-AI structural branch). User also floated `diff_exclude`. Still
-open: does the targeted set reduce to just the same/different-AI branch, or include
-`diff_exclude`? Is there a worthwhile core at all, or is the honest answer "ship the
-commented template, ask later"?
+model-knowledge. That exposed the trigger key as weak (Enter-to-accept) and surfaced a
+better one (same/different-per-verb branch). I over-rejected a curated model menu, then
+revised: the shipped default *already* assumes Claude, and the alias names are stable,
+so the costs are low. The user then reframed it decisively: don't ask *which AI* (it's
+always Claude) — ask *which model*; for anything else, drop to a custom command. That
+escape hatch is what preserves AI-agnosticism, so curated shortcuts cost nothing we
+cared about. User also confirmed `diff_exclude` is worth it ("every project has files
+that should be excluded") and floated the standout idea: reuse the just-configured AI
+to *scan the project and propose* the exclude list.
+
+### Direction (converging)
+
+- **AI framing:** Claude assumed → menu of Claude models (sonnet/opus/haiku) **+ a
+  `custom` escape** to free-text any other AI command. (Resolves minimal-vs-curated in
+  favour of curated-shortcuts-with-escape.)
+- **Prompted set is small and deliberate:**
+  - **AI model, per verb** — via the no-repeat flow (see child subtopic).
+  - **`diff_exclude`** — via AI-assisted scan (see child subtopic).
+  - **Out:** `max_diff_lines` (default fine, tune later — user), `context` (free text
+    before first use → throwaway), provider / `release_branch` (auto-detect wins),
+    `tag_prefix` / `changelog` / `publish` / `commit_prefix` (good active defaults).
+
+---
+
+## AI prompt flow (model × per-verb)
+
+*Child of Scope. State: converging.*
+
+### Context
+
+Prompt the AI model per verb without making the user answer the same question three
+times. The config already supports this shape: a shared top-level `ai_command` plus
+optional per-verb `[release]`/`[commit]` overrides, resolved `verb → shared → default`.
+
+### Decision (converging)
+
+No-repeat flow:
+
+```
+Which Claude model should mint use?  [1 sonnet ·default·  2 opus  3 haiku  4 custom]
+Use {choice} for both release notes AND commit messages?  [Y/n]
+  └─ n → Which model for commit messages?  [menu again]
+```
+
+- First answer is provisionally for **both**; only `n` triggers a second ask. The
+  defaults path is two Enters.
+- `1–3` → splice `--model X` into `claude -p`. `4 custom` → free-text command (the
+  AI-agnostic escape).
+- **Config representation:** "same" → write the shared top-level `ai_command` (today's
+  shape). "different" → write `[release].ai_command` + `[commit].ai_command` as per-verb
+  overrides. (How the un-prompted top-level default coexists is an Output-shape detail.)
+
+### Edge cases / parked
+
+- **Timeout coupling (parked):** the per-attempt timeout is fatal, not retried; a
+  slower pick (opus) could bite the 60s default. Picking a slow model *might* warrant
+  init also writing a higher per-verb `timeout`. Not deciding yet.
+- **`custom` + same/different:** works uniformly — custom command can be shared or
+  per-verb just like a model pick.
+
+---
+
+## AI-assisted diff_exclude analysis
+
+*Child of Scope. State: exploring. The feature's standout / differentiating idea.*
+
+### Context
+
+`diff_exclude` targets **tracked** generated files (committed `dist/`, generated code,
+lockfiles) — gitignored paths are already absent from the notes diff. These are exactly
+what a human forgets and what an AI scan can surface. The idea: after the AI command is
+configured, **offer** to scan the project and propose an exclude list the user
+approves/skips (and can edit later in the file).
+
+### How it would work
+
+1. After AI config: "Scan your project for files to exclude from release-notes diffs?
+   [Y/n]".
+2. `Y` → feed the tracked-file list (e.g. `git ls-files`) to the **configured** AI
+   command, asking it to return glob pathspecs for generated/vendored/lock files.
+3. Present the proposal → **approve** (write to `diff_exclude`) / **skip** (leave
+   empty). Inline editing deferred — user edits the file afterward.
+
+### The architectural consequence (the real cost)
+
+Init starts making AI calls. Today `engine.Init` is dead simple (resolve root, write two
+static files; `InitDeps` is deliberately narrower than `ReleaseDeps` — no AI, no
+mutator). The scan pulls the whole AI transport stack into init. Containment rules that
+keep init's *core* AI-free:
+
+- Strictly **opt-in** behind a Y/n.
+- **Degrades to "skip"** on any AI failure/timeout — never blocks, never aborts init.
+- **Never offered under `-y` / non-TTY** (fail-loud-never-hang: an unattended init must
+  not make a network call or wait).
+- Writing the two files never depends on the AI working.
+
+### Options for the mechanism (open)
+
+- **AI-analysis** — catches project-specific generated code; matches user intent; reuses
+  the configured command. Cost: AI in init, latency, failure handling. *(orchestrator
+  lean)*
+- **Static heuristic** — detect lockfiles + common patterns (`dist`, `*.pb.go`, …);
+  deterministic, free, no AI dependency; misses the long tail.
+- **Heuristic baseline enriched by AI** — most thorough, most complex.
+
+### Open questions
+
+- Mechanism choice (above).
+- Phasing: prompt-driven config (AI model + same/different) is shippable without the
+  scan; the scan is a clean second layer. Decide whether it's in-scope for v1 or a
+  follow-on.
+- Presenter capability: a model **menu** and an **approve/skip** prompt may not fit the
+  existing fixed-Choice `Prompt(Gate)` shape — may need AskLine-based selection or a new
+  presenter method (see Presenter prompt capabilities subtopic).
 
 ## Summary
 
 ### Key Insights
 
-1. Every config key already has a sane default (post `ai-model-selection`), so
-   interactive init's value is ergonomics + discoverability, not filling blanks — a
-   high bar for any prompt.
-2. AI is modelled as an opaque command string, not a first-class model — so a "pick a
-   model" prompt isn't natively possible without inventing model-knowledge (rejected,
-   provisional).
+1. **North star: smoother init.** Prompts remove the hand-edit step for the 1-2 things
+   that vary; they don't interrogate.
+2. Every config key already has a sane default (post `ai-model-selection`), so the bar
+   for "worth a prompt" is high — value is ergonomics + discoverability, not filling
+   blanks.
+3. AI is an opaque command string, not a first-class model. Resolved by framing: Claude
+   assumed → model menu + `custom` escape (escape preserves agnosticism).
+4. The AI-assisted `diff_exclude` scan is what makes the feature genuinely valuable vs
+   ergonomic sugar — but it's also the one thing that pulls AI into init's minimal core.
 
 ### Open Threads
 
-- Does the targeted prompt set reduce to one structural question (same/different AI),
-  or also include `diff_exclude`?
-- Is the feature's core worthwhile given good defaults, or should it be right-sized
-  hard (e.g. opt-in `--interactive` asking only the same/different-AI question)?
+- diff_exclude scan: mechanism (AI vs heuristic vs both) and phasing (v1 vs follow-on).
+- Per-verb `timeout` auto-write when a slow model is picked (parked).
+- Presenter capability for menu + approve/skip prompts.
 
 ### Current State
 
 - **Decided:** Interactivity model = A (targeted overlay).
-- **Exploring:** Scope of prompted keys.
+- **Converging:** Scope (AI model per verb + diff_exclude; everything else out); AI
+  prompt flow (no-repeat model × per-verb + custom escape).
+- **Exploring:** AI-assisted diff_exclude analysis (mechanism + phasing + presenter).
 
 ## Triage
 
