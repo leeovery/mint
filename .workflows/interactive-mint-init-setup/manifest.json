@@ -27,6 +27,22 @@
           "date": "2026-06-16"
         }
       }
+    },
+    "planning": {
+      "items": {
+        "interactive-mint-init-setup": {
+          "status": "in-progress",
+          "format": "tick",
+          "spec_commit": "23197739f1018eb13e7c33ba2048c50fd9033bbb",
+          "task_list_gate_mode": "gated",
+          "author_gate_mode": "gated",
+          "finding_gate_mode": "gated",
+          "review_cycle": 0,
+          "phase": 1,
+          "task": "~",
+          "task_map": {}
+        }
+      }
     }
   },
   "seeds": [
