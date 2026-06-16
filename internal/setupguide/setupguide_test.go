@@ -220,6 +220,69 @@ func firstNumberedStep(body string) string {
 	return ""
 }
 
+// TestGuide_LearnMintStepNamesMintsOwnReadme proves procedure step 2 ("Learn
+// mint") points the agent at MINT's OWN README — the human config-reference
+// surface and the source of mint's commands/surface/philosophy — rather than the
+// ambiguous "the project's README", which most naturally reads as the TARGET
+// project's README (which would not document mint). The disambiguated wording is
+// "mint's README". The minimalism-philosophy clause must survive the reword.
+func TestGuide_LearnMintStepNamesMintsOwnReadme(t *testing.T) {
+	t.Parallel()
+
+	step := numberedStep(setupguide.Guide(), "2.")
+	if step == "" {
+		t.Fatal("guide carries no numbered procedure step 2")
+	}
+	if !strings.Contains(step, "mint's README") {
+		t.Errorf("procedure step 2 must name mint's own README unambiguously (\"mint's README\"), got: %q", step)
+	}
+	if strings.Contains(step, "the project's README") {
+		t.Errorf("procedure step 2 must not call it \"the project's README\" (reads as the target project's README), got: %q", step)
+	}
+	if !strings.Contains(strings.ToLower(step), "minimalist philosophy") {
+		t.Errorf("procedure step 2 must retain the minimalism-philosophy clause, got: %q", step)
+	}
+}
+
+// numberedStep returns the procedure step that opens with the given ordered
+// prefix (e.g. "2."), joined across its continuation lines up to the next
+// numbered step, and trimmed. Procedure steps wrap across multiple indented
+// lines, so this gathers the whole step rather than just its opening line.
+// Returns "" if no step opens with prefix.
+func numberedStep(body, prefix string) string {
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			continue
+		}
+		step := []string{strings.TrimSpace(line)}
+		for _, next := range lines[i+1:] {
+			trimmed := strings.TrimSpace(next)
+			if isNumberedStepOpener(trimmed) || trimmed == "" {
+				break
+			}
+			step = append(step, trimmed)
+		}
+		return strings.Join(step, " ")
+	}
+	return ""
+}
+
+// isNumberedStepOpener reports whether a trimmed line opens an ordered procedure
+// step ("1.", "2.", …) — the boundary numberedStep stops a step at.
+func isNumberedStepOpener(trimmed string) bool {
+	dot := strings.IndexByte(trimmed, '.')
+	if dot <= 0 {
+		return false
+	}
+	for _, r := range trimmed[:dot] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // TestGuide_CarriesAIModelPerVerbMapping proves the guide explains the
 // AI-model-per-verb mapping: the same model -> the shared top-level ai_command;
 // different models -> [release].ai_command + [commit].ai_command per-verb

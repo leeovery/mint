@@ -109,8 +109,9 @@ func procedure() string {
    repo guard), so verify with the user that you are in the project you mean to
    configure — this is your safety net. ` + "`mint init`" + ` (run later, if needed)
    is the loud-fail backstop: it refuses to run outside a git work tree.
-2. Learn mint. Read the project's README for mint's commands and surface, and
-   internalise mint's minimalist philosophy: only set what varies from the
+2. Learn mint. Read mint's README (the human config reference) for mint's
+   commands and surface — this means mint's OWN README, not the target project's
+   — and internalise mint's minimalist philosophy: only set what varies from the
    compiled defaults.
 3. Read the config reference NOW — before any inspect or edit. The reference is
    the config-reference section embedded further down in THIS output (mint help
