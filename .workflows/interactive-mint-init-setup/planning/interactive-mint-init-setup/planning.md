@@ -19,7 +19,8 @@ approved_at: 2026-06-16
 - [ ] All standard gates pass (`go build`, `gofmt -l`, `go vet`, `go test -race`, `golangci-lint`).
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-16
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
