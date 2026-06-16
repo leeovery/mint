@@ -35,12 +35,16 @@
           "format": "tick",
           "spec_commit": "dff88a94df2de656233ccee05e61e62cf02f6151",
           "task_list_gate_mode": "auto",
-          "author_gate_mode": "gated",
+          "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "interactive-mint-init-setup-1-1",
-          "task_map": {}
+          "task": "interactive-mint-init-setup-1-2",
+          "task_map": {
+            "interactive-mint-init-setup-1": "tick-23fbff",
+            "interactive-mint-init-setup-1-1": "tick-15d94b"
+          },
+          "external_id": "tick-f3d959"
         }
       }
     }
