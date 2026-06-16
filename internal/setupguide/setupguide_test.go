@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"mint/internal/config"
+	"mint/internal/configtest"
 	"mint/internal/setupguide"
 )
 
@@ -320,7 +321,7 @@ func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
 	t.Parallel()
 
 	section := configReferenceBody(t)
-	rows := rowByLevelKey(t)
+	rows := configtest.MustByLevelKey(t)
 
 	tests := []struct {
 		name  string
@@ -339,7 +340,7 @@ func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			row := rows[rowKey{level: tt.level, key: tt.key}]
+			row := rows[configtest.RowKey{Level: tt.level, Key: tt.key}]
 			if !containsRowLine(section, row.Key, setupguide.LevelCell(row.Level), row.Default, row.Description) {
 				t.Errorf("config reference must carry default %q verbatim for (level %q, key %q)",
 					row.Default, tt.level, tt.key)
@@ -362,12 +363,12 @@ func TestGuide_ConfigReferenceBlankDefaultRendersSingleSpaceCell(t *testing.T) {
 	t.Parallel()
 
 	section := configReferenceBody(t)
-	rows := rowByLevelKey(t)
+	rows := configtest.MustByLevelKey(t)
 
 	// [release].context is a genuinely-no-value key: its SoT default is "" (not a
 	// sentinel), so it is the canonical blank-default row to pin.
 	const blankKey = "context"
-	row := rows[rowKey{level: config.LevelRelease, key: blankKey}]
+	row := rows[configtest.RowKey{Level: config.LevelRelease, Key: blankKey}]
 	if row.Default != "" {
 		t.Fatalf("(level %q, key %q) Default = %q, want blank — pick a blank-default key for this seam test",
 			config.LevelRelease, blankKey, row.Default)
@@ -470,23 +471,4 @@ func splitRow(line string) []string {
 		cells = append(cells, strings.TrimSpace(p))
 	}
 	return cells
-}
-
-// rowKey identifies a SoT row by its (level, key) pair for the verbatim-token
-// lookups above.
-type rowKey struct {
-	level config.MetadataLevel
-	key   string
-}
-
-// rowByLevelKey indexes config.MetadataRows() by (level, key) so a token
-// assertion can pull the exact row whose default it pins.
-func rowByLevelKey(t *testing.T) map[rowKey]config.MetadataRow {
-	t.Helper()
-
-	out := map[rowKey]config.MetadataRow{}
-	for _, row := range config.MetadataRows() {
-		out[rowKey{level: row.Level, key: row.Key}] = row
-	}
-	return out
 }

@@ -6,43 +6,20 @@ import (
 	"time"
 
 	"mint/internal/config"
+	"mint/internal/configtest"
 )
 
-// rowKey identifies a SoT row by its (level, key) pair — the bijection unit the
-// drift contract matches on. ai_command and timeout are NOT collapsed across levels:
-// each (level, key) pair is a distinct row, so the map is keyed on both.
-type rowKey struct {
-	level config.MetadataLevel
-	key   string
-}
-
 // expectedRowKeys projects the single shared expected-pair census (config.ExpectedLeafKeys,
-// the internal config package's one ordered enumeration) into this external package's
-// rowKey type. The census uses the unexported leafKey type, which config_test cannot name —
-// but leafKey's Level/Key fields are exported, so the projection reads them directly. This
-// keeps the 25-pair enumeration in exactly one place while the naming test below asserts in
-// terms of the rowKey it already uses.
-func expectedRowKeys() []rowKey {
+// the internal config package's one ordered enumeration) into the shared configtest.RowKey
+// type. The census uses the unexported leafKey type, which config_test cannot name — but
+// leafKey's Level/Key fields are exported, so the projection reads them directly. This keeps
+// the 25-pair enumeration in exactly one place while the naming test below asserts in terms
+// of the RowKey the (level, key) lookups already use.
+func expectedRowKeys() []configtest.RowKey {
 	census := config.ExpectedLeafKeys()
-	out := make([]rowKey, 0, len(census))
+	out := make([]configtest.RowKey, 0, len(census))
 	for _, lk := range census {
-		out = append(out, rowKey{level: lk.Level, key: lk.Key})
-	}
-	return out
-}
-
-// rowSet collapses MetadataRows() into a (level, key) → row lookup, asserting no two
-// rows share a (level, key) pair (a collision would hide a duplicate or a dropped row).
-func rowSet(t *testing.T) map[rowKey]config.MetadataRow {
-	t.Helper()
-
-	out := map[rowKey]config.MetadataRow{}
-	for _, row := range config.MetadataRows() {
-		k := rowKey{level: row.Level, key: row.Key}
-		if _, dup := out[k]; dup {
-			t.Fatalf("duplicate SoT row for (level %q, key %q)", row.Level, row.Key)
-		}
-		out[k] = row
+		out = append(out, configtest.RowKey{Level: lk.Level, Key: lk.Key})
 	}
 	return out
 }
@@ -56,10 +33,11 @@ func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 	t.Parallel()
 
 	// Project the single shared census (config.ExpectedLeafKeys, defined in the internal
-	// config package's metadata_census_test.go) into this external package's rowKey type.
+	// config package's metadata_census_test.go) into the shared configtest.RowKey type.
 	// config_test cannot name the unexported leafKey, but it can read each pair's exported
 	// Level/Key fields — so the 25 expected pairs live in exactly ONE place. This test
-	// still matches against MetadataRows() (the SoT side), which stays untouched.
+	// still matches against MetadataRows() (the SoT side, indexed through the shared
+	// configtest seam), which stays untouched.
 	expected := expectedRowKeys()
 
 	rows := config.MetadataRows()
@@ -67,10 +45,10 @@ func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 		t.Fatalf("MetadataRows() returned %d rows, want %d", len(rows), len(expected))
 	}
 
-	set := rowSet(t)
+	set := configtest.MustByLevelKey(t)
 	for _, want := range expected {
 		if _, ok := set[want]; !ok {
-			t.Errorf("missing SoT row for (level %q, key %q)", want.level, want.key)
+			t.Errorf("missing SoT row for (level %q, key %q)", want.Level, want.Key)
 		}
 	}
 }
@@ -81,9 +59,9 @@ func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 func TestMetadataRows_AICommandTriLevel(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
+	set := configtest.MustByLevelKey(t)
 	for _, level := range []config.MetadataLevel{config.LevelShared, config.LevelRelease, config.LevelCommit} {
-		if _, ok := set[rowKey{level: level, key: "ai_command"}]; !ok {
+		if _, ok := set[configtest.RowKey{Level: level, Key: "ai_command"}]; !ok {
 			t.Errorf("missing ai_command row at level %q", level)
 		}
 	}
@@ -95,9 +73,9 @@ func TestMetadataRows_AICommandTriLevel(t *testing.T) {
 func TestMetadataRows_TimeoutTriLevel(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
+	set := configtest.MustByLevelKey(t)
 	for _, level := range []config.MetadataLevel{config.LevelShared, config.LevelRelease, config.LevelCommit} {
-		if _, ok := set[rowKey{level: level, key: "timeout"}]; !ok {
+		if _, ok := set[configtest.RowKey{Level: level, Key: "timeout"}]; !ok {
 			t.Errorf("missing timeout row at level %q", level)
 		}
 	}
@@ -176,24 +154,24 @@ const hooksDefaultCell = ""
 func TestMetadataRows_EmptyStringDefaultsRenderBlank(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
-	blank := []rowKey{
-		{config.LevelRelease, "context"},
-		{config.LevelRelease, "prompt"},
-		{config.LevelRelease, "fallback"},
-		{config.LevelRelease, "version_file"},
-		{config.LevelRelease, "version_pattern"},
-		{config.LevelCommit, "context"},
-		{config.LevelCommit, "prompt"},
+	set := configtest.MustByLevelKey(t)
+	blank := []configtest.RowKey{
+		{Level: config.LevelRelease, Key: "context"},
+		{Level: config.LevelRelease, Key: "prompt"},
+		{Level: config.LevelRelease, Key: "fallback"},
+		{Level: config.LevelRelease, Key: "version_file"},
+		{Level: config.LevelRelease, Key: "version_pattern"},
+		{Level: config.LevelCommit, Key: "context"},
+		{Level: config.LevelCommit, Key: "prompt"},
 	}
 
 	for _, want := range blank {
 		row, ok := set[want]
 		if !ok {
-			t.Fatalf("missing SoT row for (level %q, key %q)", want.level, want.key)
+			t.Fatalf("missing SoT row for (level %q, key %q)", want.Level, want.Key)
 		}
 		if row.Default != "" {
-			t.Errorf("(level %q, key %q) Default = %q, want blank", want.level, want.key, row.Default)
+			t.Errorf("(level %q, key %q) Default = %q, want blank", want.Level, want.Key, row.Default)
 		}
 	}
 }
@@ -207,24 +185,24 @@ func TestMetadataRows_EmptyStringDefaultsRenderBlank(t *testing.T) {
 func TestMetadataRows_SentinelAutoDefaultsRenderAuto(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
-	auto := []rowKey{
-		{config.LevelRelease, "release_branch"},
-		{config.LevelRelease, "provider"},
+	set := configtest.MustByLevelKey(t)
+	auto := []configtest.RowKey{
+		{Level: config.LevelRelease, Key: "release_branch"},
+		{Level: config.LevelRelease, Key: "provider"},
 	}
 
 	for _, want := range auto {
 		row, ok := set[want]
 		if !ok {
-			t.Fatalf("missing SoT row for (level %q, key %q)", want.level, want.key)
+			t.Fatalf("missing SoT row for (level %q, key %q)", want.Level, want.Key)
 		}
 		if row.Default != "auto" {
-			t.Errorf("(level %q, key %q) Default = %q, want %q", want.level, want.key, row.Default, "auto")
+			t.Errorf("(level %q, key %q) Default = %q, want %q", want.Level, want.Key, row.Default, "auto")
 		}
 		// The blank-vs-auto distinction is load-bearing: assert NOT blank so a
 		// regression collapsing auto into the empty-string token is caught.
 		if row.Default == "" {
-			t.Errorf("(level %q, key %q) Default is blank, must be distinct from the empty-string keys", want.level, want.key)
+			t.Errorf("(level %q, key %q) Default is blank, must be distinct from the empty-string keys", want.Level, want.Key)
 		}
 	}
 }
@@ -235,8 +213,8 @@ func TestMetadataRows_SentinelAutoDefaultsRenderAuto(t *testing.T) {
 func TestMetadataRows_DiffExcludeRendersEmptyCollection(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
-	row, ok := set[rowKey{config.LevelShared, "diff_exclude"}]
+	set := configtest.MustByLevelKey(t)
+	row, ok := set[configtest.RowKey{Level: config.LevelShared, Key: "diff_exclude"}]
 	if !ok {
 		t.Fatal("missing SoT row for (shared, diff_exclude)")
 	}
@@ -254,21 +232,21 @@ func TestMetadataRows_DiffExcludeRendersEmptyCollection(t *testing.T) {
 func TestMetadataRows_PerVerbOverridesRenderShared(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
-	inherit := []rowKey{
-		{config.LevelRelease, "ai_command"},
-		{config.LevelRelease, "timeout"},
-		{config.LevelCommit, "ai_command"},
-		{config.LevelCommit, "timeout"},
+	set := configtest.MustByLevelKey(t)
+	inherit := []configtest.RowKey{
+		{Level: config.LevelRelease, Key: "ai_command"},
+		{Level: config.LevelRelease, Key: "timeout"},
+		{Level: config.LevelCommit, Key: "ai_command"},
+		{Level: config.LevelCommit, Key: "timeout"},
 	}
 
 	for _, want := range inherit {
 		row, ok := set[want]
 		if !ok {
-			t.Fatalf("missing SoT row for (level %q, key %q)", want.level, want.key)
+			t.Fatalf("missing SoT row for (level %q, key %q)", want.Level, want.Key)
 		}
 		if row.Default != "shared" {
-			t.Errorf("(level %q, key %q) Default = %q, want %q", want.level, want.key, row.Default, "shared")
+			t.Errorf("(level %q, key %q) Default = %q, want %q", want.Level, want.Key, row.Default, "shared")
 		}
 	}
 }
@@ -280,11 +258,11 @@ func TestMetadataRows_PerVerbOverridesRenderShared(t *testing.T) {
 func TestMetadataRows_HooksRenderNoDefault(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
+	set := configtest.MustByLevelKey(t)
 	hooks := []string{"preflight", "pre_tag", "post_release"}
 
 	for _, key := range hooks {
-		row, ok := set[rowKey{config.LevelReleaseHooks, key}]
+		row, ok := set[configtest.RowKey{Level: config.LevelReleaseHooks, Key: key}]
 		if !ok {
 			t.Fatalf("missing SoT row for (release.hooks, %q)", key)
 		}
@@ -303,8 +281,8 @@ func TestMetadataRows_HooksRenderNoDefault(t *testing.T) {
 func TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
-	row, ok := set[rowKey{config.LevelShared, "ai_command"}]
+	set := configtest.MustByLevelKey(t)
+	row, ok := set[configtest.RowKey{Level: config.LevelShared, Key: "ai_command"}]
 	if !ok {
 		t.Fatal("missing SoT row for (shared, ai_command)")
 	}
@@ -323,8 +301,8 @@ func TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant(t *testing.T) {
 func TestMetadataRows_SharedTimeoutDefaultEqualsConfigConstant(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
-	row, ok := set[rowKey{config.LevelShared, "timeout"}]
+	set := configtest.MustByLevelKey(t)
+	row, ok := set[configtest.RowKey{Level: config.LevelShared, Key: "timeout"}]
 	if !ok {
 		t.Fatal("missing SoT row for (shared, timeout)")
 	}
@@ -342,8 +320,8 @@ func TestMetadataRows_SharedTimeoutDefaultEqualsConfigConstant(t *testing.T) {
 func TestMetadataRows_SharedTimeoutDefaultIsIntegerSecondsNotDuration(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
-	row, ok := set[rowKey{config.LevelShared, "timeout"}]
+	set := configtest.MustByLevelKey(t)
+	row, ok := set[configtest.RowKey{Level: config.LevelShared, Key: "timeout"}]
 	if !ok {
 		t.Fatal("missing SoT row for (shared, timeout)")
 	}
@@ -365,28 +343,28 @@ func TestMetadataRows_SharedTimeoutDefaultIsIntegerSecondsNotDuration(t *testing
 func TestMetadataRows_ConcreteScalarDefaultsRenderVerbatim(t *testing.T) {
 	t.Parallel()
 
-	set := rowSet(t)
+	set := configtest.MustByLevelKey(t)
 	tests := []struct {
-		key  rowKey
+		key  configtest.RowKey
 		want string
 	}{
-		{rowKey{config.LevelShared, "ai_command"}, config.DefaultAICommand},
-		{rowKey{config.LevelShared, "timeout"}, strconv.Itoa(int(config.DefaultTimeout.Seconds()))},
-		{rowKey{config.LevelShared, "max_diff_lines"}, "50000"},
-		{rowKey{config.LevelRelease, "tag_prefix"}, "v"},
-		{rowKey{config.LevelRelease, "commit_prefix"}, "🌿"},
-		{rowKey{config.LevelRelease, "publish"}, "true"},
-		{rowKey{config.LevelRelease, "changelog"}, "true"},
-		{rowKey{config.LevelRelease, "on_notes_failure"}, "abort"},
+		{configtest.RowKey{Level: config.LevelShared, Key: "ai_command"}, config.DefaultAICommand},
+		{configtest.RowKey{Level: config.LevelShared, Key: "timeout"}, strconv.Itoa(int(config.DefaultTimeout.Seconds()))},
+		{configtest.RowKey{Level: config.LevelShared, Key: "max_diff_lines"}, "50000"},
+		{configtest.RowKey{Level: config.LevelRelease, Key: "tag_prefix"}, "v"},
+		{configtest.RowKey{Level: config.LevelRelease, Key: "commit_prefix"}, "🌿"},
+		{configtest.RowKey{Level: config.LevelRelease, Key: "publish"}, "true"},
+		{configtest.RowKey{Level: config.LevelRelease, Key: "changelog"}, "true"},
+		{configtest.RowKey{Level: config.LevelRelease, Key: "on_notes_failure"}, "abort"},
 	}
 
 	for _, tt := range tests {
 		row, ok := set[tt.key]
 		if !ok {
-			t.Fatalf("missing SoT row for (level %q, key %q)", tt.key.level, tt.key.key)
+			t.Fatalf("missing SoT row for (level %q, key %q)", tt.key.Level, tt.key.Key)
 		}
 		if row.Default != tt.want {
-			t.Errorf("(level %q, key %q) Default = %q, want %q", tt.key.level, tt.key.key, row.Default, tt.want)
+			t.Errorf("(level %q, key %q) Default = %q, want %q", tt.key.Level, tt.key.Key, row.Default, tt.want)
 		}
 	}
 }
