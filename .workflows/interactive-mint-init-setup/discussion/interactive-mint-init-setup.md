@@ -524,11 +524,16 @@ leaves the guide a single authoritative doc source. Only possible *because* of b
   schema key appears in README). README descriptions may lightly duplicate the SoT —
   accepted (README is the human GitHub-browsing surface; the machine/agent surfaces, help +
   setup, are the ones held to one SoT).
-- **initgen becomes trivial** (a near-empty static header); the new structure is the
-  config-metadata SoT + its help/setup renderers + the drift test. Existing seam to respect:
-  initgen deliberately doesn't import config and is drift-pinned — the minimal header keeps
-  initgen simple; the SoT/renderers are the new home for metadata. (Package layout = planning
-  detail.)
+- **initgen: only `MintTOML()` goes minimal** (a near-empty + header string); `ReleaseShim()`
+  and its tests are **untouched**. (Earlier "initgen becomes trivial" was an overstatement —
+  the shim half stays.) The new structure is the config-metadata SoT + its renderer(s) + the
+  drift test. Existing seam to respect: initgen deliberately doesn't import config and is
+  drift-pinned. (Package layout = planning detail.)
+- **Release shim (F1 — decided):** `mint init` still emits BOTH files at the repo root,
+  unchanged — `.mint.toml` (now minimal) AND the executable `release` shim. Strip-to-minimal
+  is config-content only. **The `mint setup` guide gives the shim a one-line role mention**
+  (what `./release` is; that `mint init` creates it) so the agent's picture of the release
+  pipeline is complete. Shim tests stay as-is.
 
 ### Micro-choice — decided (user)
 
