@@ -43,10 +43,10 @@ The spec says only `MintTOML()` changes (to "empty body + header") and lists "Up
 - **What the new tests assert about the header** — the spec decides "empty body + a short header comment" pointing to GitHub docs and `mint setup`, but doesn't state whether a test pins those two pointers' presence. The "recovery net" rationale strongly implies the header pointers are load-bearing (the cold-arrival safety net), which argues for a test, but the DoD list doesn't name one.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Expanded "`initgen` scope of change" with two bullets: (1) the commented-template-shape tests are removed (not edited), new tests assert the minimal shape (empty body + header carrying both pointers, pinned); (2) the scaffold-value drift-pin (`ai_command`/`timeout` == config constants) is subsumed by the new SoT drift test, since the minimal template carries no values to pin. Also tightened the DoD "Updated `initgen` tests" bullet to match.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved.
 
 ---
 

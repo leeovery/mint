@@ -65,6 +65,8 @@ This header pointer is also the **recovery net** for the cold-arrival case — a
 
 - **Only `MintTOML()` changes** — it returns the new minimal string (empty body + header). `ReleaseShim()` and its tests are **untouched**.
 - The existing `initgen` seams are respected: `initgen` deliberately does **not** import `config` and is drift-pinned. (Package layout for the new config-metadata SoT is a planning detail.)
+- **`initgen` test impact (not a light edit).** The current `initgen` test suite is built around the commented-template contract; the tests that assert that shape are **removed**, not edited — they assert content the minimal template no longer carries (common keys active at defaults, optional keys present-but-commented, per-verb override comments, `pre_tag` shown in both string and array forms, prompt-override-mentioned-in-comment-only, hooks-only-under-`[release.hooks]`, and uncommented-loads-cleanly). **New** `initgen` tests assert the minimal shape instead: the body is empty (no active or commented keys) and the **header carries both pointers** (GitHub docs + `mint setup`) — the header is load-bearing (the cold-arrival recovery net), so its pointers are pinned by a test.
+- **The scaffold-value drift-pin moves to the SoT.** Today `initgen`'s drift tests pin the scaffold's literal default values (`ai_command`, `timeout`) equal to `config.DefaultAICommand` / `config.DefaultTimeout`. The minimal template carries **no** default values to pin, so that value-drift discipline is **subsumed by the new SoT drift test** — the SoT `default` column becomes the drift-pinned carrier of those values. No default value is left unpinned by the change.
 
 ### Release shim and `mint init` unchanged
 
@@ -193,7 +195,7 @@ The deliverable is mostly a thin Go feature, so most of "done" lands under the n
 
 - **Drift test** — config-metadata SoT ↔ the actual `config` schema (fails the build if they disagree).
 - **Structural test on `mint setup` output** — asserts it emits the required sections: pipeline/hook model, etiquette, minimalism, the if-exists/upgrade branch, and the config table.
-- **Updated `initgen` tests** — for the minimal (empty body + header) `.mint.toml` template; `ReleaseShim()` tests untouched.
+- **Updated `initgen` tests** — the commented-template assertions are removed; new tests assert the minimal shape (empty body + header pointers to GitHub docs + `mint setup`). The scaffold-value drift-pin is subsumed by the SoT drift test. `ReleaseShim()` tests untouched. (See "`initgen` scope of change" for the full list.)
 - **Help-contract coverage test** — the existing usage-coverage test extended to pin `mint setup` (rootUsage line + curated `setupUsage`).
 - **README tripwire (optional)** — assert every schema key name appears in the README.
 
