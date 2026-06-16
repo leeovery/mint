@@ -96,6 +96,15 @@ approved_at: 2026-06-16
 - [ ] The per-key reference tables are verified to declare every config key and its default; an optional tripwire test asserts every schema key name appears somewhere in the README.
 - [ ] All standard gates pass.
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-4-1 | Reconcile the Configuration + Commands sections with the minimal template | embedded-template block replaced with minimal (empty body + header) OR dropped — per-key tables stay the authoritative human reference either way; Configuration intro and Commands init line must agree on "minimal .mint.toml (empty body + header pointer)"; per-key tables already cover every schema key + default — verification confirms none missed, not a rewrite |
+| interactive-mint-init-setup-4-2 | Add the any-AI entry-point prompt routing operators to mint setup | routes to the binary guide, never restates it (binary is the version-matched source); "any AI" framing (Claude, Codex, …) with a light Opus-level steer and no fidelity-floor machinery; strict-schema loud-fail + natural verify-config-loads remain as backstops, not added machinery |
+| interactive-mint-init-setup-4-3 | Add the optional key-presence tripwire test | OPTIONAL per the spec; key-source choice (schema decode-shape toml tags vs config.MetadataRows() SoT) flagged for the author; dedupe dual-level ai_command/timeout to the distinct key-name set (substring presence, not the (level,key) pairs the Phase 1 drift test uses); a removed/renamed schema key with no README mention must fail the build |
+
 ## Manual Acceptance (not a phase)
 
 The spec's "Acceptance — prose quality" is a one-time manual run against representative repos (a fresh JS project, a Go project, a repo with an existing release script, a repo with an existing `.mint.toml`), eyeballing that each yields a sensible config. It cannot be unit-tested (spawning an AI is forbidden by the test culture). Tracked as a manual acceptance step after Phases 2 and 4 land — not modelled as implementation work.
