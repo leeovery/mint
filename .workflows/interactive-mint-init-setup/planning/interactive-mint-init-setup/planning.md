@@ -3,7 +3,8 @@
 ## Phases
 
 ### Phase 1: Config-metadata SoT + drift test
-status: draft
+status: approved
+approved_at: 2026-06-16
 
 **Goal**: Establish the single in-binary, schema-adjacent config-metadata table — one row per (level, key) pair carrying key · level · default · description — and the drift test that mechanically derives the schema's leaf-key set from the config decode-shape structs and proves a total bijection against it.
 
@@ -18,7 +19,8 @@ status: draft
 - [ ] All standard gates pass (`go build`, `gofmt -l`, `go vet`, `go test -race`, `golangci-lint`).
 
 ### Phase 2: mint setup subcommand — guide emitter, sections, help wiring
-status: draft
+status: approved
+approved_at: 2026-06-16
 
 **Goal**: Add the new top-level `mint setup` verb as a pure stdout string emitter (in the spirit of `initgen`) that prints the embedded AI setup guide — the inspect-and-map procedure, AI etiquette, minimalism rule, and the existing-config/upgrade branch — plus the config reference rendered from the Phase 1 SoT, each required section carrying a stable test-detectable marker, running unconditionally with no git/cwd guard, and threaded through mint's curated-help surface.
 
@@ -33,7 +35,8 @@ status: draft
 - [ ] All standard gates pass.
 
 ### Phase 3: initgen strip-to-minimal
-status: draft
+status: approved
+approved_at: 2026-06-16
 
 **Goal**: Change `MintTOML()` to return the minimal `.mint.toml` — an empty body plus a header comment pointing to the GitHub docs and `mint setup` — remove the commented-template test assertions, and add tests pinning the minimal shape and both header pointers.
 
@@ -47,7 +50,8 @@ status: draft
 - [ ] All standard gates pass.
 
 ### Phase 4: README reconciliation + entry-point + tripwire
-status: draft
+status: approved
+approved_at: 2026-06-16
 
 **Goal**: Make the README the human config-reference surface and the entry point that routes operators to `mint setup` — correct the now-false Configuration and Commands framing, replace or drop the embedded full commented-template block, add the tiny "any AI" entry-point prompt, verify the per-key tables declare every config key and its default, and optionally add the key-presence tripwire test.
 
