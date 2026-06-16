@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-16
 cycle: 1
 phase: Plan Integrity Review
@@ -73,8 +73,8 @@ requirement an explicit graph edge rather than a prose caveat.
 > compile or pass its render tests. 1-2 transitively requires 1-1, so a single
 > 2-2 → 1-2 edge captures the requirement.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied via `tick dep add tick-fc2454 tick-bc3a0f` — 2-2 (tick-fc2454) now blocked-by 1-2 (tick-bc3a0f). Verified acyclic. Approved in auto mode.
 
 ---
 
@@ -121,8 +121,8 @@ natural intra-phase order and need no explicit edge.)
 > default-token task (1-2) is not a prerequisite. The within-phase README
 > predecessors (4-1, 4-2) are satisfied by natural creation-order ordering.
 
-**Resolution**: Pending
-**Notes**: If the implementer instead picks the reflect-the-`toml`-tags key-source
+**Resolution**: Fixed
+**Notes**: Applied via `tick dep add tick-7edb1f tick-15d94b` — 4-3 (tick-7edb1f) now blocked-by 1-1 (tick-15d94b). Verified acyclic. Approved in auto mode. If the implementer instead picks the reflect-the-`toml`-tags key-source
 (not `MetadataRows()`), the edge to 1-1 is still warranted — 4-3's own Context
 states the Phase 1 reflection helper is the canonical chain it should stay inside,
 and 1-1/1-3 land together in Phase 1, so 1-1 remains a safe, sufficient anchor.
