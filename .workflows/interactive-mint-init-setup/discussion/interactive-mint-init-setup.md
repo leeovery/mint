@@ -52,25 +52,24 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (12 subtopics — 2 decided · 2 converging · 1 exploring · 7 pending)
+  Discussion Map — Interactive mint init Setup (10 subtopics — 3 decided · 3 converging · 2 exploring · 2 pending)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
-  ├─ → Scope of prompted keys [converging]
-  │  ├─ → AI prompt flow (model × per-verb) [converging]
-  │  └─ ✓ AI-assisted diff_exclude analysis [decided]
-  ├─ ◐ Offload interactivity to an AI setup guide [exploring]
-  ├─ ○ Non-interactive fallback (-y / non-TTY) [pending]
-  ├─ ○ Defaults & single source of truth [pending]
-  ├─ ○ Output shape of the generated file [pending]
-  ├─ ○ Wizard UX — avoiding tedium [pending]
-  ├─ ○ Seam & architecture placement [pending]
-  ├─ ○ Presenter prompt capabilities [pending]
-  └─ ○ Existing / partial .mint.toml [pending]
+  ├─ → Scope — what to configure [converging]
+  │  ├─ → AI command & model (per verb) [converging]
+  │  └─ ✓ diff_exclude (release-notes noise) [decided]
+  └─ ◐ AI setup guide (the pivot) [exploring]
+     ├─ ✓ Delivery & form factor [decided]
+     ├─ → Anti-drift strategy [converging]
+     ├─ ◐ Guide content & procedure [exploring]
+     ├─ ○ AI etiquette (existing config) [pending]
+     └─ ○ Static defaults floor (B) [pending]
 
-*Note: if the AI-setup-guide pivot is confirmed, the wizard-implementation subtopics
-(non-interactive fallback, defaults/SSoT, output shape, seam placement, presenter
-capability, existing-file) become moot — mint grows no interactive surface — and will
-be trimmed.*
+*Pivot confirmed (topic name unchanged). Trimmed the now-moot wizard-implementation
+subtopics (non-interactive fallback, defaults/SSoT, output shape, wizard UX, seam
+placement, presenter capability, existing-file interaction) — mint grows no interactive
+surface. Survivors re-homed under the pivot: anti-drift carries the SSoT/drift concern;
+AI etiquette carries existing-config handling.*
 
 ---
 
@@ -312,9 +311,26 @@ then **superseded by the pivot below.**
 
 ---
 
-## Offload interactivity to an AI setup guide (PIVOT candidate)
+## Offload interactivity to an AI setup guide (CONFIRMED)
 
-*State: exploring. Strong contender — likely supersedes A/B/C and the wizard subtopics.*
+*State: exploring (the work's spine now). Pivot confirmed by user; topic name unchanged
+(still suits). Supersedes A/B/C and the wizard subtopics (trimmed from the map).*
+
+### Decisions locked
+
+- **Pivot confirmed** — the deliverable is an AI setup guide, not a mint-side wizard.
+- **Form factor (decided):** MVP = a canonical AI-agnostic **setup-guide file** + a short
+  **README invocation prompt** pointing any AI at it. Later layers (not MVP): a
+  Claude-Code skill wrapper and/or `mint`-emits-the-prompt (versioned with the binary).
+
+### Review reconciliation (set 001)
+
+The pivot **moots** review-001's implementation-half findings (F1–F8, F11) — they
+critiqued a mint-side wizard we're no longer building. F9 (Claude-first framing) is
+addressed: the guide and prompt are explicitly AI-agnostic. F10 (testing without spawning
+AI) transforms into content-accuracy verification, carried by the anti-drift thread.
+review-001 marked `incorporated`; the next commit triggers a fresh review of the *pivoted*
+design.
 
 ### The idea (user)
 
@@ -357,18 +373,18 @@ documented). Non-AI users edit the template; AI users paste the prompt. This **d
 the fail-loud/non-interactive concern entirely** — mint never prompts, so there's no
 `-y`/non-TTY hang to design around.
 
-### Open questions
+### Open questions (live)
 
-- **Confirm the pivot** — reshapes the work unit from a Go feature to an AI-facing content
-  deliverable (+ maybe a tiny `mint`-emits-the-prompt command).
-- **Form factor:** canonical setup-guide file (AI-agnostic) + short README invocation
-  prompt + optional Claude-Code skill wrapper. MVP = guide + prompt? Where does the guide
-  live (repo file fetched by URL) vs `mint setup --print-prompt` (versioned with the
-  binary, can't drift from the running version)?
-- **Keep B?** Ship smarter ecosystem-aware static `diff_exclude` defaults as the no-AI
-  floor, independent of the guide?
-- **Etiquette:** guide steers the AI to propose-and-explain → get approval → run
-  `mint init` for the baseline → tailor, never silently rewrite.
+- **Guide content & procedure** — the real remaining design work: what the guide instructs
+  the AI to do (inspect project → detect release process/hooks, version file, noise dirs,
+  remote/provider → map to config) and how it encodes mint's minimalist philosophy.
+- **Anti-drift** — procedure-not-restatement: guide references the README + commented
+  template for option meanings; supplies only the inspect-and-map logic. (Carries review
+  F10's "how is this verified" into a content-accuracy check.)
+- **AI etiquette** — propose-and-explain → approve → run `mint init` for the baseline →
+  tailor; never silently rewrite; handle an existing `.mint.toml` gracefully.
+- **Static defaults floor (B)** — awaiting user decision (reminder given; orchestrator
+  lean = in).
 
 ## Summary
 
