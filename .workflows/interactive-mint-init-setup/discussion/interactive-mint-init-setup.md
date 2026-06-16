@@ -513,12 +513,13 @@ leaves the guide a single authoritative doc source. Only possible *because* of b
 - **Strip the generated config to bare essentials** — no inline comments; at most a header
   comment pointing to `mint help` / `mint setup`. (Open micro-choice below.)
 - **Single source of truth for config metadata in the binary** — one structured table
-  (key · level · default · description), schema-adjacent, that *renders into* both
-  `mint help` (a config section) and the `mint setup` output. NOT help-text scraping — both
-  surfaces render the same structured SoT, so they can't disagree, and a drift test against
-  the real schema is near-free. This table is what the agent reads (replacing the now-
-  stripped template comments). Finalises the layering: `mint init` → minimal config;
-  `mint help` / `mint setup` → the config table from the SoT.
+  (key · level · default · description), schema-adjacent, **drift-tested against the real
+  schema** (the anti-drift enforcement — its core value even with a single render target). It
+  **renders into the `mint setup` output** — the config reference the agent reads, replacing
+  the now-stripped template comments. **`mint help` stays curated and does NOT carry config**
+  (F2 — see below); **humans get the config reference from the GitHub docs / README.**
+  Layering: `mint init` → minimal config; `mint setup` → SoT config table (agent); README →
+  human config reference.
 - **README stays manual narrative** (Claude updates per-feature) but is **verified** as part
   of this work to declare every config key + default; optional cheap tripwire test (every
   schema key appears in README). README descriptions may lightly duplicate the SoT —
@@ -537,15 +538,26 @@ leaves the guide a single authoritative doc source. Only possible *because* of b
 
 ### Micro-choice — decided (user)
 
-**Empty body + a short header comment.** The header links to GitHub and names the command to
-view the full config reference — `mint help` for now (no dedicated config subcommand yet;
-exact command — a `mint help` config section vs a future `mint config` — is a planning
-detail). Defaults all live in the binary, so an empty file is valid and honest.
+**Empty body + a short header comment.** The header points to the **GitHub docs** for the
+config reference and notes **`mint setup`** for AI-assisted setup. (Config does NOT live in
+`mint help` — see F2.) Defaults all live in the binary, so an empty file is valid and honest.
 
 ### Strengthens
 
-Makes **anti-drift** concrete (SoT-rendered help+setup can't drift; drift test pins
+Makes **anti-drift** concrete (SoT-rendered `mint setup` can't drift; drift test pins
 SoT↔schema) and gives the agent a clean machine-readable config reference.
+
+### Help surface (F2 — decided)
+
+- New top-level verb `mint setup` threads through mint's curated-help contract: a `rootUsage`
+  line, a curated `setupUsage`, a `--help` path, dispatch wiring, and the **coverage test the
+  contract requires** — standard, in-pattern, acknowledged as in-scope (not just "a detail").
+- **`mint help` stays the frozen curated text** (gains only the `setup` line). We do NOT
+  retrofit it into a dynamic renderer. User: help shouldn't surface all config anyway —
+  *"feels wrong; I'd go to the GitHub docs for that."*
+- So the config reference lives in **`mint setup`** (SoT-rendered, for the agent) and the
+  **GitHub docs / README** (for humans). The SoT still earns its keep via the **drift test**
+  even with one in-binary render target.
 
 ## Minimalism — only set what varies (F8 — decided)
 
