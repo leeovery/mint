@@ -11,6 +11,22 @@
           "status": "completed"
         }
       }
+    },
+    "specification": {
+      "items": {
+        "interactive-mint-init-setup": {
+          "status": "in-progress",
+          "sources": {
+            "interactive-mint-init-setup": {
+              "status": "pending"
+            }
+          },
+          "review_cycle": 0,
+          "finding_gate_mode": "gated",
+          "construction_gate_mode": "gated",
+          "date": "2026-06-16"
+        }
+      }
     }
   },
   "seeds": [
