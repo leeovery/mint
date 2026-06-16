@@ -52,7 +52,7 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (11 subtopics — 5 decided · 6 converging)
+  Discussion Map — Interactive mint init Setup (11 subtopics — 6 decided · 5 converging)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope — what to configure [converging]
@@ -64,7 +64,7 @@ branches, converges as decisions land.
      ├─ → Guide content & procedure [converging]
      ├─ → AI etiquette (existing config) [converging]
      ├─ ✓ Static defaults floor (B → out) [decided]
-     └─ → Static template + config-doc SoT (strip to minimal) [converging]
+     └─ ✓ Static template + config-doc SoT (strip to minimal) [decided]
 
 *Pivot confirmed. Guide procedure + AI etiquette locked; B decided OUT (no static
 diff_exclude defaults — the guide surfaces them interactively). review-002 gaps are the
@@ -473,7 +473,7 @@ the user fit their process or recognise a genuine misfit.** Not a magic one-shot
 
 ---
 
-## Static template + config-doc source of truth (converging)
+## Static template + config-doc source of truth (decided)
 
 *Raised by user mid-F5 (F5 parked to circle back). Folded into this feature.*
 
@@ -530,11 +530,12 @@ leaves the guide a single authoritative doc source. Only possible *because* of b
   initgen simple; the SoT/renderers are the new home for metadata. (Package layout = planning
   detail.)
 
-### Open micro-choice (one question)
+### Micro-choice — decided (user)
 
-Minimal template body: **empty + header pointer** (purest — defaults all live in the binary,
-empty file is valid), or **keep the few common keys at defaults, sans comments** (a real
-editable starting point)? Leaning empty+header, for consistency with "commented = at default."
+**Empty body + a short header comment.** The header links to GitHub and names the command to
+view the full config reference — `mint help` for now (no dedicated config subcommand yet;
+exact command — a `mint help` config section vs a future `mint config` — is a planning
+detail). Defaults all live in the binary, so an empty file is valid and honest.
 
 ### Strengthens
 
@@ -604,11 +605,12 @@ restates default values.)
 - **Decided:** ambition (targeted overlay → realised as the guide); diff_exclude scan
   deferred; pivot to AI setup guide; delivery = binary-emit (`mint <setup-cmd>`); anti-drift
   = emit + drift test; B (static defaults) out; hook mapping (F9); minimalism (F8); static
-  template stripped to minimal + config-metadata SoT feeding help+setup (folded in).
+  template stripped to minimal + config-metadata SoT feeding help+setup (folded in); minimal
+  template = empty body + header (GitHub link + `mint help` pointer).
 - **Converging:** scope / AI-command-model (guide content); AI etiquette; guide content &
   procedure overall.
-- **Open:** minimal-template body micro-choice (empty vs common-keys); existing-config
-  handling (F5, parked); "any AI" fidelity floor (F6); definition of done (F3).
+- **Open:** existing-config handling (F5 — resuming now); "any AI" fidelity floor (F6);
+  definition of done (F3).
 - **Superseded/trimmed:** the mint-side wizard subtopics (mint grows no interactive surface).
 
 ## Triage
