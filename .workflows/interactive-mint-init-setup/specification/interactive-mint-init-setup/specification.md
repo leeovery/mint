@@ -95,6 +95,60 @@ The SoT is **drift-tested against the real `config` schema** — a Go test that 
 
 The SoT earns its keep via the drift test even with a single in-binary render target.
 
+### Emitted guide — setup procedure
+
+The `mint setup` output carries an **inspect-and-map procedure** the agent follows. Hook/release-process detection is the centrepiece.
+
+Ordered flow:
+1. **Confirm the working directory** is the intended repo root before inspecting or writing anything (this is the in-instructions safety net that replaces `mint setup`'s missing cwd guard).
+2. **Learn mint** — read the README and internalise mint's minimalist philosophy (*only set what varies*).
+3. **Read the config reference** — an **explicit, ordered early step**, performed **before** any inspect/edit. Because the stripped template no longer lists keys in-repo, the flow depends on the agent holding the config reference from `mint setup`'s SoT table. Making this a required ordered step closes the cold-arrival gap; the minimal file's header pointer is the recovery net if the agent ever arrives at the file without it.
+4. **Inspect the project and map findings to config:**
+   - existing **release process** → mint's **hooks** (the centrepiece — see below);
+   - **noise dirs** → `diff_exclude`;
+   - **version file** → `version_file` / `version_pattern`;
+   - **AI model per verb** → `ai_command` (shared or per-verb — see representation below);
+   - **provider / release branch** → only if auto-detect would be wrong.
+5. **Propose → explain → approve** — present the proposed config, explain each choice, get the user's approval (per the etiquette rules).
+6. **Sanity-check** — unknown/renamed keys fail loudly at the next `mint` run via the strict schema (`DisallowUnknownFields`); a natural "verify the config loads" step is the backstop.
+
+### mint's pipeline / stage model (a required content section)
+
+The emitted instructions **must carry mint's pipeline/stage model** — the ordered stages and which hook fires where — otherwise the agent cannot explain or map a release process accurately. This content is drift-sensitive: it must match the engine.
+
+The pipeline, with the three hook phases bracketing it:
+
+```
+preflight → notes → pre_tag → tag + push (PONR) → publish → post_release
+```
+
+- **`preflight`** — runs before any release work; failure aborts the release.
+- **`pre_tag`** — runs after notes, before the tag; **accepts an array** of ordered commands.
+- **`post_release`** — runs after the release is published.
+
+The tag + atomic push is the **point of no return (PONR)**.
+
+### Hook detection & mapping
+
+- **Propose a best-fit mapping and flag it to the user.** Never silently skip a step — "if it's in the customer's release script, it's important."
+- When a step **doesn't fit**, surface it honestly. The outcome may legitimately be "mint isn't suitable here" or "you'll need to adjust your process" — acceptable, not a failure to paper over.
+- The agent's job is to **explain mint's model clearly** (the pipeline + where each hook slots in) so a technical user can collaborate on a workaround, an adaptation, or a clean fit. The instructions **facilitate that conversation**; they don't force a mapping.
+- `pre_tag`-as-array widens what fits: a linear multi-step build/test sequence maps to a `pre_tag` array, so the genuinely-unmappable set narrows to *needs a step where mint has no hook* / non-linear / mid-pipeline approval-gate cases.
+
+### Cross-cutting principle — agent as collaborator (not auto-configurer)
+
+Generalises beyond hooks: the guide makes the agent a knowledgeable collaborator — **explain mint's model, propose, flag, never silently drop or clobber, help the user fit their process or recognise a genuine misfit.** Not a magic one-shot configurer.
+
+### AI model per verb — config representation
+
+The agent asks in natural language (model choice → same for both verbs, or different → `custom` escape for any non-Claude command). What lands in `.mint.toml`:
+- **"same"** → write the shared top-level `ai_command` (today's shape).
+- **"different"** → write `[release].ai_command` + `[commit].ai_command` as per-verb overrides.
+
+### `diff_exclude` scope
+
+`diff_exclude` is for **release-notes noise, not generated code.** `.gitignore`'d paths (`node_modules`, `vendor`) are already absent from the diff. The real targets are tracked process/meta/doc files — `.workflows/`, `.claude/`, agent dirs, `docs/`, lockfiles. The guide surfaces these patterns **interactively** (inside the confirmation step), since the right set is project-specific.
+
 ---
 
 ## Working Notes
