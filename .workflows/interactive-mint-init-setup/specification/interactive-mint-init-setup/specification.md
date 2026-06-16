@@ -30,6 +30,27 @@ This turns the deliverable into a **thin Go feature** (subcommand + embedded str
 - **No auto-install.** Setup assumes mint is installed; if `mint setup` isn't found the agent asks the user to install — mint does not install itself (a binary install is a far larger blast radius than editing a config).
 - **Deferred to possible future work:** per-verb `timeout` auto-write for slow models; a Claude-Code skill wrapper.
 
+### The `mint setup` subcommand
+
+A new top-level verb (working name `mint setup`; the exact command name is a planning detail) that emits the AI setup guide. It is a **pure string emitter** in the spirit of `initgen` — it prints an embedded static instruction string and performs no IO beyond writing to stdout.
+
+**What it emits** (one embedded string, all version-matched to the installed binary):
+1. The setup **procedure** (the inspect-and-map flow — see the guide-content sections).
+2. The AI **etiquette** rules.
+3. The **config reference** — rendered from the config-metadata source of truth (the `key · level · default · description` table) so the agent reads option meanings from a drift-tested table rather than from template comments.
+
+**Runs unconditionally — no git/cwd guard.** Unlike `mint init` (which resolves the repo root via `git rev-parse --show-toplevel` and fails loudly outside a work tree), `mint setup` is a pure text emitter: it must print even when the operator is not yet inside the target repo (setup instructions are commonly read before `cd`-ing in). Safety lives in the *instructions* instead — the emitted guide tells the agent to confirm it is in the intended repo root before inspecting or writing, and `mint init` (run during setup) remains the loud-fail backstop outside a work tree.
+
+**Help-surface wiring (the curated-help contract).** `mint setup` threads through mint's existing hand-written help surface exactly like every other verb:
+- A `rootUsage` command-list line for `setup`.
+- A curated `setupUsage` text for `mint setup --help` (printed to stdout, exit 0, via the `flag.ErrHelp` path).
+- Dispatch wiring in `classifyCommand` / `run` (a new `commandSetup` route).
+- The coverage test the help contract requires (the existing test that pins every verb's usage coverage).
+
+`mint help` stays the **frozen curated text** — it gains only the `setup` command line and is **not** retrofitted into a dynamic renderer. `mint help` deliberately does **not** carry the config reference: humans get config reference from the GitHub docs / README; the agent gets it from `mint setup`.
+
+**Install handling.** The README entry point assumes mint is installed and links the install. If `mint setup` is not found, the agent asks the user to install mint — mint does **not** auto-install itself.
+
 ---
 
 ## Working Notes
