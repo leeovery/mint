@@ -185,6 +185,24 @@ Frame the entry point as: *"to set up, pass the following prompt to your AI of c
 
 The README **stays manual narrative** (updated per-feature) and is the **human** config reference surface. As part of this work it is **verified to declare every config key + its default**. An optional cheap **tripwire test** may be added — assert that every schema key name appears somewhere in the README. README descriptions may lightly duplicate the SoT — **accepted**: the README is the human GitHub-browsing surface, while the machine/agent surfaces (`mint help` + `mint setup`) are the ones held to a single SoT.
 
+### Definition of done
+
+The deliverable is mostly a thin Go feature, so most of "done" lands under the normal gates (`go build` / `gofmt` / `go vet` / `go test -race` / `golangci-lint`):
+
+- **Drift test** — config-metadata SoT ↔ the actual `config` schema (fails the build if they disagree).
+- **Structural test on `mint setup` output** — asserts it emits the required sections: pipeline/hook model, etiquette, minimalism, the if-exists/upgrade branch, and the config table.
+- **Updated `initgen` tests** — for the minimal (empty body + header) `.mint.toml` template; `ReleaseShim()` tests untouched.
+- **Help-contract coverage test** — the existing usage-coverage test extended to pin `mint setup` (rootUsage line + curated `setupUsage`).
+- **README tripwire (optional)** — assert every schema key name appears in the README.
+
+### Acceptance — prose quality (the one part with no compiler)
+
+Whether the emitted prompt actually drives a good config can't be unit-tested without spawning an AI (forbidden by the test culture). The acceptance bar is a **one-time manual run** against representative repos, eyeballing that each yields a sensible config:
+- a fresh JS project,
+- a Go project,
+- a repo with an existing release script,
+- a repo with an existing `.mint.toml`.
+
 ---
 
 ## Working Notes
