@@ -119,12 +119,13 @@ type MetadataRow struct {
 func MetadataRows() []MetadataRow {
 	return []MetadataRow{
 		// Shared top-level engine keys (fileShape leaf fields), in field order.
-		// ai_command/timeout carry the REAL compiled defaults, sourced from the exported
-		// config constants so they cannot drift (pinned in metadata_test.go against
-		// DefaultAICommand / DefaultTimeout). timeout's TOML key is integer seconds, so
-		// DefaultTimeout (a duration) renders as int(DefaultTimeout / time.Second).
+		// All three shared scalar defaults (ai_command, timeout, max_diff_lines) carry the
+		// REAL compiled defaults, sourced from the exported config constants so they cannot
+		// drift (each pinned in metadata_test.go against DefaultAICommand / DefaultTimeout /
+		// DefaultMaxDiffLines). timeout's TOML key is integer seconds, so DefaultTimeout
+		// (a duration) renders as int(DefaultTimeout / time.Second).
 		{Key: "ai_command", Level: LevelShared, Default: DefaultAICommand, Description: "the AI invocation: composed prompt on stdin, generated body on stdout; resolved [verb] → shared → default"},
-		{Key: "max_diff_lines", Level: LevelShared, Default: "50000", Description: "diffs larger than this (post-exclusion line count) skip the AI"},
+		{Key: "max_diff_lines", Level: LevelShared, Default: strconv.Itoa(DefaultMaxDiffLines), Description: "diffs larger than this (post-exclusion line count) skip the AI"},
 		{Key: "timeout", Level: LevelShared, Default: strconv.Itoa(int(DefaultTimeout / time.Second)), Description: "per-attempt AI deadline in seconds; 0 means no deadline; resolved [verb] → shared → default"},
 		{Key: "diff_exclude", Level: LevelShared, Default: "[]", Description: "extra pathspec globs kept out of every AI diff, on top of the built-in CHANGELOG.md exclusion"},
 

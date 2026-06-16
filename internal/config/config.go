@@ -61,11 +61,15 @@ const defaultOnNotesFailure = "abort"
 // fallback body. Any other non-empty value fails loud at load.
 var onNotesFailureValues = []string{"abort", "fallback"}
 
-// defaultMaxDiffLines is the out-of-the-box ceiling for the notes-engine
+// DefaultMaxDiffLines is the out-of-the-box ceiling for the notes-engine
 // max_diff_lines guard: a post-exclusion diff larger than this is too costly to
 // summarise well, so the AI is skipped. It is a shared engine key, not release
 // specific, so it lives at the top level of Config (see Config.MaxDiffLines).
-const defaultMaxDiffLines = 50000
+//
+// It is the single CANONICAL source of this default — it is EXPORTED so other sites
+// (the SoT default column in metadata.go) derive the value from here rather than
+// re-typing the literal, symmetric with DefaultAICommand / DefaultTimeout.
+const DefaultMaxDiffLines = 50000
 
 // DefaultAICommand is the out-of-the-box notes transport command:
 // `claude -p --model sonnet`, the AI invocation mint pipes the composed prompt into.
@@ -306,7 +310,7 @@ func defaults() Config {
 			VersionPattern: "",
 		},
 		AICommand:    DefaultAICommand,
-		MaxDiffLines: defaultMaxDiffLines,
+		MaxDiffLines: DefaultMaxDiffLines,
 		Timeout:      &timeout,
 	}
 }
@@ -642,7 +646,7 @@ func resolveMaxDiffLines(v *int) int {
 	if v != nil {
 		return *v
 	}
-	return defaultMaxDiffLines
+	return DefaultMaxDiffLines
 }
 
 // resolveTimeout converts the decoded *int integer seconds into the *time.Duration
