@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-16
 cycle: 2
 phase: Gap Analysis
@@ -36,7 +36,7 @@ Note this is the inverse direction from cycle 1 #4's concern: #4 handled keys th
 **Proposed Addition**:
 Qualify the "every `toml`-tagged schema field" statement so the bijection is over **leaf keys**, not table-container fields: the sub-shape container fields (`fileShape.Release`/`Commit` → `release`/`commit`, `releaseShape.Hooks` → `hooks`) are **traversed into (recursed), not counted as keys** — the nested struct's tag supplies the `level` (`[release]`, `[commit]`, `[release.hooks]`) for the leaf rows it contains, and no SoT row is expected for `release`/`commit`/`hooks` themselves. The total bijection then holds between **leaf `toml`-tagged scalar/collection fields** and SoT rows. (Exact reflection helper still a planning detail; the recurse-don't-count rule for sub-shape fields is part of the decided contract.)
 
-**Resolution**: Pending
-**Notes**: Grounded against internal/config/config.go: fileShape (lines 326-333) carries `Release`/`Commit` as `toml:"release"`/`toml:"commit"`; releaseShape (lines 353-369) carries `Hooks` as `toml:"hooks"`. These are the only three sub-shape container fields; all other tagged fields are leaf keys, so the carve-out is bounded and stable.
+**Resolution**: Approved
+**Notes**: Grounded against internal/config/config.go: fileShape (lines 326-333) carries `Release`/`Commit` as `toml:"release"`/`toml:"commit"`; releaseShape (lines 353-369) carries `Hooks` as `toml:"hooks"`. These are the only three sub-shape container fields; all other tagged fields are leaf keys, so the carve-out is bounded and stable. Auto-approved: qualified the bijection to leaf keys + added the recurse-don't-count rule for the three container fields.
 
 ---
