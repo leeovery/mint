@@ -15,7 +15,7 @@
     "specification": {
       "items": {
         "interactive-mint-init-setup": {
-          "status": "in-progress",
+          "status": "completed",
           "sources": {
             "interactive-mint-init-setup": {
               "status": "incorporated"
