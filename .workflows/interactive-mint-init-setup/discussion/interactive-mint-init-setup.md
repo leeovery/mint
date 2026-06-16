@@ -52,7 +52,7 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (10 subtopics — 5 decided · 5 converging)
+  Discussion Map — Interactive mint init Setup (11 subtopics — 5 decided · 5 converging · 1 exploring)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope — what to configure [converging]
@@ -63,7 +63,8 @@ branches, converges as decisions land.
      ├─ ✓ Anti-drift & verification (emit + drift test) [decided]
      ├─ → Guide content & procedure [converging]
      ├─ → AI etiquette (existing config) [converging]
-     └─ ✓ Static defaults floor (B → out) [decided]
+     ├─ ✓ Static defaults floor (B → out) [decided]
+     └─ ◐ Static template shape (minimal vs commented) [exploring]
 
 *Pivot confirmed. Guide procedure + AI etiquette locked; B decided OUT (no static
 diff_exclude defaults — the guide surfaces them interactively). review-002 gaps are the
@@ -425,7 +426,9 @@ the fail-loud/non-interactive concern entirely** — mint never prompts, so ther
 sections below). Still live:*
 
 - **Existing `.mint.toml` (F5)** — detect/diff/preserve-vs-refuse specifics beyond the
-  never-remove-without-permission etiquette. (Being discussed now.)
+  never-remove-without-permission etiquette. (Parked — circling back after template-shape.
+  Proposal on the table: existing config is authoritative/sacred, agent works in diff mode,
+  never `mint init --force` in a configured repo; optional explicit "start fresh" path.)
 - **"Any AI" fidelity floor (F6)** — realistically Claude-tuned with "any AI" best-effort,
   stated honestly? (overlaps non-agentic-AI tail of F2.)
 - **Definition of done (F3)** — beyond the emitted-output Go test, a run-against-sample-
@@ -469,6 +472,48 @@ collaborator — **explain mint's model, propose, flag, never silently drop or c
 the user fit their process or recognise a genuine misfit.** Not a magic one-shot configurer.
 
 ---
+
+## Static template shape — minimal vs self-documenting (exploring)
+
+*Raised by user mid-F5 (F5 parked to circle back).*
+
+### The question
+
+Why aren't the *defaults* in the template comments? And — bigger — should we **strip the
+comments entirely**, ship a minimal config, and point to `mint help` / the binary (or
+GitHub) for what's overridable? "All those comments in the mint config are messy."
+
+### Why the comments don't show defaults today
+
+`initgen`'s deliberate design: commented optional keys show *illustrative example overrides*
+(schema-valid samples), not defaults; the *common* keys are shown **active at their defaults**
+(so the file documents out-of-the-box behaviour and is immediately valid); optional-key
+default *behaviour* is in prose. So defaults appear only for the active common keys — the
+inconsistent split the user is reacting to.
+
+### Why strip-comments is newly viable (pivot synergy)
+
+Pre-pivot the comments were the only in-repo config docs — stripping would hurt. **Post-pivot
+the binary is the doc source** (`mint <setup-cmd>` / help), so the comments are *duplication*
+— exactly the drift surface we've been fighting (they must stay true-to-as-built, pinned by
+drift tests). Stripping them removes a drift surface, gives the clean minimal file, and
+leaves the guide a single authoritative doc source. Only possible *because* of binary-emit.
+
+### Cascade / cost
+
+- The binary must then **authoritatively document the config keys** — extend `mint help`, or
+  fold a config reference into the `mint <setup-cmd>` output (today config-key docs live in
+  README + template comments, not `help`).
+- **Revises the locked layering:** agent reads option meanings from the emitted output /
+  help, not template comments.
+- Loses in-file discoverability for pure hand-editors — mitigated by the pointer + `mint help`.
+
+### Scope decision needed
+
+The guide is *separable* — it could use today's commented template. So: **fold the template
+redesign into THIS feature** (coupled — revises our layering, removes a drift surface), **or
+keep today's template and treat "minimal template + config-docs-in-binary" as a follow-on?**
+(Awaiting user.)
 
 ## Minimalism — only set what varies (F8 — decided)
 
