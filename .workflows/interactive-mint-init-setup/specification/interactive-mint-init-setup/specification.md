@@ -39,6 +39,8 @@ A new top-level verb (working name `mint setup`; the exact command name is a pla
 2. The AI **etiquette** rules.
 3. The **config reference** — rendered from the config-metadata source of truth (the `key · level · default · description` table) so the agent reads option meanings from a drift-tested table rather than from template comments.
 
+**Stable section markers.** Although the guide *prose* is a planning detail, each required section emits a **stable, test-detectable marker** (a fixed section heading/anchor) so the structural test can prove a section's presence without coupling to the body prose. The required sections with markers: pipeline/hook model, etiquette, minimalism, the existing-config/upgrade branch, and the config reference. The structural test greps for these markers, not for representative prose substrings (the exact marker text is a planning detail; that markers exist and the test keys on them is decided).
+
 **Runs unconditionally — no git/cwd guard.** Unlike `mint init` (which resolves the repo root via `git rev-parse --show-toplevel` and fails loudly outside a work tree), `mint setup` is a pure text emitter: it must print even when the operator is not yet inside the target repo (setup instructions are commonly read before `cd`-ing in). Safety lives in the *instructions* instead — the emitted guide tells the agent to confirm it is in the intended repo root before inspecting or writing, and `mint init` (run during setup) remains the loud-fail backstop outside a work tree.
 
 **Help-surface wiring (the curated-help contract).** `mint setup` threads through mint's existing hand-written help surface exactly like every other verb:
@@ -208,7 +210,7 @@ The README **stays manual narrative** (updated per-feature) and is the **human**
 The deliverable is mostly a thin Go feature, so most of "done" lands under the normal gates (`go build` / `gofmt` / `go vet` / `go test -race` / `golangci-lint`):
 
 - **Drift test** — config-metadata SoT ↔ the actual `config` schema (fails the build if they disagree).
-- **Structural test on `mint setup` output** — asserts it emits the required sections: pipeline/hook model, etiquette, minimalism, the if-exists/upgrade branch, and the config table.
+- **Structural test on `mint setup` output** — asserts it emits the required sections: pipeline/hook model, etiquette, minimalism, the if-exists/upgrade branch, and the config table. Detection is by the **stable section markers** the guide emits (see "The `mint setup` subcommand" → Stable section markers), not by matching free prose.
 - **Updated `initgen` tests** — the commented-template assertions are removed; new tests assert the minimal shape (empty body + header pointers to GitHub docs + `mint setup`). The scaffold-value drift-pin is subsumed by the SoT drift test. `ReleaseShim()` tests untouched. (See "`initgen` scope of change" for the full list.)
 - **Help-contract coverage test** — the existing usage-coverage test extended to pin `mint setup` (rootUsage line + curated `setupUsage`).
 - **README tripwire (optional)** — assert every schema key name appears in the README.

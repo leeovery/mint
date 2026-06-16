@@ -104,10 +104,10 @@ Added a "What counts as one key (the bijection contract)" paragraph to the Drift
 The DoD lists a "Structural test on `mint setup` output — asserts it emits the required sections: pipeline/hook model, etiquette, minimalism, the if-exists/upgrade branch, and the config table." The guide *prose itself* is explicitly deferred to planning. That creates a tension the spec doesn't resolve: a test that "asserts the required sections are present" needs SOME stable anchor to detect each section, but the prose those anchors live in isn't decided. Without a defined contract (e.g. each section emits a stable marker/header string the test greps for, vs. the test asserts representative substrings of free prose), the implementer must invent the anchoring scheme — and an anchoring scheme chosen in the test couples the (deferred) prose to fixed markers, a design decision the spec should make rather than leave to the test author. The config-table sub-assertion is concrete (the table renders from the SoT), but the other four sections (pipeline/hook model, etiquette, minimalism, if-exists/upgrade) are pure prose with no decided anchor. State whether the emitted guide carries stable section markers/headers the structural test keys on.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added a "Stable section markers" paragraph under "The `mint setup` subcommand": each required section emits a fixed test-detectable marker (heading/anchor) so the structural test greps for markers, not prose; exact marker text deferred. Cross-referenced from the DoD structural-test bullet.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved. Decouples the (deferred) prose from the structural test's anchors.
 
 ---
 
