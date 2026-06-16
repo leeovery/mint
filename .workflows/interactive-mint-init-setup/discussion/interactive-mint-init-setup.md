@@ -421,21 +421,55 @@ the fail-loud/non-interactive concern entirely** — mint never prompts, so ther
 
 ### Open questions (live) — remaining review-002 agenda
 
-*Resolved by the binary-emit decision: F1 (reachability), F7 (version skew), F10
-(anti-drift — emit + drift test). F4 resolved earlier by etiquette. Still live:*
+*Resolved: F1/F7/F10 (binary-emit), F4 (etiquette), F9 (hook mapping — see section below).
+Still live:*
 
-- **Hook mapping (F9)** — what the guide tells the agent when a detected release process
-  doesn't decompose cleanly onto mint's *fixed three hooks* (preflight/pre_tag/post_release):
-  best-fit + flag, skip the unmappable, or refuse? Bound it from inventing unfit hook
-  commands. (Being discussed now.)
 - **Over-configuration (F8)** — a concrete, checkable rule enforcing "only set what varies /
-  leave the rest commented," so a thoroughness-rewarded agent doesn't produce a bloated config.
+  leave the rest commented," so a thoroughness-rewarded agent doesn't produce a bloated
+  config. (Being discussed now.)
 - **Existing `.mint.toml` (F5)** — detect/diff/preserve-vs-refuse specifics beyond the
   never-remove-without-permission etiquette.
 - **"Any AI" fidelity floor (F6)** — realistically Claude-tuned with "any AI" best-effort,
   stated honestly? (overlaps non-agentic-AI tail of F2.)
 - **Definition of done (F3)** — beyond the emitted-output Go test, a run-against-sample-
   projects acceptance check?
+
+---
+
+## Hook detection & mapping (F9 — decided)
+
+The standout value (detect the project's existing release process → map into mint's hooks)
+needs a clear rule for the imperfect-fit case. mint has three hook phases —
+`preflight` (before any release work; failure aborts), `pre_tag` (after notes, before the
+tag; **accepts an array** of ordered commands), `post_release` (after publish) — bracketing
+the fixed pipeline: preflight → notes → pre_tag → tag+push (PONR) → publish → post_release.
+
+### Decision (user)
+
+- **Propose a best-fit mapping and flag it to the user.** Never silently skip a step — "if
+  it's in the customer's release script, it's important."
+- When a step **doesn't fit**, surface it honestly. The outcome may legitimately be "mint
+  isn't suitable here" or "you'll need to adjust your process" — acceptable, not a failure
+  to paper over.
+- The agent's job is to **explain mint's model clearly** (the pipeline + where each hook
+  slots in) so a technical user can collaborate on a workaround, an adaptation, or a clean
+  fit. The instructions **facilitate that conversation**, ending in a clean mint
+  implementation — they don't force a mapping.
+
+### Falls out of this (content requirements)
+
+- The emitted instructions **must carry mint's pipeline/stage model** (ordered stages +
+  which hook fires where) — otherwise the agent can't explain or map accurately. This is
+  drift-sensitive: the model must match the engine, reinforcing the drift test.
+- `pre_tag`-as-array widens what fits: a linear multi-step build/test sequence maps to a
+  `pre_tag` array, so the genuinely-unmappable set narrows to *needs a step where mint has
+  no hook* / non-linear / mid-pipeline approval-gate cases.
+
+### Cross-cutting principle — agent as collaborator (not auto-configurer)
+
+Generalises beyond hooks (informs F8, F5): the guide makes the agent a knowledgeable
+collaborator — **explain mint's model, propose, flag, never silently drop or clobber, help
+the user fit their process or recognise a genuine misfit.** Not a magic one-shot configurer.
 
 ## Summary
 
@@ -450,6 +484,12 @@ the fail-loud/non-interactive concern entirely** — mint never prompts, so ther
 4. **Pivot:** offload interactivity to an AI setup guide/prompt rather than building it
    into mint — richer (project-aware, detects existing release process → hooks), avoids
    the entire implementation-half, AI-agnostic. Static template stays the non-AI floor.
+5. **Binary-emit is the keystone:** `mint <setup-cmd>` prints the instructions, so they're
+   reachable, version-matched, and drift-testable — turning the deliverable into a thin Go
+   feature, not loose content.
+6. **Agent as collaborator, not auto-configurer:** explain mint's model, propose, flag,
+   never silently drop/clobber — handles imperfect fits and even "mint isn't right here"
+   gracefully.
 
 ### Open Threads
 
