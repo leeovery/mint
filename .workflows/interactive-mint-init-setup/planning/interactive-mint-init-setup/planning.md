@@ -117,6 +117,21 @@ approved_at: 2026-06-16
 | interactive-mint-init-setup-5-1 | Disambiguate the "shared" level token and single-source the levelCell placeholder | Level-column "shared" placeholder collides with the Default-column inherit "shared" token in adjacent cells; cell must stay driven by MetadataLevel.String() with the placeholder applied only when String() is empty; do not alter the SoT Default-column tokens; test re-implements levelCell byte-for-byte (self-fulfilling) — replace with a single production-sourced expectation |
 | interactive-mint-init-setup-5-2 | Give the blank-default render a real assertion | blank-default assertion collapses to strings.Contains(line, "") (unconditionally true); pin defaultCell("") == " " (single space) and defaultCell(x) == x; assert the exact single-space cell / delimiter shape so "auto", an empty token, or a dropped delimiter turns the test red; test-coverage fix only — no production behaviour change |
 
+### Phase 6: Analysis (Cycle 2)
+
+**Goal**: Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-6-1 | Consolidate the 25-pair (level, key) expected census to one shared list | the full 25-pair enumeration appears exactly once in config test sources; both naming tests reference the shared census, neither carries an inline literal; MetadataRows() and schemaLeafKeys() stay separate independent derivations; a deliberate single-pair removal still fails the bijection drift test |
+| interactive-mint-init-setup-6-2 | Reuse a single toml-tag-reading primitive in tomlTagsOf and schemaLeafKeysInto | the Tag.Get("toml") read and the ""/"-" skip guard appear in exactly one helper; both tomlTagsOf and schemaLeafKeysInto consume it, neither carries its own inline tag read; bijection/independence tests pass unchanged; future tag-option suffix like ,omitempty handled in one place |
+| interactive-mint-init-setup-6-3 | Single-source the rowKey struct and (level,key) index map across the config and setupguide test packages | rowKey struct and the index-map builder defined exactly once in config; both metadata_test.go and setupguide_test.go consume the single seam; duplicate-(level,key) collision detection preserved; seam stays test-support-only, not on the production render path |
+| interactive-mint-init-setup-6-4 | Reword emitted-guide procedure step 2 to name mint's own README unambiguously | "the project's README" misreads as the target project's README; reword to name mint's own README (human config reference); minimalism-philosophy clause retained; structural markers unchanged; load-bearing prose with no compiler — add an assertion on the disambiguated wording |
+| interactive-mint-init-setup-6-5 | Make MetadataLevel.String() distinguish an invalid level from the shared scope | LevelShared and the default branch both return "" today; keep LevelShared == "", make the default branch fail loud (panic) or return an unmistakable sentinel; render seam can no longer map an out-of-range level onto the shared/top-level cell; latent until a fifth level is added without a String() case |
+| interactive-mint-init-setup-6-6 | Add an end-to-end run("setup") dispatch test | three seams (classifyCommand route, runSetup emitter, run() switch wiring) tested alone but composition unproven; drive run([]string{"setup"}) to stdout asserting guide-on-stdout and exit 0; would catch a stdout/stderr argument swap or a mis-wired route; do not duplicate the emitter's internal content checks |
+
 ## Manual Acceptance (not a phase)
 
 The spec's "Acceptance — prose quality" is a one-time manual run against representative repos (a fresh JS project, a Go project, a repo with an existing release script, a repo with an existing `.mint.toml`), eyeballing that each yields a sensible config. It cannot be unit-tested (spawning an AI is forbidden by the test culture). Tracked as a manual acceptance step after Phases 2 and 4 land — not modelled as implementation work.

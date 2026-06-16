@@ -6,7 +6,7 @@ total_proposed: 6
 # Analysis Tasks: Interactive Mint Init Setup (Cycle 2)
 
 ## Task 1: Consolidate the 25-pair (level, key) expected census to one shared list
-status: pending
+status: approved
 severity: medium
 sources: duplication
 
@@ -32,7 +32,7 @@ sources: duplication
 - A deliberate single-pair removal from `MetadataRows()` (verified locally, then reverted) still fails the bijection drift test, proving the consolidation did not weaken the bijection.
 
 ## Task 2: Reuse a single toml-tag-reading primitive in tomlTagsOf and schemaLeafKeysInto
-status: pending
+status: approved
 severity: low
 sources: duplication
 
@@ -55,7 +55,7 @@ sources: duplication
 - The bijection/independence tests in metadata_drift_test.go continue to pass unchanged.
 
 ## Task 3: Single-source the rowKey struct and (level,key) index map across the config and setupguide test packages
-status: pending
+status: approved
 severity: low
 sources: duplication
 
@@ -81,7 +81,7 @@ sources: duplication
 - A test proves the seam reports a collision when fed duplicate (level, key) rows (preserving rowSet's original Fatalf intent).
 
 ## Task 4: Reword emitted-guide procedure step 2 to name mint's own README unambiguously
-status: pending
+status: approved
 severity: low
 sources: standards
 
@@ -105,7 +105,7 @@ sources: standards
 - Add or extend an assertion that the rendered procedure step 2 contains the disambiguated "mint's README" wording.
 
 ## Task 5: Make MetadataLevel.String() distinguish an invalid level from the shared scope
-status: pending
+status: approved
 severity: low
 sources: architecture
 
@@ -130,7 +130,7 @@ sources: architecture
 - A test exercising an out-of-range `MetadataLevel` proves the fail-loud behaviour (panic recovered/asserted, or sentinel string), confirming it is distinguishable from `LevelShared`.
 
 ## Task 6: Add an end-to-end run("setup") dispatch test
-status: pending
+status: approved
 severity: low
 sources: architecture
 
