@@ -19,6 +19,7 @@ commands:
   release regenerate    regenerate the notes for an existing release
   commit                mint an AI commit message and create the commit
   init                  scaffold .mint.toml and the release shim into a repo
+  setup                 print the AI-assisted setup guide for configuring mint
   version               print mint's own version (also: mint --version)
 
 Run 'mint <command> --help' for that command's options.
@@ -83,13 +84,15 @@ release shim at the git-resolved repo root.
       --plain    force plain (un-styled) output
 `
 
-// setupUsage documents the `mint setup` surface (setup.go). MINIMAL placeholder —
-// Task 2-4 authors the full curated text and pins it in the coverage test. setup
-// takes no flags beyond the implicit --help and runs anywhere (no repo required).
-const setupUsage = `usage: mint setup
+// setupUsage documents the `mint setup` surface (setup.go). It mirrors initUsage's
+// short, synopsis-first shape. setup takes no flags beyond the implicit --help and
+// runs anywhere — no git repository required (the cwd-confirm safety net lives in the
+// emitted guide, not a repo-root guard).
+const setupUsage = `usage: mint setup [--help]
 
-Emit the AI-assisted setup guide to stdout for an AI agent to follow. Takes no
-flags beyond --help and runs anywhere — no git repository required.
+Print the AI-assisted setup guide to stdout for an AI agent to follow when
+configuring mint. Takes no flags beyond --help and runs anywhere — no git
+repository required.
 `
 
 // isHelpCommand reports whether the invocation is a top-level help request:
