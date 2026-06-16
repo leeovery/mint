@@ -22,10 +22,10 @@ The strip-to-minimal decision changes `mint init` to emit an empty body + header
 The spec has three README sub-sections (entry-point prompt, "any AI" framing, config-reference verification) and they are detailed about what to ADD (the entry prompt, the per-key tripwire), but none of them addresses this **existing stale content that the strip directly invalidates**. The "config reference verification" section says the README is "verified to declare every config key + its default" and "stays manual narrative" — but it does not say whether the embedded commented-template sample is kept, replaced with the new minimal (empty body + header) sample, or removed. An implementer would have to guess whether to (a) leave the now-wrong sample, (b) swap it for the minimal template, or (c) delete it and rely on the per-key tables. This is in-scope because README updates are an explicit deliverable and strip-to-minimal is the change that breaks it.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added a bullet to "README — config reference verification": reconcile the existing `## Configuration` section with strip-to-minimal — (a) correct the "writes a commented `.mint.toml`" framing to minimal (empty body + header), (b) replace/drop the embedded full-template TOML block (the per-key tables are the authoritative human reference + tripwire surface), (c) correct the Commands-section line the same way.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved. Grounded against README:62, :176, :178-213. The per-key tables (README:215-262) are the existing human config reference.
 
 ---
 

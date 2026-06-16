@@ -185,6 +185,8 @@ Frame the entry point as: *"to set up, pass the following prompt to your AI of c
 
 The README **stays manual narrative** (updated per-feature) and is the **human** config reference surface. As part of this work it is **verified to declare every config key + its default**. An optional cheap **tripwire test** may be added — assert that every schema key name appears somewhere in the README. README descriptions may lightly duplicate the SoT — **accepted**: the README is the human GitHub-browsing surface, while the machine/agent surfaces (`mint help` + `mint setup`) are the ones held to a single SoT.
 
+- **Reconcile the existing "Configuration" section with strip-to-minimal.** The README's current `## Configuration` intro (*"`mint init` writes a commented `.mint.toml`"*) and the embedded full commented-template TOML block both become false after the strip. As part of this work: (a) correct the framing — `mint init` now writes a **minimal** `.mint.toml` (empty body + header pointer); (b) **replace** the embedded full-template block with the new minimal template (empty body + header), or drop it — the per-key reference tables already below it (`Shared engine keys` / `[release]` / `[release.hooks]` / `[commit]`) are the authoritative human config reference and the surface the tripwire test checks; (c) correct the Commands-section line (the `mint init … writes a commented .mint.toml …` entry) the same way.
+
 ### Definition of done
 
 The deliverable is mostly a thin Go feature, so most of "done" lands under the normal gates (`go build` / `gofmt` / `go vet` / `go test -race` / `golangci-lint`):
