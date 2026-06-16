@@ -6,7 +6,7 @@ total_proposed: 2
 # Analysis Tasks: interactive-mint-init-setup (Cycle 1)
 
 ## Task 1: Disambiguate the "shared" Level token and single-source the levelCell placeholder
-status: pending
+status: approved
 severity: medium
 sources: architecture, duplication
 
@@ -34,7 +34,7 @@ sources: architecture, duplication
 - A test proving the level-cell expectation is single-sourced from production: changing the production placeholder must turn the test red (e.g. by asserting against an exported render seam rather than a test-local copy).
 
 ## Task 2: Give the blank-default render a real assertion
-status: pending
+status: approved
 severity: low
 sources: architecture
 

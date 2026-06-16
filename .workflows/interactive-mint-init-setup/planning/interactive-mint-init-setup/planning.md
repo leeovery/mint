@@ -106,6 +106,17 @@ approved_at: 2026-06-16
 | interactive-mint-init-setup-4-2 | Add the any-AI entry-point prompt routing operators to mint setup | routes to the binary guide, never restates it (binary is the version-matched source); "any AI" framing (Claude, Codex, …) with a light Opus-level steer and no fidelity-floor machinery; strict-schema loud-fail + natural verify-config-loads remain as backstops, not added machinery |
 | interactive-mint-init-setup-4-3 | Add the optional key-presence tripwire test | OPTIONAL per the spec; key-source choice (schema decode-shape toml tags vs config.MetadataRows() SoT) flagged for the author; dedupe dual-level ai_command/timeout to the distinct key-name set (substring presence, not the (level,key) pairs the Phase 1 drift test uses); a removed/renamed schema key with no README mention must fail the build |
 
+### Phase 5: Analysis (Cycle 1)
+
+**Goal**: Address findings from Analysis (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-5-1 | Disambiguate the "shared" level token and single-source the levelCell placeholder | Level-column "shared" placeholder collides with the Default-column inherit "shared" token in adjacent cells; cell must stay driven by MetadataLevel.String() with the placeholder applied only when String() is empty; do not alter the SoT Default-column tokens; test re-implements levelCell byte-for-byte (self-fulfilling) — replace with a single production-sourced expectation |
+| interactive-mint-init-setup-5-2 | Give the blank-default render a real assertion | blank-default assertion collapses to strings.Contains(line, "") (unconditionally true); pin defaultCell("") == " " (single space) and defaultCell(x) == x; assert the exact single-space cell / delimiter shape so "auto", an empty token, or a dropped delimiter turns the test red; test-coverage fix only — no production behaviour change |
+
 ## Manual Acceptance (not a phase)
 
 The spec's "Acceptance — prose quality" is a one-time manual run against representative repos (a fresh JS project, a Go project, a repo with an existing release script, a repo with an existing `.mint.toml`), eyeballing that each yields a sensible config. It cannot be unit-tested (spawning an AI is forbidden by the test culture). Tracked as a manual acceptance step after Phases 2 and 4 land — not modelled as implementation work.

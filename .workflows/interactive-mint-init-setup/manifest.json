@@ -58,7 +58,10 @@
             "interactive-mint-init-setup-4": "tick-f134e5",
             "interactive-mint-init-setup-4-1": "tick-0952b6",
             "interactive-mint-init-setup-4-2": "tick-3237c7",
-            "interactive-mint-init-setup-4-3": "tick-7edb1f"
+            "interactive-mint-init-setup-4-3": "tick-7edb1f",
+            "interactive-mint-init-setup-5": "tick-d07048",
+            "interactive-mint-init-setup-5-1": "tick-d4be32",
+            "interactive-mint-init-setup-5-2": "tick-3c31ab"
           },
           "external_id": "tick-f3d959"
         }
@@ -70,7 +73,7 @@
           "status": "in-progress",
           "task_gate_mode": "auto",
           "fix_gate_mode": "gated",
-          "analysis_gate_mode": "gated",
+          "analysis_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 1,
           "analysis_cycle_session": 1,
