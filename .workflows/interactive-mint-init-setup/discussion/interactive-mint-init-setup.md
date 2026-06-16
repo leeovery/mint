@@ -570,6 +570,15 @@ table before any edit). To close the cold-arrival gap:
 - The **minimal file's header pointer** (→ GitHub docs / `mint setup`) is the **recovery net**
   if an agent arrives at the file cold.
 
+### `mint setup` runs unconditionally (F4 — decided)
+
+`mint setup` is a pure string emitter — **no git/cwd guard** (unlike `mint init`, which
+resolves the repo root and fails loudly outside a work tree). You often read setup
+instructions before being in / cd'd into the repo, so demanding a git repo just to print text
+is wrong. Safety lives in the instructions instead: the emitted guide **tells the agent to
+confirm it's in the intended repo root** before inspecting or writing, and **`mint init` (run
+during setup) is the loud-fail backstop** outside a work tree.
+
 ## Minimalism — only set what varies (F8 — decided)
 
 The mirror risk to hook-mapping: a thoroughness-rewarded agent populates every inferable
@@ -701,11 +710,13 @@ eyeballing that each yields a sensible config.
   upgrade (F5); any-AI framing — light README steer (F6).
   + definition of done (F3); scope / AI-command-model / guide content & procedure (the guide
   encodes them).
-- **Open:** none — all 11 subtopics decided; both review sets (001 mooted by pivot, 002 fully
-  walked) incorporated.
+- **Open:** none — all 11 subtopics decided; all three review sets incorporated (001 mooted
+  by pivot; 002 + 003 fully walked). review-003 added four seam corrections: shim mention in
+  guide (F1), `mint help` stays curated + config ref via `mint setup`/GitHub (F2), config
+  reference as a required ordered step + header recovery net (F3), `mint setup` runs
+  unconditionally (F4).
 - **Planning/impl details (not discussion-level):** `mint setup` command name; config-metadata
-  SoT package layout; whether `mint setup` embeds the config table or references `mint help`;
-  exact guide prose; README verification.
+  SoT package layout; exact guide prose; README verification + tripwire test.
 - **Superseded/trimmed:** the mint-side wizard subtopics (mint grows no interactive surface).
 
 ## Triage
