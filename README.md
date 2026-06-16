@@ -59,7 +59,7 @@ mint commit -Apy          # stage everything, auto-accept, push: fully unattende
 
 ### `init`
 
-Scaffold mint into a repo: writes a commented `.mint.toml` (every key shown at its default, optional keys commented with one-line explanations) and a `release` shim at the git-resolved repo root. Idempotent: existing files are skipped unless `--force`.
+Scaffold mint into a repo: writes a minimal `.mint.toml` (empty body plus a short header comment pointing to the GitHub docs and `mint setup`) and a `release` shim at the git-resolved repo root. Idempotent: existing files are skipped unless `--force`.
 
 ```bash
 mint init [--force] [--plain]
@@ -173,44 +173,18 @@ Print mint's own version. `mint --version` is equivalent.
 
 ## Configuration
 
-`mint init` writes a commented `.mint.toml` at the repo root. The file is fully optional: every key defaults sensibly.
+`mint init` writes a **minimal** `.mint.toml` at the repo root: an empty body plus a short header comment that points to the GitHub docs (this human config reference) and to `mint setup` (AI-assisted setup). The file is fully optional — every key has a compiled default, so an empty file is valid and changes nothing; add a key only to set a value that differs from its default.
 
 ```toml
-# --- Engine-level keys (shared by every mint verb) ---
-
-ai_command = 'claude -p --model sonnet'
-timeout = 60  # per-attempt AI deadline in seconds; raise it if your ai_command runs slowly (0 = no limit)
-max_diff_lines = 50000
-
-# diff_exclude = []  # tracked generated files to keep out of the notes diff (glob pathspecs)
-
-[release]
-tag_prefix = 'v'
-commit_prefix = '🌿'
-changelog = true
-publish = true
-on_notes_failure = 'abort'
-
-# release_branch = 'main'
-# version_file = 'bin/tool'
-# version_pattern = 'RELEASE_VERSION="{version}"'
-# provider = 'github'
-# context = 'Emphasise user-facing changes.'
-# prompt = '.mint/notes-prompt.md'
-# ai_command = 'claude -p --model sonnet'   # override the AI command for this verb only
-# timeout = 120                             # override the per-attempt deadline (seconds) for this verb only
-
-# [release.hooks]
-# preflight = 'scripts/check.sh'
-# pre_tag = 'npm run build'
-# post_release = 'scripts/notify.sh'
-
-# [commit]
-# context = 'Reference the ticket number if the branch carries one.'
-# prompt = '.mint/commit-prompt.md'
-# ai_command = 'claude -p --model sonnet'   # override the AI command for this verb only
-# timeout = 120                             # override the per-attempt deadline (seconds) for this verb only
+# .mint.toml — mint configuration. This file is fully OPTIONAL: every default is
+# compiled into mint, so an empty file is valid and changes nothing. Add a key only
+# to set a value that differs from the default.
+#
+# Config reference (every key, level, and default): https://github.com/leeovery/mint
+# AI-assisted setup (inspects your project and proposes config): run `mint setup`
 ```
+
+The per-key reference tables below are the authoritative human config reference — every key, its level, and its default.
 
 ### Shared engine keys
 
