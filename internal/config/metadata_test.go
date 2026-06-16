@@ -3,6 +3,7 @@ package config_test
 import (
 	"strconv"
 	"testing"
+	"time"
 
 	"mint/internal/config"
 )
@@ -300,6 +301,67 @@ func TestMetadataRows_HooksRenderNoDefault(t *testing.T) {
 		if row.Default != hooksDefaultCell {
 			t.Errorf("(release.hooks, %q) Default = %q, want %q (consistent no-default token)", key, row.Default, hooksDefaultCell)
 		}
+	}
+}
+
+// TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant is the DRIFT GUARD
+// tying the shared-level ai_command SoT Default cell to config.DefaultAICommand. This
+// is the SUBSUMING pin that replaces initgen's TestMintTOML_AICommandValueEqualsConfigConstant
+// once Phase 3 strips the scaffold's default values — the SoT Default column becomes
+// the drift-pinned carrier of the canonical value. The cell is sourced FROM the exported
+// constant, so a re-typed literal that drifts from config.DefaultAICommand fails here.
+func TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant(t *testing.T) {
+	t.Parallel()
+
+	set := rowSet(t)
+	row, ok := set[rowKey{config.LevelShared, "ai_command"}]
+	if !ok {
+		t.Fatal("missing SoT row for (shared, ai_command)")
+	}
+	if row.Default != config.DefaultAICommand {
+		t.Errorf("(shared, ai_command) Default = %q, want config.DefaultAICommand %q", row.Default, config.DefaultAICommand)
+	}
+}
+
+// TestMetadataRows_SharedTimeoutDefaultEqualsConfigConstant is the DRIFT GUARD tying
+// the shared-level timeout SoT Default cell to config.DefaultTimeout, the timeout twin
+// of the ai_command subsuming pin. The TOML timeout key is integer SECONDS, so the cell
+// is pinned to int(config.DefaultTimeout / time.Second) — the SAME derivation initgen's
+// TestMintTOML_TimeoutValueEqualsConfigConstant uses — NOT a re-typed 60 and NOT the
+// time.Duration String form ("1m0s"). A drift between the cell and the seconds derived
+// from the duration constant fails here.
+func TestMetadataRows_SharedTimeoutDefaultEqualsConfigConstant(t *testing.T) {
+	t.Parallel()
+
+	set := rowSet(t)
+	row, ok := set[rowKey{config.LevelShared, "timeout"}]
+	if !ok {
+		t.Fatal("missing SoT row for (shared, timeout)")
+	}
+	want := int(config.DefaultTimeout / time.Second)
+	if row.Default != strconv.Itoa(want) {
+		t.Errorf("(shared, timeout) Default = %q, want int(config.DefaultTimeout / time.Second) = %d", row.Default, want)
+	}
+}
+
+// TestMetadataRows_SharedTimeoutDefaultIsIntegerSecondsNotDuration proves the shared
+// timeout Default cell renders the INTEGER-SECONDS form ("60"), not the time.Duration
+// String form ("1m0s"). This pins the representation convention so a refactor that
+// accidentally rendered the duration verbatim is caught — the TOML key is integer
+// seconds, so the cell must be the seconds integer, never the duration string.
+func TestMetadataRows_SharedTimeoutDefaultIsIntegerSecondsNotDuration(t *testing.T) {
+	t.Parallel()
+
+	set := rowSet(t)
+	row, ok := set[rowKey{config.LevelShared, "timeout"}]
+	if !ok {
+		t.Fatal("missing SoT row for (shared, timeout)")
+	}
+	if row.Default == config.DefaultTimeout.String() {
+		t.Errorf("(shared, timeout) Default = %q is the duration String form, want integer seconds", row.Default)
+	}
+	if row.Default != "60" {
+		t.Errorf("(shared, timeout) Default = %q, want integer-seconds form %q", row.Default, "60")
 	}
 }
 

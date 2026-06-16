@@ -1,6 +1,9 @@
 package config
 
-import "strconv"
+import (
+	"strconv"
+	"time"
+)
 
 // This file is the config-metadata SOURCE OF TRUTH (SoT): the single in-binary,
 // structured record of mint's config metadata — one row per config key carrying
@@ -26,8 +29,12 @@ import "strconv"
 // unless overridden), and the concrete scalar default verbatim otherwise. The
 // [release.hooks] keys are activate-only (no compiled default) and carry a blank cell.
 // The two shared-level literal-default cells (ai_command, timeout) are sourced from the
-// EXPORTED config constants so they cannot drift; task 1-5 adds the dedicated pinning
-// test for those two.
+// EXPORTED config constants (DefaultAICommand / DefaultTimeout) so they cannot drift; a
+// dedicated pinning test in metadata_test.go ties each cell to its constant. This pin
+// SUBSUMES initgen's scaffold value-drift pins — the SoT Default column is now the
+// drift-pinned carrier of those values (the scaffold's defaults are stripped in a later
+// phase). timeout's TOML key is integer seconds, so DefaultTimeout (a duration) renders
+// as int(DefaultTimeout / time.Second), the same derivation initgen used.
 
 // MetadataLevel is the typed enum naming WHERE a config key lives in the verb-namespaced
 // .mint.toml: the shared top level, the [release] table, the nested [release.hooks]
@@ -77,7 +84,7 @@ func (l MetadataLevel) String() string {
 // Default is the compiled default's rendered representation in the decided convention
 // (see the file header for the full token set): blank, "auto", "[]", "shared", or the
 // concrete scalar default verbatim. The shared-level ai_command/timeout cells are sourced
-// from the exported config constants so they cannot drift (pinned by task 1-5).
+// from the exported config constants so they cannot drift (pinned in metadata_test.go).
 type MetadataRow struct {
 	Key         string
 	Level       MetadataLevel
@@ -99,11 +106,12 @@ func MetadataRows() []MetadataRow {
 	return []MetadataRow{
 		// Shared top-level engine keys (fileShape leaf fields), in field order.
 		// ai_command/timeout carry the REAL compiled defaults, sourced from the exported
-		// config constants so they cannot drift (pinned by task 1-5). timeout's TOML key
-		// is integer seconds, so DefaultTimeout (a duration) renders as its seconds form.
+		// config constants so they cannot drift (pinned in metadata_test.go against
+		// DefaultAICommand / DefaultTimeout). timeout's TOML key is integer seconds, so
+		// DefaultTimeout (a duration) renders as int(DefaultTimeout / time.Second).
 		{Key: "ai_command", Level: LevelShared, Default: DefaultAICommand, Description: "the AI invocation: composed prompt on stdin, generated body on stdout; resolved [verb] → shared → default"},
 		{Key: "max_diff_lines", Level: LevelShared, Default: "50000", Description: "diffs larger than this (post-exclusion line count) skip the AI"},
-		{Key: "timeout", Level: LevelShared, Default: strconv.Itoa(int(DefaultTimeout.Seconds())), Description: "per-attempt AI deadline in seconds; 0 means no deadline; resolved [verb] → shared → default"},
+		{Key: "timeout", Level: LevelShared, Default: strconv.Itoa(int(DefaultTimeout / time.Second)), Description: "per-attempt AI deadline in seconds; 0 means no deadline; resolved [verb] → shared → default"},
 		{Key: "diff_exclude", Level: LevelShared, Default: "[]", Description: "extra pathspec globs kept out of every AI diff, on top of the built-in CHANGELOG.md exclusion"},
 
 		// [release] table leaf keys (releaseShape leaf fields), in field order.
