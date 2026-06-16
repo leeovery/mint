@@ -52,24 +52,23 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (10 subtopics — 3 decided · 3 converging · 2 exploring · 2 pending)
+  Discussion Map — Interactive mint init Setup (10 subtopics — 3 decided · 5 converging · 2 exploring)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope — what to configure [converging]
   │  ├─ → AI command & model (per verb) [converging]
   │  └─ ✓ diff_exclude (release-notes noise) [decided]
   └─ ◐ AI setup guide (the pivot) [exploring]
-     ├─ ✓ Delivery & form factor [decided]
-     ├─ → Anti-drift strategy [converging]
+     ├─ → Delivery & form factor [converging]
+     ├─ → Anti-drift & verification [converging]
      ├─ ◐ Guide content & procedure [exploring]
-     ├─ ○ AI etiquette (existing config) [pending]
-     └─ ○ Static defaults floor (B) [pending]
+     ├─ → AI etiquette (existing config) [converging]
+     └─ ✓ Static defaults floor (B → out) [decided]
 
-*Pivot confirmed (topic name unchanged). Trimmed the now-moot wizard-implementation
-subtopics (non-interactive fallback, defaults/SSoT, output shape, wizard UX, seam
-placement, presenter capability, existing-file interaction) — mint grows no interactive
-surface. Survivors re-homed under the pivot: anti-drift carries the SSoT/drift concern;
-AI etiquette carries existing-config handling.*
+*Pivot confirmed. Guide procedure + AI etiquette locked; B decided OUT (no static
+diff_exclude defaults — the guide surfaces them interactively). review-002 gaps are the
+agenda for the still-open threads (delivery/reachability, anti-drift enforcement, guide
+depth, def-of-done, any-AI floor).*
 
 ---
 
@@ -322,6 +321,27 @@ then **superseded by the pivot below.**
 - **Form factor (decided):** MVP = a canonical AI-agnostic **setup-guide file** + a short
   **README invocation prompt** pointing any AI at it. Later layers (not MVP): a
   Claude-Code skill wrapper and/or `mint`-emits-the-prompt (versioned with the binary).
+- **Guide procedure (locked):** the inspect-and-map flow — learn mint (read README +
+  commented template; internalise *only set what varies*) → inspect the project (release
+  process → **hooks**; noise dirs → `diff_exclude`; version file; AI model per verb;
+  provider/branch only if auto-detect would be wrong) → **propose → explain → approve** →
+  sanity-check (unknown keys fail loudly via strict schema). Hook/release-process
+  detection is the centrepiece.
+- **Static defaults floor (B): OUT (user).** Don't ship ecosystem-aware `diff_exclude`
+  defaults — a wrong default is worse than none (`docs/**` is wrong for a docs tool).
+  `diff_exclude` stays empty/commented in the static template (unchanged); the guide
+  surfaces the obvious patterns (`.workflows/`, `.claude/`, agent dirs) **interactively**
+  — "that's what this new process is literally for." Accepted tradeoff: the non-AI path
+  gets no `diff_exclude` help (review F2 — the gap widens with B out).
+- **AI etiquette (locked, user):** the guide instructs the agent to —
+  - **Ask interactively** with whatever user-question tool it has — phrased generally for
+    AI-agnosticism ("if you're Claude, use your Ask-User tool; otherwise, if you have any
+    tool for asking the user questions, use it").
+  - **Confirm the user is comfortable**, and make **clear exactly what is being
+    changed/updated** before writing.
+  - **Never remove anything without explicit permission.**
+  - Surfacing the `diff_exclude` patterns happens inside this interactive confirmation.
+  - (Resolves review F4 — trust/blast-radius — at the etiquette level.)
 
 ### Review reconciliation (set 001)
 
@@ -373,18 +393,25 @@ documented). Non-AI users edit the template; AI users paste the prompt. This **d
 the fail-loud/non-interactive concern entirely** — mint never prompts, so there's no
 `-y`/non-TTY hang to design around.
 
-### Open questions (live)
+### Open questions (live) — agenda from review-002
 
-- **Guide content & procedure** — the real remaining design work: what the guide instructs
-  the AI to do (inspect project → detect release process/hooks, version file, noise dirs,
-  remote/provider → map to config) and how it encodes mint's minimalist philosophy.
-- **Anti-drift** — procedure-not-restatement: guide references the README + commented
-  template for option meanings; supplies only the inspect-and-map logic. (Carries review
-  F10's "how is this verified" into a content-accuracy check.)
-- **AI etiquette** — propose-and-explain → approve → run `mint init` for the baseline →
-  tailor; never silently rewrite; handle an existing `.mint.toml` gracefully.
-- **Static defaults floor (B)** — awaiting user decision (reminder given; orchestrator
-  lean = in).
+- **Guide depth** — procedure locked at outline level; hard details remain: mapping an
+  arbitrary release process onto mint's *fixed three hooks* when it doesn't decompose
+  cleanly (F9); enforcing "only set what varies" so the agent doesn't over-configure
+  (F8); hook-body guardrails — propose/approve, never execute during setup (F4 hooks).
+- **Delivery & reachability** — where the guide physically lives + what the README prompt
+  tells the agent to fetch, esp. a `go install`-ed mint with no repo clone (F1); the
+  non-agentic / no-web user path (F2, sharpened by B-out); prompt↔guide↔binary version
+  skew in the MVP (F7).
+- **Anti-drift enforcement** — convert "procedure not restatement" into something that
+  fails loudly (a drift test asserting the guide names only real schema keys? a CI
+  check?) rather than intent (F10).
+- **Definition of done** — the repeatable check that says the guide is correct — run
+  against sample projects? (F3) The project's gate culture has no analogue for content.
+- **"Any AI" fidelity floor** — realistically Claude-tuned with "any AI" best-effort,
+  stated honestly in the README? (F6)
+- **Existing `.mint.toml`** — etiquette covers never-remove-without-permission; the
+  detect/diff/merge-vs-refuse specifics still open (F5).
 
 ## Summary
 
