@@ -51,6 +51,27 @@ A new top-level verb (working name `mint setup`; the exact command name is a pla
 
 **Install handling.** The README entry point assumes mint is installed and links the install. If `mint setup` is not found, the agent asks the user to install mint — mint does **not** auto-install itself.
 
+### Generated config: strip to minimal
+
+The generated `.mint.toml` is **stripped to bare essentials** — no inline key comments, no commented example overrides. The pre-pivot template carried the only in-repo config docs, so stripping would have hurt; post-pivot the binary is the doc source (`mint setup` SoT table for the agent; GitHub docs / README for humans), so the comments are pure duplication — exactly the drift surface mint already fights. Stripping removes that drift surface and yields a clean minimal file.
+
+**Micro-choice (decided): empty body + a short header comment.** Because every default is compiled into the binary, an empty file is valid and honest. The header comment points to:
+- the **GitHub docs** for the config reference, and
+- **`mint setup`** for AI-assisted setup.
+
+This header pointer is also the **recovery net** for the cold-arrival case — an agent (or human) that opens `.mint.toml` directly, without having read `mint setup`, still finds where the config reference lives.
+
+### `initgen` scope of change
+
+- **Only `MintTOML()` changes** — it returns the new minimal string (empty body + header). `ReleaseShim()` and its tests are **untouched**.
+- The existing `initgen` seams are respected: `initgen` deliberately does **not** import `config` and is drift-pinned. (Package layout for the new config-metadata SoT is a planning detail.)
+
+### Release shim and `mint init` unchanged
+
+- `mint init` still emits **both** files at the git-resolved repo root, unchanged in behaviour: `.mint.toml` (now minimal) **and** the executable `release` shim. The non-clobbering / `--force` / idempotent disposition is unchanged; strip-to-minimal is a **config-content-only** change.
+- Shim tests stay as-is.
+- The `mint setup` guide gives the shim a **one-line role mention** — what `./release` is, and that `mint init` creates it — so the agent's picture of the release pipeline is complete.
+
 ---
 
 ## Working Notes
