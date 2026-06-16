@@ -77,6 +77,18 @@ func TestClassifyCommand(t *testing.T) {
 			wantKind: commandCommit,
 			wantRest: []string{"--plain"},
 		},
+		{
+			name:     "setup is a top-level verb",
+			args:     []string{"setup"},
+			wantKind: commandSetup,
+			wantRest: []string{},
+		},
+		{
+			name:     "setup carries its remaining args through",
+			args:     []string{"setup", "--help"},
+			wantKind: commandSetup,
+			wantRest: []string{"--help"},
+		},
 	}
 
 	for _, tt := range tests {

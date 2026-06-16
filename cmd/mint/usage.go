@@ -83,6 +83,15 @@ release shim at the git-resolved repo root.
       --plain    force plain (un-styled) output
 `
 
+// setupUsage documents the `mint setup` surface (setup.go). MINIMAL placeholder —
+// Task 2-4 authors the full curated text and pins it in the coverage test. setup
+// takes no flags beyond the implicit --help and runs anywhere (no repo required).
+const setupUsage = `usage: mint setup
+
+Emit the AI-assisted setup guide to stdout for an AI agent to follow. Takes no
+flags beyond --help and runs anywhere — no git repository required.
+`
+
 // isHelpCommand reports whether the invocation is a top-level help request:
 // `mint help`, `mint -h`, or `mint --help`.
 func isHelpCommand(args []string) bool {

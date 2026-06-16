@@ -102,11 +102,20 @@ func run(args []string) int {
 		return runVersion(os.Stdout, os.Stderr, os.Stdin)
 	case commandCommit:
 		return runCommit(ctx, rest)
+	case commandSetup:
+		// setup spawns nothing to interrupt and resolves no repo, so — like version —
+		// it takes only IO descriptors and no ctx.
+		return runSetup(rest, os.Stdout, os.Stderr)
 	default:
-		fmt.Fprintln(os.Stderr, "mint: unknown command (only `mint release`, `mint release regenerate`, `mint init`, `mint version`, and `mint commit` are wired)")
+		fmt.Fprintln(os.Stderr, unknownCommandMessage)
 		return usageExitCode
 	}
 }
+
+// unknownCommandMessage is the stderr diagnostic for an unrecognised or empty
+// command. It enumerates every wired command (so a typo names the full surface),
+// and is a named const so a coverage test can pin that every route is listed.
+const unknownCommandMessage = "mint: unknown command (only `mint release`, `mint release regenerate`, `mint init`, `mint version`, `mint commit`, and `mint setup` are wired)"
 
 // runRegenerate parses and validates the `mint release regenerate` flag surface,
 // runs the applicable preflight subset, then dispatches to the single-version
@@ -394,6 +403,13 @@ const (
 	// that mints a conventional-commit message from the staged diff and creates the
 	// commit. It does NOT ride the release lifecycle spine.
 	commandCommit
+	// commandSetup is the `mint setup` verb — a top-level verb that emits the AI
+	// setup guide to stdout. It drives no gate, calls no RunFinished, and — unlike
+	// init/release/commit — needs NO git repo: it NEVER resolves the repo root and
+	// issues no `git rev-parse`, so it runs UNCONDITIONALLY from any directory
+	// (setup instructions are commonly read before `cd`-ing into the target repo).
+	// The cwd-confirm safety net lives in the emitted guide, not a cmd-layer guard.
+	commandSetup
 )
 
 // classifyCommand resolves the route for an invocation's args and returns the
@@ -414,6 +430,9 @@ func classifyCommand(args []string) (commandKind, []string) {
 	}
 	if args[0] == "commit" {
 		return commandCommit, args[1:]
+	}
+	if args[0] == "setup" {
+		return commandSetup, args[1:]
 	}
 	if args[0] != "release" {
 		return commandUnknown, nil
