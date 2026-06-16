@@ -8,19 +8,6 @@ import (
 	"mint/internal/setupguide"
 )
 
-// levelCell renders the level column the way the config-reference table does:
-// row.Level.String() verbatim, except the shared level (whose String() is the
-// empty top-level form "") shows the documented "shared" placeholder so the
-// markdown cell is never blank/ambiguous to the reading agent. The expectation
-// stays DRIVEN by MetadataLevel.String() — the placeholder is applied only when
-// String() is empty — so the level identity remains single-sourced in config.
-func levelCell(level config.MetadataLevel) string {
-	if s := level.String(); s != "" {
-		return s
-	}
-	return "shared"
-}
-
 // configReferenceBody returns the slice of the emitted guide at and after the
 // config-reference marker — the section whose table this task renders. Driving
 // the row assertions from this slice (rather than the whole guide) keeps them
@@ -229,18 +216,21 @@ func TestGuide_CarriesDiffExcludeScope(t *testing.T) {
 
 // TestGuide_ConfigReferenceHasLinePerSoTRow proves the config-reference section
 // renders one table line per config.MetadataRows() row, each carrying the key,
-// the level (via MetadataLevel.String(), with the shared placeholder), the
-// verbatim default token, and the description — together on a single line. The
-// expectations are DRIVEN by config.MetadataRows() (not a frozen literal table),
-// so adding or removing a SoT row propagates here without a test edit, and a
-// re-derived table that diverged from the SoT would fail this assertion.
+// the level (via setupguide.LevelCell — MetadataLevel.String() with the
+// shared-level placeholder), the verbatim default token, and the description —
+// together on a single line. The expectations are DRIVEN by
+// config.MetadataRows() (not a frozen literal table), so adding or removing a
+// SoT row propagates here without a test edit, and a re-derived table that
+// diverged from the SoT would fail this assertion. The level cell expectation
+// is single-sourced through the production LevelCell seam, so it tracks
+// production's placeholder rather than re-deriving it.
 func TestGuide_ConfigReferenceHasLinePerSoTRow(t *testing.T) {
 	t.Parallel()
 
 	section := configReferenceBody(t)
 
 	for _, row := range config.MetadataRows() {
-		if !containsRowLine(section, row.Key, levelCell(row.Level), row.Default, row.Description) {
+		if !containsRowLine(section, row.Key, setupguide.LevelCell(row.Level), row.Default, row.Description) {
 			t.Errorf("config reference missing a line for SoT row (level %q, key %q, default %q)",
 				row.Level, row.Key, row.Default)
 		}
@@ -259,8 +249,8 @@ func TestGuide_ConfigReferenceRendersDualLevelKeysDistinctly(t *testing.T) {
 
 	for _, key := range []string{"ai_command", "timeout"} {
 		for _, level := range levels {
-			if !lineHasKeyAtLevel(section, key, levelCell(level)) {
-				t.Errorf("config reference missing a distinct %q row at level %q", key, levelCell(level))
+			if !lineHasKeyAtLevel(section, key, setupguide.LevelCell(level)) {
+				t.Errorf("config reference missing a distinct %q row at level %q", key, setupguide.LevelCell(level))
 			}
 		}
 	}
@@ -308,7 +298,7 @@ func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
 			t.Parallel()
 
 			row := rows[rowKey{level: tt.level, key: tt.key}]
-			if !containsRowLine(section, row.Key, levelCell(row.Level), row.Default, row.Description) {
+			if !containsRowLine(section, row.Key, setupguide.LevelCell(row.Level), row.Default, row.Description) {
 				t.Errorf("config reference must carry default %q verbatim for (level %q, key %q)",
 					row.Default, tt.level, tt.key)
 			}
@@ -319,18 +309,84 @@ func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
 // TestGuide_ConfigReferenceRendersLevelViaString proves the level column is
 // rendered from MetadataLevel.String() (TOML form): each non-shared row carries
 // its bracketed header verbatim on its line. The shared rows carry the empty
-// String() form, surfaced as the documented "shared" placeholder cell.
+// String() form, surfaced as the "top-level" placeholder cell. The expectation
+// flows through the production setupguide.LevelCell seam, so changing
+// production's placeholder turns this red rather than silently tracking it.
 func TestGuide_ConfigReferenceRendersLevelViaString(t *testing.T) {
 	t.Parallel()
 
 	section := configReferenceBody(t)
 
 	for _, row := range config.MetadataRows() {
-		if !lineHasKeyAtLevel(section, row.Key, levelCell(row.Level)) {
+		if !lineHasKeyAtLevel(section, row.Key, setupguide.LevelCell(row.Level)) {
 			t.Errorf("config reference must render level %q (via String()) on the %q row",
-				levelCell(row.Level), row.Key)
+				setupguide.LevelCell(row.Level), row.Key)
 		}
 	}
+}
+
+// TestGuide_ConfigReferenceSharedLevelUsesNonCollidingToken proves the shared
+// (top-level) rows render their LEVEL cell with a token that does NOT collide
+// with the Default-column inherit "shared" token. A shared-level row's level
+// cell must carry "top-level" and must NOT carry the bare "shared" word, so the
+// reading agent never sees "shared" meaning two things in one table.
+func TestGuide_ConfigReferenceSharedLevelUsesNonCollidingToken(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+
+	// max_diff_lines is a shared-level-only key (no dual-level twin), so its row
+	// is unambiguously a shared row: its level cell is the placeholder under test.
+	const sharedOnlyKey = "max_diff_lines"
+	line := rowLineFor(section, sharedOnlyKey)
+	if line == "" {
+		t.Fatalf("config reference has no row line for shared-only key %q", sharedOnlyKey)
+	}
+
+	levelCell := levelCellOf(line)
+	if levelCell != "top-level" {
+		t.Errorf("shared-level row %q level cell = %q, want %q", sharedOnlyKey, levelCell, "top-level")
+	}
+	if strings.Contains(levelCell, "shared") {
+		t.Errorf("shared-level row %q level cell %q must not collide with the Default inherit token %q",
+			sharedOnlyKey, levelCell, "shared")
+	}
+}
+
+// rowLineFor returns the markdown table row line in section whose first cell
+// (the Key column) is exactly key, or "" if none matches. Matching on the key
+// cell (not Contains) pins the right row even when several rows share a key.
+func rowLineFor(section, key string) string {
+	for _, line := range strings.Split(section, "\n") {
+		cells := splitRow(line)
+		if len(cells) >= 1 && cells[0] == key {
+			return line
+		}
+	}
+	return ""
+}
+
+// levelCellOf returns the LEVEL column (second cell) of a markdown table row.
+func levelCellOf(line string) string {
+	cells := splitRow(line)
+	if len(cells) < 2 {
+		return ""
+	}
+	return cells[1]
+}
+
+// splitRow splits a "| a | b | c |" markdown row into its trimmed cell values,
+// dropping the empty leading/trailing fields the surrounding pipes produce.
+func splitRow(line string) []string {
+	if !strings.HasPrefix(strings.TrimSpace(line), "|") {
+		return nil
+	}
+	parts := strings.Split(line, "|")
+	cells := make([]string, 0, len(parts))
+	for _, p := range parts[1 : len(parts)-1] {
+		cells = append(cells, strings.TrimSpace(p))
+	}
+	return cells
 }
 
 // rowKey identifies a SoT row by its (level, key) pair for the verbatim-token

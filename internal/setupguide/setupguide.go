@@ -307,9 +307,10 @@ default column to judge whether a key needs setting at all (see Minimalism).
 //   - Level: row.Level.String() (the canonical TOML form — [release],
 //     [release.hooks], [commit], or the empty shared form). Because a blank
 //     markdown cell would be ambiguous to the reading agent, the empty shared
-//     form is surfaced as the word "shared"; the rendered value stays DRIVEN by
-//     MetadataLevel.String() (the placeholder applies only when String() is
-//     empty), so level identity remains single-sourced in config.
+//     form is surfaced as "top-level" (NOT "shared", which the Default column
+//     already uses for the inherit token — see LevelCell); the rendered value
+//     stays DRIVEN by MetadataLevel.String() (the placeholder applies only when
+//     String() is empty), so level identity remains single-sourced in config.
 //   - Default: row.Default carried VERBATIM — blank stays blank, "auto" stays
 //     "auto", "[]" stays "[]", "shared" stays "shared". An empty default is
 //     emitted as a single space so the markdown cell is well-formed without
@@ -328,7 +329,7 @@ func renderConfigReference() string {
 		b.WriteString("| ")
 		b.WriteString(row.Key)
 		b.WriteString(" | ")
-		b.WriteString(levelCell(row.Level))
+		b.WriteString(LevelCell(row.Level))
 		b.WriteString(" | ")
 		b.WriteString(defaultCell(row.Default))
 		b.WriteString(" | ")
@@ -339,16 +340,22 @@ func renderConfigReference() string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// levelCell renders a row's level column from row.Level.String() (the canonical
-// TOML form), surfacing the empty shared form as the documented "shared"
-// placeholder so the markdown cell is never blank/ambiguous. The cell stays
-// driven by MetadataLevel.String() — the placeholder applies only when it is
-// empty — so the level identity is single-sourced in config.
-func levelCell(level config.MetadataLevel) string {
+// LevelCell renders a row's level column from row.Level.String() (the canonical
+// TOML form), surfacing the empty shared form as the "top-level" placeholder so
+// the markdown cell is never blank/ambiguous. The placeholder deliberately is
+// NOT "shared": the Default column already uses "shared" to mean "inherit the
+// shared top-level value" for the per-verb override rows, so a "shared" level
+// cell would collide with that token in the same table and read as two
+// meanings. The cell stays driven by MetadataLevel.String() — the placeholder
+// applies ONLY when it is empty — so the level identity is single-sourced in
+// config. This is the ONE place the placeholder string lives; the structural
+// test calls it rather than re-deriving it, so a change here flows into the
+// test and a drift turns it red.
+func LevelCell(level config.MetadataLevel) string {
 	if s := level.String(); s != "" {
 		return s
 	}
-	return "shared"
+	return "top-level"
 }
 
 // defaultCell carries the SoT default token verbatim, emitting a single space
