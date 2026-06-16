@@ -73,7 +73,8 @@ approved_at: 2026-06-16
 - [ ] All standard gates pass.
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-16
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
