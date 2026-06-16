@@ -24,19 +24,61 @@ func configReferenceBody(t *testing.T) string {
 }
 
 // containsRowLine reports whether section carries a single line that holds the
-// key, the level cell, and the default cell together — the per-row presence the
-// drift-resistant assertions key on. A markdown row "| key | level | default |
-// description |" satisfies this; metadata split across lines does not.
-func containsRowLine(section, key, level, defaultCell, description string) bool {
+// key, the level cell, the default cell, and the description together — the
+// per-row presence the drift-resistant assertions key on. A markdown row
+// "| key | level | default | description |" satisfies this; metadata split
+// across lines does not.
+//
+// A blank default (defaultDefault == "") is the LOAD-BEARING special case: a
+// plain strings.Contains(line, "") is unconditionally true and would assert
+// nothing about the blank cell, so this routes a blank default through the exact
+// single-space-cell shape check (blankDefaultCellRenders) — the row's parsed
+// default cell must be empty AND the delimiter intact — instead of the vacuous
+// Contains. Non-blank defaults stay driven by the verbatim row.Default token.
+func containsRowLine(section, key, level, defaultDefault, description string) bool {
 	for _, line := range strings.Split(section, "\n") {
-		if strings.Contains(line, key) &&
-			strings.Contains(line, level) &&
-			strings.Contains(line, defaultCell) &&
-			strings.Contains(line, description) {
+		if !strings.Contains(line, key) ||
+			!strings.Contains(line, level) ||
+			!strings.Contains(line, description) {
+			continue
+		}
+		if defaultDefault == "" {
+			if blankDefaultCellRenders(line) {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(line, defaultDefault) {
 			return true
 		}
 	}
 	return false
+}
+
+// blankDefaultCellRenders reports whether line is a well-formed four-column
+// markdown row whose DEFAULT cell (third column) is the single-space blank cell
+// defaultCell emits for an empty SoT default — the `| | ` shape: a lone space
+// padded by the surrounding `| ... | ` separators, so the RAW (untrimmed) default
+// field is exactly three spaces. Inspecting the raw field (not the trimmed cell)
+// is what makes this bite on all three blank-default regressions:
+//   - "auto" (or any non-blank token): the raw field would carry that token.
+//   - a truly-empty cell with no space (`||`): the raw field would be two spaces,
+//     not three.
+//   - a dropped/duplicated delimiter: the row would not split into the expected
+//     six pipe-delimited fields.
+//
+// It does NOT collapse to Contains(line, "").
+func blankDefaultCellRenders(line string) bool {
+	// renderConfigReference joins cells with the fixed "| ... | ... |" delimiter
+	// (a leading "| ", " | " between columns, a trailing " |"), so a four-column
+	// row splits on "|" into six fields: a leading "", four padded cells, a
+	// trailing "". The default cell is the third padded field (index 3).
+	const blankDefaultField = "   " // " " separator + defaultCell("") space + " " separator
+	fields := strings.Split(line, "|")
+	if len(fields) != 6 {
+		return false
+	}
+	return fields[3] == blankDefaultField
 }
 
 // sectionMarkers pairs each required section's exported marker constant with a
@@ -303,6 +345,47 @@ func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
 					row.Default, tt.level, tt.key)
 			}
 		})
+	}
+}
+
+// TestGuide_ConfigReferenceBlankDefaultRendersSingleSpaceCell pins the
+// blank-default render at the AGENT-FACING seam: a key whose SoT default is the
+// empty string (e.g. [release].context) must render the well-formed single-space
+// default cell — the `| | ` shape — so the markdown row stays valid and the
+// blank-vs-auto-vs-shared distinction the minimalism guidance rests on survives
+// to the agent. This is the real assertion the blank case lacked: a regression
+// that emitted "auto" (or any non-blank token), collapsed the cell to truly empty
+// (`||`), or dropped a delimiter for a blank-default key turns this red. The row
+// is located by its exact Key cell and the assertion runs through the production
+// render, so it tracks defaultCell's actual output rather than re-deriving it.
+func TestGuide_ConfigReferenceBlankDefaultRendersSingleSpaceCell(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+	rows := rowByLevelKey(t)
+
+	// [release].context is a genuinely-no-value key: its SoT default is "" (not a
+	// sentinel), so it is the canonical blank-default row to pin.
+	const blankKey = "context"
+	row := rows[rowKey{level: config.LevelRelease, key: blankKey}]
+	if row.Default != "" {
+		t.Fatalf("(level %q, key %q) Default = %q, want blank — pick a blank-default key for this seam test",
+			config.LevelRelease, blankKey, row.Default)
+	}
+
+	line := rowLineFor(section, blankKey)
+	if line == "" {
+		t.Fatalf("config reference has no row line for blank-default key %q", blankKey)
+	}
+
+	// The line must carry this exact row (level + description) AND render the
+	// single-space default cell — proven via the raw-field shape check, not a
+	// trimmed-cell compare, so a truly-empty cell or a non-blank token bites.
+	if !strings.Contains(line, setupguide.LevelCell(row.Level)) || !strings.Contains(line, row.Description) {
+		t.Fatalf("row line for %q does not carry the expected level/description: %q", blankKey, line)
+	}
+	if !blankDefaultCellRenders(line) {
+		t.Errorf("blank-default key %q must render the single-space `| | ` default cell, got line: %q", blankKey, line)
 	}
 }
 

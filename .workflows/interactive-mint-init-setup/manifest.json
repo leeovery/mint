@@ -108,7 +108,7 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 5,
-          "current_task": "tick-3c31ab",
+          "current_task": "~",
           "completed_tasks": [
             "interactive-mint-init-setup-1-1",
             "interactive-mint-init-setup-1-2",
@@ -124,13 +124,15 @@
             "interactive-mint-init-setup-4-1",
             "interactive-mint-init-setup-4-2",
             "interactive-mint-init-setup-4-3",
-            "interactive-mint-init-setup-5-1"
+            "interactive-mint-init-setup-5-1",
+            "interactive-mint-init-setup-5-2"
           ],
           "completed_phases": [
             1,
             2,
             3,
-            4
+            4,
+            5
           ]
         }
       }
