@@ -39,7 +39,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 4,
-          "task": "interactive-mint-init-setup-4-1",
+          "task": "interactive-mint-init-setup-4-2",
           "task_map": {
             "interactive-mint-init-setup-1": "tick-23fbff",
             "interactive-mint-init-setup-1-1": "tick-15d94b",
@@ -54,7 +54,9 @@
             "interactive-mint-init-setup-2-4": "tick-25d151",
             "interactive-mint-init-setup-3": "tick-7be41d",
             "interactive-mint-init-setup-3-1": "tick-5d5d21",
-            "interactive-mint-init-setup-3-2": "tick-8e459a"
+            "interactive-mint-init-setup-3-2": "tick-8e459a",
+            "interactive-mint-init-setup-4": "tick-f134e5",
+            "interactive-mint-init-setup-4-1": "tick-0952b6"
           },
           "external_id": "tick-f3d959"
         }
