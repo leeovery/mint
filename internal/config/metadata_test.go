@@ -16,6 +16,21 @@ type rowKey struct {
 	key   string
 }
 
+// expectedRowKeys projects the single shared expected-pair census (config.ExpectedLeafKeys,
+// the internal config package's one ordered enumeration) into this external package's
+// rowKey type. The census uses the unexported leafKey type, which config_test cannot name —
+// but leafKey's Level/Key fields are exported, so the projection reads them directly. This
+// keeps the 25-pair enumeration in exactly one place while the naming test below asserts in
+// terms of the rowKey it already uses.
+func expectedRowKeys() []rowKey {
+	census := config.ExpectedLeafKeys()
+	out := make([]rowKey, 0, len(census))
+	for _, lk := range census {
+		out = append(out, rowKey{level: lk.Level, key: lk.Key})
+	}
+	return out
+}
+
 // rowSet collapses MetadataRows() into a (level, key) → row lookup, asserting no two
 // rows share a (level, key) pair (a collision would hide a duplicate or a dropped row).
 func rowSet(t *testing.T) map[rowKey]config.MetadataRow {
@@ -40,37 +55,12 @@ func rowSet(t *testing.T) map[rowKey]config.MetadataRow {
 func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 	t.Parallel()
 
-	expected := []rowKey{
-		// Shared top-level engine keys.
-		{config.LevelShared, "ai_command"},
-		{config.LevelShared, "max_diff_lines"},
-		{config.LevelShared, "timeout"},
-		{config.LevelShared, "diff_exclude"},
-		// [release] leaf keys.
-		{config.LevelRelease, "tag_prefix"},
-		{config.LevelRelease, "commit_prefix"},
-		{config.LevelRelease, "release_branch"},
-		{config.LevelRelease, "publish"},
-		{config.LevelRelease, "changelog"},
-		{config.LevelRelease, "provider"},
-		{config.LevelRelease, "context"},
-		{config.LevelRelease, "prompt"},
-		{config.LevelRelease, "on_notes_failure"},
-		{config.LevelRelease, "fallback"},
-		{config.LevelRelease, "version_file"},
-		{config.LevelRelease, "version_pattern"},
-		{config.LevelRelease, "ai_command"},
-		{config.LevelRelease, "timeout"},
-		// [release.hooks] keys.
-		{config.LevelReleaseHooks, "preflight"},
-		{config.LevelReleaseHooks, "pre_tag"},
-		{config.LevelReleaseHooks, "post_release"},
-		// [commit] keys.
-		{config.LevelCommit, "context"},
-		{config.LevelCommit, "prompt"},
-		{config.LevelCommit, "ai_command"},
-		{config.LevelCommit, "timeout"},
-	}
+	// Project the single shared census (config.ExpectedLeafKeys, defined in the internal
+	// config package's metadata_census_test.go) into this external package's rowKey type.
+	// config_test cannot name the unexported leafKey, but it can read each pair's exported
+	// Level/Key fields — so the 25 expected pairs live in exactly ONE place. This test
+	// still matches against MetadataRows() (the SoT side), which stays untouched.
+	expected := expectedRowKeys()
 
 	rows := config.MetadataRows()
 	if len(rows) != len(expected) {

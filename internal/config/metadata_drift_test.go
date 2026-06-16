@@ -122,37 +122,11 @@ func leafKeySet(t *testing.T) map[leafKey]int {
 func TestSchemaLeafKeys_DerivesAllLeafPairs(t *testing.T) {
 	t.Parallel()
 
-	expected := []leafKey{
-		// Shared top-level engine keys (fileShape leaf fields).
-		{LevelShared, "ai_command"},
-		{LevelShared, "max_diff_lines"},
-		{LevelShared, "timeout"},
-		{LevelShared, "diff_exclude"},
-		// [release] leaf keys (releaseShape leaf fields).
-		{LevelRelease, "tag_prefix"},
-		{LevelRelease, "commit_prefix"},
-		{LevelRelease, "release_branch"},
-		{LevelRelease, "publish"},
-		{LevelRelease, "changelog"},
-		{LevelRelease, "provider"},
-		{LevelRelease, "context"},
-		{LevelRelease, "prompt"},
-		{LevelRelease, "on_notes_failure"},
-		{LevelRelease, "fallback"},
-		{LevelRelease, "version_file"},
-		{LevelRelease, "version_pattern"},
-		{LevelRelease, "ai_command"},
-		{LevelRelease, "timeout"},
-		// [release.hooks] keys (hooksShape fields, reached via release recursion).
-		{LevelReleaseHooks, "preflight"},
-		{LevelReleaseHooks, "pre_tag"},
-		{LevelReleaseHooks, "post_release"},
-		// [commit] keys (commitShape leaf fields).
-		{LevelCommit, "context"},
-		{LevelCommit, "prompt"},
-		{LevelCommit, "ai_command"},
-		{LevelCommit, "timeout"},
-	}
+	// Assert against the single shared census (metadata_census_test.go), the one place
+	// the 25 expected pairs are enumerated. The schema side (schemaLeafKeys) is still
+	// derived purely from the decode-shape struct tags — this test only swaps its inline
+	// duplicate of the census for the shared list, leaving the derivation untouched.
+	expected := expectedLeafKeys
 
 	got := schemaLeafKeys(t)
 	if len(got) != len(expected) {
