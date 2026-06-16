@@ -602,6 +602,16 @@ same instinct, made explicit in the setup output.
 > **contains the project's relevant config — whether sourced from the existing file or built
 > fresh.**
 
+---
+
+## "Any AI" fidelity floor (F6 — decided)
+
+Don't overthink it (user). README framing: *"to set up, pass the following prompt to your AI
+of choice — Claude, Codex, …"*, with a light steer like *"we find Opus-level models do the
+best work here."* No fidelity-floor machinery — this is a convenience; if the user picks a
+weak AI, that's their call. (Strict-schema loud-fail + a natural "verify the config loads"
+step stay as sensible backstops, not defensive engineering.)
+
 ## Summary
 
 ### Key Insights
@@ -639,10 +649,10 @@ same instinct, made explicit in the setup output.
   deferred; pivot to AI setup guide; delivery = binary-emit (`mint <setup-cmd>`); anti-drift
   = emit + drift test; B (static defaults) out; hook mapping (F9); minimalism (F8); static
   template stripped to minimal + config-metadata SoT feeding help+setup (folded in); minimal
-  template = empty body + header (GitHub link + `mint help` pointer).
-- **Converging:** scope / AI-command-model (guide content); AI etiquette; guide content &
-  procedure overall.
-- **Open:** "any AI" fidelity floor (F6 — resuming now); definition of done (F3).
+  template = empty body + header (GitHub link + `mint help` pointer); existing-config +
+  upgrade (F5); any-AI framing — light README steer (F6).
+- **Converging:** scope / AI-command-model (guide content); guide content & procedure overall.
+- **Open:** definition of done (F3 — last review thread).
 - **Superseded/trimmed:** the mint-side wizard subtopics (mint grows no interactive surface).
 
 ## Triage
