@@ -67,10 +67,10 @@ The SoT `default` column is specified as "the **real** compiled default (e.g. `c
 The minimalism section leans hard on this column ("The agent judges 'is the default fine?' against that real default"), so an empty or ambiguous `default` cell directly weakens the feature it exists for: for `release_branch`/`provider` an agent that reads a blank cell can't tell "no default" from "default = auto," and for hooks there is nothing to compare against. The spec needs to say how the `default` column represents empty (`""` vs blank vs the word `auto`/`none`/`inherit`), how it represents the hooks keys (which arguably are "activate-only" with no default), and how it represents the per-verb override "inherit-the-shared" case. This is decided behavior the agent depends on, not a planning-only rendering detail.
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added a "`default` column representation" paragraph to the SoT section defining how each non-scalar default renders, adopting the README per-key tables' existing convention: empty-string → blank; sentinel-auto (`release_branch`/`provider`) → `auto`; empty collection (`diff_exclude`) → `[]`; per-verb inherit → `shared`; hooks → activate-only / no default.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved. Convention sourced from README:215-262 so SoT and human table stay consistent.
 
 ---
 

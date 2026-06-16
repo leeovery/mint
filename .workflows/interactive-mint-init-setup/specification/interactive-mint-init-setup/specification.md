@@ -84,6 +84,15 @@ A single structured table of config metadata lives **in the binary**, schema-adj
 
 This SoT is the **single in-binary source of config metadata**. It **renders into the `mint setup` output** as the config reference the agent reads — replacing the now-stripped template comments. (Package layout / exact rendering is a planning detail.)
 
+**`default` column representation.** Many keys have no concrete scalar default, so the column adopts the **same representation convention the README per-key tables already use** (keeping the two surfaces mutually consistent):
+- **Empty-string defaults** (`context`, `prompt`, `fallback`, `version_file`, `version_pattern`) → an empty/blank cell.
+- **Sentinel-empty "auto" defaults** (`release_branch`, `provider`, where `""` *means* auto-derive/auto-detect) → the word **`auto`** (distinct from a plain blank, so the agent can tell "auto" from "no value").
+- **Empty collection** (`diff_exclude`) → **`[]`**.
+- **Per-verb override "inherit-the-shared" defaults** (`[release].ai_command`/`timeout`, `[commit].ai_command`/`timeout`) → the word **`shared`**.
+- **`[release.hooks]` keys** (`preflight`, `pre_tag`, `post_release`) — activate-only, no compiled default → no default value; the description carries when each runs (the `default` cell is blank or `—`).
+
+The minimalism guidance depends on this column being unambiguous, so these representations are part of the decided behaviour, not a planning-only rendering choice.
+
 ### Drift test (the anti-drift enforcement)
 
 The SoT is **drift-tested against the real `config` schema** — a Go test that fails the build if the SoT and the canonical schema disagree (a key present in the schema but missing from the SoT, or vice versa). This is the core value of centralising the metadata: the config reference the agent reads **cannot drift** from what the binary actually accepts, even though `mint setup` is the single in-binary render target. It mirrors the existing `initgen`↔`config` drift discipline.
