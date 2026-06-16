@@ -121,10 +121,10 @@ Added a "Stable section markers" paragraph under "The `mint setup` subcommand": 
 The spec mandates "A `rootUsage` command-list line for `setup`" and a "Help-contract coverage test … extended to pin `mint setup`." Every existing `rootUsage` entry is a verb name plus a curated one-line description (e.g. `init    scaffold .mint.toml and the release shim into a repo`). The coverage test (`TestUsageTexts_CoverTheirFlagSets`) asserts the verb name appears in `rootUsage`, so the bare presence is testable — but the human-facing **description text** for the `setup` line is content the README/help surface ships to users and the spec never states it. This is distinct from the deferred "exact command name": even taking `setup` as given, the description ("…?") is undecided. It is small, but it is shipped curated help text, not a planning-only mechanical detail, and the `mint help` "frozen curated text gains only the setup command line" instruction implies a specific line exists to be added. (Note: this is genuinely tiny; flagging as Minor for completeness — an implementer would otherwise invent the wording.)
 
 **Proposed Addition**:
-{leave blank until discussed}
+Pinned the curated help text intent in the help-surface-wiring bullets: rootUsage line description *"print the AI-assisted setup guide for configuring mint"* (wording adjustable; states it prints the guide, not writes files); `setupUsage` is a one-line summary noting no flags beyond `--help` and runs anywhere (no repo required).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved (Minor). Register matches existing `init` line.
 
 ---
 

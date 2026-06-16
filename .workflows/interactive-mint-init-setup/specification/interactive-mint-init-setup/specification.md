@@ -44,8 +44,8 @@ A new top-level verb (working name `mint setup`; the exact command name is a pla
 **Runs unconditionally — no git/cwd guard.** Unlike `mint init` (which resolves the repo root via `git rev-parse --show-toplevel` and fails loudly outside a work tree), `mint setup` is a pure text emitter: it must print even when the operator is not yet inside the target repo (setup instructions are commonly read before `cd`-ing in). Safety lives in the *instructions* instead — the emitted guide tells the agent to confirm it is in the intended repo root before inspecting or writing, and `mint init` (run during setup) remains the loud-fail backstop outside a work tree.
 
 **Help-surface wiring (the curated-help contract).** `mint setup` threads through mint's existing hand-written help surface exactly like every other verb:
-- A `rootUsage` command-list line for `setup`.
-- A curated `setupUsage` text for `mint setup --help` (printed to stdout, exit 0, via the `flag.ErrHelp` path).
+- A `rootUsage` command-list line for `setup` with a curated one-line description in the existing register — *"print the AI-assisted setup guide for configuring mint"* (exact wording adjustable, but it states that the command **prints/emits the setup guide**, not that it writes files).
+- A curated `setupUsage` text for `mint setup --help` (printed to stdout, exit 0, via the `flag.ErrHelp` path) — a one-line summary in the same register, noting `mint setup` takes no flags beyond `--help` and runs anywhere (no repo required).
 - Dispatch wiring in `classifyCommand` / `run` (a new `commandSetup` route).
 - The coverage test the help contract requires (the existing test that pins every verb's usage coverage).
 
