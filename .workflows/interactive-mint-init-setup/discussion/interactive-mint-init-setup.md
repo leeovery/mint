@@ -52,7 +52,7 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (11 subtopics — 6 decided · 5 converging)
+  Discussion Map — Interactive mint init Setup (11 subtopics — 7 decided · 4 converging)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope — what to configure [converging]
@@ -62,7 +62,7 @@ branches, converges as decisions land.
      ├─ ✓ Delivery — binary-emit (`mint <setup-cmd>`) [decided]
      ├─ ✓ Anti-drift & verification (emit + drift test) [decided]
      ├─ → Guide content & procedure [converging]
-     ├─ → AI etiquette (existing config) [converging]
+     ├─ ✓ AI etiquette + existing-config/upgrade [decided]
      ├─ ✓ Static defaults floor (B → out) [decided]
      └─ ✓ Static template + config-doc SoT (strip to minimal) [decided]
 
@@ -572,6 +572,36 @@ the agent to judge "is the default fine?" from the **prose comment / default beh
 never by treating a commented example value as the default. (Reinforces DRY: the guide never
 restates default values.)
 
+---
+
+## Existing .mint.toml — diff, discuss, upgrade (F5 — decided)
+
+Re-running setup on a configured repo is a likely motion. mint's generator is strictly
+non-clobbering (`mint init` skips an existing file unless `--force`); the agent needs the
+same instinct, made explicit in the setup output.
+
+### Decision (user)
+
+- If a `.mint.toml` already exists, **bring it into context and discuss** — never silently
+  overwrite. The agent surfaces what's there and asks.
+- Offer the choice: **work with the existing config** (targeted, key-by-key, reviewed
+  changes) **or start fresh reusing the existing values** to build a clean current file —
+  always the user's call; nothing removed without explicit permission.
+- **Emergent capability — config upgrade/migration:** the agent has the current canonical
+  reference (the SoT via `mint setup`/help) plus the user's file, so it can detect **drift
+  from the current mint version** — removed/renamed keys (which would otherwise fail
+  `DisallowUnknownFields` loudly at the next `mint` run), values that no longer fit, new keys
+  worth considering — and bring an old config current. "Setup" doubles as "upgrade my config
+  to this mint version."
+- All handled by being **explicit in the `mint setup` output** about the if-exists branch;
+  the agent does the rest.
+
+### Goal (user — crisp framing of the whole feature)
+
+> End state: a `.mint.toml` that is **up to date with the installed mint version** and
+> **contains the project's relevant config — whether sourced from the existing file or built
+> fresh.**
+
 ## Summary
 
 ### Key Insights
@@ -591,6 +621,9 @@ restates default values.)
 6. **Agent as collaborator, not auto-configurer:** explain mint's model, propose, flag,
    never silently drop/clobber — handles imperfect fits and even "mint isn't right here"
    gracefully.
+7. **End goal:** a `.mint.toml` up to date with the installed mint version, containing the
+   project's relevant config — whether from an existing file or built fresh. "Setup" also
+   serves as "config upgrade."
 
 ### Open Threads
 
@@ -609,8 +642,7 @@ restates default values.)
   template = empty body + header (GitHub link + `mint help` pointer).
 - **Converging:** scope / AI-command-model (guide content); AI etiquette; guide content &
   procedure overall.
-- **Open:** existing-config handling (F5 — resuming now); "any AI" fidelity floor (F6);
-  definition of done (F3).
+- **Open:** "any AI" fidelity floor (F6 — resuming now); definition of done (F3).
 - **Superseded/trimmed:** the mint-side wizard subtopics (mint grows no interactive surface).
 
 ## Triage
