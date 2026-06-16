@@ -87,10 +87,10 @@ The drift test is specified as "a key present in the schema but missing from the
 - **What "the schema" is, mechanically.** The existing `initgen↔config` drift discipline pins literal *values* against exported constants. This new drift test asserts *key-set membership*. There is no machine-readable enumeration of "all config keys" in `internal/config` today (keys live as struct fields with `toml:"..."` tags across `fileShape`, `releaseShape`, `commitShape`, `hooksShape`). The spec says "drift-tested against the real `config` schema" but the *mechanism* of deriving the authoritative key set (reflect over the shape structs' tags? a hand-maintained list the test also pins?) is undefined, and that mechanism is what determines whether the test can actually catch a drift rather than comparing two copies of the same hand-list. (Package layout is deferred, granted — but "what the test compares against" is a behavioral contract, not layout.)
 
 **Proposed Addition**:
-{leave blank until discussed}
+Added a "What counts as one key (the bijection contract)" paragraph to the Drift test section: match on (level, key) pairs — `ai_command`/`timeout` are distinct rows per level (four-row model), hooks keys are their own rows; the authoritative key set is derived mechanically from the decode-shape structs' `toml` tags (`fileShape`/`releaseShape`/`commitShape`/`hooksShape`), not a hand-list, so the test catches real divergence; bijection is total.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved. Grounded against config.go shape structs and README four-row model.
 
 ---
 

@@ -97,6 +97,11 @@ The minimalism guidance depends on this column being unambiguous, so these repre
 
 The SoT is **drift-tested against the real `config` schema** — a Go test that fails the build if the SoT and the canonical schema disagree (a key present in the schema but missing from the SoT, or vice versa). This is the core value of centralising the metadata: the config reference the agent reads **cannot drift** from what the binary actually accepts, even though `mint setup` is the single in-binary render target. It mirrors the existing `initgen`↔`config` drift discipline.
 
+**What counts as one "key" (the bijection contract).** The schema's key set is not a flat list of distinct names, so the test matches on **(level, key) pairs**, one SoT row per pair:
+- `ai_command` and `timeout` exist at **both** the shared top level **and** under `[release]` and `[commit]` — these are **distinct rows** (mirroring the README's four-row model), matched per level, not collapsed to one.
+- The `[release.hooks]` keys (`preflight`, `pre_tag`, `post_release`) are their own rows at the `[release.hooks]` level.
+- The authoritative key set is **derived mechanically from the `config` decode-shape structs' `toml` tags** (`fileShape`, `releaseShape`, `commitShape`, `hooksShape`) — **not** a hand-maintained list — so the test catches a genuine schema↔SoT divergence rather than comparing two copies of the same hand-list. The bijection is total: every `toml`-tagged schema field has exactly one matching SoT row at its level, and every SoT row maps back to a schema field. (The exact reflection helper / package layout is a planning detail; the *contract* — derive from the schema, match per (level, key), bijective — is decided.)
+
 ### Render targets and layering
 
 - **`mint setup`** → renders the SoT config table (the **agent's** machine-readable config reference).
