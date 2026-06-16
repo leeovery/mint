@@ -173,6 +173,22 @@ Re-running setup on a configured repo is a likely motion. mint's generator is st
 - Offer the choice: **work with the existing config** (targeted, key-by-key, reviewed changes) **or start fresh reusing the existing values** to build a clean current file — always the user's call; nothing removed without explicit permission.
 - **Config upgrade / migration (emergent capability):** the agent has the current canonical reference (the SoT via `mint setup`) plus the user's file, so it can detect **drift from the current mint version** — removed/renamed keys (which would otherwise fail `DisallowUnknownFields` loudly at the next `mint` run), values that no longer fit, new keys worth considering — and bring an old config current. "Setup" doubles as "upgrade my config to this mint version."
 
+### README — entry point
+
+The README carries the **tiny entry-point prompt** that points operators at the binary-emitted guide — roughly: *"mint is an AI tool for commits & releases; run `mint setup` and follow what it prints."* The README does **not** restate the guide; it routes to it (the binary is the version-matched source).
+
+### README — "any AI" framing (light, no machinery)
+
+Frame the entry point as: *"to set up, pass the following prompt to your AI of choice — Claude, Codex, …"*, with a light steer like *"we find Opus-level models do the best work here."* There is **no fidelity-floor machinery** — this is a convenience; if the user picks a weak AI, that's their call. The strict-schema loud-fail and a natural "verify the config loads" step remain as sensible backstops, not defensive engineering.
+
+### README — config reference verification
+
+The README **stays manual narrative** (updated per-feature) and is the **human** config reference surface. As part of this work it is **verified to declare every config key + its default**. An optional cheap **tripwire test** may be added — assert that every schema key name appears somewhere in the README. README descriptions may lightly duplicate the SoT — **accepted**: the README is the human GitHub-browsing surface, while the machine/agent surfaces (`mint help` + `mint setup`) are the ones held to a single SoT.
+
 ---
 
 ## Working Notes
+
+### Reconciliation: F8 minimalism vs strip-to-minimal (confirmed with user)
+
+The discussion's **F8 minimalism** language was written against the pre-strip commented template ("leave the key commented"; comments as "inert documentation"; "don't treat the commented example value `# timeout = 120` as the default"). The **strip-to-minimal** decision replaces that template with an empty body + header, and the **SoT config table** carries a real `default` column. Reconciled in the "minimalism (only set what varies)" section by: (1) restating the rule as "add a key only to set a non-default value; otherwise omit it" rather than "leave it commented"; (2) replacing the example-value warning with "read the real default from the SoT table's `default` column." The minimalism *principle* (absent = at default, not off; don't over-configure) is unchanged. User confirmed this reconciliation during construction.
