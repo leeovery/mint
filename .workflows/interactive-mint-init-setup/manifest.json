@@ -33,7 +33,7 @@
         "interactive-mint-init-setup": {
           "status": "in-progress",
           "format": "tick",
-          "spec_commit": "23197739f1018eb13e7c33ba2048c50fd9033bbb",
+          "spec_commit": "dff88a94df2de656233ccee05e61e62cf02f6151",
           "task_list_gate_mode": "gated",
           "author_gate_mode": "gated",
           "finding_gate_mode": "gated",
