@@ -52,16 +52,16 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (10 subtopics — 5 decided · 3 converging · 2 exploring)
+  Discussion Map — Interactive mint init Setup (10 subtopics — 5 decided · 5 converging)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope — what to configure [converging]
   │  ├─ → AI command & model (per verb) [converging]
   │  └─ ✓ diff_exclude (release-notes noise) [decided]
-  └─ ◐ AI setup guide (the pivot) [exploring]
+  └─ → AI setup guide (the pivot) [converging]
      ├─ ✓ Delivery — binary-emit (`mint <setup-cmd>`) [decided]
      ├─ ✓ Anti-drift & verification (emit + drift test) [decided]
-     ├─ ◐ Guide content & procedure [exploring]
+     ├─ → Guide content & procedure [converging]
      ├─ → AI etiquette (existing config) [converging]
      └─ ✓ Static defaults floor (B → out) [decided]
 
@@ -421,14 +421,11 @@ the fail-loud/non-interactive concern entirely** — mint never prompts, so ther
 
 ### Open questions (live) — remaining review-002 agenda
 
-*Resolved: F1/F7/F10 (binary-emit), F4 (etiquette), F9 (hook mapping — see section below).
-Still live:*
+*Resolved: F1/F7/F10 (binary-emit), F4 (etiquette), F9 (hook mapping), F8 (minimalism — see
+sections below). Still live:*
 
-- **Over-configuration (F8)** — a concrete, checkable rule enforcing "only set what varies /
-  leave the rest commented," so a thoroughness-rewarded agent doesn't produce a bloated
-  config. (Being discussed now.)
 - **Existing `.mint.toml` (F5)** — detect/diff/preserve-vs-refuse specifics beyond the
-  never-remove-without-permission etiquette.
+  never-remove-without-permission etiquette. (Being discussed now.)
 - **"Any AI" fidelity floor (F6)** — realistically Claude-tuned with "any AI" best-effort,
   stated honestly? (overlaps non-agentic-AI tail of F2.)
 - **Definition of done (F3)** — beyond the emitted-output Go test, a run-against-sample-
@@ -470,6 +467,38 @@ the fixed pipeline: preflight → notes → pre_tag → tag+push (PONR) → publ
 Generalises beyond hooks (informs F8, F5): the guide makes the agent a knowledgeable
 collaborator — **explain mint's model, propose, flag, never silently drop or clobber, help
 the user fit their process or recognise a genuine misfit.** Not a magic one-shot configurer.
+
+---
+
+## Minimalism — only set what varies (F8 — decided)
+
+The mirror risk to hook-mapping: a thoroughness-rewarded agent populates every inferable
+key and hands back a bloated `.mint.toml`, defeating the good-defaults + commented-template
+design that motivated the pivot.
+
+### Decision (user + orchestrator)
+
+- **Activate a key ONLY to set a non-default value.** If the default is fine, leave the key
+  commented — that is NOT 'skipping' or 'disabling': mint's defaults are compiled into the
+  binary and apply whether or not the key appears in the file. The whole `.mint.toml` is
+  optional.
+- **For every key the agent does activate, state the project-specific reason** at the
+  confirmation step — so over-configuration is *visible* (each active key carries a
+  justification), not silent.
+- **The guide must explain the template's nature explicitly:** the comments are **inert
+  documentation** (for human + AI) listing what config exists — they do nothing
+  functionally. The real defaults live in the binary and are not readable from the file. So
+  'commented = at its default', not 'off'. Call this out clearly so neither human nor agent
+  defensively uncomments everything to "make it explicit."
+
+### Refinement (orchestrator catch)
+
+The values shown on commented keys are **illustrative examples, not the defaults** (per
+`initgen`: example values are chosen to be schema-valid, not the real default — e.g.
+`# timeout = 120` is an example override; the actual default is 60). So the guide must tell
+the agent to judge "is the default fine?" from the **prose comment / default behaviour**,
+never by treating a commented example value as the default. (Reinforces DRY: the guide never
+restates default values.)
 
 ## Summary
 
