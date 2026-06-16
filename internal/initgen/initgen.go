@@ -3,81 +3,44 @@
 // NO filesystem or git IO — writing those strings to disk, the idempotency /
 // --force behaviour, and the `release` shim live in their own `mint init` tasks.
 //
-// MintTOML returns the commented `.mint.toml` template: the common keys shown at
-// their out-of-the-box defaults (active), plus every optional key present-but-
-// commented with a one-line explanation, so a project tunes mint by uncommenting
-// rather than reading docs. The template is DELIBERATELY static — initgen does NOT
+// MintTOML returns the MINIMAL `.mint.toml` template: an empty body (no active keys,
+// no commented example keys) preceded by a short header comment. Because every
+// default is compiled into the binary, an empty file is valid and changes nothing —
+// the file is fully optional. The template is DELIBERATELY static — initgen does NOT
 // sniff package.json or any project file to pre-fill values, because that guesswork
-// surprises; a clean, honest commented template is the chosen design (see the spec's
-// "No project auto-detection"). The key names, defaults, and value shapes mirror the
-// canonical config schema exactly, and the package's tests prove the full template,
-// once uncommented, loads cleanly through the real config.Load.
+// surprises; a clean, honest minimal template is the chosen design (see the spec's
+// "Generated config: strip to minimal" and "No project auto-detection").
 //
-// The pinned default VALUES (ai_command's `claude -p --model sonnet`, timeout's 60s)
-// are the canonical config schema's — config.DefaultAICommand and config.DefaultTimeout
-// are their single source of truth. The template carries them as static literals for
-// readability (initgen does NOT import config — sourcing a compiled constant would not
-// weaken the static-template / no-project-auto-detection contract, but it is not needed),
-// and the package's drift tests PIN those literals equal to the config constants, so a
-// scaffold/schema drift fails the build rather than shipping a stale default.
+// The config DOCS live in the BINARY, not in template comments: the agent reads the
+// drift-tested config reference from `mint setup`, and humans read it from the GitHub
+// docs / README. The header is the cold-arrival RECOVERY NET — it points to both, so
+// an agent or human who opens `.mint.toml` directly (without having run `mint setup`)
+// still finds where the config reference lives. Stripping the old commented template
+// removes a pure-duplication drift surface; the package's tests pin the minimal shape
+// (empty body) and both header pointers.
+//
+// initgen does NOT import config: the canonical defaults and their drift discipline
+// live in the config-metadata source of truth, whose default column is the drift-pinned
+// carrier of the canonical values (the package's value-drift pins were subsumed there
+// when the template stopped carrying default values). ReleaseShim() is unaffected.
 package initgen
 
-// MintTOML returns the commented `.mint.toml` scaffolding template as a single
-// string. The content is static — NO project auto-detection, NO file reads, NO IO.
+// MintTOML returns the minimal `.mint.toml` scaffolding template as a single string.
+// The content is static — NO project auto-detection, NO file reads, NO IO.
 //
-// The split is deliberate:
-//   - Common keys are ACTIVE at their defaults so the file documents the
-//     out-of-the-box behaviour and is immediately valid.
-//   - Optional keys are present-but-COMMENTED, each with a one-line explanation, so
-//     enabling one is uncommenting a line rather than consulting docs. The example
-//     values are illustrative and chosen to be schema-valid (so the uncommented
-//     template still loads), not auto-detected from the project.
-//
-// The `[release].prompt` full-prompt override is only MENTIONED in a comment — this
-// generator emits exactly one string and never a second prompt file. Hooks appear
-// only under `[release.hooks]`, never a top-level `[hooks]` table.
+// The body is EMPTY: it carries no active `key = value` lines and no commented
+// example keys, because every default is compiled into the binary, so an empty file
+// is valid and changes nothing. The only content is a short header comment — the
+// cold-arrival recovery net — that points to BOTH the GitHub docs (the human config
+// reference) and `mint setup` (the AI-assisted setup guide). The contract pinned by
+// the package's tests is that both pointers are present and the body carries no key,
+// not the exact header wording.
 func MintTOML() string {
-	return `# .mint.toml — mint configuration. This file is fully optional: every key shown
-# here is set to its default, so deleting it changes nothing. Optional keys are
-# present but commented out — uncomment a line to enable that setting. Examples are
-# static; mint never inspects your project files to pre-fill anything.
-
-# --- Engine-level keys (shared by every mint verb) ---
-
-ai_command = 'claude -p --model sonnet'
-timeout = 60  # per-attempt AI deadline in seconds; raise it if your ai_command runs slowly (0 = no limit)
-max_diff_lines = 50000
-
-# diff_exclude = []  # tracked generated files to keep out of the notes diff (glob pathspecs)
-
-[release]
-tag_prefix = 'v'
-commit_prefix = '🌿'
-changelog = true
-publish = true
-on_notes_failure = 'abort'
-
-# release_branch = 'main'                          # branch releases must run on (default: auto-derived from origin/HEAD)
-# version_file = 'bin/tool'                        # write the new version into this file (omit = tag-only release)
-# version_pattern = 'RELEASE_VERSION="{version}"'  # version line to replace inside version_file (omit = the whole file is the version)
-# provider = 'github'                              # publishing driver to force (default: auto-detected from the remote host)
-# context = 'Emphasise user-facing changes.'       # project guidance injected into the notes prompt
-# prompt = '.mint/notes-prompt.md'                 # full prompt-override file — create it yourself; mint init does NOT scaffold it
-# ai_command = 'claude -p --model sonnet'          # override the AI command for this verb only
-# timeout = 120                                    # override the per-attempt deadline (seconds) for this verb only; raise it if this verb's ai_command runs slowly
-
-# --- Lifecycle hooks (always under [release.hooks], never a top-level [hooks]) ---
-# [release.hooks]
-# preflight = 'scripts/check.sh'                   # runs before any release work; failure aborts the release
-# pre_tag = 'npm run build'                        # runs after notes, before the tag (single-command form)
-# pre_tag also accepts an array of commands run in order (set ONE pre_tag, not both): ['npm ci', 'npm run build']
-# post_release = 'scripts/notify.sh'               # runs after the release is published
-
-# --- mint commit (AI commit messages; all keys optional) ---
-# [commit]
-# context = 'Reference the ticket number if the branch carries one.'  # project guidance injected into the commit-message prompt
-# prompt = '.mint/commit-prompt.md'                # full prompt-override file — create it yourself; mint init does NOT scaffold it
-# ai_command = 'claude -p --model sonnet'          # override the AI command for this verb only
-# timeout = 120                                    # override the per-attempt deadline (seconds) for this verb only; raise it if this verb's ai_command runs slowly
+	return `# .mint.toml — mint configuration. This file is fully OPTIONAL: every default is
+# compiled into mint, so an empty file is valid and changes nothing. Add a key only
+# to set a value that differs from the default.
+#
+# Config reference (every key, level, and default): https://github.com/leeovery/mint
+# AI-assisted setup (inspects your project and proposes config): run ` + "`mint setup`" + `
 `
 }
