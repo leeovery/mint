@@ -52,15 +52,15 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (10 subtopics — 3 decided · 5 converging · 2 exploring)
+  Discussion Map — Interactive mint init Setup (10 subtopics — 5 decided · 3 converging · 2 exploring)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope — what to configure [converging]
   │  ├─ → AI command & model (per verb) [converging]
   │  └─ ✓ diff_exclude (release-notes noise) [decided]
   └─ ◐ AI setup guide (the pivot) [exploring]
-     ├─ → Delivery & form factor [converging]
-     ├─ → Anti-drift & verification [converging]
+     ├─ ✓ Delivery — binary-emit (`mint <setup-cmd>`) [decided]
+     ├─ ✓ Anti-drift & verification (emit + drift test) [decided]
      ├─ ◐ Guide content & procedure [exploring]
      ├─ → AI etiquette (existing config) [converging]
      └─ ✓ Static defaults floor (B → out) [decided]
@@ -318,9 +318,35 @@ then **superseded by the pivot below.**
 ### Decisions locked
 
 - **Pivot confirmed** — the deliverable is an AI setup guide, not a mint-side wizard.
-- **Form factor (decided):** MVP = a canonical AI-agnostic **setup-guide file** + a short
-  **README invocation prompt** pointing any AI at it. Later layers (not MVP): a
-  Claude-Code skill wrapper and/or `mint`-emits-the-prompt (versioned with the binary).
+- **Form factor (decided — refined to binary-emit):** the setup instructions are
+  **emitted by the binary itself** — a thin new `mint` subcommand (name TBD, e.g.
+  `mint setup`) that prints an embedded static instruction string (same shape as
+  `initgen`: a pure string generator). The **README prompt is tiny**: ~"mint is an AI tool
+  for commits & releases; run `mint <setup-cmd>` and follow what it prints." Layering, all
+  version-matched to the installed binary:
+  1. README one-liner → which command to run.
+  2. `mint <setup-cmd>` → emits the **procedure + etiquette** (NOT a duplicated option
+     reference).
+  3. Agent runs `mint init` → reads the generated template's comments as the
+     **authoritative, version-matched option meanings** (DRY — option docs live only
+     there, already drift-tested).
+  - **Why it's the unlock:** emitted-by-binary means the instructions **cannot drift** from
+    the schema that binary implements and **cannot version-skew** — an old mint emits
+    old-but-correct instructions, so no N-versions doc maintenance. Resolves review **F1**
+    (reachability — present wherever mint is installed, no clone/fetch), **F7** (version
+    skew), and **F10** (anti-drift: now *enforceable* with a drift test pinning the emitted
+    text's schema references, exactly like the existing `initgen`↔`config` drift tests).
+    Gives **F3** (definition of done) a real, gate-able answer: a Go test on the command's
+    output.
+  - **Nature shift:** the deliverable swings back to a *thin Go feature* (subcommand +
+    embedded string + drift test) rather than pure content — good news: it slots into
+    mint's existing generator+cmd+test patterns.
+  - **Install handling (lean):** prompt **assumes mint is installed**; README links the
+    install; if `mint <setup-cmd>` isn't found the agent asks the user to install — mint
+    does NOT auto-install itself (installing a binary >> editing a config in blast radius).
+  - **Non-AI floor improved:** `mint <setup-cmd>` output is human-readable, so a user with
+    no web access / no agentic AI can still read and follow it (softens F2).
+  - Optional later layer: a Claude-Code skill wrapper.
 - **Guide procedure (locked):** the inspect-and-map flow — learn mint (read README +
   commented template; internalise *only set what varies*) → inspect the project (release
   process → **hooks**; noise dirs → `diff_exclude`; version file; AI model per verb;
@@ -393,25 +419,23 @@ documented). Non-AI users edit the template; AI users paste the prompt. This **d
 the fail-loud/non-interactive concern entirely** — mint never prompts, so there's no
 `-y`/non-TTY hang to design around.
 
-### Open questions (live) — agenda from review-002
+### Open questions (live) — remaining review-002 agenda
 
-- **Guide depth** — procedure locked at outline level; hard details remain: mapping an
-  arbitrary release process onto mint's *fixed three hooks* when it doesn't decompose
-  cleanly (F9); enforcing "only set what varies" so the agent doesn't over-configure
-  (F8); hook-body guardrails — propose/approve, never execute during setup (F4 hooks).
-- **Delivery & reachability** — where the guide physically lives + what the README prompt
-  tells the agent to fetch, esp. a `go install`-ed mint with no repo clone (F1); the
-  non-agentic / no-web user path (F2, sharpened by B-out); prompt↔guide↔binary version
-  skew in the MVP (F7).
-- **Anti-drift enforcement** — convert "procedure not restatement" into something that
-  fails loudly (a drift test asserting the guide names only real schema keys? a CI
-  check?) rather than intent (F10).
-- **Definition of done** — the repeatable check that says the guide is correct — run
-  against sample projects? (F3) The project's gate culture has no analogue for content.
-- **"Any AI" fidelity floor** — realistically Claude-tuned with "any AI" best-effort,
-  stated honestly in the README? (F6)
-- **Existing `.mint.toml`** — etiquette covers never-remove-without-permission; the
-  detect/diff/merge-vs-refuse specifics still open (F5).
+*Resolved by the binary-emit decision: F1 (reachability), F7 (version skew), F10
+(anti-drift — emit + drift test). F4 resolved earlier by etiquette. Still live:*
+
+- **Hook mapping (F9)** — what the guide tells the agent when a detected release process
+  doesn't decompose cleanly onto mint's *fixed three hooks* (preflight/pre_tag/post_release):
+  best-fit + flag, skip the unmappable, or refuse? Bound it from inventing unfit hook
+  commands. (Being discussed now.)
+- **Over-configuration (F8)** — a concrete, checkable rule enforcing "only set what varies /
+  leave the rest commented," so a thoroughness-rewarded agent doesn't produce a bloated config.
+- **Existing `.mint.toml` (F5)** — detect/diff/preserve-vs-refuse specifics beyond the
+  never-remove-without-permission etiquette.
+- **"Any AI" fidelity floor (F6)** — realistically Claude-tuned with "any AI" best-effort,
+  stated honestly? (overlaps non-agentic-AI tail of F2.)
+- **Definition of done (F3)** — beyond the emitted-output Go test, a run-against-sample-
+  projects acceptance check?
 
 ## Summary
 
