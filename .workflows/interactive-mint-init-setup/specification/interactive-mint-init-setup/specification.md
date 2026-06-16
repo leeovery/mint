@@ -149,6 +149,30 @@ The agent asks in natural language (model choice → same for both verbs, or dif
 
 `diff_exclude` is for **release-notes noise, not generated code.** `.gitignore`'d paths (`node_modules`, `vendor`) are already absent from the diff. The real targets are tracked process/meta/doc files — `.workflows/`, `.claude/`, agent dirs, `docs/`, lockfiles. The guide surfaces these patterns **interactively** (inside the confirmation step), since the right set is project-specific.
 
+### Emitted guide — AI etiquette
+
+The guide instructs the agent to:
+- **Ask interactively** using whatever user-question tool it has — phrased AI-agnostically: "if you're Claude, use your Ask-User tool; otherwise, if you have any tool for asking the user questions, use it."
+- **Confirm the user is comfortable**, and make **clear exactly what is being changed/updated** before writing.
+- **Never remove anything without explicit permission.**
+- Surface the `diff_exclude` patterns inside this interactive confirmation.
+
+### Emitted guide — minimalism (only set what varies)
+
+Mirror risk to hook-mapping: a thoroughness-rewarded agent populates every inferable key and hands back a bloated `.mint.toml`, defeating the good-defaults design that motivated the pivot. The guide must prevent this:
+
+- **Add (activate) a key ONLY to set a non-default value.** If the default is fine, **omit the key entirely** — that is NOT 'skipping' or 'disabling': mint's defaults are compiled into the binary and apply whether or not the key appears in the file. The whole `.mint.toml` is optional. (Post-strip, the generated file is empty-body, so "minimal" means the agent adds only the keys it has a project-specific reason to set — there are no pre-commented keys to leave alone.)
+- **For every key the agent does activate, state the project-specific reason** at the confirmation step — so over-configuration is *visible* (each active key carries a justification), not silent.
+- **Read defaults from the config reference, never guess.** The `mint setup` SoT table shows each key's real default (the `default` column). The agent judges "is the default fine?" against that real default — it must not infer a default from an illustrative example value (e.g. in the human README), and the guide never restates default values (DRY).
+
+### Emitted guide — existing `.mint.toml`: diff, discuss, upgrade
+
+Re-running setup on a configured repo is a likely motion. mint's generator is strictly non-clobbering (`mint init` skips an existing file unless `--force`); the agent needs the same instinct, made explicit in the setup output:
+
+- If a `.mint.toml` already exists, **bring it into context and discuss** — never silently overwrite. The agent surfaces what's there and asks.
+- Offer the choice: **work with the existing config** (targeted, key-by-key, reviewed changes) **or start fresh reusing the existing values** to build a clean current file — always the user's call; nothing removed without explicit permission.
+- **Config upgrade / migration (emergent capability):** the agent has the current canonical reference (the SoT via `mint setup`) plus the user's file, so it can detect **drift from the current mint version** — removed/renamed keys (which would otherwise fail `DisallowUnknownFields` loudly at the next `mint` run), values that no longer fit, new keys worth considering — and bring an old config current. "Setup" doubles as "upgrade my config to this mint version."
+
 ---
 
 ## Working Notes
