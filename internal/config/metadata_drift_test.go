@@ -74,11 +74,11 @@ func schemaLeafKeysInto(t *testing.T, st reflect.Type, level MetadataLevel, out 
 
 	for i := 0; i < st.NumField(); i++ {
 		field := st.Field(i)
-		tag := field.Tag.Get("toml")
+		tag, ok := tomlTag(field)
 		// Defensive: skip a field with no toml tag (or the explicit "-" skip token).
 		// None exist today, but guarding the read keeps the walk from emitting a
 		// bogus empty-key pair if a non-decoded field is ever added to a shape.
-		if tag == "" || tag == "-" {
+		if !ok {
 			continue
 		}
 
@@ -235,9 +235,22 @@ func TestSchemaLeafKeys_IndependentOfSoT(t *testing.T) {
 func tomlTagsOf(st reflect.Type) map[string]bool {
 	out := map[string]bool{}
 	for i := 0; i < st.NumField(); i++ {
-		if tag := st.Field(i).Tag.Get("toml"); tag != "" && tag != "-" {
+		if tag, ok := tomlTag(st.Field(i)); ok {
 			out[tag] = true
 		}
 	}
 	return out
+}
+
+// tomlTag is the single toml-tag-extraction primitive: it reads field.Tag.Get("toml")
+// and applies the ""/"-" skip guard, returning ok=false for an absent tag or the
+// explicit "-" skip token. Both schemaLeafKeysInto and tomlTagsOf consume it so the
+// parse-and-skip convention lives in exactly one place — a future change to the skip
+// tokens (or tag-option handling) is made here once and both callers inherit it.
+func tomlTag(field reflect.StructField) (name string, ok bool) {
+	tag := field.Tag.Get("toml")
+	if tag == "" || tag == "-" {
+		return "", false
+	}
+	return tag, true
 }
