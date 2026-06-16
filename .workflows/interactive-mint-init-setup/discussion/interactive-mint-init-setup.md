@@ -52,12 +52,13 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (11 subtopics — 1 decided · 2 converging · 1 exploring · 7 pending)
+  Discussion Map — Interactive mint init Setup (12 subtopics — 2 decided · 2 converging · 1 exploring · 7 pending)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope of prompted keys [converging]
   │  ├─ → AI prompt flow (model × per-verb) [converging]
-  │  └─ ◐ AI-assisted diff_exclude analysis [exploring]
+  │  └─ ✓ AI-assisted diff_exclude analysis [decided]
+  ├─ ◐ Offload interactivity to an AI setup guide [exploring]
   ├─ ○ Non-interactive fallback (-y / non-TTY) [pending]
   ├─ ○ Defaults & single source of truth [pending]
   ├─ ○ Output shape of the generated file [pending]
@@ -65,6 +66,11 @@ branches, converges as decisions land.
   ├─ ○ Seam & architecture placement [pending]
   ├─ ○ Presenter prompt capabilities [pending]
   └─ ○ Existing / partial .mint.toml [pending]
+
+*Note: if the AI-setup-guide pivot is confirmed, the wizard-implementation subtopics
+(non-interactive fallback, defaults/SSoT, output shape, seam placement, presenter
+capability, existing-file) become moot — mint grows no interactive surface — and will
+be trimmed.*
 
 ---
 
@@ -267,32 +273,133 @@ keep init's *core* AI-free:
   existing fixed-Choice `Prompt(Gate)` shape — may need AskLine-based selection or a new
   presenter method (see Presenter prompt capabilities subtopic).
 
+### Resolution — deferred (user)
+
+User cooled on building the scan ("thinking out loud… not a huge deal"). **Deferred, not
+killed.** Clean sketch to preserve if revisited: prompt the AI to return *strictly* a JSON
+array of glob strings and nothing else (no prose/footers — "this is parsed
+programmatically"); code parses deterministically; unparseable → declare the scan failed
+and tell the user to set `diff_exclude` manually. No fragile parsing.
+
+Reframe of what `diff_exclude` is *for*: **release-notes noise, not generated code.**
+`.gitignore`'d paths (node_modules, vendor) are already absent from the diff. The real
+targets are process/meta/doc files — `.workflows/`, `.claude/`, `docs/`, lockfiles (we'd
+cite `package.json`, not `package-lock.json`). Those are near-universal for mint's actual
+audience (Claude-ecosystem repos), so they're a candidate for a *smarter shipped default*,
+not necessarily a prompt. (Largely subsumed by the AI-setup-guide pivot below — the agent
+infers these directly.)
+
+---
+
+## Worth-it check (key inventory)
+
+Triggered by the user asking to see every config key to judge whether the feature earns
+its keep. Full canonical schema (`internal/config`): ~24 keys across top-level,
+`[release]`, `[release.hooks]`, `[commit]`. Verdict through the smoother-init lens (prompt
+only what *varies* AND has no good default/auto-detect):
+
+- **Strong:** `diff_exclude` (one key).
+- **Modest:** `ai_command` model menu (Enter-to-accept default).
+- **Marginal/wizard-y:** `publish`, `changelog` toggles; `version_file`/`version_pattern`
+  (coupled, fiddly); hooks (valuable but commands → hard to prompt).
+- **Leave as default/auto/commented:** the other ~16 keys — by design.
+
+Finding: mint was *built* so defaults + the self-documenting commented template answer
+these for you. That design directly **competes with** interactive init, which is why the
+feature kept feeling thin. A/B/C fork put to user — (A) build interactive init, (B) ship
+smarter ecosystem-aware static defaults instead, (C) hybrid. Orchestrator lean was B,
+then **superseded by the pivot below.**
+
+---
+
+## Offload interactivity to an AI setup guide (PIVOT candidate)
+
+*State: exploring. Strong contender — likely supersedes A/B/C and the wizard subtopics.*
+
+### The idea (user)
+
+Don't build an interactive surface in mint at all. Ship a **setup guide / skill / prompt**
+that teaches an AI agent (Claude — or any AI) everything: what mint does, what every
+config option means, what to look for in a project (files to exclude, AI command, existing
+release process, what to wire into hooks). README carries a one-line "give this prompt to
+your AI to set mint up for you." The AI does the research and runs the interactive session
+in natural language. mint itself stays a pure static-file generator.
+
+### Why it's compelling
+
+- **The whole "how it's built" half evaporates.** No presenter menu capability, no
+  AI-in-init seam, no non-interactive fallback, no initgen purity break, no output-shape
+  or existing-file handling — mint grows *no* interactive surface, so the review's
+  implementation-half gaps are *avoided*, not solved.
+- **Richer than any wizard we'd build.** The AI reads the actual project: detects the real
+  release process and maps it into mint's **hooks** (preflight/pre_tag/post_release),
+  infers noise dirs, understands CI/version files. The hooks-detection is the standout —
+  exactly what mint's hooks exist for.
+- **The diff_exclude scan, for free** — the AI does the analysis conversationally,
+  human-in-the-loop, no JSON-parse fragility, no AI-in-init.
+- **AI-agnostic** (user: "doesn't have to be Claude"); maintenance is editing markdown,
+  not maintaining prompt loops + presenter methods + tests.
+
+### The one real risk: accuracy / drift
+
+The guide describes config that must stay **true-to-as-built** — the same drift battle mint
+already fights (initgen↔config drift tests, README discipline). Mitigation: make the guide
+a **procedure, not a restatement** — point the AI at the already-maintained README + the
+commented `.mint.toml` template for what each option *means*; the guide supplies only the
+part that lives nowhere yet (how to inspect a project and map findings to config) + mint's
+minimalist philosophy (only set what varies). Strict schema (`DisallowUnknownFields`) is a
+free backstop: a hallucinated key fails loudly at first `mint` run.
+
+### Complementarity (best-of-both holds)
+
+The static commented template **remains** the standalone non-AI path (hand-editable,
+documented). Non-AI users edit the template; AI users paste the prompt. This **dissolves
+the fail-loud/non-interactive concern entirely** — mint never prompts, so there's no
+`-y`/non-TTY hang to design around.
+
+### Open questions
+
+- **Confirm the pivot** — reshapes the work unit from a Go feature to an AI-facing content
+  deliverable (+ maybe a tiny `mint`-emits-the-prompt command).
+- **Form factor:** canonical setup-guide file (AI-agnostic) + short README invocation
+  prompt + optional Claude-Code skill wrapper. MVP = guide + prompt? Where does the guide
+  live (repo file fetched by URL) vs `mint setup --print-prompt` (versioned with the
+  binary, can't drift from the running version)?
+- **Keep B?** Ship smarter ecosystem-aware static `diff_exclude` defaults as the no-AI
+  floor, independent of the guide?
+- **Etiquette:** guide steers the AI to propose-and-explain → get approval → run
+  `mint init` for the baseline → tailor, never silently rewrite.
+
 ## Summary
 
 ### Key Insights
 
-1. **North star: smoother init.** Prompts remove the hand-edit step for the 1-2 things
-   that vary; they don't interrogate.
-2. Every config key already has a sane default (post `ai-model-selection`), so the bar
-   for "worth a prompt" is high — value is ergonomics + discoverability, not filling
-   blanks.
-3. AI is an opaque command string, not a first-class model. Resolved by framing: Claude
-   assumed → model menu + `custom` escape (escape preserves agnosticism).
-4. The AI-assisted `diff_exclude` scan is what makes the feature genuinely valuable vs
-   ergonomic sugar — but it's also the one thing that pulls AI into init's minimal core.
+1. **North star: smoother init** — remove the hand-edit for the few things that vary.
+2. mint's good-defaults + self-documenting commented template **compete with** any
+   interactive init — which is why the feature kept feeling thin (only `diff_exclude` had
+   strong prompt value).
+3. AI is an opaque command string, not a first-class model (resolved by framing: Claude
+   assumed → model menu + `custom` escape).
+4. **Pivot:** offload interactivity to an AI setup guide/prompt rather than building it
+   into mint — richer (project-aware, detects existing release process → hooks), avoids
+   the entire implementation-half, AI-agnostic. Static template stays the non-AI floor.
 
 ### Open Threads
 
-- diff_exclude scan: mechanism (AI vs heuristic vs both) and phasing (v1 vs follow-on).
-- Per-verb `timeout` auto-write when a slow model is picked (parked).
-- Presenter capability for menu + approve/skip prompts.
+- Confirm the pivot (reshapes work unit → AI-facing content).
+- Form factor (guide + README prompt + optional skill); where the guide lives; how the AI
+  fetches it; `mint`-emits-the-prompt option.
+- Anti-drift: guide as procedure that references README/template, not a restatement.
+- Keep B (ecosystem-aware static `diff_exclude` defaults) as the no-AI floor?
 
 ### Current State
 
-- **Decided:** Interactivity model = A (targeted overlay).
-- **Converging:** Scope (AI model per verb + diff_exclude; everything else out); AI
-  prompt flow (no-repeat model × per-verb + custom escape).
-- **Exploring:** AI-assisted diff_exclude analysis (mechanism + phasing + presenter).
+- **Decided:** Interactivity model = A (targeted overlay) — *under review by the pivot*;
+  AI-assisted diff_exclude scan = deferred.
+- **Exploring (live direction):** offload interactivity to an AI setup guide — likely
+  supersedes building a mint-side wizard.
+- **Superseded-if-pivot-confirmed:** presenter capability, non-interactive fallback,
+  initgen purity, output shape, seam placement (mint grows no interactive surface).
 
 ## Triage
 
