@@ -72,6 +72,14 @@ approved_at: 2026-06-16
 - [ ] `ReleaseShim()` and its tests are unchanged; `mint init` still emits both `.mint.toml` (now minimal) and the `release` shim at the git-resolved repo root with unchanged non-clobber / `--force` / idempotent behaviour.
 - [ ] All standard gates pass.
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-3-1 | Strip MintTOML() to the minimal template (empty body + dual-pointer header) and swap in the minimal-shape tests | header is the only content (empty body — no active keys AND no commented keys); both pointers present (GitHub docs + `mint setup`) as the cold-arrival recovery net; package/function doc comments updated to as-built (no stale "commented template" / "uncomment to enable" claims); ReleaseShim() and shim tests untouched |
+| interactive-mint-init-setup-3-2 | Remove the now-subsumed scaffold value-drift pins and sever the config import from the initgen test package | initgen test package no longer imports config/time/strconv (minimal template references no config constants); no orphaned helper left referencing the removed pins; subsumption is real — Phase 1 SoT drift test carries the default values, nothing left unpinned |
+
 ### Phase 4: README reconciliation + entry-point + tripwire
 status: approved
 approved_at: 2026-06-16
