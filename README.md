@@ -55,6 +55,14 @@ mint commit -a            # stage tracked changes, mint a commit message, review
 mint commit -Apy          # stage everything, auto-accept, push: fully unattended
 ```
 
+### Setup
+
+mint is an AI tool for commits & releases. To configure it for your project, pass the prompt below to your AI of choice — Claude, Codex, or whatever you run (we find Opus-level models do the best work here):
+
+> Run `mint setup` and follow what it prints.
+
+`mint setup` emits a version-matched setup guide that inspects your project and proposes a config — it is the source of truth, so this README does not reproduce it here. (This assumes mint is already installed; see [Install](#install).)
+
 ## Commands
 
 ### `init`
