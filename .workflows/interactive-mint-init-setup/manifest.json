@@ -31,7 +31,7 @@
     "planning": {
       "items": {
         "interactive-mint-init-setup": {
-          "status": "in-progress",
+          "status": "completed",
           "format": "tick",
           "spec_commit": "dff88a94df2de656233ccee05e61e62cf02f6151",
           "task_list_gate_mode": "auto",
