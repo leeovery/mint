@@ -120,7 +120,7 @@ The `mint setup` output carries an **inspect-and-map procedure** the agent follo
 Ordered flow:
 1. **Confirm the working directory** is the intended repo root before inspecting or writing anything (this is the in-instructions safety net that replaces `mint setup`'s missing cwd guard).
 2. **Learn mint** — read the README and internalise mint's minimalist philosophy (*only set what varies*).
-3. **Read the config reference** — an **explicit, ordered early step**, performed **before** any inspect/edit. Because the stripped template no longer lists keys in-repo, the flow depends on the agent holding the config reference from `mint setup`'s SoT table. Making this a required ordered step closes the cold-arrival gap; the minimal file's header pointer is the recovery net if the agent ever arrives at the file without it.
+3. **Read the config reference** — an **explicit, ordered early step**, performed **before** any inspect/edit. The reference is the **config-reference section embedded in this same `mint setup` output** (item 3 of "What it emits"); the step instructs the agent to **internalise that embedded section before acting**, not to fetch a separate artifact (`mint help` deliberately omits config, and the README is the *human* surface). Because the stripped template no longer lists keys in-repo, the flow depends on the agent holding this reference. Making it a required ordered step closes the cold-arrival gap; the minimal file's header pointer is the recovery net if the agent ever arrives at the file without it.
 4. **Inspect the project and map findings to config:**
    - existing **release process** → mint's **hooks** (the centrepiece — see below);
    - **noise dirs** → `diff_exclude`;

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: complete
 created: 2026-06-16
 cycle: 1
 phase: Gap Analysis
@@ -138,9 +138,9 @@ Pinned the curated help text intent in the help-surface-wiring bullets: rootUsag
 Step 3 of the emitted procedure is "**Read the config reference** — an explicit, ordered early step, performed before any inspect/edit … the flow depends on the agent holding the config reference from `mint setup`'s SoT table." But the config reference IS part of the `mint setup` output the agent is already reading to get the procedure (per "What it emits": item 3 is "The config reference — rendered from the config-metadata source of truth"). So "read the config reference" as a procedure step is the agent re-reading a section of the very document it is executing. The intent is probably "internalise the config-reference section before acting" — but as written, an implementer drafting the prose could read it as instructing the agent to fetch the reference from somewhere external (it is not external — `mint help` deliberately omits it, and the README is the *human* surface). The relationship between "the config reference embedded in this guide" and "the step that says read the config reference" should be stated explicitly so the guide prose doesn't send the agent looking for a separate artifact. Minor, but it affects how the (deferred) prose frames a step the spec calls load-bearing ("closes the cold-arrival gap").
 
 **Proposed Addition**:
-{leave blank until discussed}
+Clarified procedure step 3: the config reference is the section embedded in the same `mint setup` output (item 3 of "What it emits"); the step means internalise that embedded section before acting, not fetch a separate artifact (`mint help` omits config; README is the human surface).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Auto-approved (Minor). Prevents the deferred prose from sending the agent looking for an external reference.
 
 ---
