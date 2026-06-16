@@ -559,6 +559,17 @@ SoT↔schema) and gives the agent a clean machine-readable config reference.
   **GitHub docs / README** (for humans). The SoT still earns its keep via the **drift test**
   even with one in-binary render target.
 
+### Config reference — required ordered step (F3 — decided)
+
+Stripping the template removes the agent's in-repo safety net (an opened `.mint.toml` no
+longer lists keys). So the flow depends on the agent holding the config reference from
+`mint setup`. Mostly handled by construction (README entry point → `mint setup` → carries the
+table before any edit). To close the cold-arrival gap:
+- The **`mint setup` output makes "read the config reference" an explicit, ordered early
+  step** — before inspect/edit — so the agent can't reach file-editing without it.
+- The **minimal file's header pointer** (→ GitHub docs / `mint setup`) is the **recovery net**
+  if an agent arrives at the file cold.
+
 ## Minimalism — only set what varies (F8 — decided)
 
 The mirror risk to hook-mapping: a thoroughness-rewarded agent populates every inferable
