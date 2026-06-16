@@ -39,11 +39,12 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "interactive-mint-init-setup-1-3",
+          "task": "interactive-mint-init-setup-1-4",
           "task_map": {
             "interactive-mint-init-setup-1": "tick-23fbff",
             "interactive-mint-init-setup-1-1": "tick-15d94b",
-            "interactive-mint-init-setup-1-2": "tick-bc3a0f"
+            "interactive-mint-init-setup-1-2": "tick-bc3a0f",
+            "interactive-mint-init-setup-1-3": "tick-77822e"
           },
           "external_id": "tick-f3d959"
         }
