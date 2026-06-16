@@ -18,6 +18,17 @@ approved_at: 2026-06-16
 - [ ] The default values previously pinned by `initgen` (`DefaultAICommand`, `DefaultTimeout`) are carried and pinned by the SoT `default` column, so no default value is left unpinned.
 - [ ] All standard gates pass (`go build`, `gofmt -l`, `go vet`, `go test -race`, `golangci-lint`).
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-1-1 | Define the config-metadata SoT table (rows + typed level) | ai_command/timeout duplicated as distinct rows at top-level, [release], and [commit]; no row for the release/commit/hooks container fields |
+| interactive-mint-init-setup-1-2 | Apply the decided default-column representation convention to the SoT rows | plain-blank (context/prompt/fallback/version_file/version_pattern) vs auto (release_branch/provider); shared cells on per-verb ai_command/timeout rows vs real-default cells on top-level rows; hooks-blank rows carry no default |
+| interactive-mint-init-setup-1-3 | Mechanically derive the schema leaf-key set from the decode-shape structs via reflection | recurse-don't-count for release/commit/hooks container fields; dual-level ai_command/timeout produce one leaf pair per level; nested-tag-supplies-level for [release], [commit], [release.hooks] |
+| interactive-mint-init-setup-1-4 | Drift test: total bijection over leaf keys (SoT ↔ derived schema set) | schema leaf missing from SoT; SoT row with no schema leaf (removed/renamed key); duplicate SoT row for one (level, key); each of the three dual-level rows must match independently |
+| interactive-mint-init-setup-1-5 | Pin the subsumed scaffold default values on the SoT default column | timeout pinned as integer seconds derived from config.DefaultTimeout, not a re-typed 60; ai_command pinned to config.DefaultAICommand |
+
 ### Phase 2: mint setup subcommand — guide emitter, sections, help wiring
 status: approved
 approved_at: 2026-06-16
