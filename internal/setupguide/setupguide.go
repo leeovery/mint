@@ -4,7 +4,10 @@
 // writing the string to a terminal (and the help/dispatch wiring) lives in the
 // `mint setup` cmd-layer tasks, never here. The package deliberately takes no
 // presenter dependency (CLAUDE.md seam 3 leaves the emission surface to the
-// write site) and does not import `config`.
+// write site). It imports `config` in exactly ONE path — renderConfigReference()
+// reads the config-metadata source of truth (config.MetadataRows()) to render
+// the config-reference table; every prose-authoring helper stays config-free, so
+// the SoT remains the single source of key metadata.
 //
 // Why emit the guide from the binary at all: the instructions are version-
 // matched to the installed mint, so an old mint emits old-but-correct guidance
@@ -22,14 +25,18 @@
 // a wording change inside a section never breaks the test and removing a marker
 // always does.
 //
-// The config-reference section is assembled from configReferenceSection(): this
-// task authors the marker and the framing line; the rendered
-// key·level·default·description table (sourced from the config-metadata source
-// of truth) is spliced in by its own task. Guide() composes one finished string
-// so callers never re-assemble the parts.
+// The config-reference section is assembled from configReferenceSection(): it
+// authors the marker and the framing line, then splices in the rendered
+// key·level·default·description table (renderConfigReference(), sourced from the
+// config-metadata source of truth). Guide() composes one finished string so
+// callers never re-assemble the parts.
 package setupguide
 
-import "strings"
+import (
+	"strings"
+
+	"mint/internal/config"
+)
 
 // Section markers. Each is a fixed HTML-comment anchor in the
 // `<!-- mint:section:NAME -->` namespace, decoupled from the section prose so
@@ -46,9 +53,9 @@ const (
 	MarkerMinimalism = "<!-- mint:section:minimalism -->"
 	// MarkerExistingConfig precedes the existing-`.mint.toml` / upgrade branch.
 	MarkerExistingConfig = "<!-- mint:section:existing-config -->"
-	// MarkerConfigReference precedes the config reference. This task emits the
-	// marker and the framing line; the rendered table is spliced in by Task
-	// 2-2 via configReferenceSection().
+	// MarkerConfigReference precedes the config reference: the framing line plus
+	// the key·level·default·description table rendered from the config-metadata
+	// source of truth, spliced in via configReferenceSection().
 	MarkerConfigReference = "<!-- mint:section:config-reference -->"
 )
 
@@ -270,11 +277,11 @@ generator is strictly non-clobbering (mint init skips an existing file unless
 }
 
 // configReferenceSection emits the config-reference marker plus the intro
-// framing line, and is the assembly seam where the rendered
-// key·level·default·description table is spliced in. This task authors the
-// marker and the framing only; the table rows are supplied by Task 2-2, which
-// fills the body of this helper. The prose-authoring path here deliberately
-// hand-writes NO config key metadata, so the SoT stays the single source.
+// framing line, then splices in the rendered key·level·default·description table
+// (renderConfigReference()) so the finished section lands under the marker. The
+// prose-authoring framing here hand-writes NO config key metadata — the table is
+// the only metadata carrier and it reads the SoT, so the SoT stays the single
+// source.
 func configReferenceSection() string {
 	return MarkerConfigReference + `
 ## Config reference
@@ -286,10 +293,71 @@ default column to judge whether a key needs setting at all (see Minimalism).
 ` + renderConfigReference()
 }
 
-// renderConfigReference returns the rendered key·level·default·description
-// table that lands inside the config-reference section. Task 2-2 fills this with
-// the table rendered from the config-metadata source of truth; until then it is
-// an empty seam so the marker and framing above are already in place and stable.
+// renderConfigReference renders the key·level·default·description table that
+// lands inside the config-reference section, sourced ENTIRELY from the
+// config-metadata source of truth (config.MetadataRows()). This is the single
+// place the setupguide package reads config: the prose-authoring helpers above
+// hand-write NO key metadata, so the SoT stays the one source and cannot drift
+// from what the binary accepts (the drift test in the config package guards the
+// SoT itself against the schema).
+//
+// The render performs ZERO metadata logic — it iterates the SoT rows in SoT
+// order and copies each row's columns through verbatim:
+//   - Key: the TOML key name as-is.
+//   - Level: row.Level.String() (the canonical TOML form — [release],
+//     [release.hooks], [commit], or the empty shared form). Because a blank
+//     markdown cell would be ambiguous to the reading agent, the empty shared
+//     form is surfaced as the word "shared"; the rendered value stays DRIVEN by
+//     MetadataLevel.String() (the placeholder applies only when String() is
+//     empty), so level identity remains single-sourced in config.
+//   - Default: row.Default carried VERBATIM — blank stays blank, "auto" stays
+//     "auto", "[]" stays "[]", "shared" stays "shared". An empty default is
+//     emitted as a single space so the markdown cell is well-formed without
+//     changing the SoT token. No re-defaulting, no re-typing.
+//   - Description: row.Description as-is.
+//
+// The dual-level ai_command/timeout keys are NOT collapsed: each (level, key)
+// pair the SoT carries renders as its own line, so the agent sees the
+// same->shared, different->per-verb choice in the reference.
 func renderConfigReference() string {
-	return ""
+	var b strings.Builder
+
+	b.WriteString("| Key | Level | Default | Description |\n")
+	b.WriteString("| --- | --- | --- | --- |\n")
+	for _, row := range config.MetadataRows() {
+		b.WriteString("| ")
+		b.WriteString(row.Key)
+		b.WriteString(" | ")
+		b.WriteString(levelCell(row.Level))
+		b.WriteString(" | ")
+		b.WriteString(defaultCell(row.Default))
+		b.WriteString(" | ")
+		b.WriteString(row.Description)
+		b.WriteString(" |\n")
+	}
+
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// levelCell renders a row's level column from row.Level.String() (the canonical
+// TOML form), surfacing the empty shared form as the documented "shared"
+// placeholder so the markdown cell is never blank/ambiguous. The cell stays
+// driven by MetadataLevel.String() — the placeholder applies only when it is
+// empty — so the level identity is single-sourced in config.
+func levelCell(level config.MetadataLevel) string {
+	if s := level.String(); s != "" {
+		return s
+	}
+	return "shared"
+}
+
+// defaultCell carries the SoT default token verbatim, emitting a single space
+// for an empty default so the markdown cell is well-formed. It performs NO
+// metadata logic: the SoT already encodes the representation convention (blank /
+// auto / [] / shared / scalar), so this never re-defaults or re-types a token.
+func defaultCell(def string) string {
+	if def == "" {
+		return " "
+	}
+	return def
 }

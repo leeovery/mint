@@ -4,8 +4,53 @@ import (
 	"strings"
 	"testing"
 
+	"mint/internal/config"
 	"mint/internal/setupguide"
 )
+
+// levelCell renders the level column the way the config-reference table does:
+// row.Level.String() verbatim, except the shared level (whose String() is the
+// empty top-level form "") shows the documented "shared" placeholder so the
+// markdown cell is never blank/ambiguous to the reading agent. The expectation
+// stays DRIVEN by MetadataLevel.String() — the placeholder is applied only when
+// String() is empty — so the level identity remains single-sourced in config.
+func levelCell(level config.MetadataLevel) string {
+	if s := level.String(); s != "" {
+		return s
+	}
+	return "shared"
+}
+
+// configReferenceBody returns the slice of the emitted guide at and after the
+// config-reference marker — the section whose table this task renders. Driving
+// the row assertions from this slice (rather than the whole guide) keeps them
+// scoped to the rendered table.
+func configReferenceBody(t *testing.T) string {
+	t.Helper()
+
+	body := setupguide.Guide()
+	idx := strings.Index(body, setupguide.MarkerConfigReference)
+	if idx < 0 {
+		t.Fatalf("guide is missing the config-reference marker %q", setupguide.MarkerConfigReference)
+	}
+	return body[idx:]
+}
+
+// containsRowLine reports whether section carries a single line that holds the
+// key, the level cell, and the default cell together — the per-row presence the
+// drift-resistant assertions key on. A markdown row "| key | level | default |
+// description |" satisfies this; metadata split across lines does not.
+func containsRowLine(section, key, level, defaultCell, description string) bool {
+	for _, line := range strings.Split(section, "\n") {
+		if strings.Contains(line, key) &&
+			strings.Contains(line, level) &&
+			strings.Contains(line, defaultCell) &&
+			strings.Contains(line, description) {
+			return true
+		}
+	}
+	return false
+}
 
 // sectionMarkers pairs each required section's exported marker constant with a
 // human label used in failure messages. The structural test keys on these
@@ -180,4 +225,129 @@ func TestGuide_CarriesDiffExcludeScope(t *testing.T) {
 	if !strings.Contains(lower, "gitignore") {
 		t.Error("diff_exclude scope must note that gitignore'd paths are already absent from the diff")
 	}
+}
+
+// TestGuide_ConfigReferenceHasLinePerSoTRow proves the config-reference section
+// renders one table line per config.MetadataRows() row, each carrying the key,
+// the level (via MetadataLevel.String(), with the shared placeholder), the
+// verbatim default token, and the description — together on a single line. The
+// expectations are DRIVEN by config.MetadataRows() (not a frozen literal table),
+// so adding or removing a SoT row propagates here without a test edit, and a
+// re-derived table that diverged from the SoT would fail this assertion.
+func TestGuide_ConfigReferenceHasLinePerSoTRow(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+
+	for _, row := range config.MetadataRows() {
+		if !containsRowLine(section, row.Key, levelCell(row.Level), row.Default, row.Description) {
+			t.Errorf("config reference missing a line for SoT row (level %q, key %q, default %q)",
+				row.Level, row.Key, row.Default)
+		}
+	}
+}
+
+// TestGuide_ConfigReferenceRendersDualLevelKeysDistinctly proves ai_command and
+// timeout each render as THREE distinct rows — shared, [release], [commit] —
+// never collapsed. Each (level, key) pair must appear as its own line carrying
+// that level's cell, mirroring the SoT's per-level model.
+func TestGuide_ConfigReferenceRendersDualLevelKeysDistinctly(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+	levels := []config.MetadataLevel{config.LevelShared, config.LevelRelease, config.LevelCommit}
+
+	for _, key := range []string{"ai_command", "timeout"} {
+		for _, level := range levels {
+			if !lineHasKeyAtLevel(section, key, levelCell(level)) {
+				t.Errorf("config reference missing a distinct %q row at level %q", key, levelCell(level))
+			}
+		}
+	}
+}
+
+// lineHasKeyAtLevel reports whether section carries a single line holding both
+// the key and the level cell — the per-(level, key) row distinctness check the
+// dual-level assertion needs.
+func lineHasKeyAtLevel(section, key, levelCell string) bool {
+	for _, line := range strings.Split(section, "\n") {
+		if strings.Contains(line, key) && strings.Contains(line, levelCell) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim proves the default-column
+// tokens are carried verbatim from the SoT — the empty-collection "[]"
+// (diff_exclude), the sentinel "auto" (release_branch / provider), the per-verb
+// inherit "shared" ([release]/[commit] ai_command/timeout), and a blank cell for
+// empty-string-default keys ([release] context). The render performs zero
+// metadata logic; it copies row.Default through.
+func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+	rows := rowByLevelKey(t)
+
+	tests := []struct {
+		name  string
+		level config.MetadataLevel
+		key   string
+	}{
+		{"empty-collection diff_exclude renders []", config.LevelShared, "diff_exclude"},
+		{"sentinel-auto release_branch renders auto", config.LevelRelease, "release_branch"},
+		{"sentinel-auto provider renders auto", config.LevelRelease, "provider"},
+		{"per-verb [release].ai_command inherits shared", config.LevelRelease, "ai_command"},
+		{"per-verb [commit].timeout inherits shared", config.LevelCommit, "timeout"},
+		{"empty-string [release].context renders blank", config.LevelRelease, "context"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			row := rows[rowKey{level: tt.level, key: tt.key}]
+			if !containsRowLine(section, row.Key, levelCell(row.Level), row.Default, row.Description) {
+				t.Errorf("config reference must carry default %q verbatim for (level %q, key %q)",
+					row.Default, tt.level, tt.key)
+			}
+		})
+	}
+}
+
+// TestGuide_ConfigReferenceRendersLevelViaString proves the level column is
+// rendered from MetadataLevel.String() (TOML form): each non-shared row carries
+// its bracketed header verbatim on its line. The shared rows carry the empty
+// String() form, surfaced as the documented "shared" placeholder cell.
+func TestGuide_ConfigReferenceRendersLevelViaString(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+
+	for _, row := range config.MetadataRows() {
+		if !lineHasKeyAtLevel(section, row.Key, levelCell(row.Level)) {
+			t.Errorf("config reference must render level %q (via String()) on the %q row",
+				levelCell(row.Level), row.Key)
+		}
+	}
+}
+
+// rowKey identifies a SoT row by its (level, key) pair for the verbatim-token
+// lookups above.
+type rowKey struct {
+	level config.MetadataLevel
+	key   string
+}
+
+// rowByLevelKey indexes config.MetadataRows() by (level, key) so a token
+// assertion can pull the exact row whose default it pins.
+func rowByLevelKey(t *testing.T) map[rowKey]config.MetadataRow {
+	t.Helper()
+
+	out := map[rowKey]config.MetadataRow{}
+	for _, row := range config.MetadataRows() {
+		out[rowKey{level: row.Level, key: row.Key}] = row
+	}
+	return out
 }
