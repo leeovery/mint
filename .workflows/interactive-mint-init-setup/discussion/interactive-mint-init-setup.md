@@ -52,7 +52,7 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (11 subtopics — 5 decided · 5 converging · 1 exploring)
+  Discussion Map — Interactive mint init Setup (11 subtopics — 5 decided · 6 converging)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
   ├─ → Scope — what to configure [converging]
@@ -64,7 +64,7 @@ branches, converges as decisions land.
      ├─ → Guide content & procedure [converging]
      ├─ → AI etiquette (existing config) [converging]
      ├─ ✓ Static defaults floor (B → out) [decided]
-     └─ ◐ Static template shape (minimal vs commented) [exploring]
+     └─ → Static template + config-doc SoT (strip to minimal) [converging]
 
 *Pivot confirmed. Guide procedure + AI etiquette locked; B decided OUT (no static
 diff_exclude defaults — the guide surfaces them interactively). review-002 gaps are the
@@ -473,9 +473,9 @@ the user fit their process or recognise a genuine misfit.** Not a magic one-shot
 
 ---
 
-## Static template shape — minimal vs self-documenting (exploring)
+## Static template + config-doc source of truth (converging)
 
-*Raised by user mid-F5 (F5 parked to circle back).*
+*Raised by user mid-F5 (F5 parked to circle back). Folded into this feature.*
 
 ### The question
 
@@ -508,12 +508,38 @@ leaves the guide a single authoritative doc source. Only possible *because* of b
   help, not template comments.
 - Loses in-file discoverability for pure hand-editors — mitigated by the pointer + `mint help`.
 
-### Scope decision needed
+### Decision (user — folded into this feature)
 
-The guide is *separable* — it could use today's commented template. So: **fold the template
-redesign into THIS feature** (coupled — revises our layering, removes a drift surface), **or
-keep today's template and treat "minimal template + config-docs-in-binary" as a follow-on?**
-(Awaiting user.)
+- **Strip the generated config to bare essentials** — no inline comments; at most a header
+  comment pointing to `mint help` / `mint setup`. (Open micro-choice below.)
+- **Single source of truth for config metadata in the binary** — one structured table
+  (key · level · default · description), schema-adjacent, that *renders into* both
+  `mint help` (a config section) and the `mint setup` output. NOT help-text scraping — both
+  surfaces render the same structured SoT, so they can't disagree, and a drift test against
+  the real schema is near-free. This table is what the agent reads (replacing the now-
+  stripped template comments). Finalises the layering: `mint init` → minimal config;
+  `mint help` / `mint setup` → the config table from the SoT.
+- **README stays manual narrative** (Claude updates per-feature) but is **verified** as part
+  of this work to declare every config key + default; optional cheap tripwire test (every
+  schema key appears in README). README descriptions may lightly duplicate the SoT —
+  accepted (README is the human GitHub-browsing surface; the machine/agent surfaces, help +
+  setup, are the ones held to one SoT).
+- **initgen becomes trivial** (a near-empty static header); the new structure is the
+  config-metadata SoT + its help/setup renderers + the drift test. Existing seam to respect:
+  initgen deliberately doesn't import config and is drift-pinned — the minimal header keeps
+  initgen simple; the SoT/renderers are the new home for metadata. (Package layout = planning
+  detail.)
+
+### Open micro-choice (one question)
+
+Minimal template body: **empty + header pointer** (purest — defaults all live in the binary,
+empty file is valid), or **keep the few common keys at defaults, sans comments** (a real
+editable starting point)? Leaning empty+header, for consistency with "commented = at default."
+
+### Strengthens
+
+Makes **anti-drift** concrete (SoT-rendered help+setup can't drift; drift test pins
+SoT↔schema) and gives the agent a clean machine-readable config reference.
 
 ## Minimalism — only set what varies (F8 — decided)
 
@@ -575,12 +601,15 @@ restates default values.)
 
 ### Current State
 
-- **Decided:** Interactivity model = A (targeted overlay) — *under review by the pivot*;
-  AI-assisted diff_exclude scan = deferred.
-- **Exploring (live direction):** offload interactivity to an AI setup guide — likely
-  supersedes building a mint-side wizard.
-- **Superseded-if-pivot-confirmed:** presenter capability, non-interactive fallback,
-  initgen purity, output shape, seam placement (mint grows no interactive surface).
+- **Decided:** ambition (targeted overlay → realised as the guide); diff_exclude scan
+  deferred; pivot to AI setup guide; delivery = binary-emit (`mint <setup-cmd>`); anti-drift
+  = emit + drift test; B (static defaults) out; hook mapping (F9); minimalism (F8); static
+  template stripped to minimal + config-metadata SoT feeding help+setup (folded in).
+- **Converging:** scope / AI-command-model (guide content); AI etiquette; guide content &
+  procedure overall.
+- **Open:** minimal-template body micro-choice (empty vs common-keys); existing-config
+  handling (F5, parked); "any AI" fidelity floor (F6); definition of done (F3).
+- **Superseded/trimmed:** the mint-side wizard subtopics (mint grows no interactive surface).
 
 ## Triage
 
