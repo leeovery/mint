@@ -72,6 +72,29 @@ This header pointer is also the **recovery net** for the cold-arrival case — a
 - Shim tests stay as-is.
 - The `mint setup` guide gives the shim a **one-line role mention** — what `./release` is, and that `mint init` creates it — so the agent's picture of the release pipeline is complete.
 
+### Config-metadata source of truth (SoT)
+
+A single structured table of config metadata lives **in the binary**, schema-adjacent — one row per config key with columns **key · level · default · description**:
+- **key** — the TOML key name (e.g. `ai_command`, `tag_prefix`, `pre_tag`).
+- **level** — where it lives (top-level shared, `[release]`, `[release.hooks]`, `[commit]`).
+- **default** — the **real** compiled default (e.g. `claude -p --model sonnet`, `60`, `v`, `true`), not an illustrative example.
+- **description** — the one-line meaning.
+
+This SoT is the **single in-binary source of config metadata**. It **renders into the `mint setup` output** as the config reference the agent reads — replacing the now-stripped template comments. (Package layout / exact rendering is a planning detail.)
+
+### Drift test (the anti-drift enforcement)
+
+The SoT is **drift-tested against the real `config` schema** — a Go test that fails the build if the SoT and the canonical schema disagree (a key present in the schema but missing from the SoT, or vice versa). This is the core value of centralising the metadata: the config reference the agent reads **cannot drift** from what the binary actually accepts, even though `mint setup` is the single in-binary render target. It mirrors the existing `initgen`↔`config` drift discipline.
+
+### Render targets and layering
+
+- **`mint setup`** → renders the SoT config table (the **agent's** machine-readable config reference).
+- **`mint init`** → minimal config (empty body + header).
+- **`mint help`** → curated text, **no** config reference (stays frozen).
+- **GitHub docs / README** → the **human** config reference.
+
+The SoT earns its keep via the drift test even with a single in-binary render target.
+
 ---
 
 ## Working Notes
