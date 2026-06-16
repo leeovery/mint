@@ -6,7 +6,7 @@ total_proposed: 1
 # Analysis Tasks: interactive-mint-init-setup (Cycle 3)
 
 ## Task 1: Pin the max_diff_lines SoT default to its canonical constant (close the last unpinned shared scalar default)
-status: pending
+status: approved
 severity: medium
 sources: architecture, duplication
 

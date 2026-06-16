@@ -132,6 +132,16 @@ approved_at: 2026-06-16
 | interactive-mint-init-setup-6-5 | Make MetadataLevel.String() distinguish an invalid level from the shared scope | LevelShared and the default branch both return "" today; keep LevelShared == "", make the default branch fail loud (panic) or return an unmistakable sentinel; render seam can no longer map an out-of-range level onto the shared/top-level cell; latent until a fifth level is added without a String() case |
 | interactive-mint-init-setup-6-6 | Add an end-to-end run("setup") dispatch test | three seams (classifyCommand route, runSetup emitter, run() switch wiring) tested alone but composition unproven; drive run([]string{"setup"}) to stdout asserting guide-on-stdout and exit 0; would catch a stdout/stderr argument swap or a mis-wired route; do not duplicate the emitter's internal content checks |
 
+### Phase 7: Analysis (Cycle 3)
+
+**Goal**: Address findings from Analysis (Cycle 3).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-7-1 | Pin the max_diff_lines SoT default to its canonical constant (close the last unpinned shared scalar default) | max_diff_lines is the one shared scalar whose SoT cell is a re-typed literal "50000" (const defaultMaxDiffLines is unexported) while ai_command/timeout source their cells from exported constants with dedicated pins; export the const, source the cell from strconv.Itoa(DefaultMaxDiffLines), add a symmetric subsuming drift pin; the bijection test guards key presence not default values so gives no cover; also normalise the value-render test's timeout-seconds spelling from int(DefaultTimeout.Seconds()) to int(DefaultTimeout / time.Second) to match the production SoT and dedicated pin; README row left as-is (human surface, value unchanged); value-preserving — 50000 and 60 unchanged |
+
 ## Manual Acceptance (not a phase)
 
 The spec's "Acceptance — prose quality" is a one-time manual run against representative repos (a fresh JS project, a Go project, a repo with an existing release script, a repo with an existing `.mint.toml`), eyeballing that each yields a sensible config. It cannot be unit-tested (spawning an AI is forbidden by the test culture). Tracked as a manual acceptance step after Phases 2 and 4 land — not modelled as implementation work.
