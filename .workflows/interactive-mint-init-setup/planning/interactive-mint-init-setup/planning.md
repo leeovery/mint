@@ -46,6 +46,16 @@ approved_at: 2026-06-16
 - [ ] The existing usage-coverage test is extended to pin `mint setup` (rootUsage line + `setupUsage`); `mint help` stays the frozen curated text apart from the added `setup` line and carries no config reference.
 - [ ] All standard gates pass.
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| interactive-mint-init-setup-2-1 | Author the embedded setup-guide body with stable section markers | markers must be greppable anchors decoupled from body prose; section present but marker absent must fail the structural test; emission-surface decision (presenter vs cmd-layer stdout write) flagged for the author, not silently fixed |
+| interactive-mint-init-setup-2-2 | Render the config-reference section from the Phase 1 SoT | dual-level ai_command/timeout rows render distinctly per level; default-column representations carried verbatim from the SoT (blank / auto / [] / shared / hooks-blank); render reads the SoT, never re-derives metadata |
+| interactive-mint-init-setup-2-3 | Wire the commandSetup dispatch route and the runSetup runner | runs anywhere — no git rev-parse / repo-root resolution before emitting; mint setup --help exits 0 (not the usage-error exit 2); unknown command message updated to mention setup |
+| interactive-mint-init-setup-2-4 | Thread mint setup through the curated-help surface and extend the coverage test | setupUsage opens with the "usage: mint " synopsis line; mint help gains only the setup line and carries no config reference; coverage test pins setup in rootUsage and the setupUsage --help line |
+
 ### Phase 3: initgen strip-to-minimal
 status: approved
 approved_at: 2026-06-16
