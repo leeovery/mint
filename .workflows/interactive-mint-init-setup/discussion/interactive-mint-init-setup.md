@@ -52,16 +52,16 @@ branches, converges as decisions land.
 
 ### Map
 
-  Discussion Map — Interactive mint init Setup (11 subtopics — 7 decided · 4 converging)
+  Discussion Map — Interactive mint init Setup (11 subtopics — all decided)
 
   ┌─ ✓ Interactivity model (ambition) [decided]
-  ├─ → Scope — what to configure [converging]
-  │  ├─ → AI command & model (per verb) [converging]
+  ├─ ✓ Scope — what to configure [decided]
+  │  ├─ ✓ AI command & model (per verb) [decided]
   │  └─ ✓ diff_exclude (release-notes noise) [decided]
-  └─ → AI setup guide (the pivot) [converging]
+  └─ ✓ AI setup guide (the pivot) [decided]
      ├─ ✓ Delivery — binary-emit (`mint <setup-cmd>`) [decided]
      ├─ ✓ Anti-drift & verification (emit + drift test) [decided]
-     ├─ → Guide content & procedure [converging]
+     ├─ ✓ Guide content & procedure [decided]
      ├─ ✓ AI etiquette + existing-config/upgrade [decided]
      ├─ ✓ Static defaults floor (B → out) [decided]
      └─ ✓ Static template + config-doc SoT (strip to minimal) [decided]
@@ -612,6 +612,26 @@ best work here."* No fidelity-floor machinery — this is a convenience; if the 
 weak AI, that's their call. (Strict-schema loud-fail + a natural "verify the config loads"
 step stay as sensible backstops, not defensive engineering.)
 
+**Also closes F2** (non-agentic / no-web users): binary-emit keeps the instructions local
+(no fetch); the `mint setup` output is human-readable, so it doubles as a read-it-yourself
+guide; the minimal template + `mint help` config reference is the floor.
+
+---
+
+## Definition of done (F3 — decided)
+
+The deliverable is mostly a thin Go feature, so most of "done" lands under the normal gates:
+a **drift test** (config-metadata SoT ↔ actual schema), a **structural test** that
+`mint setup` emits the required sections (hooks / etiquette / minimalism / if-exists branch /
+config table), updated **`initgen` tests** for the minimal (empty + header) template, and the
+**README tripwire** (every schema key appears). All `go test`-able under build/vet/test/lint.
+
+The only part with no compiler is **prose quality** — does the prompt drive a good config in
+practice? Can't be unit-tested without spawning an AI (forbidden by the test culture). So the
+acceptance bar is a **one-time manual run** against representative repos — fresh JS project,
+Go project, repo with an existing release script, repo with an existing `.mint.toml` —
+eyeballing that each yields a sensible config.
+
 ## Summary
 
 ### Key Insights
@@ -651,8 +671,13 @@ step stay as sensible backstops, not defensive engineering.)
   template stripped to minimal + config-metadata SoT feeding help+setup (folded in); minimal
   template = empty body + header (GitHub link + `mint help` pointer); existing-config +
   upgrade (F5); any-AI framing — light README steer (F6).
-- **Converging:** scope / AI-command-model (guide content); guide content & procedure overall.
-- **Open:** definition of done (F3 — last review thread).
+  + definition of done (F3); scope / AI-command-model / guide content & procedure (the guide
+  encodes them).
+- **Open:** none — all 11 subtopics decided; both review sets (001 mooted by pivot, 002 fully
+  walked) incorporated.
+- **Planning/impl details (not discussion-level):** `mint setup` command name; config-metadata
+  SoT package layout; whether `mint setup` embeds the config table or references `mint help`;
+  exact guide prose; README verification.
 - **Superseded/trimmed:** the mint-side wizard subtopics (mint grows no interactive surface).
 
 ## Triage
