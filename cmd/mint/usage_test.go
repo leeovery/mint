@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -75,6 +76,70 @@ func TestRun_TopLevelHelp_ExitsZero(t *testing.T) {
 	if code := run([]string{"frobnicate"}); code != usageExitCode {
 		t.Errorf("mint frobnicate exited %d, want the usage error %d", code, usageExitCode)
 	}
+}
+
+// TestRun_Setup_EmitsGuideToStdoutAndExitsZero drives the full dispatch path
+// run([]string{"setup"}) end to end — classifyCommand routing, the commandSetup
+// switch arm, and runSetup — and proves the composition: the dispatched route
+// emits the setup guide to STDOUT (asserted via the stable setupguide.MarkerPipeline
+// marker, not fragile prose) and exits 0. The emitter's internal rendering is
+// covered by setup_test.go; this test asserts ONLY the seam between the three
+// independently-tested parts. Capturing stdout and stderr on separate pipes makes
+// the assertion bite on an argument-order swap: if the commandSetup arm wrote the
+// guide to stderr, the stdout capture would be empty and the marker assertion fails.
+// It is NOT t.Parallel() because it swaps the process-global os.Stdout/os.Stderr.
+func TestRun_Setup_EmitsGuideToStdoutAndExitsZero(t *testing.T) {
+	stdout, stderr := captureStdStreams(t)
+
+	if code := run([]string{"setup"}); code != 0 {
+		t.Fatalf("run([setup]) exit code = %d, want 0", code)
+	}
+
+	out, errOut := stdout(), stderr()
+	if !strings.Contains(out, setupguide.MarkerPipeline) {
+		t.Errorf("run([setup]) stdout missing the guide marker %q; got %q", setupguide.MarkerPipeline, out)
+	}
+	if strings.Contains(errOut, setupguide.MarkerPipeline) {
+		t.Errorf("run([setup]) wrote the guide to stderr (arg-order swap?); stderr = %q", errOut)
+	}
+}
+
+// captureStdStreams redirects the process-global os.Stdout and os.Stderr to pipes
+// for the duration of the test, restoring the originals on cleanup. It returns two
+// readers that drain and return each captured stream — call them AFTER the code
+// under test has run. It exists so a run()-level test can prove which stream output
+// landed on (run writes the setup guide straight to os.Stdout, not an injected
+// writer), distinguishing a stdout emit from a stderr one.
+func captureStdStreams(t *testing.T) (stdout, stderr func() string) {
+	t.Helper()
+
+	origOut, origErr := os.Stdout, os.Stderr
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe (stdout): %v", err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe (stderr): %v", err)
+	}
+	os.Stdout, os.Stderr = outW, errW
+	t.Cleanup(func() {
+		os.Stdout, os.Stderr = origOut, origErr
+		_ = outR.Close()
+		_ = errR.Close()
+	})
+
+	drain := func(w *os.File, r *os.File, name string) func() string {
+		return func() string {
+			_ = w.Close()
+			var b strings.Builder
+			if _, err := io.Copy(&b, r); err != nil {
+				t.Fatalf("draining %s pipe: %v", name, err)
+			}
+			return b.String()
+		}
+	}
+	return drain(outW, outR, "stdout"), drain(errW, errR, "stderr")
 }
 
 // TestUsageTexts_CoverTheirFlagSets pins every registered long-form flag to a
