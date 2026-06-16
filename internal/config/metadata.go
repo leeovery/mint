@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 )
@@ -61,6 +62,19 @@ const (
 // (empty string), and each table level renders its bracketed header. The render target
 // (mint setup's config reference) and the drift test both key on this string, so the
 // level identity is single-sourced here.
+//
+// The default branch ENFORCES the closed-enum claim. LevelShared legitimately renders ""
+// (its real TOML form — the top-level shared scope has no table header), so the fallback
+// must NOT also return "": an undeclared/out-of-range level (a corrupted or uninitialised
+// MetadataLevel) sharing LevelShared's output would let it silently masquerade as the
+// shared/top-level cell in the agent-facing config table (setupguide.LevelCell maps the
+// empty string — and only the empty string — to "top-level"). We return the conventional
+// Stringer sentinel ("MetadataLevel(N)", what golang.org/x/tools/cmd/stringer generates)
+// rather than panicking: a Stringer is expected to be safe to call, and a panic in the
+// render path would crash `mint setup` outright — strictly worse than an unmistakable,
+// self-describing cell that names the offending value. The sentinel is non-empty and
+// cannot collide with any legitimate scope output, so render and any future caller can
+// tell an invalid level apart from the genuine shared scope.
 func (l MetadataLevel) String() string {
 	switch l {
 	case LevelRelease:
@@ -72,7 +86,7 @@ func (l MetadataLevel) String() string {
 	case LevelShared:
 		return ""
 	default:
-		return ""
+		return fmt.Sprintf("MetadataLevel(%d)", int(l))
 	}
 }
 

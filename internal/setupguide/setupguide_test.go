@@ -500,6 +500,27 @@ func TestGuide_ConfigReferenceSharedLevelUsesNonCollidingToken(t *testing.T) {
 	}
 }
 
+// TestLevelCell_OutOfRangeLevelDoesNotRenderTopLevel proves the render seam ONLY maps
+// the genuine LevelShared (whose String() is "") to the "top-level" placeholder: an
+// out-of-range MetadataLevel now carries a non-empty Stringer sentinel, so LevelCell
+// returns that sentinel verbatim rather than masquerading as a valid shared/top-level
+// cell in the agent-facing config table. This is the render-path half of the closed-enum
+// enforcement (the config package's String() distinguishability test is the other half).
+func TestLevelCell_OutOfRangeLevelDoesNotRenderTopLevel(t *testing.T) {
+	t.Parallel()
+
+	// One past the last declared constant — a value the closed enum never produces.
+	outOfRange := config.LevelCommit + 1
+
+	got := setupguide.LevelCell(outOfRange)
+	if got == "top-level" {
+		t.Errorf("LevelCell(out-of-range MetadataLevel(%d)) = %q, must not render the shared/top-level cell", int(outOfRange), got)
+	}
+	if got != outOfRange.String() {
+		t.Errorf("LevelCell(out-of-range MetadataLevel(%d)) = %q, want the level's sentinel %q rendered verbatim", int(outOfRange), got, outOfRange.String())
+	}
+}
+
 // rowLineFor returns the markdown table row line in section whose first cell
 // (the Key column) is exactly key, or "" if none matches. Matching on the key
 // cell (not Contains) pins the right row even when several rows share a key.

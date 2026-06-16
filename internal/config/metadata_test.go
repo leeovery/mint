@@ -136,6 +136,34 @@ func TestMetadataLevel_String(t *testing.T) {
 	}
 }
 
+// TestMetadataLevel_String_OutOfRangeIsDistinctFromShared proves the closed-enum claim
+// is ENFORCED: an undeclared/out-of-range MetadataLevel must NOT render the same string
+// as LevelShared (which legitimately renders ""). The two are semantically opposite — a
+// genuine shared scope vs a corrupted/uninitialised level — so collapsing both to ""
+// would let an out-of-range level silently masquerade as the shared/top-level cell in
+// the agent-facing config table (via setupguide.LevelCell mapping "" → "top-level").
+// The fallback is the conventional Stringer sentinel ("MetadataLevel(N)"), which is
+// non-empty, self-describing, and cannot collide with any legitimate scope output.
+func TestMetadataLevel_String_OutOfRangeIsDistinctFromShared(t *testing.T) {
+	t.Parallel()
+
+	// One past the last declared constant — a value the closed enum never produces.
+	outOfRange := config.LevelCommit + 1
+
+	got := outOfRange.String()
+	if got == config.LevelShared.String() {
+		t.Errorf("out-of-range MetadataLevel(%d).String() = %q, must be distinct from LevelShared.String() = %q", int(outOfRange), got, config.LevelShared.String())
+	}
+	if got == "" {
+		t.Errorf("out-of-range MetadataLevel(%d).String() = %q, want a non-empty sentinel", int(outOfRange), got)
+	}
+	// Pin the conventional Stringer sentinel form so a regression that swapped it for an
+	// empty-or-collidable token is caught.
+	if want := "MetadataLevel(4)"; got != want {
+		t.Errorf("out-of-range MetadataLevel(%d).String() = %q, want %q", int(outOfRange), got, want)
+	}
+}
+
 // hooksDefaultCell is the chosen sentinel-blank representation for the
 // [release.hooks] keys (preflight, pre_tag, post_release): the spec offers blank
 // OR em-dash; we pick the EMPTY STRING (blank), matching the README's
