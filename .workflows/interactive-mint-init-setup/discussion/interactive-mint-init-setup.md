@@ -2,6 +2,13 @@
 
 ## Context
 
+> **Outcome (post-discussion):** this began as "make `mint init` interactive" but
+> **pivoted** — the landed decision is an **AI setup guide emitted by the binary**
+> (`mint setup`); `mint init` grows **no** interactive surface. The framing in this Context
+> and the early subtopics (interactivity model, scope-of-prompted-keys, AI prompt flow,
+> AI-assisted scan) is the *starting point / journey*. The landed design lives in
+> **"Offload interactivity to an AI setup guide"** and the sections after it.
+
 Today `mint init` is a pure generator: `engine.Init` resolves the repo root, reads
 two static strings from `internal/initgen` (`MintTOML()` and `ReleaseShim()`), and
 drops `.mint.toml` + the executable `release` shim at the root — idempotently,
@@ -66,10 +73,10 @@ branches, converges as decisions land.
      ├─ ✓ Static defaults floor (B → out) [decided]
      └─ ✓ Static template + config-doc SoT (strip to minimal) [decided]
 
-*Pivot confirmed. Guide procedure + AI etiquette locked; B decided OUT (no static
-diff_exclude defaults — the guide surfaces them interactively). review-002 gaps are the
-agenda for the still-open threads (delivery/reachability, anti-drift enforcement, guide
-depth, def-of-done, any-AI floor).*
+*Pivot to an AI setup guide (binary-emitted via `mint setup`); mint grows no interactive
+surface. All 11 subtopics decided; all three review sets incorporated. The mint-side wizard
+subtopics were trimmed. Early subtopics (scope / AI prompt flow / AI-assisted scan) are kept
+as journey but are realised through the guide, not a mint UI.*
 
 ---
 
@@ -103,11 +110,17 @@ shape of scope, output, and UX. The seed explicitly warned against "a tedious wi
 **A — Targeted overlay.** Interactivity should *augment* the 2-3 decisions a static
 file genuinely can't make, not re-ask things with good defaults. Confidence: high.
 
+*(Later realised via the AI-setup-guide pivot — there is no mint-side overlay; the agent
+does the tailoring. The "augment only what varies" principle survives as the guide's
+minimalism rule.)*
+
 ---
 
 ## Scope of prompted keys
 
-*State: converging.*
+*Decided — realised via the guide. The prompting framing below is pre-pivot journey; what
+survives is **what to configure** (AI model per verb + `diff_exclude`; everything else left
+default), which the `mint setup` guide encodes. mint itself does not prompt.*
 
 **North star (user, clarified):** make initiating a project *smoother* — first for the
 author, and therefore for everyone. The prompts exist to remove the open-the-file-and-
@@ -183,7 +196,10 @@ to *scan the project and propose* the exclude list.
 
 ## AI prompt flow (model × per-verb)
 
-*Child of Scope. State: converging.*
+*Child of Scope. Decided — but realised in the **guide**, not a mint-side menu: the agent
+asks (model choice → same/different → custom escape) in natural language. The numbered-menu
+sketch below illustrates the *logic*, not a mint UI. What lands in `.mint.toml` is the config
+representation (shared top-level vs per-verb override keys).*
 
 ### Context
 
@@ -221,7 +237,9 @@ Use {choice} for both release notes AND commit messages?  [Y/n]
 
 ## AI-assisted diff_exclude analysis
 
-*Child of Scope. State: exploring. The feature's standout / differentiating idea.*
+*Child of Scope. Decided: the in-init scan is **deferred** (see Resolution); `diff_exclude`
+is surfaced by the **guide** interactively. The section below is the exploration that led
+there.*
 
 ### Context
 
@@ -326,11 +344,13 @@ then **superseded by the pivot below.**
   for commits & releases; run `mint <setup-cmd>` and follow what it prints." Layering, all
   version-matched to the installed binary:
   1. README one-liner → which command to run.
-  2. `mint <setup-cmd>` → emits the **procedure + etiquette** (NOT a duplicated option
-     reference).
-  3. Agent runs `mint init` → reads the generated template's comments as the
-     **authoritative, version-matched option meanings** (DRY — option docs live only
-     there, already drift-tested).
+  2. `mint <setup-cmd>` → emits the **procedure + etiquette + the SoT config table** (the
+     option reference). *(The config table moved here after strip-to-minimal + F2; the
+     original sketch had setup carry no option reference — superseded.)*
+  3. Agent reads option meanings from the **`mint setup` SoT config table**
+     (version-matched, drift-tested). *(Superseded the original "read the template comments"
+     plan — the template is later stripped to minimal; see "Static template + config-doc
+     SoT".)*
   - **Why it's the unlock:** emitted-by-binary means the instructions **cannot drift** from
     the schema that binary implements and **cannot version-skew** — an old mint emits
     old-but-correct instructions, so no N-versions doc maintenance. Resolves review **F1**
@@ -407,11 +427,12 @@ in natural language. mint itself stays a pure static-file generator.
 
 The guide describes config that must stay **true-to-as-built** — the same drift battle mint
 already fights (initgen↔config drift tests, README discipline). Mitigation: make the guide
-a **procedure, not a restatement** — point the AI at the already-maintained README + the
-commented `.mint.toml` template for what each option *means*; the guide supplies only the
-part that lives nowhere yet (how to inspect a project and map findings to config) + mint's
-minimalist philosophy (only set what varies). Strict schema (`DisallowUnknownFields`) is a
-free backstop: a hallucinated key fails loudly at first `mint` run.
+a **procedure, not a restatement** — point the AI at the README + the **`mint setup` SoT
+config table** for what each option *means* (the original "commented template" source was
+later stripped — see Static template + SoT); the guide supplies only the part that lives
+nowhere yet (how to inspect a project and map findings to config) + mint's minimalist
+philosophy (only set what varies). Strict schema (`DisallowUnknownFields`) is a free
+backstop: a hallucinated key fails loudly at first `mint` run.
 
 ### Complementarity (best-of-both holds)
 
@@ -420,19 +441,13 @@ documented). Non-AI users edit the template; AI users paste the prompt. This **d
 the fail-loud/non-interactive concern entirely** — mint never prompts, so there's no
 `-y`/non-TTY hang to design around.
 
-### Open questions (live) — remaining review-002 agenda
+### Review-002 agenda — all resolved
 
-*Resolved: F1/F7/F10 (binary-emit), F4 (etiquette), F9 (hook mapping), F8 (minimalism — see
-sections below). Still live:*
-
-- **Existing `.mint.toml` (F5)** — detect/diff/preserve-vs-refuse specifics beyond the
-  never-remove-without-permission etiquette. (Parked — circling back after template-shape.
-  Proposal on the table: existing config is authoritative/sacred, agent works in diff mode,
-  never `mint init --force` in a configured repo; optional explicit "start fresh" path.)
-- **"Any AI" fidelity floor (F6)** — realistically Claude-tuned with "any AI" best-effort,
-  stated honestly? (overlaps non-agentic-AI tail of F2.)
-- **Definition of done (F3)** — beyond the emitted-output Go test, a run-against-sample-
-  projects acceptance check?
+*All review-002 findings are now decided in the sections below: F1/F7/F10 (binary-emit),
+F4 (etiquette), F9 (hook mapping), F8 (minimalism), F5 (existing-config/upgrade), F6 (any-AI
+framing), F3 (definition of done), F2 (closed via binary-emit + human-readable output).
+review-003 (final) added four seam corrections (F1 shim, F2 help-surface, F3 ordered-step,
+F4 unconditional `mint setup`).*
 
 ---
 
@@ -501,17 +516,18 @@ leaves the guide a single authoritative doc source. Only possible *because* of b
 
 ### Cascade / cost
 
-- The binary must then **authoritatively document the config keys** — extend `mint help`, or
-  fold a config reference into the `mint <setup-cmd>` output (today config-key docs live in
-  README + template comments, not `help`).
-- **Revises the locked layering:** agent reads option meanings from the emitted output /
-  help, not template comments.
-- Loses in-file discoverability for pure hand-editors — mitigated by the pointer + `mint help`.
+- The binary must then **authoritatively document the config keys** — *resolved in F2: the
+  config reference lives in the `mint setup` SoT output (for the agent) + the GitHub docs /
+  README (for humans); `mint help` stays curated and does NOT carry config.*
+- **Revises the locked layering:** agent reads option meanings from the `mint setup` SoT
+  table, not template comments.
+- Loses in-file discoverability for pure hand-editors — mitigated by the header pointer →
+  GitHub docs / `mint setup`.
 
 ### Decision (user — folded into this feature)
 
 - **Strip the generated config to bare essentials** — no inline comments; at most a header
-  comment pointing to `mint help` / `mint setup`. (Open micro-choice below.)
+  comment pointing to the GitHub docs / `mint setup`. (Micro-choice below.)
 - **Single source of truth for config metadata in the binary** — one structured table
   (key · level · default · description), schema-adjacent, **drift-tested against the real
   schema** (the anti-drift enforcement — its core value even with a single render target). It
@@ -651,7 +667,7 @@ step stay as sensible backstops, not defensive engineering.)
 
 **Also closes F2** (non-agentic / no-web users): binary-emit keeps the instructions local
 (no fetch); the `mint setup` output is human-readable, so it doubles as a read-it-yourself
-guide; the minimal template + `mint help` config reference is the floor.
+guide; the minimal template's header pointer (GitHub docs / `mint setup`) is the floor.
 
 ---
 
@@ -694,20 +710,21 @@ eyeballing that each yields a sensible config.
 
 ### Open Threads
 
-- Confirm the pivot (reshapes work unit → AI-facing content).
-- Form factor (guide + README prompt + optional skill); where the guide lives; how the AI
-  fetches it; `mint`-emits-the-prompt option.
-- Anti-drift: guide as procedure that references README/template, not a restatement.
-- Keep B (ecosystem-aware static `diff_exclude` defaults) as the no-AI floor?
+- **None open** — all 11 subtopics decided; all three review sets incorporated.
+- Deferred (not discussion-level): `mint setup` command name; config-metadata SoT package
+  layout; exact guide prose; README verification + tripwire test.
+- Deferred as possible future work: the in-init AI `diff_exclude` scan (sketch preserved in
+  the "AI-assisted diff_exclude analysis" section); per-verb `timeout` auto-write for slow
+  models; a Claude-Code skill wrapper.
 
 ### Current State
 
 - **Decided:** ambition (targeted overlay → realised as the guide); diff_exclude scan
   deferred; pivot to AI setup guide; delivery = binary-emit (`mint <setup-cmd>`); anti-drift
   = emit + drift test; B (static defaults) out; hook mapping (F9); minimalism (F8); static
-  template stripped to minimal + config-metadata SoT feeding help+setup (folded in); minimal
-  template = empty body + header (GitHub link + `mint help` pointer); existing-config +
-  upgrade (F5); any-AI framing — light README steer (F6).
+  template stripped to minimal + config-metadata SoT feeding `mint setup` (NOT `mint help`,
+  per F2) (folded in); minimal template = empty body + header (GitHub docs + `mint setup`
+  pointer); existing-config + upgrade (F5); any-AI framing — light README steer (F6).
   + definition of done (F3); scope / AI-command-model / guide content & procedure (the guide
   encodes them).
 - **Open:** none — all 11 subtopics decided; all three review sets incorporated (001 mooted
