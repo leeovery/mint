@@ -77,6 +77,19 @@ Target render for the reported case:
 
 **Option chosen:** keep the gap (CHOSEN) **over** dropping the `padStage` gap for failures.
 
+## Scope & Affected Surfaces
+
+**Fix the transport once; three verbs benefit.** `mint release`, `mint release regenerate`, and `mint commit` all consume the same `ai.Transport`, which has the identical discard-claude's-output defect. The transport-level Fix 1 improves all three at once. (`mint commit`'s editor-fallback softens its symptom, but it still benefits.)
+
+**Both notes surfacing helpers must be covered** so regenerate's rendering is not left behind:
+
+- `surfaceAndUnwind(ctx, deps, "notes", …)` — the **forward release** notes stage (`internal/engine/release.go`).
+- `surface(p, "notes", err)` — the **regenerate** notes stage (`regenerate_batch.go`, `regenerate_interactive.go`) and the generic pre-PONR path.
+
+Both build `presenter.StageFailure{Name, Message}` with no `Output` today. The engine helper that extracts the captured output (mirroring `hookFailureOutput`) feeds `StageFailure.Output` at **both** sites.
+
+**Note on regenerate's wrap chain:** regenerate's fresh path may carry a *shorter* wrap chain than forward release (it surfaces `GenerateFromRange`'s `"generating notes: %w"` directly rather than always re-wrapping through `abortError`/`causeText`). The concise-`Message` derivation (Fix 2) must therefore produce a clean phrase for both the forward and regenerate chains — not assume the forward-release chain shape.
+
 ---
 
 ## Working Notes
