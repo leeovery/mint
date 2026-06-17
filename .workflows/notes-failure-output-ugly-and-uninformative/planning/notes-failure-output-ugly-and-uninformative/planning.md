@@ -18,7 +18,8 @@ approved_at: 2026-06-17
 - [ ] All project gates pass: `go build ./...`, `gofmt -l .` (empty), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues).
 
 #### Tasks
-status: draft
+status: approved
+approved_at: 2026-06-17
 
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
