@@ -48,6 +48,23 @@ This is the **load-bearing fix** — it is what lets the operator see the actual
 
 **Option chosen:** typed carrier error (mirrors `*hooks.HookError`, keeps `Generate`'s signature and `errors.Is` routing intact) **over** returning the captured output as a separate return value (which would churn every call site).
 
+## Fix 2 — Collapse the top-line message to one concise cause phrase
+
+**Root cause:** the presenter-facing `Message` is the entire nested `%w` chain. Three layers each prepend their own text (`abortError` → `generate.go` wrap → `ErrGenerationFailed`), and the presenter faithfully renders the whole concatenation as the display string.
+
+**Change:** the presenter-facing `Message` shows only the short cause phrase that `causeText` already produces (e.g. `ErrGenerationFailed` → "AI returned empty/invalid notes after retry"). The message must **not** restate the stage name and must **not** repeat "failed". The verbose detail (claude's captured output) lives in the Fix-1 `Output` block, not in the top line.
+
+Target render for the reported case:
+
+```
+✗ notes  AI returned empty/invalid notes after retry
+  Prompt is too long
+```
+
+**Sub-decision (settled here):** the `%w` wrapping chain (`abortError`/`generate.go` wrap) is **retained** for `errors.Is` matching and logs — it is correct Go hygiene and load-bearing for sentinel routing. What changes is that the **display `Message` is separated from the matchable error**: the surfacing path derives the concise display phrase rather than rendering the full nested `cause.Error()`. We do **not** tear out the error chain.
+
+**Option chosen:** concise phrase from `causeText` (CHOSEN) **over** continuing to render the full nested chain. The nested chain is correct for `errors.Is`/logs but human-hostile as a display string; separating the matchable error from the display message is the fix.
+
 ---
 
 ## Working Notes
