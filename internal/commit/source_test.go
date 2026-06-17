@@ -1,11 +1,14 @@
 package commit
 
-// White-box tests for the structurally single-sourced per-mode git source selection
-// (source.go) shared by the preflight probes (preflight.go) and the L1 diff sources
-// (generate.go). These assert the "one source, cannot drift" invariant directly against
-// the SINGLE shared builders — the preflight probe argv is provably the L1 source argv
-// plus `--name-only` (diff cases) / the shared `ls-files` prefix (untracked case), and
-// the emptiness verdict and the L1 source agree per StagingMode through the shared
+// White-box tests for the structurally single-sourced per-mode git source COMMAND
+// selection (source.go) shared by the preflight probes (preflight.go) and the L1 diff
+// sources (generate.go). The two consumers share the source command but differ by ONE
+// deliberate tail: the L1 diff applies diff_exclude, the preflight does NOT (it is
+// diff_exclude-blind — it answers "would `git commit` create a commit?"). These assert
+// that single-sourcing directly against the SINGLE shared builders — the preflight probe
+// argv is provably the L1 source COMMAND minus the diff_exclude tail, plus `--name-only`
+// (diff cases) / the shared `ls-files` prefix verbatim (untracked case) — and that the
+// emptiness verdict and the L1 source dispatch agree per StagingMode through the shared
 // sourcesForMode descriptor (including the AddAll short-circuit).
 
 import (
@@ -28,42 +31,42 @@ func argsEqual(got, want []string) bool {
 	return true
 }
 
-// TestProbeArgv_IsL1SourceArgvPlusNameOnly proves each diff-mode preflight probe argv is
-// EXACTLY the corresponding L1 source argv with `--name-only` inserted after the diff
-// verb/refspec, and the untracked probe is the shared ls-files prefix VERBATIM (no
-// `--name-only`) — all derived from the SINGLE shared base builders, so the preflight and
-// the AI's L1 diff cannot drift.
-func TestProbeArgv_IsL1SourceArgvPlusNameOnly(t *testing.T) {
+// TestProbeArgv_IsL1SourceCommandMinusExcludesPlusNameOnly proves each diff-mode preflight
+// probe argv is EXACTLY the corresponding L1 source COMMAND with `--name-only` inserted
+// after the diff verb/refspec and with NO diff_exclude tail, and the untracked probe is the
+// shared ls-files prefix VERBATIM (no `--name-only`, no excludes) — all derived from the
+// SINGLE shared base builders, so the preflight and the AI's L1 diff share the command and
+// differ only by the exclusion tail (L1-only) that diff_exclude adds.
+func TestProbeArgv_IsL1SourceCommandMinusExcludesPlusNameOnly(t *testing.T) {
 	t.Parallel()
 
 	exclude := []string{"*.min.js"}
-	excludes := excludePathspecs(exclude)
 
-	// Staged (diff source): L1 = `git diff --cached -- . :(exclude)…`; probe = same +
-	// `--name-only`.
-	if got, want := stagedProbeArgs(excludes), []string{"diff", "--cached", "--name-only", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
-		t.Errorf("stagedProbeArgs = %v, want %v", got, want)
+	// Staged (diff source): probe = command + `--name-only`, NO excludes; L1 = command +
+	// `:(exclude)…`.
+	if got, want := stagedProbeArgs(), []string{"diff", "--cached", "--name-only", "--", "."}; !argsEqual(got, want) {
+		t.Errorf("stagedProbeArgs = %v, want the command + --name-only with NO excludes %v", got, want)
 	}
 	if got, want := sourceArgs(stagedBaseArgs(), exclude), []string{"diff", "--cached", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
 		t.Errorf("staged L1 sourceArgs = %v, want %v", got, want)
 	}
 
-	// Tracked (diff source): L1 = `git diff HEAD -- . :(exclude)…`; probe = same +
-	// `--name-only`.
-	if got, want := trackedProbeArgs(excludes), []string{"diff", "HEAD", "--name-only", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
-		t.Errorf("trackedProbeArgs = %v, want %v", got, want)
+	// Tracked (diff source): probe = command + `--name-only`, NO excludes; L1 = command +
+	// `:(exclude)…`.
+	if got, want := trackedProbeArgs(), []string{"diff", "HEAD", "--name-only", "--", "."}; !argsEqual(got, want) {
+		t.Errorf("trackedProbeArgs = %v, want the command + --name-only with NO excludes %v", got, want)
 	}
 	if got, want := sourceArgs(trackedBaseArgs(), exclude), []string{"diff", "HEAD", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
 		t.Errorf("tracked L1 sourceArgs = %v, want %v", got, want)
 	}
 
 	// Untracked (ls-files source): the probe is the shared prefix VERBATIM (no
-	// `--name-only`) — identical to the L1 enumeration argv.
-	if got, want := untrackedProbeArgs(excludes), []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
-		t.Errorf("untrackedProbeArgs = %v, want %v", got, want)
+	// `--name-only`, no excludes); the L1 enumeration is that same prefix + `:(exclude)…`.
+	if got, want := untrackedProbeArgs(), []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."}; !argsEqual(got, want) {
+		t.Errorf("untrackedProbeArgs = %v, want the ls-files prefix verbatim with NO excludes %v", got, want)
 	}
-	if got, want := sourceArgs(untrackedBaseArgs(), exclude), untrackedProbeArgs(excludes); !argsEqual(got, want) {
-		t.Errorf("untracked probe %v != untracked L1 sourceArgs %v; the ls-files prefix must be shared verbatim", untrackedProbeArgs(excludes), got)
+	if got, want := sourceArgs(untrackedBaseArgs(), exclude), []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)*.min.js"}; !argsEqual(got, want) {
+		t.Errorf("untracked L1 sourceArgs = %v, want the prefix + excludes %v", got, want)
 	}
 }
 
@@ -75,15 +78,15 @@ func TestProbeArgv_IsL1SourceArgvPlusNameOnly(t *testing.T) {
 func TestProbeArgv_DerivesFromSharedBase(t *testing.T) {
 	t.Parallel()
 
-	// No excludes: the probe for a diff source is the base + `--name-only` (the
+	// The probe for a diff source is the base + `--name-only` and NO excludes (the
 	// `--name-only` lands before the `-- .` selector, which the base carries as its tail).
 	for _, tc := range []struct {
 		name string
 		base []string
 		got  []string
 	}{
-		{"staged", stagedBaseArgs(), stagedProbeArgs(nil)},
-		{"tracked", trackedBaseArgs(), trackedProbeArgs(nil)},
+		{"staged", stagedBaseArgs(), stagedProbeArgs()},
+		{"tracked", trackedBaseArgs(), trackedProbeArgs()},
 	} {
 		// The diff probe must be the base with exactly one extra element, `--name-only`,
 		// and the verb/refspec/selector must be the SAME elements (no re-spelling).
@@ -93,16 +96,19 @@ func TestProbeArgv_DerivesFromSharedBase(t *testing.T) {
 		}
 	}
 
-	// The untracked probe is the untracked base VERBATIM (no `--name-only`).
-	if got := untrackedProbeArgs(nil); !argsEqual(got, untrackedBaseArgs()) {
+	// The untracked probe is the untracked base VERBATIM (no `--name-only`, no excludes).
+	if got := untrackedProbeArgs(); !argsEqual(got, untrackedBaseArgs()) {
 		t.Errorf("untracked probe = %v, want the untracked base verbatim %v", got, untrackedBaseArgs())
 	}
 }
 
 // TestEmptinessVerdictAgreesWithL1Source_PerMode proves, per StagingMode, that the
-// emptiness verdict (wouldStageNothing) and the L1 source (sourceDiff) agree — both empty
-// or both non-empty — driven through the SHARED sourcesForMode descriptor, including the
-// AddAll tracked-then-untracked short-circuit.
+// emptiness verdict (wouldStageNothing) and the L1 source (sourceDiff) DISPATCH the same
+// per-mode command through the SHARED sourcesForMode descriptor — so for identical
+// underlying source output (here with no excludes on either side) they agree, both empty
+// or both non-empty, including the AddAll tracked-then-untracked short-circuit. (Their
+// ONE intended divergence — diff_exclude on the L1 side only — is not exercised here; it
+// is covered by the all-excluded editor-fallback tests in staging_excluded_test.go.)
 func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 	t.Parallel()
 
@@ -189,7 +195,7 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 			// Emptiness verdict via the preflight path.
 			rp := runner.NewFakeRunner()
 			rp.SeedSequence("git", scriptedResults(tc.probeOut)...)
-			empty, err := wouldStageNothing(ctx, rp, "", tc.mode, nil)
+			empty, err := wouldStageNothing(ctx, rp, "", tc.mode)
 			if err != nil {
 				t.Fatalf("wouldStageNothing returned error: %v", err)
 			}
@@ -207,7 +213,8 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 			}
 			l1Empty := diff == ""
 
-			// The load-bearing agreement: the emptiness verdict and the L1 source must
+			// The shared-dispatch agreement: for identical underlying source output (no
+			// excludes on either side here), the emptiness verdict and the L1 source must
 			// agree (both empty / both non-empty) for every mode through the shared
 			// descriptor.
 			if empty != l1Empty {
@@ -218,26 +225,25 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 }
 
 // TestProbeArgs_MatchesNamedBuilders closes the test-vs-production argv gap: production
-// preflight routes through probeArgs(spec, …) while the named per-mode builders
+// preflight routes through probeArgs(spec) while the named per-mode builders
 // (stagedProbeArgs/trackedProbeArgs/untrackedProbeArgs) are test-facing — this pins the
 // two derivations equal for every spec, so an edit to one path that misses the other
-// fails here rather than silently diverging the documented probe argv.
+// fails here rather than silently diverging the documented probe argv. Both are
+// diff_exclude-blind, so the equality also guards that production preflight never picks up
+// an exclusion tail.
 func TestProbeArgs_MatchesNamedBuilders(t *testing.T) {
 	t.Parallel()
-
-	exclude := []string{"*.min.js"}
-	excludes := excludePathspecs(exclude)
 
 	for _, tc := range []struct {
 		name string
 		spec sourceSpec
 		want []string
 	}{
-		{"staged", sourceSpec{base: stagedBaseArgs(), kind: diffSource}, stagedProbeArgs(excludes)},
-		{"tracked", sourceSpec{base: trackedBaseArgs(), kind: diffSource}, trackedProbeArgs(excludes)},
-		{"untracked", sourceSpec{base: untrackedBaseArgs(), kind: untrackedListSource}, untrackedProbeArgs(excludes)},
+		{"staged", sourceSpec{base: stagedBaseArgs(), kind: diffSource}, stagedProbeArgs()},
+		{"tracked", sourceSpec{base: trackedBaseArgs(), kind: diffSource}, trackedProbeArgs()},
+		{"untracked", sourceSpec{base: untrackedBaseArgs(), kind: untrackedListSource}, untrackedProbeArgs()},
 	} {
-		if got := probeArgs(tc.spec, exclude); !argsEqual(got, tc.want) {
+		if got := probeArgs(tc.spec); !argsEqual(got, tc.want) {
 			t.Errorf("%s: probeArgs = %v, want the named builder's %v", tc.name, got, tc.want)
 		}
 	}

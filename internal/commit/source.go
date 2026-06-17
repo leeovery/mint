@@ -1,11 +1,16 @@
 package commit
 
-// This file is commit's SINGLE source-of-truth for the per-mode git source selection
-// shared by BOTH the preflight emptiness probes (preflight.go) and the AI's L1 diff
-// sources (generate.go). The spec makes "the preflight and the AI's L1 diff read ONE
-// exclusion-filtered source and cannot drift" a load-bearing invariant; colocating the
-// per-mode base argv prefixes, the `-- .` selector, and the StagingMode→sources mapping
-// HERE makes that invariant STRUCTURAL rather than two hand-aligned copies.
+// This file is commit's SINGLE source-of-truth for the per-mode git source COMMAND
+// selection shared by BOTH the preflight emptiness probes (preflight.go) and the AI's L1
+// diff sources (generate.go). Colocating the per-mode base argv prefixes, the `-- .`
+// selector, and the StagingMode→sources mapping HERE makes the command selection and the
+// AddAll composition STRUCTURAL — one definition, not two hand-aligned copies.
+//
+// The two consumers share the source COMMAND but differ in ONE deliberate way: the L1 diff
+// applies diff_exclude, the preflight does NOT. The preflight answers "would `git commit`
+// create a commit?" (tree/index state alone, diff_exclude-blind), while the L1 diff applies
+// diff_exclude to shape what the model reads. So the exclusion is L1-only, by design — it
+// must never influence the emptiness verdict.
 //
 // Each per-mode source is described once by a sourceSpec (its base argv prefix + its
 // kind). Both consumers iterate the SAME spec list per mode:
@@ -13,15 +18,14 @@ package commit
 //   - generate.go (L1 diff) appends excludePathspecs to each spec's base and renders the
 //     diff body (a diff source uses git's stdout verbatim; an untracked-list source
 //     enumerates paths then renders each as a read-only addition diff).
-//   - preflight.go (emptiness) appends `--name-only` (diff specs only) + excludePathspecs
+//   - preflight.go (emptiness) appends `--name-only` (diff specs only) and NO excludes,
 //     and reports the would-be-staged set EMPTY iff EVERY spec is empty — which encodes
 //     the AddAll "tracked first, short-circuit on non-empty, else untracked" composition
 //     in ONE place (an all-specs-empty fold).
 //
 // So a mode's source-command prefix, its `-- .` selector, and the AddAll composition rule
-// each live in exactly one place; the preflight probe argv is provably the same
-// exclusion-filtered source as the L1 diff, differing only by the `--name-only` the
-// emptiness probe adds.
+// each live in exactly one place; the preflight probe argv is provably the L1 source
+// COMMAND minus the diff_exclude tail, plus the `--name-only` the emptiness probe adds.
 
 // sourceKind classifies a per-mode source so the two consumers render it correctly: a
 // diffSource is a `git diff …` whose stdout IS the diff (preflight adds `--name-only` to
@@ -52,15 +56,16 @@ type sourceSpec struct {
 
 // stagedBaseArgs is the StagedOnly source prefix: `git diff --cached -- .` — the staged
 // index. It is spelled ONCE here; both the L1 diff render (renderSource) and
-// stagedProbeArgs (preflight) derive from it, appending the shared exclusion tail (and
-// `--name-only` for the probe).
+// stagedProbeArgs (preflight) derive from it — the L1 render appends the diff_exclude
+// tail, the probe appends only `--name-only` (no excludes).
 func stagedBaseArgs() []string {
 	return []string{"diff", "--cached", "--", "."}
 }
 
 // trackedBaseArgs is the All (-a) / AddAll (-A) tracked source prefix: `git diff HEAD
 // -- .` — tracked modifications + deletions against HEAD (no untracked). Spelled ONCE;
-// the L1 diff render (renderSource) and trackedProbeArgs (preflight) both derive from it.
+// the L1 diff render (renderSource) and trackedProbeArgs (preflight) both derive from it
+// — the L1 render appends the diff_exclude tail, the probe appends only `--name-only`.
 func trackedBaseArgs() []string {
 	return []string{"diff", "HEAD", "--", "."}
 }
@@ -100,9 +105,10 @@ func sourcesForMode(mode StagingMode) []sourceSpec {
 	}
 }
 
-// sourceArgs is the L1 argv for a source: its base prefix plus the shared
-// excludePathspecs exclusion tail (the SAME tail the preflight probe appends). It is the
-// single place the L1 diff sources turn a base prefix into the executed argv.
+// sourceArgs is the L1 argv for a source: its base prefix plus the diff_exclude
+// excludePathspecs tail. It is the single place the L1 diff sources turn a base prefix
+// into the executed argv. The preflight probe deliberately does NOT use this composer —
+// it is diff_exclude-blind, so it appends no exclusion tail (see probeArgs).
 func sourceArgs(base, diffExclude []string) []string {
 	return append(append([]string{}, base...), excludePathspecs(diffExclude)...)
 }

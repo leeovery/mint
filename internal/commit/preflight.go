@@ -1,10 +1,27 @@
 package commit
 
 // This file is commit's EMPTY-STAGING PREFLIGHT cluster — the staging-mode-aware
-// "something to commit?" check that runs BEFORE generate so the AI is never invoked on an
-// empty diff. It is colocated here (out of run.go's orchestration spine) and DERIVES its
-// per-mode probes from the SAME shared source selection (source.go) the L1 diff sources
-// use, so the emptiness verdict and the AI's L1 source cannot drift.
+// "something to commit?" check that runs BEFORE generate so the run fails loud on a
+// genuinely empty tree before any AI call.
+//
+// The preflight answers ONE question: would `git commit` (for the resolved
+// StagingMode) create a commit? That is a property of the working tree and index
+// ALONE — it is deliberately INDEPENDENT of diff_exclude. diff_exclude is an
+// AI-CONTEXT filter (it shapes what the model reads — see generate.go); it must NEVER
+// decide whether the tree is dirty or whether a commit can be made. So every probe
+// here carries NO :(exclude) pathspecs: a changeset whose every file matches a
+// diff_exclude glob is STILL something to commit, and the preflight lets it through.
+// The "the AI's post-exclusion diff is empty" case (an all-excluded but non-empty
+// tree) is handled DOWNSTREAM by the empty-AI-diff editor fallback (generate.go's
+// errDiffFullyExcluded → run.go's runEditorFallback), NOT by failing the preflight —
+// so the excluded files still get committed, with a human-written message.
+//
+// The probes DERIVE their per-mode source COMMANDS from the SAME shared sourcesForMode
+// descriptor (source.go) the L1 diff sources use, so the preflight and the AI source
+// dispatch the identical git command per mode — they differ ONLY in the tail: the
+// preflight applies no exclusion (and adds `--name-only` to the diff probes), while
+// the L1 source applies diff_exclude. The shared descriptor keeps the command
+// selection and the AddAll composition single-sourced; the exclusion is L1-only.
 //
 // The three sentinel messages, checkSomethingToCommit, wouldStageNothing, the per-mode
 // probe builders, emptyStagingError, and gitOutputEmpty all live here; run.go keeps only
@@ -44,16 +61,16 @@ var (
 // checkSomethingToCommit is commit's staging-mode-aware "something to commit" preflight.
 // It computes the would-be-staged emptiness for the resolved StagingMode READ-ONLY (no
 // `git add`, no AI) and fails loud when that set is empty, short-circuiting generation so
-// the AI is never invoked on an empty diff. All probes go through the consumed
+// the run never proceeds on a genuinely clean tree. All probes go through the consumed
 // CommandRunner seam (the same read-only idiom as generate's source helpers), so they are
 // fully scriptable via the FakeRunner.
 //
-// diffExclude (cfg.DiffExclude) is mapped onto the probes via the SAME excludePathspecs
-// helper generate's L1 source uses, so the emptiness verdict and the AI's L1 source diff
-// derive from ONE exclusion-filtered source and cannot drift: an all-excluded
-// staged/changed set is recognised as "nothing to commit" HERE — failing loud before any
-// generate/AI call — rather than passing preflight and reaching the transport with a blank
-// post-exclusion diff.
+// It does NOT consult diff_exclude: the emptiness verdict is "would `git commit` create a
+// commit?", a property of the tree/index alone. diff_exclude only shapes the AI's L1 diff
+// (generate.go) — an all-excluded but non-empty changeset is NOT "nothing to commit", so
+// it passes preflight here and is handled by the empty-AI-diff editor fallback downstream
+// (it still gets committed, with a human-written message), rather than being wrongly
+// rejected as empty.
 //
 // A NON-empty would-be-staged set returns nil → the run proceeds to generate (as before).
 // An EMPTY set selects the failure by the ACTUAL post-mode tree state (probed once with a
@@ -64,8 +81,8 @@ var (
 // the same anchoring the L1 diff sources use — because the shared `-- .` selector is
 // cwd-relative: from a subdirectory an unanchored probe would miss staging outside the
 // subtree and wrongly fail loud while the whole-index `git commit` had plenty to commit.
-func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode, diffExclude []string) error {
-	empty, err := wouldStageNothing(ctx, r, root, mode, diffExclude)
+func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) error {
+	empty, err := wouldStageNothing(ctx, r, root, mode)
 	if err != nil {
 		return err
 	}
@@ -81,22 +98,22 @@ func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root st
 // one generate's sourceDiff consumes), so the dispatch is defined once; the would-be-staged
 // set is EMPTY iff EVERY source spec is empty, which encodes the AddAll "tracked first,
 // short-circuit on the first non-empty, else untracked" composition as a single
-// all-specs-empty fold. EVERY probe carries the SAME diffExclude :(exclude) pathspecs (via
-// probeArgs) the L1 source applies — so the probe measures the POST-exclusion would-be-staged
-// set and an all-excluded set is reported empty here, matching the AI's L1 diff exactly:
+// all-specs-empty fold. NO probe carries diff_exclude — the preflight measures the FULL
+// would-be-staged set (not the AI's post-exclusion view), so a changeset whose only files
+// are diff_exclude'd is still reported NON-empty here and proceeds:
 //
-//   - StagedOnly: empty iff `git diff --cached --name-only -- . :(exclude)…` is empty
-//     (the staged index, post-exclusion — mirrors the staged L1 source).
-//   - All (-a): empty iff `git diff HEAD --name-only -- . :(exclude)…` is empty (tracked
-//     mods + deletions, post-exclusion — mirrors the tracked L1 source).
-//   - AddAll (-A): empty iff BOTH `git diff HEAD --name-only -- . :(exclude)…` AND
-//     `git ls-files --others --exclude-standard -z -- . :(exclude)…` are empty (tracked
-//     changes AND untracked files, both post-exclusion — mirrors the AddAll L1 source).
+//   - StagedOnly: empty iff `git diff --cached --name-only -- .` is empty (the staged
+//     index — the staged source command, no exclusion).
+//   - All (-a): empty iff `git diff HEAD --name-only -- .` is empty (tracked mods +
+//     deletions — the tracked source command, no exclusion).
+//   - AddAll (-A): empty iff BOTH `git diff HEAD --name-only -- .` AND `git ls-files
+//     --others --exclude-standard -z -- .` are empty (tracked changes AND untracked
+//     files — both source commands, no exclusion).
 //
 // A genuine git failure is wrapped and surfaced so it is never mistaken for an empty set.
-func wouldStageNothing(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode, diffExclude []string) (bool, error) {
+func wouldStageNothing(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) (bool, error) {
 	for _, spec := range sourcesForMode(mode) {
-		empty, err := gitOutputEmpty(ctx, r, root, probeArgs(spec, diffExclude)...)
+		empty, err := gitOutputEmpty(ctx, r, root, probeArgs(spec)...)
 		if err != nil {
 			return false, err
 		}
@@ -110,17 +127,18 @@ func wouldStageNothing(ctx context.Context, r runner.CommandRunner, root string,
 }
 
 // probeArgs builds the name-only emptiness probe argv for ONE source spec, derived from
-// the SAME shared base prefix the L1 source uses (via sourceArgs) so the verb, refspec,
-// and `-- .` selector are never re-spelled. A diffSource carries `--name-only` (spliced
-// after the verb/refspec, before the `-- .` selector — the body is not needed for
-// emptiness); an untrackedListSource reuses its ls-files prefix VERBATIM (no `--name-only`),
-// exactly the L1 enumeration argv. So a diff probe is provably the L1 diff argv plus
-// `--name-only`, and the untracked probe is provably the L1 untracked argv.
-func probeArgs(spec sourceSpec, diffExclude []string) []string {
+// the SAME shared base prefix the L1 source uses so the verb, refspec, and `-- .` selector
+// are never re-spelled. It carries NO exclusion tail (the preflight is diff_exclude-blind):
+// a diffSource gets `--name-only` spliced after the verb/refspec, before the `-- .`
+// selector (the body is not needed for emptiness); an untrackedListSource reuses its
+// ls-files prefix VERBATIM (no `--name-only`), exactly the L1 enumeration command minus the
+// excludes. So a diff probe is the L1 diff command (sans excludes) plus `--name-only`, and
+// the untracked probe is the L1 untracked command (sans excludes).
+func probeArgs(spec sourceSpec) []string {
 	if spec.kind == untrackedListSource {
-		return sourceArgs(spec.base, diffExclude)
+		return append([]string{}, spec.base...)
 	}
-	return sourceArgs(nameOnly(spec.base), diffExclude)
+	return nameOnly(spec.base)
 }
 
 // nameOnly splices `--name-only` into a `git diff …` base prefix, after the verb +
@@ -135,26 +153,24 @@ func nameOnly(base []string) []string {
 }
 
 // stagedProbeArgs / trackedProbeArgs / untrackedProbeArgs are the per-mode name-only
-// emptiness probes, each derived from the matching shared source spec via probeArgs — so
-// the probe argv is the L1 source argv plus `--name-only` (the two diff cases) / the
-// shared ls-files prefix verbatim (the untracked case). They take the pre-mapped excludes
-// for symmetry with their historical callers; probeArgs re-derives the same tail via
-// excludePathspecs, so passing already-mapped excludes here is equivalent (the tests use
-// these as the single checkable builders).
+// emptiness probes, each derived from the matching shared source command via the same
+// base builders probeArgs uses — so the probe argv is the L1 source command (WITHOUT the
+// diff_exclude tail) plus `--name-only` (the two diff cases) / the shared ls-files prefix
+// verbatim (the untracked case). They are the single checkable builders for the tests.
 //
 // NOTE: these are test-facing builders. Production preflight routes through probeArgs (see
-// wouldStageNothing → probeArgs) after the 7-1 source-selection restructure; nothing on the
-// live preflight path calls stagedProbeArgs/trackedProbeArgs/untrackedProbeArgs.
-func stagedProbeArgs(excludes []string) []string {
-	return append(nameOnly(stagedBaseArgs()), excludes...)
+// wouldStageNothing → probeArgs); nothing on the live preflight path calls
+// stagedProbeArgs/trackedProbeArgs/untrackedProbeArgs.
+func stagedProbeArgs() []string {
+	return nameOnly(stagedBaseArgs())
 }
 
-func trackedProbeArgs(excludes []string) []string {
-	return append(nameOnly(trackedBaseArgs()), excludes...)
+func trackedProbeArgs() []string {
+	return nameOnly(trackedBaseArgs())
 }
 
-func untrackedProbeArgs(excludes []string) []string {
-	return append(append([]string{}, untrackedBaseArgs()...), excludes...)
+func untrackedProbeArgs() []string {
+	return append([]string{}, untrackedBaseArgs()...)
 }
 
 // emptyStagingError selects the fail-loud cause for an empty would-be-staged set, keyed on

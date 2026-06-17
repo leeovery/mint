@@ -2,6 +2,7 @@ package commit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -15,6 +16,18 @@ import (
 // /dev/null. It is treated as success (not a failure) so the addition diff on stdout is
 // used; any other non-zero exit is a genuine error.
 const diffNoIndexFilesDiffer = 1
+
+// errDiffFullyExcluded is the typed SKIP returned when the would-be-committed diff is
+// non-empty BEFORE diff_exclude but empty AFTER it: every would-be-committed change
+// matches a diff_exclude glob, so the AI has nothing to summarise. It is DISTINCT from a
+// genuinely empty tree (caught earlier by the preflight, which is diff_exclude-blind) —
+// reaching here means the tree IS dirty, so the commit must still happen. Like the
+// oversized skip (notes.ErrDiffTooLarge), it is NOT an AI-transport failure: the
+// transport is never called. Run routes it to the SAME $EDITOR fallback as
+// --no-ai/oversized, so the excluded files get committed with a human-written message
+// rather than the model being handed a blank diff. It is a SKIP signal, never surfaced
+// to the user verbatim, so its text is internal.
+var errDiffFullyExcluded = errors.New("commit: every change is excluded from the AI context")
 
 // Transport is the content-agnostic AI seam commit's L3 glue depends on: a finished
 // prompt in, a validated body (or a typed failure) out. It is defined HERE, where it
@@ -112,6 +125,17 @@ func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, 
 		return "", fmt.Errorf("assembling would-be-committed diff for commit: %w", err)
 	}
 
+	// The preflight (diff_exclude-blind) already proved the tree is dirty for this mode,
+	// so an empty POST-exclusion diff means diff_exclude removed EVERY would-be-committed
+	// change: the model has nothing to read. Don't compose a blank prompt or call the
+	// transport — return the typed skip so Run routes to the SAME $EDITOR fallback as
+	// --no-ai/oversized. The excluded changes still get committed (the editor save IS the
+	// accept), just with a human-written message. TrimSpace guards a whitespace-only diff
+	// the same way the editor-emptiness rule does.
+	if strings.TrimSpace(diff) == "" {
+		return "", errDiffFullyExcluded
+	}
+
 	if err := notes.CheckDiffSize(diff, cfg.MaxDiffLines); err != nil {
 		return "", fmt.Errorf("commit size guard: %w", err)
 	}
@@ -189,9 +213,10 @@ func (g *Generator) renderSource(ctx context.Context, spec sourceSpec, diffExclu
 // diffSourceText runs a diffSource — a `git diff …` whose stdout IS the post-exclusion
 // diff — built from the shared base prefix (stagedBaseArgs / trackedBaseArgs) plus the
 // cfg.DiffExclude :(exclude) pathspecs via the single shared sourceArgs composer. The
-// SAME base + exclusion tail feeds the matching preflight probe (which only adds
-// `--name-only`), so the L1 diff and the emptiness probe read one exclusion-filtered
-// source.
+// SAME base feeds the matching preflight probe (which adds `--name-only` and NO exclusion
+// tail — the preflight is diff_exclude-blind; see preflight.go), so the L1 diff and the
+// emptiness probe share the source COMMAND and differ only in the tail: the L1 diff
+// applies diff_exclude, the probe does not.
 //
 // Selecting the base prefix is the per-mode source SELECTION (sourcesForMode); the verb,
 // refspec, and `-- .` selector are spelled exactly once (in the *BaseArgs builders).

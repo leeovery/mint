@@ -12,9 +12,9 @@ import (
 )
 
 // writeDiffExclude writes a .mint.toml into dir setting only a single diff_exclude
-// glob, so the real config.Load threads cfg.DiffExclude into both the preflight
-// emptiness probe and the L1 source — proving they read ONE exclusion-filtered
-// source. Every other key stays at its default.
+// glob, so the real config.Load threads cfg.DiffExclude into the AI's L1 source ONLY.
+// diff_exclude is an AI-context filter; the preflight is diff_exclude-blind, so this
+// glob never touches the emptiness probe. Every other key stays at its default.
 func writeDiffExclude(t *testing.T, dir, glob string) {
 	t.Helper()
 	body := "diff_exclude = [\"" + glob + "\"]\n"
@@ -23,236 +23,196 @@ func writeDiffExclude(t *testing.T, dir, glob string) {
 	}
 }
 
-// TestRun_StagedAllExcluded_FailsLoudNoAINoMutation proves a repo whose ONLY staged
-// changes match a diff_exclude glob fails loud with the empty-staging message and
-// mutates nothing — the AI is NEVER invoked on the empty post-exclusion diff. The
-// preflight probe now carries the same :(exclude) pathspecs the L1 source uses, so it
-// measures the POST-exclusion would-be-staged set: empty → fail loud BEFORE generate.
-func TestRun_StagedAllExcluded_FailsLoudNoAINoMutation(t *testing.T) {
+// TestRun_StagedAllExcluded_CommitsViaEditorFallback proves a repo whose ONLY staged
+// changes match a diff_exclude glob is STILL committed: the preflight (diff_exclude-blind)
+// sees the dirty index and proceeds, the post-exclusion L1 diff is empty so the AI is
+// never invoked, and commit routes to the $EDITOR fallback — the human-written save IS the
+// accept, and the excluded file gets committed. It also pins the preflight probe argv as
+// UNFILTERED (no :(exclude) pathspecs): diff_exclude must never decide whether the tree is
+// dirty.
+func TestRun_StagedAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	writeDiffExclude(t, root, "*.min.js")
 
+	const saved = "chore: bump app.min.js\n"
 	rec := &presentertest.RecordingPresenter{}
-	r := runner.NewFakeRunner()
-	// The post-exclusion staged probe `git diff --cached --name-only -- . :(exclude)*.min.js`
-	// is empty (the only staged file is excluded), then `git status --porcelain` reports
-	// the (excluded) staged change exists → the no-changes-staged guidance.
-	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},               // git diff --cached --name-only -- . :(exclude)*.min.js (all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "A app.min.js\n"}}, // git status --porcelain (the excluded change still shows)
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "app.min.js\n"}}, // preflight probe (UNFILTERED): staged index is dirty
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},             // L1 staged diff (filtered): all excluded → empty
+		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},     // git var GIT_EDITOR
+		runner.ScriptedCall{}, // git commit -F -
 	)
+	er := &editorRunner{fake: f, saved: saved}
 	transport := scriptedTransport("must never be returned (all excluded)")
-	deps := newCommitDeps(rec, r, transport, root)
-	deps.Staging = commit.StagedOnly
+	deps := editorDeps(rec, er, editorDepsOptions{Root: root, Staging: commit.StagedOnly, Transport: transport})
 
-	err := commit.Run(context.Background(), deps)
-	if err == nil {
-		t.Fatal("Run returned nil for an all-excluded staged set; want a non-zero fail-loud abort")
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
 	}
-	if err.Error() != noChangesStagedMessage {
-		t.Errorf("error = %q, want the existing no-changes-staged guidance %q", err.Error(), noChangesStagedMessage)
+
+	// The preflight probe must read the FULL would-be-staged set, NOT the post-exclusion
+	// view: `git diff --cached --name-only -- .` with no :(exclude) pathspecs.
+	gits := editorGitInvocations(er)
+	if len(gits) == 0 {
+		t.Fatal("no git invocations recorded; want the preflight probe first")
 	}
+	assertArgs(t, gits[0].Args, []string{"diff", "--cached", "--name-only", "--", "."})
 
 	if transport.calls() != 0 {
-		t.Errorf("transport called %d times; an all-excluded staged set must short-circuit before any AI call", transport.calls())
+		t.Errorf("transport called %d times; an all-excluded diff must skip the AI and open the editor", transport.calls())
 	}
-	if adds := addInvocations(r); len(adds) != 0 {
-		t.Errorf("all-excluded staged set ran `git add` %v; it must never stage", adds)
+	if len(er.launches) != 1 {
+		t.Fatalf("editor launches = %d, want exactly 1 (the all-excluded fallback opens the editor)", len(er.launches))
 	}
-	if commits := commitInvocations(r); len(commits) != 0 {
-		t.Errorf("all-excluded staged set created %d commit(s); it must never commit", len(commits))
+	commits := editorCommitInvocations(er)
+	if len(commits) != 1 || commits[0].Stdin != saved {
+		t.Fatalf("commit invocations = %v, want exactly one carrying the saved body %q", commits, saved)
+	}
+	if adds := editorAddInvocations(er); len(adds) != 0 {
+		t.Errorf("StagedOnly ran `git add` %v; it must commit the index exactly as staged", adds)
 	}
 }
 
-// TestRun_PreflightProbeCarriesExcludePathspecs proves the preflight emptiness probe
-// now carries the SAME :(exclude) pathspecs the AI's L1 source uses (exact argv), so
-// the emptiness verdict and the L1 diff read one exclusion-filtered source. The first
-// git invocation is the preflight probe and it must carry `-- . :(exclude)*.min.js`.
-func TestRun_PreflightProbeCarriesExcludePathspecs(t *testing.T) {
+// TestRun_AllModeAllExcluded_CommitsViaEditorFallback proves the same on the -a path: the
+// preflight probe `git diff HEAD --name-only -- .` is UNFILTERED, so an all-excluded
+// tracked change still passes preflight; the post-exclusion L1 diff is empty, so commit
+// stages tracked changes (`git add -u`) and commits the human-written save.
+func TestRun_AllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	writeDiffExclude(t, root, "*.min.js")
 
+	const saved = "chore: rebuild app.min.js\n"
 	rec := &presentertest.RecordingPresenter{}
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},               // preflight probe (all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "A app.min.js\n"}}, // git status --porcelain
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: " M app.min.js\n"}}, // preflight probe (UNFILTERED): tracked change present
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                // L1 tracked diff (filtered): all excluded → empty
+		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},        // git var GIT_EDITOR
+		runner.ScriptedCall{}, // git add -u (deferred staging on save)
+		runner.ScriptedCall{}, // git commit -F -
 	)
-	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned"), root)
-	deps.Staging = commit.StagedOnly
-
-	if err := commit.Run(context.Background(), deps); err == nil {
-		t.Fatal("Run returned nil for an all-excluded staged set; want a non-zero abort")
-	}
-
-	gits := gitInvocations(r)
-	if len(gits) == 0 {
-		t.Fatal("no git invocations recorded; want the preflight emptiness probe first")
-	}
-	// The preflight probe must read the SAME exclusion-filtered source the L1 staged
-	// diff reads: `git diff --cached --name-only -- . :(exclude)*.min.js`.
-	want := []string{"diff", "--cached", "--name-only", "--", ".", ":(exclude)*.min.js"}
-	assertArgs(t, gits[0].Args, want)
-}
-
-// TestRun_AllModeAllExcluded_FailsLoudNoAI proves the same all-excluded scenario on the
-// deferred-staging -a path likewise fails loud and never calls the AI: the -a tracked
-// probe `git diff HEAD --name-only -- . :(exclude)*.min.js` is empty (the only tracked
-// change is excluded), and `git status --porcelain` reports the change exists.
-func TestRun_AllModeAllExcluded_FailsLoudNoAI(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	writeDiffExclude(t, root, "*.min.js")
-
-	rec := &presentertest.RecordingPresenter{}
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                // git diff HEAD --name-only -- . :(exclude)*.min.js (all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: " M app.min.js\n"}}, // git status --porcelain (the excluded change exists)
-	)
+	er := &editorRunner{fake: f, saved: saved}
 	transport := scriptedTransport("must never be returned (all excluded -a)")
-	deps := newCommitDeps(rec, r, transport, root)
-	deps.Staging = commit.All
+	deps := editorDeps(rec, er, editorDepsOptions{Root: root, Staging: commit.All, Transport: transport})
 
-	err := commit.Run(context.Background(), deps)
-	if err == nil {
-		t.Fatal("Run returned nil for an all-excluded -a set; want a non-zero fail-loud abort")
-	}
-	// -a with the only change excluded leaves a non-clean tree whose tracked diff is
-	// empty post-exclusion — the existing All-mode message points at -A/--add-all.
-	if err.Error() != noTrackedChangesMessage {
-		t.Errorf("error = %q, want the existing -a guidance %q", err.Error(), noTrackedChangesMessage)
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
 	}
 
-	if transport.calls() != 0 {
-		t.Errorf("transport called %d times; an all-excluded -a set must short-circuit before any AI call", transport.calls())
-	}
-	if adds := addInvocations(r); len(adds) != 0 {
-		t.Errorf("all-excluded -a set ran `git add` %v; it must never stage", adds)
-	}
-	if commits := commitInvocations(r); len(commits) != 0 {
-		t.Errorf("all-excluded -a set created %d commit(s); it must never commit", len(commits))
-	}
-}
-
-// TestRun_AllModeAllExcludedProbeCarriesExcludePathspecs proves the -a preflight probe
-// carries the SAME :(exclude) pathspecs the -a L1 source uses (exact argv).
-func TestRun_AllModeAllExcludedProbeCarriesExcludePathspecs(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	writeDiffExclude(t, root, "*.min.js")
-
-	rec := &presentertest.RecordingPresenter{}
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                // -a preflight probe (all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: " M app.min.js\n"}}, // git status --porcelain
-	)
-	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned"), root)
-	deps.Staging = commit.All
-
-	if err := commit.Run(context.Background(), deps); err == nil {
-		t.Fatal("Run returned nil for an all-excluded -a set; want a non-zero abort")
-	}
-
-	gits := gitInvocations(r)
+	gits := editorGitInvocations(er)
 	if len(gits) == 0 {
-		t.Fatal("no git invocations recorded; want the -a preflight emptiness probe first")
+		t.Fatal("no git invocations recorded; want the -a preflight probe first")
 	}
-	want := []string{"diff", "HEAD", "--name-only", "--", ".", ":(exclude)*.min.js"}
-	assertArgs(t, gits[0].Args, want)
-}
-
-// TestRun_AddAllModeAllExcluded_FailsLoudNoAI proves the same all-excluded scenario on
-// the -A path likewise fails loud and never calls the AI: BOTH the -A tracked probe and
-// the untracked probe carry the :(exclude) pathspecs, so an all-excluded untracked set
-// is also recognised as empty. With every change excluded the tree's would-be-staged set
-// is empty and `git status --porcelain` is clean of NON-excluded changes here (the only
-// untracked file is excluded, but status itself still shows it) → the clean-tree line
-// fires only when status is empty; an excluded-untracked change keeps status non-empty,
-// so -A defensively falls back to the clean-tree message.
-func TestRun_AddAllModeAllExcluded_FailsLoudNoAI(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	writeDiffExclude(t, root, "*.min.js")
-
-	rec := &presentertest.RecordingPresenter{}
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                   // git diff HEAD --name-only -- . :(exclude)*.min.js (tracked all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                   // git ls-files --others --exclude-standard -- . :(exclude)*.min.js (untracked all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "?? vendor.min.js\n"}}, // git status --porcelain (the excluded untracked file still shows)
-	)
-	transport := scriptedTransport("must never be returned (all excluded -A)")
-	deps := newCommitDeps(rec, r, transport, root)
-	deps.Staging = commit.AddAll
-
-	err := commit.Run(context.Background(), deps)
-	if err == nil {
-		t.Fatal("Run returned nil for an all-excluded -A set; want a non-zero fail-loud abort")
-	}
-	// -A's empty would-be-staged set defensively falls back to the clean-tree message
-	// (the existing emptyStagingError AddAll branch).
-	if err.Error() != nothingToCommitMessage {
-		t.Errorf("error = %q, want the existing -A defensive clean-tree line %q", err.Error(), nothingToCommitMessage)
-	}
+	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--name-only", "--", "."})
 
 	if transport.calls() != 0 {
-		t.Errorf("transport called %d times; an all-excluded -A set must short-circuit before any AI call", transport.calls())
+		t.Errorf("transport called %d times; an all-excluded -a diff must skip the AI", transport.calls())
 	}
-	if adds := addInvocations(r); len(adds) != 0 {
-		t.Errorf("all-excluded -A set ran `git add` %v; it must never stage", adds)
+	adds := editorAddInvocations(er)
+	if len(adds) != 1 || adds[0].Args[len(adds[0].Args)-1] != "-u" {
+		t.Fatalf("git add invocations = %v, want exactly one `git add -u`", adds)
 	}
-	if commits := commitInvocations(r); len(commits) != 0 {
-		t.Errorf("all-excluded -A set created %d commit(s); it must never commit", len(commits))
+	commits := editorCommitInvocations(er)
+	if len(commits) != 1 || commits[0].Stdin != saved {
+		t.Fatalf("commit invocations = %v, want exactly one carrying the saved body %q", commits, saved)
 	}
 }
 
-// TestRun_AddAllModeAllExcludedUntrackedProbeCarriesExcludePathspecs proves the -A
-// untracked probe (`git ls-files --others`) also honours the SAME :(exclude) pathspecs
-// the -A L1 untracked enumeration uses (exact argv), so an all-excluded untracked set is
-// measured the same way the AI path measures it.
-func TestRun_AddAllModeAllExcludedUntrackedProbeCarriesExcludePathspecs(t *testing.T) {
+// TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback proves the same on the -A path,
+// where the only change is an excluded UNTRACKED file: the preflight runs BOTH the tracked
+// probe (`git diff HEAD --name-only -- .`) and the untracked probe (`git ls-files --others
+// --exclude-standard -z -- .`), BOTH UNFILTERED, so the untracked file keeps the tree
+// dirty and preflight proceeds; the post-exclusion L1 diff is empty (the untracked file is
+// excluded), so commit stages everything (`git add -A`) and commits the human-written save.
+func TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
 	writeDiffExclude(t, root, "*.min.js")
 
+	const saved = "chore: vendor vendor.min.js\n"
 	rec := &presentertest.RecordingPresenter{}
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                   // tracked probe (all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                   // untracked probe (all excluded → empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "?? vendor.min.js\n"}}, // git status --porcelain
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // preflight tracked probe (UNFILTERED): no tracked change
+		runner.ScriptedCall{Result: runner.Result{Stdout: "vendor.min.js\x00"}}, // preflight untracked probe (UNFILTERED): untracked file present
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // L1 tracked diff (filtered): empty
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // L1 untracked enumeration (filtered): all excluded → empty
+		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},          // git var GIT_EDITOR
+		runner.ScriptedCall{}, // git add -A (deferred staging on save)
+		runner.ScriptedCall{}, // git commit -F -
 	)
-	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned"), root)
-	deps.Staging = commit.AddAll
+	er := &editorRunner{fake: f, saved: saved}
+	transport := scriptedTransport("must never be returned (all excluded -A)")
+	deps := editorDeps(rec, er, editorDepsOptions{Root: root, Staging: commit.AddAll, Transport: transport})
 
-	if err := commit.Run(context.Background(), deps); err == nil {
-		t.Fatal("Run returned nil for an all-excluded -A set; want a non-zero abort")
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
 	}
 
-	gits := gitInvocations(r)
+	// Both preflight probes are UNFILTERED — neither carries the :(exclude) tail.
+	gits := editorGitInvocations(er)
 	if len(gits) < 2 {
 		t.Fatalf("git invocations = %v, want the tracked probe then the untracked probe", gits)
 	}
-	wantTracked := []string{"diff", "HEAD", "--name-only", "--", ".", ":(exclude)*.min.js"}
-	assertArgs(t, gits[0].Args, wantTracked)
-	wantUntracked := []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)*.min.js"}
-	assertArgs(t, gits[1].Args, wantUntracked)
+	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--name-only", "--", "."})
+	assertArgs(t, gits[1].Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."})
+
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; an all-excluded -A diff must skip the AI", transport.calls())
+	}
+	adds := editorAddInvocations(er)
+	if len(adds) != 1 || adds[0].Args[len(adds[0].Args)-1] != "-A" {
+		t.Fatalf("git add invocations = %v, want exactly one `git add -A`", adds)
+	}
+	commits := editorCommitInvocations(er)
+	if len(commits) != 1 || commits[0].Stdin != saved {
+		t.Fatalf("commit invocations = %v, want exactly one carrying the saved body %q", commits, saved)
+	}
+}
+
+// TestRun_AllExcludedUnderYes_FailsLoud proves an all-excluded diff on an UNATTENDED run
+// (-y) fails loud rather than committing a blank or hanging: the editor fallback has no
+// human to write a message, so the no-message-source guard fires — the SAME fail-loud
+// behaviour as an oversized diff under -y. Nothing is staged or committed.
+func TestRun_AllExcludedUnderYes_FailsLoud(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeDiffExclude(t, root, "*.min.js")
+
+	rec := &presentertest.RecordingPresenter{}
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "app.min.js\n"}}, // preflight probe (UNFILTERED): dirty
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},             // L1 staged diff (filtered): all excluded → empty
+	)
+	er := &editorRunner{fake: f, saved: "must never be saved"}
+	transport := scriptedTransport("must never be returned (all excluded -y)")
+	deps := editorDeps(rec, er, editorDepsOptions{Root: root, Staging: commit.StagedOnly, Transport: transport, Yes: true})
+
+	err := commit.Run(context.Background(), deps)
+	if err == nil {
+		t.Fatal("Run returned nil for an all-excluded -y run; want a non-zero fail-loud abort")
+	}
+	if len(er.launches) != 0 {
+		t.Errorf("editor launched %d time(s) under -y; the guard must fire before any launch", len(er.launches))
+	}
+	if commits := editorCommitInvocations(er); len(commits) != 0 {
+		t.Errorf("all-excluded -y created %d commit(s); it must fail loud, not commit", len(commits))
+	}
 }
 
 // TestRun_StagedNonExcludedChange_ReachesGenerate proves a repo with at least one
 // NON-excluded staged change still passes preflight, reaches Generate, and commits
-// normally even with diff_exclude configured: the post-exclusion preflight probe is
-// non-empty, so the run proceeds exactly as before.
+// normally even with diff_exclude configured: the preflight probe (unfiltered) is
+// non-empty AND the post-exclusion L1 diff carries the non-excluded file, so the run
+// proceeds to the AI exactly as before.
 func TestRun_StagedNonExcludedChange_ReachesGenerate(t *testing.T) {
 	t.Parallel()
 
@@ -263,8 +223,8 @@ func TestRun_StagedNonExcludedChange_ReachesGenerate(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
-		runner.ScriptedCall{Result: runner.Result{Stdout: "src/app.go\n"}},                                // preflight probe: a non-excluded file remains
-		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/src/app.go b/src/app.go\n+work"}}, // L1 staged diff
+		runner.ScriptedCall{Result: runner.Result{Stdout: "src/app.go\n"}},                                // preflight probe (unfiltered): a file is staged
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/src/app.go b/src/app.go\n+work"}}, // L1 staged diff (filtered): the non-excluded file remains
 		runner.ScriptedCall{}, // git commit -F -
 	)
 	transport := scriptedTransport(message)

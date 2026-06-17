@@ -59,6 +59,16 @@ const (
 	oversizedNoteMessage = "diff too large to summarise — opening editor"
 )
 
+// The all-excluded-diff fallback note. When commit's L1 diff is empty AFTER diff_exclude
+// (every would-be-committed change is excluded from the AI context — a generate-SKIP,
+// distinct from a failure), commit routes to the SAME editor fallback as --no-ai and
+// emits this note via the Presenter. The em dash is U+2014; the label is a short
+// informational tag prefixed onto the warn line, mirroring the oversized note.
+const (
+	excludedNoteLabel   = "diff"
+	excludedNoteMessage = "all changes are excluded from the AI context — opening editor"
+)
+
 // generateStageName is the blocking stage wrapping the AI generate/regenerate call
 // — the run's one slow step, so it carries the pretty spinner (plain prints the
 // terse start line). Both the first generation and the gate's `r` regeneration use
@@ -304,15 +314,18 @@ func Run(ctx context.Context, deps Deps) error {
 		Action:  commitAction,
 	})
 
-	// Empty-staging preflight runs HERE — before generate, so the AI is never invoked on
-	// an empty diff. It is staging-mode aware: it computes the would-be-staged emptiness
-	// for deps.Staging READ-ONLY and, when empty, fails loud with the message keyed on the
-	// ACTUAL post-mode tree state (clean tree vs changes-the-mode-could-not-stage). A
-	// non-empty would-be-staged set proceeds. cfg.DiffExclude is threaded in so the
-	// preflight measures the POST-exclusion would-be-staged set — the SAME exclusion-filtered
-	// source the AI's L1 diff consumes — so an all-excluded set fails loud here rather than
-	// reaching generate with a blank post-exclusion diff.
-	if err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging, cfg.DiffExclude); err != nil {
+	// Empty-staging preflight runs HERE — before generate, so the run fails loud on a
+	// genuinely clean tree before any AI call. It is staging-mode aware: it computes the
+	// would-be-staged emptiness for deps.Staging READ-ONLY and, when empty, fails loud with
+	// the message keyed on the ACTUAL post-mode tree state (clean tree vs
+	// changes-the-mode-could-not-stage). A non-empty would-be-staged set proceeds.
+	//
+	// The preflight is diff_exclude-BLIND: it answers "would `git commit` create a commit?",
+	// a property of the tree/index alone. diff_exclude only shapes the AI's L1 diff
+	// (generate.go), so a changeset whose every file is excluded is STILL something to
+	// commit — it passes here and the empty-AI-diff case is handled below by routing to the
+	// editor fallback, NOT by wrongly rejecting it as empty.
+	if err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -347,6 +360,21 @@ func Run(ctx context.Context, deps Deps) error {
 		if errors.Is(err, notes.ErrDiffTooLarge) {
 			if !deps.editorUnavailable() {
 				p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+			}
+			return runEditorFallback(ctx, deps, root, "")
+		}
+		// An all-excluded diff is a generate-SKIP, NOT a failure: the tree is dirty (the
+		// preflight, which is diff_exclude-blind, let it through) but diff_exclude removed
+		// every would-be-committed change, so the model has nothing to summarise. Route to
+		// the SAME editor fallback as --no-ai/oversized — the excluded files still get
+		// committed, with a human-written message. The note is emitted FIRST, but ONLY when
+		// the editor will actually open (an attended run): on an unattended run
+		// (editorUnavailable — -y or non-TTY) the fallback fails loud immediately, so a note
+		// promising an editor that never opens would contradict it. Gating on the SAME
+		// predicate the fallback's guard uses keeps the two in lock-step.
+		if errors.Is(err, errDiffFullyExcluded) {
+			if !deps.editorUnavailable() {
+				p.Warn(presenter.Warning{Label: excludedNoteLabel, Message: excludedNoteMessage})
 			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
