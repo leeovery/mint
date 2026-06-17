@@ -15,7 +15,7 @@
     "specification": {
       "items": {
         "notes-failure-output-ugly-and-uninformative": {
-          "status": "in-progress",
+          "status": "completed",
           "sources": {
             "notes-failure-output-ugly-and-uninformative": {
               "status": "incorporated"
