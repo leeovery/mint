@@ -101,20 +101,40 @@ func abortError(failure error) error {
 	return fmt.Errorf("notes generation failed (%s): %w", causeText(failure), failure)
 }
 
-// causeText maps a known notes-failure sentinel to a readable cause phrase for the
-// abort message. An unknown cause yields the failure's own message so the abort error
-// is always informative.
-func causeText(failure error) string {
+// CauseText derives the CONCISE display phrase for a notes/AI failure from the SENTINEL
+// it wraps, matched via errors.Is so it traverses the %w chain regardless of how the
+// cause was wrapped — abortError's forward chain ("notes generation failed (%s): %w")
+// OR regenerate's shorter "generating notes: %w" chain both resolve to the same phrase.
+// It returns (phrase, true) for one of the four known notes-failure sentinels and
+// ("", false) for any other error.
+//
+// It is the SINGLE SOURCE of the concise phrasing: the unexported causeText (which
+// names the cause in abortError's message) delegates to it, and the engine's
+// failureMessage display helper reuses it to collapse the verbose nested %w chain into
+// one concise line — neither can drift from the other. The phrase is derived WITHOUT
+// rendering the wrapped cause.Error(); the %w chain is left intact for errors.Is/logs.
+func CauseText(failure error) (string, bool) {
 	switch {
 	case errors.Is(failure, ai.ErrTimeout):
-		return "AI timed out"
+		return "AI timed out", true
 	case errors.Is(failure, ErrDiffTooLarge):
-		return "diff too large"
+		return "diff too large", true
 	case errors.Is(failure, ai.ErrCommandMissing):
-		return "AI tool not installed"
+		return "AI tool not installed", true
 	case errors.Is(failure, ai.ErrGenerationFailed):
-		return "AI returned empty/invalid notes after retry"
+		return "AI returned empty/invalid notes after retry", true
 	default:
-		return failure.Error()
+		return "", false
 	}
+}
+
+// causeText maps a known notes-failure sentinel to a readable cause phrase for the
+// abort message. It delegates to the exported CauseText so the two cannot drift; an
+// unknown cause falls back to the failure's own message so the abort error is always
+// informative (preserving abortError's byte-identical output for unmapped causes).
+func causeText(failure error) string {
+	if phrase, known := CauseText(failure); known {
+		return phrase
+	}
+	return failure.Error()
 }

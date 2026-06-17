@@ -1609,13 +1609,27 @@ func surface(p presenter.Presenter, stage string, cause error) error {
 	return abort(cause)
 }
 
-// failureMessage extracts the display message for a stage failure: a preflight
-// *GateError carries an actionable, display-ready Message; everything else falls
-// back to the wrapped error text.
+// failureMessage extracts the display message for a stage failure — the SINGLE
+// display-derivation seam every StageFailed site (surface, surfaceAndUnwind,
+// resetAndAbort) funnels its Message through:
+//
+//   - a preflight *GateError carries an actionable, display-ready Message;
+//   - a notes/AI failure collapses to the CONCISE cause phrase notes.CauseText derives
+//     from the wrapped sentinel (Fix 2) — matched via errors.Is, so it resolves the
+//     same phrase whether the cause carries the forward abortError chain ("notes
+//     generation failed (%s): %w") or regenerate's shorter "generating notes: %w"
+//     chain, instead of rendering the verbose nested %w concatenation. The %w chain is
+//     left intact for errors.Is/logs; only this DISPLAY string changes. Ordered after
+//     the gate branch because a gate error is never one of the four AI sentinels.
+//   - everything else falls back to the wrapped error text (the defensive path for an
+//     unmapped cause, e.g. resetAndAbort's git record/push failure).
 func failureMessage(cause error) string {
 	var gate *preflight.GateError
 	if errors.As(cause, &gate) {
 		return gate.Message()
+	}
+	if phrase, known := notes.CauseText(cause); known {
+		return phrase
 	}
 	return cause.Error()
 }
