@@ -8,6 +8,9 @@
     },
     "interactive-mint-init-setup": {
       "work_type": "feature"
+    },
+    "notes-failure-output-ugly-and-uninformative": {
+      "work_type": "bugfix"
     }
   },
   "defaults": {
