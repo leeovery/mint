@@ -3,7 +3,8 @@
 ## Phases
 
 ### Phase 1: Carry claude's captured output through the AI transport carrier
-status: draft
+status: approved
+approved_at: 2026-06-17
 
 **Goal**: Upgrade `ai.ErrGenerationFailed` into a typed carrier error (e.g. `*ai.GenerationError`) that wraps the bare sentinel and carries claude's captured `Stdout`/`Stderr` (and optionally `ExitCode`) from the runner `Result`. `transport.attempt` stops discarding `res` on the bad-content path, and `Generate` packs the captured output into the carrier when a non-zero exit / empty body survives the single retry — all without changing `Generate`'s signature.
 
@@ -17,7 +18,8 @@ status: draft
 - [ ] All project gates pass: `go build ./...`, `gofmt -l .` (empty), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues).
 
 ### Phase 2: Render verbatim claude output below a concise notes-failure line
-status: draft
+status: approved
+approved_at: 2026-06-17
 
 **Goal**: At the two notes `StageFailed` surfacing helpers — `surfaceAndUnwind` (forward release) and `surface` (single-version/interactive regenerate) — extract the Phase 1 carrier's captured output via an `errors.As`-based helper and feed it into `StageFailure.Output` using the settled composition rule. Extend `failureMessage` to derive the concise cause phrase (Fix 2) so the top-line `Message` is one short phrase, separated from the still-intact `%w` matchable chain. Keep the `padStage` gap unchanged (Fix 3 — no presenter or layout change).
 
