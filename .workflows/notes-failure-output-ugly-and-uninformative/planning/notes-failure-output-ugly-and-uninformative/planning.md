@@ -17,6 +17,15 @@ approved_at: 2026-06-17
 - [ ] `ai.ErrTimeout` and `ai.ErrCommandMissing` still short-circuit via `classifyFatal` with no carrier; the transport still never imports `config`; the single-retry ownership and the byte-identical success path are unchanged.
 - [ ] All project gates pass: `go build ./...`, `gofmt -l .` (empty), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues).
 
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| notes-failure-output-ugly-and-uninformative-1-1 | Introduce the GenerationError carrier and populate it on a non-zero exit | FakeRunner seeded with stdout on a non-zero exit; both stdout and stderr present; errors.Is(ErrGenerationFailed) still matches through the wrap |
+| notes-failure-output-ugly-and-uninformative-1-2 | Populate the carrier on an empty/whitespace body surviving the retry | empty body; whitespace-only body; captured stdout still carried when body is whitespace-only; exactly two invocations (single-retry ownership unchanged) |
+| notes-failure-output-ugly-and-uninformative-1-3 | Pin the load-bearing AI-seam invariants against the carrier change | context.Canceled propagates unchanged with no carrier and no sentinel; ErrTimeout carries no carrier; ErrCommandMissing carries no carrier; valid body returned verbatim with no carrier |
+
 ### Phase 2: Render verbatim claude output below a concise notes-failure line
 status: approved
 approved_at: 2026-06-17
