@@ -713,3 +713,86 @@ func TestRelease_PriorTag_NotesFailureAbort_AbortsBeforeMutation(t *testing.T) {
 	}
 	assertNoMutation(t, f)
 }
+
+// TestRelease_PriorTag_NotesFailureAbort_CapturedOutputReachesStageFailure is the
+// END-TO-END payoff proof for this fix: claude's captured stdout, composed by the
+// PRODUCTION transport, survives the full release spine and lands in
+// StageFailure.Output with the concise top-line Message set. It drives engine.Release
+// with the REAL production ai.Transport (Transport nil → aiTransport builds it over the
+// FakeRunner) and seeds claude to exit non-zero WITH stdout on BOTH attempts — the
+// transport packs its *ai.GenerationError carrier only AFTER the single retry is
+// exhausted (see internal/ai/transport.go), so a single name-keyed Seed (same outcome
+// every call) covers both attempts.
+//
+// The carrier then travels the production TWO-WRAP chain — transport.Generate (packs
+// carrier) → generator.generateFromDiffWithContext ("generating notes: %w") →
+// SelectBody/ResolveFailure (abortError "notes generation failed (%s): %w") →
+// surfaceAndUnwind — and surfaceAndUnwind's notesFailureOutput(cause)/failureMessage(cause)
+// must extract the captured Output and the concise Message through that nested %w chain
+// (errors.As/errors.Is traverse it). A regression in the generator's wrap layer, the
+// SelectBody carrier plumbing, or the non-zero-exit-plus-stdout seeding contract would
+// flip Output to "" — caught by no other test (the sibling abort test seeds EMPTY stdout
+// and only asserts a StageFailed fired; the white-box tests hand-construct the carrier).
+//
+// It complements TestRelease_PriorTag_NotesFailureAbort_AbortsBeforeMutation (which keeps
+// owning the abort-before-mutation guarantee) by additionally pinning the carried payload,
+// while re-asserting the same abort/no-mutation invariants so this proof does not weaken
+// when run alone.
+func TestRelease_PriorTag_NotesFailureAbort_CapturedOutputReachesStageFailure(t *testing.T) {
+	t.Parallel()
+
+	// claude's actual message on stdout behind a non-zero exit (e.g. an over-long prompt).
+	const claudeStdout = "Prompt is too long"
+	// The concise post-retry phrase notes.CauseText derives from ai.ErrGenerationFailed.
+	const conciseMessage = "AI returned empty/invalid notes after retry"
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	seedNormalAINotes(f)
+	// A non-zero exit carrying stdout on EVERY claude call (a single name-keyed Seed
+	// returns the same outcome for both the first attempt and the retry). The transport
+	// classifies this as bad CONTENT (not a fatal cause), retries once, and packs the
+	// retry's captured stdout into its *ai.GenerationError carrier. The non-nil err mirrors
+	// the real runner's non-zero-exit contract (a plain exit error, NOT a fatal cause).
+	f.Seed("claude", runner.Result{Stdout: claudeStdout, ExitCode: 1}, errors.New("exit status 1"))
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions())
+
+	// The run aborts non-zero through the production abortError chain (abort mode is the
+	// default — no on_notes_failure=fallback config), preserving the sibling test's guarantee.
+	assertAbortNonZero(t, err)
+	assertNoMutation(t, f)
+
+	// The PAYOFF: claude's captured stdout reached StageFailure.Output through the full
+	// transport → generator → SelectBody/ResolveFailure → surfaceAndUnwind chain, with the
+	// concise phrase as the top-line Message (no verbose nested %w concatenation).
+	sf := onlyStageFailureEvent(t, rec)
+	if sf.Output != claudeStdout {
+		t.Errorf("StageFailure.Output = %q, want claude's captured stdout %q (carrier did not survive the two-wrap chain)", sf.Output, claudeStdout)
+	}
+	if sf.Message != conciseMessage {
+		t.Errorf("StageFailure.Message = %q, want the concise phrase %q", sf.Message, conciseMessage)
+	}
+}
+
+// onlyStageFailureEvent returns the single recorded StageFailed payload, failing the test
+// if there is not exactly one (the notes-failure abort surfaces exactly one).
+func onlyStageFailureEvent(t *testing.T, rec *presentertest.RecordingPresenter) presenter.StageFailure {
+	t.Helper()
+	var found *presenter.StageFailure
+	for i := range rec.Events {
+		if rec.Events[i].Kind == presentertest.KindStageFailed {
+			if found != nil {
+				t.Fatalf("recorded more than one StageFailed event; kinds = %v", rec.Kinds())
+			}
+			sf := rec.Events[i].StageFailed
+			found = &sf
+		}
+	}
+	if found == nil {
+		t.Fatalf("no StageFailed event recorded; kinds = %v", rec.Kinds())
+	}
+	return *found
+}
