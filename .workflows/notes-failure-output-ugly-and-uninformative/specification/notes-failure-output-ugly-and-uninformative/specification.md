@@ -41,9 +41,15 @@ This is the **load-bearing fix** — it is what lets the operator see the actual
 
 1. **Upgrade `ai.ErrGenerationFailed` into a typed carrier error** (e.g. `*ai.GenerationError`) that:
    - **wraps** the sentinel, so `errors.Is(err, ErrGenerationFailed)` still matches (callers that branch on the three sentinels are unaffected); and
-   - **carries** claude's captured output from the runner `Result`. It holds the captured `Stdout` and `Stderr` as distinct fields (it may also keep `ExitCode`) — mirroring how `*hooks.HookError` holds the whole `runner.Result`. The rendered `Output` is composed **stdout-first** (claude's `Prompt is too long` is emitted on **stdout**, not stderr — see step 3).
+   - **carries** claude's captured output from the runner `Result`. It holds the captured `Stdout` and `Stderr` as distinct fields (it may also keep `ExitCode`) — mirroring how `*hooks.HookError` holds the whole `runner.Result`. (How the two streams compose into the rendered `Output` is the settled rule in step 3.)
 2. **`transport.attempt` stops discarding `res`** on the bad-content error path; **`Generate` packs the captured output** into the carrier when a non-zero exit / empty body survives the single retry. The `Generate` signature is unchanged — the captured output travels on the returned error, not via a new return value.
-3. **The engine mirrors the `hookFailureOutput` *pattern*** (a typed-error extraction helper) — but **not its field choice**. `hookFailureOutput` reads `Result.Stderr`; claude's payload here is on **stdout**, so a literal copy would render nothing. The new helper uses `errors.As(cause, &genErr)` — which traverses the `%w` chain, so it still matches when the carrier is wrapped inside `abortError`'s chain on the forward path — and reads the carrier's stdout (including stderr when stdout is empty). The notes surfacing sites set `StageFailure.Output` to the extracted output (exact site list in Scope & Affected Surfaces).
+3. **The engine mirrors the `hookFailureOutput` *pattern*** (a typed-error extraction helper) — but **not its field choice**. `hookFailureOutput` reads `Result.Stderr`; claude's payload here is on **stdout**, so a literal copy would render nothing. The new helper uses `errors.As(cause, &genErr)` — which traverses the `%w` chain, so it still matches when the carrier is wrapped inside `abortError`'s chain on the forward path — and **composes the captured `Output`** by this **settled rule**:
+   - Trim leading/trailing whitespace from each stream for the emptiness check; a whitespace-only stream counts as **empty**.
+   - Include the non-empty streams **stdout first, then stderr**, joined by a single newline. Both are shown when both are present (most informative); stdout leads because claude's message (e.g. `Prompt is too long`) is on stdout.
+   - Trim trailing whitespace from the composed result before assignment, so there is no dangling blank line; **internal content is preserved verbatim** (the presenter's `writeNotesBody` re-adds exactly one trailing newline).
+   - When both streams are empty after trimming, `Output` is **empty** and the ✗ line stands alone.
+
+   The notes surfacing sites set `StageFailure.Output` to this composed value (exact site list in Scope & Affected Surfaces).
 4. **No presenter change is needed for this facet** — `StageFailed` (`pretty.go`) already renders a verbatim captured body below the ✗ line via `writeNotesBody` when `StageFailure.Output != ""`.
 
 **Per-cause `Output` behaviour:** only the **generation-failed** cause (a non-zero exit / empty body that survived the retry) carries captured output. The other `causeText` causes render the concise phrase with an **empty `Output`** — the ✗ line stands alone, per the presenter contract:
@@ -136,7 +142,7 @@ A notes-generation AI failure (non-zero exit or empty/invalid body after retry) 
   Prompt is too long
 ```
 
-1. **`StageFailure.Output` is populated** with claude's captured output (stdout-first) verbatim and rendered below the ✗ line.
+1. **`StageFailure.Output` is populated** with claude's captured output composed by the settled rule (non-empty streams, stdout then stderr, single-newline-joined; surrounding whitespace trimmed, internal content verbatim) and rendered below the ✗ line.
 2. **The top-line `Message` is the concise cause phrase** — it does not contain the nested `%w` chain, does not begin with the stage label as a prefix (no `notes notes …`), and does not contain "failed". (An incidental "notes" inside the cause phrase is allowed; the concise-message test asserts absence of the leading-label duplication and of "failed", not absence of the substring "notes".)
 3. **Both `StageFailed` surfacing paths behave identically** — forward release (`surfaceAndUnwind`) and single-version/interactive regenerate (`surface`). The batch `--all` per-version skip `Warn` is out of scope (see Scope & Affected Surfaces).
 4. **The `padStage` gap is unchanged** for all aligned lines.
