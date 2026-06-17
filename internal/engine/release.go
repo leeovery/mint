@@ -34,7 +34,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
+	"mint/internal/ai"
 	"mint/internal/aitransport"
 	"mint/internal/config"
 	"mint/internal/git"
@@ -1594,6 +1596,41 @@ func hookFailureOutput(cause error) string {
 		return hookErr.Result.Stderr
 	}
 	return ""
+}
+
+// notesFailureOutput extracts claude's captured output from a *ai.GenerationError
+// carrier and composes it for StageFailure.Output. It mirrors hookFailureOutput's
+// PATTERN — a typed-carrier extraction — but NOT its field choice: the hook helper reads
+// Result.Stderr, whereas claude writes its payload (e.g. "Prompt is too long") to STDOUT,
+// so a literal copy of the hook helper would render nothing. errors.As is used precisely
+// because it traverses the %w chain, so the carrier still matches when it sits inside
+// abortError's forward chain ("notes generation failed (%s): %w") OR regenerate's shorter
+// "generating notes: %w" chain. Any non-carrier cause (timeout, command-missing,
+// diff-too-large, or a plain error) yields "" so the ✗ line stands alone.
+//
+// Composition follows the settled rule: each stream is trimmed only for the EMPTINESS
+// decision (a whitespace-only stream counts as empty); the non-empty streams are included
+// stdout-first then stderr, joined by a single newline when both are present; the included
+// content is kept VERBATIM (interior whitespace preserved); only the composed result's
+// TRAILING whitespace is trimmed so there is no dangling blank line — the presenter's
+// writeNotesBody re-adds exactly one trailing newline. Both streams empty → "".
+func notesFailureOutput(cause error) string {
+	var genErr *ai.GenerationError
+	if !errors.As(cause, &genErr) {
+		return ""
+	}
+
+	// Decide inclusion on the trimmed view, keep the original (verbatim) values for output.
+	var streams []string
+	if strings.TrimSpace(genErr.Stdout) != "" {
+		streams = append(streams, genErr.Stdout)
+	}
+	if strings.TrimSpace(genErr.Stderr) != "" {
+		streams = append(streams, genErr.Stderr)
+	}
+
+	out := strings.Join(streams, "\n")
+	return strings.TrimRightFunc(out, unicode.IsSpace)
 }
 
 // surface renders a stage failure through the presenter and returns the engine's
