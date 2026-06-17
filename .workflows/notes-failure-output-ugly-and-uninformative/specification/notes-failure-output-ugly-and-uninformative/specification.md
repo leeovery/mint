@@ -29,6 +29,25 @@ The failure should render claude's verbatim captured output below the ✗ line, 
 - `claude`'s captured stdout/stderr is shown verbatim in the `Output` block below.
 - The failure-line column layout (`padStage` gap) is settled deliberately, with pinned presenter tests updated to match.
 
+## Fix 1 — Carry claude's captured output to `StageFailure.Output` (transport-level)
+
+This is the **load-bearing fix** — it is what lets the operator see the actual message. The other two facets are polish that ride on it.
+
+**Root cause:** `ai.Transport.attempt` returns `"", err` on a non-zero exit, discarding the fully-populated runner `Result` (claude's `Prompt is too long` on stdout). `ai.ErrGenerationFailed` is a bare sentinel with no payload, so nothing downstream can populate `StageFailure.Output` — even though the presenter already knows how to render it.
+
+**Change:**
+
+1. **Upgrade `ai.ErrGenerationFailed` into a typed carrier error** (e.g. `*ai.GenerationError`) that:
+   - **wraps** the sentinel, so `errors.Is(err, ErrGenerationFailed)` still matches (callers that branch on the three sentinels are unaffected); and
+   - **carries** claude's captured stdout/stderr taken from the runner `Result`.
+2. **`transport.attempt` stops discarding `res`** on the error path; **`Generate` packs the captured output** into the carrier. The `Generate` signature is unchanged — the captured output travels on the returned error, not via a new return value.
+3. **The engine mirrors the existing `hookFailureOutput` precedent**: a helper extracts the captured output from the error, and **both** notes surfacing sites set `StageFailure.Output` to it — `surfaceAndUnwind("notes", …)` (forward release) **and** `surface("notes", …)` (regenerate).
+4. **No presenter change is needed for this facet** — `StageFailed` (`pretty.go`) already renders a verbatim captured body below the ✗ line via `writeNotesBody` when `StageFailure.Output != ""`.
+
+**Why transport-level:** fixing the discard at the transport means `mint release`, `mint release regenerate`, **and** `mint commit` all benefit from one seam — they share the same `ai.Transport`. The transport stays content-agnostic (never imports `config`).
+
+**Option chosen:** typed carrier error (mirrors `*hooks.HookError`, keeps `Generate`'s signature and `errors.Is` routing intact) **over** returning the captured output as a separate return value (which would churn every call site).
+
 ---
 
 ## Working Notes
