@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-06-17
+
+✨ Added
+
+- `mint setup` now emits a self-contained overview of every mint command, the commit model, and the AI transport contract — the agent no longer needs to consult the README.
+
+🔧 Changed
+
+- The setup guide no longer refers the configuring agent to mint's README; step 2 of the procedure routes it to the guide's own sections, which are version-matched to the installed binary.
+
 ## [0.0.6] - 2026-06-17
 
 ✨ Added
