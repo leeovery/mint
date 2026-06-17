@@ -65,6 +65,18 @@ Target render for the reported case:
 
 **Option chosen:** concise phrase from `causeText` (CHOSEN) **over** continuing to render the full nested chain. The nested chain is correct for `errors.Is`/logs but human-hostile as a display string; separating the matchable error from the display message is the fix.
 
+## Fix 3 — Keep the `padStage` gap for failure lines
+
+**Decision: keep the gap. No change to `padStage` or the `StageFailed` column layout.**
+
+**Rationale:** once Fix 2 lands, the "notes … notes" duplication is gone regardless of the gap, which removes the only functional driver to change the layout. Keeping the gap is column-consistent with the `✓` (success) and `↩` (unwound) lines and is the lowest-risk option.
+
+**Why not drop the gap:** `padStage` is shared by four call sites — `StageSucceeded`, `StageFailed`, `Unwound`, and `failNotInteractive`. Dropping the gap for `StageFailed` alone would touch only `pretty_test.go`, but editing `padStage` itself would ripple to the other three aligned lines and break the exact-line contracts pinned in `gate_forbidden_test.go` and `askline_test.go`. With no remaining functional driver after Fix 2, that contract churn is unwarranted.
+
+**Test impact:** the only `pretty_test.go` failure-line assertions that change are those affected by Fix 2's concise-message text. `gate_forbidden_test.go` and `askline_test.go` stay untouched (they pin `failNotInteractive`'s `padStage(label)`, not the notes stage).
+
+**Option chosen:** keep the gap (CHOSEN) **over** dropping the `padStage` gap for failures.
+
 ---
 
 ## Working Notes
