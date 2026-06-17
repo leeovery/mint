@@ -1,0 +1,15 @@
+{
+  "name": "notes-failure-output-ugly-and-uninformative",
+  "work_type": "bugfix",
+  "status": "in-progress",
+  "created": "2026-06-17",
+  "description": "Fix mint release notes-failure rendering: surface the AI`s real error verbatim, collapse the redundant top-line message, and settle the failure-line (padStage) layout",
+  "phases": {},
+  "seeds": [
+    {
+      "path": "seeds/2026-06-14-notes-failure-output-ugly-and-uninformative.md",
+      "source": "inbox:bug",
+      "seeded_at": "2026-06-17T12:48:10Z"
+    }
+  ]
+}
