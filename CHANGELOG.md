@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.6] - 2026-06-17
+
+✨ Added
+
+- `mint setup` — a new command that prints a version-matched AI-assisted configuration guide to stdout, usable from any directory without a git repo.
+- Config-metadata source of truth (`config.MetadataRows()`) — a single in-binary, drift-tested table of every config key, its level, compiled default, and description, enforced against the schema by a bijection test that fails the build on any mismatch.
+- `internal/setupguide` package — renders the setup guide from the config-metadata SoT, with stable section markers (`<!-- mint:section:NAME -->`) so structural tests key on anchors rather than prose.
+- `internal/configtest` package — a shared test-support seam for indexing the config-metadata SoT by `(level, key)` pair, consumed by both `config_test` and `setupguide_test`.
+
+🔧 Changed
+
+- `mint init` now writes a minimal `.mint.toml` — an empty body plus a short header pointing to the GitHub docs and `mint setup` — instead of the previous commented template with every key shown at its default.
+- The README's Configuration section now documents every key in per-key reference tables and describes the minimal generated file rather than reproducing the old annotated template inline.
+- `DefaultMaxDiffLines` is now an exported constant so the config-metadata SoT and other derivation sites can reference it without re-typing the literal.
+
 ## [0.0.5] - 2026-06-15
 
 ✨ Added
