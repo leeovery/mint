@@ -1050,6 +1050,11 @@ func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start
 	deps.Presenter.StageFailed(presenter.StageFailure{
 		Name:    stage,
 		Message: failureMessage(cause),
+		// notesFailureOutput is called for EVERY stage (pre_tag, notes, record, preflight,
+		// tag) — not special-cased to "notes" — because it returns "" for any non-carrier
+		// cause, so only a notes/AI generation-failure carrier populates Output; every other
+		// stage's failure leaves the ✗ line standing alone.
+		Output: notesFailureOutput(cause),
 	})
 	return Unwind(ctx, deps, start, made, cause)
 }
@@ -1642,6 +1647,12 @@ func surface(p presenter.Presenter, stage string, cause error) error {
 	p.StageFailed(presenter.StageFailure{
 		Name:    stage,
 		Message: failureMessage(cause),
+		// notesFailureOutput composes claude's captured output for a notes/AI
+		// generation-failure carrier and returns "" for every other cause (so a config /
+		// preflight / version failure here leaves the ✗ line standing alone). This makes
+		// the regenerate single-version/interactive notes path render IDENTICALLY to the
+		// forward-release surfaceAndUnwind path for the same cause.
+		Output: notesFailureOutput(cause),
 	})
 	return abort(cause)
 }

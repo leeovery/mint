@@ -615,7 +615,7 @@ func TestPrettyPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testin
 // summary — the suppression check runs BEFORE the verb dispatch.
 func TestPrettyPresenterFailedRegenerateSuppressesClose(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.StageFailed(presenter.StageFailure{Name: "notes", Message: "claude failed"})
+		p.StageFailed(presenter.StageFailure{Name: "notes", Message: "AI returned empty/invalid notes after retry"})
 		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
 	})
 
