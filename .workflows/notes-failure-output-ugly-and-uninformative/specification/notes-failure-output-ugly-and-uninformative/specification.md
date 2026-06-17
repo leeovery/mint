@@ -35,6 +35,8 @@ This is the **load-bearing fix** — it is what lets the operator see the actual
 
 **Root cause:** `ai.Transport.attempt` returns `"", err` on a non-zero exit, discarding the fully-populated runner `Result` (claude's `Prompt is too long` on stdout). `ai.ErrGenerationFailed` is a bare sentinel with no payload, so nothing downstream can populate `StageFailure.Output` — even though the presenter already knows how to render it.
 
+**Precondition (runner contract):** the fix rests on the runner's *documented* guarantee that on a non-zero exit the `Result` is **still fully populated** (`Stdout`/`Stderr`/`ExitCode`) alongside the non-nil error (`internal/runner/runner.go`). Synthesis validation confirmed `exec_runner.go`'s `translateRun` builds `Stdout` **before** the `*exec.ExitError` branch and returns the populated `res`. The captured output is therefore guaranteed present (not best-effort) at the one seam where it is currently discarded — so `transport.attempt` "stops discarding `res`" has something real to capture.
+
 **Change:**
 
 1. **Upgrade `ai.ErrGenerationFailed` into a typed carrier error** (e.g. `*ai.GenerationError`) that:
@@ -43,6 +45,13 @@ This is the **load-bearing fix** — it is what lets the operator see the actual
 2. **`transport.attempt` stops discarding `res`** on the error path; **`Generate` packs the captured output** into the carrier. The `Generate` signature is unchanged — the captured output travels on the returned error, not via a new return value.
 3. **The engine mirrors the existing `hookFailureOutput` precedent**: a helper extracts the captured output from the error, and **both** notes surfacing sites set `StageFailure.Output` to it — `surfaceAndUnwind("notes", …)` (forward release) **and** `surface("notes", …)` (regenerate).
 4. **No presenter change is needed for this facet** — `StageFailed` (`pretty.go`) already renders a verbatim captured body below the ✗ line via `writeNotesBody` when `StageFailure.Output != ""`.
+
+**Precedents this fix mirrors (opt-in to existing mechanism, not new mechanism):**
+
+- `internal/presenter/pretty.go` `StageFailed` already renders a verbatim captured body below the ✗ line, pinned green by `TestPrettyPresenterStageFailedRendersCapturedOutputBelowGlyphLine` (using the `tag/push` case). The new engine/notes test **complements** this existing test (which the notes path simply never opted into) — it does not duplicate it.
+- `internal/commit/surface.go` `surfaceOutput` — passes a failed command's captured stderr verbatim as `StageFailure.Output`.
+- `internal/commit/run.go` `pushAfterCommit` — git's stderr travels verbatim in `Warning.Output`.
+- `internal/engine/release.go` `hookFailureOutput` — extracts a typed carrier error's captured `Result.Stderr` into `Output`; the analogous extraction helper for the AI carrier mirrors this.
 
 **Why transport-level:** fixing the discard at the transport means `mint release`, `mint release regenerate`, **and** `mint commit` all benefit from one seam — they share the same `ai.Transport`. The transport stays content-agnostic (never imports `config`).
 
@@ -132,6 +141,12 @@ All changes pass the project gates: `go build ./...`, `gofmt -l .` (empty), `go 
 ## Out of Scope
 
 - **Byte/token-aware diff ceiling.** The line-based `max_diff_lines` guard (default 50000) did not catch an 8.6k-line but ~867 KB byte-dense diff, which suggests a byte/token-aware ceiling would be valuable. This is **deliberately out of scope** — it is an enhancement to an input guard, not part of how a failure is *rendered*. It can be promoted to its own work unit later. This specification covers only the failure-rendering path: carrying the captured output, the concise message, and the layout decision.
+
+## Risk & Rollout
+
+- **Fix complexity: Low.** Mirrors the existing `StageFailure.Output` / `hookFailureOutput` precedent; no new presenter mechanism is introduced.
+- **Regression risk: Low–Medium.** Low given the Fix 3 decision to keep `padStage`; it would only rise to Medium if `padStage` were edited globally (which this spec does not do). The carrier must preserve `errors.Is(ErrGenerationFailed)` matching and the `context.Canceled` passthrough — both load-bearing AI-seam invariants (see Invariants to Preserve).
+- **Rollout: regular release, not a hotfix.** The bug degrades diagnosability but causes no data loss.
 
 ---
 
