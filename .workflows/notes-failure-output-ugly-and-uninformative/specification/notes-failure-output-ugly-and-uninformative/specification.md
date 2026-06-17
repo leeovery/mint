@@ -90,6 +90,16 @@ Both build `presenter.StageFailure{Name, Message}` with no `Output` today. The e
 
 **Note on regenerate's wrap chain:** regenerate's fresh path may carry a *shorter* wrap chain than forward release (it surfaces `GenerateFromRange`'s `"generating notes: %w"` directly rather than always re-wrapping through `abortError`/`causeText`). The concise-`Message` derivation (Fix 2) must therefore produce a clean phrase for both the forward and regenerate chains — not assume the forward-release chain shape.
 
+## Invariants to Preserve
+
+The carrier upgrade (Fix 1) touches the AI seam, which carries load-bearing contracts. The change MUST preserve all of them:
+
+1. **`errors.Is(err, ErrGenerationFailed)` still matches.** The new carrier error wraps the sentinel; callers that branch on the three sentinels (`ErrGenerationFailed` / `ErrTimeout` / `ErrCommandMissing`) are unaffected.
+2. **`context.Canceled` stays a passthrough.** Any change to `attempt`/`Generate` that wraps the runner `Result` into a richer error MUST preserve `classifyFatal`'s unchanged `context.Canceled` propagation — a cancel is not an AI failure and must never be routed to a fallback or swallowed by the carrier (CLAUDE.md AI-seam contract).
+3. **The transport stays content-agnostic.** It continues never to import `config`; the carrier holds raw captured output, not notes/commit-specific framing.
+4. **Single retry ownership is unchanged.** The transport still owns validation and the single bad-content retry; consumers never re-retry. The carrier is populated only after the retry is exhausted.
+5. **Byte-identical bodies on success.** The success path is untouched — generated notes/commit bodies still pass through verbatim.
+
 ---
 
 ## Working Notes
