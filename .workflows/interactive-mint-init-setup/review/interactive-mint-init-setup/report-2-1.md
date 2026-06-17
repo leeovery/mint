@@ -1,0 +1,63 @@
+TASK: interactive-mint-init-setup-2-1 — Author the embedded setup-guide body with stable section markers
+
+ACCEPTANCE CRITERIA:
+- A new pure emitter package returns the embedded setup-guide body as one static string and performs no IO.
+- The body carries all required content: pipeline/stage model (with shim role), AI etiquette, minimalism rule, existing-config/upgrade branch, the ordered inspect-and-map procedure (cwd-confirm, learn-mint, read-config-reference-early, inspect-and-map, propose/explain/approve, sanity-check), hook-detection guidance, AI-model-per-verb mapping, and diff_exclude scope.
+- Each of the five required sections (pipeline/hook model, etiquette, minimalism, existing-config/upgrade, config reference) is preceded by a stable, greppable marker defined as a package constant, decoupled from body prose.
+- The config-reference section carries its marker plus the assembly seam Task 2-2 fills; the prose-authoring path does not hand-write config metadata.
+- A structural test greps the marker constants and proves each section's presence; a section present without its marker would fail the test.
+- All standard gates pass.
+
+STATUS: Complete
+
+SPEC CONTEXT:
+The pivot moves setup interactivity out of `mint init` into an AI guide the binary emits via a new `mint setup` subcommand (spec lines 7-9). The guide must carry: the setup procedure / inspect-and-map flow (spec 117-132), mint's pipeline/stage model `preflight -> notes -> pre_tag -> tag+push (PONR) -> publish -> post_release` as a required drift-sensitive content section (134-148), hook detection & mapping with pre_tag-as-array (150-155), the collaborator cross-cutting principle (157-159), AI-model-per-verb representation (161-165), diff_exclude scope (167-169), AI etiquette (171-177), minimalism reconciled to the post-strip empty body (179-185, 231-233), the existing-`.mint.toml` diff/discuss/upgrade branch (187-193), and the one-line release-shim role mention (73-77). "Stable section markers" (spec 42) decides markers exist as fixed anchors and the structural test (214) keys on them, not on prose. The required marked sections are exactly the five: pipeline/hook model, etiquette, minimalism, existing-config/upgrade, config reference.
+
+IMPLEMENTATION:
+- Status: Implemented (and correctly survives the later 2-2 / 5-x / 6-x evolution of the package).
+- Location: internal/setupguide/setupguide.go.
+- Scope note: the file as-built also carries Task 2-2's config-reference render (renderConfigReference, LevelCell, defaultCell, the config import) plus refinements from tasks 5-1/5-2/6-3/6-4/6-5 (git log on the package). This is expected — 2-1's contributions are the prose sections, markers, assembly seam, and the pure-emitter shape, all of which are present and intact. The 2-2+ additions are out of 2-1's scope and not treated as drift here.
+- Pure emitter (criterion 1): package doc comment (lines 1-33) states PURE string emitter, NO filesystem/git/stdout IO, mirroring internal/initgen's style and doc register. Guide() (68-78) is the single guide entry, returns a strings.Join of static section strings. No os/exec, no os, no fmt.Print, no file IO anywhere. config is imported in exactly one path (renderConfigReference, a 2-2 concern), and the prose-authoring helpers stay config-free as the task required.
+- Required content (criterion 2):
+  - Pipeline/stage model with the exact ordered chain `preflight -> notes -> pre_tag -> tag + push (PONR) -> publish -> post_release` (line 158); preflight-runs-before/aborts (160-161), notes (162), pre_tag after notes & before tag accepting a single command OR array (163-165), PONR atomic push (166-168), publish (169), post_release after publish (170-171). Matches spec 138-148 exactly.
+  - Release-shim role mention: `./release` is what mint init drops, mint init creates it (173-176). Matches spec 73-77.
+  - Hook-detection guidance woven into the pipeline section: best-fit-and-flag, never silently skip "if it is in the customer's release script it is important", surface misfits honestly incl. "mint is not suitable", explain the model, pre_tag-as-array widens fit (178-190). Matches spec 150-155.
+  - Etiquette (197-222): ask interactively AI-agnostic Claude-Ask-User-otherwise-any-tool, confirm comfort + state exactly what changes before writing, never remove without explicit permission, surface diff_exclude inside the confirmation. Matches spec 171-177.
+  - diff_exclude scope (211-222): release-notes noise not generated code, gitignore'd paths already absent, real targets are tracked .workflows/.claude/docs/lockfiles, mint ships none -> surface interactively. Matches spec 167-169.
+  - Minimalism (230-248): activate only to set a non-default value, omit otherwise, omitting is not skipping/disabling (defaults compiled in), whole file optional + empty body, justify every activated key at confirmation, anti-bloat warning, read real defaults from the config-reference table never guess (DRY). Matches spec 179-185 incl. the post-strip reconciliation (231-233).
+  - Existing-config/upgrade (256-277): non-clobbering instinct, bring into context & discuss never silently overwrite, work-with-existing vs start-fresh-reusing-values, upgrade/migration detecting removed/renamed keys that fail DisallowUnknownFields, values that no longer fit, new keys worth considering, "setup doubles as upgrade-my-config-to-this-version". Matches spec 187-193.
+  - Procedure (104-144): the six ordered steps — (1) confirm working dir/repo root as the safety net + mint init loud-fail backstop, (2) learn mint reading mint's OWN README + minimalist philosophy, (3) read config reference NOW before inspect/edit pointing at the embedded section, (4) inspect-and-map (release process->hooks, noise->diff_exclude, version file->version_file/version_pattern, AI model per verb->ai_command, provider/release_branch only if auto-detect wrong), (5) propose->explain->approve, (6) sanity-check via DisallowUnknownFields + verify-loads. Matches spec 121-132. AI-model-per-verb mapping (same->shared ai_command, different->[release].ai_command + [commit].ai_command) is woven into step 4 (129-134) matching spec 161-165.
+  - Collaborator principle: header (82-96) frames the agent as a knowledgeable collaborator not an auto-configurer, with the honest "mint fits / needs adaptation / isn't right" outcome. Matches spec 157-159.
+- Notes: Content fidelity to the spec is high across every required section. The procedure step 3 correctly resolves the cold-arrival risk by making "read the embedded config reference" an explicit early ordered step.
+
+TESTS:
+- Status: Adequate.
+- Location: internal/setupguide/setupguide_test.go (external package setupguide_test).
+- Coverage of 2-1's contract:
+  - Structural marker presence: TestGuide_EmitsEverySectionMarker (104) iterates the sectionMarkers table keyed on the five exported marker CONSTANTS and asserts strings.Contains for each — the spec's required structural proof.
+  - Marker-not-prose decoupling + the negative guard (criterion 5): TestGuide_EachMarkerSitsOnItsOwnLine (153) asserts each marker appears as a whole line (lineEquals trims and compares equality), so a section body present WITHOUT its own marker line is not detected — this is the "prose-without-marker fails" guard. TestGuide_MarkersAreCommentAnchorsNotProse (135) pins the `<!-- mint:section:` / `-->` anchor shape so markers cannot collide with prose. TestGuide_MarkersAreUnique (119) blocks one marker masking another section's absence. Together these three are a genuine structural proof keyed on constants, not representative substrings — exactly the spec mandate. Removing any marker turns the suite red while leaving prose intact.
+  - Shim role: TestGuide_MentionsReleaseShimRole (178) asserts both "./release" and "mint init".
+  - First procedure step is cwd-confirm: TestGuide_FirstProcedureStepIsCwdConfirm (196) finds the first "1." line and asserts "working directory"/"repo root".
+  - Plan-named tests "it emits the {pipeline|etiquette|minimalism|existing-config|config-reference} section marker" are collapsed into one table-driven test (TestGuide_EmitsEverySectionMarker) keyed on the five constants — an acceptable and idiomatic consolidation; every marker is still individually pinned via the table rows.
+  - Procedure step 2 README disambiguation (TestGuide_LearnMintStepNamesMintsOwnReadme, 229), AI-model-per-verb (TestGuide_CarriesAIModelPerVerbMapping, 290), diff_exclude scope (TestGuide_CarriesDiffExcludeScope, 306) extend coverage to the woven content.
+  - Config-reference render tests (323-522) belong to Task 2-2/5-x/6-x, not 2-1; they correctly re-use 2-1's MarkerConfigReference seam (configReferenceBody anchors on it at line 20), confirming the 2-1 seam is stable for 2-2 to splice into.
+- Not under-tested: every required marked section, the negative no-marker guard, marker uniqueness, the anchor namespace, shim role, and first-step cwd-confirm are all covered.
+- Not over-tested: tests are behaviour-level and drift-resistant (marker constants, not literal prose; SoT-driven row assertions). No redundant or brittle frozen-string assertions on prose. The content-presence tests (shim, per-verb, diff_exclude) match named plan tests and are not bloat.
+- Notes: t.Parallel() is used throughout; external test package; helpers are well-documented. No assertion library is used (plain t.Errorf), consistent with the package's standalone nature — acceptable.
+
+CODE QUALITY:
+- Project conventions: Followed. Mirrors internal/initgen's pure-generator shape (package doc comment declaring no IO, string-returning functions). Heavy WHY-comments are present and true-to-as-built (every helper carries a contract comment; the doc comment explains the version-matching anti-drift rationale and the single config import path). No fmt.Print/os.Stdout/os.Stderr (CLAUDE.md seam 3 honoured — emission surface deliberately left to the cmd-layer write site, per the task's flagged decision). No os/exec, no direct git.
+- SOLID principles: Good. Single responsibility per helper (one section each); Guide() composes; the prose path and the config-render path are cleanly separated (config imported only in renderConfigReference).
+- Complexity: Low. Each section helper is a single string return. renderConfigReference is a flat loop; LevelCell/defaultCell are trivial branches.
+- Modern idioms: Yes. strings.Builder for the table, strings.Join for assembly, raw string literals with concatenated backtick-escaped inline-code spans where backticks are needed.
+- Readability: Good. Self-documenting; intent is clear; the markers-on-own-line contract is both documented and enforced by test.
+- Issues: None blocking.
+
+BLOCKING ISSUES:
+- None.
+
+NON-BLOCKING NOTES:
+- [idea] internal/setupguide/setupguide.go:158 — The pipeline model is flagged in-code as "drift-sensitive: it must match the engine" (line 148-150) but, unlike the config reference (drift-tested against the schema via the SoT), the prose stage chain and per-stage descriptions have no automated tie to the engine's actual stage ordering. A wording or ordering regression here would not be caught by any test. Decide whether a lightweight pin (e.g. assert the rendered chain contains the engine's known stage tokens in order, or reference an engine-side ordered constant) is worth adding; the spec calls this content drift-sensitive, so the gap is a conscious risk worth a decision rather than a mechanical fix.
+- [quickfix] internal/setupguide/setupguide_test.go:104 — TestGuide_EmitsEverySectionMarker asserts each marker is present (strings.Contains) but does not assert each marker appears EXACTLY once in Guide(). The plan's edge-case wording ("assert the marker count is exactly one per section") and the doc comment's "emitted on its own line immediately before its section" imply single occurrence; a duplicated marker (e.g. a copy-paste of a section) would pass all current tests. Add a per-marker count==1 assertion over Guide() to close that gap. (Mechanical, touches test logic only.)
+
+Verdict: Task 2-1's acceptance criteria are all met in the as-built code. The pure-emitter package, the five constant markers, the full required prose content matching spec semantics (including the exact pipeline chain, etiquette rules, minimalism reconciliation, existing-config/upgrade branch, and the ordered procedure with cwd-confirm first), the stable config-reference seam for 2-2, and a structural test that keys on marker constants with a working negative guard are all present. No blocking issues. Two non-blocking notes (engine-drift pin for the pipeline prose; exact-once marker-count assertion).
