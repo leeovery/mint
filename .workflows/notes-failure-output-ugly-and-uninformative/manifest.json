@@ -3,7 +3,7 @@
   "work_type": "bugfix",
   "status": "in-progress",
   "created": "2026-06-17",
-  "description": "Fix mint release notes-failure rendering: surface the AI`s real error verbatim, collapse the redundant top-line message, and settle the failure-line (padStage) layout",
+  "description": "Fix mint release notes-failure rendering: surface the AI's real error verbatim, collapse the redundant top-line message, and settle the failure-line (padStage) layout",
   "phases": {},
   "seeds": [
     {
