@@ -5,8 +5,10 @@
 //
 // WHY this exists as its own package rather than a config.MetadataByLevelKey() export:
 // the (level, key) index builder was duplicated across TWO external test packages —
-// config_test (metadata_test.go's rowKey + rowSet) and setupguide_test
-// (setupguide_test.go's rowKey + rowByLevelKey). A symbol in a _test.go file compiles
+// config_test (metadata_test.go's then-local rowKey + rowSet) and setupguide_test
+// (setupguide_test.go's then-local rowKey + rowByLevelKey), both since removed in favour
+// of this seam (the names survive only in this historical note, not in live code). A
+// symbol in a _test.go file compiles
 // only into THAT package's test binary, so it cannot be shared across packages; the
 // shared seam must live in an importable (non-_test.go) package. Option A — widening the
 // production config API with an exported indexer purely for test convenience — would
