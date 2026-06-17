@@ -6,7 +6,7 @@ total_proposed: 2
 # Analysis Tasks: notes-failure-output-ugly-and-uninformative (Cycle 1)
 
 ## Task 1: Consolidate duplicated abort-chain test helpers and concise-phrase assertions in the engine internal-test package
-status: pending
+status: approved
 severity: medium
 sources: duplication
 
@@ -34,7 +34,7 @@ sources: duplication
 - The consolidation is itself test code; correctness is proven by the existing engine internal tests continuing to pass unchanged in behaviour (same fatal-on-nil and same concise-phrase guards), under `go test -race ./internal/engine/...`.
 
 ## Task 2: Add an end-to-end release test that proves captured AI output reaches StageFailure.Output through the real transport→generator→resolve→surface chain
-status: pending
+status: approved
 severity: medium
 sources: architecture
 

@@ -48,7 +48,10 @@
             "notes-failure-output-ugly-and-uninformative-2": "tick-cdc9bb",
             "notes-failure-output-ugly-and-uninformative-2-1": "tick-fad2cc",
             "notes-failure-output-ugly-and-uninformative-2-2": "tick-1b4b50",
-            "notes-failure-output-ugly-and-uninformative-2-3": "tick-f84f5a"
+            "notes-failure-output-ugly-and-uninformative-2-3": "tick-f84f5a",
+            "notes-failure-output-ugly-and-uninformative-3": "tick-ace905",
+            "notes-failure-output-ugly-and-uninformative-3-1": "tick-a2d3fd",
+            "notes-failure-output-ugly-and-uninformative-3-2": "tick-3238c3"
           },
           "external_id": "tick-95e239"
         }
@@ -60,7 +63,7 @@
           "status": "in-progress",
           "task_gate_mode": "auto",
           "fix_gate_mode": "gated",
-          "analysis_gate_mode": "gated",
+          "analysis_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 1,
           "analysis_cycle_session": 1,

@@ -52,3 +52,14 @@ approved_at: 2026-06-17
 | notes-failure-output-ugly-and-uninformative-2-1 | Expose the concise cause phrase and collapse failureMessage for notes/AI failures | forward abortError chain; regenerate's shorter "generating notes:" chain; all four sentinels (ErrGenerationFailed, ErrTimeout, ErrCommandMissing, ErrDiffTooLarge); no leading "notes notes" prefix; no "failed"; defensive default for an unmapped cause; resetAndAbort's git cause still renders concise |
 | notes-failure-output-ugly-and-uninformative-2-2 | Add the carrier-output extraction helper composing stdout-then-stderr | errors.As matches through abortError's %w chain and the shorter regenerate chain; stdout-only; stderr-only; both present (stdout first, single-newline join); whitespace-only streams treated as empty (empty Output); internal content verbatim; trailing whitespace trimmed; non-carrier cause yields empty string |
 | notes-failure-output-ugly-and-uninformative-2-3 | Wire the composed Output into both notes StageFailed surfacing paths | forward release vs regenerate render identically; generation-failed carries Output; timeout / command-missing / diff-too-large render concise phrase with empty Output (✗ line stands alone); padStage gap unchanged; only pretty_test.go message text changes; gate_forbidden_test.go / askline_test.go untouched; batch reportSkip path untouched |
+
+### Phase 3: Analysis (Cycle 1)
+
+**Goal**: Address findings from Analysis (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| notes-failure-output-ugly-and-uninformative-3-1 | Consolidate duplicated abort-chain test helpers and concise-phrase assertions in the engine internal-test package | three byte-identical abort-chain helpers collapsed to one; magic literals "v1.0.0" / OnNotesFailure: "abort" in one place; concise-phrase triplet (no :, no "failed", no leading "notes" prefix) in one helper called from both forward and regenerate tests; no production source change |
+| notes-failure-output-ugly-and-uninformative-3-2 | Add an end-to-end release test that proves captured AI output reaches StageFailure.Output through the real transport→generator→resolve→surface chain | production transport (Transport nil); claude fails with non-empty stdout on both attempts (single-retry exhausted); two-wrap production chain (abortError → "generating notes: %w" → carrier); asserts Output == seeded stdout and Message == concise post-retry phrase; abort-before-mutation coverage preserved; no production source change |
