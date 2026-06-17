@@ -199,6 +199,12 @@ func TestTransport_Generate_RetriesOnceThenFailsOnBadContent(t *testing.T) {
 			if !errors.Is(err, ai.ErrGenerationFailed) {
 				t.Fatalf("error = %v, want it to match ErrGenerationFailed", err)
 			}
+			// All three bad-content shapes — empty, whitespace-only, and non-zero exit —
+			// converge on the SAME *ai.GenerationError carrier (unified, not divergent).
+			var genErr *ai.GenerationError
+			if !errors.As(err, &genErr) {
+				t.Errorf("error = %v, want it to yield a *ai.GenerationError via errors.As", err)
+			}
 			// Timeout and missing-tool are NOT this failure — keep them distinguishable.
 			if errors.Is(err, ai.ErrTimeout) {
 				t.Errorf("bad-content failure must not match ErrTimeout")
@@ -499,6 +505,96 @@ func TestTransport_Generate_DoesNotRetryMissingTool(t *testing.T) {
 	}
 	if n := len(r.Invocations()); n != 1 {
 		t.Errorf("invocations = %d, want 1 (a missing tool is not retried)", n)
+	}
+}
+
+func TestTransport_Generate_CarriesCapturedOutputOnEmptyBodySurvivingRetry(t *testing.T) {
+	t.Parallel()
+
+	// An empty body (a clean zero-exit call whose stdout is empty) is the OTHER bad-content
+	// path that survives the single retry. It must return the SAME *ai.GenerationError carrier
+	// as the non-zero-exit path — unified, not two divergent shapes — so the carrier is still
+	// retrievable via errors.As while errors.Is(ErrGenerationFailed) keeps matching. An empty
+	// stdout yields an empty Stdout field on the carrier (no synthesis; the transport carries
+	// exactly what claude wrote).
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: ""}, nil)
+
+	_, err := newTransport(r).Generate(t.Context(), "p")
+	if !errors.Is(err, ai.ErrGenerationFailed) {
+		t.Fatalf("error = %v, want it to match ErrGenerationFailed", err)
+	}
+
+	var genErr *ai.GenerationError
+	if !errors.As(err, &genErr) {
+		t.Fatalf("error = %v, want it to yield a *ai.GenerationError via errors.As", err)
+	}
+	if genErr.Stdout != "" {
+		t.Errorf("Stdout = %q, want empty (an empty body carries an empty stdout)", genErr.Stdout)
+	}
+}
+
+func TestTransport_Generate_CarriesWhitespaceBodyVerbatimSurvivingRetry(t *testing.T) {
+	t.Parallel()
+
+	// A whitespace-only body fails isValid (which trims for the emptiness check) and survives
+	// the retry, taking the carrier path. The transport does NOT trim — it carries the
+	// whitespace VERBATIM on the carrier's Stdout, because trimming/composition is Phase 2's
+	// settled rule, not the transport's job. The carrier must hold the bytes exactly as claude
+	// wrote them.
+	const whitespace = "   \n\t\n"
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: whitespace}, nil)
+
+	_, err := newTransport(r).Generate(t.Context(), "p")
+
+	var genErr *ai.GenerationError
+	if !errors.As(err, &genErr) {
+		t.Fatalf("error = %v, want it to yield a *ai.GenerationError via errors.As", err)
+	}
+	if genErr.Stdout != whitespace {
+		t.Errorf("Stdout = %q, want the whitespace carried verbatim %q (no trimming at the transport)", genErr.Stdout, whitespace)
+	}
+}
+
+func TestTransport_Generate_CarriesStderrWhenWhitespaceStdoutHidesRealStderr(t *testing.T) {
+	t.Parallel()
+
+	// The informative case: claude wrote a real message on STDERR but its stdout body is
+	// whitespace-only (zero exit). isValid sees only whitespace on stdout, so the body survives
+	// the retry to the carrier path — and the carrier must hold the stderr message so a
+	// downstream surfacing site can render it. Without threading the retry's captured res on the
+	// success (nil-error) branch, that stderr would be discarded.
+	const stderr = "Prompt is too long"
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: "   ", Stderr: stderr}, nil)
+
+	_, err := newTransport(r).Generate(t.Context(), "p")
+
+	var genErr *ai.GenerationError
+	if !errors.As(err, &genErr) {
+		t.Fatalf("error = %v, want it to yield a *ai.GenerationError via errors.As", err)
+	}
+	if genErr.Stderr != stderr {
+		t.Errorf("Stderr = %q, want the captured stderr message %q", genErr.Stderr, stderr)
+	}
+}
+
+func TestTransport_Generate_InvokesCommandTwiceOnEmptyBodySurvivingRetry(t *testing.T) {
+	t.Parallel()
+
+	// An empty body is bad CONTENT, so it triggers EXACTLY ONE retry before the carrier is
+	// packed — single-retry ownership is unchanged by routing the empty/whitespace path onto
+	// the carrier. The command must be invoked exactly twice (original + one retry, no more).
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: ""}, nil)
+
+	if _, err := newTransport(r).Generate(t.Context(), "p"); err == nil {
+		t.Fatalf("Generate returned nil error, want an empty-body failure")
+	}
+
+	if n := len(r.Invocations()); n != 2 {
+		t.Errorf("invocations = %d, want 2 (original + exactly one retry)", n)
 	}
 }
 

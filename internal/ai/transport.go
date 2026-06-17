@@ -41,11 +41,13 @@ var (
 )
 
 // GenerationError is the typed carrier for a bad-content failure that SURVIVED the
-// single retry on a non-zero command exit. It wraps the ErrGenerationFailed sentinel
-// (so errors.Is still matches it and the sentinel-routing callers — release's
-// on_notes_failure, commit's editor fallback — are unaffected) and carries the
-// command's captured output so a downstream surfacing site can render claude's actual
-// message (e.g. "Prompt is too long" on stdout) instead of a bare sentinel.
+// single retry — EITHER a non-zero command exit OR an empty/whitespace-only body. It
+// wraps the ErrGenerationFailed sentinel (so errors.Is still matches it and the
+// sentinel-routing callers — release's on_notes_failure, commit's editor fallback — are
+// unaffected) and carries the command's captured output so a downstream surfacing site
+// can render claude's actual message (e.g. "Prompt is too long" on stdout, or an
+// informative diagnostic on stderr behind a whitespace-only body) instead of a bare
+// sentinel.
 //
 // It mirrors how *hooks.HookError holds a failing entry's runner.Result, but holds the
 // two streams as DISTINCT fields: claude's payload arrives on Stdout, diagnostics on
@@ -206,9 +208,15 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 		return "", &GenerationError{Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode}
 	}
 	if !isValid(res.Stdout) {
-		// An empty/whitespace-only body (a clean exit with no usable content) carries no
-		// captured message worth surfacing, so it stays the bare sentinel.
-		return "", ErrGenerationFailed
+		// An empty/whitespace-only body that survived the retry is the OTHER bad-content
+		// shape, and it is unified onto the SAME carrier as the non-zero exit above — not a
+		// divergent bare sentinel. A clean (zero-exit) attempt still leaves res fully
+		// populated by the runner contract, so the carrier reflects whatever claude actually
+		// wrote: whitespace on Stdout VERBATIM (the transport never trims — composition is a
+		// downstream concern), and a real message on Stderr even when stdout is whitespace
+		// (an informative diagnostic that must not be discarded). The carrier wraps
+		// ErrGenerationFailed, so errors.Is still routes it.
+		return "", &GenerationError{Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode}
 	}
 	return res.Stdout, nil
 }
@@ -217,12 +225,14 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 // io.Reader is consumed once, so the retry must re-create it) and returning the captured
 // runner.Result alongside any error.
 //
-// It returns the WHOLE res — not just res.Stdout — so the bad-content path (a non-zero
-// exit) no longer discards the captured output: on a non-zero exit the runner contract
-// guarantees res is fully populated (Stdout/Stderr/ExitCode) alongside the non-nil error,
-// and Generate packs that into the GenerationError carrier when the exit survives the
-// retry. Fatal causes (timeout, missing tool, cancel) still ignore res — only their error
-// is classified.
+// It returns the WHOLE res — not just res.Stdout — so BOTH bad-content shapes can pack
+// the captured output into the GenerationError carrier when they survive the retry: on a
+// non-zero exit the runner contract guarantees res is fully populated (Stdout/Stderr/ExitCode)
+// alongside the non-nil error; on a clean (zero-exit) attempt whose body is empty/whitespace
+// the runner likewise leaves res populated alongside a NIL error, so Generate can still read
+// res.Stderr/res.ExitCode (a real diagnostic may sit on stderr behind a whitespace stdout).
+// Fatal causes (timeout, missing tool, cancel) still ignore res — only their error is
+// classified.
 //
 // The per-attempt deadline is applied CONDITIONALLY off t.deadline (already mapped by
 // NewTransport so nil ⇒ no deadline, non-nil ⇒ a strictly positive value): when t.deadline
