@@ -47,6 +47,13 @@ func recordedSurface(t *testing.T, cause error) presenter.StageFailure {
 
 // onlyStageFailure extracts the single recorded StageFailed payload, failing the test
 // if there is not exactly one.
+//
+// An intentional byte-identical twin, onlyStageFailureEvent, lives in the external
+// engine_test package (release_priortag_test.go). The duplication cannot be collapsed
+// into one func: this copy is in white-box package engine and is invisible to the
+// external package, exporting a test helper into the production package is forbidden,
+// and relocating tests across the package boundary is out of scope. Edit BOTH together
+// if the "exactly one StageFailed" contract or the RecordingPresenter event shape changes.
 func onlyStageFailure(t *testing.T, rec *presentertest.RecordingPresenter) presenter.StageFailure {
 	t.Helper()
 	var found *presenter.StageFailure

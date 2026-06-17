@@ -779,6 +779,14 @@ func TestRelease_PriorTag_NotesFailureAbort_CapturedOutputReachesStageFailure(t 
 
 // onlyStageFailureEvent returns the single recorded StageFailed payload, failing the test
 // if there is not exactly one (the notes-failure abort surfaces exactly one).
+//
+// An intentional byte-identical twin, onlyStageFailure, lives in the white-box package
+// engine test file (notesfailurewiring_internal_test.go). The duplication cannot be
+// collapsed into one func: this copy is in the external engine_test package and cannot
+// see the unexported package engine helper, exporting a test helper into the production
+// package is forbidden, and relocating tests across the package boundary is out of scope.
+// Edit BOTH together if the "exactly one StageFailed" contract or the RecordingPresenter
+// event shape changes.
 func onlyStageFailureEvent(t *testing.T, rec *presentertest.RecordingPresenter) presenter.StageFailure {
 	t.Helper()
 	var found *presenter.StageFailure
