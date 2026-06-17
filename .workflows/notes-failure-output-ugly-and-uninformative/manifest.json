@@ -33,7 +33,7 @@
         "notes-failure-output-ugly-and-uninformative": {
           "status": "in-progress",
           "format": "tick",
-          "spec_commit": "3910b0c3d7cd15050dbf8bf1199891126e0ff363",
+          "spec_commit": "0964e86731830cc3a02557f40aedf0995019efee",
           "task_list_gate_mode": "gated",
           "author_gate_mode": "gated",
           "finding_gate_mode": "gated",
