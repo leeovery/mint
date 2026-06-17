@@ -158,7 +158,7 @@
     "review": {
       "items": {
         "interactive-mint-init-setup": {
-          "status": "in-progress",
+          "status": "completed",
           "reviewed_tasks": [
             "interactive-mint-init-setup-1-1",
             "interactive-mint-init-setup-1-2",
