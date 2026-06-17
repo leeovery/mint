@@ -41,10 +41,15 @@ This is the **load-bearing fix** — it is what lets the operator see the actual
 
 1. **Upgrade `ai.ErrGenerationFailed` into a typed carrier error** (e.g. `*ai.GenerationError`) that:
    - **wraps** the sentinel, so `errors.Is(err, ErrGenerationFailed)` still matches (callers that branch on the three sentinels are unaffected); and
-   - **carries** claude's captured stdout/stderr taken from the runner `Result`.
-2. **`transport.attempt` stops discarding `res`** on the error path; **`Generate` packs the captured output** into the carrier. The `Generate` signature is unchanged — the captured output travels on the returned error, not via a new return value.
-3. **The engine mirrors the existing `hookFailureOutput` precedent**: a helper extracts the captured output from the error, and **both** notes surfacing sites set `StageFailure.Output` to it — `surfaceAndUnwind("notes", …)` (forward release) **and** `surface("notes", …)` (regenerate).
+   - **carries** claude's captured output from the runner `Result`. It holds the captured `Stdout` and `Stderr` as distinct fields (it may also keep `ExitCode`) — mirroring how `*hooks.HookError` holds the whole `runner.Result`. The rendered `Output` is composed **stdout-first** (claude's `Prompt is too long` is emitted on **stdout**, not stderr — see step 3).
+2. **`transport.attempt` stops discarding `res`** on the bad-content error path; **`Generate` packs the captured output** into the carrier when a non-zero exit / empty body survives the single retry. The `Generate` signature is unchanged — the captured output travels on the returned error, not via a new return value.
+3. **The engine mirrors the `hookFailureOutput` *pattern*** (a typed-error extraction helper) — but **not its field choice**. `hookFailureOutput` reads `Result.Stderr`; claude's payload here is on **stdout**, so a literal copy would render nothing. The new helper uses `errors.As(cause, &genErr)` — which traverses the `%w` chain, so it still matches when the carrier is wrapped inside `abortError`'s chain on the forward path — and reads the carrier's stdout (including stderr when stdout is empty). The notes surfacing sites set `StageFailure.Output` to the extracted output (exact site list in Scope & Affected Surfaces).
 4. **No presenter change is needed for this facet** — `StageFailed` (`pretty.go`) already renders a verbatim captured body below the ✗ line via `writeNotesBody` when `StageFailure.Output != ""`.
+
+**Per-cause `Output` behaviour:** only the **generation-failed** cause (a non-zero exit / empty body that survived the retry) carries captured output. The other `causeText` causes render the concise phrase with an **empty `Output`** — the ✗ line stands alone, per the presenter contract:
+
+- `ai.ErrTimeout` ("AI timed out") and `ai.ErrCommandMissing` ("AI tool not installed") short-circuit via `classifyFatal` and are not bad-content failures; they do not populate `Output` (a missing binary has no output; a timed-out call's partial output is not captured by this fix).
+- `notes.ErrDiffTooLarge` ("diff too large") originates in the `CheckDiffSize` guard and never reaches the transport, so it has no claude output and renders the concise phrase alone.
 
 **Precedents this fix mirrors (opt-in to existing mechanism, not new mechanism):**
 
@@ -53,7 +58,7 @@ This is the **load-bearing fix** — it is what lets the operator see the actual
 - `internal/commit/run.go` `pushAfterCommit` — git's stderr travels verbatim in `Warning.Output`.
 - `internal/engine/release.go` `hookFailureOutput` — extracts a typed carrier error's captured `Result.Stderr` into `Output`; the analogous extraction helper for the AI carrier mirrors this.
 
-**Why transport-level:** fixing the discard at the transport means `mint release`, `mint release regenerate`, **and** `mint commit` all benefit from one seam — they share the same `ai.Transport`. The transport stays content-agnostic (never imports `config`).
+**Why transport-level:** the discard is at the transport, which is shared by all three verbs, so fixing it once is the natural home. Release and regenerate gain the rendered `Output`; commit gains a carrier that does not break its `errors.Is`-based editor-fallback routing (its AI failure never reaches `StageFailed`, so it gains no rendered output — see Scope & Affected Surfaces). The transport stays content-agnostic (never imports `config`).
 
 **Option chosen:** typed carrier error (mirrors `*hooks.HookError`, keeps `Generate`'s signature and `errors.Is` routing intact) **over** returning the captured output as a separate return value (which would churn every call site).
 
@@ -61,7 +66,7 @@ This is the **load-bearing fix** — it is what lets the operator see the actual
 
 **Root cause:** the presenter-facing `Message` is the entire nested `%w` chain. Three layers each prepend their own text (`abortError` → `generate.go` wrap → `ErrGenerationFailed`), and the presenter faithfully renders the whole concatenation as the display string.
 
-**Change:** the presenter-facing `Message` shows only the short cause phrase that `causeText` already produces (e.g. `ErrGenerationFailed` → "AI returned empty/invalid notes after retry"). The message must **not** restate the stage name and must **not** repeat "failed". The verbose detail (claude's captured output) lives in the Fix-1 `Output` block, not in the top line.
+**Change:** the presenter-facing `Message` shows only the short cause phrase that `causeText` already produces (e.g. `ErrGenerationFailed` → "AI returned empty/invalid notes after retry"). The message must **not** begin with or duplicate the stage label as a leading prefix (no `notes  notes …`) and must **not** contain "failed". An incidental "notes" *inside* the descriptive cause phrase is acceptable — "AI returned empty/invalid notes after retry" is valid even though it contains the word "notes". The verbose detail (claude's captured output) lives in the Fix-1 `Output` block, not in the top line.
 
 Target render for the reported case:
 
@@ -69,6 +74,8 @@ Target render for the reported case:
 ✗ notes  AI returned empty/invalid notes after retry
   Prompt is too long
 ```
+
+**Seam (settled here):** the concise phrase is produced by the engine's single display-derivation helper, `failureMessage(cause)` in `internal/engine/release.go`, through which all `StageFailed` sites already funnel their `Message` (`surface`, `surfaceAndUnwind`, and `resetAndAbort`). `failureMessage` is extended to derive the concise phrase for notes/AI failures — mirroring its existing `*preflight.GateError` → `gate.Message()` branch (a typed error exposing a display-ready message). The phrase is the same mapping `causeText` provides; the engine accesses it via an exported derivation (an exported `causeText` equivalent, or a `Message()`-style method on the carrier / abort error) rather than rendering the wrapped `cause.Error()`. Centralising on `failureMessage` covers the forward chain (`abortError` → `causeText`), regenerate's shorter chain, AND `resetAndAbort` in one place. This is **option (a)** — change the engine display helper — chosen over (b) stripping `abortError`'s prefix (which would change the `errors.Is`-matchable / logged text) and (c) a brand-new display-only error type (largest change).
 
 **Sub-decision (settled here):** the `%w` wrapping chain (`abortError`/`generate.go` wrap) is **retained** for `errors.Is` matching and logs — it is correct Go hygiene and load-bearing for sentinel routing. What changes is that the **display `Message` is separated from the matchable error**: the surfacing path derives the concise display phrase rather than rendering the full nested `cause.Error()`. We do **not** tear out the error chain.
 
@@ -84,18 +91,22 @@ Target render for the reported case:
 
 **Test impact:** the only `pretty_test.go` failure-line assertions that change are those affected by Fix 2's concise-message text. `gate_forbidden_test.go` and `askline_test.go` stay untouched (they pin `failNotInteractive`'s `padStage(label)`, not the notes stage).
 
+**Note on the worked-example spacing:** the `✗ notes  …` examples throughout this spec use illustrative two-space spacing; the real failure line uses `padStage("notes")` column padding (the gap preserved per this decision). The updated `pretty_test.go` assertion replaces only the message text *after* the padded stage column — the padding itself is unchanged.
+
 **Option chosen:** keep the gap (CHOSEN) **over** dropping the `padStage` gap for failures.
 
 ## Scope & Affected Surfaces
 
-**Fix the transport once; three verbs benefit.** `mint release`, `mint release regenerate`, and `mint commit` all consume the same `ai.Transport`, which has the identical discard-claude's-output defect. The transport-level Fix 1 improves all three at once. (`mint commit`'s editor-fallback softens its symptom, but it still benefits.)
+**Fix the transport once; the shared seam serves all three verbs.** `mint release`, `mint release regenerate`, and `mint commit` all consume the same `ai.Transport`, which has the identical discard-claude's-output defect, so the carrier upgrade (Fix 1) lands once. **The user-visible improvement (verbatim claude output below a ✗ line) accrues to release and regenerate only.** A `mint commit` AI failure routes to the `$EDITOR` fallback (`isAIFallback` / `runEditorFallback` in `internal/commit/run.go`), never to `StageFailed`, so it has no `Output` render site. For commit the carrier is still correct and necessary: it MUST preserve `errors.Is(err, ErrGenerationFailed)` so the fallback still triggers (see Invariants). What commit gains is a non-broken seam, not new rendered output — no commit-side rendering or tests are in scope.
 
-**Both notes surfacing helpers must be covered** so regenerate's rendering is not left behind:
+**The `Output`-population change covers the two notes surfacing helpers** so regenerate's rendering is not left behind:
 
 - `surfaceAndUnwind(ctx, deps, "notes", …)` — the **forward release** notes stage (`internal/engine/release.go`).
 - `surface(p, "notes", err)` — the **regenerate** notes stage (`regenerate_batch.go`, `regenerate_interactive.go`) and the generic pre-PONR path.
 
-Both build `presenter.StageFailure{Name, Message}` with no `Output` today. The engine helper that extracts the captured output (mirroring `hookFailureOutput`) feeds `StageFailure.Output` at **both** sites.
+Both build `presenter.StageFailure{Name, Message}` with no `Output` today. The engine helper that extracts the captured output feeds `StageFailure.Output` at **both** sites.
+
+**Third `StageFailed` site — `resetAndAbort` (`internal/engine/regenerate_write.go`):** it also builds `presenter.StageFailure{Name, Message: failureMessage(cause)}` directly, for the changelog-regenerate record/push failure path. It is **out of scope for the `Output`-population change** — its `cause` is a git record/push failure, never the AI carrier — but it **inherits the concise `Message` for free** because it routes through the same `failureMessage` helper (Fix 2). It is called out here so an implementer auditing the spec against the code finds the third `StageFailure{}` builder accounted for, not unaddressed.
 
 **Note on regenerate's wrap chain:** regenerate's fresh path may carry a *shorter* wrap chain than forward release (it surfaces `GenerateFromRange`'s `"generating notes: %w"` directly rather than always re-wrapping through `abortError`/`causeText`). The concise-`Message` derivation (Fix 2) must therefore produce a clean phrase for both the forward and regenerate chains — not assume the forward-release chain shape.
 
@@ -118,8 +129,8 @@ A notes-generation AI failure (non-zero exit or empty/invalid body after retry) 
   Prompt is too long
 ```
 
-1. **`StageFailure.Output` is populated** with claude's captured stdout/stderr verbatim and rendered below the ✗ line.
-2. **The top-line `Message` is the concise cause phrase** — it does not contain the nested `%w` chain, does not restate the stage name, and does not repeat "failed".
+1. **`StageFailure.Output` is populated** with claude's captured output (stdout-first) verbatim and rendered below the ✗ line.
+2. **The top-line `Message` is the concise cause phrase** — it does not contain the nested `%w` chain, does not begin with the stage label as a prefix (no `notes notes …`), and does not contain "failed". (An incidental "notes" inside the cause phrase is allowed; the concise-message test asserts absence of the leading-label duplication and of "failed", not absence of the substring "notes".)
 3. **Both surfacing paths behave identically** — forward release (`surfaceAndUnwind`) and regenerate (`surface`).
 4. **The `padStage` gap is unchanged** for all aligned lines.
 
@@ -135,6 +146,8 @@ A notes-generation AI failure (non-zero exit or empty/invalid body after retry) 
 **Updated tests:**
 
 - Update the `pretty_test.go` failure-line assertions that the concise-`Message` change touches. Keep `gate_forbidden_test.go` and `askline_test.go` untouched (guaranteed by keeping `padStage`).
+
+**Stream split (as-built — do not assert otherwise):** the ✗ one-line summary is written to BOTH stdout and stderr; the captured body (`StageFailure.Output`) renders to **stdout only** (never duplicated to stderr). The new engine/notes wiring test asserts `StageFailure.Output` **population**, not the rendered stream; the existing pinned presenter test (`TestPrettyPresenterStageFailedRendersCapturedOutputBelowGlyphLine`) already covers stream placement.
 
 All changes pass the project gates: `go build ./...`, `gofmt -l .` (empty), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues).
 
