@@ -63,3 +63,14 @@ approved_at: 2026-06-17
 |-------------|------|------------|
 | notes-failure-output-ugly-and-uninformative-3-1 | Consolidate duplicated abort-chain test helpers and concise-phrase assertions in the engine internal-test package | three byte-identical abort-chain helpers collapsed to one; magic literals "v1.0.0" / OnNotesFailure: "abort" in one place; concise-phrase triplet (no :, no "failed", no leading "notes" prefix) in one helper called from both forward and regenerate tests; no production source change |
 | notes-failure-output-ugly-and-uninformative-3-2 | Add an end-to-end release test that proves captured AI output reaches StageFailure.Output through the real transport→generator→resolve→surface chain | production transport (Transport nil); claude fails with non-empty stdout on both attempts (single-retry exhausted); two-wrap production chain (abortError → "generating notes: %w" → carrier); asserts Output == seeded stdout and Message == concise post-retry phrase; abort-before-mutation coverage preserved; no production source change |
+
+### Phase 4: Analysis (Cycle 2)
+
+**Goal**: Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| notes-failure-output-ugly-and-uninformative-4-1 | Document the intentional cross-package twin of the single-StageFailed extraction helpers | two byte-identical helpers in different test packages (package engine vs package engine_test); cannot collapse to one func; symmetric cross-reference comments on both; no behaviour/signature change; no call site change |
+| notes-failure-output-ugly-and-uninformative-4-2 | Make GenerationError.Error()/ExitCode honest about its dual provenance | non-zero-exit path keeps "(exit %d)"; zero-exit empty/whitespace-body path renders empty-body variant (never "(exit 0)"); ExitCode doc covers both provenances; lowercase no trailing punctuation; errors.Is(ErrGenerationFailed) and Unwrap unchanged; concise-phrase display Message path unaffected |

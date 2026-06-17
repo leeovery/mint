@@ -6,7 +6,7 @@ total_proposed: 2
 # Analysis Tasks: notes-failure-output-ugly-and-uninformative (Cycle 2)
 
 ## Task 1: Document the intentional cross-package twin of the single-StageFailed extraction helpers
-status: pending
+status: approved
 severity: medium
 sources: duplication
 
@@ -36,7 +36,7 @@ Both take `(t *testing.T, rec *presentertest.RecordingPresenter)`, loop `rec.Eve
 - No new test needed (this is documentation of existing test scaffolding); the existing engine test suite (`go test -race ./internal/engine/...`) must continue to pass unchanged, proving the helpers' behaviour is untouched.
 
 ## Task 2: Make GenerationError.Error()/ExitCode honest about its dual provenance
-status: pending
+status: approved
 severity: low
 sources: architecture
 
