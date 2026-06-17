@@ -502,6 +502,103 @@ func TestTransport_Generate_DoesNotRetryMissingTool(t *testing.T) {
 	}
 }
 
+func TestTransport_Generate_CarriesCapturedStdoutAndStderrOnNonZeroExitSurvivingRetry(t *testing.T) {
+	t.Parallel()
+
+	// The load-bearing carrier behaviour: a non-zero command exit that SURVIVES the
+	// single retry must no longer discard the runner's fully-populated Result. The
+	// returned error must yield a *ai.GenerationError via errors.As carrying claude's
+	// captured stdout (its actual message — e.g. "Prompt is too long") and stderr as
+	// DISTINCT fields plus the exit code, mirroring how *hooks.HookError holds the
+	// failing entry's Result. This is the previously-untested shape (stdout present on
+	// a non-zero exit) that exposed the defect.
+	const stdout = "Prompt is too long"
+	const stderr = "some stderr"
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: stdout, Stderr: stderr, ExitCode: 1}, errors.New("exit status 1"))
+
+	_, err := newTransport(r).Generate(t.Context(), "p")
+
+	var genErr *ai.GenerationError
+	if !errors.As(err, &genErr) {
+		t.Fatalf("error = %v, want it to yield a *ai.GenerationError via errors.As", err)
+	}
+	if genErr.Stdout != stdout {
+		t.Errorf("Stdout = %q, want the captured stdout %q", genErr.Stdout, stdout)
+	}
+	if genErr.Stderr != stderr {
+		t.Errorf("Stderr = %q, want the captured stderr %q", genErr.Stderr, stderr)
+	}
+	if genErr.ExitCode != 1 {
+		t.Errorf("ExitCode = %d, want 1", genErr.ExitCode)
+	}
+}
+
+func TestTransport_Generate_CarrierStillMatchesErrGenerationFailed(t *testing.T) {
+	t.Parallel()
+
+	// The carrier WRAPS the ErrGenerationFailed sentinel, so errors.Is still matches —
+	// the sentinel routing callers depend on (release on_notes_failure, commit editor
+	// fallback) is unaffected. The carrier must remain DISTINGUISHABLE from the two
+	// short-circuit causes: ErrTimeout and ErrCommandMissing both stay false.
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: "I cannot help", ExitCode: 1}, errors.New("exit status 1"))
+
+	_, err := newTransport(r).Generate(t.Context(), "p")
+	if !errors.Is(err, ai.ErrGenerationFailed) {
+		t.Fatalf("error = %v, want it to match ErrGenerationFailed through the carrier wrap", err)
+	}
+	if errors.Is(err, ai.ErrTimeout) {
+		t.Errorf("the carrier must not match ErrTimeout")
+	}
+	if errors.Is(err, ai.ErrCommandMissing) {
+		t.Errorf("the carrier must not match ErrCommandMissing")
+	}
+}
+
+func TestTransport_Generate_CarriesStdoutOnlyWhenStderrEmpty(t *testing.T) {
+	t.Parallel()
+
+	// Both streams are kept DISTINCT and carried independently (composition into a
+	// single Output is Phase 2). When only stdout carries claude's message and stderr
+	// is empty, the carrier holds the stdout and an empty stderr — no pre-merge.
+	const stdout = "Prompt is too long"
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: stdout, Stderr: "", ExitCode: 1}, errors.New("exit status 1"))
+
+	_, err := newTransport(r).Generate(t.Context(), "p")
+
+	var genErr *ai.GenerationError
+	if !errors.As(err, &genErr) {
+		t.Fatalf("error = %v, want it to yield a *ai.GenerationError via errors.As", err)
+	}
+	if genErr.Stdout != stdout {
+		t.Errorf("Stdout = %q, want the captured stdout %q", genErr.Stdout, stdout)
+	}
+	if genErr.Stderr != "" {
+		t.Errorf("Stderr = %q, want empty (kept distinct, no pre-merge)", genErr.Stderr)
+	}
+}
+
+func TestTransport_Generate_InvokesCommandTwiceOnNonZeroExitSurvivingRetry(t *testing.T) {
+	t.Parallel()
+
+	// A non-zero exit is bad CONTENT, so it triggers EXACTLY ONE retry before the
+	// carrier is packed. The captured output packed into the carrier is the SECOND
+	// (retry) attempt's — populating it only after the retry is exhausted — so the
+	// command must be invoked exactly twice (original + one retry, no more).
+	r := runner.NewFakeRunner()
+	r.Seed("claude", runner.Result{Stdout: "Prompt is too long", ExitCode: 1}, errors.New("exit status 1"))
+
+	if _, err := newTransport(r).Generate(t.Context(), "p"); err == nil {
+		t.Fatalf("Generate returned nil error, want a non-zero-exit failure")
+	}
+
+	if n := len(r.Invocations()); n != 2 {
+		t.Errorf("invocations = %d, want 2 (original + exactly one retry)", n)
+	}
+}
+
 // equalArgs reports whether two argument slices are element-for-element equal, so
 // command-line assertions check the exact argv rather than a substring.
 func equalArgs(got, want []string) bool {

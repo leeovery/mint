@@ -40,6 +40,36 @@ var (
 	ErrCommandMissing = errors.New("ai command not found")
 )
 
+// GenerationError is the typed carrier for a bad-content failure that SURVIVED the
+// single retry on a non-zero command exit. It wraps the ErrGenerationFailed sentinel
+// (so errors.Is still matches it and the sentinel-routing callers — release's
+// on_notes_failure, commit's editor fallback — are unaffected) and carries the
+// command's captured output so a downstream surfacing site can render claude's actual
+// message (e.g. "Prompt is too long" on stdout) instead of a bare sentinel.
+//
+// It mirrors how *hooks.HookError holds a failing entry's runner.Result, but holds the
+// two streams as DISTINCT fields: claude's payload arrives on Stdout, diagnostics on
+// Stderr, and composing them into a single rendered Output is a downstream concern, so
+// the transport keeps them separate and un-merged here.
+type GenerationError struct {
+	// Stdout is the command's captured standard output — where claude writes its
+	// message (the human-readable cause of a non-zero exit).
+	Stdout string
+	// Stderr is the command's captured standard error — diagnostics that accompany
+	// the failure, kept distinct from Stdout.
+	Stderr string
+	// ExitCode is the non-zero process exit status that classified this as bad content.
+	ExitCode int
+}
+
+func (e *GenerationError) Error() string {
+	return fmt.Sprintf("ai generation failed (exit %d)", e.ExitCode)
+}
+
+// Unwrap returns the ErrGenerationFailed sentinel so errors.Is(err, ErrGenerationFailed)
+// matches the carrier — the wrapped target, not a removed sentinel.
+func (e *GenerationError) Unwrap() error { return ErrGenerationFailed }
+
 // Config holds the operator-tunable transport settings.
 //
 // AICommand is the resolved command config hands the transport — config's floor
@@ -152,33 +182,47 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 
 	// First attempt. Timeout and missing-tool short-circuit without a retry; bad
 	// content falls through to the single retry below.
-	body, err := t.attempt(ctx, name, args, prompt)
+	res, err := t.attempt(ctx, name, args, prompt)
 	if err != nil {
 		if cause := classifyFatal(err); cause != nil {
 			return "", cause
 		}
-		// Bad content: fall through to the retry.
-	} else if isValid(body) {
-		return body, nil
+		// Bad content: fall through to the retry. The first attempt's captured res is
+		// intentionally NOT carried — only the retry's output is packed into the carrier.
+	} else if isValid(res.Stdout) {
+		return res.Stdout, nil
 	}
 
 	// Single retry — covers empty/whitespace/error content only.
-	body, err = t.attempt(ctx, name, args, prompt)
+	res, err = t.attempt(ctx, name, args, prompt)
 	if err != nil {
 		if cause := classifyFatal(err); cause != nil {
 			return "", cause
 		}
+		// A non-zero exit that survived the retry: pack the RETRY attempt's captured
+		// output (guaranteed populated by the runner contract on a non-zero exit) into
+		// the carrier so a downstream site can render claude's actual message. The
+		// carrier wraps ErrGenerationFailed, so errors.Is still routes it.
+		return "", &GenerationError{Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode}
+	}
+	if !isValid(res.Stdout) {
+		// An empty/whitespace-only body (a clean exit with no usable content) carries no
+		// captured message worth surfacing, so it stays the bare sentinel.
 		return "", ErrGenerationFailed
 	}
-	if !isValid(body) {
-		return "", ErrGenerationFailed
-	}
-	return body, nil
+	return res.Stdout, nil
 }
 
 // attempt runs a single AI invocation, piping a FRESH reader over prompt to stdin (an
 // io.Reader is consumed once, so the retry must re-create it) and returning the captured
-// stdout.
+// runner.Result alongside any error.
+//
+// It returns the WHOLE res — not just res.Stdout — so the bad-content path (a non-zero
+// exit) no longer discards the captured output: on a non-zero exit the runner contract
+// guarantees res is fully populated (Stdout/Stderr/ExitCode) alongside the non-nil error,
+// and Generate packs that into the GenerationError carrier when the exit survives the
+// retry. Fatal causes (timeout, missing tool, cancel) still ignore res — only their error
+// is classified.
 //
 // The per-attempt deadline is applied CONDITIONALLY off t.deadline (already mapped by
 // NewTransport so nil ⇒ no deadline, non-nil ⇒ a strictly positive value): when t.deadline
@@ -188,7 +232,7 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 // value, 0 (and a defensive negative) is never handed to WithTimeout. On the parent-ctx
 // path a caller cancellation still surfaces as context.Canceled (classifyFatal propagates
 // it unchanged) — skipping WithTimeout does not change cancellation routing.
-func (t *Transport) attempt(ctx context.Context, name string, args []string, prompt string) (string, error) {
+func (t *Transport) attempt(ctx context.Context, name string, args []string, prompt string) (runner.Result, error) {
 	attemptCtx := ctx
 	if t.deadline != nil {
 		var cancel context.CancelFunc
@@ -196,11 +240,7 @@ func (t *Transport) attempt(ctx context.Context, name string, args []string, pro
 		defer cancel()
 	}
 
-	res, err := t.runner.RunWith(attemptCtx, strings.NewReader(prompt), name, args...)
-	if err != nil {
-		return "", err
-	}
-	return res.Stdout, nil
+	return t.runner.RunWith(attemptCtx, strings.NewReader(prompt), name, args...)
 }
 
 // classifyFatal maps a non-retryable runner error to its distinguishable cause,
