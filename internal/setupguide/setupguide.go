@@ -12,11 +12,17 @@
 // Why emit the guide from the binary at all: the instructions are version-
 // matched to the installed mint, so an old mint emits old-but-correct guidance
 // and there is no N-versions doc maintenance — the same anti-drift discipline
-// initgen follows against the schema. The guide teaches an AI agent how to
-// configure mint for a project: mint's pipeline/hook model, the etiquette of
-// proposing changes, the minimalism rule, handling an existing .mint.toml, and
-// the ordered inspect-and-map procedure. mint itself never prompts; the agent
-// runs the natural-language session.
+// initgen follows against the schema. The guide is SELF-CONTAINED: it carries
+// everything an agent needs to understand mint across its surfaces, advise the
+// user, and configure it for the project, with NO pointer to mint's README or any
+// external doc — the README is the human surface and can lag the installed binary,
+// whereas this guide is version-matched, so sending the agent there would defeat
+// the embedding. It teaches: what mint does (the command surface, the commit
+// model, the AI transport), mint's pipeline/hook model, the etiquette of proposing
+// changes, the minimalism rule, handling an existing .mint.toml, and the ordered
+// inspect-and-map procedure whose real work is investigating the project and
+// fitting mint to it. mint itself never prompts; the agent runs the
+// natural-language session.
 //
 // Each required section is preceded by a STABLE, greppable marker (an HTML
 // comment in the `<!-- mint:section:NAME -->` namespace that cannot collide
@@ -43,6 +49,10 @@ import (
 // the structural test keys on these constants rather than representative text.
 // Every marker is emitted on its own line immediately before its section.
 const (
+	// MarkerOverview precedes the "what mint does" overview — the command surface
+	// (no flags), the commit model, and the AI transport — so the agent holds the
+	// whole tool before the procedure, with no external README to consult.
+	MarkerOverview = "<!-- mint:section:overview -->"
 	// MarkerPipeline precedes mint's pipeline/stage model (the ordered stages,
 	// where each hook fires, the PONR, and the release-shim role mention).
 	MarkerPipeline = "<!-- mint:section:pipeline -->"
@@ -68,6 +78,7 @@ const (
 func Guide() string {
 	return strings.Join([]string{
 		header(),
+		overview(),
 		procedure(),
 		pipelineSection(),
 		etiquetteSection(),
@@ -96,8 +107,68 @@ to set, after inspecting what the project actually does and confirming each
 change with the user.`
 }
 
+// overview carries the "what mint does" orientation so the agent holds the whole
+// tool from THIS guide alone — the command surface (deliberately flag-free: you
+// configure files, not flags), the commit model (the [commit] half of the tool,
+// which the release-only pipeline section does not cover), and the AI transport
+// (the stdin/stdout contract plus the timeout/retry/failure behaviour that the
+// ai_command / timeout / on_notes_failure keys configure). It is the content the
+// pre-self-contained guide delegated to mint's README; emitting it here is what
+// removes the only reason the agent had to reach for an external, possibly-stale
+// doc. The release one-liner stays short and defers to the pipeline section to
+// avoid restating (and drifting from) the stage model.
+func overview() string {
+	return MarkerOverview + `
+## What mint does
+
+mint is a CLI with a small command surface. Two verbs are AI-driven and are what
+you actually configure; the rest are here so you can advise the user on the whole
+tool. You configure FILES, not flags — nothing in this guide depends on a
+command's flags.
+
+- ` + "`mint release`" + ` — cut a release: preflight gates, AI release notes reviewed at
+  a gate, the annotated tag, one atomic push, then the provider release, with the
+  three hook phases bracketing the core. The full stage model and where each hook
+  fires is the pipeline section below.
+- ` + "`mint release regenerate`" + ` — rewrite the notes for an EXISTING release (the
+  provider release body, CHANGELOG.md, or both), sourced from a fresh diff, the
+  tag annotation, or the published release. It rides on the same [release] config.
+- ` + "`mint commit`" + ` — mint an AI Conventional-Commits message from the
+  would-be-committed diff, review it at a gate, then create the commit (see the
+  commit model below).
+- ` + "`mint init`" + ` — scaffold a minimal .mint.toml plus the ./release shim at the
+  repo root (idempotent; --force overwrites).
+- ` + "`mint setup`" + ` — emit THIS guide.
+- ` + "`mint version`" + ` — print mint's own version.
+
+### The commit model
+
+So you can configure [commit] well: mint computes the would-be-committed diff
+READ-ONLY, generates the message, and shows it at a review gate. NOTHING is
+staged or committed until the user accepts — a decline leaves the index
+byte-for-byte untouched. On accept mint commits, and pushes ONLY when the user
+asked it to. Shape it with [commit].context (inject guidance into the default
+prompt) or [commit].prompt (replace the prompt wholesale), plus the shared or
+[commit] ai_command and timeout.
+
+### The AI transport
+
+Both AI verbs call out through ai_command: any executable that reads the finished
+prompt on STDIN and writes the message body to STDOUT — mint owns the prompt, the
+command is just transport, so a non-Claude CLI honouring that contract works just
+as well. The shipped default is ` + "`claude -p --model sonnet`" + `. The transport applies
+a per-attempt timeout (seconds; default 60; 0 means unbounded), retries bad or
+empty output exactly once, and treats a timeout as FATAL — reported at once,
+never retried. On failure, release follows [release].on_notes_failure (abort
+loud, or fall back to the commit-subject / fallback body) and commit drops to the
+user's $EDITOR. If you pin a slower model for a verb, raise that verb's timeout in
+the SAME table — mint does not auto-bump it.`
+}
+
 // procedure emits the ordered inspect-and-map flow. Step 1 (cwd-confirm) is the
 // in-instructions safety net that replaces mint setup's missing cwd guard;
+// step 2 (learn mint) points the agent ONLY at this guide's own sections — never
+// an external README — so the guide stays self-contained and version-matched;
 // step 3 (read the config reference) is an explicit early step BEFORE any
 // inspect/edit, pointing at the embedded config-reference section in this same
 // output. The numbered steps thread through the marked sections that follow.
@@ -109,13 +180,14 @@ func procedure() string {
    repo guard), so verify with the user that you are in the project you mean to
    configure — this is your safety net. ` + "`mint init`" + ` (run later, if needed)
    is the loud-fail backstop: it refuses to run outside a git work tree.
-2. Learn mint. Read mint's README (the human config reference) for mint's
-   commands and surface — this means mint's OWN README, not the target project's
-   — and internalise mint's minimalist philosophy: only set what varies from the
-   compiled defaults.
-3. Read the config reference NOW — before any inspect or edit. The reference is
-   the config-reference section embedded further down in THIS output (mint help
-   deliberately omits it, and the README is the human surface). Internalise the
+2. Learn mint from THIS guide. It is self-contained and version-matched to the
+   installed binary: the overview above, the pipeline/hook model, the config
+   reference, and the etiquette and minimalism rules below carry everything you
+   need to understand mint, advise the user, and configure it — you never need to
+   fetch anything external. Internalise mint's minimalist philosophy: only set
+   what varies from the compiled defaults.
+3. Read the config reference NOW — before any inspect or edit. It is the
+   config-reference section embedded further down in THIS output. Internalise the
    key · level · default · description table so that, when you inspect the
    project, you already know each key's real default and can judge "is the
    default fine here?" against it. Do not guess defaults or restate them from

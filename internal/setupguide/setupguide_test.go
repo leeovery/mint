@@ -90,6 +90,7 @@ var sectionMarkers = []struct {
 	label  string
 	marker string
 }{
+	{"overview", setupguide.MarkerOverview},
 	{"pipeline", setupguide.MarkerPipeline},
 	{"etiquette", setupguide.MarkerEtiquette},
 	{"minimalism", setupguide.MarkerMinimalism},
@@ -97,10 +98,10 @@ var sectionMarkers = []struct {
 	{"config-reference", setupguide.MarkerConfigReference},
 }
 
-// TestGuide_EmitsEverySectionMarker proves Guide() carries each of the five
-// required section markers. Detection keys on the marker CONSTANTS, decoupled
-// from prose, so this is the structural presence proof the spec's "Stable
-// section markers" mandate requires.
+// TestGuide_EmitsEverySectionMarker proves Guide() carries each of the required
+// section markers. Detection keys on the marker CONSTANTS, decoupled from prose,
+// so this is the structural presence proof the spec's "Stable section markers"
+// mandate requires.
 func TestGuide_EmitsEverySectionMarker(t *testing.T) {
 	t.Parallel()
 
@@ -253,27 +254,101 @@ func firstNumberedStep(body string) string {
 	return ""
 }
 
-// TestGuide_LearnMintStepNamesMintsOwnReadme proves procedure step 2 ("Learn
-// mint") points the agent at MINT's OWN README — the human config-reference
-// surface and the source of mint's commands/surface/philosophy — rather than the
-// ambiguous "the project's README", which most naturally reads as the TARGET
-// project's README (which would not document mint). The disambiguated wording is
-// "mint's README". The minimalism-philosophy clause must survive the reword.
-func TestGuide_LearnMintStepNamesMintsOwnReadme(t *testing.T) {
+// TestGuide_LearnMintStepIsSelfContained proves procedure step 2 ("Learn mint")
+// keeps the agent INSIDE this guide — it must signal self-containment and must
+// NOT send the agent to mint's README (the prior contract). The guide is
+// version-matched to the installed binary, so pointing at the (possibly-stale,
+// human) README would defeat the embedding; step 2 instead routes the agent to
+// the guide's own sections. The minimalism-philosophy clause must survive the
+// reword.
+func TestGuide_LearnMintStepIsSelfContained(t *testing.T) {
 	t.Parallel()
 
 	step := numberedStep(setupguide.Guide(), "2.")
 	if step == "" {
 		t.Fatal("guide carries no numbered procedure step 2")
 	}
-	if !strings.Contains(step, "mint's README") {
-		t.Errorf("procedure step 2 must name mint's own README unambiguously (\"mint's README\"), got: %q", step)
+	if strings.Contains(step, "README") {
+		t.Errorf("procedure step 2 must not point the agent at any README — the guide is self-contained, got: %q", step)
 	}
-	if strings.Contains(step, "the project's README") {
-		t.Errorf("procedure step 2 must not call it \"the project's README\" (reads as the target project's README), got: %q", step)
+	if !strings.Contains(strings.ToLower(step), "self-contained") {
+		t.Errorf("procedure step 2 must signal the guide is self-contained, got: %q", step)
 	}
 	if !strings.Contains(strings.ToLower(step), "minimalist philosophy") {
 		t.Errorf("procedure step 2 must retain the minimalism-philosophy clause, got: %q", step)
+	}
+}
+
+// TestGuide_NamesNoExternalReadme is the self-containment tripwire: the WHOLE
+// emitted guide must never mention a README. The guide is the version-matched
+// agent surface and must carry everything itself; any "README" token would be a
+// regression that reintroduces a pointer to the (human, drift-prone) surface the
+// design deliberately keeps the agent away from.
+func TestGuide_NamesNoExternalReadme(t *testing.T) {
+	t.Parallel()
+
+	if strings.Contains(setupguide.Guide(), "README") {
+		t.Error("guide must not mention a README anywhere — it is the self-contained, version-matched agent surface")
+	}
+}
+
+// TestGuide_OverviewCarriesCommandSurface proves the overview names every command
+// so the agent can advise the user on the whole tool from this guide alone,
+// without an external README.
+func TestGuide_OverviewCarriesCommandSurface(t *testing.T) {
+	t.Parallel()
+
+	body := setupguide.Guide()
+
+	for _, cmd := range []string{
+		"mint release",
+		"mint release regenerate",
+		"mint commit",
+		"mint init",
+		"mint setup",
+		"mint version",
+	} {
+		if !strings.Contains(body, cmd) {
+			t.Errorf("overview must name the %q command", cmd)
+		}
+	}
+}
+
+// TestGuide_OverviewCarriesCommitModel proves the overview carries the commit
+// model — the [commit] half of the tool that the release-only pipeline section
+// does not cover — including its load-bearing invariant: nothing is staged or
+// committed until the user accepts, and a decline leaves the index untouched.
+func TestGuide_OverviewCarriesCommitModel(t *testing.T) {
+	t.Parallel()
+
+	lower := strings.ToLower(setupguide.Guide())
+
+	if !strings.Contains(lower, "until the user accepts") {
+		t.Error("overview must state nothing is staged or committed until the user accepts")
+	}
+	if !strings.Contains(lower, "byte-for-byte") {
+		t.Error("overview must state a decline leaves the index byte-for-byte untouched")
+	}
+}
+
+// TestGuide_OverviewCarriesAITransport proves the overview carries the AI
+// transport contract the ai_command / timeout / on_notes_failure keys configure:
+// the stdin/stdout contract and the fatal-timeout behaviour. This is the content
+// the pre-self-contained guide delegated to the README's "AI Transport" section.
+func TestGuide_OverviewCarriesAITransport(t *testing.T) {
+	t.Parallel()
+
+	body := setupguide.Guide()
+	lower := strings.ToLower(body)
+
+	if !strings.Contains(lower, "stdin") || !strings.Contains(lower, "stdout") {
+		t.Error("overview must carry the ai_command stdin/stdout transport contract")
+	}
+	if !strings.Contains(body, "on_notes_failure") {
+		t.Error("overview must route release transport failure through on_notes_failure")
+	}
+	if !strings.Contains(body, "FATAL") {
+		t.Error("overview must state a timeout is fatal, never retried")
 	}
 }
 
