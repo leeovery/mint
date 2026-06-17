@@ -42,3 +42,12 @@ approved_at: 2026-06-17
 - [ ] Only `Output`-carrying cause is generation-failed; timeout / command-missing / diff-too-large render the concise phrase with empty `Output`. The forward and regenerate paths behave identically.
 - [ ] The `padStage` gap is unchanged for all aligned lines; only the message-text assertions in `pretty_test.go` change; `gate_forbidden_test.go` and `askline_test.go` stay untouched.
 - [ ] All project gates pass: `go build ./...`, `gofmt -l .` (empty), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues).
+
+#### Tasks
+status: draft
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| notes-failure-output-ugly-and-uninformative-2-1 | Expose the concise cause phrase and collapse failureMessage for notes/AI failures | forward abortError chain; regenerate's shorter "generating notes:" chain; all four sentinels (ErrGenerationFailed, ErrTimeout, ErrCommandMissing, ErrDiffTooLarge); no leading "notes notes" prefix; no "failed"; defensive default for an unmapped cause; resetAndAbort's git cause still renders concise |
+| notes-failure-output-ugly-and-uninformative-2-2 | Add the carrier-output extraction helper composing stdout-then-stderr | errors.As matches through abortError's %w chain and the shorter regenerate chain; stdout-only; stderr-only; both present (stdout first, single-newline join); whitespace-only streams treated as empty (empty Output); internal content verbatim; trailing whitespace trimmed; non-carrier cause yields empty string |
+| notes-failure-output-ugly-and-uninformative-2-3 | Wire the composed Output into both notes StageFailed surfacing paths | forward release vs regenerate render identically; generation-failed carries Output; timeout / command-missing / diff-too-large render concise phrase with empty Output (✗ line stands alone); padStage gap unchanged; only pretty_test.go message text changes; gate_forbidden_test.go / askline_test.go untouched; batch reportSkip path untouched |
