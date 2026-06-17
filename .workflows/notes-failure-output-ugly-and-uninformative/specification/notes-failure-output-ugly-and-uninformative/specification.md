@@ -100,6 +100,35 @@ The carrier upgrade (Fix 1) touches the AI seam, which carries load-bearing cont
 4. **Single retry ownership is unchanged.** The transport still owns validation and the single bad-content retry; consumers never re-retry. The carrier is populated only after the retry is exhausted.
 5. **Byte-identical bodies on success.** The success path is untouched — generated notes/commit bodies still pass through verbatim.
 
+## Acceptance Criteria
+
+A notes-generation AI failure (non-zero exit or empty/invalid body after retry) renders as:
+
+```
+✗ notes  AI returned empty/invalid notes after retry
+  Prompt is too long
+```
+
+1. **`StageFailure.Output` is populated** with claude's captured stdout/stderr verbatim and rendered below the ✗ line.
+2. **The top-line `Message` is the concise cause phrase** — it does not contain the nested `%w` chain, does not restate the stage name, and does not repeat "failed".
+3. **Both surfacing paths behave identically** — forward release (`surfaceAndUnwind`) and regenerate (`surface`).
+4. **The `padStage` gap is unchanged** for all aligned lines.
+
+## Testing Requirements
+
+**New tests:**
+
+- **Engine/notes wiring** — assert the notes AI-failure path populates `StageFailure.Output` with claude's captured output. This is the gap the existing `tag/push`-only presenter test left uncovered; assert at the wiring level, not just the presenter.
+- **Concise message** — assert the top-line `Message` is the concise cause phrase and does NOT contain the nested chain and does NOT restate the stage name.
+- **Both surfacing paths** — cover forward release (`surfaceAndUnwind`) and regenerate (`surface`) so regenerate's rendering is not left behind.
+- **Transport** — a non-zero-exit `Generate` carries the runner's captured stdout/stderr on the returned error, while `errors.Is(err, ErrGenerationFailed)` still holds; and `context.Canceled` still propagates UNCHANGED (no carrier-swallowing). Tests must seed `FakeRunner` with stdout on a non-zero exit (the prior fakes had no stdout to lose, which is why the defect never surfaced).
+
+**Updated tests:**
+
+- Update the `pretty_test.go` failure-line assertions that the concise-`Message` change touches. Keep `gate_forbidden_test.go` and `askline_test.go` untouched (guaranteed by keeping `padStage`).
+
+All changes pass the project gates: `go build ./...`, `gofmt -l .` (empty), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues).
+
 ---
 
 ## Working Notes
