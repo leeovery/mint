@@ -19,24 +19,8 @@ import (
 	"testing"
 
 	"mint/internal/ai"
-	"mint/internal/config"
 	"mint/internal/notes"
-	"mint/internal/runner"
 )
-
-// resolveAbortAround builds the forward-release abort chain around a *ai.GenerationError
-// carrier exactly as the spine does: notes.ResolveFailure in abort mode wraps the carrier
-// through abortError ("notes generation failed (%s): %w"), so the carrier sits behind the
-// longest %w chain notesFailureOutput must traverse with errors.As. The git runner is
-// never invoked in abort mode.
-func resolveAbortAround(t *testing.T, carrier error) error {
-	t.Helper()
-	_, err := notes.ResolveFailure(t.Context(), runner.NewFakeRunner(), carrier, "v1.0.0", config.Release{OnNotesFailure: "abort"})
-	if err == nil {
-		t.Fatalf("ResolveFailure returned nil error in abort mode for %v", carrier)
-	}
-	return err
-}
 
 // TestNotesFailureOutput_ExtractsStdoutThroughAbortChain proves the helper finds the
 // carrier inside abortError's forward chain (errors.As traversal) and reads STDOUT — not
@@ -45,7 +29,7 @@ func TestNotesFailureOutput_ExtractsStdoutThroughAbortChain(t *testing.T) {
 	t.Parallel()
 
 	carrier := &ai.GenerationError{Stdout: "Prompt is too long\n", ExitCode: 1}
-	cause := resolveAbortAround(t, carrier)
+	cause := wrapNotesAbort(t, carrier)
 
 	got := notesFailureOutput(cause)
 	const want = "Prompt is too long"

@@ -19,11 +19,9 @@ import (
 	"testing"
 
 	"mint/internal/ai"
-	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
-	"mint/internal/runner"
 )
 
 // recordedSurfaceAndUnwind drives surfaceAndUnwind with a zero MadeState (nothing made →
@@ -67,20 +65,6 @@ func onlyStageFailure(t *testing.T, rec *presentertest.RecordingPresenter) prese
 	return *found
 }
 
-// wrapAsAbort builds the forward-release abort chain around a failure exactly as the
-// spine does: notes.ResolveFailure in abort mode wraps it through abortError ("notes
-// generation failed (%s): %w"), so a *ai.GenerationError carrier sits behind the longest
-// %w chain the wiring must traverse with errors.As. The git runner is never invoked in
-// abort mode.
-func wrapAsAbort(t *testing.T, failure error) error {
-	t.Helper()
-	_, err := notes.ResolveFailure(t.Context(), runner.NewFakeRunner(), failure, "v1.0.0", config.Release{OnNotesFailure: "abort"})
-	if err == nil {
-		t.Fatalf("ResolveFailure returned nil in abort mode for %v", failure)
-	}
-	return err
-}
-
 const conciseGenMessage = "AI returned empty/invalid notes after retry"
 
 // TestSurfaceAndUnwind_PopulatesOutputWithCapturedStdout proves the forward-release notes
@@ -89,7 +73,7 @@ const conciseGenMessage = "AI returned empty/invalid notes after retry"
 func TestSurfaceAndUnwind_PopulatesOutputWithCapturedStdout(t *testing.T) {
 	t.Parallel()
 
-	cause := wrapAsAbort(t, &ai.GenerationError{Stdout: "Prompt is too long\n", ExitCode: 1})
+	cause := wrapNotesAbort(t, &ai.GenerationError{Stdout: "Prompt is too long\n", ExitCode: 1})
 
 	sf := recordedSurfaceAndUnwind(t, cause)
 
@@ -111,7 +95,7 @@ func TestSurface_PopulatesOutputIdenticallyToForwardPath(t *testing.T) {
 
 	// Forward release builds the longer abortError chain; regenerate surfaces the shorter
 	// "generating notes: %w" chain. Both must collapse to the identical Message/Output.
-	forward := recordedSurfaceAndUnwind(t, wrapAsAbort(t, carrier))
+	forward := recordedSurfaceAndUnwind(t, wrapNotesAbort(t, carrier))
 	regen := recordedSurface(t, fmt.Errorf("generating notes: %w", carrier))
 
 	if regen.Output != "Prompt is too long" {
@@ -148,7 +132,7 @@ func TestNotesSurfacing_NonCarrierCausesYieldEmptyOutput(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			cause := wrapAsAbort(t, tc.sentinel)
+			cause := wrapNotesAbort(t, tc.sentinel)
 
 			fwd := recordedSurfaceAndUnwind(t, cause)
 			reg := recordedSurface(t, cause)
