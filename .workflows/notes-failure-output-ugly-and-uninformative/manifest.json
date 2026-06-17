@@ -31,7 +31,7 @@
     "planning": {
       "items": {
         "notes-failure-output-ugly-and-uninformative": {
-          "status": "in-progress",
+          "status": "completed",
           "format": "tick",
           "spec_commit": "0964e86731830cc3a02557f40aedf0995019efee",
           "task_list_gate_mode": "auto",
