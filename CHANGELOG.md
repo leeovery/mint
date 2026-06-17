@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.8] - 2026-06-17
+
+🔧 Changed
+
+- `.mint.toml` trimmed to active settings only, directing readers to `mint setup` for the full key reference — removes the commented-out defaults that duplicated the built-in documentation.
+- Added a `pre_tag` hook that runs the full build/vet/test/lint suite before the irreversible tag-and-push, replacing the missing pre-release CI gate.
+- `diff_exclude` updated to also ignore `.github` trees in release-notes diffs.
+
 ## [0.0.7] - 2026-06-17
 
 ✨ Added
