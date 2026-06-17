@@ -56,6 +56,13 @@ func TestTransport_Generate_ReturnsValidBodyUnchanged(t *testing.T) {
 	if got != body {
 		t.Errorf("body = %q, want it returned unchanged %q", got, body)
 	}
+	// Carrier guard (Invariant 5): the byte-identical success path is untouched by the
+	// carrier change — a valid body returns a nil error and therefore no
+	// *ai.GenerationError. Pinned explicitly so a future carrier leak onto success fails.
+	var genErr *ai.GenerationError
+	if errors.As(err, &genErr) {
+		t.Errorf("a valid body must not carry a *ai.GenerationError, got %v", err)
+	}
 
 	// Exactly one attempt: a good first body must never trigger the retry.
 	if n := len(r.Invocations()); n != 1 {
@@ -292,6 +299,12 @@ func TestTransport_Generate_DoesNotRetryTimeout(t *testing.T) {
 	if errors.Is(err, ai.ErrGenerationFailed) {
 		t.Errorf("timeout failure must be distinguishable from the bad-content ErrGenerationFailed")
 	}
+	// Carrier guard: a timeout short-circuits via classifyFatal and must NOT carry a
+	// *ai.GenerationError — a hung call's partial output is not captured.
+	var genErr *ai.GenerationError
+	if errors.As(err, &genErr) {
+		t.Errorf("a timeout must not carry a *ai.GenerationError, got %v", err)
+	}
 	if n := len(r.Invocations()); n != 1 {
 		t.Errorf("invocations = %d, want 1 (a timeout is not retried)", n)
 	}
@@ -316,6 +329,14 @@ func TestTransport_Generate_DoesNotRetryCancel(t *testing.T) {
 	}
 	if errors.Is(err, ai.ErrGenerationFailed) || errors.Is(err, ai.ErrTimeout) || errors.Is(err, ai.ErrCommandMissing) {
 		t.Errorf("a cancellation must not match any transport sentinel, got %v", err)
+	}
+	// MOST load-bearing carrier guard (Invariant 2): context.Canceled propagates
+	// UNCHANGED — it must NEVER be wrapped into the bad-content carrier. If a cancel
+	// picked up a *ai.GenerationError it would be misrouted to a fallback (commit's
+	// editor) for a user who just pressed Ctrl-C.
+	var genErr *ai.GenerationError
+	if errors.As(err, &genErr) {
+		t.Errorf("a cancellation must not carry a *ai.GenerationError, got %v", err)
 	}
 	if n := len(r.Invocations()); n != 1 {
 		t.Errorf("invocations = %d, want 1 (a cancellation is not retried)", n)
@@ -426,6 +447,12 @@ func TestTransport_Generate_NoDeadlinePathPropagatesParentCancellationUnchanged(
 	if errors.Is(err, ai.ErrGenerationFailed) || errors.Is(err, ai.ErrTimeout) || errors.Is(err, ai.ErrCommandMissing) {
 		t.Errorf("a cancellation must not match any transport sentinel, got %v", err)
 	}
+	// Carrier guard: the no-deadline parent-context cancel route is also pinned
+	// carrier-free — context.Canceled propagates UNCHANGED here too, never wrapped.
+	var genErr *ai.GenerationError
+	if errors.As(err, &genErr) {
+		t.Errorf("a cancellation on the no-deadline path must not carry a *ai.GenerationError, got %v", err)
+	}
 	if n := len(r.Invocations()); n != 1 {
 		t.Errorf("invocations = %d, want 1 (a cancellation is not retried)", n)
 	}
@@ -502,6 +529,12 @@ func TestTransport_Generate_DoesNotRetryMissingTool(t *testing.T) {
 	}
 	if errors.Is(err, ai.ErrTimeout) {
 		t.Errorf("missing-tool failure must be distinguishable from ErrTimeout")
+	}
+	// Carrier guard: a missing binary short-circuits via classifyFatal and must NOT
+	// carry a *ai.GenerationError — an absent binary produces no output to capture.
+	var genErr *ai.GenerationError
+	if errors.As(err, &genErr) {
+		t.Errorf("a missing tool must not carry a *ai.GenerationError, got %v", err)
 	}
 	if n := len(r.Invocations()); n != 1 {
 		t.Errorf("invocations = %d, want 1 (a missing tool is not retried)", n)
