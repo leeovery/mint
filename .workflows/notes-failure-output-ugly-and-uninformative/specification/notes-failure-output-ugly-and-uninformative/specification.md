@@ -97,16 +97,21 @@ Target render for the reported case:
 
 ## Scope & Affected Surfaces
 
-**Fix the transport once; the shared seam serves all three verbs.** `mint release`, `mint release regenerate`, and `mint commit` all consume the same `ai.Transport`, which has the identical discard-claude's-output defect, so the carrier upgrade (Fix 1) lands once. **The user-visible improvement (verbatim claude output below a ✗ line) accrues to release and regenerate only.** A `mint commit` AI failure routes to the `$EDITOR` fallback (`isAIFallback` / `runEditorFallback` in `internal/commit/run.go`), never to `StageFailed`, so it has no `Output` render site. For commit the carrier is still correct and necessary: it MUST preserve `errors.Is(err, ErrGenerationFailed)` so the fallback still triggers (see Invariants). What commit gains is a non-broken seam, not new rendered output — no commit-side rendering or tests are in scope.
+**Fix the transport once; the shared seam serves all three verbs.** `mint release`, `mint release regenerate`, and `mint commit` all consume the same `ai.Transport`, which has the identical discard-claude's-output defect, so the carrier upgrade (Fix 1) lands once. **The user-visible improvement (verbatim claude output below a ✗ line) accrues to release and single-version/interactive regenerate only.** A `mint commit` AI failure routes to the `$EDITOR` fallback (`isAIFallback` / `runEditorFallback` in `internal/commit/run.go`), never to `StageFailed`, so it has no `Output` render site. For commit the carrier is still correct and necessary: it MUST preserve `errors.Is(err, ErrGenerationFailed)` so the fallback still triggers (see Invariants). What commit gains is a non-broken seam, not new rendered output — no commit-side rendering or tests are in scope.
 
-**The `Output`-population change covers the two notes surfacing helpers** so regenerate's rendering is not left behind:
+**The `Output`-population change covers the two notes `StageFailed` surfacing helpers** so regenerate's rendering is not left behind:
 
 - `surfaceAndUnwind(ctx, deps, "notes", …)` — the **forward release** notes stage (`internal/engine/release.go`).
-- `surface(p, "notes", err)` — the **regenerate** notes stage (`regenerate_batch.go`, `regenerate_interactive.go`) and the generic pre-PONR path.
+- `surface(p, "notes", err)` — the regenerate **`StageFailed`** path: single-version/interactive regenerate's notes-production failure (`regenerate_interactive.go`) and the generic pre-PONR path (including batch's deterministic pre-read body *read* failure at `regenerate_batch.go`). The batch `--all` per-version notes-**production** failure does NOT use this path — see the fourth-site note below.
 
 Both build `presenter.StageFailure{Name, Message}` with no `Output` today. The engine helper that extracts the captured output feeds `StageFailure.Output` at **both** sites.
 
 **Third `StageFailed` site — `resetAndAbort` (`internal/engine/regenerate_write.go`):** it also builds `presenter.StageFailure{Name, Message: failureMessage(cause)}` directly, for the changelog-regenerate record/push failure path. It is **out of scope for the `Output`-population change** — its `cause` is a git record/push failure, never the AI carrier — but it **inherits the concise `Message` for free** because it routes through the same `failureMessage` helper (Fix 2). It is called out here so an implementer auditing the spec against the code finds the third `StageFailure{}` builder accounted for, not unaddressed.
+
+**Fourth display site — batch `--all` regenerate per-version skip (`reportSkip` / `internal/engine/regenerate_batch.go`): out of scope.** Batch regenerate deliberately does NOT abort on a per-version notes-production failure — it catches it (the skip-and-continue contract), narrates a **non-terminal `presenter.Warn`** via `reportSkip(p, tag, classifyNotesFailure(err))`, records a `skippedVersion` for the closing batch summary, and moves to the next version. This is a different UX from the terminal `StageFailed` ✗-line render this spec targets, so it is **out of scope**: `classifyNotesFailure` / `reportSkip` are not touched. Two deliberate residual limitations follow, each promotable to its own work unit if desired:
+
+- The batch skip reason keeps its own vocabulary — `classifyNotesFailure` returns `"notes generation failed"` (which contains "failed") — independent of Fix 2's concise-`Message` rule, which governs the `StageFailed` display only.
+- The batch per-version `Warn` carries no captured `Output`, so a `--all` run that trips a real AI error still shows a one-line skip without claude's output. (Routing the carrier's captured output into `Warning.Output` here — the same render site `commit/run.go pushAfterCommit` uses — is the natural future enhancement.)
 
 **Note on regenerate's wrap chain:** regenerate's fresh path may carry a *shorter* wrap chain than forward release (it surfaces `GenerateFromRange`'s `"generating notes: %w"` directly rather than always re-wrapping through `abortError`/`causeText`). The concise-`Message` derivation (Fix 2) must therefore produce a clean phrase for both the forward and regenerate chains — not assume the forward-release chain shape.
 
@@ -131,7 +136,7 @@ A notes-generation AI failure (non-zero exit or empty/invalid body after retry) 
 
 1. **`StageFailure.Output` is populated** with claude's captured output (stdout-first) verbatim and rendered below the ✗ line.
 2. **The top-line `Message` is the concise cause phrase** — it does not contain the nested `%w` chain, does not begin with the stage label as a prefix (no `notes notes …`), and does not contain "failed". (An incidental "notes" inside the cause phrase is allowed; the concise-message test asserts absence of the leading-label duplication and of "failed", not absence of the substring "notes".)
-3. **Both surfacing paths behave identically** — forward release (`surfaceAndUnwind`) and regenerate (`surface`).
+3. **Both `StageFailed` surfacing paths behave identically** — forward release (`surfaceAndUnwind`) and single-version/interactive regenerate (`surface`). The batch `--all` per-version skip `Warn` is out of scope (see Scope & Affected Surfaces).
 4. **The `padStage` gap is unchanged** for all aligned lines.
 
 ## Testing Requirements
@@ -154,6 +159,7 @@ All changes pass the project gates: `go build ./...`, `gofmt -l .` (empty), `go 
 ## Out of Scope
 
 - **Byte/token-aware diff ceiling.** The line-based `max_diff_lines` guard (default 50000) did not catch an 8.6k-line but ~867 KB byte-dense diff, which suggests a byte/token-aware ceiling would be valuable. This is **deliberately out of scope** — it is an enhancement to an input guard, not part of how a failure is *rendered*. It can be promoted to its own work unit later. This specification covers only the failure-rendering path: carrying the captured output, the concise message, and the layout decision.
+- **Batch `--all` regenerate per-version skip rendering.** The non-terminal `Warn` path (`reportSkip` / `classifyNotesFailure`) is deliberately not touched — see "Fourth display site" under Scope & Affected Surfaces for the rationale and the two promotable residual limitations (the "failed" skip-reason vocabulary and the absent `Warning.Output`).
 
 ## Risk & Rollout
 
