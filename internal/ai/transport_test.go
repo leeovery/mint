@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -725,6 +726,74 @@ func TestTransport_Generate_InvokesCommandTwiceOnNonZeroExitSurvivingRetry(t *te
 
 	if n := len(r.Invocations()); n != 2 {
 		t.Errorf("invocations = %d, want 2 (original + exactly one retry)", n)
+	}
+}
+
+func TestGenerationError_Error_DistinguishesDualProvenance(t *testing.T) {
+	t.Parallel()
+
+	// GenerationError has TWO legitimate construction sites: a non-zero command exit
+	// (ExitCode genuinely non-zero) and an empty/whitespace body that survived the retry
+	// on a CLEAN, zero-exit attempt (ExitCode == 0). Error() must be honest about both —
+	// it must never render the self-contradicting "ai generation failed (exit 0)" for the
+	// empty-body path. Strings stay lowercase with no trailing punctuation per the project
+	// error idiom. (Error() is diagnostic-only — the display Message is resolved upstream
+	// by notes.CauseText / failureMessage — so this guards the carrier's own honesty, not
+	// the display path.)
+	tests := []struct {
+		name string
+		err  *ai.GenerationError
+		want string
+	}{
+		{
+			// Empty-body path: a zero-exit attempt whose body alone classified the failure.
+			// It must NOT claim "(exit 0)".
+			name: "empty-body path (ExitCode 0)",
+			err:  &ai.GenerationError{Stdout: "", Stderr: "", ExitCode: 0},
+			want: "ai generation failed (empty body)",
+		},
+		{
+			// Non-zero-exit path: the exit code that classified the failure is reported
+			// VERBATIM, unchanged from the prior behaviour.
+			name: "non-zero-exit path (ExitCode 1)",
+			err:  &ai.GenerationError{ExitCode: 1},
+			want: "ai generation failed (exit 1)",
+		},
+		{
+			// A different non-zero exit is rendered with its own code.
+			name: "non-zero-exit path (ExitCode 137)",
+			err:  &ai.GenerationError{ExitCode: 137},
+			want: "ai generation failed (exit 137)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.err.Error(); got != tt.want {
+				t.Errorf("Error() = %q, want %q", got, tt.want)
+			}
+			// The empty-body variant must never read as "(exit 0)" — that is the
+			// self-contradicting string this task removes.
+			if got := tt.err.Error(); tt.err.ExitCode == 0 && strings.Contains(got, "exit 0") {
+				t.Errorf("Error() = %q, must not render the self-contradicting %q for the empty-body path", got, "exit 0")
+			}
+		})
+	}
+}
+
+func TestGenerationError_ZeroExitCarrierStillMatchesErrGenerationFailed(t *testing.T) {
+	t.Parallel()
+
+	// Routing regression: the empty-body (ExitCode == 0) carrier still wraps the
+	// ErrGenerationFailed sentinel via Unwrap, so errors.Is keeps matching it. The
+	// Error()-honesty change touches the rendered string only — never Unwrap or routing —
+	// so the sentinel-routing callers (release on_notes_failure, commit editor fallback)
+	// are unaffected.
+	err := error(&ai.GenerationError{Stdout: "", Stderr: "", ExitCode: 0})
+	if !errors.Is(err, ai.ErrGenerationFailed) {
+		t.Errorf("errors.Is(err, ErrGenerationFailed) = false, want true (the zero-exit carrier must still route via Unwrap)")
 	}
 }
 

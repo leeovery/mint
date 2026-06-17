@@ -60,11 +60,23 @@ type GenerationError struct {
 	// Stderr is the command's captured standard error — diagnostics that accompany
 	// the failure, kept distinct from Stdout.
 	Stderr string
-	// ExitCode is the non-zero process exit status that classified this as bad content.
+	// ExitCode is what classified the failure, and it has TWO legitimate shapes mirroring
+	// the carrier's two construction sites: the non-zero process exit status on the
+	// non-zero-exit path, OR zero on the empty/whitespace-body path — a clean (zero-exit)
+	// attempt whose body alone (not the exit) classified it as bad content.
 	ExitCode int
 }
 
 func (e *GenerationError) Error() string {
+	// Honest about both provenances: on the non-zero-exit path report the exit code that
+	// classified the failure; on the empty/whitespace-body path ExitCode is 0 (the body
+	// alone classified it), so report an empty-body variant rather than the
+	// self-contradicting "(exit 0)". Error() is a diagnostic surface only — the concise
+	// display Message is resolved upstream (notes.CauseText / failureMessage) before this
+	// is reached.
+	if e.ExitCode == 0 {
+		return "ai generation failed (empty body)"
+	}
 	return fmt.Sprintf("ai generation failed (exit %d)", e.ExitCode)
 }
 

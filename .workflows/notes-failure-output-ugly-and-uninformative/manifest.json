@@ -101,7 +101,7 @@
             ".claude/skills/golang-context"
           ],
           "current_phase": 4,
-          "current_task": "notes-failure-output-ugly-and-uninformative-4-2",
+          "current_task": "~",
           "completed_tasks": [
             "notes-failure-output-ugly-and-uninformative-1-1",
             "notes-failure-output-ugly-and-uninformative-1-2",
@@ -111,12 +111,14 @@
             "notes-failure-output-ugly-and-uninformative-2-3",
             "notes-failure-output-ugly-and-uninformative-3-1",
             "notes-failure-output-ugly-and-uninformative-3-2",
-            "notes-failure-output-ugly-and-uninformative-4-1"
+            "notes-failure-output-ugly-and-uninformative-4-1",
+            "notes-failure-output-ugly-and-uninformative-4-2"
           ],
           "completed_phases": [
             1,
             2,
-            3
+            3,
+            4
           ]
         }
       }
