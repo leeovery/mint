@@ -126,7 +126,7 @@
     "review": {
       "items": {
         "notes-failure-output-ugly-and-uninformative": {
-          "status": "in-progress",
+          "status": "completed",
           "reviewed_tasks": [
             "notes-failure-output-ugly-and-uninformative-1-1",
             "notes-failure-output-ugly-and-uninformative-1-2",
