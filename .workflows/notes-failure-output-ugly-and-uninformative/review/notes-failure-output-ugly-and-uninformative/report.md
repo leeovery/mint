@@ -42,6 +42,6 @@ None.
 
 ## Recommendations
 
-### Quick-fixes
+### Quick-fixes (applied)
 
-1. `internal/engine/notesfailureoutput_internal_test.go:59` — `TestNotesFailureOutput_ComposesStdoutThenStderr` uses pre-trimmed literals, so the both-streams-present case proves the stdout-then-stderr join but does not assert interior-verbatim + single-trailing-trim *together*. Add a case with stdout `"out\n\nline\n"` and stderr `"err\n\n"` asserting `"out\n\nline\nerr"` to cover composition clause (d) directly rather than by inference. (Report 2-2)
+1. ~~`internal/engine/notesfailureoutput_internal_test.go` — the both-streams-present case used pre-trimmed literals, so it did not assert interior-verbatim + single-trailing-trim *together*.~~ **Applied** — added `TestNotesFailureOutput_BothStreamsPreserveInteriorTrimTrailing` (stdout `"out\n\nline\n"` + stderr `"err\n\n"` → `"out\n\nline\n\nerr"`), covering composition clause (d) directly. Note: the verifier's suggested expectation `"out\n\nline\nerr"` was corrected to `"out\n\nline\n\nerr"` — the helper keeps each stream verbatim before the single-newline join, so stdout's own trailing `\n` plus the join `\n` yields a blank line between streams (exactly the verbatim preservation being proved). Engine tests + gofmt + vet + golangci-lint all green. (Report 2-2)

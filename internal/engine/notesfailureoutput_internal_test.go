@@ -68,6 +68,24 @@ func TestNotesFailureOutput_ComposesStdoutThenStderr(t *testing.T) {
 	}
 }
 
+// TestNotesFailureOutput_BothStreamsPreserveInteriorTrimTrailing proves that when BOTH
+// streams are present the included content is kept VERBATIM — stdout's own interior blank
+// line AND its trailing newline survive the single-newline join (no per-stream trimming),
+// so a blank line separates the streams — while only the composed result's TRAILING
+// whitespace is trimmed. The pre-trimmed both-streams case above cannot prove this because
+// its literals carry no interior or trailing whitespace to preserve.
+func TestNotesFailureOutput_BothStreamsPreserveInteriorTrimTrailing(t *testing.T) {
+	t.Parallel()
+
+	carrier := &ai.GenerationError{Stdout: "out\n\nline\n", Stderr: "err\n\n", ExitCode: 1}
+
+	got := notesFailureOutput(carrier)
+	const want = "out\n\nline\n\nerr"
+	if got != want {
+		t.Errorf("notesFailureOutput = %q, want %q (interior verbatim, trailing trimmed)", got, want)
+	}
+}
+
 // TestNotesFailureOutput_IncludesOnlyStdoutWhenStderrWhitespace proves a whitespace-only
 // stderr counts as empty for the inclusion decision: only stdout is included, with no
 // joining newline from the empty stream.
