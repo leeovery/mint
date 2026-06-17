@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.9] - 2026-06-17
+
+🔧 Changed
+
+- Commits whose every changed file matches a `diff_exclude` glob now open the editor for a human-written message instead of failing with "nothing to commit" — the excluded files still get committed.
+- The empty-staging preflight no longer consults `diff_exclude` — it answers only whether `git commit` would create a commit, leaving exclusion logic solely to the AI diff step.
+
 ## [0.0.8] - 2026-06-17
 
 🔧 Changed
