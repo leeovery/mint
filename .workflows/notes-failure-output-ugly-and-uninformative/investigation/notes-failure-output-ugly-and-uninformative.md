@@ -20,7 +20,12 @@ The failure renders as a single line:
 ✗ notes      notes generation failed (AI returned empty/invalid notes after retry): generating notes: ai generation failed
 ```
 
-- "failed" appears three times.
+- The message is redundantly self-nesting: "notes generation **failed** … :
+  generating notes: ai generation **failed**" — "generation failed" twice and
+  "generating notes" once across one line (the seed's "three times" is loose;
+  literally "failed" appears twice — corrected here so the acceptance criterion
+  "does not repeat 'failed' / does not restate the stage" is testable against the
+  actual string).
 - The real AI cause (claude's stdout/stderr) is discarded.
 - `StageFailure.Output` ends up empty, so there is nothing actionable below
   the ✗ line.
@@ -254,3 +259,44 @@ _To be filled during Step 8 (Findings Review & Fix Discussion)._
 ## Notes
 
 Investigation initialized from discovery carrier (manifest description + session-001 log + seed).
+
+### Synthesis validation (2026-06-17)
+
+Independent synthesis agent traced the code fresh: **all six root-cause claims
+verified to the implementation level**, high confidence, no alternative root
+cause. It confirmed the runner provably populates `res.Stdout` with claude's
+message on a non-zero exit (`exec_runner.go` `translateRun` builds Stdout before
+the `*exec.ExitError` branch and returns the populated `res`) and that `attempt`
+provably discards it. Full report:
+`.workflows/.cache/notes-failure-output-ugly-and-uninformative/investigation/notes-failure-output-ugly-and-uninformative/synthesis-001.md`.
+
+Two minor gaps raised — both now resolved:
+
+1. **"failed" over-count** — symptom prose said "three times"; literally "failed"
+   appears twice in the chain. Corrected in Symptoms above so the acceptance
+   criterion is testable against the real string.
+2. **Regenerate surfacing untraced** — now traced. `mint release regenerate`
+   surfaces notes-generation failures via `surface(p, "notes", err)`
+   (`regenerate_batch.go:271`, `regenerate_interactive.go:207`), which builds the
+   SAME `StageFailure{Name, Message: failureMessage(cause)}` with **no `Output`**.
+   So regenerate shares facets 1 (discarded claude output) and 2 (wrapped
+   message), and hits the padStage gap (facet 3) for its "notes" stage too —
+   though its fresh path may carry a SHORTER wrap chain (surfaces `GenerateFromRange`'s
+   `"generating notes: %w"` directly rather than always re-wrapping through
+   `abortError`/`causeText`). **Fix scope note:** the fix must cover BOTH
+   surfacing helpers — `surfaceAndUnwind` (forward notes stage) AND `surface`
+   (regenerate notes stage, and the generic pre-PONR path) — so regenerate's
+   rendering is not left behind. A transport-level fix (carry claude's output on
+   the failure) benefits all three verbs (release, regenerate, commit) at once.
+
+### Fix-direction constraints surfaced by validation (for the spec, not decisions)
+
+- **`context.Canceled` must stay a passthrough.** Any change to `attempt`/`Generate`
+  that wraps the runner `Result` into a richer error MUST preserve
+  `classifyFatal`'s unchanged `context.Canceled` propagation (CLAUDE.md AI-seam
+  contract — a cancel is not an AI failure, never routed to a fallback).
+- **`padStage` is shared by four call sites.** Dropping the gap for `StageFailed`
+  only touches `pretty_test.go`; editing `padStage` itself also shifts
+  `StageSucceeded`/`Unwound`/`failNotInteractive` and breaks the exact-line
+  contracts pinned in `gate_forbidden_test.go` and `askline_test.go`. Settle the
+  layout decision deliberately and update whichever pinned tests it touches.
