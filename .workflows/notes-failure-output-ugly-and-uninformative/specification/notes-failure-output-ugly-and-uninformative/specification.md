@@ -129,6 +129,10 @@ A notes-generation AI failure (non-zero exit or empty/invalid body after retry) 
 
 All changes pass the project gates: `go build ./...`, `gofmt -l .` (empty), `go vet ./...`, `go test -race ./...`, `golangci-lint run` (0 issues).
 
+## Out of Scope
+
+- **Byte/token-aware diff ceiling.** The line-based `max_diff_lines` guard (default 50000) did not catch an 8.6k-line but ~867 KB byte-dense diff, which suggests a byte/token-aware ceiling would be valuable. This is **deliberately out of scope** — it is an enhancement to an input guard, not part of how a failure is *rendered*. It can be promoted to its own work unit later. This specification covers only the failure-rendering path: carrying the captured output, the concise message, and the layout decision.
+
 ---
 
 ## Working Notes
