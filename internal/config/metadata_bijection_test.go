@@ -302,7 +302,6 @@ func TestMetadataSoT_DualLevelRowsMatchIndependently(t *testing.T) {
 	}
 
 	for _, dropped := range dualLevel {
-		dropped := dropped
 		t.Run(dropped.Level.String()+"/"+dropped.Key, func(t *testing.T) {
 			t.Parallel()
 

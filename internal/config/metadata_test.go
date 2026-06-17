@@ -398,6 +398,11 @@ func TestMetadataRows_ConcreteScalarDefaultsRenderVerbatim(t *testing.T) {
 		key  configtest.RowKey
 		want string
 	}{
+		// The three shared rows below intentionally overlap with the dedicated
+		// TestMetadataRows_Shared*DefaultEqualsConfigConstant pins above: they keep this
+		// verbatim-render table complete (it asserts the rendered string form of every
+		// scalar default), while the dedicated pins carry the subsuming drift guard. Both
+		// source the want from the exported constant, so neither copy can drift.
 		{configtest.RowKey{Level: config.LevelShared, Key: "ai_command"}, config.DefaultAICommand},
 		{configtest.RowKey{Level: config.LevelShared, Key: "timeout"}, strconv.Itoa(int(config.DefaultTimeout / time.Second))},
 		{configtest.RowKey{Level: config.LevelShared, Key: "max_diff_lines"}, strconv.Itoa(config.DefaultMaxDiffLines)},

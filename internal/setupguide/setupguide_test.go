@@ -113,6 +113,39 @@ func TestGuide_EmitsEverySectionMarker(t *testing.T) {
 	}
 }
 
+// TestGuide_EachMarkerAppearsExactlyOnce strengthens the presence proof: each marker
+// must occur EXACTLY once in Guide(). Presence alone (TestGuide_EmitsEverySectionMarker)
+// survives a duplicated section — e.g. a copy-pasted block emitting its marker twice —
+// which the doc contract ("emitted on its own line immediately before its section")
+// forbids. Counting per marker over the rendered body closes that gap.
+func TestGuide_EachMarkerAppearsExactlyOnce(t *testing.T) {
+	t.Parallel()
+
+	body := setupguide.Guide()
+
+	for _, sm := range sectionMarkers {
+		if got := strings.Count(body, sm.marker); got != 1 {
+			t.Errorf("guide contains %s section marker %q %d times, want exactly 1", sm.label, sm.marker, got)
+		}
+	}
+}
+
+// TestConfigReference_DescriptionsCarryNoTablePipe enforces the markdown-table contract
+// at the SoT boundary: the config reference renders each row into a four-column
+// `key | level | default | description` row with the Description written unescaped, so a
+// Description containing a literal "|" would silently split the row into extra columns
+// while the per-row strings.Contains assertions still passed. No description carries a
+// pipe today; this fails loudly (naming the offending row) if one is ever added.
+func TestConfigReference_DescriptionsCarryNoTablePipe(t *testing.T) {
+	t.Parallel()
+
+	for _, row := range config.MetadataRows() {
+		if strings.Contains(row.Description, "|") {
+			t.Errorf("SoT row (key %q, level %q) Description contains a '|' that breaks the markdown table column: %q", row.Key, row.Level, row.Description)
+		}
+	}
+}
+
 // TestGuide_MarkersAreUnique guards against two sections sharing a marker — a
 // collision would let one section's presence mask another's absence, defeating
 // the per-section structural proof.

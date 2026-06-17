@@ -104,6 +104,29 @@ func TestRun_Setup_EmitsGuideToStdoutAndExitsZero(t *testing.T) {
 	}
 }
 
+// TestRun_Setup_UnknownFlag_ExitsUsageError drives the malformed `mint setup --nope`
+// through the full dispatch path: the commandSetup flag parse rejects the unknown flag
+// (it is not flag.ErrHelp), so run() must return the usage-error exit code and write the
+// diagnostic to stderr — never the guide to stdout. setup_test.go proves this at the
+// runner level; this closes the symmetry with the happy-path TestRun_Setup_* test by
+// proving the error path through the run() switch. NOT t.Parallel(): it swaps the
+// process-global os.Stdout/os.Stderr.
+func TestRun_Setup_UnknownFlag_ExitsUsageError(t *testing.T) {
+	stdout, stderr := captureStdStreams(t)
+
+	if code := run([]string{"setup", "--nope"}); code != usageExitCode {
+		t.Fatalf("run([setup --nope]) exit code = %d, want the usage error %d", code, usageExitCode)
+	}
+
+	out, errOut := stdout(), stderr()
+	if errOut == "" {
+		t.Errorf("run([setup --nope]) wrote no diagnostic to stderr")
+	}
+	if strings.Contains(out, setupguide.MarkerPipeline) {
+		t.Errorf("run([setup --nope]) emitted the guide to stdout despite the flag error; stdout = %q", out)
+	}
+}
+
 // captureStdStreams redirects the process-global os.Stdout and os.Stderr to pipes
 // for the duration of the test, restoring the originals on cleanup. It returns two
 // readers that drain and return each captured stream — call them AFTER the code

@@ -254,3 +254,47 @@ func tomlTag(field reflect.StructField) (name string, ok bool) {
 	}
 	return tag, true
 }
+
+// TestTomlTag_SkipGuard proves the ""/"-" skip guard inside the single toml-tag
+// primitive directly. Today's decode shapes carry no untagged or "-"-skipped field, so
+// the guard is purely defensive — exercised here against a synthetic struct rather than
+// left implied by the absence of such a field. An untagged field and an explicit "-"
+// field both yield ok=false (so schemaLeafKeysInto/tomlTagsOf emit no pair for them),
+// while a normally-tagged field yields its name.
+func TestTomlTag_SkipGuard(t *testing.T) {
+	t.Parallel()
+
+	type synthetic struct {
+		Tagged   string `toml:"tagged"`
+		Untagged string
+		Skipped  string `toml:"-"`
+	}
+
+	st := reflect.TypeOf(synthetic{})
+	cases := []struct {
+		field   string
+		wantTag string
+		wantOK  bool
+	}{
+		{"Tagged", "tagged", true},
+		{"Untagged", "", false},
+		{"Skipped", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.field, func(t *testing.T) {
+			t.Parallel()
+
+			f, ok := st.FieldByName(tc.field)
+			if !ok {
+				t.Fatalf("synthetic struct missing field %q", tc.field)
+			}
+			tag, gotOK := tomlTag(f)
+			if gotOK != tc.wantOK {
+				t.Errorf("tomlTag(%s) ok = %v, want %v", tc.field, gotOK, tc.wantOK)
+			}
+			if tag != tc.wantTag {
+				t.Errorf("tomlTag(%s) name = %q, want %q", tc.field, tag, tc.wantTag)
+			}
+		})
+	}
+}

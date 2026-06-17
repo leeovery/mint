@@ -40,6 +40,8 @@ None — no blocking issues.
 
 ## Recommendations
 
+> **Applied during review:** item 1(b) (do-now); items 2, 3 (marker-count + pipe-guard sub-bullets), and 4 (the safe quick-fix batch — five additive tests plus one dead-line removal, all green-verified against the full gate suite). Item 1(a) was a mis-stated note — the planning doc already names `metadata_test.go` correctly, so no edit was made. Item 3's "fold/retitle subset test" sub-bullet and all Ideas (5–9) are left as recommendations.
+
 ### Do now
 
 1. Doc staleness — historical pointers in non-code docs
