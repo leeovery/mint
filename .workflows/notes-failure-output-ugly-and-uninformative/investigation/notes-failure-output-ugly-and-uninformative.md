@@ -252,7 +252,102 @@ owning the operator-facing collapse, and the presenter faithfully prints whateve
 
 ## Fix Direction
 
-_To be filled during Step 8 (Findings Review & Fix Discussion)._
+### Chosen Approach
+
+Three independent, composable fixes on one path — agreed in findings review:
+
+1. **Facet 1 (load-bearing): carry claude's output to `StageFailure.Output`,
+   fixed at the transport.** Upgrade `ai.ErrGenerationFailed` from a bare
+   sentinel into a typed carrier error (e.g. `*ai.GenerationError`) that WRAPS
+   the sentinel (so `errors.Is(err, ErrGenerationFailed)` still matches) AND
+   carries claude's captured stdout/stderr from the runner `Result`.
+   `transport.attempt` stops discarding `res` on the error path; `Generate` packs
+   the captured output into the carrier. The engine then mirrors the existing
+   `hookFailureOutput` precedent: a helper extracts the captured output, and BOTH
+   notes surfacing sites — `surfaceAndUnwind("notes", …)` (forward) AND
+   `surface("notes", …)` (regenerate) — set `StageFailure.Output` to it. The
+   presenter already renders `Output` verbatim below the ✗ line, so no presenter
+   change is needed for this facet. Fixing at the transport means release,
+   regenerate, AND commit all benefit at once.
+
+2. **Facet 2: collapse the top-line message to one concise cause phrase.**
+   `causeText` already maps each cause to a clean phrase. The presenter-facing
+   `Message` shows that short form only (no stage restatement, no repeated
+   "failed"); the verbose detail lives in the Facet-1 `Output` block. Target
+   render for the reported case:
+
+   ```
+   ✗ notes  AI returned empty/invalid notes after retry
+     Prompt is too long
+   ```
+
+3. **Facet 3: keep the `padStage` gap for failure lines.** Once Facet 2 lands,
+   the "notes … notes" duplication is gone regardless of the gap, removing the
+   only functional driver to change it. Keeping the gap is column-consistent with
+   ✓/↩ lines and is the lowest-risk option.
+
+**Deciding factor:** the surfacing machinery (`StageFailure.Output` →
+`writeNotesBody`) and the carrier-extraction pattern (`hookFailureOutput`) already
+exist and are battle-tested — the fix is "make the notes/AI path opt into what
+tag/push, hooks, and commit already do", not new mechanism. Transport-level Facet
+1 is the natural home (one seam, three verbs).
+
+### Options Explored
+
+- **Facet 1 — typed carrier error (CHOSEN)** vs. transport returning captured
+  output as a separate return value. The carrier mirrors `*hooks.HookError` and
+  keeps the `Generate` signature/`errors.Is` routing intact, so callers that
+  branch on the three sentinels are unaffected; a separate return value would
+  churn every call site. Carrier chosen.
+- **Facet 2 — concise phrase from `causeText` (CHOSEN)** vs. continuing to render
+  the full nested chain. The nested chain is correct for `errors.Is`/logs but
+  human-hostile as a display string; separating the matchable error from the
+  display message is the fix. Open sub-decision deferred to spec: whether
+  `abortError` keeps wrapping (for logs) while only the display Message uses the
+  short form, or the nested chain stops being built for display entirely.
+- **Facet 3 — keep the gap (CHOSEN)** vs. drop the `padStage` gap for failures.
+  Dropping is viable but is a deliberate contract change with NO remaining
+  functional driver after Facet 2, and editing `padStage` itself would ripple to
+  success/unwound/gate-not-interactive lines and their pinned tests. Keep chosen.
+
+### Discussion
+
+Findings and fix direction both confirmed by the user at the first gate (no
+pushback). The synthesis agent's high-confidence validation (all six claims
+verified to the implementation level) gave confidence to proceed. Key shared
+understanding reached: the load-bearing fix is Facet 1 — the other two are
+polish that ride on it (Facet 2 makes the top line readable; Facet 3 becomes a
+non-issue once Facet 2 removes the duplication). Scope deliberately fixes the
+transport once for all three verbs rather than patching notes in isolation.
+
+### Testing Recommendations
+
+- New: assert the notes AI-failure path populates `StageFailure.Output` with
+  claude's captured output (the gap the existing tag/push-only presenter test
+  left uncovered) — at the engine/notes wiring level, not just the presenter.
+- New: assert the top-line `Message` is the concise cause phrase and does NOT
+  contain the nested chain / does not restate the stage name.
+- New: cover BOTH surfacing paths — forward release (`surfaceAndUnwind`) and
+  regenerate (`surface`) — so regenerate's rendering is not left behind.
+- New (transport): a non-zero-exit `Generate` carries the runner's captured
+  stdout/stderr on the returned error, while `errors.Is(err,
+  ErrGenerationFailed)` still holds; and `context.Canceled` still propagates
+  UNCHANGED (no carrier-swallowing).
+- Update: whichever `pretty_test.go` failure-line assertions the concise-message
+  change touches (keep `gate_forbidden_test.go`/`askline_test.go` untouched by
+  keeping `padStage`).
+
+### Risk Assessment
+
+- **Fix complexity:** Low — mirrors the existing `Output`/`hookFailureOutput`
+  precedent; no new presenter mechanism.
+- **Regression risk:** Low–Medium. Low if `padStage` is kept (Facet 3
+  recommendation); Medium only if `padStage` is edited globally (ripples to all
+  aligned lines + their exact-line pinned tests). The carrier must preserve
+  `errors.Is(ErrGenerationFailed)` matching and the `context.Canceled`
+  passthrough — both are load-bearing AI-seam invariants.
+- **Recommended approach:** Regular release (not a hotfix); the bug degrades
+  diagnosability but causes no data loss.
 
 ---
 
