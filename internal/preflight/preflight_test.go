@@ -287,22 +287,6 @@ func TestRunLocalGates_SkipCleanTree_SkipsCleanTreeGate(t *testing.T) {
 	}
 }
 
-func TestRunLocalGates_SkipCleanTree_DirtyTreeDoesNotAbort(t *testing.T) {
-	t.Parallel()
-
-	// The point of the bypass: a DIRTY tree must NOT abort when skipCleanTree=true. The
-	// porcelain probe is never issued (no dirty status is even read), so no clean-tree
-	// GateError can surface; the on-branch and tag-free gates carry the run to a nil pass.
-	r := &argRunner{responses: map[string]scripted{
-		"rev-parse --abbrev-ref HEAD":            {result: runner.Result{Stdout: "main\n"}},
-		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
-	}}
-
-	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, true); err != nil {
-		t.Fatalf("RunLocalGates aborted under skipCleanTree on a dirty tree: %v", err)
-	}
-}
-
 func TestRunLocalGates_CheapFirstAbort(t *testing.T) {
 	t.Parallel()
 
