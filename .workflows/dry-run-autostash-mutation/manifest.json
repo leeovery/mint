@@ -1,7 +1,7 @@
 {
   "name": "dry-run-autostash-mutation",
   "work_type": "quick-fix",
-  "status": "in-progress",
+  "status": "completed",
   "created": "2026-06-18",
   "description": "Gate the autostash on dry-run so --dry-run --autostash no longer briefly mutates the working tree via a real git stash, keeping a dry run provably mutation-free (skip vs. accept transient stash settled in scoping)",
   "phases": {
@@ -116,5 +116,6 @@
       "source": "inbox:idea",
       "seeded_at": "2026-06-18T10:33:51Z"
     }
-  ]
+  ],
+  "completed_at": "2026-06-18"
 }
