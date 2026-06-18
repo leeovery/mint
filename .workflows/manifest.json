@@ -11,6 +11,9 @@
     },
     "notes-failure-output-ugly-and-uninformative": {
       "work_type": "bugfix"
+    },
+    "dry-run-autostash-mutation": {
+      "work_type": "quick-fix"
     }
   },
   "defaults": {
