@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.11] - 2026-06-18
+
+✨ Added
+
+- `--dry-run --autostash` now previews a release against a dirty working tree — the real stash is skipped entirely and the clean-tree gate is bypassed for that combination, so the repo remains byte-for-byte unchanged while the preview still completes.
+
+🔧 Changed
+
+- A dirty-tree dry run without `--autostash` still aborts at the clean-tree gate — the bypass is conditioned on `--dry-run` and `--autostash` together, never `--dry-run` alone.
+
 ## [0.0.10] - 2026-06-17
 
 🐛 Fixed
