@@ -100,7 +100,7 @@
     "review": {
       "items": {
         "dry-run-autostash-mutation": {
-          "status": "in-progress",
+          "status": "completed",
           "reviewed_tasks": [
             "dry-run-autostash-mutation-1-1",
             "dry-run-autostash-mutation-2-1",
