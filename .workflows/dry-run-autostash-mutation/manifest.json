@@ -11,6 +11,32 @@
           "status": "completed"
         }
       }
+    },
+    "planning": {
+      "items": {
+        "dry-run-autostash-mutation": {
+          "status": "completed",
+          "format": "tick",
+          "spec_commit": "e383749971125de0c52e799a381725aa0f68f7ce",
+          "task_list_gate_mode": "auto",
+          "author_gate_mode": "auto",
+          "finding_gate_mode": "auto",
+          "review_cycle": 0,
+          "phase": 1,
+          "task": "~",
+          "task_map": {
+            "dry-run-autostash-mutation-1-1": "tick-debc71"
+          },
+          "external_id": "tick-5456a2"
+        }
+      }
+    },
+    "scoping": {
+      "items": {
+        "dry-run-autostash-mutation": {
+          "status": "completed"
+        }
+      }
     }
   },
   "seeds": [
