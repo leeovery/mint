@@ -42,7 +42,7 @@ None.
 
 ## Recommendations
 
-### Ideas
+### Applied during review
 
-1. `internal/engine/release_test.go:1304` — broaden the `assertNoMutation` helper to also reject `git stash push` / `git stash pop` (Report 1-1)
-   - It currently only flags `git tag -a` / `git push` / `gh release create` prefixes, not stash mutations, even though both reach the `git.Mutator`. The dry-run+autostash test compensates with explicit `invokedWith` checks (`release_autostash_test.go:318-323`), so coverage is not weakened today — but broadening the helper would let future dry-run tests inherit the stash guard automatically rather than each restating it. A judgment call on the helper's intended contract, hence an idea rather than a quick-fix.
+1. `internal/engine/release_test.go:1304` — broadened the `assertNoMutation` helper to also reject `git stash push` / `git stash pop` (Report 1-1) — **APPLIED**
+   - The helper previously flagged only `git tag -a` / `git push` / `gh release create`, framed as "mutations to the remote". Stash is a local working-tree mutation that still flows through `git.Mutator`, so the dry-run invariant ("never reaches the Mutator / byte-for-byte unchanged") already covers it. Added two `case` arms (`git stash push`, `git stash pop`) and reworded the doc comment to state the helper now mirrors the full Mutator-invariant. Verified safe: none of the ~40 `assertNoMutation` callers performs a real stash, so no existing test regressed. Future dry-run tests now inherit the stash guard automatically rather than each restating it (the dry-run+autostash test's explicit `invokedWith` checks at `release_autostash_test.go:318-323` remain as belt-and-braces). All five project gates pass.

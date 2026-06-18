@@ -1298,9 +1298,11 @@ func countKind(rec *presentertest.RecordingPresenter, kind presentertest.EventKi
 	return n
 }
 
-// assertNoMutation fails the test if any mutating git/gh command was recorded:
-// no annotated tag, no push, no provider release create. Read-only probes and the
-// changelog write are not mutations to the remote.
+// assertNoMutation fails the test if any command that flows through git.Mutator was
+// recorded: no annotated tag, no push, no provider release create, and no autostash
+// push/pop. This mirrors the DryRun invariant (a dry run NEVER reaches the Mutator and
+// leaves the repo byte-for-byte unchanged) — so it covers the local working-tree stash,
+// not just remote mutations. Read-only probes and the changelog write are not mutations.
 func assertNoMutation(t *testing.T, f *runner.FakeRunner) {
 	t.Helper()
 	for _, inv := range f.Invocations() {
@@ -1310,6 +1312,10 @@ func assertNoMutation(t *testing.T, f *runner.FakeRunner) {
 			t.Errorf("mutation occurred: annotated tag created (%q)", line)
 		case strings.HasPrefix(line, "git push"):
 			t.Errorf("mutation occurred: push attempted (%q)", line)
+		case strings.HasPrefix(line, "git stash push"):
+			t.Errorf("mutation occurred: autostash push attempted (%q)", line)
+		case strings.HasPrefix(line, "git stash pop"):
+			t.Errorf("mutation occurred: autostash pop attempted (%q)", line)
 		case strings.HasPrefix(line, "gh release create"):
 			t.Errorf("mutation occurred: provider release created (%q)", line)
 		}
