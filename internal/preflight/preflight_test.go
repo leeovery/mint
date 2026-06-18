@@ -211,7 +211,7 @@ func TestRunLocalGates_AllPass(t *testing.T) {
 		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
 	}}
 
-	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false); err != nil {
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, false); err != nil {
 		t.Fatalf("RunLocalGates returned unexpected error: %v", err)
 	}
 }
@@ -227,7 +227,7 @@ func TestRunLocalGates_AnyBranch_SkipsOnBranchGate(t *testing.T) {
 		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
 	}}
 
-	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true); err != nil {
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true, false); err != nil {
 		t.Fatalf("RunLocalGates returned unexpected error under --any-branch: %v", err)
 	}
 
@@ -252,10 +252,54 @@ func TestRunLocalGates_AnyBranch_StillRunsCleanTreeGate(t *testing.T) {
 		"status --porcelain": {result: runner.Result{Stdout: " M file.go\n"}},
 	}}
 
-	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true)
+	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true, false)
 	var gateErr *preflight.GateError
 	if !errors.As(err, &gateErr) {
 		t.Fatalf("error = %v, want the clean-tree *GateError even under --any-branch", err)
+	}
+}
+
+func TestRunLocalGates_SkipCleanTree_SkipsCleanTreeGate(t *testing.T) {
+	t.Parallel()
+
+	// With skipCleanTree=true the clean-tree gate is NOT evaluated: no `git status
+	// --porcelain` probe is issued, even though the tree is dirty. The other local gates
+	// (on-branch, tag-free) still run and the driver passes. This is the dry-run+autostash
+	// bypass — a dirty tree must not abort a dry run that skipped the real autostash.
+	r := &argRunner{responses: map[string]scripted{
+		"rev-parse --abbrev-ref HEAD":            {result: runner.Result{Stdout: "main\n"}},
+		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
+	}}
+
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, true); err != nil {
+		t.Fatalf("RunLocalGates returned unexpected error under skipCleanTree: %v", err)
+	}
+
+	// The clean-tree gate was skipped — the porcelain probe was never issued.
+	for _, c := range r.calls {
+		if c == "status --porcelain" {
+			t.Errorf("skipCleanTree evaluated the clean-tree gate; calls = %v", r.calls)
+		}
+	}
+	// The other local gates still ran (on-branch + tag-free), in exactly that count.
+	if len(r.calls) != 2 {
+		t.Errorf("local-gate calls = %v, want exactly the on-branch and tag-free probes", r.calls)
+	}
+}
+
+func TestRunLocalGates_SkipCleanTree_DirtyTreeDoesNotAbort(t *testing.T) {
+	t.Parallel()
+
+	// The point of the bypass: a DIRTY tree must NOT abort when skipCleanTree=true. The
+	// porcelain probe is never issued (no dirty status is even read), so no clean-tree
+	// GateError can surface; the on-branch and tag-free gates carry the run to a nil pass.
+	r := &argRunner{responses: map[string]scripted{
+		"rev-parse --abbrev-ref HEAD":            {result: runner.Result{Stdout: "main\n"}},
+		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
+	}}
+
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, true); err != nil {
+		t.Fatalf("RunLocalGates aborted under skipCleanTree on a dirty tree: %v", err)
 	}
 }
 
@@ -269,7 +313,7 @@ func TestRunLocalGates_CheapFirstAbort(t *testing.T) {
 		"status --porcelain": {result: runner.Result{Stdout: " M file.go\n"}},
 	}}
 
-	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false)
+	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, false)
 	if err == nil {
 		t.Fatalf("RunLocalGates returned nil error, want the clean-tree abort")
 	}

@@ -13,6 +13,7 @@ package engine_test
 // command). A clean nil return therefore proves no mutation was ever reached.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -295,6 +296,45 @@ func TestRelease_DryRun_RepoFilesUnchanged(t *testing.T) {
 	// No changelog was written.
 	if _, err := os.Stat(filepath.Join(root, "CHANGELOG.md")); !os.IsNotExist(err) {
 		t.Errorf("dry-run wrote CHANGELOG.md; the working tree must be unchanged (stat err = %v)", err)
+	}
+	assertNoMutation(t, f)
+}
+
+// TestRelease_DryRun_NonAutostash_DirtyTreeStillAborts proves the clean-tree gate
+// bypass is conditioned on DryRun && AutoStash, NEVER DryRun alone: a dirty-tree dry
+// run WITHOUT --autostash still aborts at the clean-tree gate (the abort correctly tells
+// the user the tree is dirty). The gate runs (the porcelain probe is issued and reads
+// dirty), surfaces a StageFailed, and the run aborts non-zero with no mutation.
+func TestRelease_DryRun_NonAutostash_DirtyTreeStillAborts(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	// Resolve + fetch succeed; the clean-tree gate runs (not bypassed without --autostash)
+	// and fails on the dirty porcelain.
+	f.SeedSequence("git",
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list
+		ScriptedOut(""),            // fetch --tags
+		ScriptedOut(" M file.go"),  // status --porcelain (DIRTY — gate fails)
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), dryRunOptions())
+	if err == nil {
+		t.Fatalf("non-autostash dirty dry run returned nil error, want a clean-tree abort")
+	}
+	var abort *engine.AbortError
+	if !errors.As(err, &abort) {
+		t.Fatalf("err is not an *engine.AbortError: %v", err)
+	}
+	if !recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("non-autostash dirty dry run did not surface a StageFailed")
+	}
+	// The clean-tree probe WAS issued — the gate is not bypassed for DryRun alone.
+	if !invokedWith(f, "git", "status", "--porcelain") {
+		t.Errorf("non-autostash dry run did not run the clean-tree probe; the gate must still run")
 	}
 	assertNoMutation(t, f)
 }

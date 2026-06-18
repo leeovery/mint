@@ -21,6 +21,11 @@ package engine
 //
 // All stash/pop git ops are MUTATIONS and flow through the lock-resilient git.Mutator
 // (4-1): a contended `.git` lock is retried, a provably-stale lock cleared.
+//
+// DRY-RUN: neither autostashPush nor autostashPop is invoked under --dry-run — the
+// caller (Release) gates the whole block on !opts.DryRun. A dry run takes no action, so
+// it never reaches the Mutator; the clean-tree gate it would have satisfied is bypassed
+// for the DryRun && AutoStash combo so a dirty-tree dry run still previews.
 
 import (
 	"context"

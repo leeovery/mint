@@ -57,6 +57,12 @@ func autostashOptions() engine.ReleaseOptions {
 	return engine.ReleaseOptions{Bump: version.BumpPatch, Now: fixedClock, AutoStash: true}
 }
 
+// dryRunAutostashOptions is patchOptions with BOTH --dry-run and --autostash set: the
+// combo this task makes provably mutation-free (no real stash; clean-tree gate bypassed).
+func dryRunAutostashOptions() engine.ReleaseOptions {
+	return engine.ReleaseOptions{Bump: version.BumpPatch, Now: fixedClock, AutoStash: true, DryRun: true}
+}
+
 // dirtyStatus is git's porcelain output for a dirty tree — what the clean-tree gate
 // observes when autostash has NOT (yet) cleaned the tree.
 const dirtyStatus = " M file.go\n"
@@ -283,6 +289,68 @@ func TestRelease_NoAutostash_DirtyTreeStillAborts(t *testing.T) {
 		t.Errorf("a stash was taken without --autostash; the escape hatch must be opt-in")
 	}
 	assertNoMutation(t, f)
+}
+
+// TestRelease_DryRunAutostash_DirtyTree_NoStashMutation_CompletesPreview proves the
+// quick-fix: `--dry-run --autostash` against a DIRTY tree issues ZERO `git stash push`
+// / `git stash pop` mutations (the real stash is skipped in dry-run) AND still completes
+// the full preview — the clean-tree gate is bypassed for the DryRun && AutoStash combo,
+// so the dirty tree does NOT abort. NO mutation tail (commit/tag/push/gh) is seeded and
+// NO `status --porcelain` probe is seeded, so any attempt to stash or mutate would error
+// the run; a clean RunFinished proves the dry run reached nothing mutating.
+func TestRelease_DryRunAutostash_DirtyTree_NoStashMutation_CompletesPreview(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	// First-release dry-run read timeline with the clean-tree probe ABSENT (the gate is
+	// bypassed for DryRun && AutoStash) and NO stash push: the tree is dirty, but neither
+	// the stash nor the clean-tree gate runs. No mutation tail is seeded.
+	f.SeedSequence("git",
+		ScriptedOut(root),            // rev-parse --show-toplevel
+		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),              // tag --list (no tags)
+		ScriptedOut(""),              // fetch --tags
+		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch) — no clean-tree probe before it
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1 (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture clean start)
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection for the plan)
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), dryRunAutostashOptions()); err != nil {
+		t.Fatalf("dry-run --autostash Release returned %v, want nil (dirty tree previews mutation-free)", err)
+	}
+
+	// ZERO stash mutations: neither the push nor the pop ran.
+	if invokedWith(f, "git", "stash", "push", "--include-untracked") {
+		t.Errorf("dry-run --autostash ran `git stash push`; the real stash must be skipped in dry-run")
+	}
+	if invokedWith(f, "git", "stash", "pop") {
+		t.Errorf("dry-run --autostash ran `git stash pop`; no stash was taken, so none must be popped")
+	}
+	// The clean-tree gate was bypassed — no `git status --porcelain` probe was issued.
+	if invokedWith(f, "git", "status", "--porcelain") {
+		t.Errorf("dry-run --autostash ran the clean-tree probe; the gate must be bypassed for the combo")
+	}
+	// No mutation reached the wrapper, and no gh command ran.
+	assertNoMutation(t, f)
+	for _, inv := range f.Invocations() {
+		if inv.Name == "gh" {
+			t.Errorf("dry-run --autostash issued a gh command: %q", commandLine(inv))
+		}
+	}
+	// The preview completed: the run finished successfully (no clean-tree abort).
+	fin, _ := rec.At(len(rec.Events) - 1)
+	if fin.Kind != presentertest.KindRunFinished {
+		t.Errorf("dry-run --autostash did not finish; last event = %v", fin.Kind)
+	}
+	// No StageFailed was surfaced (the dirty tree did not abort the preview).
+	if recorded(rec, presentertest.KindStageFailed) {
+		t.Errorf("dry-run --autostash surfaced a StageFailed; the dirty tree must not abort the preview")
+	}
 }
 
 // TestRelease_Autostash_PopConflictAfterAbort_KeepsStashAndWarns proves the conflict

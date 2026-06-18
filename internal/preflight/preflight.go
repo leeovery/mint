@@ -69,10 +69,20 @@ func newGateError(format string, args ...any) *GateError {
 // anyBranch is the --any-branch escape hatch: when true the on-release-branch gate
 // is SKIPPED ENTIRELY — it is not evaluated, so no `git rev-parse --abbrev-ref HEAD`
 // is issued — letting a deliberate off-branch release proceed. The flag weakens ONLY
-// the branch gate; the clean-tree and tag-free gates always run regardless.
-func RunLocalGates(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch bool) error {
-	if err := CheckCleanTree(ctx, r); err != nil {
-		return err
+// the branch gate; the tag-free gate always runs regardless.
+//
+// skipCleanTree mirrors anyBranch for the clean-tree gate: when true the clean-tree
+// gate is SKIPPED ENTIRELY — CheckCleanTree is not evaluated, so no `git status
+// --porcelain` probe is issued. The orchestrator sets it ONLY for the
+// dry-run+autostash combo: a dry run skips the real autostash, and since autostash's
+// sole purpose is to clean the tree for this gate, the gate must be bypassed too so a
+// dirty-tree dry run still completes its preview rather than newly aborting here. It
+// weakens ONLY the clean-tree gate; the on-branch and tag-free gates still run.
+func RunLocalGates(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch, skipCleanTree bool) error {
+	if !skipCleanTree {
+		if err := CheckCleanTree(ctx, r); err != nil {
+			return err
+		}
 	}
 	if !anyBranch {
 		if err := CheckOnBranch(ctx, r, releaseBranch); err != nil {

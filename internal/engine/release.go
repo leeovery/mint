@@ -243,6 +243,11 @@ type ReleaseOptions struct {
 	// and warns rather than discarding the user's work. It is OPT-IN because the release
 	// mutates the tree, so popping unrelated WIP can conflict — opting in is the user
 	// asserting it is safe. All stash/pop ops flow through the lock-resilient Mutator.
+	//
+	// Under DryRun the real stash is SKIPPED ENTIRELY (no push, no pop) — a dry run takes
+	// no action, so it never reaches the Mutator. Because the stash that would have
+	// cleaned the tree is skipped, the clean-tree preflight gate is bypassed for the
+	// DryRun && AutoStash combo so a dirty-tree dry run still completes its preview.
 	AutoStash bool
 	// AnyBranch is the --any-branch escape hatch: when set, the on-release-branch
 	// preflight gate is SKIPPED ENTIRELY (not evaluated — no `git rev-parse
@@ -258,12 +263,15 @@ type ReleaseOptions struct {
 	// version determination, notes generation/preview), but every MUTATION is skipped:
 	// each configured lifecycle hook (preflight/pre_tag/post_release) is reported-and-
 	// skipped rather than run (the env still renders MINT_DRY_RUN=1 even though no hook
-	// consumes it), and — at the dry-run boundary after the gate (4-7a) — the
+	// consumes it); the --autostash stash push/pop is SKIPPED too (with the clean-tree
+	// gate bypassed for the DryRun && AutoStash combo so a dirty-tree dry run still
+	// previews); and — at the dry-run boundary after the gate (4-7a) — the
 	// version-file projection, the changelog write, the bookkeeping commit, the
 	// annotated tag, the atomic push, and the provider release are ALL skipped so a dry
 	// run NEVER reaches the lock-resilient Mutator and the repo is byte-for-byte
-	// unchanged. The -d/--dry-run flag is wired in production (cmd/mint) and sets this
-	// field. The ONE intentional side effect (task 4-7): after the notes PREVIEW is
+	// unchanged (this guarantee now holds for the --autostash combo too). The -d/--dry-run
+	// flag is wired in production (cmd/mint) and sets this field. The ONE intentional
+	// side effect (task 4-7): after the notes PREVIEW is
 	// generated, the generated AI note is WRITTEN to the gitignored/temp dry-run cache
 	// (keyed by the post-diff_exclude diff + version + prompt/context) so the
 	// subsequent real run can REUSE it (reuse itself is task 4-8).
@@ -284,6 +292,13 @@ type ReleaseOptions struct {
 // a pre-PONR abort the repo is already back at its clean starting state by the time the
 // pop applies the WIP on top. A no-WIP run is a no-op (nothing stashed → no deferred
 // pop); a pop conflict warns and leaves the stash intact (never discarded).
+//
+// Under --dry-run the autostash stash push/pop is SKIPPED — a dry run takes no action,
+// so it never mutates the tree. Because that skipped stash is what would have cleaned
+// the tree for the clean-tree gate, the gate is bypassed for the DryRun && AutoStash
+// combo (and ONLY that combo: a non-autostash dirty dry run still aborts at the gate),
+// so a dirty-tree dry run completes its byte-identical preview without reaching the
+// Mutator.
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p := deps.Presenter
 
@@ -366,7 +381,15 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// its clean starting state — unwind-then-pop holds for every abort path. A no-WIP
 	// tree stashes nothing (no pop is owed and none is deferred); a pop conflict warns
 	// and leaves the stash intact.
-	if opts.AutoStash {
+	//
+	// DRY-RUN: a dry run takes no action, so neither the stash push NOR the deferred pop
+	// runs — the autostash block is gated on !opts.DryRun. Skipping the real stash keeps
+	// the dry-run guarantee that NOTHING reaches the lock-resilient Mutator and the repo
+	// is byte-for-byte unchanged, now holding for the --autostash combo too. Because the
+	// stash that would have cleaned the tree is skipped, the clean-tree gate is bypassed
+	// for this same DryRun && AutoStash combo (passed into runPreflight below) so a
+	// dirty-tree dry run still completes its preview rather than aborting at the gate.
+	if opts.AutoStash && !opts.DryRun {
 		if autostashPush(ctx, deps) {
 			defer autostashPop(ctx, deps)
 		}
@@ -381,7 +404,13 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 
 	// Stage 2 — preflight. Fetch first, then cheap local gates, then network gates.
-	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch); err != nil {
+	// The clean-tree gate is bypassed ONLY for the dry-run+autostash combo: a dry run
+	// skips the real autostash (so the tree stays dirty), and since autostash's only job
+	// is to clean the tree for that gate, the gate must be bypassed too — otherwise a
+	// dirty-tree dry run would newly abort here instead of completing its preview. The
+	// bypass is conditioned on DryRun && AutoStash, never DryRun alone, so a non-autostash
+	// dirty dry run still aborts at the clean-tree gate (correctly flagging the dirty tree).
+	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch, opts.DryRun && opts.AutoStash); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -1067,13 +1096,18 @@ func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start
 //
 // anyBranch is the --any-branch escape hatch: it is passed to RunLocalGates, which
 // SKIPS the on-release-branch gate when it is true (the gate is not evaluated). It
-// affects ONLY the branch gate — fetch, clean-tree, tag-free, and remote-sync all
-// run unchanged.
-func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch bool) error {
+// affects ONLY the branch gate — fetch, tag-free, and remote-sync all run unchanged.
+//
+// skipCleanTree is the dry-run+autostash bypass: it is passed to RunLocalGates, which
+// SKIPS the clean-tree gate when it is true (no `git status --porcelain` probe). The
+// caller sets it ONLY for DryRun && AutoStash — a dry run skips the real autostash, so
+// the clean-tree gate it would have satisfied is bypassed too, letting a dirty-tree dry
+// run finish its preview. It affects ONLY the clean-tree gate.
+func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch, skipCleanTree bool) error {
 	if err := preflight.Fetch(ctx, r); err != nil {
 		return err
 	}
-	if err := preflight.RunLocalGates(ctx, r, releaseBranch, tag, anyBranch); err != nil {
+	if err := preflight.RunLocalGates(ctx, r, releaseBranch, tag, anyBranch, skipCleanTree); err != nil {
 		return err
 	}
 	if err := preflight.CheckRemoteSync(ctx, r, releaseBranch); err != nil {
