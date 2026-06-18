@@ -20,3 +20,13 @@ Address findings from Analysis (Cycle 1).
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
 | dry-run-autostash-mutation-2-1 | Consolidate the redundant skipCleanTree preflight tests | Surviving test must still prove the porcelain probe is absent, branch and tag-free gates run, and the run passes; alternative path (keep dirty-tree test) only if it adds a distinguishing assertion over an identical fixture |
+
+### Phase 3: Analysis (Cycle 2)
+
+Address findings from Analysis (Cycle 2).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| dry-run-autostash-mutation-3-1 | Reuse seedDryRunFirstRelease for the dry-run+autostash dirty-tree test instead of hand-copying the read-gate timeline | Parameterised helper must keep all other seeded lines and order unchanged; existing callers pass skipCleanTree=false byte-for-byte; surviving test still asserts zero porcelain probe, zero stash push/pop, no mutation tail, no gh, clean RunFinished |

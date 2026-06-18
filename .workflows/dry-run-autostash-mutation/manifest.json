@@ -27,7 +27,9 @@
           "task_map": {
             "dry-run-autostash-mutation-1-1": "tick-debc71",
             "dry-run-autostash-mutation-2": "tick-f0bc20",
-            "dry-run-autostash-mutation-2-1": "tick-0941ed"
+            "dry-run-autostash-mutation-2-1": "tick-0941ed",
+            "dry-run-autostash-mutation-3": "tick-7a7cdf",
+            "dry-run-autostash-mutation-3-1": "tick-e62a83"
           },
           "external_id": "tick-5456a2"
         }

@@ -6,7 +6,7 @@ total_proposed: 1
 # Analysis Tasks: Dry-Run Autostash Mutation (Cycle 2)
 
 ## Task 1: Reuse seedDryRunFirstRelease for the dry-run+autostash dirty-tree test instead of hand-copying the read-gate timeline
-status: pending
+status: approved
 severity: low
 sources: duplication
 
