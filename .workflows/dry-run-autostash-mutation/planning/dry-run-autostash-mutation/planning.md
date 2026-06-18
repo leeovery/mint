@@ -10,3 +10,13 @@ status: approved
 | Internal ID | Name | Edge Cases |
 |-------------|------|------------|
 | dry-run-autostash-mutation-1-1 | Gate autostash on dry-run; bypass clean-tree gate for dry-run+autostash | Non-autostash dry run still aborts on dirty tree; real autostash run unchanged; bypass conditioned on `DryRun && AutoStash`, not `DryRun` alone |
+
+### Phase 2: Analysis (Cycle 1)
+
+Address findings from Analysis (Cycle 1).
+
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| dry-run-autostash-mutation-2-1 | Consolidate the redundant skipCleanTree preflight tests | Surviving test must still prove the porcelain probe is absent, branch and tag-free gates run, and the run passes; alternative path (keep dirty-tree test) only if it adds a distinguishing assertion over an identical fixture |
