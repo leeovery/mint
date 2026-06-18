@@ -305,19 +305,9 @@ func TestRelease_DryRunAutostash_DirtyTree_NoStashMutation_CompletesPreview(t *t
 	f := runner.NewFakeRunner()
 	// First-release dry-run read timeline with the clean-tree probe ABSENT (the gate is
 	// bypassed for DryRun && AutoStash) and NO stash push: the tree is dirty, but neither
-	// the stash nor the clean-tree gate runs. No mutation tail is seeded.
-	f.SeedSequence("git",
-		ScriptedOut(root),            // rev-parse --show-toplevel
-		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),              // tag --list (no tags)
-		ScriptedOut(""),              // fetch --tags
-		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch) — no clean-tree probe before it
-		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1 (absent)
-		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
-		ScriptedOut(""),              // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),     // rev-parse HEAD (capture clean start)
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection for the plan)
-	)
+	// the stash nor the clean-tree gate runs. skipCleanTree=true omits the `status
+	// --porcelain` slot from the shared helper; no mutation tail is seeded.
+	seedDryRunFirstRelease(f, root, "main", "v0.0.1", true)
 	rec := &presentertest.RecordingPresenter{}
 
 	if err := engine.Release(t.Context(), newDeps(rec, f), dryRunAutostashOptions()); err != nil {

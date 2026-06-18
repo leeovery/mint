@@ -26,24 +26,34 @@ import (
 )
 
 // seedDryRunFirstRelease scripts a FakeRunner's git timeline for a no-tags
-// first-release dry run: the ten read-only gates (identical to the real path) plus
-// the read-only `git remote get-url origin` provider detection the dry-run plan uses
-// to name the publish target. CRUCIALLY it seeds NO mutation tail (no add/commit, no
+// first-release dry run: the read-only gates (identical to the real path) plus the
+// read-only `git remote get-url origin` provider detection the dry-run plan uses to
+// name the publish target. CRUCIALLY it seeds NO mutation tail (no add/commit, no
 // tag, no push) — those calls are left unseeded so any attempt fails the run.
-func seedDryRunFirstRelease(f *runner.FakeRunner, root, releaseBranch, tag string) {
-	f.SeedSequence("git",
-		ScriptedOut(root),                    // rev-parse --show-toplevel
-		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),                      // tag --list (no tags)
-		ScriptedOut(""),                      // fetch --tags
-		ScriptedOut(""),                      // status --porcelain (clean)
-		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),                    // rev-parse -q --verify refs/tags/{tag} (absent)
-		ScriptedOut("0\t1"),                  // rev-list left-right count (ahead only)
-		ScriptedOut(""),                      // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
-		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection for the plan)
+//
+// skipCleanTree omits the `status --porcelain` (clean-tree) probe from the timeline —
+// the single gate the DryRun && AutoStash combo bypasses (a dirty tree previews
+// mutation-free without the gate ever running). Every other caller passes false so the
+// probe is seeded in its normal slot, keeping ONE definition of the read-gate order.
+func seedDryRunFirstRelease(f *runner.FakeRunner, root, releaseBranch, tag string, skipCleanTree bool) {
+	seq := []runner.ScriptedCall{
+		ScriptedOut(root),                      // rev-parse --show-toplevel
+		ScriptedOut("origin/" + releaseBranch), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),                        // tag --list (no tags)
+		ScriptedOut(""),                        // fetch --tags
+	}
+	if !skipCleanTree {
+		seq = append(seq, ScriptedOut("")) // status --porcelain (clean)
+	}
+	seq = append(seq,
+		ScriptedOut(releaseBranch),   // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/{tag} (absent)
+		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
+		ScriptedOut(""),              // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
+		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection for the plan)
 	)
+	f.SeedSequence("git", seq...)
 }
 
 // dryRunOptions is the default-bump, fixed-clock options with DryRun active — the
@@ -62,7 +72,7 @@ func TestRelease_DryRun_NoMutation_FirstRelease(t *testing.T) {
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
-	seedDryRunFirstRelease(f, root, "main", "v0.0.1")
+	seedDryRunFirstRelease(f, root, "main", "v0.0.1", false)
 	// No mutation seeds: the bookkeeping add/commit, the tag, the push, and every gh
 	// call are deliberately unseeded so any attempt fails the run.
 	rec := &presentertest.RecordingPresenter{}
@@ -101,7 +111,7 @@ func TestRelease_DryRun_RunsReadOnlyPreflightAndComputesVersion(t *testing.T) {
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
-	seedDryRunFirstRelease(f, root, "main", "v0.0.1")
+	seedDryRunFirstRelease(f, root, "main", "v0.0.1", false)
 	rec := &presentertest.RecordingPresenter{}
 
 	if err := engine.Release(t.Context(), newDeps(rec, f), dryRunOptions()); err != nil {
@@ -139,7 +149,7 @@ func TestRelease_DryRun_PrintsFullPlan(t *testing.T) {
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
-	seedDryRunFirstRelease(f, root, "main", "v0.0.1")
+	seedDryRunFirstRelease(f, root, "main", "v0.0.1", false)
 	rec := &presentertest.RecordingPresenter{}
 
 	if err := engine.Release(t.Context(), newDeps(rec, f), dryRunOptions()); err != nil {
@@ -252,7 +262,7 @@ func TestRelease_DryRun_SkipsHooksAndReports(t *testing.T) {
 	writeConfig(t, root, "[release.hooks]\npreflight = \"check.sh\"\npre_tag = \"build.sh\"\npost_release = \"notify.sh\"\n")
 
 	f := runner.NewFakeRunner()
-	seedDryRunFirstRelease(f, root, "main", "v0.0.1")
+	seedDryRunFirstRelease(f, root, "main", "v0.0.1", false)
 	rec := &presentertest.RecordingPresenter{}
 
 	if err := engine.Release(t.Context(), newDeps(rec, f), dryRunOptions()); err != nil {
@@ -282,7 +292,7 @@ func TestRelease_DryRun_RepoFilesUnchanged(t *testing.T) {
 	seedFile(t, root, "release.txt", beforeVersion)
 
 	f := runner.NewFakeRunner()
-	seedDryRunFirstRelease(f, root, "main", "v0.0.1")
+	seedDryRunFirstRelease(f, root, "main", "v0.0.1", false)
 	rec := &presentertest.RecordingPresenter{}
 
 	if err := engine.Release(t.Context(), newDeps(rec, f), dryRunOptions()); err != nil {
