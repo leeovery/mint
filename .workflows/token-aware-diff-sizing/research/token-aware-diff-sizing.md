@@ -105,7 +105,14 @@ Frame the whole feature as a **graceful-degradation ladder**, each rung cheaper 
 - **Resolves F7:** the reduce input need not always fit — concat backstops it, so the assumption is not load-bearing.
 - **Abort stays the last rung**, never the planned outcome (reaching it after N calls is slow *and* failed).
 
-### Thread: prior art — is this a solved problem? (from training, NOT verified — deep-dive deferred)
+### Thread: remediation UX when notes can't be AI-generated (F3) (2026-06-26)
+
+User direction: don't just print an error — give the user something actionable. Either (a) name what they can do next (the levers), or (b) inline-offer choices: "run without AI?" → open an editor to write manually; or fall back to commit messages; "or something."
+
+- **"Fall back to commit messages" ALREADY EXISTS — near-free reuse.** `--no-ai`, or `on_notes_failure=fallback` with an EMPTY `fallback` string, builds the body from the **commit-subject list** (`internal/notes/noai.go`; config `fallback` key: "empty uses the commit-subject list"). This is exactly what git-cliff/release-please do. So the commit-message rung is an existing behaviour to *surface as a choice*, not new machinery.
+- **Attended vs unattended is the governing axis** (CLAUDE.md "fail loud, never hang"). An inline "would you like to…" prompt works ONLY in a TTY/attended run. Under `-y` or non-TTY (CI), mint MUST NOT prompt — it must auto-degrade or abort with a clear message. ⇒ remediation needs a *defined unattended default*.
+- **Existing gate/editor machinery fits.** Release uses single-keypress gates (`Prompt(gate)`, y/n/e/r review gate); commit has a `$EDITOR` fallback (`runEditorFallback`). An inline remediation menu reuses `Prompt`. (Open/uncertain: does release have a *write-from-scratch* manual-notes editor path, or only the review-gate `e` edit-the-generated-notes? Needs confirming in code before relying on it.)
+- **Crux — relationship to the chunking ladder.** With auto-chunking, "too big" usually self-heals (notes still appear, slower). So is the interactive menu only the LAST resort (chunking exhausted/disabled), or is chunking ITSELF offered as a choice because it is slow + costs more AI calls? I.e. **auto-degrade silently** vs **stop-and-offer the expensive path** (token-spend consent). This is the open question put to the user.
 
 User asked directly. From general knowledge (flagged for later verification; the external survey was declined for now):
 - **Commit-based changelog tools sidestep the problem entirely.** git-cliff, release-please, semantic-release, conventional-changelog generate notes from *commit messages / conventional commits* — tiny input, never near a context window. mint is unusual in feeding the *diff* to an AI; that's the source of the size problem AND of mint's richer output.
