@@ -38,6 +38,21 @@ Read before the session so threads are concrete, not hypothetical.
 
 - **The model-opacity tension (crux for "token-aware").** `ai_command` is a raw command string deliberately supporting *any* AI (`ai-model-selection` dropped the driver pattern precisely so mint needn't know the AI). mint therefore does **not** know the configured model's context-window size, nor a reliable tokenizer for it. So "make the ceiling reflect the real model budget" runs straight into: mint can't introspect the budget. Open question for the session — does token-awareness mean (a) a better *byte/char*-based proxy than line count (no model knowledge needed), (b) an optional configured token budget the operator sets, (c) leaning on the AI's own "Prompt is too long" as the real signal and degrading *reactively*, or some mix? This is the first thing to put to the user.
 
+### Thread: AI/model registry for context budget (user proposal, 2026-06-26)
+
+**User proposal.** Keep a maintained library/registry mapping known AI + model → context-window budget. The operator picks a known entry (declares "I'm using Claude" / "Codex", plus the model), mint looks up the budget and becomes genuinely token-aware. Plus an override / add-your-own escape hatch for custom or unlisted models. Optionally seed the library by researching current AIs/models; "kept as a repository it can always be updated."
+
+**Feasibility: yes, mechanically possible.** But it lands on contested ground and carries hazards research must resolve:
+
+- **Distinction from the dropped driver (the hinge).** `ai-model-selection` *explicitly dropped* a driver/provider-registry — but that registry was about *how to invoke* each AI (command construction). This proposal is a registry of *budget metadata only*; invocation stays the raw `ai_command` string. So it is narrower and arguably orthogonal — NOT a straight reopen. Weigh this distinction deliberately; it decides whether this is a new idea or a reopened argument.
+- **Drift hazard (two descriptions of the AI).** Today `ai_command` is the sole description of "what AI runs." A separate budget-model picker is a second description that can drift (`ai_command = claude -p --model opus` but picker still "sonnet"). Needs a reconciliation rule or the budget silently lies. Echoes `ai-model-selection`'s per-key drift worry (timeout vs command).
+- **Staleness + no update channel.** A baked-in limits table goes stale every model release — the *exact* problem that drove `ai-model-selection` to pick the `--model sonnet` alias over a full versioned ID. Worse here: mint is a compiled binary with no network calls and no editable data-file channel today. "Always updatable repository" needs a concrete mechanism: rebuild-per-release, an external editable data file, or a network fetch (a large new seam mint deliberately lacks).
+- **Budget is only the denominator.** Knowing the window (e.g. 200k) still leaves estimating the *prompt's* token count (numerator) — without the model's tokenizer that is a bytes/4 heuristic. Registry buys the budget, not the count.
+- **Proactive vs reactive value.** The budget's job is to decide *when to degrade*. Reactive degradation (option c) gets the exact truth from the AI's "Prompt is too long" for free. Registry's value = *proactive* avoidance (don't fire a doomed slow/expensive call). Is that worth a maintained registry vs letting it fail then degrade?
+- **Reframe.** A registry is essentially ergonomic sugar over a single operator-set budget number (option b: `context_budget` / `max_prompt_tokens`). Pick "claude-sonnet" → mint fills the number. Same "sugar over the raw command string" shape `ai-model-selection` deferred for the driver. Minimal-machinery core = one budget config key; registry is a convenience layer on top.
+
+**Dispatched (deep-dive):** survey current AIs/models — context windows, how stably/officially those limits are published, whether they are reliably discoverable, and how each AI signals prompt-overflow — to ground whether a registry is maintainable.
+
 ---
 
 ## Triage
