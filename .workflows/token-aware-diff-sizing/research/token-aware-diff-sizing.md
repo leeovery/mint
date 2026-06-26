@@ -112,7 +112,22 @@ User direction: don't just print an error — give the user something actionable
 - **"Fall back to commit messages" ALREADY EXISTS — near-free reuse.** `--no-ai`, or `on_notes_failure=fallback` with an EMPTY `fallback` string, builds the body from the **commit-subject list** (`internal/notes/noai.go`; config `fallback` key: "empty uses the commit-subject list"). This is exactly what git-cliff/release-please do. So the commit-message rung is an existing behaviour to *surface as a choice*, not new machinery.
 - **Attended vs unattended is the governing axis** (CLAUDE.md "fail loud, never hang"). An inline "would you like to…" prompt works ONLY in a TTY/attended run. Under `-y` or non-TTY (CI), mint MUST NOT prompt — it must auto-degrade or abort with a clear message. ⇒ remediation needs a *defined unattended default*.
 - **Existing gate/editor machinery fits.** Release uses single-keypress gates (`Prompt(gate)`, y/n/e/r review gate); commit has a `$EDITOR` fallback (`runEditorFallback`). An inline remediation menu reuses `Prompt`. (Open/uncertain: does release have a *write-from-scratch* manual-notes editor path, or only the review-gate `e` edit-the-generated-notes? Needs confirming in code before relying on it.)
-- **Crux — relationship to the chunking ladder.** With auto-chunking, "too big" usually self-heals (notes still appear, slower). So is the interactive menu only the LAST resort (chunking exhausted/disabled), or is chunking ITSELF offered as a choice because it is slow + costs more AI calls? I.e. **auto-degrade silently** vs **stop-and-offer the expensive path** (token-spend consent). This is the open question put to the user.
+- **Crux — relationship to the chunking ladder.** With auto-chunking, "too big" usually self-heals (notes still appear, slower). So is the interactive menu only the LAST resort (chunking exhausted/disabled), or is chunking ITSELF offered as a choice because it is slow + costs more AI calls? I.e. **auto-degrade silently** vs **stop-and-offer the expensive path** (token-spend consent). **Resolved 2026-06-26 — auto-degrade silently by default; see oversize-config thread below.**
+
+### Thread: config knob for oversize handling (2026-06-26)
+
+**User decision (emerging, discussion to ratify):** default = **auto-degrade silently** ("it just handles it"). Add a config option for how to handle a too-big diff: "break it up" (chunk) vs "fail" — default "break it up". Name TBD ("we can give it a better name").
+
+Shaping:
+- **It is a NEW axis, orthogonal to `on_notes_failure` — not a new value on it.** `on_notes_failure = abort|fallback` is a failure *RESPONSE*. Chunking is failure *AVOIDANCE* that still aims to produce real AI notes — and AFTER chunking bottoms out you still need a failure response. So they compose; they don't merge. (A `on_notes_failure = chunk` third value would conflate avoidance with response.)
+- **Clean two-knob composition:**
+  - `oversize = chunk` (default): attempt the ladder → if exhausted, fall to `on_notes_failure` (abort-with-guidance, or fallback/commit-subjects).
+  - `oversize = off` (the user's "fail"): skip chunking → straight to `on_notes_failure` = today's behaviour.
+- **Naming nuance:** the user's "fail" value really means "don't chunk → defer to `on_notes_failure`," NOT a separate failure mode. A name like `off`/`none`/`never` is clearer than "fail" (else both knobs look like they decide failure). Name = spec/planning detail; the semantics matter now.
+- **Config cost (mint strict schema):** a new key needs a `config.MetadataRows()` SoT row + README per-key tables + init template surfacing + the drift/tripwire tests. Well-trodden but non-zero.
+- **Scope open (ties to F2):** likely `[release]`-scoped like `on_notes_failure` (the notes verbs). Whether it touches commit (too-big = generate-SKIP to `$EDITOR`) or regenerate `--all` (skip-and-continue) is the three-consumer question — next.
+
+### Thread: prior art — is this a solved problem? (from training, NOT verified — deep-dive deferred)
 
 User asked directly. From general knowledge (flagged for later verification; the external survey was declined for now):
 - **Commit-based changelog tools sidestep the problem entirely.** git-cliff, release-please, semantic-release, conventional-changelog generate notes from *commit messages / conventional commits* — tiny input, never near a context window. mint is unusual in feeding the *diff* to an AI; that's the source of the size problem AND of mint's richer output.
