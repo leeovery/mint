@@ -139,6 +139,23 @@ Read the actual too-big handling per consumer:
 
 Scope implication (not a decision): the oversize knob reads as a release/regenerate concept → naturally `[release]`-scoped like `on_notes_failure`; commit untouched.
 
+### Thread: opacity is deeper than the window — mint CANNOT fit-predict (user insight, 2026-06-26) [KEY]
+
+User pushback, and it's correct — it defeats the "proactive byte ceiling" I'd proposed. mint cannot see the *whole* request the model actually receives. When mint pipes its composed prompt to `claude -p`, **Claude Code wraps it in ITS OWN system prompt** (and possibly tool definitions) whose size mint cannot measure and which varies by version. So even a perfect byte count of *mint's* prompt understates the true load. Stack the unknowns:
+
+1. **Wrapper overhead** — the `ai_command` CLI's own system prompt (Claude Code's), unknown to mint, version-varying.
+2. **Model context window** — unknown (raw `ai_command` = any AI).
+3. **Tokenizer** — unknown (chars/4 is a guess).
+
+⇒ **mint cannot deterministically detect "will this fit."** Proven, not hypothetical. This is the deepest form of the opening model-opacity tension.
+
+**Design implications (reframe the spine):**
+- **The ceiling is a POLICY knob, not a fit-predictor.** `max_diff_lines` (and any byte/token successor) means "where the operator wants to start degrading" — an admitted guess, never a guarantee of fit. Stop framing it as prediction.
+- **Reactive degradation is therefore STRUCTURALLY PRIMARY** — it's the only mechanism that responds to the *actual* outcome. But it inherits the provider-coupled-detection problem (F5/F8). So the genuine bind: **proactive can't predict, reactive can't cleanly detect.** This is the open knot that needs deeper, *factual* research — not more reasoning from first principles.
+- **A *signal* registry may resurface (distinct from the budget registry the user first floated).** Knowing how the SHIPPED DEFAULT (`claude -p`) signals overflow (exit code + message), with a generic fallback for unknown providers, is a far smaller and more stable table than a budget registry — and would make reactive detection reliable for the common case. Flag for the deep-dive.
+
+→ This is the point where external facts (how `claude -p` and peers actually behave at the limit) become the bottleneck. Dispatching a deep-dive (the user's "we need to research this more"). The byte-vs-line finding below stands as far as it goes, but its proactive-primary conclusion is **superseded** by this thread.
+
 ### Thread: the chunking trigger — proactive vs reactive (F5, F8), researched from transport code (2026-06-26)
 
 Read `internal/ai/transport.go`. The failure model **reverses the earlier casual "reactive only" lean** — reactive is harder than it looks.
