@@ -88,6 +88,23 @@ The registry is purely an answer to **(A)** — and it only earns its keep if **
 - **Determinism/testing tension.** Chunk count and call count become input-dependent and (if AI-driven boundaries) non-deterministic — harder to reason about and to pin in mint's exact-argv/exact-output test idiom. (Distinct from the "byte-identical body" invariant, which is about not reformatting a generated body, not generation determinism.)
 - **"Ask the AI to split" — surprisingly sound.** You don't pass the full diff to get boundaries — you pass the *file inventory* (paths + line counts, ~the Change Map's data), which is tiny and always fits. The AI groups files into chunks "that fit your limits" — offloading BOTH the boundary intelligence (keep related files together) AND the budget knowledge to the one entity that actually knows its own window. Costs an extra round-trip and inherits AI non-determinism, but as a boundary heuristic it dominates naive line-bisection.
 
+### Thread: the degradation ladder — resolving reduce-step failure (F1, F7) (2026-06-26)
+
+Frame the whole feature as a **graceful-degradation ladder**, each rung cheaper + a notch lower-fidelity; you fall to the next rung *reactively* (when the current one fails), never by prediction:
+
+1. **Full single-pass** (today's normal path).
+2. **Map-reduce** — parallel map calls + ONE serial reduce.
+3. **Map + concatenate** partials — when the reduce overflows or errors. Accepts salience loss (dup/un-merged bullets).
+4. **Existing `on_notes_failure` floor** — fallback body, or abort-with-guidance. The last rung, never the *plan*.
+
+**Recommendation (mine; discussion phase to ratify): when the single reduce won't fit or fails, drop to concatenation (rung 3), NOT hierarchical recursion.**
+
+- **Magnitude argument — reduce-overflow is a deep-tail freak event.** Partial notes are ~hundreds of tokens each; overflowing a 128k–200k window with *partials* needs *hundreds* of chunks ⇒ a diff of tens of millions of lines ⇒ not real code, almost certainly an artifact/vendored tree that should have been `diff_exclude`d. Realistic big release = 3–20 chunks; partials reduce in one pass.
+- **Hierarchical reduce is over-engineering here:** adds serial AI depth (the thing the user explicitly rejected), adds complexity, and degrades quality per merge tier — all to perfect fidelity for a case where fidelity is near-worthless.
+- **Concatenation always terminates, costs zero extra AI calls, is instant**, and its only cost (dup bullets / imperfect ranking) is exactly the degradation the user already accepted ("good is good enough"). Consistent with the speed > accuracy steer.
+- **Resolves F7:** the reduce input need not always fit — concat backstops it, so the assumption is not load-bearing.
+- **Abort stays the last rung**, never the planned outcome (reaching it after N calls is slow *and* failed).
+
 ### Thread: prior art — is this a solved problem? (from training, NOT verified — deep-dive deferred)
 
 User asked directly. From general knowledge (flagged for later verification; the external survey was declined for now):
