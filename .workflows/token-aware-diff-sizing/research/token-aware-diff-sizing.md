@@ -156,6 +156,12 @@ User pushback, and it's correct — it defeats the "proactive byte ceiling" I'd 
 
 → This is the point where external facts (how `claude -p` and peers actually behave at the limit) become the bottleneck. Dispatching a deep-dive (the user's "we need to research this more"). The byte-vs-line finding below stands as far as it goes, but its proactive-primary conclusion is **superseded** by this thread.
 
+### Thread: deep-dive 002 findings — how AI CLIs behave at the limit (2026-06-26)
+
+Grounds the trigger bind with facts (full report: cache `deep-dive-002-ai-cli-context-limits.md`). Folding findings in as we walk them.
+
+**F1 — `claude -p` hard-fails DETERMINISTICALLY with "Prompt is too long"; no silent truncation.** The load-bearing fact. For the shipped default an overflow is a clean, observable event: claude returns the literal stdout string `Prompt is too long`, rejects **client-side** (instant, `input_tokens: 0`, no network variability), and does NOT truncate/compact/summarise silently. mint's transport ALREADY captures that stdout (`GenerationError.Stdout`). So the earlier worry "reactive can't cleanly detect" was over-pessimistic *for claude*: the signal exists and is already in hand. Caveat: the token THRESHOLD drifts (can even fire BELOW the real window; version-dependent) — so match the **string**, never pin a number. (Sources: claude-code issues #12312/#15058; official error reference.)
+
 ### Thread: the chunking trigger — proactive vs reactive (F5, F8), researched from transport code (2026-06-26)
 
 Read `internal/ai/transport.go`. The failure model **reverses the earlier casual "reactive only" lean** — reactive is harder than it looks.
