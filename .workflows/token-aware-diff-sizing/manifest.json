@@ -4,7 +4,15 @@
   "status": "in-progress",
   "created": "2026-06-26",
   "description": "Token-aware diff sizing plus graceful handling of oversized diffs for mint's notes engine, replacing the hard line-count fail with a budget-aware guard and a chunk/summarise fallback",
-  "phases": {},
+  "phases": {
+    "research": {
+      "items": {
+        "token-aware-diff-sizing": {
+          "status": "in-progress"
+        }
+      }
+    }
+  },
   "seeds": [
     {
       "path": "seeds/2026-06-25-token-aware-diff-sizing.md",
