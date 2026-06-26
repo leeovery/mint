@@ -125,7 +125,19 @@ Shaping:
   - `oversize = off` (the user's "fail"): skip chunking → straight to `on_notes_failure` = today's behaviour.
 - **Naming nuance:** the user's "fail" value really means "don't chunk → defer to `on_notes_failure`," NOT a separate failure mode. A name like `off`/`none`/`never` is clearer than "fail" (else both knobs look like they decide failure). Name = spec/planning detail; the semantics matter now.
 - **Config cost (mint strict schema):** a new key needs a `config.MetadataRows()` SoT row + README per-key tables + init template surfacing + the drift/tripwire tests. Well-trodden but non-zero.
-- **Scope open (ties to F2):** likely `[release]`-scoped like `on_notes_failure` (the notes verbs). Whether it touches commit (too-big = generate-SKIP to `$EDITOR`) or regenerate `--all` (skip-and-continue) is the three-consumer question — next.
+- **Scope open (ties to F2):** likely `[release]`-scoped like `on_notes_failure` (the notes verbs). Whether it touches commit (too-big = generate-SKIP to `$EDITOR`) or regenerate `--all` (skip-and-continue) is the three-consumer question — researched next.
+
+### Thread: scope across the three consumers (F2) — researched from code (2026-06-26)
+
+Read the actual too-big handling per consumer:
+
+- **Commit (`commit/generate.go` + `run.go`):** too-big → `ErrDiffTooLarge` → routed (Phase 3) to the SAME `$EDITOR` fallback as `--no-ai` and a fully-excluded diff. The changes still commit; the editor save IS the accept. **Finding: chunking is a poor fit for commit.** A commit message is ONE tight message for ONE commit — you can't map-reduce it into N partials, and commit already has a fast, human-write fallback (`$EDITOR`). So the three-consumer constraint here means "don't BREAK commit," not "add chunking to commit." Chunking is a release-notes concept; commit stays as-is.
+- **Regenerate `--all` (`regenerate_batch.go`):** a per-version notes-production failure (incl. diff-too-large) is CAUGHT → recorded as a `skippedVersion` (reason "diff too large") → loop CONTINUES, deliberately overriding the single-version `on_notes_failure=abort` so one huge version doesn't kill the rest; the end summary lists skipped versions to re-run. **Finding: chunking *could* apply but collides with batch economics.** If chunking lives in the shared generator, batch inherits it → too-big versions chunk instead of skip (fewer skips, real notes). BUT batch is already N versions × AI calls; chunking multiplies *within* each version (N×M). And skip-and-continue is a *deliberate* safety. **Open option (surface, don't decide):** chunk per-version with skip as the *floor* (when chunking exhausted) vs keep skip-first for cost safety and only chunk forward-release + single regenerate. Genuine design tradeoff for discussion.
+- **Forward release + single/interactive regenerate (`generate.go`, rides on `[release]`):** chunking applies cleanly via the shared generator path.
+
+**Editor nuance — corrects my earlier loose claim.** Release HAS an editor seam, but it is the `e` review-gate choice editing an ALREADY-PRODUCED body (`editor.Edit(ctx, current)` — revise a success). It is NOT reached on a generation *failure* (no body to edit). So unlike commit (which routes a *failure* → editor to write from scratch), release has **no write-from-scratch-on-failure editor path today** — wiring one would be NEW behaviour. The seam exists; the failure-remediation wiring does not.
+
+Scope implication (not a decision): the oversize knob reads as a release/regenerate concept → naturally `[release]`-scoped like `on_notes_failure`; commit untouched.
 
 ### Thread: prior art — is this a solved problem? (from training, NOT verified — deep-dive deferred)
 
