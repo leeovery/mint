@@ -139,6 +139,27 @@ Read the actual too-big handling per consumer:
 
 Scope implication (not a decision): the oversize knob reads as a release/regenerate concept → naturally `[release]`-scoped like `on_notes_failure`; commit untouched.
 
+### Thread: the chunking trigger — proactive vs reactive (F5, F8), researched from transport code (2026-06-26)
+
+Read `internal/ai/transport.go`. The failure model **reverses the earlier casual "reactive only" lean** — reactive is harder than it looks.
+
+**The transport's failure causes (`errors.Is` sentinels):**
+- `ErrGenerationFailed` (carried by `*GenerationError`): a non-zero exit OR empty/whitespace body, surviving ONE retry. **"Prompt is too long" lands HERE** — claude exits non-zero, message captured on `GenerationError.Stdout`. But this sentinel is **overloaded**: it also covers empty/refusal bodies, auth errors, rate limits, network blips — *any* non-zero exit. Size is just one cause among many under it.
+- `ErrTimeout`: per-attempt deadline expired; not retried. A huge prompt *can* time out, but timeout ≠ size.
+- `ErrCommandMissing`: binary absent; not a size problem.
+- `context.Canceled`: Ctrl-C; propagated UNCHANGED, never treated as a failure — MUST NOT trigger chunking (CLAUDE.md invariant).
+
+**F8 — "split on any generation failure" is NOT safe.** Because `ErrGenerationFailed` is overloaded, blanket-splitting re-fires N chunked calls on failures chunking can't fix (refusal, auth, transient) — wasteful and amplifying (one auth failure → N). Splitting must be gated to *size-related* failures.
+
+**But detecting "size-related" reactively is provider-coupled.** The only size signal is the captured `GenerationError.Stdout` string ("Prompt is too long") — **Claude-specific**. Other AIs phrase it differently ("context length exceeded", HTTP 400, …). String-matching it reintroduces exactly the provider knowledge mint deliberately avoids (`ai_command` = any AI). The transport exposes NO structured "too long" classification — by design.
+
+**⇒ Reframe: proactive is the cleaner PRIMARY trigger; reactive is at best a backstop.**
+- **Proactive** = a byte/char (or rough token) ceiling over the *full composed prompt*, decided BEFORE the call. Provider-agnostic (no parsing), and it is the EXISTING guard's job — just upgraded from line-count to a better proxy. The seed's own "line count is a crude token proxy" complaint IS this upgrade. Needs NO model/registry knowledge: a conservative operator-settable char ceiling catches the extreme cases; chunking handles the rest. (This is why the registry/budget demotion holds — a simple byte ceiling suffices to *trigger*.)
+- **Reactive** = catch a generation failure and, IF its captured output looks size-related, fall to chunking. Best-effort, provider-coupled ⇒ a *backstop*, never primary. Cannot safely fire on timeout/missing/cancel.
+- **Likely shape (discussion's call): proactive ceiling as primary trigger + optional reactive backstop.** This closes the loop with the opening model-opacity tension: the proactive byte ceiling dodges opacity (no window introspection), while the reactive path's opacity (parsing provider output) is exactly why it can't be primary.
+
+**Net:** the "reactive only" instinct is weaker than it sounded; the code evidence points to **proactive-primary**. Research surfaces the reversal and why; discussion decides.
+
 ### Thread: prior art — is this a solved problem? (from training, NOT verified — deep-dive deferred)
 
 User asked directly. From general knowledge (flagged for later verification; the external survey was declined for now):
