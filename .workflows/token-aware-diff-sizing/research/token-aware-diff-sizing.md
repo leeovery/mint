@@ -51,7 +51,16 @@ Read before the session so threads are concrete, not hypothetical.
 - **Proactive vs reactive value.** The budget's job is to decide *when to degrade*. Reactive degradation (option c) gets the exact truth from the AI's "Prompt is too long" for free. Registry's value = *proactive* avoidance (don't fire a doomed slow/expensive call). Is that worth a maintained registry vs letting it fail then degrade?
 - **Reframe.** A registry is essentially ergonomic sugar over a single operator-set budget number (option b: `context_budget` / `max_prompt_tokens`). Pick "claude-sonnet" → mint fills the number. Same "sugar over the raw command string" shape `ai-model-selection` deferred for the driver. Minimal-machinery core = one budget config key; registry is a convenience layer on top.
 
-**Dispatched (deep-dive):** survey current AIs/models — context windows, how stably/officially those limits are published, whether they are reliably discoverable, and how each AI signals prompt-overflow — to ground whether a registry is maintainable.
+**External survey (declined as a deep-dive, 2026-06-26):** the factual question — current AIs/models' context windows, how stably/officially those limits are published, whether reliably discoverable, and how each signals prompt-overflow — stays in conversation for now. Still the key evidence that would tell us whether a maintained registry is viable; revisit if the registry path firms up.
+
+### Thread: separate "the ceiling" from "what happens at it" (emerging framing, 2026-06-26)
+
+The registry conflates two questions that are worth pulling apart:
+
+- **(A) The ceiling** — *when* do we decide a diff is too big? Spectrum: line count (today) → byte/char count → estimated token budget → registry-derived per-model token budget. Increasing precision, increasing machinery + AI-coupling.
+- **(B) The response** — *what happens* when it is too big? Spectrum: hard fail (today) → hard fail + escape-hatch guidance → graceful degradation (trim diff / Change-Map-only / chunk → summarise → map-reduce).
+
+The registry is purely an answer to **(A)** — and it only earns its keep if **proactive** prediction matters (avoid firing a doomed slow/expensive call). If the real value is in **(B)** done well — especially **reactive** degradation triggered by the AI's own "Prompt is too long" — then (A)'s precision matters far less, and the opacity tension largely dissolves. Open question for the user: which is the actual goal — predicting the failure, or handling it gracefully?
 
 ---
 
