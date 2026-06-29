@@ -162,6 +162,27 @@ Grounds the trigger bind with facts (full report: cache `deep-dive-002-ai-cli-co
 
 **F1 — `claude -p` hard-fails DETERMINISTICALLY with "Prompt is too long"; no silent truncation.** The load-bearing fact. For the shipped default an overflow is a clean, observable event: claude returns the literal stdout string `Prompt is too long`, rejects **client-side** (instant, `input_tokens: 0`, no network variability), and does NOT truncate/compact/summarise silently. mint's transport ALREADY captures that stdout (`GenerationError.Stdout`). So the earlier worry "reactive can't cleanly detect" was over-pessimistic *for claude*: the signal exists and is already in hand. Caveat: the token THRESHOLD drifts (can even fire BELOW the real window; version-dependent) — so match the **string**, never pin a number. (Sources: claude-code issues #12312/#15058; official error reference.)
 
+**F6/F7 folded — the portability wall.** Peer CLIs diverge sharply: Codex hard-fails with a *different* string (`context window` / `context_length_exceeded`), `llm` forwards the provider's verbatim wording, and **Ollama SILENTLY TRUNCATES** (drops oldest tokens, returns plausible-but-incomplete output, NO error). So a string-match trigger is encodable for claude (stable `Prompt is too long` on stdout) but NOT portable, and is fully blind to silent truncation. This is what motivates the user's classifier proposal below.
+
+### Thread: AI-as-error-classifier — "ask the AI what its own error means" (user proposal, 2026-06-29) [STRONG]
+
+**Proposal.** Don't string-match error messages (brittle, provider-specific — F6/F7). On a generation FAILURE, wrap the captured error output into a small, **diff-free** classify prompt sent to the SAME configured AI, asking it to return EXACTLY ONE of a CLOSED set of codes (e.g. `PROMPT_TOO_LONG` / `RATE_LIMIT` / `AUTH` / `TRANSIENT` / `OTHER`). mint pivots programmatically on the code. Firm instruction ("respond with only one of these, nothing else"); on an ambiguous/invalid response, retry firmer, then backdoor to surfacing a clean error. Replaces today's blind passthrough of the raw LLM error (the recent bugfix) with a normalized response.
+
+**Why it's strong:**
+- **Provider-agnostic by construction** — delegates error interpretation to the very AI that produced it, so mint needs NO per-provider signal table. Directly dissolves F6/F7 portability. Same "offload provider knowledge to the provider" insight as the earlier ask-the-AI-for-split-boundaries idea.
+- **The classify prompt is tiny + diff-free** → it cannot itself overflow; cheap, fast, fits trivially.
+- **Constrained classification is a solved capability** — modern models reliably return one-of-N when firmly instructed (structured-output territory).
+- **UX upgrade** — turns the raw-error passthrough into a clean, normalized message.
+
+**Honest tensions / what it does and doesn't solve:**
+- **Bootstrap ("can't ask an offline AI") is PARTLY already solved structurally.** mint's transport ALREADY distinguishes — WITHOUT string-matching — `ErrTimeout` (deadline), `ErrCommandMissing` (no binary), `context.Canceled` (Ctrl-C). The classifier need only fire on `ErrGenerationFailed` (non-zero exit WITH captured output) — exactly where mint KNOWS the binary ran and said something. Timeout/missing/cancel never reach it. Clean boundary.
+- **The classifier call's own success/failure is itself signal.** If the classify call ALSO fails (AI still down / persistent 500), mint has learned "not reachable" → surface. If it succeeds and says `TRANSIENT`, retry the original. Self-correcting — handles the user's 500/offline worry.
+- **It does NOT solve silent truncation (F6, Ollama).** The classifier only fires on a *failure*; a silently-truncating backend returns a plausible SUCCESS with no error. Nothing reactive catches that. ⇒ a crude **proactive byte ceiling** may still earn its keep purely as the backstop for silent-degraders + the 10MB stdin cap (F9). Honest residual gap.
+- **It's an efficiency/UX play over the simpler "split-and-observe."** Both are provider-agnostic: (a) classify-then-act = one cheap call, then the right action; (b) split blindly and let the OUTCOME tell you (pieces succeed ⇒ was size; still fail ⇒ surface). Classifier wins on not wasting N split-calls on a non-size failure, and on clean errors; split-and-observe wins on no-extra-call/simplicity. Hold both as options.
+- **Minor:** an extra (cheap) AI call per failure; a NEW transport consumer (compose classify-prompt → `transport.Generate` → validate against the code set) — fits the existing point-of-use-interface pattern, transport stays content-agnostic; a code-set validation layer + firm-retry + backdoor (user already sketched); and a non-determinism point in control flow (tension with mint's deterministic-test idiom, but testable via the faked transport).
+
+**Net (research; discussion to ratify):** a genuinely strong, general, low-maintenance answer to the portability problem — arguably the cleanest resolution of the trigger bind for *arbitrary* providers. Its limits are real but narrow: silent truncation (unsolvable reactively) and a modest extra call. Pairs naturally with a crude proactive byte cap as the silent-truncation/stdin-cap backstop. Folds deep-dive F6/F7.
+
 ### Thread: the chunking trigger — proactive vs reactive (F5, F8), researched from transport code (2026-06-26)
 
 Read `internal/ai/transport.go`. The failure model **reverses the earlier casual "reactive only" lean** — reactive is harder than it looks.
