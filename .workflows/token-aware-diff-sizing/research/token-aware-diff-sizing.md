@@ -164,6 +164,20 @@ Grounds the trigger bind with facts (full report: cache `deep-dive-002-ai-cli-co
 
 **F6/F7 folded — the portability wall.** Peer CLIs diverge sharply: Codex hard-fails with a *different* string (`context window` / `context_length_exceeded`), `llm` forwards the provider's verbatim wording, and **Ollama SILENTLY TRUNCATES** (drops oldest tokens, returns plausible-but-incomplete output, NO error). So a string-match trigger is encodable for claude (stable `Prompt is too long` on stdout) but NOT portable, and is fully blind to silent truncation. This is what motivates the user's classifier proposal below.
 
+**F2/F4/F5 folded — proactive token-prediction is dead, confirmed from three angles:**
+- **F2** — claude's *invisible* overhead is ~19–27k tokens with no MCP, 60k+ with MCP — a quarter of a 200k window gone before mint's prompt counts; version- and config-dependent; mint can't see it.
+- **F4** — the official `count_tokens` endpoint is free/accurate but needs a **Console API key** subscription operators (Pro/Max, the shipped-default case) lack; and even with it mint could only count its OWN prompt, not claude's overhead. No pipe-friendly `claude count-tokens`.
+- **F5** — offline `tiktoken` is 10–30% off on *code* (worst case for diffs); Claude's tokenizer is unpublished and drifts (Opus 4.7+ ≈ +30% tokens). A char/token estimate is no better than today's line count.
+- ⇒ Any proactive ceiling is a crude **policy** cap, never a fit predictor. Locks in reactive-primary.
+
+**F8 folded — the reduce-overflow worry (review F1/F7) has a documented fix.** Prior art (CodeRabbit, LangChain `ReduceDocumentsChain`) = per-file **map** + **recursive-collapse reduce**: when partials don't fit one reduce call, re-summarise them in groups recursively until they do. Stronger than our "fall back to concat" (concat stays the dead-simple floor). Aider's token-budgeted, salience-ranked repo map = "select the important subset to fit a budget" — exactly mint's Change Map + the parked "trimmed diff" escalation; for a *modestly* over-budget diff, trim-to-salient may beat a full multi-call map-reduce on latency + quality.
+
+**F9/F3 folded — operational:**
+- **F9** — `claude --bare` strips MCP/CLAUDE.md/memory overhead toward a knowable floor BUT changes auth (OAuth subscription → API key); not free. THREE distinct "too big" modes from the same binary: 10 MB **stdin byte-cap**, token-window "Prompt is too long," 30 MB request-body limit. The 10 MB stdin cap **validates a crude byte ceiling as backstop** (a real, separate wall — also a hard error the classifier catches).
+- **F3** — overflow arrives as non-zero exit + stdout (mint already captures it — seam confirmed). Exact **exit code in text mode is UNVERIFIED** (locally testable) → key off captured output via the classifier, don't pin an exit code. The transport's single retry fires a **second full oversized call** on overflow (pure waste vs a deterministic client-side rejection) → a size-aware path should catch overflow on the FIRST failure and route to classify/split, not retry-identically.
+
+*(All 9 deep-dive findings now folded. Review-001 still has 2 unsurfaced: its quality-bar finding and cancellation-across-N-calls.)*
+
 ### Thread: AI-as-error-classifier — "ask the AI what its own error means" (user proposal, 2026-06-29) [STRONG]
 
 **Proposal.** Don't string-match error messages (brittle, provider-specific — F6/F7). On a generation FAILURE, wrap the captured error output into a small, **diff-free** classify prompt sent to the SAME configured AI, asking it to return EXACTLY ONE of a CLOSED set of codes (e.g. `PROMPT_TOO_LONG` / `RATE_LIMIT` / `AUTH` / `TRANSIENT` / `OTHER`). mint pivots programmatically on the code. Firm instruction ("respond with only one of these, nothing else"); on an ambiguous/invalid response, retry firmer, then backdoor to surfacing a clean error. Replaces today's blind passthrough of the raw LLM error (the recent bugfix) with a normalized response.
