@@ -197,6 +197,30 @@ Grounds the trigger bind with facts (full report: cache `deep-dive-002-ai-cli-co
 
 **Net (research; discussion to ratify):** a genuinely strong, general, low-maintenance answer to the portability problem — arguably the cleanest resolution of the trigger bind for *arbitrary* providers. Its limits are real but narrow: silent truncation (unsolvable reactively) and a modest extra call. Pairs naturally with a crude proactive byte cap as the silent-truncation/stdin-cap backstop. Folds deep-dive F6/F7.
 
+**Why it raises mint above a bash script (user insight, validated):** a hand-rolled script dies or dumps the raw error; graceful degradation + normalized error *triage* is exactly the intelligent handling that justifies a real tool. A genuine differentiator, not a frill.
+
+### Thread: the classifier's closed code-set — what it must cover (2026-06-29)
+
+The classifier fires on EXACTLY one path: `ErrGenerationFailed` (the AI ran and emitted an error). The transport already structurally pre-handles `ErrTimeout` / `ErrCommandMissing` / `context.Canceled`, so they never reach it — its whole job is "interpret an error the AI produced."
+
+**Only ~3 control-flow reactions exist, however many codes are defined:**
+- **SPLIT** — a size overflow. The ONLY code that fires the degrade ladder.
+- **RETRY/BACKOFF** — rate-limit, transient, 5xx, overloaded. Recoverable, non-size; the classify call *succeeding* is itself proof the AI is reachable again.
+- **SURFACE-AND-STOP** — auth, quota/billing, content-refusal, unknown. mint can't fix by split/retry → clean normalized message → fall to existing `on_notes_failure`/editor floor.
+
+**Granularity is the real design axis (spectrum, discussion picks):**
+- **Minimal — two codes: `SIZE` vs `OTHER`.** SIZE splits; OTHER surfaces a normalized error. Solves the core (don't waste splits on non-size; stop dumping raw errors) with the least to get wrong + smallest blast radius.
+- **Rich — per-cause: `SIZE`/`RATE_LIMIT`/`AUTH`/`TRANSIENT`/`QUOTA`/`REFUSAL`/`OTHER`.** Buys retry intelligence + specific helpful messages, at the cost of more codes to keep distinguishable + more reaction wiring.
+- Codes sharing an identical reaction should merge.
+
+**Hard requirements:**
+- An **`OTHER`/`UNKNOWN` catch-all is MANDATORY** — the backdoor guaranteeing safe termination: ambiguous/unmappable → (firm-retry once →) surface.
+- Each code maps to a **distinct reaction** (else merge); codes must be **mutually distinguishable from the error text alone**.
+- Classifier prompt = error text + the closed list (+ one-line gloss per code) + firm "respond with ONLY one code, nothing else." Diff-free, tiny, always fits.
+- **Does NOT cover silent truncation** (no error to classify) → byte-cap backstop stays.
+
+Open for discussion: minimal-vs-rich granularity; exact codes; whether RETRY codes auto-retry or just surface; reuse of `on_notes_failure`/editor for SURFACE-AND-STOP.
+
 ### Thread: the chunking trigger — proactive vs reactive (F5, F8), researched from transport code (2026-06-26)
 
 Read `internal/ai/transport.go`. The failure model **reverses the earlier casual "reactive only" lean** — reactive is harder than it looks.
