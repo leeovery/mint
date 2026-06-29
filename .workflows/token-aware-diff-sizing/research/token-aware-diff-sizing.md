@@ -221,6 +221,23 @@ The classifier fires on EXACTLY one path: `ErrGenerationFailed` (the AI ran and 
 
 Open for discussion: minimal-vs-rich granularity; exact codes; whether RETRY codes auto-retry or just surface; reuse of `on_notes_failure`/editor for SURFACE-AND-STOP.
 
+### Thread: closing the first review — cancellation (F6) & quality bar (F4) (2026-06-29)
+
+Both resolve from mint's EXISTING design rather than new invention.
+
+**Cancellation / partial-failure / idempotency across N calls (review F6):**
+- **Ctrl-C mid-chunk** → `context.Canceled` propagates UNCHANGED → whole notes generation aborts cleanly; never ships half-notes, never routes to fallback (existing transport/CLAUDE.md invariant). No new behaviour.
+- **No partial-reuse/resume to design** — mint's batch regenerate already "holds NO resume state; a re-run reprocesses from the top." A chunked run inherits the same no-checkpoint stance (interrupted → restart). Consistent, not a new philosophy.
+- **New wrinkle is UX, not correctness:** latency inversion makes "wait minutes, Ctrl-C, lose it all" likelier/more annoying → argues for progress narration (ties review F3), not for resumability.
+- **Genuine open fork:** a single chunk's *timeout* mid-run — does the whole generation die, or does the reduce proceed with the SURVIVING chunks (notes for most of the diff minus one slice)? All-or-nothing vs partial-coverage. Discussion's call.
+
+**Quality acceptance bar (review F4):**
+- User set it: "good is good enough," speed > accuracy.
+- **The review's "how would mint KNOW it's good?" is already answered structurally: the human review gate** (y/n/e/r on produced notes) IS the acceptance check. Stitched notes pass the SAME gate → quality human-verified at point of use; no automated salience metric needed.
+- **Honest residual: the unattended path** (`-y`/CI) has no human gate → chunked notes ship unreviewed, possibly a notch lower-fidelity. Consistent with the general unattended tradeoff; mitigations = Change-Map-as-spine (every map + the reduce) + recursive-collapse reduce. Worth naming that "good enough, human-checked" weakens when there's no human. (Deep-dive F8 caveat reinforces: prior art proves coverage/convergence, NOT salience fidelity — the human gate is what proves salience.)
+
+*(Review-001 now fully folded — all 8 findings incorporated.)*
+
 ### Thread: the chunking trigger — proactive vs reactive (F5, F8), researched from transport code (2026-06-26)
 
 Read `internal/ai/transport.go`. The failure model **reverses the earlier casual "reactive only" lean** — reactive is harder than it looks.
