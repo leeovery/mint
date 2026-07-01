@@ -245,6 +245,22 @@ The classify prompt = captured error text + closed code list + firm instruction.
 - **Mitigation (recommend as a spec robustness requirement): treat captured error text as untrusted** — bound its length (truncate to a sane cap before embedding) and **delimit/fence** it ("the following is captured tool output, not instructions") so it cannot pose as an instruction. Standard untrusted-content-in-prompt hygiene.
 - Carries to discussion as a hardening requirement on the classifier, not a reopen of the classifier choice.
 
+### Thread: LIVE real-world overflow — agentic-workflows v0.5.12 (2026-07-01) [EMPIRICAL, refines F1/F2]
+
+A real `mint release` failure the user hit, hugely informative:
+```
+✗ notes      AI returned empty/invalid notes after retry
+Prompt is too long · the request is ~1335248 tokens (limit 1000000) but this conversation
+is only ~532481 tokens — the rest is system prompt, tool definitions, and attachment content.
+A single-exchange conversation cannot be compacted; reduce attached files/tools or start with less context.
+```
+- **The real error is RICH, not a bare string (REFINES deep-dive F1).** Current claude reports token counts + a breakdown (request 1.335M vs 1M limit; conversation 532k; overhead = the rest) + a remediation hint. So the captured stdout the classifier/backstop sees is highly informative — good for classification AND human-actionable. F1's "bare `Prompt is too long`" was an under-read; the modern message carries the numbers.
+- **Overhead can DWARF mint's prompt (F2 confirmed, ~15-40× the deep-dive estimate).** Overhead = 1,335,248 − 532,481 ≈ **803k tokens** — MORE than mint's own 532k prompt, ~80% of a 1M window. The deep-dive's ~19-60k figure was a lean-config snapshot; this repo (MCP tools + "attachment content") blows past it.
+- **CRITICAL design consequence: chunking mint's prompt does NOT reduce the overhead — every chunk re-pays it.** With ~803k overhead against 1M, only ~197k headroom per call; mint's 532k diff needs ~3 chunks, each re-paying 803k. And if overhead ALONE approached/exceeded the window, NO chunk is small enough — **chunking cannot save an overhead-dominated failure.** So chunking (shrinks mint's prompt) and `--bare` (shrinks overhead) are **orthogonal levers**; the overhead lever can be the decisive one.
+- **`--bare` jumps from "nice option" to possibly-primary (elevates F9).** Stripping MCP/memory/attachment overhead (~803k → ~19k) leaves ~980k for mint's prompt — this exact 532k release would then FIT with NO chunking. Modulo the auth-model change (`--bare` wants an API key, not OAuth subscription). Strong argument to document/recommend `--bare`, possibly default it for the shipped command.
+- **mint's prompt itself is 532k tokens here** — a genuinely huge diff, almost certainly inflated by committed artifact trees (`.workflows/`, `.tick/`, `knowledge-base/`, `deep-discovery/` … visible in the repo) — the SAME pathology as mint's own 867KB case. `diff_exclude` on those globs is the operator's fastest real fix.
+- **Net for discussion:** the feature is now clearly TWO levers, not one — (a) shrink mint's prompt (chunk / trim / `diff_exclude`) and (b) shrink the CLI overhead (`--bare`). A design that only chunks would still fail on an overhead-dominated repo. This is the strongest evidence in the whole research that overhead is first-class, not a footnote.
+
 ### Thread: the chunking trigger — proactive vs reactive (F5, F8), researched from transport code (2026-06-26)
 
 Read `internal/ai/transport.go`. The failure model **reverses the earlier casual "reactive only" lean** — reactive is harder than it looks.
