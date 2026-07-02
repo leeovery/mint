@@ -294,6 +294,8 @@ Read `internal/ai/transport.go`. The failure model **reverses the earlier casual
 
 **Net:** the "reactive only" instinct is weaker than it sounded; the code evidence points to **proactive-primary**. Research surfaces the reversal and why; discussion decides.
 
+**⚠ SUPERSEDED (kept for the reasoning trail).** This thread's "proactive-primary" conclusion was itself overturned by two later threads: *opacity is deeper — mint CANNOT fit-predict* (proactive can only ever be a crude policy cap, never a predictor) and *AI-as-classifier* (the standing front-runner trigger). Final standing position: **reactive classify-on-failure is the primary trigger; a crude proactive byte-cap is a BACKSTOP only** (for silent-truncation providers + the 10 MB stdin cap). Read this thread as the intermediate step that motivated the deep-dive, not the conclusion.
+
 ### Thread: prior art — is this a solved problem? (from training, NOT verified — deep-dive deferred)
 
 User asked directly. From general knowledge (flagged for later verification; the external survey was declined for now):
