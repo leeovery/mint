@@ -11,6 +11,13 @@
           "status": "completed"
         }
       }
+    },
+    "discussion": {
+      "items": {
+        "token-aware-diff-sizing": {
+          "status": "in-progress"
+        }
+      }
     }
   },
   "seeds": [
