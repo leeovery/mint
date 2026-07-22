@@ -1,7 +1,7 @@
 ---
 name: workflow-investigation-entry
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-manifest/scripts/manifest.cjs)
+allowed-tools: Bash(node .claude/skills/workflow-engine/scripts/engine.cjs)
 ---
 
 Act as **precise intake coordinator**. Follow each step literally without interpretation. Do not engage with the subject matter — your role is preparation, not processing.
@@ -39,58 +39,34 @@ Follow these steps EXACTLY as written. Do not skip steps or combine them.
 
 ## Step 1: Parse Arguments
 
-> *Output the next fenced block as a code block:*
-
-```
-── Parse Arguments ──────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Reading the handoff context and checking for existing
-> investigation work.
-```
-
 Arguments: work_type = `$0`, work_unit = `$1`, topic = `$2` (optional).
 Resolve topic: topic = `$2`, or if not provided and work_type is not `epic`, topic = `$1`.
 
 Investigation is always bugfix work_type. Store work_unit for the handoff.
 
-Check if the investigation phase entry exists:
+Read the investigation phase status:
 
 ```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs exists {work_unit}.investigation.{topic}
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.investigation.{topic} status
 ```
 
-**If exists (`true`):**
+Store the result as `phase_status`.
 
-→ Proceed to **Step 2** (Validate Phase).
-
-**If not exists (`false`):**
+**If empty (no investigation entry):**
 
 Set source="new".
 
 → Proceed to **Step 3** (Gather Bug Context).
 
+**Otherwise (an entry exists):**
+
+→ Proceed to **Step 2** (Validate Phase).
+
 ---
 
 ## Step 2: Validate Phase
 
-> *Output the next fenced block as a code block:*
-
-```
-── Validate Phase ───────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Checking the status of this investigation — new,
-> in progress, or completed.
-```
-
-Load **[validate-phase.md](references/validate-phase.md)** and follow its instructions as written.
+Load **[validate-phase.md](references/validate-phase.md)** with phase_status = `{phase_status}`.
 
 #### If source is `continue`
 
@@ -119,7 +95,7 @@ Load **[validate-phase.md](references/validate-phase.md)** and follow its instru
 
 #### If a discovery session log exists for this work unit
 
-The bug was shaped in discovery. Read the durable carrier as the seed — the manifest `description` and the latest discovery session log (`.workflows/{work_unit}/discovery/session-NNN.md`, highest-numbered) — and seed the investigation from it. Do not re-ask; live conversation context, when present, supplements the carrier.
+The bug was shaped in discovery. Read the durable carrier as the seed — the manifest `description` and the latest discovery session log (`.workflows/{work_unit}/discovery/sessions/session-NNN.md`, highest-numbered) — and seed the investigation from it. Do not re-ask; live conversation context, when present, supplements the carrier.
 
 > *Output the next fenced block as a code block:*
 
@@ -133,23 +109,10 @@ Starting investigation: {work_unit:(titlecase)}
 
 Load **[gather-context.md](references/gather-context.md)** and follow its instructions as written.
 
-→ Proceed to **Step 4**.
+→ On return, proceed to **Step 4**.
 
 ---
 
 ## Step 4: Invoke the Skill
-
-> *Output the next fenced block as a code block:*
-
-```
-── Invoke Investigation ─────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Handing off to the investigation process to analyse
-> the bug and find the root cause.
-```
 
 Load **[invoke-skill.md](references/invoke-skill.md)** and follow its instructions as written.

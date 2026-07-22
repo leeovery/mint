@@ -1,7 +1,7 @@
 ---
 name: workflow-specification-process
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-manifest/scripts/manifest.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(mkdir -p .workflows/), Bash(mv .workflows/)
+allowed-tools: Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(ls .workflows/), Bash(git status), Bash(git log)
 ---
 
 # Specification Process
@@ -59,7 +59,7 @@ Context refresh (compaction) summarizes the conversation, losing procedural deta
 2. **Read all tracking and state files** for the current topic — the specification file, review tracking files, or any working documents this skill creates. These are your source of truth for progress.
 3. **Check git state.** Run `git status` and `git log --oneline -10` to see recent commits. Commit messages follow a conventional pattern that reveals what was completed.
 4. **Announce your position** to the user before continuing: what step you believe you're at, what's been completed, and what comes next. Wait for confirmation.
-5. **Check `finding_gate_mode` and `construction_gate_mode`** via manifest CLI (`node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.specification.{topic} finding_gate_mode` and `... construction_gate_mode`) — if either is `auto`, the user previously opted in during this session. Preserve that value.
+5. **Check `finding_gate_mode` and `construction_gate_mode`** via `engine manifest` (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.specification.{topic} finding_gate_mode` and `... construction_gate_mode`) — if either is `auto`, the user previously opted in during this session. Preserve that value.
 
 Do not guess at progress or continue from memory. The files on disk and git history are authoritative — your recollection is not.
 
@@ -69,11 +69,22 @@ Do not guess at progress or continue from memory. The files on disk and git hist
 
 1. **STOP AND WAIT** for explicit approval before any write to the specification. Present content, wait for the user to explicitly approve (`y`/`yes` or equivalent), then log. No exceptions.
 2. **Log verbatim** — when approved, write exactly what was presented. No silent modifications.
-3. **Commit frequently** — commit at natural breaks and before any context refresh. Context refresh = lost work.
+3. **Commit frequently** — commit at natural breaks and before any context refresh. Context refresh = lost work. Work-unit commits go through the scoped helper:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "{message}"
+   ```
 
 ---
 
 ## Step 0: Resume Detection
+
+Check if `.workflows/{work_unit}/specification/{topic}/specification.md` exists.
+
+#### If no file exists
+
+→ Proceed to **Step 1**.
+
+#### If file exists
 
 > *Output the next fenced block as a code block:*
 
@@ -84,105 +95,43 @@ Do not guess at progress or continue from memory. The files on disk and git hist
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Checking for an existing specification. If one exists, you can
-> pick up where you left off or start fresh.
+> An in-progress specification exists for this topic — choose
+> whether to pick it up or start fresh.
 ```
 
-Check if `.workflows/{work_unit}/specification/{topic}/specification.md` exists.
-
-#### If no file exists
-
-→ Proceed to **Step 1**.
-
-#### If file exists
-
-Load **[resume-detection.md](../workflow-shared/references/resume-detection.md)** with artifact = `specification`, file = `.workflows/{work_unit}/specification/{topic}/specification.md`, continue_step = `Step 3`, restart_targets = `the specification file and all review tracking files (review-*-tracking-c*.md) in .workflows/{work_unit}/specification/{topic}/`, commit = `spec({work_unit}): restart specification`.
+Load **[resume-detection.md](../workflow-shared/references/resume-detection.md)** with artifact = `specification`, file = `.workflows/{work_unit}/specification/{topic}/specification.md`, continue_step = `Step 3`, restart_targets = `the specification file and all review tracking files (review-*-tracking-c*.md) in .workflows/{work_unit}/specification/{topic}/`, restart_resets = `every sources.{name}.status and consult_references.{name}.status row under {work_unit}.specification.{topic} to pending via engine manifest set — initialization never overwrites an existing row, so without this reset the fresh file would never get its content re-extracted`, commit = `spec({work_unit}): restart specification`.
 
 ---
 
 ## Step 1: Verify Source Material
 
-> *Output the next fenced block as a code block:*
-
-```
-── Verify Source Material ───────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Checking your discussions and research are ready. The
-> specification is built from these — if anything's missing or
-> incomplete, we'll flag it now.
-```
-
 Load **[verify-source-material.md](references/verify-source-material.md)** and follow its instructions as written.
 
-→ Proceed to **Step 2**.
+→ On return, proceed to **Step 2**.
 
 ---
 
 ## Step 2: Initialize Specification
 
-> *Output the next fenced block as a code block:*
-
-```
-── Initialize Specification ─────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Creating the specification file. Setting up the document
-> structure that we'll populate together in the next step.
-```
-
 Load **[initialize-specification.md](references/initialize-specification.md)** and follow its instructions as written.
 
-→ Proceed to **Step 3**.
+→ On return, proceed to **Step 3**.
 
 ---
 
 ## Step 3: Session Setup
 
-> *Output the next fenced block as a code block:*
-
-```
-── Session Setup ────────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Loading context from previous work. Reading your source
-> material and any existing progress so we're working from the
-> full picture.
-```
-
 Load **[session-setup.md](references/session-setup.md)** and follow its instructions as written.
 
-→ Proceed to **Step 4**.
+→ On return, proceed to **Step 4**.
 
 ---
 
 ## Step 4: Load Specification Principles
 
-> *Output the next fenced block as a code block:*
-
-```
-── Load Specification Principles ────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Loading the guidelines for how specifications are built.
-> These ensure consistency and completeness across the document.
-```
-
 Load **[specification-principles.md](references/specification-principles.md)** and follow its instructions as written.
 
-→ Proceed to **Step 5**.
+→ On return, proceed to **Step 5**.
 
 ---
 
@@ -204,11 +153,17 @@ Load **[specification-principles.md](references/specification-principles.md)** a
 
 Load **[spec-construction.md](references/spec-construction.md)** and follow its instructions as written.
 
-→ Proceed to **Step 6**.
+→ On return, proceed to **Step 6**.
 
 ---
 
 ## Step 6: Document Dependencies
+
+#### If work_type is not `epic`
+
+→ Proceed to **Step 7**.
+
+#### Otherwise
 
 > *Output the next fenced block as a code block:*
 
@@ -219,19 +174,13 @@ Load **[spec-construction.md](references/spec-construction.md)** and follow its 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Recording cross-topic dependencies. For epics, specifications
-> may depend on each other — this step captures those relationships.
+> Recording cross-topic dependencies — for epics, specifications
+> may depend on each other.
 ```
-
-#### If work_type is not `epic`
-
-→ Proceed to **Step 7**.
-
-#### Otherwise
 
 Load **[dependencies.md](references/dependencies.md)** and follow its instructions as written.
 
-→ Proceed to **Step 7**.
+→ On return, proceed to **Step 7**.
 
 ---
 
@@ -253,28 +202,15 @@ Load **[dependencies.md](references/dependencies.md)** and follow its instructio
 
 Load **[spec-review.md](references/spec-review.md)** and follow its instructions as written.
 
-→ Proceed to **Step 8**.
+→ On return, proceed to **Step 8**.
 
 ---
 
 ## Step 8: Compliance Self-Check
 
-> *Output the next fenced block as a code block:*
-
-```
-── Compliance Self-Check ────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Verifying the specification follows workflow conventions.
-> A quick internal check before we wrap up.
-```
-
 Load **[compliance-check.md](../workflow-shared/references/compliance-check.md)** and follow its instructions as written.
 
-→ Proceed to **Step 9**.
+→ On return, proceed to **Step 9**.
 
 ---
 

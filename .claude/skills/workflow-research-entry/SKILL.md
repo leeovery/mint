@@ -1,7 +1,7 @@
 ---
 name: workflow-research-entry
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-manifest/scripts/manifest.cjs)
+allowed-tools: Bash(node .claude/skills/workflow-engine/scripts/engine.cjs)
 ---
 
 Act as **precise intake coordinator**. Follow each step literally without interpretation. Do not engage with the subject matter — your role is preparation, not processing.
@@ -43,19 +43,6 @@ Follow these steps EXACTLY as written. Do not skip steps or combine them. Presen
 
 ## Step 1: Parse Arguments
 
-> *Output the next fenced block as a code block:*
-
-```
-── Parse Arguments ──────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Reading the handoff context and determining which
-> research topic to work with.
-```
-
 Arguments: work_type = `$0`, work_unit = `$1`, topic = `$2` (optional).
 Resolve topic: topic = `$2`, or if not provided and work_type is not `epic`, topic = `$1`.
 
@@ -89,54 +76,31 @@ Silently derive `direct_entry_summary` (one-line) and `direct_entry_description`
 
 ## Step 2: Check Phase Entry
 
-> *Output the next fenced block as a code block:*
-
-```
-── Check Phase Entry ────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Checking if research already exists for this topic.
-```
-
 Load **[ensure-discovery-item.md](../workflow-shared/references/ensure-discovery-item.md)** with work_type = `{work_type}`, work_unit = `{work_unit}`, topic = `{topic}`, routing = `research`. On the direct-entry path (no topic supplied as `$2`), also pass summary = `{direct_entry_summary}`, description = `{direct_entry_description}`. When the topic was provided by the caller, omit both — the caller didn't derive them.
 
-Check if the research phase entry exists:
+Read the research phase status:
 
 ```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs exists {work_unit}.research.{topic}
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.research.{topic} status
 ```
 
-#### If exists (`true`)
+Store the result as `phase_status`.
 
-→ Proceed to **Step 3**.
-
-#### If not exists (`false`)
+#### If output is empty (no research entry)
 
 → Proceed to **Step 4**.
+
+#### Otherwise
+
+→ Proceed to **Step 3**.
 
 ---
 
 ## Step 3: Validate Phase
 
-> *Output the next fenced block as a code block:*
+Load **[validate-phase.md](references/validate-phase.md)** with phase_status = `{phase_status}`.
 
-```
-── Validate Phase ───────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Checking the status of this research — in progress
-> or completed.
-```
-
-Load **[validate-phase.md](references/validate-phase.md)** and follow its instructions as written.
-
-→ Proceed to **Step 5**.
+→ On return, proceed to **Step 5**.
 
 ---
 
@@ -159,10 +123,10 @@ Load **[validate-phase.md](references/validate-phase.md)** and follow its instru
 Single-phase work (feature, cross-cutting) shaped in discovery. The carrier has two halves — read both. First the manifest `description`:
 
 ```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit} description
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} description
 ```
 
-Then the discovery session log. Single-phase work has exactly one, at a fixed path — it has no resumable loop to create others. Read `.workflows/{work_unit}/discovery/session-001.md`. A legacy work unit may have no log, or a placeholder log whose **Exploration** is absent or `(none)`.
+Then the discovery session log. Single-phase work has exactly one, at a fixed path — it has no resumable loop to create others. Read `.workflows/{work_unit}/discovery/sessions/session-001.md`. A legacy work unit may have no log, or a placeholder log whose **Exploration** is absent or `(none)`.
 
 **If the log's `Exploration` section has content (not absent or `(none)`):**
 
@@ -176,14 +140,14 @@ No usable carrier — the log is missing or has no **Exploration**. Gather conte
 
 Load **[gather-context.md](references/gather-context.md)** and follow its instructions as written.
 
-→ Proceed to **Step 5**.
+→ On return, proceed to **Step 5**.
 
 #### If `work_type` is `epic`
 
 The map item's `source` says whether the topic was shaped on the discovery map or started fresh from this entry. Read it:
 
 ```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.discovery.{topic} source
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.discovery.{topic} source
 ```
 
 **If `source` is exactly `direct-start`:**
@@ -192,35 +156,20 @@ The topic was started fresh, not shaped on the map — there is no curated carri
 
 Load **[gather-context.md](references/gather-context.md)** and follow its instructions as written.
 
-→ Proceed to **Step 5**.
+→ On return, proceed to **Step 5**.
 
 **Otherwise:**
 
-The topic was shaped on the discovery map — its seed lives on the map item. Read the `description` and seed the research session from it:
+The topic was shaped on the discovery map. Read its discovery brief as the starting context:
 
-```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.discovery.{topic} description
-```
+Load **[read-brief-context.md](../workflow-shared/references/read-brief-context.md)** with work_type = `{work_type}`, work_unit = `{work_unit}`, topic = `{topic}`.
 
 Do not re-ask; live conversation context, when present, supplements the carrier.
 
-→ Proceed to **Step 5**.
+→ On return, proceed to **Step 5**.
 
 ---
 
 ## Step 5: Invoke the Skill
-
-> *Output the next fenced block as a code block:*
-
-```
-── Invoke Research ──────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Handing off to the research process with all
-> gathered context.
-```
 
 Load **[invoke-skill.md](references/invoke-skill.md)** and follow its instructions as written.

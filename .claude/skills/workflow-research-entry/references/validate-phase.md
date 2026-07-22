@@ -4,18 +4,14 @@
 
 ---
 
-Check research status via manifest CLI:
-
-```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.research.{topic} status
-```
+Branch on the `phase_status` the caller read in Step 2 — no re-read.
 
 #### If status is `completed`
 
-Reset to in-progress:
+Reopen it:
 
 ```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs set {work_unit}.research.{topic} status in-progress
+node .claude/skills/workflow-engine/scripts/engine.cjs topic reopen {work_unit} research {topic}
 ```
 
 > *Output the next fenced block as a code block:*
@@ -25,6 +21,8 @@ Reopening research: {topic:(titlecase)}
 ```
 
 Set source="continue".
+
+→ Load **[reconcile-advisory.md](../../workflow-shared/references/reconcile-advisory.md)** with downstream_phase = `research`.
 
 → Return to caller.
 
@@ -37,5 +35,7 @@ Resuming research: {topic:(titlecase)}
 ```
 
 Set source="continue".
+
+→ Load **[reconcile-advisory.md](../../workflow-shared/references/reconcile-advisory.md)** with downstream_phase = `research`.
 
 → Return to caller.

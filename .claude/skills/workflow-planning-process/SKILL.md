@@ -1,7 +1,7 @@
 ---
 name: workflow-planning-process
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-manifest/scripts/manifest.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs)
+allowed-tools: Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(tick), Bash(ls .workflows/), Bash(rm -rf .workflows/), Bash(git status), Bash(git log), Bash(git diff), Bash(git rev-parse), Bash(git add), Bash(git commit)
 ---
 
 # Planning Process
@@ -49,12 +49,23 @@ Context refresh (compaction) summarizes the conversation, losing procedural deta
 2. **Read all tracking and state files** for the current topic — the planning file (`.workflows/{work_unit}/planning/{topic}/planning.md`), task detail files (`phase-{N}-tasks.md`), task files via the format's reading.md, plan review tracking files (`review-*-tracking-c*.md`), and manifest state. If a task detail file contains `pending` tasks, you are mid-authoring for that phase — resume the approval loop in author-tasks.md.
 3. **Check git state.** Run `git status` and `git log --oneline -10` to see recent commits. Commit messages follow a conventional pattern that reveals what was completed.
 4. **Announce your position** to the user before continuing: what step you believe you're at, what's been completed, and what comes next. Wait for confirmation.
-5. **Check gate modes** via manifest CLI — if `auto`, the user previously opted in during this session. Preserve these values.
-   - `node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} task_list_gate_mode`
-   - `node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} author_gate_mode`
-   - `node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} finding_gate_mode`
+5. **Check gate modes** via `engine manifest`:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic}
+   ```
+   Check `task_list_gate_mode`, `author_gate_mode`, and `finding_gate_mode` — if any is `auto`, the user previously opted in during this session. Preserve these values.
 
 Do not guess at progress or continue from memory. The files on disk and git history are authoritative — your recollection is not.
+
+---
+
+## Hard Rules
+
+1. **Commit frequently** — commit at natural breaks and before any context refresh. Context refresh = lost work. Work-unit commits go through the scoped helper:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "{message}"
+   ```
+2. **Raw git when the plan format's storage is staged** — task authoring, graph writes, and applied review fixes write through the format adapter, whose task storage may live outside `.workflows/{work_unit}`. Commit those with raw git, staging explicitly (`git add -- .workflows/{work_unit} {format task storage paths}`) — never the scoped helper.
 
 ---
 
@@ -69,7 +80,20 @@ This process constructs a plan from a specification. A plan consists of:
 
 Follow every step in sequence. No steps are optional.
 
+---
+
 ## Step 0: Resume Detection
+
+Read the planning entry from the manifest as one subtree — empty means no entry exists:
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic}
+```
+
+#### If output is empty (no planning entry)
+
+→ Proceed to **Step 1**.
+
+#### Otherwise (planning entry exists)
 
 > *Output the next fenced block as a code block:*
 
@@ -80,36 +104,11 @@ Follow every step in sequence. No steps are optional.
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Checking for an existing plan. If one exists, you can
-> pick up where you left off or start fresh.
+> An in-progress plan exists for this topic — choose whether
+> to pick it up or start fresh.
 ```
 
-Check if a planning entry exists in the manifest:
-```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs exists {work_unit}.planning.{topic}
-```
-
-#### If planning entry does not exist
-
-→ Proceed to **Step 1**.
-
-#### If planning entry exists
-
-Check the planning status via manifest CLI:
-```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} status
-```
-
-Note the current phase and task position from the manifest:
-```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} phase
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} task
-```
-
-Check `spec_commit` from the manifest:
-```bash
-node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} spec_commit
-```
+The subtree carries the current `phase` and `task` position (for the resume prompt below) and the `spec_commit` baseline (for spec-change detection).
 
 Load **[spec-change-detection.md](references/spec-change-detection.md)** and follow its instructions as written. Then present the user with an informed choice:
 
@@ -121,6 +120,8 @@ Found existing plan for **{topic:(titlecase)}** (previously reached phase {N}, t
 {spec change summary from spec-change-detection.md}
 
 · · · · · · · · · · · ·
+How would you like to proceed?
+
 - **`c`/`continue`** — Walk through the plan from the start. You can review, amend, or navigate at any point — including straight to the leading edge.
 - **`r`/`restart`** — Erase all planning work for this topic and start fresh. This deletes the planning file, authored tasks, and clears manifest state. Other topics are unaffected.
 · · · · · · · · · · · ·
@@ -130,22 +131,29 @@ Found existing plan for **{topic:(titlecase)}** (previously reached phase {N}, t
 
 #### If `continue`
 
+If spec-change-detection reported changes, carry them into the walkthrough: reconcile the changed spec content into the affected phases and tasks before concluding. The `spec_commit` baseline is re-stamped only at conclusion.
+
 → Proceed to **Step 2**.
 
 #### If `restart`
 
-1. Read the `format` from the manifest:
+1. Read the `format` and the plan's `external_id` from the manifest:
    ```bash
-   node .claude/skills/workflow-manifest/scripts/manifest.cjs get {work_unit}.planning.{topic} format
+   node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} format
+   node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} external_id
    ```
 2. Load the format's **[authoring.md](references/output-formats/{format}/authoring.md)**
-3. Follow the authoring file's cleanup instructions to remove authored tasks for this topic
+3. Follow the authoring file's cleanup instructions to remove authored tasks for this topic — the cleanup targets the entity identified by `external_id`
 4. Delete all planning files: `rm -rf .workflows/{work_unit}/planning/{topic}/`
 5. Delete the planning manifest entry:
    ```bash
-   node .claude/skills/workflow-manifest/scripts/manifest.cjs delete {work_unit}.planning items.{topic}
+   node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.planning items.{topic}
    ```
-6. Commit: `planning({work_unit}): restart planning`
+6. Commit with raw git — the format's cleanup may remove task storage outside the work unit, so the scoped helper cannot cover it. Stage the work unit and every path the cleanup touched, then commit:
+   ```bash
+   git add -- .workflows/{work_unit} {paths the format cleanup touched}
+   git commit -m "planning({work_unit}): restart planning"
+   ```
 
 → Proceed to **Step 1**.
 
@@ -153,108 +161,41 @@ Found existing plan for **{topic:(titlecase)}** (previously reached phase {N}, t
 
 ## Step 1: Initialize Plan
 
-> *Output the next fenced block as a code block:*
-
-```
-── Initialize Plan ──────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Setting up the plan. Selecting an output format and creating
-> the planning file structure.
-```
-
 Load **[initialize-plan.md](references/initialize-plan.md)** and follow its instructions as written.
 
-→ Proceed to **Step 2**.
+→ On return, proceed to **Step 2**.
 
 ---
 
 ## Step 2: Session Setup
 
-> *Output the next fenced block as a code block:*
-
-```
-── Session Setup ────────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Loading context from previous work. Reading the specification
-> and any existing planning progress.
-```
-
 Load **[session-setup.md](references/session-setup.md)** and follow its instructions as written.
 
-→ Proceed to **Step 3**.
+→ On return, proceed to **Step 3**.
 
 ---
 
 ## Step 3: Load Planning Principles
 
-> *Output the next fenced block as a code block:*
-
-```
-── Load Planning Principles ─────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Loading the guidelines for how plans are structured.
-> These ensure tasks are well-scoped, testable, and sequenced
-> correctly.
-```
-
 Load **[planning-principles.md](references/planning-principles.md)** and follow its instructions as written.
 
-→ Proceed to **Step 4**.
+→ On return, proceed to **Step 4**.
 
 ---
 
 ## Step 4: Knowledge Usage
 
-> *Output the next fenced block as a code block:*
-
-```
-── Knowledge Usage ──────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Loading the usage guide for the knowledge base. Planning operates
-> from the spec as the golden source — the guide documents the narrow
-> cases where a KB query is warranted, and those where it is not.
-```
-
 Load **[knowledge-usage.md](../workflow-knowledge/references/knowledge-usage.md)** and follow its instructions as written.
 
-→ Proceed to **Step 5**.
+→ On return, proceed to **Step 5**.
 
 ---
 
 ## Step 5: Verify Source Material
 
-> *Output the next fenced block as a code block:*
-
-```
-── Verify Source Material ───────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Reading the specification that drives this plan. Everything
-> in the plan traces back to the specification.
-```
-
 Load **[verify-source-material.md](references/verify-source-material.md)** and follow its instructions as written.
 
-→ Proceed to **Step 6**.
+→ On return, proceed to **Step 6**.
 
 ---
 
@@ -276,7 +217,7 @@ Load **[verify-source-material.md](references/verify-source-material.md)** and f
 
 Load **[plan-construction.md](references/plan-construction.md)** and follow its instructions as written.
 
-→ Proceed to **Step 7**.
+→ On return, proceed to **Step 7**.
 
 ---
 
@@ -297,11 +238,17 @@ Load **[plan-construction.md](references/plan-construction.md)** and follow its 
 
 Load **[analyze-task-graph.md](references/analyze-task-graph.md)** and follow its instructions as written.
 
-→ Proceed to **Step 8**.
+→ On return, proceed to **Step 8**.
 
 ---
 
 ## Step 8: Resolve External Dependencies
+
+#### If work_type is not `epic`
+
+→ Proceed to **Step 9**.
+
+#### Otherwise
 
 > *Output the next fenced block as a code block:*
 
@@ -312,19 +259,13 @@ Load **[analyze-task-graph.md](references/analyze-task-graph.md)** and follow it
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Checking for dependencies on other plans. For epics,
-> tasks in one plan may depend on tasks in another.
+> Checking for dependencies on other plans — tasks in one plan
+> may depend on tasks in another.
 ```
-
-#### If work_type is not `epic`
-
-→ Proceed to **Step 9**.
-
-#### Otherwise
 
 Load **[resolve-dependencies.md](references/resolve-dependencies.md)** and follow its instructions as written.
 
-→ Proceed to **Step 9**.
+→ On return, proceed to **Step 9**.
 
 ---
 
@@ -346,27 +287,15 @@ Load **[resolve-dependencies.md](references/resolve-dependencies.md)** and follo
 
 Load **[plan-review.md](references/plan-review.md)** and follow its instructions as written.
 
-→ Proceed to **Step 10**.
+→ On return, proceed to **Step 10**.
 
 ---
 
 ## Step 10: Compliance Self-Check
 
-> *Output the next fenced block as a code block:*
-
-```
-── Compliance Self-Check ────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Verifying the plan follows workflow conventions.
-```
-
 Load **[compliance-check.md](../workflow-shared/references/compliance-check.md)** and follow its instructions as written.
 
-→ Proceed to **Step 11**.
+→ On return, proceed to **Step 11**.
 
 ---
 

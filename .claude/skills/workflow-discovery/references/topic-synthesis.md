@@ -4,13 +4,13 @@
 
 ---
 
-The endpoint ceremony. Analyse the session's exploration as a whole, produce a topic set, and confirm it with the user. Loaded by [session-loop.md](session-loop.md) C when the user confirms ready to synthesise.
+The harvest ceremony. Analyse the session's exploration as a whole, produce a topic set, and confirm it with the user. Loaded by [session-loop.md](session-loop.md) C when the user pulls the harvest.
 
 ## A. Gather Source Material
 
 You have three sources of truth:
 
-1. **The Exploration section** of the active session log at `.workflows/{work_unit}/discovery/session-{session_number:03d}.md`. Read it now if you haven't recently — your in-context memory might be stale.
+1. **The Exploration section** of the active session log at `.workflows/{work_unit}/discovery/sessions/session-{session_number:03d}.md`. Read it now if you haven't recently — your in-context memory might be stale.
 2. **In-context memory of the conversation.** When not compacted, this carries detail the Exploration summary may have skipped.
 3. **The existing discovery map** from Step 7's discovery output. Continuing sessions add to it; first sessions seed it.
 
@@ -36,6 +36,16 @@ Apply the independence test and anti-patterns. Two surfaces that share a domain,
 
 For continuing sessions, also check: does any new candidate overlap with an existing map item? If so, the exploration likely belongs *inside* that item's future discussion or research, not as a new sibling.
 
+#### If no candidates remain
+
+Every candidate folded into an existing map item, or the exploration surfaced none — there is no proposal to render and nothing to confirm. Tell the user briefly (the exploration itself is captured in the session log). Synthesis outcome: `confirmed`, with an **empty working list** — Step 12 confirm-and-persist finalises and closes the session without new topics.
+
+→ Load **[brief-synthesis.md](brief-synthesis.md)** and follow its instructions as written — with the empty working list, its pass covers the existing map topics this session's exploration materially deepened: their briefs regenerate and in-flight downstream work gets `reconcile_needed`.
+
+→ Return to caller.
+
+#### Otherwise
+
 → Proceed to **D. Infer Routing**.
 
 ## D. Infer Routing
@@ -44,24 +54,31 @@ For continuing sessions, also check: does any new candidate overlap with an exis
 
 For each topic in the synthesised set, propose `research` or `discussion` based on cues from how the user framed it during exploration. The proposal is tentative — the user can flip it at the confirmation gate in **E**.
 
-→ Proceed to **E. Render Proposal**.
+→ On return, proceed to **E. Render Proposal**.
 
 ## E. Render Proposal
 
-> *Output the next fenced block as a code block:*
+Write the proposed set to `.workflows/.cache/{work_unit}/discovery/proposed-topics.json` — a JSON array in synthesised order, one object per topic. Names are kebab-case; summaries are the one-liners drawn from the exploration; routing is the value inferred in **D**:
 
-```
-Synthesised Discovery Map — {work_unit:(titlecase)}
-
-@foreach(topic in proposed_set)
-  • {topic.name} — {one-line summary}    [routing: {research|discussion}]
-@endforeach
-
-{N} topic(s). One-line summary per topic comes from the exploration;
-routing is my read of where each one goes next.
+```json
+[
+  {"name": "{topic}", "routing": "{research|discussion}", "summary": "{one-line summary}"}
+]
 ```
 
-For continuing sessions, mark new items with `(new this session)` and include existing map items below unchanged so the full picture is visible.
+Then render the proposal:
+
+```bash
+node .claude/skills/workflow-discovery/scripts/gateway.cjs map-view {work_unit} --proposed-file .workflows/.cache/{work_unit}/discovery/proposed-topics.json
+```
+
+The output arrives in demarcated sections. Read `=== DATA` to reason from (never display it) — it carries a per-name flag row for each proposed topic:
+
+- `exists_on_map=true` — the name collides with an active map item. Fold the exploration into that item or pick a different name (revise the set, rewrite the file, re-run) before rendering the gate.
+- `legal_name=false` — dots or slashes break manifest addressing. Rename and re-run.
+- `matches_dismissed=true` — the name was previously dismissed. Fine to proceed — confirming at the gate below is the re-add decision; hold the flag for Step 12, which passes `--force-dismissed` on the write.
+
+Emit the `=== DISPLAY` section verbatim **as a code block** — it shows the proposed topics with the existing map unchanged below, so the full picture is visible.
 
 > *Output the next fenced block as markdown (not a code block):*
 
@@ -79,7 +96,9 @@ Confirm to commit, or tell me what to adjust.
 
 #### If `yes`
 
-The topic set is confirmed. Hold it in conversation memory as the **working list** for Step 12 confirm-and-persist. Do not write Topics Identified to the log yet — Step 12 writes the manifest items and the log section together. Synthesis outcome: `confirmed`.
+The topic set is confirmed. Hold it in conversation memory as the **working list** for Step 12 confirm-and-persist, along with any `matches_dismissed` names from the DATA flags (Step 12 passes `--force-dismissed` for those). Do not write Topics Identified to the log yet — Step 12 writes the manifest items and the log section together. Synthesis outcome: `confirmed`.
+
+→ Load **[brief-synthesis.md](brief-synthesis.md)** and follow its instructions as written.
 
 → Return to caller.
 
@@ -100,6 +119,6 @@ Apply the named adjustments to the working set:
 - **Edit summary** *"Y's summary should be ..."* — replace the summary line
 - **Drop** *"Forget Z entirely"* — remove from set (note: this means Claude misread the exploration; reflect on what was overweighted)
 
-After applying, re-render the proposal (back to the top of **E**) and ask again. Loop until confirmed or `explore` is chosen.
+After applying, rewrite `proposed-topics.json`, re-render the proposal (back to the top of **E**), and ask again. Loop until confirmed or `explore` is chosen.
 
 → Return to **E. Render Proposal**.
