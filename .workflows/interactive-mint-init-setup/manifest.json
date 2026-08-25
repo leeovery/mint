@@ -24,7 +24,11 @@
           "review_cycle": 3,
           "finding_gate_mode": "auto",
           "construction_gate_mode": "auto",
-          "date": "2026-06-16"
+          "date": "2026-06-16",
+          "tracking": {
+            "review-gap-analysis-tracking-c1": "complete",
+            "review-gap-analysis-tracking-c2": "complete"
+          }
         }
       }
     },
@@ -72,7 +76,13 @@
             "interactive-mint-init-setup-7": "tick-1c1100",
             "interactive-mint-init-setup-7-1": "tick-7e2366"
           },
-          "external_id": "tick-f3d959"
+          "external_id": "tick-f3d959",
+          "tracking": {
+            "review-integrity-tracking-c1": "complete",
+            "review-integrity-tracking-c2": "complete",
+            "review-traceability-tracking-c1": "complete",
+            "review-traceability-tracking-c2": "complete"
+          }
         }
       }
     },
@@ -151,7 +161,30 @@
             5,
             6,
             7
-          ]
+          ],
+          "staging": {
+            "c1": {
+              "tasks": {
+                "1": "approved",
+                "2": "approved"
+              }
+            },
+            "c2": {
+              "tasks": {
+                "1": "approved",
+                "2": "approved",
+                "3": "approved",
+                "4": "approved",
+                "5": "approved",
+                "6": "approved"
+              }
+            },
+            "c3": {
+              "tasks": {
+                "1": "approved"
+              }
+            }
+          }
         }
       }
     },

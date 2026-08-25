@@ -83,7 +83,3 @@ Research (`research/token-aware-diff-sizing.md`, incl. two deep-dives + three re
 ### Current State
 
 - Nothing decided yet. Research standing positions above are candidates to ratify.
-
-## Triage
-
-(none)

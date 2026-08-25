@@ -15,7 +15,101 @@
     "discussion": {
       "items": {
         "token-aware-diff-sizing": {
-          "status": "in-progress"
+          "status": "in-progress",
+          "subtopics": {
+            "detection-trigger-proactive-vs-reactive": {
+              "status": "pending",
+              "parent": null
+            },
+            "ai-as-error-classifier-as-primary-trigger": {
+              "status": "pending",
+              "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "closed-code-set-minimal-vs-rich-granularity": {
+              "status": "pending",
+              "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "classifier-prompt-hardening-untrusted-error-text": {
+              "status": "pending",
+              "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "proactive-byte-cap-backstop-line-byte-ceiling-token-budget-registry-survival": {
+              "status": "pending",
+              "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "degradation-ladder-the-response": {
+              "status": "pending",
+              "parent": null
+            },
+            "map-reduce-vs-refine-parallel-map-serial-reduce": {
+              "status": "pending",
+              "parent": "degradation-ladder-the-response"
+            },
+            "stitching-salience-change-map-as-spine": {
+              "status": "pending",
+              "parent": "degradation-ladder-the-response"
+            },
+            "chunk-boundaries-single-file-floor": {
+              "status": "pending",
+              "parent": "degradation-ladder-the-response"
+            },
+            "concat-floor-abort-as-last-rung": {
+              "status": "pending",
+              "parent": "degradation-ladder-the-response"
+            },
+            "overhead-dominated-failures-surface-advise": {
+              "status": "pending",
+              "parent": "degradation-ladder-the-response"
+            },
+            "config-surface-oversize-knob": {
+              "status": "pending",
+              "parent": null
+            },
+            "new-axis-vs-on-notes-failure-value-naming": {
+              "status": "pending",
+              "parent": "config-surface-oversize-knob"
+            },
+            "default-silent-auto-degrade-scope": {
+              "status": "pending",
+              "parent": "config-surface-oversize-knob"
+            },
+            "scope-across-three-consumers": {
+              "status": "pending",
+              "parent": null
+            },
+            "remediation-ux-escape-hatch-guidance": {
+              "status": "pending",
+              "parent": null
+            },
+            "attended-vs-unattended-default": {
+              "status": "pending",
+              "parent": "remediation-ux-escape-hatch-guidance"
+            },
+            "commit-message-fallback-reuse": {
+              "status": "pending",
+              "parent": "remediation-ux-escape-hatch-guidance"
+            },
+            "implementation-reality-parallelism": {
+              "status": "pending",
+              "parent": null
+            },
+            "bounded-fan-out-failure-aggregation": {
+              "status": "pending",
+              "parent": "implementation-reality-parallelism"
+            },
+            "progress-narration-model": {
+              "status": "pending",
+              "parent": "implementation-reality-parallelism"
+            },
+            "timeout-semantics-across-n-calls": {
+              "status": "pending",
+              "parent": "implementation-reality-parallelism"
+            },
+            "cancellation-partial-coverage-fork": {
+              "status": "pending",
+              "parent": "implementation-reality-parallelism"
+            }
+          }
         }
       }
     }
