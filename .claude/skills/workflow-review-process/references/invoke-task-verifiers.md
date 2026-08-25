@@ -30,7 +30,7 @@ Read the work type:
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} work_type
 ```
 
-Using the format reading adapter loaded in Step 2, extract every task across all phases from each plan in scope:
+Using the format reading adapter loaded in Step 2, extract every task across all phases from each plan in scope — excluding tasks the backend marks skipped or cancelled (deliberately discarded work is not reviewed; note the excluded ids — they are recorded as covered after the verifiers run, and the report discloses them):
 - Note each task's description
 - Note each task's acceptance criteria — quick-fix tasks carry a **Verification** section instead of acceptance criteria; note that
 - Note expected micro acceptance (test name) — absent for quick-fix tasks
@@ -112,9 +112,10 @@ Full findings are written to `.workflows/{work_unit}/review/{topic}/report-{phas
 
 ## F. Update Reviewed Tasks
 
-After all verifiers complete, push each verified task's internal ID to the review manifest:
+After all verifiers complete, read `reviewed_tasks` once and push each verified task's internal ID that is not already recorded — `push` appends unconditionally, so a crash-resume re-run must not double-record. Push the ids excluded as skipped/cancelled at extraction too (excluded-by-design is covered — without this, the resume gate counts them unreviewed forever):
 
 ```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.review.{topic} reviewed_tasks
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest push {work_unit}.review.{topic} reviewed_tasks "{internal_id}"
 ```
 
@@ -126,7 +127,7 @@ This enables incremental review detection on subsequent review sessions.
 
 ## G. Aggregate Findings
 
-1. Read all `.workflows/{work_unit}/review/{topic}/report-*.md` files
+1. Read every `.workflows/{work_unit}/review/{topic}/report-*.md` file from disk — the aggregation draws from the files as they stand, never from memory of the dispatches that produced them. Make each Read before aggregating; a read not actually made is never claimed or paraphrased from the dispatch summaries
 2. Synthesize findings from file contents:
    - Collect all tasks with `STATUS: incomplete` or `STATUS: issues_found` as blocking issues
    - Collect all test issues (under/over-tested)

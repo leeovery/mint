@@ -34,13 +34,27 @@ Read the statuses from the caller's `analysis_caches` line:
 - `research_analysis` — `valid` | `stale` | `absent`
 - `gap_analysis` — same
 
-#### If both caches are `valid` or `absent`
+#### If all caches are `valid` or `absent`
 
 No analyses to run. `new_arrivals` stays empty.
 
 → Return to caller.
 
 #### If at least one cache is `stale`
+
+Analyses read completed corpora, and a live peer session is mid-conversation on material they would read. Check first:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs presence scan {work_unit}
+```
+
+**If the response has `live` greater than `0`:**
+
+Defer — the caches self-heal at the next entry once those sessions conclude. Emit the response's `DISPLAY: presence deferral` section verbatim at this moment. `new_arrivals` stays empty.
+
+→ Return to caller.
+
+**Otherwise:**
 
 → Proceed to **C. Dispatch and Re-discover**.
 

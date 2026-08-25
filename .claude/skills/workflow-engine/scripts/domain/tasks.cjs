@@ -22,6 +22,7 @@ const SESSION_CYCLE_LIMIT = 3;
  * @property {string} task_gate_mode
  * @property {string} fix_gate_mode
  * @property {string} analysis_gate_mode
+ * @property {string} consolidation_gate_mode
  */
 
 /**
@@ -91,7 +92,9 @@ function safeName(value, label) {
 
 /** @param {string} cwd @param {string} workUnit @param {string} topic @param {string} internalId */
 function fixTrackingPath(cwd, workUnit, topic, internalId) {
-  return path.join(cwd, '.workflows', '.cache', workUnit, 'implementation', topic, `fix-tracking-${internalId}.md`);
+  safeName(topic, 'topic');
+  safeName(workUnit, 'work unit');
+  return path.join(cwd, '.workflows', workUnit, 'implementation', topic, `fix-tracking-${internalId}.md`);
 }
 
 /**
@@ -123,9 +126,10 @@ function counterOf(item, field) {
 /**
  * Create-or-resume the implementation item. Absent → init-phase semantics
  * (`{status: 'in-progress'}`) plus session defaults. Present → session reset
- * only: the three gate modes back to `gated`, `analysis_cycle_session` to 0 —
+ * only: the four gate modes back to `gated`, `analysis_cycle_session` to 0 —
  * `analysis_cycle_total`, `linters`, `project_skills`, `current_phase`,
- * `current_task`, `completed_tasks`, and `completed_phases` are never touched.
+ * `current_task`, `completed_tasks`, `completed_phases`, `consolidated_phases`,
+ * and `bank` are never touched.
  * `fix_attempts` resets to 0 UNLESS `current_task` has a live fix-tracking
  * file (a crash-resume mid-task): the counter and file are that task's
  * convergence history and stay in lockstep — zeroing one without the other
@@ -150,6 +154,7 @@ function initTasks(cwd, workUnit, topic) {
       item.task_gate_mode = 'gated';
       item.fix_gate_mode = 'gated';
       item.analysis_gate_mode = 'gated';
+      item.consolidation_gate_mode = 'gated';
       if (!hasInFlightPair(cwd, workUnit, topic, item)) item.fix_attempts = 0;
       item.analysis_cycle_session = 0;
     } else {
@@ -159,6 +164,7 @@ function initTasks(cwd, workUnit, topic) {
         task_gate_mode: 'gated',
         fix_gate_mode: 'gated',
         analysis_gate_mode: 'gated',
+        consolidation_gate_mode: 'gated',
         fix_attempts: 0,
         analysis_cycle_total: 0,
         analysis_cycle_session: 0,
@@ -177,6 +183,7 @@ function initTasks(cwd, workUnit, topic) {
         task_gate_mode: gateOf(item, 'task_gate_mode'),
         fix_gate_mode: gateOf(item, 'fix_gate_mode'),
         analysis_gate_mode: gateOf(item, 'analysis_gate_mode'),
+        consolidation_gate_mode: gateOf(item, 'consolidation_gate_mode'),
       },
       counters: {
         fix_attempts: counterOf(item, 'fix_attempts'),
@@ -189,11 +196,11 @@ function initTasks(cwd, workUnit, topic) {
 
 /**
  * Start a task: record it as the manifest's `current_task`, reset
- * `fix_attempts` and drop the task's fix-tracking cache file (clean slate per
+ * `fix_attempts` and drop the task's fix-tracking file (clean slate per
  * task), report the gate modes the task loop branches on. When the internal
  * id IS already `current_task` AND its tracking file exists — a true resume:
  * a crash-resumed session restarting the task in flight, or a post-compaction
- * re-run to re-fetch the gate sections — both survive untouched: the attempt
+ * re-run — both survive untouched: the attempt
  * count and the tracking file are that task's convergence history, and wiping
  * them would evade the fix threshold. Anything else (a different task, or the
  * same id with no tracking file — e.g. freshly handed over by `complete
@@ -207,17 +214,16 @@ function initTasks(cwd, workUnit, topic) {
 function startTask(cwd, workUnit, topic, internalId) {
   safeName(internalId, 'internal id');
   const file = fixTrackingPath(cwd, workUnit, topic, internalId);
-  const { item, restarting } = withWorkUnitLock(cwd, workUnit, () => {
+  const item = withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const found = implementationItem(manifest, topic);
     const resumed = found.current_task === internalId && fs.existsSync(file);
     if (!resumed) found.fix_attempts = 0;
     found.current_task = internalId;
+    if (!resumed && fs.existsSync(file)) fs.unlinkSync(file);
     saveWorkUnitManifest(cwd, workUnit, manifest);
-    return { item: found, restarting: resumed };
+    return found;
   });
-
-  if (!restarting && fs.existsSync(file)) fs.unlinkSync(file);
 
   return {
     task: internalId,
@@ -227,7 +233,7 @@ function startTask(cwd, workUnit, topic, internalId) {
 
 /**
  * Record a fix attempt: increment `fix_attempts` and append the findings
- * file's content verbatim to the task's fix-tracking cache file under a
+ * file's content verbatim to the task's fix-tracking file under a
  * `## Attempt {N}` section (file and parent dirs created as needed).
  * @param {string} cwd project root
  * @param {string} workUnit
@@ -358,7 +364,11 @@ function completeTask(cwd, workUnit, topic, { internalId = null, externalId = nu
     const recorded = { completed_task: id };
     if (skipped) recorded.skipped = true;
     pushTo(item, 'completed_tasks', id);
-    item.fix_attempts = 0;
+    // Only the in-flight task's completion clears its counter — completing a
+    // different id (an out-of-band skip) must not reset a live fix loop.
+    if (item.current_task === undefined || item.current_task === null || item.current_task === id) {
+      item.fix_attempts = 0;
+    }
     if (phase !== undefined) {
       item.current_phase = phase;
       recorded.current_phase = phase;
@@ -405,4 +415,4 @@ function analysisCycle(cwd, workUnit, topic) {
   });
 }
 
-module.exports = { initTasks, startTask, fixAttempt, completeTask, analysisCycle, FIX_THRESHOLD, SESSION_CYCLE_LIMIT };
+module.exports = { initTasks, startTask, fixAttempt, completeTask, analysisCycle, gateOf, counterOf, FIX_THRESHOLD, SESSION_CYCLE_LIMIT };

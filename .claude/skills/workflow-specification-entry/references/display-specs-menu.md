@@ -4,11 +4,17 @@
 
 ---
 
-Shows when materialized specifications exist and no proposed groupings remain (every grouping has already been started). The tree, the menu, and the `ACTIONS` table share one ordering and numbering; concluded specs live behind `c`/`completed`.
+Shows when materialized specifications exist and no proposed groupings remain (every grouping has already been started). The tree, the menu, and the `ACTIONS` table share one ordering and numbering; concluded specs live behind `c/completed`.
 
 ## A. Display
 
-Emit the DISPLAY section from the Step 1 snapshot verbatim as a code block.
+Re-run the scoped snapshot — the emission draws from this response, never a carried one:
+
+```bash
+node .claude/skills/workflow-specification-entry/scripts/gateway.cjs view {work_unit}
+```
+
+Emit the TITLE section (markdown), then the DISPLAY section verbatim as a code block.
 
 → Proceed to **B. Menu**.
 
@@ -36,6 +42,12 @@ rm .workflows/{work_unit}/.state/discussion-consolidation-analysis.md
 The entry's `topic` and `verb`, plus that spec's DATA detail (sources, consult references), become the context for confirmation.
 
 → Load **[confirm-and-handoff.md](confirm-and-handoff.md)** and follow its instructions as written.
+
+#### If `action` is `blocked_spec`
+
+The spec's source discussions reopened — it cannot be entered until they re-conclude. Tell the user in one line which discussions hold it (the spec's `blocked_by` in DATA names them) and that concluding those unlocks the spec, then re-present.
+
+→ Return to **B. Menu**.
 
 #### If `action` is `completed_menu`
 

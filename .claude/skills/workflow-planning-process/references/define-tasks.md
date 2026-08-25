@@ -10,12 +10,10 @@ This step uses the `workflow-planning-task-designer` agent (`../../../agents/wor
 
 ## A. Design Task List
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-Taking Phase {N}: {Phase Name} and breaking it into tasks. I'll delegate
-this to a specialist agent that will read the full specification and
-propose a task list.
+Taking Phase {N}: {Phase Name} and breaking it into tasks. I'll delegate this to a specialist agent that will read the full specification and propose a task list.
 ```
 
 ### Invoke the Agent
@@ -50,54 +48,32 @@ Commit:
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): draft Phase {N} task list"
 ```
 
-Present the task list to the user using the overview returned by the agent:
+Write the task-list payload for the render surface to the phase cache — one entry per task, each summary a single line, edge cases as short phrases:
 
-> *Output the next fenced block as a code block:*
-
-```
-Phase {N}: {Phase Name} — {M} tasks.
-
-1. {Task Name} — {One-line summary}
-   └─ Edge cases: {comma-separated list, or "none"}
-
-2. ...
+```json
+.workflows/.cache/{work_unit}/planning/{topic}/task-list-phase-{N}.json
+{"phase": {N}, "phase_name": "{Phase Name}", "tasks": [{"name": "…", "summary": "…", "edge_cases": ["…"]}]}
 ```
 
-→ Proceed to **B. Check Gate Mode**.
+Use the Write tool for the payload — never a shell heredoc.
+
+→ Proceed to **B. Render the Gate**.
 
 ---
 
-## B. Check Gate Mode
+## B. Render the Gate
 
-Check `task_list_gate_mode` via `engine manifest`:
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} task_list_gate_mode
+node .claude/skills/workflow-engine/scripts/engine.cjs render task-list {work_unit}.planning.{topic} --file .workflows/.cache/{work_unit}/planning/{topic}/task-list-phase-{N}.json
 ```
 
-#### If `task_list_gate_mode` is `auto`
+The response carries the task-list display plus the surface for the current gate mode. Emit each section verbatim at its marked instruction.
 
-> *Output the next fenced block as a code block:*
-
-```
-Phase {N}: {Phase Name} — task list approved. Proceeding to authoring.
-```
+#### If the response carried `DISPLAY: task list auto-approved`
 
 → Proceed to **C. Finalize Approval**.
 
-#### If `task_list_gate_mode` is `gated`
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-Approve this task list?
-
-- **`y`/`yes`** — Proceed to authoring
-- **`a`/`auto`** — Approve this and all remaining task list gates automatically
-- **Tell me what to change** — which tasks to reorder, split, merge, add, edit, or remove
-- **Navigate** — Tell me where to go: a different phase or task, or the leading edge
-· · · · · · · · · · · ·
-```
+#### If the response carried `MENU: task list gate`
 
 **STOP.** Wait for user response.
 
@@ -107,9 +83,9 @@ Re-invoke `workflow-planning-task-designer` with all original inputs PLUS:
 - **Previous output**: the current task list
 - **User feedback**: what the user wants changed
 
-Update the planning file with the revised task table.
+Update the planning file with the revised task table, and rewrite the payload file to match.
 
-→ Return to **B. Check Gate Mode**.
+→ Return to **B. Render the Gate**.
 
 #### If `auto`
 
@@ -135,7 +111,7 @@ Resolve the destination per the caller's **Navigation** section — the user's p
 
 **If the task list is new or was amended:**
 
-1. Update the task table in the planning file: set `status: approved` and `approved_at: YYYY-MM-DD` (use today's actual date)
+1. Record the approval — `node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} approvals.tasks.p{N} $(date +%Y-%m-%d)`
 2. Advance the planning position in the manifest to the first task in this phase:
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} task {first_task_id}
@@ -145,6 +121,6 @@ Resolve the destination per the caller's **Navigation** section — the user's p
    node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): approve Phase {N} task list"
    ```
 
-If the task list was already approved and unchanged, no updates are needed.
+If the manifest already carries `approvals.tasks.p{N}` and the list is unchanged, no updates are needed.
 
 → Return to caller.

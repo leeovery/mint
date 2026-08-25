@@ -35,23 +35,34 @@ Execute each instruction and verify it succeeds before proceeding.
 
 #### If setup document is missing
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-No environment setup document found. Are there any setup instructions
-I should follow before implementing?
+No environment setup document found. Are there any setup instructions I should follow before implementing?
 ```
 
 **STOP.** Wait for user response.
 
 **If they provide instructions:**
 
-Save them to `.workflows/.state/environment-setup.md` and follow them.
+Save them to `.workflows/.state/environment-setup.md` and commit the document (the scoped commit covers it):
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit --workflows -m "chore(workflows): record environment setup"
+```
+
+Then follow the saved instructions.
 
 → Return to caller.
 
 **If they say no setup is needed:**
 
-Create `.workflows/.state/environment-setup.md` with "No special setup required." and commit. This prevents asking the same question in future sessions.
+Create `.workflows/.state/environment-setup.md` with "No special setup required." and commit it (the scoped commit covers the document):
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit --workflows -m "chore(workflows): record environment setup"
+```
+
+This prevents asking the same question in future sessions.
 
 → Return to caller.

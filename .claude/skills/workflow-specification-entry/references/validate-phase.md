@@ -24,13 +24,15 @@ The grouping exists as a proposed item; the process skill flips it to in-progres
 
 #### If the status is `in-progress`
 
-> *Output the next fenced block as a code block:*
+Render and emit the section verbatim:
 
-```
-Resuming specification: {work_unit:(titlecase)}
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render phase-note {work_unit}.specification.{topic} --verb Resuming
 ```
 
 Set verb = "Continuing".
+
+→ Load **[reconcile-advisory.md](../../workflow-shared/references/reconcile-advisory.md)** with downstream_phase = `specification`.
 
 → Return to caller.
 
@@ -42,38 +44,24 @@ Reopen it:
 node .claude/skills/workflow-engine/scripts/engine.cjs topic reopen {work_unit} specification {topic}
 ```
 
-> *Output the next fenced block as a code block:*
+Render and emit the section verbatim:
 
-```
-Reopening specification: {work_unit:(titlecase)}
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render phase-note {work_unit}.specification.{topic} --verb Reopening
 ```
 
 Set verb = "Continuing".
 
+→ Load **[reconcile-advisory.md](../../workflow-shared/references/reconcile-advisory.md)** with downstream_phase = `specification`.
+
 → Return to caller.
 
-#### If the status is `superseded`
+#### If the status is `superseded` or `promoted`
 
-> *Output the next fenced block as a code block:*
+Render the terminal blocker — the engine derives which from the item's status — and emit the section verbatim per its marker:
 
-```
-Specification Superseded
-
-The specification for "{topic:(titlecase)}" was consolidated into
-"{superseded_by:(titlecase)}". Work on that specification instead.
-```
-
-**STOP.** Do not proceed — terminal condition.
-
-#### If the status is `promoted`
-
-> *Output the next fenced block as a code block:*
-
-```
-Specification Promoted
-
-"{topic:(titlecase)}" was promoted to the cross-cutting work unit
-"{promoted_to}". Continue it from that work unit.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render entry-gate {work_unit}.specification.{topic} --own
 ```
 
 **STOP.** Do not proceed — terminal condition.

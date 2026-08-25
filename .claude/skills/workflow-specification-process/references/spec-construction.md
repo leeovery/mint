@@ -19,6 +19,8 @@ F. Topic complete → loop back to A or exit
 
 ## A. Exhaustive Extraction
 
+Every topic's content must be derivable from its sources. When source material disagrees — with itself, with another source, or with the codebase or toolchain it describes — or is too unclear to extract without assumption, never silently pick a side and never patch the mismatch in the spec alone: load **[resolve-source-incoherence.md](resolve-source-incoherence.md)** with lane = `construction` and follow its instructions as written, in the moment it surfaces; on return, continue where extraction left off. Tension notes held from session setup are raised the same way when the topic that touches them arrives.
+
 → Load **[exhaustive-extraction.md](exhaustive-extraction.md)** and follow its instructions as written.
 
 When working with multiple sources, search each one — information about a single topic may be scattered across documents.
@@ -29,46 +31,17 @@ This gate stays gated even when `construction_gate_mode` is `auto` — it change
 
 When extraction reveals information that affects **already-logged topics**, resurface them immediately. Even mid-discussion — interrupt, flag what you found, and discuss whether it changes anything.
 
-If it does: summarize what's changing in the chat, then present the changes as a diff view. The summary is for discussion only — the specification just gets the clean replacement.
+If it does: summarize what's changing in the chat — the summary is for discussion only; the specification just gets the clean replacement.
 
-Read the current approved content from the specification file. Prepare the updated version. Present only the changed lines with 2 lines of context above and below, wrapped in a visual border:
+Read the current approved content from the specification file. Prepare the updated version. Write the gate payload to `.workflows/.cache/{work_unit}/specification/{topic}/resurface-gate.json` with the Write tool — `{"section": "{section name}", "diff": {"context_above": […], "current": […], "proposed": […], "context_below": […]}, "full": [the full updated section's lines]}` (2 context lines each side) — and fetch the gate, emitting each section verbatim at its marked instruction:
 
-> *Output the next fenced block as a code block:*
-
-```
-╭─ Resurfacing: {section name} ─────────────────────╮
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render resurface-gate {work_unit}.specification.{topic} --file .workflows/.cache/{work_unit}/specification/{topic}/resurface-gate.json
 ```
 
-> *Output the next fenced block as a code block:*
+> **CHECKPOINT**: Even when resurfacing content, you MUST NOT update the specification until the user explicitly approves the change.
 
-```diff
- {2 context lines above}
--{removed/changed lines}
-+{new/replacement lines}
- {2 context lines below}
-```
-
-> *Output the next fenced block as a code block:*
-
-```
-╰───────────────────────────────────────────────────╯
-```
-
-Then, **separately from the diff above** (clear visual break):
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-Record this to the specification verbatim?
-
-- **`y`/`yes`** — Apply changes to specification
-- **`v`/`view full`** — Show the full updated section, then decide
-- **Tell me what to change** — Revise before recording
-· · · · · · · · · · · ·
-```
-
-> **CHECKPOINT**: Even when resurfacing content, you MUST NOT update the specification until the user explicitly approves the change. STOP and wait for response.
+**STOP.** Wait for user response.
 
 #### If `yes`
 
@@ -78,13 +51,13 @@ Update the specification with the approved changes. Commit. Continue extraction.
 
 #### If `view full`
 
-Re-present the full updated section in the format it would appear in the specification. Then re-present the approval menu without `v`/`view full`.
+Re-fetch with `--view full` and emit its sections verbatim — the full updated section with the menu minus the view option. **STOP.** Wait for user response, and handle it by these same branches.
 
 → Return to **A. Exhaustive Extraction**.
 
 #### If the user provides feedback
 
-Work through the changes per **C. Discuss and Refine**, then re-present the diff with the revised content.
+Work through the changes per **C. Discuss and Refine**, then re-present the gate with the revised content (rewrite the payload, re-fetch).
 
 → Return to **A. Exhaustive Extraction**.
 
@@ -98,7 +71,7 @@ List the pending ones (`node .claude/skills/workflow-engine/scripts/engine.cjs m
 
 1. Find its slice hint — the `{ref-topic} — {slice hint}` entry in the handoff's `Consult references` block, or, if the handoff is no longer in context (e.g. after a resume), the `**Consult**` line for it in `.workflows/{work_unit}/.state/discussion-consolidation-analysis.md`.
 2. Open the named sibling discussion and read **only** the decisions the slice hint points to — plus its `## Spec hand-offs` section if the discussion happens to have one. Do not extract it wholesale.
-3. Apply the correction to the affected spec content, or cite the sibling decision where the spec defers to it — cite, don't restate. Corrections to already-logged content go through **Context Resurfacing** above. If the correction targets a topic not yet constructed, leave the reference `pending` and revisit it on that topic's cycle.
+3. Apply the correction to the affected spec content, or cite the sibling decision where the spec defers to it — cite, don't restate. Corrections to already-logged content go through **Context Resurfacing** above. A consult correction that contradicts a source's *decided* ground is never applied silently — load **[resolve-source-incoherence.md](resolve-source-incoherence.md)** with lane = `construction` and follow its instructions as written. If the correction targets a topic not yet constructed, leave the reference `pending` and revisit it on that topic's cycle.
 4. Once applied or cited, record what was reconciled (which slice, what changed) in the spec's **Working Notes** section and mark the reference addressed:
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.specification.{topic} consult_references.{ref}.status addressed
@@ -112,6 +85,10 @@ Already-`addressed` references are skipped on later topic cycles.
 
 ## B. Synthesize and Present
 
+Check the draft against the one-home rule (**[specification-format.md](specification-format.md)**): a fact already stated in the specification is referenced at its home, never restated. If the new topic should own the fact, move it — edits to already-logged content go through **Context Resurfacing**.
+
+Source disagreement or a measured mismatch first noticed here — while forcing two sources into one draft — routes exactly as it does during extraction: load **[resolve-source-incoherence.md](resolve-source-incoherence.md)** with lane = `construction` and follow its instructions as written; its stops override `auto`. Never let the auto branch below absorb an unresolved conflict.
+
 Present your understanding to the user **in the format it would appear in the specification** (shown in both modes):
 
 > *Output the next fenced block as markdown (not a code block):*
@@ -122,49 +99,37 @@ Here's what I understand about [topic] based on the reference material. This is 
 [content as rendered markdown]
 ```
 
-Then check `construction_gate_mode` via `engine manifest` (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.specification.{topic} construction_gate_mode`).
+Then fetch the gate — it reads `construction_gate_mode` from the manifest and answers with the approval menu or the auto announcement:
 
-#### If `construction_gate_mode` is `auto`
-
-Skip the menu and the STOP gate. The content presented above is logged exactly as shown.
-
-> *Output the next fenced block as a code block:*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render construction-gate {work_unit}.specification.{topic}
 ```
-{topic:(titlecase)} — auto-approved. Recording to the specification.
-```
+
+#### If the response carried `DISPLAY: construction auto-approved`
+
+Emit the section per its marker.
 
 **CRITICAL**: Auto removes only the approval STOP — process one topic at a time (extract → present → log → commit → next). Never generate multiple topics, or the whole specification, in a single pass. Commit after each topic.
 
 → Proceed to **E. Log and Commit**.
 
-#### If `construction_gate_mode` is `gated`
+#### If the response carried `MENU: construction gate`
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-Record this to the specification verbatim?
-
-- **`y`/`yes`** — Add exactly as shown, no modifications
-- **`a`/`auto`** — Approve this and all remaining topics automatically
-- **Tell me what to change** — Revise before recording
-· · · · · · · · · · · ·
-```
+Emit it per its marker.
 
 **STOP.** Wait for user response.
 
-#### If `yes`
+**If `yes`:**
 
 → Proceed to **E. Log and Commit**.
 
-#### If `auto`
+**If `auto`:**
 
 Set `construction_gate_mode` to `auto` via `engine manifest` (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.specification.{topic} construction_gate_mode auto`).
 
 → Proceed to **E. Log and Commit**.
 
-#### If the user provides feedback
+**If the user provides feedback:**
 
 → Proceed to **C. Discuss and Refine**.
 
@@ -199,8 +164,8 @@ If you are uncertain whether the user approved, **ASK**: "Ready to log it, or do
 
 ## E. Log and Commit
 
-1. Write to the specification — **verbatim** as presented and approved. No silent modifications.
-2. After completing exhaustive extraction from a source (all relevant content presented and logged), update that source's status to `incorporated` via `engine manifest` (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.specification.{topic} sources.{source-name}.status incorporated`). See **[specification-format.md](specification-format.md)** for source status details.
+1. Write to the specification — **verbatim** as presented and approved. No silent modifications. Before extracting a `pending` source, re-read the specification for content already logged from it (a crash can leave content written with the status still `pending`) — never double-log.
+2. After completing exhaustive extraction from a source (all relevant content presented and logged), update that source's status to `incorporated` via `engine manifest` (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.specification.{topic} sources.{source-name}.status incorporated`). `{source-name}` is the registered key — read the existing `sources` map and flip that row, never invent a new name (for a bugfix it is `{topic}`). See **[specification-format.md](specification-format.md)** for source status details.
 3. Commit at natural breaks — after significant exchanges, after each major topic, and before any context refresh:
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "spec({work_unit}): {what changed}"

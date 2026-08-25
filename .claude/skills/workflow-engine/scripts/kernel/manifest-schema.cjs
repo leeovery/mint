@@ -18,6 +18,19 @@ const VALID_PHASES = [
   'review'
 ];
 
+// Per-work-type pipeline order — the phases a unit of that type moves through
+// after discovery (the universal first phase; a map, not a pipeline phase, so
+// it never appears here). The one home for pipeline order: detail builders,
+// dashboards, gateways, and the simulation all read these arrays, never a
+// local copy.
+const WORK_TYPE_PIPELINES = {
+  epic:            ['research', 'discussion', 'specification', 'planning', 'implementation', 'review'],
+  feature:         ['research', 'discussion', 'specification', 'planning', 'implementation', 'review'],
+  bugfix:          ['investigation', 'specification', 'planning', 'implementation', 'review'],
+  'quick-fix':     ['scoping', 'implementation', 'review'],
+  'cross-cutting': ['research', 'discussion', 'specification'],
+};
+
 const VALID_PHASE_STATUSES = {
   // Empty on purpose, never removed: discovery items are map items with NO
   // status field (lifecycle is computed at render time), and an empty
@@ -25,9 +38,9 @@ const VALID_PHASE_STATUSES = {
   // would turn validators' `VALID_PHASE_STATUSES[phase]` lookups into
   // undefined — the silent permissive path this table exists to prevent.
   discovery:      /** @type {string[]} */ ([]),
-  research:       ['in-progress', 'completed', 'superseded', 'cancelled'],
-  discussion:     ['in-progress', 'completed', 'cancelled'],
-  investigation:  ['in-progress', 'completed', 'cancelled'],
+  research:       ['triaged', 'in-progress', 'completed', 'superseded', 'cancelled'],
+  discussion:     ['triaged', 'in-progress', 'completed', 'cancelled'],
+  investigation:  ['triaged', 'in-progress', 'completed', 'cancelled'],
   scoping:        ['in-progress', 'completed', 'cancelled'],
   specification:  ['proposed', 'in-progress', 'completed', 'superseded', 'promoted', 'cancelled'],
   planning:       ['in-progress', 'completed', 'cancelled'],
@@ -44,16 +57,26 @@ const VALID_GATE_MODES = ['gated', 'auto'];
 
 const VALID_WORK_UNIT_STATUSES = ['in-progress', 'completed', 'cancelled'];
 
+// Phase-item statuses that end a topic's life in its phase — excluded from
+// aggregation, never flagged, never reverted. One vocabulary for every
+// consumer (transitions, derivations, the roadmap's cross-join flag).
+const TERMINAL_STATUSES = ['cancelled', 'superseded', 'promoted'];
+
 // Names a work unit can never take: `project` routes dot-path commands to the
-// project manifest.
-const RESERVED_WORK_UNIT_NAMES = ['project'];
+// project manifest; `baseline` is the knowledge base's pseudo-identity for the
+// project-level baseline docs (.workflows/.baseline/); `roadmap` is the
+// product-roadmap layer's identity (the project manifest's `roadmap` node and
+// the project-level sessions under .workflows/.roadmap/).
+const RESERVED_WORK_UNIT_NAMES = ['project', 'baseline', 'roadmap'];
 
 module.exports = {
   VALID_WORK_TYPES,
   VALID_PHASES,
+  WORK_TYPE_PIPELINES,
   VALID_PHASE_STATUSES,
   VALID_ROUTINGS,
   VALID_GATE_MODES,
   VALID_WORK_UNIT_STATUSES,
+  TERMINAL_STATUSES,
   RESERVED_WORK_UNIT_NAMES,
 };

@@ -2,38 +2,18 @@
 
 // ---------------------------------------------------------------------------
 // Adapter (read gateway) for workflow-discussion-process. Thin by design:
-// map state and rendering live in the engine; this script selects the
-// answers the session flow needs and sections the output.
+// map state, rendering, and the agent-store derivations live in the engine;
+// this script selects the answers the session flow needs and sections the
+// output.
 //
 //   gateway.cjs map {work_unit} {topic}
-//     → DATA (counts, all_decided, unresolved, review_cycles)
+//     → DATA (counts, all_decided, unresolved, review_arming)
 //       + DISPLAY (the Discussion Map block)
+//       + MENU: defer gate (while undecided subtopics remain — emitted only
+//         at the concluding step, per its marker)
 // ---------------------------------------------------------------------------
 
-const fs = require('fs');
-const path = require('path');
 const engine = require('../../workflow-engine/scripts/lib.cjs');
-
-// Completed review cycles = review-*.md files in the topic's discussion cache,
-// excluding `status: in-flight` skeletons — those are dispatch records for
-// agents still running, not cycles that happened.
-function reviewCycles(cwd, workUnit, topic) {
-  const dir = path.join(cwd, '.workflows', '.cache', workUnit, 'discussion', topic);
-  try {
-    return fs.readdirSync(dir)
-      .filter((f) => /^review-.*\.md$/.test(f))
-      .filter((f) => {
-        try {
-          return !/^status:[ \t]*in-flight[ \t]*$/m.test(fs.readFileSync(path.join(dir, f), 'utf8'));
-        } catch {
-          return true;
-        }
-      })
-      .length;
-  } catch {
-    return 0;
-  }
-}
 
 function map(workUnit, topic) {
   if (!workUnit || !topic) {
@@ -49,9 +29,12 @@ function map(workUnit, topic) {
       counts: state.counts,
       all_decided: state.all_decided,
       unresolved: state.unresolved,
-      review_cycles: reviewCycles(cwd, workUnit, topic),
+      review_arming: engine.agents.reviewArming(cwd, workUnit, topic),
     }),
     engine.gateway.displayBlock(engine.project.discussionMap(topic, manifest)),
+    ...(state.unresolved.length > 0
+      ? [engine.project.discussionDeferGate(state.unresolved.length)]
+      : []),
   ].join('\n');
 }
 

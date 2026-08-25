@@ -12,18 +12,18 @@
 // ---------------------------------------------------------------------------
 
 const path = require('path');
+const { WORK_TYPE_PIPELINES, TERMINAL_STATUSES } = require('../kernel/manifest-schema.cjs');
 const {
   phaseItems,
   computeAnalysisCacheStatus,
   buildDiscoveryMap,
 } = require('./derivations.cjs');
+const { computeBuildOrderNeedsSequencing, sortItemsByBuildOrder } = require('./build-order.cjs');
 
 // Every phase the epic detail iterates and the epic dashboard / thin dump
-// surface — discovery (the map) first, then the pipeline. The pipeline-only
-// view (research → review, for completion / next-phase and the start
-// dashboard) is domain/start.cjs's EPIC_PIPELINE_PHASES, derived from this
-// minus discovery — discovery is the map, not a pipeline phase.
-const EPIC_DETAIL_PHASES = ['discovery', 'research', 'discussion', 'specification', 'planning', 'implementation', 'review'];
+// surface — discovery (the map, not a pipeline phase) first, then the epic
+// pipeline from the schema's one home for pipeline order.
+const EPIC_DETAIL_PHASES = ['discovery', ...WORK_TYPE_PIPELINES.epic];
 
 /**
  * @typedef {object} SpecSource
@@ -43,7 +43,10 @@ const EPIC_DETAIL_PHASES = ['discovery', 'research', 'discussion', 'specificatio
  * @typedef {object} PhaseEntry
  * @property {string} name
  * @property {string} status
+ * @property {string|boolean} [reconcile_needed]  a live reconcile flag — the upstream phase that
+ *                                             moved, or `true` for a brief flag
  * @property {SpecSource[]} [sources]          specification items
+ * @property {string[]} [blocked_by]           specification items whose source is back in-progress
  * @property {string} [format]                 planning items
  * @property {boolean} [deps_satisfied]        planning items
  * @property {DepBlocking[]} [deps_blocking]   planning items with unmet deps
@@ -57,6 +60,7 @@ const EPIC_DETAIL_PHASES = ['discovery', 'research', 'discussion', 'specificatio
  * @typedef {object} ItemRef
  * @property {string} name
  * @property {string} phase
+ * @property {string|boolean} [reconcile_needed]  completed items only — a live reconcile flag
  * @property {string|null} [previous_status]   cancelled items only
  */
 
@@ -83,6 +87,8 @@ const EPIC_DETAIL_PHASES = ['discovery', 'research', 'discussion', 'specificatio
  * @property {string} tier       `→` | `◐` | `✓` | `○` | `⊙` | `⊘`
  * @property {string|null} current_phase
  * @property {string|null} research_state  the research item's raw status, null when none exists
+ * @property {boolean} triage_parked  a `triaged` stub (parked rerouted concerns) exists in either phase
+ * @property {boolean} reconcile_pending  a phase item beneath the row carries a live reconcile flag
  * @property {string|null} next_action
  */
 
@@ -114,10 +120,12 @@ const EPIC_DETAIL_PHASES = ['discovery', 'research', 'discussion', 'specificatio
  * @property {NextPhaseEntry[]} next_phase_ready
  * @property {string[]} unaccounted_discussions
  * @property {string[]} reopened_discussions
+ * @property {{name: string, by: string[]}[]} spec_blocked  live spec items whose source discussion is back in-progress
  * @property {MapRow[]} discovery_map
  * @property {string|null} active_session  in-progress discovery session number, or null
  * @property {string|null} convergence_state  `in-progress` | `settled` | null (no map)
  * @property {boolean} needs_sequencing
+ * @property {boolean} build_order_needs_sequencing  the live set's orders are not a contiguous 1..N permutation (missing, duplicate, or hole), or completion flagged them stale
  * @property {MapSummary|null} map_summary
  * @property {number} imports_count
  * @property {number} seeds_count
@@ -195,15 +203,23 @@ function epicDetail(cwd, manifest) {
   /** @type {NextPhaseEntry[]} */
   const nextPhaseReady = [];
 
+  const BUILD_ORDER_PHASES = ['specification', 'planning', 'implementation'];
   for (const phase of EPIC_DETAIL_PHASES) {
     if (phase === 'discovery') continue;
-    const items = phaseItems(manifest, phase);
+    let items = phaseItems(manifest, phase);
     if (items.length === 0) continue;
+    // The build order sorts the three build phases everywhere the detail
+    // feeds — dashboard trees, menu entries, recommendation scans — as a
+    // stable tiebreak within whatever grouping a surface applies on top.
+    if (BUILD_ORDER_PHASES.includes(phase)) {
+      items = sortItemsByBuildOrder(items, manifest, phase);
+    }
 
     const phaseEntries = [];
     for (const item of items) {
       /** @type {PhaseEntry} */
       const entry = { name: item.name, status: item.status || 'unknown' };
+      if (item.reconcile_needed !== undefined) entry.reconcile_needed = item.reconcile_needed;
 
       if (phase === 'specification' && item.sources) {
         const sourcesArr = Array.isArray(item.sources)
@@ -226,12 +242,16 @@ function epicDetail(cwd, manifest) {
         }
       }
 
-      // Enrich planning items with format and dependency data
+      // Enrich planning items with format and dependency data. Terminal
+      // items get no dep computation — a cancelled plan must never carry
+      // the blocked cue, surface in the ⚑ list, or take an unblock write.
       if (phase === 'planning') {
         if (item.format) entry.format = item.format;
-        const { deps_satisfied, deps_blocking } = resolveDeps(manifest, item);
-        entry.deps_satisfied = deps_satisfied;
-        if (deps_blocking.length > 0) entry.deps_blocking = deps_blocking;
+        if (!TERMINAL_STATUSES.includes(item.status || '')) {
+          const { deps_satisfied, deps_blocking } = resolveDeps(manifest, item);
+          entry.deps_satisfied = deps_satisfied;
+          if (deps_blocking.length > 0) entry.deps_blocking = deps_blocking;
+        }
       }
 
       // Enrich implementation items with progress data
@@ -248,7 +268,10 @@ function epicDetail(cwd, manifest) {
         inProgressItems.push({ name: item.name, phase });
       }
       if (item.status === 'completed') {
-        completedItems.push({ name: item.name, phase });
+        completedItems.push({
+          name: item.name, phase,
+          ...(item.reconcile_needed !== undefined ? { reconcile_needed: item.reconcile_needed } : {}),
+        });
       }
       if (item.status === 'cancelled') {
         cancelledItems.push({ name: item.name, phase, previous_status: item.previous_status || null });
@@ -273,16 +296,38 @@ function epicDetail(cwd, manifest) {
     }
   }
 
-  const specItems = phaseItems(manifest, 'specification');
-  const planItems = phaseItems(manifest, 'planning');
-  const implItems = phaseItems(manifest, 'implementation');
+  const specItems = sortItemsByBuildOrder(phaseItems(manifest, 'specification'), manifest, 'specification');
+  const planItems = sortItemsByBuildOrder(phaseItems(manifest, 'planning'), manifest, 'planning');
+  const implItems = sortItemsByBuildOrder(phaseItems(manifest, 'implementation'), manifest, 'implementation');
+
+  // A spec item (proposed included) whose source discussion is back
+  // in-progress is blocked from entry until it re-concludes — the epic menu
+  // hard-blocks the route.
+  const discussionStatus = new Map(discussionItems.map((d) => [d.name, d.status]));
+  /** @type {{name: string, by: string[]}[]} */
+  const specBlocked = [];
+  for (const s of specItems) {
+    if (TERMINAL_STATUSES.includes(s.status || '')) continue;
+    const srcs = Array.isArray(s.sources)
+      ? s.sources
+      : Object.entries(s.sources || {}).map(([topic, data]) => ({ topic, ...(typeof data === 'object' ? data : {}) }));
+    const open = srcs.map((src) => src.topic || src.name).filter((n) => n && discussionStatus.get(n) === 'in-progress');
+    if (open.length > 0) specBlocked.push({ name: s.name, by: open });
+  }
+  // The display tree shows the blocked state; the menu never offers a
+  // blocked item, so the entries carry the fact for the projections.
+  for (const e of phases.specification || []) {
+    const b = specBlocked.find((x) => x.name === e.name);
+    if (b) e.blocked_by = b.by;
+  }
 
   // Proposed groupings are actionable from the epic menu — surface them as
   // start_specification. Pushed before start_planning so they precede it in
   // pipeline order (spec → planning), which the settled-state recommendation
-  // reads.
+  // reads. A blocked grouping is not actionable: it stays out of the menu
+  // and shows its blocked state on the display tree instead.
   for (const s of specItems) {
-    if (s.status === 'proposed') {
+    if (s.status === 'proposed' && !specBlocked.some((b) => b.name === s.name)) {
       nextPhaseReady.push({ name: s.name, action: 'start_specification', label: 'grouping ready' });
     }
   }
@@ -349,11 +394,13 @@ function epicDetail(cwd, manifest) {
     next_phase_ready: nextPhaseReady,
     unaccounted_discussions: unaccountedDiscussions,
     reopened_discussions: reopenedDiscussions,
+    spec_blocked: specBlocked,
     discovery_map: discoveryMap,
     active_session: (manifest.phases && manifest.phases.discovery && typeof manifest.phases.discovery.active_session === 'string')
       ? manifest.phases.discovery.active_session : null,
     convergence_state: convergenceState,
     needs_sequencing: builtMap.needs_sequencing,
+    build_order_needs_sequencing: computeBuildOrderNeedsSequencing(manifest),
     map_summary: mapSummary,
     imports_count: importsCount,
     seeds_count: seedsCount,

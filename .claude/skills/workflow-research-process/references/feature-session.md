@@ -6,11 +6,13 @@
 
 ## A. Background Agents
 
-Two types of background agent operate during research. Load their lifecycle instructions now — apply them at the appropriate moments during the session loop.
+Two types of background agent operate during research, and the topic's triage queue surfaces through a third protocol file. Load their instructions now — they run at the appropriate moments during the session loop.
 
 → Load **[review-agent.md](review-agent.md)** and follow its instructions as written.
 
 → Load **[deep-dive-agent.md](deep-dive-agent.md)** and follow its instructions as written.
+
+→ Load **[rerouted-concerns.md](../../workflow-shared/references/rerouted-concerns.md)** with work_unit = `{work_unit}`, topic = `{topic}`, phase = `research` — a protocol, not a step: the session loop's triage check enters its **A. Check**; nothing runs at load time.
 
 ---
 
@@ -32,7 +34,7 @@ When the topic feels well-explored or the user indicates they're done:
 
 ## D. In-Flight Agent Handling
 
-Before concluding, check for in-flight agents. Scan `.workflows/.cache/{work_unit}/research/{topic}/` for review or deep-dive files with `status: in-flight` in their frontmatter — dispatch-time skeletons whose agents haven't returned yet.
+Before concluding, check for in-flight agents — run `node .claude/skills/workflow-engine/scripts/engine.cjs agent scan {work_unit} research {topic}` and read the response's `in_flight` list (agents dispatched but not yet returned). An agent dispatched by an earlier session cannot still be running — each row's `created` timestamp tells you which those are; close each (`agent incorporate`), re-scan, and count only this session's.
 
 #### If no agents are in flight
 
@@ -46,18 +48,17 @@ Before concluding, check for in-flight agents. Scan `.workflows/.cache/{work_uni
 
 ```
 · · · · · · · · · · · ·
-There are still {N} background agents working.
+**`◆ There are still {N} background agents working.`**
 
-- **`w`/`wait`** — Wait for results before concluding
-- **`p`/`proceed`** — Conclude now (results will persist in cache for reference)
-· · · · · · · · · · · ·
+**`w/wait`**    → Wait for results before concluding
+**`p/proceed`** → Conclude now (results will persist in cache for reference)
 ```
 
 **STOP.** Wait for user response.
 
 **If `wait`:**
 
-Watch for each in-flight file to flip to `status: pending`. When none remain in-flight, delegate surfacing to the shared protocol loaded by review-agent.md and deep-dive-agent.md. The protocol applies the never-dump rules: two-phase surfacing, one finding at a time. Treat the current moment as a natural break — we are at phase conclusion, so the break check will pass.
+Watch for `agent scan` to promote each in-flight row to `pending`. When none remain in flight, delegate surfacing to the shared protocol loaded by review-agent.md and deep-dive-agent.md. The protocol applies the never-dump rules: two-phase surfacing, one finding at a time. Treat the current moment as a natural break — we are at phase conclusion, so the break check will pass.
 
 → Return to **B. Session Loop**.
 
@@ -73,19 +74,13 @@ Watch for each in-flight file to flip to `status: pending`. When none remain in-
 
 When a concern surfaces that's beyond this topic's scope, a single-topic work type has no other topic to route it to.
 
-> *Output the next fenced block as markdown (not a code block):*
+Write the offer payload to `.workflows/.cache/{work_unit}/research/{topic}/off-topic-offer.json` with the Write tool (`{"concern": "…"}` — the concern's short title), then render it:
 
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render off-topic-offer {work_unit}.research.{topic} --file .workflows/.cache/{work_unit}/research/{topic}/off-topic-offer.json
 ```
-· · · · · · · · · · · ·
-**{concern}** is beyond this topic's scope.
 
-- **`l`/`log`** — Capture it as an idea in the inbox for later
-@if(work_type == 'feature')
-- **`p`/`pivot`** — Convert this work to an epic so it can hold the concern as its own topic
-@endif
-- **`i`/`ignore`** — Note it in the research file and move on
-· · · · · · · · · · · ·
-```
+Emit the call's MENU section verbatim per its marker. The pivot option is offered only for a feature — the surface derives that from the work type.
 
 **STOP.** Wait for user response.
 
@@ -101,19 +96,12 @@ Capture the concern via the `workflow-log-idea` skill so it lands in the inbox f
 
 2. From the context you already have, derive two values: `proposed_name` — a kebab-case topic name for the concern; and `concern` — the concern with the full context discussed about it.
 
-3. Load **[triage-landing.md](../../workflow-shared/references/triage-landing.md)** with work_unit = `{work_unit}`, target = `{proposed_name}`, concern = `{concern}`, origin = `{topic}`, phase = `research`, date = `{today}`. It validates the name against the map and, on a clash, prompts to pick another or cancel. If `result` is `cancelled`, the topic wasn't created — note the concern in the research file so it isn't lost; otherwise the concern landed as the `{landed_topic}` topic.
-
-4. Commit the landing:
-
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "research({work_unit}/{topic}): reroute concern to {landed_topic}"
-   ```
+3. Judge `landing_phase` per **Judging the Landing Phase**, then load **[triage-landing.md](../../workflow-shared/references/triage-landing.md)** with work_unit = `{work_unit}`, target = `{proposed_name}`, concern = `{concern}`, origin = `{topic}`, phase = `research`, landing_phase = `{landing_phase}`, date = `{today}`. It validates the name against the map and, on a clash, prompts to pick another or cancel. If `result` is `cancelled`, the topic wasn't created — note the concern in the research file so it isn't lost; otherwise the concern landed as the `{landed_topic}` topic and the delivery committed itself.
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> This work is now an epic — continuing here with the current topic.
-> The concern is preserved for its own handling later.
+> This work is now an epic — continuing here with the current topic. The concern is preserved for its own handling later.
 ```
 
 → Return to **B. Session Loop**.

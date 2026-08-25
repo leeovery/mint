@@ -17,16 +17,16 @@ node .claude/skills/workflow-start/scripts/gateway.cjs view
 The output is one snapshot in three demarcated sections:
 
 - **DATA** — reasoning surface: state flags, counts, and the `ACTIONS` table — one line per menu key, `key  action  work_unit  → route`, with `(pre_seed: …)` markers on start-new entries. Reason from it; never display or restate it.
+- **TITLE** — the view's chrome heading. Emit verbatim as markdown, directly above the display.
 - **DISPLAY** — the empty-state overview. Emit verbatim as a code block. Never redraw, reflow, or trim it.
 - **MENU** — the start menu. Emit verbatim as markdown (not a code block).
 
-Emit the DISPLAY section, then the signpost blockquote below, then the MENU section. A section is everything beneath its `===` marker up to the next marker — the marker lines themselves are never emitted.
+Emit the TITLE section (markdown), then the DISPLAY section, then the signpost blockquote below, then the MENU section. A section is everything beneath its `===` marker up to the next marker — the marker lines themselves are never emitted.
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Pick a type if you know it, or start unsure and we'll figure out
-> the shape together. Each type follows its own pipeline.
+> Pick a type if you know it, or start unsure and we'll figure out the shape together. Each type follows its own pipeline.
 ```
 
 **STOP.** Wait for user response.
@@ -38,6 +38,18 @@ Emit the DISPLAY section, then the signpost blockquote below, then the MENU sect
 ## B. Handle Selection
 
 Match the user's input to its `ACTIONS` entry by `key` — a command option's letter or long form. Every decision below reads the entry's `action` value, never its label text.
+
+#### If `action` is `open_baseline`
+
+Invoke `/workflow-baseline` — it reads the baseline status and routes itself.
+
+This skill ends. The invoked skill will load into context and provide additional instructions. Terminal.
+
+#### If `action` is `open_roadmap`
+
+Invoke `/workflow-roadmap open` — it reads the roadmap state and routes itself.
+
+This skill ends. The invoked skill will load into context and provide additional instructions. Terminal.
 
 #### If `action` is `view_inbox`
 

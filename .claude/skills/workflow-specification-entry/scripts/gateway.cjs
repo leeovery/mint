@@ -43,7 +43,9 @@ function discover(cwd, workUnit) {
     const specItemsList = phaseItems(m, 'specification');
 
     for (const item of discItemsList) {
-      if (item.status === 'cancelled') continue;
+      // Cancelled is closed; triaged is pre-live (a stub of parked rerouted
+      // concerns, never discussed) — neither is a discussion to count.
+      if (item.status === 'cancelled' || item.status === 'triaged') continue;
       discCount++;
       if (item.status === 'completed') completedCount++;
       else if (item.status === 'in-progress') inProgressCount++;
@@ -100,6 +102,7 @@ function discover(cwd, workUnit) {
         name: item.name, work_unit: m.name, status,
         work_type: m.work_type,
       };
+      if (Number.isInteger(item.order)) spec.order = item.order;
 
       if (item.superseded_by) spec.superseded_by = item.superseded_by;
 
@@ -120,15 +123,21 @@ function discover(cwd, workUnit) {
         });
       }
 
-      spec.has_pending_sources = (spec.sources || []).some(s => s.status === 'pending');
+      // Stale counts as pending work: an extraction the source moved out from
+      // under still blocks conclusion, so the actionable/concluded split, the
+      // sort rank, and the Continuing/Refining verb all treat it as open.
+      spec.has_pending_sources = (spec.sources || []).some(s => s.status === 'pending' || s.status === 'stale');
 
       specifications.push(spec);
     }
   }
 
-  // Actionable specs first, concluded specs last. Stable within each tier
-  // (insertion order preserved), so the menu reads work-first.
-  specifications.sort((a, b) => specSortRank(a) - specSortRank(b));
+  // Actionable specs first, concluded specs last. The build order breaks
+  // ties within each tier; unordered specs keep insertion order behind the
+  // ordered ones, so the menu reads work-first, then build-first.
+  const orderOf = (spec) => (Number.isInteger(spec.order) ? spec.order : Infinity);
+  specifications.sort((a, b) => (specSortRank(a) - specSortRank(b))
+    || (orderOf(a) === orderOf(b) ? 0 : orderOf(a) - orderOf(b)));
 
   // Concluded = completed with every source extracted. Drives the
   // "Manage completed specifications" submenu gate.
@@ -268,11 +277,12 @@ function viewData(result, detail, keys) {
   const hintRows = new Map();
   for (const row of [...detail.actionable, ...detail.concluded]) hintRows.set(row.name, row);
   for (const s of result.specifications) {
-    lines.push(`  ${s.name}: ${s.status}, has_pending_sources=${s.has_pending_sources}`);
+    const row = hintRows.get(s.name);
+    const blockedBy = row && row.blocked ? `, blocked_by=${row.open_sources.join(',')}` : '';
+    lines.push(`  ${s.name}: ${s.status}, has_pending_sources=${s.has_pending_sources}${blockedBy}`);
     for (const src of s.sources || []) {
       lines.push(`    source: ${src.name} (${src.status}, discussion: ${src.discussion_status})`);
     }
-    const row = hintRows.get(s.name);
     for (const c of (row && row.consult) || []) {
       lines.push(`    consult: ${c.name} (${c.status}${c.hint ? ` — ${c.hint}` : ''})`);
     }
@@ -295,13 +305,16 @@ function view(workUnit) {
   const menu = engine.project.specificationMenu(detail);
   const display = engine.project.specificationDisplay(detail);
   const parts = [engine.gateway.dataBlock(viewData(result, detail, menu.keys))];
-  if (display) parts.push(engine.gateway.displayBlock(display));
+  if (display) {
+    parts.push(engine.gateway.titleBlock(engine.project.SPEC_TITLE));
+    parts.push(engine.gateway.displayBlock(display));
+  }
   if (menu.rendered) parts.push(engine.gateway.menuBlock(menu.rendered));
   return parts.join('\n');
 }
 
-// The concluded-specs sub-view: keys table as DATA, the heading as DISPLAY,
-// the Refine pick menu as MENU.
+// The concluded-specs sub-view: keys table as DATA, the view's heading as
+// TITLE, the spec list as DISPLAY, the Refine pick menu as MENU.
 function completedMenu(workUnit) {
   const { detail } = buildDetail(workUnit);
   const sub = engine.project.specificationCompletedMenu(detail);
@@ -311,6 +324,7 @@ function completedMenu(workUnit) {
   }
   return [
     engine.gateway.dataBlock(dataLines.join('\n')),
+    engine.gateway.titleBlock(sub.title),
     engine.gateway.displayBlock(sub.display),
     engine.gateway.menuBlock(sub.rendered),
   ].join('\n');

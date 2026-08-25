@@ -6,12 +6,13 @@
 // engine answers the skill's flow needs and sections the output.
 //
 //   gateway.cjs               → thin index dump, all active epics (head insert)
-//   gateway.cjs {work_unit}   → scoped state dump, one epic (Steps 5–7, bridge)
+//   gateway.cjs {work_unit}   → scoped state dump, one epic (Steps 5–8, bridge)
 //   gateway.cjs view {work_unit} [new_arrivals_json]
-//                               → DATA + DISPLAY + MENU snapshot (Step 8)
+//                               → DATA + DISPLAY + MENU snapshot (Step 9)
 //   gateway.cjs completed-menu {work_unit}   → Resume Completed sub-view (D)
 //   gateway.cjs cancel-menu {work_unit}      → Cancel Topic sub-view (E)
 //   gateway.cjs reactivate-menu {work_unit}  → Reactivate Topic sub-view (F)
+//   gateway.cjs unblock-menu {work_unit}     → Unblock Plan sub-view (G)
 //
 // Those calls are the whole legal surface: a verb without its work unit, an
 // unknown verb, or excess arguments is a usage error (stderr, exit 1) — never
@@ -105,14 +106,17 @@ function format(result) {
   for (const u of result.cancelled) {
     lines.push(`  ${u.name} (last phase: ${u.last_phase || 'none'})`);
   }
-  return lines.join('\n') + '\n';
+  return lines.join('\n') + '\n'
+    + engine.project.selectionSections('epic', result.epics, { completed: result.completed_count, cancelled: result.cancelled_count });
 }
 
 /**
  * The bridge's all-done derivation over one epic detail: review items exist
  * and every non-cancelled one is completed, nothing is in progress or awaiting
- * its next phase, no completed discussion is unaccounted, and the discovery
- * map has settled (or the epic has none).
+ * its next phase, no completed discussion is unaccounted, no item carries a
+ * live reconcile flag (the epic mirror of the linear types' routing override
+ * — the terminal gate is never offered past known-stale input), and the
+ * discovery map has settled (or the epic has none).
  * @param {any} d  EpicDetail
  * @returns {boolean}
  */
@@ -124,10 +128,30 @@ function computeAllDone(d) {
     && d.in_progress.length === 0
     && d.next_phase_ready.length === 0
     && d.unaccounted_discussions.length === 0
+    && reconcilePending(d).length === 0
     && (d.convergence_state === 'settled' || d.convergence_state === null);
 }
 
-// The scoped state dump for one epic — the reasoning surface Steps 5–7 and
+/**
+ * Completed items carrying a live reconcile flag, across every phase —
+ * `phase/name (value)` strings for the scoped dump, the same vocabulary the
+ * linear bridge's `reconcile_pending:` line uses.
+ * @param {any} d  EpicDetail
+ * @returns {string[]}
+ */
+function reconcilePending(d) {
+  const out = [];
+  for (const [phase, items] of Object.entries(d.phases || {})) {
+    for (const item of items) {
+      if (item.status === 'completed' && item.reconcile_needed !== undefined) {
+        out.push(`${phase}/${item.name} (${item.reconcile_needed})`);
+      }
+    }
+  }
+  return out;
+}
+
+// The scoped state dump for one epic — the reasoning surface Steps 5–8 and
 // the bridge's epic continuation read: the all-done flag, analysis-cache
 // statuses, the sequencing flag, and the discovery-map rows (tier, lifecycle,
 // routing, field presence, current summary text).
@@ -141,8 +165,10 @@ function formatScoped(workUnit, result) {
   }
   const d = e.detail;
   lines.push(`all_done: ${computeAllDone(d)}`);
+  lines.push(`reconcile_pending: ${reconcilePending(d).join(', ') || '(none)'}`);
   lines.push(`analysis_caches: research_analysis=${d.analysis_caches.research_analysis.status}, gap_analysis=${d.analysis_caches.gap_analysis.status}`);
   lines.push(`needs_sequencing: ${d.needs_sequencing}`);
+  lines.push(`build_order_needs_sequencing: ${d.build_order_needs_sequencing}`);
   lines.push(`discovery_map (${d.discovery_map.length}):`);
   if (d.discovery_map.length === 0) {
     lines.push('  (empty)');
@@ -152,19 +178,21 @@ function formatScoped(workUnit, result) {
     line += ` routing=${t.routing || 'none'}`;
     line += ` summary=${t.summary_present ? 'present' : 'absent'}`;
     line += ` description=${t.description_present ? 'present' : 'absent'}`;
+    if (t.triage_parked) line += ` triage=waiting`;
     if (t.summary) line += ` — ${t.summary}`;
     lines.push(line);
   }
   return lines.join('\n') + '\n';
 }
 
-// One snapshot for Step 8: reasoning DATA (flags + the ACTIONS table), the
+// One snapshot for Step 9: reasoning DATA (flags + the ACTIONS table), the
 // rendered dashboard + key (DISPLAY), and the menu (MENU).
 function view(workUnit, newArrivalsJson) {
   const result = discover(process.cwd(), workUnit);
   const e = result.epics[0];
   if (!e) {
-    return engine.gateway.dataBlock({ work_unit: workUnit || '(missing)', error: 'no active epic with this name' });
+    return engine.gateway.dataBlock({ work_unit: workUnit || '(missing)', error: 'no active epic with this name' })
+      + engine.project.selectionNotFound('epic', workUnit || '(missing)');
   }
   const d = e.detail;
 
@@ -173,12 +201,20 @@ function view(workUnit, newArrivalsJson) {
     try { newArrivals = JSON.parse(newArrivalsJson); } catch { /* ignore malformed tracker */ }
   }
 
-  const menu = engine.project.epicMenu(e.name, d);
+  // Held sessions elsewhere mark their topics across the snapshot: the
+  // dashboard cue, the menu strike-through, the recommendation skip, and the
+  // ACTIONS markers the in-session confirm gate reads.
+  const presence = engine.presence.scanPresence(process.cwd(), e.name).sessions;
+  const held = presence.filter((r) => r.held);
+
+  const menu = engine.project.epicMenu(e.name, d, { presence });
 
   const dataLines = [];
   dataLines.push(`work_unit: ${e.name}`);
+  dataLines.push(`sessions_in_progress: ${held.map((r) => `${r.phase}/${r.topic} (last active ${engine.presence.fmtAge(r.age_seconds)} ago)`).join(', ') || '(none)'}`);
   dataLines.push(`convergence: ${d.convergence_state || 'none'}`);
   dataLines.push(`needs_sequencing: ${d.needs_sequencing}`);
+  dataLines.push(`build_order_needs_sequencing: ${d.build_order_needs_sequencing}`);
   dataLines.push(`analysis_caches: research_analysis=${d.analysis_caches.research_analysis.status}, gap_analysis=${d.analysis_caches.gap_analysis.status}`);
   const phaseNames = Object.keys(d.phases);
   if (phaseNames.length > 0) {
@@ -196,49 +232,76 @@ function view(workUnit, newArrivalsJson) {
   }
   dataLines.push(`unaccounted_discussions: ${d.unaccounted_discussions.join(', ') || '(none)'}`);
   dataLines.push(`reopened_discussions: ${d.reopened_discussions.join(', ') || '(none)'}`);
+  dataLines.push(`spec_blocked: ${d.spec_blocked.map((b) => `${b.name} (${b.by.join(', ')})`).join(', ') || '(none)'}`);
   dataLines.push('ACTIONS (key  action  topic  → route):');
   for (const k of menu.keys) {
     let line = `  ${k.key}  ${k.action}  ${k.topic || '—'}  → ${k.route || '(internal)'}`;
     if (k.recommended) line += '  (recommended)';
-    if (k.blocked) line += `  (blocked: ${(k.deps_blocking || []).map(b => b.topic + (b.internal_id ? ':' + b.internal_id : '') + ' — ' + b.reason).join('; ')})`;
+    if (k.in_session) line += `  (in session: last active ${engine.presence.fmtAge(k.session_age || 0)} ago)`;
     dataLines.push(line);
   }
 
-  const display = engine.project.epicDashboard(e.name, d, { newArrivals });
+  const display = engine.project.epicDashboard(e.name, d, { newArrivals, presence });
   const key = engine.project.epicKey(d);
 
   return [
     engine.gateway.dataBlock(dataLines.join('\n')),
+    engine.gateway.titleBlock(engine.project.titlecase(workUnit)),
     engine.gateway.displayBlock(key ? display + '\n' + key : display),
     engine.gateway.menuBlock(menu.rendered),
   ].join('\n');
 }
 
-// One selection sub-view (sections D–F): the keys table as DATA, the grouped
-// list as DISPLAY, the pick menu as MENU.
-/** @param {string} workUnit @param {(name: string, detail: object) => {keys: object[], display: string, rendered: string}} projection */
-function subView(workUnit, projection) {
+// The in-session confirm gate for one held menu entry — fetched by the flow
+// at the gate that displays it, recomputed from the same detail and presence
+// the snapshot read.
+function inSessionGate(workUnit, key) {
   const result = discover(process.cwd(), workUnit);
   const e = result.epics[0];
   if (!e) {
     return engine.gateway.dataBlock({ work_unit: workUnit || '(missing)', error: 'no active epic with this name' });
+  }
+  const presence = engine.presence.scanPresence(process.cwd(), e.name).sessions;
+  const menu = engine.project.epicMenu(e.name, e.detail, { presence });
+  const entry = menu.keys.find((k) => k.key === key);
+  if (!entry) {
+    return engine.gateway.dataBlock({ work_unit: e.name, error: `no menu entry with key "${key}"` });
+  }
+  if (!entry.in_session) {
+    return engine.gateway.dataBlock({ work_unit: e.name, error: `entry "${key}" is not held by another session — no gate to render` });
+  }
+  return engine.project.epicInSessionGate(entry);
+}
+
+// One selection sub-view (sections D–G): the keys table as DATA, the view's
+// heading as TITLE, the grouped list as DISPLAY, the pick menu as MENU.
+/** @param {string} workUnit @param {(name: string, detail: object) => {keys: object[], title: string, display: string, rendered: string}} projection */
+function subView(workUnit, projection) {
+  const result = discover(process.cwd(), workUnit);
+  const e = result.epics[0];
+  if (!e) {
+    return engine.gateway.dataBlock({ work_unit: workUnit || '(missing)', error: 'no active epic with this name' })
+      + engine.project.selectionNotFound('epic', workUnit || '(missing)');
   }
   const view = projection(e.name, e.detail);
 
   const dataLines = [`work_unit: ${e.name}`];
   dataLines.push('ACTIONS (key  action  topic  phase  → route):');
   for (const k of view.keys) {
-    dataLines.push(`  ${k.key}  ${k.action}  ${k.topic || '—'}  ${k.phase || '—'}  → ${k.route || '(internal)'}`);
+    let line = `  ${k.key}  ${k.action}  ${k.topic || '—'}  ${k.phase || '—'}  → ${k.route || '(internal)'}`;
+    if (k.dep) line += `  (dep: ${k.dep})`;
+    dataLines.push(line);
   }
 
   return [
     engine.gateway.dataBlock(dataLines.join('\n')),
+    engine.gateway.titleBlock(view.title),
     engine.gateway.displayBlock(view.display),
     engine.gateway.menuBlock(view.rendered),
   ].join('\n');
 }
 
-const USAGE = 'Usage: gateway.cjs | gateway.cjs {work_unit} | gateway.cjs view {work_unit} [new_arrivals_json] | gateway.cjs (completed-menu|cancel-menu|reactivate-menu) {work_unit}';
+const USAGE = 'Usage: gateway.cjs | gateway.cjs {work_unit} | gateway.cjs view {work_unit} [new_arrivals_json] | gateway.cjs (completed-menu|cancel-menu|reactivate-menu|unblock-menu) {work_unit}';
 
 /** Reject the call: usage to stderr, exit 1. @param {string} message @returns {string} */
 function usageError(message) {
@@ -265,6 +328,10 @@ if (require.main === module) {
     'completed-menu': subViewHandler('completed-menu', (name, d) => engine.project.epicCompletedMenu(name, d)),
     'cancel-menu': subViewHandler('cancel-menu', (name, d) => engine.project.epicCancelMenu(d)),
     'reactivate-menu': subViewHandler('reactivate-menu', (name, d) => engine.project.epicReactivateMenu(d)),
+    'unblock-menu': subViewHandler('unblock-menu', (name, d) => engine.project.epicUnblockMenu(d)),
+    'in-session-gate': (workUnit, key, ...rest) => (!workUnit || !key || rest.length > 0
+      ? usageError('in-session-gate takes a work unit and a menu key')
+      : inSessionGate(workUnit, key)),
     fallback: (workUnit, ...rest) => (rest.length > 0
       ? usageError(`unknown verb "${workUnit}"`)
       : formatScoped(workUnit, discover(process.cwd(), workUnit))),

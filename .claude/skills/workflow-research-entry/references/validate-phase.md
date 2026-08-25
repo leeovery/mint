@@ -6,6 +6,12 @@
 
 Branch on the `phase_status` the caller read in Step 2 — no re-read.
 
+#### If status is `triaged`
+
+Rerouted concerns are parked on this topic, but no session has ever run — this is a first start, not a resume. No reopen, no phase note, no reconcile advisory; leave `source` unset.
+
+→ Return to caller.
+
 #### If status is `completed`
 
 Reopen it:
@@ -14,10 +20,10 @@ Reopen it:
 node .claude/skills/workflow-engine/scripts/engine.cjs topic reopen {work_unit} research {topic}
 ```
 
-> *Output the next fenced block as a code block:*
+Render and emit the section verbatim:
 
-```
-Reopening research: {topic:(titlecase)}
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render phase-note {work_unit}.research.{topic} --verb Reopening
 ```
 
 Set source="continue".
@@ -28,10 +34,10 @@ Set source="continue".
 
 #### If status is `in-progress`
 
-> *Output the next fenced block as a code block:*
+Render and emit the section verbatim:
 
-```
-Resuming research: {topic:(titlecase)}
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render phase-note {work_unit}.research.{topic} --verb Resuming
 ```
 
 Set source="continue".

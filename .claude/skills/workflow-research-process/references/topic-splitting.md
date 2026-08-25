@@ -19,16 +19,16 @@ following threads have accumulated alongside the original scope:
   • {thread_1} — {brief description}
   • {thread_2} — {brief description}
 
-Want to split these into separate research files?
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
 · · · · · · · · · · · ·
-- **`y`/`yes`** — Split them out
-- **`n`/`no`** — Keep everything together for now
-· · · · · · · · · · · ·
+**`◆ Want to split these into separate research files?`**
+
+**`y/yes`** → Split them out
+**`n/no`**  → Keep everything together for now
 ```
 
 **STOP.** Wait for user response.
@@ -57,20 +57,21 @@ Once all accepted threads have been processed, single commit covering the manife
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "research({work_unit}/{parent_topic}): split into {N} topic(s)"
 ```
 
+The work-unit scope is deliberate: a split writes the superseded parent and every new topic's file — no single `--topic` covers it.
+
 Then offer the user a choice of which topic to continue with:
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
 · · · · · · · · · · · ·
-Which topic would you like to continue with?
+**`◆ Which topic would you like to continue with?`**
 
 @foreach(topic in available_topics)
-- **`{N}`** — {topic:(titlecase)} [in-progress]
+**`{N}`** → {topic:(titlecase)} [in-progress]
 @endforeach
 
 Select an option (enter number):
-· · · · · · · · · · · ·
 ```
 
 **STOP.** Wait for user response.

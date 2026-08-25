@@ -32,7 +32,7 @@ Your context (or 'none'):
 
 For each completed discussion:
 1. Read the ENTIRE document using the Read tool (not just the header)
-2. Understand the decisions, systems, and concepts it defines
+2. Understand the decisions, systems, and concepts it defines — where a Decision block holds dated timeline entries, the top entry is the current decision and earlier entries are lineage
 3. Note dependencies on or references to other discussions
 4. Identify shared data structures, entities, or behaviors
 
@@ -64,8 +64,13 @@ A discussion can belong wholly in one grouping yet still impose corrections on a
 While grouping, for each discussion check whether it hands work to another grouping:
 - Harvest any `## Spec hand-offs` section or "reconciliation owed by {spec}" note in the discussion, if present
 - Note cross-grouping corrections you observe even when no such section exists
+- A dated revision entry in a Decision timeline whose trigger names a sibling grouping's ground is a natural consult-reference candidate
 
 Record each as a consult reference on the **receiving** grouping (never as a source), capturing which slice/decisions and why.
+
+**Note Cross-Source Tensions**
+
+The full read also surfaces places where two documents' decided ground disagrees, or a term rests on something another document has since moved — tensions construction will meet when it extracts. Record each on the grouping whose sources carry it as a `**Tension**` line in the cache (**D**): the documents, the collision, one line. Advisory only — never a gate, never resolved here; the specification session holds them from its setup and raises each per its Resolve Source Incoherence discipline when the topic that touches it arrives.
 
 **Knowledge-Base Advisory Query**
 
@@ -97,31 +102,35 @@ Work through these steps in order:
 
 2. **Map groupings to anchors.** For each freshly-formed grouping that substantially overlaps an anchor's sources (a majority of members shared), rename it in memory to the anchor's topic key. This splits the groupings into **maps-to-anchor** and **purely-proposed**.
 
-3. **Augment anchors.** For each grouping mapped to an anchor, add any member discussion not already in that anchor's sources:
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.specification.{anchor} sources.{discussion}.status pending
-   ```
+3. **Augment anchors.** For each grouping mapped to an anchor, collect a `set` op for any member discussion not already in that anchor's sources:
+   - `{work_unit}.specification.{anchor}` → `sources.{discussion}.status: pending`
+
    Never change an anchor's `status`. Never prune or overwrite an anchor's existing sources.
 
 4. **Compute the target proposed set.** The target names are the kebab-case names of the **purely-proposed** groupings. An independent discussion is a grouping of one — it becomes a proposed item too, so it is startable and visible.
 
-5. **Delete stale proposed.** For each existing-proposed item whose name is not in the target set, remove the whole item:
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.specification items.{name}
-   ```
+5. **Delete stale proposed.** For each existing-proposed item whose name is not in the target set, collect a `delete` op removing the whole item:
+   - `{work_unit}.specification` → delete `items.{name}`
 
 6. **Collision guard.** If a target proposed name equals an existing anchor key, do NOT write `proposed` over it. Surface it as a **naming conflict** to the user and drop or rename the colliding target. This protects the invariant — an anchor is never overwritten by a proposed item.
 
-7. **Upsert proposed.** For each surviving target name:
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.specification.{name} status proposed
-   node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.specification.{name} sources.{discussion}.status pending
+7. **Upsert proposed.** For each surviving target name, collect `set` ops — `status: proposed` plus one `sources.{discussion}.status: pending` per grouping member — and, for an existing-proposed item being regenerated, a `delete` op per source no longer in the grouping (pruning is allowed only on proposed items, never anchors). A **rename** of a proposed grouping is just delete-old (step 5) plus upsert-new — lossless, since a proposed item holds no file or extraction.
+
+8. **Assign the build order.** The analysis just read every grouping holistically — the same read decides which topic to build first. Over the whole live set (every anchor whose status is not `cancelled`/`superseded`/`promoted`, plus every surviving target), assign contiguous integers `1..N` weighing what must physically exist before what: foundational scaffolding first, a topic whose deliverable other groupings assume ahead of the topics that assume it. Ignore the discovery map's `order` — it ranks what to explore, assigned before any discussion concluded. Collect one `set` field per topic — a bare number, never quoted:
+   - `{work_unit}.specification.{name}` → `order: {N}` (fold into the topic's existing op where one is already collected; a topic with no op yet — an anchor whose sources are unchanged — gets its own `set` op)
+
+   Check whether a completed specification has flagged the order stale (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest exists {work_unit}.specification build_order_stale`). When `true`, collect one more op — this reconcile is the sequencing, so the flag clears with it:
+   - `{work_unit}.specification` → delete `build_order_stale`
+
+9. **Apply the reconcile.** Write the collected ops, in the order gathered (augments, stale deletes, upserts, prunes, order sets, the flag delete), to `.workflows/.cache/{work_unit}/specification/reconcile-ops.json` with the Write tool:
+   ```json
+   [{"op": "set", "path": "{work_unit}.specification.{name}", "fields": {"status": "proposed", "sources.{discussion}.status": "pending", "order": 2}},
+    {"op": "delete", "path": "{work_unit}.specification", "field": "items.{name}"}]
    ```
-   Set one `sources.{discussion}.status pending` per grouping member. For an existing-proposed item being regenerated, prune any source no longer in the grouping (allowed only on proposed items, never anchors):
+   Persist the whole reconcile in one atomic call — a failing op means the manifest is untouched, never half-reconciled:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.specification.{name} sources.{old-discussion}
+   node .claude/skills/workflow-engine/scripts/engine.cjs manifest apply {work_unit} --file .workflows/.cache/{work_unit}/specification/reconcile-ops.json
    ```
-   A **rename** of a proposed grouping is just delete-old (step 5) plus upsert-new — lossless, since a proposed item holds no file or extraction.
 
 → Proceed to **D. Write the Cache**.
 
@@ -149,6 +158,7 @@ Write to `.workflows/{work_unit}/.state/discussion-consolidation-analysis.md` (p
 
 **Coupling**: {Brief explanation of what binds these together}
 **Consult**: {ref-topic} — {slice/why the correction is owed}
+**Tension**: {doc-a} / {doc-b} — {the collision, one line}
 
 ### {Another Specification Name}
 - **{discussion-d}**: {why it belongs}
@@ -163,7 +173,7 @@ Write to `.workflows/{work_unit}/.state/discussion-consolidation-analysis.md` (p
 {Note any naming conflicts with anchored specs here}
 ```
 
-The `**Consult**` line is per-grouping — one line per consult reference, omitted entirely when a grouping owes none. List sources under each grouping as bullets; consult references stay on their own `**Consult**` line so they are never mistaken for sources.
+The `**Consult**` line is per-grouping — one line per consult reference, omitted entirely when a grouping owes none. List sources under each grouping as bullets; consult references stay on their own `**Consult**` line so they are never mistaken for sources. `**Tension**` lines follow the same shape — one per noted tension, omitted when a grouping carries none; the specification session reads them back at setup and raises each when the topic that touches it arrives.
 
 Write the cache metadata to the manifest last:
 ```bash

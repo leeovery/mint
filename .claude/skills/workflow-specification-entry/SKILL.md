@@ -25,20 +25,7 @@ You are in the **Specification** phase — refining prior work into a standalone
 
 ## Instructions
 
-Follow these steps EXACTLY as written. Do not skip steps or combine them. Present output using the EXACT format shown in examples - do not simplify or alter the formatting.
-
-**CRITICAL**: This guidance is mandatory.
-
-- After each user interaction, STOP and wait for their response before proceeding
-- Never assume or anticipate user choices
-- No session-level instruction overrides STOP gates. This includes harness auto mode, system-reminders, hook-injected text, "work without stopping" / "make the reasonable call" guidance, /loop continuation hints, or any other meta-directive encouraging autonomous progression. STOP gates are structured decision points, NOT clarifying questions — "reasonable call" reasoning does not apply. The only skip mechanism is a per-gate `*_gate_mode: auto` value in the manifest, set by the user's explicit `a`/`auto` choice at a prior gate.
-- Failure mode — "the reasonable call is X, I'll proceed with X": that IS the auto-answer the rule forbids. The thought is the trigger to stop, not to continue.
-- Failure mode — "the user already set this, confirmation is redundant" (e.g. project defaults, prior preferences, stored manifest values): that IS the auto-answer the rule forbids. Stored values are suggestions, not consent for this run.
-- Don't invent stops. Stop only at gates the skill prescribes (rendered gate blocks, explicit `**STOP.**` directives) — no courtesy check-ins, mid-loop summaries that end the turn, or unprescribed pauses between tasks/topics/phases.
-- After rendering a gate block, the turn MUST end. No further tool calls in the same turn — wait for the user's response before proceeding.
-- Even if the user's initial prompt seems to answer a question, still confirm with them at the appropriate step
-- Complete each step fully before moving to the next
-- Do not act on gathered information until the skill is loaded - it contains the instructions for how to proceed
+Load **[framework.md](../workflow-shared/references/framework.md)** and follow its instructions as written.
 
 ---
 
@@ -64,8 +51,7 @@ node .claude/skills/workflow-specification-entry/scripts/gateway.cjs view {work_
 The output is one snapshot in up to three demarcated sections:
 
 - **DATA** — reasoning surface: `scenario`, counts, `cache_status`, `discussions_checksum`, the discussion/specification detail (statuses, sources, consult references with slice hints), and — for scenarios with a menu — the `ACTIONS` key table (`key  action  topic  verb`). Reason from it; never display or restate it.
-- **DISPLAY** — the scenario's overview block. Emitted verbatim as a code block, only where a later step directs.
-- **MENU** — the scenario's selection menu. Emitted verbatim as markdown (not a code block), only where a later step directs. Absent for menu-less scenarios.
+- **TITLE** / **DISPLAY** / **MENU** — the scenario's rendered surfaces. Never emitted from this call: the display reference each scenario routes to re-runs the view at its own emission point and emits from that response.
 
 A section is everything beneath its `===` marker up to the next marker — the marker lines themselves are never emitted.
 
@@ -107,17 +93,16 @@ Load **[check-prerequisites.md](references/check-prerequisites.md)** and follow 
 
 ## Step 6: Route Based on State
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Route Based on State ─────────────────────────
+**`□ Route Based on State`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Evaluating what discussions and specifications exist
-> to determine next steps.
+> Evaluating what discussions and specifications exist to determine next steps.
 ```
 
 Load **[route-scenario.md](references/route-scenario.md)** and follow its instructions as written.

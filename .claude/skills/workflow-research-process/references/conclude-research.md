@@ -4,22 +4,23 @@
 
 ---
 
-First check the `## Triage` section of `.workflows/{work_unit}/research/{topic}.md`.
+First check the topic's triage queue:
 
-**If `## Triage` is not `(none)`:**
-
-A concern was rerouted into this topic after drain ran this session. It must be folded before concluding.
-
-> *Output the next fenced block as a code block:*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs topic queue {work_unit} research {topic}
 ```
-  ⚑ Triage not empty — {N} rerouted concern(s) awaiting fold.
-    Returning to the session to drain and explore them before concluding.
+
+**If `count` is non-zero:**
+
+A rerouted concern is still queued — it must be discussed and folded before concluding. Render the blocker and emit both its sections verbatim per their markers — the red blocker line, then its guidance:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render triage-block {work_unit}.research.{topic}
 ```
 
 → Return to **[the skill](../SKILL.md)** for **Step 6**.
 
-**If `## Triage` is `(none)`:**
+**If `count` is `0`:**
 
 1. Mark the research completed — the engine sets the status and indexes the artifact into the knowledge base:
    ```bash
@@ -27,34 +28,36 @@ A concern was rerouted into this topic after drain ran this session. It must be 
    ```
 2. Final commit:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "research({work_unit}): complete {topic} research"
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} --topic research/{topic} --kb -m "research({work_unit}): complete {topic} research"
    ```
 
-If the `complete` response carries `warnings`, display them but do not block — the artifact is already saved:
+   When the `complete` response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` advisory — the warning never blocks:
 
-> *Output the next fenced block as a code block:*
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs render topic-receipt {work_unit}.research.{topic} --verb complete --warn
+   ```
 
-```
-⚑ Knowledge indexing warning
-  {error details}
-  The artifact is saved. Indexing can be retried later.
-```
+3. Clear this session's presence and sweep for leavings:
 
-3. Closure signpost:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs presence clear {work_unit} research {topic}
+   git status --porcelain -- .workflows
+   ```
+
+   **If dirt remains under another topic's paths:** run `node .claude/skills/workflow-engine/scripts/engine.cjs presence scan {work_unit}`. Dirt under a `held` row's topic belongs to that session — leave it, however long it has idled. For each dirty topic with no held presence — a dead session's leavings — commit it action-scoped: `node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} --topic {phase}/{dirty_topic} -m "chore({work_unit}/{dirty_topic}): sweep session leavings"`.
+
+   **Otherwise:** nothing to sweep — continue.
+
+4. Closing recap:
+
+   → Load **[closing-recap.md](../../workflow-shared/references/closing-recap.md)** with phase = `research`, work_unit = `{work_unit}`, topic = `{topic}`.
+
+5. Closure signpost:
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Research complete. The discussion phase will use these findings
-> to make decisions about architecture and approach.
+> Research complete. The discussion phase will use these findings to make decisions about architecture and approach.
 ```
 
-4. Invoke the `/workflow-bridge` skill:
-   ```
-   Pipeline bridge for: {work_unit}
-   Completed phase: research
-
-   Invoke the workflow-bridge skill to enter plan mode with continuation instructions.
-   ```
-
-**STOP.** Do not proceed — terminal condition.
+6. Invoke `/workflow-bridge {work_unit} research`.

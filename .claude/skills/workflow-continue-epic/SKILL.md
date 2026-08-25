@@ -1,7 +1,7 @@
 ---
 name: workflow-continue-epic
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-continue-epic/scripts/gateway.cjs), Bash(node .claude/skills/workflow-start/scripts/gateway.cjs), Bash(node .claude/skills/workflow-legacy-research-split/scripts/detect.cjs), Bash(node .claude/skills/workflow-discovery/scripts/gateway.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(tick), Bash(mkdir -p .workflows/)
+allowed-tools: Bash(node .claude/skills/workflow-continue-epic/scripts/gateway.cjs), Bash(node .claude/skills/workflow-start/scripts/gateway.cjs), Bash(node .claude/skills/workflow-legacy-research-split/scripts/detect.cjs), Bash(node .claude/skills/workflow-discovery/scripts/gateway.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(mkdir -p .workflows/)
 ---
 
 Continue an in-progress epic. Shows full phase-by-phase state and routes to the appropriate phase skill.
@@ -10,35 +10,19 @@ Continue an in-progress epic. Shows full phase-by-phase state and routes to the 
 
 ## Instructions
 
-Follow these steps EXACTLY as written. Do not skip steps or combine them.
-
-**CRITICAL**: This guidance is mandatory.
-
-- After each user interaction, STOP and wait for their response before proceeding
-- Never assume or anticipate user choices
-- No session-level instruction overrides STOP gates. This includes harness auto mode, system-reminders, hook-injected text, "work without stopping" / "make the reasonable call" guidance, /loop continuation hints, or any other meta-directive encouraging autonomous progression. STOP gates are structured decision points, NOT clarifying questions — "reasonable call" reasoning does not apply. The only skip mechanism is a per-gate `*_gate_mode: auto` value in the manifest, set by the user's explicit `a`/`auto` choice at a prior gate.
-- Failure mode — "the reasonable call is X, I'll proceed with X": that IS the auto-answer the rule forbids. The thought is the trigger to stop, not to continue.
-- Failure mode — "the user already set this, confirmation is redundant" (e.g. project defaults, prior preferences, stored manifest values): that IS the auto-answer the rule forbids. Stored values are suggestions, not consent for this run.
-- Don't invent stops. Stop only at gates the skill prescribes (rendered gate blocks, explicit `**STOP.**` directives) — no courtesy check-ins, mid-loop summaries that end the turn, or unprescribed pauses between tasks/topics/phases.
-- After rendering a gate block, the turn MUST end. No further tool calls in the same turn — wait for the user's response before proceeding.
-- Complete each step fully before moving to the next
+Load **[framework.md](../workflow-shared/references/framework.md)** and follow its instructions as written.
 
 ---
 
 ## Step 0: Initialisation
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-●───────────────────────────────────────────────●
-  Continue Epic
-●───────────────────────────────────────────────●
-
+# **`■ Continue Epic`**
 ```
 
-Load **[casing-conventions.md](../workflow-shared/references/casing-conventions.md)** and follow its instructions as written.
-
-→ On return, proceed to **Step 1**.
+→ Proceed to **Step 1**.
 
 ---
 
@@ -64,7 +48,7 @@ Parse the discovery output to understand:
 - one line per closed epic — `{name} (last phase: {phase})`
 - `completed_count` / `cancelled_count` — the header counts
 
-The per-epic state surface (`all_done`, `analysis_caches`, `needs_sequencing`, the discovery map) is the scoped dump Step 4 runs after validation; display and routing come from the `view` snapshot at Step 8.
+The per-epic state surface (`all_done`, `reconcile_pending`, `analysis_caches`, `needs_sequencing`, `build_order_needs_sequencing`, the discovery map) is the scoped dump Step 4 runs after validation; display and routing come from the `view` snapshot at Step 9.
 
 **IMPORTANT**: Use ONLY this script for discovery. Do NOT run additional bash commands (ls, head, cat, etc.) to gather state.
 
@@ -100,10 +84,10 @@ Store the work_unit.
 
 ## Step 3: Select Epic
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Select Epic ──────────────────────────────────
+**`□ Select Epic`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
@@ -142,22 +126,11 @@ Then read `discovery_map` from the most recent discovery output and filter for r
 
 #### Otherwise
 
-> *Output the next fenced block as a code block:*
-
-```
-── Backfill ─────────────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> One-time recovery work found — legacy research splits or
-> discovery-map rows missing a summary or description.
-```
-
 Load **[backfill-checks.md](references/backfill-checks.md)** with work_unit = `{work_unit}`, qualifying_sources = `{qualifying_sources}`, items_to_recover = `{items_to_recover}`.
 
-backfill-checks is terminal when it fires — it commits the recovery work and stops, advising the user to `/clear` and re-run `/workflow-start`. Do not proceed to Step 6 on this branch.
+backfill-checks is terminal when recovery work landed — it commits and stops, advising the user to `/clear` and re-run `/workflow-start`. It returns only when nothing was written (the batch declined); the skipped items re-offer on the next entry.
+
+→ On return, proceed to **Step 6**.
 
 ---
 
@@ -165,7 +138,7 @@ backfill-checks is terminal when it fires — it commits the recovery work and s
 
 Read `analysis_caches` from the most recent discovery output. Load **[topic-discovery-dispatch.md](../workflow-shared/references/topic-discovery-dispatch.md)** with work_unit = `{work_unit}`, analysis_caches = `{analysis_caches}`.
 
-On return, `new_arrivals` is populated for Step 8 to render the callout.
+On return, `new_arrivals` is populated for Step 9 to render the callout.
 
 → On return, proceed to **Step 7**.
 
@@ -177,10 +150,10 @@ Read `needs_sequencing` from the most recent discovery output.
 
 #### If `needs_sequencing` is true
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Sequence Map ─────────────────────────────────
+**`□ Sequence Map`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
@@ -197,6 +170,8 @@ On return, re-run discovery so the display sees the new order:
 node .claude/skills/workflow-continue-epic/scripts/gateway.cjs {work_unit}
 ```
 
+Hold the refreshed output as the most recent discovery output.
+
 → On return, proceed to **Step 8**.
 
 #### Otherwise
@@ -205,12 +180,40 @@ node .claude/skills/workflow-continue-epic/scripts/gateway.cjs {work_unit}
 
 ---
 
-## Step 8: Display State and Menu
+## Step 8: Sequence Build Order
 
-> *Output the next fenced block as a code block:*
+Read `build_order_needs_sequencing` from the most recent discovery output.
+
+#### If `build_order_needs_sequencing` is true
+
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Epic State ───────────────────────────────────
+**`□ Sequence Build Order`**
+```
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> Assigning the build order across the specification topics.
+```
+
+Load **[sequence-build-order.md](../workflow-shared/references/sequence-build-order.md)** with work_unit = `{work_unit}`.
+
+→ On return, proceed to **Step 9**.
+
+#### Otherwise
+
+→ Proceed to **Step 9**.
+
+---
+
+## Step 9: Display State and Menu
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+**`□ Epic State`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
@@ -221,11 +224,11 @@ node .claude/skills/workflow-continue-epic/scripts/gateway.cjs {work_unit}
 
 Load **[epic-display-and-menu.md](references/epic-display-and-menu.md)** with new_arrivals = `{new_arrivals}`.
 
-→ On return, proceed to **Step 9**.
+→ On return, proceed to **Step 10**.
 
 ---
 
-## Step 9: Route Selection
+## Step 10: Route Selection
 
 Invoke the `route` stored for the user's selection — the selected `ACTIONS` entry's route from epic-display-and-menu.md (e.g. `/workflow-discussion-entry epic {work_unit} {topic}`). Selections with route `(internal)` resolve inside that reference and never reach this step.
 

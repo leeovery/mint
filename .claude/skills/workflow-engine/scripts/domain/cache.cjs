@@ -12,20 +12,36 @@
 // commit — the calling flow's commit cadence picks the manifest change up.
 // ---------------------------------------------------------------------------
 
+const fs = require('fs');
 const path = require('path');
+const { git } = require('../kernel/git.cjs');
 const { loadWorkUnitManifest, saveWorkUnitManifest, withWorkUnitLock, ensureContainer } = require('../kernel/manifest.cjs');
 const { collectAnalysisInputs } = require('./derivations.cjs');
 const { filesChecksum } = require('./reads.cjs');
 const { knowledge } = require('./kb.cjs');
 
-const KINDS = ['research-analysis', 'gap-analysis'];
-
-// The kind's model-authored cache file under `.state/` — the analysis output
-// the stamp checksums the inputs of, and the artifact the KB index covers.
-const CACHE_FILES = {
-  'research-analysis': 'research-analysis.md',
-  'gap-analysis': 'discovery-gap-analysis.md',
+// Per-kind config: the model-authored cache file under `.state/` (the
+// analysis output the stamp checksums the inputs of, and the artifact the KB
+// index covers), the cache object's manifest home (`phases.{phase}.{field}`),
+// the field naming the checksummed inputs, and the nothing-to-stamp error.
+const KIND_CONFIG = {
+  'research-analysis': {
+    cacheFile: 'research-analysis.md',
+    phase: 'research',
+    field: 'analysis_cache',
+    filesField: 'files',
+    emptyError: 'nothing to stamp: no completed research files',
+  },
+  'gap-analysis': {
+    cacheFile: 'discovery-gap-analysis.md',
+    phase: 'discovery',
+    field: 'gap_analysis_cache',
+    filesField: 'input_files',
+    emptyError: 'nothing to stamp: no completed research or discussion files',
+  },
 };
+
+const KINDS = Object.keys(KIND_CONFIG);
 
 /**
  * @typedef {object} CacheStampResult
@@ -58,27 +74,22 @@ function phaseObject(manifest, phase) {
  * @returns {CacheStampResult}
  */
 function stampAnalysisCache(cwd, workUnit, kind) {
-  if (!KINDS.includes(kind)) {
+  if (!Object.hasOwn(KIND_CONFIG, kind)) {
     throw new Error(`unknown cache kind "${kind}" (${KINDS.join('|')})`);
   }
+  const cfg = KIND_CONFIG[/** @type {keyof typeof KIND_CONFIG} */ (kind)];
   const stamped = withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const inputs = collectAnalysisInputs(manifest, path.join(cwd, '.workflows'), kind);
     if (inputs.length === 0) {
-      throw new Error(kind === 'research-analysis'
-        ? 'nothing to stamp: no completed research files'
-        : 'nothing to stamp: no completed research or discussion files');
+      throw new Error(cfg.emptyError);
     }
 
     const checksum = /** @type {string} */ (filesChecksum(inputs));
     const generated = new Date().toISOString();
     const names = inputs.map((p) => path.basename(p));
 
-    if (kind === 'research-analysis') {
-      phaseObject(manifest, 'research').analysis_cache = { checksum, generated, files: names };
-    } else {
-      phaseObject(manifest, 'discovery').gap_analysis_cache = { checksum, generated, input_files: names };
-    }
+    phaseObject(manifest, cfg.phase)[cfg.field] = { checksum, generated, [cfg.filesField]: names };
 
     saveWorkUnitManifest(cwd, workUnit, manifest);
     return { kind, checksum, files: inputs.length };
@@ -86,10 +97,28 @@ function stampAnalysisCache(cwd, workUnit, kind) {
 
   /** @type {string[]} */
   const warnings = [];
-  const cacheFile = CACHE_FILES[/** @type {keyof typeof CACHE_FILES} */ (kind)];
-  knowledge(cwd, ['index', `.workflows/${workUnit}/.state/${cacheFile}`], `knowledge index (.state/${cacheFile})`, warnings);
+  knowledge(cwd, ['index', `.workflows/${workUnit}/.state/${cfg.cacheFile}`], `knowledge index (.state/${cfg.cacheFile})`, warnings);
 
   return { ...stamped, warnings };
 }
 
-module.exports = { stampAnalysisCache };
+/**
+ * Remove the work unit's scratch cache (`.workflows/.cache/{wu}`) at
+ * lifecycle close. Caches are rebuildable per-phase scratch — reactivation
+ * regenerates them on demand — but analysis flows commit tracking files
+ * there, so when the index holds entries the caller must include the
+ * returned pathspec in its transaction commit to stage the deletions.
+ * A purely-untracked dir purges disk-only (returns null; `git add` on a
+ * pathspec matching nothing is fatal).
+ * @param {string} cwd project root
+ * @param {string} workUnit
+ * @returns {string|null} pathspec for the caller's commit, or null
+ */
+function purgeWorkUnitCache(cwd, workUnit) {
+  const rel = `.workflows/.cache/${workUnit}`;
+  const tracked = git(cwd, ['ls-files', '--', rel]).trim() !== '';
+  fs.rmSync(path.join(cwd, rel), { recursive: true, force: true });
+  return tracked ? rel : null;
+}
+
+module.exports = { stampAnalysisCache, purgeWorkUnitCache };

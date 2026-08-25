@@ -10,11 +10,10 @@ This step uses the `workflow-planning-dependency-grapher` agent (`../../../agent
 
 ## A. Analyze
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-All tasks are authored. Now I'll analyze internal dependencies and
-priorities across the full plan.
+All tasks are authored. Now I'll analyze internal dependencies and priorities across the full plan.
 ```
 
 Read the `format`, the plan's `external_id`, and the `task_map` from the manifest:
@@ -58,11 +57,10 @@ I've analyzed all {M} tasks and the natural execution order is already correct �
 
 ```
 · · · · · · · · · · · ·
-Approve the dependency graph?
+**`◆ Approve the dependency graph?`**
 
-- **`y`/`yes`** — Proceed
-- **Tell me what to change** — which priorities or dependencies to adjust
-· · · · · · · · · · · ·
+**`y/yes`**                  → Proceed
+**Tell me what to change** → which priorities or dependencies to adjust
 ```
 
 **STOP.** Wait for user response.
@@ -79,11 +77,10 @@ The agent will clear all existing graph data and re-analyze from scratch.
 
 **If `yes`:**
 
-Commit with raw git — the graph data lands in the format's task storage, which may live outside the work unit, so the scoped helper cannot cover it:
+Commit — `--plan` stages the work unit and the plan's declared storage in one scoped call:
 
 ```bash
-git add -- .workflows/{work_unit} {format task storage paths}
-git commit -m "planning({work_unit}): analyze task dependencies and priorities"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): analyze task dependencies and priorities" --plan {topic}
 ```
 
 → Return to caller.
@@ -130,11 +127,10 @@ I've analyzed and applied dependencies and priorities across all {M} tasks:
 
 ```
 · · · · · · · · · · · ·
-Approve the updated graph?
+**`◆ Approve the updated graph?`**
 
-- **`y`/`yes`** — Proceed
-- **Tell me what to change** — which priorities or dependencies to adjust
-· · · · · · · · · · · ·
+**`y/yes`**                  → Proceed
+**Tell me what to change** → which priorities or dependencies to adjust
 ```
 
 **STOP.** Wait for user response.
@@ -151,11 +147,10 @@ The agent will clear all existing graph data and re-analyze from scratch.
 
 **If `yes`:**
 
-Commit with raw git — the graph data lands in the format's task storage, which may live outside the work unit, so the scoped helper cannot cover it:
+Commit — `--plan` stages the work unit and the plan's declared storage in one scoped call:
 
 ```bash
-git add -- .workflows/{work_unit} {format task storage paths}
-git commit -m "planning({work_unit}): analyze task dependencies and priorities"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): analyze task dependencies and priorities" --plan {topic}
 ```
 
 → Return to caller.

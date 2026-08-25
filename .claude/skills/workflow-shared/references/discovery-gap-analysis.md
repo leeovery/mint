@@ -18,13 +18,7 @@ The caller provides these via context before loading:
 
 ## A. Read Artifacts
 
-> *Output the next fenced block as a code block:*
-
-```
-Analyzing completed research and discussions for coverage gaps...
-```
-
-Read `.workflows/{work_unit}/research/{name}.md` for each `completed_research` name and `.workflows/{work_unit}/discussion/{name}.md` for each `completed_discussion` name. Skip files missing on disk. Items with `in-progress`, `superseded`, or `cancelled` status are not in the input set.
+Read `.workflows/{work_unit}/research/{name}.md` for each `completed_research` name and `.workflows/{work_unit}/discussion/{name}.md` for each `completed_discussion` name. Skip files missing on disk. Items with `triaged`, `in-progress`, `superseded`, or `cancelled` status are not in the input set.
 
 For each discussion, note:
 - The subtopic map — final states live in the work unit manifest under `phases.discussion.items.{name}.subtopics` (`decided` / `deferred` for completed discussions; legacy files may instead carry a Discussion Map section inline)
@@ -70,7 +64,7 @@ Group the identified gaps into topic-sized chunks.
 
 **Anchor to existing discussions:** List existing discussion files under `.workflows/{work_unit}/discussion/`. If a gap topic clearly maps to an existing discussion, use that discussion's filename (without the `.md` extension) as the kebab-case topic name. Only create new names for topics with no matching existing discussion.
 
-For each topic, write a one-line summary covering the constituent gaps — used as the discovery item's `summary` field.
+For each topic, write a one-line summary covering the constituent gaps — used as the discovery item's `summary` field. Word it product-first: the capability or behaviour at stake, not the mechanism.
 
 Assign each candidate a `routing` value.
 
@@ -91,16 +85,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 `items` is the active map (an object keyed by topic name). `dismissed` is the array of names previously removed from the map by the user.
 
-Initialise the staging file fresh (overwrite any prior pass) at `.workflows/{work_unit}/.state/discovery-gap-analysis-candidates.md` with frontmatter — this reference is only invoked for staging when no pending candidates remain from a deferred run, so overwriting is safe:
-
-```markdown
----
-work_unit: {work_unit}
-analysis: discovery-gap-analysis
-generated: {ISO timestamp}
-gate_mode: gated
----
-```
+Initialise the staging file fresh (overwrite any prior pass) at `.workflows/{work_unit}/.state/discovery-gap-analysis-candidates.md` — pure markdown, content only; the gate state lives in the manifest and is initialised after staging (below). This reference is only invoked for staging when no pending candidates remain from a deferred run, so overwriting is safe.
 
 For each candidate topic from **C** (kebab-case name + summary + description + routing), evaluate the conditions below in order. The first two cases are resolved here at stage time without a gate; only genuinely-new candidates are staged for the approval gate. Each branch is self-contained and concludes by moving on to the next candidate.
 
@@ -142,7 +127,6 @@ Stage it for the approval gate by appending a block to the staging file:
 
 ```markdown
 ## {name}
-status: pending
 summary: {one-line summary}
 description: |
   {paragraphs}
@@ -150,11 +134,15 @@ routing: {routing-from-C}
 source: gap-analysis
 ```
 
-`routing` is the value decided per-candidate in **C** (`discussion` or `research`). Gap-analysis keeps the bare `gap-analysis` source (no single-parent semantics — it synthesises across artifacts) and stages no `parent` or `fanout_offer`. `description` is a paragraph or two extracted from the gap analysis for this topic — richer context than the one-line summary, loaded by entry skills as opening context when the user later picks the topic up. Do not write to the discovery map and do not append to any tracker here — the approval gate writes approved candidates and tracks them.
+`routing` is the value decided per-candidate in **C** (`discussion` or `research`). Gap-analysis keeps the bare `gap-analysis` source (no single-parent semantics — it synthesises across artifacts) and stages no `parent` or `fanout_offer`. `description` is a paragraph or two extracted from the gap analysis for this topic — richer context than the one-line summary, read as opening context at the next phase's initialisation when the user later picks the topic up. Do not write to the discovery map and do not append to any tracker here — the approval gate writes approved candidates and tracks them.
 
 ---
 
-Once all candidates have been evaluated:
+Once all candidates have been evaluated, register the gate state — one batched write, one row per staged candidate (skip the call when nothing was staged):
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.discovery analysis_staging.discovery-gap-analysis.gate_mode=gated analysis_staging.discovery-gap-analysis.candidates.{name}.status=pending …
+```
 
 → Return to caller.
 

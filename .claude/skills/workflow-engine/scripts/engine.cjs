@@ -8,31 +8,39 @@
 // in-process library (lib.cjs). Domain commands (transitions, queries) land
 // here as they're built.
 //
-// The `render` command group is a DEV/DEBUG utility only (authoring aid for
-// prose literals, layout inspection). Skill flows never call it at runtime:
-// static chrome stays literal in prose; parameterised chrome is rendered
-// in-process by projections.
+// The `render` command group serves two audiences: the surface catalogue
+// (domain/render.cjs) — named runtime surfaces skill flows call at prescribed
+// points, returning demarcated sections emitted verbatim — and the dev/debug
+// primitives (signpost, box, wrap, tree), which remain authoring aids only.
+// Static chrome stays literal in prose; anything parameterised or
+// state-branching renders here.
 // ---------------------------------------------------------------------------
 
 const fs = require('fs');
 const path = require('path');
 const { signpost, box, wrapWithPrefix, renderTree, WIDTH } = require('./kernel/render.cjs');
-const { commitScopedWithKb } = require('./domain/commit.cjs');
-const { recordSubtopicAdd, recordSubtopicState, SUBTOPIC_STATES } = require('./domain/discussion-map.cjs');
+const { commitScopedWithKb, commitPathspecScoped, KB_DIR } = require('./domain/commit.cjs');
+const { recordSubtopicAdd, recordSubtopicState, recordSubtopicStates, SUBTOPIC_STATES } = require('./domain/discussion-map.cjs');
 const { VALID_ROUTINGS } = require('./kernel/manifest-schema.cjs');
-const { sequenceMap, addItem, editItem, removeItem, renameItem, rerouteItem, handleItem, unhandleItem } = require('./domain/discovery-map.cjs');
-const { startTopic, completeTopic, reopenTopic, supersedeTopic, cancelTopic, reactivateTopic } = require('./domain/transitions.cjs');
+const { sequenceMap, addItem, addItemsBatch, editItem, removeItem, renameItem, rerouteItem, handleItem, unhandleItem } = require('./domain/discovery-map.cjs');
+const { sequenceBuildOrder } = require('./domain/build-order.cjs');
+const { startTopic, triageTopic, queueStatus, absorbConcern, requeueConcern, completeTopic, reopenTopic, staleSources, supersedeTopic, cancelTopic, reactivateTopic } = require('./domain/transitions.cjs');
 const { initTasks, startTask, fixAttempt, completeTask, analysisCycle } = require('./domain/tasks.cjs');
-const taskSections = require('./domain/projections/tasks.cjs');
 const { archiveItems, restoreItems, deleteItems } = require('./domain/inbox.cjs');
 const { stampAnalysisCache } = require('./domain/cache.cjs');
+const agentState = require('./domain/agent-state.cjs');
 const { boot } = require('./domain/boot.cjs');
+const { beatPresence, clearPresence, scanPresence, cleanupPresence, deferralSection } = require('./domain/presence.cjs');
+const { applySessionLabel, restoreSessionLabel, repairSessionLabels, setLabelConfig } = require('./domain/session-label.cjs');
 const { createWorkUnit } = require('./domain/workunit-create.cjs');
 const { completeWorkUnit, cancelWorkUnit, reactivateWorkUnit, pivotWorkUnit } = require('./domain/workunit-lifecycle.cjs');
 const { absorbWorkUnit } = require('./domain/workunit-absorb.cjs');
 const { promoteWorkUnit } = require('./domain/workunit-promote.cjs');
 const { openDiscoverySession, closeDiscoverySession } = require('./domain/discovery-session.cjs');
 const { runFieldCommand, isRead } = require('./domain/fields.cjs');
+const { renderSurface, SURFACES } = require('./domain/render.cjs');
+const roadmap = require('./domain/roadmap.cjs');
+const roadmapSession = require('./domain/roadmap-session.cjs');
 
 /** @param {string} msg @returns {never} */
 function die(msg) {
@@ -100,10 +108,12 @@ const USAGE = `Usage: engine <command> [args]
 Commands:
   boot
   manifest get    <dotpath> [<field.path>]
-  manifest set    <dotpath> <field> <value> [<field>=<value> …]
+  manifest set    <dotpath> <field> <value>
+  manifest set    <dotpath> <field>=<value> [<field>=<value> …]
   manifest push   <dotpath> <field> <value>
   manifest pull   <dotpath> <field> <value>
   manifest delete <dotpath> <field.path>
+  manifest apply  <work-unit> --file <ops.json>
   manifest exists <dotpath> [<field.path>]
   manifest list   [--status <s>] [--work-type <t>]
   manifest key-of <dotpath> <field.path> <value>
@@ -118,10 +128,13 @@ Commands:
   workunit promote <work-unit> <topic> --to <cc-work-unit> --description <text>
   discussion-map add <work-unit> <topic> <subtopic> [--parent <subtopic>]
   discussion-map set <work-unit> <topic> <subtopic> <state>
+  discussion-map set <work-unit> <topic> <subtopic>=<state> [<subtopic>=<state> …]
+  build-order sequence <work-unit> <topic>=<order> [<topic>=<order> …]
   discovery-map sequence <work-unit> <topic>=<order> [<topic>=<order> …]
   discovery-map add <work-unit> <name> <research|discussion>
                 (--summary <text> [--description <text>] | --backfill)
                 [--source <tag>] [--force-dismissed]
+  discovery-map add-batch <work-unit> --file <topics.json>
   discovery-map edit <work-unit> <name> [--summary <text>] [--description <text>]
   discovery-map remove <work-unit> <name>
   discovery-map rename <work-unit> <old> <new>
@@ -131,11 +144,23 @@ Commands:
   discovery-session open  <work-unit> --session-log-file <path>
   discovery-session close <work-unit> -m <message>
   topic start <work-unit> <phase> <topic>
+  topic triage <work-unit> <phase> <topic> [--concern <file> --slug <kebab> -m <message>]
+  topic queue <work-unit> <phase> <topic>
+  topic absorb <work-unit> <phase> <topic> --file <NNN-slug.md> -m <message>
+  topic requeue <work-unit> <from-phase> <to-phase> <topic> --file <NNN-slug.md> -m <message>
+  presence beat <work-unit> <phase> <topic>
+  presence clear <work-unit> <phase> <topic>
+  presence scan <work-unit>
+  presence cleanup [session-id]
+  session label <work-unit> <phase> <topic>
+  session label-config <true|false>
+  session cleanup [session-id]
   topic complete <work-unit> <phase> <topic>
   topic reopen <work-unit> <phase> <topic>
   topic supersede <work-unit> <phase> <topic> --by <topic>
-  topic cancel <work-unit> <phase> <topic>
+  topic cancel <work-unit> <phase> <topic> [--cascade]
   topic reactivate <work-unit> <phase> <topic>
+  sources stale <work-unit> <discussion> [--except <spec-topic>]
   task init <work-unit> <topic>
   task start <work-unit> <topic> <internal-id>
   task fix-attempt <work-unit> <topic> <internal-id> --findings-file <path>
@@ -145,14 +170,119 @@ Commands:
   inbox archive <path> [<path> …]
   inbox restore <path> [<path> …]
   inbox delete <path> [<path> …]
+  roadmap state
+  roadmap add <name> --horizon <h> --summary <text> [--origin <tag>] [--source <path> …]
+  roadmap add-batch --file <items.json>
+  roadmap edit <name> --summary <text>
+  roadmap rename <old> <new>
+  roadmap move <name> --horizon <h>
+  roadmap remove <name>
+  roadmap pull <name> [<name> …] --into <work-unit>
+  roadmap bind <name> --topic <topic>
+  roadmap pull-forward <name> --into <epic> --routing <research|discussion> [--force-dismissed]
+  roadmap flag <name>
+  roadmap session open --session-log-file <path>
+  roadmap session close -m <message>
+  roadmap import <path> [<path> …]
+  roadmap horizon add <name> [--position <n>]
+  roadmap horizon rename <old> <new>
+  roadmap horizon reorder <name> [<name> …]   (the complete order)
+  roadmap horizon merge <from> --into <to>
+  roadmap horizon split <name> --new <name> --items <a,b,…> [--position <n>]
+  roadmap horizon remove <name>
   cache stamp <work-unit> (research-analysis|gap-analysis)
-  commit <work-unit> -m <message>
+  agent dispatch <work-unit> <phase> <topic> --kind <kind> [--label <slug> …] [--set <NNN>] [--final]
+  agent scan     <work-unit> <phase> <topic>
+  agent ack      <work-unit> <phase> <topic> <id> (--findings <F1,F2,…> | --clean)
+  agent announce <work-unit> <phase> <topic> <id>
+  agent surface  <work-unit> <phase> <topic> <id> <finding>[,<finding>…]
+  agent incorporate <work-unit> <phase> <topic> <id>
+  commit <work-unit> -m <message> [--plan <topic>]
   commit --inbox -m <message>
+  commit --roadmap -m <message>
   commit --workflows -m <message>
-  render signpost <label> [--style step|substep] [--width N]
-  render box <title> [--width N]
-  render wrap <text> [--width N] [--prefix STR]
-  render tree [--width N]            (reads a JSON TreeNode array on stdin)`;
+  render resume-gate <wu.phase.topic> [--triage N] [--variant plan|review|scoping|session]  (session: bare <wu>)
+  render task-list   <wu.planning.topic> --file <payload.json>
+  render findings-summary <wu.phase.topic> --file <payload.json>
+  render finding          <wu.phase.topic> --file <payload.json> [--view full]
+  render finding-announce <wu.phase.topic> --file <payload.json>
+  render finding-batch    <wu.phase.topic> --file <payload.json>
+  render review-presentation <wu.review.topic> --file <payload.json>
+  render review-gate      <wu.review.topic> --verdict pass|fail [--replan N] [--out-of-scope N]
+  render spec-review-gate <wu.specification.topic> --variant continue|reloop
+  render spec-completion-gate <wu.specification.topic> --variant assessment|signoff
+  render carry-note-gate  <wu.research.topic> --file <payload.json>
+  render hypothesis-board <wu.investigation.topic> --file <payload.json> --variant plan|resume|check-in|pivot
+  render fix-direction     <wu.investigation.topic> --file <payload.json>
+  render validation-gate   <wu.investigation.topic> --variant root-cause
+  render validation-report <wu.investigation.topic> --file <payload.json> --variant root-cause|fix
+  render project-skills   <wu.implementation.topic> --variant confirm|discovery|skipped [--file <payload.json>]
+  render linters          <wu.implementation.topic> --variant confirm|discovery|skipped [--file <payload.json>]
+  render convergence-diagnostic <wu.phase.topic> --file <payload.json>
+  render triage-announce  <wu.phase.topic>
+  render triage-offer     <wu.phase.topic> --file <payload.json>
+  render triage-block     <wu.phase.topic>
+  render requeue-offer    <wu.phase.topic> --file <payload.json>
+  render reroute-offer    <wu.phase.topic> --file <payload.json>
+  render reroute-candidates <wu.phase.topic> --file <payload.json>
+  render off-topic-offer  <wu.phase.topic> --file <payload.json> [--variant discussion]
+  render proposed-task    <wu.phase.topic> --file <payload.json> --gate gated|auto [--comment-hint STR]
+  render incoherence-gate <wu.phase.topic> --file <payload.json> --variant conflict|gap-route|held-doc
+  render cancel-cascade-gate <wu.phase.topic>
+  render resurface-gate   <wu.phase.topic> --file <payload.json> [--view full]
+  render construction-gate <wu.phase.topic>
+  render tasks-overview   <wu.phase.topic> --file <payload.json>
+  render author-task-gate <wu.planning.topic> --m N --total N --title STR
+  render phase-tree       <wu.planning.topic> --file <payload.json> [--approve]
+  render phase-completed   <wu> --phase <phase> [--paths]
+  render phase-note        <wu.phase.topic> --verb <Word> [--noun <word>]
+  render entry-gate        <wu.phase.topic> [--own]  (planning|implementation|review|specification)
+  render early-completion-gate <wu>
+  render revisit-gate      <wu> --prev <phase> --next <phase>
+  render cancel-gate <wu.phase.topic>
+  render epic-all-done-gate <wu>
+  render epic-soft-gate <wu> --action <action> [--topic <topic>]
+  render task-brief        <wu.implementation.topic> --file <payload.json>
+  render task-result       <wu.implementation.topic> --file <payload.json> --result approved|needs-changes|blocked|failed
+  render task-gate         <wu.implementation.topic>
+  render fix-gate          <wu.implementation.topic>
+  render blocked-tasks
+  render cycle-limit       <wu.implementation.topic>
+  render cycle-gate
+  render workunit-receipt  <wu> --verb complete|cancel|reactivate|pivot [--pipeline [--skipped-review]] [--warn]
+  render topic-receipt     <wu.phase.topic> --verb complete|cancel|reactivate [--warn]
+  render absorb-receipt    <epic> --topic <name> [--moved research,seeds,imports] [--warn]
+  render promote-receipt   <wu.specification.topic> --to <cc-work-unit> [--warn]
+  render pivot-continuation <wu>
+  render session-receipt   <wu> [--warn]
+  render absorb-target     <feature>
+  render plan-topics       <wu>
+  render revisit-phases    <wu>
+  render roadmap-view
+  render roadmap-add-gate --horizon <name>
+  render roadmap-session-receipt [--warn]
+  render roadmap-harvest-gate
+  render roadmap-parks-gate
+  render roadmap-shape-gate
+  render roadmap-conclude-gate
+  render name-gate [--variant collision]
+  render shape-gate
+  render synthesis-gate
+  render query-failure-gate
+  render baseline-progress
+  render baseline-area-gate --area <name>
+  render baseline-paused
+  render baseline-receipt
+  render baseline-scope-gate --file <payload.json>
+  render baseline-round --file <payload.json>
+  render baseline-doc-gate
+  render baseline-manage-gate
+  render baseline-doc-pick
+  render baseline-offer-gate
+  render signpost <label> [--style step|substep] [--width N]     (dev aid)
+  render box <title> [--width N]                                 (dev aid)
+  render wrap <text> [--width N] [--prefix STR]                  (dev aid)
+  render tree [--width N]            (dev aid; JSON TreeNode array on stdin)`;
 
 // ---------------------------------------------------------------------------
 // manifest — the field surface (domain/fields.cjs): dot-path addressing over
@@ -285,10 +415,23 @@ function runDiscussionMap(argv) {
       }
       respond(recordSubtopicAdd(cwd, workUnit, topic, subtopic, { parent: opts.parent ?? null }));
     } else if (command === 'set') {
-      if (!workUnit || !topic || !subtopic || !state) {
-        throw new Error(`Usage: engine discussion-map set <work-unit> <topic> <subtopic> <${SUBTOPIC_STATES.join('|')}>`);
+      const pairs = positional.slice(2);
+      if (pairs.some((p) => p.includes('='))) {
+        // Uniform batch — every argument a <subtopic>=<state> pair, never
+        // mixed with the positional form (the manifest set grammar).
+        if (!workUnit || !topic || !pairs.length || !pairs.every((p) => /^[^=]+=[^=]+$/.test(p))) {
+          throw new Error(`Usage: engine discussion-map set <work-unit> <topic> <subtopic>=<state> [<subtopic>=<state> …] — uniform pairs, never mixed with the positional form`);
+        }
+        respond(recordSubtopicStates(cwd, workUnit, topic, pairs.map((p) => {
+          const i = p.indexOf('=');
+          return [p.slice(0, i), p.slice(i + 1)];
+        })));
+      } else {
+        if (!workUnit || !topic || !subtopic || !state) {
+          throw new Error(`Usage: engine discussion-map set <work-unit> <topic> <subtopic> <${SUBTOPIC_STATES.join('|')}> — or a uniform <subtopic>=<state> batch`);
+        }
+        respond(recordSubtopicState(cwd, workUnit, topic, subtopic, state));
       }
-      respond(recordSubtopicState(cwd, workUnit, topic, subtopic, state));
     } else {
       throw new Error('Usage: engine discussion-map <add|set> …');
     }
@@ -314,24 +457,23 @@ function runDiscoveryMap(argv) {
   try {
     const { opts, flags, positional } = parseArgs(rest, ['force-dismissed', 'backfill']);
     const [workUnit] = positional;
+    if (command === 'add-batch') {
+      if (!workUnit) throw new Error('Usage: engine discovery-map add-batch <work-unit> --file <topics.json>');
+      if (!opts.file) throw new Error('discovery-map add-batch: --file <topics.json> is required');
+      let parsed;
+      try {
+        parsed = JSON.parse(fs.readFileSync(path.resolve(cwd, opts.file), 'utf8'));
+      } catch (err) {
+        throw new Error(`discovery-map add-batch: cannot read payload: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      respond(addItemsBatch(cwd, workUnit, parsed));
+      return;
+    }
     if (command === 'sequence') {
       if (!workUnit || positional.length < 2) {
         throw new Error('Usage: engine discovery-map sequence <work-unit> <topic>=<order> [<topic>=<order> …]');
       }
-      /** @type {Record<string, number>} */
-      const orders = {};
-      for (const pair of positional.slice(1)) {
-        const eq = pair.indexOf('=');
-        const name = eq > 0 ? pair.slice(0, eq) : '';
-        const value = eq > 0 ? pair.slice(eq + 1) : '';
-        if (!name || !/^[1-9][0-9]*$/.test(value)) {
-          throw new Error(`bad assignment "${pair}" (expected {topic}={order}, order a positive integer)`);
-        }
-        if (name in orders) {
-          throw new Error(`topic "${name}" assigned twice`);
-        }
-        orders[name] = parseInt(value, 10);
-      }
+      const orders = parseOrderPairs(positional.slice(1));
       respond(sequenceMap(cwd, workUnit, orders));
     } else if (command === 'add') {
       // Strict positional count: an unquoted payload would spill into
@@ -379,6 +521,59 @@ function runDiscoveryMap(argv) {
     failJson(err);
   }
 }
+
+
+/**
+ * Parse `{topic}={order}` pairs shared by the two sequencing verbs. Callers
+ * guard for at least one pair before calling.
+ * @param {string[]} pairs @returns {Record<string, number>}
+ */
+function parseOrderPairs(pairs) {
+  /** @type {Record<string, number>} */
+  const orders = {};
+  for (const pair of pairs) {
+    const eq = pair.indexOf('=');
+    const name = eq > 0 ? pair.slice(0, eq) : '';
+    const value = eq > 0 ? pair.slice(eq + 1) : '';
+    if (!name || !/^[1-9][0-9]*$/.test(value)) {
+      throw new Error(`bad assignment "${pair}" (expected {topic}={order}, order a positive integer)`);
+    }
+    if (name in orders) {
+      throw new Error(`topic "${name}" assigned twice`);
+    }
+    orders[name] = Number(value);
+  }
+  return orders;
+}
+
+// ---------------------------------------------------------------------------
+// build-order — the spec-side twin of discovery-map sequencing. One verb:
+// `sequence` records the whole live set's order in one transaction and
+// clears `build_order_stale`. Validation (full coverage, contiguous 1..N)
+// lives in the domain op.
+// ---------------------------------------------------------------------------
+
+/** @param {string[]} argv */
+function runBuildOrder(argv) {
+  const [command, ...rest] = argv;
+  const cwd = process.cwd();
+
+  try {
+    if (command !== 'sequence') {
+      throw new Error('Usage: engine build-order sequence <work-unit> <topic>=<order> [<topic>=<order> …]');
+    }
+    const { positional } = parseArgs(rest, []);
+    const [workUnit] = positional;
+    if (!workUnit || positional.length < 2) {
+      throw new Error('Usage: engine build-order sequence <work-unit> <topic>=<order> [<topic>=<order> …]');
+    }
+    const orders = parseOrderPairs(positional.slice(1));
+    respond(sequenceBuildOrder(cwd, workUnit, orders));
+  } catch (err) {
+    failJson(err);
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // discovery-session — the epic discovery-session lifecycle. open installs
@@ -429,7 +624,7 @@ function runDiscoverySession(argv) {
 }
 
 // ---------------------------------------------------------------------------
-// topic — phase-item transitions. start/complete/reopen/supersede are
+// topic — phase-item transitions. start/triage/complete/reopen/supersede are
 // manifest-side lifecycle bookkeeping (KB sync where the phase is indexed:
 // index on complete, remove on supersede; reopen syncs nothing —
 // warn-don't-block) with no git commit — the calling session's commit
@@ -439,7 +634,114 @@ function runDiscoverySession(argv) {
 // happened — no follow-up read needed.
 // ---------------------------------------------------------------------------
 
-const TOPIC_COMMANDS = { start: startTopic, complete: completeTopic, reopen: reopenTopic, cancel: cancelTopic, reactivate: reactivateTopic };
+const TOPIC_COMMANDS = { start: startTopic, triage: triageTopic, complete: completeTopic, reopen: reopenTopic, cancel: cancelTopic, reactivate: reactivateTopic };
+
+/**
+ * A SessionEnd hook target's session id: the argument when given, else the
+ * hook's stdin JSON.
+ * @param {string[]} rest @param {string} usage @returns {string|null}
+ */
+function hookSessionId(rest, usage) {
+  if (rest.length > 1) throw new Error(usage);
+  let sessionId = rest[0] || null;
+  if (!sessionId && !process.stdin.isTTY) {
+    try { sessionId = (JSON.parse(fs.readFileSync(0, 'utf8')) || {}).session_id || null; } catch { sessionId = null; }
+  }
+  return sessionId;
+}
+
+/** @param {string[]} argv */
+function runPresence(argv) {
+  const [command, ...rest] = argv;
+  try {
+    if (command === 'beat' || command === 'clear') {
+      const [workUnit, phase, topic] = rest;
+      if (!workUnit || !phase || !topic || rest.length !== 3) {
+        throw new Error(`Usage: engine presence ${command} <work-unit> <phase> <topic>`);
+      }
+      respond((command === 'beat' ? beatPresence : clearPresence)(process.cwd(), workUnit, phase, topic));
+      return;
+    }
+    if (command === 'scan') {
+      const [workUnit] = rest;
+      if (!workUnit || rest.length !== 1) throw new Error('Usage: engine presence scan <work-unit>');
+      const res = scanPresence(process.cwd(), workUnit);
+      respond(res);
+      respondSections(deferralSection(res));
+      return;
+    }
+    if (command === 'cleanup') {
+      // The SessionEnd hook's target. Root resolution favours the
+      // invocation cwd (a project root has `.workflows`), falling back to
+      // CLAUDE_PROJECT_DIR for hooks fired from a drifted cwd.
+      const sessionId = hookSessionId(rest, 'Usage: engine presence cleanup [session-id]');
+      const cwd = fs.existsSync(path.join(process.cwd(), '.workflows'))
+        ? process.cwd()
+        : (process.env.CLAUDE_PROJECT_DIR || process.cwd());
+      respond(cleanupPresence(cwd, sessionId));
+      return;
+    }
+    throw new Error('Usage: engine presence <beat|clear|scan|cleanup> …');
+  } catch (err) {
+    failJson(err);
+  }
+}
+
+/** @param {string[]} argv */
+function runSession(argv) {
+  const [command, ...rest] = argv;
+  try {
+    if (command === 'label') {
+      const [workUnit, phase, topic] = rest;
+      if (!workUnit || !phase || !topic || rest.length !== 3) {
+        throw new Error('Usage: engine session label <work-unit> <phase> <topic>');
+      }
+      respond(applySessionLabel(process.cwd(), workUnit, phase, topic));
+      return;
+    }
+    if (command === 'label-config') {
+      const [value] = rest;
+      if (rest.length !== 1 || (value !== 'true' && value !== 'false')) {
+        throw new Error('Usage: engine session label-config <true|false>');
+      }
+      respond(setLabelConfig(value === 'true'));
+      return;
+    }
+    if (command === 'repair') {
+      if (rest.length !== 0) throw new Error('Usage: engine session repair');
+      respond(repairSessionLabels(process.cwd()));
+      return;
+    }
+    if (command === 'cleanup') {
+      // The SessionEnd hook's target. The stash store is machine-global, so
+      // no project root is needed.
+      respond(restoreSessionLabel(hookSessionId(rest, 'Usage: engine session cleanup [session-id]')));
+      return;
+    }
+    throw new Error('Usage: engine session <label|label-config|repair|cleanup> …');
+  } catch (err) {
+    failJson(err);
+  }
+}
+
+/** @param {string[]} argv */
+function runSources(argv) {
+  const [command, ...rest] = argv;
+  try {
+    if (command === 'stale') {
+      const { opts, positional } = parseArgs(rest);
+      const [workUnit, discussion] = positional;
+      if (!workUnit || !discussion || positional.length !== 2 || ('except' in opts && typeof opts.except !== 'string')) {
+        throw new Error('Usage: engine sources stale <work-unit> <discussion> [--except <spec-topic>]');
+      }
+      respond(staleSources(process.cwd(), workUnit, discussion, { except: opts.except }));
+      return;
+    }
+    throw new Error('Usage: engine sources <stale> …');
+  } catch (err) {
+    failJson(err);
+  }
+}
 
 /** @param {string[]} argv */
 function runTopic(argv) {
@@ -454,8 +756,79 @@ function runTopic(argv) {
       respond(supersedeTopic(process.cwd(), workUnit, phase, topic, { by: opts.by }));
       return;
     }
+    if (command === 'queue') {
+      const [workUnit, phase, topic] = rest;
+      if (!workUnit || !phase || !topic || rest.length !== 3) {
+        throw new Error('Usage: engine topic queue <work-unit> <phase> <topic>');
+      }
+      respond(queueStatus(process.cwd(), workUnit, phase, topic));
+      return;
+    }
+    if (command === 'absorb') {
+      /** @type {string[]} */ const pos = [];
+      /** @type {string|undefined} */ let file;
+      /** @type {string|undefined} */ let message;
+      for (let i = 0; i < rest.length; i++) {
+        const a = rest[i];
+        if (a === '--file') file = rest[++i];
+        else if (a === '-m' || a === '--message') message = rest[++i];
+        else pos.push(a);
+      }
+      const [workUnit, phase, topic] = pos;
+      if (!workUnit || !phase || !topic || pos.length !== 3 || !file || !message) {
+        throw new Error('Usage: engine topic absorb <work-unit> <phase> <topic> --file <NNN-slug.md> -m <message>');
+      }
+      respond(absorbConcern(process.cwd(), workUnit, phase, topic, { file, message }));
+      return;
+    }
+    if (command === 'requeue') {
+      /** @type {string[]} */ const pos = [];
+      /** @type {string|undefined} */ let file;
+      /** @type {string|undefined} */ let message;
+      for (let i = 0; i < rest.length; i++) {
+        const a = rest[i];
+        if (a === '--file') file = rest[++i];
+        else if (a === '-m' || a === '--message') message = rest[++i];
+        else pos.push(a);
+      }
+      const [workUnit, fromPhase, toPhase, topic] = pos;
+      if (!workUnit || !fromPhase || !toPhase || !topic || pos.length !== 4 || !file || !message) {
+        throw new Error('Usage: engine topic requeue <work-unit> <from-phase> <to-phase> <topic> --file <NNN-slug.md> -m <message>');
+      }
+      respond(requeueConcern(process.cwd(), workUnit, fromPhase, toPhase, topic, { file, message }));
+      return;
+    }
+    if (command === 'triage') {
+      /** @type {string[]} */ const pos = [];
+      /** @type {string|undefined} */ let concern;
+      /** @type {string|undefined} */ let slug;
+      /** @type {string|undefined} */ let message;
+      for (let i = 0; i < rest.length; i++) {
+        const a = rest[i];
+        if (a === '--concern') concern = rest[++i];
+        else if (a === '--slug') slug = rest[++i];
+        else if (a === '-m' || a === '--message') message = rest[++i];
+        else pos.push(a);
+      }
+      const [workUnit, phase, topic] = pos;
+      const delivering = concern !== undefined || slug !== undefined || message !== undefined;
+      if (!workUnit || !phase || !topic || pos.length !== 3 || (delivering && !(concern && slug && message))) {
+        throw new Error('Usage: engine topic triage <work-unit> <phase> <topic> [--concern <file> --slug <kebab> -m <message>]');
+      }
+      respond(triageTopic(process.cwd(), workUnit, phase, topic, delivering ? { concernFile: concern, slug, message } : {}));
+      return;
+    }
+    if (command === 'cancel') {
+      const { flags, positional } = parseArgs(rest, ['cascade']);
+      const [workUnit, phase, topic] = positional;
+      if (!workUnit || !phase || !topic || positional.length !== 3) {
+        throw new Error('Usage: engine topic cancel <work-unit> <phase> <topic> [--cascade]');
+      }
+      respond(cancelTopic(process.cwd(), workUnit, phase, topic, { cascade: flags.has('cascade') }));
+      return;
+    }
     if (!Object.prototype.hasOwnProperty.call(TOPIC_COMMANDS, command)) {
-      throw new Error('Usage: engine topic <start|complete|reopen|supersede|cancel|reactivate> <work-unit> <phase> <topic>');
+      throw new Error('Usage: engine topic <start|triage|complete|reopen|supersede|cancel|reactivate|queue|absorb|requeue> <work-unit> <phase> <topic>');
     }
     const fn = TOPIC_COMMANDS[/** @type {keyof typeof TOPIC_COMMANDS} */ (command)];
     const [workUnit, phase, topic] = rest;
@@ -472,9 +845,10 @@ function runTopic(argv) {
 // task — implementation-task bookkeeping: format-blind, manifest-side only.
 // The engine never touches a task backend; the session does the plan surgery,
 // these commands record it. No git commit — the per-task commit is the
-// session's. After the JSON line, each verb appends its state-derived gate
-// sections (domain/projections/tasks.cjs) — the task loop emits them verbatim
-// at the gate each marker names.
+// session's. Each verb answers with its one-line JSON only; the loop's
+// brief, result header, and gate sections are fetched by their own `render`
+// calls (task-brief, task-result, task-gate, fix-gate, blocked-tasks,
+// cycle-limit, cycle-gate) at the stage that displays them.
 // ---------------------------------------------------------------------------
 
 /** @param {string[]} argv */
@@ -488,26 +862,19 @@ function runTask(argv) {
       if (!workUnit || !topic) throw new Error(`Usage: engine task ${command} <work-unit> <topic>`);
       if (command === 'init') {
         respond(initTasks(cwd, workUnit, topic));
-        respondSections(taskSections.initSections());
       } else {
-        const result = analysisCycle(cwd, workUnit, topic);
-        respond(result);
-        respondSections(taskSections.analysisCycleSections(result));
+        respond(analysisCycle(cwd, workUnit, topic));
       }
     } else if (command === 'start') {
       if (!workUnit || !topic || !internalId) {
         throw new Error('Usage: engine task start <work-unit> <topic> <internal-id>');
       }
-      const result = startTask(cwd, workUnit, topic, internalId);
-      respond(result);
-      respondSections(taskSections.startSections(result));
+      respond(startTask(cwd, workUnit, topic, internalId));
     } else if (command === 'fix-attempt') {
       if (!workUnit || !topic || !internalId || !opts['findings-file']) {
         throw new Error('Usage: engine task fix-attempt <work-unit> <topic> <internal-id> --findings-file <path>');
       }
-      const result = fixAttempt(cwd, workUnit, topic, internalId, opts['findings-file']);
-      respond(result);
-      respondSections(taskSections.fixAttemptSections(result, internalId));
+      respond(fixAttempt(cwd, workUnit, topic, internalId, opts['findings-file']));
     } else if (command === 'complete') {
       if (!workUnit || !topic) {
         throw new Error('Usage: engine task complete <work-unit> <topic> (<internal-id> | --external <id>) [--skipped] [--next-task <id|~>] [--phase <N>] [--phase-complete]');
@@ -528,7 +895,6 @@ function runTask(argv) {
         phaseComplete: flags.has('phase-complete'),
       });
       respond(result);
-      respondSections(taskSections.completeSections());
     } else {
       throw new Error('Usage: engine task <init|start|fix-attempt|complete|analysis-cycle> …');
     }
@@ -560,6 +926,157 @@ function runInbox(argv) {
 }
 
 // ---------------------------------------------------------------------------
+// roadmap — the product-roadmap layer on the project manifest
+// (domain/roadmap.cjs): horizons + capability-grain items, lifecycle by
+// join. Every mutation is one transaction under the project lock with its
+// own pathspec commit of the project manifest — no work-unit cadence covers
+// it, and a park fired mid-session must be durable immediately. `state` is
+// the derived read every consumer shares.
+// ---------------------------------------------------------------------------
+
+/** @param {string[]} argv */
+function runRoadmap(argv) {
+  const [command, ...rest] = argv;
+  const cwd = process.cwd();
+  try {
+    if (command === 'state') {
+      if (rest.length !== 0) throw new Error('Usage: engine roadmap state');
+      respond(roadmap.roadmapState(cwd));
+      return;
+    }
+    if (command === 'session') {
+      const [sub, ...srest] = rest;
+      if (sub === 'open') {
+        /** @type {string|null} */ let sessionLogFile = null;
+        for (let i = 0; i < srest.length; i++) {
+          if (srest[i] === '--session-log-file') sessionLogFile = srest[++i];
+          else throw new Error(`unexpected argument "${srest[i]}"`);
+        }
+        if (!sessionLogFile) throw new Error('Usage: engine roadmap session open --session-log-file <path>');
+        respond(roadmapSession.openRoadmapSession(cwd, { sessionLogFile }));
+        return;
+      }
+      if (sub === 'close') {
+        /** @type {string|null} */ let message = null;
+        for (let i = 0; i < srest.length; i++) {
+          if (srest[i] === '-m' || srest[i] === '--message') message = srest[++i];
+          else throw new Error(`unexpected argument "${srest[i]}"`);
+        }
+        if (!message) throw new Error('Usage: engine roadmap session close -m <message>');
+        respond(roadmapSession.closeRoadmapSession(cwd, { message }));
+        return;
+      }
+      throw new Error('Usage: engine roadmap session <open|close> …');
+    }
+    if (command === 'import') {
+      if (rest.length === 0 || rest.some((a) => a.startsWith('--'))) {
+        throw new Error('Usage: engine roadmap import <path> [<path> …]');
+      }
+      respond(roadmapSession.importRoadmapFiles(cwd, rest));
+      return;
+    }
+    if (command === 'horizon') {
+      const [sub, ...hrest] = rest;
+      const { opts, positional } = parseArgs(hrest);
+      /** @type {number|undefined} */
+      let position;
+      if (opts.position !== undefined) {
+        position = parseInt(opts.position, 10);
+        if (!Number.isInteger(position)) throw new Error(`--position must be a number (got "${opts.position}")`);
+      }
+      if (sub === 'add') {
+        if (positional.length !== 1) throw new Error('Usage: engine roadmap horizon add <name> [--position <n>]');
+        respond(roadmap.addHorizon(cwd, positional[0], { position }));
+      } else if (sub === 'rename') {
+        if (positional.length !== 2) throw new Error('Usage: engine roadmap horizon rename <old> <new>');
+        respond(roadmap.renameHorizon(cwd, positional[0], positional[1]));
+      } else if (sub === 'reorder') {
+        if (positional.length === 0) throw new Error('Usage: engine roadmap horizon reorder <name> [<name> …] (the complete order)');
+        respond(roadmap.reorderHorizons(cwd, positional));
+      } else if (sub === 'merge') {
+        if (positional.length !== 1 || !opts.into) throw new Error('Usage: engine roadmap horizon merge <from> --into <to>');
+        respond(roadmap.mergeHorizons(cwd, positional[0], opts.into));
+      } else if (sub === 'split') {
+        if (positional.length !== 1 || !opts.new || !opts.items) {
+          throw new Error('Usage: engine roadmap horizon split <name> --new <name> --items <a,b,…> [--position <n>]');
+        }
+        const items = opts.items.split(',').map((s) => s.trim()).filter((s) => s !== '');
+        respond(roadmap.splitHorizon(cwd, positional[0], { newName: opts.new, items, position }));
+      } else if (sub === 'remove') {
+        if (positional.length !== 1) throw new Error('Usage: engine roadmap horizon remove <name>');
+        respond(roadmap.removeHorizon(cwd, positional[0]));
+      } else {
+        throw new Error('Usage: engine roadmap horizon <add|rename|reorder|merge|split|remove> …');
+      }
+      return;
+    }
+    const { opts, flags, lists, positional } = parseArgs(rest, ['force-dismissed'], ['source']);
+    if (command === 'add') {
+      // Strict positional count: an unquoted summary would spill into
+      // positionals and silently truncate the text — refuse instead.
+      if (positional.length !== 1) {
+        throw new Error('Usage: engine roadmap add <name> --horizon <h> --summary <text> [--origin <tag>] [--source <path> …]');
+      }
+      respond(roadmap.addRoadmapItem(cwd, positional[0], {
+        horizon: opts.horizon,
+        summary: opts.summary,
+        origin: opts.origin,
+        sources: lists.source || [],
+      }));
+    } else if (command === 'add-batch') {
+      if (positional.length !== 0 || !opts.file) throw new Error('Usage: engine roadmap add-batch --file <items.json>');
+      let parsed;
+      try {
+        parsed = JSON.parse(fs.readFileSync(path.resolve(cwd, opts.file), 'utf8'));
+      } catch (err) {
+        throw new Error(`roadmap add-batch: cannot read payload: ${err instanceof Error ? err.message : String(err)}`);
+      }
+      respond(roadmap.addRoadmapItemsBatch(cwd, parsed));
+    } else if (command === 'edit') {
+      if (positional.length !== 1 || opts.summary === undefined) {
+        throw new Error('Usage: engine roadmap edit <name> --summary <text>');
+      }
+      respond(roadmap.editRoadmapItem(cwd, positional[0], { summary: opts.summary }));
+    } else if (command === 'rename') {
+      if (positional.length !== 2) throw new Error('Usage: engine roadmap rename <old> <new>');
+      respond(roadmap.renameRoadmapItem(cwd, positional[0], positional[1]));
+    } else if (command === 'move') {
+      if (positional.length !== 1 || !opts.horizon) throw new Error('Usage: engine roadmap move <name> --horizon <h>');
+      respond(roadmap.moveRoadmapItem(cwd, positional[0], opts.horizon));
+    } else if (command === 'remove') {
+      if (positional.length !== 1) throw new Error('Usage: engine roadmap remove <name>');
+      respond(roadmap.removeRoadmapItem(cwd, positional[0]));
+    } else if (command === 'pull') {
+      if (positional.length === 0 || !opts.into) {
+        throw new Error('Usage: engine roadmap pull <name> [<name> …] --into <work-unit>');
+      }
+      respond(roadmap.pullItems(cwd, positional, { into: opts.into }));
+    } else if (command === 'bind') {
+      if (positional.length !== 1 || !opts.topic) {
+        throw new Error('Usage: engine roadmap bind <name> --topic <topic>');
+      }
+      respond(roadmap.bindItem(cwd, positional[0], { topic: opts.topic }));
+    } else if (command === 'pull-forward') {
+      if (positional.length !== 1 || !opts.into || !opts.routing) {
+        throw new Error('Usage: engine roadmap pull-forward <name> --into <epic> --routing <research|discussion> [--force-dismissed]');
+      }
+      respond(roadmap.pullForwardItem(cwd, positional[0], {
+        into: opts.into,
+        routing: opts.routing,
+        forceDismissed: flags.has('force-dismissed'),
+      }));
+    } else if (command === 'flag') {
+      if (positional.length !== 1) throw new Error('Usage: engine roadmap flag <name>');
+      respond(roadmap.flagJoined(cwd, positional[0]));
+    } else {
+      throw new Error('Usage: engine roadmap <state|add|add-batch|edit|rename|move|remove|pull|bind|pull-forward|flag|horizon> …');
+    }
+  } catch (err) {
+    failJson(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // cache — analysis-cache stamping. Checksums the current completed inputs
 // exactly as the read side does and writes the cache object. No git commit —
 // the calling flow's commit cadence picks the manifest change up.
@@ -573,6 +1090,61 @@ function runCache(argv) {
       throw new Error('Usage: engine cache stamp <work-unit> <research-analysis|gap-analysis>');
     }
     respond(stampAnalysisCache(process.cwd(), workUnit, kind));
+  } catch (err) {
+    failJson(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// agent — the background-agent lifecycle store (domain/agent-state.cjs).
+// ---------------------------------------------------------------------------
+
+/** @param {string[]} argv */
+function runAgent(argv) {
+  const [command, ...rest] = argv;
+  try {
+    const { opts, flags, lists, positional } = parseArgs(rest, ['clean', 'final'], ['label']);
+    const [workUnit, phase, topic, id, finding] = positional;
+    const cwd = process.cwd();
+    if (command === 'dispatch') {
+      if (!workUnit || !phase || !topic || positional.length !== 3 || !opts.kind) {
+        throw new Error('Usage: engine agent dispatch <work-unit> <phase> <topic> --kind <kind> [--label <slug> …] [--set <NNN>] [--final]');
+      }
+      respond(agentState.dispatchAgent(cwd, workUnit, phase, topic, { kind: opts.kind, labels: lists.label || [], set: opts.set, final: flags.has('final') }));
+      return;
+    }
+    if (command === 'scan') {
+      if (!workUnit || !phase || !topic || positional.length !== 3) {
+        throw new Error('Usage: engine agent scan <work-unit> <phase> <topic>');
+      }
+      respond(agentState.scanAgents(cwd, workUnit, phase, topic));
+      return;
+    }
+    if (command === 'ack') {
+      const hasFindings = opts.findings !== undefined;
+      if (!workUnit || !phase || !topic || !id || positional.length !== 4 || hasFindings === flags.has('clean')) {
+        throw new Error('Usage: engine agent ack <work-unit> <phase> <topic> <id> (--findings <F1,F2,…> | --clean)');
+      }
+      const findings = hasFindings ? opts.findings.split(',').map((f) => f.trim()) : [];
+      respond(agentState.ackAgent(cwd, workUnit, phase, topic, id, { findings }));
+      return;
+    }
+    if (command === 'announce' || command === 'incorporate') {
+      if (!workUnit || !phase || !topic || !id || positional.length !== 4) {
+        throw new Error(`Usage: engine agent ${command} <work-unit> <phase> <topic> <id>`);
+      }
+      const fn = command === 'announce' ? agentState.announceAgent : agentState.incorporateAgent;
+      respond(fn(cwd, workUnit, phase, topic, id));
+      return;
+    }
+    if (command === 'surface') {
+      if (!workUnit || !phase || !topic || !id || !finding || positional.length !== 5) {
+        throw new Error('Usage: engine agent surface <work-unit> <phase> <topic> <id> <finding>[,<finding>…]');
+      }
+      respond(agentState.surfaceFinding(cwd, workUnit, phase, topic, id, finding));
+      return;
+    }
+    throw new Error('Usage: engine agent <dispatch|scan|ack|announce|surface|incorporate> <work-unit> <phase> <topic> …');
   } catch (err) {
     failJson(err);
   }
@@ -598,38 +1170,181 @@ function runBoot() {
 // fine: {committed: null}.
 // ---------------------------------------------------------------------------
 
+// Per-phase artifact pathspecs for `commit --topic` — the paths a topic's
+// session writes, joined with the work-unit manifest at the call site. The
+// triage-legal phases carry their sidecar directory so a drain's deletions
+// ride the same commit.
+const TOPIC_COMMIT_ARTIFACTS = /** @type {Record<string, (wu: string, topic: string) => string[]>} */ ({
+  research: (wu, t) => [`.workflows/${wu}/research/${t}.md`, `.workflows/${wu}/research/.triage/${t}`],
+  discussion: (wu, t) => [`.workflows/${wu}/discussion/${t}.md`, `.workflows/${wu}/discussion/.triage/${t}`],
+  investigation: (wu, t) => [`.workflows/${wu}/investigation/${t}.md`],
+  specification: (wu, t) => [`.workflows/${wu}/specification/${t}`],
+  planning: (wu, t) => [`.workflows/${wu}/planning/${t}`],
+  implementation: (wu, t) => [`.workflows/${wu}/implementation/${t}`],
+  review: (wu, t) => [`.workflows/${wu}/review/${t}`],
+});
+
+/**
+ * Whether the directory holds any file, at any depth. An existing-but-empty
+ * directory is a git no-man's-land: `git add` tolerates its pathspec
+ * silently while `git commit -- <paths>` refuses it — the state every
+ * triage queue reaches once its last concern's deletion is committed.
+ * @param {string} dirAbs
+ * @returns {boolean}
+ */
+function dirHasFiles(dirAbs) {
+  /** @type {fs.Dirent[]} */
+  let entries;
+  try {
+    entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const e of entries) {
+    if (e.isDirectory()) {
+      if (dirHasFiles(path.join(dirAbs, e.name))) return true;
+    } else {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Keep pathspecs the whole add+commit sequence will accept: a file on disk,
+ * a directory with content, or a path holding index entries (a
+ * deleted-but-tracked path still stages its deletions). An empty directory
+ * with no index entries is dropped — see dirHasFiles.
+ * @param {string} cwd @param {string[]} specs
+ * @returns {string[]}
+ */
+function stageableSpecs(cwd, specs) {
+  const { execFileSync } = require('child_process');
+  return specs.filter((p) => {
+    const abs = path.join(cwd, p);
+    if (fs.existsSync(abs)) {
+      if (!fs.statSync(abs).isDirectory()) return true;
+      if (dirHasFiles(abs)) return true;
+    }
+    try {
+      return execFileSync('git', ['ls-files', '--', p], { cwd, encoding: 'utf8' }).trim() !== '';
+    } catch {
+      return false;
+    }
+  });
+}
+
 /** @param {string[]} argv */
 function runCommit(argv) {
   try {
     /** @type {string|null} */ let workUnit = null;
     /** @type {string|null} */ let message = null;
+    /** @type {string|null} */ let plan = null;
+    /** @type {string|null} */ let topicSpec = null;
     let inbox = false;
     let workflows = false;
+    let roadmapScope = false;
+    let kb = false;
     for (let i = 0; i < argv.length; i++) {
       const a = argv[i];
       if (a === '-m' || a === '--message') message = argv[++i];
+      else if (a === '--plan') plan = argv[++i];
+      else if (a === '--topic') topicSpec = argv[++i];
+      else if (a === '--kb') kb = true;
       else if (a === '--inbox') inbox = true;
       else if (a === '--workflows') workflows = true;
+      else if (a === '--roadmap') roadmapScope = true;
       else if (workUnit === null) workUnit = a;
       else throw new Error(`unexpected argument "${a}"`);
     }
-    const scopeCount = [inbox, workflows, workUnit !== null].filter(Boolean).length;
-    if (!message || scopeCount !== 1) {
-      throw new Error('Usage: engine commit <work-unit> -m <message> | engine commit --inbox -m <message> | engine commit --workflows -m <message>');
+    const scopeCount = [inbox, workflows, roadmapScope, workUnit !== null].filter(Boolean).length;
+    if (!message || scopeCount !== 1 || (plan !== null && workUnit === null) || plan === '' || plan === undefined ||
+        (topicSpec !== null && workUnit === null) || topicSpec === '' || topicSpec === undefined ||
+        (topicSpec !== null && plan !== null) || (kb && topicSpec === null)) {
+      throw new Error('Usage: engine commit <work-unit> -m <message> [--plan <topic> | --topic <phase>/<topic> [--kb]] | engine commit --inbox -m <message> | engine commit --roadmap -m <message> | engine commit --workflows -m <message>');
     }
     const cwd = process.cwd();
-    let scope;
+    /** @type {string|string[]} */ let scope;
     if (workflows) {
       scope = '.workflows';
     } else if (inbox) {
       scope = '.workflows/.inbox';
+    } else if (roadmapScope) {
+      // The product session's cadence commit: the roadmap dir (sessions,
+      // imports) plus the project manifest (the roadmap node lives there).
+      const specs = stageableSpecs(cwd, [roadmapSession.ROADMAP_DIR, '.workflows/manifest.json']);
+      if (specs.length === 0) {
+        respond({ committed: null, note: 'nothing to commit' });
+        return;
+      }
+      scope = specs;
     } else {
       const wu = /** @type {string} */ (workUnit);
-      if (wu.includes('/') || wu.includes('..')) throw new Error(`invalid work unit name "${wu}"`);
+      if (wu === '' || wu.includes('/') || wu.includes('..')) throw new Error(`invalid work unit name "${wu}"`);
       if (!fs.existsSync(path.join(cwd, '.workflows', wu))) {
         throw new Error(`no work unit directory: .workflows/${wu}`);
       }
       scope = `.workflows/${wu}`;
+      if (topicSpec !== null) {
+        // --topic: the action-scoped pathspec commit. `git commit -- <paths>`
+        // confines the commit to the topic's artifact paths plus the
+        // work-unit manifest — a concurrent session's dirty or staged files
+        // are never swept up. The KB dir does not ride: no KB-touching verb
+        // precedes a session-cadence commit, and KB-dirtying transactions
+        // commit their own store dirt.
+        const parts = topicSpec.split('/');
+        const phase = parts[0];
+        const topic = parts[1];
+        const artifact = Object.hasOwn(TOPIC_COMMIT_ARTIFACTS, phase) ? TOPIC_COMMIT_ARTIFACTS[phase] : undefined;
+        if (parts.length !== 2 || !artifact) {
+          throw new Error(`commit --topic: expected <phase>/<topic> with phase one of ${Object.keys(TOPIC_COMMIT_ARTIFACTS).join(', ')} — got "${topicSpec}"`);
+        }
+        if (topic === '' || topic.includes('..')) throw new Error(`invalid topic name "${topic}"`);
+        // --kb: the caller's action dirtied the store (a completion's
+        // knowledge index) — stage it with the write that produced it.
+        const specs = stageableSpecs(cwd, [
+          `.workflows/${wu}/manifest.json`,
+          ...artifact(wu, topic),
+          ...(kb ? [KB_DIR] : []),
+        ]);
+        if (specs.length === 0) {
+          respond({ committed: null, note: 'nothing to commit' });
+          return;
+        }
+        const committed = commitPathspecScoped(cwd, specs, message);
+        if (committed === null) respond({ committed: null, note: 'nothing to commit' });
+        else respond({ committed });
+        return;
+      }
+      if (plan !== null) {
+        // --plan: the plan's declared storage pathspecs (recorded at plan
+        // init from the format's authoring doc) plus the project manifest
+        // (plan init writes project defaults). A pathspec that neither exists
+        // on disk nor has index entries is skipped — `git add` would refuse
+        // it — while a deleted-but-tracked path still stages its deletions
+        // (the restart-cleanup commits depend on that).
+        const manifestFile = path.join(cwd, '.workflows', wu, 'manifest.json');
+        /** @type {any} */ let planItem;
+        try {
+          planItem = JSON.parse(fs.readFileSync(manifestFile, 'utf8')).phases?.planning?.items?.[plan];
+        } catch {
+          throw new Error(`commit --plan: cannot read .workflows/${wu}/manifest.json`);
+        }
+        if (!planItem) throw new Error(`commit --plan: no planning item "${plan}" in "${wu}"`);
+        const declared = planItem.storage_paths;
+        if (declared === undefined) {
+          throw new Error(`commit --plan: planning item "${plan}" has no storage_paths — a pre-upgrade plan; record the format's declared pathspecs once: engine manifest set ${wu}.planning.${plan} storage_paths '[…]' (the format's authoring.md names them; '[]' when it stores inside the work unit)`);
+        }
+        if (!Array.isArray(declared) || declared.some((p) => typeof p !== 'string')) {
+          throw new Error(`commit --plan: planning item "${plan}" has a malformed storage_paths (${JSON.stringify(declared)}) — must be an array of relative pathspec strings`);
+        }
+        for (const p of declared) {
+          if (p === '' || p === '.' || p.startsWith('/') || p.split('/').includes('..')) {
+            throw new Error(`commit --plan: illegal storage_paths entry ${JSON.stringify(p)} — pathspecs are relative, never ".", "..", or absolute`);
+          }
+        }
+        scope = [scope, ...stageableSpecs(cwd, ['.workflows/manifest.json', ...declared])];
+      }
     }
     const committed = commitScopedWithKb(cwd, scope, message);
     if (committed === null) respond({ committed: null, note: 'nothing to commit' });
@@ -642,8 +1357,27 @@ function runCommit(argv) {
 /** @param {string[]} argv */
 function runRender(argv) {
   const [command, ...rest] = argv;
-  const { opts, positional } = parseArgs(rest);
+  const { opts, flags, positional } = parseArgs(rest, ['approve', 'skipped-review', 'own', 'paths', 'warn', 'pipeline', 'donow', 'recommendations']);
   const width = opts.width !== undefined ? parseInt(opts.width, 10) : WIDTH;
+
+  if (Object.hasOwn(SURFACES, command)) {
+    try {
+      /** @type {{dotpath: string} & Record<string, string|undefined>} */
+      const args = { dotpath: positional[0], ...opts };
+      if (flags.has('approve')) args.approve = '1';
+      if (flags.has('skipped-review')) args['skipped-review'] = '1';
+      if (flags.has('own')) args.own = '1';
+      if (flags.has('paths')) args.paths = '1';
+      if (flags.has('warn')) args.warn = '1';
+      if (flags.has('pipeline')) args.pipeline = '1';
+      if (flags.has('donow')) args.donow = '1';
+      if (flags.has('recommendations')) args.recommendations = '1';
+      respondSections(renderSurface(process.cwd(), command, args));
+    } catch (err) {
+      failJson(err);
+    }
+    return;
+  }
 
   switch (command) {
     case 'signpost':
@@ -690,11 +1424,23 @@ function runCli(argv) {
     case 'discovery-map':
       runDiscoveryMap(rest);
       break;
+    case 'build-order':
+      runBuildOrder(rest);
+      break;
     case 'discovery-session':
       runDiscoverySession(rest);
       break;
     case 'topic':
       runTopic(rest);
+      break;
+    case 'sources':
+      runSources(rest);
+      break;
+    case 'presence':
+      runPresence(rest);
+      break;
+    case 'session':
+      runSession(rest);
       break;
     case 'task':
       runTask(rest);
@@ -702,8 +1448,14 @@ function runCli(argv) {
     case 'inbox':
       runInbox(rest);
       break;
+    case 'roadmap':
+      runRoadmap(rest);
+      break;
     case 'cache':
       runCache(rest);
+      break;
+    case 'agent':
+      runAgent(rest);
       break;
     case 'commit':
       runCommit(rest);

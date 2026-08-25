@@ -7,8 +7,9 @@
 // Judgment decides, code records: the conversation makes every state call;
 // these transitions validate and write it. Two levels max — a subtopic's
 // `parent` names another subtopic that is itself top-level. Subtopic keys are
-// kebab-case slugs (display titlecases them); insertion order is render
-// order. All errors throw loud and specific. The CLI transactions
+// kebab-case slugs (display titlecases them); storage is insertion-ordered and
+// the projection ranks rows for render. All errors throw loud and specific.
+// The CLI transactions
 // (recordSubtopicAdd / recordSubtopicState) run load→apply→save under the
 // work unit's manifest lock (the same lock every manifest writer honours)
 // with NO git commit — the calling session's commit cadence picks the
@@ -74,6 +75,30 @@ function discussionItem(manifest, topic) {
 function subtopicsOf(manifest, topic) {
   const item = discussionItem(manifest, topic);
   return item.subtopics && typeof item.subtopics === 'object' ? item.subtopics : {};
+}
+
+/**
+ * Subtopic → status snapshot for review-arming comparisons. Tolerant where
+ * `subtopicsOf` is loud: a topic with no discussion item yet is an empty
+ * map, never an error — arming must answer for topics the map hasn't
+ * reached, and a dispatch-time snapshot must never brick on a bare manifest.
+ * @param {object} manifest @param {string} topic
+ * @returns {Record<string, string>}
+ */
+function subtopicStatuses(manifest, topic) {
+  /** @type {Record<string, Subtopic>} */
+  let subs;
+  try {
+    subs = subtopicsOf(manifest, topic);
+  } catch {
+    return {};
+  }
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const [name, sub] of Object.entries(subs)) {
+    if (sub && typeof sub === 'object' && typeof sub.status === 'string') out[name] = sub.status;
+  }
+  return out;
 }
 
 /**
@@ -214,4 +239,30 @@ function recordSubtopicState(cwd, workUnit, topic, name, state) {
   return subtopicWriteResult(manifest, topic, name, sub.status);
 }
 
-module.exports = { SUBTOPIC_STATES, addSubtopic, setSubtopicState, mapState, subtopicsOf, recordSubtopicAdd, recordSubtopicState };
+/**
+ * The batch form of `discussion-map set`: several subtopic states in one
+ * load → apply → save under the work unit's manifest lock. Every entry
+ * validates as it applies and a throw aborts before save — a failing entry
+ * means nothing was written. No git commit.
+ * @param {string} cwd project root
+ * @param {string} workUnit
+ * @param {string} topic
+ * @param {Array<[string, string]>} entries  [name, state] pairs
+ * @returns {{set: Record<string, string>, all_decided: boolean, unresolved_count: number}}
+ */
+function recordSubtopicStates(cwd, workUnit, topic, entries) {
+  const { manifest } = withWorkUnitLock(cwd, workUnit, () => {
+    const loaded = loadWorkUnitManifest(cwd, workUnit);
+    for (const [name, state] of entries) setSubtopicState(loaded, topic, name, state);
+    saveWorkUnitManifest(cwd, workUnit, loaded);
+    return { manifest: loaded };
+  });
+  const state = mapState(manifest, topic);
+  return {
+    set: Object.fromEntries(entries),
+    all_decided: state.all_decided,
+    unresolved_count: state.unresolved.length,
+  };
+}
+
+module.exports = { SUBTOPIC_STATES, addSubtopic, setSubtopicState, mapState, subtopicsOf, subtopicStatuses, recordSubtopicAdd, recordSubtopicState, recordSubtopicStates };

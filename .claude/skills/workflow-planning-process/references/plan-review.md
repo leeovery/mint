@@ -10,6 +10,8 @@ Two-part review dispatched to sub-agents. Traceability runs first — its approv
 
 ## A. Cycle Initialization
 
+Before opening a cycle, read `manifest get {work_unit}.planning.{topic} tracking` — an `in-progress` entry is a prior cycle's tracking file whose findings were never fully processed — and list the `review-*-tracking-c*.md` files beside the plan: a tracking file on disk with no manifest entry is a crash orphan (the session died before recording it) — record it `in-progress`. Work each one now per **[process-review-findings.md](process-review-findings.md)** for that file, traceability before integrity — the order the review runs; never open a fresh cycle over live findings.
+
 Check the `review_cycle` field in the manifest:
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} review_cycle
@@ -64,11 +66,10 @@ Auto mode is active — pass through to review. Section E's safety cap (cycle 5)
 
 ```
 · · · · · · · · · · · ·
-Continue with review?
+**`◆ Continue with review?`**
 
-- **`p`/`proceed`** — Continue review
-- **`s`/`skip`** — Skip review, proceed to completion
-· · · · · · · · · · · ·
+**`p/proceed`** → Continue review
+**`s/skip`**    → Skip review, proceed to completion
 ```
 
 **STOP.** Wait for user response.
@@ -89,7 +90,7 @@ Continue with review?
 
 > **CHECKPOINT**: Do not proceed until the agent has returned its result.
 
-**If the agent created a tracking file**, commit it:
+**If the agent created a tracking file**, record it in progress (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} tracking.{file stem} in-progress`) and commit it:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): traceability review cycle {N}"
@@ -107,7 +108,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "pl
 
 > **CHECKPOINT**: Do not proceed until the agent has returned its result.
 
-**If the agent created a tracking file**, commit it:
+**If the agent created a tracking file**, record it in progress (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} tracking.{file stem} in-progress`) and commit it:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): integrity review cycle {N}"
@@ -131,7 +132,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 → Proceed to **F. Completion**.
 
-#### If `finding_gate_mode` is `auto` and `review_cycle` < 5
+#### If findings were surfaced and `finding_gate_mode` is `auto` and `review_cycle` < 5
 
 > *Output the next fenced block as a code block:*
 
@@ -141,27 +142,24 @@ Review cycle {N} complete — findings applied. Running follow-up cycle.
 
 → Return to **A. Cycle Initialization**.
 
-#### If `finding_gate_mode` is `auto` and `review_cycle` >= 5
+#### If findings were surfaced and `finding_gate_mode` is `auto` and `review_cycle` >= 5
 
 → Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`.
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-Fixes applied this cycle may have shifted dependencies, introduced gaps,
-or affected other tasks. A follow-up round reviews the corrected plan
-with fresh context — 2-3 cycles typically surface anything cascading.
+> Fixes applied this cycle may have shifted dependencies, introduced gaps, or affected other tasks. A follow-up round reviews the corrected plan with fresh context — 2-3 cycles typically surface anything cascading.
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
 · · · · · · · · · · · ·
-Run another review round?
+**`◆ Run another review round?`**
 
-- **`r`/`reanalyse`** — Run another round (traceability + integrity)
-- **`p`/`proceed`** — Proceed to conclusion
-· · · · · · · · · · · ·
+**`r/reanalyse`** → Run another round (traceability + integrity)
+**`p/proceed`**   → Proceed to conclusion
 ```
 
 **STOP.** Wait for user response.
@@ -174,27 +172,24 @@ Run another review round?
 
 → Proceed to **F. Completion**.
 
-#### If `finding_gate_mode` is `gated`
+#### If findings were surfaced and `finding_gate_mode` is `gated`
 
 → Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`.
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-Fixes applied this cycle may have shifted dependencies, introduced gaps,
-or affected other tasks. A follow-up round reviews the corrected plan
-with fresh context — 2-3 cycles typically surface anything cascading.
+> Fixes applied this cycle may have shifted dependencies, introduced gaps, or affected other tasks. A follow-up round reviews the corrected plan with fresh context — 2-3 cycles typically surface anything cascading.
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
 · · · · · · · · · · · ·
-Run another review round?
+**`◆ Run another review round?`**
 
-- **`r`/`reanalyse`** — Run another round (traceability + integrity)
-- **`p`/`proceed`** — Proceed to conclusion
-· · · · · · · · · · · ·
+**`r/reanalyse`** → Run another round (traceability + integrity)
+**`p/proceed`**   → Proceed to conclusion
 ```
 
 **STOP.** Wait for user response.
@@ -211,18 +206,18 @@ Run another review round?
 
 ## F. Completion
 
-1. **Verify tracking files are marked complete** — All traceability and integrity tracking files across all cycles must have `status: complete`.
+1. **Verify tracking is complete** — every `tracking` entry in the manifest, across all cycles, must be `complete`.
 
-> **CHECKPOINT**: Do not confirm completion if any tracking files still show `status: in-progress`. They indicate incomplete review work.
+> **CHECKPOINT**: Do not confirm completion if the manifest's `tracking` subtree still holds an `in-progress` entry. It indicates incomplete review work.
 
-If any tracking file still shows `status: in-progress`, its findings were not fully processed — work them now per **[process-review-findings.md](process-review-findings.md)** for that tracking file, then re-verify.
+Read `manifest get {work_unit}.planning.{topic} tracking`. If any entry is `in-progress`, that file's findings were not fully processed — work them now per **[process-review-findings.md](process-review-findings.md)** for that tracking file, then re-verify. A tracking file on disk with no manifest entry is a crash orphan (the session died before recording it) — record it `in-progress` and process it the same way.
 
 2. **Commit** all review tracking files:
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): complete plan review (cycle {N})"
    ```
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
 Plan review complete — {N} cycle(s), all tracking files finalised.

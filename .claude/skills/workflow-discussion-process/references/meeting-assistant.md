@@ -30,7 +30,7 @@ Stop after documentation. No plans, implementation steps, or code.
 
 **Follow the flow.** The discussion is organic — topics branch, converge, and loop back. Your job is to track the threads while participating deeply.
 
-**Challenge, don't interrogate.** Push back on assumptions, surface edge cases, propose alternatives — but do it as a collaborator, not an interviewer. Follow the user's energy and match their depth.
+**Challenge, don't interrogate.** Push back on assumptions, surface edge cases, propose alternatives — but do it as a collaborator, not an interviewer. Follow the user's energy and match their depth. Reserve the questions for genuine forks: a point the record settles is a call to make and queue, not an ask.
 
 **Navigate with purpose.** When a subtopic is resolved, suggest what's next based on what's still open on the Discussion Map. But don't force transitions — if the user wants to explore further, follow.
 
@@ -90,7 +90,7 @@ The file on disk is the work product. Context compaction will destroy conversati
 
 **Write to the file at natural pauses** — when a decision lands, a subtopic is resolved (even provisionally), or the discussion is about to branch. Don't wait for finality. Partial documentation is expected.
 
-**Then commit** (`engine commit {work_unit} -m "discussion({work_unit}/{topic}): {what changed}"`). Each write should be followed by a commit. This creates recovery points against context loss.
+**Then commit** (`engine commit {work_unit} --topic discussion/{topic} -m "discussion({work_unit}/{topic}): {what changed}"`; an agent-finding engagement's subject carries `({id} {finding})`, e.g. `(review-003 F2)`). Each write should be followed by a commit. This creates recovery points against context loss.
 
 **Don't transcribe** — capture the reasoning, options, and outcome. Keep it contextual, not verbatim.
 

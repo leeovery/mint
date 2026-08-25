@@ -25,11 +25,11 @@ Two doors:
 
 Output sections are one-directional: `DATA` is for reasoning and is never displayed; `DISPLAY` and `MENU` are emitted to the user verbatim and never parsed for decisions.
 
-**Rendering is not a runtime CLI concern.** Static chrome lives as literal blocks in skill prose; parameterised chrome is rendered in-process by projections. The `render` command group in `engine.cjs` is a development utility only.
+**Anything parameterised or state-branching renders in code.** Static chrome lives as literal blocks in skill prose; adapter-side chrome is rendered in-process by projections; shared runtime surfaces (gates, menus, parameterised displays) are served by the `render` surface catalogue in `engine.cjs`, which returns demarcated sections the flow emits verbatim. The engine never parses markdown artifacts to populate a render — address-backed values are JSON state, judgment content is a validated payload file.
 
 ## Reference
 
-- **[commands.md](references/commands.md)** — the CLI catalogue: command grammar, the response contract, and every noun's full signature and behaviour (`boot`, `manifest`, `workunit`, `topic`, `discovery-map`, `discovery-session`, `discussion-map`, `task`, `inbox`, `cache`, `commit`).
+- **[commands.md](references/commands.md)** — the CLI catalogue: command grammar, the response contract, and every noun's full signature and behaviour (`boot`, `manifest`, `workunit`, `topic`, `sources`, `discovery-map`, `build-order`, `discovery-session`, `discussion-map`, `task`, `inbox`, `roadmap`, `cache`, `presence`, `session`, `agent`, `commit`, `render`).
 - **[library-and-gateway.md](references/library-and-gateway.md)** — the `lib.cjs` surface (render kernel, manifest IO, conventions, detail builders, projections) and the gateway contract adapter scripts implement.
 
 ## Tests

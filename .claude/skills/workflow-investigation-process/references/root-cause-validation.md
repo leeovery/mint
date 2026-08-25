@@ -11,19 +11,13 @@ An independent agent validates the root cause hypothesis by tracing the code fre
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> An independent agent can trace the code fresh to validate the
-> root cause before the findings are presented for sign-off.
+> An independent agent can trace the code fresh to validate the root cause before the findings are presented for sign-off.
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Fetch the offer, emitting the section verbatim at its marked instruction:
 
-```
-· · · · · · · · · · · ·
-Root cause documented. Run validation?
-
-- **`y`/`yes`** — Run root cause validation
-- **`s`/`skip`** — Skip straight to findings sign-off
-· · · · · · · · · · · ·
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render validation-gate {work_unit}.investigation.{topic} --variant root-cause
 ```
 
 **STOP.** Wait for user response.
@@ -40,28 +34,10 @@ Root cause documented. Run validation?
 
 ## B. Dispatch
 
-Ensure the cache directory exists:
+Record the dispatch — the engine allocates the id and answers with the content-file path; no file is created (the file's later existence is the completion signal):
 
 ```bash
-mkdir -p .workflows/.cache/{work_unit}/investigation/{topic}
-```
-
-Determine the next set number by checking existing files:
-
-```bash
-ls .workflows/.cache/{work_unit}/investigation/{topic}/ 2>/dev/null
-```
-
-Use the next available `{NNN}` for `root-cause-validation-*` files (zero-padded, e.g., `001`, `002`).
-
-Write the skeleton cache file at `.workflows/.cache/{work_unit}/investigation/{topic}/root-cause-validation-{NNN}.md` — frontmatter only, no body. `status: in-flight` is the dispatch record; the agent's rewrite flips it to `pending`:
-
-```yaml
----
-type: root-cause-validation
-status: in-flight
-created: {date}
----
+node .claude/skills/workflow-engine/scripts/engine.cjs agent dispatch {work_unit} investigation {topic} --kind root-cause-validation
 ```
 
 **Agent path**: `../../../agents/workflow-investigation-root-cause-validation.md`
@@ -77,7 +53,7 @@ Dispatch **one agent** via the Task tool (**synchronous** — do not use `run_in
 The validation agent receives:
 
 1. **Investigation file path** — `.workflows/{work_unit}/investigation/{topic}.md`
-2. **Output file path** — `.workflows/.cache/{work_unit}/investigation/{topic}/root-cause-validation-{NNN}.md` (the skeleton above is already on disk there)
+2. **Output file path** — the `file` from the dispatch response. The agent writes its completed verdict there — pure markdown, never frontmatter.
 
 The validation agent returns:
 
@@ -94,49 +70,41 @@ SUMMARY: {1 sentence}
 
 ## C. Process Results
 
-Read the validation output file.
+The agent ran in the foreground, so its report has landed. Promote and read it, then close the row — the verdict is consumed inline, never surfaced finding-by-finding:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs agent scan {work_unit} investigation {topic}
+node .claude/skills/workflow-engine/scripts/engine.cjs agent incorporate {work_unit} investigation {topic} {id}
+```
+
+Read the report at the row's content file.
+
+Write the payload to `.workflows/.cache/{work_unit}/investigation/{topic}/validation.json` with the Write tool:
+
+- `status` and `confidence` — the agent's own, verbatim
+- `checks` — one `[label, outcome]` pair per section the agent worked through (symptom coverage, code trace, alternative root causes, blast radius), the outcome stated in a few words, never the detail beneath it
+- `summary` — the agent's `SUMMARY` line
+- `items` — on `gaps_found` only, the key gaps as one line each, stating what could be wrong in behaviour terms with code refs as anchors rather than the lead
+
+Do not dump the full output; the analysis path carries the reader there.
+
+`{"status": "{STATUS:[validated|gaps_found]}", "confidence": "{CONFIDENCE:[high|medium|low]}", "checks": [["{label}", "{outcome}"]], "summary": "{SUMMARY}", "items": ["{gap}"], "analysis_path": "{the row's content file path}"}`
+
+Fetch the report, emitting each section verbatim at its marked instruction:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render validation-report {work_unit}.investigation.{topic} --file .workflows/.cache/{work_unit}/investigation/{topic}/validation.json --variant root-cause
+```
 
 #### If `validated`
 
-Update the output file frontmatter to `status: read`.
-
-> *Output the next fenced block as a code block:*
-
-```
-Validation: Root cause validated ({CONFIDENCE} confidence). No gaps found.
-```
+The verdict is the whole response — there is nothing to decide.
 
 → Return to caller.
 
 #### If `gaps_found`
 
-Update the output file frontmatter to `status: read`.
-
-Extract the key gaps from the validation file. Present a brief summary — do not dump the full output.
-
-> *Output the next fenced block as a code block:*
-
-```
-Validation: {CONFIDENCE} confidence. {GAPS_COUNT} gap(s) identified.
-
-  {gap 1}
-  {gap 2}
-
-Full analysis: .workflows/.cache/{work_unit}/investigation/{topic}/root-cause-validation-{NNN}.md
-```
-
-The gaps live only in cache — each must land in the investigation file or be explicitly dismissed before the phase concludes over them:
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-How should these gaps be handled?
-
-- **`a`/`address`** — Work through them and fold the answers into the investigation
-- **`d`/`dismiss`** — Note them as considered-and-dismissed and proceed
-· · · · · · · · · · · ·
-```
+The gaps live only in cache — each must land in the investigation file or be explicitly dismissed before the phase concludes over them, which is what the gate above asks.
 
 **STOP.** Wait for user response.
 

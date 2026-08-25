@@ -23,7 +23,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadWorkUnitManifest, saveWorkUnitManifest, withWorkUnitLock, ensureContainer } = require('../kernel/manifest.cjs');
-const { commitScopedWithKb, noteIfNothingCommitted } = require('./commit.cjs');
+const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
 const { computeTopicLifecycle, phaseItems } = require('./derivations.cjs');
 const { VALID_ROUTINGS } = require('../kernel/manifest-schema.cjs');
 
@@ -55,6 +55,7 @@ function lifecyclePhrase(lifecycle, researchState) {
  * @property {Record<string, number>} ordered  topic → order, as applied
  * @property {string|null} committed  short commit sha, or null when nothing was staged
  * @property {string} [note]          set when committed is null
+ * @property {string[]} [warnings]     set when the tail commit failed
  */
 
 /**
@@ -76,6 +77,8 @@ function lifecyclePhrase(lifecycle, researchState) {
  * @property {boolean} [handled]          handle/unhandle: the marker after the op
  * @property {boolean} [undismissed]      add: a dismissed entry was cleared (--force-dismissed)
  * @property {boolean} [backfill]         add: item landed without summary/description for summary-backfill
+ * @property {string[]} [roadmap_reverted] remove: roadmap items un-pulled (their joins named this topic)
+ * @property {string[]} [warnings]         remove: the un-pull's tail commit failed
  * @property {number} map_total           items on the map after the op — no follow-up read needed
  */
 
@@ -118,11 +121,18 @@ function mapItem(manifest, name) {
  */
 function assertFresh(manifest, name, verbPhrase) {
   const { lifecycle, research_state } = computeTopicLifecycle(manifest, name);
-  const hasPhaseWork = ['research', 'discussion'].some(
-    (phase) => phaseItems(manifest, phase).some((it) => it.name === name),
+  const phaseWork = ['research', 'discussion'].flatMap(
+    (phase) => phaseItems(manifest, phase).filter((it) => it.name === name),
   );
-  if (lifecycle === 'fresh' && !hasPhaseWork) return;
+  if (lifecycle === 'fresh' && phaseWork.length === 0) return;
   if (lifecycle === 'fresh') {
+    // All-triaged phase work is not history — it is parked rerouted concerns
+    // waiting to drain. Name that instead of the historical-anchor message.
+    if (phaseWork.every((it) => it.status === 'triaged')) {
+      throw new Error(
+        `"${name}" can't be ${verbPhrase} — rerouted concerns are parked in its triage; start the topic to drain them, or cancel from the epic menu`,
+      );
+    }
     throw new Error(
       `"${name}" can't be ${verbPhrase} — per-phase work exists on record and it stays on the map as historical anchor`,
     );
@@ -167,10 +177,13 @@ function sequenceMap(cwd, workUnit, orders) {
     saveWorkUnitManifest(cwd, workUnit, manifest);
   });
 
-  const committed = commitScopedWithKb(cwd, `.workflows/${workUnit}`, `discovery(${workUnit}): sequence topic map`);
+  /** @type {string[]} */
+  const warnings = [];
+  const outcome = commitTailWithKb(cwd, `.workflows/${workUnit}`, `discovery(${workUnit}): sequence topic map`, warnings);
   /** @type {SequenceResult} */
-  const result = { ordered: orders, committed };
-  noteIfNothingCommitted(result, committed);
+  const result = { ordered: orders, committed: outcome.committed };
+  if (outcome.failed) result.warnings = warnings;
+  noteCommitOutcome(result, outcome);
   return result;
 }
 
@@ -245,6 +258,88 @@ function addItem(cwd, workUnit, name, { routing, source = 'discovery', summary, 
 }
 
 /**
+ * Add a whole topic set in one transaction — one lock, one load, one save.
+ * The batch form for the harvest (D7: one task, one call): every entry is
+ * validated before anything is applied, so a failing entry means nothing
+ * persisted — never a partial map. Entries may carry `brief_path` (recorded
+ * on the item, replacing the per-topic follow-up set) and `force_dismissed`
+ * (per-entry re-add confirmation). No git commit — the calling flow's commit
+ * covers the batch.
+ * @param {string} cwd project root
+ * @param {string} workUnit
+ * @param {{name: string, routing: string, summary: string, description?: string, brief_path?: string, force_dismissed?: boolean}[]} entries
+ * @returns {{work_unit: string, op: string, added: {name: string, routing: string, lifecycle: string}[], undismissed: string[], map_total: number}}
+ */
+function addItemsBatch(cwd, workUnit, entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error('add-batch: entries must be a non-empty array of {name, routing, summary, description?, brief_path?, force_dismissed?}');
+  }
+  entries.forEach((e, i) => {
+    const at = `entry ${i + 1}`;
+    if (!e || typeof e !== 'object') throw new Error(`add-batch: ${at} must be an object`);
+    if (typeof e.name !== 'string' || e.name === '' || /[./]/.test(e.name)) {
+      throw new Error(`add-batch: ${at} — "${e.name}" is not a legal topic name (dots and slashes break manifest addressing)`);
+    }
+    if (!e.routing || !VALID_ROUTINGS.includes(e.routing)) {
+      throw new Error(`add-batch: ${at} ("${e.name}") — unknown routing ${JSON.stringify(e.routing ?? null)} (${VALID_ROUTINGS.join('|')})`);
+    }
+    if (typeof e.summary !== 'string' || e.summary.trim() === '') {
+      throw new Error(`add-batch: ${at} ("${e.name}") — "summary" must be a non-empty string`);
+    }
+    for (const opt of ['description', 'brief_path']) {
+      if (e[opt] !== undefined && (typeof e[opt] !== 'string' || e[opt].trim() === '')) {
+        throw new Error(`add-batch: ${at} ("${e.name}") — "${opt}" must be a non-empty string when present`);
+      }
+    }
+  });
+  const names = entries.map((e) => e.name);
+  const dupe = names.find((n, i) => names.indexOf(n) !== i);
+  if (dupe) throw new Error(`add-batch: "${dupe}" appears more than once in the batch`);
+
+  return withWorkUnitLock(cwd, workUnit, () => {
+    const manifest = loadWorkUnitManifest(cwd, workUnit);
+    const phases = ensureContainer(manifest, 'phases', 'phases');
+    const discovery = ensureContainer(phases, 'discovery', 'phases.discovery');
+    ensureContainer(discovery, 'items', 'phases.discovery.items');
+    const dismissed = Array.isArray(discovery.dismissed) ? discovery.dismissed : [];
+
+    // Validate the whole batch against current state before applying any of it.
+    for (const e of entries) {
+      if (discovery.items[e.name]) {
+        throw new Error(`add-batch: "${e.name}" is already on the map — nothing was added; edit it, or pick a different name`);
+      }
+      if (dismissed.includes(e.name) && !e.force_dismissed) {
+        throw new Error(`add-batch: "${e.name}" was previously dismissed from this map — nothing was added; confirm the re-add with the user, then set force_dismissed on the entry`);
+      }
+    }
+
+    /** @type {string[]} */
+    const undismissed = [];
+    for (const e of entries) {
+      if (dismissed.includes(e.name)) undismissed.push(e.name);
+      /** @type {Record<string, unknown>} */
+      const item = { routing: e.routing, source: 'discovery', summary: e.summary };
+      if (e.description !== undefined) item.description = e.description;
+      if (e.brief_path !== undefined) item.brief_path = e.brief_path;
+      discovery.items[e.name] = item;
+    }
+    if (undismissed.length > 0) {
+      discovery.dismissed = dismissed.filter((n) => !undismissed.includes(n));
+    }
+
+    saveWorkUnitManifest(cwd, workUnit, manifest);
+
+    return {
+      work_unit: workUnit,
+      op: 'add-batch',
+      added: entries.map((e) => ({ name: e.name, routing: e.routing, lifecycle: computeTopicLifecycle(manifest, e.name).lifecycle })),
+      undismissed,
+      map_total: Object.keys(discovery.items).length,
+    };
+  });
+}
+
+/**
  * Set `summary` and/or `description` on a map item — at least one required.
  * Allowed at any lifecycle. No git commit.
  * @param {string} cwd project root
@@ -277,14 +372,17 @@ function editItem(cwd, workUnit, name, { summary, description } = {}) {
 /**
  * Hard-delete a fresh map item and push its name onto the dismissed list so
  * analyses won't auto-re-propose it. Fresh-only — anything further along
- * stays on the map (as work-in-flight or historical anchor). No git commit.
+ * stays on the map (as work-in-flight or historical anchor). No git commit
+ * for the map write itself; a roadmap join naming the topic is reverted (the
+ * un-pull for a never-started topic) and that project-manifest write stages
+ * in its own commit, reported as `roadmap_reverted`.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} name
  * @returns {MapOpResult}
  */
 function removeItem(cwd, workUnit, name) {
-  return withWorkUnitLock(cwd, workUnit, () => {
+  const result = withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const items = discoveryItems(manifest);
     mapItem(manifest, name);
@@ -305,10 +403,29 @@ function removeItem(cwd, workUnit, name) {
     if (fs.existsSync(brief)) { fs.unlinkSync(brief); briefRemoved = true; }
 
     /** @type {MapOpResult} */
-    const result = { work_unit: workUnit, name, op: 'remove', dismissed: true, lifecycle: 'fresh', map_total: Object.keys(items).length };
-    if (briefRemoved) result.brief_removed = true;
-    return result;
+    const out = { work_unit: workUnit, name, op: 'remove', dismissed: true, lifecycle: 'fresh', map_total: Object.keys(items).length };
+    if (briefRemoved) out.brief_removed = true;
+    return out;
   });
+
+  // The un-pull for a never-started topic: a fresh topic holding a roadmap
+  // join (a pull-forward, or a harvest bind, not yet begun) hands its item
+  // back to the map on removal — the stretch-scope wrap's revert. Lazy
+  // require and after the work-unit lock closes, mirroring the cancel hop —
+  // and like that hop the project manifest is staged in its own commit (the
+  // map op itself stays cadence-committed, wu-scoped, which never covers the
+  // project manifest).
+  const { revertJoins } = require('./roadmap.cjs');
+  const reverted = revertJoins(cwd, workUnit, { topic: name });
+  if (reverted.length > 0) {
+    result.roadmap_reverted = reverted;
+    const { commitTailPathspec, PROJECT_MANIFEST_SPEC } = require('./commit.cjs');
+    /** @type {string[]} */
+    const warnings = [];
+    commitTailPathspec(cwd, PROJECT_MANIFEST_SPEC, `roadmap: un-pull ${reverted.join(', ')} (${name} removed from ${workUnit})`, warnings);
+    if (warnings.length > 0) result.warnings = warnings;
+  }
+  return result;
 }
 
 /**
@@ -472,4 +589,4 @@ function unhandleItem(cwd, workUnit, name) {
   });
 }
 
-module.exports = { sequenceMap, addItem, editItem, removeItem, renameItem, rerouteItem, handleItem, unhandleItem };
+module.exports = { sequenceMap, addItem, addItemsBatch, editItem, removeItem, renameItem, rerouteItem, handleItem, unhandleItem };

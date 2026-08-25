@@ -28,10 +28,12 @@ const {
   withProjectLock,
   ensureContainer,
 } = require('../kernel/manifest.cjs');
-const { commitScopedWithKb, noteIfNothingCommitted } = require('./commit.cjs');
+const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
+const { purgeWorkUnitCache } = require('./cache.cjs');
 const { knowledge, INDEXED_ARTIFACTS } = require('./kb.cjs');
 const { dedupe } = require('./workunit-create.cjs');
 const { addItem } = require('./discovery-map.cjs');
+const { reaimJoins } = require('./roadmap.cjs');
 
 // A feature with any of these phases has moved past discussion — absorption
 // would orphan the downstream artifacts, so the guard refuses.
@@ -47,6 +49,7 @@ const SPEC_OR_BEYOND = ['specification', 'planning', 'implementation', 'review']
  * @property {{path: string}[]} imports  moved import entries (epic-relative)
  * @property {{path: string, source: string}[]} seeds  moved seed entries (epic-relative)
  * @property {string} routing   the map item's routing (research when the feature did research, else discussion)
+ * @property {string[]} [roadmap_reaimed]  roadmap items whose joins now name the epic topic
  * @property {string|null} committed  short commit sha, or null when nothing was staged
  * @property {string} [note]    set when committed is null
  * @property {string[]} warnings non-blocking failures (knowledge-base sync)
@@ -237,7 +240,14 @@ function absorbWorkUnit(cwd, feature, { into, topic }) {
     // paths.
     const epicPhases = ensureContainer(epicManifest, 'phases', 'phases');
     const discussion = ensureContainer(epicPhases, 'discussion', 'phases.discussion');
-    ensureContainer(discussion, 'items', 'phases.discussion.items')[topic] = { status: discussionItem.status };
+    // A live reconcile flag travels with the topic: research and discussion
+    // move together, so "research moved beneath this discussion" stays true
+    // in the epic — the map row cues it and the discussion's next entry
+    // clears it, same as any epic topic.
+    ensureContainer(discussion, 'items', 'phases.discussion.items')[topic] = {
+      status: discussionItem.status,
+      ...(discussionItem.reconcile_needed !== undefined ? { reconcile_needed: discussionItem.reconcile_needed } : {}),
+    };
     if (researchPlan.length > 0) {
       const research = ensureContainer(epicPhases, 'research', 'phases.research');
       const researchItems = ensureContainer(research, 'items', 'phases.research.items');
@@ -278,6 +288,12 @@ function absorbWorkUnit(cwd, feature, { into, topic }) {
     writeProjectManifestAtomic(cwd, projectManifest);
   });
 
+  // Roadmap joins follow the material: an item pulled into the feature is
+  // now delivered by the epic topic it became — re-aim, never orphan (the
+  // un-pull is cancel's move; this work did not stop, it moved). Its own
+  // lock hold; the project manifest already rides this transaction's commit.
+  const reaimed = reaimJoins(cwd, feature, { into, topic });
+
   fs.rmSync(path.join(cwd, '.workflows', feature), { recursive: true, force: true });
 
   // KB: drop the feature's chunks, index the moved artifacts at their epic
@@ -300,10 +316,11 @@ function absorbWorkUnit(cwd, feature, { into, topic }) {
     knowledge(cwd, ['index', `.workflows/${into}/seeds/${move.dest}`], `knowledge index (seeds/${move.dest})`, warnings);
   }
 
-  const committed = commitScopedWithKb(
+  const cacheSpec = purgeWorkUnitCache(cwd, feature);
+  const outcome = commitTailWithKb(
     cwd,
-    [`.workflows/${feature}`, `.workflows/${into}`, '.workflows/manifest.json'],
-    `workflow(${feature}): absorb into ${into}`);
+    [`.workflows/${feature}`, `.workflows/${into}`, '.workflows/manifest.json', ...(cacheSpec ? [cacheSpec] : [])],
+    `workflow(${feature}): absorb into ${into}`, warnings);
 
   /** @type {WorkUnitAbsorbResult} */
   const result = {
@@ -315,10 +332,11 @@ function absorbWorkUnit(cwd, feature, { into, topic }) {
     imports: importMoves.map((move) => ({ path: `imports/${move.dest}` })),
     seeds: seedMoves.map((move) => ({ path: `seeds/${move.dest}`, source: move.entry.source })),
     routing,
-    committed,
+    committed: outcome.committed,
     warnings,
   };
-  noteIfNothingCommitted(result, committed);
+  if (reaimed.length > 0) result.roadmap_reaimed = reaimed;
+  noteCommitOutcome(result, outcome);
   return result;
 }
 

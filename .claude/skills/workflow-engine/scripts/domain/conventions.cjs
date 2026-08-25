@@ -13,20 +13,23 @@
 // ---------------------------------------------------------------------------
 
 const { wrapWithPrefix } = require('../kernel/render.cjs');
+const { displayWidth } = require('../kernel/terminal.cjs');
 
-// Tree content width: total rendered width INCLUDING the gutter — the
-// deliberate narrow-wrap choice (narrow reads well on mobile / split panes,
-// and pre-empts terminal soft-wrap orphaning the │ gutter). Dividers, boxes,
-// and markers stay at the kernel's canonical 49; trees wrap to this.
-const TREE_WIDTH = 65;
+// Tree content width: total rendered width INCLUDING the gutter, resolved
+// from the reader's actual pane (../kernel/terminal.cjs) and capped for
+// legibility. An undetectable environment falls back to the 65 that shipped
+// before detection existed. Dividers, boxes, and markers stay at the
+// kernel's canonical 49; trees wrap to this.
+const TREE_WIDTH = displayWidth();
 
-// Composed sub-header (`  LABEL (count summary)`) clamped to the tree width
-// budget: 2-space indent on every line, wrapped like tree body so a long
-// breakdown can never overflow the rows hanging beneath it. Returns the
-// wrapped lines joined, no trailing newline.
+// Composed sub-header (`LABEL (count summary)`) clamped to the tree width
+// budget: column 0, wrapped like tree body so a long breakdown can never
+// overflow the rows hanging beneath it — the tree indents 2 columns off the
+// header, the shape every engine view shares. Returns the wrapped lines
+// joined, no trailing newline.
 /** @param {string} text */
 function treeHeader(text) {
-  return wrapWithPrefix(text, { width: TREE_WIDTH, prefix: '  ' }).join('\n');
+  return wrapWithPrefix(text, { width: TREE_WIDTH, prefix: '' }).join('\n');
 }
 
 // Upper-case the first character (the rest is left untouched).
@@ -39,6 +42,14 @@ function capitalise(s) {
 // hyphens and underscores, capitalise the first letter of each word, join
 // with spaces. `auth-flow` → `Auth Flow`.
 /** @param {string} s */
+// Titlecase a phase label without disturbing its punctuation: every
+// alphabetic run is capitalised in place, so parentheses and hyphens
+// survive. `discussion (in-progress)` → `Discussion (In-Progress)`.
+/** @param {string} s */
+function titlecaseLabel(s) {
+  return String(s).replace(/[a-z]+/gi, (w) => capitalise(w));
+}
+
 function titlecase(s) {
   return String(s).split(/[-_\s]+/).filter(Boolean).map(capitalise).join(' ');
 }
@@ -56,10 +67,37 @@ function tag(term) {
   return `[${term}]`;
 }
 
-// `↳ Derived-from` line — provenance, capitalised. Feeds a tree node's body[].
-/** @param {string} text */
+// `↳ Derived-from` line — provenance, capitalised. Feeds a tree node's body[]
+// as a hanging paragraph: the marker is two columns wide, so continuation
+// lines indent past it and the provenance reads as one block rather than
+// wrapping back under the arrow. The domain owns the marker, so it owns its
+// width; the renderer only applies the hang it is given.
+const PROVENANCE_HANG = '↳ '.length;
+
+/** @param {string} text @returns {{text: string, hang: number}} */
 function derivedFrom(text) {
-  return '↳ ' + capitalise(String(text).trim());
+  return { text: '↳ ' + capitalise(String(text).trim()), hang: PROVENANCE_HANG };
+}
+
+// The `MATERIAL` block — what a work unit carries in from before its
+// pipeline: the inbox seed it was spawned from, and any imported reference
+// files. Annotations, so they take the quiet `·` marker; under a header, so
+// they hang off something rather than opening a display at an indent.
+// Empty string when the unit carries neither.
+/** @param {{seeds: number, imports: number}} counts @returns {string} */
+function materialBlock({ seeds, imports }) {
+  const lines = [];
+  if (seeds > 0) lines.push('  · seeded from the inbox');
+  if (imports > 0) lines.push(`  · ${imports} import${imports === 1 ? '' : 's'}`);
+  return lines.length ? 'MATERIAL\n' + lines.join('\n') : '';
+}
+
+// `↳ state` line — a row's computed lifecycle spelled out beneath its summary,
+// same marker and hang as provenance. The discovery views carry no tag column;
+// state rides here instead.
+/** @param {string} text @returns {{text: string, hang: number}} */
+function stateNote(text) {
+  return { text: '↳ ' + capitalise(String(text).trim()), hang: PROVENANCE_HANG };
 }
 
 // Compose a tree node's title from its parts: `glyph label [tag]`. Any part may
@@ -101,25 +139,41 @@ function discoveryGlyph(tier) {
 // when none exists — see computeTopicLifecycle's research_state): a handled
 // topic claims a research fan-out only when research completed or was
 // superseded (in-flight or cancelled research fanned nothing out), and
-// superseded research is named as such, never as complete.
-/** @param {string} lifecycle @param {string|null} [routing] @param {string|null} [researchState] */
-function discoveryLifecycleLabel(lifecycle, routing, researchState) {
+// superseded research is named as such, never as complete. `triageParked`
+// (computeTopicLifecycle's triage_parked) appends a `triage waiting` cue on
+// any lifecycle — a `triaged` stub holds rerouted concerns that drain when
+// the phase's session starts. `reconcilePending` (computeTopicLifecycle's
+// reconcile_pending) appends an `input moved` cue the same way — a phase item
+// beneath the row carries a live reconcile flag its entry flow will clear.
+/** @param {string} lifecycle @param {string|null} [routing] @param {string|null} [researchState] @param {boolean} [triageParked] @param {boolean} [reconcilePending] */
+function discoveryLifecycleLabel(lifecycle, routing, researchState, triageParked, reconcilePending) {
+  let label;
   switch (lifecycle) {
     case 'ready_for_discussion':
-      return researchState === 'superseded'
+      label = researchState === 'superseded'
         ? 'research superseded · ready for discussion'
         : 'research complete · ready for discussion';
-    case 'researching': return 'researching';
-    case 'discussing': return 'discussing';
-    case 'decided': return 'decided';
+      break;
+    case 'researching': label = 'researching'; break;
+    case 'discussing': label = 'discussing'; break;
+    case 'decided': label = 'decided'; break;
     case 'handled':
-      return researchState === 'completed' || researchState === 'superseded'
+      label = researchState === 'completed' || researchState === 'superseded'
         ? 'handled · research fanned out'
         : 'handled';
-    case 'cancelled': return 'cancelled';
-    default: return routing ? `fresh · routed to ${routing}` : 'fresh';
+      break;
+    case 'cancelled': label = 'cancelled'; break;
+    default: label = routing ? `fresh · routed to ${routing}` : 'fresh';
   }
+  if (triageParked) label += ' · triage waiting';
+  if (reconcilePending) label += ' · input moved';
+  return label;
 }
+
+// Worklist glyph vocabulary — walk states on a transient list (the
+// worklist projection's rows). Distinct from its two siblings: a symbol
+// set shared with the discovery tiers, keyed to approval outcomes.
+const WORKLIST_GLYPH = { pending: '○', approved: '✓', skipped: '⊘' };
 
 // Discussion-map glyph vocabulary — subtopic states. Distinct from the
 // discovery tiers: the symbol sets evolve independently.
@@ -142,8 +196,9 @@ const SPEC_LEGEND = {
   discussion: {
     extracted: 'content has been incorporated into the specification',
     pending: 'listed as source but content not yet extracted',
+    stale: 'was extracted but the discussion was re-decided since — reconcile',
     ready: 'completed and available to be specified',
-    reopened: 'was extracted but discussion has regressed to in-progress',
+    reopened: 'back in-progress — the spec waits on it',
   },
   consult: {
     pending: 'sibling correction not yet read in and reconciled',
@@ -156,7 +211,8 @@ const SPEC_LEGEND = {
 };
 
 module.exports = {
-  TREE_WIDTH, treeHeader, capitalise, titlecase, kebabcase, tag, derivedFrom, title,
+  titlecaseLabel,
+  TREE_WIDTH, treeHeader, capitalise, titlecase, kebabcase, tag, derivedFrom, stateNote, title, materialBlock,
   discoveryGlyph, DISCOVERY_GLYPH, discoveryLifecycleLabel,
-  discussionGlyph, DISCUSSION_GLYPH, SPEC_LEGEND,
+  discussionGlyph, DISCUSSION_GLYPH, WORKLIST_GLYPH, SPEC_LEGEND,
 };

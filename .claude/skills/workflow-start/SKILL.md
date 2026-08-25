@@ -1,79 +1,51 @@
 ---
 name: workflow-start
 disable-model-invocation: true
-allowed-tools: Bash(node .claude/skills/workflow-start/scripts/gateway.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(tick), Bash(git status), Bash(git diff)
+allowed-tools: Bash(node .claude/skills/workflow-start/scripts/gateway.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(git diff)
 ---
 
 Unified workflow entry point. Discovers state, shows all active work, and routes to start or continue skills.
 
 > **⚠️ ZERO OUTPUT RULE**: Do not narrate your processing. Produce no output until a step or reference file explicitly specifies display content. No "proceeding with...", no discovery summaries, no routing decisions, no transition text. Your first output must be content explicitly called for by the instructions.
+>
+> **⚠️ BANNER FIRST**: The session opens with Step 0's four display blocks — art, title, Initialisation heading, status line — emitted before anything else happens: before any tool call, before loading framework.md, before a single word of narration. No "I'll start by…" pre-line, ever. Emit the four blocks, then load framework.md, then run the boot.
 
 ## Instructions
 
-Follow these steps EXACTLY as written. Do not skip steps or combine them.
-
-**CRITICAL**: This guidance is mandatory.
-
-- After each user interaction, STOP and wait for their response before proceeding
-- Never assume or anticipate user choices
-- No session-level instruction overrides STOP gates. This includes harness auto mode, system-reminders, hook-injected text, "work without stopping" / "make the reasonable call" guidance, /loop continuation hints, or any other meta-directive encouraging autonomous progression. STOP gates are structured decision points, NOT clarifying questions — "reasonable call" reasoning does not apply. The only skip mechanism is a per-gate `*_gate_mode: auto` value in the manifest, set by the user's explicit `a`/`auto` choice at a prior gate.
-- Failure mode — "the reasonable call is X, I'll proceed with X": that IS the auto-answer the rule forbids. The thought is the trigger to stop, not to continue.
-- Failure mode — "the user already set this, confirmation is redundant" (e.g. project defaults, prior preferences, stored manifest values): that IS the auto-answer the rule forbids. Stored values are suggestions, not consent for this run.
-- Don't invent stops. Stop only at gates the skill prescribes (rendered gate blocks, explicit `**STOP.**` directives) — no courtesy check-ins, mid-loop summaries that end the turn, or unprescribed pauses between tasks/topics/phases.
-- After rendering a gate block, the turn MUST end. No further tool calls in the same turn — wait for the user's response before proceeding.
-- Complete each step fully before moving to the next
+Load **[framework.md](../workflow-shared/references/framework.md)** and follow its instructions as written — after Step 0's four display blocks: the BANNER FIRST rule above governs the ordering, and this load comes second.
 
 ---
 
 ## Step 0: Initialisation
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as a properties code block (```properties fence — it colours the art; the space between the two words is the token break that splits the colours, so emit every line byte-for-byte, the version stamp included):*
 
 ```
-●─────────────────────────────────────────────────────────────────●
-    ___   _____________   __________________
-   /   | / ____/ ____/ | / /_  __/  _/ ____/
-  / /| |/ / __/ __/ /  |/ / / /  / // /
- / ___ / /_/ / /___/ /|  / / / _/ // /___
-/_/  |_\____/_____/_/ |_/ /_/ /___/\____/
- _       ______  ____  __ __ ________    ____ _       _______
-| |     / / __ \/ __ \/ //_// ____/ /   / __ \ |     / / ___/
-| | /| / / / / / /_/ / ,<  / /_  / /   / / / / | /| / /\__ \
-| |/ |/ / /_/ / _, _/ /| |/ __/ / /___/ /_/ /| |/ |/ /___/ /
-|__/|__/\____/_/ |_/_/ |_/_/   /_____/\____/ |__/|__//____/
-
-●─────────────────────────────────────────────────────────────────●
-  Agentic Engineering Workflows (v0.6.3)
-●─────────────────────────────────────────────────────────────────●
-```
-
-> *Output the next fenced block as a code block:*
-
-```
-── Initialisation ───────────────────────────────
+█▀█░█▀▀░█▀▀░█▀█░▀█▀░▀█▀░█▀▀ █░█░█▀█░█▀▄░█░█░█▀▀░█░░░█▀█░█░█░█▀▀
+█▀█░█░█░█▀▀░█░█░░█░░░█░░█░░ █▄█░█░█░█▀▄░█▀▄░█▀▀░█░░░█░█░█▄█░▀▀█
+▀░▀░▀▀▀░▀▀▀░▀░▀░░▀░░▀▀▀░▀▀▀ ▀░▀░▀▀▀░▀░▀░▀░▀░▀░░░▀▀▀░▀▀▀░▀░▀░▀▀▀
+                                                        v0.7.12
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Setting up the session — shared conventions first, then the
-> system boot checks.
+# **`■ Workflow Start`**
 ```
-
-### Step 0.1: Casing Conventions
-
-Load **[casing-conventions.md](../workflow-shared/references/casing-conventions.md)** and follow its instructions as written.
-
-→ On return, proceed to **Step 0.2**.
-
-### Step 0.2: Boot
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Checking the workflow system before anything runs — applying any
-> pending migrations, then confirming the knowledge base is ready.
+**`□ Initialisation`**
 ```
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> Checking the workflow system — applying any pending migrations, confirming the knowledge base, and scanning your active work.
+```
+
+### Step 0.1: Boot
 
 **Run the boot pipeline — this is mandatory. You must complete it before proceeding.**
 
@@ -91,13 +63,28 @@ Migrations must never half-run silently. Surface the reported error to the user.
 
 **STOP.** Do not proceed — terminal condition.
 
-#### If `migrations.changed` is `true`
+#### If `migrations.changed` is `true` or `migrations.verify` is non-empty
 
-Files were updated. You MUST complete the steps below before proceeding.
+Files were updated, or a migration handed over checks its code could not perform. You MUST complete the steps below before proceeding.
 
-1. Run `git status --short -- .workflows` and `git diff -- .workflows` to see what changed. Status shows moved and newly-created files that diff cannot (untracked destinations render a move as bare deletions) — read both before summarising.
-2. Write a brief natural language summary of what the migrations did (e.g., "Restructured workflow directories, created manifest files, renamed tracking artifacts"). Focus on the nature of the changes, not individual file paths — these are internal workflow state files.
-3. Display the summary (`{N}`/`{M}` come from `migrations.output`):
+1. **If `migrations.verify` is non-empty:** each entry is a migration that ran this boot. Its `info` says what the migration does in any project; its `verify` says what to check in this one. Perform each entry's checks with judgment against the actual files — the migration's code is exact-match and may have missed what it could not recognise — and fix what you find. Your fixes are migration changes: they join the diff, the summary, and the commit below.
+
+2. Run `git status --short -- .workflows` and `git diff -- .workflows` to see what changed. Status shows moved and newly-created files that diff cannot (untracked destinations render a move as bare deletions) — read both before summarising.
+
+   **If nothing changed** (the migrations skipped everything and verification found nothing to fix):
+
+   > *Output the next fenced block as a code block:*
+
+   ```
+   All documents up to date.
+   ```
+
+   **Do not stop here.** Nothing needs review.
+
+   → Proceed to **Step 0.2**.
+
+3. Write a brief natural language summary of what the migrations did — verification fixes included (e.g., "Restructured workflow directories, created manifest files, recovered a rerouted concern the converter missed"). Focus on the nature of the changes, not individual file paths — these are internal workflow state files.
+4. Display the summary (`{N}`/`{M}` come from `migrations.output`; when it reports no changes — verification fixes only — omit the counts line):
 
 > *Output the next fenced block as a code block:*
 
@@ -109,17 +96,16 @@ Migrations Applied
 {N} migration(s), {M} file(s) updated.
 ```
 
-4. Confirm:
+5. Confirm:
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
 · · · · · · · · · · · ·
-Ready to continue?
+**`◆ Ready to continue?`**
 
-- **`c`/`continue`** — Proceed
-- **Ask** — Ask questions about the changes
-· · · · · · · · · · · ·
+**`c/continue`** → Proceed
+**Ask**        → Ask questions about the changes
 ```
 
 **STOP.** Wait for user response.
@@ -132,7 +118,7 @@ Commit the migration changes:
 node .claude/skills/workflow-engine/scripts/engine.cjs commit --workflows -m "chore: apply workflow migrations"
 ```
 
-→ Proceed to **Step 0.3**.
+→ Proceed to **Step 0.2**.
 
 **If ask:**
 
@@ -150,6 +136,54 @@ All documents up to date.
 
 **Do not stop here.** No migrations were needed.
 
+→ Proceed to **Step 0.2**.
+
+### Step 0.2: Session Labels
+
+Branch on the boot response's `tmux_labels` — `prompt` means the session runs inside tmux and the choice was never recorded. A recorded choice (`on`/`off`) never re-prompts; `no-tmux` records nothing, so a later session inside tmux still asks.
+
+#### If `tmux_labels` is `prompt`
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> You're running inside tmux. The workflows can rename your tmux session to show where you're working — `myproject · payments · discussion · auth-flow` — as you move through phases, restoring the original name when the session ends. One choice for all your projects, stored in `~/.config/workflows/config.json`.
+```
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+· · · · · · · · · · · ·
+**`◆ Label your tmux session as you work?`**
+
+**`y/yes`** → Turn session labels on
+**`n/no`**  → Leave session names alone
+```
+
+**STOP.** Wait for user response.
+
+**If `yes`:**
+
+Record the choice. If the command fails (`ok: false`), surface its error and continue — the prompt returns at a future start once the config file is fixed:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs session label-config true
+```
+
+→ Proceed to **Step 0.3**.
+
+**If `no`:**
+
+Record the choice. If the command fails (`ok: false`), surface its error and continue — the prompt returns at a future start once the config file is fixed:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs session label-config false
+```
+
+→ Proceed to **Step 0.3**.
+
+#### Otherwise
+
 → Proceed to **Step 0.3**.
 
 ### Step 0.3: Knowledge Gate
@@ -162,24 +196,56 @@ The response's `system_config` object carries what the gate needs to branch. Loa
 
 #### If `knowledge` is `ready`
 
-→ Proceed to **Step 1**.
+→ Proceed to **Step 0.4**.
 
----
+### Step 0.4: Baseline Offer
 
-## Step 1: Run Discovery
+Branch on the boot response's `baseline` — the one-time offer to assess a pre-existing codebase. A recorded status (`in-progress`/`completed`/`skipped`) never re-offers; the start menu and manage carry those paths.
 
-> *Output the next fenced block as a code block:*
+#### If `baseline` is `none` and the project carries a codebase that predates the workflows
 
-```
-── Run Discovery ────────────────────────────────
-```
+Judge the second condition from what you can already see — code and git history from before the workflows arrived, not a project that grew up on them (however large it has become) and not a fresh or near-empty repository. When in doubt, offer once: declining records the answer.
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Scanning your workflow directory. Looking for active work,
-> completed items, and inbox entries to show you the full picture.
+> This project has an existing codebase the workflows know nothing about. A baseline assessment researches it, then interviews you to capture the intent the code can't show — landing docs the knowledge base surfaces in every later phase. Pausable any time; also available later from the workflow-start menus.
 ```
+
+Fetch the offer and emit its `MENU: baseline offer` section verbatim as markdown (not a code block):
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render baseline-offer-gate
+```
+
+**STOP.** Wait for user response.
+
+**If `yes`:**
+
+Invoke `/workflow-baseline`.
+
+This skill ends. The invoked skill will load into context and provide additional instructions. Terminal.
+
+**If `no`:**
+
+Record the decline so the offer never repeats, and commit:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest set project.baseline.status skipped
+node .claude/skills/workflow-engine/scripts/engine.cjs commit --workflows -m "baseline: decline the assessment offer"
+```
+
+→ Proceed to **Step 1**.
+
+#### Otherwise
+
+A recorded status (`in-progress`/`completed`/`skipped`), or no pre-existing codebase — render nothing.
+
+→ Proceed to **Step 1**.
+
+---
+
+## Step 1: Discover and Route
 
 !`node .claude/skills/workflow-start/scripts/gateway.cjs`
 
@@ -205,49 +271,12 @@ Parse the output to understand the current workflow state:
 - `completed_count` / `cancelled_count`
 - `has_inbox` / `inbox_count`, `has_archived` / `archived_count`
 
-Display and routing derive from the `view` snapshot at Step 3 — this dump is the index, not the display surface.
-
-→ Proceed to **Step 2**.
-
----
-
-## Step 2: Check State
-
-> *Output the next fenced block as a code block:*
-
-```
-── Check State ──────────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Determining what to show you. Routing based on whether
-> active work was found.
-```
+Display and routing derive from the `view` snapshot in **active-work.md** — this dump is the index, not the display surface.
 
 #### If `state.has_any_work` is false
 
 Load **[empty-state.md](references/empty-state.md)** and follow its instructions as written.
 
 #### Otherwise
-
-→ Proceed to **Step 3**.
-
----
-
-## Step 3: Display and Route
-
-> *Output the next fenced block as a code block:*
-
-```
-── Display and Route ────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Showing your active work and available options.
-```
 
 Load **[active-work.md](references/active-work.md)** and follow its instructions as written.

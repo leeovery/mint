@@ -4,7 +4,13 @@
 
 ---
 
-Detect an interrupted prior shaping session before re-shaping an existing epic's map. Read the active-session marker:
+Detect an interrupted prior shaping session before re-shaping an existing epic's map.
+
+**If `pull_continuation` is held** (this conversation created the epic at a roadmap pull moments ago): the marker names the session this conversation opened — nothing was interrupted. Keep the held `session_number`.
+
+→ Return to caller.
+
+**Otherwise:** read the active-session marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.discovery active_session
@@ -22,28 +28,22 @@ No prior session is in progress. `session_number` will be set at Step 7 from dis
 
 The output is the in-progress session number string (e.g. `002`) — the prior session was interrupted before finalisation.
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Resume Detection ─────────────────────────────
+**`□ Resume Detection`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> An earlier discovery session for this epic was left unfinished —
-> choose whether to pick it up or start fresh.
+> An earlier discovery session for this epic was left unfinished — choose whether to pick it up or start fresh.
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Render the resume menu and emit its section verbatim per its marker:
 
-```
-· · · · · · · · · · · ·
-Found an in-progress discovery session for **{work_unit:(titlecase)}** at `session-{active_session}.md`.
-
-- **`c`/`continue`** — Pick up where you left off
-- **`r`/`restart`** — Discard the interrupted log and start a new session (map edits already applied stay applied — only their session record is lost)
-· · · · · · · · · · · ·
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render resume-gate {work_unit} --variant session
 ```
 
 **STOP.** Wait for user response.

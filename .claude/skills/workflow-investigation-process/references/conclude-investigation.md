@@ -10,11 +10,10 @@ The user has already reviewed findings and agreed on fix direction. This step co
 
 ```
 · · · · · · · · · · · ·
-Investigation complete. Ready to conclude?
+**`◆ Investigation complete. Ready to conclude?`**
 
-- **`y`/`yes`** — Conclude investigation
-- **Keep going** — Tell me what else to explore
-· · · · · · · · · · · ·
+**`y/yes`**      → Conclude investigation
+**Keep going** → Tell me what else to explore
 ```
 
 **STOP.** Wait for user response.
@@ -25,6 +24,28 @@ Investigation complete. Ready to conclude?
 
 #### If `yes`
 
+First check the topic's triage queue — a queued concern must be worked before concluding:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs topic queue {work_unit} investigation {topic}
+```
+
+**If the response's `files` is non-empty:**
+
+Render the blocker and emit both its sections verbatim per their markers:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render triage-block {work_unit}.investigation.{topic}
+```
+
+→ Load **[rerouted-concerns.md](../../workflow-shared/references/rerouted-concerns.md)** with work_unit = `{work_unit}`, topic = `{topic}`, phase = `investigation` — enter **A. Check**.
+
+On return:
+
+→ Return to **[the skill](../SKILL.md)** for **Step 13**.
+
+**If `files` is empty:**
+
 1. Mark the investigation completed — the engine sets the status and indexes the artifact into the knowledge base:
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs topic complete {work_unit} investigation {topic}
@@ -34,45 +55,22 @@ Investigation complete. Ready to conclude?
    node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "investigation({work_unit}): complete {topic} investigation"
    ```
 
-If the `complete` response carries `warnings`, display them but do not block — the artifact is already saved:
+   When the `complete` response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` advisory — the warning never blocks:
 
-> *Output the next fenced block as a code block:*
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs render topic-receipt {work_unit}.investigation.{topic} --verb complete --warn
+   ```
 
-```
-⚑ Knowledge indexing warning
-  {error details}
-  The artifact is saved. Indexing can be retried later.
-```
+3. Closing recap:
 
-3. Display conclusion:
-
-> *Output the next fenced block as a code block:*
-
-```
-Investigation completed: {work_unit}
-
-Root cause: {brief summary}
-Fix direction: {chosen approach}
-
-The investigation is completed. Root cause and fix direction are documented.
-```
+   → Load **[closing-recap.md](../../workflow-shared/references/closing-recap.md)** with phase = `investigation`, work_unit = `{work_unit}`, topic = `{topic}`.
 
 4. Closure signpost:
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Investigation complete. The specification phase will formalise
-> the fix approach into a document that drives planning.
+> Investigation complete. The specification phase will formalise the fix approach into a document that drives planning.
 ```
 
-5. Invoke the bridge:
-
-```
-Pipeline bridge for: {work_unit}
-Completed phase: investigation
-
-Invoke the workflow-bridge skill to enter plan mode with continuation instructions.
-```
-
-**STOP.** Do not proceed — terminal condition.
+5. Invoke `/workflow-bridge {work_unit} investigation`.

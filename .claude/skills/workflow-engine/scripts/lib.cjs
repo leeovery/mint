@@ -8,10 +8,12 @@
 // Rings:
 //   engine.render         kernel — pure layout (no workflow vocabulary)
 //   engine.manifest       kernel — work-unit manifest IO (load / atomic save)
+//   engine.schema         kernel — manifest vocabulary (phases, per-type pipelines)
 //   engine.conventions    domain — workflow glyphs, tags, title composition
 //   engine.reads          domain — generic manifest/file reads (no phase semantics)
 //   engine.derivations    domain — shared derivations (phase joins, lifecycle, cache status)
 //   engine.discussionMap  domain — discussion-map transitions + queries
+//   engine.agents         domain — background-agent derivations (review cycles, arming)
 //   engine.detail         domain — detail builders (the one structured object per work unit)
 //   engine.project        domain — projections (dashboard / key / menu / map views)
 //   engine.gateway        adapter harness — verb dispatch + output sections
@@ -22,10 +24,14 @@
 
 const render = require('./kernel/render.cjs');
 const manifest = require('./kernel/manifest.cjs');
+const schema = require('./kernel/manifest-schema.cjs');
 const conventions = require('./domain/conventions.cjs');
 const reads = require('./domain/reads.cjs');
 const derivations = require('./domain/derivations.cjs');
 const discoverySession = require('./domain/discovery-session.cjs');
+const roadmapDomain = require('./domain/roadmap.cjs');
+const roadmapProjections = require('./domain/projections/roadmap.cjs');
+const presence = require('./domain/presence.cjs');
 const gateway = require('./gateway.cjs');
 const epic = require('./domain/epic-detail.cjs');
 const start = require('./domain/start.cjs');
@@ -34,18 +40,24 @@ const workunit = require('./domain/workunit-detail.cjs');
 const workunitManage = require('./domain/workunit-manage.cjs');
 const specification = require('./domain/specification.cjs');
 const discussionMap = require('./domain/discussion-map.cjs');
+const agentState = require('./domain/agent-state.cjs');
 const epicProjections = require('./domain/projections/epic.cjs');
 const discoveryProjections = require('./domain/projections/discovery-map.cjs');
 const discussionProjections = require('./domain/projections/discussion-map.cjs');
 const startProjections = require('./domain/projections/start.cjs');
 const workunitProjections = require('./domain/projections/workunit.cjs');
 const specificationProjections = require('./domain/projections/specification.cjs');
+const selectionProjections = require('./domain/projections/selection.cjs');
 
 module.exports = {
   render,
   manifest,
   conventions,
   gateway,
+  schema: {
+    VALID_PHASES: schema.VALID_PHASES,
+    WORK_TYPE_PIPELINES: schema.WORK_TYPE_PIPELINES,
+  },
   reads: {
     listFiles: reads.listFiles,
     listDirs: reads.listDirs,
@@ -75,8 +87,19 @@ module.exports = {
     mapState: discussionMap.mapState,
     SUBTOPIC_STATES: discussionMap.SUBTOPIC_STATES,
   },
+  agents: {
+    completedReviewCycles: agentState.completedReviewCycles,
+    reviewArming: agentState.reviewArming,
+  },
   session: {
     nextSessionNumber: discoverySession.nextSessionNumber,
+  },
+  roadmap: {
+    roadmapState: roadmapDomain.roadmapState,
+  },
+  presence: {
+    scanPresence: presence.scanPresence,
+    fmtAge: presence.fmtAge,
   },
   detail: {
     epicDetail: epic.epicDetail,
@@ -87,19 +110,35 @@ module.exports = {
     manageDetail: workunitManage.manageDetail,
     workUnitDetail: workunit.workUnitDetail,
     workUnitIndex: workunit.workUnitIndex,
+    typeConfig: workunit.typeConfig,
+    unitsOf: workunit.unitsOf,
     WORK_UNIT_TYPES: workunit.WORK_UNIT_TYPES,
     specificationDetail: specification.specificationDetail,
   },
   project: {
+    titlecase: conventions.titlecase,
+    workUnitTitle: workunitProjections.workUnitTitle,
+    discoveryTitle: discoveryProjections.discoveryTitle,
+    SPEC_TITLE: specificationProjections.SPEC_TITLE,
+    selectionSections: selectionProjections.selectionSections,
+    selectionNotFound: selectionProjections.selectionNotFound,
     epicDashboard: epicProjections.epicDashboard,
     epicKey: epicProjections.epicKey,
     epicMenu: epicProjections.epicMenu,
+    epicInSessionGate: epicProjections.epicInSessionGate,
     epicCompletedMenu: epicProjections.epicCompletedMenu,
     epicCancelMenu: epicProjections.epicCancelMenu,
     epicReactivateMenu: epicProjections.epicReactivateMenu,
+    epicUnblockMenu: epicProjections.epicUnblockMenu,
     discoveryMapView: discoveryProjections.discoveryMapView,
     discoverySynthesisView: discoveryProjections.discoverySynthesisView,
+    roadmapTitle: roadmapProjections.roadmapTitle,
+    roadmapMapView: roadmapProjections.roadmapMapView,
+    roadmapProposalView: roadmapProjections.roadmapProposalView,
+    roadmapPullSetView: roadmapProjections.roadmapPullSetView,
+    roadmapHomeMenu: roadmapProjections.roadmapHomeMenu,
     discussionMap: discussionProjections.discussionMap,
+    discussionDeferGate: discussionProjections.discussionDeferGate,
     startOverview: startProjections.startOverview,
     startMenu: startProjections.startMenu,
     emptyOverview: startProjections.emptyOverview,
@@ -107,6 +146,8 @@ module.exports = {
     inboxPickupView: startProjections.inboxPickupView,
     archivedView: startProjections.archivedView,
     workingSetView: startProjections.workingSetView,
+    workingSetAddGate: startProjections.workingSetAddGate,
+    workingSetDropGate: startProjections.workingSetDropGate,
     manageListView: startProjections.manageListView,
     manageUnitView: startProjections.manageUnitView,
     completedView: startProjections.completedView,

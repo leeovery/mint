@@ -26,9 +26,11 @@ const {
   withProjectLock,
   ensureContainer,
 } = require('../kernel/manifest.cjs');
-const { commitScopedWithKb, noteIfNothingCommitted } = require('./commit.cjs');
+const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
+const { purgeWorkUnitCache } = require('./cache.cjs');
 const { knowledge } = require('./kb.cjs');
 const { addItem } = require('./discovery-map.cjs');
+const { revertJoins } = require('./roadmap.cjs');
 const { todayStamp } = require('./dates.cjs');
 const { computeNextPhase } = require('./derivations.cjs');
 
@@ -46,12 +48,14 @@ function assertLegalStatus(status) {
 /**
  * @typedef {object} WorkUnitLifecycleResult
  * @property {string} work_unit
+ * @property {string} [work_type]  complete: the unit's work type (drives the pipeline banner)
  * @property {string} status     the work unit's status after the transition
  * @property {string} [completed_at]      complete: the stamped date
  * @property {string} [previous_status]   reactivate: the status the unit came from
  * @property {string|null} committed  short commit sha, or null when nothing was staged
  * @property {string} [note]     set when committed is null
  * @property {string[]} warnings non-blocking failures (knowledge-base sync)
+ * @property {string[]} [roadmap_reverted] cancel: roadmap items handed back to waiting by the cancel-revert hop
  */
 
 /**
@@ -71,7 +75,7 @@ function assertLegalStatus(status) {
  */
 function completeWorkUnit(cwd, workUnit, { message }) {
   assertLegalStatus('completed');
-  const { completedAt, previous } = withWorkUnitLock(cwd, workUnit, () => {
+  const { completedAt, previous, workType } = withWorkUnitLock(cwd, workUnit, () => {
     const loaded = loadWorkUnitManifest(cwd, workUnit);
     if (loaded.status === 'completed') {
       throw new Error(`work unit "${workUnit}" is already completed`);
@@ -85,7 +89,7 @@ function completeWorkUnit(cwd, workUnit, { message }) {
     loaded.completed_at = stamped;
 
     saveWorkUnitManifest(cwd, workUnit, loaded);
-    return { completedAt: stamped, previous: from };
+    return { completedAt: stamped, previous: from, workType: loaded.work_type };
   });
 
   /** @type {string[]} */
@@ -94,10 +98,11 @@ function completeWorkUnit(cwd, workUnit, { message }) {
     reindexWorkUnit(cwd, workUnit, warnings);
   }
 
-  const committed = commitScopedWithKb(cwd, `.workflows/${workUnit}`, message);
+  const cacheSpec = purgeWorkUnitCache(cwd, workUnit);
+  const outcome = commitTailWithKb(cwd, cacheSpec ? [`.workflows/${workUnit}`, cacheSpec] : `.workflows/${workUnit}`, message, warnings);
   /** @type {WorkUnitLifecycleResult} */
-  const result = { work_unit: workUnit, status: 'completed', completed_at: completedAt, committed, warnings };
-  noteIfNothingCommitted(result, committed);
+  const result = { work_unit: workUnit, work_type: workType, status: 'completed', completed_at: completedAt, committed: outcome.committed, warnings };
+  noteCommitOutcome(result, outcome);
   return result;
 }
 
@@ -129,10 +134,20 @@ function cancelWorkUnit(cwd, workUnit) {
   const warnings = [];
   knowledge(cwd, ['remove', '--work-unit', workUnit], 'knowledge remove', warnings);
 
-  const committed = commitScopedWithKb(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): mark as cancelled`);
+  // The cancel-revert hop, whole-unit form: every roadmap item joined to
+  // the unit returns to waiting (the delivery attempt is over; the record
+  // stays). The project manifest rides this commit when a revert landed.
+  const reverted = revertJoins(cwd, workUnit);
+
+  const cacheSpec = purgeWorkUnitCache(cwd, workUnit);
+  const specs = [`.workflows/${workUnit}`];
+  if (cacheSpec) specs.push(cacheSpec);
+  if (reverted.length > 0) specs.push('.workflows/manifest.json');
+  const outcome = commitTailWithKb(cwd, specs.length === 1 ? specs[0] : specs, `workflow(${workUnit}): mark as cancelled`, warnings);
   /** @type {WorkUnitLifecycleResult} */
-  const result = { work_unit: workUnit, status: 'cancelled', committed, warnings };
-  noteIfNothingCommitted(result, committed);
+  const result = { work_unit: workUnit, status: 'cancelled', committed: outcome.committed, warnings };
+  if (reverted.length > 0) result.roadmap_reverted = reverted;
+  noteCommitOutcome(result, outcome);
   return result;
 }
 
@@ -197,10 +212,10 @@ function reactivateWorkUnit(cwd, workUnit) {
     reindexWorkUnit(cwd, workUnit, warnings);
   }
 
-  const committed = commitScopedWithKb(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): reactivate work unit`);
+  const outcome = commitTailWithKb(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): reactivate work unit`, warnings);
   /** @type {WorkUnitLifecycleResult} */
-  const result = { work_unit: workUnit, status: 'in-progress', previous_status: previous, committed, warnings };
-  noteIfNothingCommitted(result, committed);
+  const result = { work_unit: workUnit, status: 'in-progress', previous_status: previous, committed: outcome.committed, warnings };
+  noteCommitOutcome(result, outcome);
   return result;
 }
 
@@ -274,10 +289,10 @@ function pivotWorkUnit(cwd, workUnit) {
   const warnings = [];
   reindexWorkUnit(cwd, workUnit, warnings, { clearFirst: true });
 
-  const committed = commitScopedWithKb(cwd, [`.workflows/${workUnit}`, '.workflows/manifest.json'], `workflow(${workUnit}): pivot to epic`);
+  const outcome = commitTailWithKb(cwd, [`.workflows/${workUnit}`, '.workflows/manifest.json'], `workflow(${workUnit}): pivot to epic`, warnings);
   /** @type {WorkUnitPivotResult} */
-  const result = { work_unit: workUnit, work_type: 'epic', routing, committed, warnings };
-  noteIfNothingCommitted(result, committed);
+  const result = { work_unit: workUnit, work_type: 'epic', routing, committed: outcome.committed, warnings };
+  noteCommitOutcome(result, outcome);
   return result;
 }
 

@@ -1,9 +1,9 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Domain ring: topic transitions — start, complete, reopen, supersede,
-// cancel, and reactivate, each a single transaction from the caller's
-// perspective.
+// Domain ring: topic transitions — start, triage, complete, reopen,
+// supersede, cancel, and reactivate, each a single transaction from the
+// caller's perspective.
 //
 // start/complete/reopen/supersede are phase-item lifecycle bookkeeping:
 // manifest write plus a knowledge-base sync where the phase is indexed
@@ -22,11 +22,23 @@
 // release — the lock protects the manifest read-modify-write, nothing else.
 // ---------------------------------------------------------------------------
 
+const fs = require('fs');
+const path = require('path');
 const { loadWorkUnitManifest, saveWorkUnitManifest, withWorkUnitLock, ensureContainer } = require('../kernel/manifest.cjs');
-const { commitScopedWithKb, noteIfNothingCommitted } = require('./commit.cjs');
+const { commitTailWithKb, commitTailPathspec, noteCommitOutcome } = require('./commit.cjs');
 const { knowledge, INDEXED_ARTIFACTS } = require('./kb.cjs');
+const { computeTopicLifecycle } = require('./derivations.cjs');
+const { revertJoins } = require('./roadmap.cjs');
 
-const { VALID_PHASES, VALID_PHASE_STATUSES } = require('../kernel/manifest-schema.cjs');
+// The discovery map's lifecycle is computed from research and discussion
+// items alone (`computeTopicLifecycle`), so only those phases can move a map
+// row in or out of the live set — and only they may touch its execution
+// order. Spec topic names collide with map topic names by construction (an
+// independent discussion becomes a grouping of one), so an ungated write
+// here strips a still-live topic's position.
+const MAP_LIFECYCLE_PHASES = ['research', 'discussion'];
+
+const { VALID_PHASES, VALID_PHASE_STATUSES, WORK_TYPE_PIPELINES, TERMINAL_STATUSES } = require('../kernel/manifest-schema.cjs');
 
 // Phase-item lifecycle operates on WORK phases only. Discovery items are map
 // items (no lifecycle status — computed at render time); they are created and
@@ -55,12 +67,15 @@ function assertLegalWrite(phase, status) {
  * @property {string|null} committed  short commit sha, or null when nothing was staged
  * @property {string} [note]     set when committed is null
  * @property {string[]} warnings non-blocking failures (knowledge-base sync)
+ * @property {string[]} [cascaded]  started spec items cancelled with their source (cancel --cascade)
+ * @property {string[]} [discarded] proposed groupings deleted with their source (cancel --cascade)
+ * @property {string[]} [roadmap_reverted] roadmap items handed back to waiting by the cancel-revert hop
  */
 
 /**
  * The phase item for `topic`, or a loud error.
  * @param {object} manifest @param {string} phase @param {string} topic
- * @returns {{status?: string, previous_status?: string, superseded_by?: string}}
+ * @returns {{status?: string, previous_status?: string, superseded_by?: string, order?: number, previous_order?: number, sources?: Record<string, {status?: string}>|Array<{name?: string, status?: string}>}}
  */
 function phaseItem(manifest, phase, topic) {
   assertLegalWrite(phase, 'cancelled');
@@ -124,6 +139,9 @@ function startTopic(cwd, workUnit, phase, topic) {
     } else if (existing.status === 'superseded') {
       const by = 'superseded_by' in existing ? ` (by "${existing.superseded_by}")` : '';
       throw new Error(`${phase} item "${topic}" is superseded${by} — supersession is terminal; work on the absorbing topic instead`);
+    } else if (existing.status === 'promoted') {
+      const to = 'promoted_to' in existing ? ` (to "${existing.promoted_to}")` : '';
+      throw new Error(`${phase} item "${topic}" is promoted${to} — promotion is terminal; continue it from the cross-cutting work unit`);
     } else {
       existing.status = 'in-progress';
     }
@@ -131,6 +149,526 @@ function startTopic(cwd, workUnit, phase, topic) {
     saveWorkUnitManifest(cwd, workUnit, manifest);
     return { topic, phase, status: 'in-progress', created };
   });
+}
+
+/**
+ * @typedef {object} TopicTriageResult
+ * @property {string} topic
+ * @property {string} phase
+ * @property {string|null} status  the item's status after the call
+ * @property {boolean} created     true when the phase item was created as `triaged`
+ * @property {string|null} status_before  the item's status before the call (null when created)
+ * @property {boolean} [reopened]  set when a completed item was reopened to receive the concern
+ * @property {string} [concern_path]  delivery form: the installed concern file, project-relative
+ * @property {boolean} [reconcile_flagged]  delivery form: the landing flagged completed downstream item(s) for reconciliation
+ * @property {string[]} [sources_staled]  delivery form: spec items whose source row for this discussion flipped `incorporated` → `stale`
+ * @property {string|null} [committed]  delivery form: short commit sha, or null
+ * @property {string} [note]       delivery form: set when committed is null
+ * @property {string[]} [warnings] delivery form: the tail commit's failure detail
+ */
+
+/**
+ * A topic name usable in paths: non-empty, no separators, no traversal.
+ * Guards every verb that turns a topic into a filesystem location.
+ * @param {string} topic
+ */
+function assertLegalTopicName(topic) {
+  if (!topic || /[\\/]/.test(topic) || topic.includes('..')) {
+    throw new Error(`invalid topic name "${topic}" — no separators or ".."`);
+  }
+}
+
+/**
+ * The next concern number in a topic's triage sidecar: highest `NNN-` prefix
+ * plus one, `1` for a missing or empty directory.
+ * @param {string} dirAbs
+ * @returns {number}
+ */
+function nextConcernNumber(dirAbs) {
+  /** @type {string[]} */
+  let files;
+  try {
+    files = fs.readdirSync(dirAbs);
+  } catch {
+    return 1;
+  }
+  let max = 0;
+  for (const f of files) {
+    const m = f.match(/^(\d{3})-.+\.md$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return max + 1;
+}
+
+/**
+ * A spec item's `sources` as `[name, row]` entries — the one decoder of the
+ * map form and the legacy array form. Rows that aren't objects are dropped.
+ * @param {object|Array<{name?: string, status?: string}>|undefined} sources
+ * @returns {[string, {status?: string}][]}
+ */
+function sourceRows(sources) {
+  if (!sources || typeof sources !== 'object') return [];
+  const entries = Array.isArray(sources)
+    ? sources.map((r) => /** @type {[string, unknown]} */ ([r && typeof r === 'object' ? r.name || '' : '', r]))
+    : Object.entries(sources);
+  return /** @type {[string, {status?: string}][]} */ (entries.filter(([, r]) => r && typeof r === 'object'));
+}
+
+/**
+ * The `topic`-named row of a spec item's `sources`, object or legacy array
+ * form, or undefined.
+ * @param {object|Array<{name?: string}>|undefined} sources
+ * @param {string} topic
+ * @returns {{status?: string}|undefined}
+ */
+function sourceRow(sources, topic) {
+  const entry = sourceRows(sources).find(([name]) => name === topic);
+  return entry ? entry[1] : undefined;
+}
+
+/**
+ * @typedef {object} DownstreamFlagResult
+ * @property {{phase: string, topic: string}[]} flagged  completed downstream items now carrying `reconcile_needed`
+ * @property {string[]} staled  spec items whose `sources.{topic}` row flipped `incorporated` → `stale`
+ */
+
+/**
+ * Flag `topic`'s downstream neighbours when it goes stale — a reopen or a
+ * triage landing, never the later re-completion. One hop only: the downstream
+ * phase's own reconciliation earns (or doesn't earn) the next.
+ *
+ * A source phase's downstream — discussion or investigation — is the reverse
+ * join through spec `sources` (a grouped spec's own name may differ from the
+ * source's); every other phase flags the same-named item in the work type's
+ * next pipeline phase, as does an investigation no spec's sources name (the
+ * legacy bugfix shape).
+ * Only a `completed` item takes the flag (value = the upstream phase name,
+ * consumed and cleared by the entry skills' reconcile advisory; an existing
+ * flag is never clobbered). An `incorporated` source row on any non-terminal
+ * spec item flips to `stale` regardless of the item's flag state — the
+ * persistent record that the extraction predates the revision, cleared only
+ * by the spec's own reconciliation.
+ *
+ * Mutates the loaded manifest; the caller saves under its own lock.
+ * @param {object} manifest
+ * @param {string} workType
+ * @param {string} phase  the phase going stale
+ * @param {string} topic
+ * @param {{except?: string}} [opts]  spec item to skip in the discussion join — the invoking spec's own extraction is current by construction
+ * @returns {DownstreamFlagResult}
+ */
+function flagDownstream(manifest, workType, phase, topic, opts = {}) {
+  /** @type {DownstreamFlagResult} */
+  const result = { flagged: [], staled: [] };
+  const itemsOf = (p) => {
+    const ph = manifest.phases && typeof manifest.phases === 'object' ? manifest.phases[p] : undefined;
+    const items = ph && typeof ph === 'object' ? ph.items : undefined;
+    return items && typeof items === 'object' ? items : undefined;
+  };
+  const flag = (p, name, item) => {
+    if (item && typeof item === 'object' && item.status === 'completed' && item.reconcile_needed === undefined) {
+      item.reconcile_needed = phase;
+      result.flagged.push({ phase: p, topic: name });
+    }
+  };
+
+  if (phase === 'discussion' || phase === 'investigation') {
+    let joined = false;
+    for (const [name, item] of Object.entries(itemsOf('specification') || {})) {
+      if (name === opts.except) continue;
+      if (!item || typeof item !== 'object' || TERMINAL_STATUSES.includes(item.status)) continue;
+      const row = sourceRow(item.sources, topic);
+      if (!row) continue;
+      joined = true;
+      if (row.status === 'incorporated') {
+        row.status = 'stale';
+        result.staled.push(name);
+      }
+      flag('specification', name, item);
+    }
+    if (phase === 'discussion' || joined) return result;
+  }
+
+  const pipeline = WORK_TYPE_PIPELINES[/** @type {keyof typeof WORK_TYPE_PIPELINES} */ (workType)] || [];
+  const at = pipeline.indexOf(phase);
+  const next = at === -1 ? undefined : pipeline[at + 1];
+  if (next) flag(next, topic, (itemsOf(next) || {})[topic]);
+  return result;
+}
+
+/**
+ * Apply the parking semantics to a phase item receiving a concern: create it
+ * as `triaged` when absent — a parked concern must never read as started
+ * work — heal a status-less item to `triaged`, leave a `triaged` or
+ * `in-progress` item untouched, and set a `completed` item back to
+ * `in-progress` (a landed concern reopens the conversation; no
+ * knowledge-base action — re-completion re-indexes over the same identity).
+ * Terminal states refuse with the same messages start uses. Mutates `items`;
+ * the caller saves when `dirty`.
+ * @param {Record<string, any>} items the phase's items container
+ * @param {string} phase
+ * @param {string} topic
+ * @returns {{status: string, created: boolean, status_before: string|null, reopened?: boolean, dirty: boolean}}
+ */
+function parkConcernItem(items, phase, topic) {
+  const existing = items[topic];
+  if (!existing || typeof existing !== 'object') {
+    items[topic] = { status: 'triaged' };
+    return { status: 'triaged', created: true, status_before: null, dirty: true };
+  }
+  const before = existing.status ?? null;
+  if (before === 'cancelled') {
+    throw new Error(`${phase} item "${topic}" is cancelled — reactivate it instead`);
+  }
+  if (before === 'superseded') {
+    const by = 'superseded_by' in existing ? ` (by "${existing.superseded_by}")` : '';
+    throw new Error(`${phase} item "${topic}" is superseded${by} — supersession is terminal; work on the absorbing topic instead`);
+  }
+  if (before === 'promoted') {
+    const to = 'promoted_to' in existing ? ` (to "${existing.promoted_to}")` : '';
+    throw new Error(`${phase} item "${topic}" is promoted${to} — promotion is terminal; continue it from the cross-cutting work unit`);
+  }
+  if (before === 'completed') {
+    existing.status = 'in-progress';
+    return { status: 'in-progress', created: false, status_before: before, reopened: true, dirty: true };
+  }
+  if (before === null) {
+    // A status-less item (partial field writes) has never been started —
+    // heal it to triaged, the same way start heals it to in-progress.
+    existing.status = 'triaged';
+    return { status: 'triaged', created: false, status_before: null, dirty: true };
+  }
+  return { status: before, created: false, status_before: before, dirty: false };
+}
+
+/**
+ * Park a rerouted concern on a topic (parking semantics per
+ * `parkConcernItem`). Legal only in phases whose schema vocabulary contains
+ * `triaged`. No git commit in the bare form — the calling flow commits the
+ * artefact append alongside; the delivery form (`--concern`) installs the
+ * concern file and commits action-scoped.
+ * @param {string} cwd project root
+ * @param {string} workUnit
+ * @param {string} phase
+ * @param {string} topic
+ * @returns {TopicTriageResult}
+ */
+function triageTopic(cwd, workUnit, phase, topic, opts = {}) {
+  assertLegalWrite(phase, 'triaged');
+  const { concernFile, slug, message } = opts;
+  const delivering = concernFile !== undefined;
+
+  assertLegalTopicName(topic);
+
+  /** @type {string|null} */
+  let concern = null;
+  if (delivering) {
+    if (!slug || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
+      throw new Error(`--slug must be kebab-case, got "${slug ?? ''}"`);
+    }
+    if (!message) throw new Error('topic triage --concern requires -m <message>');
+    // The scratch is consumed after delivery — confine it to the cache so a
+    // mis-passed path can never read (and delete) a live artifact.
+    const scratchAbs = path.resolve(cwd, /** @type {string} */ (concernFile));
+    const cacheRoot = path.join(cwd, '.workflows', '.cache') + path.sep;
+    if (!scratchAbs.startsWith(cacheRoot)) {
+      throw new Error(`--concern must point inside .workflows/.cache/ — got "${concernFile}"`);
+    }
+    try {
+      concern = fs.readFileSync(scratchAbs, 'utf8');
+    } catch {
+      throw new Error(`concern file not found: ${concernFile}`);
+    }
+    if (concern.trim() === '') throw new Error(`concern file is empty: ${concernFile}`);
+  }
+
+  /** @type {TopicTriageResult} */
+  const result = withWorkUnitLock(cwd, workUnit, () => {
+    const manifest = loadWorkUnitManifest(cwd, workUnit);
+    const phases = ensureContainer(manifest, 'phases', 'phases');
+    const ph = ensureContainer(phases, phase, `phases.${phase}`);
+    const items = ensureContainer(ph, 'items', `phases.${phase}.items`);
+
+    const park = parkConcernItem(items, phase, topic);
+    let dirty = park.dirty;
+    /** @type {TopicTriageResult} */
+    const base = { topic, phase, status: park.status, created: park.created, status_before: park.status_before };
+    if (park.reopened) base.reopened = true;
+
+    if (delivering || base.reopened === true) {
+      // A landing reopens the ground the downstream phase stands on — flag it
+      // for reconciliation the next time it is entered. Staleness begins at
+      // landing, not at the topic's later re-conclusion. The bare form hops
+      // only when it reopened a completed item — the same onset reopen has —
+      // so no completed→in-progress transition ever skips the hop.
+      const fd = flagDownstream(manifest, manifest.work_type, phase, topic);
+      if (fd.flagged.length > 0) {
+        base.reconcile_flagged = true;
+        dirty = true;
+      }
+      if (fd.staled.length > 0) {
+        base.sources_staled = fd.staled;
+        dirty = true;
+      }
+    }
+
+    if (delivering) {
+      // Install the concern in the topic's triage sidecar — a fresh
+      // engine-numbered file per concern, so concurrent deliveries can
+      // never collide or lose an entry.
+      const dirRel = `.workflows/${workUnit}/${phase}/.triage/${topic}`;
+      const dirAbs = path.join(cwd, dirRel);
+      fs.mkdirSync(dirAbs, { recursive: true });
+      const n = String(nextConcernNumber(dirAbs)).padStart(3, '0');
+      const rel = `${dirRel}/${n}-${slug}.md`;
+      const body = /** @type {string} */ (concern);
+      fs.writeFileSync(path.join(cwd, rel), body.endsWith('\n') ? body : body + '\n');
+      base.concern_path = rel;
+    }
+
+    if (dirty) saveWorkUnitManifest(cwd, workUnit, manifest);
+    return base;
+  });
+
+  if (delivering) {
+    try { fs.unlinkSync(path.resolve(cwd, /** @type {string} */ (concernFile))); } catch { /* scratch already gone */ }
+    /** @type {string[]} */
+    const warnings = [];
+    const outcome = commitTailPathspec(
+      cwd,
+      [`.workflows/${workUnit}/manifest.json`, /** @type {string} */ (result.concern_path)],
+      /** @type {string} */ (message),
+      warnings,
+    );
+    result.committed = outcome.committed;
+    result.warnings = warnings;
+    noteCommitOutcome(result, outcome);
+    if (outcome.failed) {
+      result.note = `commit pending — state saved; retry with: engine commit ${workUnit} --topic ${phase}/${topic} -m "<message>"`;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * @typedef {object} TopicQueueResult
+ * @property {string} work_unit
+ * @property {string} phase
+ * @property {string} topic
+ * @property {number} count
+ * @property {string[]} files  project-relative queue file paths, sorted
+ */
+
+/**
+ * Read a topic's triage queue: the engine owns the queue layout, so gates
+ * and drains ask instead of globbing. Legal only in triage-legal phases;
+ * a missing directory is an empty queue.
+ * @param {string} cwd project root
+ * @param {string} workUnit
+ * @param {string} phase
+ * @param {string} topic
+ * @returns {TopicQueueResult}
+ */
+function queueStatus(cwd, workUnit, phase, topic) {
+  if (phase !== 'research' && phase !== 'discussion' && phase !== 'investigation') {
+    throw new Error(`triage queues exist for research|discussion|investigation only — got "${phase}"`);
+  }
+  assertLegalTopicName(topic);
+  if (!fs.existsSync(path.join(cwd, '.workflows', workUnit))) {
+    throw new Error(`no work unit directory: .workflows/${workUnit}`);
+  }
+  const dirRel = `.workflows/${workUnit}/${phase}/.triage/${topic}`;
+  /** @type {fs.Dirent[]} */
+  let entries = [];
+  try {
+    entries = fs.readdirSync(path.join(cwd, dirRel), { withFileTypes: true });
+  } catch { /* no queue yet — empty */ }
+  const files = entries
+    .filter((e) => e.isFile() && e.name.endsWith('.md'))
+    .map((e) => `${dirRel}/${e.name}`)
+    .sort();
+  return { work_unit: workUnit, phase, topic, count: files.length, files };
+}
+
+/**
+ * @typedef {object} TopicAbsorbResult
+ * @property {string} phase
+ * @property {string} topic
+ * @property {string} absorbed  the queue-file basename removed
+ * @property {number} remaining  queue files left after the removal
+ * @property {string|null} [committed]
+ * @property {string[]} [warnings]
+ * @property {string} [note]
+ */
+
+/**
+ * Absorb one rerouted concern — the mirror of `triage`'s delivery form:
+ * delete its queue file and commit the fold action-scoped (the phase
+ * artifact, this deletion, the work-unit manifest) under the caller's
+ * message. The response answers `remaining` so the caller routes
+ * loop-or-exit with no follow-up read.
+ * @param {string} cwd @param {string} workUnit @param {string} phase
+ * @param {string} topic @param {{file: string, message: string}} opts
+ * @returns {TopicAbsorbResult}
+ */
+function absorbConcern(cwd, workUnit, phase, topic, { file, message }) {
+  const queue = queueStatus(cwd, workUnit, phase, topic);
+  if (file !== path.basename(file) || !file.endsWith('.md')) {
+    throw new Error(`topic absorb: --file must be a queue-file name, not a path (got "${file}")`);
+  }
+  const rel = `.workflows/${workUnit}/${phase}/.triage/${topic}/${file}`;
+  if (!queue.files.includes(rel)) {
+    throw new Error(`topic absorb: "${file}" is not in the ${topic} ${phase} triage queue`);
+  }
+  fs.unlinkSync(path.join(cwd, rel));
+  /** @type {TopicAbsorbResult} */
+  const result = { phase, topic, absorbed: file, remaining: queue.count - 1 };
+  const artifactRel = `.workflows/${workUnit}/${phase}/${topic}.md`;
+  /** @type {string[]} */
+  const warnings = [];
+  const outcome = commitTailPathspec(
+    cwd,
+    [
+      `.workflows/${workUnit}/manifest.json`,
+      rel,
+      ...(fs.existsSync(path.join(cwd, artifactRel)) ? [artifactRel] : []),
+    ],
+    message,
+    warnings,
+  );
+  result.committed = outcome.committed;
+  result.warnings = warnings;
+  noteCommitOutcome(result, outcome);
+  if (outcome.failed) {
+    result.note = `commit pending — the concern is absorbed; retry with: engine commit ${workUnit} --topic ${phase}/${topic} -m "<message>"`;
+  }
+  return result;
+}
+
+/**
+ * @typedef {object} TopicRequeueResult
+ * @property {string} topic
+ * @property {string} from_phase
+ * @property {string} to_phase
+ * @property {string} moved  the queue-file basename moved out of the source queue
+ * @property {string} concern_path  the installed destination queue file, project-relative
+ * @property {number} remaining  source-queue files left after the move
+ * @property {string|null} status  the destination item's status after the call
+ * @property {boolean} created     true when the destination item was created as `triaged`
+ * @property {string|null} status_before  the destination item's status before the call (null when created)
+ * @property {boolean} [reopened]  set when a completed destination item was reopened to receive the concern
+ * @property {boolean} [source_item_removed]  the source item was a parked stub this move emptied, and was removed
+ * @property {boolean} [reconcile_flagged]  the move flagged completed downstream item(s) for reconciliation
+ * @property {string[]} [sources_staled]  spec items whose source row for this topic flipped `incorporated` → `stale`
+ * @property {string|null} [committed]  short commit sha, or null
+ * @property {string} [note]       set when committed is null
+ * @property {string[]} [warnings] the tail commit's failure detail
+ */
+
+/**
+ * Move one queued concern to the same topic's other phase-side — the repair
+ * for a concern parked on the wrong side of the research/discussion pair.
+ * One transaction: the destination item takes the parking semantics a triage
+ * landing applies (`parkConcernItem` plus the downstream staleness hop), the
+ * queue file is renumbered into the destination queue, a `triaged` source
+ * item the move leaves with an empty queue is removed (it existed only to
+ * park concerns), and the move commits action-scoped under the caller's
+ * message. The response answers `remaining` for the source queue so the
+ * caller routes loop-or-exit with no follow-up read.
+ * @param {string} cwd @param {string} workUnit @param {string} fromPhase
+ * @param {string} toPhase @param {string} topic
+ * @param {{file: string, message: string}} opts
+ * @returns {TopicRequeueResult}
+ */
+function requeueConcern(cwd, workUnit, fromPhase, toPhase, topic, { file, message }) {
+  const pair = ['research', 'discussion'];
+  if (!pair.includes(fromPhase) || !pair.includes(toPhase) || fromPhase === toPhase) {
+    throw new Error(`topic requeue moves a concern to the same topic's other phase-side — research↔discussion, got "${fromPhase}" → "${toPhase}"`);
+  }
+  const queue = queueStatus(cwd, workUnit, fromPhase, topic);
+  if (file !== path.basename(file) || !file.endsWith('.md')) {
+    throw new Error(`topic requeue: --file must be a queue-file name, not a path (got "${file}")`);
+  }
+  const sourceRel = `.workflows/${workUnit}/${fromPhase}/.triage/${topic}/${file}`;
+  if (!queue.files.includes(sourceRel)) {
+    throw new Error(`topic requeue: "${file}" is not in the ${topic} ${fromPhase} triage queue`);
+  }
+  const slug = file.replace(/^\d{3}-/, '').replace(/\.md$/, '');
+
+  /** @type {TopicRequeueResult} */
+  const result = withWorkUnitLock(cwd, workUnit, () => {
+    const manifest = loadWorkUnitManifest(cwd, workUnit);
+    const phases = ensureContainer(manifest, 'phases', 'phases');
+    const ph = ensureContainer(phases, toPhase, `phases.${toPhase}`);
+    const items = ensureContainer(ph, 'items', `phases.${toPhase}.items`);
+
+    const park = parkConcernItem(items, toPhase, topic);
+    let dirty = park.dirty;
+    /** @type {TopicRequeueResult} */
+    const base = {
+      topic,
+      from_phase: fromPhase,
+      to_phase: toPhase,
+      moved: file,
+      concern_path: '',
+      remaining: queue.count - 1,
+      status: park.status,
+      created: park.created,
+      status_before: park.status_before,
+    };
+    if (park.reopened) base.reopened = true;
+
+    // The move is a delivery to the destination — the same staleness hop a
+    // triage landing makes there.
+    const fd = flagDownstream(manifest, manifest.work_type, toPhase, topic);
+    if (fd.flagged.length > 0) {
+      base.reconcile_flagged = true;
+      dirty = true;
+    }
+    if (fd.staled.length > 0) {
+      base.sources_staled = fd.staled;
+      dirty = true;
+    }
+
+    if (base.remaining === 0) {
+      const srcPh = phases[fromPhase];
+      const srcItems = srcPh && typeof srcPh === 'object' ? srcPh.items : undefined;
+      const src = srcItems && typeof srcItems === 'object' ? srcItems[topic] : undefined;
+      if (src && typeof src === 'object' && src.status === 'triaged') {
+        delete srcItems[topic];
+        base.source_item_removed = true;
+        dirty = true;
+      }
+    }
+
+    const destDirRel = `.workflows/${workUnit}/${toPhase}/.triage/${topic}`;
+    const destDirAbs = path.join(cwd, destDirRel);
+    fs.mkdirSync(destDirAbs, { recursive: true });
+    const n = String(nextConcernNumber(destDirAbs)).padStart(3, '0');
+    const destRel = `${destDirRel}/${n}-${slug}.md`;
+    fs.renameSync(path.join(cwd, sourceRel), path.join(cwd, destRel));
+    base.concern_path = destRel;
+
+    if (dirty) saveWorkUnitManifest(cwd, workUnit, manifest);
+    return base;
+  });
+
+  /** @type {string[]} */
+  const warnings = [];
+  const outcome = commitTailPathspec(
+    cwd,
+    [`.workflows/${workUnit}/manifest.json`, sourceRel, result.concern_path],
+    message,
+    warnings,
+  );
+  result.committed = outcome.committed;
+  result.warnings = warnings;
+  noteCommitOutcome(result, outcome);
+  if (outcome.failed) {
+    result.note = `commit pending — the concern is moved; retry with: engine commit ${workUnit} --topic ${toPhase}/${topic} -m "<message>"`;
+  }
+  return result;
 }
 
 /**
@@ -149,6 +687,9 @@ function completeTopic(cwd, workUnit, phase, topic) {
   withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const item = phaseItem(manifest, phase, topic);
+    if (item.status === 'triaged') {
+      throw new Error(`${phase} item "${topic}" is triaged — parked concerns have never been worked; start the topic first`);
+    }
     if (item.status === 'cancelled') {
       throw new Error(`${phase} item "${topic}" is cancelled — reactivate it instead`);
     }
@@ -156,7 +697,28 @@ function completeTopic(cwd, workUnit, phase, topic) {
       const by = 'superseded_by' in item ? ` (by "${item.superseded_by}")` : '';
       throw new Error(`${phase} item "${topic}" is superseded${by} — supersession is terminal; work on the absorbing topic instead`);
     }
+    if (item.status === 'promoted') {
+      const to = 'promoted_to' in item ? ` (to "${item.promoted_to}")` : '';
+      throw new Error(`${phase} item "${topic}" is promoted${to} — promotion is terminal; continue it from the cross-cutting work unit`);
+    }
+    if (phase === 'specification') {
+      const blocking = sourceRows(item.sources)
+        .filter(([, r]) => r.status !== 'incorporated')
+        .map(([name]) => name);
+      if (blocking.length > 0) {
+        throw new Error(`specification "${topic}" has unresolved source rows (${blocking.join(', ')}) — extract pending sources and reconcile stale ones before concluding`);
+      }
+    }
     item.status = 'completed';
+
+    // A completed specification declares real dependencies — exactly the
+    // information that sharpens a build order first assigned at grouping.
+    // Flag rather than resequence: the epic-entry sequencing step does the
+    // work, so there is one place that sequences. Cleared by
+    // `build-order sequence`.
+    if (phase === 'specification' && manifest.work_type === 'epic') {
+      manifest.phases.specification.build_order_stale = true;
+    }
 
     saveWorkUnitManifest(cwd, workUnit, manifest);
   });
@@ -176,13 +738,17 @@ function completeTopic(cwd, workUnit, phase, topic) {
  * @property {string} topic
  * @property {string} phase
  * @property {string} status   always `in-progress`
+ * @property {{phase: string, topic: string}[]} [reconcile_flagged]  downstream items this reopen flagged for reconciliation
+ * @property {string[]} [sources_staled]  spec items whose source row for this discussion flipped `incorporated` → `stale`
  */
 
 /**
- * Reopen a completed phase item: set `status: in-progress`. Only a completed
- * item reopens — anything else keeps its own flow (a cancelled item must go
- * through reactivate). No knowledge-base sync — the item's chunks stay live
- * until re-completion re-indexes over the same identity. No git commit.
+ * Reopen a completed phase item: set `status: in-progress` and flag the
+ * topic's downstream neighbours (flagDownstream — staleness begins at the
+ * reopen, not the later re-completion). Only a completed item reopens —
+ * anything else keeps its own flow (a cancelled item must go through
+ * reactivate). No knowledge-base sync — the item's chunks stay live until
+ * re-completion re-indexes over the same identity. No git commit.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} phase
@@ -201,9 +767,59 @@ function reopenTopic(cwd, workUnit, phase, topic) {
       throw new Error(`${phase} item "${topic}" is not completed (status: ${item.status ?? 'none'}) — only a completed item can be reopened`);
     }
     item.status = 'in-progress';
+    const fd = flagDownstream(manifest, manifest.work_type, phase, topic);
 
     saveWorkUnitManifest(cwd, workUnit, manifest);
-    return { topic, phase, status: 'in-progress' };
+    /** @type {TopicReopenResult} */
+    const result = { topic, phase, status: 'in-progress' };
+    if (fd.flagged.length > 0) result.reconcile_flagged = fd.flagged;
+    if (fd.staled.length > 0) result.sources_staled = fd.staled;
+    return result;
+  });
+}
+
+/**
+ * @typedef {object} StaleSourcesResult
+ * @property {string} discussion
+ * @property {{phase: string, topic: string}[]} flagged  completed specs now carrying `reconcile_needed`
+ * @property {string[]} staled  spec items whose source row for the discussion flipped `incorporated` → `stale`
+ */
+
+/**
+ * Mark every spec extraction of a discussion stale after its document moved
+ * without a lifecycle transition — the spec-side resolution flow's safety
+ * valve: a decision repaired in place during specification construction runs
+ * the same reverse join a reopen would, minus the reopen. `--except` names
+ * the invoking spec, whose own extraction of the resolution is current by
+ * construction. The discussion item's status is untouched. No git commit —
+ * the calling flow commits the doc edit alongside.
+ * @param {string} cwd project root
+ * @param {string} workUnit
+ * @param {string} discussion
+ * @param {{except?: string}} [opts]
+ * @returns {StaleSourcesResult}
+ */
+function staleSources(cwd, workUnit, discussion, opts = {}) {
+  return withWorkUnitLock(cwd, workUnit, () => {
+    const manifest = loadWorkUnitManifest(cwd, workUnit);
+    const itemsOf = (/** @type {string} */ p) => {
+      const ph = manifest.phases && typeof manifest.phases === 'object' ? manifest.phases[p] : undefined;
+      const items = ph && typeof ph === 'object' ? ph.items : undefined;
+      return items && typeof items === 'object' ? items : undefined;
+    };
+    const discussions = itemsOf('discussion');
+    if (!discussions || !(discussion in discussions)) {
+      throw new Error(`discussion item "${discussion}" not found in work unit "${workUnit}"`);
+    }
+    // A mistyped --except would silently stale the invoking spec's own row —
+    // the exact self-inflicted state the flag exists to prevent. Loud beats
+    // silent: the named spec must exist.
+    if (opts.except !== undefined && !((itemsOf('specification') || {})[opts.except])) {
+      throw new Error(`--except "${opts.except}" names no specification item in work unit "${workUnit}"`);
+    }
+    const fd = flagDownstream(manifest, manifest.work_type, 'discussion', discussion, { except: opts.except });
+    saveWorkUnitManifest(cwd, workUnit, manifest);
+    return { discussion, flagged: fd.flagged, staled: fd.staled };
   });
 }
 
@@ -248,12 +864,22 @@ function supersedeTopic(cwd, workUnit, phase, topic, { by }) {
     if (item.status === 'proposed') {
       throw new Error(`${phase} item "${topic}" is proposed — a proposed item has no artifact to supersede; reconcile removes it instead`);
     }
+    if (item.status === 'triaged') {
+      throw new Error(`${phase} item "${topic}" is triaged — parked concerns have never been worked; start the topic to drain them first`);
+    }
     if (item.status === 'cancelled') {
       throw new Error(`${phase} item "${topic}" is cancelled — reactivate it instead`);
+    }
+    if (item.status === 'promoted') {
+      const to = 'promoted_to' in item ? ` (to "${item.promoted_to}")` : '';
+      throw new Error(`${phase} item "${topic}" is promoted${to} — promotion is terminal; continue it from the cross-cutting work unit`);
     }
     const items = manifest.phases[phase].items;
     if (!items[by] || typeof items[by] !== 'object') {
       throw new Error(`no ${phase} item "${by}" to supersede toward — the absorbing item must exist first`);
+    }
+    if (items[by].status === 'triaged') {
+      throw new Error(`${phase} item "${by}" is triaged — a stub of parked concerns cannot absorb other topics; start it first`);
     }
     item.status = 'superseded';
     item.superseded_by = by;
@@ -272,25 +898,78 @@ function supersedeTopic(cwd, workUnit, phase, topic, { by }) {
  * Cancel an epic topic: stash the current status into `previous_status`, set
  * `status: cancelled`, drop the topic's discovery-map `order`, remove its
  * knowledge-base chunks (warn-don't-block), commit scoped to the work unit.
+ *
+ * Cancelling a discussion a live specification sources collapses that spec:
+ * the bare cancel refuses, naming the affected spec item(s); `cascade: true`
+ * cancels the discussion and those spec items in one transaction.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} phase
  * @param {string} topic
+ * @param {{cascade?: boolean}} [opts]
  * @returns {TopicTransitionResult}
  */
-function cancelTopic(cwd, workUnit, phase, topic) {
+function cancelTopic(cwd, workUnit, phase, topic, opts = {}) {
+  /** @type {string[]} */
+  const cascaded = [];
+  /** @type {string[]} */
+  const discarded = [];
   withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const item = phaseItem(manifest, phase, topic);
     if (item.status === 'cancelled') {
       throw new Error(`${phase} item "${topic}" is already cancelled`);
     }
+
+    if (phase === 'discussion' || phase === 'investigation') {
+      const specItems = (manifest.phases && manifest.phases.specification && manifest.phases.specification.items) || {};
+      const sourcing = Object.entries(specItems).filter(([, s]) =>
+        s && typeof s === 'object' && !TERMINAL_STATUSES.includes(s.status) && s.status !== 'cancelled'
+        && sourceRow(s.sources, topic) !== undefined);
+      if (sourcing.length > 0 && !opts.cascade) {
+        throw new Error(`cancelling ${phase} "${topic}" collapses the specification(s) sourcing it: ${sourcing.map(([n]) => n).join(', ')} — confirm the cascade (--cascade cancels them together)`);
+      }
+      const specItemsMap = (manifest.phases && manifest.phases.specification && manifest.phases.specification.items) || {};
+      for (const [name, spec] of sourcing) {
+        if (spec.status === 'proposed') {
+          // A proposed grouping is a regenerable suggestion — discard it
+          // outright; a cancelled stub would collide with the next
+          // analysis's anchoring.
+          delete specItemsMap[name];
+          discarded.push(name);
+          continue;
+        }
+        spec.previous_status = spec.status;
+        spec.status = 'cancelled';
+        if ('order' in spec) {
+          spec.previous_order = spec.order;
+          delete spec.order;
+        }
+        cascaded.push(name);
+      }
+    }
+
     item.previous_status = item.status;
     item.status = 'cancelled';
 
-    const discovery = manifest.phases && manifest.phases.discovery;
-    const mapItem = discovery && discovery.items ? discovery.items[topic] : undefined;
-    if (mapItem && typeof mapItem === 'object' && 'order' in mapItem) delete mapItem.order;
+    // The build order lives on specification items the way the map's order
+    // lives on discovery items — a cancelled spec leaves the live set, so
+    // its number is stashed for the reactivate round-trip, never dropped.
+    if (phase === 'specification' && 'order' in item) {
+      item.previous_order = item.order;
+      delete item.order;
+    }
+
+    if (MAP_LIFECYCLE_PHASES.includes(phase)) {
+      const discovery = manifest.phases && manifest.phases.discovery;
+      const mapItem = discovery && discovery.items ? discovery.items[topic] : undefined;
+      if (mapItem && typeof mapItem === 'object' && 'order' in mapItem) {
+        // Stash rather than drop — reactivate restores the execution position,
+        // so a cancel/reactivate round-trip never forces a re-sequence.
+        mapItem.previous_order = mapItem.order;
+        delete mapItem.order;
+      }
+    }
 
     saveWorkUnitManifest(cwd, workUnit, manifest);
   });
@@ -298,11 +977,27 @@ function cancelTopic(cwd, workUnit, phase, topic) {
   /** @type {string[]} */
   const warnings = [];
   knowledge(cwd, ['remove', '--work-unit', workUnit, '--phase', phase, '--topic', topic], 'knowledge remove', warnings);
+  for (const name of cascaded) {
+    knowledge(cwd, ['remove', '--work-unit', workUnit, '--phase', 'specification', '--topic', name], 'knowledge remove', warnings);
+  }
 
-  const committed = commitScopedWithKb(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): cancel ${topic} (${phase})`);
+  // The cancel-revert hop: a topic whose cancellation leaves its map
+  // lifecycle cancelled hands any roadmap item joined to it back to
+  // waiting (sources/origin intact) — the un-pull path. The project
+  // manifest rides this transaction's commit when a revert landed.
+  const lifecycleAfter = computeTopicLifecycle(loadWorkUnitManifest(cwd, workUnit), topic).lifecycle;
+  const reverted = lifecycleAfter === 'cancelled' ? revertJoins(cwd, workUnit, { topic }) : [];
+
+  const cancelSpec = reverted.length > 0
+    ? [`.workflows/${workUnit}`, '.workflows/manifest.json']
+    : `.workflows/${workUnit}`;
+  const outcome = commitTailWithKb(cwd, cancelSpec, `workflow(${workUnit}): cancel ${topic} (${phase})`, warnings);
   /** @type {TopicTransitionResult} */
-  const result = { topic, phase, status: 'cancelled', committed, warnings };
-  noteIfNothingCommitted(result, committed);
+  const result = { topic, phase, status: 'cancelled', committed: outcome.committed, warnings };
+  if (cascaded.length > 0) result.cascaded = cascaded;
+  if (discarded.length > 0) result.discarded = discarded;
+  if (reverted.length > 0) result.roadmap_reverted = reverted;
+  noteCommitOutcome(result, outcome);
   return result;
 }
 
@@ -332,6 +1027,33 @@ function reactivateTopic(cwd, workUnit, phase, topic) {
     item.status = previous;
     delete item.previous_status;
 
+    if (phase === 'specification' && 'previous_order' in item) {
+      // Restore only when the stashed number is still free — the live set
+      // renumbers contiguously while an item is cancelled, so a blind
+      // restore can seat two topics on one number (the collision the map's
+      // reactivate can still produce). A taken number drops the stash and
+      // leaves the item unordered; `build_order_needs_sequencing` flips and
+      // the next sequencing pass seats it wholesale.
+      // Terminal siblings keep inert numbers (supersede and promote never
+      // stash) — only a LIVE holder of the number blocks the restore.
+      const specItems = (manifest.phases.specification && manifest.phases.specification.items) || {};
+      const taken = Object.entries(specItems).some(([name, other]) =>
+        name !== topic && other && typeof other === 'object'
+        && !TERMINAL_STATUSES.includes(other.status || '')
+        && other.order === item.previous_order);
+      if (!taken) item.order = item.previous_order;
+      delete item.previous_order;
+    }
+
+    if (MAP_LIFECYCLE_PHASES.includes(phase)) {
+      const discovery = manifest.phases && manifest.phases.discovery;
+      const mapItem = discovery && discovery.items ? discovery.items[topic] : undefined;
+      if (mapItem && typeof mapItem === 'object' && 'previous_order' in mapItem) {
+        mapItem.order = mapItem.previous_order;
+        delete mapItem.previous_order;
+      }
+    }
+
     saveWorkUnitManifest(cwd, workUnit, manifest);
     return previous;
   });
@@ -343,11 +1065,11 @@ function reactivateTopic(cwd, workUnit, phase, topic) {
     knowledge(cwd, ['index', artifact(workUnit, topic)], 'knowledge index', warnings);
   }
 
-  const committed = commitScopedWithKb(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): reactivate ${topic} (${phase})`);
+  const outcome = commitTailWithKb(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): reactivate ${topic} (${phase})`, warnings);
   /** @type {TopicTransitionResult} */
-  const result = { topic, phase, status: restored, committed, warnings };
-  noteIfNothingCommitted(result, committed);
+  const result = { topic, phase, status: restored, committed: outcome.committed, warnings };
+  noteCommitOutcome(result, outcome);
   return result;
 }
 
-module.exports = { startTopic, completeTopic, reopenTopic, supersedeTopic, cancelTopic, reactivateTopic };
+module.exports = { startTopic, triageTopic, queueStatus, absorbConcern, requeueConcern, completeTopic, reopenTopic, staleSources, supersedeTopic, cancelTopic, reactivateTopic, sourceRows };

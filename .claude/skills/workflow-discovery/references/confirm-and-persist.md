@@ -4,7 +4,7 @@
 
 ---
 
-Persists the topic set produced by [topic-synthesis.md](topic-synthesis.md) to the manifest, writes the **Topics Identified** section of the session log, finalises the **Conclusion** placeholder, and closes the session — the close transaction clears the active-session marker and indexes the finalised log into the knowledge base.
+Persists the sort produced by [topic-synthesis.md](topic-synthesis.md) — the topic working list, the park set, and the pull-forward set — writes the **Topics Identified** section of the session log, finalises the **Conclusion** placeholder, and closes the session — the close transaction clears the active-session marker and indexes the finalised log into the knowledge base.
 
 Edits to existing items committed via [map-operations.md](map-operations.md) during the session loop. For edits-only sessions, the manifest-writes step is empty but the Conclusion finalisation and the session close still run.
 
@@ -14,32 +14,65 @@ The topic set was confirmed at the end of [topic-synthesis.md](topic-synthesis.m
 
 #### If the working list is empty
 
-No new topics — this is an edits-only or browse-only session.
+No new topics — this is an edits-only, parks-only, or browse-only session.
 
-→ Proceed to **B. Write Topics Identified**.
+→ Proceed to **A2. Persist Parks, Pull-Forwards, and Binds**.
 
 #### Otherwise
 
-For each topic on the working list, in synthesised order:
+Write the whole topic set to `.workflows/.cache/{work_unit}/discovery/topics.json` with the Write tool — one entry per topic, in synthesised order:
 
-```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs discovery-map add {work_unit} {topic} {research|discussion} --summary "{one-line summary}" --description "{paragraphs}"
-node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.discovery.{topic} brief_path "discovery/briefs/{topic}.md"
+```json
+[{"name": "{topic}", "routing": "{research|discussion}", "summary": "{one-line summary}", "description": "{paragraphs}", "brief_path": "discovery/briefs/{topic}.md"}]
 ```
 
-Append `--force-dismissed` for a name the synthesis DATA flagged `matches_dismissed=true` — the user's confirmation at the synthesis gate is the re-add decision; the engine clears the dismissed entry as part of the add.
+Summary and description come from the synthesis — derived from the exploration in topic-synthesis. Omit `description` for a topic whose synthesis produced none (the field is optional; never invent one).
 
-Summary and description come from the synthesis — derived from the exploration in topic-synthesis. Single-quote any value containing characters zsh would interpret — backticks, `$`, `[]`, `{}`, `~`. Description may span paragraphs.
+Set `"force_dismissed": true` on an entry whose name the synthesis DATA flagged `matches_dismissed=true` — the user's confirmation at the synthesis gate is the re-add decision; the engine clears the dismissed entry as part of the add.
 
-If any command fails, surface the error and stop before the commit so the user can recover.
+Persist the set in one transaction:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs discovery-map add-batch {work_unit} --file .workflows/.cache/{work_unit}/discovery/topics.json
+```
+
+The batch is atomic — a failing entry means nothing was persisted; fix the payload and re-run. Surface any error and stop before the commit so the user can recover.
 
 Notes:
 
-- The topic name is the manifest dict key (the `{topic}` path segment). There is no separate `name` field to set.
+- Each entry's `name` becomes the manifest dict key (the `{topic}` path segment).
 - `routing` is the value confirmed by the user at the synthesis gate.
-- `--source` defaults to `discovery`, marking topics the user surfaced during discovery — distinct from items added later with other provenance (e.g. `research-analysis`, `gap-analysis`). Omit it here.
-- The last map-operation response's `map_total` is `{T}` for the Conclusion line in **C** — no re-read needed.
-- `brief_path` is an opaque field set by a post-create `set` — never an `add` flag. It records where the topic's brief lives; the brief file itself was written at harvest by [brief-synthesis.md](brief-synthesis.md).
+- Batch entries always land with `source: discovery`, marking topics the user surfaced during discovery — distinct from items added later with other provenance (e.g. `research-analysis`, `gap-analysis`).
+- The response's `map_total` is `{T}` for the Conclusion line in **C**, and `added` lists every persisted topic — no re-read needed.
+- `brief_path` records where the topic's brief lives; the brief file itself was written at harvest by [brief-synthesis.md](brief-synthesis.md).
+
+→ Proceed to **A2. Persist Parks, Pull-Forwards, and Binds**.
+
+## A2. Persist Parks, Pull-Forwards, and Binds
+
+Each verb validates and self-commits; record every landing under the log's **Edits** (`Parked: {name} → {horizon}` / `Pulled forward: {name}` / `Bound: {name} → {topic}`). Skip whichever set is empty.
+
+**Park set** — one batch over the file the synthesis gate already wrote in full (provenance included; nothing to rewrite):
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs roadmap add-batch --file .workflows/.cache/{work_unit}/discovery/proposed-parks.json
+```
+
+**Pull-forward set** — one call per item (the map topic + its join, one commit each):
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs roadmap pull-forward {name} --into {work_unit} --routing {research|discussion}
+```
+
+A refusal naming a previously dismissed topic is the user's earlier removal speaking — the gate's confirmation was the deliberate re-add, so re-run with `--force-dismissed`.
+
+**Binds** — the harvest's closing move for items pulled into this epic before it had a map. Read the roadmap state (`engine roadmap state`); for every item whose row names this work unit with **no `topic`**, bind it to the confirmed topic its ground crystallised as — usually the same-named one; when its ground split across several topics, the one carrying its identity:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs roadmap bind {item} --topic {topic}
+```
+
+A harvest that renamed a bound item's topic re-runs the bind — re-binding re-aims the join.
 
 → Proceed to **B. Write Topics Identified**.
 
@@ -89,14 +122,10 @@ Close the session — one engine transaction clears the active-session marker (r
 node .claude/skills/workflow-engine/scripts/engine.cjs discovery-session close {work_unit} -m "{message}"
 ```
 
-If the response's `warnings` is non-empty, display them but do not block — the session is closed and committed:
+When the response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` advisory — the session is closed and committed either way:
 
-> *Output the next fenced block as a code block:*
-
-```
-⚑ Knowledge indexing warning
-  {warnings}
-  The session is closed. Indexing can be retried later.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render session-receipt {work_unit} --warn
 ```
 
 → Return to caller.

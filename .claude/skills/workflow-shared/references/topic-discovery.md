@@ -4,9 +4,9 @@
 
 ---
 
-Drives cache-based dispatch of `research-analysis` and `discovery-gap-analysis` against an epic's discovery map. For each stale analysis the flow is **stage → present → approve → write → stamp**: the analysis stages its genuinely-new candidates to a per-analysis staging file, the approval gate ([analysis-approval-gate.md](analysis-approval-gate.md)) presents each for per-topic approval, approved candidates are written to `phases.discovery.items.{topic}` with `source` provenance, and the cache is stamped once the gate completes. The no-gate cases (already-on-map, dismissed) are resolved silently at stage time and respect the per-work-unit `phases.discovery.dismissed[]` list.
+Drives cache-based dispatch of `research-analysis` and `discovery-gap-analysis` against an epic. For each stale analysis the flow is **stage → present → approve → write → stamp**: the analysis stages its genuinely-new candidates to a per-analysis staging file, the gate presents each for per-item approval, approved items are written, and the cache is stamped once the gate completes. The two analyses share the approval gate ([analysis-approval-gate.md](analysis-approval-gate.md)) and write approved candidates to `phases.discovery.items.{topic}` with `source` provenance, resolving the no-gate cases (already-on-map, dismissed) silently at stage time against the per-work-unit `phases.discovery.dismissed[]` list.
 
-The gate runs before the dashboard — it is the boot-time review surface for both callers. Hosting the orchestration here covers both boot callers (`workflow-continue-epic` Step 6 and `workflow-bridge` section B) via the shared dispatch.
+The gates run before the dashboard — they are the boot-time review surface for both callers. Hosting the orchestration here covers both boot callers (`workflow-continue-epic` Step 6 and `workflow-bridge` section B) via the shared dispatch.
 
 Each analysis self-gates on a precondition (research-analysis needs at least one completed research item; gap-analysis needs at least one completed research OR discussion item). When the precondition fails the analysis returns without staging, gating, or stamping — dispatching on `stale` is safe even when no qualifying inputs exist yet.
 
@@ -21,12 +21,6 @@ The caller provides these via context before loading:
 - `work_unit` — the epic's work unit name. Always present.
 
 ## A. Read Cache State
-
-> *Output the next fenced block as a code block:*
-
-```
-·· Cache Check ··································
-```
 
 Run discovery for the work unit:
 
@@ -45,7 +39,7 @@ Initialise an in-conversation tracker:
 new_arrivals = { research_analysis: [], gap_analysis: [] }
 ```
 
-This tracker captures topic names **approved and written** during this run, per analysis — the approval gate appends a name only when the user approves the candidate, so the caller's `⚑ N new topics` callout counts approvals, not proposals. The caller reads it after **E. Return**.
+This tracker captures topic names **approved and written** during this run, per analysis — a gate appends a name only when the user approves the item, so the caller's callouts count approvals, not proposals. The caller reads it after **F. Return**.
 
 → Proceed to **B. Run Research Analysis if Stale**.
 
@@ -55,13 +49,29 @@ Research-analysis runs first so that a theme both analyses surface is already on
 
 #### If `analysis_caches.research_analysis.status` is `stale`
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-·· Research Analysis ····························
+**`□ Research Analysis`**
 ```
 
-**Stage or reuse.** Check `.workflows/{work_unit}/.state/research-analysis-candidates.md`. If it exists with at least one `status: pending` candidate, the analysis was deferred on a prior boot — reuse it and skip staging. Otherwise stage fresh:
+**Stage or reuse.** Check the manifest: `manifest get {work_unit}.discovery analysis_staging.research-analysis`.
+
+**If any candidate there is `pending`** — the analysis was deferred on a prior boot. Reuse the staged file and skip staging; nothing is re-read:
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> Presenting the follow-up topic candidates you deferred last boot — the analysis has not re-run.
+```
+
+**Otherwise** — stage fresh:
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> Reading your completed research for follow-up themes that deserve a topic of their own. Each candidate comes to you for approval before anything lands on the map.
+```
 
 → Load **[research-analysis.md](research-analysis.md)** with work_unit = `{work_unit}`.
 
@@ -95,13 +105,29 @@ No dispatch.
 
 #### If `analysis_caches.gap_analysis.status` is `stale`
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-·· Gap Analysis ·································
+**`□ Gap Analysis`**
 ```
 
-**Stage or reuse.** Check `.workflows/{work_unit}/.state/discovery-gap-analysis-candidates.md`. If it exists with at least one `status: pending` candidate, the analysis was deferred on a prior boot — reuse it and skip staging. Otherwise stage fresh:
+**Stage or reuse.** Check the manifest: `manifest get {work_unit}.discovery analysis_staging.discovery-gap-analysis`.
+
+**If any candidate there is `pending`** — the analysis was deferred on a prior boot. Reuse the staged file and skip staging; nothing is re-read:
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> Presenting the gap candidates you deferred last boot — the analysis has not re-run.
+```
+
+**Otherwise** — stage fresh:
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> Reading all completed research and discussions together for what fell between them — themes no discussion picked up, deferred threads, and decisions that interact where no topic covers the join. Approved candidates join the map as new topics.
+```
 
 → Load **[discovery-gap-analysis.md](discovery-gap-analysis.md)** with work_unit = `{work_unit}`.
 
@@ -137,13 +163,35 @@ When both analyses surface the same kebab-case theme, research-analysis runs fir
 
 If a name appears in both `new_arrivals.research_analysis` and `new_arrivals.gap_analysis`, treat it as a research-analysis arrival only for caller-side display purposes (single callout entry, single Topic Discovery Arrivals bullet). The manifest already records the comma-joined source.
 
-→ Proceed to **E. Return**.
+→ Proceed to **E. Sweep**.
 
-## E. Return
+## E. Sweep
+
+Analyses and their gates write state nothing self-commits — staging files and gate registrations (a deferred gate's pending candidates included), spent-state clears, cache files, manifest stamps, knowledge-store dirt. Check for leavings:
+
+```bash
+git status --porcelain -- .workflows/{work_unit} .workflows/.knowledge
+```
+
+#### If the tree is dirty
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): analysis run bookkeeping"
+```
+
+→ Proceed to **F. Return**.
+
+#### Otherwise
+
+Every write was already carried by a self-committing delivery — nothing to sweep.
+
+→ Proceed to **F. Return**.
+
+## F. Return
 
 The caller reads `new_arrivals` from conversation memory:
 
-- **`workflow-continue-epic`** — passes `new_arrivals` to `epic-display-and-menu.md` for the `⚑ N new topics added to the map from {analysis}` callout above the Discovery Map. Callout is rendered once at this boot-up; subsequent boots without changes don't repeat it.
+- **`workflow-continue-epic`** — passes `new_arrivals` to `epic-display-and-menu.md` for the callouts above the Discovery Map: `⚑ N new topics added to the map from {analysis}`. Callouts are rendered once at this boot-up; subsequent boots without changes don't repeat them.
 - **`workflow-bridge`** — same callout pattern on its epic-continuation menu, populated by the same `new_arrivals` tracker.
 
 → Return to caller.

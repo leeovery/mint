@@ -12,26 +12,27 @@ This skill is invoked when a phase concludes — to create a plan-mode handoff t
 
 ## Instructions
 
-This skill receives context from the calling processing skill:
-- **Work unit**: The work unit name (directory under `.workflows/`) = `{work_unit}`
-- **Completed phase**: The phase that just completed — `discovery` or any later phase = `{completed_phase}`
-- **Next phase** (optional): supplied when the caller already knows the destination — discovery handing a single-phase work type to its first phase = `{next_phase}`. Other callers omit it and the continuation computes the next phase from discovery output.
+Load **[framework.md](../workflow-shared/references/framework.md)** and follow its instructions as written.
+
+This skill receives positional arguments:
+- `$0` — **work_unit**: the work unit name (directory under `.workflows/`). Held downstream as `{work_unit}`.
+- `$1` — **completed_phase**: the phase that just completed — `discovery` or any later phase. Held downstream as `{completed_phase}`.
+- `$2` — **next_phase** (optional): supplied when the caller already knows the destination — discovery handing a single-phase work type to its first phase. Held downstream as `{next_phase}`. Absent or the literal `none` means the continuation computes the next phase from discovery output.
 
 ---
 
 ## Step 1: Read Work Type and Run Discovery
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Read Work Type and Run Discovery ─────────────
+**`□ Read Work Type and Run Discovery`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Reading the work unit's type, then computing the next phase
-> from pipeline state when it isn't already known.
+> Reading the work unit's type, then computing the next phase from pipeline state when it isn't already known.
 ```
 
 Read work type from the manifest:
@@ -66,17 +67,16 @@ The output contains `next_phase`, `completed_phases` (in pipeline order), and `r
 
 ## Step 2: Route to Continuation Reference
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Route to Continuation Reference ──────────────
+**`□ Route to Continuation Reference`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Handing off to the continuation that builds the plan-mode
-> handoff for whatever phase comes next.
+> Handing off to the continuation that builds the plan-mode handoff for whatever phase comes next.
 ```
 
 Based on the completed phase and work type, load the appropriate continuation reference. The completed-phase check runs first so an epic concluding discovery routes to the deterministic discovery continuation; non-discovery epic completions fall through to the work-type branches below.

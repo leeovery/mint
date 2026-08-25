@@ -8,11 +8,10 @@
 
 ```
 · · · · · · · · · · · ·
-Ready to mark implementation as completed?
+**`◆ Ready to mark implementation as completed?`**
 
-- **`y`/`yes`** — Mark as completed
-- **`n`/`no`** — Go back and make changes
-· · · · · · · · · · · ·
+**`y/yes`** → Mark as completed
+**`n/no`**  → Go back and make changes
 ```
 
 **STOP.** Wait for user response.
@@ -22,6 +21,12 @@ Ready to mark implementation as completed?
 → Return to **[the skill](../SKILL.md)** for **Step 6**.
 
 #### If `yes`
+
+**If the manifest still holds a `bank`** (`manifest exists {work_unit}.implementation.{topic} bank` — a session exited the analysis loop with residue undecided): delete it — implementation is over and the residue's consumer with it:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.implementation.{topic} bank
+```
 
 Complete the phase item:
 ```bash
@@ -38,17 +43,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "im
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Implementation complete. The review phase will validate
-> your work against the specification and plan.
+> Implementation complete. The review phase will validate your work against the specification and plan.
 ```
 
-Invoke the bridge:
-
-```
-Pipeline bridge for: {work_unit}
-Completed phase: implementation
-
-Invoke the workflow-bridge skill to enter plan mode with continuation instructions.
-```
-
-**STOP.** Do not proceed — terminal condition.
+Invoke `/workflow-bridge {work_unit} implementation`.

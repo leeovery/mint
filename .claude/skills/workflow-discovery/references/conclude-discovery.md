@@ -28,16 +28,9 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "di
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Discovery complete — entering plan mode to hand off the next
-> step in a clean context.
+> Discovery complete — entering plan mode to hand off the next step in a clean context.
 ```
 
-```
-Pipeline bridge for: {work_unit}
-Completed phase: discovery
-@if(next_phase is set) Next phase: {next_phase} @endif
+`next_phase` is the destination the endpoint supplied, or the literal `none` when it supplied nothing (the bridge treats `none` as absent and computes the destination itself).
 
-Invoke the workflow-bridge skill to enter plan mode with continuation instructions.
-```
-
-**STOP.** Do not proceed — terminal condition.
+Invoke `/workflow-bridge {work_unit} discovery {next_phase}` via the Skill tool.

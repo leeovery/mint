@@ -26,7 +26,9 @@ function discover(cwd) {
 }
 
 function format(result) {
-  return engine.detail.workUnitIndex(TYPE, result);
+  const units = engine.detail.unitsOf(engine.detail.typeConfig(TYPE), result);
+  return engine.detail.workUnitIndex(TYPE, result)
+    + engine.project.selectionSections(TYPE, units, { completed: result.completed_count, cancelled: result.cancelled_count });
 }
 
 // One snapshot for Step 5: reasoning DATA (flow flags + the ACTIONS table),
@@ -35,15 +37,16 @@ function view(workUnit) {
   const result = discover(process.cwd());
   const unit = (result.cross_cutting || []).find((u) => u.name === workUnit);
   if (!unit) {
-    return engine.gateway.dataBlock({ work_unit: workUnit || '(missing)', error: 'no active cross-cutting concern with this name' });
+    return engine.gateway.dataBlock({ work_unit: workUnit || '(missing)', error: 'no active cross-cutting concern with this name' })
+      + engine.project.selectionNotFound(TYPE, workUnit || '(missing)');
   }
   const menu = engine.project.workUnitMenu(TYPE, unit);
   return [
     engine.gateway.dataBlock(engine.project.workUnitData(TYPE, unit, menu)),
+    engine.gateway.titleBlock(engine.project.workUnitTitle(unit)),
     engine.gateway.displayBlock(engine.project.workUnitStatus(TYPE, unit)),
     engine.gateway.menuBlock(menu.rendered),
-    engine.project.revisitPhasesSection(engine.project.revisitablePhases(TYPE, unit)),
-  ].filter(Boolean).join('\n');
+  ].join('\n');
 }
 
 const USAGE = 'Usage: gateway.cjs | gateway.cjs view {work_unit}';

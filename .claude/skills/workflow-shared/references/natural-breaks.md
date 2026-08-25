@@ -18,6 +18,7 @@ Any of these qualifies:
 - A commit just landed AND the exchange prior to that commit resolved your outstanding question
 - The phase is about to conclude (convergence menu, final review, wrap-up)
 - The user explicitly asked about background-agent state ("anything come back yet?", "any review results?")
+- The session just opened or resumed and no conversation thread is underway yet — a pending announcement lands here, before momentum builds, rather than falling to **C**'s default
 
 ## B. Signals That It Is NOT a Natural Break
 
@@ -29,10 +30,10 @@ Any of these means defer:
 - You are mid-synthesis or mid-summary and haven't closed out the current point
 - The current exchange is the first turn of a newly started subtopic — momentum belongs there, not to a new announcement
 - The user just raised a new concern that you haven't yet engaged with
-- The user picked `later` on a background-agent announce menu in their most recent turn — treat the next few turns as continuation, not a fresh break. Re-raising the menu on the very next turn would ignore their deferral. Wait until the conversation has genuinely moved on before re-raising.
+- The user picked `later` on an announce or offer menu (background-agent findings, the triage queue) in their most recent turn — treat the next few turns as continuation, not a fresh break. Re-raising the menu on the very next turn would ignore their deferral. Wait until the conversation has genuinely moved on before re-raising.
 
 ## C. When Uncertain
 
-Default to NOT interrupting. The cache file persists; the `acknowledged` state is designed to let you defer safely. The next iteration of the session loop's check-for-results will reconsider the same question.
+Default to NOT interrupting. The store row persists; the `acknowledged` state is designed to let you defer safely. The next iteration of the session loop's check-for-results will reconsider the same question.
 
 → Return to caller.

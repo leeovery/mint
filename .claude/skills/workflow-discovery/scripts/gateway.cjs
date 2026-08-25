@@ -51,11 +51,14 @@ function discover(cwd, workUnit) {
   };
   return {
     work_unit: workUnit,
+    description: typeof manifest.description === 'string' && manifest.description !== '' ? manifest.description : null,
     discovery_map: map,
     map_summary: summary,
     needs_sequencing,
     dismissed,
     active_session: activeSession,
+    seeds: Array.isArray(manifest.seeds) ? manifest.seeds : [],
+    imports: Array.isArray(manifest.imports) ? manifest.imports : [],
     session_logs: listSessionLogs(cwd, workUnit),
     analysis_caches: analysisCaches,
     next_session_number: nextSessionNumber,
@@ -63,8 +66,9 @@ function discover(cwd, workUnit) {
 }
 
 // The thin scoped dump: the map (rows + counts), the dismissed list, the
-// session-log index, analysis-cache statuses, and the next session number —
-// exactly what the session loop, map operations, continuity load, and the
+// work unit's manifest context (description, seeds, imports), the session-log
+// index, analysis-cache statuses, and the next session number — exactly what
+// the session loop, initialize step, map operations, continuity load, and the
 // shared topic-discovery dispatch read. Rendering is map-view's concern.
 function format(result) {
   if (result.error) {
@@ -72,6 +76,7 @@ function format(result) {
   }
   const lines = [];
   lines.push(`=== DISCOVERY: ${result.work_unit} ===`);
+  lines.push(`description: ${result.description === null ? '(none)' : result.description}`);
 
   const s = result.map_summary;
   lines.push(`map_summary: ${s.total} topics — ${s.decided} decided, ${s.in_flight} in-flight, ${s.ready} ready, ${s.fresh} fresh, ${s.handled} handled, ${s.cancelled} cancelled`);
@@ -85,6 +90,7 @@ function format(result) {
       if (t.routing) line += ` routing=${t.routing}`;
       if (t.source && t.source !== 'discovery') line += ` source=${t.source}`;
       if (t.current_phase) line += ` phase=${t.current_phase}`;
+      if (t.triage_parked) line += ` triage=waiting`;
       if (t.summary) line += ` — ${t.summary}`;
       lines.push(line);
     }
@@ -96,6 +102,26 @@ function format(result) {
   } else {
     for (const name of result.dismissed) {
       lines.push(`  - ${name}`);
+    }
+  }
+
+  const seeds = result.seeds || [];
+  lines.push(`seeds (${seeds.length}):`);
+  if (seeds.length === 0) {
+    lines.push('  (none)');
+  } else {
+    for (const entry of seeds) {
+      lines.push(`  - ${entry.path}${entry.source ? ` (source: ${entry.source})` : ''}`);
+    }
+  }
+
+  const imports = result.imports || [];
+  lines.push(`imports (${imports.length}):`);
+  if (imports.length === 0) {
+    lines.push('  (none)');
+  } else {
+    for (const entry of imports) {
+      lines.push(`  - ${entry.path}`);
     }
   }
 
@@ -179,7 +205,12 @@ function mapView(workUnit, ...rest) {
   if (proposedFile) {
     const proposed = readProposedFile(cwd, proposedFile);
     // Per-name flags the flow routes on: an active collision must be resolved
-    // before the gate; a dismissed match needs --force-dismissed at persist.
+    // before the gate; a dismissed match needs --force-dismissed at persist;
+    // a waiting-roadmap-item match is the anti-twin check — never created as
+    // a fresh topic (the real move is pull-forward, or leave it waiting).
+    const waitingOnRoadmap = new Set(
+      engine.roadmap.roadmapState(cwd).items.filter((i) => i.state === 'waiting').map((i) => i.name),
+    );
     dataLines.push(`proposed (${proposed.length}):`);
     for (const t of proposed) {
       const flags = [
@@ -187,6 +218,7 @@ function mapView(workUnit, ...rest) {
         `exists_on_map=${result.discovery_map.some((r) => r.name === t.name)}`,
         `matches_dismissed=${result.dismissed.includes(t.name)}`,
         `legal_name=${!/[./]/.test(t.name)}`,
+        `waiting_on_roadmap=${waitingOnRoadmap.has(t.name)}`,
       ];
       dataLines.push(`  ${t.name} ${flags.join(' ')}`);
     }
@@ -195,7 +227,9 @@ function mapView(workUnit, ...rest) {
     display = engine.project.discoveryMapView(workUnit, map);
   }
 
-  return engine.gateway.dataBlock(dataLines.join('\n')) + '\n' + engine.gateway.displayBlock(display);
+  return engine.gateway.dataBlock(dataLines.join('\n')) + '\n'
+    + engine.gateway.titleBlock(engine.project.discoveryTitle(workUnit)) + '\n'
+    + engine.gateway.displayBlock(display);
 }
 
 if (require.main === module) {

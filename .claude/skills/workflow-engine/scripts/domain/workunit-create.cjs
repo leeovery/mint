@@ -28,10 +28,10 @@ const {
   withProjectLock,
   ensureContainer,
 } = require('../kernel/manifest.cjs');
-const { commitScopedWithKb, noteIfNothingCommitted } = require('./commit.cjs');
+const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
 const { knowledge } = require('./kb.cjs');
 const { parseInboxPath } = require('./inbox.cjs');
-const { todayStamp } = require('./dates.cjs');
+const { todayStamp, isoNow } = require('./dates.cjs');
 const {
   VALID_WORK_TYPES,
   VALID_PHASES,
@@ -73,11 +73,6 @@ function assertLegalWorkUnitName(workUnit) {
  * @property {string} [note]  set when committed is null
  * @property {string[]} warnings  non-blocking failures (knowledge-base indexing)
  */
-
-/** ISO-8601 UTC to the second (`2026-07-15T09:30:00Z`). */
-function isoNow() {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-}
 
 /**
  * Normalise a source basename into a landing filename: lowercase; runs of
@@ -205,6 +200,9 @@ function createWorkUnit(cwd, workUnit, workType, { description, sessionLogFile, 
           phases: {},
         }
       : loadWorkUnitManifest(cwd, workUnit);
+    if (!created && manifest.work_type !== workType) {
+      throw new Error(`work unit "${workUnit}" already exists as ${manifest.work_type ?? 'an untyped unit'} — create cannot change a work type (pivot owns feature→epic)`);
+    }
 
     // Destination names, deduped against each directory and within the batch.
     const importsDir = path.join(wuDir, 'imports');
@@ -290,7 +288,7 @@ function createWorkUnit(cwd, workUnit, workType, { description, sessionLogFile, 
   const pathspecs = [`.workflows/${workUnit}`];
   if (seedMoves.length > 0) pathspecs.push('.workflows/.inbox');
   if (created) pathspecs.push('.workflows/manifest.json');
-  const committed = commitScopedWithKb(cwd, pathspecs, `discovery(${workUnit}): create work unit (${workType})`);
+  const outcome = commitTailWithKb(cwd, pathspecs, `discovery(${workUnit}): create work unit (${workType})`, warnings);
 
   /** @type {WorkUnitCreateResult} */
   const result = {
@@ -304,11 +302,11 @@ function createWorkUnit(cwd, workUnit, workType, { description, sessionLogFile, 
     })),
     skipped_imports: skippedImports,
     session_log: sessionLogPath,
-    committed,
+    committed: outcome.committed,
     warnings,
   };
-  noteIfNothingCommitted(result, committed);
+  noteCommitOutcome(result, outcome);
   return result;
 }
 
-module.exports = { createWorkUnit, dedupe, assertLegalWorkUnitName };
+module.exports = { createWorkUnit, dedupe, normaliseBasename, assertLegalWorkUnitName };

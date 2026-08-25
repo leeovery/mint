@@ -38,15 +38,10 @@ multiple features handle data retrieval, rather than being a standalone piece
 of functionality to build."}
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Fetch the gate and emit its section verbatim at its marked instruction:
 
-```
-· · · · · · · · · · · ·
-Confirm this assessment?
-
-- **`y`/`yes`** — Confirm assessment
-- **Comment** — Suggest a different classification
-· · · · · · · · · · · ·
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render spec-completion-gate {work_unit}.specification.{topic} --variant assessment
 ```
 
 **STOP.** Wait for user response.
@@ -73,14 +68,11 @@ No assessment needed — feature, bugfix, and cross-cutting work types always pr
 
 ## B. Verify Tracking Files Complete
 
-Before proceeding to sign-off, confirm that all review tracking files across all cycles have `status: complete`:
+Before proceeding to sign-off, read `manifest get {work_unit}.specification.{topic} tracking` — every entry across all cycles must be `complete` (`review-claims-tracking-c{N}` after each Phase 1, `review-input-tracking-c{N}` after each Phase 2, `review-gap-analysis-tracking-c{N}` after each Phase 3).
 
-- `review-input-tracking-c{N}.md` — should be marked complete after each Phase 1
-- `review-gap-analysis-tracking-c{N}.md` — should be marked complete after each Phase 2
+If any entry is `in-progress`, that file's findings were not fully processed — work them per **[process-review-findings.md](process-review-findings.md)**, then re-verify. A tracking file on disk with no manifest entry is a crash orphan (the session died before recording it) — record it `in-progress` and process it the same way.
 
-If any tracking file still shows `status: in-progress`, mark it complete now.
-
-> **CHECKPOINT**: Do not proceed to sign-off if any tracking files still show `status: in-progress`. They indicate incomplete review work.
+> **CHECKPOINT**: Do not proceed to sign-off while the manifest's `tracking` subtree holds an `in-progress` entry. It indicates incomplete review work.
 
 Also confirm every source is incorporated:
 
@@ -90,7 +82,9 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 If any show `status: pending`, work them now per **[spec-construction.md](spec-construction.md)** → Exhaustive Extraction — extract the source's relevant content into the specification through the construction cycle, then mark it `incorporated`.
 
-> **CHECKPOINT**: Do not proceed to sign-off while any source is `pending`. Its material has not been extracted into the specification.
+If any show `status: stale`, the source discussion was re-decided after extraction — work them now — for each, load **[reconcile-stale-sources.md](reconcile-stale-sources.md)** and follow its instructions as written. Reconciliation itself marks a row `incorporated`; when the reference defers (the source discussion is still in-progress), the row stays `stale` and this spec cannot conclude yet — tell the user conclusion waits on that discussion re-deciding, commit the session's work, and stop here rather than looping on the checkpoint.
+
+> **CHECKPOINT**: Do not proceed to sign-off while any source is `pending` or `stale`. Pending material has not been extracted; stale material was extracted from a decision that has since moved — and stays stale while its discussion is mid-revision.
 
 Also confirm every consult reference is addressed:
 
@@ -108,15 +102,10 @@ If any show `status: pending`, work them now per **[spec-construction.md](spec-c
 
 ## C. Sign-Off
 
-> *Output the next fenced block as markdown (not a code block):*
+Fetch the gate and emit its section verbatim at its marked instruction:
 
-```
-· · · · · · · · · · · ·
-Ready to conclude?
-
-- **`y`/`yes`** — Conclude specification and mark as completed
-- **Comment** — Add context before concluding
-· · · · · · · · · · · ·
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render spec-completion-gate {work_unit}.specification.{topic} --variant signoff
 ```
 
 **STOP.** Wait for user response.
@@ -144,10 +133,10 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 
 Specification is complete when:
 - All topics have validated content
-- All sources are marked as `incorporated`
+- All sources are marked as `incorporated` — neither `pending` nor `stale`
 - All consult references are marked as `addressed`
 - At least one review cycle completed with no findings, OR user explicitly chose to proceed past the re-loop prompt
-- All review tracking files marked `status: complete`
+- Every manifest `tracking` entry `complete`
 - User confirms the specification is complete
 - No blocking gaps remain
 
@@ -157,14 +146,10 @@ Commit:
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "spec({work_unit}): conclude specification"
 ```
 
-If the `complete` response carries `warnings`, display them but do not block — the artifact is already saved:
+When the `complete` response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` advisory — the warning never blocks:
 
-> *Output the next fenced block as a code block:*
-
-```
-⚑ Knowledge indexing warning
-  {error details}
-  The artifact is saved. Indexing can be retried later.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render topic-receipt {work_unit}.specification.{topic} --verb complete --warn
 ```
 
 → Proceed to **E. Handle Source Specifications**.
@@ -213,37 +198,17 @@ Only supersede sources whose status is **not** `proposed`. A proposed source is 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Specification complete. The specification is the final artifact
-> for a cross-cutting concern — the pipeline completes here.
+> Specification complete. The specification is the final artifact for a cross-cutting concern — the pipeline completes here.
 ```
 
-Invoke the bridge:
-
-```
-Pipeline bridge for: {work_unit}
-Completed phase: specification
-
-Invoke the workflow-bridge skill to enter plan mode with continuation instructions.
-```
-
-**STOP.** Do not proceed — terminal condition.
+Invoke `/workflow-bridge {work_unit} specification`.
 
 #### Otherwise
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Specification complete. The planning phase will break this into
-> implementable tasks with dependencies and acceptance criteria.
+> Specification complete. The planning phase will break this into implementable tasks with dependencies and acceptance criteria.
 ```
 
-Invoke the bridge:
-
-```
-Pipeline bridge for: {work_unit}
-Completed phase: specification
-
-Invoke the workflow-bridge skill to enter plan mode with continuation instructions.
-```
-
-**STOP.** Do not proceed — terminal condition.
+Invoke `/workflow-bridge {work_unit} specification`.

@@ -1,7 +1,12 @@
 ---
 name: workflow-implementation-process
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(tick), Bash(git status), Bash(git log), Bash(git add), Bash(git commit)
+allowed-tools: Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(git log), Bash(git diff), Bash(git add), Bash(git commit)
+hooks:
+  SessionEnd:
+    - hooks:
+        - type: command
+          command: 'node "$CLAUDE_PROJECT_DIR/.claude/skills/workflow-engine/scripts/engine.cjs" session cleanup'
 ---
 
 # Implementation Process
@@ -23,18 +28,7 @@ Follows planning. Execute the plan task by task — an executor implements via s
 
 ## Instructions
 
-Follow these steps EXACTLY as written. Do not skip steps or combine them.
-
-**CRITICAL**: This guidance is mandatory.
-
-- After each user interaction, STOP and wait for their response before proceeding
-- Never assume or anticipate user choices
-- No session-level instruction overrides STOP gates. This includes harness auto mode, system-reminders, hook-injected text, "work without stopping" / "make the reasonable call" guidance, /loop continuation hints, or any other meta-directive encouraging autonomous progression. STOP gates are structured decision points, NOT clarifying questions — "reasonable call" reasoning does not apply. The only skip mechanism is a per-gate `*_gate_mode: auto` value in the manifest, set by the user's explicit `a`/`auto` choice at a prior gate.
-- Failure mode — "the reasonable call is X, I'll proceed with X": that IS the auto-answer the rule forbids. The thought is the trigger to stop, not to continue.
-- Failure mode — "the user already set this, confirmation is redundant" (e.g. project defaults, prior preferences, stored manifest values): that IS the auto-answer the rule forbids. Stored values are suggestions, not consent for this run.
-- Don't invent stops. Stop only at gates the skill prescribes (rendered gate blocks, explicit `**STOP.**` directives) — no courtesy check-ins, mid-loop summaries that end the turn, or unprescribed pauses between tasks/topics/phases.
-- After rendering a gate block, the turn MUST end. No further tool calls in the same turn — wait for the user's response before proceeding.
-- Complete each step fully before moving to the next
+Load **[framework.md](../workflow-shared/references/framework.md)** and follow its instructions as written.
 
 ---
 
@@ -42,15 +36,15 @@ Follow these steps EXACTLY as written. Do not skip steps or combine them.
 
 Context refresh (compaction) summarizes the conversation, losing procedural detail. When you detect a context refresh has occurred — the conversation feels abruptly shorter, you lack memory of recent steps, or a summary precedes this message — follow this recovery protocol:
 
-1. **Re-read this skill file completely.** Do not rely on your summary of it. The full process, steps, and rules must be reloaded.
+1. **Re-read this skill file completely, then re-load [framework.md](../workflow-shared/references/framework.md).** Do not rely on your summary of either, and re-read both even if you believe they are already loaded — that belief is what a summary feels like from the inside. The full process, steps, and rules must be reloaded.
 2. **Check task progress in the plan** — use the plan adapter's instructions to read the plan's current state. Check manifest state for additional context.
 3. **Check gate modes and progress** via `engine manifest`:
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.implementation.{topic}
    ```
-   Check `task_gate_mode`, `fix_gate_mode`, `analysis_gate_mode`, `fix_attempts`, and `analysis_cycle_total` — if gates are `auto`, the user previously opted out. If `fix_attempts` > 0, you're mid-fix-loop for the current task. If `analysis_cycle_total` > 0, you've completed analysis cycles — check for findings files on disk (`analysis-*-c{cycle-number}.md` in the implementation directory) to determine mid-analysis state.
+   Check `task_gate_mode`, `fix_gate_mode`, `analysis_gate_mode`, `consolidation_gate_mode`, `fix_attempts`, and `analysis_cycle_total` — if gates are `auto`, the user previously opted out. If `fix_attempts` > 0, you're mid-fix-loop for the current task. If `analysis_cycle_total` > 0, you've completed analysis cycles — check for findings files on disk (`analysis-*-c{cycle-number}.md` in the implementation directory) to determine mid-analysis state. If `staging` holds an `ad-hoc-{n}` subtree with `pending` rows, an ad hoc addition died mid-gate — resume its walk at **[ad-hoc-plan-changes.md](references/ad-hoc-plan-changes.md)** section F; `approved` rows with no matching plan tasks mean the task writer never ran — re-invoke it (idempotent) per section G. A `staging.p{N}` subtree, or a phase whose tasks are all complete while `completed_phases` lacks it, is a consolidation boundary in flight — the task loop's guard routes it to stage J, whose resume guards (**[consolidation-pass.md](references/consolidation-pass.md)**) discriminate the exact seam. A `staging.p{N}` whose rows are all decided, with the phase in both `consolidated_phases` and `completed_phases`, is history, not a signal.
 4. **Check git state.** Run `git status` and `git log --oneline -10` to see recent commits. Commit messages follow a conventional pattern that reveals what was completed.
-5. **Re-fetch lost gate sections.** Gate menus are carried by engine `task` responses the refresh discarded. Re-run the last task verb to re-emit them — `start` with the manifest's `current_task` is non-destructive (an in-flight task's `fix_attempts` and tracking file are preserved), and `init`/`complete` re-runs return the same response. Never re-run `fix-attempt` or `analysis-cycle` to re-fetch — each records a new cycle; their gates re-emerge on the loop's next natural call.
+5. **Re-fetch lost sections.** Every gate menu and header is served by its own render surface, fetched at the stage that displays it — the task verbs answer with JSON only, and re-running one re-emits nothing. Fetch the section for the moment you are resuming at: `engine render task-gate {work_unit}.implementation.{topic}` for a pending task gate, `engine render fix-gate` at the same address for a pending fix gate; a presentation moment re-runs its display reference (**[display-task-brief.md](references/display-task-brief.md)**, **[display-task-result.md](references/display-task-result.md)**), which rebuilds its payload before rendering. Never run `fix-attempt` or `analysis-cycle` to reconstruct position — each records a new attempt or cycle.
 6. **Announce your position** to the user before continuing: what step you believe you're at, what's been completed, and what comes next. Wait for confirmation.
 
 Do not guess at progress or continue from memory. The files on disk and git history are authoritative — your recollection is not.
@@ -64,18 +58,34 @@ Do not guess at progress or continue from memory. The files on disk and git hist
 
 ---
 
+## Ad Hoc Plan Changes
+
+Unplanned work surfaces mid-implementation — the user hits a bug while testing, the conversation exposes a gap, an agent result names missing work, a decision changes. When it does — or when you spot it and the user confirms — load **[ad-hoc-plan-changes.md](references/ad-hoc-plan-changes.md)** and follow its instructions as written, from any point in the phase. Never fold unplanned work into the plan by hand.
+
+→ On return, resume the interrupted flow — never fall through to Step 0.
+
+---
+
 ## Step 0: Resume Detection
+
+Refresh the tmux session label — a no-op unless the user opted in and this session runs inside tmux:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs session label {work_unit} implementation {topic}
+```
 
 Initialize or resume implementation tracking (idempotent — creates the manifest entry with default gates and counters, or resets the gate modes and session counters of an existing one; lifetime counters and progress are preserved):
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs task init {work_unit} {topic}
 ```
 
-The response's `MENU: blocked tasks` section serves the task loop's blocked-tasks stop — never emit it at this step.
-
 #### If the response's `mode` is `created`
 
-Commit: `impl({work_unit}): start implementation`
+Commit the tracking (the scoped commit covers the manifest):
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "impl({work_unit}): start implementation"
+```
 
 → Proceed to **Step 1**.
 
@@ -133,18 +143,16 @@ Load **[knowledge-usage.md](../workflow-knowledge/references/knowledge-usage.md)
 
 ## Step 6: Task Loop
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Task Loop ────────────────────────────────────
+**`□ Task Loop`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Executing tasks from the plan. Each task is implemented
-> via TDD by an executor agent, then independently verified by
-> a reviewer agent. You'll approve each task before it proceeds.
+> Executing tasks from the plan. Each task is implemented via TDD by an executor agent, then independently verified by a reviewer agent. You'll approve each task before it proceeds.
 ```
 
 Load **[task-loop.md](references/task-loop.md)** and follow its instructions as written.
@@ -167,18 +175,16 @@ After the loop completes:
 
 ## Step 7: Analysis Loop
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Analysis Loop ────────────────────────────────
+**`□ Analysis Loop`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Analysing the implementation for gaps and issues.
-> Agents review what was built against the plan and spec.
-> New tasks may be created if problems are found.
+> Analysing the implementation for gaps and issues. Agents review what was built against the plan and spec. New tasks may be created if problems are found.
 ```
 
 Load **[analysis-loop.md](references/analysis-loop.md)** and follow its instructions as written.
@@ -203,17 +209,16 @@ Load **[compliance-check.md](../workflow-shared/references/compliance-check.md)*
 
 ## Step 9: Mark Implementation Complete
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Conclude Implementation ──────────────────────
+**`□ Conclude Implementation`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Wrapping up. Final confirmation before marking
-> implementation as complete and moving to review.
+> Wrapping up. Final confirmation before marking implementation as complete and moving to review.
 ```
 
 Load **[conclude-implementation.md](references/conclude-implementation.md)** and follow its instructions as written.

@@ -1,7 +1,12 @@
 ---
 name: workflow-discovery
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-discovery/scripts/gateway.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(git status), Bash(git log), Bash(mkdir -p .workflows/), Bash(rm .workflows/), Bash(rm -f .workflows/)
+allowed-tools: Bash(node .claude/skills/workflow-discovery/scripts/gateway.cjs), Bash(node .claude/skills/workflow-roadmap/scripts/gateway.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(git log), Bash(mkdir -p .workflows/), Bash(rm .workflows/), Bash(rm -f .workflows/)
+hooks:
+  SessionEnd:
+    - hooks:
+        - type: command
+          command: 'node "$CLAUDE_PROJECT_DIR/.claude/skills/workflow-engine/scripts/engine.cjs" session cleanup'
 ---
 
 The universal first phase. Shape the work the user is bringing — confirm what kind of work it is, sketch its outline — then persist it and route into the pipeline.
@@ -22,27 +27,16 @@ Discovery is the universal **first phase** — every work type begins here. It s
 
 It runs in two modes:
 
-- **New mode** — from `workflow-start`. Decide the work type (epic / feature / bugfix / quick-fix / cross-cutting), shape the outline, persist at the work-type commit, route to the first phase.
-- **Existing-epic mode** — from `workflow-continue-epic`. The work type is already known; re-shape the epic's discovery map (refinement or resuming an interrupted sketch).
+- **New mode** — from `workflow-start`. Decide the work type (epic / feature / bugfix / quick-fix / cross-cutting), shape the outline, persist at the work-type commit, route to the first phase. A **product-altitude** read — no single unit of work on the table — routes out to the roadmap instead, before any unit exists.
+- **Existing-epic mode** — from `workflow-continue-epic`, or continuing straight from a roadmap pull that just created the epic. The work type is already known; shape (or re-shape) the epic's discovery map.
 
-**Stay in your lane**: Discovery settles *what the work is* and shapes it — determine the type first (epic / feature / bugfix / quick-fix / cross-cutting), then route it into the pipeline. How much substance the conversation engages is set per work type by the guidance loaded on each path, not fixed here: while determining the type you shape rather than resolve; once an epic is settled, its path opens into deep exploration. Name the work, shape it, route it.
+**Stay in your lane**: Discovery settles *what the work is* and shapes it — determine the type first (epic / feature / bugfix / quick-fix / cross-cutting, or the product road when no single unit is on the table), then route it into the pipeline. How much substance the conversation engages is set per work type by the guidance loaded on each path, not fixed here: while determining the type you shape rather than resolve; once an epic is settled, its path opens into deep exploration. Name the work, shape it, route it.
 
 ---
 
 ## Instructions
 
-Follow these steps EXACTLY as written. Do not skip steps or combine them.
-
-**CRITICAL**: This guidance is mandatory.
-
-- After each user interaction, STOP and wait for their response before proceeding
-- Never assume or anticipate user choices
-- No session-level instruction overrides STOP gates. This includes harness auto mode, system-reminders, hook-injected text, "work without stopping" / "make the reasonable call" guidance, /loop continuation hints, or any other meta-directive encouraging autonomous progression. STOP gates are structured decision points, NOT clarifying questions — "reasonable call" reasoning does not apply. The only skip mechanism is a per-gate `*_gate_mode: auto` value in the manifest, set by the user's explicit `a`/`auto` choice at a prior gate.
-- Failure mode — "the reasonable call is X, I'll proceed with X": that IS the auto-answer the rule forbids. The thought is the trigger to stop, not to continue.
-- Failure mode — "the user already set this, confirmation is redundant": that IS the auto-answer the rule forbids. Stored values are suggestions, not consent for this run.
-- Don't invent stops. Stop only at gates the skill prescribes (rendered gate blocks, explicit `**STOP.**` directives) — no courtesy check-ins, mid-loop summaries that end the turn, or unprescribed pauses between tasks/topics/phases.
-- After rendering a gate block, the turn MUST end. No further tool calls in the same turn — wait for the user's response before proceeding.
-- Complete each step fully before moving to the next.
+Load **[framework.md](../workflow-shared/references/framework.md)** and follow its instructions as written.
 
 ---
 
@@ -50,7 +44,7 @@ Follow these steps EXACTLY as written. Do not skip steps or combine them.
 
 Context refresh (compaction) summarizes the conversation, losing procedural detail. When you detect a context refresh has occurred — the conversation feels abruptly shorter, you lack memory of recent steps, or a summary precedes this message — follow this recovery protocol:
 
-1. **Re-read this skill file completely.** Do not rely on your summary of it.
+1. **Re-read this skill file completely, then re-load [framework.md](../workflow-shared/references/framework.md).** Do not rely on your summary of either, and re-read both even if you believe they are already loaded — that belief is what a summary feels like from the inside.
 2. **Determine whether the work unit was persisted yet.** Pre-confirmation new-mode shaping is ephemeral — nothing is on disk. If no manifest exists for the work in hand, the conversation had not yet reached the confirm-trigger; treat the shaping as lost and re-open with the user. If a manifest exists, the confirm-trigger fired — read the active session log (highest-numbered `.workflows/{work_unit}/discovery/sessions/session-*.md`) and the manifest to recover state; the session loop's re-open then reads the recent prior session logs too for continuity (see [continuity-load.md](references/continuity-load.md)), so re-entry resumes the conversation rather than restarting from the map. For an epic whose discovery map is still empty while its session log holds Exploration, you were mid-discovery — confirmed but not yet synthesised — so resume at the session loop; its open picks up from the log rather than cold-opening.
 3. **Check git state.** Run `git status` and `git log --oneline -10`. Commit messages reveal what has been completed.
 4. **Announce your position** to the user before continuing: state what step you believe you're at and what comes next. Wait for confirmation.
@@ -63,7 +57,7 @@ Do not guess at progress or continue from memory. The files on disk and git hist
 
 Read the positional arguments:
 
-- `$0` — **work_type pre-seed**: one of `epic` / `feature` / `bugfix` / `quick-fix` / `cross-cutting`, or `none` (the `s`/start path, no hint). A hint, not a given — still confirmed in new mode.
+- `$0` — **work_type pre-seed**: one of `epic` / `feature` / `bugfix` / `quick-fix` / `cross-cutting`, or `none` (the `s/start` path, no hint). A hint, not a given — still confirmed in new mode.
 - `$1` — **work_unit**: an existing epic's name (existing-epic shaping, from `workflow-continue-epic`), or `none` (new work, from `workflow-start`).
 - `$2` — **inbox_seeds**: comma-joined path(s) to inbox file(s) consumed as the opening seed material — one or more, or `none`. Absent `$2` is treated as `none`. Split on commas into a list; a single path yields a one-element list. Held downstream as `inbox_seeds`.
 
@@ -77,7 +71,7 @@ New work — nothing is on disk yet; pre-confirmation shaping is ephemeral.
 
 #### Otherwise
 
-`$1` names an existing epic. Skip macro shaping and re-shape its map.
+`$1` names an existing epic. Skip macro shaping and shape its map — a re-shape on a return visit, a first shaping when a roadmap pull created the epic moments ago (the map is empty; `pull_continuation` is held).
 
 → Proceed to **Step 6**.
 
@@ -93,17 +87,16 @@ Load **[detection-core.md](references/detection-core.md)** and follow its instru
 
 ## Step 3: Open
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Open Discovery ───────────────────────────────
+**`□ Open Discovery`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Reading anything you've already shared, then opening the
-> conversation about what you want to do.
+> Reading anything you've already shared, then opening the conversation about what you want to do.
 ```
 
 Load **[opener-pattern.md](references/opener-pattern.md)** and follow its instructions as written.
@@ -114,17 +107,16 @@ Load **[opener-pattern.md](references/opener-pattern.md)** and follow its instru
 
 ## Step 4: Shape and Confirm the Work Type
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Shape and Confirm ────────────────────────────
+**`□ Shape and Confirm`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Talking it through to settle what kind of work this is — brief
-> when it's already clear, longer when there's more to tease out.
+> Talking it through to settle what kind of work this is — brief when it's already clear, longer when there's more to tease out.
 ```
 
 Load **[shape-and-confirm.md](references/shape-and-confirm.md)** and follow its instructions as written.
@@ -135,20 +127,21 @@ Load **[shape-and-confirm.md](references/shape-and-confirm.md)** and follow its 
 
 ## Step 5: Confirm Trigger — Create the Work Unit
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Confirm Trigger ──────────────────────────────
+**`□ Confirm Trigger`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Now we know what this is — setting it up: giving it a name,
-> creating it, and saving any files or notes you shared.
+> Now we know what this is — setting it up: giving it a name, creating it, and saving any files or notes you shared.
 ```
 
 Load **[confirm-trigger.md](references/confirm-trigger.md)** and follow its instructions as written.
+
+→ On return, proceed as the reference directed.
 
 ---
 
@@ -162,6 +155,12 @@ Load **[resume-detection.md](references/resume-detection.md)** and follow its in
 
 ## Step 7: Run Discovery
 
+Refresh the tmux session label — a no-op unless the user opted in and this session runs inside tmux:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs session label {work_unit} discovery {work_unit}
+```
+
 Run discovery for the work unit:
 
 ```bash
@@ -173,12 +172,14 @@ Hold the output in conversation context as **the most recent discovery output**.
 - `discovery_map` — per-topic `tier`, `lifecycle`, `current_phase`, `routing`, `source`, `summary`
 - `map_summary` — counts string used for the opener render
 - `dismissed` — names previously removed from the map
+- `description` — the work-unit one-liner
+- `seeds` / `imports` — the work unit's seed material entries (paths relative to `.workflows/{work_unit}/`), read by Step 8 and the session loop's launchpad branch
 - `session_logs` — every session log's number + path (ascending); read from this rather than re-globbing (used by continuity-load.md)
 - `next_session_number` — used to set `session_number` for fresh entries
 
 The authoritative resume signal (`active_session`) is a manifest field, read via `engine manifest` at Step 6 — not carried in this dump.
 
-If `session_number` was not already set (no resume at Step 6, no `macro_continuation` from Step 5), set it now: `session_number` = `next_session_number`. When `macro_continuation` is set, the confirm-trigger already created `session-{session_number}.md` — keep that `session_number` and ignore `next_session_number`.
+If `session_number` was not already set (no resume at Step 6, no `macro_continuation` from Step 5, no `pull_continuation` from a roadmap pull), set it now: `session_number` = `next_session_number`. When `macro_continuation` or `pull_continuation` is set, the creating flow already installed `session-{session_number}.md` — keep that `session_number` and ignore `next_session_number`.
 
 `map-operations.md` and `show-dismissed.md` re-invoke discovery on entry because they validate against post-mutation state.
 
@@ -204,18 +205,16 @@ Load **[discovery-guidelines.md](references/discovery-guidelines.md)** and follo
 
 ## Step 10: Session Loop
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Discovery Session ────────────────────────────
+**`□ Discovery Session`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Mapping out the topics this epic breaks into. A new epic carries
-> on from what we've shaped so far; an existing map can be edited
-> here too. We name the topics once the picture feels complete.
+> Mapping out the topics this epic breaks into. A new epic carries on from what we've shaped so far; an existing map can be edited here too. We name the topics once the picture feels complete.
 ```
 
 Load **[session-loop.md](references/session-loop.md)** and follow its instructions as written.
@@ -226,20 +225,6 @@ Load **[session-loop.md](references/session-loop.md)** and follow its instructio
 
 ## Step 11: Document Review
 
-> *Output the next fenced block as a code block:*
-
-```
-── Document Review ──────────────────────────────
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Reconciling the session log against the conversation before
-> saving — catching anything that drifted, so what's recorded
-> matches what we discussed.
-```
-
 Load **[document-review.md](references/document-review.md)** and follow its instructions as written.
 
 → On return, proceed to **Step 12**.
@@ -248,17 +233,16 @@ Load **[document-review.md](references/document-review.md)** and follow its inst
 
 ## Step 12: Confirm and Persist Topics
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Confirm and Persist ──────────────────────────
+**`□ Confirm and Persist`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Saving the agreed topics to the discovery map and closing out
-> the session log.
+> Saving the agreed topics to the discovery map and closing out the session log.
 ```
 
 Load **[confirm-and-persist.md](references/confirm-and-persist.md)** and follow its instructions as written.
@@ -271,18 +255,16 @@ Load **[confirm-and-persist.md](references/confirm-and-persist.md)** and follow 
 
 Reached only for single-phase work — feature, cross-cutting, bugfix, quick-fix — routed here by the confirm-trigger (Step 5). The epic topic path does not pass through here.
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── First-Phase Routing ──────────────────────────
+**`□ First-Phase Routing`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Discovery's done — routing this work to its first phase. Feature
-> and cross-cutting pick research or discussion; bugfix goes to
-> investigation, quick-fix to scoping.
+> Discovery's done — routing this work to its first phase. Feature and cross-cutting pick research or discussion; bugfix goes to investigation, quick-fix to scoping.
 ```
 
 Load **[first-phase-routing.md](references/first-phase-routing.md)** and follow its instructions as written.
@@ -305,17 +287,16 @@ Load **[compliance-check.md](../workflow-shared/references/compliance-check.md)*
 
 The single exit for every work type — both paths arrive from the Step 14 compliance check.
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Conclude Discovery ───────────────────────────
+**`□ Conclude Discovery`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Wrapping up — committing, then handing off through the bridge to
-> the next step in a clean context.
+> Wrapping up — committing, then handing off through the bridge to the next step in a clean context.
 ```
 
 Load **[conclude-discovery.md](references/conclude-discovery.md)** and follow its instructions as written.

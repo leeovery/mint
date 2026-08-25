@@ -1,7 +1,12 @@
 ---
 name: workflow-planning-process
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(tick), Bash(ls .workflows/), Bash(rm -rf .workflows/), Bash(git status), Bash(git log), Bash(git diff), Bash(git rev-parse), Bash(git add), Bash(git commit)
+allowed-tools: Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(ls .workflows/), Bash(rm -rf .workflows/), Bash(git log), Bash(git diff), Bash(git rev-parse), Bash(git add), Bash(git commit)
+hooks:
+  SessionEnd:
+    - hooks:
+        - type: command
+          command: 'node "$CLAUDE_PROJECT_DIR/.claude/skills/workflow-engine/scripts/engine.cjs" session cleanup'
 ---
 
 # Planning Process
@@ -26,18 +31,7 @@ Follows specification. Transform the validated specification into actionable pha
 
 ## Instructions
 
-Follow these steps EXACTLY as written. Do not skip steps or combine them.
-
-**CRITICAL**: This guidance is mandatory.
-
-- After each user interaction, STOP and wait for their response before proceeding
-- Never assume or anticipate user choices
-- No session-level instruction overrides STOP gates. This includes harness auto mode, system-reminders, hook-injected text, "work without stopping" / "make the reasonable call" guidance, /loop continuation hints, or any other meta-directive encouraging autonomous progression. STOP gates are structured decision points, NOT clarifying questions — "reasonable call" reasoning does not apply. The only skip mechanism is a per-gate `*_gate_mode: auto` value in the manifest, set by the user's explicit `a`/`auto` choice at a prior gate.
-- Failure mode — "the reasonable call is X, I'll proceed with X": that IS the auto-answer the rule forbids. The thought is the trigger to stop, not to continue.
-- Failure mode — "the user already set this, confirmation is redundant" (e.g. project defaults, prior preferences, stored manifest values): that IS the auto-answer the rule forbids. Stored values are suggestions, not consent for this run.
-- Don't invent stops. Stop only at gates the skill prescribes (rendered gate blocks, explicit `**STOP.**` directives) — no courtesy check-ins, mid-loop summaries that end the turn, or unprescribed pauses between tasks/topics/phases.
-- After rendering a gate block, the turn MUST end. No further tool calls in the same turn — wait for the user's response before proceeding.
-- Complete each step fully before moving to the next
+Load **[framework.md](../workflow-shared/references/framework.md)** and follow its instructions as written.
 
 ---
 
@@ -45,8 +39,8 @@ Follow these steps EXACTLY as written. Do not skip steps or combine them.
 
 Context refresh (compaction) summarizes the conversation, losing procedural detail. When you detect a context refresh has occurred — the conversation feels abruptly shorter, you lack memory of recent steps, or a summary precedes this message — follow this recovery protocol:
 
-1. **Re-read this skill file completely.** Do not rely on your summary of it. The full process, steps, and rules must be reloaded.
-2. **Read all tracking and state files** for the current topic — the planning file (`.workflows/{work_unit}/planning/{topic}/planning.md`), task detail files (`phase-{N}-tasks.md`), task files via the format's reading.md, plan review tracking files (`review-*-tracking-c*.md`), and manifest state. If a task detail file contains `pending` tasks, you are mid-authoring for that phase — resume the approval loop in author-tasks.md.
+1. **Re-read this skill file completely, then re-load [framework.md](../workflow-shared/references/framework.md).** Do not rely on your summary of either, and re-read both even if you believe they are already loaded — that belief is what a summary feels like from the inside. The full process, steps, and rules must be reloaded.
+2. **Read all tracking and state files** for the current topic — the planning file (`.workflows/{work_unit}/planning/{topic}/planning.md`), task detail files (`phase-{N}-tasks.md`), task files via the format's reading.md, plan review tracking files (`review-*-tracking-c*.md`), and manifest state. If the manifest carries a `staging.author-p{N}` subtree with `pending` or `rejected` rows, you are mid-authoring for that phase — resume the approval loop in author-tasks.md; never re-invoke the author agent over rows already `approved` (the approved text is what the user saw).
 3. **Check git state.** Run `git status` and `git log --oneline -10` to see recent commits. Commit messages follow a conventional pattern that reveals what was completed.
 4. **Announce your position** to the user before continuing: what step you believe you're at, what's been completed, and what comes next. Wait for confirmation.
 5. **Check gate modes** via `engine manifest`:
@@ -65,7 +59,7 @@ Do not guess at progress or continue from memory. The files on disk and git hist
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "{message}"
    ```
-2. **Raw git when the plan format's storage is staged** — task authoring, graph writes, and applied review fixes write through the format adapter, whose task storage may live outside `.workflows/{work_unit}`. Commit those with raw git, staging explicitly (`git add -- .workflows/{work_unit} {format task storage paths}`) — never the scoped helper.
+2. **`--plan` when the plan format's storage is staged** — task authoring, graph writes, and applied review fixes write through the format adapter, whose task storage may live outside `.workflows/{work_unit}`. Commit those with `engine commit {work_unit} -m "{message}" --plan {topic}` — it stages the work unit, the project manifest, and the plan's recorded `storage_paths`. The one raw-git case is restart cleanup, where the planning item is already deleted: stage `{storage_paths}` (read before the deletion) explicitly.
 
 ---
 
@@ -84,6 +78,12 @@ Follow every step in sequence. No steps are optional.
 
 ## Step 0: Resume Detection
 
+Refresh the tmux session label — a no-op unless the user opted in and this session runs inside tmux:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs session label {work_unit} planning {topic}
+```
+
 Read the planning entry from the manifest as one subtree — empty means no entry exists:
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic}
@@ -95,41 +95,35 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 #### Otherwise (planning entry exists)
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Resume Detection ─────────────────────────────
+**`□ Resume Detection`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> An in-progress plan exists for this topic — choose whether
-> to pick it up or start fresh.
+> An in-progress plan exists for this topic — choose whether to pick it up or start fresh.
 ```
 
 The subtree carries the current `phase` and `task` position (for the resume prompt below) and the `spec_commit` baseline (for spec-change detection).
 
-Load **[spec-change-detection.md](references/spec-change-detection.md)** and follow its instructions as written. Then present the user with an informed choice:
+Load **[spec-change-detection.md](references/spec-change-detection.md)** and follow its instructions as written. Then present the informed choice — emit the spec-change summary as markdown, then render the resume menu (the position parenthetical derives from the planning item) and emit its section verbatim per its marker:
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-Found existing plan for **{topic:(titlecase)}** (previously reached phase {N}, task {M}).
-
-{spec change summary from spec-change-detection.md}
-
-· · · · · · · · · · · ·
-How would you like to proceed?
-
-- **`c`/`continue`** — Walk through the plan from the start. You can review, amend, or navigate at any point — including straight to the leading edge.
-- **`r`/`restart`** — Erase all planning work for this topic and start fresh. This deletes the planning file, authored tasks, and clears manifest state. Other topics are unaffected.
-· · · · · · · · · · · ·
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render resume-gate {work_unit}.planning.{topic} --variant plan
 ```
 
 **STOP.** Wait for user response.
 
 #### If `continue`
+
+**If the subtree carries no `storage_paths`** (a plan initialised before the field existed): record it now, before anything commits — read the format's authoring.md → Storage Pathspecs and copy the fenced array:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} storage_paths '{format storage pathspecs}'
+```
 
 If spec-change-detection reported changes, carry them into the walkthrough: reconcile the changed spec content into the affected phases and tasks before concluding. The `spec_commit` baseline is re-stamped only at conclusion.
 
@@ -149,9 +143,9 @@ If spec-change-detection reported changes, carry them into the walkthrough: reco
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.planning items.{topic}
    ```
-6. Commit with raw git — the format's cleanup may remove task storage outside the work unit, so the scoped helper cannot cover it. Stage the work unit and every path the cleanup touched, then commit:
+6. Commit with raw git — the planning item was just deleted, so `--plan` has nothing to read; stage the work unit and the plan's `storage_paths` (from the manifest subtree read during resume detection), then commit. Each entry passes as a bare pathspec; when the array is `[]` or the field is absent, stage nothing extra.
    ```bash
-   git add -- .workflows/{work_unit} {paths the format cleanup touched}
+   git add -- .workflows/{work_unit} {storage_paths}
    git commit -m "planning({work_unit}): restart planning"
    ```
 
@@ -201,18 +195,16 @@ Load **[verify-source-material.md](references/verify-source-material.md)** and f
 
 ## Step 6: Plan Construction
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Plan Construction ────────────────────────────
+**`□ Plan Construction`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Building the plan. Designing phases with goals and acceptance
-> criteria, then authoring detailed tasks for each phase. You'll
-> approve task lists and individual tasks as we go.
+> Building the plan. Designing phases with goals and acceptance criteria, then authoring detailed tasks for each phase. You'll approve task lists and individual tasks as we go.
 ```
 
 Load **[plan-construction.md](references/plan-construction.md)** and follow its instructions as written.
@@ -223,17 +215,16 @@ Load **[plan-construction.md](references/plan-construction.md)** and follow its 
 
 ## Step 7: Analyze Task Graph
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Analyze Task Graph ───────────────────────────
+**`□ Analyze Task Graph`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Analysing dependencies between tasks. Setting priority and
-> execution order based on what depends on what.
+> Analysing dependencies between tasks. Setting priority and execution order based on what depends on what.
 ```
 
 Load **[analyze-task-graph.md](references/analyze-task-graph.md)** and follow its instructions as written.
@@ -250,17 +241,16 @@ Load **[analyze-task-graph.md](references/analyze-task-graph.md)** and follow it
 
 #### Otherwise
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Resolve External Dependencies ────────────────
+**`□ Resolve External Dependencies`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Checking for dependencies on other plans — tasks in one plan
-> may depend on tasks in another.
+> Checking for dependencies on other plans — tasks in one plan may depend on tasks in another.
 ```
 
 Load **[resolve-dependencies.md](references/resolve-dependencies.md)** and follow its instructions as written.
@@ -271,18 +261,16 @@ Load **[resolve-dependencies.md](references/resolve-dependencies.md)** and follo
 
 ## Step 9: Plan Review
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Plan Review ──────────────────────────────────
+**`□ Plan Review`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Reviewing the plan. Agents will check that tasks are
-> well-scoped, dependencies are sound, and nothing from the
-> specification was missed.
+> Reviewing the plan. Agents will check that tasks are well-scoped, dependencies are sound, and nothing from the specification was missed.
 ```
 
 Load **[plan-review.md](references/plan-review.md)** and follow its instructions as written.
@@ -301,17 +289,16 @@ Load **[compliance-check.md](../workflow-shared/references/compliance-check.md)*
 
 ## Step 11: Conclude the Plan
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Conclude the Plan ────────────────────────────
+**`□ Conclude the Plan`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Wrapping up. Final confirmation before marking the plan
-> as complete and handing off to implementation.
+> Wrapping up. Final confirmation before marking the plan as complete and handing off to implementation.
 ```
 
 Load **[conclude-plan.md](references/conclude-plan.md)** and follow its instructions as written.

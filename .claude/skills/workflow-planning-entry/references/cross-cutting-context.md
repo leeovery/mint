@@ -10,7 +10,7 @@ Issue a semantic query filtered to `work_type: cross-cutting` so only specs rele
 
 ## A. Build the query text
 
-Read the current topic's specification at `.workflows/{work_unit}/specification/{topic}/specification.md`. Extract a short natural-language description of the feature — the opening summary, the problem statement, or the first substantive paragraph after the frontmatter. Aim for 1-3 sentences that describe *what the plan is about*.
+Read the current topic's specification at `.workflows/{work_unit}/specification/{topic}/specification.md`. Extract a short natural-language description of the feature — the opening summary, the problem statement, or the first substantive paragraph. Aim for 1-3 sentences that describe *what the plan is about*.
 
 Do not use the topic slug as the query term — slugs are weak semantic signal. If the spec is unusually terse and yields no natural description, construct a descriptive phrase from the spec's headings.
 
@@ -51,20 +51,19 @@ These may contain architectural decisions relevant to this plan.
 
 ```
 · · · · · · · · · · · ·
-Proceed without these, or complete them first?
+**`◆ Proceed without these, or complete them first?`**
 
-- **`c`/`continue`** — Plan without them
-- **`s`/`stop`** — Complete them first
-· · · · · · · · · · · ·
+**`c/continue`** → Plan without them
+**`s/stop`**     → Complete them first
 ```
 
 **STOP.** Wait for user response.
 
-**If user chose `s`/`stop`:**
+**If user chose `s/stop`:**
 
 **STOP.** Do not proceed — terminal condition.
 
-**If user chose `c`/`continue`:**
+**If user chose `c/continue`:**
 
 → Proceed to **C. Query the knowledge base**.
 

@@ -11,18 +11,16 @@ The caller passes:
 
 ## A. Read Source Files
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-── Summary Backfill ─────────────────────────────
+**`□ Summary Backfill`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Discovery items missing summary or description. Drafting
-> them from the existing research and discussion files for
-> review.
+> Discovery items missing summary or description. Drafting them from the existing research and discussion files for review.
 ```
 
 For each item in `items_to_recover`:
@@ -42,7 +40,7 @@ For each readable file:
 
 ## B. Batch Review
 
-Render the proposed summaries as a single batch. Description is drafted silently in the background — paragraphs would bloat the batch view, and entry skills will use whatever the auto-draft produces. The user can edit a description later via a follow-up discovery session.
+Render the proposed summaries as a single batch. Description is drafted silently in the background — paragraphs would bloat the batch view, and downstream phases use whatever the auto-draft produces. The user can edit a description later via a follow-up discovery session.
 
 > *Output the next fenced block as a code block:*
 
@@ -63,10 +61,11 @@ Proposed summaries for {N} topic(s):
 
 ```
 · · · · · · · · · · · ·
-- **`y`/`yes`** — Accept all summaries as drafted (description is auto-drafted silently)
-- **`e`/`edit`** — Edit one or more summary lines before accepting
-- **`s`/`skip`** — Skip the whole batch (leave fields blank)
-· · · · · · · · · · · ·
+**`◆ Accept these summaries?`**
+
+**`y/yes`**  → Accept all summaries as drafted (description is auto-drafted silently)
+**`e/edit`** → Edit one or more summary lines before accepting
+**`s/skip`** → Skip the whole batch (leave fields blank)
 ```
 
 **STOP.** Wait for user response.
@@ -87,7 +86,7 @@ No manifest writes, no commit.
 
 ## C. Edit Loop
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
 Which line would you like to edit? Enter the number, or `done` to accept the current set.
@@ -101,7 +100,7 @@ Which line would you like to edit? Enter the number, or `done` to accept the cur
 
 #### If a number
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
 New summary for "{item.name:(titlecase)}":
@@ -121,16 +120,15 @@ Update the in-memory summary for that item with the user's response. Re-render t
 
 ```
 · · · · · · · · · · · ·
-{K} topic(s) have no source file to draft from:
+**`◆ {K} topic(s) have no source file to draft from:`**
 
 @foreach(item in items_to_recover where derived field is null)
 - {item.name:(titlecase)}
 @endforeach
 
-- **`p`/`provide`** — Tell me the summary for each and I'll write it
-- **`d`/`dismiss`** — Write a minimal name-derived summary noting the missing source, so this stops re-prompting
-- **`l`/`leave`** — Leave them unset; this flow re-offers next time
-· · · · · · · · · · · ·
+**`p/provide`** → Tell me the summary for each and I'll write it
+**`d/dismiss`** → Write a minimal name-derived summary noting the missing source, so this stops re-prompting
+**`l/leave`**   → Leave them unset; this flow re-offers next time
 ```
 
 **STOP.** Wait for user response.
@@ -141,19 +139,17 @@ Update the in-memory summary for that item with the user's response. Re-render t
 
 **If `leave`:** the items stay out of the writes below and re-qualify on the next epic entry.
 
-For each item, write only the newly-drafted fields:
+Write the batch to `.workflows/.cache/{work_unit}/discovery/backfill-ops.json` with the Write tool — one `set` op per item, carrying only the newly-drafted fields (`summary` when `item.needs_summary` is true and `item.derived_summary` is non-null; `description` likewise):
 
-- If `item.needs_summary` is true and `item.derived_summary` is non-null:
+```json
+[{"op": "set", "path": "{work_unit}.discovery.{item.name}", "fields": {"summary": "{summary}", "description": "{description}"}}]
+```
 
-  ```bash
-  node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.discovery.{item.name} summary "{summary}"
-  ```
+Persist every item in one atomic call — a failing entry means nothing was written. Skip the call when no item produced a write (every candidate null and left, or dismissed to `leave`):
 
-- If `item.needs_description` is true and `item.derived_description` is non-null:
-
-  ```bash
-  node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.discovery.{item.name} description "{description}"
-  ```
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest apply {work_unit} --file .workflows/.cache/{work_unit}/discovery/backfill-ops.json
+```
 
 Single commit covering all writes:
 

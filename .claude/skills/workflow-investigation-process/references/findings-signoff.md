@@ -8,45 +8,41 @@ The single canonical presentation of the investigation findings, gated for the u
 
 ## A. Present & Confirm
 
+→ Load **[product-lens.md](../../workflow-shared/references/product-lens.md)** and follow its instructions as written.
+
 Pull current values from the investigation file — the file is authoritative, not conversation memory.
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> This is the sign-off on the investigation record — everything
-> below is read from the investigation file. Fix exploration
-> comes next.
+> This is the sign-off on the investigation record — everything below is read from the investigation file. Fix exploration comes next.
 ```
 
-> *Output the next fenced block as a code block:*
+Retell the investigation file's findings as a markdown narrative (not a code block, no structured template) in four beats:
 
-```
-Investigation Findings: {work_unit}
+1. **What you'd see happen** — the bug as it manifests: what goes wrong, where in the product, when. Open here, before any code.
+2. **Why it happens** — the Root Cause and Contributing Factors as behaviour: what the code does versus what it should do.
+3. **What else it touches** — the Blast Radius: which parts of the product share the broken path.
+4. **Why nobody caught it** — the testing gap, edge case, or recent change, plainly.
 
-Root Cause:
-  {clear, precise root cause statement}
+Each beat lands in a paragraph the user takes in at a glance — complete in coverage, compact in telling. The code-perspective retelling is one `t` away; the record file itself one `v` away.
 
-Contributing Factors:
-  {factor 1}
-  {factor 2}
+→ On return, proceed to **B. Sign-off Gate**.
 
-Blast Radius:
-  Directly affected:  {components}
-  Potentially affected: {components sharing code/patterns}
+---
 
-Why It Wasn't Caught:
-  {testing gap, edge case, recent change}
-```
+## B. Sign-off Gate
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
 · · · · · · · · · · · ·
-Do these findings match your understanding?
+**`◆ Do these findings match your understanding?`**
 
-- **`y`/`yes`** — Findings are correct, move to fix exploration
-- **Provide feedback** — Tell me what's off or unclear
-· · · · · · · · · · · ·
+**`y/yes`**            → Findings are correct, move to fix exploration
+**`t/technical`**      → Retell the findings from the code's perspective
+**`v/view`**           → Show the full investigation file
+**Provide feedback** → Tell me what's off or unclear
 ```
 
 **STOP.** Wait for user response.
@@ -55,13 +51,39 @@ Do these findings match your understanding?
 
 → Return to caller.
 
+#### If `technical`
+
+→ Proceed to **C. Technical Perspective**.
+
+#### If `view`
+
+→ Proceed to **D. View the Record**.
+
 #### If the user provides feedback
 
-→ Proceed to **B. Address Feedback**.
+→ Proceed to **E. Address Feedback**.
 
 ---
 
-## B. Address Feedback
+## C. Technical Perspective
+
+→ Load **[technical-lens.md](technical-lens.md)** and follow its instructions as written.
+
+Retell the same findings through the technical lens — the same four sections from the investigation file, mechanism-first, as a markdown narrative (not a code block).
+
+→ Return to **B. Sign-off Gate**.
+
+---
+
+## D. View the Record
+
+Render the full content of `.workflows/{work_unit}/investigation/{topic}.md` as markdown (not a code block).
+
+→ Return to **B. Sign-off Gate**.
+
+---
+
+## E. Address Feedback
 
 Address the user's concerns directly. Re-trace code paths if needed. Provide supporting evidence from the code trace. Update the investigation file with corrections or new information, and commit.
 

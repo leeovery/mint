@@ -77,10 +77,6 @@ What we chose, why, the deciding factor, trade-offs accepted, confidence level.
 ### Current State
 - What's resolved
 - What's still uncertain
-
-## Triage
-
-(none)
 ```
 
 ## Usage Notes
@@ -104,6 +100,33 @@ What we chose, why, the deciding factor, trade-offs accepted, confidence level.
 - **Journey**: The exploration — what we thought, what changed, false paths, debates, insights
 - **Decision**: What we chose, why, the deciding factor
 
+**Decision revisions**: A Decision block written in an earlier sitting is never rewritten in place — when a later sitting re-decides it, the block becomes a dated timeline. On the first revision, wrap the block's existing prose verbatim under `#### Initial` (use `#### {YYYY-MM-DD}` instead when the original date is known) and place the new decision above it:
+
+```markdown
+#### {YYYY-MM-DD} — revised
+*Trigger: {substance — e.g. triage from {origin}: "{concern title}" — {one-line substance} / review finding: {one-line substance} / user reversal: {what changed}}*
+
+{the current decision — what we now choose, why, what changed from the entry below}
+
+#### Initial
+{the block's original prose, wrapped verbatim — never edited again}
+```
+
+- Entries land only on revision — a block decided once and never revisited stays a plain block
+- The latest entry sits directly under the decision heading: the text there is always the current truth. Same-day revisions stack latest-first
+- Earlier entries are never edited
+- The trigger line carries the substance of what prompted the revision, never a bare cache id — cache files are purged; ids like `review-003 F5` may appear alongside the substance
+
+**Derivation marker**: a decision landed as a settled call — approved from a batch screen rather than argued in conversation — carries a marker line naming what determined it:
+
+```markdown
+**Settled by derivation** — not discussed. Determined by {what determined the call — the decision, sibling ground, convention, or principle}@if(from_review_finding) ({id} {finding})@endif.
+```
+
+The marker opens the Decision block on a fresh section, and follows the `*Trigger:*` line inside the dated entry on a revision — it marks the derived text, never a block whose `#### Initial` was argued. The section's Journey carries the derivation, not a debate; a later revision wraps the block exactly as above.
+
+**Measured claims**: when a claim about the codebase or toolchain is load-bearing — a decision or insight leans on it — measure it in the moment it's written and record the command with the result, the command alone in its span so it re-runs by copy (`` `rg -l 'pattern' | wc -l` → 14 ``). A claim that can't be measured is written as observation, not fact. Downstream phases re-run these commands; an unmeasured load-bearing claim is the defect they inherit.
+
 **Discussion Map**:
 - Subtopic states (`pending`, `exploring`, `converging`, `decided`, `deferred`) live in the manifest — the file holds the knowledge, the map holds the live state
 - New child subtopics can be added under top-level parents (two levels max)
@@ -117,9 +140,8 @@ What we chose, why, the deciding factor, trade-offs accepted, confidence level.
 - Don't write code — unless it came up in discussion (e.g., API shape, pattern example) and is relevant to capture
 - Don't summarise the journey — document it
 - Don't stuff concerns that belong to a different topic into subtopics — reroute them to that topic
-
-**Triage section**:
-- `## Triage` is a fixed terminal landing zone for off-topic concerns rerouted from other topics; working discussion content stays above it; left as `(none)` until an entry lands
+- Don't assert tree facts from memory — a load-bearing count, enumeration, or "all X are Y" is measured when written, and carries its command
+- Don't record the pipeline — no readiness declarations ("ready for specification"), decided-subtopic counts, or review-cycle tallies, in Current State or anywhere else; the resolved/uncertain rows carry substance, the manifest carries state
 
 **Complete when**:
 - All subtopics on the Discussion Map are `decided` (or `deferred`)

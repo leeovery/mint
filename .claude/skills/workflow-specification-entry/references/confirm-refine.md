@@ -24,14 +24,16 @@ All sources extracted:
   • {discussion-name}
 ```
 
+> A refinement is for factual corrections and sharpening. A change of decision belongs in the source discussion — reopen that discussion instead; the moment it reopens, this specification is flagged to reconcile against the re-decision.
+
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
 · · · · · · · · · · · ·
-Proceed?
-- **`y`/`yes`**
-- **`n`/`no`**
-· · · · · · · · · · · ·
+**`◆ Proceed?`**
+
+**`y/yes`**
+**`n/no`**
 ```
 
 **STOP.** Wait for user response.
@@ -44,11 +46,10 @@ Proceed?
 
 **If single discussion (no menu to return to):**
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as markdown (not a code block):*
 
 ```
-Understood. Continue working on discussions, or re-run this
-command when ready.
+Understood. Continue working on discussions, or re-run this command when ready.
 ```
 
 **STOP.** Do not proceed — terminal condition.

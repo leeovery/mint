@@ -6,11 +6,13 @@
 
 ## A. Background Agents
 
-Two types of background agent operate during research. Load their lifecycle instructions now — apply them at the appropriate moments during the session loop.
+Two types of background agent operate during research, and the topic's triage queue surfaces through a third protocol file. Load their instructions now — they run at the appropriate moments during the session loop.
 
 → Load **[review-agent.md](review-agent.md)** and follow its instructions as written.
 
 → Load **[deep-dive-agent.md](deep-dive-agent.md)** and follow its instructions as written.
+
+→ Load **[rerouted-concerns.md](../../workflow-shared/references/rerouted-concerns.md)** with work_unit = `{work_unit}`, topic = `{topic}`, phase = `research` — a protocol, not a step: the session loop's triage check enters its **A. Check**; nothing runs at load time.
 
 ---
 
@@ -32,9 +34,8 @@ When a concern surfaces that belongs to a *different* topic — raised in conver
 · · · · · · · · · · · ·
 **{concern}** belongs to a different topic, not this one.
 
-- **`r`/`reroute`** — Send it to the topic it belongs to; it picks it up later
-- **`k`/`keep`** — Keep exploring here for now
-· · · · · · · · · · · ·
+**`r/reroute`** → Send it to the topic it belongs to; it picks it up later
+**`k/keep`**    → Keep exploring here for now
 ```
 
 **STOP.** Wait for user response.
@@ -47,33 +48,25 @@ When a concern surfaces that belongs to a *different* topic — raised in conver
    node .claude/skills/workflow-discovery/scripts/gateway.cjs {work_unit}
    ```
 
-   Resolve the target. If one topic clearly matches, propose it and confirm with the user. If nothing fits, propose a new kebab-case name and confirm. If several plausible candidates exist — or a near-match you're unsure of — present them and let the user choose:
+   Resolve the target, and judge `landing_phase` per **Judging the Landing Phase** in **[triage-landing.md](../../workflow-shared/references/triage-landing.md)**. If one topic clearly matches, propose it — with the recommended phase — and confirm with the user (their reply may override the phase). If nothing fits, propose a new kebab-case name and confirm. If several plausible candidates exist — or a near-match you're unsure of — present them and let the user choose:
 
-   > *Output the next fenced block as markdown (not a code block):*
+   Write the candidates payload to `.workflows/.cache/{work_unit}/research/{topic}/reroute-candidates.json` with the Write tool (`{"concern": "…", "landing_phase": "…", "candidates": [{"name": "…", "lifecycle": "…"}]}` — every plausible home, lifecycle from the map read), then render it:
 
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs render reroute-candidates {work_unit}.research.{topic} --file .workflows/.cache/{work_unit}/research/{topic}/reroute-candidates.json
    ```
-   · · · · · · · · · · · ·
-   Where should "{concern}" land?
 
-   - **`1`** — {candidate} [{state}]
-   - **`2`** — {candidate} [{state}]
-   - **`n`/`new`** — Create a new topic for it
-   · · · · · · · · · · · ·
-   ```
+   Emit the call's MENU section verbatim per its marker.
 
    **STOP.** Wait for user response.
 
-   A chosen candidate is the target; `new` means propose a kebab-case name and confirm it. If the resolved target is the current topic, it's not a reroute — fold it into this research file as a thread and → Return to **B. Session Loop**.
+   A chosen candidate is the target; `new` means propose a kebab-case name and confirm it. A phase appended to the selection overrides `landing_phase`. If the resolved target is the current topic, it's not a reroute — fold it into this research file as a thread and → Return to **B. Session Loop**.
 
 2. Record the concern with the full context discussed about it as `concern` — the target topic picks it up cold.
 
-3. Load **[triage-landing.md](../../workflow-shared/references/triage-landing.md)** with work_unit = `{work_unit}`, target = `{target}`, concern = `{concern}`, origin = `{topic}`, phase = `research`, date = `{today}`. If `result` is `cancelled`, nothing landed — → Return to **B. Session Loop**. Otherwise the concern landed in `{landed_topic}`'s `## Triage`.
+3. Load **[triage-landing.md](../../workflow-shared/references/triage-landing.md)** with work_unit = `{work_unit}`, target = `{target}`, concern = `{concern}`, origin = `{topic}`, phase = `research`, landing_phase = `{landing_phase}`, date = `{today}`. If `result` is `cancelled`, nothing landed — → Return to **B. Session Loop**. Otherwise the concern landed in `{landed_topic}`'s `{landing_phase}` triage queue — the delivery committed itself.
 
-4. Commit:
-
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "research({work_unit}/{topic}): reroute concern to {landed_topic}"
-   ```
+   **If the response carried `reconcile_flagged` or `sources_staled`:** also tell the user what the landing flagged — on a research landing, `{landed_topic}`'s completed discussion (to reconcile against the reopened research); on a discussion landing, the specification(s) named in `sources_staled`, whose extraction of `{landed_topic}` is now stale.
 
 → Return to **B. Session Loop**.
 
@@ -105,7 +98,7 @@ The current file is drifting — multiple exchanges have been adding material th
 
 ## E. In-Flight Agent Handling
 
-Before concluding, check for in-flight agents. Scan `.workflows/.cache/{work_unit}/research/{topic}/` for review or deep-dive files with `status: in-flight` in their frontmatter — dispatch-time skeletons whose agents haven't returned yet.
+Before concluding, check for in-flight agents — run `node .claude/skills/workflow-engine/scripts/engine.cjs agent scan {work_unit} research {topic}` and read the response's `in_flight` list (agents dispatched but not yet returned). An agent dispatched by an earlier session cannot still be running — each row's `created` timestamp tells you which those are; close each (`agent incorporate`), re-scan, and count only this session's.
 
 #### If no agents are in flight
 
@@ -119,18 +112,17 @@ Before concluding, check for in-flight agents. Scan `.workflows/.cache/{work_uni
 
 ```
 · · · · · · · · · · · ·
-There are still {N} background agents working.
+**`◆ There are still {N} background agents working.`**
 
-- **`w`/`wait`** — Wait for results before concluding
-- **`p`/`proceed`** — Conclude now (results will persist in cache for reference)
-· · · · · · · · · · · ·
+**`w/wait`**    → Wait for results before concluding
+**`p/proceed`** → Conclude now (results will persist in cache for reference)
 ```
 
 **STOP.** Wait for user response.
 
 **If `wait`:**
 
-Watch for each in-flight file to flip to `status: pending`. When none remain in-flight, delegate surfacing to the shared protocol loaded by review-agent.md and deep-dive-agent.md. The protocol applies the never-dump rules: two-phase surfacing, one finding at a time. Treat the current moment as a natural break — we are at phase conclusion, so the break check will pass.
+Watch for `agent scan` to promote each in-flight row to `pending`. When none remain in flight, delegate surfacing to the shared protocol loaded by review-agent.md and deep-dive-agent.md. The protocol applies the never-dump rules: two-phase surfacing, one finding at a time. Treat the current moment as a natural break — we are at phase conclusion, so the break check will pass.
 
 → Return to **B. Session Loop**.
 

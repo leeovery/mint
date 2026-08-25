@@ -9,17 +9,25 @@
 
 const path = require('path');
 const { fileExists, filesChecksum } = require('./reads.cjs');
+const { WORK_TYPE_PIPELINES, TERMINAL_STATUSES } = require('../kernel/manifest-schema.cjs');
 
 function phaseStatus(manifest, phase) {
   const p = (manifest.phases || {})[phase] || {};
   if (p.items && typeof p.items === 'object') {
     const keys = Object.keys(p.items);
     if (keys.length === 0) return null;
+    // Non-live statuses drop out of aggregation: cancelled/superseded/proposed
+    // and promoted alike — a promoted spec continues in its cross-cutting unit
+    // and must not mask the siblings' state (unfiltered, the label went
+    // insertion-order-dependent). `triaged` is pre-live: a stub holding parked
+    // concerns on a topic no session has started — it must not flip the
+    // phase's aggregate label.
+    const NON_LIVE = ['cancelled', 'superseded', 'proposed', 'promoted', 'triaged'];
     if (keys.length === 1) {
       const status = (p.items[keys[0]] || {}).status || null;
-      return (status === 'cancelled' || status === 'superseded' || status === 'proposed') ? null : status;
+      return NON_LIVE.includes(status) ? null : status;
     }
-    const statuses = keys.map(k => (p.items[k] || {}).status).filter(s => s && s !== 'cancelled' && s !== 'superseded' && s !== 'proposed');
+    const statuses = keys.map(k => (p.items[k] || {}).status).filter(s => s && !NON_LIVE.includes(s));
     if (statuses.length === 0) return null;
     if (statuses.every(s => s === 'completed')) return 'completed';
     if (statuses.some(s => s === 'in-progress')) return 'in-progress';
@@ -42,6 +50,30 @@ function computeNextPhase(manifest) {
   const wt = manifest.work_type;
 
   const ps = (phase) => phaseStatus(manifest, phase);
+
+  // A completed phase whose item carries a reconcile flag routes BACK to that
+  // phase for the linear types — routing forward past known-stale input is
+  // the bug this override closes, and it keeps the bridge off its terminal
+  // `done` branch while a flag is live. The walk stops at the first in-flight
+  // phase: an upstream mid-revision owns the next action, and its conclusion
+  // re-runs this. Epics are excluded — their next_phase is phase-coarse;
+  // flagged epic items get per-item cues instead.
+  if (wt !== 'epic') {
+    const pipeline = WORK_TYPE_PIPELINES[/** @type {keyof typeof WORK_TYPE_PIPELINES} */ (wt)] || [];
+    for (const phase of pipeline) {
+      // The earliest in-flight phase owns the next action — a spec paused by
+      // a gap routed into its reopened source must route to that source, not
+      // back into its own blocked entry.
+      if (ps(phase) === 'in-progress') {
+        return { next_phase: phase, phase_label: `${phase} (in-progress)` };
+      }
+      const flagged = phaseItems(manifest, phase)
+        .some((i) => i.status === 'completed' && i.reconcile_needed !== undefined);
+      if (flagged) {
+        return { next_phase: phase, phase_label: `${phase} (input moved — reconcile)` };
+      }
+    }
+  }
 
   // Quick-fix has its own short pipeline: scoping → implementation → review
   if (wt === 'quick-fix') {
@@ -215,7 +247,7 @@ function collectAnalysisInputs(manifest, workflowsDir, kind) {
 
 // Per-kind config for computeAnalysisCacheStatus: where the cache object
 // lives, which field on it lists the cached file names, and the two kind-
-// specific reason strings. The body is otherwise one path for both kinds —
+// specific reason strings. The body is otherwise one path for every kind —
 // the same read the write side checksums (collectAnalysisInputs).
 const ANALYSIS_KINDS = {
   'research-analysis': {
@@ -262,10 +294,12 @@ function computeAnalysisCacheStatus(manifest, workflowsDir, kind) {
   };
 }
 
-const TIER_RANK = { '→': 0, '◐': 1, '✓': 2, '○': 3, '⊙': 4, '⊘': 5 };
+const TIER_RANK = { '✓': 0, '→': 1, '◐': 2, '○': 3, '⊙': 4, '⊘': 5 };
 
-// Shared row comparator for the discovery map: tier rank first, then suggested
-// execution order ascending (null orders sort last), then name as final fallback.
+// Shared row comparator for the discovery map: tier rank first — decided
+// leads, then ready, in-flight, fresh, with handled/cancelled trailing — then
+// suggested execution order ascending (null orders sort last), then name as
+// final fallback.
 function compareMapRows(a, b) {
   const ra = TIER_RANK[a.tier] != null ? TIER_RANK[a.tier] : 99;
   const rb = TIER_RANK[b.tier] != null ? TIER_RANK[b.tier] : 99;
@@ -287,7 +321,15 @@ function computeNeedsSequencing(mapItems) {
 // `research_state` rides along on every result — the research item's raw
 // status (null when no research item exists), so labels can be derived from
 // the actual per-phase state (a handled topic without research, superseded
-// research) rather than assumed from the lifecycle alone.
+// research) rather than assumed from the lifecycle alone. `triage_parked`
+// rides along the same way: true when either phase item is a `triaged` stub
+// (parked rerouted concerns, no session yet). It is a rider, not a lifecycle
+// — a triaged stub renders as `fresh` by fall-through, and the rider survives
+// on every branch (a `discussing` topic can still hold a parked research
+// stub, which never drains from the discussion side). `reconcile_pending`
+// is the third rider: either phase item carries a live reconcile flag, so
+// the map row can cue `input moved` — with a map, phase-item rows never
+// render for research/discussion, making this the topic's only surface.
 function computeTopicLifecycle(manifest, topicName) {
   const discovery = phaseItems(manifest, 'discovery').find(i => i.name === topicName);
   const research = phaseItems(manifest, 'research').find(i => i.name === topicName);
@@ -295,39 +337,59 @@ function computeTopicLifecycle(manifest, topicName) {
 
   const rs = research ? research.status ?? null : null;
   const ds = discussion ? discussion.status : null;
+  const triage_parked = rs === 'triaged' || ds === 'triaged';
+  // Terminal items keep their flag inertly (reactivation restores it live);
+  // cueing them would light `input moved` with no entry flow to clear it.
+  const flagLive = (/** @type {{status?: string, reconcile_needed?: unknown}|undefined} */ it) =>
+    it !== undefined && it.reconcile_needed !== undefined
+    && !TERMINAL_STATUSES.includes(/** @type {string} */ (it.status));
+  const reconcile_pending = flagLive(research) || flagLive(discussion);
 
   // Stored marker wins over name-matching: a research topic that fanned out
   // into differently-named discussions is terminal, with no next action. Read
   // only the item's own field — never inspect siblings or provenance.
   if (discovery && discovery.handled === true) {
-    return { lifecycle: 'handled', tier: '⊙', current_phase: null, research_state: rs };
+    return { lifecycle: 'handled', tier: '⊙', current_phase: null, research_state: rs, triage_parked, reconcile_pending };
   }
 
+  if (rs === 'in-progress' && ds === 'completed') {
+    // Reopened research beneath a decided discussion — a triage landing
+    // judged research-side. The topic is back in research; the discussion's
+    // reconcile flag carries the downstream consequence.
+    return { lifecycle: 'researching', tier: '◐', current_phase: 'research', research_state: rs, triage_parked, reconcile_pending };
+  }
   if (ds === 'completed') {
-    return { lifecycle: 'decided', tier: '✓', current_phase: 'discussion', research_state: rs };
+    return { lifecycle: 'decided', tier: '✓', current_phase: 'discussion', research_state: rs, triage_parked, reconcile_pending };
   }
   if (ds === 'in-progress') {
-    return { lifecycle: 'discussing', tier: '◐', current_phase: 'discussion', research_state: rs };
+    return { lifecycle: 'discussing', tier: '◐', current_phase: 'discussion', research_state: rs, triage_parked, reconcile_pending };
   }
   if (rs === 'completed') {
-    return { lifecycle: 'ready_for_discussion', tier: '→', current_phase: 'research', research_state: rs };
+    return { lifecycle: 'ready_for_discussion', tier: '→', current_phase: 'research', research_state: rs, triage_parked, reconcile_pending };
   }
   if (rs === 'in-progress') {
-    return { lifecycle: 'researching', tier: '◐', current_phase: 'research', research_state: rs };
+    return { lifecycle: 'researching', tier: '◐', current_phase: 'research', research_state: rs, triage_parked, reconcile_pending };
   }
-  // All attempted phase items are cancelled (both research and discussion items exist
-  // and are cancelled). Single-cancelled (only research, or only discussion) falls
-  // through to fresh — the alternate path remains open.
-  if (rs === 'cancelled' && ds === 'cancelled') {
-    return { lifecycle: 'cancelled', tier: '⊘', current_phase: null, research_state: rs };
+  // Every attempted phase item is cancelled (and at least one was attempted):
+  // the topic is cancelled-tier. A dual-attempt topic with one live item never
+  // reaches here — the live path's branches above already rendered it — so
+  // cancelling one of two still leaves the alternate open. A single-routed
+  // topic whose only item is cancelled must NOT fall through to fresh: its
+  // phase item blocks `topic start` (the "fresh" next action would dead-end),
+  // and the recovery route is reactivate. A `triaged` sibling is not an
+  // attempt — it keeps the topic out of cancelled-tier via the every() check,
+  // falling through to fresh (the stub is startable).
+  const attempted = [rs, ds].filter((s) => s != null);
+  if (attempted.length > 0 && attempted.every((s) => s === 'cancelled')) {
+    return { lifecycle: 'cancelled', tier: '⊘', current_phase: null, research_state: rs, triage_parked, reconcile_pending };
   }
   // Superseded research with no discussion: the topic's research lineage is
   // closed but a discussion path remains open. Render as ready-for-discussion
   // — the next available action is to discuss.
   if (rs === 'superseded' && !ds) {
-    return { lifecycle: 'ready_for_discussion', tier: '→', current_phase: 'research', research_state: rs };
+    return { lifecycle: 'ready_for_discussion', tier: '→', current_phase: 'research', research_state: rs, triage_parked, reconcile_pending };
   }
-  return { lifecycle: 'fresh', tier: '○', current_phase: null, research_state: rs };
+  return { lifecycle: 'fresh', tier: '○', current_phase: null, research_state: rs, triage_parked, reconcile_pending };
 }
 
 function computeNextAction(routing, lifecycle) {
@@ -389,6 +451,8 @@ function computeSourceProvenance(source) {
  * @property {string} tier
  * @property {string|null} current_phase
  * @property {string|null} research_state
+ * @property {boolean} triage_parked       a `triaged` stub (parked rerouted concerns) exists in either phase
+ * @property {boolean} reconcile_pending   a phase item beneath the row carries a live reconcile flag
  * @property {string|null} next_action
  */
 
@@ -410,7 +474,7 @@ function computeSourceProvenance(source) {
 function buildDiscoveryMap(manifest) {
   const discoveryItems = phaseItems(manifest, 'discovery');
   const map = discoveryItems.map((item) => {
-    const { lifecycle, tier, current_phase, research_state } = computeTopicLifecycle(manifest, item.name);
+    const { lifecycle, tier, current_phase, research_state, triage_parked, reconcile_pending } = computeTopicLifecycle(manifest, item.name);
     const summaryText = typeof item.summary === 'string' && item.summary.trim() ? item.summary : null;
     const descriptionText = typeof item.description === 'string' && item.description.trim() ? item.description : null;
     return {
@@ -427,6 +491,8 @@ function buildDiscoveryMap(manifest) {
       tier,
       current_phase,
       research_state,
+      triage_parked,
+      reconcile_pending,
       next_action: computeNextAction(item.routing, lifecycle),
     };
   });

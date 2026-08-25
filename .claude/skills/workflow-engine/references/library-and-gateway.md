@@ -64,6 +64,10 @@ engine.discussionMap.addSubtopic(manifest, topic, name, { parent }) // mutates; 
 engine.discussionMap.setSubtopicState(manifest, topic, name, state) // mutates; enum is the only constraint
 engine.discussionMap.mapState(manifest, topic)    // → { counts, total, all_decided, unresolved }
 
+// domain: background-agent derivations
+engine.agents.completedReviewCycles(cwd, wu, phase, topic) // → number — report-backed review cycles (legacy files counted by existence; tolerant reads)
+engine.agents.reviewArming(cwd, wu, topic)        // → { armed, cycles, map_moves_seen, map_moves_needed, reason } — discussion review-arming verdict (tolerant reads)
+
 // domain: discovery-session queries
 engine.session.nextSessionNumber(sessionsDir)     // → next session-NNN number from the on-disk logs (1 when none)
 
@@ -79,11 +83,12 @@ engine.detail.workUnitIndex(type, detail)         // → labelled dump for the h
 engine.detail.WORK_UNIT_TYPES                     // { [type]: config } — single-topic pipeline configs
 engine.detail.specificationDetail(wu, result, { consultHints }) // → SpecificationDetail (entry scenario + grouping rows over one discover() result)
 engine.project.epicDashboard(wu, detail, { newArrivals }) // → dashboard display block
-engine.project.epicKey(detail)                    // → Key block ('' for a brand-new epic)
+engine.project.epicKey(detail)                    // → Key block ('' when nothing on screen earns a legend)
 engine.project.epicMenu(wu, detail)               // → { keys, rendered } — keys carry action + route
-engine.project.epicCompletedMenu(wu, detail)      // → { keys, display, rendered } — Completed Topics resume sub-view
-engine.project.epicCancelMenu(detail)             // → { keys, display, rendered } — Cancellable Topics pick menu
-engine.project.epicReactivateMenu(detail)         // → { keys, display, rendered } — Cancelled Topics reactivate menu
+engine.project.epicCompletedMenu(wu, detail)      // → { keys, title, display, rendered } — Completed Topics resume sub-view
+engine.project.epicCancelMenu(detail)             // → { keys, title, display, rendered } — Cancellable Topics pick menu
+engine.project.epicReactivateMenu(detail)         // → { keys, title, display, rendered } — Cancelled Topics reactivate menu
+engine.project.epicUnblockMenu(detail)            // → { keys, title, display, rendered } — Blocked Plans unblock menu, one row per blocking dependency (`dep` on the key)
 engine.project.discoveryMapView(wu, map)          // → Discovery Map display block (box + tier header + rows)
 engine.project.discoverySynthesisView(wu, map, proposed) // → harvest proposal block (proposed set over the existing map)
 engine.project.discussionMap(topic, manifest)     // → Discussion Map display block
@@ -93,9 +98,13 @@ engine.project.emptyOverview(detail)              // → empty-state overview bl
 engine.project.emptyMenu(detail)                  // → { keys, rendered } — empty-state start menu
 engine.project.inboxPickupView(items, hasArchived)// → { data, display, menu } — inbox pickup snapshot bodies
 engine.project.archivedView(items)                // → { data, display, menu } — archived store snapshot bodies
-engine.project.workingSetView(ws)                 // → { data, menu, sections } — set menu + deferred add/drop gates
+engine.project.workingSetView(ws)                 // → { data, title, display, menu, sections } — set tree, menu, mixed-type blocker
+engine.project.workingSetAddGate(ws)              // → add-candidates display + add-gate menu — the gateway working-set-add-gate verb
+engine.project.workingSetDropGate(ws)             // → drop-candidates display + drop-gate menu — the gateway working-set-drop-gate verb
 engine.project.manageListView(detail)             // → { data, display, menu, rows } — manage selection snapshot
-engine.project.manageUnitView(md)                 // → { data, menu, sections } — action menu + deferred absorb/plan gates
+engine.project.manageUnitView(md)                 // → { data, menu } — the action menu
+engine.project.absorbTargetMenu(md)               // → MENU: absorb target — the render absorb-target surface
+engine.project.planTopicsMenu(md)                 // → MENU: plan topics — the render plan-topics surface
 engine.project.completedView(detail, filter)      // → { data, display, menu, rows } — completed & cancelled snapshot
 engine.project.workUnitStatus(type, unit)         // → status display block (box + pipeline tree)
 engine.project.workUnitMenu(type, unit)           // → { keys, rendered } — proceed/revisit gate; '' rendered when nothing to revisit
@@ -104,7 +113,7 @@ engine.project.revisitablePhases(type, unit)      // → string[] — completed 
 engine.project.revisitPhasesSection(phases)       // → labelled `MENU: revisit phases` section ('' when none)
 engine.project.specificationDisplay(detail)       // → scenario overview block ('' when the scenario renders nothing)
 engine.project.specificationMenu(detail)          // → { keys, rendered } — grouping/spec menu; both empty for menu-less scenarios
-engine.project.specificationCompletedMenu(detail) // → { keys, display, rendered } — concluded-specs Refine sub-view
+engine.project.specificationCompletedMenu(detail) // → { keys, title, display, rendered } — concluded-specs Refine sub-view
 
 // gateway: adapter harness
 engine.gateway.runGateway(handlers)               // argv verb dispatch → stdout
