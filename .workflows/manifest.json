@@ -55,5 +55,8 @@
   },
   "walkthrough": {
     "status": "skipped"
+  },
+  "baseline": {
+    "status": "native"
   }
 }
