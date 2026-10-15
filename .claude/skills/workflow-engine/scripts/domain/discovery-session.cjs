@@ -26,30 +26,41 @@
 const fs = require('fs');
 const path = require('path');
 const { loadWorkUnitManifest, saveWorkUnitManifest, withWorkUnitLock, ensureContainer } = require('../kernel/manifest.cjs');
-const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
-const { knowledge } = require('./kb.cjs');
+const { commitTailPathspec, noteCommitOutcome, discoveryScope } = require('./commit.cjs');
+const { syncKnowledge } = require('./knowledge/sync.cjs');
 
 /**
- * The next session number: highest on-disk `session-NNN.md` plus one, `1`
- * when no log (or no sessions directory) exists yet. Disk is the source —
- * no manifest field stores the counter, so legacy manifests need nothing.
+ * The highest-numbered `session-NNN.md` on disk — its number and its file
+ * name; null when no log (or no sessions directory) exists yet.
  * @param {string} sessionsDir absolute path
- * @returns {number}
+ * @returns {{number: number, file: string}|null}
  */
-function nextSessionNumber(sessionsDir) {
+function latestSessionLog(sessionsDir) {
   /** @type {string[]} */
   let files;
   try {
     files = fs.readdirSync(sessionsDir);
   } catch {
-    return 1;
+    return null;
   }
-  let max = 0;
+  /** @type {{number: number, file: string}|null} */
+  let latest = null;
   for (const f of files) {
     const m = f.match(/^session-(\d+)\.md$/);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
+    if (m && (latest === null || parseInt(m[1], 10) > latest.number)) latest = { number: parseInt(m[1], 10), file: f };
   }
-  return max + 1;
+  return latest;
+}
+
+/**
+ * The next session number: the latest on disk plus one, `1` when there is
+ * none. Disk is the source — no manifest field stores the counter.
+ * @param {string} sessionsDir absolute path
+ * @returns {number}
+ */
+function nextSessionNumber(sessionsDir) {
+  const latest = latestSessionLog(sessionsDir);
+  return latest === null ? 1 : latest.number + 1;
 }
 
 /**
@@ -136,8 +147,10 @@ function openDiscoverySession(cwd, workUnit, { sessionLogFile }) {
  * Close the work unit's active discovery session: delete
  * `phases.discovery.active_session` (so resume detection on the next entry
  * sees a closed session), index the marker's session log into the knowledge
- * base (warn-don't-block), and commit scoped to the work unit with the
- * caller's message — one call covers whatever the session left dirty.
+ * base (warn-don't-block), and commit the discovery scope (sessions, briefs,
+ * manifest) with the caller's message — one call covers
+ * whatever the session left dirty. A peer session's topic files are never
+ * swept: discovery runs beside live research and discussion sessions.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {{message: string}} opts  commit message — varies by caller
@@ -165,13 +178,13 @@ function closeDiscoverySession(cwd, workUnit, { message }) {
 
   /** @type {string[]} */
   const warnings = [];
-  knowledge(cwd, ['index', session.rel], `knowledge index (discovery/sessions/session-${session.number}.md)`, warnings);
+  syncKnowledge(cwd, [{ index: session.rel, label: `knowledge index (discovery/sessions/session-${session.number}.md)` }], warnings);
 
-  const outcome = commitTailWithKb(cwd, `.workflows/${workUnit}`, message, warnings);
+  const outcome = commitTailPathspec(cwd, discoveryScope(workUnit), message, warnings);
   /** @type {DiscoverySessionCloseResult} */
   const result = { work_unit: workUnit, session: session.number, session_log: session.rel, committed: outcome.committed, warnings };
-  noteCommitOutcome(result, outcome);
+  noteCommitOutcome(result, outcome, `${workUnit} --discovery`);
   return result;
 }
 
-module.exports = { openDiscoverySession, closeDiscoverySession, nextSessionNumber };
+module.exports = { openDiscoverySession, closeDiscoverySession, latestSessionLog, nextSessionNumber };

@@ -3,27 +3,59 @@
 // ---------------------------------------------------------------------------
 // Domain ring: session presence — a per-topic heartbeat file in the topic's
 // cache directory. Awareness, never mutual exclusion: the epic view marks
-// topics another session holds open, the analysis dispatch defers epic-wide
-// analyses while a peer session is live, the conclude sweep leaves a held
-// peer's dirt alone, and the spec-side resolution flow checks the target
-// discussion before editing its document in place. The file records the
-// owning Claude process's identity
-// (pid + start time + session id); `held` is true while that exact process
-// still runs — however long it sits idle — and the mtime is the activity
-// signal (`live` = held and beaten within the staleness window). A record
-// without identity (no CLAUDE_PID at beat time) degrades to mtime-only.
-// Sessions beat at their per-turn check, clear at conclusion; the SessionEnd
-// hook on the session skills sweeps by session id for the exits that keep
-// the process alive (/clear, logout).
+// topics another session holds open, the analysis dispatch defers an epic-wide
+// analysis while a peer session holds a source topic, the conclude sweep
+// leaves a held peer's dirt alone, the code gate reads the whole project's
+// rows and stamps the entrant's when the slot is free, and the spec-side
+// resolution flow checks the target discussion before editing its document in
+// place. The file records the owning Claude process's identity (pid + start
+// time + session id); `held` — the one verdict — is true while that exact
+// process still runs, however long it sits idle. The mtime is display only:
+// the row's "last active" age, shown wherever a hold is named and never
+// judged. A record without identity cannot be verified and is never held,
+// so a beat with no CLAUDE_PID refuses rather than write one.
+//
+// Beats are mechanical: the engine stamps them as a side effect of the verbs
+// a session already runs on its own topic (`beatQuietly`), and the terminal
+// conclusion commit clears (`clearQuietly`). A beat writes THIS process's
+// identity, so only a structurally self-referential verb may beat — stamping
+// it from a verb acting on another topic manufactures a false hold. Read
+// verbs are reachable for any topic, so they take `refreshQuietly` instead:
+// re-stamp a heartbeat this session already owns, never create one, never
+// overwrite a peer's; a verb that closes a topic it may or may not be
+// sitting in takes `clearOwnQuietly`, the same ownership guard over the
+// clear. The exit sweep is `cleanupPresence`, run from a settings-level
+// SessionEnd hook the engine installs in the project's `.claude/settings.json`
+// (a SessionEnd hook declared in skill frontmatter never fires): it drops
+// every row the ending session owns, by session id, on the exits that keep
+// the process alive (`/clear`, `/logout`) — rows that would otherwise read
+// held until the process exits. A dead process's row reads unheld through
+// the pid check regardless, and a later conversation in the same process
+// owns its predecessor's row (`ownsRow`'s pid arm), never gating against it.
+//
+// Every phase a session sits in carries presence except discovery:
+// `discovery-session open` already refuses a second session per epic
+// (`active_session`), so it is engine-serialised with nothing for a heartbeat
+// to add.
 // ---------------------------------------------------------------------------
 
 const fs = require('fs');
 const path = require('path');
-const { processStartTime, processAlive } = require('../kernel/process.cjs');
-const { section, CONTINUE_INSTRUCTION, callout } = require('./projections/surfaces.cjs');
+const { processStartTime, ownerAlive, ownsRow } = require('../kernel/process.cjs');
+const { VALID_PHASES } = require('../kernel/manifest-schema.cjs');
+const { ENGINE_COMMAND } = require('../kernel/call.cjs');
+const { section, timedInstruction, callout, CONTINUE_CLAUSE } = require('./projections/surfaces.cjs');
 
-const STALE_AFTER_SECONDS = 900;
-const PHASES = ['research', 'discussion'];
+// Every phase a session sits in — the schema's list minus discovery.
+const PHASES = VALID_PHASES.filter((p) => p !== 'discovery');
+// The phases that write the tree and the index — the unpartitionable pair.
+const CODE_PHASES = ['implementation', 'review'];
+// The corpora the epic-wide analyses read. A held session in any other phase
+// is no reason to defer an analysis that never looks at its material.
+const SOURCE_PHASES = ['research', 'discussion'];
+// The phases whose document a specification extracts from — what the
+// spec-side held-doc check looks for a holder on.
+const DOCUMENT_PHASES = ['research', 'discussion', 'investigation'];
 
 /** @param {string} cwd @param {string} wu @param {string} phase @param {string} topic */
 function presencePath(cwd, wu, phase, topic) {
@@ -71,7 +103,7 @@ function fmtAge(seconds) {
 
 /**
  * Refresh the topic's heartbeat. Cache-resident and gitignored; the content
- * is the owning session's identity record, the mtime is the activity signal.
+ * is the owning session's identity record, the mtime its last write.
  * @param {string} cwd @param {string} workUnit @param {string} phase @param {string} topic
  */
 function beatPresence(cwd, workUnit, phase, topic) {
@@ -79,10 +111,11 @@ function beatPresence(cwd, workUnit, phase, topic) {
   const p = presencePath(cwd, workUnit, phase, topic);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   const pid = Number(process.env.CLAUDE_PID) || null;
+  if (!pid) throw new Error('presence beat: CLAUDE_PID is not set — a heartbeat without identity is never held, so none is written');
   /** @type {PresenceRecord} */
   const record = {
     pid,
-    pid_start: pid ? processStartTime(pid) : null,
+    pid_start: processStartTime(pid),
     session_id: process.env.CLAUDE_CODE_SESSION_ID || null,
   };
   fs.writeFileSync(p, JSON.stringify(record) + '\n');
@@ -100,33 +133,111 @@ function clearPresence(cwd, workUnit, phase, topic) {
 }
 
 /**
+ * The mechanical beat: a verb's heartbeat as a side effect, never observable.
+ * Silent on every failure — a phase outside PHASES, a work unit with no
+ * directory, an unwritable cache — because no verb's outcome may turn on
+ * whether its heartbeat landed.
+ * @param {string} cwd @param {string} workUnit @param {string} phase @param {string} topic
+ */
+function beatQuietly(cwd, workUnit, phase, topic) {
+  try {
+    if (!PHASES.includes(phase)) return;
+    beatPresence(cwd, workUnit, phase, topic);
+  } catch { /* liveness is advisory — never fail a verb over it */ }
+}
+
+/**
+ * The read verbs' beat: re-stamp a heartbeat this session already owns, and
+ * only that. A read (`topic mailbox`, `agent scan`) is reachable for any topic
+ * — a foreign topic's mailbox is legitimately checked from another session —
+ * so creating a hold here would manufacture a phantom, and stamping over a
+ * peer's record would re-attribute a hold. Ownership was established by
+ * the write-shaped verbs that are self-referential by construction (`topic
+ * start`, the entry renders, the cadence commit); this keeps that hold's
+ * last-active age honest through quiet polling turns. Same silence as
+ * `beatQuietly`.
+ * @param {string} cwd @param {string} workUnit @param {string} phase @param {string} topic
+ */
+function refreshQuietly(cwd, workUnit, phase, topic) {
+  try {
+    if (!PHASES.includes(phase)) return;
+    const record = readRecord(presencePath(cwd, workUnit, phase, topic));
+    if (!record || !ownsRow(record)) return;
+    beatPresence(cwd, workUnit, phase, topic);
+  } catch { /* liveness is advisory — never fail a verb over it */ }
+}
+
+/**
+ * `beatQuietly`'s terminal sibling: drop the heartbeat as a side effect of the
+ * verb that ends the session's work on the topic. Same silence.
+ * @param {string} cwd @param {string} workUnit @param {string} phase @param {string} topic
+ */
+function clearQuietly(cwd, workUnit, phase, topic) {
+  try {
+    if (!PHASES.includes(phase)) return;
+    clearPresence(cwd, workUnit, phase, topic);
+  } catch { /* liveness is advisory — never fail a verb over it */ }
+}
+
+/**
+ * `clearQuietly` under `refreshQuietly`'s ownership guard: drop a heartbeat
+ * this session owns, never a peer's — the verb that closes a topic is not
+ * always sitting in it. Same silence as `beatQuietly`.
+ * @param {string} cwd @param {string} workUnit @param {string} phase @param {string} topic
+ */
+function clearOwnQuietly(cwd, workUnit, phase, topic) {
+  try {
+    if (!PHASES.includes(phase)) return;
+    const record = readRecord(presencePath(cwd, workUnit, phase, topic));
+    if (!record || !ownsRow(record)) return;
+    clearPresence(cwd, workUnit, phase, topic);
+  } catch { /* liveness is advisory — never fail a verb over it */ }
+}
+
+/**
  * @typedef {object} PresenceRow
  * @property {string} phase
  * @property {string} topic
- * @property {number} age_seconds
+ * @property {number} age_seconds  since the last write — "last active", never a verdict
  * @property {boolean} held  the owning process still runs (identity verified;
- *                           mtime-fallback when the record carries none)
- * @property {boolean} live  held and beaten within the staleness window
+ *                           a record carrying none is never held)
  * @property {string|null} session_id
+ * @property {number|null} pid  the owning Claude process, when the record carries one
  */
 
 /**
- * Every heartbeat in the work unit's cache, with liveness applied — the one
- * read every consumer shares. `held` answers "does a session hold this topic
- * open" (unbounded by time); `live` answers "is it actively working".
- * @param {string} cwd @param {string} workUnit
- * @returns {{work_unit: string, stale_after_seconds: number, live: number, held: number, sessions: PresenceRow[]}}
+ * Memoised process start times — one `ps` per pid across a whole scan.
+ * @returns {(pid: number) => string|null|undefined}
  */
-function scanPresence(cwd, workUnit) {
-  assertArgs(cwd, workUnit, undefined);
-  /** @type {PresenceRow[]} */
-  const sessions = [];
+function startTimeReader() {
   /** @type {Map<number, string|null>} */
-  const startCache = new Map();
-  const startOf = (/** @type {number} */ pid) => {
-    if (!startCache.has(pid)) startCache.set(pid, processStartTime(pid));
-    return startCache.get(pid);
+  const cache = new Map();
+  return (pid) => {
+    if (!cache.has(pid)) cache.set(pid, processStartTime(pid));
+    return cache.get(pid);
   };
+}
+
+/**
+ * Is the heartbeat held — its owning process verified alive (the kernel's
+ * liveness rule)? A missing record is never held.
+ * @param {PresenceRecord|null} record
+ * @param {(pid: number) => string|null|undefined} startOf
+ * @returns {boolean}
+ */
+function heldBy(record, startOf) {
+  return record !== null && ownerAlive(record, startOf);
+}
+
+/**
+ * Every heartbeat under one work unit's cache, the held verdict applied.
+ * @param {string} cwd @param {string} workUnit
+ * @param {(pid: number) => string|null|undefined} startOf
+ * @returns {PresenceRow[]}
+ */
+function collectRows(cwd, workUnit, startOf) {
+  /** @type {PresenceRow[]} */
+  const rows = [];
   for (const phase of PHASES) {
     const dir = path.join(cwd, '.workflows', '.cache', workUnit, phase);
     /** @type {string[]} */
@@ -140,29 +251,106 @@ function scanPresence(cwd, workUnit) {
       try {
         stat = fs.statSync(file);
       } catch { continue; }
-      const age = Math.max(0, Math.floor((Date.now() - stat.mtimeMs) / 1000));
       const record = readRecord(file);
-      let held;
-      if (record && record.pid) {
-        held = record.pid_start ? startOf(record.pid) === record.pid_start : processAlive(record.pid);
-      } else {
-        held = age < STALE_AFTER_SECONDS;
-      }
-      sessions.push({
-        phase, topic, age_seconds: age,
-        held, live: held && age < STALE_AFTER_SECONDS,
+      rows.push({
+        phase, topic,
+        age_seconds: Math.max(0, Math.floor((Date.now() - stat.mtimeMs) / 1000)),
+        held: heldBy(record, startOf),
         session_id: record ? record.session_id || null : null,
+        pid: record ? record.pid ?? null : null,
       });
     }
   }
-  sessions.sort((a, b) => a.age_seconds - b.age_seconds);
+  return rows;
+}
+
+/**
+ * The held rows an epic-wide analysis would read over — a peer's, never the
+ * caller's own: a session that parked its own research and stepped back to
+ * the menu is not mid-conversation on it, and a deferral naming that row
+ * would wait on the session reading it.
+ * @param {PresenceRow[]} sessions
+ */
+function heldSources(sessions) {
+  return sessions.filter((r) => r.held && SOURCE_PHASES.includes(r.phase) && !ownsRow(r));
+}
+
+/**
+ * The freshest held row a peer holds on one document — the spec-side
+ * held-doc gate's read, naming the holder's last-active age. Null when no
+ * peer holds it.
+ * @param {string} cwd @param {string} workUnit @param {string} doc  the document's topic name
+ * @returns {PresenceRow|null}
+ */
+function heldDocument(cwd, workUnit, doc) {
+  const rows = scanPresence(cwd, workUnit).sessions
+    .filter((r) => r.held && r.topic === doc && DOCUMENT_PHASES.includes(r.phase) && !ownsRow(r));
+  return rows[0] || null;
+}
+
+/**
+ * Every heartbeat in the work unit's cache, the held verdict applied — the
+ * one read every consumer shares. `held` answers "does a session hold this
+ * topic open", unbounded by time; `age_seconds` says how long since it last
+ * wrote, and is shown, never judged.
+ * @param {string} cwd @param {string} workUnit
+ * @returns {{work_unit: string, held: number, held_sources: number, sessions: PresenceRow[]}}
+ */
+function scanPresence(cwd, workUnit) {
+  assertArgs(cwd, workUnit, undefined);
+  const sessions = collectRows(cwd, workUnit, startTimeReader()).sort((a, b) => a.age_seconds - b.age_seconds);
   return {
     work_unit: workUnit,
-    stale_after_seconds: STALE_AFTER_SECONDS,
-    live: sessions.filter((r) => r.live).length,
+    held: sessions.filter((r) => r.held).length,
+    // The analyses read research and discussion; `held_sources` is the count
+    // that decides a deferral, so a held planning or spec session never holds
+    // one up.
+    held_sources: heldSources(sessions).length,
+    sessions,
+  };
+}
+
+/**
+ * Every heartbeat in the project, work unit named per row — the read the code
+ * gate needs, which asks "is any session anywhere in a code phase" and has no
+ * work unit to scope by. Same row shape and the same `held` total as the
+ * per-work-unit scan, plus `work_unit`; `scope` names the form.
+ * @param {string} cwd
+ * @returns {{scope: string, held: number, sessions: (PresenceRow & {work_unit: string})[]}}
+ */
+function scanProject(cwd) {
+  const cacheRoot = path.join(cwd, '.workflows', '.cache');
+  /** @type {string[]} */
+  let workUnits = [];
+  try {
+    workUnits = fs.readdirSync(cacheRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  } catch { /* nothing cached yet */ }
+  const startOf = startTimeReader();
+  /** @type {(PresenceRow & {work_unit: string})[]} */
+  const sessions = [];
+  for (const wu of workUnits.sort()) {
+    for (const row of collectRows(cwd, wu, startOf)) sessions.push({ work_unit: wu, ...row });
+  }
+  sessions.sort((a, b) => a.age_seconds - b.age_seconds);
+  return {
+    scope: 'project',
     held: sessions.filter((r) => r.held).length,
     sessions,
   };
+}
+
+/**
+ * Every held implementation or review heartbeat in the project, minus the
+ * calling session's own — the code gate's read. Code is the one resource
+ * that does not partition by topic: one tree, one index, one checkout, so
+ * one code session at a time whatever work unit or topic it sits in.
+ * @param {string} cwd
+ * @returns {(PresenceRow & {work_unit: string})[]}
+ */
+function heldCodeSessions(cwd) {
+  return scanProject(cwd).sessions.filter((row) => row.held
+    && CODE_PHASES.includes(row.phase)
+    && !ownsRow(row));
 }
 
 /**
@@ -208,19 +396,27 @@ function cleanupPresence(cwd, sessionId) {
 
 /**
  * The deferral callout, rendered engine-side so calling flows emit it
- * verbatim (only at the dispatch deferral the marker names). Empty when
- * nothing is live.
- * @param {{live: number, sessions: PresenceRow[]}} scan
+ * verbatim (only where an analysis defers — the marker says so). Counts the
+ * source phases alone, like the deferral itself, naming each held row with
+ * its last-active age. Empty when no source session is held.
+ * @param {{work_unit: string, sessions: PresenceRow[]}} scan
  * @returns {string}
  */
 function deferralSection(scan) {
-  if (scan.live === 0) return '';
-  const names = scan.sessions.filter((r) => r.live).map((r) => `${r.phase}/${r.topic}`).join(', ');
+  const held = heldSources(scan.sessions);
+  if (held.length === 0) return '';
+  const names = held.map((r) => `${r.phase}/${r.topic} (last active ${fmtAge(r.age_seconds)} ago)`).join(', ');
+  const [first] = held;
+  const release = `${ENGINE_COMMAND} presence clear ${scan.work_unit} ${first.phase} ${first.topic}`;
   return section(
     'DISPLAY: presence deferral',
-    `only at the analysis-dispatch deferral: ${CONTINUE_INSTRUCTION}`,
-    callout(`Analyses deferred — ${scan.live} live session(s): ${names}. They re-run at the next entry once those sessions conclude.`),
+    timedInstruction('text', 'only at an analysis deferral', CONTINUE_CLAUSE),
+    callout(`Analyses deferred — ${held.length} session(s): ${names}. They read the settled record, so they wait for those sessions to conclude; a session that is wedged but alive releases its hold with \`${release}\`.`),
   );
 }
 
-module.exports = { beatPresence, clearPresence, scanPresence, cleanupPresence, deferralSection, fmtAge, STALE_AFTER_SECONDS };
+module.exports = {
+  beatPresence, clearPresence, beatQuietly, refreshQuietly, clearQuietly, clearOwnQuietly,
+  scanPresence, scanProject, heldCodeSessions, heldDocument, cleanupPresence, deferralSection,
+  fmtAge, ownsRow, CODE_PHASES, SOURCE_PHASES,
+};

@@ -20,35 +20,17 @@ Before asking for sign-off, assess whether this specification defines cross-cutt
 - Can be planned with phases, tasks, acceptance criteria
 - Results in a standalone implementation
 
-Present your assessment to the user:
-
-> *Output the next fenced block as a code block:*
-
-```
-Cross-Cutting Assessment
-
-@if(cross_cutting)
-This specification appears to be cross-cutting.
-@else
-This specification is directly plannable — no cross-cutting promotion needed.
-@endif
-
-{Brief rationale — e.g., "It defines a caching strategy that will inform how
-multiple features handle data retrieval, rather than being a standalone piece
-of functionality to build."}
-```
-
-Fetch the gate and emit its section verbatim at its marked instruction:
+Write your assessment to `.workflows/.cache/{work_unit}/specification/{topic}/assessment.json` with the Write tool — `{"cross_cutting": {true|false}, "rationale": "{brief rationale}"}`, the rationale a sentence or two (e.g. "It defines a caching strategy that will inform how multiple features handle data retrieval, rather than being a standalone piece of functionality to build.") — then fetch the assessment and its gate, emitting each section verbatim per its marker:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs render spec-completion-gate {work_unit}.specification.{topic} --variant assessment
+node .claude/skills/workflow-engine/scripts/engine.cjs render spec-completion-gate {work_unit}.specification.{topic} --variant assessment --file .workflows/.cache/{work_unit}/specification/{topic}/assessment.json
 ```
 
 **STOP.** Wait for user response.
 
 **If comment:**
 
-Discuss the user's suggested classification and re-assess.
+Discuss the user's suggested classification and re-assess. The comment sets the gate aside; once the exchange looks settled, ask in conversation whether they are ready to move on, and on yes put it back:
 
 → Return to **A. Cross-Cutting Assessment**.
 
@@ -86,23 +68,13 @@ If any show `status: stale`, the source discussion was re-decided after extracti
 
 > **CHECKPOINT**: Do not proceed to sign-off while any source is `pending` or `stale`. Pending material has not been extracted; stale material was extracted from a decision that has since moved — and stays stale while its discussion is mid-revision.
 
-Also confirm every consult reference is addressed:
-
-```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.specification.{topic} consult_references
-```
-
-If any show `status: pending`, work them now per **[spec-construction.md](spec-construction.md)** → Read Consult References Narrowly — read the sibling slice, apply or cite the correction, record it in Working Notes, then mark `addressed`.
-
-> **CHECKPOINT**: Do not proceed to sign-off while any consult reference is `pending`. The owed correction has not been reconciled.
-
 → Proceed to **C. Sign-Off**.
 
 ---
 
 ## C. Sign-Off
 
-Fetch the gate and emit its section verbatim at its marked instruction:
+Fetch the gate and emit its section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render spec-completion-gate {work_unit}.specification.{topic} --variant signoff
@@ -112,7 +84,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render spec-completion-ga
 
 #### If comment
 
-Discuss the user's context and apply any changes.
+Discuss the user's context, and apply a change it leads to once the person confirms it. The comment sets the gate aside; once the exchange looks settled, ask in conversation whether they are ready to move on, and on yes put it back:
 
 → Return to **C. Sign-Off**.
 
@@ -134,8 +106,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 Specification is complete when:
 - All topics have validated content
 - All sources are marked as `incorporated` — neither `pending` nor `stale`
-- All consult references are marked as `addressed`
-- At least one review cycle completed with no findings, OR user explicitly chose to proceed past the re-loop prompt
+- At least one review cycle completed with no findings, OR the review loop closed — the user proceeding past the re-loop prompt under `gated`, the churn or cap exit under `auto`
 - Every manifest `tracking` entry `complete`
 - User confirms the specification is complete
 - No blocking gaps remain
@@ -143,44 +114,48 @@ Specification is complete when:
 Commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "spec({work_unit}): conclude specification"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "spec({work_unit}): conclude specification" --topic specification/{topic}
 ```
 
-When the `complete` response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` advisory — the warning never blocks:
+When the `complete` response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` section verbatim per its marker — the warning never blocks:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render topic-receipt {work_unit}.specification.{topic} --verb complete --warn
 ```
 
-→ Proceed to **E. Handle Source Specifications**.
+→ Proceed to **E. Supersede Incorporated Specifications**.
 
 ---
 
-## E. Handle Source Specifications
+## E. Supersede Incorporated Specifications
 
-If any of your sources were **existing specifications** (as opposed to discussions, research, or other reference material), these have now been consolidated into the new specification.
+Read the started specifications this one incorporated — their content is now consolidated into it:
 
-Only supersede sources whose status is **not** `proposed`. A proposed source is an analyzed grouping with no specification file — absorbing it is a delete handled by reconcile, never a supersede.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs topic incorporations {work_unit} {topic}
+```
 
-1. Supersede each non-proposed source specification — one command sets `status: superseded` and `superseded_by`, and removes the source's chunks from the knowledge base:
+#### If the response's `incorporations` is empty
+
+→ Proceed to **F. Pipeline Continuation**.
+
+#### Otherwise
+
+1. Supersede each incorporated specification (`{incorporated}`, each entry's `topic`) — one command sets `status: superseded` and `superseded_by`, and removes its chunks from the knowledge base:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs topic supersede {work_unit} specification {source-topic} --by {topic}
+   node .claude/skills/workflow-engine/scripts/engine.cjs topic supersede {work_unit} specification {incorporated} --by {topic}
    ```
 
-   If the JSON response's `warnings` is non-empty, display them but do not block — the supersession is already recorded:
+   When the JSON response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` section verbatim per its marker — the warning never blocks; the supersession is already recorded:
 
-   > *Output the next fenced block as a code block:*
-
-   ```
-   ⚑ Knowledge removal warning
-     {warning}
-     The spec is superseded. The removal has been queued and will retry automatically on the next `knowledge remove` or `knowledge compact` call.
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs render topic-receipt {work_unit}.specification.{incorporated} --verb supersede --warn
    ```
 
-2. Inform the user which topics were updated
+2. Inform the user which specifications were superseded
 3. Commit:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "spec({work_unit}): mark source specifications as superseded"
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "spec({work_unit}): mark incorporated specifications as superseded" --topic specification/{topic}
    ```
 
 → Proceed to **F. Pipeline Continuation**.

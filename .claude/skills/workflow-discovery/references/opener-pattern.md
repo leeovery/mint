@@ -16,9 +16,9 @@ Read the recognition indexes silently for the detection core's **J** (skip eithe
 
 #### If `inbox_seeds` is non-empty
 
-Read every inbox file in `inbox_seeds`. They are the work's *origin* — pre-captured thoughts that become this work unit. Use them to shape the opening: sketch what you picked up — across all of them when there are several — then ask a targeted question that elicits a shape signal. Do not dump them back verbatim — synthesise. The folder already pre-seeded `work_type` (bugs → bugfix, quick-fixes → quick-fix, ideas → none); the seeds are still confirmed like any other pick.
+Read every inbox file in `inbox_seeds`. They are the work's *origin* — pre-captured thoughts that become this work unit. Use them to shape the opening: sketch what you picked up — across all of them when there are several — then ask a targeted question that elicits a shape signal. Do not dump them back verbatim — synthesise. The set already pre-seeded `work_type`, read per the detection core's **Inbox seeds**; the seeds are still confirmed like any other pick.
 
-With a single seed, hold its filename for name resolution at the confirm-trigger (the filename-slug becomes the suggested name). With several, the name is shaped from the conversation instead.
+With a single seed, hold its filename for the name derivation at the confirm-trigger (the filename-slug becomes the name). With several, the name is derived from the conversation instead.
 
 → Proceed to **B. Render the Opener**.
 
@@ -30,23 +30,19 @@ No inbox seed. The opener invites the user to describe the work.
 
 ## B. Render the Opener
 
-Imports are **woven into the opener, never a standalone gate** — if the user has notes, design docs, error reports, or prior research, invite them to share the path(s) now; the no-files path costs zero extra turns. Any paths the user provides are read for shaping and held as `import_paths` for the confirm-trigger to land in `imports/`. (Inbox seeds are landed separately, in `seeds/`.)
+Imports are **woven into the opener, never a standalone gate** — if the user has notes, design docs, screenshots, error reports, or prior research, invite them to share the path(s) now; the no-files path costs zero extra turns. Any paths the user provides are read for shaping and held as `import_paths` for the confirm-trigger to land in `imports/`. (Inbox seeds are landed separately, in `seeds/`.)
 
 Render the opener matching what the caller told us.
 
 #### If inbox seeds were read
 
-The seeds share one type (the working set only carries items of one kind). Name that type, pluralised with a count when there are several, and give one combined sketch across them.
+Give one combined sketch across the seeds — where ideas are among them, the sketch is the ideas' shape, the bugs and quick-fixes in it as material — and a targeted opening question that pulls on the shape. Write both to `.workflows/.cache/discovery-opener.json` with the Write tool — `{"sketch": "…", "question": "…"}`, the sketch one line. The opener names the seeds by kind and invites related files itself. Build `seed_paths` — `inbox_seeds`, comma-joined — and render it:
 
-> *Output the next fenced block as markdown (not a code block):*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render opener --variant inbox --path {seed_paths} --file .workflows/.cache/discovery-opener.json
 ```
-I've read your {bug | idea | quick-fix — pluralised with a count when several, e.g. "3 ideas"}. Here's the shape I'm picking up:
 
-{one-line sketch — a single combined picture across the item(s)}
-
-{Targeted opening question that pulls on the shape.} If you have any related files or notes, share the path(s) and I'll read them too.
-```
+Emit the call's DISPLAY section verbatim per its marker.
 
 **STOP.** Wait for user response.
 
@@ -57,7 +53,7 @@ I've read your {bug | idea | quick-fix — pluralised with a count when several,
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-Tell me about the epic. I'll ask open questions to pull on it before we synthesise topics. If you have notes or research files, share the path(s) and I'll read them in.
+Tell me about the epic. I'll ask open questions to pull on it before we synthesise topics. If you have notes, screenshots, or research files, share the path(s) and I'll read them in.
 ```
 
 **STOP.** Wait for user response.
@@ -69,7 +65,7 @@ Tell me about the epic. I'll ask open questions to pull on it before we synthesi
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-Tell me about the feature. If you have notes or files for it, share the path(s) and I'll read them in.
+Tell me about the feature. If you have notes, screenshots, or files for it, share the path(s) and I'll read them in.
 ```
 
 **STOP.** Wait for user response.
@@ -81,7 +77,7 @@ Tell me about the feature. If you have notes or files for it, share the path(s) 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-What's broken? If you have logs, error reports, or related files, share the path(s) and I'll read them in.
+What's broken? If you have logs, screenshots, error reports, or related files, share the path(s) and I'll read them in.
 ```
 
 **STOP.** Wait for user response.
@@ -119,7 +115,7 @@ No pre-seed (`s/start`). Open fully and fold the "we'll figure out the shape tog
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-Tell me what's on your mind. Describe it the way it sits in your head — I'll ask open questions and we'll figure out the shape together. If you have notes or files, share the path(s) and I'll read them in.
+Tell me what's on your mind. Describe it the way it sits in your head — I'll ask open questions and we'll figure out the shape together. If you have notes, screenshots, or files, share the path(s) and I'll read them in.
 ```
 
 **STOP.** Wait for user response.

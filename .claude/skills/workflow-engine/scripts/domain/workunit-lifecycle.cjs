@@ -26,9 +26,9 @@ const {
   withProjectLock,
   ensureContainer,
 } = require('../kernel/manifest.cjs');
-const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
+const { commitTailPathspec, noteCommitOutcome } = require('./commit.cjs');
 const { purgeWorkUnitCache } = require('./cache.cjs');
-const { knowledge } = require('./kb.cjs');
+const { syncKnowledge } = require('./knowledge/sync.cjs');
 const { addItem } = require('./discovery-map.cjs');
 const { revertJoins } = require('./roadmap.cjs');
 const { todayStamp } = require('./dates.cjs');
@@ -99,7 +99,7 @@ function completeWorkUnit(cwd, workUnit, { message }) {
   }
 
   const cacheSpec = purgeWorkUnitCache(cwd, workUnit);
-  const outcome = commitTailWithKb(cwd, cacheSpec ? [`.workflows/${workUnit}`, cacheSpec] : `.workflows/${workUnit}`, message, warnings);
+  const outcome = commitTailPathspec(cwd, cacheSpec ? [`.workflows/${workUnit}`, cacheSpec] : `.workflows/${workUnit}`, message, warnings);
   /** @type {WorkUnitLifecycleResult} */
   const result = { work_unit: workUnit, work_type: workType, status: 'completed', completed_at: completedAt, committed: outcome.committed, warnings };
   noteCommitOutcome(result, outcome);
@@ -132,7 +132,7 @@ function cancelWorkUnit(cwd, workUnit) {
 
   /** @type {string[]} */
   const warnings = [];
-  knowledge(cwd, ['remove', '--work-unit', workUnit], 'knowledge remove', warnings);
+  syncKnowledge(cwd, [{ remove: { workUnit } }], warnings);
 
   // The cancel-revert hop, whole-unit form: every roadmap item joined to
   // the unit returns to waiting (the delivery attempt is over; the record
@@ -143,7 +143,7 @@ function cancelWorkUnit(cwd, workUnit) {
   const specs = [`.workflows/${workUnit}`];
   if (cacheSpec) specs.push(cacheSpec);
   if (reverted.length > 0) specs.push('.workflows/manifest.json');
-  const outcome = commitTailWithKb(cwd, specs.length === 1 ? specs[0] : specs, `workflow(${workUnit}): mark as cancelled`, warnings);
+  const outcome = commitTailPathspec(cwd, specs.length === 1 ? specs[0] : specs, `workflow(${workUnit}): mark as cancelled`, warnings);
   /** @type {WorkUnitLifecycleResult} */
   const result = { work_unit: workUnit, status: 'cancelled', committed: outcome.committed, warnings };
   if (reverted.length > 0) result.roadmap_reverted = reverted;
@@ -152,27 +152,22 @@ function cancelWorkUnit(cwd, workUnit) {
 }
 
 /**
- * Re-index a work unit's chunk-backed material in ONE knowledge spawn (formerly
- * one spawn per artifact). `knowledge index --work-unit <wu>` runs the bulk
- * discovery scoped to this unit — exactly the set the per-artifact walk covered:
- * every completed indexed-phase topic, the shape-valid imports and seeds, the
- * on-disk analysis caches, and (epics only) the discovery session logs. The CLI
- * reads the manifest itself, so no manifest is threaded in here.
+ * Re-index a work unit's chunk-backed material: the bulk pass scoped to the
+ * unit — every completed indexed-phase topic, the shape-valid imports and
+ * seeds, the analysis caches, and an epic's discovery session logs.
  *
- * `clearFirst` (pivot) removes the unit's chunks before re-indexing. A pivot
- * refreshes chunk work_type metadata on ALREADY-indexed chunks, and bulk index
- * skips artifacts that are already indexed — so the stale chunks must be cleared
- * first for the fresh index to re-stamp them. reactivate / complete-from-
- * cancelled start from removed chunks (cancellation cleared them), so the index
- * alone restores them. All warn-don't-block.
+ * `clearFirst` (pivot) removes the unit's chunks before re-indexing: a pivot
+ * restamps the work_type of chunks already indexed, which the bulk pass
+ * would otherwise leave standing. Reactivation from a cancel starts from
+ * removed chunks, so the index alone restores them.
  * @param {string} cwd @param {string} workUnit @param {string[]} warnings
  * @param {{clearFirst?: boolean}} [opts]
  */
 function reindexWorkUnit(cwd, workUnit, warnings, opts) {
-  if (opts && opts.clearFirst) {
-    knowledge(cwd, ['remove', '--work-unit', workUnit], 'knowledge remove', warnings);
-  }
-  knowledge(cwd, ['index', '--work-unit', workUnit], 'knowledge index', warnings);
+  syncKnowledge(cwd, [
+    ...(opts && opts.clearFirst ? [{ remove: { workUnit } }] : []),
+    { reindex: workUnit },
+  ], warnings);
 }
 
 /**
@@ -212,7 +207,7 @@ function reactivateWorkUnit(cwd, workUnit) {
     reindexWorkUnit(cwd, workUnit, warnings);
   }
 
-  const outcome = commitTailWithKb(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): reactivate work unit`, warnings);
+  const outcome = commitTailPathspec(cwd, `.workflows/${workUnit}`, `workflow(${workUnit}): reactivate work unit`, warnings);
   /** @type {WorkUnitLifecycleResult} */
   const result = { work_unit: workUnit, status: 'in-progress', previous_status: previous, committed: outcome.committed, warnings };
   noteCommitOutcome(result, outcome);
@@ -289,7 +284,7 @@ function pivotWorkUnit(cwd, workUnit) {
   const warnings = [];
   reindexWorkUnit(cwd, workUnit, warnings, { clearFirst: true });
 
-  const outcome = commitTailWithKb(cwd, [`.workflows/${workUnit}`, '.workflows/manifest.json'], `workflow(${workUnit}): pivot to epic`, warnings);
+  const outcome = commitTailPathspec(cwd, [`.workflows/${workUnit}`, '.workflows/manifest.json'], `workflow(${workUnit}): pivot to epic`, warnings);
   /** @type {WorkUnitPivotResult} */
   const result = { work_unit: workUnit, work_type: 'epic', routing, committed: outcome.committed, warnings };
   noteCommitOutcome(result, outcome);

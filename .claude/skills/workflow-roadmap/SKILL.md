@@ -1,12 +1,12 @@
 ---
 name: workflow-roadmap
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-roadmap/scripts/gateway.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(git log)
+allowed-tools: Bash(node .claude/skills/workflow-roadmap/scripts/gateway.cjs *), Bash(node .claude/skills/workflow-start/scripts/gateway.cjs *), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs *)
 ---
 
 # Product Roadmap
 
-The product layer above the work unit. Hold the product-altitude conversation, keep the roadmap — horizons of shaped-but-uncommitted items — and pull slices into delivery as fenced work units.
+The product layer above the work unit. Hold the product-altitude conversation, keep the roadmap — horizons of shaped-but-uncommitted items: ideas, bugs and quick-fixes — and pull slices into delivery as fenced work units.
 
 > **⚠️ ZERO OUTPUT RULE**: Do not narrate your processing. Produce no output until a step or reference file explicitly specifies display content. No "proceeding with...", no discovery summaries, no routing decisions, no transition text. Your first output must be content explicitly called for by the instructions.
 
@@ -17,10 +17,10 @@ The roadmap is project-level and outside the pipeline — no work unit, no phase
 Three invocation modes, dispatched at Step 1:
 
 - **genesis** — from discovery's shaping gate: the conversation is live and just read as product-altitude. Persist the shaping so far, continue the conversation at this altitude.
-- **open** — from the `r/roadmap` start-menu row: show the map, then converse, pull, or leave.
+- **open** — from the `r/roadmap` start-menu row: show the map, then converse, pull, or return to the start menu.
 - **pull** — from a recognition offer: the user accepted pulling an existing waiting item, straight to the pull ceremony.
 
-**Stay in your lane**: shape the product and its staging — what exists, what's next, what waits. Capability-grain only: an item is whatever you'd move around a roadmap as one thing. Topic shaping, mechanism, and design decisions belong to the work units the pull creates; a pulled item's substance belongs to its epic. Right of a pull the work unit is authoritative — the map edits waiting items freely and only watches joined ones.
+**Stay in your lane**: shape the product and its staging — what exists, what's next, what waits. An idea is at capability grain — whatever you'd move around a roadmap as one thing; a bug or a quick-fix is one fix. Topic shaping, mechanism, and design decisions belong to the work units the pull creates; a pulled item's substance belongs to its work unit. Right of a pull the work unit is authoritative — the map edits waiting items freely and only watches joined ones.
 
 ---
 
@@ -35,15 +35,21 @@ Load **[framework.md](../workflow-shared/references/framework.md)** and follow i
 Context refresh (compaction) summarizes the conversation, losing procedural detail. When you detect a context refresh has occurred — the conversation feels abruptly shorter, you lack memory of recent steps, or a summary precedes this message — follow this recovery protocol:
 
 1. **Re-read this skill file completely, then re-load [framework.md](../workflow-shared/references/framework.md).** Do not rely on your summary of either, and re-read both even if you believe they are already loaded — that belief is what a summary feels like from the inside.
-2. **Read the state.** Run `node .claude/skills/workflow-roadmap/scripts/gateway.cjs view` and reason from its DATA: an `active_session` means a session is live — read its log (`.workflows/.roadmap/sessions/session-{active_session}.md`) in full to recover the exploration; no marker means the session had not started or already closed.
+2. **Read the state.** Run `node .claude/skills/workflow-engine/scripts/engine.cjs roadmap state` and reason from its response: an `active_session` means a session is live — read its log (`.workflows/.roadmap/sessions/session-{active_session}.md`) in full to recover the exploration; no marker means the session had not started or already closed.
 3. **Check git state.** Run `git status` and `git log --oneline -10`. Commit messages reveal what has been completed.
-4. **Announce your position** to the user before continuing: state what step you believe you're at and what comes next. Wait for confirmation.
+4. **Carry on from where the conversation was**, as if the break never happened — no recap and no announcement. Where the person's message is waiting, take it at the step it arrived at, unless it only asks to carry on. Otherwise, where the conversation was at a gate, put the gate back, fetched fresh; elsewhere continue the step it was on.
 
 Do not guess at progress or continue from memory. The files on disk and git history are authoritative — your recollection is not.
 
 ---
 
 ## Step 1: Dispatch
+
+Record where this session is working — the call also labels the tmux session where the user opted in:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs session label roadmap
+```
 
 Read the positional argument:
 
@@ -80,16 +86,28 @@ Read the positional argument:
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> This is product-altitude work — laying the whole thing out before anything commits to delivery. The conversation so far is being saved as the first roadmap session; nothing here creates a work unit until you pull a slice.
+> This is about the product as a whole, not one piece of work. The conversation so far is being saved as the first roadmap session; nothing becomes a work unit until you choose an item to start building.
 ```
 
 The shaping conversation before this point was ephemeral — persist it now:
 
-1. **Land any imports held from shaping.** If the user shared file paths during the shaping conversation (`import_paths`), land them (one path per argument; on `ok: false` with `missing_imports`, re-prompt for corrected paths and re-run):
+1. **Land any imports held from shaping.** If the user shared file paths during the shaping conversation (`import_paths`), land them all in one call. Single-quote every path — a screenshot's filename carries spaces and capitals, and unquoted each word becomes its own positional — write a `~` path out in full, since the quotes stop the shell expanding it, and write a single quote inside a path as `'\''`:
 
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs roadmap import {path} {path}
+   node .claude/skills/workflow-engine/scripts/engine.cjs roadmap import '{path}' ['{path}' …]
    ```
+
+   **If the response is `ok: false` with `missing_imports`:** nothing landed — one bad path refuses the whole batch. Write the payload to `.workflows/.cache/roadmap/import-reprompt.json` with the Write tool (`{"missing": ["{path}", …]}` — the response's `missing_imports`, in its order), then render the re-prompt and emit its DISPLAY and MENU sections verbatim per their markers:
+
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs render import-reprompt --file .workflows/.cache/roadmap/import-reprompt.json
+   ```
+
+   **STOP.** Wait for user response.
+
+   **If the answer names a path:** replace the refused entries and run the landing again over the corrected paths together with the ones the refusal did not name — none of the batch is on disk.
+
+   **If the answer is `skip`:** the refused paths land nothing. Run the landing again over the paths the refusal did not name, or carry on to the session when it named them all.
 
 2. **Open the session.** Read the state first:
 
@@ -122,15 +140,15 @@ Render the roadmap home snapshot (its TITLE section is the phase title):
 node .claude/skills/workflow-roadmap/scripts/gateway.cjs view
 ```
 
-The output arrives in demarcated sections: read `=== DATA` to reason from (state, `ITEMS`, `SESSIONS`, the `ACTIONS` key table — never display it); emit the TITLE section (markdown), then the DISPLAY section verbatim as a code block, then the MENU section verbatim as markdown.
+The output arrives in demarcated sections: read `=== DATA` to reason from (state, `ITEMS`, `SESSIONS`, the `ACTIONS` key table — never display it); emit the TITLE section, then the DISPLAY section, then the MENU section, each verbatim per its marker.
 
 **STOP.** Wait for user response.
 
-Match the input to its `ACTIONS` entry by `key` and route on the entry's `action`:
+Match the input to its `ACTIONS` entry by `key` or `word` and route on the entry's `action`:
 
 #### If `action` is `converse`
 
-Set `session_number` from the DATA's `active_session` when one is open (the loop resumes it), else from `next_session_number` (the log is created lazily at the first exploration write).
+Set `session_number` from the DATA's `active_session` when one is open (the loop resumes it). With none open, leave it unset — the log is conjured lazily at the first state change, and the open's response sets it ([session-template.md](references/session-template.md)).
 
 → Proceed to **Step 4**.
 
@@ -140,17 +158,13 @@ Set `session_number` from the DATA's `active_session` when one is open (the loop
 
 #### If `action` is `back`
 
-> *Output the next fenced block as markdown (not a code block):*
+Load **[start-menu.md](../workflow-start/references/start-menu.md)** and follow its instructions as written.
 
-```
-> Leaving the roadmap as it is — run /workflow-start whenever you want back in.
-```
-
-**STOP.** Do not proceed — terminal condition.
+→ On return, proceed as the reference directed.
 
 #### If the user asks a question
 
-Answer from the DATA and the map.
+Answer from the DATA and the map. The question sets the gate aside; once the exchange looks settled, ask in conversation whether they are ready to move on, and on yes put it back:
 
 → Return to **Step 3**.
 
@@ -175,7 +189,7 @@ Load **[roadmap-guidelines.md](references/roadmap-guidelines.md)** and follow it
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> The product conversation — ideas, staging, what matters when. Items and horizons crystallise at the harvest, when you pull them; say "lay it out" whenever it feels ready.
+> The product conversation — what the product needs and roughly when. Say "lay it out" when you're ready and I'll propose the items and horizons I heard.
 ```
 
 Load **[session-loop.md](references/session-loop.md)** and follow its instructions as written — the harvest runs inside it, and it returns only once a sort is confirmed.
@@ -207,13 +221,13 @@ On return, load **[conclude.md](references/conclude.md)** and follow its instruc
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-**`□ Pull Into Delivery`**
+**`□ Start Work From the Roadmap`**
 ```
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> The commitment point — pick the items going into delivery, and a work unit is born already fenced to them. Everything left keeps waiting, visibly.
+> Pick the items to build now. They become one work unit; everything else stays on the roadmap, waiting.
 ```
 
 Load **[pull.md](references/pull.md)** and follow its instructions as written.

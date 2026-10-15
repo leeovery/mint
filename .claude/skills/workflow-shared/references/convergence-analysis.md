@@ -1,10 +1,10 @@
 # Convergence Analysis
 
-*Shared reference for review/fix cycle escalation.*
+*Shared reference. Loaded by the review and fix loops at an escalation gate and at a loop's own exit.*
 
 ---
 
-When a review or fix cycle reaches its escalation threshold, read prior cycle tracking data and present a diagnostic showing what's converging, what's stuck, and why.
+When a review or fix loop reads its trend — at an escalation gate, or at the exit that ends it under `auto` — read prior cycle tracking data and present a diagnostic showing what's converging, what's stuck, and why.
 
 ## Parameters
 
@@ -14,6 +14,7 @@ The caller provides these via context before loading:
 - `work_unit` — the work unit name
 - `topic` — the topic name
 - `internal_id` — (fix loop only) the task's internal ID
+- `render_when` — `always` | `churning`. `always` shows the diagnostic whatever the trend; `churning` shows it only where the trend classifies as churning, and otherwise hands the caller the classification alone
 
 ## Threshold Check
 
@@ -68,11 +69,13 @@ Read tracking files for all available cycles:
 .workflows/{work_unit}/planning/{topic}/review-integrity-tracking-c{1..N}.md
 ```
 
-For each cycle, extract:
+For each cycle, read the `## Findings` section only — `## Observations` is never counted — and extract:
 - Each finding's title
 - Which stream it came from (traceability or integrity — by tracking file)
 - Plan Reference field (which plan area is affected)
 - Resolution (Fixed/Declined — legacy files write Skipped, read it as Declined)
+
+Also read the document-growth pair — the baseline (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} review_baseline_words`) and the live count as `live_words` over the plan and its phase task files (`cat .workflows/{work_unit}/planning/{topic}/planning.md .workflows/{work_unit}/planning/{topic}/phase-*-tasks.md | wc -w`). An absent baseline skips the growth line and its note.
 
 → Proceed to **B. Classify Findings**.
 
@@ -85,7 +88,7 @@ Read tracking files for all available cycles:
 .workflows/{work_unit}/specification/{topic}/review-gap-analysis-tracking-c{1..N}.md
 ```
 
-For each cycle, extract:
+For each cycle, read the `## Findings` section only — `## Observations` is never counted — and extract:
 - Each finding's title
 - Which stream it came from (claims, input review, or gap analysis — by tracking file)
 - Affects field (which specification section)
@@ -102,18 +105,18 @@ Also read the document-growth pair — the construction baseline (`node .claude/
 
 Compare findings across cycles. Two findings match if their titles share significant words OR they reference the same area (file:line, plan reference, or spec section).
 
-Treat the highest-numbered cycle as the **latest cycle** and all earlier cycles as **prior cycles**. For each finding identified across all cycles, classify as:
+Treat the highest-numbered cycle as the **latest cycle** and the cycle below it as the **previous cycle**. Classify each finding against that pair:
 
-- **Resolved** — appeared in a prior cycle but not in the latest cycle (the underlying issue was addressed)
-- **Recurring** — appeared in 2 or more cycles including the latest one (the issue persists despite fixes)
-- **New** — first appearance in the latest cycle
+- **Resolved** — a previous-cycle finding absent from the latest cycle (the underlying issue was addressed)
+- **Recurring** — a latest-cycle finding that also appeared in an earlier cycle (the issue persists despite fixes)
+- **New** — a latest-cycle finding with no earlier appearance
 
 Compute:
-- `resolved_count` — findings from prior cycles no longer appearing
-- `recurring_count` — findings persisting across cycles
+- `resolved_count` — previous-cycle findings no longer appearing
+- `recurring_count` — latest-cycle findings carried over from an earlier cycle
 - `new_count` — findings appearing for the first time in the latest cycle
 - `stream_counts` — (multi-stream loop types only: `spec-review`, `planning-review`) latest-cycle finding counts per tracking stream, rendered `{label} {count}` and ` · `-joined in stream order
-- `review_growth` — (`spec-review` only, when the baseline exists) `live_words` minus `review_baseline_words`, sign and all: the net text review has added. Growth from source material being pulled in is the loop working; growth while findings churn is the loop reviewing its own writing — the trend beside it says which
+- `review_growth` — (`spec-review` and `planning-review`, when the baseline exists) `live_words` minus `review_baseline_words`, sign and all: the net text review has added. Growth is the loop working only where each addition traces to the record the document is built from; growth from what the review wrote itself is the review deciding for the user — the trend beside it says which
 - `trend` (first match wins):
   - **churning** — recurring_count is 0 or near 0 while resolved_count and new_count are both above 0 and roughly equal (every cycle's findings are new — the edits themselves are generating them)
   - **converging** — resolved_count > new_count (progress is being made)
@@ -126,7 +129,15 @@ Compute:
 
 ## C. Display Diagnostic
 
-Open with one markdown sentence above the block — what the cycles show, in plain terms: what is resolving and what keeps coming back.
+#### If `render_when` is `churning` and `trend` is not `churning`
+
+Write nothing and render nothing — `trend` is in context for the caller's branch.
+
+→ Return to caller.
+
+#### Otherwise
+
+Open with one sentence above the block, written as markdown (not a code block) — what the cycles show, in plain terms: what is resolving and what keeps coming back.
 
 Write the payload to `.workflows/.cache/{work_unit}/{phase}/{topic}/convergence-diagnostic.json` with the Write tool — classification is yours, arithmetic and flags are the surface's. `{phase}` is the loop's own: `implementation` for `fix` and `analysis`, `planning` for `planning-review`, `specification` for `spec-review`.
 
@@ -137,9 +148,9 @@ Write the payload to `.workflows/.cache/{work_unit}/{phase}/{topic}/convergence-
 - `loop_type`, `latest_cycle`, `trend` — from **A** and **B**.
 - `resolved` / `recurring` / `new` — the classified findings; each recurring entry carries its cycle list and a 1-line root-cause `hypothesis` in plain behaviour terms, from the finding's history and affected area.
 - `stream_counts` — multi-stream loop types only (`spec-review`, `planning-review`): one `{"label": "…", "count": N}` per tracking stream, in stream order. Stream labels: `spec-review` → `claims` / `input review` / `gap analysis`; `planning-review` → `traceability` / `integrity`.
-- `review_baseline_words` and `live_words` — `spec-review` only, when the baseline exists; omit both otherwise.
+- `review_baseline_words` and `live_words` — `spec-review` and `planning-review`, when the baseline exists; omit both otherwise.
 
-Fetch the diagnostic and emit its section verbatim at its marked instruction:
+Fetch the diagnostic and emit its section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render convergence-diagnostic {work_unit}.{phase}.{topic} --file .workflows/.cache/{work_unit}/{phase}/{topic}/convergence-diagnostic.json

@@ -46,7 +46,7 @@ Plan Task (acceptance criteria)
 From the plan task:
 - What should be built?
 - What are the acceptance criteria?
-- What tests should exist (micro acceptance)?
+- What tests should exist, given the criteria?
 
 ### Step 2: Load Spec Context
 
@@ -64,6 +64,8 @@ Search the codebase:
 - Any drift from what was planned?
 
 **The code is the source of truth.** Implementations legitimately move past the plan's text, and the spec is not always updated to follow — nor should it be. A divergence from the spec or the task's wording is a question, never automatically a finding: judge whether the change is sound, consistent with the record, and better than or equal to what was written. Report a divergence only when it is a loss — behaviour the intent still needs, gone, or a change with no defensible reason — never because the words no longer match.
+
+**A criterion reading cannot settle is recorded, never passed over.** Some criteria hold only under something run or observed — a suite run, a repeated-run stability check, a cache experiment, a live server. Judge such a criterion neither way: quote it under `UNSETTLED` with what would have to be run or observed to settle it. It is never a finding and never a blocking issue, and it moves `STATUS` nowhere — the status is judged over what reading settled.
 
 **For quick-fix work**: Instead of acceptance criteria, verify completeness against the task's Verification section:
 - Are all target files updated?
@@ -118,7 +120,7 @@ Filter hard. A short report of real problems is worth more than a long one nobod
 
 Then record two things about each finding.
 
-**Its scope.** The boundary is the **delivered change-set** — everything this feature's implementation built or modified, read from its commit history — never the spec's table of contents. Code moves at implementation, legitimately and without the spec following, so what was touched decides scope, not what was written down.
+**Its scope.** The boundary is the **delivered change-set** — everything this feature's implementation built or modified: the implementation files you were given, and, only where a finding's scope turns on what the work changed inside one of them, the change itself (`node .claude/skills/workflow-engine/scripts/engine.cjs code diff {work_unit} {topic}`) — never the spec's table of contents. Code moves at implementation, legitimately and without the spec following, so what was touched decides scope, not what was written down.
 
 - **`[in-scope]`** — inside the delivered change-set: a defect in behaviour the work introduced or altered (whether or not the spec mentions it), something the plan required in substance and did not get, a claim in the code that is false. A pre-existing defect in a file the work merely brushed is not in scope — it belongs to the feature that built the behaviour.
 - **`[out-of-scope]`** — territory the work never touched: an improvement to a neighbouring feature, another spec's document, code this feature only reads. Rare, since you are assessing one task against its criteria. An out-of-scope finding is never fixed here — it is the user's to take or leave.
@@ -138,11 +140,13 @@ Every finding carries a `file:line` anchor, and every claim inside it must hold 
 - **Never name a symbol you have not located.** If your change calls a helper, confirm it exists and give its real path. If it does not exist, say so rather than naming what you expected to find.
 - **Assert no count or exclusivity you have not enumerated.** "The only site", "the single caller", "eleven call sites", "no production reader" — count them and state the true number, or drop the claim.
 - **Prove the edit you prescribe.** Your proposed change must be safe applied exactly as written: before saying an import or helper becomes unused, check every other line that could still use it.
-- **Repo-relative paths only.** An absolute path is wrong in every other checkout.
+- **Project-relative paths only** — named from the project, as the engine's `code` reads name them, never relative to a nested repo. An absolute path is wrong in every other checkout.
 
 ## Output File Format
 
-Write to `.workflows/{work_unit}/review/{topic}/report-{phase_id}-{task_id}.md` — in two steps: write the content to the same path with a `.txt` extension using the Write tool, then immediately rename it with Bash from the project root (`mv {path}.txt {path}.md`). Report the final `.md` path in your status. Do NOT write the `.md` directly with the Write tool — the harness blocks report-shaped `.md` writes from sub-agents; the `.txt`-then-rename keeps the file out of the orchestrator's context. Use this format:
+Write to `.workflows/{work_unit}/review/{topic}/report-{phase_id}-{task_id}.md` — in two steps: write the content to the same path with a `.txt` extension using the Write tool, then immediately rename it with Bash from the project root (`mv {path}.txt {path}.md`). Report the final `.md` path in your status. Do NOT write the `.md` directly with the Write tool — the harness blocks report-shaped `.md` writes from sub-agents; the `.txt`-then-rename keeps the file out of the orchestrator's context.
+
+`STATUS` is one of three values — `complete`: delivered, nothing to report; `issues_found`: delivered, non-blocking findings present; `incomplete`: a blocking issue — an acceptance criterion unmet in substance, or behaviour broken. A list heading with nothing under it carries `- None`. Use this format:
 
 ```
 TASK: [Task name/description]
@@ -172,10 +176,13 @@ CODE QUALITY:
 - Issues: [Specific problems if any]
 
 BLOCKING ISSUES:
-- [Only where the work cannot be called delivered: a task's acceptance criteria unmet in substance, or behaviour that is broken. Never a finding whose entire remedy is comment or documentation text]
+- [Only where the work cannot be called delivered: a task's acceptance criteria unmet in substance, or behaviour that is broken. Never a finding whose entire remedy is comment or documentation text. Each entry names its remedy, or points at the FINDINGS line that prescribes it, so it can be routed]
 
 FINDINGS:
 - [{in-scope|out-of-scope}] [{contained|spreading}] {file:line} — {what is wrong and the change that fixes it} — FAILS: {the concrete consequence of leaving it}
+
+UNSETTLED:
+- "{the acceptance criterion, quoted}" — {what would have to be run or observed to settle it}
 ```
 
 ## Your Output
@@ -195,6 +202,6 @@ SUMMARY: {1 sentence}
 3. **Be specific** — include file paths and line numbers, verified per **Citation Discipline**
 4. **Balanced test review** — flag both under-testing AND over-testing
 5. **Report findings** — don't fix anything, just report what you find
-6. **No test execution** — Bash is solely for the output-file rename. Judge test adequacy by reading the test code; never try to run the suite or any other command
+6. **No test execution** — Bash is solely for the engine's `code diff` read and the output-file rename. Judge test adequacy by reading the test code; never try to run the suite or any other command. You read; an executing pass over the whole change-set runs after the verifier batches and measures what reading could not settle — which is why a criterion you cannot settle is recorded under `UNSETTLED` for that pass, never judged either way
 7. **No git writes** — writing the output file is your only file write
 8. **Never lose your work** — the knowledge you generate must survive the run, and the output file is how it survives. Produce the file via the `.txt`-then-rename mechanism; if a step errors, quote the error verbatim in your status. Never conclude the write is blocked without attempting it. Only if the write itself has errored may you return the full content in your final message for the orchestrator to persist — an absolute last resort, never an alternative to writing.

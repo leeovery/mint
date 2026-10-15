@@ -20,7 +20,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 ## Storage Pathspecs
 
-The git pathspecs this format writes **outside the work unit**. The array below is recorded verbatim as `storage_paths` on the planning item at plan init; workflow commits (`engine commit --plan`) stage every entry, and restart cleanups stage the same entries when removing authored tasks. Relative pathspecs only — `[]` when the format writes nothing outside the work unit.
+The git pathspecs this format writes **outside `--plan`'s own scope** — the planning topic's directory and the manifests. The array below is recorded verbatim as `storage_paths` on the planning item at plan init; workflow commits (`engine commit --plan`) stage every entry, and restart cleanups stage the same entries when removing authored tasks. Relative paths only, each taken literally (never a glob) — `[]` when the format stores inside that scope.
 
 ```json
 []
@@ -95,7 +95,6 @@ Phases are represented as parent issues. Each task belongs to a phase by being a
 
 Apply optional labels for categorisation:
 
-- `needs-info` — task requires additional information
 - `edge-case` — edge case handling task
 - `foundation` — setup/infrastructure task
 - `refactor` — cleanup task
@@ -110,15 +109,6 @@ create_issue_label(
 )
 ```
 
-## Flagging
-
-When creating issues, if something is unclear:
-
-1. **Create the issue anyway** — don't block planning
-2. **Apply `needs-info` label** — makes gaps visible
-3. **Note what's missing** in description — add a **Needs Clarification** section
-4. **Continue planning** — circle back later
-
 ## Cleanup (Restart)
 
 The official Linear MCP server does not support deletion. Ask the user to delete the Linear project manually via the Linear UI.
@@ -126,7 +116,7 @@ The official Linear MCP server does not support deletion. Ask the user to delete
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-The Linear project {project:(titlecase)} needs to be deleted before restarting. Please delete it in the Linear UI (Project Settings → Delete project), then confirm so I can proceed.
+The Linear project for this plan needs to be deleted before restarting. Please delete it in the Linear UI (Project Settings → Delete project), then confirm so I can proceed.
 ```
 
 **STOP.** Wait for user response.

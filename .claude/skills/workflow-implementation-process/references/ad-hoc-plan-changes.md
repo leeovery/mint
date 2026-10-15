@@ -4,9 +4,9 @@
 
 ---
 
-Folds conversationally-surfaced unplanned work into the plan through the same infrastructure that authored the plan, never by hand. Always start at **A. Frame the Work**.
+Folds conversationally-surfaced unplanned work into the plan through the same infrastructure that authored the plan, never by hand. Always start at **A. Frame the Work** — except an addition to the task in flight, which enters at **C. Deliver to the Executor**: the orchestrator's own, and the answer the block gate took from the user.
 
-The caller is whatever flow the conversation interrupted. On `→ Return to caller.`, resume that flow exactly where it stopped; if a gate menu was pending when the conversation interrupted, re-present it — engine-rendered menus re-fetch from their surface, prose menus re-emit from their authoring file.
+The caller is whatever flow the conversation interrupted. On `→ Return to caller.`, resume that flow exactly where it stopped; a gate menu that was pending when the conversation interrupted was set aside — once the exchange looks settled, ask in conversation whether the person is ready to move on, and on yes re-fetch it from its surface.
 
 Context to hold before acting: `{format}` is the plan's output format, read at Step 2 — if it is not in session context (an early or post-refresh entry), read it now (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} format`).
 
@@ -54,10 +54,12 @@ Pick by first match:
 
 No plan write — the instruction becomes part of the current task's scope, for the executor and the reviewer alike:
 
-1. **Append the instruction to the task's normalised content in session** — every later use of that content carries it: a fresh executor dispatch (item 5 of the payload), and the reviewer's task-content input.
-2. **Deliver it to the executor** with the next send, per **[invoke-executor.md](invoke-executor.md)**: as round material on a continuation (SendMessage to the recorded agent id), or riding the normalised content on a fresh dispatch. Mark it as an addition from the user.
+1. **Append the instruction to the task's normalised content in session** — every later use of that content carries it: a fresh executor dispatch (item 6 of the payload), and the reviewer's task-content input.
+2. **Deliver it to the executor** with the next send, per **[invoke-executor.md](invoke-executor.md)**: as round material on a continuation (SendMessage to the recorded agent id), or riding the normalised content on a fresh dispatch. Mark it with its origin — an addition from the user, or from the orchestrator.
 
-#### If the task completed approved before any send carried the instruction
+**Two additions enter here directly** — the orchestrator's own, context the task in flight needs that its content lacks, and the answer the block gate took from the user — each landed by steps 1–2 with its origin marked, no gate. Both always target the task being dispatched, never a pending one.
+
+#### If the task completed approved before any send carried the user's instruction
 
 The work was never absorbed — treat it as unlanded.
 
@@ -72,8 +74,6 @@ The work was never absorbed — treat it as unlanded.
 Read the plan format's updating adapter — `../../workflow-planning-process/references/output-formats/{format}/updating.md`, **Updating Task Content** — and apply the change: edit the description or append to it, whichever the format supports and the change warrants. Where the format's commands take an external id, resolve it from the manifest (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} task_map.{internal_id}` — the internal id comes from the plan read that identified the task). The task carries the addition when its turn comes.
 
 Confirm the wording with the user before writing when the change is more than mechanical — soft, conversational, no structured gate.
-
-**If the planning item carries no `storage_paths`** (a plan initialised before the field existed): record it now — read the format's authoring.md → Storage Pathspecs and copy the fenced array (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} storage_paths '{format storage pathspecs}'`).
 
 Commit:
 
@@ -104,11 +104,9 @@ depends_on: {internal_id or task {n}, ...}
 **Problem**: {what's missing or wrong}
 **Solution**: {what to do}
 **Outcome**: {what success looks like}
-**Do**: {step-by-step implementation instructions}
 **Acceptance Criteria**:
-- {criterion}
-**Tests**:
-- {test description}
+- {starting state, action, observable outcome}
+**Do**: {the how the user or the record settled, and where the work lives — omitted where neither did}
 
 ## Task 2: {title}
 ...
@@ -130,7 +128,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 
 #### Otherwise
 
-Present the next pending task. Write its payload to `.workflows/.cache/{work_unit}/implementation/{topic}/proposed-task.json` with the Write tool — `{"current": …, "total": …, "title": "…", "problem": "…", "solution": "…", "outcome": "…", "steps": […], "criteria": […], "tests": […]}` from the staging file, plus `"placement"`, `"priority"`, and `"depends_on"` when the staged task carries them — then render with the gate mode from the manifest's `staging.ad-hoc-{n}` subtree, and emit each section verbatim at its marked instruction:
+Present the next pending task. Write its payload to `.workflows/.cache/{work_unit}/implementation/{topic}/proposed-task.json` with the Write tool — `{"current": …, "total": …, "title": "…", "problem": "…", "solution": "…", "outcome": "…", "criteria": […]}` from the staging file, `"steps": […]` when the task carries a **Do**, plus `"placement"`, `"priority"`, and `"depends_on"` when the staged task carries them — then render with the gate mode from the manifest's `staging.ad-hoc-{n}` subtree, and emit each section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render proposed-task {work_unit}.implementation.{topic} --file .workflows/.cache/{work_unit}/implementation/{topic}/proposed-task.json --gate {gate_mode} --comment-hint "Provide feedback to adjust"
@@ -138,7 +136,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render proposed-task {wor
 
 #### If the response carried `DISPLAY: task auto-approved`
 
-Record the approval (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} staging.ad-hoc-{n}.tasks.{k} approved`), then emit the section per its marker.
+Record the approval (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} staging.ad-hoc-{n}.tasks.{k} approved`), then emit the section verbatim per its marker.
 
 → Return to **F. Approve Each Task**.
 
@@ -181,7 +179,7 @@ Revise the staged task in the staging file based on the user's feedback (content
 Commit the staging record:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "impl({work_unit}): ad hoc tasks declined"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "impl({work_unit}): ad hoc tasks declined" --topic implementation/{topic}
 ```
 
 → Return to caller.
@@ -190,36 +188,36 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "im
 
 Invoke the task-writer agent.
 
-**Agent path**: `../../../agents/workflow-implementation-task-writer.md`
+**Agent path**: `.claude/agents/workflow-implementation-task-writer.md`
 
 Pass via the orchestrator's prompt:
 
 1. **Work unit** — the work unit name (for path construction)
 2. **Topic name** — the implementation topic (scopes tasks to the correct plan)
-3. **Staging file path** — the `ad-hoc-tasks-{n}.md` file from **E**
+3. **Staging file path** — `.workflows/{work_unit}/implementation/{topic}/ad-hoc-tasks-{n}.md`, the file from **E**
 4. **Planning file path** — `.workflows/{work_unit}/planning/{topic}/planning.md`
-5. **Plan format reading adapter path** — `../../workflow-planning-process/references/output-formats/{format}/reading.md`
-6. **Plan format authoring adapter path** — `../../workflow-planning-process/references/output-formats/{format}/authoring.md`
+5. **Plan format reading adapter path** — `.claude/skills/workflow-planning-process/references/output-formats/{format}/reading.md`
+6. **Plan format authoring adapter path** — `.claude/skills/workflow-planning-process/references/output-formats/{format}/authoring.md`
 7. **Phase placement** — `per-task`
 8. **Approved task numbers** — the task numbers whose staging rows are `approved`
-9. **Plan format graph adapter path** — `../../workflow-planning-process/references/output-formats/{format}/graph.md`, when any approved task carries a `priority:` or `depends_on:` line
+9. **Plan format graph adapter path** — `.claude/skills/workflow-planning-process/references/output-formats/{format}/graph.md`, when any approved task carries a `priority:` or `depends_on:` line
 
 The agent creates exactly the approved tasks; a crash-resume re-invocation is safe (it creates only those not yet present). It returns:
 
 ```
 STATUS: complete
 TASKS_CREATED: {N}
-PHASES: {comma-separated phase numbers}
 SUMMARY: {1 sentence}
 ```
 
+The dispatch runs in the background (`run_in_background: true`) and ends the turn on exactly `The task writer agent has been dispatched for the ad hoc tasks.`
+
 > **CHECKPOINT**: Do not proceed until the task writer has returned.
 
-**If the planning item carries no `storage_paths`** (a plan initialised before the field existed): record it now — read the format's authoring.md → Storage Pathspecs and copy the fenced array (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} storage_paths '{format storage pathspecs}'`).
-
-Commit:
+Commit the staging file with this topic's implementation artifacts, then the tasks — `--plan` stages the planning topic, the manifests, and the plan's declared storage:
 
 ```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "impl({work_unit}): add {K} ad hoc task(s) — staged" --topic implementation/{topic}
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "impl({work_unit}): add {K} ad hoc task(s)" --plan {topic}
 ```
 

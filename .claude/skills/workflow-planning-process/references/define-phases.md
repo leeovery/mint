@@ -4,7 +4,7 @@
 
 ---
 
-This step uses the `workflow-planning-phase-designer` agent (`../../../agents/workflow-planning-phase-designer.md`) to define or review the phase structure. Whether phases are being designed for the first time or reviewed from a previous session, the process converges on the same approval gate.
+This step uses the `workflow-planning-phase-designer` agent (`.claude/agents/workflow-planning-phase-designer.md`) to define or review the phase structure. Whether phases are being designed for the first time or reviewed from a previous session, the process converges on the same approval gate.
 
 ---
 
@@ -24,12 +24,6 @@ Phase structure already exists. I'll present it for your review.
 
 #### If no phases exist
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-I'll delegate phase design to a specialist agent. It will read the full specification and propose a phase structure — how we break this into independently testable stages.
-```
-
 Read `work_type` from the manifest:
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} work_type
@@ -37,14 +31,36 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} 
 
 Invoke `workflow-planning-phase-designer` with these file paths:
 
-1. **read-specification.md**: `read-specification.md`
+1. **read-specification.md**: `.claude/skills/workflow-planning-process/references/read-specification.md`
 2. **Specification**: specification path from the manifest or `.workflows/{work_unit}/specification/{topic}/specification.md`
-3. **Cross-cutting specs**: cross-cutting spec paths if any
-4. **phase-design.md**: `phase-design.md`
-5. **Context guidance**: `phase-design/{work_type}.md` (default to `epic` if `work_type` is empty)
-6. **task-design.md**: `task-design.md` *(for granularity awareness only — helps the agent judge whether a phase is too thin or too thick. The agent must NOT produce task tables or task lists.)*
+3. **Cross-cutting specs**: the specification paths the planning file's `## Cross-Cutting References` section lists, if any
+4. **phase-design.md**: `.claude/skills/workflow-planning-process/references/phase-design.md`
+5. **Context guidance**: `.claude/skills/workflow-planning-process/references/phase-design/{work_type}.md` (default to `epic` if `work_type` is empty)
+6. **task-design.md**: `.claude/skills/workflow-planning-process/references/task-design.md` *(for granularity awareness only — helps the agent judge whether a phase is too thin or too thick. The agent must NOT produce task tables or task lists.)*
 
-The agent returns phases only — goals, ordering rationale, and acceptance criteria. **Task lists are designed separately in a later step; do not request or include them.** Write the phase structure directly to the planning file body.
+The agent returns phases only — goals, ordering rationale, and acceptance criteria. **Task lists are designed separately in a later step; do not request or include them.**
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+I'll delegate phase design to a specialist agent. It will read the full specification and propose a phase structure — how we break this into independently testable stages.
+```
+
+This dispatch and every re-invocation of the designer below run in the background (`run_in_background: true`) and end the turn on exactly `The phase designer agent has been dispatched for the plan's phases.`
+
+Write the phase structure directly to the planning file body, beneath the sections initialization wrote.
+
+**Settle the spec defects** — classified before the structure gate renders, so what the user approves was designed against a correct specification. The section is the orchestrator's: it never reaches the planning file.
+
+**If the return carries a `## Spec Defects` section** — once per entry:
+
+→ Load **[resolve-spec-gap.md](resolve-spec-gap.md)** with lane = `construction`, gap = `{the entry, and the phase it surfaced in}`.
+
+When at least one corrigendum landed — the record's or one the user settled at the exchange; nothing when none did, never a per-correction recap — say `{count} spec correction(s) recorded.`
+
+Where a landing changed the specification, or the reference returned work the plan must carry — the tree owing what the specification decides — re-invoke `workflow-planning-phase-designer` through its amendment path with the corrections and that work as the feedback, and write the revised structure to the planning file. Settle that return's `## Spec Defects` the same way, once: a defect the designer still reports after one re-run is left to the review walk, which meets the plan against the specification at the end of the phase.
+
+**Otherwise:** nothing to settle — continue.
 
 Update the manifest planning position — one batched write:
 ```bash
@@ -53,7 +69,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 
 Commit:
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): draft phase structure"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): draft phase structure" --topic planning/{topic}
 ```
 
 → Proceed to **B. Review and Approve**.
@@ -68,7 +84,9 @@ Write the phase-tree payload to `.workflows/.cache/{work_unit}/planning/{topic}/
 {"phases": [{"name": "…", "detail": [["Goal", "…"], ["Criteria", "…"]]}]}
 ```
 
-Render and emit each section verbatim at its marked instruction:
+Use the Write tool for the payload — never a shell heredoc or redirect.
+
+Render and emit each section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render phase-tree {work_unit}.planning.{topic} --file .workflows/.cache/{work_unit}/planning/{topic}/phase-tree.json --approve
@@ -76,11 +94,25 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render phase-tree {work_u
 
 **STOP.** Wait for user response.
 
+→ Proceed to **C. Handle Response**.
+
+---
+
+## C. Handle Response
+
 #### If `view full`
 
-Present the full phase structure from the planning file as rendered markdown (not a code block) — goals, ordering rationale, acceptance criteria as the designer wrote them. Then re-emit the `MENU: phase structure gate` section.
+Present the full phase structure from the planning file as markdown (not a code block) — goals, ordering rationale, acceptance criteria as the designer wrote them. Then put the gate back beneath it — the gate alone, the tree already shown above:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render phase-tree {work_unit}.planning.{topic} --menu-only
+```
+
+Emit its `MENU: phase structure gate` section verbatim per its marker.
 
 **STOP.** Wait for user response.
+
+→ Return to **C. Handle Response**.
 
 #### If the user provides feedback
 
@@ -88,7 +120,11 @@ Re-invoke `workflow-planning-phase-designer` with all original inputs PLUS:
 - **Previous output**: the current phase structure
 - **User feedback**: what the user wants changed
 
-Update the planning file with the revised output.
+The revision reads the specification again, so its defects are settled before the revised output is written — once per `## Spec Defects` entry:
+
+→ Load **[resolve-spec-gap.md](resolve-spec-gap.md)** with lane = `construction`, gap = `{the entry, and the phase it surfaced in}`.
+
+Where a landing changed the specification, re-invoke the designer once more with the corrections as the feedback; a defect it still reports after that re-run is left to the review walk. Update the planning file with the revised output.
 
 → Return to **B. Review and Approve**.
 
@@ -105,7 +141,7 @@ Resolve the destination per the caller's **Navigation** section — the user's p
 1. Record the approval — `node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} approvals.structure $(date +%Y-%m-%d)`
 2. Commit:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): approve phase structure"
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): approve phase structure" --topic planning/{topic}
    ```
 
 If the manifest already carries `approvals.structure` and the structure is unchanged, no updates are needed.

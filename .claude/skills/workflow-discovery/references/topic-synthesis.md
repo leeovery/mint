@@ -8,9 +8,9 @@ The harvest ceremony. Analyse the session's exploration as a whole, produce a to
 
 ## A. Gather Source Material
 
-You have three sources of truth:
+Read the active session log — `.workflows/{work_unit}/discovery/sessions/session-{session_number:03d}.md` — now, every time, whatever is already in context. It holds the first of three sources of truth:
 
-1. **The Exploration section** of the active session log at `.workflows/{work_unit}/discovery/sessions/session-{session_number:03d}.md`. Read it now, every time, whatever is already in context.
+1. **The Exploration section** of that log.
 2. **In-context memory of the conversation.** When not compacted, this carries detail the Exploration summary may have skipped.
 3. **The existing discovery map** from Step 7's discovery output. Continuing sessions add to it; first sessions seed it.
 
@@ -35,6 +35,8 @@ If the exploration touched on a surface only in passing and didn't develop it, n
 Apply the independence test and anti-patterns. Two surfaces that share a domain, data model, user journey, or decision space should merge into one topic. One surface that has independent stakeholders or genuinely separate concerns can split — but resist splitting one product surface into its implementation concerns. The map item is the unit of *future research or discussion*, not the unit of *implementation*.
 
 For continuing sessions, also check: does any new candidate overlap with an existing map item? If so, the exploration likely belongs *inside* that item's future discussion or research, not as a new sibling.
+
+**A bug or a quick-fix the epic started with is never a topic.** Pulled with it from the roadmap or seeded with it from the inbox, it is material for the topics it bears on — fold its ground into them, never propose it as a topic of its own.
 
 **The harvest sorts two ways.** A candidate the exploration staged beyond this epic — the user placed it (*"that's v2"*) or the record reads that way — is not a topic: set it aside to the **park set** (`{name, horizon, summary}`, capability-grain, the user's own horizon words). Parks not yet confirmed ride to the gate in **E** beside the topic proposal.
 
@@ -66,11 +68,11 @@ For each topic in the synthesised set, propose `research` or `discussion` based 
 
 ## E. Render Proposal
 
-Write the proposed set to `.workflows/.cache/{work_unit}/discovery/proposed-topics.json` — a JSON array in synthesised order, one object per topic. Names are kebab-case; summaries are the one-liners drawn from the exploration, worded product-first (the capability or behaviour at stake, not the mechanism); routing is the value inferred in **D**:
+Write the proposed set to `.workflows/.cache/{work_unit}/discovery/proposed-topics.json` — a JSON array in synthesised order, one object per topic. Names are kebab-case; summaries are the one-liners drawn from the exploration, worded product-first (the capability or behaviour at stake, not the mechanism); descriptions are two or three sentences drawn from the exploration — what the topic covers and why it surfaced, a point the user left open never worded as settled; routing is the value inferred in **D**:
 
 ```json
 [
-  {"name": "{topic}", "routing": "{research|discussion}", "summary": "{one-line summary}"}
+  {"name": "{topic}", "routing": "{research|discussion}", "summary": "{one-line summary}", "description": "{two or three sentences}"}
 ]
 ```
 
@@ -85,9 +87,9 @@ The output arrives in demarcated sections. Read `=== DATA` to reason from (never
 - `exists_on_map=true` — the name collides with an active map item. Fold the exploration into that item or pick a different name (revise the set, rewrite the file, re-run) before rendering the gate.
 - `legal_name=false` — dots or slashes break manifest addressing. Rename and re-run.
 - `matches_dismissed=true` — the name was previously dismissed. Fine to proceed — confirming at the gate below is the re-add decision; hold the flag for Step 12, which passes `--force-dismissed` on the write.
-- `waiting_on_roadmap=true` — the anti-twin rule: a waiting roadmap item already holds this ground, and a fresh topic beside it would strand its record. Never leave it in the working list — move it to the **pull-forward set** when it belongs in this epic (Step 12 lands it as a map topic and writes its join), or drop it from the proposal to leave it waiting.
+- `waiting_on_roadmap=true` — the anti-twin rule: a waiting roadmap idea already holds this ground, and a fresh topic beside it would strand its record. Never leave a twin in the working list — move it to the **pull-forward set** when it belongs in this epic (Step 12 lands it as a map topic and writes its join), or drop it from the proposal to leave it waiting.
 
-Emit the `=== DISPLAY` section verbatim **as a code block** — it shows the proposed topics with the existing map unchanged below, so the full picture is visible.
+Emit the `=== DISPLAY` section verbatim per its marker — it shows the proposed topics with the existing map unchanged below, so the full picture is visible.
 
 **If the park set is non-empty:** write it to `.workflows/.cache/{work_unit}/discovery/proposed-parks.json` in the shape Step 12 persists as-is — provenance included:
 
@@ -95,7 +97,7 @@ Emit the `=== DISPLAY` section verbatim **as a code block** — it shows the pro
 [{"name": "{item}", "horizon": "{horizon}", "summary": "{one-line summary}", "origin": "park:{work_unit}", "sources": ["{work_unit}/discovery/sessions/session-{session_number}.md"]}]
 ```
 
-Then render the roadmap overlay beneath the topic proposal, emitting its `=== DISPLAY` section verbatim as a code block (its DATA flags follow the same rules — `exists_on_roadmap=true` folds into the existing item or renames):
+Then render the roadmap overlay beneath the topic proposal, emitting its `=== DISPLAY` section verbatim per its marker (its DATA flags follow the same rules — `exists_on_roadmap=true` folds into the existing item or renames):
 
 ```bash
 node .claude/skills/workflow-roadmap/scripts/gateway.cjs proposal --file .workflows/.cache/{work_unit}/discovery/proposed-parks.json
@@ -111,7 +113,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render synthesis-gate
 
 #### If `yes`
 
-The sort is confirmed. Hold in conversation memory for Step 12 confirm-and-persist: the **working list** (topics, with any `matches_dismissed` names from the DATA flags — Step 12 passes `--force-dismissed` for those), the **park set**, and the **pull-forward set**. Do not write Topics Identified to the log yet — Step 12 writes the manifest items and the log section together. Synthesis outcome: `confirmed`.
+The sort is confirmed. Hold in conversation memory for Step 12 confirm-and-persist: the **working list** (the topics as last written to `proposed-topics.json`, with any `matches_dismissed` names from the DATA flags — Step 12 passes `--force-dismissed` for those), the **park set**, and the **pull-forward set**. Do not write Topics Identified to the log yet — Step 12 writes the manifest items and the log section together. Synthesis outcome: `confirmed`.
 
 → Load **[brief-synthesis.md](brief-synthesis.md)** and follow its instructions as written.
 
@@ -131,7 +133,7 @@ Apply the named adjustments to the working set:
 - **Merge** *"X and Y are one"* — combine into one topic; propose a unifying name
 - **Rename** *"X should be called Z"* — swap the name
 - **Re-route** *"Y should be research"* — flip routing
-- **Edit summary** *"Y's summary should be ..."* — replace the summary line
+- **Edit summary or description** *"Y's summary should be ..."* — replace the summary line or the description
 - **Re-sort** *"X is this epic after all"* / *"actually Y can wait — v2"* — move between the working list and the park set (a parked item gains its horizon, an unparked one its routing)
 - **Drop** *"Forget Z entirely"* — remove from set (note: this means Claude misread the exploration; reflect on what was overweighted)
 
@@ -147,7 +149,7 @@ Reached from **C** when the harvest produced parks and no topics. Write the park
 [{"name": "{item}", "horizon": "{horizon}", "summary": "{one-line summary}", "origin": "park:{work_unit}", "sources": ["{work_unit}/discovery/sessions/session-{session_number}.md"]}]
 ```
 
-Render the roadmap overlay, emitting its `=== DISPLAY` section verbatim as a code block (its DATA flags follow **E**'s park rules):
+Render the roadmap overlay, emitting its `=== DISPLAY` section verbatim per its marker (its DATA flags follow **E**'s park rules):
 
 ```bash
 node .claude/skills/workflow-roadmap/scripts/gateway.cjs proposal --file .workflows/.cache/{work_unit}/discovery/proposed-parks.json

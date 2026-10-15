@@ -50,7 +50,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render resume-gate {work_
 
 #### If `continue`
 
-Set `session_number` = `active_session`. The existing file at `.workflows/{work_unit}/discovery/sessions/session-{session_number}.md` is the working state for the session loop, which briefs across the prior sessions on re-open (see [continuity-load.md](continuity-load.md)).
+Set `session_number` = `active_session`. The existing file at `.workflows/{work_unit}/discovery/sessions/session-{session_number}.md` is the installed log and the working state for the session loop — every write this session edits it in place, and no new session is opened. The loop briefs across the prior sessions on re-open (see [continuity-load.md](continuity-load.md)).
 
 → Return to caller.
 
@@ -61,7 +61,7 @@ Delete the in-progress log, clear the marker, and commit:
 ```bash
 rm .workflows/{work_unit}/discovery/sessions/session-{active_session}.md
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.discovery active_session
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): restart interrupted session"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): restart interrupted session" --discovery
 ```
 
 `session_number` will be set at Step 7 from discovery's `next_session_number`.

@@ -4,7 +4,7 @@
 
 ---
 
-This step uses the `workflow-planning-task-author` agent (`../../../agents/workflow-planning-task-author.md`) to write full detail for all tasks in a phase. One sub-agent authors all tasks, writing to a per-phase task detail file. The orchestrator then handles per-task approval and format-specific writing to the output format.
+This step uses the `workflow-planning-task-author` agent (`.claude/agents/workflow-planning-task-author.md`) to write full detail for all tasks in a phase. One sub-agent authors all tasks, writing to a per-phase task detail file. The orchestrator then handles per-task approval and format-specific writing to the output format.
 
 ---
 
@@ -34,24 +34,22 @@ Mid-authoring resume — the text and its decisions already stand; re-invoking w
 
 **Amendment runs** — when `staging.author-p{N}` carries `rejected` rows (arrival from **F. Revision Check**, or a mismatch retry from **C** during an amendment), the invocation is an amendment: name those ids via input item 8. All other arrivals are full runs — omit item 8.
 
-> *Output the next fenced block as a code block:*
-
-```
-Authoring {count} tasks for Phase {N}: {Phase Name}...
-```
-
 Invoke `workflow-planning-task-author` with these file paths:
 
-1. **read-specification.md**: `read-specification.md`
+1. **read-specification.md**: `.claude/skills/workflow-planning-process/references/read-specification.md`
 2. **Specification**: specification path from the manifest or `.workflows/{work_unit}/specification/{topic}/specification.md`
-3. **Cross-cutting specs**: cross-cutting spec paths if any
-4. **task-design.md**: `task-design.md`
+3. **Cross-cutting specs**: the specification paths the planning file's `## Cross-Cutting References` section lists, if any
+4. **task-design.md**: `.claude/skills/workflow-planning-process/references/task-design.md`
 5. **All approved phases**: the complete phase structure from the planning file body
 6. **Task list for current phase**: the task table for this specific phase from the planning file
 7. **Task detail file path**: `.workflows/{work_unit}/planning/{topic}/phase-{N}-tasks.md`
 8. **Amendment context** (amendment runs only): the rejected internal ids being rewritten — any surviving feedback blockquotes sit under their headings in the detail file
 
 The agent writes all tasks to the task detail file and returns.
+
+Say `Authoring {count} task(s) for Phase {N}: {Phase Name}...`, `{count}` the rejected tasks on an amendment run and the phase's task count otherwise.
+
+The dispatch runs in the background (`run_in_background: true`) and ends the turn on exactly `The task author agent has been dispatched for phase {N}.`
 
 → Proceed to **C. Validate Task Detail File**.
 
@@ -65,6 +63,28 @@ Read the task detail file and count tasks. Verify task count matches the task ta
 
 **On an amendment run** (the manifest still carries `rejected` rows): the rewrite is validated — reset each rejected row to `pending` (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} staging.author-p{N}.tasks.{internal_id} pending` per id); in auto mode they approve automatically, like any pending row.
 
+**Settle the spec defects** — classified before any task reaches its gate, so what the user approves was authored against a correct specification. The section is the orchestrator's: it never reaches the task detail file or the planning file.
+
+For each `## Spec Defects` entry in the agent's return, once per entry:
+
+→ Load **[resolve-spec-gap.md](resolve-spec-gap.md)** with lane = `construction`, gap = `{the entry, and the task it surfaced in}`.
+
+When at least one corrigendum landed — the record's or one the user settled at the exchange; nothing when none did, never a per-correction recap — say `{count} spec correction(s) recorded.`
+
+**If a landing changed the specification, or the reference returned work the plan must carry, and this return is not itself from that re-run:**
+
+The detail file was written against a record that has since moved, so the whole phase is authored again — a full run by **B**'s own rule, no `rejected` row remaining: the correction is the specification's, not per-task feedback. Name the returned work in the invocation so the task that owns it carries it. The rewrite replaces every task, so any approvals already recorded are void — where the phase carries a `staging.author-p{N}` subtree (a resumed or amended run; a first authoring run has none), clear it, and **D** repopulates every row `pending`; a row left reading `approved` would transcribe text the user never saw:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.planning.{topic} staging.author-p{N}
+```
+
+→ Return to **B. Invoke the Agent**.
+
+**Otherwise:**
+
+A defect the author still reports after one re-run is left to the review walk, which meets the plan against the specification at the end of the phase.
+
 → Proceed to **D. Check Gate Mode**.
 
 #### If `mismatch` and fewer than 2 agent invocations have been made
@@ -73,23 +93,16 @@ Read the task detail file and count tasks. Verify task count matches the task ta
 
 #### If `mismatch` after 2 agent invocations
 
-> *Output the next fenced block as a code block:*
+Write the two lists of internal ids to `.workflows/.cache/{work_unit}/planning/{topic}/task-count.json` with the Write tool — `table` the ids in the planning file's task table for this phase, `detail` the ids found in the task detail file:
 
-```
-Task count mismatch persists after 2 authoring attempts.
-
-Planning file task table: {N} tasks — {internal IDs from the table}
-Task detail file:         {M} tasks — {internal IDs found in the file}
+```json
+{"table": ["{internal_id}", "…"], "detail": ["{internal_id}", "…"]}
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Render and emit each section verbatim per its marker:
 
-```
-· · · · · · · · · · · ·
-**`◆ How would you like to proceed?`**
-
-**`r/retry`** → Re-invoke the author agent once more
-**Adjust**  → Tell me what to correct (the task table or the detail file), and I'll apply it and re-validate
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render task-count-gate {work_unit}.planning.{topic} --file .workflows/.cache/{work_unit}/planning/{topic}/task-count.json
 ```
 
 **STOP.** Wait for user response.
@@ -100,7 +113,7 @@ Task detail file:         {M} tasks — {internal IDs found in the file}
 
 **If adjust:**
 
-Apply the user's correction.
+Confirm your reading of the correction with the person before anything acts on it, then apply it.
 
 → Return to **C. Validate Task Detail File**.
 
@@ -114,24 +127,19 @@ Register the phase's authoring state. Read the subtree first (`node .claude/skil
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} staging.author-p{N}.tasks.{internal_id}=pending …
 ```
 
-Check `author_gate_mode` via `engine manifest`:
+Check the gate mode — the engine reads `author_gate_mode`, answering the phase's auto-approval line under `auto` and nothing while the gate is gated:
+
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.planning.{topic} author_gate_mode
+node .claude/skills/workflow-engine/scripts/engine.cjs render author-task-gate {work_unit}.planning.{topic} --phase {N}
 ```
 
-#### If `author_gate_mode` is `auto`
+#### If the response carried `DISPLAY: author tasks auto-approved`
 
-Approve every `pending` row in one batched write — skip the call entirely when none are `pending` (an all-approved crash resume): `node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} staging.author-p{N}.tasks.{internal_id}=approved …`.
-
-> *Output the next fenced block as a code block:*
-
-```
-Phase {N}: {count} tasks authored. Auto-approved. Writing to plan.
-```
+Approve every `pending` row in one batched write — skip the call entirely when none are `pending` (an all-approved crash resume): `node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} staging.author-p{N}.tasks.{internal_id}=approved …`. Then emit the call's DISPLAY section verbatim per its marker.
 
 → Proceed to **G. Write to Plan**.
 
-#### If `author_gate_mode` is `gated`
+#### If the output is empty
 
 → Proceed to **E. Approval Loop**.
 
@@ -155,18 +163,10 @@ Skip — **F. Revision Check** sweeps it into the amendment.
 
 #### If the row is `pending`
 
-Present the full task content:
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-{task detail from task detail file}
-```
-
-Render the gate and emit the section verbatim:
+Write the task's full content, as the task detail file holds it, to `.workflows/.cache/{work_unit}/planning/{topic}/author-task.json` with the Write tool — `{"content": "…"}` — then render the task and its gate, and emit each section verbatim per its marker:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs render author-task-gate {work_unit}.planning.{topic} --m {M} --total {total} --title "{Task Name}"
+node .claude/skills/workflow-engine/scripts/engine.cjs render author-task-gate {work_unit}.planning.{topic} --m {M} --total {total} --title "{Task Name}" --file .workflows/.cache/{work_unit}/planning/{topic}/author-task.json
 ```
 
 **STOP.** Wait for user response.
@@ -223,11 +223,7 @@ Read the manifest's `staging.author-p{N}.tasks` for `rejected` rows.
 
 #### If rejected tasks exist
 
-> *Output the next fenced block as a code block:*
-
-```
-{count} tasks need revision. Re-invoking author agent...
-```
+Say `{count} task(s) to revise. Re-invoking author agent...`, `{count}` the `rejected` rows just read.
 
 → Return to **B. Invoke the Agent** for an amendment run.
 
@@ -249,16 +245,11 @@ For each approved task in the task detail file, in order (crash-resume guard: a 
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} task_map.{internal_id}={external_id} task={next_task_id} task_map.{phase_internal_id}={phase_external_id} external_id={plan_external_id}
    ```
-4. Commit — `--plan` stages the work unit, the project manifest, and the plan's declared storage in one scoped call:
+4. Commit — `--plan` stages the planning topic, the work-unit manifest, the project manifest, and the plan's declared storage in one scoped call:
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): author task {internal_id} ({task name})" --plan {topic}
    ```
-
-> *Output the next fenced block as a code block:*
-
-```
-Task {M} of {total}: {Task Name} — authored.
-```
+5. Say `Task {M} of {total}: {Task Name} — authored.`
 
 Repeat for each task.
 

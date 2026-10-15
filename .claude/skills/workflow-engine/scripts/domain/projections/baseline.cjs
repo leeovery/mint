@@ -9,11 +9,10 @@
 
 const { wrapWithPrefix } = require('../../kernel/render.cjs');
 const { displayWidth } = require('../../kernel/terminal.cjs');
-const { section, menu, menuFrame, cmdOption, promptOption, CONTINUE_INSTRUCTION } = require('./surfaces.cjs');
+const { section, dataSection, menu, cmdOption, promptOption, CONTINUE_INSTRUCTION, CONTINUE_MARKDOWN_INSTRUCTION, emitAs, MENU_INSTRUCTION, STOP_CLAUSE } = require('./surfaces.cjs');
 const { titlecase } = require('../conventions.cjs');
 
-const MENU_INSTRUCTION = "emit verbatim as markdown, then STOP for the user's response";
-const ASK_INSTRUCTION = "emit verbatim as a code block, then STOP for the user's response";
+const ASK_INSTRUCTION = emitAs('text', STOP_CLAUSE);
 
 /** @typedef {import('../baseline.cjs').BaselineState} BaselineState */
 
@@ -47,7 +46,7 @@ function baselineAreaGate(d, area) {
   const body = menu(
     `**${titlecase(area)}** is documented. ${d.remaining} area(s) remain.`,
     [
-      cmdOption('c', 'continue', 'Interview the next area'),
+      cmdOption('y', 'yes', 'Interview the next area'),
       cmdOption('p', 'pause', 'Stop here — resume any time from workflow-start'),
     ],
     { question: 'Keep going?' },
@@ -101,7 +100,7 @@ function baselineReceipt(d) {
 
 /**
  * The scope confirmation — the proposed area list (judgment content, via
- * payload) above its approve/back/adjust gate.
+ * payload) above its yes/back/adjust gate.
  * @param {ScopePayload} payload
  * @returns {string}
  */
@@ -110,16 +109,32 @@ function baselineScopeGate(payload) {
   const body = menu(
     '',
     [
-      cmdOption('a', 'approve', 'Lock the list and start the research'),
+      cmdOption('y', 'yes', 'Lock the list and start the research'),
       cmdOption('b', 'back', 'Leave without changing anything'),
       promptOption('Adjust', 'Tell me what to add, drop, rename, or merge'),
     ],
     { question: 'Assess these areas?' },
   );
   return [
-    section('DISPLAY: baseline scope', 'emit verbatim as markdown (not a code block)', list),
+    section('DISPLAY: baseline scope', emitAs('markdown'), list),
     section('MENU: baseline scope gate', MENU_INSTRUCTION, body),
   ].join('\n');
+}
+
+/**
+ * The opening of an area's interview — its step marker, counted across every
+ * area in interview order (the areas already documented come first), then
+ * the session's one line on what the area covers and how to answer.
+ * @param {BaselineState} d @param {string} area @param {string} summary
+ * @returns {string}
+ */
+function baselineArea(d, area, summary) {
+  const n = d.areas.length - d.remaining + 1;
+  return section('DISPLAY: baseline area', CONTINUE_MARKDOWN_INSTRUCTION, [
+    `**\`□ Interviewing ${titlecase(area)} (${n} of ${d.areas.length})\`**`,
+    '',
+    `> ${summary} Answer in your own words, pick a candidate, or say "don't know" — an unanswered question is recorded as open, never guessed at.`,
+  ].join('\n'));
 }
 
 /**
@@ -161,7 +176,7 @@ function baselineDocGate() {
   const body = menu(
     '',
     [
-      cmdOption('a', 'approve', 'Index and commit the doc'),
+      cmdOption('y', 'yes', 'Index and commit the doc'),
       cmdOption('v', 'view', 'Read the full doc first'),
       promptOption('Adjust', 'Tell me what to change'),
     ],
@@ -180,7 +195,7 @@ function baselineManageGate() {
     [
       cmdOption('e', 'expand', 'Add a new area, or deepen an existing one'),
       cmdOption('v', 'view', 'Read an area doc'),
-      cmdOption('b', 'back', 'Leave the baseline as it is'),
+      cmdOption('b', 'back', 'Return to the start menu'),
     ],
     { question: 'What would you like to do?' },
   );
@@ -188,16 +203,24 @@ function baselineManageGate() {
 }
 
 /**
- * The doc picker under manage's view.
+ * The doc picker under manage's view — one numbered row per area doc, each
+ * number's area on the DATA row the flow resolves the pick through.
+ * @param {BaselineState} d
  * @returns {string}
  */
-function baselineDocPick() {
-  const body = menuFrame(['Which doc? (enter the area name, or **`b/back`**)']);
-  return section('MENU: baseline doc pick', MENU_INSTRUCTION, body);
+function baselineDocPick(d) {
+  const body = menu('Which doc?', [
+    ...d.areas.map((a, i) => cmdOption(String(i + 1), null, `${a.name}.md`)),
+    cmdOption('b', 'back', 'Return to the baseline menu'),
+  ]);
+  return [
+    dataSection(['DOCS (key  area):', ...d.areas.map((a, i) => `  ${i + 1}  ${a.name}`)]),
+    section('MENU: baseline doc pick', MENU_INSTRUCTION, body),
+  ].join('\n');
 }
 
 /**
- * The one-time boot offer — workflow-start's Step 0.4 gate.
+ * The one-time boot offer — workflow-start's Step 0.6 gate.
  * @returns {string}
  */
 function baselineOfferGate() {
@@ -218,6 +241,7 @@ module.exports = {
   baselinePaused,
   baselineReceipt,
   baselineScopeGate,
+  baselineArea,
   baselineRound,
   baselineDocGate,
   baselineManageGate,

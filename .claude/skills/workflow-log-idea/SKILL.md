@@ -1,7 +1,6 @@
 ---
 name: workflow-log-idea
 description: Capture an idea as a markdown file in the workflow inbox. Use when the user wants to log, note, or save an idea for later.
-allowed-tools: Bash(mkdir -p)
 ---
 
 This skill captures an idea and writes it to the inbox.
@@ -29,8 +28,8 @@ mkdir -p .workflows/.inbox/ideas
 
 Confirm with a one-liner:
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as a text code block (```text fence):*
 
-```
+```text
 Logged idea: {slug}
 ```

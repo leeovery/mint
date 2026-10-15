@@ -16,10 +16,12 @@ const path = require('path');
 const { loadActiveManifests, loadAllManifests } = require('./reads.cjs');
 const { baselineState } = require('./baseline.cjs');
 const { roadmapState } = require('./roadmap.cjs');
+const { INBOX, ARCHIVED } = require('./inbox.cjs');
 const {
   phaseItems,
   computeUnitPhaseState,
   lastCompletedPhase,
+  mailPhases,
 } = require('./derivations.cjs');
 const { WORK_TYPE_PIPELINES, VALID_PHASES } = require('../kernel/manifest-schema.cjs');
 
@@ -49,6 +51,8 @@ function pipelineOf(workType) {
  *                                       flight, but the unit is still in-progress — `workunit
  *                                       complete` never ran
  * @property {string[]} [active_phases]  epics only — phases that have items
+ * @property {string[]} [mail_phases]  single-topic types — phases whose mailbox holds
+ *                                       messages for the unit's topic (the row's `mail waiting` cue)
  */
 
 /**
@@ -117,12 +121,16 @@ function pipelineOf(workType) {
  * @property {StartState} state
  */
 
-/** First markdown H1, or null. @param {string} filePath @returns {string|null} */
+/** An inbox item's title: its content's first markdown H1, or null. @param {string} content @returns {string|null} */
+function titleOf(content) {
+  const match = content.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
+/** The title of the file at `filePath`, or null. @param {string} filePath @returns {string|null} */
 function readTitle(filePath) {
   try {
-    const content = fs.readFileSync(filePath, 'utf8');
-    const match = content.match(/^#\s+(.+)$/m);
-    return match ? match[1].trim() : null;
+    return titleOf(fs.readFileSync(filePath, 'utf8'));
   } catch {
     return null;
   }
@@ -185,9 +193,8 @@ function scanInboxDir(baseDir) {
  * @returns {InboxDetail}
  */
 function discoverInbox(cwd) {
-  const inboxDir = path.join(cwd, '.workflows', '.inbox');
-  const inbox = scanInboxDir(inboxDir);
-  return { ...inbox, archived: scanInboxDir(path.join(inboxDir, '.archived')) };
+  const inbox = scanInboxDir(path.join(cwd, INBOX));
+  return { ...inbox, archived: scanInboxDir(path.join(cwd, ARCHIVED)) };
 }
 
 /**
@@ -217,6 +224,12 @@ function startDetail(cwd) {
       phase_label: state.phase_label,
       finalising: state.finalising,
     };
+    // Single-topic types cue messages waiting on the unit's own topics; an
+    // epic's row carries no phase state — its dashboard cues per topic.
+    if (m.work_type !== 'epic') {
+      const waiting = mailPhases(cwd, m);
+      if (waiting.length > 0) unit.mail_phases = waiting;
+    }
 
     if (m.work_type === 'epic') {
       // For epics, include list of phases that have items
@@ -292,4 +305,4 @@ function startDetail(cwd) {
   };
 }
 
-module.exports = { startDetail, discoverInbox };
+module.exports = { startDetail, discoverInbox, titleOf };

@@ -6,9 +6,11 @@
 
 A final review ensures the discussion is thorough before moving to specification. Even if review agents ran during the session, the discussion may have progressed significantly since the last one.
 
-This step runs once per "user signals done" entry. It dispatches a fresh review if needed, raises one finding via the shared protocol, then bounces back to the discussion session so the user can engage naturally. The next time the user signals done, Step 6 re-runs — eventually all findings are drained and the engine incorporates the review, at which point Step 6 returns to the backbone to proceed toward conclusion.
+This step runs once per entry into the close. It dispatches a fresh review if needed, raises one finding via the surfacing protocol, then bounces back to the discussion session so the user can engage naturally — the ceremony stays open, and once the raise is engaged the session loop's check re-enters the close and Step 6 re-runs. Eventually all findings are drained and the engine incorporates the review, at which point Step 6 returns to the backbone to proceed toward conclusion.
 
-The **never-dump rules apply in full**. Findings are raised one at a time via the shared surfacing protocol.
+The **never-dump rules apply in full**. Findings are raised one at a time via the surfacing protocol.
+
+**A completed artifact carries no unowned threads.** Every gap this review surfaces resolves before conclusion: settled here, corrected in place, routed to the topic that owns it — existing or newly created, confirmed with the user — parked on the roadmap as a staged product capability, or rejected by you (*not now*, or dismissed for good — the review advises, and the conclusion is yours to call). Closing a finding by writing it into the file as an open thread nobody owns is not a resolution.
 
 ## A. Check Review State
 
@@ -44,7 +46,7 @@ Nothing awaited engagement — drain any further rows before proceeding.
 
 **If the row still holds unraised findings** (the user deferred at the announce menu):
 
-The session owns the deferral — the next done-signal re-enters this gate.
+The session owns the deferral — the close holds until the findings are walked: the loop's check offers them again at a later break, and the ceremony resumes once they drain.
 
 → Return to **[the skill](../SKILL.md)** for **Step 5**.
 
@@ -64,7 +66,7 @@ Take the highest-numbered `review` row from the **A** scan and branch on its sta
 
 The prior review was fully drained. A fresh one is warranted only when the discussion moved since — otherwise each conclusion attempt mints a new gap set and the topic can never close. The movement check anchors on the last **real** review: the highest-numbered `review` row whose report exists on disk (`.workflows/.cache/{work_unit}/discussion/{topic}/{id}.md`, non-empty) — an `incorporated` row with no report is a killed dispatch closed as bookkeeping, never a review.
 
-**If the user declined another final review at this conclusion attempt's closing gate:**
+**If the user declined one more review at this conclusion attempt's closing gate:**
 
 The decline stands — do not re-litigate it. A later conclusion attempt classifies afresh and offers again.
 
@@ -158,20 +160,27 @@ Record the dispatch — the engine allocates the id and answers with the content
 node .claude/skills/workflow-engine/scripts/engine.cjs agent dispatch {work_unit} discussion {topic} --kind review --final
 ```
 
-**If the response is `ok: false` naming the triage queue** — a concern landed after the queue gate (a peer session's delivery): surface the engine's error verbatim; the queue owns the close now.
+**If the response is `ok: false` naming the mailbox** — a message arrived after the mailbox gate (a peer session's send): surface the engine's error verbatim; the mailbox owns the close now.
 
 → Return to **[the skill](../SKILL.md)** for **Step 5**.
 
 **Otherwise:**
 
-**Agent path**: `../../../agents/workflow-discussion-review.md`
+Read the topic's dismissed grounds — the user's standing rulings on what not to report. Empty output means none:
 
-Dispatch **one agent** as a foreground task (omit `run_in_background` — results are needed before continuing).
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.discussion.{topic} dismissed_grounds
+```
+
+**Agent path**: `.claude/agents/workflow-discussion-review.md`
+
+Dispatch **one agent** as a foreground task (pass `run_in_background: false` — results are needed before continuing).
 
 The review agent receives:
 
 1. **Discussion file path** — `.workflows/{work_unit}/discussion/{topic}.md`
 2. **Output file path** — the `file` from the dispatch response. The agent writes its completed report there — pure markdown with one `### {ID}: {label}` section per finding (`F1`, `F2`, …), never frontmatter.
+3. **Dismissed grounds** — the list read above, verbatim. Omit this input entirely when the list is empty.
 
 When the agent returns:
 
@@ -181,7 +190,7 @@ When the agent returns:
 
 ## D. Surface via Final Review Menu
 
-→ Load **[final-review-menu.md](../../workflow-shared/references/final-review-menu.md)** with work_unit = `{work_unit}`, phase = `discussion`, topic = `{topic}`.
+→ Load **[final-review-menu.md](final-review-menu.md)** with work_unit = `{work_unit}`, phase = `discussion`, topic = `{topic}`.
 
 → On return, proceed to **E. Route Next**.
 
@@ -191,7 +200,7 @@ When the agent returns:
 
 #### If the menu raised a finding (the `review` choice)
 
-Control belongs to the conversation — return the user to the discussion session so they can engage naturally, whether or not that was the last finding. When the user signals done again, Step 6 re-runs and either raises the next one or finds the row incorporated.
+Control belongs to the conversation — return the user to the discussion session so they can engage naturally, whether or not that was the last finding. The ceremony stays open: once the raise is engaged, the session loop's check re-enters the close and Step 6 re-runs, raising the next one or finding the row incorporated.
 
 → Return to **[the skill](../SKILL.md)** for **Step 5**.
 

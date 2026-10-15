@@ -14,22 +14,24 @@ Render the archived snapshot — re-run on every entry so prior actions are refl
 node .claude/skills/workflow-start/scripts/gateway.cjs archived
 ```
 
-The output is one snapshot in three demarcated sections:
+The output is one snapshot in demarcated sections:
 
-- **DATA** — reasoning surface: `archived_count` and the `ITEMS` table — one line per item, `n  type  date  slug  → path`. Reason from it; never display or restate it.
-- **TITLE** — the view's chrome heading. Emit verbatim as markdown, directly above the display.
-- **DISPLAY** — the numbered archived list. Emit verbatim as a code block. Never redraw, reflow, or trim it.
-- **MENU** — the selection prompt. Emit verbatim as markdown (not a code block). Empty when nothing is archived.
+- **DATA** — reasoning surface: `archived_count` and the `ITEMS` table — one line per item, `n  type  date  slug  → path  — title`. Reason from it; never display or restate it.
+- **TITLE** — the view's chrome heading. Emit verbatim per its marker.
+- **MENU** — the archived items as a numbered pick list. Emit verbatim per its marker. Absent when nothing is archived.
+- **DISPLAY** — only when nothing is archived: the empty-store line. Emit verbatim per its marker.
 
-Emit the TITLE section (markdown), then the DISPLAY section. A section is everything beneath its `===` marker up to the next marker — the marker lines themselves are never emitted.
+Emit the TITLE section verbatim per its marker.
 
 #### If `archived_count` is 0
+
+Emit the DISPLAY section verbatim per its marker.
 
 → Return to caller.
 
 #### Otherwise
 
-Emit the MENU section.
+Emit the MENU section verbatim per its marker.
 
 **STOP.** Wait for user response.
 
@@ -39,41 +41,27 @@ Emit the MENU section.
 
 **If user chose a number:**
 
-Store the selected item's `ITEMS` row — its type, slug, date, and path.
+Store the selected item's path from its `ITEMS` row as `item.path`.
 
 → Proceed to **B. Action Menu**.
 
 ## B. Action Menu
 
-> *Output the next fenced block as markdown (not a code block):*
+Fetch the menu over the selected item and emit its `MENU: archived actions` section verbatim per its marker:
 
-```
-· · · · · · · · · · · ·
-Selected: **{item.title}** ({item.type}, archived)
-
-**`◆ What would you like to do with it?`**
-
-**`v/view`**      → View full content
-**`u/unarchive`** → Restore to the inbox
-**`d/delete`**    → Permanently delete (removes the file from git)
-**`b/back`**      → Return to the archived list
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render archived-actions --path {item.path}
 ```
 
 **STOP.** Wait for user response.
 
 #### If user chose `v/view`
 
-Read the file and render its full content — as markdown, not a code block, so the item's own headings and formatting render properly.
+Fetch the item in full and emit the call's DISPLAY section verbatim per its marker:
 
-> *Output the next fenced block as markdown (not a code block):*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render inbox-content --path {item.path}
 ```
-*[{item.type}] — {item.date}*
-
-{item.full_content}
-```
-
-Emit the file content as-is — it is markdown and renders as such; its own `#` heading is the item's visible title. Skip a frontmatter block when one exists.
 
 → Return to **B. Action Menu**.
 
@@ -85,26 +73,20 @@ Move the file back into its inbox folder and commit — one command:
 node .claude/skills/workflow-engine/scripts/engine.cjs inbox restore {item.path}
 ```
 
-> *Output the next fenced block as a code block:*
+Fetch the receipt over the response's `restored` path and emit its DISPLAY section verbatim per its marker:
 
-```
-Restored "{item.title}" to the inbox.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render inbox-restore-receipt --path {restored_path}
 ```
 
 → Return to **A. Select**.
 
 #### If user chose `d/delete`
 
-Deleting removes the file from the repo and cannot be undone — confirm first:
+Confirm before deleting — fetch the gate and emit its `MENU: archived delete gate` section verbatim per its marker:
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-Permanently delete "{item.title}"? This removes the file from the repo and cannot be undone.
-
-**`y/yes`** → Delete permanently
-**`n/no`**  → Return
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render archived-delete-gate --path {item.path}
 ```
 
 **STOP.** Wait for user response.
@@ -119,10 +101,10 @@ Permanently delete "{item.title}"? This removes the file from the repo and canno
 node .claude/skills/workflow-engine/scripts/engine.cjs inbox delete {item.path}
 ```
 
-> *Output the next fenced block as a code block:*
+Fetch the receipt and emit its DISPLAY section verbatim per its marker:
 
-```
-Deleted "{item.title}".
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render inbox-delete-receipt --path {item.path}
 ```
 
 → Return to **A. Select**.

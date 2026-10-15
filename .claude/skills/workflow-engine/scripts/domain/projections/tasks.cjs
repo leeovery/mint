@@ -4,21 +4,21 @@
 // Domain ring: task gate sections — the implementation loop's state-derived
 // gates, served by the `engine render` surfaces (render.cjs) at the exact
 // prose point that displays them. The `engine task` verbs answer with their
-// one-line JSON only; a gate's section is fetched by its own render call, so
-// the section always sits in the tool result directly above its emission.
+// one-line JSON only; a gate's section is fetched by its own render call.
 // Deterministic: same state, same string. Conversational content (reviewer
-// findings, executor summaries, the blocked-task list) never renders here —
-// it stays with the session.
+// findings, executor summaries) never renders here — it stays with the
+// session.
 //
-//   render blocked-tasks → MENU: blocked tasks   (static — the blocked-task
-//                          list is plan-format state the engine never reads;
-//                          the session renders the list, this menu carries
-//                          the decision)
+//   render blocked-tasks → DISPLAY: blocked tasks + MENU: blocked tasks (the
+//                          blocked-task list is plan-format state the engine
+//                          never reads, so it rides the session's payload)
 //   render task-gate     → MENU: task gate       (task_gate_mode gated)
-//                          DISPLAY: task gate auto-approved (task_gate_mode auto)
+//                          DISPLAY: task gate auto-approved (auto or bounded)
 //   render fix-gate      → MENU: fix gate        (gated or threshold reached;
-//                          the auto option renders only while the gate is gated)
-//                          DISPLAY: fix gate auto-accepted (auto, below threshold)
+//                          the auto and bounded options render only while
+//                          the gate is gated)
+//                          DISPLAY: fix gate auto-accepted (auto or bounded,
+//                          below threshold)
 //   render cycle-limit   → DISPLAY: cycle limit   (the over-limit callout)
 //   render cycle-gate    → MENU: cycle gate      (static)
 //
@@ -34,11 +34,26 @@
 // the action that follows in the same turn.
 // ---------------------------------------------------------------------------
 
-const { section, CONTINUE_INSTRUCTION, AUTO_GATE_INSTRUCTION, menu, cmdOption, promptOption } = require('./surfaces.cjs');
+const { section, CONTINUE_INSTRUCTION, timedInstruction, emitAs, menu, cmdOption, promptOption, treeList, MENU_INSTRUCTION, AUTO_GATE_CLAUSE } = require('./surfaces.cjs');
 
-const MENU_INSTRUCTION = "emit verbatim as markdown, then STOP for the user's response";
+/** @typedef {{id: string, name: string, blockers: {id: string, status: string}[]}} BlockedTask */
 
-/** The blocked-tasks stop menu. Static by design. @returns {string} */
+/**
+ * The blocked-task list above the stop menu: each open task beneath its id,
+ * what blocks it hanging off it with the blocker's status.
+ * @param {BlockedTask[]} tasks
+ * @returns {string}
+ */
+function blockedTasksDisplay(tasks) {
+  const n = tasks.length;
+  const lines = [`No ready tasks remain, but ${n} ${n === 1 ? 'task is' : 'tasks are'} still open — blocked:`];
+  for (const task of tasks) {
+    lines.push('', `  ${task.id}: ${task.name}`, treeList(task.blockers.map((b) => `Blocked by ${b.id} [${b.status}]`), { indent: '  ' }));
+  }
+  return section('DISPLAY: blocked tasks', emitAs('text'), lines.join('\n'));
+}
+
+/** The blocked-tasks stop menu. @returns {string} */
 function blockedTasksMenu() {
   return section(
     'MENU: blocked tasks',
@@ -52,8 +67,9 @@ function blockedTasksMenu() {
 }
 
 /**
- * The task gate: menu when gated, continuation line when auto. The result
- * header names the in-flight task — the gate never repeats the id.
+ * The task gate: menu when gated, continuation line under either auto mode
+ * (`auto` runs to the session's end, `bounded` to the plan phase's). The
+ * result header names the in-flight task — the gate never repeats the id.
  * @param {string} gateMode  `task_gate_mode`
  * @returns {string}
  */
@@ -61,7 +77,7 @@ function taskGateSection(gateMode) {
   if (gateMode !== 'gated') {
     return section(
       'DISPLAY: task gate auto-approved',
-      `after the result summary: ${AUTO_GATE_INSTRUCTION}`,
+      timedInstruction('text', 'after the result summary', AUTO_GATE_CLAUSE),
       'Task approved [auto]. Committing and moving to the next task.',
     );
   }
@@ -70,7 +86,8 @@ function taskGateSection(gateMode) {
     MENU_INSTRUCTION,
     menu('Approve this task?', [
       cmdOption('y', 'yes', 'Commit and continue to next task'),
-      cmdOption('a', 'auto', 'Approve this and all future tasks automatically'),
+      cmdOption('a', 'auto', 'Approve this and all remaining tasks automatically'),
+      cmdOption('b', 'bounded', 'Approve this and the remaining tasks in this phase automatically'),
       cmdOption('t', 'technical', "Retell the result from the code's perspective"),
       cmdOption('s', 'show', 'Show the result as diagrams'),
       promptOption('Ask', "Ask questions about the implementation (doesn't approve or reject)"),
@@ -80,9 +97,9 @@ function taskGateSection(gateMode) {
 }
 
 /**
- * The fix gate: menu when gated or threshold-forced, continuation line when
- * auto and below the threshold. The result header names the in-flight task
- * — the gate never repeats the id.
+ * The fix gate: menu when gated or threshold-forced, continuation line under
+ * either auto mode below the threshold. The result header names the in-flight
+ * task — the gate never repeats the id.
  * @param {string} gateMode  `fix_gate_mode`
  * @param {boolean} thresholdReached  `fix_attempts` at or past the threshold
  * @returns {string}
@@ -91,21 +108,25 @@ function fixGateSection(gateMode, thresholdReached) {
   if (!thresholdReached && gateMode !== 'gated') {
     return section(
       'DISPLAY: fix gate auto-accepted',
-      `after the findings summary: ${AUTO_GATE_INSTRUCTION}`,
+      timedInstruction('text', 'after the findings summary', AUTO_GATE_CLAUSE),
       'Fix analysis accepted [auto]. Passing the findings to the executor.',
     );
   }
-  const options = [
-    cmdOption('y', 'yes', 'Pass to executor'),
-    cmdOption('a', 'auto', 'Accept and auto-approve future fix analyses'),
+  const options = [cmdOption('y', 'yes', 'Pass to executor')];
+  // An auto-mode gate only reaches this menu via the threshold — offering
+  // either opt-in again would be a no-op option.
+  if (gateMode === 'gated') {
+    options.push(
+      cmdOption('a', 'auto', 'Accept this and all remaining fix analyses automatically'),
+      cmdOption('b', 'bounded', 'Accept this and the remaining fix analyses in this phase automatically'),
+    );
+  }
+  options.push(
     cmdOption('t', 'technical', "Retell the review from the code's perspective"),
     cmdOption('s', 'show', 'Show the findings as diagrams'),
     promptOption('Ask', "Ask questions about the review (doesn't accept or reject)"),
     promptOption('Comment', 'Give direction for the fix — or challenge a finding you think is wrong'),
-  ];
-  // An auto gate only reaches this menu via the threshold — offering auto
-  // again would be a no-op option.
-  if (gateMode !== 'gated') options.splice(1, 1);
+  );
   return section(
     'MENU: fix gate',
     MENU_INSTRUCTION,
@@ -114,15 +135,16 @@ function fixGateSection(gateMode, thresholdReached) {
 }
 
 /**
- * The cycle-limit callout emitted before the convergence diagnostic.
- * @param {number} session @param {number} limit
+ * The cycle-limit callout emitted before the convergence diagnostic — over
+ * the topic's lifetime count, whatever session ran the cycles.
+ * @param {number} total @param {number} limit
  * @returns {string}
  */
-function cycleLimitDisplay(session, limit) {
+function cycleLimitDisplay(total, limit) {
   return section(
     'DISPLAY: cycle limit',
     CONTINUE_INSTRUCTION,
-    `⚑ Analysis cycle ${session} this session — over the session limit of ${limit}.`,
+    `⚑ Analysis cycle ${total} on this topic — over the cycle limit of ${limit}.`,
   );
 }
 
@@ -132,10 +154,10 @@ function cycleGateMenu() {
     'MENU: cycle gate',
     MENU_INSTRUCTION,
     menu('Continue with analysis?', [
-      cmdOption('p', 'proceed', 'Continue analysis'),
+      cmdOption('y', 'yes', 'Continue analysis'),
       cmdOption('s', 'skip', 'Skip analysis, proceed to completion'),
     ]),
   );
 }
 
-module.exports = { blockedTasksMenu, taskGateSection, fixGateSection, cycleLimitDisplay, cycleGateMenu };
+module.exports = { blockedTasksDisplay, blockedTasksMenu, taskGateSection, fixGateSection, cycleLimitDisplay, cycleGateMenu };

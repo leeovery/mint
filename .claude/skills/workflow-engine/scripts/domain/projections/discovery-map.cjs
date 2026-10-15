@@ -19,11 +19,14 @@ const { TREE_WIDTH, treeHeader, titlecase, title, stateNote, discoveryGlyph, dis
 /**
  * @typedef {object} DiscoveryMapRow
  * @property {string} name
- * @property {string} lifecycle   fresh|researching|ready_for_discussion|discussing|decided|handled|cancelled
+ * @property {string} lifecycle   fresh|researching|ready_for_discussion|discussing|decided|handled|cancelled|postponed
  * @property {string|null} [routing]
  * @property {string|null} [research_state]  the research item's raw status, null when none exists
- * @property {boolean} [triage_parked]  a `triaged` stub (parked rerouted concerns) exists in either phase
+ * @property {string|null} [discussion_state]  the discussion item's raw status, null when none exists
+ * @property {string|null} [promoted_to]  the cross-cutting unit a promoted discussion moved to, null otherwise
+ * @property {boolean} [mail_waiting]  messages wait in the topic's research or discussion mailbox, whatever the item's status
  * @property {boolean} [reconcile_pending]  a phase item beneath the row carries a live reconcile flag
+ * @property {import('../derivations.cjs').Wait[]} [waits]  the live waits of the topic's in-progress phase items
  * @property {string|null} [summary]
  */
 
@@ -36,6 +39,7 @@ const { TREE_WIDTH, treeHeader, titlecase, title, stateNote, discoveryGlyph, dis
  * @property {number} fresh
  * @property {number} handled
  * @property {number} cancelled
+ * @property {number} postponed
  */
 
 /**
@@ -43,6 +47,7 @@ const { TREE_WIDTH, treeHeader, titlecase, title, stateNote, discoveryGlyph, dis
  * @property {string} name
  * @property {string} routing   research|discussion
  * @property {string} summary   one line, from the exploration
+ * @property {string} description  a short paragraph, from the exploration — what the topic covers and why it surfaced
  */
 
 // Breakdown categories in display order. The whole breakdown is omitted when
@@ -52,8 +57,9 @@ const BREAKDOWN = /** @type {const} */ ([
   ['in_flight', 'in flight'],
   ['ready', 'ready'],
   ['fresh', 'fresh'],
-  ['handled', 'handled'],
+  ['handled', 'dead-ended'],
   ['cancelled', 'cancelled'],
+  ['postponed', 'postponed'],
 ]);
 
 /** @param {DiscoveryMapSummary} summary */
@@ -69,15 +75,15 @@ function breakdown(summary) {
 function mapNodes(rows) {
   return rows.map((row) => ({
     title: title({ glyph: discoveryGlyph(row.lifecycle), label: titlecase(row.name) }),
-    body: [stateNote(discoveryLifecycleLabel(row.lifecycle, row.routing ?? null, row.research_state ?? null, row.triage_parked ?? false, row.reconcile_pending ?? false))],
+    body: [stateNote(discoveryLifecycleLabel(row.lifecycle, row.routing ?? null, row.research_state ?? null, row.mail_waiting ?? false, row.reconcile_pending ?? false, row.waits, row.promoted_to ?? null))],
   }));
 }
 
-/** Proposed rows: ○ (fresh-to-be) + name, summary beneath, routing on the `↳ state` line. @param {ProposedTopic[] } proposed */
+/** Proposed rows: ○ (fresh-to-be) + name, the summary and — a blank line on — the description beneath, routing on the `↳ state` line. @param {ProposedTopic[] } proposed */
 function proposedNodes(proposed) {
   return proposed.map((t) => ({
     title: title({ glyph: '○', label: titlecase(t.name) }),
-    body: [t.summary, stateNote(`routed to ${t.routing}`)],
+    body: [t.summary, '', t.description, stateNote(`routed to ${t.routing}`)],
   }));
 }
 
@@ -99,9 +105,9 @@ function discoveryMapView(workUnit, map) {
 
 /**
  * The synthesised-map display block — the harvest proposal: the proposed
- * topics (routing as the row tag, summary wrapped beneath), the existing map
- * unchanged below it, and the framing footer. No box — the session's phase
- * title already rendered at the opener.
+ * topics (summary and description wrapped beneath, routing on the state
+ * line), the existing map unchanged below it, and the framing footer. No
+ * box — the session's phase title already rendered at the opener.
  * @param {string} workUnit
  * @param {{rows: DiscoveryMapRow[], summary: DiscoveryMapSummary}} map
  * @param {ProposedTopic[]} proposed
@@ -124,7 +130,7 @@ function discoverySynthesisView(workUnit, map, proposed) {
 
   // A closing sentence, not a detail of the tree above it — column 0.
   const footer = `${proposed.length} topic${proposed.length === 1 ? '' : 's'}. `
-    + 'Summaries come from the exploration; routing is my read of where each one goes next.';
+    + 'Summaries and descriptions come from the exploration; routing is my read of where each one goes next.';
   parts.push(wrapWithPrefix(footer, { width: TREE_WIDTH, prefix: '' }).join('\n') + '\n');
 
   return parts.join('\n');

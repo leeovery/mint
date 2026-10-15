@@ -20,6 +20,8 @@ Deep discovery is substantive: you explore the whole shape **and** work through 
 
 **Sparring, not mirroring.** Don't just echo the shape back for confirmation — engage it. Agree, disagree, push on the weak point, offer a sharper framing. *"I'd push back on that — if the kitchen printer is the source of truth, the dashboard is just a cache, and that changes what happens when a venue drops offline. Buy that?"*
 
+→ Load **[devils-advocate.md](../../workflow-shared/references/devils-advocate.md)** and follow its instructions as written.
+
 **One thread, not a barrage.** One live thread at a time; let each answer shape the next move. No rapid-fire question lists (that's interrogation), no monologues (that's lecturing). A counter-frame is an opening for the user to push back, not a verdict.
 
 **Where to push:**
@@ -55,13 +57,15 @@ When you read these, surface the ambient nudge — see [harvest-nudge.md](harves
 - **No inline topic decomposition.** Don't surface "I'm hearing X, Y, Z as topics" during the loop. Topics are the harvest output, synthesised when the user pulls — not named mid-conversation.
 - **The user pulls the harvest.** Never push synthesis. Surface the ambient nudge at convergence (per **C**); the user decides when to harvest.
 - **Conversational, not autonomous.** Substance and soft decisions are welcome, but no automatic deep-dive — spin up a background agent or research thread only if the user asks.
-- **The initial map need not be exhaustive.** 2 topics is fine, 20 is fine. The map fills as work progresses — analyses auto-add, splits and reroutes spawn. Don't push for completeness at the harvest.
+- **The initial map need not be exhaustive.** 2 topics is fine, 20 is fine. The map fills as work progresses — the gap analysis auto-adds, messages land new topics. Don't push for completeness at the harvest.
 
 ## E. Soft by Location
 
 Discovery makes real decisions — and records them **plainly, as decisions**. They are soft not because of how they are worded but because of **where they live**: firmness is conferred by position on the gradient — discovery (soft) → discussion (hardened) → spec (golden) → plan. Later phases infer this from the artifact's origin; you don't mark it.
 
-So **don't hedge.** Make the call, word it naturally, let position carry the softness. Don't weave "leaning…", "maybe…", "we could…" through the record — that buries the decision you actually reached. The per-topic discussion is where these harden via convergence, so nothing trustworthy is bypassed: discovery explores substance freely, and discussion still ratifies.
+So **don't hedge.** Make the call, word it naturally, let position carry the softness. Don't weave "leaning…", "maybe…", "we could…" through a decision you reached — that buries it. The per-topic discussion is where these harden via convergence, so nothing trustworthy is bypassed: discovery explores substance freely, and discussion still ratifies.
+
+**A decision is what the conversation settled.** Record it unhedged — and record nothing else as one. The user's own uncertainty is substance, not hedging to strip: a point they left open (*"I suspect we should…"*, *"I don't know…"*) stays an open question, its lean recorded as theirs, and a suggestion of yours they never took up is not a decision.
 
 ## F. Worked Examples
 

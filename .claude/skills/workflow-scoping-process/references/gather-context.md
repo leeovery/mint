@@ -14,7 +14,7 @@ Gather targeted context about the mechanical change. Read the work's seed and th
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} description
 ```
 
-Read the discovery session log's **Exploration** — single-phase work has exactly one log, at `.workflows/{work_unit}/discovery/sessions/session-001.md`; discovery's shaped context is the carrier's second half. A logless quick-fix has none.
+Read the discovery session log's **Exploration** — single-phase work has exactly one log, at `.workflows/{work_unit}/discovery/sessions/session-001.md`; discovery's shaped context is the carrier's second half.
 
 #### If the carrier — seed, description, and exploration — already captures what, where, and why
 
@@ -26,19 +26,10 @@ Read the discovery session log's **Exploration** — single-phase work has exact
 
 ## B. Targeted Questions
 
-The carrier has already answered some of these. Emit only the questions it leaves open, dropping any bullet it already covers — a question the user has already answered reads as not having listened.
+Four questions scope the change — `what` is being changed (pattern, syntax, API), `where` in the codebase, `why`, and any `exclusions`. The carrier has already answered some of them. Set `open_questions` = the keys of the ones it leaves open, comma-separated, dropping any it already covers — a question the user has already answered reads as not having listened. Fetch the ask and emit its DISPLAY section verbatim per its marker:
 
-> *Output the next fenced block as a code block:*
-
-```
-Scoping: {topic:(titlecase)}
-
-A few questions to scope this change:
-
-- What exactly is being changed? (pattern, syntax, API)
-- Where in the codebase? (files, directories, packages)
-- Why? (deprecation, consistency, modernisation)
-- Any exceptions or areas to exclude?
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render scoping-questions {work_unit} --open {open_questions}
 ```
 
 **STOP.** Wait for user response.

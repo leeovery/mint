@@ -1,24 +1,30 @@
 # Closing Gates
 
-*Reference for **[discussion-session](discussion-session.md)** — loaded when the discussion reaches its close, with every subtopic settled (deferrals already applied).*
+*Reference for **[discussion-session](discussion-session.md)** — loaded when the discussion reaches its close, with every subtopic settled (deferrals already applied) and the topic's waits already checked.*
 
 ---
 
-The passage from conversation to conclusion runs two gates: the **review gate** — is a final review owed, and does the user want it — then the **conclude gate**. Nothing here proceeds silently: whatever the classification, the user hears what comes next and answers.
+The passage from conversation to conclusion runs two gates: the **review gate** — is a review still owed, or one more worth offering, and does the user want it — then the **conclude gate**. Nothing here proceeds silently: whatever the classification, the user hears what comes next and answers.
 
-The triage queue precedes both gates — a queued concern is work the conclusion cannot pass, and a review dispatched over it would read a document the walk is about to move. Check it first:
+The mailbox precedes both gates — a waiting message is work the conclusion cannot pass, and a review dispatched over it would read a document the walk is about to move. Check it first:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs topic queue {work_unit} discussion {topic}
+node .claude/skills/workflow-engine/scripts/engine.cjs topic mailbox {work_unit} discussion {topic}
 ```
 
-**If `count` is non-zero:**
+**If `count` is non-zero and this entry is the user's signal:**
 
 Render the blocker and emit both its sections verbatim per their markers — the red blocker line, then its guidance:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs render triage-block {work_unit}.discussion.{topic}
+node .claude/skills/workflow-engine/scripts/engine.cjs render mail-block {work_unit}.discussion.{topic}
 ```
+
+→ Return to caller for **B. Session Loop**.
+
+**If `count` is non-zero:**
+
+The map settled, or the ceremony resumed, over a waiting message — it is raised before the gates, never refused: the session loop's mailbox check offers the mailbox at this break (the close holds over an earlier `later`), and the drain's last fold re-enters the close.
 
 → Return to caller for **B. Session Loop**.
 
@@ -36,9 +42,9 @@ node .claude/skills/workflow-engine/scripts/engine.cjs agent scan {work_unit} di
 
 Classify what the final-review step still owes — first match wins:
 
-1. Any `review`, `synthesis`, or `perspective` row is `pending` or `acknowledged` → **findings-owed**: "background findings are still to be walked through"
-2. Any `review` row is `in-flight` → **review-running**: "a dispatched review is still running"
-3. No `review` row exists → **never-reviewed**: "no review has run yet"
+1. Any `review`, `synthesis`, or `perspective` row is `pending` or `acknowledged` → **findings-owed**
+2. Any `review` row is `in-flight` → **review-running**
+3. No `review` row exists → **never-reviewed**
 4. Otherwise the highest-numbered `review` row is `incorporated` — classify by movement, anchored on the last **real** review: the highest-numbered `review` row whose report exists on disk (`.workflows/.cache/{work_unit}/discussion/{topic}/{id}.md`, non-empty). An `incorporated` row with no report is a killed dispatch closed as bookkeeping, never a review — anchoring on it would hide every commit between the real review and the kill. If no review row has a report, no review has ever completed → **never-reviewed**. Otherwise run `git log --since='{created}' --format='%h %s' -- .workflows/{work_unit}/discussion/{topic}.md` (`{created}` = the anchor row's `created` timestamp; git does the time comparison), then drop commits whose subject carries a `review-` or `synthesis-` drain marker (e.g. `(review-003 F2)`) or a `(deferral)` marker — engagement writes and the conclusion's own deferral write are not new work. Classify the residue:
    1. No commits remain → **satisfied**: the final review is up to date — no judgment
    2. A remaining commit is meaningful — a decision documented, a subtopic explored; not typo fixes, not bookkeeping (document-review reconciliation, summary maintenance) → **re-review**: the discussion has moved since the last review
@@ -66,19 +72,10 @@ No review to offer — the conclude gate is next.
 
 ## B. Review Gate — Optional
 
-A review has already run and drained; declining another forfeits nothing owed.
+A review has already run and drained; declining another forfeits nothing owed. Fetch the gate and emit its MENU section verbatim per its marker:
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-The discussion has moved since the last final review. Another pass can catch what that movement opened — or conclude on the review you've already had.
-
-**`◆ Run another final review?`**
-
-**`y/yes`**      → Run another final review
-**`s/skip`**     → Conclude on the last review — the movement stays unreviewed
-**Keep going** → Tell me what else to explore
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render closing-gate {work_unit}.discussion.{topic} --variant re-review
 ```
 
 **STOP.** Wait for user response.
@@ -87,9 +84,9 @@ The discussion has moved since the last final review. Another pass can catch wha
 
 → Proceed to **E. In-Flight Agent Check**.
 
-**If `skip`:**
+**If `no`:**
 
-Another final review is declined for this conclusion attempt — Step 6 honours the decline, and a later attempt classifies afresh and offers again.
+One more review is declined for this ceremony — Step 6 honours the decline, a resumed ceremony does not re-offer it, and a later ceremony classifies afresh and offers again.
 
 → Proceed to **D. Conclude Gate**.
 
@@ -103,17 +100,10 @@ At least one full review pass belongs to every discussion — this one cannot be
 
 #### If the classification is `findings-owed`
 
-Nothing new runs on `yes` — background findings have already come back, and Step 6 walks them. The gate says that plainly, so "another review" is never the reading the user answers to.
+Nothing new runs on `yes` — background findings have already come back, and Step 6 walks them. The gate says that plainly, so "another review" is never the reading the user answers to. Fetch it and emit its MENU section verbatim per its marker:
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-Background findings have come back and are still to be walked — they must be heard before concluding.
-Walk them now?
-
-**`y/yes`**      → Walk what came back
-**Keep going** → Tell me what else to explore
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render closing-gate {work_unit}.discussion.{topic} --variant findings-owed
 ```
 
 **STOP.** Wait for user response.
@@ -126,19 +116,32 @@ Walk them now?
 
 → Return to caller for **B. Session Loop**.
 
+#### If the classification is `review-running`
+
+Nothing new runs on `yes` — the pass in flight is the mandatory one, and `yes` is the decision to wait for it. The gate says that plainly, so "another review" is never the reading the user answers to. Fetch it and emit its MENU section verbatim per its marker:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render closing-gate {work_unit}.discussion.{topic} --variant review-running
+```
+
+**STOP.** Wait for user response.
+
+**If `yes`:**
+
+The wait is chosen here — **E** asks no second time.
+
+→ Proceed to **E. In-Flight Agent Check**.
+
+**If keep going:**
+
+→ Return to caller for **B. Session Loop**.
+
 #### Otherwise
 
-`{reason}` is the matched classification's quoted description.
+Fetch the gate and emit its MENU section verbatim per its marker:
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-Next: a final gap review before concluding — {reason}.
-Proceed?
-
-**`y/yes`**      → Run the final review
-**Keep going** → Tell me what else to explore
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render closing-gate {work_unit}.discussion.{topic} --variant final-review
 ```
 
 **STOP.** Wait for user response.
@@ -153,16 +156,10 @@ Proceed?
 
 ## D. Conclude Gate
 
-> *Output the next fenced block as markdown (not a code block):*
+Fetch the gate and emit its MENU section verbatim per its marker:
 
-```
-· · · · · · · · · · · ·
-I'll reconcile the document against our conversation, then confirm before marking complete.
-
-**`◆ Do you wish to conclude?`**
-
-**`y/yes`** → Conclude — begin wrap-up
-**`n/no`**  → Continue the conversation
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render closing-gate {work_unit}.discussion.{topic} --variant wrap-up
 ```
 
 **STOP.** Wait for user response.
@@ -177,32 +174,16 @@ I'll reconcile the document against our conversation, then confirm before markin
 
 ## E. In-Flight Agent Check
 
-The last gate before leaving the session, whichever path led here. Run `node .claude/skills/workflow-engine/scripts/engine.cjs agent scan {work_unit} discussion {topic}` and read the response's `in_flight` list (agents dispatched but not yet returned). An agent dispatched by an earlier session cannot still be running — each row's `created` timestamp tells you which those are; close each (`agent incorporate`), re-scan, and count only this session's. A dead `synthesis` row is the exception: handle it per **D. Check and Surface** in **[perspective-agents.md](perspective-agents.md)** — closed *and* re-dispatched, so the council's tensions aren't lost.
+The last gate before leaving the session, whichever path led here.
 
-#### If no agents are in flight
+→ Load **[in-flight-agents.md](../../workflow-shared/references/in-flight-agents.md)** with work_unit = `{work_unit}`, topic = `{topic}`, phase = `discussion`, exit = `conclude`.
+
+#### If `result` is `leave`
 
 → Return to **[the skill](../SKILL.md)** for **Step 6**.
 
-#### If agents are still running
+#### If `result` is `stay`
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-**`◆ There are still {N} background agents working.`**
-
-**`w/wait`**    → Wait for results before concluding
-**`p/proceed`** → Conclude now (results will persist in cache for reference)
-```
-
-**STOP.** Wait for user response.
-
-**If `wait`:**
-
-Watch for `agent scan` to promote each in-flight row to `pending`. When none remain in flight, delegate surfacing to the shared protocol loaded by review-agent.md and perspective-agents.md. The protocol applies the never-dump rules: two-phase surfacing, one finding at a time. Treat the current moment as a natural break — we are at phase conclusion, so the break check will pass.
+The ceremony stays open: once what came back is walked, the session loop's check re-enters **G. Concluding** and these gates classify afresh.
 
 → Return to caller for **B. Session Loop**.
-
-**If `proceed`:**
-
-→ Return to **[the skill](../SKILL.md)** for **Step 6**.

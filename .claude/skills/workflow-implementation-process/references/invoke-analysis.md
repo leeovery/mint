@@ -10,19 +10,17 @@ This step dispatches the three analysis agents in parallel to evaluate the compl
 
 ## Identify Scope
 
-Build the list of implementation files using git history:
+The implementation files are the `files` of this topic's task commits, read across every repo in the project:
 
 ```bash
-git log --oneline --name-only --pretty=format: --grep="impl({work_unit}): T{topic}-" | sort -u | grep -v '^$'
+node .claude/skills/workflow-engine/scripts/engine.cjs code log {work_unit} {topic}
 ```
-
-This captures all files touched by this topic's task commits (internal IDs embed the topic, so the `T{topic}-` prefix keeps sibling topics of a multi-topic epic out of scope).
 
 ---
 
 ## Dispatch All Three Agents
 
-> **CRITICAL**: Dispatch with clean context. Pass each agent **only** the seven inputs listed below. Do **not** include prior cycle findings, summaries of what earlier cycles caught or missed, your own hunches, or any framing that suggests where to look. Each cycle must run independently — cross-cycle synthesis happens in the synthesizer, not in the agents. Priming biases results (a clean cycle-N report after a high-finding cycle-(N-1) is a red flag, not convergence).
+> **CRITICAL**: Dispatch with clean context. Pass each agent **only** the eight inputs listed below. Do **not** include prior cycle findings, summaries of what earlier cycles caught or missed, your own hunches, or any framing that suggests where to look. Each cycle must run independently — cross-cycle synthesis happens in the synthesizer, not in the agents. Priming biases results (a clean cycle-N report after a high-finding cycle-(N-1) is a red flag, not convergence).
 
 Dispatch **all three in parallel** via the Task tool. Each agent receives the same inputs:
 
@@ -33,24 +31,27 @@ Dispatch **all three in parallel** via the Task tool. Each agent receives the sa
 5. **Work unit** — the work unit name (for path construction)
 6. **Topic name** — the implementation topic
 7. **Cycle number** — from `analysis_cycle_total` in the manifest: `node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.implementation.{topic} analysis_cycle_total`
+8. **finding-floor.md path** — `.claude/skills/workflow-implementation-process/references/finding-floor.md`
 
 Each agent knows its own output path convention and writes findings independently.
 
 ### Agent 1: Duplication
 
-- **Agent path**: `../../../agents/workflow-implementation-analysis-duplication.md`
+- **Agent path**: `.claude/agents/workflow-implementation-analysis-duplication.md`
 
 ### Agent 2: Standards
 
-- **Agent path**: `../../../agents/workflow-implementation-analysis-standards.md`
+- **Agent path**: `.claude/agents/workflow-implementation-analysis-standards.md`
 
 ### Agent 3: Architecture
 
-- **Agent path**: `../../../agents/workflow-implementation-analysis-architecture.md`
+- **Agent path**: `.claude/agents/workflow-implementation-analysis-architecture.md`
 
 ---
 
 ## Wait for Completion
+
+The dispatch runs in the background (`run_in_background: true`) and ends the turn on exactly `The analysis agents have been dispatched for analysis cycle {N}.` — `{N}` the cycle number of item 7.
 
 > **CHECKPOINT**: Do not proceed until all three agents have returned.
 
@@ -62,7 +63,7 @@ FINDINGS_COUNT: {N}
 SUMMARY: {1 sentence}
 ```
 
-- `findings`: the agent recorded issues in its output file
+- `findings`: the agent recorded findings or comment corrections in its output file
 - `clean`: the agent found nothing to report
 
 If any agent fails (error, timeout), record the failure and continue — the synthesizer works with whatever findings files are available.

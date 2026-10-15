@@ -49,7 +49,7 @@ Review as a senior architect would:
 
 ## Quick-Fix Variant
 
-Quick-fix tasks are deliberately authored without acceptance criteria or micro acceptance — never flag their absence. Substitute:
+Quick-fix tasks are deliberately authored without acceptance criteria — never flag their absence. Substitute:
 
 **Implementation** — verify completeness against the task's Verification section:
 - Are all target files updated?
@@ -63,14 +63,18 @@ Quick-fix tasks are deliberately authored without acceptance criteria or micro a
 
 Code quality criteria apply unchanged.
 
+## Change-Set Verification
+
+After every task is verified, the workflow-review-change-set-verifier holds the whole delivered change-set against the specification's intent — one agent per numbered section plus one over the test surface — measuring where the project's own conventions give a way to and reading where they do not. Each measures the criteria the task verifiers recorded as unsettled and returns a coverage map: what it checked and found sound. The report's Specification Compliance is those maps; a criterion neither layer could settle is named under Plan Completion, never absorbed.
+
 ## Plan Completion Check
 
-After task-level verification, check overall plan completion:
+After task-level and change-set verification, check overall plan completion:
 
 ### Phase Acceptance Criteria
 
 For each phase:
-- Are all phase-level acceptance criteria met?
+- Are all phase-level acceptance criteria that were settled or measured met? An unmeasured criterion counts neither way — it is named under Criteria Not Measured
 - Were all tasks in the phase completed? (Tasks the backend marks skipped or cancelled are deliberate discards — they don't count against completion)
 
 ### Scope
@@ -78,6 +82,10 @@ For each phase:
 - Was anything built that wasn't in the plan? (scope creep)
 - Was anything in the plan not built? (missing scope)
 - Any unplanned files or features added?
+
+### Criteria Not Measured
+
+- Which acceptance criteria did neither reading nor the change-set verification settle? Each is named with its task suffix — disclosed, never ticked
 
 ## Common Issues
 
@@ -121,10 +129,10 @@ Verify what you cite:
 - Re-read the line before quoting its number; never name a symbol you have not located
 - Count before claiming a count — "the only site", "the single caller", "eleven call sites" are claims, not colour
 - Check that the edit you prescribe is safe applied exactly as written
-- Repo-relative paths only
+- Project-relative paths only — named from the project, as the engine's `code` reads name them, never relative to a nested repo
 
 Report only what is wrong:
 
-- **Blocking**: the work cannot be called delivered — acceptance criteria unmet in substance, or behaviour that is broken. Never a finding whose entire remedy is comment or documentation text
+- **Blocking**: the work cannot be called delivered — acceptance criteria unmet in substance, or behaviour that is broken. Never a finding whose entire remedy is comment or documentation text. Each entry names its remedy, or points at the FINDINGS line that prescribes it, so it can be routed
 - **A finding**: something broken or incorrect, or a violation of the spec, the plan, or the project's standards — carrying the concrete failure that follows from leaving it
 - **Not reported at all**: a preference none of those require. A fold, an extraction, a rename, a reordering. Ease of doing it is not a reason to raise it

@@ -50,7 +50,7 @@ Work through each phase in order. Check the current phase's state.
 
 #### If the phase has a task table
 
-Write the task-list payload to `.workflows/.cache/{work_unit}/planning/{topic}/task-list-phase-{N}.json` with the Write tool (`{"phase": {N}, "phase_name": "{Phase Name}", "tasks": [{"name": "…", "summary": "…", "edge_cases": ["…"]}]}` from the planning file's task table), render, and emit each section verbatim at its marked instruction:
+Write the task-list payload to `.workflows/.cache/{work_unit}/planning/{topic}/task-list-phase-{N}.json` with the Write tool (`{"phase": {N}, "phase_name": "{Phase Name}", "tasks": [{"name": "…", "summary": "…", "edge_cases": ["…"]}]}` from the planning file's task table), render, and emit each section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render task-list {work_unit}.planning.{topic} --file .workflows/.cache/{work_unit}/planning/{topic}/task-list-phase-{N}.json --variant existing
@@ -100,11 +100,7 @@ If the manifest still carries a `staging.author-p{N}` subtree for this phase (ch
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest delete {work_unit}.planning.{topic} staging.author-p{N}
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-Phase {N}: {Phase Name} — all tasks already authored.
-```
+Say `Phase {N}: {Phase Name} — all tasks already authored.`
 
 → Proceed to **D. Advance Phase**.
 
@@ -133,14 +129,10 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 
 Commit:
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): complete Phase {N} tasks"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): complete Phase {N} tasks" --topic planning/{topic}
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-Phase {N}: {Phase Name} — complete ({M} tasks authored).
-```
+Say `Phase {N}: {Phase Name} — complete ({M} task(s) authored).`, `{M}` the tasks in the phase's task list.
 
 #### If more phases remain
 
@@ -154,10 +146,10 @@ Phase {N}: {Phase Name} — complete ({M} tasks authored).
 
 ## E. Loop Complete
 
-> *Output the next fenced block as markdown (not a code block):*
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render plan-progress {work_unit}.planning.{topic} --variant construction-complete
+```
 
-```
-All phases are complete. The plan has **{N} phases** with **{M} tasks** total.
-```
+Emit the call's DISPLAY section verbatim per its marker.
 
 → Return to caller.

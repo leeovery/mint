@@ -19,12 +19,19 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 #### If `review_cycle` is `0`
 
-Set `review_cycle` to 1 in the manifest:
+Set `review_cycle` to 1 and record the baseline — the word count of the plan and its phase task files, which review growth is measured against at the diagnostic:
+
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} review_cycle 1
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} review_cycle=1 review_baseline_words=$(cat .workflows/{work_unit}/planning/{topic}/planning.md .workflows/{work_unit}/planning/{topic}/phase-*-tasks.md | wc -w)
 ```
 
 Record the current cycle number — passed to both review agents for tracking file naming (`c{N}`).
+
+Commit the updated manifest:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): begin review cycle {N}" --topic planning/{topic}
+```
 
 → Proceed to **C. Traceability Review**.
 
@@ -54,27 +61,23 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 #### If `review_cycle` > 3 and `finding_gate_mode` is `auto`
 
-Auto mode is active — pass through to review. Section E's safety cap (cycle 5) handles escalation.
+Auto mode is active — pass through to review. Section E concludes the review on a churning verdict from cycle 2, and at the cycle-5 cap regardless.
 
 → Proceed to **C. Traceability Review**.
 
 #### If `review_cycle` > 3 and `finding_gate_mode` is `gated` (or not set)
 
-→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`.
+→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`, render_when = `always`.
 
-> *Output the next fenced block as markdown (not a code block):*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render plan-review-gate {work_unit}.planning.{topic} --variant continue
 ```
-· · · · · · · · · · · ·
-**`◆ Continue with review?`**
 
-**`p/proceed`** → Continue review
-**`s/skip`**    → Skip review, proceed to completion
-```
+Emit the call's MENU section verbatim per its marker.
 
 **STOP.** Wait for user response.
 
-**If `proceed`:**
+**If `yes`:**
 
 → Proceed to **C. Traceability Review**.
 
@@ -86,6 +89,8 @@ Auto mode is active — pass through to review. Section E's safety cap (cycle 5)
 
 ## C. Traceability Review
 
+List the earlier cycles' tracking files beside the plan — every `.workflows/{work_unit}/planning/{topic}/review-traceability-tracking-c{M}.md` and `review-integrity-tracking-c{M}.md` whose `{M}` is below the current cycle. Cycle 1 lists none.
+
 → Load **[invoke-review-traceability.md](invoke-review-traceability.md)** and follow its instructions as written.
 
 > **CHECKPOINT**: Do not proceed until the agent has returned its result.
@@ -93,7 +98,7 @@ Auto mode is active — pass through to review. Section E's safety cap (cycle 5)
 **If the agent created a tracking file**, record it in progress (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} tracking.{file stem} in-progress`) and commit it:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): traceability review cycle {N}"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): traceability review cycle {N}" --topic planning/{topic}
 ```
 
 → Load **[process-review-findings.md](process-review-findings.md)** and follow its instructions as written.
@@ -104,6 +109,8 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "pl
 
 ## D. Plan Integrity Review
 
+List the earlier cycles' tracking files beside the plan — every `.workflows/{work_unit}/planning/{topic}/review-traceability-tracking-c{M}.md` and `review-integrity-tracking-c{M}.md` whose `{M}` is below the current cycle. Cycle 1 lists none.
+
 → Load **[invoke-review-integrity.md](invoke-review-integrity.md)** and follow its instructions as written.
 
 > **CHECKPOINT**: Do not proceed until the agent has returned its result.
@@ -111,7 +118,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "pl
 **If the agent created a tracking file**, record it in progress (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} tracking.{file stem} in-progress`) and commit it:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): integrity review cycle {N}"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): integrity review cycle {N}" --topic planning/{topic}
 ```
 
 → Load **[process-review-findings.md](process-review-findings.md)** and follow its instructions as written.
@@ -134,47 +141,35 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 #### If findings were surfaced and `finding_gate_mode` is `auto` and `review_cycle` < 5
 
-> *Output the next fenced block as a code block:*
+From the second cycle onward the trend decides whether the loop runs again: a churning cycle concludes the review.
 
-```
-Review cycle {N} complete — findings applied. Running follow-up cycle.
-```
+**If `review_cycle` is 2, 3, or 4:**
 
-→ Return to **A. Cycle Initialization**.
+→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`, render_when = `churning`.
 
-#### If findings were surfaced and `finding_gate_mode` is `auto` and `review_cycle` >= 5
+**If `review_cycle` is 1, or the analysis classified no `churning` trend:**
 
-→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`.
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Fixes applied this cycle may have shifted dependencies, introduced gaps, or affected other tasks. A follow-up round reviews the corrected plan with fresh context — 2-3 cycles typically surface anything cascading.
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-**`◆ Run another review round?`**
-
-**`r/reanalyse`** → Run another round (traceability + integrity)
-**`p/proceed`**   → Proceed to conclusion
-```
-
-**STOP.** Wait for user response.
-
-**If `reanalyse`:**
+Say `Review cycle {N} complete — findings applied. Running follow-up cycle.`
 
 → Return to **A. Cycle Initialization**.
 
-**If `proceed`:**
+**If `review_cycle` is 2, 3, or 4 and the analysis classified the trend as `churning`** (its diagnostic rendered above):
+
+Say `Findings are churning — concluding the review.`
 
 → Proceed to **F. Completion**.
 
+#### If findings were surfaced and `finding_gate_mode` is `auto` and `review_cycle` >= 5
+
+→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`, render_when = `always`.
+
+Say `Cycle cap reached — concluding the review.`
+
+→ On return, proceed to **F. Completion**.
+
 #### If findings were surfaced and `finding_gate_mode` is `gated`
 
-→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`.
+→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `planning-review`, work_unit = `{work_unit}`, topic = `{topic}`, render_when = `always`.
 
 > *Output the next fenced block as markdown (not a code block):*
 
@@ -182,19 +177,15 @@ Review cycle {N} complete — findings applied. Running follow-up cycle.
 > Fixes applied this cycle may have shifted dependencies, introduced gaps, or affected other tasks. A follow-up round reviews the corrected plan with fresh context — 2-3 cycles typically surface anything cascading.
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render plan-review-gate {work_unit}.planning.{topic} --variant reloop
 ```
-· · · · · · · · · · · ·
-**`◆ Run another review round?`**
 
-**`r/reanalyse`** → Run another round (traceability + integrity)
-**`p/proceed`**   → Proceed to conclusion
-```
+Emit the call's MENU section verbatim per its marker.
 
 **STOP.** Wait for user response.
 
-**If `reanalyse`:**
+**If `yes`:**
 
 → Return to **A. Cycle Initialization**.
 
@@ -214,13 +205,9 @@ Read `manifest get {work_unit}.planning.{topic} tracking`. If any entry is `in-p
 
 2. **Commit** all review tracking files:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): complete plan review (cycle {N})"
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): complete plan review (cycle {N})" --topic planning/{topic}
    ```
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-Plan review complete — {N} cycle(s), all tracking files finalised.
-```
+Say `Plan review complete — {N} cycle(s), all tracking files finalised.`
 
 → Return to caller.

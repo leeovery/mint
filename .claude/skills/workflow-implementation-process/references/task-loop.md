@@ -9,26 +9,26 @@ Follow stages A through H sequentially for each task — stage J is the phase-bo
 At loop entry (crash-resume healing): if the plan marks tasks completed — completed, not skipped — that the manifest's `completed_tasks` lacks, run `engine task complete` for each missing internal id — in plan order, passing `--phase` with the phase embedded in the id — before retrieving the next task. The push is an idempotent no-op for ids already recorded, and this reseals the seam a crash between the plan mark and the bookkeeping can leave.
 
 ```
-A. Retrieve next task + mark in-progress + present the task brief
+A. Retrieve next task + mark in-progress + present the task brief (a resumed task → F)
 B. Execute task → invoke-executor.md
 C. Handle executor block (conditional)
 D. Review task → invoke-reviewer.md
 E. Evaluate review changes (conditional, fix_gate_mode)
 F. Fix approval gate (gated prompt)
-G. Task gate (gated → prompt user / auto → announce)
+G. Task gate (gated → prompt user / auto or bounded → announce)
 H. Update progress + phase check + commit
 I. All tasks complete (exit to caller)
 J. Consolidation pass (phase boundary) → consolidation-pass.md
 → loop back to A until done
 ```
 
-**Engine sections**: the loop's state-derived sections — the task brief, the result header, and the gates — render via `engine render` calls — each stage below fetches its own section at the moment it displays it and emits what returns, so the section always sits in the tool result directly above its emission. Each section is emitted verbatim as the form its marker names. A section is everything beneath its `===` marker up to the end of the response — the marker lines themselves are never emitted. Section content is emitted byte-for-byte — never redrawn, reflowed, or re-derived.
+**Engine sections**: the loop's state-derived sections — the task brief, the result header, and the gates — render via `engine render` calls. Each stage below fetches its own section at the moment it displays it and emits it verbatim per its marker; its content is never redrawn, reflowed, or re-derived.
 
 **Agent lifecycle**: every review dispatches a fresh reviewer agent, and every task's first attempt dispatches a fresh executor agent; the only continuation is re-invoking the current task's executor for a fix round, a retry, or a gate comment round. Warm context never justifies crossing these lines — **[invoke-executor.md](invoke-executor.md)** and **[invoke-reviewer.md](invoke-reviewer.md)** carry the dispatch mechanics.
 
-→ Load **[report-register.md](report-register.md)** and follow its instructions as written — the register for the task brief in **A**, the findings summaries and their lenses in **E** and **F**, and the result summary and its lenses in **G**.
+→ Load **[report-register.md](report-register.md)** and follow its instructions as written — the register for the task brief in **A**, the executor block in **C**, the findings summaries and their lenses in **E** and **F**, and the result summary and its lenses in **G**.
 
-Read `work_type` once here at loop entry — it selects the executor's workflow reference (TDD vs verification) for every task and never changes mid-loop, so **[invoke-executor.md](invoke-executor.md)** consumes it from session context rather than re-reading it per invocation:
+Read `work_type` once here at loop entry — it selects the executor's workflow reference (TDD vs verification) and the reviewer's criteria for every task and never changes mid-loop, so **[invoke-executor.md](invoke-executor.md)** and **[invoke-reviewer.md](invoke-reviewer.md)** consume it from session context rather than re-reading it per invocation:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} work_type
@@ -59,21 +59,10 @@ Follow the format's **reading.md** instructions to determine the next available 
 
 **If open or in-progress tasks remain (blocked):**
 
-> *Output the next fenced block as a code block:*
-
-```
-No ready tasks remain, but {N} task(s) are still open — blocked:
-
-  {internal_id}: {Task Name}
-  └─ Blocked by {blocker_id} [{blocker status}]
-
-  ...
-```
-
-Fetch the blocked-tasks menu and emit its `MENU: blocked tasks` section:
+Write the payload to `.workflows/.cache/{work_unit}/implementation/{topic}/blocked-tasks.json` with the Write tool — every blocked task in plan order, each with what blocks it as the format's reading gives it: `{"tasks": [{"id": "{internal_id}", "name": "{Task Name}", "blockers": [{"id": "{blocker_id}", "status": "{blocker status}"}]}]}` — then fetch the blocked tasks and their stop, emitting each section verbatim per its marker:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs render blocked-tasks
+node .claude/skills/workflow-engine/scripts/engine.cjs render blocked-tasks {work_unit}.implementation.{topic} --file .workflows/.cache/{work_unit}/implementation/{topic}/blocked-tasks.json
 ```
 
 **STOP.** Wait for user response.
@@ -108,8 +97,16 @@ Stage A re-detects any remaining blocked tasks on the loop back.
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs task start {work_unit} {topic} {internal_id}
    ```
-   The response's `gates` carry `task_gate_mode` and `fix_gate_mode` — stages E and G branch on these values. Do not re-read them mid-task: an `a/auto` opt-in is made by this flow itself, so you already know the current mode.
+   The response's `gates` carry `task_gate_mode` and `fix_gate_mode` — `gated`, `auto` (the rest of this session), or `bounded` (to the end of the current plan phase — the engine returns it to `gated` as the phase records complete). Stages E and G branch on these values. Do not re-read them mid-task: an `a/auto` or `b/bounded` opt-in is made by this flow itself, so you already know the current mode. The response's `do_banking` says whether the task's phase still takes BANK deposits — stages B, D and F branch on it; hold it in session context for the task.
 4. Mark the task as in-progress — follow the format's **updating.md** status transition.
+
+The `start` response's `mode` says whether this task is being taken up or resumed.
+
+**If `mode` is `resumed`** — a previous session left the task mid-fix-round, its recorded findings unanswered:
+
+→ Proceed to **F. Fix Approval Gate**.
+
+**If `mode` is `started`:**
 
 → Load **[display-task-brief.md](display-task-brief.md)** and follow its instructions as written.
 
@@ -125,11 +122,15 @@ The turn does not end here — the executor dispatch follows in the same turn.
 
 > **CHECKPOINT**: Do not proceed until the executor has returned its result.
 
-**Deposit banked opportunities** — every executor report that carries BANK entries deposits them the moment it arrives, whatever its STATUS. They are decided at the phase boundary, which may be tasks away, and conversation context does not survive that long — the manifest does; the pushes ride the next commit that stages it. A near-duplicate of an earlier round's entry is fine — the boundary pass folds them. Push each entry:
+#### If `do_banking` is `true`
 
-```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs manifest push {work_unit}.implementation.{topic} bank '{"task":"{internal_id}","source":"executor","summary":"{one line}","detail":"{what and where, file:line}","files":["{path}"]}'
-```
+→ Load **[bank-deposit.md](bank-deposit.md)** with source = `executor`.
+
+→ On return, proceed to the **`STATUS`** branches below.
+
+#### Otherwise
+
+→ Proceed to the **`STATUS`** branches below.
 
 #### If `STATUS` is `blocked` or `failed`
 
@@ -143,38 +144,101 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest push {work_unit}
 
 ## C. Handle Executor Block
 
-→ Load **[display-task-result.md](display-task-result.md)** with result = `{the executor's STATUS: blocked or failed}`.
+#### If `STATUS` is `blocked`
 
-> *Output the next fenced block as a code block:*
+The executor stops on intent alone — a product question the task, the specification sections it cites, and the code do not answer. The question takes the same three tiers a spec gap takes in planning, one hop further down, and the classification runs before anything renders:
 
+→ Load **[../../workflow-planning-process/references/resolve-spec-gap.md](../../workflow-planning-process/references/resolve-spec-gap.md)** with lane = `implementation`, gap = `{the product question the executor reported, what it found, and what goes wrong for the product's user if it guesses}`, task = `{internal_id}`.
+
+Read the `verdict` it returns.
+
+**If `landed`** — the record carries the answer and the specification is in line with it:
+
+Land it on the task in flight — **[ad-hoc-plan-changes.md](ad-hoc-plan-changes.md)** section **C. Deliver to the Executor**, an addition marked with its origin: the orchestrator's where the record settled it, the user's where they settled it at the gate.
+
+Nothing stops here — the question is answered, and no gate mode changes that.
+
+→ Return to **B. Execute Task**.
+
+**If `answered`** — the user settled it and the record could not take the answer this pass:
+
+Land it on the task in flight — **[ad-hoc-plan-changes.md](ad-hoc-plan-changes.md)** section **C. Deliver to the Executor**, an addition from the user — and say in one line that it rides the task while the record is out.
+
+→ Return to **B. Execute Task**.
+
+**If `stopped`** — the question this task needs is already waiting in the mailbox of the discussion that owns it:
+
+Say in one line that implementation resumes once that discussion has decided it — the epic menu and the linear next-phase derivation both route back to the reopened record.
+
+**STOP.** Do not proceed — terminal condition.
+
+**If `unsettled`** — nothing was asked: the specification is live in its own phase or held by another session, and the reference has told the user so:
+
+The executor still needs an answer, and the gate takes the fork's sides. Render the task's header first:
+
+→ Load **[display-task-result.md](display-task-result.md)** with result = `blocked`.
+
+Beneath it, compose and emit the block as the register's executor block (**[report-register.md](report-register.md)** → Executor Block) — **Blocked on**, **What the executor found**, **Options**, **Recommendation** — from the executor's ISSUES and your own reads of the specification and the code.
+
+Write the sides to `.workflows/.cache/{work_unit}/implementation/{topic}/block-sides.json` with the Write tool — the Options in the order composed, each summary that option's bold label, the recommended one an object and the rest plain strings:
+
+```json
+{"options": [{"summary": "{recommended option's label}", "recommended": true}, "{next option's label}"]}
 ```
-{executor's ISSUES content}
-```
 
-> *Output the next fenced block as markdown (not a code block):*
+Fetch the gate and emit its MENU section verbatim per its marker:
 
-```
-· · · · · · · · · · · ·
-**`◆ How would you like to proceed?`**
-
-**`r/retry`** → Re-invoke the executor with your comments (provide below)
-**`s/skip`**  → Skip this task and move to the next
-**`t/stop`**  → Stop implementation entirely
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render executor-block-gate {work_unit}.implementation.{topic} --result blocked --file .workflows/.cache/{work_unit}/implementation/{topic}/block-sides.json
 ```
 
 **STOP.** Wait for user response.
 
-#### If `retry`
+**If the user picks a numbered side:**
+
+Land it on the task in flight — **[ad-hoc-plan-changes.md](ad-hoc-plan-changes.md)** section **C. Deliver to the Executor**, an addition from the user — and say in one line that it rides the task alone: the specification is out, so this pass corrects nothing in it.
 
 → Return to **B. Execute Task**.
 
-#### If `skip`
+**If the comment names a side or a direction:**
 
-→ Proceed to **H. Update Progress and Commit** (mark task as skipped).
+Land what the user named the same way, and say the same line.
 
-#### If `stop`
+→ Return to **B. Execute Task**.
 
-→ Return to **[the skill](../SKILL.md)** for **Step 8**.
+**If the comment is a question back or feedback:**
+
+Answer it. Where the feedback moves the Options, revise them, re-emit the revised Options, and rewrite the payload. The exchange sets the gate aside; once it looks settled, ask in conversation whether they are ready to move on, and on yes put it back — re-fetch the gate and emit its MENU section verbatim per its marker; the reply takes these branches again.
+
+**STOP.** Wait for user response.
+
+#### If `STATUS` is `failed`
+
+The executor could not finish — tests it could not make pass, or an environment that will not do what the record assumes. The task is not over; it is being fixed. Neither a skip nor a stop is on offer: an environment that cannot be fixed now is left in progress, and the session that comes back resumes the task where it stands. Render the task's header first:
+
+→ Load **[display-task-result.md](display-task-result.md)** with result = `failed`.
+
+Read what the failure touches before composing — the files and lines the ISSUES cite, the test that fails, the code the task builds on, and the specification sections the task cites. Beneath the header, compose and emit the block as the register's executor failure (**[report-register.md](report-register.md)** → Executor Failure) — **What failed**, **What the executor tried**, **Why**, and **Next attempt**, or **What is needed** where the environment is the cause — from the executor's ISSUES and your own read of the failure and the code, never the ISSUES verbatim: **Why** is what that read shows, not the executor's diagnosis restated.
+
+Fetch the gate and emit its MENU section verbatim per its marker:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render executor-block-gate {work_unit}.implementation.{topic} --result failed
+```
+
+**STOP.** Wait for user response.
+
+**If `retry`:**
+
+Carry the block's **Next attempt** and anything the user added into the re-invocation — the retry round of **[invoke-executor.md](invoke-executor.md)**, a continuation of the same executor.
+
+→ Return to **B. Execute Task**.
+
+**If the comment is a question or steers the attempt:**
+
+Answer it. Where it moves the **Next attempt** — a cause you read wrong, an environment the user has just fixed — revise it and re-emit that line. The exchange sets the gate aside; once it looks settled, ask in conversation whether they are ready to move on, and on yes put it back — re-fetch the gate and emit its MENU section verbatim per its marker; the reply takes these branches again.
+
+**STOP.** Wait for user response.
 
 ---
 
@@ -184,7 +248,15 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest push {work_unit}
 
 > **CHECKPOINT**: Do not proceed until the reviewer has returned its result.
 
-**Deposit banked opportunities** — every review that carries BANK entries deposits them the moment it arrives, whatever its verdict: push each as at **B. Execute Task**, with `"source":"reviewer"`.
+#### If `do_banking` is `true`
+
+→ Load **[bank-deposit.md](bank-deposit.md)** with source = `reviewer`.
+
+→ On return, proceed to the **`VERDICT`** branches below.
+
+#### Otherwise
+
+→ Proceed to the **`VERDICT`** branches below.
 
 #### If `VERDICT` is `needs-changes`
 
@@ -224,27 +296,21 @@ Record the attempt via the engine (increments `fix_attempts` and appends the fin
 node .claude/skills/workflow-engine/scripts/engine.cjs task fix-attempt {work_unit} {topic} {internal_id} --findings-file .workflows/.cache/{work_unit}/implementation/{topic}/attempt-findings.md
 ```
 
-→ Load **[display-task-result.md](display-task-result.md)** with result = `needs-changes`.
-
 #### If the response's `threshold_reached` is `true`
 
-→ Load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** with loop_type = `fix`, work_unit = `{work_unit}`, topic = `{topic}`, internal_id = `{internal_id}`.
-
-Present the reviewer's findings as the register's findings summary (**[report-register.md](report-register.md)** → Findings Summary).
-
-The turn does not end here — the gate menu follows in the same turn.
-
-→ On return, proceed to **F. Fix Approval Gate**.
+→ Proceed to **F. Fix Approval Gate**.
 
 #### If the response's `threshold_reached` is `false`
 
-Present the reviewer's findings as the register's findings summary (**[report-register.md](report-register.md)** → Findings Summary).
-
 Branch on the response's `fix_gate_mode`.
 
-**If `fix_gate_mode` is `auto`:**
+**If `fix_gate_mode` is `auto` or `bounded`:**
 
-After the findings summary, fetch the fix gate and emit its `DISPLAY: fix gate auto-accepted` section:
+→ Load **[display-task-result.md](display-task-result.md)** with result = `needs-changes`.
+
+Present the reviewer's findings as the register's findings summary (**[report-register.md](report-register.md)** → Findings Summary).
+
+After the findings summary, fetch the fix gate and emit its `DISPLAY: fix gate auto-accepted` section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render fix-gate {work_unit}.implementation.{topic}
@@ -256,17 +322,21 @@ The turn does not end here — the executor dispatch follows in the same turn.
 
 **If `fix_gate_mode` is `gated`:**
 
-The turn does not end here — the gate menu follows in the same turn.
-
 → Proceed to **F. Fix Approval Gate**.
 
 ---
 
 ## F. Fix Approval Gate
 
-Every arrival emits the menu in the turn it arrives — from **E**, and back from a lens, the page, an answer, or a standing challenge alike.
+Any arrival but the first re-runs the gate fetch below alone — the presentation belongs to the gate's first arrival, from **E** or **A**'s resumed arm.
 
-Fetch the fix gate and emit its `MENU: fix gate` section (the `a/auto` option renders only while the fix gate is `gated` — a threshold-forced gate in auto mode omits it):
+→ Load **[display-task-result.md](display-task-result.md)** with result = `needs-changes`.
+
+When **E**'s fix attempt reached its threshold, load **[convergence-analysis.md](../../workflow-shared/references/convergence-analysis.md)** beneath the header with loop_type = `fix`, work_unit = `{work_unit}`, topic = `{topic}`, internal_id = `{internal_id}`, render_when = `always`.
+
+Present the findings as the register's findings summary (**[report-register.md](report-register.md)** → Findings Summary) — the reviewer's, or, for a task resumed at **A**, the last `## Attempt` section of `.workflows/{work_unit}/implementation/{topic}/fix-tracking-{internal_id}.md`: the session that wrote them is gone, and the record is what the user answers the gate on.
+
+Fetch the fix gate and emit its `MENU: fix gate` section verbatim per its marker (the `a/auto` and `b/bounded` options render only while the fix gate is `gated` — a threshold-forced gate in an auto mode omits them):
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render fix-gate {work_unit}.implementation.{topic}
@@ -282,6 +352,14 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render fix-gate {work_uni
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} fix_gate_mode auto
+```
+
+→ Return to **B. Execute Task**.
+
+#### If `bounded`
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} fix_gate_mode bounded
 ```
 
 → Return to **B. Execute Task**.
@@ -306,7 +384,7 @@ Render the show-me explanation as an interactive browser page with the publishin
 
 #### If ask
 
-Answer the user's questions about the review.
+Answer the user's questions about the review. The question sets the gate aside; once the exchange looks settled, ask in conversation whether they are ready to move on, and on yes put it back:
 
 → Return to **F. Fix Approval Gate**.
 
@@ -316,7 +394,15 @@ Answer the user's questions about the review.
 
 > **CHECKPOINT**: Do not proceed until the confirmation has returned.
 
-Deposit any BANK entries the confirmation carries, as at **B**.
+**If `do_banking` is `true`:**
+
+→ Load **[bank-deposit.md](bank-deposit.md)** with source = `reviewer`.
+
+→ On return, proceed to the confirmation's **`VERDICT`** branches below.
+
+**Otherwise:**
+
+→ Proceed to the confirmation's **`VERDICT`** branches below.
 
 **If every blocking finding is withdrawn** (the confirmation's `VERDICT` is `approved`):
 
@@ -332,7 +418,7 @@ Summarise what stands and why, per the confirmation.
 
 #### If the comment directs the fix
 
-Include the reviewer's notes and the user's commentary when re-invoking.
+Confirm your reading of the comment with the person before anything acts on it, then include the reviewer's notes and the user's commentary when re-invoking.
 
 → Return to **B. Execute Task**.
 
@@ -340,7 +426,7 @@ Include the reviewer's notes and the user's commentary when re-invoking.
 
 ## G. Task Gate
 
-A return from a lens, the page, or an answer re-emits the menu alone — re-run the gated fetch below; the presentation belongs to the gate's first arrival.
+Any arrival but the first re-runs the gated fetch below alone — the presentation belongs to the gate's first arrival, from **D** or from **F** when a challenge withdraws every finding.
 
 After the reviewer approves a task, present the result:
 
@@ -350,9 +436,9 @@ Present the result as the register's product summary (**[report-register.md](rep
 
 Branch on the `task_gate_mode` carried by this task's `start` response.
 
-#### If `task_gate_mode` is `auto`
+#### If `task_gate_mode` is `auto` or `bounded`
 
-After the result summary, fetch the task gate and emit its `DISPLAY: task gate auto-approved` section:
+After the result summary, fetch the task gate and emit its `DISPLAY: task gate auto-approved` section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render task-gate {work_unit}.implementation.{topic}
@@ -364,7 +450,7 @@ The turn does not end here — the commit follows in the same turn.
 
 #### If `task_gate_mode` is `gated`
 
-Fetch the task gate and emit its `MENU: task gate` section:
+Fetch the task gate and emit its `MENU: task gate` section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render task-gate {work_unit}.implementation.{topic}
@@ -380,6 +466,14 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render task-gate {work_un
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} task_gate_mode auto
+```
+
+→ Proceed to **H. Update Progress and Commit**.
+
+**If `bounded`:**
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} task_gate_mode bounded
 ```
 
 → Proceed to **H. Update Progress and Commit**.
@@ -404,13 +498,13 @@ Render the show-me explanation as an interactive browser page with the publishin
 
 **If ask:**
 
-Answer the user's questions about the implementation.
+Answer the user's questions about the implementation. The question sets the gate aside; once the exchange looks settled, ask in conversation whether they are ready to move on, and on yes put it back:
 
 → Return to **G. Task Gate**.
 
 **If comment:**
 
-Include the user's feedback when re-invoking.
+Confirm your reading of the comment with the person before anything acts on it, then include the user's feedback when re-invoking.
 
 → Return to **B. Execute Task**.
 
@@ -418,15 +512,14 @@ Include the user's feedback when re-invoking.
 
 ## H. Update Progress and Commit
 
-**Update task progress in the plan** — follow the format's **updating.md** instructions to mark the task complete — or, when this stage was reached via a skip path (stage C `skip`, or the blocked-tasks `skip`), its skip transition instead.
+**Update task progress in the plan** — follow the format's **updating.md** instructions to mark the task complete — or, when this stage was reached via the blocked-tasks `skip`, its skip transition instead.
 
 **Determine the phase disposition** — use the format's **reading.md** to list remaining tasks in the current phase, then set `{disposition}`:
 
 - `continuing` — tasks remain open or in-progress in the current phase.
 - `completing` — none remain and the boundary is not owed. Any of:
   · the work type is `quick-fix` — its plan never grows;
-  · the phase's label (the planning file's `Phase {N}:` heading) starts with `Analysis (Cycle` or `Review Remediation`;
-  · `consolidated_phases` contains the phase number (`manifest get {work_unit}.implementation.{topic} consolidated_phases`; absent is empty) and every `approved` row of `staging.p{N}` has its task in the plan — a missing one marks a partial task-writer run, which is `boundary`.
+  · `consolidated_phases` contains the phase number (`manifest get {work_unit}.implementation.{topic} consolidated_phases`; absent is empty) and every `approved` row of `staging.p{N}` has its task in the plan — a missing one marks a partial task-author or task-writer run, which is `boundary`.
 - `boundary` — none remain and no `completing` condition holds: the consolidation pass is owed, or unfinished. Leave the phase open in the plan — **J. Consolidation Pass** completes it once the pass has landed.
 
 **If `{disposition}` is `completing`:** follow the format's **updating.md** instructions for phase completion.
@@ -438,15 +531,33 @@ node .claude/skills/workflow-engine/scripts/engine.cjs task complete {work_unit}
 
 **Internal ID convention**: The internal ID used with the engine and in commit messages MUST use the format `{topic}-{phase_id}-{task_id}`. If only the format adapter's external ID is at hand, pass `--external {external_id}` in place of `{internal_id}` — the engine resolves it through the plan's task map and reports the internal id in its response.
 
-**If the planning item carries no `storage_paths`** (a plan initialised before the field existed): record it now — read the format's authoring.md → Storage Pathspecs and copy the fenced array (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} storage_paths '{format storage pathspecs}'`).
+**Commit the task** — each scope through the verb that owns it, state before code, so the code commit's answer names only code:
 
-**Commit all changes** with raw git — stage the task's code and tests, the plan's task state (the files the format's **updating.md** touched, plus the `storage_paths` pathspecs recorded on the planning item for storage outside the work unit), the work unit's manifest, and the task's fix-tracking file when one exists (`.workflows/{work_unit}/implementation/{topic}/fix-tracking-{internal_id}.md`), then commit:
+1. **The plan's task state** — the files the format's **updating.md** touched, the `storage_paths` recorded on the planning item for storage outside the work unit, and the work unit's manifest:
 
-```
-impl({work_unit}): T{internal_id} — {brief description}
-```
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "impl({work_unit}): record T{internal_id}" --plan {topic}
+   ```
 
-One commit per approved task, staging the listed paths explicitly — never `git add -A` or `git add .`. The subject is exactly as fenced — `T` immediately followed by the internal id, no space (`impl(pay): Tpay-1-1 — …`); review's scope-grep finds task commits by this token. Never `engine commit` here — its scopes cover `.workflows` only, never code or the plan format's storage.
+2. **The task's fix tracking**, when the task took a fix round (`.workflows/{work_unit}/implementation/{topic}/fix-tracking-{internal_id}.md`):
+
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "impl({work_unit}): record T{internal_id} fix rounds" --topic implementation/{topic}
+   ```
+
+3. **The task's code and tests** — read the uncommitted code, across every repo in the project:
+
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs code status
+   ```
+
+   Name, from its `files`, every file the task wrote, each single-quoted (a single quote inside a path written `'\''`); the engine validates each path, commits confined to them, and answers with `left_dirty`:
+
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit --paths '{code or test file}' … -m "impl({work_unit}): T{internal_id} — {brief description}" --for {work_unit} implementation/{topic}
+   ```
+
+   The subject is exactly as shown — `T` immediately followed by the internal id, no space (`impl(pay): Tpay-1-1 — …`); review reads task commits by this token through `engine code log`, and the task's commits alone are what it reads the task's file list from, so nothing but code and tests belongs in them. Anything in the response's `left_dirty` that this task touched is a path you forgot: commit it now with a second `--paths` call, each path single-quoted, carrying the same message, so `code log` selects it with the task's commit, before proceeding. Nothing else in that list is yours. `.workflows` dirt never appears there at all, but a plan store outside the work unit does, and so does anything else on the tree — including a concurrent session's. Name only files this task wrote.
 
 #### If `{disposition}` is `boundary`
 
@@ -460,11 +571,7 @@ One commit per approved task, staging the listed paths explicitly — never `git
 
 ## I. All Tasks Complete
 
-> *Output the next fenced block as a code block:*
-
-```
-All tasks complete. {M} tasks implemented.
-```
+Count the tasks the plan holds as implemented — the format's completed status, skipped and cancelled tasks left out — as `{implemented}`, then say `All tasks complete — {implemented} implemented.`
 
 **CRITICAL**: The caller always routes to the analysis loop after task loop completion — on every pass, not just the first. Even if you have already been through this cycle before, return to the caller and let it route to the analysis loop. Never skip ahead to completion from here.
 

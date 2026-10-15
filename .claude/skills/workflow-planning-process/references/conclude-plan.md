@@ -6,47 +6,90 @@
 
 > **CHECKPOINT**: Do not conclude if any designed task internal IDs are missing from `task_map` in the manifest. All tasks must be authored before concluding.
 
-> *Output the next fenced block as markdown (not a code block):*
+The plan's waits gate the conclusion — a plan does not close over a specification that is not settled, and the engine would refuse the completion anyway. Fetch the gate (empty when nothing is owed):
 
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render wait-gate {work_unit}.planning.{topic}
 ```
-· · · · · · · · · · · ·
-**`◆ Ready to conclude?`**
 
-**`y/yes`** → Conclude plan and mark as completed
-**`n/no`**  → Go back and make changes
-```
+**If sections are returned:**
+
+Emit them verbatim per their markers — the blocker naming what is owed, its guidance, then the menu.
 
 **STOP.** Wait for user response.
 
-#### If `no`
+**If `yes`:**
 
-→ Return to **[the skill](../SKILL.md)** for **Step 6**.
+Commit the session's work:
 
-#### If `yes`
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): pause — the specification is unsettled" --topic planning/{topic}
+```
 
-1. **Re-baseline `spec_commit`** — the plan now reflects the specification as of this point; stamp the baseline spec-change detection will diff against on any later resume:
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} spec_commit $(git rev-parse HEAD)
-   ```
-2. **Mark the plan completed** — the engine sets the status:
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs topic complete {work_unit} planning {topic}
-   ```
-3. **Final commit** — Commit the completed plan:
-   ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): complete plan"
-   ```
-4. **Present completion summary**:
+Then invoke the pipeline bridge as a pause:
 
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-Planning is complete for **{work_unit}**.
-
-The plan contains **{N} phases** with **{M} tasks** total, reviewed for traceability against the specification and structural integrity.
-
-Status has been marked as `completed`. The plan is ready for implementation.
+> Paused on the specification — the plan concludes once the specification has settled and the plan is reconciled against it.
 ```
+
+Invoke `/workflow-bridge {work_unit} planning none paused`.
+
+**If `keep`:**
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+> The plan stays open. Pick planning back up from the menu once the specification has settled — the conclusion meets this wait again.
+```
+
+**STOP.** Do not proceed — terminal condition.
+
+**If the output is empty:**
+
+Nothing blocks the conclusion.
+
+→ Proceed to **A. Conclude Gate**.
+
+## A. Conclude Gate
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render conclude-gate {work_unit}.planning.{topic}
+```
+
+Emit the call's MENU section verbatim per its marker.
+
+**STOP.** Wait for user response.
+
+#### If ask
+
+Answer from the record the session already holds — the plan and the specification. The question sets the gate aside; once the exchange looks settled, ask in conversation whether they are ready to move on, and on yes put it back:
+
+→ Return to **A. Conclude Gate**.
+
+#### If `yes`
+
+→ Proceed to **B. Complete and Continue**.
+
+## B. Complete and Continue
+
+1. **Mark the plan completed** — the engine sets the status, and refuses while the specification is unsettled, naming what is owed:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs topic complete {work_unit} planning {topic}
+   ```
+2. **Re-baseline `spec_commit`** — the completion stands, so the plan reflects the specification as of this point; stamp the baseline spec-change detection will diff against on any later resume:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.planning.{topic} spec_commit $(git rev-parse HEAD)
+   ```
+3. **Final commit** — Commit the completed plan:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): complete plan" --topic planning/{topic}
+   ```
+4. **Present completion summary** — fetch it and emit the call's DISPLAY section verbatim per its marker:
+   ```bash
+   node .claude/skills/workflow-engine/scripts/engine.cjs render plan-progress {work_unit}.planning.{topic} --variant concluded
+   ```
 
 5. **Pipeline continuation**:
 

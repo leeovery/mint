@@ -6,15 +6,13 @@
 
 The user has already reviewed findings and agreed on fix direction. This step confirms the investigation is complete and handles pipeline continuation.
 
-> *Output the next fenced block as markdown (not a code block):*
+→ Load **[closing-recap.md](../../workflow-shared/references/closing-recap.md)** with phase = `investigation`, work_unit = `{work_unit}`, topic = `{topic}`.
 
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render conclude-gate {work_unit}.investigation.{topic}
 ```
-· · · · · · · · · · · ·
-**`◆ Investigation complete. Ready to conclude?`**
 
-**`y/yes`**      → Conclude investigation
-**Keep going** → Tell me what else to explore
-```
+Emit the call's MENU section verbatim per its marker.
 
 **STOP.** Wait for user response.
 
@@ -24,10 +22,10 @@ The user has already reviewed findings and agreed on fix direction. This step co
 
 #### If `yes`
 
-First check the topic's triage queue — a queued concern must be worked before concluding:
+First check the topic's mailbox — a waiting message must be worked before concluding:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs topic queue {work_unit} investigation {topic}
+node .claude/skills/workflow-engine/scripts/engine.cjs topic mailbox {work_unit} investigation {topic}
 ```
 
 **If the response's `files` is non-empty:**
@@ -35,10 +33,10 @@ node .claude/skills/workflow-engine/scripts/engine.cjs topic queue {work_unit} i
 Render the blocker and emit both its sections verbatim per their markers:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs render triage-block {work_unit}.investigation.{topic}
+node .claude/skills/workflow-engine/scripts/engine.cjs render mail-block {work_unit}.investigation.{topic}
 ```
 
-→ Load **[rerouted-concerns.md](../../workflow-shared/references/rerouted-concerns.md)** with work_unit = `{work_unit}`, topic = `{topic}`, phase = `investigation` — enter **A. Check**.
+→ Load **[reading-the-mailbox.md](../../workflow-shared/references/reading-the-mailbox.md)** with work_unit = `{work_unit}`, topic = `{topic}`, phase = `investigation` — enter **A. Check**.
 
 On return:
 
@@ -52,20 +50,16 @@ On return:
    ```
 2. Final commit:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "investigation({work_unit}): complete {topic} investigation"
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "investigation({work_unit}): complete {topic} investigation" --topic investigation/{topic}
    ```
 
-   When the `complete` response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` advisory — the warning never blocks:
+   When the `complete` response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` section verbatim per its marker — the warning never blocks:
 
    ```bash
    node .claude/skills/workflow-engine/scripts/engine.cjs render topic-receipt {work_unit}.investigation.{topic} --verb complete --warn
    ```
 
-3. Closing recap:
-
-   → Load **[closing-recap.md](../../workflow-shared/references/closing-recap.md)** with phase = `investigation`, work_unit = `{work_unit}`, topic = `{topic}`.
-
-4. Closure signpost:
+3. Closure signpost:
 
 > *Output the next fenced block as markdown (not a code block):*
 
@@ -73,4 +67,4 @@ On return:
 > Investigation complete. The specification phase will formalise the fix approach into a document that drives planning.
 ```
 
-5. Invoke `/workflow-bridge {work_unit} investigation`.
+4. Invoke `/workflow-bridge {work_unit} investigation`.

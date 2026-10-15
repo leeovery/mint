@@ -13,9 +13,19 @@
 const fs = require('fs');
 const path = require('path');
 const { loadWorkUnitManifest, saveWorkUnitManifest, withWorkUnitLock, ensureContainer } = require('../kernel/manifest.cjs');
+const { GATE_FIELDS } = require('../kernel/manifest-schema.cjs');
 
 const FIX_THRESHOLD = 3;
-const SESSION_CYCLE_LIMIT = 3;
+const CYCLE_LIMIT = 3;
+
+// The gates the schema binds to the plan phase: `complete --phase-complete`
+// — the one record that closes a plan phase, reached only once every task of
+// the phase has landed, consolidation-added tasks included — returns each
+// from `bounded` to `gated`. The session reset in `initTasks` stays outside
+// this bound.
+const PHASE_BOUNDED_GATES = /** @type {(keyof GateModes)[]} */ (
+  Object.keys(GATE_FIELDS.implementation).filter((field) => GATE_FIELDS.implementation[field] === 'plan-phase')
+);
 
 /**
  * @typedef {object} GateModes
@@ -29,13 +39,15 @@ const SESSION_CYCLE_LIMIT = 3;
  * @typedef {object} InitResult
  * @property {'created'|'resumed'} mode
  * @property {GateModes} gates
- * @property {{fix_attempts: number, analysis_cycle_total: number, analysis_cycle_session: number}} counters
+ * @property {{fix_attempts: number, analysis_cycle_total: number}} counters
  */
 
 /**
  * @typedef {object} StartResult
  * @property {string} task  the internal id
+ * @property {'started'|'resumed'} mode  `resumed` when the task was already in flight with its fix-tracking file
  * @property {{task_gate_mode: string, fix_gate_mode: string}} gates
+ * @property {boolean} do_banking  the task's phase is still taking BANK deposits
  */
 
 /**
@@ -54,8 +66,7 @@ const SESSION_CYCLE_LIMIT = 3;
 /**
  * @typedef {object} AnalysisCycleResult
  * @property {number} cycle_total
- * @property {number} cycle_session
- * @property {boolean} over_session_limit
+ * @property {boolean} over_cycle_limit
  * @property {string} analysis_gate_mode
  */
 
@@ -124,12 +135,53 @@ function counterOf(item, field) {
 }
 
 /**
+ * The plan step an internal id (`{topic}-{phase_id}-{task_id}`) ends in, or
+ * null when the id carries none.
+ * @param {string} internalId
+ * @returns {{phase: number, task: number}|null}
+ */
+function stepOfInternalId(internalId) {
+  const m = /-(\d+)-(\d+)$/.exec(internalId);
+  return m ? { phase: parseInt(m[1], 10), task: parseInt(m[2], 10) } : null;
+}
+
+/**
+ * The phase number embedded in an internal id, or null when the id carries
+ * none.
+ * @param {string} internalId
+ * @returns {number|null}
+ */
+function phaseOfInternalId(internalId) {
+  return stepOfInternalId(internalId)?.phase ?? null;
+}
+
+/**
+ * True while a phase is still taking BANK deposits: the work unit is not a
+ * quick-fix (its plan never takes a boundary, so nothing would drain a
+ * deposit), and the phase has neither staged its boundary walk nor been
+ * consolidated. Derived from what the manifest already holds — nothing
+ * stores it.
+ * @param {string|undefined} workType the manifest's top-level `work_type`
+ * @param {Record<string, any>} item @param {number} phase
+ * @returns {boolean}
+ */
+function bankingOpen(workType, item, phase) {
+  const consolidated = Array.isArray(item.consolidated_phases) ? item.consolidated_phases : [];
+  const staging = item.staging && typeof item.staging === 'object' ? item.staging : {};
+  return workType !== 'quick-fix'
+    && !consolidated.includes(phase)
+    && !(`p${phase}` in staging);
+}
+
+/**
  * Create-or-resume the implementation item. Absent → init-phase semantics
- * (`{status: 'in-progress'}`) plus session defaults. Present → session reset
- * only: the four gate modes back to `gated`, `analysis_cycle_session` to 0 —
+ * (`{status: 'in-progress'}`) plus session defaults; `linters` and
+ * `project_skills` stay absent — the setup steps record them, and absence is
+ * how they tell a topic never asked from one that confirmed an empty set.
+ * Present → session reset only: the four gate modes back to `gated` —
  * `analysis_cycle_total`, `linters`, `project_skills`, `current_phase`,
- * `current_task`, `completed_tasks`, `completed_phases`, `consolidated_phases`,
- * and `bank` are never touched.
+ * `current_task`, `completed_tasks`, `completed_phases`,
+ * `consolidated_phases`, and `bank` are never touched.
  * `fix_attempts` resets to 0 UNLESS `current_task` has a live fix-tracking
  * file (a crash-resume mid-task): the counter and file are that task's
  * convergence history and stay in lockstep — zeroing one without the other
@@ -156,7 +208,6 @@ function initTasks(cwd, workUnit, topic) {
       item.analysis_gate_mode = 'gated';
       item.consolidation_gate_mode = 'gated';
       if (!hasInFlightPair(cwd, workUnit, topic, item)) item.fix_attempts = 0;
-      item.analysis_cycle_session = 0;
     } else {
       mode = 'created';
       items[topic] = {
@@ -167,9 +218,6 @@ function initTasks(cwd, workUnit, topic) {
         consolidation_gate_mode: 'gated',
         fix_attempts: 0,
         analysis_cycle_total: 0,
-        analysis_cycle_session: 0,
-        linters: [],
-        project_skills: [],
         current_phase: 1,
         current_task: null,
       };
@@ -188,7 +236,6 @@ function initTasks(cwd, workUnit, topic) {
       counters: {
         fix_attempts: counterOf(item, 'fix_attempts'),
         analysis_cycle_total: counterOf(item, 'analysis_cycle_total'),
-        analysis_cycle_session: counterOf(item, 'analysis_cycle_session'),
       },
     };
   });
@@ -204,7 +251,11 @@ function initTasks(cwd, workUnit, topic) {
  * count and the tracking file are that task's convergence history, and wiping
  * them would evade the fix threshold. Anything else (a different task, or the
  * same id with no tracking file — e.g. freshly handed over by `complete
- * --next-task`) is a fresh start and resets both.
+ * --next-task`) is a fresh start and resets both. The response's `mode` names
+ * which happened: the task loop dispatches an executor for a `started` task
+ * and routes a `resumed` one to its pending fix gate, where the recorded
+ * findings are still unanswered. Both modes answer `do_banking` — whether
+ * the task's phase is still taking BANK deposits.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} topic
@@ -213,21 +264,25 @@ function initTasks(cwd, workUnit, topic) {
  */
 function startTask(cwd, workUnit, topic, internalId) {
   safeName(internalId, 'internal id');
+  const phase = phaseOfInternalId(internalId);
+  if (phase === null) throw new Error(`cannot derive the phase from "${internalId}"`);
   const file = fixTrackingPath(cwd, workUnit, topic, internalId);
-  const item = withWorkUnitLock(cwd, workUnit, () => {
+  const { item, resumed, workType } = withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const found = implementationItem(manifest, topic);
-    const resumed = found.current_task === internalId && fs.existsSync(file);
-    if (!resumed) found.fix_attempts = 0;
+    const isResume = found.current_task === internalId && fs.existsSync(file);
+    if (!isResume) found.fix_attempts = 0;
     found.current_task = internalId;
-    if (!resumed && fs.existsSync(file)) fs.unlinkSync(file);
+    if (!isResume && fs.existsSync(file)) fs.unlinkSync(file);
     saveWorkUnitManifest(cwd, workUnit, manifest);
-    return found;
+    return { item: found, resumed: isResume, workType: manifest.work_type };
   });
 
   return {
     task: internalId,
+    mode: resumed ? 'resumed' : 'started',
     gates: { task_gate_mode: gateOf(item, 'task_gate_mode'), fix_gate_mode: gateOf(item, 'fix_gate_mode') },
+    do_banking: bankingOpen(workType, item, phase),
   };
 }
 
@@ -305,17 +360,6 @@ function resolveInternalId(manifest, workUnit, topic, externalId) {
 }
 
 /**
- * The phase number embedded in an internal id (`{topic}-{phase_id}-{task_id}`).
- * @param {string} internalId
- * @returns {number}
- */
-function phaseOfInternalId(internalId) {
-  const m = /-(\d+)-\d+$/.exec(internalId);
-  if (!m) throw new Error(`cannot derive the phase from "${internalId}" — pass --phase <N>`);
-  return parseInt(m[1], 10);
-}
-
-/**
  * Push onto an array field, creating it when absent — loud when the field
  * exists but is not an array. A value already present is a no-op: recording
  * the same completion twice must not double-count.
@@ -334,10 +378,12 @@ function pushTo(item, field, value) {
  * counter must not leak into the next task — its tracking file stays on disk
  * as history; `start` clears it if that id is ever started fresh again),
  * optionally set `current_phase` / `current_task`, and push the phase to
- * `completed_phases` when the caller reports the phase complete. Skipped
- * tasks are recorded in `completed_tasks` too — the plan (the session's side)
- * carries the skip distinction. Re-recording an id (or phase) already present
- * leaves the array as-is — same response, no double-count.
+ * `completed_phases` when the caller reports the phase complete — which also
+ * returns every phase-bounded gate holding `bounded` to `gated`, named in the
+ * response's `gates_reset`. Skipped tasks are recorded in `completed_tasks`
+ * too — the plan (the session's side) carries the skip distinction.
+ * Re-recording an id (or phase) already present leaves the array as-is — same
+ * response, no double-count.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} topic
@@ -379,8 +425,22 @@ function completeTask(cwd, workUnit, topic, { internalId = null, externalId = nu
     }
     if (phaseComplete) {
       const n = phase !== undefined ? phase : phaseOfInternalId(id);
+      if (n === null) throw new Error(`cannot derive the phase from "${id}" — pass --phase <N>`);
       pushTo(item, 'completed_phases', n);
       recorded.completed_phase = n;
+      // A completed phase leaves no task in flight — the closing record
+      // clears a pointer still holding this task, unless the caller set
+      // the next task explicitly.
+      if (nextTask === undefined && item.current_task === id) {
+        item.current_task = null;
+        recorded.current_task = null;
+      }
+      // The phase is done for real — every task of it has landed — so the
+      // gates bounded to it return to gated. `auto` is the session's and
+      // stays.
+      const reset = PHASE_BOUNDED_GATES.filter((field) => gateOf(item, field) === 'bounded');
+      for (const field of reset) item[field] = 'gated';
+      if (reset.length > 0) recorded.gates_reset = reset;
     }
     saveWorkUnitManifest(cwd, workUnit, manifest);
 
@@ -389,8 +449,8 @@ function completeTask(cwd, workUnit, topic, { internalId = null, externalId = nu
 }
 
 /**
- * Record an analysis cycle: increment both `analysis_cycle_total` (lifetime)
- * and `analysis_cycle_session` (this session).
+ * Record an analysis cycle: increment `analysis_cycle_total`, the topic's
+ * lifetime count — the cycle limit reads it across sessions.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} topic
@@ -401,18 +461,15 @@ function analysisCycle(cwd, workUnit, topic) {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const item = implementationItem(manifest, topic);
     const total = counterOf(item, 'analysis_cycle_total') + 1;
-    const session = counterOf(item, 'analysis_cycle_session') + 1;
     item.analysis_cycle_total = total;
-    item.analysis_cycle_session = session;
     saveWorkUnitManifest(cwd, workUnit, manifest);
 
     return {
       cycle_total: total,
-      cycle_session: session,
-      over_session_limit: session > SESSION_CYCLE_LIMIT,
+      over_cycle_limit: total > CYCLE_LIMIT,
       analysis_gate_mode: gateOf(item, 'analysis_gate_mode'),
     };
   });
 }
 
-module.exports = { initTasks, startTask, fixAttempt, completeTask, analysisCycle, gateOf, counterOf, FIX_THRESHOLD, SESSION_CYCLE_LIMIT };
+module.exports = { initTasks, startTask, fixAttempt, completeTask, analysisCycle, gateOf, counterOf, stepOfInternalId, FIX_THRESHOLD, CYCLE_LIMIT };

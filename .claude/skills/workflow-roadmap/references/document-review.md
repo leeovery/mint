@@ -8,15 +8,15 @@
 
 The session log is created lazily — if no Exploration write or map operation produced content, no file exists and there is nothing to reconcile.
 
-Check whether the active log exists at `.workflows/.roadmap/sessions/session-{session_number}.md`.
+Check whether a log was opened — `session_number` is set and the log exists at `.workflows/.roadmap/sessions/session-{session_number}.md`.
 
-#### If the file does not exist
+#### If no log exists
 
 Browse-only session — no log to review.
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as a text code block (```text fence):*
 
-```
+```text
 Document review — no log file (browse only). Nothing to reconcile.
 ```
 
@@ -60,19 +60,15 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit --roadmap -m "docs
 
 #### If changes were made
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Document review complete. {N} correction(s) applied to the session log.
-```
+Say, as a blockquote, `Document review complete. {N} correction(s) applied to the session log.`
 
 → Return to caller.
 
 #### If the log is accurate
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as a text code block (```text fence):*
 
-```
+```text
 Document review — session log reflects the conversation. No changes needed.
 ```
 

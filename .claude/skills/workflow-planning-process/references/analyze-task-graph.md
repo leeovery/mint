@@ -4,17 +4,11 @@
 
 ---
 
-This step uses the `workflow-planning-dependency-grapher` agent (`../../../agents/workflow-planning-dependency-grapher.md`) to analyze all authored tasks, establish internal dependencies, assign priorities, and detect cycles. You invoke the agent, present its output, and handle the approval gate.
+This step uses the `workflow-planning-dependency-grapher` agent (`.claude/agents/workflow-planning-dependency-grapher.md`) to analyze all authored tasks, establish internal dependencies, assign priorities, and detect cycles. You invoke the agent, present its output, and handle the approval gate.
 
 ---
 
 ## A. Analyze
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-All tasks are authored. Now I'll analyze internal dependencies and priorities across the full plan.
-```
 
 Read the `format`, the plan's `external_id`, and the `task_map` from the manifest:
 ```bash
@@ -28,12 +22,20 @@ Load the format's **[reading.md](output-formats/{format}/reading.md)** and **[gr
 Invoke `workflow-planning-dependency-grapher` with these inputs:
 
 1. **Planning file path**: `.workflows/{work_unit}/planning/{topic}/planning.md`
-2. **reading.md**: the format's reading reference loaded above
-3. **graph.md**: the format's graph reference loaded above
+2. **reading.md**: `.claude/skills/workflow-planning-process/references/output-formats/{format}/reading.md`
+3. **graph.md**: `.claude/skills/workflow-planning-process/references/output-formats/{format}/graph.md`
 4. **Plan external ID**: the `external_id` value read above
 5. **Task map**: the `task_map` value read above
 
 The agent clears any existing dependencies/priorities, analyzes all tasks, and — if no cycles — applies the new graph data directly. It returns a structured summary of what was done.
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+All tasks are authored. Now I'll analyze internal dependencies and priorities across the full plan.
+```
+
+This dispatch and every re-invocation of the grapher below run in the background (`run_in_background: true`) and end the turn on exactly `The dependency grapher agent has been dispatched for the plan's task graph.`
 
 → Proceed to **B. Review and Approve**.
 
@@ -41,26 +43,14 @@ The agent clears any existing dependencies/priorities, analyzes all tasks, and �
 
 ## B. Review and Approve
 
+The `no-changes` and `complete` branches write the grapher's report to `.workflows/.cache/{work_unit}/planning/{topic}/task-graph.json` with the Write tool before their render.
+
 #### If `STATUS` is `no-changes`
 
-The natural task order is already correct.
+The natural task order is already correct. Write the grapher's `NOTES` as the payload — `{"notes": "…"}` — then render and emit each section verbatim per its marker:
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-I've analyzed all {M} tasks and the natural execution order is already correct — no explicit dependencies or priorities are needed.
-
-{notes from agent output}
-```
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-**`◆ Approve the dependency graph?`**
-
-**`y/yes`**                  → Proceed
-**Tell me what to change** → which priorities or dependencies to adjust
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render dependency-approval-gate {work_unit}.planning.{topic} --variant graph --file .workflows/.cache/{work_unit}/planning/{topic}/task-graph.json
 ```
 
 **STOP.** Wait for user response.
@@ -77,7 +67,7 @@ The agent will clear all existing graph data and re-analyze from scratch.
 
 **If `yes`:**
 
-Commit — `--plan` stages the work unit and the plan's declared storage in one scoped call:
+Commit — `--plan` stages the planning topic, the manifests, and the plan's declared storage in one scoped call:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): analyze task dependencies and priorities" --plan {topic}
@@ -87,17 +77,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "pl
 
 #### If `STATUS` is `blocked`
 
-No changes were applied.
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-The dependency analysis found a circular dependency:
-
-{cycle chain from agent output}
-
-This must be resolved before continuing. The cycle usually means two tasks each assume the other is done first — one needs to be restructured or the dependency removed.
-```
+No changes were applied. In your own words, say the dependency analysis found a circular dependency, quote the grapher's `CYCLES` chain, and say it must be resolved before continuing — usually two tasks each assume the other is done first, so one is restructured or the dependency removed.
 
 **STOP.** Wait for user response.
 
@@ -107,30 +87,16 @@ Adjust based on user direction — options include adjusting task scope, merging
 
 #### If `STATUS` is `complete`
 
-Dependencies and priorities have already been written to the task files.
+Dependencies and priorities have already been written to the task files. Write the grapher's `DEPENDENCIES` and `PRIORITIES` as the payload, one row per line without its leading dash, and its `NOTES` only where it has any:
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-I've analyzed and applied dependencies and priorities across all {M} tasks:
-
-**Dependencies** ({count} relationships):
-{dependency list from agent output}
-
-**Priorities**:
-{priority list from agent output}
-
-{any notes from agent output}
+```json
+{"dependencies": ["{internal_id} depends on {internal_id} — {reason}"], "priorities": ["{internal_id}: {priority} — {reason}"], "notes": "…"}
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Render and emit each section verbatim per its marker:
 
-```
-· · · · · · · · · · · ·
-**`◆ Approve the updated graph?`**
-
-**`y/yes`**                  → Proceed
-**Tell me what to change** → which priorities or dependencies to adjust
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render dependency-approval-gate {work_unit}.planning.{topic} --variant updated-graph --file .workflows/.cache/{work_unit}/planning/{topic}/task-graph.json
 ```
 
 **STOP.** Wait for user response.
@@ -147,7 +113,7 @@ The agent will clear all existing graph data and re-analyze from scratch.
 
 **If `yes`:**
 
-Commit — `--plan` stages the work unit and the plan's declared storage in one scoped call:
+Commit — `--plan` stages the planning topic, the manifests, and the plan's declared storage in one scoped call:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): analyze task dependencies and priorities" --plan {topic}

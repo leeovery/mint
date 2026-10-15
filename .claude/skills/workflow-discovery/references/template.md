@@ -11,7 +11,7 @@ One template, all sessions. Sections that don't apply this session write `(none)
 The session has two distinct flavours of content recorded in two distinct sections:
 
 - **Exploration** is **narrative** — a prose record of the conversation. The writer sets its fidelity and write-timing: an epic writes a running record across the session; single-phase work backfills once at creation. It's the durable record of what got discussed — read downstream, and a hedge against context refresh.
-- **Edits** is **structured** — a deterministic record of map-operations applied to existing items during the session. Only meaningful for continuing sessions where the map is non-empty.
+- **Edits** is **structured** — a deterministic record of the operations this session applied: a map operation on an existing item, a file landed in `imports/`, a thought parked on the roadmap.
 
 **Topics Identified** is filled at the harvest, from analysing the exploration as a whole.
 
@@ -34,11 +34,11 @@ session worked from.}
 {The seed (promoted inbox item) the work unit originated from, or
 `(none)`.}
 
-- seeds/{filename}.md ({source})
+- seeds/{filename} ({source})
 
 ## Imports
 
-- imports/{filename}.md
+- imports/{filename}
 - ...
 
 ## Map State at Start
@@ -59,15 +59,16 @@ topics from the picture as a whole.}
 
 ## Edits
 
-{Structured per-op entries when continuing sessions edit the
-existing map. Format:}
+{Structured per-op entries, one per operation the session
+applied. Format:}
 - Removed: {name} — {short reason}
 - Renamed: {old} → {new} — {short reason}
 - Edited summary: {name} — {short note}
 - Edited description: {name} — {short note}
 - Changed routing: {name} → {new routing} — {short reason}
-- Marked handled: {name} — {short reason}
-- Unhandled: {name} — {short reason}
+- Closed as dead end: {name} — {short reason}
+- Reopened: {name} — {short reason}
+- Imported: {filename}
 
 ## Topics Identified
 
@@ -88,7 +89,9 @@ existing map. Format:}
 
 ## Lazy creation and finalisation
 
-The log file is **not created at session start**. It is conjured on the **first state change of any kind**:
+While the `phases.discovery.active_session` marker is set, the session's log is installed — the confirm-trigger's, the roadmap pull's, or the interrupted one a resume picked up — and every write edits it in place. Never open a second session over it.
+
+A fresh session — no log on disk for `session_number` — does **not create its log at session start**. It is conjured on the **first state change of any kind**:
 
 - A natural pause in the exploration produces an Exploration entry
 - An edit operation is applied to an existing map item

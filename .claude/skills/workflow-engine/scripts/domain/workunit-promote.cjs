@@ -27,11 +27,16 @@ const {
   writeProjectManifestAtomic,
   withProjectLock,
   ensureContainer,
+  copyWhole,
 } = require('../kernel/manifest.cjs');
-const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
-const { knowledge, INDEXED_ARTIFACTS } = require('./kb.cjs');
+const { commitTailPathspec, noteCommitOutcome } = require('./commit.cjs');
+const { syncKnowledge } = require('./knowledge/sync.cjs');
+const { INDEXED_ARTIFACTS } = require('./knowledge/artifacts.cjs');
 const { assertLegalWorkUnitName } = require('./workunit-create.cjs');
+const { copyImports, isIndexableImport, importArtifact, importLinkPattern } = require('./import-landing.cjs');
 const { todayStamp } = require('./dates.cjs');
+const { roadmapItems, sourceRows } = require('./derivations.cjs');
+const { carrySources } = require('./roadmap.cjs');
 
 /**
  * @typedef {object} WorkUnitPromoteResult
@@ -41,12 +46,77 @@ const { todayStamp } = require('./dates.cjs');
  * @property {string} cc_status   always `completed` — the cc pipeline is terminal after spec
  * @property {{name: string, path: string}[]} discussions  moved source discussions (cc-relative paths)
  * @property {{path: string}} specification  the moved spec (cc-relative path)
+ * @property {{path: string, origin?: string}[]} imports  imports copied into the cc unit (entries unchanged)
  * @property {string} status      the epic spec item's status after the transition — always `promoted`
  * @property {string} promoted_to the cc work unit recorded on the epic spec item
+ * @property {{item: string, from: string, to: string}[]} [roadmap_sources_rewritten]  roadmap sources that followed a moved file
  * @property {string|null} committed  short commit sha, or null when nothing was staged
  * @property {string} [note]      set when committed is null
  * @property {string[]} warnings  non-blocking failures (knowledge-base sync)
  */
+
+/** Every file under `dir`, absolute paths, recursively. @param {string} dir @returns {string[]} */
+function listFilesRecursive(dir) {
+  /** @type {string[]} */
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...listFilesRecursive(full));
+    else files.push(full);
+  }
+  return files;
+}
+
+/**
+ * The imports the promoted material carries: every entry a moved document
+ * links (`imports/{name}` in the specification or a moved source discussion)
+ * and every entry a moved source attached (`origin: "discussion/{source}"`).
+ * Copies, never moves — another topic of the epic may link the same file — so
+ * an entry whose file is gone is reported, never fatal. Planned before
+ * anything moves, off the documents at their epic paths.
+ * @param {string} cwd @param {string} workUnit @param {string} specDir  project-relative
+ * @param {string[]} sources  the moved source discussions
+ * @param {unknown[]} entries  the epic's `imports[]`
+ * @returns {{carried: {entry: import('./import-landing.cjs').ImportEntry, basename: string}[], missing: string[]}}
+ */
+function planImportCarry(cwd, workUnit, specDir, sources, entries) {
+  const documents = [
+    ...listFilesRecursive(path.join(cwd, specDir)),
+    ...sources.map((name) => path.join(cwd, '.workflows', workUnit, 'discussion', `${name}.md`)),
+  ];
+  /** @type {Set<string>} */
+  const linked = new Set();
+  for (const file of documents) {
+    /** @type {string} */
+    let text;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      continue; // unreadable material links nothing
+    }
+    for (const match of text.matchAll(importLinkPattern())) linked.add(match[2]);
+  }
+  const attached = new Set(sources.map((name) => `discussion/${name}`));
+
+  /** @type {{entry: import('./import-landing.cjs').ImportEntry, basename: string}[]} */
+  const carried = [];
+  /** @type {string[]} */
+  const missing = [];
+  for (const raw of entries) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = /** @type {import('./import-landing.cjs').ImportEntry} */ (raw);
+    if (typeof entry.path !== 'string' || !entry.path.startsWith('imports/')) continue;
+    const basename = entry.path.slice('imports/'.length);
+    if (basename === '' || basename.includes('/')) continue;
+    if (!linked.has(basename) && !(entry.origin !== undefined && attached.has(entry.origin))) continue;
+    if (!fs.existsSync(path.join(cwd, '.workflows', workUnit, entry.path))) {
+      missing.push(entry.path);
+      continue;
+    }
+    carried.push({ entry, basename });
+  }
+  return { carried, missing };
+}
 
 /**
  * Promote a completed epic specification to its own cross-cutting work unit
@@ -54,12 +124,17 @@ const { todayStamp } = require('./dates.cjs');
  * terminal after spec, and the spec is complete) with origin provenance
  * (`source_work_unit`/`source_topic`), move the spec directory to
  * `specification/{to}/`, move each spec source that is a discussion file into
- * the cc unit's `discussion/` (registered `completed` — sources of a
- * completed spec were incorporated), mark the epic's spec item
- * `status: promoted` + `promoted_to`, sync the knowledge base (moved
- * artifacts indexed at their cc identities, the epic's old chunks removed —
- * warn-don't-block), and land ONE commit staging the epic, the cc unit, and
- * the project manifest.
+ * the cc unit's `discussion/` (its item carried whole under its own name —
+ * the Discussion Map and every other field — reading `completed`, and a
+ * source of the cc spec item at its row's status — sources of a completed
+ * spec were incorporated), copy in every import the moved documents link or a
+ * moved source attached (entries unchanged, the epic keeping its own), mark
+ * the epic's spec item and each moved discussion's item
+ * `status: promoted` + `promoted_to`, carry every roadmap source at the moved
+ * material to its cc path, sync the knowledge base (moved artifacts indexed
+ * at their cc identities, the epic's old chunks removed — warn-don't-block),
+ * and land ONE commit staging the epic, the cc unit, and the project
+ * manifest.
  * @param {string} cwd project root
  * @param {string} workUnit  the source epic
  * @param {string} topic     the specification topic to promote
@@ -70,7 +145,7 @@ function promoteWorkUnit(cwd, workUnit, topic, { to, description }) {
   // -- validate everything before any mutation --------------------------------
   assertLegalWorkUnitName(to);
 
-  const discussionMoves = withWorkUnitLock(cwd, workUnit, () => {
+  const { discussionMoves, discussionItems, sources, importCarry, missingImports } = withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     if (manifest.work_type !== 'epic') {
       throw new Error(`work unit "${workUnit}" is not an epic (work_type: ${manifest.work_type ?? 'none'}) — only epic specifications promote to cross-cutting`);
@@ -131,6 +206,11 @@ function promoteWorkUnit(cwd, workUnit, topic, { to, description }) {
       }
     }
 
+    // The import carry, planned off the documents at their epic paths before
+    // any of them move.
+    const { carried, missing } = planImportCarry(cwd, workUnit, specSrc, plan,
+      Array.isArray(manifest.imports) ? manifest.imports : []);
+
     // -- mutate: files out of the epic, then the epic manifest -----------------
     fs.mkdirSync(path.join(cwd, '.workflows', to, 'specification'), { recursive: true });
     fs.renameSync(path.join(cwd, specSrc), path.join(cwd, '.workflows', to, 'specification', to));
@@ -141,10 +221,29 @@ function promoteWorkUnit(cwd, workUnit, topic, { to, description }) {
         path.join(cwd, '.workflows', to, 'discussion', `${name}.md`));
     }
 
+    // Copied, not moved: the epic keeps the file and its entry, since
+    // another topic may link the same material.
+    copyImports(cwd, path.join(cwd, '.workflows', to, 'imports'),
+      carried.map((c) => ({ src: `.workflows/${workUnit}/${c.entry.path}`, dest: c.basename })));
+
+    // Each moved discussion's item travels whole into the unit, under the
+    // unit's own status — but for a reconcile flag, whose upstream stays in
+    // the epic; the epic keeps its item, marked as having left.
+    /** @type {Record<string, Record<string, any>>} */
+    const discussionItems = {};
+    for (const name of plan) {
+      const discussion = phases.discussion?.items?.[name];
+      discussionItems[name] = { ...copyWhole(discussion ?? {}), status: 'completed' };
+      delete discussionItems[name].reconcile_needed;
+      if (discussion) Object.assign(discussion, { status: 'promoted', promoted_to: to });
+    }
     item.status = 'promoted';
     item.promoted_to = to;
     saveWorkUnitManifest(cwd, workUnit, manifest);
-    return plan;
+    const sources = Object.fromEntries(sourceRows(item.sources)
+      .filter(([name]) => plan.includes(name))
+      .map(([name, row]) => [name, { status: row.status }]));
+    return { discussionMoves: plan, discussionItems, sources, importCarry: carried, missingImports: missing };
   });
 
   // The cc manifest — the canonical work-unit document, already completed
@@ -162,38 +261,53 @@ function promoteWorkUnit(cwd, workUnit, topic, { to, description }) {
       completed_at: stamped,
       source_work_unit: workUnit,
       source_topic: topic,
+      // The carried entries ride unchanged — origin included: where the
+      // material came from does not change by being promoted.
+      ...(importCarry.length > 0 ? { imports: importCarry.map((c) => c.entry) } : {}),
       phases: {},
     };
-    if (discussionMoves.length > 0) {
-      ccManifest.phases.discussion = { items: {} };
-      for (const name of discussionMoves) {
-        ccManifest.phases.discussion.items[name] = { status: 'completed' };
-      }
-    }
-    // Topic = work unit name for a cross-cutting unit.
-    ccManifest.phases.specification = { items: { [to]: { status: 'completed', date: stamped } } };
+    if (discussionMoves.length > 0) ccManifest.phases.discussion = { items: discussionItems };
+    // Topic = work unit name for a cross-cutting unit. The moved discussions
+    // stay its sources, so a reopen of one flags it.
+    ccManifest.phases.specification = { items: { [to]: {
+      status: 'completed', date: stamped, ...(discussionMoves.length > 0 ? { sources } : {}),
+    } } };
     saveWorkUnitManifest(cwd, to, ccManifest);
   });
 
-  // Registration — a fresh read under the project lock.
-  withProjectLock(cwd, () => {
+  // Registration — a fresh read under the project lock — and, in the same
+  // write, the roadmap's sources carried to where the moved material landed.
+  // The epic stays, so every other source still names a file on disk.
+  /** @type {[string, string][]} */
+  const relocations = [[`${workUnit}/specification/${topic}`, `${to}/specification/${to}`]];
+  for (const name of discussionMoves) relocations.push([`${workUnit}/discussion/${name}.md`, `${to}/discussion/${name}.md`]);
+  const roadmapRewritten = withProjectLock(cwd, () => {
     const projectManifest = readProjectManifest(cwd);
     ensureContainer(projectManifest, 'work_units', 'work_units')[to] = { work_type: 'cross-cutting' };
+    const { rewritten } = carrySources(roadmapItems(projectManifest), relocations);
     writeProjectManifestAtomic(cwd, projectManifest);
+    return rewritten;
   });
 
   // KB: index the moved artifacts at their cc identities, drop the epic's old
   // chunks.
   /** @type {string[]} */
   const warnings = [];
-  for (const name of discussionMoves) {
-    knowledge(cwd, ['index', INDEXED_ARTIFACTS.discussion(to, name)], `knowledge index (discussion/${name})`, warnings);
-    knowledge(cwd, ['remove', '--work-unit', workUnit, '--phase', 'discussion', '--topic', name], `knowledge remove (discussion/${name})`, warnings);
+  for (const rel of missingImports) {
+    warnings.push(`import carry skipped: ${rel} is tracked on "${workUnit}" but missing on disk`);
   }
-  knowledge(cwd, ['index', INDEXED_ARTIFACTS.specification(to, to)], `knowledge index (specification/${to})`, warnings);
-  knowledge(cwd, ['remove', '--work-unit', workUnit, '--phase', 'specification', '--topic', topic], `knowledge remove (specification/${topic})`, warnings);
+  syncKnowledge(cwd, [
+    ...discussionMoves.flatMap((name) => [
+      { index: INDEXED_ARTIFACTS.discussion(to, name), label: `knowledge index (discussion/${name})` },
+      { remove: { workUnit, phase: 'discussion', topic: name }, label: `knowledge remove (discussion/${name})` },
+    ]),
+    ...importCarry.filter((c) => isIndexableImport(c.basename))
+      .map((carried) => ({ index: importArtifact(to, carried.basename), label: `knowledge index (imports/${carried.basename})` })),
+    { index: INDEXED_ARTIFACTS.specification(to, to), label: `knowledge index (specification/${to})` },
+    { remove: { workUnit, phase: 'specification', topic }, label: `knowledge remove (specification/${topic})` },
+  ], warnings);
 
-  const outcome = commitTailWithKb(
+  const outcome = commitTailPathspec(
     cwd,
     [`.workflows/${workUnit}`, `.workflows/${to}`, '.workflows/manifest.json'],
     `spec(${workUnit}): promote ${topic} to cross-cutting work unit`, warnings);
@@ -206,11 +320,13 @@ function promoteWorkUnit(cwd, workUnit, topic, { to, description }) {
     cc_status: 'completed',
     discussions: discussionMoves.map((name) => ({ name, path: `discussion/${name}.md` })),
     specification: { path: `specification/${to}/specification.md` },
+    imports: importCarry.map((c) => ({ path: c.entry.path, origin: c.entry.origin })),
     status: 'promoted',
     promoted_to: to,
     committed: outcome.committed,
     warnings,
   };
+  if (roadmapRewritten.length > 0) result.roadmap_sources_rewritten = roadmapRewritten;
   noteCommitOutcome(result, outcome);
   return result;
 }

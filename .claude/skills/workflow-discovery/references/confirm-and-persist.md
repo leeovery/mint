@@ -23,10 +23,10 @@ No new topics — this is an edits-only, parks-only, or browse-only session.
 Write the whole topic set to `.workflows/.cache/{work_unit}/discovery/topics.json` with the Write tool — one entry per topic, in synthesised order:
 
 ```json
-[{"name": "{topic}", "routing": "{research|discussion}", "summary": "{one-line summary}", "description": "{paragraphs}", "brief_path": "discovery/briefs/{topic}.md"}]
+[{"name": "{topic}", "routing": "{research|discussion}", "summary": "{one-line summary}", "description": "{two or three sentences}", "brief_path": "discovery/briefs/{topic}.md"}]
 ```
 
-Summary and description come from the synthesis — derived from the exploration in topic-synthesis. Omit `description` for a topic whose synthesis produced none (the field is optional; never invent one).
+Name, routing, summary, and description are each topic's entry in `proposed-topics.json` as the user confirmed it at the synthesis gate — copied, never re-derived.
 
 Set `"force_dismissed": true` on an entry whose name the synthesis DATA flagged `matches_dismissed=true` — the user's confirmation at the synthesis gate is the re-add decision; the engine clears the dismissed entry as part of the add.
 
@@ -41,8 +41,7 @@ The batch is atomic — a failing entry means nothing was persisted; fix the pay
 Notes:
 
 - Each entry's `name` becomes the manifest dict key (the `{topic}` path segment).
-- `routing` is the value confirmed by the user at the synthesis gate.
-- Batch entries always land with `source: discovery`, marking topics the user surfaced during discovery — distinct from items added later with other provenance (e.g. `research-analysis`, `gap-analysis`).
+- Batch entries always land with `source: discovery`, marking topics the user surfaced during discovery — distinct from items added later with other provenance (e.g. `gap-analysis`, `message:{origin}`).
 - The response's `map_total` is `{T}` for the Conclusion line in **C**, and `added` lists every persisted topic — no re-read needed.
 - `brief_path` records where the topic's brief lives; the brief file itself was written at harvest by [brief-synthesis.md](brief-synthesis.md).
 
@@ -58,7 +57,7 @@ Each verb validates and self-commits; record every landing under the log's **Edi
 node .claude/skills/workflow-engine/scripts/engine.cjs roadmap add-batch --file .workflows/.cache/{work_unit}/discovery/proposed-parks.json
 ```
 
-**Pull-forward set** — one call per item (the map topic + its join, one commit each):
+**Pull-forward set** — one call per item (the map topic + its join, one commit each; over a topic this epic postponed, the verb restores that row instead and `--routing` names nothing):
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs roadmap pull-forward {name} --into {work_unit} --routing {research|discussion}
@@ -66,7 +65,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs roadmap pull-forward {nam
 
 A refusal naming a previously dismissed topic is the user's earlier removal speaking — the gate's confirmation was the deliberate re-add, so re-run with `--force-dismissed`.
 
-**Binds** — the harvest's closing move for items pulled into this epic before it had a map. Read the roadmap state (`engine roadmap state`); for every item whose row names this work unit with **no `topic`**, bind it to the confirmed topic its ground crystallised as — usually the same-named one; when its ground split across several topics, the one carrying its identity:
+**Binds** — the harvest's closing move for ideas pulled into this epic before it had a map. Read the roadmap state (`engine roadmap state`); for every item of kind `idea` whose row names this work unit with **no `topic`**, bind it to the confirmed topic its ground crystallised as — usually the same-named one; when its ground split across several topics, the one carrying its identity:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs roadmap bind {item} --topic {topic}
@@ -116,13 +115,13 @@ Pick the commit message:
 
 #### If the log file exists
 
-Close the session — one engine transaction clears the active-session marker (resume detection on the next entry sees a closed session) and indexes the finalised log into the knowledge base so this epic's discovery is retrievable by later phases and sibling epics (idempotent — re-indexing the same session replaces its chunks; distinct sessions coexist under their own identity), then commits. One call covers whatever this session left dirty: the manifest writes from **A**, the Topics Identified write, the Conclusion replacement, and the briefs written and reconciled at harvest by [brief-synthesis.md](brief-synthesis.md):
+Close the session — one engine transaction clears the active-session marker (resume detection on the next entry sees a closed session) and indexes the finalised log into the knowledge base so this epic's discovery is retrievable by later phases and sibling epics (idempotent — re-indexing the same session replaces its chunks; distinct sessions coexist under their own identity), then commits. One call covers everything a discovery session writes — its logs, its briefs, the manifest: the manifest writes from **A**, the Topics Identified write, the Conclusion replacement, and the briefs written and reconciled at harvest by [brief-synthesis.md](brief-synthesis.md):
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs discovery-session close {work_unit} -m "{message}"
 ```
 
-When the response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` advisory — the session is closed and committed either way:
+When the response's `warnings` is non-empty, fetch and emit the `DISPLAY: kb warning` section verbatim per its marker — the session is closed and committed either way:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render session-receipt {work_unit} --warn
@@ -132,10 +131,10 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render session-receipt {w
 
 #### If no log file exists
 
-Browse-only session — the marker was never set and there is nothing to index. Commit whatever the session left dirty; a clean tree reports `committed: null` and is fine:
+Browse-only session — the marker was never set and there is nothing to index. Commit anything the session left in the discovery scope; a clean tree reports `committed: null` and is fine:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): finalise session log"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): finalise session log" --discovery
 ```
 
 → Return to caller.

@@ -8,9 +8,11 @@ This file defines the canonical structure for specification files (`.workflows/{
 
 The specification is a single file per topic. Structure is **flexible** — organize around phases and subject matter, not rigid sections. This is a working document.
 
-Structure is flexible; facts are not. Every value, rule, threshold, and enumeration has exactly one section that states it — its **home**. Every other mention references the home and never restates it. Reference only to avoid restating — never to justify, compare, or note consistency: if deleting the sentence containing a reference loses no information, delete the sentence. A reference cites the home by its section number (`§3.2`) — never restates or describes it. Never state a derived fact (a count or summary of a list sitting beside it) — it drifts when the list changes.
+The specification states what the product does and the decisions behind it. Files, functions, and mechanism appear where a load-bearing claim needs its evidence or a decision hinges on them — not as a matter of course.
 
-An empirical claim about the codebase or toolchain — a count, an enumeration, an "all X are Y" — is recorded at its home with the command that measured it, the command alone in its span so it re-runs by copy (`` … (`rg -l 'pattern' | wc -l` → 14) ``). A claim with no command is a claim review cannot re-check; a load-bearing claim that cannot be measured is written as observation, not fact. A specification carries no open-decision markers — "Decision required", "TBD", and kin park a decision the record never made; the point routes per **[resolve-source-incoherence.md](resolve-source-incoherence.md)** instead of landing in the document.
+Structure is flexible; facts are not. Every value, rule, threshold, and enumeration has one section that states it — its **home**, cited elsewhere by section number (`§3.2`) rather than restated. A restatement is a defect where the copies encode a rule: two sections state a threshold, both read as binding, and one moving without the other would pass unnoticed and change what gets built. Restated context, a summary beside its list, and a mention that repeats a fact so its sentence reads whole are sound. A number a decision rests on has a home like any other value, and every other mention cites it. A count derived from a list beside it is never stated — it drifts when the list changes. A reference points at the home; it never justifies, compares, or notes consistency.
+
+An empirical claim a decision rests on — a count, an enumeration, an "all X are Y" the spec leans on — is recorded at its home with the command that measured it, the command alone in its span so it re-runs by copy (`` … (`rg -l 'pattern' | wc -l` → 14) ``). Such a claim with no command is one review cannot re-check; one that cannot be measured is written as observation, not fact. A fact nothing leans on is stated plainly or left out. A specification carries no open-decision markers — "Decision required", "TBD", and kin park a decision the record never made; the point routes per **[resolve-source-incoherence.md](resolve-source-incoherence.md)** instead of landing in the document.
 
 > **CHECKPOINT**: You should NOT be creating or writing to this file unless you have explicit user approval for specific content. If you're about to create this file with content you haven't presented and had approved, **STOP**. That violates the workflow.
 
@@ -42,31 +44,12 @@ Lifecycle `status` transitions go through the engine, not `set` — `engine topi
 | `finding_gate_mode` | Spec creation → `gated`; user opts in → `auto` |
 | `construction_gate_mode` | Spec creation → `gated`; user opts in → `auto` |
 | `sources` | Spec creation — all sources as `pending`; updated as extraction completes. The engine sets a row to `stale` when its source discussion reopens after extraction; reconciliation sets it back to `incorporated` |
-| `consult_references` | Session setup — declared refs registered as `pending`; set `addressed` once the sibling discussion's hand-off slice is read narrowly and reconciled. Optional — absent when the spec owes no corrections |
 
 ---
 
 ## Body
 
-```markdown
-# Specification: [Topic Name]
-
-## Specification
-
-[Validated content accumulates here, organized by topic/phase]
-
----
-
-## Working Notes
-
-[Optional - capture in-progress discussion if needed]
-```
-
-Bracketed lines are placeholders, not content — create the file with the headings and leave the sections empty; never copy placeholder text into the file. Topic content nests beneath `## Specification` as numbered `###` sections (`### 3. Sweep Scope`), subdivided where a section has distinct parts as decimal `####` subsections (`#### 3.2 The in-scope set`) — never as sibling `##` headings.
-
-Sections are stable — the number is the address, not the position. Wrong content in `3.2` is edited in place; new knowledge belonging to section 3 appends as its next subsection (`3.4`); a new top-level section appends at the end (`### 7.`) — order doesn't matter. Only when placement genuinely matters does a section slot in mid-sequence, and then the renumbering is careful: every displaced number and every `§` reference to it updates in the same approved edit. The document's furniture — `## Working Notes`, an epic's `## Dependencies`, a post-completion `## Corrigenda` — sits outside the numbering.
-
-A specification corrected after its work unit completed may additionally carry a `## Corrigenda` section as its final section — the durable record of post-completion amendments, written only through `workflow-shared/references/correcting-historical-artifacts.md`, never during specification work.
+→ Load **[specification-body.md](../../workflow-shared/references/specification-body.md)** and follow its instructions as written.
 
 ---
 
@@ -114,8 +97,8 @@ If a new source is added to a completed specification (via grouping analysis), o
 
 ## Cross-Cutting Concerns
 
-Cross-cutting concerns (caching strategies, rate-limiting policies, work conventions) are a separate work type with their own pipeline: Research (optional) → Discussion → Specification (terminal). They are created via `/workflow-start` or promoted from epic specifications at completion time.
+Cross-cutting concerns (caching strategies, rate-limiting policies, work conventions) are a separate work type with their own pipeline: Research (optional) → Experiment (optional) → Discussion → Specification (terminal). They are created via `/workflow-start` or promoted from epic specifications at completion time.
 
-During planning for any work type, the planning entry skill surfaces completed cross-cutting specifications as context, ensuring features and bugfixes incorporate validated architectural decisions.
+During planning for any work type, a fresh plan surfaces completed cross-cutting specifications as context, ensuring features and bugfixes incorporate validated architectural decisions.
 
 → Return to caller.

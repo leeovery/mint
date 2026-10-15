@@ -4,16 +4,16 @@
 
 ---
 
-This step invokes the `workflow-implementation-consolidation-finder` agent (`../../../agents/workflow-implementation-consolidation-finder.md`) to sweep one phase's combined surface.
+This step invokes the `workflow-implementation-consolidation-finder` agent (`.claude/agents/workflow-implementation-consolidation-finder.md`) to sweep one phase's combined surface.
 
 ---
 
 ## Identify Scope
 
-Build the list of files the phase touched using git history — internal IDs embed the topic and phase, so the `T{topic}-{N}-` prefix scopes the sweep to this phase's task commits:
+The phase files are the `files` of this phase's task commits, read across every repo in the project:
 
 ```bash
-git log --oneline --name-only --pretty=format: --grep="impl({work_unit}): T{topic}-{N}-" | sort -u | grep -v '^$'
+node .claude/skills/workflow-engine/scripts/engine.cjs code log {work_unit} {topic} --phase {N}
 ```
 
 Read the bank (an absent field is empty — dispatch with an empty list):
@@ -26,20 +26,27 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 ## Invoke the Agent
 
-**Agent path**: `../../../agents/workflow-implementation-consolidation-finder.md`
+**Agent path**: `.claude/agents/workflow-implementation-consolidation-finder.md`
 
-Dispatch a **fresh** agent via the Task tool — fresh context is the point: the finder reads the phase's final surface with no memory of how it was built. Pass:
+Dispatch a **fresh** agent via the Task tool — fresh context is the point: the finder reads the phase's final surface with no memory of how it was built.
+
+> **CRITICAL**: Pass **only** the nine inputs listed below — no reviewer observations, no findings held in conversation, no notes from earlier tasks. The bank is the only route by which a task-time finding reaches the sweep.
+
+Pass:
 
 1. **Phase files** — the file list from scope identification
-2. **Bank entries** — the full bank JSON (the finder verdicts every entry against the phase's final state)
+2. **Bank entries** — the full bank JSON (the finder confirms or drops each against the phase's final state)
 3. **Specification path** — from the specification (if available)
 4. **Project skill paths** — from `project_skills` in the manifest (`node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.implementation.{topic} project_skills`)
 5. **code-quality.md path** — `.claude/skills/workflow-implementation-process/references/code-quality.md`
-6. **Work unit** — the work unit name (for path construction)
-7. **Topic name** — the implementation topic
-8. **Phase number** — `{N}`, and the commit grep token `impl({work_unit}): T{topic}-{N}-` for reading the phase's diff
+6. **finding-floor.md path** — `.claude/skills/workflow-implementation-process/references/finding-floor.md`
+7. **Work unit** — the work unit name (for path construction)
+8. **Topic name** — the implementation topic
+9. **Phase number** — `{N}`
 
 The agent writes its findings to `.workflows/{work_unit}/implementation/{topic}/consolidation-findings-p{N}.md`.
+
+The dispatch runs in the background (`run_in_background: true`) and ends the turn on exactly `The consolidation finder agent has been dispatched for phase {N}.`
 
 ---
 
@@ -50,11 +57,11 @@ The agent returns a brief status:
 ```
 STATUS: findings | clean
 FINDINGS_COUNT: {N}
-BANK: {confirmed M, mooted K, residue R | no entries}
+BANK: {confirmed M | no entries}
 SUMMARY: {1 sentence}
 ```
 
-- `findings`: consolidation is owed — proposals and bank verdicts are in the findings file
-- `clean`: nothing above the bar and no confirmed bank entries. The findings file is still written when bank verdicts, pre-existing debt, or Observations exist, and not at all otherwise
+- `findings`: the findings file is written — a finding survived the bar, a spec defect is recorded, or a comment correction is owed; the judge reads all three from the file
+- `clean`: none of the three — no file is written
 
 → Return to caller.

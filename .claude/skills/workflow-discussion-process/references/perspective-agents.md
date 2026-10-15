@@ -36,15 +36,13 @@ Match the decision topic against the polarity-pair table below. Pick the pair wh
 | structure, hierarchy, taxonomy, monolith, microservices, organise | **Classifier** ↔ **Emergence** | Predictable categories vs let structure emerge |
 | design, approach, strategy, architecture _(default)_ | **Assumption Destroyer** ↔ **First-Principles** | Top-down questioning vs bottom-up rebuilding |
 
-> *Output the next fenced block as markdown (not a code block):*
+Write the offer payload to `.workflows/.cache/{work_unit}/discussion/{topic}/perspective-offer.json` with the Write tool (`{"tension": "…"}` — the tension description as it opens the offer), then render it:
 
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render perspective-offer {work_unit}.discussion.{topic} --file .workflows/.cache/{work_unit}/discussion/{topic}/perspective-offer.json
 ```
-· · · · · · · · · · · ·
-This decision sits on a {tension description} tension. Want to explore both lenses?
 
-**`y/yes`** → Spin up perspective agents arguing each lens
-**`n/no`**  → Continue without perspectives
-```
+Emit the call's MENU section verbatim per its marker.
 
 **STOP.** Wait for user response.
 
@@ -68,7 +66,7 @@ Record the pair in one dispatch — the engine allocates a shared set number and
 node .claude/skills/workflow-engine/scripts/engine.cjs agent dispatch {work_unit} discussion {topic} --kind perspective --label {lens-a:(kebabcase)} --label {lens-b:(kebabcase)}
 ```
 
-**Agent path**: `../../../agents/workflow-discussion-perspective.md`
+**Agent path**: `.claude/agents/workflow-discussion-perspective.md`
 
 Dispatch **all perspective agents in parallel** via the Task tool with `run_in_background: true`.
 
@@ -88,12 +86,7 @@ RESTATEMENT: {one sentence}
 SUMMARY: {1 sentence}
 ```
 
-> *Output the next fenced block as a code block:*
-
-```
-Dispatched 2 perspective agents: {lens A}, {lens B}.
-Results will be surfaced when available.
-```
+Say `Dispatched 2 perspective agents: {Lens A}, {Lens B}. Results will be surfaced when available.`
 
 The discussion continues — do not wait for agents to return.
 
@@ -115,7 +108,13 @@ Then close out the consumed perspective rows — synthesis has read them; they a
 node .claude/skills/workflow-engine/scripts/engine.cjs agent incorporate {work_unit} discussion {topic} {perspective_id}
 ```
 
-**Agent path**: `../../../agents/workflow-discussion-synthesis.md`
+Read the topic's dismissed grounds — the user's standing rulings on what not to report. Empty output means none:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.discussion.{topic} dismissed_grounds
+```
+
+**Agent path**: `.claude/agents/workflow-discussion-synthesis.md`
 
 Dispatch **one agent** via the Task tool with `run_in_background: true`.
 
@@ -124,6 +123,7 @@ The synthesis agent receives:
 1. **Perspective file paths** — paths to all perspective files in this set
 2. **Decision topic** — the decision being explored
 3. **Output file path** — the `file` from the dispatch response. The agent writes its completed landscape there — pure markdown with one `### {ID}: {label}` section per tension (`T1`, `T2`, …), never frontmatter.
+4. **Dismissed grounds** — the list read above, verbatim. Omit this input entirely when the list is empty.
 
 The synthesis agent also compares the Restatement sections from each perspective. If lenses diverge meaningfully on what the decision IS — different scope, different question, or one lens answering an unasked question — synthesis records a **Framing alignment** tension as `T1` so it surfaces first. This is the Problem Restate Gate's payoff: wrong-question failures get caught before the user acts on a tradeoff landscape.
 
@@ -147,10 +147,10 @@ This section handles two responsibilities: promoting completed perspective sets 
 
 **Perspective completion check** — run `agent scan` and group the `perspective` rows by their `set` field. For each set, if every perspective row in the set is `pending` (one still `in-flight` is an agent still running) AND no live `synthesis` row carries that `set` (an `incorporated` one is closed — the engine permits a fresh dispatch over it), proceed to **C. Dispatch Synthesis Agent** for that set. Rows an earlier session dispatched are dead, not running: incorporate a dead lens together with its set's landed siblings (a half-dead council can no longer synthesise — re-offer the pair if the decision still matters). A dead synthesis: incorporate it, then re-dispatch via **C. Dispatch Synthesis Agent** for its set — the engine permits the fresh `--kind synthesis --set {set}`, and the lens files persist for the new agent to read. A set whose synthesis row is already `incorporated` with **no report file on disk** is that recovery crashed between the two calls (a drained synthesis always has its report) — re-dispatch via **C** for it too.
 
-**Synthesis surfacing** — a synthesis report carries tensions that must NOT be dumped. Delegate presentation to the shared surfacing protocol.
+**Synthesis surfacing** — a synthesis report carries tensions that must NOT be dumped. Delegate presentation to the surfacing protocol.
 
-→ Load **[background-agent-surfacing.md](../../workflow-shared/references/background-agent-surfacing.md)** with agent_type = `synthesis`, work_unit = `{work_unit}`, phase = `discussion`, topic = `{topic}`.
+→ Load **[background-agent-surfacing.md](background-agent-surfacing.md)** with agent_type = `synthesis`, work_unit = `{work_unit}`, phase = `discussion`, topic = `{topic}`.
 
 **Deriving subtopics during presentation**: When the user engages with a raised tension, reframe it as a practical subtopic tied to project constraints and record it on the Discussion Map as `pending` (`node .claude/skills/workflow-engine/scripts/engine.cjs discussion-map add {work_unit} {topic} {subtopic}`). Commit the update.
 
-**Perspective files**: The shared protocol handles the synthesis file only. The individual perspective files remain available for reference if the user wants to drill into a specific angle — mention their existence during presentation if relevant, but do not read them out.
+**Perspective files**: The surfacing protocol handles the synthesis file only. The individual perspective files remain available for reference if the user wants to drill into a specific angle — mention their existence during presentation if relevant, but do not read them out.

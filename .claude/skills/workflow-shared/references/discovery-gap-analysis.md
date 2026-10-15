@@ -18,7 +18,7 @@ The caller provides these via context before loading:
 
 ## A. Read Artifacts
 
-Read `.workflows/{work_unit}/research/{name}.md` for each `completed_research` name and `.workflows/{work_unit}/discussion/{name}.md` for each `completed_discussion` name. Skip files missing on disk. Items with `triaged`, `in-progress`, `superseded`, or `cancelled` status are not in the input set.
+Read `.workflows/{work_unit}/research/{name}.md` for each `completed_research` name and `.workflows/{work_unit}/discussion/{name}.md` for each `completed_discussion` name. Skip files missing on disk. Items with `unstarted`, `in-progress`, `superseded`, `cancelled`, or `postponed` status are not in the input set.
 
 For each discussion, note:
 - The subtopic map — final states live in the work unit manifest under `phases.discussion.items.{name}.subtopics` (`decided` / `deferred` for completed discussions; legacy files may instead carry a Discussion Map section inline)
@@ -85,7 +85,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 
 `items` is the active map (an object keyed by topic name). `dismissed` is the array of names previously removed from the map by the user.
 
-Initialise the staging file fresh (overwrite any prior pass) at `.workflows/{work_unit}/.state/discovery-gap-analysis-candidates.md` — pure markdown, content only; the gate state lives in the manifest and is initialised after staging (below). This reference is only invoked for staging when no pending candidates remain from a deferred run, so overwriting is safe.
+Initialise the staging file fresh (overwrite any prior pass) at `.workflows/{work_unit}/.state/discovery-gap-analysis-candidates.md` — pure markdown, content only; the gate state lives in the manifest and is initialised after staging (below). This reference is only invoked for staging when no pending candidates remain from a prior run, so overwriting is safe.
 
 For each candidate topic from **C** (kebab-case name + summary + description + routing), evaluate the conditions below in order. The first two cases are resolved here at stage time without a gate; only genuinely-new candidates are staged for the approval gate. Each branch is self-contained and concludes by moving on to the next candidate.
 
@@ -132,9 +132,11 @@ description: |
   {paragraphs}
 routing: {routing-from-C}
 source: gap-analysis
+source_artifacts: {filename1}.md, {filename2}.md
+gap_type: {cross-artifact|emergent|integration|uncovered}
 ```
 
-`routing` is the value decided per-candidate in **C** (`discussion` or `research`). Gap-analysis keeps the bare `gap-analysis` source (no single-parent semantics — it synthesises across artifacts) and stages no `parent` or `fanout_offer`. `description` is a paragraph or two extracted from the gap analysis for this topic — richer context than the one-line summary, read as opening context at the next phase's initialisation when the user later picks the topic up. Do not write to the discovery map and do not append to any tracker here — the approval gate writes approved candidates and tracks them.
+`routing` is the value decided per-candidate in **C** (`discussion` or `research`). The bare `gap-analysis` source carries the provenance — the analysis synthesises across artifacts, so no single parent exists to name. `description` is a paragraph or two extracted from the gap analysis for this topic — richer context than the one-line summary, read as opening context at the next phase's initialisation when the user later picks the topic up. `source_artifacts` and `gap_type` are this candidate's values from **B** — the artifacts the gap was read out of and its category — carried per-candidate because the gate writes the topic's discovery brief from the block. Do not write to the discovery map and do not append to any tracker here — the approval gate writes approved candidates and tracks them.
 
 ---
 
@@ -148,7 +150,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 
 ## E. Update Cache
 
-Invoked by [topic-discovery.md](topic-discovery.md) after the approval gate has run, regardless of how many candidates were approved — a decline-all pass still stamps, so the analysis won't re-fire on every boot. Not reached when the gate is deferred (the host skips this section so the staging file is re-presented next boot).
+Invoked by [topic-discovery.md](topic-discovery.md) after the approval gate has run, regardless of how many candidates were approved — a decline-all pass still stamps, so the analysis won't re-fire on every boot.
 
 Update the existing cache file at `.workflows/{work_unit}/.state/discovery-gap-analysis.md` (pure markdown, no frontmatter):
 
@@ -176,7 +178,7 @@ Overwrite with the topic list:
 - **Gap type**: {cross-artifact|emergent|integration|uncovered}
 ```
 
-List every topic from **C**, even those that filtered out in **D** — the cache file is the analysis output, not the diff. If re-entered on a reuse boot where **C** did not run this session (a deferred staging file was picked up), source the topic list from the staging file's candidate blocks instead — that file holds only the genuinely-new candidates, so the rebuilt cache is narrower than a fresh pass; the filtered topics' outcomes are already recorded on the map and the dismissed list, and the next content change re-runs the full analysis.
+List every topic from **C**, even those that filtered out in **D** — the cache file is the analysis output, not the diff. If re-entered on a reuse boot where **C** did not run this session (a prior session's staging file was picked up), source the topic list from the staging file's candidate blocks instead — that file holds only the genuinely-new candidates, so the rebuilt cache is narrower than a fresh pass; the filtered topics' outcomes are already recorded on the map and the dismissed list, and the next content change re-runs the full analysis.
 
 Stamp the manifest's gap_analysis_cache — one command checksums the completed research plus completed discussion files, writes `checksum`, `generated`, and `input_files`, and indexes the cache file into the knowledge base so its content surfaces in future contextual queries:
 
@@ -184,6 +186,6 @@ Stamp the manifest's gap_analysis_cache — one command checksums the completed 
 node .claude/skills/workflow-engine/scripts/engine.cjs cache stamp {work_unit} gap-analysis
 ```
 
-If the response carries `warnings`, surface them to the user but do not abort — the cache file is already on disk and the manifest is updated; indexing retries on the next analysis re-run.
+If the response carries `warnings`, surface them to the user but do not abort — the cache file is already on disk and the manifest is updated; the next start retries the indexing.
 
 → Return to caller.

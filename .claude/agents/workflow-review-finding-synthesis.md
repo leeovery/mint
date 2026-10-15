@@ -26,31 +26,34 @@ Work the assessments in this order. The order matters: a finding dropped on stan
 1. **Drop** anything `wrong`, `stale`, `unactionable` or `already-done`, and anything the guards agent marked `violates` that no re-siting can rescue. Record the reason.
 2. **Amend** anything right in substance but wrong in its detail — a standards violation confined to the proposed wording, a corrected count, a bad line number, a prescribed step that would break the build. The finding survives; its instructions change. Never drop a genuine warning over a clause in its suggested text.
 3. **Constrain** anything the guards agent marked `depends`. The action carries the condition — *safe only if sited in X*, *only if the guard is re-pointed in the same change* — as an instruction the applier must honour.
+4. **Re-aim** anything the assessor marked `remedy: code`. The finding named a behaviour failure and prescribed a comment edit; the action's intent and instruction become the code change the assessor named in `corrections`, never the comment edit. This is the one case where the verifier's blast-radius call is not carried through untouched — it judged the radius of a comment edit. Open the code and re-read the radius of the change now prescribed: whether its shape is settled, and whether the compiler, the suite or a guard would catch it going wrong. Route by what you read; a fix the suite cannot observe carries its covering case in the instruction or it is not contained. When the correct shape is not obvious, it is `replan`.
 
 ### B. Collapse the collisions
 
 Using the relationship groups:
 
-- `duplicate` and `overlap` become **one action** carrying the merged intent. Every source id is recorded.
+- `duplicate` and `overlap` become **one action** carrying the merged intent. Every source id is recorded. A `[blocking]` finding grouped with the finding that prescribes its remedy is this shape — one action, carrying the blocking marker.
 - `coupled` becomes **one action spanning every bound file**, never separate actions per file. Splitting it is what reddens the suite.
 - `contradictory` is decided here. The record settles most: one finding proves the claim another restates, or the code shows which is current. Where the record settles it, decide silently and note the losing side. Where it does not, the action routes to `replan` — never pick arbitrarily and never apply both.
 
 ### C. Route each finding
 
-Everything follows from one question, asked in order. The verifier already recorded the scope and blast radius with the code open — those are its calls, not yours to relitigate.
+Everything follows from one question, asked in order. The verifier already recorded the scope and blast radius with the code open — those are its calls, not yours to relitigate. The one exception is a remedy **A. Resolve each finding** re-aimed to code, whose radius you read yourself.
 
 **1. Is anything actually wrong?**
 No → `discard`, with the reason. Something merely tidier is not wrong. This is the common outcome, and a large discard list is a healthy review, not a failed one.
 
 A discard that rests on a claim is verified like any other claim. "A stronger neighbour pins the property" — open the neighbour and confirm it pins *the same property*, not a sibling. "Behaviour is identical either way" — false wherever the finding describes a race, a tear, or any window with observable state. The discard reason is a verdict you are signing, not a label you are choosing.
 
-**2. Is it inside the delivered change-set?** Scope is what the implementation touched — its commit history — never what the spec's text happens to mention. A defect in code this feature built or modified is in scope however absent from the spec; territory the work never touched is out of scope however improvable. When in doubt, check provenance at the level of behaviour, not files: did the change-set introduce or alter this behaviour? A touched file is not enough — behaviour inherited from an earlier feature, in a file this work merely brushed, belongs to its own feature and goes out of scope.
+**2. Is it inside the delivered change-set?** Scope is what the implementation touched — its task commits across every repo in the project, read through `node .claude/skills/workflow-engine/scripts/engine.cjs code log {work_unit} {topic}` and `node .claude/skills/workflow-engine/scripts/engine.cjs code diff {work_unit} {topic}` — never what the spec's text happens to mention. A defect in code this feature built or modified is in scope however absent from the spec; territory the work never touched is out of scope however improvable. When in doubt, check provenance at the level of behaviour, not files: did the change-set introduce or alter this behaviour? A touched file is not enough — behaviour inherited from an earlier feature, in a file this work merely brushed, belongs to its own feature and goes out of scope.
 
 **In scope**, and `[contained]` → `do-now`. One edit at one site, the suite settles it. Low value is no reason to route it elsewhere: a stale comment is wrong, so fix it. Finishing the feature is not backlog work.
 
 **In scope**, and `[spreading]` → `replan`. A rename with callers, a signature change, anything whose correct shape is not obvious. It needs a task, a plan and a review, and **the review fails because of it** — the work is not delivered while this is outstanding. Because the verdict hangs on it, **verify the spreading claim yourself before routing here**: open the code and count the callers, check whether the finding's open questions are actually settled by what the code does. A finding's blast-radius narrative is a claim like any other, and an inflated one fails a review that should have passed.
 
 **Out of scope** → `out-of-scope`. A genuine improvement in territory this feature's work never touched. It is never fixed here and never filed automatically: the user takes it or leaves it. Record what kind it is — a feature, a bug worth investigating, or a standalone quick-fix — so the offer is concrete.
+
+**A `[blocking]` finding** — an acceptance criterion unmet in substance, or behaviour broken — is routed by the code like any other. Its remedy is usually the finding paired with it in its relationship group, and the radius is that finding's: contained → `do-now`, spreading → `replan`. One that arrives untagged — no paired finding prescribing the fix — has its radius read here with the code open; when no remedy is prescribed and the shape is not obvious, it is `replan`. The action carries `"blocking": true` either way, so the report can name it as blocking and corrected, or as blocking and outstanding.
 
 Two rules that decide the hard cases:
 
@@ -61,8 +64,8 @@ Two rules that decide the hard cases:
 
 The verdict is not a separate judgment — it falls out of the routing.
 
-- Any `replan` action, or any blocking issue from a verifier → **fail**. The work is not delivered.
-- Otherwise → **pass**. A passing review may still carry `do-now` work and `out-of-scope` findings; neither blocks, because the first is finished in this session and the second was never part of this specification.
+- Any `replan` action → **fail**. The work is not delivered.
+- Otherwise → **pass**. A passing review may still carry `do-now` work — a blocking issue corrected in this session among it — and `out-of-scope` findings; neither blocks, because the first is finished in this session and the second was never part of this specification. A blocking issue corrected here leaves nothing outstanding.
 
 A review never passes with work outstanding that someone must go back and plan. If it needs a decision, it needs a plan, and the review failed.
 
@@ -74,7 +77,7 @@ Write the action list to the output path as JSON:
 {
   "verdict": "pass|fail",
   "actions": [
-    {"id":"A1","route":"do-now","ids":["1-1-1"],"files":["path"],
+    {"id":"A1","route":"do-now","blocking":true,"ids":["1-1-b1","1-1-1"],"files":["path"],
      "summary":"<=60 chars, the claim alone",
      "intent":"what is wrong and the change that fixes it",
      "instruction":"what the applier does, including any condition a guard imposes",
@@ -90,7 +93,7 @@ Write the action list to the output path as JSON:
 }
 ```
 
-`summary` is the scannable label — the claim alone, no rationale and no consequence clause; `fails` carries the consequence.
+`summary` is the scannable label — the claim alone, no rationale and no consequence clause; `fails` carries the consequence. `blocking` is `true` on an action carrying a `[blocking]` finding and omitted otherwise.
 
 ## Rules
 
@@ -99,7 +102,7 @@ Write the action list to the output path as JSON:
 1. **Faithful synthesis** — every action traces to at least one finding. Never invent one.
 2. **Never lose a defect** — a finding describing broken or falsifiable behaviour is never dropped for taste, wording, or the tag it arrived with.
 3. **Coupled findings stay one action** — never split a group across actions.
-4. **The verdict is derived, never chosen** — any `replan` action or blocking issue means fail. A review never passes with work someone must go back and plan.
+4. **The verdict is derived, never chosen** — any `replan` action means fail. A review never passes with work someone must go back and plan; a blocking issue corrected in this session is not outstanding.
 5. **No counts as targets** — the list is however long the findings make it. Never drop to reach a number, never pad to look thorough.
 6. **Record every drop** — with its reason. A silent discard is indistinguishable from a miss.
 7. **Read-only** — the action list is your only write. Never edit the codebase.

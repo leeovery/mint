@@ -42,23 +42,8 @@ function capitalise(s) {
 // hyphens and underscores, capitalise the first letter of each word, join
 // with spaces. `auth-flow` → `Auth Flow`.
 /** @param {string} s */
-// Titlecase a phase label without disturbing its punctuation: every
-// alphabetic run is capitalised in place, so parentheses and hyphens
-// survive. `discussion (in-progress)` → `Discussion (In-Progress)`.
-/** @param {string} s */
-function titlecaseLabel(s) {
-  return String(s).replace(/[a-z]+/gi, (w) => capitalise(w));
-}
-
 function titlecase(s) {
   return String(s).split(/[-_\s]+/).filter(Boolean).map(capitalise).join(' ');
-}
-
-// Slug form (the `(kebabcase)` casing hint): lower-case, non-alphanumeric runs
-// collapse to single hyphens. `Auth Flow` → `auth-flow`.
-/** @param {string} s */
-function kebabcase(s) {
-  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
 // `[term]` — the item status / lifecycle suffix.
@@ -79,9 +64,9 @@ function derivedFrom(text) {
   return { text: '↳ ' + capitalise(String(text).trim()), hang: PROVENANCE_HANG };
 }
 
-// The `MATERIAL` block — what a work unit carries in from before its
-// pipeline: the inbox seed it was spawned from, and any imported reference
-// files. Annotations, so they take the quiet `·` marker; under a header, so
+// The `MATERIAL` block — what a work unit carries alongside its own work:
+// the inbox seed it was spawned from, and any imported reference files.
+// Annotations, so they take the quiet `·` marker; under a header, so
 // they hang off something rather than opening a display at an indent.
 // Empty string when the unit carries neither.
 /** @param {{seeds: number, imports: number}} counts @returns {string} */
@@ -126,6 +111,7 @@ const DISCOVERY_GLYPH = {
   fresh: '○',
   handled: '⊙',
   cancelled: '⊘',
+  postponed: '⊖',
 };
 
 /** @param {string} tier */
@@ -136,17 +122,22 @@ function discoveryGlyph(tier) {
 // Discovery-map row `[tag]` vocabulary — the lifecycle label each map row
 // carries. One phrasing, every map render (epic dashboard, discovery session
 // map view). `researchState` is the topic's actual research-item status (null
-// when none exists — see computeTopicLifecycle's research_state): a handled
-// topic claims a research fan-out only when research completed or was
-// superseded (in-flight or cancelled research fanned nothing out), and
-// superseded research is named as such, never as complete. `triageParked`
-// (computeTopicLifecycle's triage_parked) appends a `triage waiting` cue on
-// any lifecycle — a `triaged` stub holds rerouted concerns that drain when
-// the phase's session starts. `reconcilePending` (computeTopicLifecycle's
+// when none exists — see computeTopicLifecycle's research_state): superseded
+// research is named as such, never as complete. `mailWaiting` (the map
+// row's mail_waiting) appends a `mail waiting` cue on any lifecycle —
+// messages wait in the topic's mailbox, whatever its items' status, and
+// drain when its session next sits.
+// `reconcilePending` (computeTopicLifecycle's
 // reconcile_pending) appends an `input moved` cue the same way — a phase item
-// beneath the row carries a live reconcile flag its entry flow will clear.
-/** @param {string} lifecycle @param {string|null} [routing] @param {string|null} [researchState] @param {boolean} [triageParked] @param {boolean} [reconcilePending] */
-function discoveryLifecycleLabel(lifecycle, routing, researchState, triageParked, reconcilePending) {
+// beneath the row carries a live reconcile flag its phase's start will clear.
+// `waits` (the map row's live waits, every kind) appends `awaiting research`
+// and `awaiting E1` directly after the lifecycle — a conversation beneath the
+// row is blocked pending research still to land or experiment evidence,
+// released when the research lands or the experiment ends. `promotedTo` (the
+// map row's promoted_to) names the cross-cutting unit a decided topic's
+// discussion moved to with its specification.
+/** @param {string} lifecycle @param {string|null} [routing] @param {string|null} [researchState] @param {boolean} [mailWaiting] @param {boolean} [reconcilePending] @param {import('./derivations.cjs').Wait[]} [waits] @param {string|null} [promotedTo] */
+function discoveryLifecycleLabel(lifecycle, routing, researchState, mailWaiting, reconcilePending, waits, promotedTo) {
   let label;
   switch (lifecycle) {
     case 'ready_for_discussion':
@@ -156,16 +147,18 @@ function discoveryLifecycleLabel(lifecycle, routing, researchState, triageParked
       break;
     case 'researching': label = 'researching'; break;
     case 'discussing': label = 'discussing'; break;
-    case 'decided': label = 'decided'; break;
-    case 'handled':
-      label = researchState === 'completed' || researchState === 'superseded'
-        ? 'handled · research fanned out'
-        : 'handled';
-      break;
+    case 'decided': label = promotedTo ? `decided · promoted to ${promotedTo}` : 'decided'; break;
+    case 'handled': label = 'dead end'; break;
     case 'cancelled': label = 'cancelled'; break;
+    case 'postponed': label = 'postponed'; break;
     default: label = routing ? `fresh · routed to ${routing}` : 'fresh';
   }
-  if (triageParked) label += ' · triage waiting';
+  if (Array.isArray(waits)) {
+    const ids = waits.flatMap((w) => (w.kind === 'experiment' ? [w.id] : []));
+    if (waits.some((w) => w.kind === 'research')) label += ' · awaiting research';
+    if (ids.length > 0) label += ` · awaiting ${ids.join(', ')}`;
+  }
+  if (mailWaiting) label += ' · mail waiting';
   if (reconcilePending) label += ' · input moved';
   return label;
 }
@@ -190,6 +183,21 @@ function discussionGlyph(state) {
   return DISCUSSION_GLYPH[/** @type {keyof typeof DISCUSSION_GLYPH} */ (state)] || '';
 }
 
+// Research-thread glyph vocabulary — register states. The live states take
+// the item-state family's hollow and half forms, a learned thread fills,
+// and `◌` marks a thread parked with its reason.
+const RESEARCH_GLYPH = {
+  open: '○',
+  digging: '◐',
+  learned: '●',
+  parked: '◌',
+};
+
+/** @param {string} state */
+function researchGlyph(state) {
+  return RESEARCH_GLYPH[/** @type {keyof typeof RESEARCH_GLYPH} */ (state)] || '';
+}
+
 // Specification legend vocabulary — the Key block's term descriptions, by
 // category. Projections compose a Key from whichever terms the display shows.
 const SPEC_LEGEND = {
@@ -200,10 +208,6 @@ const SPEC_LEGEND = {
     ready: 'completed and available to be specified',
     reopened: 'back in-progress — the spec waits on it',
   },
-  consult: {
-    pending: 'sibling correction not yet read in and reconciled',
-    addressed: 'correction applied or cited; reconciliation recorded',
-  },
   spec: {
     'in-progress': 'specification work is ongoing',
     completed: 'specification is done',
@@ -211,8 +215,7 @@ const SPEC_LEGEND = {
 };
 
 module.exports = {
-  titlecaseLabel,
-  TREE_WIDTH, treeHeader, capitalise, titlecase, kebabcase, tag, derivedFrom, stateNote, title, materialBlock,
+  TREE_WIDTH, treeHeader, capitalise, titlecase, tag, derivedFrom, stateNote, title, materialBlock,
   discoveryGlyph, DISCOVERY_GLYPH, discoveryLifecycleLabel,
-  discussionGlyph, DISCUSSION_GLYPH, WORKLIST_GLYPH, SPEC_LEGEND,
+  discussionGlyph, DISCUSSION_GLYPH, researchGlyph, RESEARCH_GLYPH, WORKLIST_GLYPH, SPEC_LEGEND,
 };

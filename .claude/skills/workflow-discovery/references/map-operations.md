@@ -33,16 +33,17 @@ Then read the user's most recent message. Extract one or more operations. Recogn
 | *"remove X"*, *"drop X"*, *"delete X"*                     | Remove            | name                   |
 | *"rename X to Y"*                                          | Rename            | old name, new name     |
 | *"change routing of X to discussion"*                      | Change routing    | name, new routing      |
-| *"mark X handled"*, *"X has fanned out"*                   | Mark handled      | name                   |
-| *"unhandle X"*, *"un-handle X"*                            | Unhandle          | name                   |
+| *"close X as a dead end"*, *"X is a dead end"*, *"mark X handled"* | Close as dead end | name                   |
+| *"reopen X"*, *"unhandle X"*                               | Reopen            | name                   |
+| *"postpone X"*, *"push X back to the roadmap"*, *"X is v2"*  | Postpone          | name, horizon if named |
 
 If the message is ambiguous (e.g. *"fix X"*, *"that one looks wrong"*), ask one clarifying question before proceeding. No STOP gate is needed for clarification — it's part of conversational flow, not a manifest write.
 
 **Group operations** for safety-by-destructiveness:
 
 - **Additive group** — a contiguous run of Edit summary operations *or* a contiguous run of Edit description operations. Each group batches into one STOP gate, one commit, one session-log entry.
-- **Destructive group** — a single Remove, Rename, or Change routing operation. Each is its own group of one with its own STOP gate and commit.
-- **Marker group** — a single Mark handled or Unhandle operation. Non-destructive (it sets or clears a display/convergence marker only), but still its own group of one with its own STOP gate and commit.
+- **Destructive group** — a single Remove, Rename, Change routing, or Postpone operation. Each is its own group of one with its own STOP gate and commit; Postpone's STOP is the postpone confirm itself, not `map-op-gate`.
+- **Marker group** — a single Close as dead end or Reopen operation. Non-destructive (it sets or clears a display/convergence marker only), but still its own group of one with its own STOP gate and commit.
 
 Walk the groups in user order. For mixed batches, each destructive op is its own group; contiguous additive ops in between batch.
 
@@ -50,61 +51,13 @@ Walk the groups in user order. For mixed batches, each destructive op is its own
 
 ## B. Validate
 
-Apply per-operation validation gates **before** any STOP gate. If validation fails for an operation, surface the rejection with a clear next-step pointer (don't just say "blocked") and remove the operation from its group. Continue with the rest.
+Apply per-operation validation **before** any STOP gate. If validation fails for an operation, surface the rejection with a clear next-step pointer (don't just say "blocked") and remove the operation from its group. Continue with the rest.
 
-**Lifecycle gates** — for destructive (Remove, Rename, Change routing) and marker (Mark handled, Unhandle) operations, look up the operation's target topic in `discovery_map` and read its `lifecycle` field. The operation is allowed only when:
+**Lifecycle gates** — where a topic stands decides which single-item ops it takes, and each op's gate reads that itself: a Remove, Rename, Change routing, Close as dead end, or Reopen that its topic's lifecycle refuses is answered with the rejection in place of its confirm (see **E**–**J**). Edits ride any lifecycle. Remove is for mistakes and duplicates — a never-started topic that should not be on the map; not doing a topic, started or not, is the epic menu's `a/cancel`, which keeps the row and can be reversed, and not doing it *yet* is Postpone.
 
-| Operation       | Allowed lifecycles | Disallowed                                                                  |
-| --------------- | ------------------ | --------------------------------------------------------------------------- |
-| Remove          | `fresh`            | `researching`, `discussing`, `ready_for_discussion`, `decided`, `handled`, `cancelled` |
-| Rename          | `fresh`            | all others                                                                  |
-| Change routing  | `fresh`            | all others (routing is implicit once a phase item exists)                   |
-| Mark handled    | any except `handled`, `cancelled` | `handled`, `cancelled`                                       |
-| Unhandle        | `handled`          | all others                                                                  |
-| Edit summary    | any                | —                                                                           |
-| Edit description| any                | —                                                                           |
+Postpone takes no pre-check at all: its gate is the postpone confirm, which refuses a cancelled, postponed, or dead-ended row — and a started specification sourcing the discussion, a live experiment record, or a roadmap item already holding the name — in the engine's own words. A dead end is the answer to its own question and carries nothing forward under the topic's name, so "later" over one is a contradiction: it reopens first. Every other lifecycle postpones.
 
-`cancelled` is also disallowed for Remove because the discovery item is the historical record of the topic ever having existed. Removal is for never-started topics only; cancel-then-vanish would erase the audit trail. The `a/cancel` flow in `/workflow-continue-epic` is the right tool for stopping in-flight work.
-
-`fresh` alone does not guarantee Remove, Rename, or Change routing will succeed — any research or discussion item on record refuses engine-side, including a `triaged` stub of parked rerouted concerns (dump cue `triage=waiting`). Surface the engine's refusal as the rejection.
-
-Mark handled is non-destructive — it sets a display/convergence marker, primary use being a research topic that has fanned out into differently-named discussions. It's allowed from any actionable lifecycle; only an already-`handled` or `cancelled` topic is rejected. Unhandle is its inverse — allowed on `handled` only, clearing the marker.
-
-The engine enforces these same gates — `engine discovery-map` refuses an illegal op with an error naming the blocking lifecycle, so this pre-validation and the write path can never disagree. The rejection displays below stay this file's job, rendered from the pre-check here or from an engine error.
-
-**Destructive-op rejection** — for a Remove, Rename, or Change routing op that fails its gate, render in a code block:
-
-> *Output the next fenced block as a code block:*
-
-```
-"{topic}" can't be {removed|renamed|re-routed} from the map —
-{lifecycle_phrase}. {recovery_pointer}
-```
-
-`{lifecycle_phrase}` examples (derive from the topic's actual research state — superseded research is named as such, never as completed):
-
-- `researching` — `research is in flight on it`
-- `discussing` — `discussion is in flight on it`
-- `ready_for_discussion` — `research has completed and discussion is queued` (superseded research: `its research was superseded and discussion is queued`)
-- `decided` — `discussion has concluded`
-- `handled` — `it has fanned out into discussions and stays on the map as historical anchor` (only when research completed or was superseded; otherwise `it is marked handled and stays on the map as historical anchor`)
-- `cancelled` — `it has phase work in cancelled state and stays on the map as historical record`
-
-`{recovery_pointer}`: for a `handled` target, `Say "unhandle {topic}" to make it actionable again.` For any other disallowed lifecycle, `To stop work on it, use \`a\`/\`cancel\` from the epic menu instead.`
-
-**Marker-op rejection** — for a Mark handled op on an already-`handled` or `cancelled` topic, or an Unhandle op on a non-`handled` topic, render in a code block:
-
-> *Output the next fenced block as a code block:*
-
-```
-"{topic}" can't be {marked handled|unhandled} — {marker_phrase}.
-```
-
-`{marker_phrase}` examples:
-
-- Mark handled on `handled` — `it's already marked handled`
-- Mark handled on `cancelled` — `it's cancelled; reactivate the phase work from the epic menu first`
-- Unhandle on a non-`handled` lifecycle — `it isn't marked handled, so there's nothing to unhandle`
+A gate's confirm does not guarantee a Remove, Rename, or Change routing will succeed — any research or discussion item on record refuses engine-side, including an `unstarted` stub holding messages (dump cue `mail=waiting`). Surface the engine's refusal as the rejection.
 
 **Name validation** — for each Rename operation, validate the proposed name via the shared reference:
 
@@ -112,9 +65,17 @@ The engine enforces these same gates — `engine discovery-map` refuses an illeg
 
 Branch on `result`:
 
-- `collision-active` — rejection already rendered by the reference. Remove the operation from its group.
+- `collision-active` — render the rejection below and remove the operation from its group.
 - `matches-dismissed` — allowed. A Rename target that matches a dismissed name leaves the dismissed entry alone; the new active item simply exists alongside it as historical record.
 - `ok` — proceed.
+
+**Name-collision rejection** — for a Rename whose new name is already on the map:
+
+> *Output the next fenced block as markdown (not a code block):*
+
+```
+That name is already on the map. Pick a different name or use edit-summary / change-routing on the existing item.
+```
 
 → On return, proceed to **C. Apply**.
 
@@ -142,13 +103,17 @@ Walk the validated operation groups in user order. For the next pending group:
 
 → Proceed to **H. Edit Description**.
 
-#### If the group is a Mark handled operation
+#### If the group is a Close as dead end operation
 
-→ Proceed to **I. Mark Handled**.
+→ Proceed to **I. Close as Dead End**.
 
-#### If the group is an Unhandle operation
+#### If the group is a Reopen operation
 
-→ Proceed to **J. Unhandle**.
+→ Proceed to **J. Reopen**.
+
+#### If the group is a Postpone operation
+
+→ Proceed to **L. Postpone**.
 
 #### Otherwise (no groups remain)
 
@@ -156,27 +121,13 @@ Walk the validated operation groups in user order. For the next pending group:
 
 ## D. Edit Summary
 
-Render the proposal once for the whole batch:
+One gate covers the whole batch. Write the payload to `.workflows/.cache/{work_unit}/discovery/map-op.json` with the Write tool (`{"items": [{"name": "…", "summary": "…"}]}` — one entry per edit in user order, each carrying the new summary verbatim), then render it:
 
-> *Output the next fenced block as a code block:*
-
-```
-Updating {N} summary(ies):
-
-  • {name_1}: "{new summary}"
-  • {name_2}: "{new summary}"
-  ...
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render map-op-gate {work_unit} --op edit-summary --file .workflows/.cache/{work_unit}/discovery/map-op.json
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-**`◆ Apply?`**
-
-**`y/yes`**
-**`n/no`**
-```
+Emit the call's DISPLAY and MENU sections verbatim per their markers.
 
 **STOP.** Wait for user response.
 
@@ -204,44 +155,38 @@ Append a single batch entry to the session log under **Edits**. The session log 
 Single commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): edit {N} summary(ies)"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): edit {N} summary(ies)" --discovery
 ```
 
 → Return to **C. Apply** for the next group.
 
 ## E. Remove
 
-Render the proposal:
+Write the payload to `.workflows/.cache/{work_unit}/discovery/map-op.json` with the Write tool (`{"name": "…"}`), then render the gate:
 
-> *Output the next fenced block as a code block:*
-
-```
-Remove "{name}" from the map.
-
-  Lifecycle: fresh — no work has started on this topic.
-  The name will be added to the dismissed list so analyses
-  won't auto-re-propose it.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render map-op-gate {work_unit} --op remove --file .workflows/.cache/{work_unit}/discovery/map-op.json
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Emit the call's sections, each verbatim per its marker.
 
-```
-· · · · · · · · · · · ·
-**`◆ Confirm removal?`**
+#### If the call answered with `DISPLAY: map operation refused`
 
-**`y/yes`**
-**`n/no`**
-```
+The topic's lifecycle refuses the removal. No manifest writes, no session-log entry, no commit.
+
+→ Return to **C. Apply** for the next group.
+
+#### If the call answered with the gate
 
 **STOP.** Wait for user response.
 
-#### If `no`
+**If `no`:**
 
 Skip this operation. No manifest writes, no session-log entry, no commit.
 
 → Return to **C. Apply** for the next group.
 
-#### If `yes`
+**If `yes`:**
 
 Hard-delete the discovery item and add the name to the dismissed list:
 
@@ -258,43 +203,38 @@ Append an Edits entry to the session log. If the log doesn't exist yet, create i
 Per-item commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): remove {name} from map"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): remove {name} from map" --discovery
 ```
 
 → Return to **C. Apply** for the next group.
 
 ## F. Rename
 
-Render the proposal:
+Write the payload to `.workflows/.cache/{work_unit}/discovery/map-op.json` with the Write tool (`{"name": "{old}", "new_name": "{new}"}`), then render the gate:
 
-> *Output the next fenced block as a code block:*
-
-```
-Rename "{old}" → "{new}".
-
-  Lifecycle: fresh — no work has started, no files exist
-  under this name. Manifest mutation only.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render map-op-gate {work_unit} --op rename --file .workflows/.cache/{work_unit}/discovery/map-op.json
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Emit the call's sections, each verbatim per its marker.
 
-```
-· · · · · · · · · · · ·
-**`◆ Confirm rename?`**
+#### If the call answered with `DISPLAY: map operation refused`
 
-**`y/yes`**
-**`n/no`**
-```
+The topic's lifecycle refuses the rename. No manifest writes, no session-log entry, no commit.
+
+→ Return to **C. Apply** for the next group.
+
+#### If the call answered with the gate
 
 **STOP.** Wait for user response.
 
-#### If `no`
+**If `no`:**
 
 Skip this operation. No manifest writes, no session-log entry, no commit.
 
 → Return to **C. Apply** for the next group.
 
-#### If `yes`
+**If `yes`:**
 
 Move the item to the new name — every field carries across:
 
@@ -313,43 +253,38 @@ Append an Edits entry to the session log. If the log doesn't exist yet, create i
 Per-item commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): rename {old} → {new}"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): rename {old} → {new}" --discovery
 ```
 
 → Return to **C. Apply** for the next group.
 
 ## G. Change Routing
 
-Render the proposal:
+Write the payload to `.workflows/.cache/{work_unit}/discovery/map-op.json` with the Write tool (`{"name": "…", "from": "{old routing}", "to": "{new routing}"}`), then render the gate:
 
-> *Output the next fenced block as a code block:*
-
-```
-Change routing of "{name}": {old routing} → {new routing}.
-
-  Lifecycle: fresh — no phase work yet, so the routing
-  hint is mutable.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render map-op-gate {work_unit} --op reroute --file .workflows/.cache/{work_unit}/discovery/map-op.json
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Emit the call's sections, each verbatim per its marker.
 
-```
-· · · · · · · · · · · ·
-**`◆ Confirm routing change?`**
+#### If the call answered with `DISPLAY: map operation refused`
 
-**`y/yes`**
-**`n/no`**
-```
+The topic's lifecycle refuses the routing change. No manifest writes, no session-log entry, no commit.
+
+→ Return to **C. Apply** for the next group.
+
+#### If the call answered with the gate
 
 **STOP.** Wait for user response.
 
-#### If `no`
+**If `no`:**
 
 Skip this operation. No manifest writes, no session-log entry, no commit.
 
 → Return to **C. Apply** for the next group.
 
-#### If `yes`
+**If `yes`:**
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs discovery-map reroute {work_unit} {name} {research|discussion}
@@ -364,34 +299,22 @@ Append an Edits entry to the session log. If the log doesn't exist yet, create i
 Per-item commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): re-route {name} to {new routing}"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): re-route {name} to {new routing}" --discovery
 ```
 
 → Return to **C. Apply** for the next group.
 
 ## H. Edit Description
 
-Render the proposal once for the whole batch. Description may span paragraphs — show a truncated preview (about 140 characters with `…`) in the proposal block so the STOP gate stays readable; the full description is written verbatim on confirm.
+One gate covers the whole batch. Description may span paragraphs — carry a truncated preview (about 140 characters with `…`) in the payload so the STOP gate stays readable; the full description is written verbatim on confirm.
 
-> *Output the next fenced block as a code block:*
+Write the payload to `.workflows/.cache/{work_unit}/discovery/map-op.json` with the Write tool (`{"items": [{"name": "…", "description": "…"}]}` — one entry per edit in user order, each carrying the truncated preview), then render it:
 
-```
-Updating {N} description(s):
-
-  • {name_1}: "{truncated description}"
-  • {name_2}: "{truncated description}"
-  ...
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render map-op-gate {work_unit} --op edit-description --file .workflows/.cache/{work_unit}/discovery/map-op.json
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-· · · · · · · · · · · ·
-**`◆ Apply?`**
-
-**`y/yes`**
-**`n/no`**
-```
+Emit the call's DISPLAY and MENU sections verbatim per their markers.
 
 **STOP.** Wait for user response.
 
@@ -419,96 +342,86 @@ Append a single batch entry to the session log under **Edits**. If the log doesn
 Single commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): edit {N} description(s)"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): edit {N} description(s)" --discovery
 ```
 
 → Return to **C. Apply** for the next group.
 
-## I. Mark Handled
+## I. Close as Dead End
 
-Render the proposal:
+Write the payload to `.workflows/.cache/{work_unit}/discovery/map-op.json` with the Write tool (`{"name": "…"}`), then render the gate:
 
-> *Output the next fenced block as a code block:*
-
-```
-Mark "{name}" handled.
-
-  It stays on the map as a historical anchor, but stops
-  prompting for a next action and no longer counts against
-  convergence. Use this when its research has fanned out into
-  other discussions. Reversible with "unhandle {name}".
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render map-op-gate {work_unit} --op close --file .workflows/.cache/{work_unit}/discovery/map-op.json
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Emit the call's sections, each verbatim per its marker.
 
-```
-· · · · · · · · · · · ·
-**`◆ Confirm mark handled?`**
+#### If the call answered with `DISPLAY: map operation refused`
 
-**`y/yes`**
-**`n/no`**
-```
+The topic's lifecycle refuses the close. No manifest writes, no session-log entry, no commit.
+
+→ Return to **C. Apply** for the next group.
+
+#### If the call answered with the gate
 
 **STOP.** Wait for user response.
 
-#### If `no`
+**If `no`:**
 
 Skip this operation. No manifest writes, no session-log entry, no commit.
 
 → Return to **C. Apply** for the next group.
 
-#### If `yes`
+**If `yes`:**
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs discovery-map handle {work_unit} {name}
 ```
 
+If the command fails, surface the error and skip the commit — the engine validates before writing, so nothing changed.
+
 Append an Edits entry to the session log. If the log doesn't exist yet, create it first from [template.md](template.md). If **Edits** currently reads `(none)`, replace it with the bullet:
 
 ```markdown
-- Marked handled: {name} — {short reason}
+- Closed as dead end: {name} — {short reason}
 ```
 
 Per-item commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): mark {name} handled"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): close {name} as dead end" --discovery
 ```
 
 → Return to **C. Apply** for the next group.
 
-## J. Unhandle
+## J. Reopen
 
-Render the proposal:
+Write the payload to `.workflows/.cache/{work_unit}/discovery/map-op.json` with the Write tool (`{"name": "…"}`), then render the gate:
 
-> *Output the next fenced block as a code block:*
-
-```
-Unhandle "{name}".
-
-  Clears the handled marker. The topic returns to its
-  name-matched lifecycle and counts against convergence again.
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render map-op-gate {work_unit} --op reopen --file .workflows/.cache/{work_unit}/discovery/map-op.json
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
+Emit the call's sections, each verbatim per its marker.
 
-```
-· · · · · · · · · · · ·
-**`◆ Confirm unhandle?`**
+#### If the call answered with `DISPLAY: map operation refused`
 
-**`y/yes`**
-**`n/no`**
-```
+The topic's lifecycle refuses the reopen. No manifest writes, no session-log entry, no commit.
+
+→ Return to **C. Apply** for the next group.
+
+#### If the call answered with the gate
 
 **STOP.** Wait for user response.
 
-#### If `no`
+**If `no`:**
 
 Skip this operation. No manifest writes, no session-log entry, no commit.
 
 → Return to **C. Apply** for the next group.
 
-#### If `yes`
+**If `yes`:**
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs discovery-map unhandle {work_unit} {name}
@@ -517,13 +430,13 @@ node .claude/skills/workflow-engine/scripts/engine.cjs discovery-map unhandle {w
 Append an Edits entry to the session log. If the log doesn't exist yet, create it first from [template.md](template.md). If **Edits** currently reads `(none)`, replace it with the bullet:
 
 ```markdown
-- Unhandled: {name} — {short reason}
+- Reopened: {name} — {short reason}
 ```
 
 Per-item commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): unhandle {name}"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): reopen {name}" --discovery
 ```
 
 → Return to **C. Apply** for the next group.
@@ -533,3 +446,31 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "di
 All operation groups have been processed.
 
 → Return to caller.
+
+## L. Postpone
+
+The horizon, the confirm, the transaction, and the receipt are the shared door's. It returns having sent the topic to the roadmap, or having left it where it is.
+
+→ Load **[postponing-the-topic.md](../../workflow-shared/references/postponing-the-topic.md)** with work_unit = `{work_unit}`, name = `{name}`, phase = `discovery`, topic = `none`.
+
+**If the topic was postponed:**
+
+Append an Edits entry to the session log. If the log doesn't exist yet, create it first from [template.md](template.md). If **Edits** currently reads `(none)`, replace it with the bullet:
+
+```markdown
+- Postponed: {name} → {horizon}
+```
+
+The verb committed both manifests itself, so this commit carries the log alone:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): postpone {name} to {horizon}" --discovery
+```
+
+→ Return to **C. Apply** for the next group.
+
+**Otherwise:**
+
+The postpone was refused or declined — nothing was written, and nothing is logged.
+
+→ Return to **C. Apply** for the next group.

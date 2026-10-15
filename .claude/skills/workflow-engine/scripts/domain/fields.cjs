@@ -20,17 +20,24 @@
 const fs = require('fs');
 const path = require('path');
 const io = require('../kernel/manifest-io.cjs');
-const { INDEXED_ARTIFACTS } = require('./kb.cjs');
+const { listWorkUnitManifests } = require('../kernel/manifest.cjs');
+const { INDEXED_ARTIFACTS } = require('./knowledge/artifacts.cjs');
+const { UNIT_PHASES, promotedRefusal } = require('./derivations.cjs');
 const {
   VALID_WORK_TYPES,
   VALID_PHASES,
   VALID_PHASE_STATUSES,
+  DERIVED_PHASES,
   VALID_GATE_MODES,
+  GATE_FIELDS,
   VALID_WORK_UNIT_STATUSES,
+  VALID_EXPERIMENT_STATUSES,
+  EXPERIMENT_ID_PATTERN,
+  isParentExperimentId,
 } = require('../kernel/manifest-schema.cjs');
 
 // Phases whose artifacts the knowledge base indexes — `resolve`'s scope.
-// Derived from kb's INDEXED_ARTIFACTS, the one table declaring what the KB
+// Derived from INDEXED_ARTIFACTS, the one table declaring what the KB
 // indexes and where, so the resolve scope can never drift from it.
 const INDEXED_PHASES = Object.keys(INDEXED_ARTIFACTS);
 
@@ -199,10 +206,38 @@ function validatePhase(phase) {
   }
 }
 
-/** @param {*} value */
-function validateGateMode(value) {
+/**
+ * A gate-mode write. The value must be in the vocabulary; a phase item's
+ * `*_gate_mode` must be a gate GATE_FIELDS places on that phase, and
+ * `bounded` lands only where the gate names a bound. A walk's nested
+ * `gate_mode` (a staging row) takes no bound.
+ * @param {string[]} segments the resolved internal path @param {*} value
+ */
+function validateGateMode(segments, value) {
   if (typeof value !== 'string' || !VALID_GATE_MODES.includes(value)) {
     fail(`Invalid gate mode ${JSON.stringify(value)}. Must be one of: ${VALID_GATE_MODES.join(', ')}`);
+  }
+  const field = segments[segments.length - 1];
+  if (field === 'gate_mode') {
+    if (value === 'bounded') {
+      fail('"bounded" is not defined for a walk\'s gate_mode — a walk\'s gate has no bound; use gated or auto');
+    }
+    return;
+  }
+  const onItem = segments.length === 5 && segments[0] === 'phases' && segments[2] === 'items';
+  const gates = onItem ? GATE_FIELDS[segments[1]] : undefined;
+  if (!gates || !(field in gates)) {
+    const homes = Object.keys(GATE_FIELDS).filter((phase) => field in GATE_FIELDS[phase]);
+    if (homes.length === 0) {
+      const known = Object.entries(GATE_FIELDS).map(([phase, g]) => `${phase}: ${Object.keys(g).join(', ')}`).join('; ');
+      fail(`"${field}" is not a gate the schema knows — gates by phase: ${known}`);
+    }
+    fail(`"${field}" is a gate of the ${homes.join(' and ')} phase${homes.length > 1 ? 's' : ''} — write it on that phase's item (<work-unit>.${homes[0]}.<topic> ${field})`);
+  }
+  if (value === 'bounded' && gates[field] === null) {
+    const bounded = Object.entries(GATE_FIELDS)
+      .flatMap(([phase, g]) => Object.entries(g).filter(([, bound]) => bound !== null).map(([f, bound]) => `${phase}.${f} (${bound})`));
+    fail(`"bounded" is not defined for "${field}" — the gate has no bound; gates with a bound: ${bounded.join(', ')}`);
   }
 }
 
@@ -251,10 +286,12 @@ function validateSet(segments, value, fieldSegments = segments) {
     return;
   }
 
-  // Gate modes anywhere in the tree
+  // Gate modes — a phase item's `*_gate_mode` where GATE_FIELDS places it,
+  // a walk's nested `gate_mode` under its staging row.
   const last = segments[segments.length - 1];
   if (last.endsWith('_gate_mode') || last === 'gate_mode') {
-    validateGateMode(value);
+    if (segments[0] === 'phases' && segments.length >= 2) validatePhase(segments[1]);
+    validateGateMode(segments, value);
     return;
   }
 
@@ -265,7 +302,27 @@ function validateSet(segments, value, fieldSegments = segments) {
 
     // phases.<phase>.items.<item>.status
     if (segments.length === 5 && segments[2] === 'items' && segments[4] === 'status') {
+      if (DERIVED_PHASES.includes(phase)) {
+        fail('the experiment item\'s status is derived bookkeeping the experiment verbs maintain — the spawn opens it, the last record\'s terminal transition closes it; never set it by hand');
+      }
       validatePhaseStatus(phase, value);
+      return;
+    }
+
+    // The experiment series container (field experiments.<id>.<field>) —
+    // leaf repairs only, each validated as the experiment verbs would write
+    // it.
+    if (fieldSegments[0] === 'experiments') {
+      validateExperimentField(fieldSegments, value);
+      return;
+    }
+
+    // phases.<phase>.items.<item>.awaiting_experiments — the evidence lock a
+    // spawn places on the spawning item, released by the terminal experiment
+    // transitions. Guarded so a hand write can never land a shape the
+    // release edges cannot read.
+    if (segments.length === 5 && segments[2] === 'items' && segments[4] === 'awaiting_experiments') {
+      validateAwaitingExperiments(value);
       return;
     }
 
@@ -283,9 +340,6 @@ function validateSet(segments, value, fieldSegments = segments) {
       const leaf = fieldSegments[fieldSegments.length - 1];
       if (leaf === 'status' && (typeof value !== 'string' || !['pending', 'approved', 'skipped', 'resolved'].includes(value))) {
         fail(`Invalid candidate status ${JSON.stringify(value)}. Must be one of: pending, approved, skipped, resolved`);
-      }
-      if (leaf === 'fanout_offer' && (typeof value !== 'string' || !['pending', 'marked', 'declined'].includes(value))) {
-        fail(`Invalid fanout_offer ${JSON.stringify(value)}. Must be one of: pending, marked, declined`);
       }
       return;
     }
@@ -338,11 +392,161 @@ function refuseShadowField(phase, topic, fieldSegments) {
 // Vocabulary-guarded state containers take leaf writes only — a wholesale
 // set could land any shape unvalidated. Delete clears them; apply/set write
 // their leaves.
+const GUARDED_CONTAINERS = ['staging', 'tracking', 'analysis_staging', 'experiments'];
+
 /** @param {string[]} fieldSegments */
 function refuseContainerWrite(fieldSegments) {
-  if (fieldSegments.length === 1 && ['staging', 'tracking', 'analysis_staging'].includes(fieldSegments[0])) {
+  if (fieldSegments.length === 1 && GUARDED_CONTAINERS.includes(fieldSegments[0])) {
     fail(`"${fieldSegments[0]}" is a guarded state container — write its leaf fields (or delete to clear); a wholesale set would bypass validation`);
   }
+}
+
+// An experiment record's writable leaves — everything else the record holds
+// is engine-derived.
+const EXPERIMENT_RECORD_FIELDS = ['slug', 'status', 'verdict', 'reason'];
+
+/**
+ * One experiment-record field write (`experiments.<id>.<leaf>`), validated
+ * exactly as the experiment verbs write it. Record-level sets are refused —
+ * a wholesale write would bypass the leaf vocabulary — and a sub-experiment
+ * is unreachable here by construction: its dotted id splits into path
+ * segments the surface cannot re-join, so those records stay engine-managed.
+ * @param {string[]} fieldSegments @param {*} value
+ */
+function validateExperimentField(fieldSegments, value) {
+  const [, id, leaf] = fieldSegments;
+  if (EXPERIMENT_ID_PATTERN.test(id ?? '') && /^[1-9][0-9]*$/.test(fieldSegments[2] ?? '')) {
+    fail(`sub-experiment records key by their dotted id ("${id}.${fieldSegments[2]}"), which the field surface cannot address — use the experiment verbs`);
+  }
+  if (fieldSegments.length === 2) {
+    fail(`"experiments.${id}" is a record — write its leaf fields (${EXPERIMENT_RECORD_FIELDS.join(', ')}); a wholesale set would bypass validation`);
+  }
+  if (fieldSegments.length !== 3 || !EXPERIMENT_RECORD_FIELDS.includes(leaf)) {
+    fail(`Invalid experiment field "${fieldSegments.slice(1).join('.')}" — records take ${EXPERIMENT_RECORD_FIELDS.join(', ')}`);
+  }
+  if (!EXPERIMENT_ID_PATTERN.test(id)) {
+    fail(`invalid experiment id "${id}" — ids are E1, E2, …`);
+  }
+  if (leaf === 'status') {
+    if (typeof value !== 'string' || !VALID_EXPERIMENT_STATUSES.includes(value)) {
+      fail(`Invalid experiment status ${JSON.stringify(value)}. Must be one of: ${VALID_EXPERIMENT_STATUSES.join(', ')}`);
+    }
+    return;
+  }
+  if (leaf === 'slug') {
+    if (typeof value !== 'string' || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(value)) {
+      fail(`Invalid experiment slug ${JSON.stringify(value)}. Must be kebab-case`);
+    }
+    return;
+  }
+  // verdict / reason — the register's one-line row form.
+  if (typeof value !== 'string' || value.trim() === '' || value.includes('\n')) {
+    fail(`Invalid experiment ${leaf} ${JSON.stringify(value)}. Must be one non-empty line`);
+  }
+}
+
+/** @param {*} value */
+function validateAwaitingExperiments(value) {
+  if (!Array.isArray(value) || value.some((id) => typeof id !== 'string' || !EXPERIMENT_ID_PATTERN.test(id) || !isParentExperimentId(id))) {
+    fail(`Invalid awaiting_experiments ${JSON.stringify(value)}. Must be an array of top-level experiment ids (E1, E2, …) — the lock is only ever the parent id`);
+  }
+}
+
+/**
+ * Existence checks that need the loaded manifest, run on the write path
+ * inside the lock: records are allocated by the spawn — the field surface
+ * repairs, never creates. A `set` on an id the series does not hold would
+ * mint a phantom record that blocks the series ever settling; an
+ * `awaiting_experiments` id naming no record would strand a wait no release
+ * edge can find.
+ * @param {any} manifest @param {string[]} segments @param {*} value
+ */
+function assertExperimentTargets(manifest, segments, value) {
+  // phases.experiment.items.<topic>.experiments.<id>.<leaf>
+  if (segments.length === 7 && segments[0] === 'phases' && segments[2] === 'items' && segments[4] === 'experiments') {
+    const [, , , topic, , id] = segments;
+    const record = getByPath(manifest, segments.slice(0, 6));
+    if (!record || typeof record !== 'object') {
+      fail(`no experiment ${id} in "${topic}"'s series — records are allocated by the spawn (experiment create); the field surface repairs, never creates`);
+    }
+    return;
+  }
+  // phases.<phase>.items.<topic>.awaiting_experiments
+  if (segments.length === 5 && segments[0] === 'phases' && segments[2] === 'items' && segments[4] === 'awaiting_experiments') {
+    const topic = segments[3];
+    const series = (((((manifest.phases || {}).experiment || {}).items || {})[topic] || {}).experiments) || {};
+    for (const id of Array.isArray(value) ? value : [value]) {
+      if (!series[id] || typeof series[id] !== 'object') {
+        fail(`awaiting_experiments cannot name ${id} — no such record in "${topic}"'s experiment series; the lock only ever points at records the spawn allocated`);
+      }
+    }
+  }
+}
+
+// The states a unit verb leaves a phase item in — the cancel's and the
+// postpone's holds, and the promotion that moved it to a cross-cutting unit:
+// the field surface must never be the permissive path around them, so a
+// write onto one is refused with the way out its verb names.
+const HELD_STATUSES = ['cancelled', 'postponed', 'promoted'];
+
+/**
+ * The held phase item a dot-path lands on or inside —
+ * `phases.<phase>.items.<topic>[.<field>…]` — or null.
+ * @param {any} manifest @param {string[]} segments
+ * @returns {{phase: string, topic: string, item: Record<string, any>}|null}
+ */
+function heldItemAt(manifest, segments) {
+  if (segments.length < 4 || segments[0] !== 'phases' || segments[2] !== 'items') return null;
+  const [, phase, , topic] = segments;
+  const item = getByPath(manifest, segments.slice(0, 4));
+  return item && typeof item === 'object' && HELD_STATUSES.includes(item.status) ? { phase, topic, item } : null;
+}
+
+/**
+ * The refusal every write onto a held item makes, naming the way out: the
+ * reactivate for a cancelled item, addressed by the unit that frees it —
+ * `discovery` for a research or discussion item, `specification` for a
+ * specification or plan; a phase outside the two stages names the verb
+ * alone — the roadmap for a postponed one, whose way back is the pull, and
+ * for a promoted one the transitions' own refusal, naming the unit it moved
+ * to.
+ * @param {string} workUnit @param {{phase: string, topic: string, item: Record<string, any>}} target
+ */
+function refuseHeld(workUnit, { phase, topic, item }) {
+  if (item.status === 'postponed') {
+    fail(`${phase} item "${topic}" is postponed — pull it forward from the roadmap instead`);
+  }
+  if (item.status === 'promoted') fail(promotedRefusal(phase, topic, item));
+  const stage = Object.keys(UNIT_PHASES).find((s) => UNIT_PHASES[/** @type {keyof typeof UNIT_PHASES} */ (s)].includes(phase));
+  const verb = stage ? `engine topic reactivate ${workUnit} ${stage} ${topic}` : 'engine topic reactivate';
+  fail(`${phase} item "${topic}" is cancelled — reactivate it instead (${verb})`);
+}
+
+/**
+ * A held phase item — cancelled, postponed or promoted — takes no status
+ * write: every transition already refuses one, and the field surface must not
+ * be the permissive path around them. A grouping analysis re-run over a held
+ * specification's freed sources can pick the held item's key, and a
+ * `status: proposed` landing there would merge onto its stash. Read inside
+ * the lock, like the experiment targets.
+ * @param {any} manifest @param {string[]} segments @param {string} workUnit
+ */
+function assertNotHeld(manifest, segments, workUnit) {
+  // phases.<phase>.items.<topic>.status
+  if (segments.length !== 5 || segments[4] !== 'status') return;
+  const target = heldItemAt(manifest, segments);
+  if (target) refuseHeld(workUnit, target);
+}
+
+/**
+ * A held phase item takes no delete either — the whole item or any field of
+ * it: a reconcile's `delete items.{name}` over a held specification would
+ * erase the stash with the item.
+ * @param {any} manifest @param {string[]} segments @param {string} workUnit
+ */
+function assertNotHeldDelete(manifest, segments, workUnit) {
+  const target = heldItemAt(manifest, segments);
+  if (target) refuseHeld(workUnit, target);
 }
 
 /** @param {*} value */
@@ -471,12 +675,12 @@ function findDeepIndex(arr, value) {
   return -1;
 }
 
-/** @param {*} value */
-function outputValue(value) {
+/** @param {Sink} out @param {*} value */
+function outputValue(out, value) {
   if (value !== null && typeof value === 'object') {
-    process.stdout.write(JSON.stringify(value, null, 2) + '\n');
+    out(JSON.stringify(value, null, 2) + '\n');
   } else {
-    process.stdout.write(String(value) + '\n');
+    out(String(value) + '\n');
   }
 }
 
@@ -498,11 +702,18 @@ function parseFieldValuePairs(pairs) {
 }
 
 // ---------------------------------------------------------------------------
-// Reads — bare stdout, byte-compatible with the absorbed CLI
+// Reads — bare output, byte-compatible with the absorbed CLI. The sink is the
+// caller's, not the process's: the engine's shell door hands over
+// `process.stdout`, its in-process entry a buffer.
 // ---------------------------------------------------------------------------
 
-/** @param {string} cwd @param {string[]} args */
-function cmdGet(cwd, args) {
+/**
+ * Where a read's bare output goes.
+ * @typedef {(text: string) => void} Sink
+ */
+
+/** @param {string} cwd @param {string[]} args @param {Sink} out */
+function cmdGet(cwd, args, out) {
   if (args.length < 1) fail('Usage: engine manifest get <path> [field.path]');
 
   // Project manifest routing
@@ -510,12 +721,12 @@ function cmdGet(cwd, args) {
   if (proj.isProject) {
     const manifest = io.readProjectManifest(workflowsDir(cwd));
     if (proj.fieldSegments.length === 0) {
-      process.stdout.write(JSON.stringify(manifest, null, 2) + '\n');
+      out(JSON.stringify(manifest, null, 2) + '\n');
       return;
     }
     const value = getByPath(manifest, proj.fieldSegments);
     if (value === undefined) return;
-    outputValue(value);
+    outputValue(out, value);
     return;
   }
 
@@ -526,13 +737,13 @@ function cmdGet(cwd, args) {
   if (!phase) {
     // Work-unit-level: get <wu> [field]
     if (args.length === 1) {
-      process.stdout.write(JSON.stringify(manifest, null, 2) + '\n');
+      out(JSON.stringify(manifest, null, 2) + '\n');
       return;
     }
     const segments = args[1].split('.');
     const value = getByPath(manifest, segments);
     if (value === undefined) return;
-    outputValue(value);
+    outputValue(out, value);
     return;
   }
 
@@ -543,18 +754,18 @@ function cmdGet(cwd, args) {
   if (topic === '*') {
     const results = resolveWildcardTopic(manifest, phase, fieldSegments);
     if (results.length === 0) return;
-    process.stdout.write(JSON.stringify(results, null, 2) + '\n');
+    out(JSON.stringify(results, null, 2) + '\n');
     return;
   }
 
   const segments = resolvePhaseSegments(phase, topic, fieldSegments);
   const value = getByPath(manifest, segments);
   if (value === undefined) return;
-  outputValue(value);
+  outputValue(out, value);
 }
 
-/** @param {string} cwd @param {string[]} args */
-function cmdExists(cwd, args) {
+/** @param {string} cwd @param {string[]} args @param {Sink} out */
+function cmdExists(cwd, args, out) {
   if (args.length < 1) fail('Usage: engine manifest exists <path> [field.path]');
 
   // Project manifest routing: exists project[.field.path]
@@ -563,11 +774,11 @@ function cmdExists(cwd, args) {
     const manifest = io.readProjectManifest(workflowsDir(cwd));
     if (proj.fieldSegments.length === 0) {
       // exists project — check if project manifest has any content
-      process.stdout.write(Object.keys(manifest).length > 0 ? 'true\n' : 'false\n');
+      out(Object.keys(manifest).length > 0 ? 'true\n' : 'false\n');
       return;
     }
     const value = getByPath(manifest, proj.fieldSegments);
-    process.stdout.write(value !== undefined ? 'true\n' : 'false\n');
+    out(value !== undefined ? 'true\n' : 'false\n');
     return;
   }
 
@@ -576,13 +787,13 @@ function cmdExists(cwd, args) {
 
   // Work-unit level, no field path — just check if manifest file exists
   if (!phase && args.length === 1) {
-    process.stdout.write(fs.existsSync(mp) ? 'true\n' : 'false\n');
+    out(fs.existsSync(mp) ? 'true\n' : 'false\n');
     return;
   }
 
   // If manifest doesn't exist, any deeper path is false
   if (!fs.existsSync(mp)) {
-    process.stdout.write('false\n');
+    out('false\n');
     return;
   }
 
@@ -592,7 +803,7 @@ function cmdExists(cwd, args) {
     // Work-unit level with field path
     const segments = args[1].split('.');
     const value = getByPath(manifest, segments);
-    process.stdout.write(value !== undefined ? 'true\n' : 'false\n');
+    out(value !== undefined ? 'true\n' : 'false\n');
     return;
   }
 
@@ -602,17 +813,17 @@ function cmdExists(cwd, args) {
   // Wildcard topic: check if any topic has the specified field
   if (topic === '*') {
     const results = resolveWildcardTopic(manifest, phase, fieldSegments);
-    process.stdout.write(results.length > 0 ? 'true\n' : 'false\n');
+    out(results.length > 0 ? 'true\n' : 'false\n');
     return;
   }
 
   const segments = resolvePhaseSegments(phase, topic, fieldSegments);
   const value = getByPath(manifest, segments);
-  process.stdout.write(value !== undefined ? 'true\n' : 'false\n');
+  out(value !== undefined ? 'true\n' : 'false\n');
 }
 
-/** @param {string} cwd @param {string[]} args */
-function cmdList(cwd, args) {
+/** @param {string} cwd @param {string[]} args @param {Sink} out */
+function cmdList(cwd, args, out) {
   /** @type {string|null} */ let filterStatus = null;
   /** @type {string|null} */ let filterWorkType = null;
 
@@ -624,45 +835,14 @@ function cmdList(cwd, args) {
     }
   }
 
-  const wfDir = workflowsDir(cwd);
-  if (!fs.existsSync(wfDir)) {
-    process.stdout.write('[]\n');
-    return;
-  }
+  const results = listWorkUnitManifests(cwd).filter((manifest) =>
+    (!filterStatus || manifest.status === filterStatus) && (!filterWorkType || manifest.work_type === filterWorkType));
 
-  // Use project manifest for work unit names, fall back to filesystem scan
-  const proj = io.readProjectManifest(wfDir);
-  let names;
-  if (proj.work_units && Object.keys(proj.work_units).length > 0) {
-    names = Object.keys(proj.work_units);
-  } else {
-    names = fs.readdirSync(wfDir, { withFileTypes: true })
-      .filter(e => e.isDirectory() && !e.name.startsWith('.'))
-      .map(e => e.name);
-  }
-
-  const results = [];
-
-  for (const name of names) {
-    if (!fs.existsSync(manifestPath(cwd, name))) continue;
-
-    try {
-      const manifest = io.readWorkUnitManifest(wfDir, name);
-
-      if (filterStatus && manifest.status !== filterStatus) continue;
-      if (filterWorkType && manifest.work_type !== filterWorkType) continue;
-
-      results.push(manifest);
-    } catch (_) {
-      // Skip malformed manifests
-    }
-  }
-
-  process.stdout.write(JSON.stringify(results, null, 2) + '\n');
+  out(JSON.stringify(results, null, 2) + '\n');
 }
 
-/** @param {string} cwd @param {string[]} args */
-function cmdKeyOf(cwd, args) {
+/** @param {string} cwd @param {string[]} args @param {Sink} out */
+function cmdKeyOf(cwd, args, out) {
   if (args.length < 3) fail('Usage: engine manifest key-of <path> <field.path> <value>');
 
   const { workUnit, phase, topic } = parsePath(args[0]);
@@ -683,15 +863,15 @@ function cmdKeyOf(cwd, args) {
     fail(`Value "${searchValue}" not found in "${segments.join('.')}"`, 2);
   }
 
-  process.stdout.write(key + '\n');
+  out(key + '\n');
 }
 
 /**
  * Map `wu.phase[.topic]` to artifact file paths on disk — the knowledge
  * CLI's artifact discovery.
- * @param {string} cwd @param {string[]} args
+ * @param {string} cwd @param {string[]} args @param {Sink} out
  */
-function cmdResolve(cwd, args) {
+function cmdResolve(cwd, args, out) {
   if (!args[0]) {
     fail('Usage: engine manifest resolve <work_unit>.<phase>[.<topic>]\nResolves artifact file paths for indexed phases.');
   }
@@ -713,7 +893,7 @@ function cmdResolve(cwd, args) {
   if (phase === 'research') {
     if (topic) {
       // 3-segment: specific research item.
-      process.stdout.write(path.join(wuDir, 'research', topic + '.md') + '\n');
+      out(path.join(wuDir, 'research', topic + '.md') + '\n');
     } else {
       // 2-segment: iterate phases.research.items from the manifest.
       const items = manifest.phases && manifest.phases.research && manifest.phases.research.items;
@@ -722,7 +902,7 @@ function cmdResolve(cwd, args) {
         return;
       }
       for (const itemName of Object.keys(items)) {
-        process.stdout.write(path.join(wuDir, 'research', itemName + '.md') + '\n');
+        out(path.join(wuDir, 'research', itemName + '.md') + '\n');
       }
     }
     return;
@@ -734,17 +914,17 @@ function cmdResolve(cwd, args) {
   }
 
   if (phase === 'discussion') {
-    process.stdout.write(path.join(wuDir, 'discussion', topic + '.md') + '\n');
+    out(path.join(wuDir, 'discussion', topic + '.md') + '\n');
     return;
   }
 
   if (phase === 'investigation') {
-    process.stdout.write(path.join(wuDir, 'investigation', topic + '.md') + '\n');
+    out(path.join(wuDir, 'investigation', topic + '.md') + '\n');
     return;
   }
 
   if (phase === 'specification') {
-    process.stdout.write(path.join(wuDir, 'specification', topic, 'specification.md') + '\n');
+    out(path.join(wuDir, 'specification', topic, 'specification.md') + '\n');
     return;
   }
 }
@@ -848,6 +1028,10 @@ function cmdSet(cwd, args) {
 
   manifestTarget(cwd, false, workUnit).transact((manifest, save) => {
     for (const write of planned) {
+      assertExperimentTargets(manifest, write.segments, write.value);
+      assertNotHeld(manifest, write.segments, workUnit);
+    }
+    for (const write of planned) {
       setByPath(manifest, write.segments, write.value);
     }
     save();
@@ -897,14 +1081,18 @@ function cmdPush(cwd, args) {
 
   refuseEmptyFieldSegments(args[1], fieldSegments);
   refuseShadowField(phase, topic, fieldSegments);
-  if (['staging', 'tracking', 'analysis_staging'].includes(fieldSegments[0])) {
+  if (GUARDED_CONTAINERS.includes(fieldSegments[0])) {
     fail(`"${fieldSegments[0]}" is a guarded state container — its fields take vocabulary values via set, never array pushes`);
   }
   const segments = resolveSegments(phase, topic, fieldSegments);
   // storage_paths is guarded at write time on every route — set validates the
   // whole array; push validates the one entry it appends.
+  // awaiting_experiments takes the same treatment.
   if (segments.length === 5 && segments[2] === 'items' && segments[4] === 'storage_paths') {
     validateStoragePaths([value]);
+  }
+  if (segments.length === 5 && segments[2] === 'items' && segments[4] === 'awaiting_experiments') {
+    validateAwaitingExperiments([value]);
   }
   // `order` is a scalar — pushing would land an array every reader treats as
   // unordered. Refuse the route rather than the value.
@@ -913,6 +1101,7 @@ function cmdPush(cwd, args) {
   }
 
   const length = manifestTarget(cwd, false, workUnit).transact((manifest, save) => {
+    assertExperimentTargets(manifest, segments, value);
     const current = getByPath(manifest, segments);
 
     if (current !== undefined && !Array.isArray(current)) {
@@ -1007,6 +1196,7 @@ function cmdDelete(cwd, args) {
   const segments = resolveSegments(phase, topic, fieldSegments);
 
   manifestTarget(cwd, false, workUnit).transact((manifest, save) => {
+    assertNotHeldDelete(manifest, segments, workUnit);
     if (!deleteByPath(manifest, segments)) {
       fail(`Path "${segments.join('.')}" not found in "${workUnit}"`);
     }
@@ -1087,6 +1277,16 @@ function cmdApply(cwd, args) {
 
   manifestTarget(cwd, false, workUnit).transact((manifest, save) => {
     for (const op of planned) {
+      if (op.kind !== 'set') {
+        assertNotHeldDelete(manifest, /** @type {string[]} */ (op.segments), workUnit);
+        continue;
+      }
+      for (const write of /** @type {{segments: string[], value: unknown}[]} */ (op.writes)) {
+        assertExperimentTargets(manifest, write.segments, write.value);
+        assertNotHeld(manifest, write.segments, workUnit);
+      }
+    }
+    for (const op of planned) {
       if (op.kind === 'set') {
         for (const write of /** @type {{segments: string[], value: unknown}[]} */ (op.writes)) {
           setByPath(manifest, write.segments, write.value);
@@ -1122,15 +1322,15 @@ function isRead(command) {
 }
 
 /**
- * Execute one field command. Reads print their own bare stdout and return
- * undefined; mutations return the response object for the engine's JSON
+ * Execute one field command. Reads write their own bare output to the sink and
+ * return undefined; mutations return the response object for the engine's JSON
  * line. Unknown commands and all failures throw (reads carry `exitCode`).
- * @param {string} cwd @param {string} command @param {string[]} args
+ * @param {string} cwd @param {string} command @param {string[]} args @param {Sink} out
  * @returns {object|undefined}
  */
-function runFieldCommand(cwd, command, args) {
+function runFieldCommand(cwd, command, args, out) {
   if (isRead(command)) {
-    READS[/** @type {keyof typeof READS} */ (command)](cwd, args);
+    READS[/** @type {keyof typeof READS} */ (command)](cwd, args, out);
     return undefined;
   }
   if (Object.prototype.hasOwnProperty.call(MUTATIONS, command)) {

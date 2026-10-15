@@ -23,32 +23,9 @@
 const fs = require('fs');
 const path = require('path');
 const { loadWorkUnitManifest, saveWorkUnitManifest, withWorkUnitLock, ensureContainer } = require('../kernel/manifest.cjs');
-const { commitTailWithKb, noteCommitOutcome } = require('./commit.cjs');
-const { computeTopicLifecycle, phaseItems } = require('./derivations.cjs');
+const { commitTailPathspec, noteCommitOutcome, discoveryScope } = require('./commit.cjs');
+const { computeTopicLifecycle, phaseItems, lifecyclePhrase, CLOSED_LIFECYCLES, mailboxDepth } = require('./derivations.cjs');
 const { VALID_ROUTINGS } = require('../kernel/manifest-schema.cjs');
-
-// Why each non-fresh lifecycle blocks a destructive op — mirrors the
-// conversational rejection phrasing in map-operations.md. Derived from the
-// actual research state, same honesty rule as the render-time tags: superseded
-// research is named as such, never as completed, and a handled topic claims a
-// fan-out only when research completed or was superseded.
-/** @param {string} lifecycle @param {string|null} researchState */
-function lifecyclePhrase(lifecycle, researchState) {
-  switch (lifecycle) {
-    case 'researching': return 'research is in flight on it';
-    case 'discussing': return 'discussion is in flight on it';
-    case 'ready_for_discussion':
-      return researchState === 'superseded'
-        ? 'its research was superseded and discussion is queued'
-        : 'research has completed and discussion is queued';
-    case 'decided': return 'discussion has concluded';
-    case 'handled':
-      return researchState === 'completed' || researchState === 'superseded'
-        ? 'it has fanned out into discussions and stays on the map as historical anchor'
-        : 'it is marked handled and stays on the map as historical anchor';
-    default: return 'it has phase work in cancelled state and stays on the map as historical record'; // cancelled
-  }
-}
 
 /**
  * @typedef {object} SequenceResult
@@ -66,6 +43,8 @@ function lifecyclePhrase(lifecycle, researchState) {
  * @property {string} lifecycle  the item's lifecycle after the op (pre-removal for remove)
  * @property {string} [summary]           add/edit: the value written
  * @property {string} [description]       add/edit: the value written
+ * @property {string} [brief_path]        add: the brief pointer written
+ * @property {{work_unit: string, topic: string}} [prior]  add/set-prior: the epic the topic's prior record sits in
  * @property {boolean} [dismissed]        remove: name pushed onto the dismissed list
  * @property {boolean} [brief_removed]    remove: the topic's brief file was deleted
  * @property {string} [renamed_from]      rename: the old name
@@ -111,9 +90,26 @@ function mapItem(manifest, name) {
 }
 
 /**
+ * The address of an earlier epic's record for this topic — where a pull that
+ * landed somewhere other than the epic that postponed it reads the prior
+ * conversation from. Shape only; the epic and its topic are the caller's to
+ * resolve.
+ * @param {*} prior
+ * @returns {{work_unit: string, topic: string}}
+ */
+function validatePrior(prior) {
+  if (!prior || typeof prior !== 'object' || Array.isArray(prior)
+    || typeof prior.work_unit !== 'string' || prior.work_unit === ''
+    || typeof prior.topic !== 'string' || prior.topic === '') {
+    throw new Error(`invalid prior ${JSON.stringify(prior ?? null)} — must be {work_unit, topic}`);
+  }
+  return { work_unit: prior.work_unit, topic: prior.topic };
+}
+
+/**
  * Gate a destructive op (remove/rename/reroute) on the fresh lifecycle. The
  * derived lifecycle alone is not enough: status combinations outside the
- * lifecycle join (e.g. superseded research beside a cancelled discussion)
+ * lifecycle join (superseded research beside a parked discussion stub)
  * derive `fresh`, yet the per-phase items are on record and the map item is
  * their historical anchor — so ANY per-phase item for the topic refuses too.
  * The error names the blocker and points at the recovery path.
@@ -126,11 +122,11 @@ function assertFresh(manifest, name, verbPhrase) {
   );
   if (lifecycle === 'fresh' && phaseWork.length === 0) return;
   if (lifecycle === 'fresh') {
-    // All-triaged phase work is not history — it is parked rerouted concerns
-    // waiting to drain. Name that instead of the historical-anchor message.
-    if (phaseWork.every((it) => it.status === 'triaged')) {
+    // All-unstarted phase work is not history — it is messages waiting in
+    // the topic's mailbox to drain. Name that instead of the historical-anchor message.
+    if (phaseWork.every((it) => it.status === 'unstarted')) {
       throw new Error(
-        `"${name}" can't be ${verbPhrase} — rerouted concerns are parked in its triage; start the topic to drain them, or cancel from the epic menu`,
+        `"${name}" can't be ${verbPhrase} — messages wait in its mailbox; start the topic to drain them, or cancel from the epic menu`,
       );
     }
     throw new Error(
@@ -138,8 +134,12 @@ function assertFresh(manifest, name, verbPhrase) {
     );
   }
   const recovery = lifecycle === 'handled'
-    ? 'unhandle it to make it actionable again'
-    : 'cancel from the epic menu instead';
+    ? 'reopen it to make it actionable again'
+    : lifecycle === 'cancelled'
+      ? 'reactivate it from the epic menu first'
+      : lifecycle === 'postponed'
+        ? 'pull it forward from the roadmap first'
+        : 'cancel from the epic menu instead';
   throw new Error(`"${name}" can't be ${verbPhrase} — ${lifecyclePhrase(lifecycle, research_state)}; ${recovery}`);
 }
 
@@ -169,6 +169,13 @@ function sequenceMap(cwd, workUnit, orders) {
       if (!Number.isInteger(order) || order < 1) {
         throw new Error(`order for "${topic}" must be a positive integer (got ${JSON.stringify(order)})`);
       }
+      // A closed row's order is stashed as `previous_order` and returns with
+      // it; writing one beside the stash would put the row back in the
+      // sequence without bringing the topic back.
+      const { lifecycle, research_state } = computeTopicLifecycle(manifest, topic);
+      if (CLOSED_LIFECYCLES.includes(lifecycle)) {
+        throw new Error(`"${topic}" takes no order — ${lifecyclePhrase(lifecycle, research_state)}`);
+      }
     }
     for (const [topic, order] of entries) {
       items[topic].order = order;
@@ -179,38 +186,45 @@ function sequenceMap(cwd, workUnit, orders) {
 
   /** @type {string[]} */
   const warnings = [];
-  const outcome = commitTailWithKb(cwd, `.workflows/${workUnit}`, `discovery(${workUnit}): sequence topic map`, warnings);
+  const outcome = commitTailPathspec(cwd, discoveryScope(workUnit), `discovery(${workUnit}): sequence topic map`, warnings);
   /** @type {SequenceResult} */
   const result = { ordered: orders, committed: outcome.committed };
   if (outcome.failed) result.warnings = warnings;
-  noteCommitOutcome(result, outcome);
+  noteCommitOutcome(result, outcome, `${workUnit} --discovery`);
   return result;
 }
 
 /**
- * Add a new map item: `{routing, source, summary[, description]}` — never a
- * `status` field; map-item lifecycle is computed at render time, not stored.
- * `backfill` lands the item without summary/description (keys absent, not "")
- * so the next epic entry's summary-backfill drafts them — for topics whose
- * artifacts already exist (absorb, pivot); it is mutually exclusive with
- * passing either field. Refuses an active duplicate, and a dismissed name
- * unless `forceDismissed` carries the user's confirmed re-add decision (the
- * entry is then pulled off the dismissed list so analyses treat the topic as
- * live again). No git commit — the calling session's commit cadence picks the
- * change up.
+ * Add a new map item: `{routing, source, summary[, description][, brief_path][, prior]}`
+ * — never a `status` field; map-item lifecycle is computed at render time, not
+ * stored. `briefPath` records the topic's brief pointer with the row, as the
+ * harvest's batch form does; `prior` records the earlier epic whose record
+ * this topic carries, which a pull of a postponed item landing elsewhere
+ * writes. `backfill` lands the item without summary, description or brief
+ * pointer (keys absent, not "") so the next epic entry's summary-backfill
+ * drafts them — for topics whose artifacts already exist (absorb, pivot); it
+ * is mutually exclusive with passing any of the three. Refuses an active
+ * duplicate, and a dismissed name unless `forceDismissed` carries the user's
+ * confirmed re-add decision (the entry is then pulled off the dismissed list
+ * so the analysis treats the topic as live again). No git commit — the calling
+ * session's commit cadence picks the change up.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} name
- * @param {{routing?: string, source?: string, summary?: string, description?: string, forceDismissed?: boolean, backfill?: boolean}} [fields]
+ * @param {{routing?: string, source?: string, summary?: string, description?: string, briefPath?: string, prior?: {work_unit: string, topic: string}, forceDismissed?: boolean, backfill?: boolean}} [fields]
  * @returns {MapOpResult}
  */
-function addItem(cwd, workUnit, name, { routing, source = 'discovery', summary, description, forceDismissed = false, backfill = false } = {}) {
+function addItem(cwd, workUnit, name, { routing, source = 'discovery', summary, description, briefPath, prior, forceDismissed = false, backfill = false } = {}) {
   if (!routing || !VALID_ROUTINGS.includes(routing)) {
     throw new Error(`unknown routing ${JSON.stringify(routing ?? null)} (${VALID_ROUTINGS.join('|')})`);
   }
-  if (backfill && (summary !== undefined || description !== undefined)) {
-    throw new Error('--backfill lands the item without summary/description — drop the flag or the fields');
+  if (backfill && (summary !== undefined || description !== undefined || briefPath !== undefined)) {
+    throw new Error('--backfill lands the item without summary/description/brief-path — drop the flag or the fields');
   }
+  if (briefPath !== undefined && (typeof briefPath !== 'string' || briefPath.trim() === '')) {
+    throw new Error('--brief-path must be a non-empty string when present');
+  }
+  const priorRef = prior === undefined ? undefined : validatePrior(prior);
   if (!backfill && summary === undefined) {
     throw new Error('--summary is required (or --backfill to leave it for summary-backfill)');
   }
@@ -242,6 +256,8 @@ function addItem(cwd, workUnit, name, { routing, source = 'discovery', summary, 
     const item = { routing, source };
     if (summary !== undefined) item.summary = summary;
     if (description !== undefined) item.description = description;
+    if (briefPath !== undefined) item.brief_path = briefPath;
+    if (priorRef !== undefined) item.prior = priorRef;
     discovery.items[name] = item;
 
     saveWorkUnitManifest(cwd, workUnit, manifest);
@@ -251,6 +267,8 @@ function addItem(cwd, workUnit, name, { routing, source = 'discovery', summary, 
     const result = { work_unit: workUnit, name, op: 'add', routing, source, lifecycle, map_total: Object.keys(discovery.items).length };
     if (summary !== undefined) result.summary = summary;
     if (description !== undefined) result.description = description;
+    if (briefPath !== undefined) result.brief_path = briefPath;
+    if (priorRef !== undefined) result.prior = priorRef;
     if (backfill) result.backfill = true;
     if (wasDismissed) result.undismissed = true;
     return result;
@@ -371,7 +389,7 @@ function editItem(cwd, workUnit, name, { summary, description } = {}) {
 
 /**
  * Hard-delete a fresh map item and push its name onto the dismissed list so
- * analyses won't auto-re-propose it. Fresh-only — anything further along
+ * the analysis won't auto-re-propose it. Fresh-only — anything further along
  * stays on the map (as work-in-flight or historical anchor). No git commit
  * for the map write itself; a roadmap join naming the topic is reverted (the
  * un-pull for a never-started topic) and that project-manifest write stages
@@ -413,13 +431,13 @@ function removeItem(cwd, workUnit, name) {
   // back to the map on removal — the stretch-scope wrap's revert. Lazy
   // require and after the work-unit lock closes, mirroring the cancel hop —
   // and like that hop the project manifest is staged in its own commit (the
-  // map op itself stays cadence-committed, wu-scoped, which never covers the
+  // map op itself stays cadence-committed, and no work-unit scope reaches the
   // project manifest).
   const { revertJoins } = require('./roadmap.cjs');
   const reverted = revertJoins(cwd, workUnit, { topic: name });
   if (reverted.length > 0) {
     result.roadmap_reverted = reverted;
-    const { commitTailPathspec, PROJECT_MANIFEST_SPEC } = require('./commit.cjs');
+    const { PROJECT_MANIFEST_SPEC } = require('./commit.cjs');
     /** @type {string[]} */
     const warnings = [];
     commitTailPathspec(cwd, PROJECT_MANIFEST_SPEC, `roadmap: un-pull ${reverted.join(', ')} (${name} removed from ${workUnit})`, warnings);
@@ -513,6 +531,31 @@ function renameItem(cwd, workUnit, oldName, newName) {
 }
 
 /**
+ * Record the earlier epic whose record a topic carries — the address a pull
+ * of a postponed item copies onto the receiving epic's row when it lands
+ * anywhere but the epic that postponed it. Allowed at any lifecycle: the
+ * bind that writes it runs after the topic is on the map and may run again.
+ * No git commit — the calling transaction stages the manifest.
+ * @param {string} cwd project root
+ * @param {string} workUnit
+ * @param {string} name
+ * @param {{work_unit: string, topic: string}} prior
+ * @returns {MapOpResult}
+ */
+function setPrior(cwd, workUnit, name, prior) {
+  const priorRef = validatePrior(prior);
+  return withWorkUnitLock(cwd, workUnit, () => {
+    const manifest = loadWorkUnitManifest(cwd, workUnit);
+    const item = mapItem(manifest, name);
+    item.prior = priorRef;
+
+    saveWorkUnitManifest(cwd, workUnit, manifest);
+    const { lifecycle } = computeTopicLifecycle(manifest, name);
+    return { work_unit: workUnit, name, op: 'set-prior', prior: priorRef, lifecycle, map_total: Object.keys(discoveryItems(manifest)).length };
+  });
+}
+
+/**
  * Set a fresh map item's `routing`. Fresh-only — routing is implicit once a
  * phase item exists. No git commit.
  * @param {string} cwd project root
@@ -536,11 +579,40 @@ function rerouteItem(cwd, workUnit, name, routing) {
   });
 }
 
+// The way back a closed lifecycle names, shared by both marker ops.
+/** @type {Record<string, string>} */
+const MARKER_CLOSED_PHRASES = {
+  cancelled: "it's cancelled; reactivate it from the epic menu first",
+  postponed: "it's postponed; pull it forward from the roadmap first",
+};
+
+/**
+ * Why a marker op — close as dead end, or reopen — cannot land on a map
+ * item, or null when it can: the phrase the refusal ends on, the one source
+ * the transactions and the map-operation gate read.
+ * @param {string} cwd @param {object} manifest @param {'close'|'reopen'} op @param {string} name
+ * @returns {string|null}
+ */
+function markerRefusal(cwd, manifest, op, name) {
+  const { lifecycle } = computeTopicLifecycle(manifest, name);
+  if (Object.hasOwn(MARKER_CLOSED_PHRASES, lifecycle)) return MARKER_CLOSED_PHRASES[lifecycle];
+  if (op === 'reopen') return lifecycle === 'handled' ? null : "it isn't closed as a dead end, so there's nothing to reopen";
+  if (lifecycle === 'handled') return "it's already closed";
+  const waiting = ['research', 'discussion'].filter((phase) => mailboxDepth(cwd, manifest.name, phase, name) > 0);
+  return waiting.length > 0
+    ? `messages wait in its ${waiting.join(' and ')} mailbox; start the topic to drain them, or cancel the topic from the epic menu instead`
+    : null;
+}
+
+/** What a marker op is called in its refusal. @type {Record<'close'|'reopen', string>} */
+const MARKER_VERBS = { close: 'closed as a dead end', reopen: 'reopened' };
+
 /**
  * Set `handled: true` on a map item — the topic stays on the map as
  * historical anchor but stops prompting for a next action and no longer
  * counts against convergence. Allowed from any lifecycle except
- * already-handled or cancelled. No git commit.
+ * already-handled, cancelled or postponed, and never while messages wait in
+ * its mailbox. No git commit.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} name
@@ -550,13 +622,8 @@ function handleItem(cwd, workUnit, name) {
   return withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const item = mapItem(manifest, name);
-    const { lifecycle } = computeTopicLifecycle(manifest, name);
-    if (lifecycle === 'handled') {
-      throw new Error(`"${name}" can't be marked handled — it's already marked handled`);
-    }
-    if (lifecycle === 'cancelled') {
-      throw new Error(`"${name}" can't be marked handled — it's cancelled; reactivate the phase work from the epic menu first`);
-    }
+    const refusal = markerRefusal(cwd, manifest, 'close', name);
+    if (refusal) throw new Error(`"${name}" can't be ${MARKER_VERBS.close} — ${refusal}`);
     item.handled = true;
 
     saveWorkUnitManifest(cwd, workUnit, manifest);
@@ -566,8 +633,9 @@ function handleItem(cwd, workUnit, name) {
 
 /**
  * Clear the `handled` marker — the topic returns to its name-matched
- * lifecycle and counts against convergence again. Allowed only when handled.
- * No git commit.
+ * lifecycle and counts against convergence again. Allowed only when handled;
+ * a cancel marker over the dead end reads cancelled and is the reactivate's
+ * to clear. No git commit.
  * @param {string} cwd project root
  * @param {string} workUnit
  * @param {string} name
@@ -577,10 +645,8 @@ function unhandleItem(cwd, workUnit, name) {
   return withWorkUnitLock(cwd, workUnit, () => {
     const manifest = loadWorkUnitManifest(cwd, workUnit);
     const item = mapItem(manifest, name);
-    const { lifecycle } = computeTopicLifecycle(manifest, name);
-    if (lifecycle !== 'handled') {
-      throw new Error(`"${name}" can't be unhandled — it isn't marked handled, so there's nothing to unhandle`);
-    }
+    const refusal = markerRefusal(cwd, manifest, 'reopen', name);
+    if (refusal) throw new Error(`"${name}" can't be ${MARKER_VERBS.reopen} — ${refusal}`);
     delete item.handled;
 
     saveWorkUnitManifest(cwd, workUnit, manifest);
@@ -589,4 +655,4 @@ function unhandleItem(cwd, workUnit, name) {
   });
 }
 
-module.exports = { sequenceMap, addItem, addItemsBatch, editItem, removeItem, renameItem, rerouteItem, handleItem, unhandleItem };
+module.exports = { sequenceMap, addItem, addItemsBatch, editItem, removeItem, renameItem, rerouteItem, setPrior, handleItem, unhandleItem, markerRefusal, MARKER_VERBS };

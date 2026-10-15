@@ -11,7 +11,7 @@ Write 1-2 task files directly using the chosen output format. No planning agents
 Create the planning file at `.workflows/{work_unit}/planning/{topic}/planning.md`:
 
 ```markdown
-# Plan: {Topic:(titlecase)}
+# Plan: {topic:(titlecase)}
 
 ## Phase 1: Apply Change
 
@@ -59,7 +59,7 @@ Load the chosen format's **[authoring.md](../../workflow-planning-process/refere
 
 **Do not include acceptance criteria.** Mechanical changes are verified by test baselines and completeness checks, not acceptance criteria.
 
-**If a task edits another work unit's completed specification** (under `.workflows/{other work unit}/specification/`): fold the protocol from **[correcting-historical-artifacts.md](../../workflow-shared/references/correcting-historical-artifacts.md)** into its Implementation Steps and Verification — in-place edit, corrigenda entry, knowledge re-index, scoped commit. No task edits another work unit's other phase artifacts.
+**No task edits another work unit's artifact under `.workflows/`** — the executor writes code and tests alone. A completed unit's specification the fix shows wrong is corrected here, through **[correcting-historical-artifacts.md](../../workflow-shared/references/correcting-historical-artifacts.md)**, never folded into a task; another unit's non-spec artifacts are superseded by current work, never corrected.
 
 ## C. Register Plan in Manifest
 
@@ -95,7 +95,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs topic start {work_unit} s
 node .claude/skills/workflow-engine/scripts/engine.cjs topic complete {work_unit} scoping {topic}
 ```
 
-Commit all scoping artifacts — `--plan` stages the work unit, the project manifest, and the plan's declared storage in one scoped call:
+Commit all scoping artifacts — `--plan` stages the planning topic, the work-unit manifest, the project manifest, and the plan's declared storage in one scoped call:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "scoping({work_unit}): register plan" --plan {topic}

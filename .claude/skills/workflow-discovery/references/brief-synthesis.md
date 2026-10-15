@@ -12,7 +12,7 @@ For each topic in the confirmed set — the working-list new topics **plus** any
 
 Note which written topics are existing committed map topics — **B**'s pointer backfill checks their pointers.
 
-The brief is a written artifact, not user output — write the file, do not render it. Word every decision plainly and naturally: softness is conferred by where the brief lives on the gradient, not by hedged wording. Empty sections get `(none)`.
+The brief is a written artifact, not user output — write the file, do not render it. Word every decision plainly and naturally: softness is conferred by where the brief lives on the gradient, not by hedged wording. Every line traces to the record: a soft decision is one the conversation settled. A point the user left open goes under **Open questions** — a lean they voiced without settling it (*"I suspect we should…"*) included, carried there as their lean — and so does a suggestion of yours they never took up; neither is ever promoted into a decision. Empty sections get `(none)`.
 
 ```markdown
 # Discovery Brief — {topic:(titlecase)}
@@ -85,7 +85,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.discussion
 ```
 
-For each brief written in **A**, check the subtrees for that topic's item — a topic routes to one of the two. A hit is in-flight downstream work the fresh brief post-dates: a regenerated brief changed content the phase may have read; a first-written brief covers work that started brief-less and has never been read at all. Skip items whose status is `triaged` — a stub of parked concerns has read nothing; its first start reads the fresh brief anyway. Collect a flag op for every hit, then persist them in one call (skip when none; write the ops file with the Write tool):
+For each brief written in **A**, check the subtrees for that topic's item — a topic routes to one of the two. A hit is in-flight downstream work the fresh brief post-dates: a regenerated brief changed content the phase may have read; a first-written brief covers work that started brief-less and has never been read at all. Skip items whose status is `unstarted` — a stub holding messages has read nothing; its first start reads the fresh brief anyway. Collect a flag op for every hit, then persist them in one call (skip when none; write the ops file with the Write tool):
 
 ```json
 [{"op": "set", "path": "{work_unit}.{research|discussion}.{topic}", "fields": {"reconcile_needed": true}}]

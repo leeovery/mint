@@ -6,7 +6,7 @@
 
 The caller passes:
 
-- `work_unit` — the selected epic
+- `work_unit` — the epic's work unit name
 - `items_to_recover` — list of discovery-map rows missing summary, description, or both. Each row carries `name`, `routing`, `summary=present|absent`, `description=present|absent`, and — after `—` — the current summary text when present
 
 ## A. Read Source Files
@@ -25,13 +25,13 @@ The caller passes:
 
 For each item in `items_to_recover`:
 
+- Set `item.needs_summary` from the row's `summary=absent` and `item.needs_description` from `description=absent` so section **D** writes only the newly-drafted fields.
 - If `routing` is `research`: read `.workflows/{work_unit}/research/{item.name}.md`
 - If `routing` is `discussion`: read `.workflows/{work_unit}/discussion/{item.name}.md`
 - If the file is missing or empty (rare — the topic exists in the manifest but the file is gone), record `derived_summary: null` and `derived_description: null` and a note `(source file missing)` for that item
 
 For each readable file:
 
-- Set `item.needs_summary` from the row's `summary=absent` and `item.needs_description` from `description=absent` so section **D** writes only the newly-drafted fields.
 - If `item.needs_summary`, derive a one-line summary that captures what the topic is about. Aim for 8–15 words. Use the file's headings and opening paragraphs as the primary signal. Attach as `item.derived_summary`.
 - If `item.needs_description`, derive a paragraph or two of richer context — what the topic covers, why it surfaced, key dimensions. Use the file's body content (not just headings). Attach as `item.derived_description`.
 - If a field is already populated, leave its current value in place and skip derivation for that field.
@@ -42,31 +42,17 @@ For each readable file:
 
 Render the proposed summaries as a single batch. Description is drafted silently in the background — paragraphs would bloat the batch view, and downstream phases use whatever the auto-draft produces. The user can edit a description later via a follow-up discovery session.
 
-> *Output the next fenced block as a code block:*
+Write the drafted summaries to `.workflows/.cache/{work_unit}/discovery/summaries.json` with the Write tool — one entry per item whose `needs_summary` is true, keyed by its name, its `derived_summary` or `null` where the source file is missing:
 
-```
-Proposed summaries for {N} topic(s):
-
-@foreach(item in items_to_recover)
-  {N}. {item.name:(titlecase)}  ({item.routing})
-@if(item.needs_summary)
-       @if(item.derived_summary) {item.derived_summary} @else (source file missing — please provide) @endif
-@else
-       {item.summary}  (already populated)
-@endif
-@endforeach
+```json
+{"summaries": {"{item.name}": "{item.derived_summary}"}}
 ```
 
-> *Output the next fenced block as markdown (not a code block):*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render summary-backfill-gate {work_unit} --variant batch --file .workflows/.cache/{work_unit}/discovery/summaries.json
 ```
-· · · · · · · · · · · ·
-**`◆ Accept these summaries?`**
 
-**`y/yes`**  → Accept all summaries as drafted (description is auto-drafted silently)
-**`e/edit`** → Edit one or more summary lines before accepting
-**`s/skip`** → Skip the whole batch (leave fields blank)
-```
+Emit the call's DISPLAY and MENU sections verbatim per their markers.
 
 **STOP.** Wait for user response.
 
@@ -98,42 +84,39 @@ Which line would you like to edit? Enter the number, or `done` to accept the cur
 
 → Proceed to **D. Write and Commit**.
 
-#### If a number
+#### If a number naming a row marked `(already populated)`
 
-> *Output the next fenced block as markdown (not a code block):*
+The number counts the batch display's rows. That item's summary is already on the map, and the batch writes only drafted lines — say so in one line.
 
-```
-New summary for "{item.name:(titlecase)}":
-```
+→ Return to **C. Edit Loop**.
+
+#### If a number naming any other row
+
+The number counts the batch display's rows. Ask for that row's new summary — say `New summary for "{item.name:(titlecase)}":`.
 
 **STOP.** Wait for user response.
 
-Update the in-memory summary for that item with the user's response. Re-render the batch from **B** so the user can see the updated state, then return to the prompt at the top of this section.
+Set `item.derived_summary` and the item's entry in `summaries.json` to the user's response, and where `item.needs_description` is true and `item.derived_description` is null, set `item.derived_description` to a description drawn from it. Then fetch the batch display alone and emit its DISPLAY section verbatim per its marker — the prompt at the top of this section takes the next answer:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render summary-backfill-gate {work_unit} --variant proposed --file .workflows/.cache/{work_unit}/discovery/summaries.json
+```
 
 → Return to **C. Edit Loop**.
 
 ## D. Write and Commit
 
-**If any item's needed field is still null** (source file missing, nothing provided via the edit loop), give it an exit — otherwise it re-triggers this flow on every epic entry forever:
+**If any item's needed field is still null** (source file missing, nothing provided via the edit loop), give it an exit — otherwise it re-triggers this flow on every epic entry forever. Write the names to `.workflows/.cache/{work_unit}/discovery/unsourced.json` with the Write tool (`{"names": ["{item.name}", …]}` — every item whose derived field is still null), then render the gate:
 
-> *Output the next fenced block as markdown (not a code block):*
-
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render summary-backfill-gate {work_unit} --variant unsourced --file .workflows/.cache/{work_unit}/discovery/unsourced.json
 ```
-· · · · · · · · · · · ·
-**`◆ {K} topic(s) have no source file to draft from:`**
 
-@foreach(item in items_to_recover where derived field is null)
-- {item.name:(titlecase)}
-@endforeach
-
-**`p/provide`** → Tell me the summary for each and I'll write it
-**`d/dismiss`** → Write a minimal name-derived summary noting the missing source, so this stops re-prompting
-**`l/leave`**   → Leave them unset; this flow re-offers next time
-```
+Emit the call's MENU section verbatim per its marker.
 
 **STOP.** Wait for user response.
 
-**If `provide`:** set each item's derived field from the user's text and include it in the writes below.
+**If `provide`:** when the reply carries no text — the choice alone — ask for each item's summary and **STOP.** Wait for user response. Set each item's null field(s) from the user's text — the summary as given, a description drawn from it — and include them in the writes below.
 
 **If `dismiss`:** for each such item, set the null field(s) to a minimal value derived from the topic name and routing, ending `(source artifact missing)`, and include them in the writes below.
 
@@ -154,7 +137,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest apply {work_unit
 Single commit covering all writes:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): backfill {N} discovery provenance field(s) from source files"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "discovery({work_unit}): backfill {N} discovery summary field(s)" --discovery
 ```
 
 → Return to caller.

@@ -14,9 +14,9 @@ Check whether the active log exists at `.workflows/{work_unit}/discovery/session
 
 Browse-only session — no log to review.
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as a text code block (```text fence):*
 
-```
+```text
 Document review — no log file (browse only). Nothing to reconcile.
 ```
 
@@ -63,7 +63,7 @@ Briefs (`discovery/briefs/`) are views — regenerated at each harvest, never re
 Apply corrections directly to the file, then commit:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "docs(discovery/{work_unit}): reconcile session log with conversation"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "docs(discovery/{work_unit}): reconcile session log with conversation" --discovery
 ```
 
 → Proceed to **D. Brief the User**.
@@ -72,19 +72,15 @@ node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "do
 
 #### If changes were made
 
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-> Document review complete. {N} correction(s) applied to the session log.
-```
+Say, as a blockquote, `Document review complete. {N} correction(s) applied to the session log.`
 
 → Return to caller.
 
 #### If the log is accurate
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as a text code block (```text fence):*
 
-```
+```text
 Document review — session log reflects the conversation. No changes needed.
 ```
 

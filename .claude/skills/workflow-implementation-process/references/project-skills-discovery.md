@@ -12,13 +12,13 @@ Read topic-level `project_skills` via `engine manifest`:
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit}.implementation.{topic} project_skills
 ```
 
-#### If `project_skills` is populated
+#### If the output is an array
 
-Set `source` = `topic`.
+The set was confirmed when this topic stored it — `[]` included — use it without re-asking.
 
-→ Proceed to **B. Confirm Skills**.
+→ Return to caller.
 
-#### Otherwise
+#### If the output is empty (never asked)
 
 Check whether a project-level default `project_skills` exists and read its value via `engine manifest`:
 
@@ -33,13 +33,11 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get project.defa
 
 **If `true` and project default is populated:**
 
-Set `source` = `project`.
-
 → Proceed to **B. Confirm Skills**.
 
 **If `true` and project default is empty:**
 
-Fetch the gate, emitting each section verbatim at its marked instruction:
+Fetch the gate, emitting each section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render project-skills {work_unit}.implementation.{topic} --variant skipped
@@ -48,6 +46,11 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render project-skills {wo
 **STOP.** Wait for user response.
 
 **If `yes`:**
+
+Store empty array at topic level:
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} project_skills '[]'
+```
 
 → Return to caller.
 
@@ -59,7 +62,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render project-skills {wo
 
 ## B. Confirm Skills
 
-Write the skills returned by the `source` level manifest query to `.workflows/.cache/{work_unit}/implementation/{topic}/project-skills.json` with the Write tool — `{"skills": [{"name": "{skill-name}", "detail": "{path}"}]}` — then fetch the gate, emitting each section verbatim at its marked instruction:
+Write the skill names from the project default — each path's last segment — to `.workflows/.cache/{work_unit}/implementation/{topic}/project-skills.json` with the Write tool — `{"skills": ["{skill-name}", ...]}` — then fetch the gate, emitting each section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render project-skills {work_unit}.implementation.{topic} --file .workflows/.cache/{work_unit}/implementation/{topic}/project-skills.json --variant confirm
@@ -69,8 +72,6 @@ node .claude/skills/workflow-engine/scripts/engine.cjs render project-skills {wo
 
 #### If `yes`
 
-**If `source` is `project`:**
-
 Copy to topic level:
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} project_skills '[{project-level values}]'
@@ -78,16 +79,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 
 → Return to caller.
 
-**If `source` is `topic`:**
-
-→ Return to caller.
-
 #### If `no`
-
-Clear topic-level `project_skills` before re-discovery:
-```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.implementation.{topic} project_skills '[]'
-```
 
 → Proceed to **C. Discovery**.
 
@@ -99,9 +91,9 @@ Scan `.claude/skills/` for project-specific skill directories — skills carryin
 
 #### If the scan finds no project skills
 
-> *Output the next fenced block as a code block:*
+> *Output the next fenced block as a text code block (```text fence):*
 
-```
+```text
 No project skills found. Proceeding without project-specific conventions.
 ```
 
@@ -115,7 +107,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set project.defa
 
 #### If the scan finds project skills
 
-Write the findings to `.workflows/.cache/{work_unit}/implementation/{topic}/project-skills.json` with the Write tool — one entry per skill, its `detail` a one-line description of what the skill governs: `{"skills": [{"name": "{skill-name}", "detail": "{what it governs}"}]}` — then fetch the gate, emitting each section verbatim at its marked instruction:
+Write the findings to `.workflows/.cache/{work_unit}/implementation/{topic}/project-skills.json` with the Write tool — one entry per skill, its `detail` a one-line description of what the skill governs: `{"skills": [{"name": "{skill-name}", "detail": "{what it governs}"}]}` — then fetch the gate, emitting each section verbatim per its marker:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs render project-skills {work_unit}.implementation.{topic} --file .workflows/.cache/{work_unit}/implementation/{topic}/project-skills.json --variant discovery

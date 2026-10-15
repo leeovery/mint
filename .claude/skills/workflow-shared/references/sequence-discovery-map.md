@@ -1,12 +1,12 @@
 # Sequence Discovery Map
 
-*Shared reference. Loaded by `workflow-continue-epic` and `workflow-bridge`.*
+*Shared reference. Loaded by `workflow-continue-epic`.*
 
 ---
 
 Assign a suggested execution order across the live topics of an epic's discovery map — Claude's read of which topic to tackle first. The order is soft: it sorts the map rows and selects which item is `(recommended)`, but never gates. It is re-derived wholesale — a full renumber of all live topics — whenever a new one lands without an order.
 
-Manifest-driven, so it runs identically from either caller. The caller fires it only when its discovery output reports `needs_sequencing: true`, and re-runs discovery afterward so the render picks up the new order.
+Manifest-driven. The caller fires it only when its discovery output reports `needs_sequencing: true`, and re-runs discovery afterward so the render picks up the new order.
 
 ## Parameters
 
@@ -32,7 +32,7 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} 
 
 ## B. Gather Live Topics
 
-Take the live topic names from the caller's most recent discovery output — every `discovery_map` row whose tier is neither `⊘` (cancelled) nor `⊙` (handled). Handled topics are non-actionable — a research umbrella that fanned out — so they get no execution order, the same as cancelled.
+Take the live topic names from the caller's most recent discovery output — every `discovery_map` row whose tier is none of `⊘` (cancelled), `⊙` (dead end), and `⊖` (postponed). A dead-ended topic has nothing to carry forward under its own name and a postponed one waits on the roadmap, so neither takes an execution order, the same as cancelled — and the engine refuses one for all three.
 
 For richer context, read the whole discovery subtree once — every topic's `summary` and `description` arrive in one call:
 

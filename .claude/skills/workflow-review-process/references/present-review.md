@@ -4,7 +4,7 @@
 
 ---
 
-## A. Present Verdict
+## A. Build the Presentation
 
 → Load **[product-lens.md](../../workflow-shared/references/product-lens.md)** and follow its instructions as written.
 
@@ -19,19 +19,12 @@ Write it with the Write tool to `.workflows/.cache/{work_unit}/review/{topic}/pr
   "corrected": {"applied": 0, "reverted": 0, "suite": "green|red"},
   "replan": [{"summary": "…", "ref": "file:line", "fails": "…"}],
   "out_of_scope": 0,
-  "discarded": 0
+  "discarded": 0,
+  "not_measured": 0
 }
 ```
 
-`corrected` is omitted when nothing was applied; `replan` carries entries only on a fail; `out_of_scope` is the count of findings banked in the manifest. Each `summary` leads with the behaviour or impact it concerns, mechanism after — reword the report entry where its lead is mechanism. What is listed and what is counted is the surface's rule, not a judgment made here.
-
-Render and emit every section verbatim per its marker — the title, the verdict, and the findings:
-
-```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs render review-presentation {work_unit}.review.{topic} --file .workflows/.cache/{work_unit}/review/{topic}/presentation.json
-```
-
-Then render the review summary as a markdown paragraph (not a code block) — a product-lens narrative: what was reviewed, where it stands, and what the outcome means for the product.
+`corrected` is omitted when nothing was applied; `replan` carries entries only on a fail; `out_of_scope` is the count of findings banked in the manifest; `not_measured` is the count of blocks in `.workflows/.cache/{work_unit}/review/{topic}/not-measured.txt` — omitted or `0` when the file is absent. Each `summary` leads with the behaviour or impact it concerns, mechanism after — reword the report entry where its lead is mechanism. What is listed and what is counted is the surface's rule, not a judgment made here.
 
 → On return, proceed to **B. Review Gate**.
 
@@ -39,10 +32,28 @@ Then render the review summary as a markdown paragraph (not a code block) — a 
 
 ## B. Review Gate
 
-Render the gate — `--replan` with the count on a fail, `--out-of-scope` with the banked count on a pass:
+Any arrival but the first re-runs the gate fetch below alone — the verdict and the out-of-scope decision belong to the gate's first arrival, from **A**.
+
+Render and emit every section verbatim per its marker — the title, the verdict, and the findings:
 
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs render review-gate {work_unit}.review.{topic} --verdict {pass|fail} [--replan {N}] [--out-of-scope {N}]
+node .claude/skills/workflow-engine/scripts/engine.cjs render review-presentation {work_unit}.review.{topic} --file .workflows/.cache/{work_unit}/review/{topic}/presentation.json
+```
+
+Then render the review summary as markdown (not a code block), one paragraph — a product-lens narrative: what was reviewed, where it stands, and what the outcome means for the product.
+
+A pass closes the review, so findings banked outside this spec are decided here — before the gate, never as an option on it. A fail decides nothing: its findings carry to the next cycle. On a pass, read whether anything is banked:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs manifest exists {work_unit}.review.{topic} out_of_scope
+```
+
+Where it reads `true`, load **[decide-out-of-scope.md](decide-out-of-scope.md)** and follow its instructions as written before the gate.
+
+Render the gate — `--replan` with the count on a fail:
+
+```bash
+node .claude/skills/workflow-engine/scripts/engine.cjs render review-gate {work_unit}.review.{topic} --verdict {pass|fail} [--replan {N}]
 ```
 
 Emit the call's MENU section verbatim per its marker.
@@ -59,14 +70,8 @@ The failures become tasks and implementation reopens.
 
 → Return to caller.
 
-#### If `inbox`
-
-Load **[offer-out-of-scope.md](offer-out-of-scope.md)** and follow its instructions as written.
-
-On return: → Return to **B. Review Gate**.
-
 #### If ask
 
-Answer the question using the review file, the per-task reports, the specification, and the plan as context.
+Answer the question using the review file, the per-task reports, this cycle's change-set files, the specification, and the plan as context. The question sets the gate aside; once the exchange looks settled, ask in conversation whether they are ready to move on, and on yes put it back:
 
 → Return to **B. Review Gate**.

@@ -4,17 +4,11 @@
 
 ---
 
-This step uses the `workflow-planning-task-designer` agent (`../../../agents/workflow-planning-task-designer.md`) to design a task list for a single phase. You invoke the agent, present its output, and handle the approval gate.
+This step uses the `workflow-planning-task-designer` agent (`.claude/agents/workflow-planning-task-designer.md`) to design a task list for a single phase. You invoke the agent, present its output, and handle the approval gate.
 
 ---
 
 ## A. Design Task List
-
-> *Output the next fenced block as markdown (not a code block):*
-
-```
-Taking Phase {N}: {Phase Name} and breaking it into tasks. I'll delegate this to a specialist agent that will read the full specification and propose a task list.
-```
 
 ### Invoke the Agent
 
@@ -25,17 +19,35 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest get {work_unit} 
 
 Invoke `workflow-planning-task-designer` with these file paths:
 
-1. **read-specification.md**: `read-specification.md`
+1. **read-specification.md**: `.claude/skills/workflow-planning-process/references/read-specification.md`
 2. **Specification**: specification path from the manifest or `.workflows/{work_unit}/specification/{topic}/specification.md`
-3. **Cross-cutting specs**: cross-cutting spec paths if any
-4. **task-design.md**: `task-design.md`
-5. **Context guidance**: `task-design/{work_type}.md` (default to `epic` if `work_type` is empty)
+3. **Cross-cutting specs**: the specification paths the planning file's `## Cross-Cutting References` section lists, if any
+4. **task-design.md**: `.claude/skills/workflow-planning-process/references/task-design.md`
+5. **Context guidance**: `.claude/skills/workflow-planning-process/references/task-design/{work_type}.md` (default to `epic` if `work_type` is empty)
 6. **All approved phases**: the complete phase structure from the planning file
 7. **Target phase number**: the phase being broken into tasks
 
+Say `Taking Phase {N}: {Phase Name} and breaking it into tasks. I'll delegate this to a specialist agent that will read the full specification and propose a task list.`
+
+This dispatch and every re-invocation of the designer below run in the background (`run_in_background: true`) and end the turn on exactly `The task designer agent has been dispatched for phase {N}.`
+
 ### Present the Output
 
-The agent returns a task overview and task table. Write the task table to the planning file under the phase.
+The agent returns a task overview and task table.
+
+**Settle the spec defects** — classified before the task list is written, so what the user approves was designed against a correct specification. The section is the orchestrator's: it never reaches the planning file.
+
+**If the return carries a `## Spec Defects` section** — once per entry:
+
+→ Load **[resolve-spec-gap.md](resolve-spec-gap.md)** with lane = `construction`, gap = `{the entry, and the task it surfaced in}`.
+
+When at least one corrigendum landed — the record's or one the user settled at the exchange; nothing when none did, never a per-correction recap — say `{count} spec correction(s) recorded.`
+
+Where a landing changed the specification, or the reference returned work the plan must carry — the tree owing what the specification decides — re-invoke `workflow-planning-task-designer` through its amendment path with the corrections and that work as the feedback, and take the revised task list forward. Settle that return's `## Spec Defects` the same way, once: a defect the designer still reports after one re-run is left to the review walk, which meets the plan against the specification at the end of the phase.
+
+**Otherwise:** nothing to settle — continue.
+
+Write the task table to the planning file under the phase. Where the overview names work deferred to another phase, add that deferral to the receiving phase's **Acceptance** list in the same write.
 
 Update the manifest planning position:
 ```bash
@@ -45,10 +57,10 @@ node .claude/skills/workflow-engine/scripts/engine.cjs manifest set {work_unit}.
 
 Commit:
 ```bash
-node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): draft Phase {N} task list"
+node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): draft Phase {N} task list" --topic planning/{topic}
 ```
 
-Write the task-list payload for the render surface to the phase cache — one entry per task, each summary a single line, edge cases as short phrases:
+Write the task-list payload for the render surface to the phase cache — one entry per task, each summary a single line, the specification's decided edges as short phrases:
 
 ```json
 .workflows/.cache/{work_unit}/planning/{topic}/task-list-phase-{N}.json
@@ -67,7 +79,7 @@ Use the Write tool for the payload — never a shell heredoc.
 node .claude/skills/workflow-engine/scripts/engine.cjs render task-list {work_unit}.planning.{topic} --file .workflows/.cache/{work_unit}/planning/{topic}/task-list-phase-{N}.json
 ```
 
-The response carries the task-list display plus the surface for the current gate mode. Emit each section verbatim at its marked instruction.
+The response carries the task-list display plus the surface for the current gate mode. Emit each section verbatim per its marker.
 
 #### If the response carried `DISPLAY: task list auto-approved`
 
@@ -83,7 +95,11 @@ Re-invoke `workflow-planning-task-designer` with all original inputs PLUS:
 - **Previous output**: the current task list
 - **User feedback**: what the user wants changed
 
-Update the planning file with the revised task table, and rewrite the payload file to match.
+The revision reads the specification again, so its defects are settled before the revised table is written — once per `## Spec Defects` entry:
+
+→ Load **[resolve-spec-gap.md](resolve-spec-gap.md)** with lane = `construction`, gap = `{the entry, and the task it surfaced in}`.
+
+Where a landing changed the specification, re-invoke the designer once more with the corrections as the feedback; a defect it still reports after that re-run is left to the review walk. Update the planning file with the revised task table, and rewrite the payload file to match.
 
 → Return to **B. Render the Gate**.
 
@@ -118,7 +134,7 @@ Resolve the destination per the caller's **Navigation** section — the user's p
    ```
 3. Commit:
    ```bash
-   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): approve Phase {N} task list"
+   node .claude/skills/workflow-engine/scripts/engine.cjs commit {work_unit} -m "planning({work_unit}): approve Phase {N} task list" --topic planning/{topic}
    ```
 
 If the manifest already carries `approvals.tasks.p{N}` and the list is unchanged, no updates are needed.

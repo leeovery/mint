@@ -4,43 +4,68 @@
 // Domain ring: the engine's commit door. Every engine-made commit routes
 // through here, for two guarantees:
 //
-// - The knowledge store rides along: transactions mutate the store
-//   (index/remove) as a side effect of manifest writes, and a commit that
-//   staged only the work unit would leave `.workflows/.knowledge` dirty for
-//   some later, unrelated commit to sweep up. The pathspec is appended
-//   exists-guarded — staging a nonexistent path is a git error (the
-//   conditional-inbox lesson), and keyword-less projects may have no store.
+// - Commits are confined: each one commits exactly the paths its action
+//   wrote (`-- <paths>`); the migration commit takes the paths the workflows
+//   own as the index records them, a removal a migration staged included
+//   (`commitStaged`, built in a scratch index). A peer session's dirty or
+//   staged files are never swept up under someone else's message, and no
+//   engine commit reaches outside its declared scope.
 //
 // - Commits are serialised: a process-wide lock (`.git/workflows-commit.lock`,
 //   same discipline as the manifest lock, on a longer clock) holds each
 //   add+commit sequence alone, so concurrent sessions never interleave on
-//   git's shared index.
+//   git's shared index. The code commit lands in each repo that owns one of
+//   its paths (kernel/repos), deepest first, under that repo's own lock.
 // ---------------------------------------------------------------------------
 
-const fs = require('fs');
-const path = require('path');
-const { git, commitScoped, commitPathspec } = require('../kernel/git.cjs');
+const { gitPath, commitPathspec, commitStaged } = require('../kernel/git.cjs');
+const { repoName } = require('../kernel/repos.cjs');
 const { acquireLockFile, releaseLockFile } = require('../kernel/manifest-io.cjs');
+const { SETTINGS_SPEC } = require('./settings.cjs');
+const { WORKTREE_INCLUDE } = require('./worktree-include.cjs');
 
-const KB_DIR = '.workflows/.knowledge';
 const PROJECT_MANIFEST_SPEC = '.workflows/manifest.json';
+
+/**
+ * The paths the workflows own in a project — everything a migration or the
+ * engine writes there: the `.workflows` tree (its git-ignored parts left to
+ * git), the project's Claude Code settings, the worktree include, and the
+ * project-root `.gitignore`. The migration commit's scope.
+ * @type {readonly string[]}
+ */
+const OWNED_PATHS = Object.freeze(['.workflows', SETTINGS_SPEC, WORKTREE_INCLUDE, '.gitignore']);
+
+/**
+ * The discovery scope — what a discovery session writes: its session logs,
+ * the briefs it synthesises at the harvest, and the work-unit manifest (the
+ * map lives there). Shared by `commit --discovery` and the discovery
+ * transaction tails so the session's every commit slices the same paths.
+ * @param {string} workUnit
+ * @returns {string[]}
+ */
+function discoveryScope(workUnit) {
+  return [
+    `.workflows/${workUnit}/discovery/sessions`,
+    `.workflows/${workUnit}/discovery/briefs`,
+    `.workflows/${workUnit}/manifest.json`,
+  ];
+}
 
 /**
  * The commit lock lives in the `.git` dir (like git's own transient locks) —
  * a lock inside `.workflows` would be staged by the very commit it guards.
- * `--git-path` resolves linked worktrees to their per-worktree dir, which is
- * the right scope: the index being serialised is per-worktree too.
- * @param {string} cwd project root
+ * A linked worktree's lock is its own, which is the right scope: the index
+ * being serialised is per-worktree too — and so is a nested repo's.
+ * @param {string} cwd project root, or a nested repo's
  */
 function commitLockPath(cwd) {
-  const rel = git(cwd, ['rev-parse', '--git-path', 'workflows-commit.lock']).trim();
-  return path.isAbsolute(rel) ? rel : path.join(cwd, rel);
+  return gitPath(cwd, 'workflows-commit.lock');
 }
 
 /**
  * Run `fn` holding the commit lock.
  * @template T
- * @param {string} cwd project root
+ * @param {string} cwd project root, or a nested repo's
  * @param {() => T} fn
  * @returns {T}
  */
@@ -62,47 +87,76 @@ function withCommitLock(cwd, fn) {
 }
 
 /**
- * `commitScoped` under the commit lock, with the knowledge store staged
- * alongside the caller's pathspec whenever it exists on disk. Same contract:
- * short sha, or null when nothing was staged.
- * @param {string} cwd      project root
- * @param {string|string[]} pathspec
- * @param {string} message
- * @returns {string|null}
- */
-function commitScopedWithKb(cwd, pathspec, message) {
-  const specs = Array.isArray(pathspec) ? [...pathspec] : [pathspec];
-  if (!specs.includes(KB_DIR) && fs.existsSync(path.join(cwd, KB_DIR))) {
-    specs.push(KB_DIR);
-  }
-  return withCommitLock(cwd, () => commitScoped(cwd, specs, message));
-}
-
-/**
- * `commitScoped` under the commit lock, the caller's pathspec only — boot's
- * config and store commits, which must not drag the KB dir in implicitly.
- * @param {string} cwd @param {string|string[]} pathspec @param {string} message
- * @returns {string|null}
- */
-function commitScopedLocked(cwd, pathspec, message) {
-  return withCommitLock(cwd, () => commitScoped(cwd, pathspec, message));
-}
-
-/**
  * `commitPathspec` under the commit lock: commit exactly the named paths,
- * leaving every other process's dirty or staged files untouched. The KB dir
- * never rides implicitly — an action-scoped commit names what its action
- * wrote, and no KB-touching verb precedes it.
+ * leaving every other process's dirty or staged files untouched.
  * @param {string} cwd @param {string|string[]} pathspec @param {string} message
+ * @param {() => void} [beforeInLock] index-mutating prep (e.g. git rm) that
+ *   must run inside the same commit-lock hold as the commit that lands it
  * @returns {string|null}
  */
-function commitPathspecScoped(cwd, pathspec, message) {
-  return withCommitLock(cwd, () => commitPathspec(cwd, pathspec, message));
+function commitPathspecScoped(cwd, pathspec, message, beforeInLock) {
+  return withCommitLock(cwd, () => {
+    if (beforeInLock) beforeInLock();
+    return commitPathspec(cwd, pathspec, message);
+  });
 }
 
 /**
- * Stamp a transaction result when nothing was staged. `commitScopedWithKb`
- * returns null on a clean tree; `nothing to commit` is the one note every
+ * The code commit across the project's repos: each repo's share of the paths
+ * — its `commitGroups` group, in their order, deepest first — committed
+ * under that repo's own commit lock, with the same message, its `heldOut`
+ * folders held out — a parent never commits a nested repo's folder, and
+ * records a submodule's new pointer only where the call reached into that
+ * submodule. A repo whose commit fails fails the call, naming itself and the
+ * commits already made; re-running it is the retry, as those repos have
+ * nothing left in the paths and a moved pointer is recorded whatever moved
+ * it.
+ * @param {{repo: import('../kernel/repos.cjs').Repo, paths: string[]}[]} groups
+ * @param {string} message
+ * @returns {{repo: string, sha: string}[]} the commits made, `.` naming the root
+ */
+function commitAcrossRepos(groups, message) {
+  /** @type {{repo: string, sha: string}[]} */
+  const committed = [];
+  for (const { repo, paths } of groups) {
+    const sha = commitInRepo(repo, paths, message, committed);
+    if (sha !== null) committed.push({ repo: repoName(repo), sha });
+  }
+  return committed;
+}
+
+/**
+ * One repo's share of the code commit, under its own lock.
+ * @param {import('../kernel/repos.cjs').Repo} repo
+ * @param {string[]} paths as the repo names them
+ * @param {string} message
+ * @param {{repo: string, sha: string}[]} committed the commits the call made before this one
+ * @returns {string|null}
+ */
+function commitInRepo(repo, paths, message, committed) {
+  try {
+    return withCommitLock(repo.path, () => commitPathspec(repo.path, paths, message, repo.heldOut));
+  } catch (err) {
+    const made = committed.map((c) => `${c.repo} committed ${c.sha}`).join(', ');
+    const after = made === '' ? '' : ` after ${made} — re-running the same call commits the rest`;
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`the commit in ${repoName(repo)} failed${after}: ${detail}`);
+  }
+}
+
+/**
+ * `commitStaged` under the commit lock: stage everything under the pathspecs
+ * and commit exactly them as the index records them.
+ * @param {string} cwd @param {readonly string[]} specs @param {string} message
+ * @returns {string|null}
+ */
+function commitStagedScoped(cwd, specs, message) {
+  return withCommitLock(cwd, () => commitStaged(cwd, [...specs], message));
+}
+
+/**
+ * Stamp a transaction result when nothing was committed. The commit doors
+ * return null on a clean scope; `nothing to commit` is the one note every
  * engine transaction shares for that outcome. Mutates the result in place.
  * @param {{note?: string}} result @param {string|null} committed
  */
@@ -120,34 +174,9 @@ function noteIfNothingCommitted(result, committed) {
  *   must run inside the same commit-lock hold as the commit that lands it
  * @returns {{committed: string|null, failed: boolean}}
  */
-function commitTailWithKb(cwd, pathspec, message, warnings, beforeInLock) {
+function commitTailPathspec(cwd, pathspec, message, warnings, beforeInLock) {
   try {
-    const specs = Array.isArray(pathspec) ? [...pathspec] : [pathspec];
-    if (!specs.includes(KB_DIR) && fs.existsSync(path.join(cwd, KB_DIR))) {
-      specs.push(KB_DIR);
-    }
-    const committed = withCommitLock(cwd, () => {
-      if (beforeInLock) beforeInLock();
-      return commitScoped(cwd, specs, message);
-    });
-    return { committed, failed: false };
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    warnings.push(`commit failed: ${detail}`);
-    return { committed: null, failed: true };
-  }
-}
-
-/**
- * `commitTailWithKb`'s pathspec-confined sibling: commit exactly the named
- * paths at a transaction tail, degrading a git failure to a warning.
- * @param {string} cwd @param {string|string[]} pathspec @param {string} message
- * @param {string[]} warnings
- * @returns {{committed: string|null, failed: boolean}}
- */
-function commitTailPathspec(cwd, pathspec, message, warnings) {
-  try {
-    return { committed: commitPathspecScoped(cwd, pathspec, message), failed: false };
+    return { committed: commitPathspecScoped(cwd, pathspec, message, beforeInLock), failed: false };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     warnings.push(`commit failed: ${detail}`);
@@ -159,26 +188,35 @@ function commitTailPathspec(cwd, pathspec, message, warnings) {
  * Stamp a transaction result from a tail-commit outcome: a failure notes the
  * pending commit (the state is saved — only the commit is owed), a clean
  * tree notes `nothing to commit`. Mutates the result in place.
+ *
+ * A note is contract surface — a session runs the command it prescribes
+ * verbatim — so a transaction whose commit was narrower than the work unit
+ * passes `retry`: the scope arguments the retry needs, everything between
+ * `engine commit` and `-m`. Without it the note stays generic, which is the
+ * honest answer for a genuinely work-unit-wide tail.
  * @param {{note?: string}} result
  * @param {{committed: string|null, failed: boolean}} outcome
+ * @param {string} [retry] the retry's scope arguments, e.g. `payments --discovery`
  */
-function noteCommitOutcome(result, outcome) {
+function noteCommitOutcome(result, outcome, retry) {
   if (outcome.failed) {
-    result.note = 'commit pending — state saved; retry with engine commit';
+    result.note = retry
+      ? `commit pending — state saved; retry with: engine commit ${retry} -m "<message>"`
+      : 'commit pending — state saved; retry with engine commit';
   } else {
     noteIfNothingCommitted(result, outcome.committed);
   }
 }
 
 module.exports = {
-  commitScopedWithKb,
-  commitScopedLocked,
   commitPathspecScoped,
-  commitTailWithKb,
+  commitAcrossRepos,
+  commitStagedScoped,
   commitTailPathspec,
   noteCommitOutcome,
   noteIfNothingCommitted,
   withCommitLock,
-  KB_DIR,
+  discoveryScope,
+  OWNED_PATHS,
   PROJECT_MANIFEST_SPEC,
 };

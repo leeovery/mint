@@ -42,11 +42,10 @@ function discover(cwd, workUnit) {
   const activeSession = (typeof discoveryPhase.active_session === 'string' && discoveryPhase.active_session !== '')
     ? discoveryPhase.active_session
     : null;
-  const { map, summary, needs_sequencing } = buildDiscoveryMap(manifest);
-  const nextSessionNumber = engine.session.nextSessionNumber(path.join(cwd, '.workflows', workUnit, 'discovery', 'sessions'));
   const workflowsDir = path.join(cwd, '.workflows');
+  const { map, summary, needs_sequencing } = buildDiscoveryMap(manifest, workflowsDir);
+  const nextSessionNumber = engine.session.nextSessionNumber(path.join(workflowsDir, workUnit, 'discovery', 'sessions'));
   const analysisCaches = {
-    research_analysis: computeAnalysisCacheStatus(manifest, workflowsDir, 'research-analysis'),
     gap_analysis: computeAnalysisCacheStatus(manifest, workflowsDir, 'gap-analysis'),
   };
   return {
@@ -79,7 +78,7 @@ function format(result) {
   lines.push(`description: ${result.description === null ? '(none)' : result.description}`);
 
   const s = result.map_summary;
-  lines.push(`map_summary: ${s.total} topics — ${s.decided} decided, ${s.in_flight} in-flight, ${s.ready} ready, ${s.fresh} fresh, ${s.handled} handled, ${s.cancelled} cancelled`);
+  lines.push(`map_summary: ${s.total} topics — ${s.decided} decided, ${s.in_flight} in-flight, ${s.ready} ready, ${s.fresh} fresh, ${s.handled} handled, ${s.cancelled} cancelled, ${s.postponed} postponed`);
 
   lines.push(`discovery_map (${result.discovery_map.length}):`);
   if (result.discovery_map.length === 0) {
@@ -90,7 +89,7 @@ function format(result) {
       if (t.routing) line += ` routing=${t.routing}`;
       if (t.source && t.source !== 'discovery') line += ` source=${t.source}`;
       if (t.current_phase) line += ` phase=${t.current_phase}`;
-      if (t.triage_parked) line += ` triage=waiting`;
+      if (t.mail_waiting) line += ` mail=waiting`;
       if (t.summary) line += ` — ${t.summary}`;
       lines.push(line);
     }
@@ -137,7 +136,7 @@ function format(result) {
 
   const caches = result.analysis_caches || {};
   const cacheStatus = (kind) => ((caches[kind] || { status: 'absent' }).status);
-  lines.push(`analysis_caches: research_analysis=${cacheStatus('research_analysis')}, gap_analysis=${cacheStatus('gap_analysis')}`);
+  lines.push(`analysis_caches: gap_analysis=${cacheStatus('gap_analysis')}`);
 
   lines.push(`next_session_number: ${String(result.next_session_number).padStart(3, '0')}`);
 
@@ -147,14 +146,16 @@ function format(result) {
 // ---------------------------------------------------------------------------
 // map-view — the Discovery Map snapshot: DATA (counts, rows, and — with a
 // proposed set — the per-name flags the persist step routes on) + DISPLAY
-// (the projection). No MENU: the confirm gate is static prose in the skill.
+// (the projection). No MENU: the harvest's confirm gate is its own render
+// (`render synthesis-gate`), fetched where it is shown.
 // ---------------------------------------------------------------------------
 
 /**
  * Parse and validate the harvest's proposed-topics JSON: a non-empty array of
- * `{name, routing, summary}`. Model-authored judgment; shape errors are loud.
+ * `{name, routing, summary, description}`. Model-authored judgment; shape
+ * errors are loud.
  * @param {string} cwd @param {string} file
- * @returns {{name: string, routing: string, summary: string}[]}
+ * @returns {{name: string, routing: string, summary: string, description: string}[]}
  */
 function readProposedFile(cwd, file) {
   let raw;
@@ -170,12 +171,12 @@ function readProposedFile(cwd, file) {
     throw new Error(`proposed-topics file is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error('proposed-topics file must be a non-empty JSON array of {name, routing, summary}');
+    throw new Error('proposed-topics file must be a non-empty JSON array of {name, routing, summary, description}');
   }
   for (const [i, t] of parsed.entries()) {
-    for (const field of ['name', 'routing', 'summary']) {
+    for (const field of ['name', 'routing', 'summary', 'description']) {
       if (!t || typeof t[field] !== 'string' || t[field].trim() === '') {
-        throw new Error(`proposed topic ${i} is missing "${field}" (each entry needs name, routing, summary)`);
+        throw new Error(`proposed topic ${i} is missing "${field}" (each entry needs name, routing, summary, description)`);
       }
     }
   }
@@ -199,17 +200,19 @@ function mapView(workUnit, ...rest) {
 
   const dataLines = [`work_unit: ${workUnit}`, `mode: ${proposedFile ? 'synthesis' : 'map'}`];
   const s = result.map_summary;
-  dataLines.push(`map: ${s.total} topics — ${s.decided} decided, ${s.in_flight} in-flight, ${s.ready} ready, ${s.fresh} fresh, ${s.handled} handled, ${s.cancelled} cancelled`);
+  dataLines.push(`map: ${s.total} topics — ${s.decided} decided, ${s.in_flight} in-flight, ${s.ready} ready, ${s.fresh} fresh, ${s.handled} handled, ${s.cancelled} cancelled, ${s.postponed} postponed`);
 
   let display;
   if (proposedFile) {
     const proposed = readProposedFile(cwd, proposedFile);
     // Per-name flags the flow routes on: an active collision must be resolved
     // before the gate; a dismissed match needs --force-dismissed at persist;
-    // a waiting-roadmap-item match is the anti-twin check — never created as
-    // a fresh topic (the real move is pull-forward, or leave it waiting).
+    // a waiting-roadmap-idea match is the anti-twin check — never created as
+    // a fresh topic (the real move is pull-forward, or leave it waiting). A
+    // bug or a quick-fix of the name is no twin: it never becomes a topic.
     const waitingOnRoadmap = new Set(
-      engine.roadmap.roadmapState(cwd).items.filter((i) => i.state === 'waiting').map((i) => i.name),
+      engine.roadmap.roadmapState(cwd).items
+        .filter((i) => i.state === 'waiting' && engine.roadmap.becomesTopic(i)).map((i) => i.name),
     );
     dataLines.push(`proposed (${proposed.length}):`);
     for (const t of proposed) {

@@ -18,11 +18,11 @@
           "status": "in-progress",
           "subtopics": {
             "detection-trigger-proactive-vs-reactive": {
-              "status": "pending",
+              "status": "exploring",
               "parent": null
             },
             "ai-as-error-classifier-as-primary-trigger": {
-              "status": "pending",
+              "status": "exploring",
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "closed-code-set-minimal-vs-rich-granularity": {

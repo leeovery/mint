@@ -18,9 +18,9 @@
 // message.
 //
 // import lands user-shared reference files at the product altitude — the
-// project-level imports home (design/product-roadmap.md, decision 26):
-// create's normalise/dedupe
-// discipline, `roadmap.imports[]` entries, KB indexing, one self commit.
+// project-level imports home: the
+// shared landing discipline, `roadmap.imports[]` entries stamped
+// `origin: "roadmap"`, KB indexing for markdown alone, one self commit.
 // The log content is model-authored — the engine never writes prose.
 // ---------------------------------------------------------------------------
 
@@ -31,28 +31,14 @@ const {
   writeProjectManifestAtomic,
   withProjectLock,
 } = require('../kernel/manifest.cjs');
-const { commitTailPathspec, noteCommitOutcome, KB_DIR, PROJECT_MANIFEST_SPEC } = require('./commit.cjs');
-const { knowledge } = require('./kb.cjs');
+const { commitTailPathspec, noteCommitOutcome, PROJECT_MANIFEST_SPEC } = require('./commit.cjs');
+const { syncKnowledge } = require('./knowledge/sync.cjs');
 const { nextSessionNumber } = require('./discovery-session.cjs');
-const { dedupe, normaliseBasename } = require('./workunit-create.cjs');
-const { ensureRoadmap } = require('./roadmap.cjs');
-const { isoNow } = require('./dates.cjs');
+const { planImports, copyImports, importEntry, isIndexableImport, assertLandableSources } = require('./import-landing.cjs');
+const { ensureRoadmap, ROADMAP_DIR } = require('./roadmap.cjs');
 
-const ROADMAP_DIR = '.workflows/.roadmap';
-
-/**
- * The pathspec for a KB-touching roadmap transaction: the roadmap dir, the
- * project manifest, and — exists-guarded, keyword-less projects may have no
- * store — the knowledge dir, whose index churn this transaction produced
- * (leaving it unstaged hands it to some later, unrelated commit).
- * @param {string} cwd
- * @returns {string[]}
- */
-function roadmapKbSpecs(cwd) {
-  const specs = [ROADMAP_DIR, PROJECT_MANIFEST_SPEC];
-  if (fs.existsSync(path.join(cwd, KB_DIR))) specs.push(KB_DIR);
-  return specs;
-}
+/** A roadmap transaction's commit scope: the roadmap dir and the project manifest. */
+const ROADMAP_SCOPE = [ROADMAP_DIR, PROJECT_MANIFEST_SPEC];
 
 /**
  * Open a product-road session: allocate the next session number from the
@@ -134,9 +120,9 @@ function closeRoadmapSession(cwd, { message }) {
 
   /** @type {string[]} */
   const warnings = [];
-  knowledge(cwd, ['index', session.rel], `knowledge index (roadmap/sessions/session-${session.number}.md)`, warnings);
+  syncKnowledge(cwd, [{ index: session.rel, label: `knowledge index (roadmap/sessions/session-${session.number}.md)` }], warnings);
 
-  const outcome = commitTailPathspec(cwd, roadmapKbSpecs(cwd), message, warnings);
+  const outcome = commitTailPathspec(cwd, ROADMAP_SCOPE, message, warnings);
   /** @type {Record<string, any>} */
   const result = { session: session.number, session_log: session.rel, committed: outcome.committed, warnings };
   noteCommitOutcome(result, outcome);
@@ -147,11 +133,12 @@ function closeRoadmapSession(cwd, { message }) {
  * Land reference files at the product altitude — the project-level imports
  * home. Validation completes before any mutation (a missing path fails the
  * whole call with `missing_imports` so the calling flow can re-prompt);
- * filenames take create's normalise/dedupe discipline (dotfile-normalising
- * sources are skipped and reported; a call whose every source skips refuses
- * loudly — "imported" must mean something landed); every landing gets a
- * `roadmap.imports[]` entry and a knowledge index (warn-don't-block); one
- * commit stages the files and the manifest.
+ * filenames take the shared landing discipline (dotfile-normalising sources
+ * are skipped and reported; a call whose every source skips refuses loudly —
+ * "imported" must mean something landed); every landing gets a
+ * `roadmap.imports[]` entry stamped `origin: "roadmap"`, and each markdown
+ * landing a knowledge index (warn-don't-block); one commit stages the files
+ * and the manifest.
  * @param {string} cwd project root
  * @param {string[]} paths source paths to copy in
  * @returns {Record<string, any>}
@@ -160,14 +147,7 @@ function importRoadmapFiles(cwd, paths) {
   if (!Array.isArray(paths) || paths.length === 0) {
     throw new Error('import: at least one path is required');
   }
-  const missing = paths.filter((p) => !fs.existsSync(path.resolve(cwd, p)));
-  if (missing.length > 0) {
-    const err = /** @type {Error & {payload: Record<string, unknown>}} */ (
-      new Error(`import path(s) not found: ${missing.join(', ')}`)
-    );
-    err.payload = { missing_imports: missing };
-    throw err;
-  }
+  assertLandableSources(cwd, paths);
 
   // Plan, copy, and record inside one lock hold, manifest shape validated
   // before any file lands — a refusal leaves no orphan copies, and two
@@ -181,32 +161,14 @@ function importRoadmapFiles(cwd, paths) {
     if (roadmap.imports === undefined) roadmap.imports = [];
     if (!Array.isArray(roadmap.imports)) throw new Error('roadmap.imports is malformed — expected an array');
 
-    /** @type {Set<string>} */
-    const taken = new Set();
-    /** @type {{src: string, dest: string}[]} */
-    const planned = [];
-    /** @type {string[]} */
-    const dropped = [];
-    for (const src of paths) {
-      const name = normaliseBasename(path.basename(src));
-      if (name === null) {
-        dropped.push(src);
-        continue;
-      }
-      const dest = dedupe(name, destDir, taken);
-      taken.add(dest);
-      planned.push({ src, dest });
-    }
+    const { planned, skipped: dropped } = planImports(paths, destDir);
     if (planned.length === 0) {
       throw new Error(`import: nothing to land — every source was skipped by filename normalisation (${dropped.join(', ')})`);
     }
 
-    fs.mkdirSync(destDir, { recursive: true });
+    copyImports(cwd, destDir, planned);
     for (const move of planned) {
-      fs.copyFileSync(path.resolve(cwd, move.src), path.join(destDir, move.dest));
-    }
-    for (const move of planned) {
-      roadmap.imports.push({ path: `imports/${move.dest}`, imported_at: isoNow() });
+      roadmap.imports.push(importEntry(move.dest, 'roadmap'));
     }
     writeProjectManifestAtomic(cwd, manifest);
     return { moves: planned, skipped: dropped };
@@ -214,19 +176,18 @@ function importRoadmapFiles(cwd, paths) {
 
   /** @type {string[]} */
   const warnings = [];
-  for (const move of moves) {
-    knowledge(cwd, ['index', `${ROADMAP_DIR}/imports/${move.dest}`], `knowledge index (roadmap/imports/${move.dest})`, warnings);
-  }
+  syncKnowledge(cwd, moves.filter((m) => isIndexableImport(m.dest))
+    .map((move) => ({ index: `${ROADMAP_DIR}/imports/${move.dest}`, label: `knowledge index (roadmap/imports/${move.dest})` })), warnings);
 
   /** @type {Record<string, any>} */
   const result = {
     op: 'import',
-    imports: moves.map((m) => ({ path: `imports/${m.dest}` })),
+    imports: moves.map((m) => ({ path: `imports/${m.dest}`, origin: 'roadmap' })),
     skipped_imports: skipped,
   };
   const outcome = commitTailPathspec(
     cwd,
-    roadmapKbSpecs(cwd),
+    ROADMAP_SCOPE,
     `roadmap: import ${moves.length} file${moves.length === 1 ? '' : 's'}`,
     warnings,
   );
@@ -236,4 +197,4 @@ function importRoadmapFiles(cwd, paths) {
   return result;
 }
 
-module.exports = { openRoadmapSession, closeRoadmapSession, importRoadmapFiles, ROADMAP_DIR };
+module.exports = { openRoadmapSession, closeRoadmapSession, importRoadmapFiles };

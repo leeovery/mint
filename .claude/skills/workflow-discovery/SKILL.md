@@ -1,12 +1,7 @@
 ---
 name: workflow-discovery
 user-invocable: false
-allowed-tools: Bash(node .claude/skills/workflow-discovery/scripts/gateway.cjs), Bash(node .claude/skills/workflow-roadmap/scripts/gateway.cjs), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs), Bash(node .claude/skills/workflow-knowledge/scripts/knowledge.cjs), Bash(git log), Bash(mkdir -p .workflows/), Bash(rm .workflows/), Bash(rm -f .workflows/)
-hooks:
-  SessionEnd:
-    - hooks:
-        - type: command
-          command: 'node "$CLAUDE_PROJECT_DIR/.claude/skills/workflow-engine/scripts/engine.cjs" session cleanup'
+allowed-tools: Bash(node .claude/skills/workflow-discovery/scripts/gateway.cjs *), Bash(node .claude/skills/workflow-roadmap/scripts/gateway.cjs *), Bash(node .claude/skills/workflow-engine/scripts/engine.cjs *)
 ---
 
 The universal first phase. Shape the work the user is bringing — confirm what kind of work it is, sketch its outline — then persist it and route into the pipeline.
@@ -19,11 +14,11 @@ Discovery is the universal **first phase** — every work type begins here. It s
 
 | Work type | Pipeline after discovery |
 |---|---|
-| Epic | Multi-topic; each topic: (Research) → Discussion → Specification → Planning → Implementation → Review |
-| Feature | (Research) → Discussion → Specification → Planning → Implementation → Review |
+| Epic | Multi-topic; each topic: (Research) → (Experiment) → Discussion → Specification → Planning → Implementation → Review |
+| Feature | (Research) → (Experiment) → Discussion → Specification → Planning → Implementation → Review |
 | Bugfix | Investigation → Specification → Planning → Implementation → Review |
 | Quick-fix | Scoping → Implementation → Review |
-| Cross-cutting | (Research) → Discussion → Specification (terminal) |
+| Cross-cutting | (Research) → (Experiment) → Discussion → Specification (terminal) |
 
 It runs in two modes:
 
@@ -45,9 +40,9 @@ Load **[framework.md](../workflow-shared/references/framework.md)** and follow i
 Context refresh (compaction) summarizes the conversation, losing procedural detail. When you detect a context refresh has occurred — the conversation feels abruptly shorter, you lack memory of recent steps, or a summary precedes this message — follow this recovery protocol:
 
 1. **Re-read this skill file completely, then re-load [framework.md](../workflow-shared/references/framework.md).** Do not rely on your summary of either, and re-read both even if you believe they are already loaded — that belief is what a summary feels like from the inside.
-2. **Determine whether the work unit was persisted yet.** Pre-confirmation new-mode shaping is ephemeral — nothing is on disk. If no manifest exists for the work in hand, the conversation had not yet reached the confirm-trigger; treat the shaping as lost and re-open with the user. If a manifest exists, the confirm-trigger fired — read the active session log (highest-numbered `.workflows/{work_unit}/discovery/sessions/session-*.md`) and the manifest to recover state; the session loop's re-open then reads the recent prior session logs too for continuity (see [continuity-load.md](references/continuity-load.md)), so re-entry resumes the conversation rather than restarting from the map. For an epic whose discovery map is still empty while its session log holds Exploration, you were mid-discovery — confirmed but not yet synthesised — so resume at the session loop; its open picks up from the log rather than cold-opening.
+2. **Determine whether the work unit was persisted yet.** Pre-confirmation new-mode shaping lives in the conversation alone — nothing is on disk. If no manifest exists for the work in hand, the conversation had not yet reached the confirm-trigger, and the shaping carries on from the conversation. If a manifest exists, the confirm-trigger fired — read the active session log (highest-numbered `.workflows/{work_unit}/discovery/sessions/session-*.md`) and the manifest to recover state.
 3. **Check git state.** Run `git status` and `git log --oneline -10`. Commit messages reveal what has been completed.
-4. **Announce your position** to the user before continuing: state what step you believe you're at and what comes next. Wait for confirmation.
+4. **Carry on from where the conversation was**, as if the break never happened — no recap and no announcement. Where the person's message is waiting, take it at the step it arrived at, unless it only asks to carry on. Otherwise, where the conversation was at a gate, put the gate back, fetched fresh; elsewhere continue the step it was on.
 
 Do not guess at progress or continue from memory. The files on disk and git history are authoritative — your recollection is not.
 
@@ -155,7 +150,7 @@ Load **[resume-detection.md](references/resume-detection.md)** and follow its in
 
 ## Step 7: Run Discovery
 
-Refresh the tmux session label — a no-op unless the user opted in and this session runs inside tmux:
+Record where this session is working — the call also labels the tmux session where the user opted in:
 
 ```bash
 node .claude/skills/workflow-engine/scripts/engine.cjs session label {work_unit} discovery {work_unit}
@@ -181,7 +176,7 @@ The authoritative resume signal (`active_session`) is a manifest field, read via
 
 If `session_number` was not already set (no resume at Step 6, no `macro_continuation` from Step 5, no `pull_continuation` from a roadmap pull), set it now: `session_number` = `next_session_number`. When `macro_continuation` or `pull_continuation` is set, the creating flow already installed `session-{session_number}.md` — keep that `session_number` and ignore `next_session_number`.
 
-`map-operations.md` and `show-dismissed.md` re-invoke discovery on entry because they validate against post-mutation state.
+`map-operations.md` re-invokes discovery on entry because it validates against post-mutation state.
 
 → Proceed to **Step 8**.
 
@@ -296,7 +291,7 @@ The single exit for every work type — both paths arrive from the Step 14 compl
 > *Output the next fenced block as markdown (not a code block):*
 
 ```
-> Wrapping up — committing, then handing off through the bridge to the next step in a clean context.
+> Wrapping up — committing, then handing the work to its next step.
 ```
 
 Load **[conclude-discovery.md](references/conclude-discovery.md)** and follow its instructions as written.

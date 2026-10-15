@@ -2,8 +2,9 @@
 
 const path = require('path');
 const engine = require('../../workflow-engine/scripts/lib.cjs');
+const { TERMINAL_STATUSES } = require('../../workflow-engine/scripts/kernel/manifest-schema.cjs');
 const { loadManifest, fileExists, listFiles, listDirs } = engine.reads;
-const { phaseStatus, phaseItems, computeNextPhase } = engine.derivations;
+const { phaseStatus, phaseItems, computeNextPhase, inputMoved, movedFrom } = engine.derivations;
 
 const ALL_PHASES = engine.schema.VALID_PHASES.filter((p) => p !== 'discovery');
 
@@ -11,6 +12,7 @@ function phaseFileExists(cwd, workUnit, phase, manifest) {
   const dir = path.join(cwd, '.workflows', workUnit, phase);
   switch (phase) {
     case 'research':       return listFiles(dir, '.md').length > 0;
+    case 'experiment':     return listDirs(dir).length > 0;
     case 'discussion':     return listFiles(dir, '.md').length > 0;
     case 'investigation':  return listFiles(dir, '.md').length > 0;
     case 'scoping':        return phaseStatus(manifest, phase) !== null;
@@ -36,16 +38,24 @@ function discover(cwd, workUnit) {
   const workType = manifest.work_type;
   const next_phase = computeNextPhase(manifest).next_phase;
 
-  // Completed items carrying a live reconcile flag — observability for the
-  // continuation prose (routing itself rides next_phase).
+  // Live items whose input has moved — observability for the continuation
+  // prose (routing itself rides next_phase). The same predicate next_phase
+  // walks, so the dump can never name a route its own list calls settled.
   const reconcile_pending = [];
   for (const phase of ALL_PHASES) {
     for (const item of phaseItems(manifest, phase)) {
-      if (item.status === 'completed' && item.reconcile_needed !== undefined) {
-        reconcile_pending.push(`${phase}/${item.name} (${item.reconcile_needed})`);
+      if (!TERMINAL_STATUSES.includes(item.status)
+          && (item.reconcile_needed !== undefined || inputMoved(manifest, phase, item))) {
+        reconcile_pending.push(`${phase}/${item.name} (${movedFrom(item)})`);
       }
     }
   }
+
+  // Where a linear type's routes enter: the next phase and the revisit
+  // candidates — none past the pipeline's end, which completes the unit.
+  const targets = engine.detail.WORK_UNIT_TYPES[workType] && next_phase !== 'done'
+    ? engine.detail.phaseTargets(manifest, next_phase)
+    : null;
 
   return {
     work_unit: workUnit,
@@ -54,14 +64,15 @@ function discover(cwd, workUnit) {
     phases,
     next_phase,
     reconcile_pending,
+    targets,
   };
 }
 
 // The thin scoped dump: the fields the continuation references branch on —
-// the derived next phase, the completed set (in pipeline order), and the
-// revisit candidates (completed phases before next_phase, filtered to the
-// type's pipeline). When candidates exist, the labelled revisit-phase menu
-// follows the dump — emitted only at the gate its marker names.
+// the derived next phase, the completed set (in pipeline order), the revisit
+// candidates (completed phases before next_phase, filtered to the type's
+// pipeline — `phase/item` where the route names an item of the phase), and
+// the route each move is entered by.
 function format(result) {
   if (result.error) return `Error: ${result.error}\n`;
 
@@ -76,22 +87,25 @@ function format(result) {
   lines.push(`reconcile_pending: ${(result.reconcile_pending || []).join(', ') || '(none)'}`);
 
   if (engine.detail.WORK_UNIT_TYPES[result.work_type]) {
-    const revisitable = result.next_phase === 'done'
-      ? []
-      : engine.project.revisitablePhases(result.work_type, { next_phase: result.next_phase, completed_phases: completed });
-    lines.push(`revisitable_phases: ${revisitable.join(', ') || '(none)'}`);
+    const { next, revisit } = result.targets || { next: null, revisit: [] };
+    const route = (/** @type {{phase: string, topic: string|null}} */ target) => engine.project.phaseRoute(result.work_type, target.phase, result.work_unit, target.topic);
+    lines.push(`revisitable_phases: ${revisit.map((t) => (t.topic === null ? t.phase : `${t.phase}/${t.topic}`)).join(', ') || '(none)'}`);
+    lines.push(`next_route: ${next ? route(next) : '(none)'}`);
+    lines.push(`revisit_routes: ${revisit.map(route).join(', ') || '(none)'}`);
   }
 
   return lines.join('\n') + '\n';
 }
 
 if (require.main === module) {
-  const workUnit = process.argv[2];
-  if (!workUnit) {
-    process.stderr.write('Error: work unit name required\nUsage: gateway.cjs <work_unit>\n');
-    process.exit(1);
-  }
-  process.stdout.write(format(discover(process.cwd(), workUnit)));
+  engine.gateway.runGateway({
+    index: () => {
+      process.stderr.write('Error: work unit name required\nUsage: gateway.cjs <work_unit>\n');
+      process.exit(1);
+      return ''; // unreachable; keeps the handler's return type uniform
+    },
+    fallback: (workUnit) => format(discover(process.cwd(), workUnit)),
+  });
 }
 
 module.exports = { discover, format };
