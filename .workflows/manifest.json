@@ -50,7 +50,8 @@
         "name": "golangci-lint",
         "command": "golangci-lint run"
       }
-    ]
+    ],
+    "tmux_labels": true
   },
   "walkthrough": {
     "status": "skipped"
