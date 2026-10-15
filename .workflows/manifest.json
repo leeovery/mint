@@ -51,5 +51,8 @@
         "command": "golangci-lint run"
       }
     ]
+  },
+  "walkthrough": {
+    "status": "skipped"
   }
 }
