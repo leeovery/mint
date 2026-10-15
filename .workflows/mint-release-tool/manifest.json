@@ -131,13 +131,6 @@
         "release-notes-quality": {
           "status": "completed"
         }
-      },
-      "analysis_cache": {
-        "checksum": "8552cf875bc0e172e6a4e145265214e8",
-        "generated": "2026-06-07T00:00:00Z",
-        "files": [
-          "release-notes-quality.md"
-        ]
       }
     },
     "planning": {
@@ -1056,7 +1049,8 @@
   "imports": [
     {
       "path": "imports/release-tool-design-handoff.md",
-      "imported_at": "2026-06-04T15:27:04Z"
+      "imported_at": "2026-06-04T15:27:04Z",
+      "origin": "discovery"
     }
   ],
   "completed_at": "2026-06-12"
