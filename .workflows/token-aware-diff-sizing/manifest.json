@@ -34,7 +34,7 @@
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "proactive-byte-cap-backstop-line-byte-ceiling-token-budget-registry-survival": {
-              "status": "pending",
+              "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "degradation-ladder-the-response": {

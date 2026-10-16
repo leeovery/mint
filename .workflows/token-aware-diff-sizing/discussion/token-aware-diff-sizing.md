@@ -129,6 +129,48 @@ The comparison reduced to one candidate extra code: RATE_LIMIT, the only one wit
 
 ---
 
+## Proactive Size Ceiling
+
+### Context
+
+Today the post-exclusion diff is checked against `max_diff_lines` (default 50,000, shared top-level key): over it, a release aborts, `regenerate --all` skips that version, and `mint commit` drops to `$EDITOR` (`internal/notes/size.go`). Aborting cannot survive this feature's goal — AI notes however big the release. The classifier is now the primary trigger, so a proactive ceiling needs a job of its own to keep existing. Line count is also a poor proxy: the notes-failure work saw an 8.6k-line, ~867 KB byte-dense diff slip under the line ceiling.
+
+### Options Considered
+
+**A. Same line ceiling, new meaning for releases** — over 50,000 lines a release goes straight to chunking instead of aborting; commit unchanged.
+- Pros: smallest change; no config rename.
+- Cons: lines say little about size — one minified or generated line can be any size; gives the chunker no size to aim at.
+
+**B. A per-call size cap in bytes** — no single AI call mint makes is ever bigger than the cap.
+- Pros: gives the chunker its target size; tracks what the AI actually receives; the only guard where nothing reactive works.
+- Cons: a config key rename and a meaning change.
+
+**Operator-set token budget / model registry** (research)
+- Not pursued: mint cannot see the window, the tokenizer, or the tool's overhead, so any token figure is a guess dressed as precision; a registry adds a maintained table that goes stale every model release. A byte cap is honest about being a size policy rather than a fit prediction.
+
+### Journey
+
+B won on three grounds:
+- **The chunker needs a target size.** Without one it can only halve after each failure — whole, fail, halves, fail, quarters. Cheap with claude (its overflow rejection is instant and client-side), but a provider that takes a full round trip to say no turns each halving into real delay.
+- **Bytes over lines.** A cap in bytes tracks the payload; a line count does not.
+- **Where reactive detection is blind.** Research found claude has a hard 10 MB stdin limit, and silent-truncating providers (Ollama) return plausible success, so the classifier never fires. A per-call cap is the only guard there.
+
+The rename cost is low: mint has no users outside the user's own repos yet, so it costs the README tables, the config-metadata row and their drift tests.
+
+### Decision
+
+**`max_diff_lines` is replaced by a per-call size cap measured in bytes** (new key name and default value are specification detail). It bounds the composed prompt mint sends in any single AI call — instructions, Change Map, diff and reminder; the AI tool's own overhead is invisible to mint and outside it. It stays a shared top-level key covering both verbs.
+
+- **Release (forward and single regenerate):** a prompt over the cap skips the single-pass call and goes straight to chunking; every chunk call is sized to fit under the cap.
+- **`regenerate --all`:** inherits the same behaviour; its per-version skip remains only as the floor when chunking is exhausted.
+- **`mint commit`:** over the cap drops to `$EDITOR` as today — commit has no chunking.
+
+The cap remains a policy, never a fit prediction: a prompt under it can still overflow, which is the classifier's case. User agreed 2026-10-16. Confidence: high on the shape; the default value needs choosing in specification with the lean command's small overhead in mind.
+
+Sibling check: notes-failure-output-ugly-and-uninformative — its specification lists a byte/token-aware ceiling as deliberately out of scope and promotable to its own work later, so it anticipates this decision; nothing is owed. mint-release-tool's specification introduced `max_diff_lines` (shared-only, default 50000) and ai-model-selection kept it shared-only; this decision supersedes the key once it lands.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
@@ -158,6 +200,7 @@ Consequences accepted:
 **Older claude versions** — **Settled by derivation** — not discussed. Determined by ai-model-selection's raw `ai_command` design (mint holds no per-provider knowledge). A claude too old for `--safe-mode` rejects the unknown option and exits non-zero; that lands on the normal generation-failure path, the classifier answers OTHER, and claude's own "unknown option" message renders verbatim. mint adds no version probe and no fallback to the plain command — either would put claude-specific knowledge into mint.
 
 Sibling check: ai-model-selection — its specification pins the shipped default as `claude -p --model sonnet` (alias form, Sonnet, rationale: aliases track model versions without rebuilds). This decision keeps that model and alias and adds flags; it supersedes the command string once it lands.
+
 ---
 
 ## Notes-File Backdoor
@@ -185,5 +228,6 @@ Folded into this feature 2026-10-16 as the remediation floor: mint takes a finis
 
 - Decided: reactive classify-on-failure is the primary trigger.
 - Decided: the shipped default AI command becomes the lean claude form.
+- Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
 - In scope, design open: a notes-file backdoor for releasing with a ready-made body.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
