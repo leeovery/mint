@@ -147,6 +147,8 @@ The comparison reduced to one candidate extra code: RATE_LIMIT, the only one wit
 
 **Ship SIZE / OTHER.** SIZE fires the degradation ladder; OTHER stops, showing the AI's verbatim message with mint's general escape hatches. Deciding factors: no other code has a reaction worth its cost for the subscription case, and the set extends additively — a RATE_LIMIT code (with its wait-and-retry exception) can be added later if API-key setups hit throttling mid-wave. User agreed 2026-10-16. Confidence: high.
 
+**What OTHER stops** — **Settled by derivation** — not discussed. Determined by Classify Call Failure (only a `context.Canceled` is exempted from `on_notes_failure`, an exception that only reads as one if the OTHER path does fall to it), the ladder ending at the existing `on_notes_failure` floor, the new oversize knob being orthogonal to `on_notes_failure`, and CLAUDE.md seam 5 (review-002 F6). OTHER ends the degradation, not the run's notes policy: no split, then `on_notes_failure` applies exactly as today — `abort` renders the ✗ line with OTHER's cause phrase and the AI's verbatim output; `fallback` ships the fallback body. "Stops" above means stops degrading.
+
 ---
 
 ## Proactive Size Ceiling
