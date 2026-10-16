@@ -7,7 +7,7 @@ Mint's notes engine guards oversized release diffs with a raw line count (`Check
 1. **UX dead-end** — the abort names the cause + counts but points at none of the escape hatches (raise `max_diff_lines`, add `diff_exclude` globs, `on_notes_failure = fallback`, `--no-ai`). A big release reads as a wall.
 2. **Correctness gap** — line count is a crude token proxy. The thing that must fit is the *assembled prompt* (instructions + Change Map + diff + reminder) against the model window. An under-limit diff can still overflow and fail the AI call.
 
-The guard is shared via `notes.CheckDiffSize` / `notes.ErrDiffTooLarge` and consumed by three callers — **release**, **regenerate** (per-version skip on `--all`, forward-like on single), **commit** (generate-SKIP → `$EDITOR`). Any change must account for all three. Confirmed a single coherent feature, not an epic.
+The guard is shared via `notes.CheckDiffSize` / `notes.ErrDiffTooLarge` and consumed by three callers — **release**, **regenerate** (per-version skip on `--all`, forward-like on single), **commit** (generate-SKIP → `$EDITOR`). Any change must account for all three. Confirmed a single coherent feature, not an epic — re-confirmed 2026-10-16 when the scope widened to include a lean default AI command and a notes-file backdoor.
 
 ### Research standing position (to ratify / resolve here)
 
@@ -84,7 +84,25 @@ Measured 2026-10-16 in the mint repo (claude CLI flags from `claude --help`), sa
 
 Consequence for the live agentic-workflows failure: mint's own prompt there was ~532k tokens against a 1M limit, and the request failed only because ~803k of overhead rode on top. With the lean command it would have fitted in one pass.
 
-Open (provisional, not decided): whether the shipped default `ai_command` changes to the lean form — it re-decides `ai-model-selection`'s shipped default and only reaches operators who have not set their own `ai_command`; and the flags depend on the claude version installed (an older claude without `--safe-mode` would fail the call).
+### Decision
+
+**The shipped default `ai_command` becomes the lean claude form** — `claude -p --model sonnet` plus `--safe-mode --tools "" --strict-mcp-config --system-prompt "…"` (exact flag set and system-prompt wording are specification detail). The user approved it 2026-10-16. Deciding factor: it removes the overhead-dominated failure class for the shipped default at its source, keeps the subscription login working, and is the single cheapest change toward big releases succeeding in one pass — chunking remains for releases whose own prompt is genuinely too big.
+
+Consequences accepted:
+- The shipped default is shared by both verbs, so `mint commit` gets the lean command too — it needs no tools or CLAUDE.md either, and a smaller overhead only shortens its calls.
+- It reaches only repos that have not set their own `ai_command`; an explicit `ai_command` is untouched.
+- Model choice is unchanged — Sonnet, alias form.
+
+Sibling check: ai-model-selection — its specification pins the shipped default as `claude -p --model sonnet` (alias form, Sonnet, rationale: aliases track model versions without rebuilds). This decision keeps that model and alias and adds flags; it supersedes the command string once it lands.
+---
+
+## Notes-File Backdoor
+
+### Context
+
+The user's current workaround for a release mint cannot generate notes for (2026-10-16): in a Claude session, have Claude write the notes to mint's standard and put them in `[release].fallback` (the fixed fallback body shared by `--no-ai` and `on_notes_failure = fallback`), run `mint release --no-ai`, then have Claude remove the body from config again — an extra clean-up commit on main for every such release. `mint release` has no way to take a ready-made body without a config edit (no notes-file or stdin flag in `cmd/mint/usage.go`'s `releaseUsage`).
+
+Folded into this feature 2026-10-16 as the remediation floor: mint takes a finished notes body directly (e.g. `--notes-file`, or stdin), so the workaround becomes "write a file, release with it" with no config edit and no clean-up commit. Design (flag shape, review-gate behaviour, interaction with `--no-ai`/`on_notes_failure`) is still to discuss.
 
 ---
 
@@ -101,4 +119,6 @@ Open (provisional, not decided): whether the shipped default `ai_command` change
 ### Current State
 
 - Decided: reactive classify-on-failure is the primary trigger.
-- Exploring: classifier code-set granularity; a lean default AI command (overhead measured trimmable under OAuth).
+- Decided: the shipped default AI command becomes the lean claude form.
+- In scope, design open: a notes-file backdoor for releasing with a ready-made body.
+- Exploring: classifier code-set granularity.

@@ -110,8 +110,12 @@
               "parent": "implementation-reality-parallelism"
             },
             "lean-default-ai-command": {
-              "status": "exploring",
+              "status": "decided",
               "parent": null
+            },
+            "notes-file-backdoor": {
+              "status": "pending",
+              "parent": "remediation-ux-escape-hatch-guidance"
             }
           }
         }
