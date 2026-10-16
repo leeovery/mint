@@ -356,7 +356,9 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - Afterwards it sits in the work tree untouched; cleaning it up is the caller's business, out of mint's scope.
 - File path only — no stdin form.
 
-Still open: whether `mint commit` gets the same backdoor for a ready-made message; how a supplied body meets the review gate; whether regenerate takes it; and what an empty, missing or unreadable file does.
+**Release only** (user, 2026-10-16): `mint commit` does not get a message-file backdoor — it keeps its two message sources, the AI or `$EDITOR`. An agent with its own commit message gains little from `mint commit` beyond its staging and push flags, `git commit -F` already serves it, and commit's `-A` staging (`git add -A`) is where an excluded file would be riskiest.
+
+Still open: how a supplied body meets the review gate; whether regenerate takes it; and what an empty, missing or unreadable file does.
 
 ---
 
