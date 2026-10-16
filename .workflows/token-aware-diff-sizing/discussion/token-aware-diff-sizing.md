@@ -331,6 +331,8 @@ The deciding case was the operator writing the lean form (or an `--append-system
 
 **mint reads quotes in `ai_command` the way a shell does** — single and double quotes group words into one argument, and `""` yields a genuinely empty argument. Quoting only: no variable expansion, globbing, pipes or other shell syntax, and mint still runs the binary directly through the runner seam, never through a shell. User approved 2026-10-16. Confidence: high.
 
+**Malformed quoting** — **Settled by derivation** — not discussed. Determined by CLAUDE.md seam 6 (config is strict) with its precedent of rejecting bad values at load (`validateOnNotesFailure`, `validateHooks`: `invalid .mint.toml: …`), and fail loud, never hang (review-002 F5). An `ai_command` that cannot be parsed — an unterminated quote, at any level (top-level, `[release]`, `[commit]`) — is rejected when config loads, before any step runs, with `invalid .mint.toml: …` naming the key. It is never left to fail at call time, where it would read as an AI failure, reach the classifier (which runs the same command), take OTHER, and end in the fallback body or the editor.
+
 Sibling check: ai-model-selection — its specification makes `ai_command` a raw full command string and does not specify how it is split; the whitespace split is as-built only (the transport's `parseCommand` comment), and this decision supersedes that comment when it lands. mint-release-tool's specification defines `ai_command` as an overridable command string, also without a split rule.
 
 ---
