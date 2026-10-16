@@ -136,6 +136,10 @@
             "ai-command-quoting": {
               "status": "decided",
               "parent": "lean-default-ai-command"
+            },
+            "transport-retry-before-classify": {
+              "status": "decided",
+              "parent": "detection-trigger-proactive-vs-reactive"
             }
           }
         }

@@ -211,6 +211,39 @@ Sibling check: no overlap found — this topic's own classifier ground.
 
 ---
 
+## Transport Retry Before the Classifier
+
+### Context
+
+The transport retries once on any bad-content failure, including a non-zero exit (`internal/ai/transport.go`). So on an overflow under the size cap, the identical oversized call is sent twice before the classifier ever looks; and on a persistent non-size failure the classify call — through the same transport — also gets its built-in retry, up to four AI calls before the ✗ line. Raised by the background review (review-001 F6).
+
+```text
+1. notes call           → "Prompt is too long"
+2. same call again      → "Prompt is too long"   (built-in single retry)
+3. classify call        → SIZE
+4. → chunk
+```
+
+### Options Considered
+
+**Keep the transport's single retry as it is**
+- Pros: one uniform retry rule for every AI call (CLAUDE.md seam 5: the transport owns the single retry, consumers never re-retry).
+- Cons: the repeat of an oversized call can never succeed.
+
+**Classify before any retry** — on the first failure, ask the classifier; SIZE chunks with no repeat, OTHER gets the one retry
+- Pros: no wasted repeat on an overflow.
+- Cons: whether the transport retries would depend on which command is calling — notes skipping it, commit keeping it.
+
+### Journey
+
+On the design target the waste is close to nothing: research found claude rejects an oversized prompt client-side before sending anything, and the per-call size cap already sends most oversized releases straight to chunks, so an under-cap overflow — the only case that pays the repeat — is the rarer path. What would change the call: providers whose rejection costs a full round trip, where the repeat becomes real wasted time on every overflow.
+
+### Decision
+
+**The transport's single retry stays as it is, for every AI call including the classify call.** Deciding factor: on claude the repeat is near-free and the size cap makes it rare, so the saving does not justify making the retry rule depend on the calling command. User agreed 2026-10-16. Confidence: medium-high — revisit if non-claude providers with server-side rejection become a target.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
