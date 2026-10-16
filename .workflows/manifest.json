@@ -72,6 +72,15 @@
         "sources": [
           "token-aware-diff-sizing/discussion/token-aware-diff-sizing.md"
         ]
+      },
+      "agent-authored-release-notes": {
+        "horizon": "Next",
+        "summary": "An AI agent running a release can follow mint's notes standard — mint hands it the writing instructions and change summary, or takes a one-line statement of what the release is about",
+        "kind": "idea",
+        "origin": "park:token-aware-diff-sizing",
+        "sources": [
+          "token-aware-diff-sizing/discussion/token-aware-diff-sizing.md"
+        ]
       }
     }
   }
