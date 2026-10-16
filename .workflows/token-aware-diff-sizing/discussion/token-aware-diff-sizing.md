@@ -358,7 +358,12 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 **Release only** (user, 2026-10-16): `mint commit` does not get a message-file backdoor — it keeps its two message sources, the AI or `$EDITOR`. An agent with its own commit message gains little from `mint commit` beyond its staging and push flags, `git commit -F` already serves it, and commit's `-A` staging (`git add -A`) is where an excluded file would be riskiest.
 
-Still open: how a supplied body meets the review gate; whether regenerate takes it; and what an empty, missing or unreadable file does.
+**How a supplied body moves through the release** (raised by the background review, review-001 F10; agreed by the user 2026-10-16):
+- **Review gate** — still shown on an attended run so the operator sees what will ship, offering accept, abort and edit; regenerate (`r`) is dropped, since there is no AI output to redo. Under `-y` it auto-accepts as usual (inside the presenter, per the gate seam).
+- **Body** — passes into the release and changelog byte-identical, exactly like an AI body; the size cap, chunking and AI are all skipped.
+- **With `--no-ai`** — giving both is a usage error: two answers to where the notes come from.
+- **Bad file** — an empty or whitespace-only file is refused; a missing or unreadable one fails before any step runs.
+- **Regenerate** — no notes-file in this feature: chunking now covers its oversized versions, and its `tag`/`release` sources already rewrite notes from an existing body.
 
 ---
 
@@ -378,5 +383,5 @@ Still open: how a supplied body meets the review gate; whether regenerate takes 
 - Decided: reactive classify-on-failure is the primary trigger.
 - Decided: the shipped default AI command becomes the lean claude form.
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
-- In scope, design open: a notes-file backdoor for releasing with a ready-made body.
+- Decided: a release-only `--notes-file` backdoor; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
