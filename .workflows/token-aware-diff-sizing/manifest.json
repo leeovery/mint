@@ -132,6 +132,10 @@
             "empty-error-output": {
               "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "ai-command-quoting": {
+              "status": "decided",
+              "parent": "lean-default-ai-command"
             }
           }
         }

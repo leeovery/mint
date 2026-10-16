@@ -243,6 +243,41 @@ Sibling check: ai-model-selection — its specification pins the shipped default
 
 ---
 
+## AI Command Quoting
+
+### Context
+
+The lean default was measured by typing it into zsh, which handles quotes. mint does not: it splits `ai_command` on whitespace with `strings.Fields` and handles no quoting (`internal/ai/transport.go`, `parseCommand`; its comment says the command "carries no quoting or shell syntax"). Two decided flags need quoting, so as written the lean default reaches claude garbled on every release, commit and classify call:
+
+```text
+what we decided:   --tools ""          --system-prompt "You write release notes."
+what claude gets:  --tools '""'        --system-prompt '"You'  'write'  'release'  'notes."'
+```
+
+An operator copying the lean form into their own `ai_command` hits the same wall. Raised by the background review (review-001 F1).
+
+### Options Considered
+
+**Quote-aware parsing of `ai_command`**
+- Pros: the lean form — and any argument containing spaces — becomes expressible by operators, not only by the shipped default. Backward compatible in practice: every working `ai_command` today has no quotes in it, because quotes never worked.
+- Cons: changes how mint reads every `ai_command`, an as-built contract from the earlier model-selection work.
+
+**Choose only flags that need no quoting**
+- Pros: parser untouched.
+- Cons: gives up part of the overhead cut, and operators still cannot express multi-word arguments.
+
+### Journey
+
+The deciding case was the operator writing the lean form (or an `--append-system-prompt "…"`) in their own `ai_command`: only quote-aware parsing makes that work. The parser change was put to the user because it reaches beyond this topic into the model-selection work's as-built contract.
+
+### Decision
+
+**mint reads quotes in `ai_command` the way a shell does** — single and double quotes group words into one argument, and `""` yields a genuinely empty argument. Quoting only: no variable expansion, globbing, pipes or other shell syntax, and mint still runs the binary directly through the runner seam, never through a shell. User approved 2026-10-16. Confidence: high.
+
+Sibling check: ai-model-selection — its specification makes `ai_command` a raw full command string and does not specify how it is split; the whitespace split is as-built only (the transport's `parseCommand` comment), and this decision supersedes that comment when it lands. mint-release-tool's specification defines `ai_command` as an overridable command string, also without a split rule.
+
+---
+
 ## Notes-File Backdoor
 
 ### Context
