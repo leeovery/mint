@@ -315,6 +315,25 @@ Sibling check: ai-model-selection — its specification makes `ai_command` a raw
 
 ---
 
+## Commit AI-Failure Output
+
+### Context
+
+On `mint commit`, any AI generation failure prints only `could not generate a message, opening editor` and opens `$EDITOR` (attended), or fails loud (unattended) — the AI's captured output is dropped (`internal/commit/run.go`, `aiFailWarnMessage` and the `isAITransportFailure` branch). Release, by contrast, renders it verbatim under the ✗ line. The lean default reaches commit (shared shipped default), and the classifier decision named no verb scope. Raised by the background review (review-001 F7), motivated by a claude too old for the lean flags failing every commit with no hint why; the user is not concerned about old claude versions (2026-10-16), but the gap stands for any commit failure — an expired login, a usage limit.
+
+### Journey
+
+The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel verbatim in `StageFailure.Output`/`Warning.Output`) already covers the warning commit emits; commit is the one site that drops the output. The classifier's only distinct reaction is the degradation ladder, which commit does not have — every commit failure already ends in the editor — so a classify call there would only delay the editor by one AI call.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by CLAUDE.md's verbatim-diagnostics rule and the research finding that chunking is a release-notes concept, with commit's failure path ending in the editor whatever the cause (review-001 F7).
+
+- `mint commit`'s AI-failure warning carries the AI's captured output verbatim, as release already does.
+- The classifier is release-notes only (forward release and regenerate); `mint commit` makes no classify call.
+
+---
+
 ## Notes-File Backdoor
 
 ### Context

@@ -140,6 +140,10 @@
             "transport-retry-before-classify": {
               "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "commit-ai-failure-output": {
+              "status": "decided",
+              "parent": "scope-across-three-consumers"
             }
           }
         }
