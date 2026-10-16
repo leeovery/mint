@@ -407,6 +407,8 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - **Bad file** — an empty or whitespace-only file is refused; a missing or unreadable one fails before any step runs.
 - **Regenerate** — no notes-file in this feature: chunking now covers its oversized versions, and its `tag`/`release` sources already rewrite notes from an existing body.
 
+**Precedence over mint's stand-in bodies** — **Settled by derivation** — not discussed. Determined by this section's decision that the supplied body passes into the release byte-identical, and by the purpose of the first-release and degenerate (empty post-exclusion diff) guards in `internal/notes/select.go` — they produce an honest body when there is nothing for an AI to summarise, which a supplied body does not need (review-002 F3). A supplied notes file wins over both guards: whenever the file is given, its body is the release's body — never `Initial release.` or the maintenance stub. (Today those guards run ahead of `--no-ai` and the AI, which is why the `[release].fallback` workaround loses to them.)
+
 ---
 
 ## Summary
