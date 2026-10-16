@@ -181,7 +181,7 @@ The rename cost is low: mint has no users outside the user's own repos yet, so i
 
 **`max_diff_lines` is replaced by a per-call size cap measured in bytes** (new key name and default value are specification detail). It bounds the composed prompt mint sends in any single AI call — instructions, Change Map, diff and reminder; the AI tool's own overhead is invisible to mint and outside it. It stays a shared top-level key covering both verbs.
 
-- **Release (forward and single regenerate):** a prompt over the cap skips the single-pass call and goes straight to chunking; every chunk call is sized to fit under the cap.
+- **Release (forward and single regenerate):** a prompt over the cap skips the single-pass call and goes straight to chunking; every chunk call is sized to fit under the cap. (A single file whose diff alone exceeds the cap is stood in for — see Chunk Boundaries and the Single-File Floor.)
 - **`regenerate --all`:** inherits the same behaviour; its per-version skip remains only as the floor when chunking is exhausted.
 - **`mint commit`:** over the cap drops to `$EDITOR` as today — commit has no chunking.
 
@@ -354,6 +354,28 @@ The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel 
 
 ---
 
+## Chunk Boundaries and the Single-File Floor
+
+### Context
+
+Once a release goes to chunking, its files are packed into chunk calls under the per-call size cap. Packing by file cannot shrink a single file: when one file's diff alone exceeds the cap, no chunk can carry it. The live agentic-workflows release carried a 1.9 MB committed design-session transcript — the same pathology as mint's own 867 KB `.workflows/`/`.tick/` artifact case.
+
+### Options Considered
+
+1. **Stand in for it** — the chunk gets a one-line stand-in instead of the diff (e.g. "`sessions/design.jsonl` — 1.9 MB changed, diff omitted (over the size cap)"); the Change Map still lists the file and its size so the notes can mention it if salient; after the notes, mint names the skipped file and suggests `diff_exclude`.
+2. **Split it into pieces** — cut the file's diff across several chunks; nothing dropped, but several AI calls spent reading what is almost always generated noise.
+3. **Truncate it** to fit — an arbitrary half-read.
+
+### Journey
+
+The lean rested on one claim: a single file bigger than a whole call's budget is almost always a generated artifact whose content summarises to nothing — true of both live cases (the 1.9 MB transcript, mint's own 867 KB workflow artifacts). The user was asked whether they ever commit a single hand-written file that size and expect the notes to describe its contents, and picked the stand-in.
+
+### Decision
+
+**A file whose diff alone exceeds the per-call size cap is represented by a one-line stand-in, not its diff.** The stand-in names the file and how much changed and says the diff was omitted for size; the Change Map still carries it, so the notes can mention it where it matters. After the notes, mint tells the operator which file(s) it stood in for and suggests adding them to `diff_exclude`. User chose this 2026-10-16. Deciding factor: such a file is almost always a generated artifact, so reading it costs AI calls for nothing. Confidence: high.
+
+---
+
 ## Notes-File Backdoor
 
 ### Context
@@ -405,5 +427,6 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - Decided: the detection trigger in full — reactive classify-on-failure as primary, a per-call byte cap as the proactive guard, and the classifier's edges (codes, failures, empty output, hardening, retry).
 - Decided: the shipped default AI command becomes the lean claude form.
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
+- Decided: a single file too big for any one call is represented by a stand-in line, with a `diff_exclude` hint afterwards.
 - Decided: a release-only `--notes-file` backdoor; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.

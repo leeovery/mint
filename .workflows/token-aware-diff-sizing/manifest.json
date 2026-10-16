@@ -38,7 +38,7 @@
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "degradation-ladder-the-response": {
-              "status": "pending",
+              "status": "exploring",
               "parent": null
             },
             "map-reduce-vs-refine-parallel-map-serial-reduce": {
@@ -50,7 +50,7 @@
               "parent": "degradation-ladder-the-response"
             },
             "chunk-boundaries-single-file-floor": {
-              "status": "pending",
+              "status": "decided",
               "parent": "degradation-ladder-the-response"
             },
             "concat-floor-abort-as-last-rung": {
