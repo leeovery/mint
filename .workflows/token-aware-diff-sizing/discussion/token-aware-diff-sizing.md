@@ -382,7 +382,7 @@ The lean rested on one claim: a single file bigger than a whole call's budget is
 
 The user's current workaround for a release mint cannot generate notes for (2026-10-16): in a Claude session, have Claude write the notes to mint's standard and put them in `[release].fallback` (the fixed fallback body shared by `--no-ai` and `on_notes_failure = fallback`), run `mint release --no-ai`, then have Claude remove the body from config again — an extra clean-up commit on main for every such release. `mint release` has no way to take a ready-made body without a config edit (no notes-file or stdin flag in `cmd/mint/usage.go`'s `releaseUsage`).
 
-Folded into this feature 2026-10-16 as the remediation floor: mint takes a finished notes body directly (e.g. `--notes-file`, or stdin), so the workaround becomes "write a file, release with it" with no config edit and no clean-up commit. Design (flag shape, review-gate behaviour, interaction with `--no-ai`/`on_notes_failure`) is still to discuss.
+Folded into this feature 2026-10-16 as the remediation floor: mint takes a finished notes body directly (`--notes-file`), so the workaround becomes "write a file, release with it" with no config edit and no clean-up commit. *(Amended 2026-10-16 — this offered stdin as a route and called the design undiscussed; the Decision below settles a file path only, the gate, the `--no-ai` conflict and bad-file handling. `on_notes_failure` never applies to a supplied body: it governs only an AI failure, and no AI call is made.)*
 
 ### Journey
 
