@@ -237,6 +237,8 @@ Consequences accepted:
 - It reaches only repos that have not set their own `ai_command`; an explicit `ai_command` is untouched.
 - Model choice is unchanged — Sonnet, alias form.
 
+**System prompt wording** — **Settled by derivation** — not discussed. Determined by the shared shipped default: one `DefaultAICommand` serves release, commit and the classify call (review-001 F2). The shipped `--system-prompt` names no task — neutral wording to the effect of "follow the instructions you are given and output only what they ask for" — and each call's own prompt carries its job. Exact wording is specification detail.
+
 **Older claude versions** — **Settled by derivation** — not discussed. Determined by ai-model-selection's raw `ai_command` design (mint holds no per-provider knowledge). A claude too old for `--safe-mode` rejects the unknown option and exits non-zero; that lands on the normal generation-failure path; the classify call runs the same command and fails the same way, so mint takes the OTHER path (Classify Call Failure) and claude's own "unknown option" message renders verbatim. mint adds no version probe and no fallback to the plain command — either would put claude-specific knowledge into mint.
 
 Sibling check: ai-model-selection — its specification pins the shipped default as `claude -p --model sonnet` (alias form, Sonnet, rationale: aliases track model versions without rebuilds). This decision keeps that model and alias and adds flags; it supersedes the command string once it lands.
