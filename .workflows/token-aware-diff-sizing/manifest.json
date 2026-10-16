@@ -18,7 +18,7 @@
           "status": "in-progress",
           "subtopics": {
             "detection-trigger-proactive-vs-reactive": {
-              "status": "exploring",
+              "status": "decided",
               "parent": null
             },
             "ai-as-error-classifier-as-primary-trigger": {

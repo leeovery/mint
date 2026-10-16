@@ -391,7 +391,9 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 ### Key Insights
 
-*(captured as the discussion progresses)*
+1. **mint cannot predict fit, so it reacts and caps.** The classify-on-failure trigger responds to the AI's actual outcome; the per-call byte cap is an honest size policy that also gives the chunker its target — neither pretends to know the model's window.
+2. **The AI tool's own overhead was the dominant cost, and it is trimmable.** The lean claude command cuts it ~190× on the subscription login; the live agentic-workflows overflow would have fitted in one pass. The cheapest lever turned out to sit outside chunking entirely.
+3. **mint owns the prompt.** Dropping CLAUDE.md and Claude Code's system prompt is a feature, not a cost: a raw ask carrying only mint's instructions is what lets mint control its output.
 
 ### Open Threads
 
@@ -400,7 +402,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 ### Current State
 
-- Decided: reactive classify-on-failure is the primary trigger.
+- Decided: the detection trigger in full — reactive classify-on-failure as primary, a per-call byte cap as the proactive guard, and the classifier's edges (codes, failures, empty output, hardening, retry).
 - Decided: the shipped default AI command becomes the lean claude form.
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
 - Decided: a release-only `--notes-file` backdoor; the named file is excluded from every git step mint runs.
