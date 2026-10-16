@@ -103,6 +103,32 @@ No firmer re-ask: a classifier answer that is not exactly one listed code maps s
 
 ---
 
+## Closed Code Set: Minimal vs Rich Granularity
+
+### Context
+
+The classifier returns one code from a closed set; mint pivots on it. Only about three control-flow reactions exist however many codes are defined — split (size), retry/back off (rate limit, transient), surface-and-stop (auth, quota, refusal, unknown) — and codes sharing a reaction should merge. An OTHER/UNKNOWN catch-all is mandatory.
+
+### Options Considered
+
+**Minimal — SIZE / OTHER**
+- Pros: least to get wrong; SIZE fires the degradation ladder, OTHER stops with the AI's verbatim message plus mint's general guidance. Extensible later at no cost to existing codes — anything unrecognised already falls to OTHER.
+- Cons: no automatic recovery from a rate limit hit mid-way through the parallel chunk calls.
+
+**Rich — SIZE / RATE_LIMIT / AUTH / TRANSIENT / QUOTA / REFUSAL / OTHER**
+- Pros: per-cause wording; a wait-and-retry on rate limits.
+- Cons: most codes add no distinct reaction. TRANSIENT has already had the transport's single retry, and retrying again breaks the "consumers never re-retry" rule. AUTH/QUOTA/REFUSAL all surface-and-stop, and the AI's own verbatim message (now always rendered — see Classifier Result Alongside the Verbatim Error) is more specific than mint-written wording, e.g. `Not logged in · Please run /login`.
+
+### Journey
+
+The comparison reduced to one candidate extra code: RATE_LIMIT, the only one with a distinct reaction (wait, then retry the affected chunks). Whether it pays depends on the auth model: on a Claude subscription a usage limit is a window measured in hours, which a CLI run should not sit out; on an API key a 429 clears in seconds and parallel map waves are exactly what trigger it. A wait-and-retry would also be a deliberate exception to the no-re-retry rule — not worth making before the case is observed. The subscription is the case to design for.
+
+### Decision
+
+**Ship SIZE / OTHER.** SIZE fires the degradation ladder; OTHER stops, showing the AI's verbatim message with mint's general escape hatches. Deciding factors: no other code has a reaction worth its cost for the subscription case, and the set extends additively — a RATE_LIMIT code (with its wait-and-retry exception) can be added later if API-key setups hit throttling mid-wave. User agreed 2026-10-16. Confidence: high.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
@@ -160,4 +186,4 @@ Folded into this feature 2026-10-16 as the remediation floor: mint takes a finis
 - Decided: reactive classify-on-failure is the primary trigger.
 - Decided: the shipped default AI command becomes the lean claude form.
 - In scope, design open: a notes-file backdoor for releasing with a ready-made body.
-- Exploring: classifier code-set granularity.
+- Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.

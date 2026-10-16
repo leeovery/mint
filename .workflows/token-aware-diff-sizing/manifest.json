@@ -26,7 +26,7 @@
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "closed-code-set-minimal-vs-rich-granularity": {
-              "status": "exploring",
+              "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "classifier-prompt-hardening-untrusted-error-text": {
