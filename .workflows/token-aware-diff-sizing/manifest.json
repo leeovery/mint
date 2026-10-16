@@ -124,6 +124,10 @@
             "off-list-classifier-answer": {
               "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "classify-call-failure": {
+              "status": "decided",
+              "parent": "detection-trigger-proactive-vs-reactive"
             }
           }
         }

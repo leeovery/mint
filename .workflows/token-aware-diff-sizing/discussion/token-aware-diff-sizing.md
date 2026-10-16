@@ -171,6 +171,26 @@ Sibling check: notes-failure-output-ugly-and-uninformative — its specification
 
 ---
 
+## Classify Call Failure
+
+### Context
+
+The classifier decisions define what mint does with every *answer* — SIZE, OTHER, or an off-list answer mapped to OTHER — but not what happens when the classify call itself fails: a generation failure, a timeout, a missing binary, or a Ctrl-C while it runs.
+
+### Journey
+
+The classifier Journey already reasoned that a failed classify call is the stop — when the tool's overhead alone overflows the window, the classify call fails the same way, and mint learns that splitting cannot fix it. The off-list rule settles the shape: anything short of a clean listed code resolves to OTHER. The verbatim-error decision settles what renders: the output of the failure being explained, which is the original generation call's, not the classify call's.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the classifier Journey (a failed classify call is the stop), Off-List Classifier Answer, Classifier Result Alongside the Verbatim Error, and CLAUDE.md's seam 5 (a cancel is not an AI failure) (review-001 F4).
+
+Any classify-call failure — generation failure, timeout, or missing binary — takes the OTHER path: no split, OTHER's cause phrase on the ✗ line, and the *original* generation call's captured output rendered verbatim beneath it. A `context.Canceled` during the classify call propagates unchanged and never falls to `on_notes_failure`.
+
+Sibling check: no overlap found — the classify call and its codes are this topic's own terms.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
@@ -197,7 +217,7 @@ Consequences accepted:
 - It reaches only repos that have not set their own `ai_command`; an explicit `ai_command` is untouched.
 - Model choice is unchanged — Sonnet, alias form.
 
-**Older claude versions** — **Settled by derivation** — not discussed. Determined by ai-model-selection's raw `ai_command` design (mint holds no per-provider knowledge). A claude too old for `--safe-mode` rejects the unknown option and exits non-zero; that lands on the normal generation-failure path, the classifier answers OTHER, and claude's own "unknown option" message renders verbatim. mint adds no version probe and no fallback to the plain command — either would put claude-specific knowledge into mint.
+**Older claude versions** — **Settled by derivation** — not discussed. Determined by ai-model-selection's raw `ai_command` design (mint holds no per-provider knowledge). A claude too old for `--safe-mode` rejects the unknown option and exits non-zero; that lands on the normal generation-failure path; the classify call runs the same command and fails the same way, so mint takes the OTHER path (Classify Call Failure) and claude's own "unknown option" message renders verbatim. mint adds no version probe and no fallback to the plain command — either would put claude-specific knowledge into mint.
 
 Sibling check: ai-model-selection — its specification pins the shipped default as `claude -p --model sonnet` (alias form, Sonnet, rationale: aliases track model versions without rebuilds). This decision keeps that model and alias and adds flags; it supersedes the command string once it lands.
 
