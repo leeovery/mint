@@ -114,7 +114,7 @@ Folded into this feature 2026-10-16 as the remediation floor: mint takes a finis
 
 ### Open Threads
 
-*(captured as the discussion progresses)*
+- **Parked on the roadmap under Next (2026-10-16): headline-first release notes.** The default prompt's category-first format and its "NO TL;DR, NO summary paragraph, NO preamble" rule (`internal/notes/prompt.go`) leave no place to declare what a release is about, so a release's main feature can land as one bullet among sideline changes. Separate from big-release handling; the chunked merge pass inherits whatever format exists when it ships.
 
 ### Current State
 
