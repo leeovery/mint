@@ -352,6 +352,8 @@ The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel 
 - `mint commit`'s AI-failure warning carries the AI's captured output verbatim, as release already does.
 - The classifier is release-notes only (forward release and regenerate); `mint commit` makes no classify call.
 
+**Unattended commit** — **Settled by derivation** — not discussed. Determined by CLAUDE.md's verbatim-diagnostics rule (both `StageFailure.Output` and `Warning.Output`) and this decision's own motivation — an expired login or a usage limit — where the unattended run is the one with nobody present to re-run it (review-002 F4). When an unattended `mint commit` (`-y` or non-TTY) fails loud because the AI failed, the failure also carries the AI's captured output verbatim beneath the no-message-source line. The other triggers into that guard — `--no-ai`, oversized, all-excluded — have no AI output and are unchanged.
+
 ---
 
 ## Chunk Boundaries and the Single-File Floor
