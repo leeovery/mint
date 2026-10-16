@@ -30,7 +30,7 @@
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "classifier-prompt-hardening-untrusted-error-text": {
-              "status": "pending",
+              "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "proactive-byte-cap-backstop-line-byte-ceiling-token-budget-registry-survival": {
