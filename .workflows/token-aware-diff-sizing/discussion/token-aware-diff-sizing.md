@@ -191,6 +191,26 @@ Sibling check: no overlap found — the classify call and its codes are this top
 
 ---
 
+## Empty Error Output
+
+### Context
+
+Some generation failures carry no text at all — a tool that exits non-zero silently, or exits 0 with an empty body and nothing on stderr. The classifier decision sends "the captured error text" to the AI regardless, and the transport keeps stdout and stderr as separate fields, with diagnostics sometimes arriving only on stderr behind a whitespace-only body (`internal/ai/transport.go`, `GenerationError`).
+
+### Journey
+
+Classifying empty input can only be a guess; a guessed SIZE would fire the whole parallel chunk wave at a failure chunking cannot fix — exactly the amplification the classifier was chosen to prevent. Sending stdout alone would break the provider-agnostic premise for any tool that writes its errors to stderr. Distinct from the pending prompt-hardening subtopic: that covers how the text is embedded; this covers which text, and the case where there is none.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the classifier's deciding factor (never amplify non-size failures into a wave of N calls), Off-List Classifier Answer (unreliable answers resolve to OTHER), and the transport's separate captured streams (review-001 F5).
+
+The classifier's input is both captured streams, stdout and stderr. When both are empty or whitespace-only, mint skips the classify call and takes the OTHER path directly.
+
+Sibling check: no overlap found — this topic's own classifier ground.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
