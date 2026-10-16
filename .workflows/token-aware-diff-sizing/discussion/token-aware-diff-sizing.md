@@ -85,6 +85,24 @@ The classifier adds to the verbatim error, never replaces it: its code drives co
 
 ---
 
+## Off-List Classifier Answer
+
+### Context
+
+The research sketch had mint re-prompt the classifier more firmly when its answer is not one of the listed codes, then fall back to surfacing the error.
+
+### Journey
+
+CLAUDE.md's AI seam makes the transport the sole owner of validation and the single bad-content retry — "consumers never re-retry". A firmer second classify call would be exactly such a consumer re-retry. The mandatory OTHER catch-all already guarantees safe termination, so a re-ask buys nothing the catch-all does not.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by CLAUDE.md's AI seam (the transport owns the single retry; consumers never re-retry).
+
+No firmer re-ask: a classifier answer that is not exactly one listed code maps straight to OTHER. Worst case is surfacing the error where auto-chunking might have helped.
+
+---
+
 ## Lean Default AI Command
 
 ### Context

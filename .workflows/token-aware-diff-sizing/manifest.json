@@ -120,6 +120,10 @@
             "classifier-result-alongside-verbatim-error": {
               "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
+            },
+            "off-list-classifier-answer": {
+              "status": "decided",
+              "parent": "detection-trigger-proactive-vs-reactive"
             }
           }
         }
