@@ -22,11 +22,11 @@
               "parent": null
             },
             "ai-as-error-classifier-as-primary-trigger": {
-              "status": "exploring",
+              "status": "decided",
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "closed-code-set-minimal-vs-rich-granularity": {
-              "status": "pending",
+              "status": "exploring",
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "classifier-prompt-hardening-untrusted-error-text": {
@@ -108,6 +108,10 @@
             "cancellation-partial-coverage-fork": {
               "status": "pending",
               "parent": "implementation-reality-parallelism"
+            },
+            "lean-default-ai-command": {
+              "status": "exploring",
+              "parent": null
             }
           }
         }

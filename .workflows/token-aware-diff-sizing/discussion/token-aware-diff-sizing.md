@@ -27,46 +27,64 @@ Research (`research/token-aware-diff-sizing.md`, incl. two deep-dives + three re
 - Discovery: `discovery/session-001.md`
 - Code: `internal/notes/size.go`, `prompt.go`, `changemap.go`, `generate.go`; `internal/ai/transport.go`; `internal/commit/generate.go`; `internal/engine/release.go`
 
-## Discussion Map
-
-### States
-
-- **pending** (`○`) — identified but not yet explored
-- **exploring** (`◐`) — actively being discussed
-- **converging** (`→`) — narrowing toward a decision
-- **decided** (`✓`) — decision reached with rationale documented
-
-### Map
-
-  Discussion Map — Token-Aware Diff Sizing (6 subtopics, all pending)
-
-  ┌─ ○ Detection trigger — proactive vs reactive [pending]
-  │  ├─ ○ AI-as-error-classifier as primary trigger [pending]
-  │  ├─ ○ Closed code-set: minimal vs rich granularity [pending]
-  │  ├─ ○ Classifier prompt hardening (untrusted error text) [pending]
-  │  └─ ○ Proactive byte-cap backstop + line→byte ceiling; token-budget/registry survival [pending]
-  ├─ ○ Degradation ladder — the response [pending]
-  │  ├─ ○ Map-reduce vs refine (parallel map + serial reduce) [pending]
-  │  ├─ ○ Stitching / salience (Change Map as spine) [pending]
-  │  ├─ ○ Chunk boundaries + single-file floor [pending]
-  │  ├─ ○ Concat floor / abort as last rung [pending]
-  │  └─ ○ Overhead-dominated failures (surface + advise) [pending]
-  ├─ ○ Config surface — oversize knob [pending]
-  │  ├─ ○ New axis vs on_notes_failure value; naming [pending]
-  │  └─ ○ Default (silent auto-degrade) + scope [pending]
-  ├─ ○ Scope across three consumers [pending]
-  ├─ ○ Remediation UX / escape-hatch guidance [pending]
-  │  ├─ ○ Attended vs unattended default [pending]
-  │  └─ ○ Commit-message fallback reuse [pending]
-  └─ ○ Implementation reality — parallelism [pending]
-     ├─ ○ Bounded fan-out / failure aggregation [pending]
-     ├─ ○ Progress narration model [pending]
-     ├─ ○ Timeout semantics across N calls [pending]
-     └─ ○ Cancellation / partial-coverage fork [pending]
+*Subtopics are documented below as they reach `decided` or accumulate enough exploration to capture. Not every subtopic needs its own section — minor items resolved in passing can be folded into their parent. The Discussion Map (which subtopics exist and their states) lives in the manifest, not this file.*
 
 ---
 
-*Subtopics are documented below as they reach `decided` or accumulate enough exploration to capture.*
+## AI-as-Error-Classifier as Primary Trigger
+
+### Context
+
+mint cannot predict whether a prompt will fit: it sees neither the model window, the tokenizer, nor the AI tool's own wrapper overhead. So the decision to break a release up has to come from the AI call's actual outcome. Today every generation failure — size overflow, auth, rate limit, refusal — lands on the one overloaded `ai.ErrGenerationFailed` sentinel and renders the one phrase `AI returned empty/invalid notes after retry` (`internal/notes/resolve.go:124-125`), which mislabels a size overflow. The transport has already fired the identical oversized call twice by then (`internal/ai/transport.go`, single bad-content retry).
+
+### Options Considered
+
+**String-match the provider's overflow message** (e.g. claude's `Prompt is too long`)
+- Pros: no extra call; claude's message is stable and already captured on `GenerationError.Stdout`.
+- Cons: provider-specific — Codex, `llm` and others word it differently, so mint re-acquires the per-provider knowledge `ai_command` was designed to avoid.
+
+**Split-and-observe** — on any generation failure, break the release up and let the outcome say whether size was the cause
+- Pros: provider-agnostic, no classify call.
+- Cons: on a rate limit it fires the parallel map wave at the service already throttling; on a one-off server error it ships lower-fidelity chunked notes where a re-run would have produced a single-pass set; on auth it multiplies one failure into N.
+
+**AI-as-error-classifier** — on `ErrGenerationFailed`, send the captured error text to the same configured AI in a small diff-free prompt asking for exactly one code from a closed set; pivot on the code
+- Pros: provider-agnostic by construction (the AI interprets its own error); never sends a wave of calls at a failure chunking cannot fix; gives the ✗ line a correct cause phrase.
+- Cons: one extra AI call per failure; a non-deterministic step in control flow (testable through the faked transport).
+
+### Journey
+
+Research reached the classifier as its standing front-runner after string-matching hit the portability wall (deep-dive 002 F6/F7) and blanket splitting proved unsafe on the overloaded sentinel (research F8). This sitting's comparison against split-and-observe turned on the parallel map wave: split-and-observe's failure cases are exactly the ones where a wave of N calls does harm.
+
+One research claim was corrected in the comparison: the classify prompt is only "tiny" in mint's part. Every call — classify included — also carries the AI tool's own overhead (≈800k tokens in the agentic-workflows live failure). That overhead has a useful consequence: when overhead alone overflows the window, the classify call fails the same way, and mint learns "not fixable by splitting" without classifying anything — the correct stop for an overhead-dominated failure. (The overhead itself is now under its own subtopic: it turns out to be trimmable — see Lean Default AI Command.)
+
+The classifier only ever fires on `ErrGenerationFailed`: `ErrTimeout`, `ErrCommandMissing` and `context.Canceled` are already distinguished structurally by the transport and never reach it.
+
+The user ratified the approach on returning to the session (2026-10-16): "we go the classifier approach, we just ask Claude using the mechanism that we have in place" — i.e. the classify call goes through the existing `ai.Transport` and `ai_command`, no new AI seam.
+
+### Decision
+
+**Reactive classify-on-failure is the primary trigger for degradation.** On `ErrGenerationFailed`, mint sends the captured error text to the same configured AI through the existing transport and pivots on a single code from a closed set; only a size code fires the degradation ladder. Deciding factor: it is the only provider-agnostic trigger that does not amplify non-size failures into a wave of N calls. Accepted trade-off: one extra AI call per failure. Confidence: high. Code-set granularity, prompt hardening, and the proactive backstop are settled under their own subtopics.
+
+---
+
+## Lean Default AI Command
+
+### Context
+
+Research concluded the AI tool's wrapper overhead is the operator's environment and not mint-fixable: `--bare` strips it but forces API-key auth and breaks the subscription OAuth the shipped default relies on (live-confirmed: `Not logged in · Please run /login`). That conclusion made overhead-dominated failures a surface-and-advise case only.
+
+### Journey
+
+Measured 2026-10-16 in the mint repo (claude CLI flags from `claude --help`), same one-word prompt, `usage` read from `--output-format json`:
+
+- `echo "Reply with the single word: ok" | claude -p --model sonnet --output-format json --no-session-persistence` → 105,188 input tokens (cache_creation 105,186 + input 2).
+- `echo "Reply with the single word: ok" | claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --system-prompt "You write release notes." --output-format json --no-session-persistence` → 561 input tokens, answered `ok` on the subscription login — no auth break.
+
+`--safe-mode` disables CLAUDE.md, skills, plugins, hooks and MCP servers while (per its help text) leaving auth and model selection working; `--tools ""` drops the built-in tool definitions; `--system-prompt` replaces Claude Code's own system prompt. That is roughly a 190× cut of the overhead without touching OAuth — the research's "not mint-fixable" holds for `--bare` only.
+
+Consequence for the live agentic-workflows failure: mint's own prompt there was ~532k tokens against a 1M limit, and the request failed only because ~803k of overhead rode on top. With the lean command it would have fitted in one pass.
+
+Open (provisional, not decided): whether the shipped default `ai_command` changes to the lean form — it re-decides `ai-model-selection`'s shipped default and only reaches operators who have not set their own `ai_command`; and the flags depend on the claude version installed (an older claude without `--safe-mode` would fail the call).
 
 ---
 
@@ -82,4 +100,5 @@ Research (`research/token-aware-diff-sizing.md`, incl. two deep-dives + three re
 
 ### Current State
 
-- Nothing decided yet. Research standing positions above are candidates to ratify.
+- Decided: reactive classify-on-failure is the primary trigger.
+- Exploring: classifier code-set granularity; a lean default AI command (overhead measured trimmable under OAuth).
