@@ -116,6 +116,10 @@
             "notes-file-backdoor": {
               "status": "pending",
               "parent": "remediation-ux-escape-hatch-guidance"
+            },
+            "classifier-result-alongside-verbatim-error": {
+              "status": "decided",
+              "parent": "detection-trigger-proactive-vs-reactive"
             }
           }
         }

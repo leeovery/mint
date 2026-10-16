@@ -67,6 +67,24 @@ The user ratified the approach on returning to the session (2026-10-16): "we go 
 
 ---
 
+## Classifier Result Alongside the Verbatim Error
+
+### Context
+
+Research framed the classifier as *replacing* today's raw-error passthrough with a normalised message. Today the ✗ line for every generation failure reads `AI returned empty/invalid notes after retry` (`internal/notes/resolve.go:124-125`) — wrong for a size overflow — with the AI's captured output rendered verbatim beneath it (`notesFailureOutput`, `internal/engine/release.go:1656`).
+
+### Journey
+
+Replacing the captured output would break the project contract that subprocess failure diagnostics travel verbatim in `StageFailure.Output`, never summarised or reworded (CLAUDE.md, Error & exit idioms). The AI's own text is also the most specific remediation available — `Not logged in · Please run /login`, or claude's token breakdown on an overflow — so dropping it would lose information.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by CLAUDE.md's verbatim-diagnostics rule.
+
+The classifier adds to the verbatim error, never replaces it: its code drives control flow (split or stop) and selects the ✗ line's cause phrase and mint's guidance, while the AI's captured output still renders verbatim beneath the ✗ line.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
