@@ -18,7 +18,7 @@ Research (`research/token-aware-diff-sizing.md`, incl. two deep-dives + three re
 - **Response: a graceful-degradation ladder** — full single-pass → **map-reduce** (parallel map + ONE serial reduce, *not* refine) → concat partials → existing `on_notes_failure` floor. Change Map is the size-independent **spine** handed to every map + the reduce to preserve salience.
 - **Config: auto-degrade silently by default.** A new `[release]`-scoped axis (`oversize = chunk|off`, name TBD), orthogonal to `on_notes_failure`.
 - **Scope: chunking is a release-notes concept.** Commit stays as-is; regenerate `--all` inherits chunking uniformly (skip stays only as its floor); forward release + single regenerate chunk cleanly.
-- **Overhead-dominated failures are NOT mint-fixable** — chunking shrinks mint's prompt but every chunk re-pays the overhead; mint can only surface + advise. `--bare` is off the table (breaks subscription OAuth, live-confirmed).
+- **Overhead-dominated failures are NOT mint-fixable** — chunking shrinks mint's prompt but every chunk re-pays the overhead; mint can only surface + advise. `--bare` is off the table (breaks subscription OAuth, live-confirmed). *(Amended 2026-10-16 — this claimed the overhead is beyond mint's reach; the Lean Default AI Command decision trims it at source for the shipped default (~105k → ~561 tokens measured, subscription login intact). The claim still holds only for repos whose own `ai_command` carries the overhead; `--bare` stays ruled out.)*
 
 ### References
 
