@@ -342,6 +342,22 @@ The user's current workaround for a release mint cannot generate notes for (2026
 
 Folded into this feature 2026-10-16 as the remediation floor: mint takes a finished notes body directly (e.g. `--notes-file`, or stdin), so the workaround becomes "write a file, release with it" with no config edit and no clean-up commit. Design (flag shape, review-gate behaviour, interaction with `--no-ai`/`on_notes_failure`) is still to discuss.
 
+### Journey
+
+**Where the body comes from** (raised by the background review, review-001 F9). The first real use collides with mint's own gates: an agent writes `notes.md` to the repo root and runs `mint release -y --notes-file notes.md`, and the clean-tree preflight refuses it as an untracked file (`internal/preflight/preflight.go`). With `--autostash`, `git stash push --include-untracked` would sweep the file away before mint reads it (`internal/engine/autostash.go`). And the release path's pre-tag artifact commit stages with `git add -A` (`record.CommitDirtyTree`, `internal/record/commit.go`), so an untracked notes file in the tree would be swept into a release commit — keeping the file out of git is in mint's realm, not only the caller's. A stdin form was weighed and dropped: the review gate reads its keypresses from stdin, and an agent can always write a file.
+
+The alternative — keep the clean-tree rule absolute and require the file to live outside the repo or in an ignored path — was set against the trap it leaves: the obvious first try fails. The user expects an agent will usually write the file to a temp directory anyway, but it still has to work from the repo root (2026-10-16).
+
+### Decision
+
+**The named notes file is excluded from everything mint does** (user, 2026-10-16):
+- mint reads it once at startup, before any stash, check or gate, and holds the body in memory.
+- It does not count against the clean-tree check, is left out of `--autostash`'s stash, and is never staged or committed by any git add/commit mint runs — the pre-tag artifact commit's `git add -A` included.
+- Afterwards it sits in the work tree untouched; cleaning it up is the caller's business, out of mint's scope.
+- File path only — no stdin form.
+
+Still open: whether `mint commit` gets the same backdoor for a ready-made message; how a supplied body meets the review gate; whether regenerate takes it; and what an empty, missing or unreadable file does.
+
 ---
 
 ## Summary

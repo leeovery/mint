@@ -114,7 +114,7 @@
               "parent": null
             },
             "notes-file-backdoor": {
-              "status": "pending",
+              "status": "exploring",
               "parent": "remediation-ux-escape-hatch-guidance"
             },
             "classifier-result-alongside-verbatim-error": {
