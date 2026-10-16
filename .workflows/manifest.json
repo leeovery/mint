@@ -58,5 +58,21 @@
   },
   "baseline": {
     "status": "native"
+  },
+  "roadmap": {
+    "horizons": [
+      "Next"
+    ],
+    "items": {
+      "headline-first-release-notes": {
+        "horizon": "Next",
+        "summary": "Release notes lead with the release's main feature, named clearly, with the smaller changes that shipped alongside it listed after",
+        "kind": "idea",
+        "origin": "park:token-aware-diff-sizing",
+        "sources": [
+          "token-aware-diff-sizing/discussion/token-aware-diff-sizing.md"
+        ]
+      }
+    }
   }
 }
