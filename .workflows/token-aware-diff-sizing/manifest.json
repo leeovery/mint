@@ -90,7 +90,7 @@
               "parent": "remediation-ux-escape-hatch-guidance"
             },
             "implementation-reality-parallelism": {
-              "status": "pending",
+              "status": "exploring",
               "parent": null
             },
             "bounded-fan-out-failure-aggregation": {
@@ -106,7 +106,7 @@
               "parent": "implementation-reality-parallelism"
             },
             "cancellation-partial-coverage-fork": {
-              "status": "pending",
+              "status": "decided",
               "parent": "implementation-reality-parallelism"
             },
             "lean-default-ai-command": {

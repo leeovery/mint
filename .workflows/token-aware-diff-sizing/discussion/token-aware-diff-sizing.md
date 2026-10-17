@@ -312,7 +312,7 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 **At a terminal, the floor asks; everywhere else it gives guidance and stops.** User agreed 2026-10-17. Confidence: high.
 
-- **Attended, `on_notes_failure = abort`:** after the ✗ line and the AI's verbatim message, a one-keypress choice — `c` commit-subject notes (the existing `--no-ai` body), `e` write the notes in `$EDITOR` (opened on the saved per-chunk notes when a merge failed, empty otherwise — a new write-from-scratch route), `a` abort. The chosen body then continues through the release.
+- **Attended, `on_notes_failure = abort`:** after the ✗ line and the AI's verbatim message, a one-keypress choice — `c` commit-subject notes (the existing `--no-ai` body), `e` write the notes in `$EDITOR` (opened on the saved per-chunk notes when a merge or a chunk failed, empty otherwise — a new write-from-scratch route), `a` abort. The chosen body then continues through the release.
 - **Unattended (`-y` or non-TTY), `on_notes_failure = abort`:** the ✗ line, the AI's verbatim message and a short cause-fitted list of next moves, then the run stops — never a prompt.
 - **`on_notes_failure = fallback`:** no choice is offered; the fallback body ships, as the operator chose.
 - The choice goes through the presenter's gate seam like every other gate.
@@ -591,6 +591,32 @@ The user questioned why the merge would fail at all once every chunk has finishe
 
 ---
 
+## When a Chunk Fails
+
+### Context
+
+A chunked release sends its chunk calls in parallel, so one can fail while the rest succeed: an error that survives the transport's retry and classifies OTHER, a timeout (which never reaches the classifier — Timeouts and the Ladder), or a chunk whose halving rounds run out (Under-Cap Overflow: Halving). The run then holds notes for most of the release and nothing for one slice of it — say five of six chunks.
+
+### Options Considered
+
+**All or nothing** — the generation counts as failed and goes to the floor; the finished chunks' notes are saved.
+- Pros: never ships notes that read as complete while missing part of the release; the saved notes turn the attended floor's `e` into tidying and filling in rather than writing from scratch.
+- Cons: a release that had most of its AI notes gets none on its own.
+
+**Merge what came back, flagged** — merge the surviving partial notes and flag the missing slice: at the review gate on a terminal run, as a warning on an unattended one.
+- Pros: every such release still gets AI notes.
+- Cons: the notes look whole but aren't, and under `-y` they ship unreviewed, warning or not.
+
+### Journey
+
+The missing slice can be the release's headline feature. Notes that read as complete while quietly leaving out the biggest change are the very failure this feature exists to end — big releases getting coherent notes — and the one the parked headline-first roadmap item targets. It is also the line When the Merge Fails drew: no body that only looks right ships unattended. The user agreed (2026-10-17).
+
+### Decision
+
+**One failed chunk fails the generation.** When any chunk call ends in failure — after its retry, its classify call and, on SIZE, its halving rounds — no merge runs. mint saves the notes of the chunks that finished to a file outside the repo, names it in the failure, and the run goes to `on_notes_failure` like any other failure. At a terminal under `abort`, the floor's `e` opens the editor on the saved notes; unattended runs stop with guidance; under `fallback` the fallback body ships and the saved file is still named. User agreed 2026-10-17. Confidence: high.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context
@@ -669,7 +695,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - Decided: the shipped default AI command becomes the lean claude form.
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
 - Decided: at the floor an attended run offers commit-subject notes, the editor or abort; unattended runs stop with cause-fitted guidance.
-- Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge saves the chunk notes and falls to `on_notes_failure`.
+- Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge, or any one failed chunk, fails the generation — the chunk notes that exist are saved and the run falls to `on_notes_failure`.
 - Decided: a single file too big for any one call is represented by a stand-in line, with a `diff_exclude` hint afterwards.
 - Decided: a release-only `--notes-file` backdoor; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
