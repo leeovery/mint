@@ -183,7 +183,7 @@ The rename cost is low: mint has no users outside the user's own repos yet, so i
 
 **`max_diff_lines` is replaced by a per-call size cap measured in bytes** (new key name and default value are specification detail). It bounds the composed prompt mint sends in any single AI call — instructions, Change Map, diff and reminder; the AI tool's own overhead is invisible to mint and outside it. It stays a shared top-level key covering both verbs.
 
-- **Release (forward and single regenerate):** a prompt over the cap skips the single-pass call and goes straight to chunking; every chunk call is sized to fit under the cap. (A single file whose diff alone exceeds the cap is stood in for — see Chunk Boundaries and the Single-File Floor.)
+- **Release (forward and single regenerate):** a prompt over the cap skips the single-pass call and goes straight to chunking; every chunk call is sized to fit under the cap. (A single file whose diff is too big to fit in one chunk call alongside that call's instructions, Change Map and reminder is stood in for — see Chunk Boundaries and the Single-File Floor. *Amended 2026-10-17 — this read "whose diff alone exceeds the cap"; the cap bounds the whole composed prompt, per this Decision, and every call carries the full Change Map, per Stitching and Salience.*)
 - **`regenerate --all`:** inherits the same behaviour; its per-version skip remains only as the floor when chunking is exhausted.
 - **`mint commit`:** over the cap drops to `$EDITOR` as today — commit has no chunking.
 
@@ -635,7 +635,7 @@ The lean rested on one claim: a single file bigger than a whole call's budget is
 
 ### Decision
 
-**A file whose diff alone exceeds the per-call size cap is represented by a one-line stand-in, not its diff.** The stand-in names the file and how much changed and says the diff was omitted for size; the Change Map still carries it, so the notes can mention it where it matters. After the notes, mint tells the operator which file(s) it stood in for and suggests adding them to `diff_exclude`. User chose this 2026-10-16. Deciding factor: such a file is almost always a generated artifact, so reading it costs AI calls for nothing. Confidence: high.
+**A file whose diff is too big to fit in one chunk call alongside that call's instructions, Change Map and reminder is represented by a one-line stand-in, not its diff.** *(Amended 2026-10-17 — this read "whose diff alone exceeds the per-call size cap"; per Proactive Size Ceiling the cap bounds the whole composed prompt, and per Stitching and Salience every call carries the full Change Map, so a chunk call has less room for diff than the cap.)* The stand-in names the file and how much changed and says the diff was omitted for size; the Change Map still carries it, so the notes can mention it where it matters. After the notes, mint tells the operator which file(s) it stood in for and suggests adding them to `diff_exclude`. User chose this 2026-10-16. Deciding factor: such a file is almost always a generated artifact, so reading it costs AI calls for nothing. Confidence: high.
 
 **Packing by area** — **Settled by derivation** — not discussed. Determined by the salience goal (a feature seen whole by one map call rather than fragmented across chunks), the Change Map's existing grouping by area, and the parallel-first steer, which rules out a serial ask-the-AI-to-group round-trip. Chunks are packed by area — files from the same part of the codebase stay together — filled up to the per-call size cap.
 
