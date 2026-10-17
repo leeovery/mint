@@ -488,6 +488,8 @@ The lean rested on one claim: a single file bigger than a whole call's budget is
 
 **A file whose diff alone exceeds the per-call size cap is represented by a one-line stand-in, not its diff.** The stand-in names the file and how much changed and says the diff was omitted for size; the Change Map still carries it, so the notes can mention it where it matters. After the notes, mint tells the operator which file(s) it stood in for and suggests adding them to `diff_exclude`. User chose this 2026-10-16. Deciding factor: such a file is almost always a generated artifact, so reading it costs AI calls for nothing. Confidence: high.
 
+**Packing by area** — **Settled by derivation** — not discussed. Determined by the salience goal (a feature seen whole by one map call rather than fragmented across chunks), the Change Map's existing grouping by area, and the parallel-first steer, which rules out a serial ask-the-AI-to-group round-trip. Chunks are packed by area — files from the same part of the codebase stay together — filled up to the per-call size cap.
+
 ---
 
 ## Notes-File Backdoor
