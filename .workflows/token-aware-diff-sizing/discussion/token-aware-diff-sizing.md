@@ -571,6 +571,10 @@ Every chunk call and the merge call receive the same whole-release Change Map.
 
 Sibling check: no overlap found — the Change Map is mint-release-tool's as-built artifact, used here as built.
 
+**When the Change Map would crowd out the diff** (raised by the background review, review-003 F7; user agreed 2026-10-17). A release that deletes a vendored tree or moves thousands of files gets one `Removed:` or `Renamed:` line per path (`renderNovelty`, `internal/notes/changemap.go`), so instructions plus the Change Map alone can exceed the per-call cap, and no call mint could make would fit. When the map would crowd out the diff, mint condenses it: a long run of removed or renamed files collapses to one line per folder (e.g. "Removed: 4,312 files under vendor/"). The notes still learn the tree went — all they would say about it anyway — and the release still gets notes. A release whose map fits renders exactly as today. Rejected: stopping at the floor with a `diff_exclude` hint, which costs a release that could have had notes. The threshold for "crowds out" is specification detail.
+
+Sibling check: mint-release-tool — its specification's Change Map section makes directory/area rollup the default and calls a flat list of every changed file "mush on big releases"; condensing long removed/renamed runs by folder applies that rollup to the novelty list, so nothing there is contradicted.
+
 ---
 
 ## When the Merge Fails
