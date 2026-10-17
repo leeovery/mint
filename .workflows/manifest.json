@@ -81,6 +81,15 @@
         "sources": [
           "token-aware-diff-sizing/discussion/token-aware-diff-sizing.md"
         ]
+      },
+      "agent-guide-for-running-releases": {
+        "horizon": "Next",
+        "summary": "mint's agent guide teaches an AI agent how to drive releases — every release and regenerate surface, supplying a notes file, recovering saved chunk notes, the choices when notes fail — so nobody has to remember the flags",
+        "kind": "idea",
+        "origin": "park:token-aware-diff-sizing",
+        "sources": [
+          "token-aware-diff-sizing/discussion/token-aware-diff-sizing.md"
+        ]
       }
     }
   }
