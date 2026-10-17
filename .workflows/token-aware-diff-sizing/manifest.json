@@ -158,7 +158,7 @@
               "parent": "degradation-ladder-the-response"
             },
             "ai-noise-check-for-big-files": {
-              "status": "exploring",
+              "status": "decided",
               "parent": "degradation-ladder-the-response"
             }
           }

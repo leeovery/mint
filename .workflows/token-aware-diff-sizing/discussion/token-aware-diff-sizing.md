@@ -683,9 +683,56 @@ The lean rested on one claim: a single file bigger than a whole call's budget is
 
 ### Decision
 
-**A file whose diff is too big to fit in one chunk call alongside that call's instructions, Change Map and reminder is represented by a one-line stand-in, not its diff.** *(Amended 2026-10-17 — this read "whose diff alone exceeds the per-call size cap"; per Proactive Size Ceiling the cap bounds the whole composed prompt, and per Stitching and Salience every call carries the full Change Map, so a chunk call has less room for diff than the cap.)* The stand-in names the file and how much changed and says the diff was omitted for size; the Change Map still carries it, so the notes can mention it where it matters. After the notes, mint tells the operator which file(s) it stood in for and suggests adding them to `diff_exclude`. User chose this 2026-10-16. Deciding factor: such a file is almost always a generated artifact, so reading it costs AI calls for nothing. Confidence: high.
+**A file whose diff is too big to fit in one chunk call alongside that call's instructions, Change Map and reminder is represented by a one-line stand-in, not its diff.** *(Amended 2026-10-17 — this read "whose diff alone exceeds the per-call size cap"; per Proactive Size Ceiling the cap bounds the whole composed prompt, and per Stitching and Salience every call carries the full Change Map, so a chunk call has less room for diff than the cap.)* The stand-in names the file and how much changed and says the diff was omitted for size; the stand-in line is how the file reaches the notes — the chunk call carrying it can mention the file where it matters, and the merge sees what that chunk wrote. *(Corrected 2026-10-17 — this said the Change Map still carries the file. The as-built map names a file individually only when it is new, removed, renamed, a new top-level entry or the single largest by line count (`renderChangeMap`, `internal/notes/changemap.go`), so a long-lined transcript is usually not named; the map is left unchanged (review-003 F6).)* After the notes, mint tells the operator which file(s) it stood in for and suggests adding them to `diff_exclude`. User chose this 2026-10-16. Deciding factor: such a file is almost always a generated artifact, so reading it costs AI calls for nothing. Confidence: high.
+
+**Re-decided 2026-10-17 — the stand-in is for generated files only** (user, in the engagement on review-003 F6). Per Exclusion Suggestions Before the Notes, the AI judges each file too big for one chunk call. One it judges hand-written is read in pieces: its diff is split into slices that each fit a call, sent in parallel with the other chunk calls and stitched by the merge like any other partial notes — never a serial loop, the refine shape ruled out in Map-Reduce, Not Refine. One it judges generated keeps the stand-in, and at a terminal is raised at the exclusion pause first. The earlier deciding factor still holds for most such files; the judgment catches the exception — notably a hand-written file under a cap set low or halved down.
 
 **Packing by area** — **Settled by derivation** — not discussed. Determined by the salience goal (a feature seen whole by one map call rather than fragmented across chunks), the Change Map's existing grouping by area, and the parallel-first steer, which rules out a serial ask-the-AI-to-group round-trip. Chunks are packed by area — files from the same part of the codebase stay together — filled up to the per-call size cap.
+
+---
+
+## Exclusion Suggestions Before the Notes
+
+### Context
+
+Files that do not belong in release notes reach them because nothing flags them. The user has shipped releases whose notes documented design files or test changes they did not mean to leave in (2026-10-17). On big releases the same kind of file bloats the diff: the 1.9 MB design-session transcript in the agentic-workflows release, mint's own 867 KB `.workflows/`/`.tick/` artifacts. The single-file stand-in covered only a file too big for any one call, and treated every such file alike. In the engagement on review-003 F6 the user asked whether Claude could read a big file over several calls, and whether it could tell which files should be in `diff_exclude`.
+
+### Options Considered
+
+**Read every oversized file in pieces**
+- Pros: nothing dropped.
+- Cons: spends calls on generated noise — several calls that each say "updated the transcript".
+
+**The AI judges; mint acts on it only for oversized files** — stand-in or pieces by the AI's verdict, other suggestions printed as a hint after the notes.
+- Pros: no file ever leaves the notes on the AI's say alone.
+- Cons: the operator learns of an unwanted file only after the notes are written, and has to edit the config themselves.
+
+**The AI judges and excludes files on its own for the run**
+- Pros: noise gone with no interaction.
+- Cons: a wrong "generated" verdict silently drops a real change from the notes, unreviewed under `-y`.
+
+**The AI judges; at a terminal mint asks about each suggestion and records the answer in config**
+- Pros: the slip the user describes is caught before the notes are written, the release carries on in the same run, and each answer is given once.
+- Cons: one more AI call before the notes on every release; a pause when something is flagged.
+
+### Journey
+
+The user agreed that the AI should not exclude files on its own, then asked for its judgment to reach the operator — human or agent — before the notes: "are these files meant to be included?" Two conditions came with it: a path answered "yes, include it" must never be asked about again, and a "no" should be added to the config and committed by mint, with the release carrying on rather than the operator backing out to do it by hand. Answers live in `.mint.toml` rather than state private to one machine, so a teammate, CI or an agent session elsewhere is not asked again. The check runs on every release, not only big ones: the user's slips happened on normal-sized releases, which a big-release-only check would have missed; the cost is one small serial call before the notes. Reading a hand-written big file in pieces is parallel slices, not a loop. The user agreed the whole shape (2026-10-17).
+
+### Decision
+
+**On `mint release`, before the notes are written, mint asks the AI which changed paths look like they do not belong in release notes, and at a terminal asks the operator about each one.** User agreed 2026-10-17. Confidence: high.
+
+- **The check** — one AI call through the existing transport carrying the release's file list with names and sizes, no diff. Paths already covered by `diff_exclude` or by the keep list are not raised. It runs on every release.
+- **At a terminal** — one pause per flagged path or glob, offering exclude or keep, through the presenter's gate seam:
+  - **Exclude** — mint adds the glob to `diff_exclude` in `.mint.toml`, changing only that entry and leaving the rest of the file as written, commits it, and carries on; this release's notes are written without those files, and the commit goes out with the release.
+  - **Keep** — mint records the glob on a new keep list in `.mint.toml` (key name is specification detail; a new key takes the strict-config path), committed the same way, and never raises it again.
+- **Unattended (`-y`, non-TTY, an agent run)** — no pause and nothing written; the suggestions print with the notes, for whoever reads the output to act on.
+- **Dry run** — the suggestions show; nothing is asked or written.
+- **Abort after answering** — the config commit stays: the answer is about the repo, not this release, and unwinding it would bring the same question back next time.
+- **Big files** — the AI's verdict decides how a file too big for one chunk call is handled wherever chunking runs: hand-written is read in pieces, generated keeps the stand-in (Chunk Boundaries and the Single-File Floor, re-decided).
+
+Sibling check: mint-release-tool — its specification defines `diff_exclude` as a shared configurable array of globs for tracked generated artifacts, and its pre-push failure row has mint auto-unwind its own mutations back to the exact clean starting state. This decision writes to `diff_exclude` as defined, adds a keep list beside it, and makes the exclusion-answer commit the one deliberate exception to that unwind row, superseding it for that commit once it lands.
 
 ---
 
@@ -747,6 +794,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
 - Decided: at the floor an attended run offers commit-subject notes, the editor or abort; unattended runs stop with cause-fitted guidance.
 - Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge, or any one failed chunk, fails the generation — the chunk notes that exist are saved and the run falls to `on_notes_failure`.
-- Decided: a single file too big for any one call is represented by a stand-in line, with a `diff_exclude` hint afterwards.
+- Decided: a single file too big for any one call is read in pieces when the AI judges it hand-written, and represented by a stand-in line when it judges it generated.
+- Decided: before every release's notes, an AI check flags paths that look out of place; at a terminal mint asks about each, adding a "no" to `diff_exclude` and a "yes" to a keep list, committed, so no path is asked about twice.
 - Decided: a `--notes-file` backdoor on release and on single-version regenerate; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
