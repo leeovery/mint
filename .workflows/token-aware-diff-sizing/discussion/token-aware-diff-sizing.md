@@ -189,6 +189,8 @@ The rename cost is low: mint has no users outside the user's own repos yet, so i
 
 The cap remains a policy, never a fit prediction: a prompt under it can still overflow, which is the classifier's case. User agreed 2026-10-16. Confidence: high on the shape; the default value needs choosing in specification with the lean command's small overhead in mind.
 
+**One call after stand-ins** — **Settled by derivation** — not discussed. Determined by the merge's purpose in Stitching and Salience (ranking across chunks that each read only a slice — a lone call reads the whole release), Map-Reduce's parallel-first steer (no serial chain of AI calls), and this Decision skipping the single-pass call only because the prompt is over the cap (review-003 F4). When a release over the cap fits under it once its oversized files are stood in — the agentic-workflows case, over the cap only because of one 1.9 MB transcript — mint makes that one call as an ordinary single-pass call with the stand-ins in place: no chunk prompt and no merge. The stand-in hint still follows the notes, and the notes are single-pass notes, so `r` regenerates them as on any single-pass release.
+
 Sibling check: notes-failure-output-ugly-and-uninformative — its specification lists a byte/token-aware ceiling as deliberately out of scope and promotable to its own work later, so it anticipates this decision; nothing is owed. mint-release-tool's specification introduced `max_diff_lines` (shared-only, default 50000) and ai-model-selection kept it shared-only; this decision supersedes the key once it lands.
 
 ---
