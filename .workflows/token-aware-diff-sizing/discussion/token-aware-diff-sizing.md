@@ -468,6 +468,32 @@ Sibling check: no overlap found — the Change Map is mint-release-tool's as-bui
 
 ---
 
+## When the Merge Fails
+
+### Context
+
+The chunked path's one serial step is the merge call. Research's ladder had a rung between merge failure and the `on_notes_failure` floor: concatenate the per-chunk notes as they are. Each chunk writes its own sections, so the glued body repeats headers (`✨ Added … 🐛 Fixed … ✨ Added …`), carries near-duplicate bullets and no ranking — and under `-y` ships to the provider release unreviewed. Deep-dive F8's recursive-collapse reduce (re-merge partials in groups until they fit) was already ruled out by the no-serial-depth steer.
+
+### Options Considered
+
+**Glue the chunk notes together** (research's rung 3)
+- Pros: a release always gets AI-written notes of some kind; zero extra calls.
+- Cons: a visibly broken body, worst exactly when nobody is reviewing.
+
+**No glue — save the chunk notes, then the floor**
+- Pros: never ships an incoherent body; the wave's work is kept and becomes a one-step fix through the notes-file backdoor.
+- Cons: the run does not produce AI notes on its own.
+
+### Journey
+
+The user questioned why the merge would fail at all once every chunk has finished — merged changelog notes pushing past the limit is near-impossible (research's magnitude argument: it takes hundreds of chunks). Agreed on size. But the merge can fail for reasons that are not size: it is the *last* call after a parallel wave, so it is the one most likely to meet a usage limit the wave itself drew down, an expired login, a timeout, or an error that survives the transport's retry. That strengthens keeping the chunk notes rather than throwing the wave away. With size off the table as a realistic cause, the glue rung earns nothing a simple fallback does not; the user concluded the same (2026-10-17).
+
+### Decision
+
+**No concatenation rung. A failed merge goes to `on_notes_failure` like any other failure** — after mint saves the per-chunk notes to a file outside the repo and names it in the failure guidance (e.g. "notes couldn't be merged; per-chunk notes saved to `<path>` — tidy them and release with `--notes-file <path>`"). Under `abort`, the ✗ line carries that pointer with the AI's verbatim output; under `fallback`, the fallback body ships and the saved file is still named. The floor stays the last rung, never the plan. User agreed 2026-10-17. Confidence: high.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context
@@ -545,6 +571,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - Decided: the detection trigger in full — reactive classify-on-failure as primary, a per-call byte cap as the proactive guard, and the classifier's edges (codes, failures, empty output, hardening, retry).
 - Decided: the shipped default AI command becomes the lean claude form.
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
+- Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge saves the chunk notes and falls to `on_notes_failure`.
 - Decided: a single file too big for any one call is represented by a stand-in line, with a `diff_exclude` hint afterwards.
 - Decided: a release-only `--notes-file` backdoor; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.

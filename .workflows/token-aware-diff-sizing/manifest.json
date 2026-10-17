@@ -54,7 +54,7 @@
               "parent": "degradation-ladder-the-response"
             },
             "concat-floor-abort-as-last-rung": {
-              "status": "pending",
+              "status": "decided",
               "parent": "degradation-ladder-the-response"
             },
             "overhead-dominated-failures-surface-advise": {
