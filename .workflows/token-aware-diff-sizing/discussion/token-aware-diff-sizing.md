@@ -726,20 +726,26 @@ Files that do not belong in release notes reach them because nothing flags them.
 
 The user agreed that the AI should not exclude files on its own, then asked for its judgment to reach the operator — human or agent — before the notes: "are these files meant to be included?" Two conditions came with it: a path answered "yes, include it" must never be asked about again, and a "no" should be added to the config and committed by mint, with the release carrying on rather than the operator backing out to do it by hand. Answers live in `.mint.toml` rather than state private to one machine, so a teammate, CI or an agent session elsewhere is not asked again. The check runs on every release, not only big ones: the user's slips happened on normal-sized releases, which a big-release-only check would have missed; the cost is one small serial call before the notes. Reading a big file in pieces is parallel slices, not a loop. The user agreed the whole shape (2026-10-17).
 
+The user then separated the two verbs' needs: release notes are a public list of what a release holds, while a commit message is for the developers and agents reading that piece of work, and should cover its tests and specs. Today one shared `diff_exclude` serves both — commit's AI diff applies it too (`internal/commit/preflight.go`: diff_exclude "only shapes the AI's L1 diff") — so an exclusion answer written there would hide test or spec folders from commit messages as well. A commit-side check was weighed and dropped: commit messages should describe the tests and specs in the work, and a check there would be asking a different question, closer to "did you mean to stage this?". The user put the per-verb split in this feature (2026-10-17).
+
 ### Decision
 
 **On `mint release`, before the notes are written, mint asks the AI which changed paths look like they do not belong in release notes, and at a terminal asks the operator about each one.** User agreed 2026-10-17. Confidence: high.
 
 - **The check** — one AI call through the existing transport carrying the release's file list with names and sizes, no diff. Paths already covered by `diff_exclude` or by the keep list are not raised. It runs on every release.
 - **At a terminal** — one pause per flagged path or glob, offering exclude or keep, through the presenter's gate seam:
-  - **Exclude** — mint adds the glob to `diff_exclude` in `.mint.toml`, changing only that entry and leaving the rest of the file as written, commits it, and carries on; this release's notes are written without those files, and the commit goes out with the release.
-  - **Keep** — mint records the glob on a new keep list in `.mint.toml` (key name is specification detail; a new key takes the strict-config path), committed the same way, and never raises it again.
+  - **Exclude** — mint adds the glob to the `[release]` exclusion list in `.mint.toml` (never the shared one, so commit messages still see those files), changing only that entry and leaving the rest of the file as written, commits it, and carries on; this release's notes are written without those files, and the commit goes out with the release.
+  - **Keep** — mint records the glob on a new `[release]` keep list in `.mint.toml` (key name is specification detail; a new key takes the strict-config path), committed the same way, and never raises it again.
+- **Per-verb exclusion lists** — `diff_exclude` gains a `[release]` and a `[commit]` level beside the shared top-level list. Each verb's AI diff excludes the shared list plus its own: the lists add, unlike `ai_command`/`timeout`, whose per-verb value overrides, because the shared list holds what neither verb should read (lockfiles, build output) and a per-verb list should not have to repeat it. The exclusion check's answers go to `[release]` only. The new keys take the strict-config path (schema, friendly type error, config-metadata row, README tables).
+- **`mint commit` gets no check** (user, 2026-10-17).
 - **Unattended (`-y`, non-TTY, an agent run)** — no pause and nothing written; the suggestions print with the notes, for whoever reads the output to act on.
 - **Dry run** — the suggestions show; nothing is asked or written.
 - **Abort after answering** — the config commit stays: the answer is about the repo, not this release, and unwinding it would bring the same question back next time.
 - **Big files** — the check asks about them like any other path and makes no separate verdict on them; whatever stays in the diff is read, a file too big for one chunk call in pieces (Chunk Boundaries and the Single-File Floor, revised). The size check runs after this one, on the diff that remains.
 
 Sibling check: mint-release-tool — its specification defines `diff_exclude` as a shared configurable array of globs for tracked generated artifacts, and its pre-push failure row has mint auto-unwind its own mutations back to the exact clean starting state. This decision writes to `diff_exclude` as defined, adds a keep list beside it, and makes the exclusion-answer commit the one deliberate exception to that unwind row, superseding it for that commit once it lands.
+
+Sibling check: ai-model-selection — its specification keeps `diff_exclude` shared-only "until their own real need appears"; the per-verb split is that need, so the text anticipates it and nothing is owed.
 
 ---
 
@@ -802,6 +808,6 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - Decided: at the floor an attended run offers commit-subject notes, the editor or abort; unattended runs stop with cause-fitted guidance.
 - Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge, or any one failed chunk, fails the generation — the chunk notes that exist are saved and the run falls to `on_notes_failure`.
 - Decided: everything left in the diff after exclusions is read; a single file too big for one call is split into pieces read in parallel — no stand-ins.
-- Decided: before every release's notes, an AI check flags paths that look out of place; at a terminal mint asks about each, adding a "no" to `diff_exclude` and a "yes" to a keep list, committed, so no path is asked about twice.
+- Decided: before every release's notes, an AI check flags paths that look out of place; at a terminal mint asks about each, adding a "no" to the `[release]` exclusion list and a "yes" to a keep list, committed, so no path is asked about twice. `diff_exclude` gains `[release]` and `[commit]` levels that add to the shared list; `mint commit` gets no check.
 - Decided: a `--notes-file` backdoor on release and on single-version regenerate; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
