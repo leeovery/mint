@@ -148,6 +148,10 @@
             "under-cap-overflow-halving": {
               "status": "decided",
               "parent": "degradation-ladder-the-response"
+            },
+            "timeouts-and-the-ladder": {
+              "status": "decided",
+              "parent": "degradation-ladder-the-response"
             }
           }
         }

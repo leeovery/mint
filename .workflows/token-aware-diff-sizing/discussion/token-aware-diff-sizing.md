@@ -386,6 +386,32 @@ Halving is the reactive bisection the Proactive Size Ceiling decision called was
 
 ---
 
+## Timeouts and the Ladder
+
+### Context
+
+A single notes call that runs past the per-attempt timeout returns `ErrTimeout`, which the transport never retries and which never reaches the classifier (no error text to classify), so the release falls straight to `on_notes_failure` — abort by default — without trying chunking. The repo behind this feature has hit it: agentic-workflows' `.mint.toml` carries `timeout = 300` with the note "the v0.6.0 re-platforming diff (75 squashes) timed out twice at 60s". Raised by the background review (review-002 F8).
+
+### Options Considered
+
+**Chunk on a timeout** — treat a timed-out single-pass call as a reason to start the ladder.
+- Pros: rescues a slow, oversized call.
+- Cons: a timeout is not evidence of size; when the service itself is slow, a parallel wave into it multiplies the wait.
+
+**Keep timeouts out of the ladder and let the size cap absorb them** — choose the cap's default and the release timeout's default together.
+- Pros: every call is already held under the cap and an over-cap release chunks before anything is sent, so a release like v0.6.0 chunks instead of running one long call; no wave fired at a slow service.
+- Cons: a timeout on a release that sits under any sensible cap is not covered.
+
+### Journey
+
+The cap converts "too slow because too big" into "too big" before the call is made, which is the case the agentic-workflows timeout was. What would change the call: timeouts observed on releases that sit under any sensible cap — then sizing alone would not cover them. How the per-attempt timeout reads across a wave of N calls stays with the pending timeout-semantics subtopic.
+
+### Decision
+
+**A timeout does not start the degradation ladder; it falls to `on_notes_failure` as today.** The size cap's default and the release timeout's default are chosen together in specification, sized so a call at the cap finishes well inside the timeout. User agreed 2026-10-17. Confidence: medium-high.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context
