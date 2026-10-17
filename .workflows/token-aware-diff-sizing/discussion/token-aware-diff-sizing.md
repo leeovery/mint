@@ -525,6 +525,8 @@ A nudge asks to change emphasis or ordering, and the merge call is where emphasi
 
 **On chunked notes, `r` re-runs only the merge call**, reusing the per-chunk notes already produced and adding the operator's one-time nudge. One call, as `r` costs on a single-pass release. User agreed 2026-10-17. Confidence: high.
 
+**When the merge fails during `r`** — **Settled by derivation** — not discussed. Determined by the as-built rule that a failed `r` aborts whatever `on_notes_failure` says (`regenerateBody` in `internal/engine/release.go`: a Regenerator failure is surfaced and aborts; `ResolveFailure` in `internal/notes/resolve.go` governs only the normal AI path), this Decision modelling chunked `r` on single-pass `r`, and When the Merge Fails' save of the chunk notes (review-003 F5). A merge that fails during `r` aborts the run, as a failed `r` does on a single-pass release. As on any failed merge, mint first saves the per-chunk notes and names the file in the failure; `on_notes_failure` does not apply, so `fallback` never ships its body in place of the re-merge the operator asked for. The abort lands before any tag, so the saved notes can still go out through `--notes-file`.
+
 ---
 
 ## Map-Reduce, Not Refine
