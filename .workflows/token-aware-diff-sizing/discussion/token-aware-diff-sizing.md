@@ -337,6 +337,8 @@ Research flagged that non-deterministic chunked output might make a real run mis
 
 A dry run's chunked notes are cached and reused by the real run the same as single-pass notes, sparing the whole chunk wave on the real run.
 
+**`--all`'s skip reason** — **Settled by derivation** — not discussed. Determined by the classifier decisions (the cause phrase comes from the classifier's result) and `--all`'s skip-and-continue remaining as its floor. With the size cap an oversized version chunks rather than skipping, so `--all` skips only at the floor, for whatever ended the ladder; each skipped version — in its warning and in the end-of-run summary — names that real cause rather than "diff too large".
+
 Sibling check: no overlap found — the cache is used as built.
 
 ---

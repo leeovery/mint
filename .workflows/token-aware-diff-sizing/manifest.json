@@ -74,7 +74,7 @@
               "parent": "config-surface-oversize-knob"
             },
             "scope-across-three-consumers": {
-              "status": "pending",
+              "status": "decided",
               "parent": null
             },
             "remediation-ux-escape-hatch-guidance": {
