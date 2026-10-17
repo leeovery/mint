@@ -428,6 +428,26 @@ A nudge asks to change emphasis or ordering, and the merge call is where emphasi
 
 ---
 
+## Map-Reduce, Not Refine
+
+### Context
+
+A chunked release needs a stitch shape. Research named two: **map-reduce** — each chunk produces partial notes in parallel, then one reduce call merges them over the whole release — and **refine** — sequential calls, each given the notes so far plus the next chunk. Naive concatenation alone was rejected as the plan (it breaks salience and dedup).
+
+### Journey
+
+The user set the direction in research (2026-06-26): "the more we can do in parallel, the better", and explicitly not three or four *serial* AI requests. Refine is serial by construction and order-biased (early chunks frame the notes); map-reduce is a parallel wave plus a single serial step. The one serial reduce is therefore the quality-and-risk chokepoint — what happens when it fails is the concat-floor subtopic's ground.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the user's research steer: parallel first, no chain of serial AI requests.
+
+The chunked path is map-reduce: the chunk calls run in parallel, then exactly one merge call produces the final notes. Refine is out.
+
+Sibling check: no overlap found — this topic's own ground.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context

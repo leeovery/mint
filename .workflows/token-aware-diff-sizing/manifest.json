@@ -42,7 +42,7 @@
               "parent": null
             },
             "map-reduce-vs-refine-parallel-map-serial-reduce": {
-              "status": "pending",
+              "status": "decided",
               "parent": "degradation-ladder-the-response"
             },
             "stitching-salience-change-map-as-spine": {
