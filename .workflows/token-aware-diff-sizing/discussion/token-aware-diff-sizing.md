@@ -360,6 +360,32 @@ The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel 
 
 ---
 
+## Under-Cap Overflow: Halving
+
+### Context
+
+A prompt under the per-call size cap can still overflow the model — an explicit `ai_command` pointing at a smaller-window model (a local model, say), overhead an explicit command carries, or a cap default set above the real window. The classifier answers SIZE and the ladder fires, but chunks are sized "under the cap" and the failed prompt already was, so the chunker has nothing smaller to aim at. The same gap opens when a single chunk call comes back SIZE. Raised by the background review (review-002 F7).
+
+### Options Considered
+
+**Halve** — after a SIZE on a call under the cap, aim at half the size that just failed; a chunk that fails again is halved again, a bounded number of times, then the run falls to `on_notes_failure`.
+- Pros: still produces notes without mint knowing the window.
+- Cons: extra serial rounds — but only on a setup whose cap is wrong.
+
+**Treat it as misconfiguration and stop**
+- Pros: no extra rounds; makes a mis-set cap loud.
+- Cons: fails a release that could have had notes, over a setting the operator may not know matters.
+
+### Journey
+
+Halving is the reactive bisection the Proactive Size Ceiling decision called wasteful as the *primary* way to size chunks; here it is only the fallback for a cap that is wrong for the model, so its cost lands where the misconfiguration is. Its serial rounds are a deliberate exception to the parallel-first shape, accepted because the path is rare when the cap fits the model. Pairing it with a post-run hint turns the quiet absorption into something the operator can fix.
+
+### Decision
+
+**On a SIZE answer for a call under the cap, mint halves.** The chunks aim at half the size that just failed; a chunk that fails SIZE again is halved again, a few times at most (bound is specification detail), then the run falls to `on_notes_failure` as usual. After the notes, mint tells the operator the size cap is set higher than this model accepts and suggests lowering it. User agreed 2026-10-17. Confidence: high.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context

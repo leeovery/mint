@@ -144,6 +144,10 @@
             "commit-ai-failure-output": {
               "status": "decided",
               "parent": "scope-across-three-consumers"
+            },
+            "under-cap-overflow-halving": {
+              "status": "decided",
+              "parent": "degradation-ladder-the-response"
             }
           }
         }
