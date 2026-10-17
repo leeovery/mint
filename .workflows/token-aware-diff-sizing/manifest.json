@@ -62,7 +62,7 @@
               "parent": "degradation-ladder-the-response"
             },
             "config-surface-oversize-knob": {
-              "status": "exploring",
+              "status": "decided",
               "parent": null
             },
             "new-axis-vs-on-notes-failure-value-naming": {

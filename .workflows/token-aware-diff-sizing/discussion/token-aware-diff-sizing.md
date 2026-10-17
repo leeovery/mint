@@ -284,6 +284,8 @@ In research the user asked for a setting deciding how a too-big release is handl
 
 **Where it lives and what off does** — **Settled by derivation** — not discussed. Determined by the user's research request, research's response-vs-avoidance framing, and Commit AI-Failure Output (commit has no chunking; regenerate rides `[release]`). `oversize` is a new `[release]` key, separate from `on_notes_failure`: it decides whether mint degrades, not what happens once degradation ends. Under `"off"` behaviour is today's — a prompt over the per-call cap, or a SIZE answer from the classifier, goes straight to `on_notes_failure` with no chunking. As a new key it takes the strict-config path (schema, friendly type error, config-metadata row, README tables).
 
+**The classifier under off** — **Settled by derivation** — not discussed. Determined by the classifier's two jobs — control flow and the ✗ line's cause phrase (Classifier Result Alongside the Verbatim Error). With `oversize = "off"` the classify call still runs (a few hundred tokens under the lean command): a SIZE answer cannot start chunking, but it gives the ✗ line the true cause and lets mint's guidance say chunking is switched off.
+
 ---
 
 ## Lean Default AI Command
