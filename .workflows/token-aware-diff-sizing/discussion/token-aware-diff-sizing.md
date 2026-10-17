@@ -266,6 +266,24 @@ On the design target the waste is close to nothing: research found claude reject
 
 ---
 
+## Oversize Knob
+
+### Context
+
+In research the user asked for a setting deciding how a too-big release is handled — "break it up" (chunk) versus not — defaulting to breaking it up, with the name left open ("we can give it a better name"). Research shaped it as a new axis beside `on_notes_failure`: `on_notes_failure = abort | fallback` is a failure *response*, chunking is failure *avoidance* that still aims at real AI notes, and after chunking bottoms out a response is still needed — so they compose rather than merge.
+
+### Journey
+
+**Naming.** The user's own word for the non-default value was "fail". But switching chunking off does not decide failure — `on_notes_failure` still does — and a value called "fail" would make two settings look like they both decide it. "off" says exactly what it does: no chunking, defer to `on_notes_failure`.
+
+**Default.** Research recorded the user's call (2026-06-26) to auto-degrade silently by default — "it just handles it" — rather than stop and ask for consent to the extra AI calls. "Silent" means no consent prompt; how a chunked run is narrated on screen is the progress-narration subtopic's ground.
+
+### Decision
+
+**The setting is `oversize`, with values `"chunk"` and `"off"`; `"chunk"` is the default.** User agreed 2026-10-17, confirming chunk as the default. Confidence: high.
+
+---
+
 ## Lean Default AI Command
 
 ### Context

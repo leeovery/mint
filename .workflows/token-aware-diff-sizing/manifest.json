@@ -62,15 +62,15 @@
               "parent": "degradation-ladder-the-response"
             },
             "config-surface-oversize-knob": {
-              "status": "pending",
+              "status": "exploring",
               "parent": null
             },
             "new-axis-vs-on-notes-failure-value-naming": {
-              "status": "pending",
+              "status": "decided",
               "parent": "config-surface-oversize-knob"
             },
             "default-silent-auto-degrade-scope": {
-              "status": "pending",
+              "status": "decided",
               "parent": "config-surface-oversize-knob"
             },
             "scope-across-three-consumers": {
