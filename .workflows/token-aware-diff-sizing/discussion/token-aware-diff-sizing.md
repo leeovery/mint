@@ -378,6 +378,26 @@ The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel 
 
 ---
 
+## Overhead-Dominated Failures
+
+### Context
+
+Research held overhead-dominated failures — the AI tool's own system prompt, tools and attachments alone near the window — as not mint-fixable: chunking shrinks mint's prompt but every chunk re-pays the overhead, so mint could only surface and advise. The Lean Default AI Command decision removed this failure for the shipped command (~105k → ~561 tokens), narrowing the case to repos whose own `ai_command` carries the overhead.
+
+### Journey
+
+For those repos the reasoning still holds: no chunk is small enough, and the classify call — running the same command — fails the same way, so Classify Call Failure already routes the run down the OTHER path with the AI's verbatim message (claude's own overflow text names the system prompt and tool definitions). The one thing left is what mint's guidance says: pointing at the documented lean command keeps claude's flags in the documentation rather than in mint's code, consistent with mint holding no per-provider knowledge.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Lean Default AI Command, Classify Call Failure and Classifier Result Alongside the Verbatim Error.
+
+An overhead-dominated failure on an explicit `ai_command` takes the OTHER path: no split, the AI's verbatim message under the ✗ line, then `on_notes_failure`. mint's guidance points at the documented lean command rather than naming claude flags itself.
+
+Sibling check: no overlap found — this topic's own ground.
+
+---
+
 ## Under-Cap Overflow: Halving
 
 ### Context

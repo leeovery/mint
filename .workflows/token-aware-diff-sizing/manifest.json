@@ -38,7 +38,7 @@
               "parent": "detection-trigger-proactive-vs-reactive"
             },
             "degradation-ladder-the-response": {
-              "status": "exploring",
+              "status": "decided",
               "parent": null
             },
             "map-reduce-vs-refine-parallel-map-serial-reduce": {
@@ -58,7 +58,7 @@
               "parent": "degradation-ladder-the-response"
             },
             "overhead-dominated-failures-surface-advise": {
-              "status": "pending",
+              "status": "decided",
               "parent": "degradation-ladder-the-response"
             },
             "config-surface-oversize-knob": {
