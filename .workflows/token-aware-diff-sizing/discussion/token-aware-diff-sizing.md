@@ -321,6 +321,26 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 ---
 
+## Scope Across the Three Consumers
+
+### Context
+
+The size guard is shared by three consumers — forward release, regenerate (single and `--all`), and `mint commit`. Research read each consumer's too-big handling from code: chunking is a release-notes concept (a commit message is one tight message with a fast `$EDITOR` fallback); forward release and single regenerate take chunking cleanly through the shared generator; `regenerate --all` inherits it uniformly — the user's steer (2026-06-26) being that only the odd version in a batch is oversized, so no special-casing — with its skip-and-continue kept only as its floor. Commit's share of this feature is its failure output (Commit AI-Failure Output); its size behaviour is set by the Proactive Size Ceiling decision (over the cap → `$EDITOR`). Two consumer edges remained: the dry-run notes cache and `--all`'s skip reason.
+
+### Journey
+
+Research flagged that non-deterministic chunked output might make a real run miss the cache a dry run filled. The cache keys on inputs, not output — `notescache.Key(diff, version, instructions)` hashes the post-exclusion diff, the version and the instructions (`internal/notescache/cache.go`) — so a dry run's chunked body is stored and offered back exactly like a single-pass body.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the notes cache's input-keyed design (`internal/notescache/cache.go`, `Key`).
+
+A dry run's chunked notes are cached and reused by the real run the same as single-pass notes, sparing the whole chunk wave on the real run.
+
+Sibling check: no overlap found — the cache is used as built.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
