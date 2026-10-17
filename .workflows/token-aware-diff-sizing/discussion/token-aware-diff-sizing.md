@@ -282,6 +282,8 @@ In research the user asked for a setting deciding how a too-big release is handl
 
 **The setting is `oversize`, with values `"chunk"` and `"off"`; `"chunk"` is the default.** User agreed 2026-10-17, confirming chunk as the default. Confidence: high.
 
+**Where it lives and what off does** — **Settled by derivation** — not discussed. Determined by the user's research request, research's response-vs-avoidance framing, and Commit AI-Failure Output (commit has no chunking; regenerate rides `[release]`). `oversize` is a new `[release]` key, separate from `on_notes_failure`: it decides whether mint degrades, not what happens once degradation ends. Under `"off"` behaviour is today's — a prompt over the per-call cap, or a SIZE answer from the classifier, goes straight to `on_notes_failure` with no chunking. As a new key it takes the strict-config path (schema, friendly type error, config-metadata row, README tables).
+
 ---
 
 ## Lean Default AI Command
