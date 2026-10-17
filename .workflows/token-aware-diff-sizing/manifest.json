@@ -94,7 +94,7 @@
               "parent": null
             },
             "bounded-fan-out-failure-aggregation": {
-              "status": "pending",
+              "status": "decided",
               "parent": "implementation-reality-parallelism"
             },
             "progress-narration-model": {

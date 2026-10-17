@@ -625,6 +625,38 @@ Sibling check: no overlap found — the saved chunk notes and `--notes-file` are
 
 ---
 
+## When the Whole Wave Fails
+
+### Context
+
+A usage limit landing mid-wave, or a login expiring, fails every chunk call still running at once. As the rules stood, each failed chunk gets the transport's single retry and its own classify call (which carries the retry too), so a wave of N chunks could send up to 4N calls at a service already refusing them before the ✗ line appears — the amplification the classifier was chosen to avoid (its deciding factor: never turn a non-size failure into a wave of N calls). Raised by the background review (review-003 F12).
+
+### Options Considered
+
+**Classify every failed chunk** — each failure is classified and handled on its own.
+- Pros: every chunk's cause is known.
+- Cons: up to 4N calls into a refusing service; once one chunk has failed for good the generation is already failed (When a Chunk Fails), so the rest of the answers change nothing.
+
+**Stop on the first answer that settles the run, let running calls finish** — the first failure that is not SIZE ends the wave's new work.
+- Pros: a wave-wide failure costs a couple of extra calls, not one set per chunk; the chunks already running still produce notes for the saved file.
+- Cons: the run stops only when those running calls return.
+
+**Stop and cancel running calls**
+- Pros: the quickest stop once the cause is known.
+- Cons: throws away notes that were close to done.
+
+### Journey
+
+When a Chunk Fails made the generation all-or-nothing, which means the first chunk failure that is not a size problem decides the run; classifying further failures can only confirm it. Letting calls already in flight finish costs no extra requests — they were already sent — and what they return is what makes the attended floor's `e` cheap. The user agreed (2026-10-17).
+
+### Decision
+
+**The first chunk failure that is not SIZE ends the wave.** After it, mint makes no further classify calls and starts no new chunk calls; calls already running finish, and the notes they produce are saved with the rest. A timeout settles it the same way, with no classify call (Timeouts and the Ladder). A SIZE answer does not end the wave — that chunk halves as decided. The ✗ line renders that first failure's cause phrase and its captured output verbatim. User agreed 2026-10-17. Confidence: high.
+
+Sibling check: no overlap found — the wave, its chunk calls and the classify call are this topic's own terms.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context
