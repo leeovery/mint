@@ -288,6 +288,39 @@ In research the user asked for a setting deciding how a too-big release is handl
 
 ---
 
+## Remediation at the Floor
+
+### Context
+
+Facet 1 of the seed: when notes cannot be AI-generated, mint dies with the cause and no way forward — the escape hatches (`diff_exclude`, `on_notes_failure = fallback`, `--no-ai`, and now `--notes-file` and `oversize`) all exist, but nothing points at them, and an attended operator has to re-run the whole release with a different flag. With the lean default and chunking, the floor is reached far less often — when chunking is exhausted, the login has expired or a usage limit hit, or `oversize = "off"` — but it is still reached. In research the user asked for something actionable: either name the next moves, or offer choices inline ("run without AI?" → write it in an editor, or fall back to commit messages). Research also found the commit-message route already exists: `--no-ai`, or `on_notes_failure = fallback` with an empty `fallback`, builds the body from the commit-subject list (`internal/notes/noai.go`). Release's editor seam only edits an already-produced body (the review gate's `e`); there is no write-from-scratch-on-failure path today.
+
+### Options Considered
+
+**1. Guidance, then stop** — the ✗ line and the AI's verbatim message, then a short cause-fitted list of next moves (for size: `diff_exclude` for generated paths, `--notes-file`, `--no-ai`); the operator re-runs with one.
+- Pros: no new release route; works identically attended or not.
+- Cons: every floor hit at a terminal repeats the whole prepared release to change one input.
+
+**2. Ask on the spot** — the same message, then a one-keypress choice: `c` commit-subject notes, `e` write the notes in the editor (opened on the saved per-chunk notes when a merge failed, empty otherwise), `a` abort; the release finishes in the same run.
+- Pros: the prepared release is not thrown away.
+- Cons: a new release route — the editor opening to write from scratch.
+
+### Journey
+
+Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under `-y` or a non-TTY nobody can answer, so option 2 can only apply at a terminal. The deciding reason for option 2 there: by the time notes fail, the release is fully prepared, and re-running repeats every step to change one input. The saved per-chunk notes from a failed merge make `e` especially cheap — the operator tidies rather than writes.
+
+### Decision
+
+**At a terminal, the floor asks; everywhere else it gives guidance and stops.** User agreed 2026-10-17. Confidence: high.
+
+- **Attended, `on_notes_failure = abort`:** after the ✗ line and the AI's verbatim message, a one-keypress choice — `c` commit-subject notes (the existing `--no-ai` body), `e` write the notes in `$EDITOR` (opened on the saved per-chunk notes when a merge failed, empty otherwise — a new write-from-scratch route), `a` abort. The chosen body then continues through the release.
+- **Unattended (`-y` or non-TTY), `on_notes_failure = abort`:** the ✗ line, the AI's verbatim message and a short cause-fitted list of next moves, then the run stops — never a prompt.
+- **`on_notes_failure = fallback`:** no choice is offered; the fallback body ships, as the operator chose.
+- The choice goes through the presenter's gate seam like every other gate.
+
+**Commit-message fallback reuse** — the `c` choice is the existing commit-subject body (`internal/notes/noai.go`), surfaced as a choice rather than built anew.
+
+---
+
 ## Lean Default AI Command
 
 ### Context
@@ -613,6 +646,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - Decided: the detection trigger in full — reactive classify-on-failure as primary, a per-call byte cap as the proactive guard, and the classifier's edges (codes, failures, empty output, hardening, retry).
 - Decided: the shipped default AI command becomes the lean claude form.
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
+- Decided: at the floor an attended run offers commit-subject notes, the editor or abort; unattended runs stop with cause-fitted guidance.
 - Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge saves the chunk notes and falls to `on_notes_failure`.
 - Decided: a single file too big for any one call is represented by a stand-in line, with a `diff_exclude` hint afterwards.
 - Decided: a release-only `--notes-file` backdoor; the named file is excluded from every git step mint runs.

@@ -78,15 +78,15 @@
               "parent": null
             },
             "remediation-ux-escape-hatch-guidance": {
-              "status": "pending",
+              "status": "decided",
               "parent": null
             },
             "attended-vs-unattended-default": {
-              "status": "pending",
+              "status": "decided",
               "parent": "remediation-ux-escape-hatch-guidance"
             },
             "commit-message-fallback-reuse": {
-              "status": "pending",
+              "status": "decided",
               "parent": "remediation-ux-escape-hatch-guidance"
             },
             "implementation-reality-parallelism": {
