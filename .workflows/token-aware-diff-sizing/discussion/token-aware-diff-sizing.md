@@ -479,7 +479,7 @@ Halving is the reactive bisection the Proactive Size Ceiling decision called was
 
 ### Decision
 
-**On a SIZE answer for a call under the cap, mint halves.** The chunks aim at half the size that just failed; a chunk that fails SIZE again is halved again, a few times at most (bound is specification detail), then the run falls to `on_notes_failure` as usual. After the notes, mint tells the operator the size cap is set higher than this model accepts and suggests lowering it. User agreed 2026-10-17. Confidence: high.
+**On a SIZE answer for a diff-carrying call under the cap — the single-pass call or a chunk call — mint halves.** *(Amended 2026-10-17 — this read "a call under the cap", which reached the merge call too; halving a merge is the recursive-collapse reduce ruled out in When the Merge Fails, so a SIZE on the merge call takes that section's path instead.)* The chunks aim at half the size that just failed; a chunk that fails SIZE again is halved again, a few times at most (bound is specification detail), then the run falls to `on_notes_failure` as usual. After the notes, mint tells the operator the size cap is set higher than this model accepts and suggests lowering it. User agreed 2026-10-17. Confidence: high.
 
 ---
 
