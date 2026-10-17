@@ -698,6 +698,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 - **Parked on the roadmap under Next (2026-10-16): headline-first release notes.** The default prompt's category-first format and its "NO TL;DR, NO summary paragraph, NO preamble" rule (`internal/notes/prompt.go`) leave no place to declare what a release is about, so a release's main feature can land as one bullet among sideline changes. Separate from big-release handling; the chunked merge pass inherits whatever format exists when it ships.
 - **Parked on the roadmap under Next (2026-10-16): agent-authored release notes.** Claude can already run `mint release -y` from a session, with mint's own AI call writing the notes; what is missing is a way for the outer agent to write notes to mint's standard — mint handing it the instructions and Change Map, or taking a one-line statement of what the release is about (the session that built the feature knows the headline that mint's diff-only view misses). The receiving half — taking a finished body — is this feature's notes-file backdoor.
+- **Parked on the roadmap under Next (2026-10-17): an agent guide for running releases.** The `mint setup` guide teaches an agent to configure mint and deliberately leaves out command flags, so nothing tells an agent session about the surfaces this feature adds — `--notes-file` on release and regenerate, the saved chunk notes and their missing-slice marker, the floor's choices. The user wants an agent to know them without the user having to remember them.
 
 ### Current State
 
