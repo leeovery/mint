@@ -339,6 +339,8 @@ Research flagged that non-deterministic chunked output might make a real run mis
 
 A dry run's chunked notes are cached and reused by the real run the same as single-pass notes, sparing the whole chunk wave on the real run.
 
+**The cache keeps the chunk notes too** (raised by the background review, review-003 F9; user agreed 2026-10-17). The cache stored only the final body, so a real run reusing a dry run's chunked notes had no partial notes in hand: `r` there would re-run the whole chunk wave plus the merge, the cost Regenerate on Chunked Notes set out to avoid. A chunked body is now cached together with its per-chunk notes, so `r` on reused chunked notes re-runs only the merge, one call, as on a live run. The partial notes share the entry's lifecycle and need no cleanup of their own: the entry sits outside the repo, is pruned to the latest per project on every write (`Prune`, `internal/notescache/cache.go`), goes stale after the ~1h TTL, and once the release is tagged its key — which includes the version — cannot match again. In a live run the partial notes live only in memory and end with the run; only a failure's saved notes file persists, by design, for `e` or `--notes-file`.
+
 **`--all`'s skip reason** — **Settled by derivation** — not discussed. Determined by the classifier decisions (the cause phrase comes from the classifier's result) and `--all`'s skip-and-continue remaining as its floor. With the size cap an oversized version chunks rather than skipping, so `--all` skips only at the floor, for whatever ended the ladder; each skipped version — in its warning and in the end-of-run summary — names that real cause rather than "diff too large".
 
 Sibling check: no overlap found — the cache is used as built.
