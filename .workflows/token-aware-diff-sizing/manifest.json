@@ -156,6 +156,10 @@
             "regenerate-on-chunked-notes": {
               "status": "decided",
               "parent": "degradation-ladder-the-response"
+            },
+            "ai-noise-check-for-big-files": {
+              "status": "exploring",
+              "parent": "degradation-ladder-the-response"
             }
           }
         }
