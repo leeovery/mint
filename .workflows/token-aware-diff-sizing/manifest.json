@@ -46,7 +46,7 @@
               "parent": "degradation-ladder-the-response"
             },
             "stitching-salience-change-map-as-spine": {
-              "status": "pending",
+              "status": "decided",
               "parent": "degradation-ladder-the-response"
             },
             "chunk-boundaries-single-file-floor": {

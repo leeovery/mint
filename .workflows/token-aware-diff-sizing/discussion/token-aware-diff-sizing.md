@@ -448,6 +448,26 @@ Sibling check: no overlap found — this topic's own ground.
 
 ---
 
+## Stitching and Salience: the Change Map as Spine
+
+### Context
+
+Release notes are defined by cross-cutting salience: `DefaultPrompt` asks for one bullet per notable change (not per file or commit), closely related changes combined, ranked using the Change Map. A chunk sees only its slice, so a feature spanning several chunks risks fragmenting into duplicated bullets, and no chunk knows whether its slice is the headline or a footnote.
+
+### Journey
+
+The Change Map (`internal/notes/changemap.go`) is cheap and bounded by file count, not diff size — two git calls (`--name-status`, `--numstat`) rendered as structural novelty, churn by area and notable files. Handing the same global map to every chunk call and to the merge lets each chunk know the whole release's shape while reading only its slice, and lets the merge rank across all of it. Research called this the strongest reuse argument in the design. (It is not strictly size-independent — it lists renames and removals per path — which matters only for the edge where instructions plus Change Map alone approach the cap.)
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by `DefaultPrompt`'s salience rules (rank by the Change Map) and the Change Map's file-count-bounded cost.
+
+Every chunk call and the merge call receive the same whole-release Change Map.
+
+Sibling check: no overlap found — the Change Map is mint-release-tool's as-built artifact, used here as built.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context
