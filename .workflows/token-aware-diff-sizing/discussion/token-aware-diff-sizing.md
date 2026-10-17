@@ -483,6 +483,10 @@ Halving is the reactive bisection the Proactive Size Ceiling decision called was
 
 **On a SIZE answer for a diff-carrying call under the cap — the single-pass call or a chunk call — mint halves.** *(Amended 2026-10-17 — this read "a call under the cap", which reached the merge call too; halving a merge is the recursive-collapse reduce ruled out in When the Merge Fails, so a SIZE on the merge call takes that section's path instead.)* The chunks aim at half the size that just failed; a chunk that fails SIZE again is halved again, a few times at most (bound is specification detail), then the run falls to `on_notes_failure` as usual. After the notes, mint tells the operator the size cap is set higher than this model accepts and suggests lowering it. User agreed 2026-10-17. Confidence: high.
 
+**When halving runs out** (raised by the background review, review-003 F13; user agreed 2026-10-17). An explicit `ai_command` whose own overhead leaves room for only a sliver of release sends every halving round into failure, and a lower-the-cap hint alone cannot help it. mint cannot tell this case from a model with a small window: in both, even small pieces come back SIZE while the small classify call fits (the classifier Journey's stop catches only overhead that alone overflows the window). So when the halving bound is spent, mint's guidance names both causes — the model accepts less than the cap (lower it), or the command carries a large overhead of its own (the documented lean command, per Overhead-Dominated Failures) — rather than the cap alone. The halving bound already keeps the wasted rounds few.
+
+Sibling check: no overlap found — the halving rounds and the lean command are this topic's own decisions.
+
 ---
 
 ## Timeouts and the Ladder
