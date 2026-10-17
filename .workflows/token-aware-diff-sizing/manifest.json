@@ -152,6 +152,10 @@
             "timeouts-and-the-ladder": {
               "status": "decided",
               "parent": "degradation-ladder-the-response"
+            },
+            "regenerate-on-chunked-notes": {
+              "status": "decided",
+              "parent": "degradation-ladder-the-response"
             }
           }
         }

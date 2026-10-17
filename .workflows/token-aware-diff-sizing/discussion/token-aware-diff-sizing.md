@@ -412,6 +412,22 @@ The cap converts "too slow because too big" into "too big" before the call is ma
 
 ---
 
+## Regenerate on Chunked Notes
+
+### Context
+
+On an attended release, the review gate offers `r` — regenerate with a one-time nudge ("lead with the auth work") — for AI-generated notes (`notes.KindNormalAI`). On a chunked release, `r` as wired would re-run the whole parallel map wave plus the merge: minutes of calls and a draw on the subscription usage window, where single-pass `r` costs one call. Research made the review gate the salience check for stitched notes, so `r` on a chunked body is exactly when an operator rejects a weak stitch. Raised by the background review (review-002 F9).
+
+### Journey
+
+A nudge asks to change emphasis or ordering, and the merge call is where emphasis and ordering are decided; the per-chunk partials do not change with it. Re-running only the merge costs one call, matching `r` on a normal release. The residual it cannot fix — a change a chunk's own partial missed — is rare.
+
+### Decision
+
+**On chunked notes, `r` re-runs only the merge call**, reusing the per-chunk notes already produced and adding the operator's one-time nudge. One call, as `r` costs on a single-pass release. User agreed 2026-10-17. Confidence: high.
+
+---
+
 ## Chunk Boundaries and the Single-File Floor
 
 ### Context
