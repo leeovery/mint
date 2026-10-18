@@ -126,7 +126,7 @@ The tripwire test that asserts every schema key appears in the README covers the
 **Proposed Text**:
 The tripwire test checks only that each distinct schema key name appears somewhere in the README (`grep -n 'strings.Contains(readme, key)' internal/config/readme_tripwire_test.go` → `68:		if !strings.Contains(readme, key) {`). It catches a missing `max_prompt_bytes` or `diff_keep`. It does not catch a missing `[release].diff_exclude` or `[commit].diff_exclude` row, because the README already names `diff_exclude` (`grep -c 'diff_exclude' README.md` → `1`).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
