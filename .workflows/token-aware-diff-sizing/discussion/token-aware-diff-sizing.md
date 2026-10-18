@@ -920,6 +920,37 @@ Sibling check: ai-model-selection — its specification keeps `diff_exclude` sha
 
 ---
 
+## Exclusion Check Mechanics
+
+### Context
+
+Exclusion Suggestions Before the Notes fixed what the check does and when it runs, leaving its working parts open: the keep list's key name, what the file list carries, the threshold for condensing it (and the Change Map, whose crowd-out threshold Stitching and Salience also left open), how an answer is read, what a pause shows, how answers reach `.mint.toml` and git, and how the answers commit survives the surgical unwind.
+
+### Journey
+
+Most parts follow from the decision's own constraints. The keep list sits beside `diff_exclude` under `[release]` and holds the same git pathspec globs, so `diff_keep` reads as the pair it is; its only job is to stop a path being raised. The check is meant to be one small serial call, so its list is condensed long before it could reach the cap, and the Change Map, which rides in every call, condenses at the same share. The AI's answer is untrusted output steering a config write: a suggestion that matches no changed path is noise to drop, and an answer that yields nothing usable is a check that did not run.
+
+The pause cannot let a path leave the notes unseen: a suggested glob can also match a path on the keep list, so the pause names that overlap rather than narrowing or overriding anything, and the safe default is keep. Answers are held until the last pause and committed together, so a Ctrl-C mid-pauses leaves no half-written `.mint.toml` in the tree. The answers commit must outlive an unwind, but the release's pre-tag artifact commit (`chore(release): pre-tag artifacts for {tag}`, made by the pre_tag hook before the notes stage) sits beneath it, and the unwind resets to the starting commit (`StartState.HEAD`, `internal/engine/unwind.go`) — so the answers are re-committed on top of the start once the unwind has run. The commit-subject list is `git log --format=%s` over the release's range (`FallbackBody`, `internal/notes/resolve.go`), so leaving the answers commit out of it means recognising its fixed subject, which also covers a later regenerate of that version.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Exclusion Suggestions Before the Notes (no file leaves the notes on the AI's say alone; answers given once and recorded in `.mint.toml`; the config commit stays after an abort; the check is one small call), Stitching and Salience (condensing by folder), Proactive Size Ceiling (no call exceeds the cap), CLAUDE.md's seams (mutations through the mutator, gates through the presenter), and the as-built unwind and commit-subject list.
+
+- **Keep list** — `[release].diff_keep`, an array of globs in `diff_exclude`'s pathspec form. A path it covers is never raised; it adds nothing to the diff and never overrides an exclusion.
+- **The list** — each changed path not already covered (built-in excludes, shared and `[release]` `diff_exclude`, `diff_keep`), with its change status and the size of its diff.
+- **Condensing** — the check's list and the Change Map each condense by folder once they would take more than a tenth of the cap; text under that share renders unchanged. A check list that cannot get under the cap even condensed counts as a failed check.
+- **Reading the answer** — the AI returns suggested globs, each with a short reason, or an explicit "none". A suggestion matching no uncovered changed path is dropped. An answer that is neither "none" nor yields one usable suggestion is a failed check.
+- **The pause** — one per surviving suggestion, in order, skipping any whose matches earlier answers already cover. It shows the glob, the reason, how many changed files it matches and their size, and any of them on the keep list. Choices: exclude or keep; the default is keep.
+- **Recording** — answers are held until the last pause, then written together into `.mint.toml`'s `[release]` table (the key added, the table added, or the file created, as needed; everything else left as written), staged by path, and committed once with the fixed subject `chore(release): release-notes path answers for {tag}`. A Ctrl-C during the pauses records nothing.
+- **Unwind** — a later failure before the push unwinds as built, then re-commits the answers on top of the starting commit.
+- **Commit-subject list** — subjects starting `chore(release): release-notes path answers for ` are left out.
+- **Everything excluded** — if the answers leave no path in the diff, the release gets the maintenance-release body, as any empty post-exclusion diff does.
+- **Unattended follow-up** — after the notes, each suggestion prints with its reason, what it matches and the `[release].diff_exclude` line that would exclude it.
+
+Sibling check: mint-release-tool — its specification's surgical unwind resets to the exact starting state; re-committing the answers after the reset is how the deliberate exception decided in Exclusion Suggestions Before the Notes is carried out, and nothing further is owed.
+
+---
+
 ## Notes-File Backdoor
 
 ### Context
