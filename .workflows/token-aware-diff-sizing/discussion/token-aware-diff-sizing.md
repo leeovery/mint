@@ -1107,6 +1107,28 @@ Sibling check: mint-release-tool — its specification's Regenerate / Backfill N
 
 ---
 
+## Notes-File Surface
+
+### Context
+
+Notes-File Backdoor fixed what `--notes-file` does on release and regenerate, leaving its surface open: the usage lines every new flag needs (`cmd/mint/usage.go`, pinned by a coverage test), how the path resolves, and how a refused or unreadable file is reported.
+
+### Journey
+
+A path on a command line is the caller's, so it resolves against the directory mint was run from, as any CLI path does; the exclusions from mint's git steps then apply to wherever that lands inside the repo, and to nothing when it lands outside. CLAUDE.md's exit idioms keep `2` for usage errors only: giving the flag with `--no-ai`, `--all` or another `--source` is misuse of the flags, whereas an empty or unreadable file is a runtime failure, `1`, reported before any step runs in the lowercase, unpunctuated error style.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Notes-File Backdoor (both entries), CLAUDE.md's exit-code and error idioms, and the usage-coverage rule for new flags.
+
+- **Usage lines** — release: `--notes-file P   release with the finished notes in file P (no AI)`; regenerate: `--notes-file P   notes source: the finished notes in file P (one version only)`.
+- **The path** — resolved against the directory mint was run from.
+- **Errors** — `--notes-file P is empty` for an empty or whitespace-only file and `reading --notes-file P: <cause>` for a missing or unreadable one, both exit `1`; the three flag conflicts are usage errors, exit `2`.
+
+Sibling check: no overlap found — the flag is this topic's own surface.
+
+---
+
 ## Progress Narration for a Chunked Run
 
 ### Context
