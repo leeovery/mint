@@ -90,7 +90,7 @@ Each call's own prompt carries its job.
 
 #### 2.3 What it drops, on purpose
 
-CLAUDE.md files and Claude Code's own system prompt no longer reach mint's calls. Instructions kept there that shaped release notes or commit messages stop doing so. This is intended: mint owns the prompt and the command is only transport, so a call carries mint's instructions and nothing else. Conventions an operator wants applied belong in the `[release]` and `[commit]` `context` and `prompt` keys, which ride in every call. The change is documented alongside the lean default (§18).
+CLAUDE.md files and Claude Code's own system prompt no longer reach mint's calls. Instructions kept there that shaped release notes or commit messages stop doing so. This is intended: mint owns the prompt and the command is only transport, so a call carries mint's instructions and nothing else. Conventions an operator wants applied belong in the `[release]` and `[commit]` `context` and `prompt` keys, which ride in every release-notes and commit-message call. The change is documented alongside the lean default (§18).
 
 #### 2.4 Reach
 
@@ -308,7 +308,7 @@ mint then stages `.mint.toml` by path and commits it through the mutator, with t
 Answers live in `.mint.toml` rather than in state on one machine, so a teammate, CI or an agent session elsewhere is not asked the same question again.
 
 - **Ctrl-C during the pauses** cancels the run and records nothing.
-- **Abort or failure after answering:** the answers commit stays. The answer is about the repo, not this release, and unwinding it would bring the same question back next time. This is the one deliberate exception to the surgical unwind. A failure before the push unwinds as built, back to the starting commit and taking the pre-tag artifact commit with it. The unwind then re-commits the answers on top of the starting commit.
+- **Abort or failure after answering:** the answers commit stays. The answer is about the repo, not this release, and unwinding it would bring the same question back next time. This is the one deliberate exception to the surgical unwind. A failure before the push unwinds as built, back to the starting commit and taking the pre-tag artifact commit with it. The unwind then re-commits the answers on top of the starting commit. The unwind's narration names the answers commit as kept, so the commit left at the top of the branch does not read as an unwind that failed.
 - **Everything excluded:** when the answers leave no path in the diff, the release gets the maintenance-release body, as any empty post-exclusion diff does.
 - **Commit-subject bodies:** the commit-subject list (§14) leaves out subjects starting `chore(release): release-notes path answers for `. So the floor's `c` and `fallback` never list mint's own answers commit, and neither does `c` on a later regenerate.
 - **`--autostash`:** the answers are written to the committed `.mint.toml`. A stashed edit to the same file that conflicts on restore leaves the stash entry intact, as any conflicting restore does.
@@ -599,9 +599,11 @@ On `mint release`, the floor depends on the mode and `on_notes_failure`. Regener
 |---|---|
 | Attended, `on_notes_failure = abort` | The ✗ line and the AI's verbatim output, the saved chunk-notes pointer where a file exists (§11.4), then a one-keypress choice (§12.2). |
 | Unattended (`-y` or non-TTY), `abort` | The ✗ line, the AI's verbatim output and the cause-fitted next moves (§12.4), then the run stops. Never a prompt. |
-| `on_notes_failure = fallback` | No choice. The commit-subject list (§14) ships. A warning names the saved file, where one exists, and the `mint release regenerate <version> --notes-file <path>` command that puts it on the version. |
+| `on_notes_failure = fallback` | No choice. The commit-subject list (§14) ships, with one warning whatever the cause: the cause phrase (§12.4), the AI's captured output verbatim beneath it, and, where a chunk-notes file was saved (§11.4), its path and the `mint release regenerate <version> --notes-file <path>` command that puts it on the version. |
 
 A failed `r` is not the floor; it aborts (§15).
+
+**A dry run at the floor** asks nothing, whatever the mode. Under `abort` it renders the ✗ line, the AI's verbatim output, the saved chunk-notes pointer where a file exists (§11.4) and the cause-fitted next moves (§12.4), as an unattended run does, then ends as a failed run. Under `fallback` it previews the commit-subject list as the body that would ship, with the fallback warning. The chunk-notes file is saved as on a real run: it sits outside the repo beside the dry-run cache, and the real run can release it with `--notes-file` instead of repeating the wave.
 
 #### 12.2 The choice
 
@@ -634,7 +636,7 @@ The ✗ line's cause phrase comes from the cause. The AI's captured output still
 | OTHER, with output | `AI call failed` |
 | OTHER, no output | `AI returned empty notes` |
 | No room for diff (§8.7) | `no room for the diff under max_prompt_bytes` |
-| Merge prompt over the cap (§8.7) | `part notes too large to merge` |
+| Merge too large: its prompt over the cap (§8.7), or a SIZE answer on the merge call (§11.3) | `part notes too large to merge` |
 
 In a chunked run the phrase ends with where the failure happened: `(part 3 of 6)` or `(merging)`. These phrases replace `AI returned empty/invalid notes after retry`, which misnamed every generation failure. Release-notes failures no longer use `diff too large`.
 
@@ -644,7 +646,7 @@ The next moves are cause-fitted. Unattended runs print them; attended runs show 
   - The `--notes-file` route. Where a chunk-notes file was saved, it says to tidy the saved notes at its path, filling in any files the marker lists, and release with them. The command is `mint release --notes-file <path>` while the version is not out, or `mint release regenerate <version> --notes-file <path>` once it is: after a regenerate, or a forward release that shipped under `fallback`. Where no file was saved, it says to write the notes and release with `--notes-file`.
   - On forward release, `--no-ai`, for the commit-subject list.
   - On an unattended forward release only, `on_notes_failure = "fallback"` under `[release]`, to ship the commit-subject list rather than stop.
-- **Size** (SIZE with no halving left; no room caused by a halving round):
+- **Size** (SIZE with no halving left on a single-pass or chunk call; no room caused by a halving round):
   - lower `max_prompt_bytes`, since the model accepts less than the cap
   - if `ai_command` carries a large overhead of its own, use the lean command documented in the README (§2), without mint naming claude flags itself
   - exclude generated paths with `[release].diff_exclude`.
@@ -652,6 +654,8 @@ The next moves are cause-fitted. Unattended runs print them; attended runs show 
 - **Timeout:** raise `[release].timeout`.
 - **Missing binary:** install the AI tool, or set `ai_command`.
 - **OTHER:** the AI's own message above names the cause. When the resolved `ai_command` is not the shipped default, add the lean-command pointer.
+
+A merge too large, by the cap or by the model, takes only the Always moves, led by its saved part notes. Lowering `max_prompt_bytes` cuts the release into more parts and does not shrink what the merge has to hold.
 
 A failed merge's guidance reads, for example: `notes couldn't be merged; part notes saved to <path> — tidy them and release with --notes-file <path>`.
 

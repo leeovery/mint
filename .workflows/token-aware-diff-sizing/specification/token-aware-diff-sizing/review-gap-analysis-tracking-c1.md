@@ -28,8 +28,8 @@ One alternative fits the row's current wording: warn only when a chunk-notes fil
 **Proposed Text**:
 | `on_notes_failure = fallback` | No choice. The commit-subject list (§14) ships, with one warning whatever the cause: the cause phrase (§12.4), the AI's captured output verbatim beneath it, and, where a chunk-notes file was saved (§11.4), its path and the `mint release regenerate <version> --notes-file <path>` command that puts it on the version. |
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, The Fallback Warning, with Floor Wording and Guidance's fallback bullet amended. Specification §12.1's fallback row carries the Proposed Text.
 
 ---
 
@@ -65,8 +65,8 @@ In §12.1, after "A failed `r` is not the floor; it aborts (§15).":
 
 > **A dry run at the floor** asks nothing, whatever the mode. Under `abort` it renders the ✗ line, the AI's verbatim output, the saved chunk-notes pointer where a file exists (§11.4) and the cause-fitted next moves (§12.4), as an unattended run does, then ends as a failed run. Under `fallback` it previews the commit-subject list as the body that would ship, with the fallback warning. The chunk-notes file is saved as on a real run: it sits outside the repo beside the dry-run cache, and the real run can release it with `--notes-file` instead of repeating the wave.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, A Dry Run at the Floor. Specification §12.1 carries the Proposed Text.
 
 ---
 
@@ -107,8 +107,8 @@ And after the Size moves' list:
 
 > A merge too large, by the cap or by the model, takes only the Always moves, led by its saved part notes. Lowering `max_prompt_bytes` cuts the release into more parts and does not shrink what the merge has to hold.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, A Merge the Model Rejects for Size, with Floor Wording and Guidance's cause-phrase bullet amended. Specification §12.4 carries the Proposed Text; the added paragraph sits after the whole next-moves list, before the failed-merge example, so the list stays intact.
 
 ---
 
@@ -139,8 +139,8 @@ In §6.6, at the end of the "Abort or failure after answering" bullet:
 
 > The unwind's narration names the answers commit as kept, so the commit left at the top of the branch does not read as an unwind that failed.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, Narrating the Kept Answers Commit. Specification §6.6 carries the Proposed Text.
 
 ---
 
@@ -166,7 +166,7 @@ Conventions an operator wants applied belong in the `[release]` and `[commit]` `
 **Proposed Text**:
 Conventions an operator wants applied belong in the `[release]` and `[commit]` `context` and `prompt` keys, which ride in every release-notes and commit-message call.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
