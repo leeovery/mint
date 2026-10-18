@@ -349,6 +349,8 @@ A dry run's chunked notes are cached and reused by the real run the same as sing
 
 **`--all`'s skip reason** — **Settled by derivation** — not discussed. Determined by the classifier decisions (the cause phrase comes from the classifier's result) and `--all`'s skip-and-continue remaining as its floor. With the size cap an oversized version chunks rather than skipping, so `--all` skips only at the floor, for whatever ended the ladder; each skipped version — in its warning and in the end-of-run summary — names that real cause rather than "diff too large".
 
+**`--all`'s saved notes** — **Settled by derivation** — not discussed. Determined by When the Merge Fails and When a Chunk Fails (the finished chunk notes are saved on every such failure), the skip reason above, and regenerate's `--notes-file` answering one version (Notes-File Backdoor). Under `regenerate --all`, each version whose notes fail saves its own chunk-notes file, named in that version's skip warning and in the end-of-run summary; each is fed back with its own single-version `regenerate --notes-file`.
+
 Sibling check: no overlap found — the cache is used as built.
 
 ---
