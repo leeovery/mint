@@ -195,6 +195,39 @@ Sibling check: notes-failure-output-ugly-and-uninformative — its specification
 
 ---
 
+## Size Cap Key, Default and the Release Timeout
+
+### Context
+
+Proactive Size Ceiling replaced `max_diff_lines` with a per-call byte cap and left its key name and default to be chosen with the lean command's small overhead in mind; Timeouts and the Ladder pairs that default with the release timeout's, so that a call at the cap finishes well inside the timeout. The shipped timeout today is one shared 60s default for both verbs (`DefaultTimeout`, `internal/config/config.go`).
+
+### Options Considered
+
+**300 KB** (~135k tokens)
+- Pros: goes through first time on any Sonnet window, including a 200k one.
+- Cons: on a 1M-window login, a release between 300 KB and roughly 2 MB is chunked and merged where one call would have read it whole — and nothing says so.
+
+**1.5 MB** (~675k tokens)
+- Pros: nearly every release is a single call on a 1M-window login.
+- Cons: a smaller window pays a few halving rounds per oversized release, plus a hint to lower the cap.
+
+### Journey
+
+Measured 2026-10-18 with the lean command on 120,000 bytes of Go diff (`git log --all -p --no-color -- '*.go' | head -c 120000`, a one-word ask appended, `--output-format json`): 54,654 input tokens, 2.2s API time — about 2.2 bytes per token, nearly half the chars/4 guess, and reading the prompt is fast enough that a call's time is mostly the notes being written. The user's login had a 1,000,000-token Sonnet window in the agentic-workflows failure; a 200k window holds about 400 KB of diff at most.
+
+The user asked how the cap relates to attempting the whole release and halving when the AI reports it too big. Under the cap that is exactly what happens (Under-Cap Overflow: Halving); over it mint skips the single call and goes straight to chunks sized under the cap. What settled the default was an asymmetry: a cap too high for the model is loud and self-correcting — claude rejects the oversized prompt client-side and instantly, mint halves, the notes are still written and the run ends with a lower-the-cap hint — whereas a cap too low is silent, chunking releases a single call would have read whole on a big window, at the cost of the coherence this feature exists for. At ~1.8 bytes per token for denser content, 1.5 MB stays under a 1M window, and it is far below claude's 10 MB stdin limit. The release timeout gets its own shipped default: a call at the cap should take about a minute, while commit's calls stay small and a hung one should not take minutes to fail.
+
+### Decision
+
+**The cap is `max_prompt_bytes`, an integer byte count defaulting to 1,500,000, at the shared top level.** `mint release` gets its own shipped timeout default of 180 seconds; `mint commit` keeps 60. User agreed 2026-10-18. Confidence: high.
+
+- **The release timeout** resolves `[release].timeout` → shared `timeout` → 180s, so an explicit value at either level still wins.
+- **A leftover `max_diff_lines`** fails at load, like any unknown key under strict config, with a message naming `max_prompt_bytes` as its replacement. agentic-workflows still sets `max_diff_lines = 60000` (`grep -lE '^[[:space:]]*max_diff_lines[[:space:]]*=' ~/Code/*/.mint.toml` → `/Users/leeovery/Code/agentic-workflows/.mint.toml`), so that line comes out before it upgrades.
+
+Sibling check: ai-model-selection — its specification gives `timeout` one shipped 60s default shared by both verbs, resolved `[verb]` → shared → default; this decision keeps that chain and gives release its own floor, superseding the single shared default for release once it lands.
+
+---
+
 ## Classify Call Failure
 
 ### Context
@@ -1010,7 +1043,7 @@ Sibling check: interactive-mint-init-setup — the work that built `mint setup`;
 
 - Decided: the detection trigger in full — reactive classify-on-failure as primary, a per-call byte cap as the proactive guard, and the classifier's edges (codes, failures, empty output, hardening, retry).
 - Decided: the shipped default AI command becomes the lean claude form.
-- Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
+- Decided: `max_diff_lines` becomes a per-call byte cap, `max_prompt_bytes` (default 1,500,000); over it, releases chunk and commit drops to the editor. Release gets its own 180s timeout default; commit keeps 60s.
 - Decided: at the floor an attended release or single-version regenerate offers commit-subject notes, the editor (an empty edit refused) or abort; unattended runs stop with cause-fitted guidance.
 - Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge, or any one failed chunk, fails the generation — the chunk notes that exist are saved and the run falls to `on_notes_failure`.
 - Decided: everything left in the diff after exclusions is read; a single file too big for one call is split into pieces read in parallel — no stand-ins.
