@@ -492,6 +492,26 @@ Sibling check: no overlap found — this topic's own ground.
 
 ---
 
+## Quoting Rules for `ai_command`
+
+### Context
+
+AI Command Quoting settled that mint reads quotes in `ai_command` the way a shell does — single and double quotes group words, `""` yields an empty argument, and no other shell syntax applies — without fixing the edges a shell's quoting also has: the backslash, quoted and unquoted parts written next to each other, and a quoted empty program name.
+
+### Journey
+
+A shell's quoting is POSIX's, and the backslash belongs to it: outside quotes it makes the next character literal, inside double quotes it escapes `"`, `\`, `$` and the backtick, inside single quotes it is literal. Adjacent parts join into one word (`--system-prompt="Be terse"`, `'it'"'"'s'`). Reading "the way a shell does" more narrowly would make a form an operator copies from their terminal parse differently in mint. Expansion characters and operators (`$`, backticks, globs, `|`, `;`, `&`, `<`, `>`) stay ordinary characters of a word, since mint runs no shell. A trailing lone backslash is malformed the way an unterminated quote is. A command whose first word is empty (`ai_command = '""'`) names no program; left to call time it would read as a missing AI tool, so it fails at load with the other malformed forms. None of the user's eleven repos sets `ai_command` (`grep -HE '^[[:space:]]*ai_command[[:space:]]*=' ~/Code/*/.mint.toml` → no output), so no working config changes meaning.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by AI Command Quoting (shell quoting, quoting only, never a shell) and its Malformed quoting derivation (rejected at load, never left to fail at call time).
+
+`ai_command` is split into words by POSIX shell quoting rules, backslash included, with no expansion or operators. An unterminated quote, a trailing lone backslash, or an empty first word is rejected when config loads, at any level, naming the key.
+
+Sibling check: no overlap found — this topic's own ground.
+
+---
+
 ## Commit AI-Failure Output
 
 ### Context
