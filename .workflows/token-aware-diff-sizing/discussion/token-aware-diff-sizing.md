@@ -249,6 +249,36 @@ Sibling check: ai-model-selection — its specification gives `timeout` one ship
 
 ---
 
+## Size Cap Range
+
+### Context
+
+Size Cap Key, Default and the Release Timeout fixed `max_prompt_bytes`' unit and default, and Proactive Size Ceiling what the cap does; neither named a valid range. In mint an explicit `timeout = 0` already means "no deadline" (its config-metadata row: "0 means no deadline"), so an operator, or an agent configuring mint from the setup guide, could write `max_prompt_bytes = 0` meaning "no cap", and an implementer copying the `timeout` handling would build that. The key being replaced sets no precedent: `max_diff_lines` honours any explicit value (`resolveMaxDiffLines`, `internal/config/config.go`).
+
+### Options Considered
+
+**Zero means no cap**, matching `timeout`.
+- Pros: one meaning for zero across mint's numeric keys.
+- Cons: removes the only guard against claude's 10 MB stdin refusal and providers that silently truncate, and a release too big for the window sends one whole call where it would have chunked — an off switch for the cap.
+
+**Reject zero or less at load.**
+- Pros: the operator learns when config loads, not from broken runs; the cap keeps its jobs.
+- Cons: zero means something different here than on `timeout`.
+
+### Journey
+
+Read literally, a zero cap carries no call: every release stops at the floor with `no room for the diff under max_prompt_bytes`, and every `mint commit` opens the editor. Read as "no cap", it undoes what the cap is for — it bounds every call mint sends, sets the size every chunk is cut to, and is the only guard where reactive detection is blind (Proactive Size Ceiling) — and it is the kind of switch Oversize Knob's revision declined, which keeps the cap as the target every call is sized to. An operator who wants a cap mint never reaches sets a large one. A value mint cannot use is refused when config loads, as a malformed `ai_command` is (AI Command Quoting's Malformed quoting).
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Proactive Size Ceiling (the cap bounds every call and sizes every chunk), Oversize Knob's revision (no switch; the cap stays the target every call is sized to) and AI Command Quoting's Malformed quoting (an unusable value fails at load, before any step runs). The alternative that also fits, zero as "no cap" to match `timeout`, is ruled out by those decisions.
+
+`max_prompt_bytes` of zero or less is rejected when config loads, before any step runs, in the existing load-error shape: `invalid .mint.toml: max_prompt_bytes must be a positive number of bytes`. Zero never means "no cap".
+
+Sibling check: no overlap found — `max_prompt_bytes` is this topic's own key.
+
+---
+
 ## Classify Call Failure
 
 ### Context
@@ -1057,7 +1087,7 @@ Sibling check: mint-release-tool — its specification's built-in always-exclude
 **When the check call fails** — **Settled by derivation** — not discussed. Determined by the check's advisory role (it only proposes exclusions), the notes call that follows running the same command through the normal failure path (the classifier, then `on_notes_failure`), and CLAUDE.md seam 5 (a cancel propagates unchanged). If the exclusion check call fails — a generation failure, a timeout, a missing binary — the release carries on with no suggestions; any real AI problem surfaces at the notes call. A Ctrl-C during the check still cancels the run.
 
 **A failed check is said, not silent** (raised by the background review, review-004 F3; user agreed 2026-10-18). When the check fails on its own — a timeout, a one-off error, an answer mint cannot read — and the notes call then succeeds, the operator could not otherwise tell "nothing looked out of place" from "the check never ran", which is how a design file slips into the notes unnoticed. mint prints one warning line (wording to the effect of "couldn't check for files that don't belong in the notes") with the AI's captured output verbatim beneath it, per CLAUDE.md's verbatim-diagnostics rule for `Warning.Output`, then carries on.
-- **Unattended (`-y`, non-TTY, an agent run)** — no pause and nothing written; the suggestions print with the notes, for whoever reads the output to act on.
+- **Unattended (`-y`, non-TTY, an agent run)** — no pause and nothing written; the suggestions print with the notes, for whoever reads the output to act on. *(Amended 2026-10-18 — per Unattended Suggestions When the Notes Fail, they print whatever happens to the notes, with the next moves when the run stops at the floor.)*
 - **Dry run** — the suggestions show; nothing is asked or written.
 - **Abort after answering** — the config commit stays: the answer is about the repo, not this release, and unwinding it would bring the same question back next time.
 - **Big files** — the check asks about them like any other path and makes no separate verdict on them; whatever stays in the diff is read, a file too big for one chunk call in pieces (Chunk Boundaries and the Single-File Floor, revised). The size check runs after this one, on the diff that remains.
@@ -1093,9 +1123,39 @@ The pause cannot let a path leave the notes unseen: a suggested glob can also ma
 - **Unwind** — a later failure before the push unwinds as built, then re-commits the answers on top of the starting commit.
 - **Commit-subject list** — subjects starting `chore(release): release-notes path answers for ` are left out.
 - **Everything excluded** — if the answers leave no path in the diff, the release gets the maintenance-release body, as any empty post-exclusion diff does.
-- **Unattended follow-up** — after the notes, each suggestion prints with its reason, what it matches and the `[release].diff_exclude` line that would exclude it.
+- **Unattended follow-up** — after the notes, each suggestion prints with its reason, what it matches and the `[release].diff_exclude` line that would exclude it. *(Amended 2026-10-18 — per Unattended Suggestions When the Notes Fail, they print whatever happens to the notes, with the next moves when the run stops at the floor.)*
 
 Sibling check: mint-release-tool — its specification's surgical unwind resets to the exact starting state; re-committing the answers after the reset is how the deliberate exception decided in Exclusion Suggestions Before the Notes is carried out, and nothing further is owed.
+
+---
+
+## Unattended Suggestions When the Notes Fail
+
+### Context
+
+Exclusion Suggestions Before the Notes and Exclusion Check Mechanics print an unattended run's suggestions after the notes — each with its reason, what it matches and the `[release].diff_exclude` line that would exclude it — "for whoever reads the output to act on". Both assume the notes were written. An unattended run (`-y`, CI, an agent session) can instead stop at the floor, or ship the commit-subject list under `on_notes_failure = "fallback"`.
+
+### Options Considered
+
+**Only after written notes.**
+- Pros: a stopped run's output stays shorter.
+- Cons: drops the glob from the runs that need it most.
+
+**Whatever the notes' outcome.**
+- Pros: the reader about to act has the exact glob mint found.
+- Cons: a stopped run prints more.
+
+### Journey
+
+An agent whose release stops for size gets the floor's generic next move, exclude generated paths with `[release].diff_exclude` (Floor Wording and Guidance), while mint already holds the exact glob, its reason and the line that would exclude it. A re-run repeats the same check and the same stop, so a suggestion that prints only after written notes never reaches that reader. The suggestions exist for the reader acting on them, and a run that stops is where the reader acts.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the suggestions' purpose (Exclusion Suggestions Before the Notes: "for whoever reads the output to act on") and the unattended floor's job of naming next moves (Remediation at the Floor). The alternative that also fits, printing only after written notes, drops the glob from the runs that need it most.
+
+An unattended run's exclusion suggestions print whatever happens to the notes: after the notes when they are written, after the commit-subject list when `fallback` ships it, and with the floor's next moves when the run stops there.
+
+Sibling check: no overlap found — the exclusion check is this topic's own.
 
 ---
 
@@ -1198,7 +1258,7 @@ Proposed with a mock of the pretty line and agreed by the user (2026-10-18):
 
 ### Decision
 
-**A chunked run keeps the single notes line and updates it as the run moves**: the exclusion check, the split (release size and part count), parts done out of the total, any halving retry, then the merge; the ✓ line says the notes were written in parts and merged. In plain mode — CI and agents, no live line — each of those becomes its own line as it happens, one per finished part included, so a long run never goes quiet. No per-part detail beyond the count. Follow-ups (the lower-the-cap hint, the exclusion suggestions under `-y`) print after the notes, as decided in their own sections. Exact wording is specification detail. User agreed 2026-10-18. Confidence: high.
+**A chunked run keeps the single notes line and updates it as the run moves**: the exclusion check, the split (release size and part count), parts done out of the total, any halving retry, then the merge; the ✓ line says the notes were written in parts and merged. In plain mode — CI and agents, no live line — each of those becomes its own line as it happens, one per finished part included, so a long run never goes quiet. No per-part detail beyond the count. Follow-ups (the lower-the-cap hint, the exclusion suggestions under `-y`) print after the notes, as decided in their own sections. *(Amended 2026-10-18 — per Unattended Suggestions When the Notes Fail, they print whatever happens to the notes, with the next moves when the run stops at the floor.)* Exact wording is specification detail. User agreed 2026-10-18. Confidence: high.
 
 Sibling check: mint-release-tool (cli-presentation) — its specification makes spinners a pretty-only concern spanning `StageStarted` to `StageSucceeded`/`StageFailed`, with plain rendering the same events as terse lines, and the engine never touching spinners or TTY state. The progress updates are new presenter events in that model, rendered by each presenter; nothing there is contradicted.
 
