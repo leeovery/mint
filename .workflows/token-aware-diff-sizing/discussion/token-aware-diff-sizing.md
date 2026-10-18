@@ -884,6 +884,8 @@ The guide's own contract is that it is version-matched so it never goes stale ag
 
 The guide's AI-transport prose is updated to what this feature changes — the lean shipped default, the per-call size cap, chunking and the floor. New and renamed config keys reach its config reference through the source of truth as built.
 
+**The guide's `diff_exclude` advice** — **Settled by derivation** — not discussed. Determined by this Decision's grounds (version-matched, kept true where this feature makes it untrue) and the per-verb split's rule that the shared list holds what neither verb should read (Exclusion Suggestions Before the Notes) (review-004 F10). The guide's etiquette section ("diff_exclude scope") and its procedure step 4 send `.workflows/`, `.claude/`, agent directories, `docs/` and lockfiles to a plain `diff_exclude`, which after the split would hide them from commit messages too. That advice is updated to name the levels: noise only release notes should skip goes in `[release]`; the shared list keeps only what neither verb should read, such as lockfiles and build output.
+
 Sibling check: interactive-mint-init-setup — the work that built `mint setup`; its guide prose is edited here only where this feature makes it untrue, and the guide's flag-free scope is left as built.
 
 ---
