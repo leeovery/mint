@@ -787,7 +787,8 @@ The follow-ups print after the notes:
 
 - the lower-the-cap hint (§10.3)
 - the exclusion suggestions under `-y` (§6.7)
-- the failed-check warning (§6.8), which prints when the check fails.
+
+The failed-check warning (§6.8) is not a follow-up: it prints when the check fails, before the notes are written.
 
 #### 16.4 How it is built
 

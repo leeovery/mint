@@ -179,7 +179,7 @@
           "status": "in-progress",
           "sources": {
             "token-aware-diff-sizing": {
-              "status": "pending"
+              "status": "incorporated"
             }
           },
           "review_cycle": 0,
