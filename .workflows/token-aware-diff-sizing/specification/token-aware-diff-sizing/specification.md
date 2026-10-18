@@ -632,10 +632,10 @@ The ✗ line's cause phrase comes from the cause. The AI's captured output still
 |---|---|
 | Timeout | `AI timed out` (as built) |
 | Missing binary | `AI tool not installed` (as built) |
-| SIZE with no halving left | `too large for the model, even in smaller parts` |
+| SIZE with no halving left, or a halving round with no room (§10.1) | `too large for the model, even in smaller parts` |
 | OTHER, with output | `AI call failed` |
 | OTHER, no output | `AI returned empty notes` |
-| No room for diff (§8.7) | `no room for the diff under max_prompt_bytes` |
+| No room for diff caused by operator text (§8.7) | `no room for the diff under max_prompt_bytes` |
 | Merge too large: its prompt over the cap (§8.7), or a SIZE answer on the merge call (§11.3) | `part notes too large to merge` |
 
 In a chunked run the phrase ends with where the failure happened: `(part 3 of 6)` or `(merging)`. These phrases replace `AI returned empty/invalid notes after retry`, which misnamed every generation failure. Release-notes failures no longer use `diff too large`.

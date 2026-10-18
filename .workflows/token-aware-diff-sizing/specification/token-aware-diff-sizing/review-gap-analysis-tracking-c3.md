@@ -66,8 +66,8 @@ The discussion's Floor Wording and Guidance gives both no-room causes one phrase
 | SIZE with no halving left | `too large for the model, even in smaller parts` |
 | No room for diff (§8.7) | `no room for the diff under max_prompt_bytes` |
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Derived and landed in the discussion as a dated revision of Floor Wording and Guidance's Decision: a halving round with no room reads `too large for the model, even in smaller parts`, and the no-room phrase names operator text only. Specification §12.4's cause table re-aligned.
 
 ---
 
