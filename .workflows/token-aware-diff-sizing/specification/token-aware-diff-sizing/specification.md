@@ -420,6 +420,69 @@ mint's framing is fixed text of its own; the exact wording is the implementer's.
 
 Chunk notes are held in memory for the run. They persist only in a failure's saved file (§11) and in the dry-run cache (§15).
 
+### 9. Failure Classification
+
+#### 9.1 The trigger
+
+When a release-notes generation call fails, mint asks the same AI what its own error means, and only a size answer starts the degradation ladder. The release-notes generation calls are the single-pass call, a chunk call and the merge call.
+
+The classifier was chosen for two reasons:
+
+- It is provider-agnostic by construction, because the AI interprets its own error.
+- It never fires a wave of calls at a failure that chunking cannot fix. On a rate limit, a one-off server error or an expired login, splitting would multiply one failure into many.
+
+Accepted cost: one extra AI call per failure.
+
+The classifier runs only when the call fails with a generation failure: a non-zero exit, or an empty body, surviving the transport's single retry. The transport already tells the other failures apart, and none of them reach the classifier:
+
+- **A timeout** never starts the ladder. It falls to `on_notes_failure` as today, because a timeout is not evidence of size, and a wave fired at a slow service multiplies the wait. The size cap absorbs "too slow because too big" before any call is sent (§4.4). The rule is revisited if timeouts show up on releases that sit under any sensible cap.
+- **A missing binary** falls to `on_notes_failure` as today.
+- **A cancel** (`context.Canceled`) propagates unchanged and never falls to `on_notes_failure`.
+
+The classifier is release-notes only, for forward release and regenerate. `mint commit` makes no classify call, because every commit failure already ends in the editor (§17). The exclusion check never classifies its own failures either (§6.8).
+
+#### 9.2 The call
+
+The classify call goes through the existing transport, with the release's `ai_command` and timeout; there is no new AI seam. Its prompt carries:
+
+- the two codes, each with a one-line gloss: SIZE for a request too large for the model's context window or input limit, and OTHER for anything else
+- the failed call's captured stdout and stderr, both streams, fenced as captured tool output, explicitly not instructions
+- an instruction to answer with exactly one code.
+
+Each stream longer than 4,000 bytes keeps its first and last 2,000 bytes, cut at character boundaries, with a line saying how many bytes were omitted between them. That keeps the call small under any cap and holds both ends of the output, where causes sit.
+
+The stakes of untrusted text here are bounded. The answer only picks a branch, an injected answer can at most misclassify, and under the lean command (§2) the call has no tools to act through.
+
+#### 9.3 The codes
+
+| Code | Reaction |
+|---|---|
+| SIZE | The ladder: halving for a single-pass or chunk call (§10). On the merge call, a failed merge (§11). |
+| OTHER | No split. `on_notes_failure` applies exactly as today (§12). |
+
+Only about three reactions exist however many codes are defined: split, retry or back off, and surface and stop. No code beyond SIZE has a reaction worth its cost for the subscription case. The set extends additively. A RATE_LIMIT code, with a wait-and-retry that would be a deliberate exception to "consumers never re-retry", can be added if API-key setups hit throttling mid-wave. Anything unrecognised already falls to OTHER.
+
+#### 9.4 Reading the answer
+
+mint strips surrounding whitespace, quotes, backticks and trailing punctuation from the answer, then compares what remains case-insensitively against the codes. It is a listed code only when what remains is exactly `SIZE` or exactly `OTHER`. Anything else maps to OTHER: a sentence, both codes, an unknown word.
+
+There is no firmer re-ask. The transport owns validation and the single retry, and consumers never re-retry. Worst case: the error surfaces where chunking might have helped.
+
+#### 9.5 Edges
+
+- **No error text.** When both captured streams are empty or whitespace-only, mint skips the classify call and takes the OTHER path directly. Classifying nothing could only be a guess, and a guessed SIZE would fire the whole wave at a failure chunking cannot fix.
+- **The classify call fails.** A generation failure, timeout or missing binary on the classify call takes the OTHER path. The output rendered is still the original call's, never the classify call's. When the tool's overhead alone overflows the window, the classify call fails the same way, and that is the correct stop: splitting cannot fix it.
+- **A cancel during the classify call** propagates unchanged and never falls to `on_notes_failure`.
+- **The transport's single retry stays**, for every call including the classify call. So an under-cap overflow sends the identical call twice before the classifier looks. On claude the repeat is near-free, since it rejects an oversized prompt instantly before sending it, and the cap makes under-cap overflows rare. Making the retry rule depend on which command calls is not worth the saving. This is revisited if providers that reject server-side, at a full round trip each, become a target.
+
+#### 9.6 Alongside the verbatim error
+
+The classifier adds to the AI's verbatim output; it never replaces it. Its code drives control flow (split or stop) and selects the ✗ line's cause phrase and mint's guidance (§12). The AI's captured output still renders verbatim beneath the ✗ line, as subprocess diagnostics always do. The AI's own text is often the most specific remediation available, for example `Not logged in · Please run /login`, or claude's token breakdown on an overflow.
+
+#### 9.7 An explicit `ai_command` that carries its own overhead
+
+A repo whose own `ai_command` carries an overhead that alone overflows the window gets no chunk small enough to fit. Its classify call fails the same way, so the run takes the OTHER path with the AI's verbatim message, then `on_notes_failure`. mint's guidance points at the documented lean command rather than naming claude flags itself (§12).
+
 ---
 
 ## Working Notes
