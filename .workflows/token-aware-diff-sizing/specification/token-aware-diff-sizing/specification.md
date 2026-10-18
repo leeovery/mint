@@ -420,6 +420,12 @@ mint's framing is fixed text of its own; the exact wording is the implementer's.
 
 Chunk notes are held in memory for the run. They persist only in a failure's saved file (§11) and in the dry-run cache (§15).
 
+#### 8.8 Always on
+
+Chunking has no setting. There is no `oversize` key and no way to switch it off. Chunking only happens when a release cannot go in one call, so switching it off would change one thing: such releases would get no AI notes. Nobody wants that as a standing policy. A release that should not get AI notes already has `--no-ai` and `--notes-file` (§13).
+
+Chunking needs no consent prompt for its extra calls; it handles the release without asking. A key is cheap to add and costly to remove: under strict config, a repo carrying a removed key fails to load. So one can be added later if a real case appears, such as an API-key setup where the extra calls cost money. `max_prompt_bytes` (§4) stays the only size setting.
+
 ### 9. Failure Classification
 
 #### 9.1 The trigger
