@@ -824,6 +824,46 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 ---
 
+## Progress Narration for a Chunked Run
+
+### Context
+
+Today the notes step is one stage: a spinner in pretty mode (a terse start line in plain), then ✓ or ✗. A chunked release can take minutes — the exclusion check, rounds of chunk calls a few at a time, maybe halving, then the merge — and a spinner that sits that long looks the same whether mint is working or hung. The Oversize Knob's "silent" default meant no consent prompt, leaving how a chunked run is narrated to this subtopic.
+
+### Options Considered
+
+**One spinner, as today** — no new narration.
+- Pros: nothing to build.
+- Cons: minutes of an unchanging line; nothing tells a working run from a stuck one.
+
+**The one notes line, updated as the run moves** — what is happening and how far along it is.
+- Pros: shows the run is alive and roughly how long is left, without adding lines in pretty mode.
+- Cons: new progress events through the presenter.
+
+**Per-part detail** — which folders each part covers, each part's own status.
+- Pros: the most visibility.
+- Cons: noise unless something fails, and on a failure the ✗ line already names it.
+
+### Journey
+
+Proposed with a mock of the pretty line and agreed by the user (2026-10-18):
+
+```text
+⠋ Checking for files that don't belong in the notes…
+⠋ Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done
+⠋ Writing notes: part 4 was too big for the model, retrying it as 2 smaller parts
+⠋ Writing notes: merging 6 parts
+✓ Notes written (6 parts, merged)
+```
+
+### Decision
+
+**A chunked run keeps the single notes line and updates it as the run moves**: the exclusion check, the split (release size and part count), parts done out of the total, any halving retry, then the merge; the ✓ line says the notes were written in parts and merged. In plain mode — CI and agents, no live line — each of those becomes its own line as it happens, one per finished part included, so a long run never goes quiet. No per-part detail beyond the count. Follow-ups (the lower-the-cap hint, the exclusion suggestions under `-y`) print after the notes, as decided in their own sections. Exact wording is specification detail. User agreed 2026-10-18. Confidence: high.
+
+Sibling check: mint-release-tool (cli-presentation) — its specification makes spinners a pretty-only concern spanning `StageStarted` to `StageSucceeded`/`StageFailed`, with plain rendering the same events as terse lines, and the engine never touching spinners or TTY state. The progress updates are new presenter events in that model, rendered by each presenter; nothing there is contradicted.
+
+---
+
 ## The Setup Guide's AI-Transport Prose
 
 ### Context
@@ -870,3 +910,5 @@ Sibling check: interactive-mint-init-setup — the work that built `mint setup`;
 - Decided: a `--notes-file` backdoor on release and on single-version regenerate; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
 - Decided: chunking is always on — no `oversize` setting; the per-call size cap is the only size setting.
+- Decided: a chunked run narrates on its one notes line — the check, the split, parts done, halving, the merge — and as one line per event in plain mode.
+- Decided: one failed chunk, or a failed merge, fails the generation; the first non-size failure ends the wave; chunk calls run a few at a time, each under its own per-attempt timeout; Ctrl-C cancels cleanly.
