@@ -330,6 +330,30 @@ In each case the release carries on with no suggestions. mint prints one warning
 
 Any real AI problem surfaces at the notes call, which runs the same command through the normal failure path (§9). The failure classifier never runs for the check itself. A Ctrl-C during the check cancels the run.
 
+### 7. Routing a Release's Notes
+
+#### 7.1 Where the body comes from
+
+The first match wins:
+
+1. **`--notes-file`** (§13): the supplied body. No AI, no exclusion check, no cap.
+2. **A first release:** `Initial release.`, as built.
+3. **An empty post-exclusion diff:** the maintenance-release body, as built.
+4. **`--no-ai`:** the commit-subject list (§14).
+5. **The AI path** (§7.2).
+
+#### 7.2 The AI path, in order
+
+1. **The exclusion check**, on forward releases only (§6). Exclusions it records change the diff that the later steps see. If they leave the diff empty, the maintenance-release body applies (§6.6).
+2. **Cache reuse.** A real run that follows a dry run offers the cached notes, as built (§15).
+3. **The size check.** The composed single-pass prompt is measured against `max_prompt_bytes`. It holds the instructions, the Change Map (condensed if it would take more than its share, §6.3), the diff and the closing reminder.
+4. **Under the cap: one single-pass call**, as built. If it fails, the failure classifier decides what happens next (§9). SIZE halves (§10); anything else falls to `on_notes_failure` (§12).
+5. **Over the cap: chunked generation** (§8). The single-pass call is skipped.
+
+The size check comes after the exclusion check, so it measures the diff the exclusions leave. Take a release over the cap only because of a committed 1.9 MB transcript: once the operator excludes the transcript at the pause, the release is measured under the cap and gets an ordinary single-pass call.
+
+Regenerate's fresh source follows the same path without step 1, per version under `--all`.
+
 ---
 
 ## Working Notes
