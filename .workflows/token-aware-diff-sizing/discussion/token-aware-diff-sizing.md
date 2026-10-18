@@ -1438,6 +1438,8 @@ Proposed with a mock of the pretty line and agreed by the user (2026-10-18):
 ✓ Notes written (6 parts, merged)
 ```
 
+*(Amended 2026-10-18 — per Narration Wording's revision, the halving line's count is the number of parts the re-cut yields, three or more; the mock's 2 is an example.)*
+
 ### Decision
 
 **A chunked run keeps the single notes line and updates it as the run moves**: the exclusion check, the split (release size and part count), parts done out of the total, any halving retry, then the merge; the ✓ line says the notes were written in parts and merged. In plain mode — CI and agents, no live line — each of those becomes its own line as it happens, one per finished part included, so a long run never goes quiet. No per-part detail beyond the count. Follow-ups (the lower-the-cap hint, the exclusion suggestions under `-y`) print after the notes, as decided in their own sections. *(Amended 2026-10-18 — per Unattended Suggestions When the Notes Fail, they print whatever happens to the notes, with the next moves when the run stops at the floor.)* Exact wording is specification detail. User agreed 2026-10-18. Confidence: high.
@@ -1454,9 +1456,18 @@ Progress Narration for a Chunked Run agreed the shape with a mock of the pretty 
 
 ### Journey
 
-The mock's lines were agreed as shown, so they are the wording. A single-pass call that halves becomes a chunked run (Halving Bound and the Lower-the-Cap Hint), so its line says so in the mock's voice. Halving a part into two adds a part, so the total grows rather than the done count running past it.
+The mock's lines were agreed as shown, so they are the wording. A single-pass call that halves becomes a chunked run (Halving Bound and the Lower-the-Cap Hint), so its line says so in the mock's voice. Halving re-cuts a part into smaller parts, so the total grows by the parts it adds rather than the done count running past it.
 
 ### Decision
+
+#### 2026-10-18 — revised
+*Trigger: halving never yields two parts. Halving Bound and the Lower-the-Cap Hint aims each smaller call at half the composed size of the call that failed, and every smaller call still carries the whole fixed part, so each has room for less than half the failed call's diff and the re-cut always yields three parts or more: a 1.4 MB call with a 200 KB fixed part gets a 700 KB target, 500 KB of room each, and 1.2 MB of diff to place — three parts.*
+
+**Settled by derivation** — not discussed. Determined by Halving Bound and the Lower-the-Cap Hint (the target counts the whole call; the re-cut uses the first wave's packing) and Progress Narration for a Chunked Run, whose split line already counts parts. The alternative that also fits, dropping the count (`retrying in smaller parts`), loses what the split line shows a moment later.
+
+**The halving lines show the number of parts the re-cut yields**: `Writing notes: too big for the model in one call, retrying in {n} parts` when a single-pass call halves, and the mock's `part 4 was too big for the model, retrying it as {n} smaller parts` when a part halves, n being the re-cut's part count. What changes from the entry below: its literal 2. The rest stands.
+
+#### Initial
 
 **Settled by derivation** — not discussed. Determined by Progress Narration for a Chunked Run (the agreed mock) and Halving Bound and the Lower-the-Cap Hint.
 
