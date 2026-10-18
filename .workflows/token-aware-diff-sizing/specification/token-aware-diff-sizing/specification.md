@@ -50,6 +50,61 @@ Regenerate rides on `[release]` config throughout, as built. Its `tag` and `rele
   - agent-authored release notes, with mint handing an outer agent its instructions and Change Map
   - an agent guide for running releases.
 
+### 2. The Lean Default AI Command
+
+#### 2.1 The command
+
+The shipped default `ai_command` becomes:
+
+```text
+claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."
+```
+
+- `--safe-mode` switches off CLAUDE.md files (the repo's and the user's global), skills, plugins, hooks and MCP servers. Auth and model selection keep working.
+- `--tools ""` drops the built-in tool definitions.
+- `--strict-mcp-config` loads only the MCP configuration passed on the command line, and none is passed.
+- `--no-session-persistence` stops claude saving each one-shot call to disk as a resumable session.
+- `--system-prompt` replaces Claude Code's own system prompt.
+
+The model is unchanged: Sonnet, in alias form.
+
+The empty `--tools` argument and the multi-word system prompt reach claude intact only through quote-aware parsing (§3).
+
+Measured overhead, on the same one-word prompt with `usage` read from `--output-format json`:
+
+- The plain form: `echo "Reply with the single word: ok" | claude -p --model sonnet --output-format json --no-session-persistence` → 105,994 input tokens (2026-10-18).
+- The lean form, final wording: `echo "Reply with the single word: ok" | claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for." --output-format json` → 628 input tokens, answered `ok` on the subscription login (2026-10-18).
+
+`--bare` is not used: it forces API-key auth and breaks the subscription login (`Not logged in · Please run /login`).
+
+#### 2.2 One command for every call
+
+The system prompt names no task, because the same command serves every AI call mint makes:
+
+- the release-notes calls: single-pass, chunk and merge
+- the failure classifier
+- the exclusion check
+- `mint commit`.
+
+Each call's own prompt carries its job.
+
+#### 2.3 What it drops, on purpose
+
+CLAUDE.md files and Claude Code's own system prompt no longer reach mint's calls. Instructions kept there that shaped release notes or commit messages stop doing so. This is intended: mint owns the prompt and the command is only transport, so a call carries mint's instructions and nothing else. Conventions an operator wants applied belong in the `[release]` and `[commit]` `context` and `prompt` keys, which ride in every call. The change is documented alongside the lean default (§18).
+
+#### 2.4 Reach
+
+The lean command applies wherever `ai_command` resolution falls through to the shipped default. An explicit `ai_command` at any level is untouched.
+
+#### 2.5 A claude too old for the flags
+
+A claude version that predates a flag rejects it as an unknown option and exits non-zero. That lands on the normal generation-failure path:
+
+- The failure classifier runs the same command and fails the same way, so the release takes the OTHER path (§9) with claude's own message rendered verbatim.
+- On `mint commit`, the failure opens the editor and carries that message verbatim (§17).
+
+mint adds no version probe and no fallback to the plain command. Either would put claude-specific knowledge into mint.
+
 ---
 
 ## Working Notes
