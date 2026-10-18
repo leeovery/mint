@@ -354,6 +354,72 @@ The size check comes after the exclusion check, so it measures the diff the excl
 
 Regenerate's fresh source follows the same path without step 1, per version under `--all`.
 
+### 8. Chunked Generation
+
+#### 8.1 The shape: map-reduce
+
+Chunk calls run in parallel, then exactly one merge call produces the final notes. Refine is out: sequential calls each handed the notes so far are serial by construction and biased toward early chunks, and the steer is parallel first, never a chain of serial AI calls. The merge is the one serial step. Concatenating the chunk notes is neither the plan nor a fallback (§11).
+
+#### 8.2 The Change Map in every call
+
+Every chunk call and the merge call receive the same whole-release Change Map:
+
+- Each chunk knows the whole release's shape while reading only its slice.
+- The merge can rank across all of it.
+
+The default prompt's salience rules depend on the map: one bullet per notable change, related changes combined, ranked using the Change Map.
+
+A release that deletes a vendored tree or moves thousands of files gets one `Removed:` or `Renamed:` line per path, enough to crowd out any diff. So when the Change Map would take more than its share of the cap (§6.3), its long runs of removed or renamed files condense by folder, for example to `Removed: 4,312 files under vendor/`. The notes still learn the tree went, which is all they would say about it anyway.
+
+This applies to every call that carries the map, single-pass included. A map that fits renders exactly as today.
+
+#### 8.3 Packing chunks
+
+A chunk call's room for diff is the cap minus its fixed part: the instructions, Change Map, chunk framing and closing reminder.
+
+Files are packed in path order. That keeps each area's files together (the Change Map's area is a path's leading directory), and each folder's. Each chunk is filled until the next file's diff would not fit in its room.
+
+#### 8.4 A file too big for one call: pieces
+
+A file whose diff alone exceeds a chunk call's room is split into pieces. Each piece is a chunk call of its own, sent in parallel with the others and stitched by the merge like any other chunk notes.
+
+- Cuts fall at hunk boundaries, else at line boundaries. A single line longer than the room, such as a minified bundle, is cut at a character boundary.
+- Each piece carries the file's diff header and says which piece of how many it is.
+
+Nothing in the diff is dropped or stood in for. The exclusion check has already asked whether each file belongs (§6), so a file still in the diff is wanted, and it is read.
+
+#### 8.5 Concurrency
+
+At most four chunk calls run at once. The bound is fixed, not a setting. Unbounded fan-out would put the whole wave on the machine, and on the provider's rate and usage limits, at the same moment.
+
+#### 8.6 What each call is told
+
+- **A chunk call** carries:
+  - the release's instructions: the default prompt or the `[release].prompt` override, with `context`
+  - the Change Map
+  - framing that names its part of the release (part k of n; for a piece, the file and which piece of how many)
+  - its slice
+  - the closing reminder.
+
+  It returns notes for its part, in the release's notes format.
+- **The merge call** carries:
+  - the release's instructions
+  - the Change Map
+  - every chunk's notes, in chunk order
+  - framing that asks for one set of release notes, combining related changes across parts, dropping duplicates and ranking by the Change Map
+  - the closing reminder.
+
+  Its output is the release's notes body, passed through byte-identical like a single-pass body.
+
+mint's framing is fixed text of its own; the exact wording is the implementer's.
+
+#### 8.7 Calls that cannot be made
+
+- **No room for diff.** Even with the Change Map condensed, a call's fixed part can leave no room for diff. That happens with an outsized `[release].prompt` or `context` (operator text mint never trims), or with a halving round aimed below the fixed part (§10). mint then sends no call, and the run falls to `on_notes_failure` (§12) with guidance naming which of the two it was.
+- **A merge prompt over the cap** is not sent, and counts as a failed merge (§11).
+
+Chunk notes are held in memory for the run. They persist only in a failure's saved file (§11) and in the dry-run cache (§15).
+
 ---
 
 ## Working Notes
