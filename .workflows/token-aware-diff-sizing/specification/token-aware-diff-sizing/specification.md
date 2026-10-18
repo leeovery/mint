@@ -198,6 +198,46 @@ Under strict config, a `.mint.toml` still setting `max_diff_lines` fails at load
 
 mint has no users outside the user's own repos. One of them still sets the key, and that line comes out before it upgrades: `grep -lE '^[[:space:]]*max_diff_lines[[:space:]]*=' ~/Code/*/.mint.toml` → `/Users/leeovery/Code/agentic-workflows/.mint.toml`.
 
+### 5. Per-Verb Exclusion Lists
+
+#### 5.1 Three levels of `diff_exclude`
+
+`diff_exclude` gains `[release]` and `[commit]` levels beside the shared top-level list. Each verb's AI diff excludes the shared list plus its own level's list:
+
+| Diff | Excludes |
+|---|---|
+| Release notes (forward release, regenerate's fresh source) | the built-in always-excludes (§5.3), shared `diff_exclude`, `[release].diff_exclude` |
+| `mint commit`'s AI diff | shared `diff_exclude`, `[commit].diff_exclude` |
+
+The lists add, unlike `ai_command` and `timeout`, where a per-verb value overrides the shared one. The shared list holds what neither verb should read, such as lockfiles and build output, and a per-verb list should not have to repeat it.
+
+The split exists because the two verbs serve different readers:
+
+- Release notes are a public list of what a release holds.
+- A commit message is for the developers and agents reading that piece of work, and should cover its tests and specs.
+
+With one shared list, hiding a test or spec folder from release notes also hid it from commit messages.
+
+As built, the following continue to hold:
+
+- Entries at every level are git pathspec globs, and git does the matching.
+- The Change Map is built over the same post-exclusion set as the diff, so an excluded path never appears in it.
+- `mint commit`'s preflight ignores `diff_exclude` at every level. A commit whose every file is excluded still commits, with its message written in the editor.
+
+The new keys take the strict-config path: schema entries, friendly type errors, config-metadata rows and README tables.
+
+#### 5.2 The keep list
+
+`[release].diff_keep` is an array of globs in the same pathspec form, default empty. A path it covers is never raised by the exclusion check (§6). It does nothing else: it adds nothing to the diff and never overrides an exclusion. It takes the strict-config path.
+
+#### 5.3 Built-in always-excludes
+
+`.mint.toml` joins `CHANGELOG.md` as a built-in, non-configurable always-exclude from every release-notes diff. That holds for forward releases and regenerate alike, since exclusion is path-based.
+
+A change to mint's config is about how releases are made, not what a release holds. The exclusion check commits `.mint.toml` inside the release it answered for (§6.6). Without the exclude, that change would put a tooling line into the release's notes, and into any later regenerate of that version.
+
+The plain-mode `version_file` exclusion is unchanged. `mint commit`'s AI diff has no built-in excludes, as built, so a config change still reaches its commit message.
+
 ---
 
 ## Working Notes
