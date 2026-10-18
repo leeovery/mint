@@ -683,6 +683,36 @@ Keeping the file out of git is mint's job, not only the caller's. The obvious fi
 - **An empty or whitespace-only file:** refused before any step runs with `--notes-file P is empty`, exit `1`.
 - **A missing or unreadable file:** fails before any step runs with `reading --notes-file P: <cause>`, exit `1`.
 
+### 14. One Non-AI Body: Dropping `[release].fallback`
+
+#### 14.1 The commit-subject list everywhere
+
+`[release].fallback`, a fixed notes body shared by `--no-ai` and `on_notes_failure = fallback`, is dropped. Every route that ends without AI notes gives this release's commit-subject list:
+
+- `--no-ai`
+- `on_notes_failure = fallback`
+- the floor's `c` (§12.2).
+
+Hand-written notes come through `--notes-file` (§13).
+
+The commit-subject list is `git log --format=%s` over the release's range, as built: `{lastTag}..HEAD` on a forward release, and the version's own range on regenerate. It leaves out mint's own answers commit (§6.6). An empty list gives the maintenance-release body, so the tag body is never empty, as built.
+
+`on_notes_failure` keeps its two values. `fallback` still reads as falling back to a non-AI body.
+
+With one non-AI body there is no longer a mismatch where `c` differs from `--no-ai` in a repo with a fixed fallback string. The key's one observed use was hand-written notes for a release the AI could not take, which is `--notes-file`'s job now.
+
+#### 14.2 Removing the key
+
+Under strict config, a `.mint.toml` still setting `[release].fallback` fails at load, with a removed-key message alongside the `[hooks]` placement one:
+
+```text
+invalid .mint.toml: release.fallback has been removed — every non-AI body is the commit-subject list; supply hand-written notes with --notes-file
+```
+
+The key's config-metadata row and its README table entries go with it. The setup guide's prose follows (§18).
+
+No repo of the user's sets the key, so none needs a change before upgrading: `grep -lE '^[[:space:]]*fallback[[:space:]]*=' ~/Code/*/.mint.toml` → no output (2026-10-18).
+
 ---
 
 ## Working Notes
