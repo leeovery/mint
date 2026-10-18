@@ -855,6 +855,30 @@ The lean rested on one claim: a single file bigger than a whole call's budget is
 
 ---
 
+## Chunk Wave Mechanics
+
+### Context
+
+Map-Reduce, Not Refine, Stitching and Salience, A bound on parallel calls, Packing by area and the Chunk Boundaries revision fixed the chunked path's shape, leaving its working parts open: the concurrency bound, how files are packed, how a file too big for one call is cut, what the chunk and merge calls are told, and what happens when the merge call itself would not fit under the cap.
+
+### Journey
+
+The bound only has to keep most of the parallel speed while not putting a whole wave on the machine and the provider's limits at once; four concurrent calls does both for the 3–20-chunk releases research expected. The Change Map's area is a path's leading directory (`areaOf`, `internal/notes/changemap.go`), so packing files in path order keeps each area's files, and each folder's, side by side without a grouping step of its own. A file's diff is cut at hunk boundaries where it can be, at line boundaries otherwise, and — only for a single line longer than a call's room, a minified bundle say — at a character boundary, so nothing is dropped and no character is split. Each piece carries its file's diff header so the call reading it knows which file it holds. Chunk and merge calls carry the release's own instructions — the default prompt, or the operator's `[release].prompt` override, with `context` — because those instructions define the notes' format and rules for every call; mint adds only the framing that says which part of the release a call holds, or that it is merging. The merge's input is the per-chunk notes, which overflow a call only with hundreds of chunks (When the Merge Fails); were it ever over the cap, no merge call could be made, which is a failed merge.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Map-Reduce, Not Refine (parallel chunk calls, one merge), A bound on parallel calls, Packing by area, Chunk Boundaries and the Single-File Floor (revised: everything left in the diff is read; pieces in parallel), Stitching and Salience (the whole-release Change Map in every call), Proactive Size Ceiling (no call over the cap) and When the Merge Fails.
+
+- **Concurrency** — at most four chunk calls run at once; a fixed bound, not a setting.
+- **Packing** — files in path order, each chunk filled until the next file would not fit in the room its call leaves for diff.
+- **Pieces** — a file too big for one chunk call's room is split into pieces, each a chunk call of its own, cut at hunk boundaries, else line boundaries, else character boundaries for a line longer than the room; each piece carries the file's diff header and says which piece of how many it is.
+- **Chunk calls** — the release's instructions, the whole-release Change Map, framing that names the call's part of the release (part k of n; for a piece, the file and which piece), the slice and the closing reminder; each returns notes for its part in the release's notes format.
+- **The merge call** — the release's instructions, the Change Map, every chunk's notes in chunk order, framing that asks for one set of release notes combining related changes across parts, dropping duplicates and ranking by the Change Map, and the closing reminder. A merge prompt that would exceed the cap is not sent and counts as a failed merge.
+
+Sibling check: no overlap found — the chunked path is this topic's own ground.
+
+---
+
 ## Exclusion Suggestions Before the Notes
 
 ### Context
