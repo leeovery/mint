@@ -372,6 +372,21 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 ### Decision
 
+#### 2026-10-18 — revised
+*Trigger: regenerate never reads `on_notes_failure`. `grep -rn "ResolveFailure(\|\.OnNotesFailure" internal cmd | grep -v _test.go` → the key is read only in `ResolveFailure` (`internal/notes/resolve.go:66`), called only from the notes selector (`internal/notes/select.go:205`); `grep -rn "NewSelector\|SelectBody" internal cmd | grep -v _test.go` → the selector's only callers outside `internal/notes` are forward release's (`internal/engine/release.go:846`, `:861`). A failed single-version regenerate aborts (`return surface(p, "notes", err)`, `internal/engine/regenerate_interactive.go:205-208`) and `--all` skips the version (`internal/engine/regenerate_batch.go:286-289`), whatever the key holds. The single-version paragraph below assumed regenerate honours `abort`.*
+
+**Settled by derivation** — not discussed. Determined by the measurement above and `fallback`'s purpose: a release goes out without AI notes rather than not at all.
+
+**`on_notes_failure` stays forward release's; regenerate's floor does not read it.** The rules below for `mint release` stand unchanged. Regenerate does not read the key, as built, and this feature does not make it:
+
+- **Single-version regenerate, attended:** the floor offers the `c` / `e` / `a` choice whatever `on_notes_failure` holds, finishing in the same run. As built it aborts on any AI failure; the choice puts the operator's options in front of that abort, which stays its default.
+- **Single-version regenerate, unattended:** it stops with guidance, as release does under `abort`.
+- **`--all`:** skip-and-continue, whatever the key holds.
+
+`fallback` has nothing to do on regenerate. A regenerate blocks nothing — its version is already out, with notes — and shipping the commit-subject list over those notes whenever an AI call failed would replace them with a worse body. An operator who wants the commit subjects on a version picks `c`. So the unattended next move `on_notes_failure = "fallback"` (Floor Wording and Guidance) is offered on a forward release only. What changes from the entry below: its single-version regenerate paragraph's "under `abort`" — the choice does not depend on the key. Confidence: high.
+
+#### Initial
+
 **At a terminal, the floor asks; everywhere else it gives guidance and stops.** User agreed 2026-10-17. Confidence: high.
 
 - **Attended, `on_notes_failure = abort`:** after the ✗ line and the AI's verbatim message, a one-keypress choice — `c` commit-subject notes (the existing `--no-ai` body), `e` write the notes in `$EDITOR` (opened on the saved per-chunk notes when a merge or a chunk failed, empty otherwise — a new write-from-scratch route), `a` abort. The chosen body then continues through the release.
@@ -404,7 +419,7 @@ Each phrase names the cause in a few words and leaves the specifics to the AI's 
 **Settled by derivation** — not discussed. Determined by Remediation at the Floor, Classifier Result Alongside the Verbatim Error, Overhead-Dominated Failures, Under-Cap Overflow: Halving's When halving runs out, Stitching and Salience's No room left for diff, When the Merge Fails, When a Chunk Fails and Notes-File Backdoor's revision (regenerate names its own command).
 
 - **Cause phrases** — `AI timed out` and `AI tool not installed` stay; a SIZE answer with no halving left reads `too large for the model, even in smaller parts`; OTHER reads `AI call failed`, or `AI returned empty notes` when there was no output; no room reads `no room for the diff under max_prompt_bytes`; a merge prompt over the cap reads `part notes too large to merge`. In a chunked run the phrase ends with where it happened: `(part 3 of 6)`, `(merging)`.
-- **Next moves** — always the `--notes-file` route (naming the saved file when one exists, `mint release regenerate <version> --notes-file` where the version is already out) and, on forward release, `--no-ai`; unattended, also `on_notes_failure = "fallback"`. By cause: size — lower `max_prompt_bytes`, the documented lean command if the `ai_command` carries its own overhead, `[release].diff_exclude` for generated paths; no room — shorten whichever of `[release].prompt` or `context` is outsized, or the size guidance when a halving round caused it; timeout — raise `[release].timeout`; missing tool — install it or set `ai_command`; OTHER — the AI's own message above, plus the lean-command pointer when the `ai_command` is not the shipped default.
+- **Next moves** — always the `--notes-file` route (naming the saved file when one exists, `mint release regenerate <version> --notes-file` where the version is already out) and, on forward release, `--no-ai`; unattended, also `on_notes_failure = "fallback"` *(Amended 2026-10-18 — per Remediation at the Floor's revision, regenerate does not read `on_notes_failure`, so this move is offered on an unattended forward release only)*. By cause: size — lower `max_prompt_bytes`, the documented lean command if the `ai_command` carries its own overhead, `[release].diff_exclude` for generated paths; no room — shorten whichever of `[release].prompt` or `context` is outsized, or the size guidance when a halving round caused it; timeout — raise `[release].timeout`; missing tool — install it or set `ai_command`; OTHER — the AI's own message above, plus the lean-command pointer when the `ai_command` is not the shipped default.
 - **The choice** — defaults to `a`.
 - **After `c` or `e`** — the body goes to the non-AI review gate (accept, edit, abort); under `-y` it never arises, since unattended runs get no choice.
 - **Under `fallback`** — the release succeeds with the commit-subject list, and a warning names the saved file and the `regenerate --notes-file` command that puts it on the version.
