@@ -637,6 +637,28 @@ Sibling check: no overlap found — the halving rounds and the lean command are 
 
 ---
 
+## Halving Bound and the Lower-the-Cap Hint
+
+### Context
+
+Under-Cap Overflow: Halving left the bound ("a few times at most") open, along with what "half the size that just failed" measures, how a halved slice is re-cut, and what the lower-the-cap hint suggests.
+
+### Journey
+
+Three halvings take a slice to an eighth of the size that first failed; a cap wrong for its model by more than that is not a slight miscalibration, and When halving runs out already names the overhead case for it. The cap bounds whole composed calls (Proactive Size Ceiling), so the size that failed is the whole call's, and a halved call's room for diff is what its fixed part leaves — which is how a halving round can be aimed below the fixed part (No room left for diff). Re-cutting by the same packing and piece rules as the first wave keeps one way of cutting a release. The operator acting on the hint needs a number: the largest call that succeeded in the run is one the model demonstrably accepted.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Under-Cap Overflow: Halving and its When halving runs out entry, Proactive Size Ceiling (the cap bounds the composed call), Chunk Wave Mechanics (packing and pieces) and Stitching and Salience's No room left for diff.
+
+- **The bound** — a slice is halved at most three times, counted from its first SIZE answer; a fourth SIZE fails it.
+- **What halves** — the target is half the composed size of the call that failed; the slice it carried is re-cut at that target by the first wave's packing and piece rules.
+- **The hint** — after the notes, mint says the cap is set higher than this model accepts and suggests the size of the largest call that succeeded in the run.
+
+Sibling check: no overlap found — the halving rounds are this topic's own decisions.
+
+---
+
 ## Timeouts and the Ladder
 
 ### Context
