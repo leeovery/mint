@@ -164,6 +164,10 @@
             "setup-guide-transport-prose": {
               "status": "decided",
               "parent": null
+            },
+            "fixed-fallback-body-after-notes-file": {
+              "status": "exploring",
+              "parent": "remediation-ux-escape-hatch-guidance"
             }
           }
         }
