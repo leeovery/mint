@@ -15,7 +15,7 @@
     "discussion": {
       "items": {
         "token-aware-diff-sizing": {
-          "status": "in-progress",
+          "status": "completed",
           "subtopics": {
             "detection-trigger-proactive-vs-reactive": {
               "status": "decided",
