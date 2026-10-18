@@ -579,6 +579,70 @@ The per-attempt timeout applies to each call on its own: every chunk call, the m
 
 There is no overall deadline across the calls. One would be a second timing rule whose right value grows with the release, which is exactly what the per-call cap exists to avoid predicting. A chunk call's timeout is a final failure that ends the wave (§11.2). A timeout on a single-pass call is covered in §9.1.
 
+### 12. The Remediation Floor
+
+The floor is where the ladder ends without AI notes. With the lean default and chunking it is reached far less often, but it is still reached: chunking exhausted, a login expired, a usage limit hit. By then the release is fully prepared, so a re-run would repeat every step to change one input.
+
+#### 12.1 What applies, by mode
+
+| Situation | What happens |
+|---|---|
+| Attended, `on_notes_failure = abort` | The ✗ line and the AI's verbatim output, the saved chunk-notes pointer where a file exists (§11.4), then a one-keypress choice (§12.2). |
+| Unattended (`-y` or non-TTY), `abort` | The ✗ line, the AI's verbatim output and the cause-fitted next moves (§12.4), then the run stops. Never a prompt. |
+| `on_notes_failure = fallback` | No choice. The commit-subject list (§14) ships. A warning names the saved file, where one exists, and the `mint release regenerate <version> --notes-file <path>` command that puts it on the version. |
+
+A failed `r` is not the floor; it aborts (§15).
+
+#### 12.2 The choice
+
+At a terminal under `abort`, one choice through the presenter's gate seam:
+
+- **`c`**: this release's commit-subject list (§14).
+- **`e`**: write the notes in `$EDITOR`. It opens on the saved chunk notes when a chunk or the merge failed and a file exists; otherwise it opens empty. This is a new write-from-scratch route: release's editor seam had only edited an already-produced body.
+- **`a`**: abort. This is the default.
+
+The chosen body goes on to the review gate a non-AI body gets as built: accept, edit, abort, with no `r`, since there is no AI output to redo. The release then continues as usual.
+
+**An empty `e` is refused.** When the operator closes the editor leaving an empty or whitespace-only body, which is the usual way to back out, mint returns to the `c` / `e` / `a` choice. An empty body would otherwise reach the review gate, where accepting it ships an empty tag message, changelog entry and provider release. Git accepts one: `printf '' | git tag -a v1 -F -` exits 0.
+
+#### 12.3 Regenerate at the floor
+
+- **`regenerate <version>`, attended, `abort`:** the same choice, finishing in the same run. `c` gives that version's commit subjects, `e` opens the editor (on the saved chunk notes when a chunk or the merge failed), and `a` aborts. Regenerate already runs attended with its own review gate, and stopping would only send the operator to re-run with `--notes-file`. Unattended, it stops with guidance, as release does.
+- **`regenerate --all`:** skip-and-continue stays its floor. Each skipped version names its real cause phrase (§12.4), in its warning and in the end-of-run summary, never `diff too large`. A version whose wave left chunk notes saves its own file (§11.4), named in its skip warning and in the summary, to be fed back with that version's own `mint release regenerate <version> --notes-file <path>`. A version whose single-pass call failed, or whose wave produced nothing, names no file.
+
+#### 12.4 The ✗ line and the next moves
+
+The ✗ line's cause phrase comes from the cause. The AI's captured output still renders verbatim beneath it (§9.6).
+
+| Cause | Phrase |
+|---|---|
+| Timeout | `AI timed out` (as built) |
+| Missing binary | `AI tool not installed` (as built) |
+| SIZE with no halving left | `too large for the model, even in smaller parts` |
+| OTHER, with output | `AI call failed` |
+| OTHER, no output | `AI returned empty notes` |
+| No room for diff (§8.7) | `no room for the diff under max_prompt_bytes` |
+| Merge prompt over the cap (§8.7) | `part notes too large to merge` |
+
+In a chunked run the phrase ends with where the failure happened: `(part 3 of 6)` or `(merging)`. These phrases replace `AI returned empty/invalid notes after retry`, which misnamed every generation failure. Release-notes failures no longer use `diff too large`.
+
+The next moves are cause-fitted. Unattended runs print them; attended runs show the saved-file pointer and the choice.
+
+- **Always:**
+  - The `--notes-file` route. Where a chunk-notes file was saved, it says to tidy the saved notes at its path, filling in any files the marker lists, and release with them. The command is `mint release --notes-file <path>` while the version is not out, or `mint release regenerate <version> --notes-file <path>` once it is: after a regenerate, or a forward release that shipped under `fallback`. Where no file was saved, it says to write the notes and release with `--notes-file`.
+  - On forward release, `--no-ai`, for the commit-subject list.
+  - Unattended only, `on_notes_failure = "fallback"` under `[release]`, to ship the commit-subject list rather than stop.
+- **Size** (SIZE with no halving left; no room caused by a halving round):
+  - lower `max_prompt_bytes`, since the model accepts less than the cap
+  - if `ai_command` carries a large overhead of its own, use the lean command documented in the README (§2), without mint naming claude flags itself
+  - exclude generated paths with `[release].diff_exclude`.
+- **No room caused by operator text:** shorten whichever of `[release].prompt` or `context` is outsized.
+- **Timeout:** raise `[release].timeout`.
+- **Missing binary:** install the AI tool, or set `ai_command`.
+- **OTHER:** the AI's own message above names the cause. When the resolved `ai_command` is not the shipped default, add the lean-command pointer.
+
+A failed merge's guidance reads, for example: `notes couldn't be merged; part notes saved to <path> — tidy them and release with --notes-file <path>`.
+
 ---
 
 ## Working Notes
