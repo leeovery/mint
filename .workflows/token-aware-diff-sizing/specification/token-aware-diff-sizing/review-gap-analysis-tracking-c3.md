@@ -37,7 +37,7 @@ The alternative that also fits is to drop the count (`retrying in smaller parts`
 
 - A single-pass call that halves (§10.1) shows `Writing notes: too big for the model in one call, retrying in {n} parts`. Here, and when a part halves, n is the number of parts the re-cut yields (§10.1).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
@@ -45,8 +45,8 @@ The alternative that also fits is to drop the count (`retrying in smaller parts`
 ### 2. A halving round with no room says the cap is too small, while its next move says to lower the cap
 
 **Source**: Specification analysis
-**Category**: Enhancement to existing topic
-**Move**: settled
+**Category**: Source defect
+**Move**: route
 **Priority**: Important
 **Affects**: §12.4 The ✗ line and the next moves (cause table)
 
@@ -60,23 +60,11 @@ The cause table gives both cases one phrase: `no room for the diff under max_pro
 
 The harm is worst at a terminal. Attended runs show no next moves, only the ✗ line, the AI's output and the choice. The operator sees `no room for the diff under max_prompt_bytes (part 3 of 6)` above the model's own "prompt is too long" message. They raise `max_prompt_bytes`, re-run the release, wait through the whole wave again, and fail the same way. Unattended, the output prints the phrase and then a move telling the reader to lower that same setting, so the two lines contradict each other.
 
-**Proposal**:
-A halving round with no room takes the "SIZE with no halving left" phrase, `too large for the model, even in smaller parts`. The no-room phrase stays for operator text.
-
-What decided it:
-- Halving is over for that slice, because no smaller call can be made. The specification's account of telling the operator after halving runs out treats this the same as a final SIZE answer.
-- The next moves already group the two cases.
-- The phrase now agrees with the AI's own "too long" output rendered beneath it.
-
-An alternative that also fits is a phrase of its own, such as `too large for the model, no room left to split`. It costs a third phrase for the same next moves.
+The discussion's Floor Wording and Guidance gives both no-room causes one phrase, `no room for the diff under max_prompt_bytes`, while its next moves send a halving round's no-room to the size guidance; the source carries the defect, so the phrase is the discussion's to correct.
 
 **Current**:
 | SIZE with no halving left | `too large for the model, even in smaller parts` |
 | No room for diff (§8.7) | `no room for the diff under max_prompt_bytes` |
-
-**Proposed Text**:
-| SIZE with no halving left, or a halving round with no room (§10.1) | `too large for the model, even in smaller parts` |
-| No room for diff caused by operator text (§8.7) | `no room for the diff under max_prompt_bytes` |
 
 **Resolution**: Pending
 **Notes**:

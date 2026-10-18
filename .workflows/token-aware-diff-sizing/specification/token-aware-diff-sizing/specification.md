@@ -773,14 +773,14 @@ So a chunked run keeps the single notes line and updates it as the run moves:
 ```text
 ⠋ Checking for files that don't belong in the notes…
 ⠋ Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done
-⠋ Writing notes: part 4 was too big for the model, retrying it as 2 smaller parts
+⠋ Writing notes: part 4 was too big for the model, retrying it as 3 smaller parts
 ⠋ Writing notes: merging 6 parts
 ✓ Notes written (6 parts, merged)
 ```
 
 - The check line shows on every release that runs the check (§6.1), single-pass included.
 - The split line names the release's size and its part count, then counts parts done out of the total.
-- A single-pass call that halves (§10.1) shows `Writing notes: too big for the model in one call, retrying in 2 parts`.
+- A single-pass call that halves (§10.1) shows `Writing notes: too big for the model in one call, retrying in {n} parts`. Here, and when a part halves, n is the number of parts the re-cut yields (§10.1).
 - When halving splits a part, the total grows by the parts it adds.
 - A single-pass run otherwise narrates as today.
 - The spinner suspends for the check's pauses (§6.5) and for the floor's choice (§12.2), as it does for any gate.
