@@ -166,7 +166,7 @@
               "parent": null
             },
             "fixed-fallback-body-after-notes-file": {
-              "status": "exploring",
+              "status": "decided",
               "parent": "remediation-ux-escape-hatch-guidance"
             }
           }

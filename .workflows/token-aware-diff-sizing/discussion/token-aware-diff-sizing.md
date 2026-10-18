@@ -327,7 +327,35 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 **Commit-message fallback reuse** — the `c` choice is the existing commit-subject body (`internal/notes/noai.go`), surfaced as a choice rather than built anew.
 
-**`c` is always the commit subjects** (raised by the background review, review-004 F7; user agreed 2026-10-18). As built, the `--no-ai` body returns a configured `[release].fallback` verbatim and builds the commit-subject list only when none is set (`resolveFallbackBody`, `internal/notes/resolve.go`), so a repo with a fixed fallback under `abort` would get that string from a key labelled commit-subject notes. `c` gives this release's commit subjects whether or not a fallback is set — it is chosen in the moment, and the subjects describe this release where a fixed string does not. The configured fallback stays what `--no-ai` and `on_notes_failure = fallback` ship. Accepted cost: a configured fallback body is not among the floor's choices.
+**`c` is always the commit subjects** (raised by the background review, review-004 F7; user agreed 2026-10-18). As built, the `--no-ai` body returns a configured `[release].fallback` verbatim and builds the commit-subject list only when none is set (`resolveFallbackBody`, `internal/notes/resolve.go`), so a repo with a fixed fallback under `abort` would get that string from a key labelled commit-subject notes. `c` gives this release's commit subjects whether or not a fallback is set — it is chosen in the moment, and the subjects describe this release where a fixed string does not. The configured fallback stays what `--no-ai` and `on_notes_failure = fallback` ship. Accepted cost: a configured fallback body is not among the floor's choices. *(Amended 2026-10-18 — per Dropping the Fixed Fallback Body there is no configured fallback; `--no-ai`, `fallback` and `c` all give the commit subjects.)*
+
+---
+
+## Dropping the Fixed Fallback Body
+
+### Context
+
+`[release].fallback` is a fixed notes body shared by `--no-ai` and `on_notes_failure = fallback`; when it is empty, both build the commit-subject list instead (`resolveFallbackBody`, `internal/notes/resolve.go`). The floor's `c` was then pinned to the commit subjects whatever the key holds (Remediation at the Floor), leaving two non-AI bodies in play. Walking that finding (review-004 F7), the user asked whether the feature's flags and settings still fit together.
+
+### Options Considered
+
+**Keep the key** — `--no-ai` and `fallback` ship the fixed string when one is set.
+- Pros: a repo can ship one fixed sentence in place of notes; no existing config breaks.
+- Cons: two non-AI bodies, with `c` behaving differently from `--no-ai`; the key's one observed use is now `--notes-file`'s job.
+
+**Drop the key** — every non-AI path gives the commit subjects.
+- Pros: one non-AI body everywhere; the `c` mismatch disappears.
+- Cons: a fixed-sentence body is no longer possible; a repo still setting the key fails at config load.
+
+### Journey
+
+Across the user's ten repos with a `.mint.toml`, the key is set in one, switchboard, and there it holds hand-written notes for the next release with a comment that it is removed once the release is out — the workaround `--notes-file` replaces (`grep -ln fallback ~/Code/*/.mint.toml` → `switchboard/.mint.toml`). Every other route that ends without AI notes is better served by the commit subjects than by a fixed string. The user agreed (2026-10-18).
+
+### Decision
+
+**`[release].fallback` is dropped.** `--no-ai`, `on_notes_failure = fallback` and the floor's `c` all give this release's commit-subject list; hand-written notes come through `--notes-file`. Wherever this document says "the fallback body", it now means that commit-subject list. `on_notes_failure` keeps its two values: `fallback` still reads as falling back to a non-AI body. Under strict config a repo still setting the key fails at load; mint's message for it names `--notes-file` as the replacement (wording is specification detail). Switchboard's workaround body comes out before it upgrades, as its own comment already plans. User agreed 2026-10-18. Confidence: high.
+
+Sibling check: mint-release-tool — its specification's `fallback` mode says the fallback body "defaults to the commit-subject list since the last tag; can be a fixed configurable string"; this decision removes the fixed-string option, superseding that clause once it lands, and the default it names becomes the only body.
 
 ---
 
@@ -928,5 +956,6 @@ Sibling check: interactive-mint-init-setup — the work that built `mint setup`;
 - Decided: a `--notes-file` backdoor on release and on single-version regenerate; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
 - Decided: chunking is always on — no `oversize` setting; the per-call size cap is the only size setting.
+- Decided: `[release].fallback` is dropped; every non-AI body (`--no-ai`, `on_notes_failure = fallback`, the floor's `c`) is the commit-subject list, and hand-written notes come through `--notes-file`.
 - Decided: a chunked run narrates on its one notes line — the check, the split, parts done, halving, the merge — and as one line per event in plain mode.
 - Decided: one failed chunk, or a failed merge, fails the generation; the first non-size failure ends the wave; chunk calls run a few at a time, each under its own per-attempt timeout; Ctrl-C cancels cleanly.
