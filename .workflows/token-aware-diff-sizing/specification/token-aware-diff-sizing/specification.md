@@ -787,6 +787,28 @@ The follow-ups print after the notes:
 
 The updates are new presenter events in the existing model. Spinners are a pretty-only concern spanning a stage's start and its success or failure, and plain mode renders the same events as terse lines. Each presenter renders the new events in its own way. The engine never touches spinners or TTY state.
 
+### 17. `mint commit`'s AI-Failure Output
+
+#### 17.1 The AI's output, verbatim
+
+As built, any AI generation failure on `mint commit` drops the AI's captured output. Release, by contrast, renders it verbatim under the ✗ line. Commit is the one site that breaks the rule that subprocess failure diagnostics travel verbatim, and it matters for any commit failure: an expired login, a usage limit, a claude too old for the lean flags (§2.5).
+
+- **Attended:** the AI-failure warning, `could not generate a message, opening editor`, carries the AI's captured output verbatim beneath it, then the editor opens as built.
+- **Unattended** (`-y` or non-TTY): when the run fails loud because the AI failed, the failure carries the AI's captured output verbatim beneath its `no AI message and no interactive editor available` line. The unattended run is the one with nobody present to re-run it, so it needs the cause most.
+
+The other triggers into commit's editor fallback carry no AI output, and their lines are unchanged:
+
+- `--no-ai`
+- an oversized prompt (§4.3)
+- an all-excluded diff.
+
+#### 17.2 What commit does not get
+
+- **No classify call.** The classifier's only distinct reaction is the degradation ladder, which commit does not have: every commit failure already ends in the editor, so a classify call would only delay the editor by one AI call.
+- **No chunking, exclusion check or message file** (§1.3).
+
+Commit does get the lean default command (§2), quote-aware parsing (§3), the size cap (§4.3) and the `[commit]` exclusion level (§5.1). Its shipped timeout stays 60s (§4.4).
+
 ---
 
 ## Working Notes
