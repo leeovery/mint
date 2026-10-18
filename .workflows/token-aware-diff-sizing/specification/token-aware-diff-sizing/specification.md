@@ -105,6 +105,47 @@ A claude version that predates a flag rejects it as an unknown option and exits 
 
 mint adds no version probe and no fallback to the plain command. Either would put claude-specific knowledge into mint.
 
+### 3. Quote-Aware `ai_command` Parsing
+
+#### 3.1 The rules
+
+mint splits every `ai_command` into a program name and its arguments by POSIX shell quoting rules. That covers the top level, `[release]`, `[commit]` and the shipped default:
+
+- Unquoted whitespace separates words.
+- Single quotes keep everything up to the next single quote literally.
+- Double quotes keep everything up to the next unescaped double quote. Inside them, a backslash escapes `"`, `\`, `$` and the backtick, and is otherwise literal.
+- Outside quotes, a backslash makes the next character literal.
+- A backslash followed by a newline is removed, as a line continuation.
+- Quoted and unquoted parts written together form one word: `--system-prompt="Be terse"` is the single argument `--system-prompt=Be terse`.
+- A quoted empty string, `""` or `''`, is one empty argument.
+- Nothing else is shell syntax. `$`, backticks, `*`, `~`, `|`, `;`, `&`, `<` and `>` are ordinary characters within a word: no variable expansion, globbing, pipes or redirection.
+
+mint still runs the program directly through the runner seam, never through a shell.
+
+#### 3.2 Malformed commands fail at load
+
+An `ai_command` at any level that cannot be split is rejected when config loads, before any step runs. Three cases count as malformed:
+
+- an unterminated quote
+- a trailing lone backslash
+- an empty first word.
+
+The error takes the existing load-error shape and names the key, as `on_notes_failure` and hook values are rejected today:
+
+- `invalid .mint.toml: release.ai_command has an unterminated quote`
+- `invalid .mint.toml: ai_command ends in a lone backslash`
+- `invalid .mint.toml: commit.ai_command names no program`
+
+A malformed command is never left to fail at call time. There it would read as an AI failure, reach the failure classifier (which runs the same command), take the OTHER path, and end in a non-AI body or the editor.
+
+#### 3.3 Compatibility
+
+Quotes never worked, so a working `ai_command` today contains none, and its words are unchanged under the new rules. Only a backslash in an existing command could change meaning.
+
+None of the user's repos sets `ai_command` (`grep -HE '^[[:space:]]*ai_command[[:space:]]*=' ~/Code/*/.mint.toml` → no output).
+
+The code comments that describe a whitespace split are rewritten to the new rule, in the same change. They sit on the transport's command parsing and on config's `ai_command` field.
+
 ---
 
 ## Working Notes
