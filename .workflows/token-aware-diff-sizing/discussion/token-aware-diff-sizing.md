@@ -1169,6 +1169,26 @@ Sibling check: mint-release-tool (cli-presentation) — its specification makes 
 
 ---
 
+## Narration Wording
+
+### Context
+
+Progress Narration for a Chunked Run agreed the shape with a mock of the pretty line and left exact wording open; the mock shows a chunk being halved but not a single-pass call that comes back too big, nor how the part count reads once halving adds parts.
+
+### Journey
+
+The mock's lines were agreed as shown, so they are the wording. A single-pass call that halves becomes a chunked run (Halving Bound and the Lower-the-Cap Hint), so its line says so in the mock's voice. Halving a part into two adds a part, so the total grows rather than the done count running past it.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Progress Narration for a Chunked Run (the agreed mock) and Halving Bound and the Lower-the-Cap Hint.
+
+The pretty lines are the mock's, plus `Writing notes: too big for the model in one call, retrying in 2 parts` when a single-pass call halves; when halving splits a part, the total grows by the parts it adds.
+
+Sibling check: no overlap found — the narration is this topic's own ground.
+
+---
+
 ## The Setup Guide's AI-Transport Prose
 
 ### Context
