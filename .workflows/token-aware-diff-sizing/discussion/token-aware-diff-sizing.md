@@ -605,6 +605,8 @@ Sibling check: no overlap found — the Change Map is mint-release-tool's as-bui
 
 Sibling check: mint-release-tool — its specification's Change Map section makes directory/area rollup the default and calls a flat list of every changed file "mush on big releases"; condensing long removed/renamed runs by folder applies that rollup to the novelty list, so nothing there is contradicted.
 
+**No room left for diff** — **Settled by derivation** — not discussed. Determined by Proactive Size Ceiling (no call ever exceeds the cap), Under-Cap Overflow: Halving (an exhausted ladder falls to `on_notes_failure`), and condensing being the only shrink mint makes to its own fixed part. When a call's fixed part still leaves no room for diff after the map is condensed — an outsized `[release].prompt` or `context`, which is operator text mint does not trim, or a halving round aimed below the fixed part — mint sends no call and the run falls to `on_notes_failure`, with guidance naming which of the two it was.
+
 ---
 
 ## When the Merge Fails
