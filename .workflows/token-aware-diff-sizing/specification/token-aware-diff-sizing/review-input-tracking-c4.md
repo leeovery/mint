@@ -57,8 +57,8 @@ Appended to §15.1, after the "When `r` fails" bullets:
 
 **On regenerate.** A single-version regenerate from a fresh source has its own review gate, and its `r` works the same way. On chunked notes it re-runs only the merge call. On single-pass notes it re-runs the AI path from the size check onward. A failed `r` aborts the regenerate. If the notes were chunked, or the ladder turned the `r` into a chunked run, mint first saves the per-chunk notes and names the file (§11.4). The version is already out, so the saved notes go onto it with `mint release regenerate <version> --notes-file <path>` (§13).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, `r` at Regenerate's Review Gate. Specification §15.1 carries the Proposed Text.
 
 ---
 

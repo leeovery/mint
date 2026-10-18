@@ -747,6 +747,8 @@ On single-pass notes, `r` re-runs the same AI path as built, with the nudge appe
 - `on_notes_failure` does not apply, so `fallback` never ships its body in place of the re-merge the operator asked for.
 - The abort lands before any tag, so the saved notes can still go out through `--notes-file` (§13).
 
+**On regenerate.** A single-version regenerate from a fresh source has its own review gate, and its `r` works the same way. On chunked notes it re-runs only the merge call. On single-pass notes it re-runs the AI path from the size check onward. A failed `r` aborts the regenerate. If the notes were chunked, or the ladder turned the `r` into a chunked run, mint first saves the per-chunk notes and names the file (§11.4). The version is already out, so the saved notes go onto it with `mint release regenerate <version> --notes-file <path>` (§13).
+
 #### 15.2 The dry-run cache
 
 The notes cache keys on inputs, not output: the post-exclusion diff, the version and the resolved instructions. A dry run's chunked notes are therefore cached and offered back to the real run exactly like single-pass notes, sparing the real run the whole wave.
