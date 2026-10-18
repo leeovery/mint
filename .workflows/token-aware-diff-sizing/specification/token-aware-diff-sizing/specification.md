@@ -101,7 +101,7 @@ The lean command applies wherever `ai_command` resolution falls through to the s
 A claude version that predates a flag rejects it as an unknown option and exits non-zero. That lands on the normal generation-failure path:
 
 - The failure classifier runs the same command and fails the same way, so the release takes the OTHER path (§9) with claude's own message rendered verbatim.
-- On `mint commit`, the failure opens the editor and carries that message verbatim (§17).
+- On `mint commit`, the failure carries that message verbatim, in the warning before the editor opens or in an unattended run's failure (§17).
 
 mint adds no version probe and no fallback to the plain command. Either would put claude-specific knowledge into mint.
 
