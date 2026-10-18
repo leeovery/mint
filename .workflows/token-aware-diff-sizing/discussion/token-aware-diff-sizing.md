@@ -820,6 +820,26 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 ---
 
+## The Setup Guide's AI-Transport Prose
+
+### Context
+
+`mint setup` prints a version-matched, self-contained guide for an AI agent configuring mint (`internal/setupguide`). Its overview's "The AI transport" paragraph states the shipped default as `claude -p --model sonnet` and describes today's failure behaviour — a bad-output retry, a fatal timeout, then `on_notes_failure` or the editor. This feature changes both. Its config-reference table renders from the config-metadata source of truth, so new and renamed keys reach it with no prose change.
+
+### Journey
+
+The guide's own contract is that it is version-matched so it never goes stale against the installed binary, and CLAUDE.md keeps docs true to the as-built code. Teaching an agent to operate mint's command flags is a different scope — the guide is flag-free by design — and is parked on the roadmap as an agent guide for running releases.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the setup guide's version-matched, self-contained contract (`internal/setupguide` package doc) and CLAUDE.md's rule that docs stay true to as-built.
+
+The guide's AI-transport prose is updated to what this feature changes — the lean shipped default, the per-call size cap, chunking and the floor. New and renamed config keys reach its config reference through the source of truth as built.
+
+Sibling check: interactive-mint-init-setup — the work that built `mint setup`; its guide prose is edited here only where this feature makes it untrue, and the guide's flag-free scope is left as built.
+
+---
+
 ## Summary
 
 ### Key Insights

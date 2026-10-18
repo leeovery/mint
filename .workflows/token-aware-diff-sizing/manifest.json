@@ -160,6 +160,10 @@
             "ai-noise-check-for-big-files": {
               "status": "decided",
               "parent": "degradation-ladder-the-response"
+            },
+            "setup-guide-transport-prose": {
+              "status": "decided",
+              "parent": null
             }
           }
         }
