@@ -327,6 +327,8 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 **Commit-message fallback reuse** — the `c` choice is the existing commit-subject body (`internal/notes/noai.go`), surfaced as a choice rather than built anew.
 
+**`c` is always the commit subjects** (raised by the background review, review-004 F7; user agreed 2026-10-18). As built, the `--no-ai` body returns a configured `[release].fallback` verbatim and builds the commit-subject list only when none is set (`resolveFallbackBody`, `internal/notes/resolve.go`), so a repo with a fixed fallback under `abort` would get that string from a key labelled commit-subject notes. `c` gives this release's commit subjects whether or not a fallback is set — it is chosen in the moment, and the subjects describe this release where a fixed string does not. The configured fallback stays what `--no-ai` and `on_notes_failure = fallback` ship. Accepted cost: a configured fallback body is not among the floor's choices.
+
 ---
 
 ## Scope Across the Three Consumers
