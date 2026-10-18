@@ -176,7 +176,7 @@
     "specification": {
       "items": {
         "token-aware-diff-sizing": {
-          "status": "in-progress",
+          "status": "completed",
           "sources": {
             "token-aware-diff-sizing": {
               "status": "incorporated"
