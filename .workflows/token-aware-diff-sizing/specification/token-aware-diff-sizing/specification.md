@@ -643,6 +643,46 @@ The next moves are cause-fitted. Unattended runs print them; attended runs show 
 
 A failed merge's guidance reads, for example: `notes couldn't be merged; part notes saved to <path> — tidy them and release with --notes-file <path>`.
 
+### 13. `--notes-file`
+
+#### 13.1 What it is
+
+`--notes-file <path>` hands mint a finished notes body. It replaces a workaround: write the notes into `[release].fallback`, release with `--no-ai`, then remove them, at the cost of an extra clean-up commit on main for every such release. With the flag it becomes: write a file, release with it.
+
+It takes a file path only. There is no stdin form: the review gate reads its keypresses from stdin, and an agent can always write a file. The path resolves against the directory mint was run from.
+
+- **Release:** `mint release --notes-file <path>`.
+- **Regenerate:** `mint release regenerate <version> --notes-file <path>`, a notes source beside fresh, tag and release. It puts finished notes onto a version already out, the saved chunk notes (§11.4) among them. One file answers one version, so giving it with `--all`, or with `--source`, is a usage error.
+- **`mint commit`** gets no message-file flag. It keeps its two message sources, the AI and `$EDITOR`. An agent with its own message gains little from `mint commit` beyond its staging and push flags, `git commit -F` already serves it, and commit's `-A` staging is where an excluded file would be riskiest.
+
+Usage lines, one per verb's usage text:
+
+- release: `--notes-file P   release with the finished notes in file P (no AI)`
+- regenerate: `--notes-file P   notes source: the finished notes in file P (one version only)`
+
+#### 13.2 The file is outside everything mint does
+
+- mint reads the file once at startup, before any stash, check or gate, and holds the body in memory.
+- The file does not count against the clean-tree check.
+- It is left out of `--autostash`'s stash.
+- It is never staged or committed by any git step mint runs, including the pre-tag artifact commit's `git add -A`.
+- Afterwards it sits in the work tree untouched. Cleaning it up is the caller's business.
+
+Keeping the file out of git is mint's job, not only the caller's. The obvious first try is an agent writing `notes.md` at the repo root and running `mint release -y --notes-file notes.md`. Without these exclusions, the clean-tree check would refuse the untracked file, `--autostash` would sweep it away before mint read it, and the pre-tag artifact commit would stage it into a release commit.
+
+#### 13.3 How a supplied body moves through the run
+
+- **Precedence:** a supplied body wins over everything, including the first-release and empty-diff bodies (§7.1). Those exist to produce an honest body when there is nothing for an AI to summarise, which a supplied body does not need.
+- **Skipped:** the exclusion check, the size cap, chunking and every AI call. `on_notes_failure` never applies, since it governs only an AI failure.
+- **The review gate** is still shown on an attended run, so the operator sees what will ship. It offers accept, edit and abort, without `r`, since there is no AI output to redo. Under `-y` it auto-accepts inside the presenter, as usual.
+- **The body** passes into the tag, changelog and provider release byte-identical, exactly like an AI body.
+
+#### 13.4 Refusals
+
+- **With `--no-ai`:** a usage error, exit `2`, because the two flags give two answers to where the notes come from. The same holds on regenerate with `--all` or `--source`.
+- **An empty or whitespace-only file:** refused before any step runs with `--notes-file P is empty`, exit `1`.
+- **A missing or unreadable file:** fails before any step runs with `reading --notes-file P: <cause>`, exit `1`.
+
 ---
 
 ## Working Notes
