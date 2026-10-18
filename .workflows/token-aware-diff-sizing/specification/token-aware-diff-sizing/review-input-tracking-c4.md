@@ -19,8 +19,8 @@ No source document makes that call. The record's own decision on this user-facin
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Derived from the halving rule and landed in the discussion as a dated revision of Narration Wording's Decision (the halving lines show the re-cut's part count), with Narration Wording's Journey repaired and the agreed mock amended. The specification already carries `{n}` in §16.1; no change needed.
 
 ---
 
