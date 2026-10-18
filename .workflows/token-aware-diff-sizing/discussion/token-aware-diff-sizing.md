@@ -693,6 +693,8 @@ When a Chunk Fails made the generation all-or-nothing, which means the first chu
 
 Sibling check: no overlap found — the wave, its chunk calls and the classify call are this topic's own terms.
 
+**A bound on parallel calls** — **Settled by derivation** — not discussed. Determined by the parallel-first steer (Map-Reduce, Not Refine) weighed against what unbounded fan-out does: one AI process per chunk started at once puts the whole wave on the machine and on the provider's rate and usage limits simultaneously. The chunk calls run with a concurrency limit — a few at a time — which keeps most of the parallel speed. The bound itself is specification detail.
+
 ---
 
 ## Chunk Boundaries and the Single-File Floor
