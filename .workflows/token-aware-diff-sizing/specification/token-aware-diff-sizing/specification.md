@@ -483,6 +483,30 @@ The classifier adds to the AI's verbatim output; it never replaces it. Its code 
 
 A repo whose own `ai_command` carries an overhead that alone overflows the window gets no chunk small enough to fit. Its classify call fails the same way, so the run takes the OTHER path with the AI's verbatim message, then `on_notes_failure`. mint's guidance points at the documented lean command rather than naming claude flags itself (§12).
 
+### 10. Halving After an Under-Cap Overflow
+
+#### 10.1 When it applies
+
+A prompt under the cap can still overflow the model. That happens when an explicit `ai_command` points at a smaller-window model, when an explicit command carries overhead of its own, or when the cap is set above the real window. The failed call was already under the cap, so the cap gives the chunker nothing smaller to aim at.
+
+So when the classifier answers SIZE for a diff-carrying call (the single-pass call or a chunk call), mint halves:
+
+- The new target is half the composed size of the call that failed: instructions, Change Map, framing, diff and reminder together.
+- The slice that call carried is re-cut at the new target, by the first wave's packing and piece rules (§8.3, §8.4). A single-pass call that fails SIZE therefore becomes a chunked run at half its size.
+- Each call in a halved round has its own room for diff, which is whatever its fixed part leaves. A round aimed below the fixed part has no room, and no call is sent (§8.7).
+- A SIZE answer on the merge call is not halved. Halving a merge would be the recursive-collapse reduce that is ruled out, so it is a failed merge instead (§11).
+
+#### 10.2 The bound
+
+A slice is halved at most three times, counted from its first SIZE answer, which takes it to an eighth of the size that first failed. A fourth SIZE fails that slice, and a failed slice fails the generation (§11). A cap wrong for its model by more than eight times is not a slight miscalibration.
+
+Halving's rounds are serial, a deliberate exception to the parallel-first shape. The exception is accepted because the path is rare when the cap fits the model, and its cost lands where the misconfiguration is.
+
+#### 10.3 Telling the operator
+
+- **The notes were written after halving.** After the notes, mint says the cap is set higher than this model accepts, and suggests the size of the largest call that succeeded in the run. That turns a quiet absorption into something the operator can fix.
+- **Halving ran out.** mint cannot tell a small window from a command with a large overhead of its own: in both, even small pieces come back SIZE while the small classify call fits. So the floor's guidance names both causes: the model accepts less than the cap (lower `max_prompt_bytes`), or the command carries a large overhead of its own (use the documented lean command, §2) (§12).
+
 ---
 
 ## Working Notes
