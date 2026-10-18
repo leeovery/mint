@@ -523,6 +523,26 @@ The cap converts "too slow because too big" into "too big" before the call is ma
 
 ---
 
+## Timeouts Across a Wave
+
+### Context
+
+The transport's `timeout` is a per-attempt bound on one AI call (`internal/ai/transport.go`; per-verb via `TimeoutFor`). A chunked release makes many calls — the exclusion check, chunk calls run a few at a time, possibly classify calls, then the merge — and the existing setting said nothing about how it reads across them.
+
+### Journey
+
+The per-attempt meaning is the transport's by design, and Timeouts and the Ladder already sized the cap against it: a call at the cap finishes inside the timeout. An overall deadline across the wave would be a second, new timing rule whose right value grows with the release — exactly what the per-call cap exists to avoid having to predict.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the transport's per-attempt timeout and Timeouts and the Ladder (the cap is sized so a call at the cap finishes inside the timeout).
+
+The per-attempt timeout applies to each call on its own — every chunk call, the merge and the classify call. A wave therefore takes roughly as long as its rounds of chunk calls plus the merge; mint sets no overall deadline across the calls.
+
+Sibling check: no overlap found — ai-model-selection's per-verb `timeout` is used as specified, per attempt.
+
+---
+
 ## Regenerate on Chunked Notes
 
 ### Context

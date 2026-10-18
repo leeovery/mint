@@ -102,7 +102,7 @@
               "parent": "implementation-reality-parallelism"
             },
             "timeout-semantics-across-n-calls": {
-              "status": "pending",
+              "status": "decided",
               "parent": "implementation-reality-parallelism"
             },
             "cancellation-partial-coverage-fork": {
