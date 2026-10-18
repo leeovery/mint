@@ -446,6 +446,15 @@ Each phrase names the cause in a few words and leaves the specifics to the AI's 
 
 ### Decision
 
+#### 2026-10-18 — revised
+*Trigger: the one no-room phrase misnames a halving round's no-room. `no room for the diff under max_prompt_bytes` reads as "raise the cap", while the next moves below send a halving round's no-room to the size guidance, which says to lower it; at a terminal only the ✗ line shows, so the operator raises the cap, re-runs the wave and fails the same way.*
+
+**Settled by derivation** — not discussed. Determined by Halving Bound and the Lower-the-Cap Hint (when halving runs out the guidance names the size causes) and the next moves below, which already group a halving round's no-room with a SIZE answer that has no halving left. The alternative that also fits, a phrase of its own such as `too large for the model, no room left to split`, costs a third phrase for the same next moves.
+
+**A halving round with no room reads `too large for the model, even in smaller parts`**, as a SIZE answer with no halving left does: the model refused, and no smaller call can be made, so halving is over for that slice, and the phrase agrees with the AI's own "too long" output beneath it. `no room for the diff under max_prompt_bytes` is operator text's alone — an outsized `[release].prompt` or `context`. What changes from the entry below: its one no-room phrase now names operator text only. The rest of the entry below stands, with its amendments.
+
+#### Initial
+
 **Settled by derivation** — not discussed. Determined by Remediation at the Floor, Classifier Result Alongside the Verbatim Error, Overhead-Dominated Failures, Under-Cap Overflow: Halving's When halving runs out, Stitching and Salience's No room left for diff, When the Merge Fails, When a Chunk Fails and Notes-File Backdoor's revision (regenerate names its own command).
 
 - **Cause phrases** — `AI timed out` and `AI tool not installed` stay; a SIZE answer with no halving left reads `too large for the model, even in smaller parts`; OTHER reads `AI call failed`, or `AI returned empty notes` when there was no output; no room reads `no room for the diff under max_prompt_bytes`; a merge prompt over the cap reads `part notes too large to merge`. In a chunked run the phrase ends with where it happened: `(part 3 of 6)`, `(merging)`. *(Amended 2026-10-18 — per A Merge the Model Rejects for Size, a SIZE answer on the merge reads `part notes too large to merge` and takes only the always moves.)*
