@@ -464,6 +464,34 @@ Sibling check: ai-model-selection — its specification makes `ai_command` a raw
 
 ---
 
+## Lean Command Flag Set and Wording
+
+### Context
+
+The Lean Default AI Command decision fixed the lean claude form and its trimming flags, leaving the exact flag set and the wording of the task-neutral system prompt open. Both measurement commands in that section also carried `--no-session-persistence`, which the decision did not name.
+
+### Journey
+
+Every call mint makes is one-shot: nothing in mint resumes a claude session. Without `--no-session-persistence`, claude saves each call to disk as a resumable session, so a chunked release would leave a dozen sessions in the operator's resume list; the flag changes nothing about the call itself (`claude --help`: "sessions will not be saved to disk and cannot be resumed"). The wording follows the System prompt wording derivation: it names no task, because the same command serves every call mint makes.
+
+Measured 2026-10-18 with the final command on the same one-word prompt (`--output-format json` added only to read `usage`): `echo "Reply with the single word: ok" | claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for." --output-format json` → answered `ok` on the subscription login, 628 input tokens (cache_creation 626 + input 2).
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Lean Default AI Command (the trimming flags), its System prompt wording derivation (task-neutral, one command for every call), and mint making only one-shot calls.
+
+The shipped default is exactly:
+
+```text
+claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."
+```
+
+`--no-session-persistence` joins the decided flags so that mint's calls are never saved as resumable sessions.
+
+Sibling check: no overlap found — this topic's own ground.
+
+---
+
 ## Commit AI-Failure Output
 
 ### Context
