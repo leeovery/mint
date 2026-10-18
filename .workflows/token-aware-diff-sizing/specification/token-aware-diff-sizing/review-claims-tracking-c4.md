@@ -37,8 +37,8 @@ Source carrying the claim:
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Re-measured: 2.6 MB of Go diff through the lean command is uploaded and refused by the API (400, 1.6 s, cost 0); only content claude's own ~4-bytes-a-token estimate already puts over is refused locally. Lee agreed (2026-10-18) to keep the single retry on the corrected grounds; landed in the discussion as a dated revision of Transport Retry Before the Classifier, with the restatements in Proactive Size Ceiling, Size Cap Key, the classifier Journey, Lean Default AI Command and Key Insight 2 repaired, including the ~803k overhead reading (claude's estimate gap, not overhead). Specification re-aligned in §1.2, §4.5 and §9.5.
 
 ---
 
