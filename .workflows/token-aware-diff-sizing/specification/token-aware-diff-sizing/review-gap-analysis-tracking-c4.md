@@ -30,7 +30,7 @@ The example's merge line and done line read 8. Two things in the specification d
 ✓ Notes written (8 parts, merged)
 ```
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
@@ -63,8 +63,8 @@ Appended to §15.1, after the "On regenerate" paragraph:
 
 > `regenerate --all` run at a terminal without `-y` shows each fresh version at the same review gate, and its `r` follows the same rules for that version: only the merge on chunked notes, the AI path from the size check onward on single-pass notes. A failed `r` saves that version's per-chunk notes where the notes were chunked or the ladder made the `r` a chunked run, names the file with that version's `mint release regenerate <version> --notes-file <path>` (§11.4, §13), and ends the batch, as a failed gate does as built. It is not the batch's floor, so the batch does not skip the version and carry on.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, `r` at `regenerate --all`'s Review Gates (merge-only `r` on chunked notes; a failed `r` saves that version's part notes, names its regenerate `--notes-file` command and ends the batch). Specification §15.1 carries the Proposed Text.
 
 ---
 
@@ -84,9 +84,7 @@ An operator whose big release ends `AI timed out` looks the setting up, reads th
 **Proposal**:
 The shared `timeout` row names both shipped defaults: 180 seconds on release, 60 on commit. Its config-metadata row says the same, so the setup guide's config reference follows. Any README line that states the timeout's default names both.
 
-What determined it: the record gives each verb its own shipped default and resolves both through the shared key. A single figure on the shared row is therefore untrue for one of the two verbs.
-
-The alternative that fits: the shared row points to the per-verb rows, with `[release].timeout` showing 180 and `[commit].timeout` showing 60. That says the same thing at the cost of one more lookup.
+What determined it: the record gives each verb its own shipped default and resolves both through the shared key, and docs stay true to what is built (§18). A single figure on the shared row is therefore untrue for one of the two verbs, so the row states both. How the cell lays the two figures out is the builder's.
 
 **Current**:
 They show `[release].timeout`'s 180s default.
@@ -94,7 +92,7 @@ They show `[release].timeout`'s 180s default.
 **Proposed Text**:
 They show `[release].timeout`'s 180s default. The shared `timeout` row names both shipped defaults, 180 seconds on release and 60 on commit, since both verbs resolve through it (§4.4). Its config-metadata row says the same, so the setup guide's config reference follows, and any README line that states the timeout's default names both.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

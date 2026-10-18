@@ -749,6 +749,8 @@ On single-pass notes, `r` re-runs the same AI path as built, with the nudge appe
 
 **On regenerate.** A single-version regenerate from a fresh source has its own review gate, and its `r` works the same way. On chunked notes it re-runs only the merge call. On single-pass notes it re-runs the AI path from the size check onward. A failed `r` aborts the regenerate. If the notes were chunked, or the ladder turned the `r` into a chunked run, mint first saves the per-chunk notes and names the file (§11.4). The version is already out, so the saved notes go onto it with `mint release regenerate <version> --notes-file <path>` (§13).
 
+`regenerate --all` run at a terminal without `-y` shows each fresh version at the same review gate, and its `r` follows the same rules for that version: only the merge on chunked notes, the AI path from the size check onward on single-pass notes. A failed `r` saves that version's per-chunk notes where the notes were chunked or the ladder made the `r` a chunked run, names the file with that version's `mint release regenerate <version> --notes-file <path>` (§11.4, §13), and ends the batch, as a failed gate does as built. It is not the batch's floor, so the batch does not skip the version and carry on.
+
 #### 15.2 The dry-run cache
 
 The notes cache keys on inputs, not output: the post-exclusion diff, the version and the resolved instructions. A dry run's chunked notes are therefore cached and offered back to the real run exactly like single-pass notes, sparing the real run the whole wave.
@@ -776,8 +778,8 @@ So a chunked run keeps the single notes line and updates it as the run moves:
 ⠋ Checking for files that don't belong in the notes…
 ⠋ Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done
 ⠋ Writing notes: part 4 was too big for the model, retrying it as 3 smaller parts
-⠋ Writing notes: merging 6 parts
-✓ Notes written (6 parts, merged)
+⠋ Writing notes: merging 8 parts
+✓ Notes written (8 parts, merged)
 ```
 
 - The check line shows on every release that runs the check (§6.1), single-pass included.
@@ -853,7 +855,7 @@ Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code
 
 #### 18.2 The README
 
-- **Per-key tables** gain `max_prompt_bytes`, `[release].diff_exclude`, `[commit].diff_exclude` and `[release].diff_keep`. They lose `max_diff_lines` and `[release].fallback`. They show `[release].timeout`'s 180s default. The tripwire test checks only that each distinct schema key name appears somewhere in the README (`grep -n 'strings.Contains(readme, key)' internal/config/readme_tripwire_test.go` → `68:		if !strings.Contains(readme, key) {`). It catches a missing `max_prompt_bytes` or `diff_keep`. It does not catch a missing `[release].diff_exclude` or `[commit].diff_exclude` row, because the README already names `diff_exclude` (`grep -c 'diff_exclude' README.md` → `1`).
+- **Per-key tables** gain `max_prompt_bytes`, `[release].diff_exclude`, `[commit].diff_exclude` and `[release].diff_keep`. They lose `max_diff_lines` and `[release].fallback`. They show `[release].timeout`'s 180s default. The shared `timeout` row names both shipped defaults, 180 seconds on release and 60 on commit, since both verbs resolve through it (§4.4). Its config-metadata row says the same, so the setup guide's config reference follows, and any README line that states the timeout's default names both. The tripwire test checks only that each distinct schema key name appears somewhere in the README (`grep -n 'strings.Contains(readme, key)' internal/config/readme_tripwire_test.go` → `68:		if !strings.Contains(readme, key) {`). It catches a missing `max_prompt_bytes` or `diff_keep`. It does not catch a missing `[release].diff_exclude` or `[commit].diff_exclude` row, because the README already names `diff_exclude` (`grep -c 'diff_exclude' README.md` → `1`).
 - **The unwind promises.** The feature list's "Everything before the `git push --atomic` is unwindable … leaving the repo exactly as it found it" and the surgical-unwind bullet name the one exception: after an abort or failure before the push, the exclusion check's answers commit stays on the branch, re-committed on the starting commit (§6.6).
 - **The lean default command** is documented in full. That includes what it drops on purpose, CLAUDE.md files and Claude Code's system prompt (§2.3), and that conventions belong in the `[release]` and `[commit]` `context` and `prompt` keys. It is the lean command the floor's guidance points operators at for their own `ai_command` (§12.4).
 - **`ai_command`'s quoting rules** (§3) are documented where `ai_command` is.
