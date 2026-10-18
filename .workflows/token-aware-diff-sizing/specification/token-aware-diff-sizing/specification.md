@@ -144,7 +144,7 @@ Quotes never worked, so a working `ai_command` today contains none, and its word
 
 None of the user's repos sets `ai_command` (`grep -HE '^[[:space:]]*ai_command[[:space:]]*=' ~/Code/*/.mint.toml` → no output).
 
-The code comments that describe a whitespace split are rewritten to the new rule, in the same change. They sit on the transport's command parsing and on config's `ai_command` field.
+The code comments that describe a whitespace split are rewritten to the new rule, in the same change. They sit on the transport's command parsing (the `ai.Config` command field, `Generate` and `parseCommand`), on config's `ai_command` field and its `AICommandFor` accessor, and on `aitransport.New`: `grep -rn -i 'whitespace-split\|whitespace split\|by whitespace\|strings.Fields split' internal/ai internal/config internal/aitransport --include='*.go' | grep -v _test.go` → `internal/ai/transport.go:92`, `:171`, `:306`; `internal/config/config.go:129`, `:535`; `internal/aitransport/aitransport.go:30` (2026-10-18).
 
 ### 4. The Per-Call Size Cap
 
@@ -725,7 +725,7 @@ Under strict config, a `.mint.toml` still setting `[release].fallback` fails at 
 invalid .mint.toml: release.fallback has been removed — every non-AI body is the commit-subject list; supply hand-written notes with --notes-file
 ```
 
-The key's config-metadata row and its README table entries go with it. The setup guide's prose follows (§18).
+The key's config-metadata row and its README table entries go with it. So does the fixed string in `on_notes_failure`'s own description: its config-metadata row says `fallback uses the commit-subject / fixed-string body`, and its README row adds "or `fallback` string". Both come to say `fallback` ships the commit-subject list. The setup guide's prose follows (§18).
 
 No repo of the user's sets the key, so none needs a change before upgrading: `grep -lE '^[[:space:]]*fallback[[:space:]]*=' ~/Code/*/.mint.toml` → no output (2026-10-18).
 
@@ -846,11 +846,13 @@ Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code
 
   Its `claude -p --model sonnet`, its `default 60`, and its "fall back to the commit-subject / fallback body" go.
 - **The `diff_exclude` advice.** The etiquette section ("diff_exclude scope") and procedure step 4 send `.workflows/`, `.claude/`, agent directories, `docs/` and lockfiles to a plain `diff_exclude`. After the split (§5.1), that would hide them from commit messages too. The advice is updated to name the levels: noise that only release notes should skip goes in `[release].diff_exclude`, and the shared list keeps only what neither verb should read, such as lockfiles and build output.
-- **The config reference** renders from the config-metadata source of truth, as built, so new, renamed and removed keys reach it with no prose change.
+- **The point-of-no-return line.** The pipeline section's "Everything before it is unwindable; nothing after it is" gains its one exception: after an abort or failure before the push, the exclusion check's answers commit stays, re-committed on the starting commit (§6.6).
+- **The config reference** renders from the config-metadata source of truth, as built, so new, renamed and removed keys reach it with no change to the guide's own prose. A row whose description names behaviour this feature changes is edited in the source of truth itself, `on_notes_failure`'s among them (§14.2).
 
 #### 18.2 The README
 
 - **Per-key tables** gain `max_prompt_bytes`, `[release].diff_exclude`, `[commit].diff_exclude` and `[release].diff_keep`. They lose `max_diff_lines` and `[release].fallback`. They show `[release].timeout`'s 180s default. The tripwire test checks only that each distinct schema key name appears somewhere in the README (`grep -n 'strings.Contains(readme, key)' internal/config/readme_tripwire_test.go` → `68:		if !strings.Contains(readme, key) {`). It catches a missing `max_prompt_bytes` or `diff_keep`. It does not catch a missing `[release].diff_exclude` or `[commit].diff_exclude` row, because the README already names `diff_exclude` (`grep -c 'diff_exclude' README.md` → `1`).
+- **The unwind promises.** The feature list's "Everything before the `git push --atomic` is unwindable … leaving the repo exactly as it found it" and the surgical-unwind bullet name the one exception: after an abort or failure before the push, the exclusion check's answers commit stays on the branch, re-committed on the starting commit (§6.6).
 - **The lean default command** is documented in full. That includes what it drops on purpose, CLAUDE.md files and Claude Code's system prompt (§2.3), and that conventions belong in the `[release]` and `[commit]` `context` and `prompt` keys. It is the lean command the floor's guidance points operators at for their own `ai_command` (§12.4).
 - **`ai_command`'s quoting rules** (§3) are documented where `ai_command` is.
 - **`--notes-file`** on release and regenerate (§13), the exclusion check and its pauses (§6), chunking and the saved chunk-notes file (§8, §11.4) are documented with the commands they belong to.
@@ -858,6 +860,7 @@ Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code
 #### 18.3 CLAUDE.md and code comments
 
 - CLAUDE.md's config seam says `max_diff_lines`/`diff_exclude` "stay shared-only at the top level". It is rewritten: `max_prompt_bytes` is shared-only, and `diff_exclude` has shared, `[release]` and `[commit]` levels that add rather than override. Any other line naming a renamed or removed symbol is kept true the same way.
+- The load-bearing invariant "Surgical unwind, then PONR" says every pre-push mutation is tracked and unwound on failure. It is rewritten to carry the one exception: the exclusion check's answers commit, which the unwind re-commits on the starting commit (§6.6).
 - `--notes-file`'s usage lines (§13.1) join the curated usage texts, where a test pins coverage.
 - Code comments that state a contract this feature changes are rewritten in the same commit. These include the whitespace split (§3.3), the line-count guard, the single 60s default, and the fixed fallback string.
 

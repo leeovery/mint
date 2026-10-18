@@ -35,7 +35,7 @@ The code comments that describe a whitespace split are rewritten to the new rule
 **Proposed Text**:
 The code comments that describe a whitespace split are rewritten to the new rule, in the same change. They sit on the transport's command parsing (the `ai.Config` command field, `Generate` and `parseCommand`), on config's `ai_command` field and its `AICommandFor` accessor, and on `aitransport.New`: `grep -rn -i 'whitespace-split\|whitespace split\|by whitespace\|strings.Fields split' internal/ai internal/config internal/aitransport --include='*.go' | grep -v _test.go` → `internal/ai/transport.go:92`, `:171`, `:306`; `internal/config/config.go:129`, `:535`; `internal/aitransport/aitransport.go:30` (2026-10-18).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
@@ -81,7 +81,7 @@ In §18.2, a bullet after the per-key tables bullet:
 In §18.3, a bullet after the config-seam bullet:
 - The load-bearing invariant "Surgical unwind, then PONR" says every pre-push mutation is tracked and unwound on failure. It is rewritten to carry the one exception: the exclusion check's answers commit, which the unwind re-commits on the starting commit (§6.6).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
@@ -117,11 +117,11 @@ Line 147 and README line 223 are the removed key's own entries, which §14.2 alr
 §18.1: "- **The config reference** renders from the config-metadata source of truth, as built, so new, renamed and removed keys reach it with no prose change."
 
 **Proposed Text**:
-§14.2: "The key's config-metadata row and its README table entries go with it. So does the fixed string in `on_notes_failure`'s own description, in its config-metadata row (`fallback uses the commit-subject / fixed-string body`) and its README row (`(or `fallback` string)`): both say `fallback` ships the commit-subject list. The setup guide's prose follows (§18)."
+§14.2: "The key's config-metadata row and its README table entries go with it. So does the fixed string in `on_notes_failure`'s own description: its config-metadata row says `fallback uses the commit-subject / fixed-string body`, and its README row adds "or `fallback` string". Both come to say `fallback` ships the commit-subject list. The setup guide's prose follows (§18)."
 
 §18.1: "- **The config reference** renders from the config-metadata source of truth, as built, so new, renamed and removed keys reach it with no change to the guide's own prose. A row whose description names behaviour this feature changes is edited in the source of truth itself, `on_notes_failure`'s among them (§14.2)."
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
