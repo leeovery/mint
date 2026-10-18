@@ -809,6 +809,39 @@ The other triggers into commit's editor fallback carry no AI output, and their l
 
 Commit does get the lean default command (§2), quote-aware parsing (§3), the size cap (§4.3) and the `[commit]` exclusion level (§5.1). Its shipped timeout stays 60s (§4.4).
 
+### 18. Documentation and the Setup Guide
+
+Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code comments all change in the same change as the behaviour they describe.
+
+#### 18.1 The setup guide
+
+`mint setup` prints a version-matched, self-contained guide for an AI agent configuring mint. It is edited only where this feature makes it untrue, and it stays flag-free by design. An agent guide for running releases is parked on the roadmap (§1.4).
+
+- **The AI-transport paragraph** is rewritten to cover:
+  - the lean shipped default (§2)
+  - the per-call size cap (§4)
+  - chunking (§8)
+  - the floor (§12)
+  - the release timeout's 180s default beside commit's 60s (§4.4)
+  - the commit-subject list as the one non-AI body (§14).
+
+  Its `claude -p --model sonnet`, its `default 60`, and its "fall back to the commit-subject / fallback body" go.
+- **The `diff_exclude` advice.** The etiquette section ("diff_exclude scope") and procedure step 4 send `.workflows/`, `.claude/`, agent directories, `docs/` and lockfiles to a plain `diff_exclude`. After the split (§5.1), that would hide them from commit messages too. The advice is updated to name the levels: noise that only release notes should skip goes in `[release].diff_exclude`, and the shared list keeps only what neither verb should read, such as lockfiles and build output.
+- **The config reference** renders from the config-metadata source of truth, as built, so new, renamed and removed keys reach it with no prose change.
+
+#### 18.2 The README
+
+- **Per-key tables** gain `max_prompt_bytes`, `[release].diff_exclude`, `[commit].diff_exclude` and `[release].diff_keep`. They lose `max_diff_lines` and `[release].fallback`. They show `[release].timeout`'s 180s default. The tripwire test that asserts every schema key appears in the README covers the additions.
+- **The lean default command** is documented in full. That includes what it drops on purpose, CLAUDE.md files and Claude Code's system prompt (§2.3), and that conventions belong in the `[release]` and `[commit]` `context` and `prompt` keys. It is the lean command the floor's guidance points operators at for their own `ai_command` (§12.4).
+- **`ai_command`'s quoting rules** (§3) are documented where `ai_command` is.
+- **`--notes-file`** on release and regenerate (§13), the exclusion check and its pauses (§6), chunking and the saved chunk-notes file (§8, §11.4) are documented with the commands they belong to.
+
+#### 18.3 CLAUDE.md and code comments
+
+- CLAUDE.md's config seam says `max_diff_lines`/`diff_exclude` "stay shared-only at the top level". It is rewritten: `max_prompt_bytes` is shared-only, and `diff_exclude` has shared, `[release]` and `[commit]` levels that add rather than override. Any other line naming a renamed or removed symbol is kept true the same way.
+- `--notes-file`'s usage lines (§13.1) join the curated usage texts, where a test pins coverage.
+- Code comments that state a contract this feature changes are rewritten in the same commit. These include the whitespace split (§3.3), the line-count guard, the single 60s default, and the fixed fallback string.
+
 ---
 
 ## Working Notes
