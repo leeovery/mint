@@ -507,6 +507,78 @@ Halving's rounds are serial, a deliberate exception to the parallel-first shape.
 - **The notes were written after halving.** After the notes, mint says the cap is set higher than this model accepts, and suggests the size of the largest call that succeeded in the run. That turns a quiet absorption into something the operator can fix.
 - **Halving ran out.** mint cannot tell a small window from a command with a large overhead of its own: in both, even small pieces come back SIZE while the small classify call fits. So the floor's guidance names both causes: the model accepts less than the cap (lower `max_prompt_bytes`), or the command carries a large overhead of its own (use the documented lean command, §2) (§12).
 
+### 11. Failures in a Chunked Run
+
+#### 11.1 One failed chunk fails the generation
+
+A chunk call (or piece) ends in failure in either of these cases:
+
+- after its transport retry, its classify call and, on SIZE, its halving rounds (§10)
+- on a timeout or a missing binary.
+
+When any chunk ends in failure, no merge runs. mint saves the notes of the chunks that did finish (§11.4) and names the file in the failure. The run then goes to `on_notes_failure` like any other failure (§12).
+
+Merging what came back is out. The missing slice can be the release's headline feature. Notes that read as complete while quietly leaving out the biggest change are the very failure this feature exists to end, and under `-y` they would ship unreviewed.
+
+#### 11.2 The first final failure ends the wave
+
+A chunk failure ends the wave when it finishes that chunk for good, which is anything except a SIZE answer with halving left:
+
+- an OTHER answer
+- a failed classify call
+- a failure with no output to classify
+- a timeout, which gets no classify call
+- a missing binary
+- a SIZE answer with no halving rounds left.
+
+After it, mint starts no new chunk calls and makes no further classify calls. Calls already running finish, and the notes they produce are saved with the rest. A SIZE answer with halving left does not end the wave; that chunk halves (§10).
+
+Once one chunk has failed for good, the generation has already failed, so classifying further failures could only confirm it. A usage limit or an expired login landing mid-wave would otherwise send up to four calls per chunk at a service already refusing them. Letting in-flight calls finish costs no extra requests, and what they return makes the attended floor's `e` cheap (§12).
+
+The ✗ line renders that first final failure's cause phrase and its captured output verbatim (§12).
+
+#### 11.3 A failed merge
+
+The merge can fail for reasons other than size. It is the last call after a parallel wave, so it is the one most likely to meet a usage limit the wave itself drew down, an expired login, a timeout, or an error that survives the transport's retry.
+
+There is no concatenation rung. Gluing the chunk notes together would ship a visibly broken body: repeated section headers, near-duplicate bullets, no ranking. That is worst exactly when nobody is reviewing.
+
+A merge counts as failed in three cases:
+
+- any failure of the merge call
+- a SIZE answer from the classifier
+- a merge prompt over the cap (§8.7).
+
+mint then saves every chunk's notes (§11.4), names the file, and goes to `on_notes_failure` (§12).
+
+#### 11.4 The saved chunk-notes file
+
+- **Where:** `{user cache dir}/mint/chunk-notes/{repo path, separators as dashes}/{tag}.md`. That is outside the repo, beside the dry-run notes cache but outside its pruning, because the file must outlive the run. A later failure of the same tag overwrites it. The failure names its full path.
+- **Contents:** each finished chunk's notes in chunk order, separated by a blank line, exactly as the chunk calls returned them.
+- **The marker:** when any slice has no notes, the file opens with one bold line, then a blank line before the notes:
+
+  ```text
+  **Notes missing:** no notes were written for {files} — add them before releasing.
+  ```
+
+  It lists every file with no notes. A file whose pieces only partly failed is marked `(partly)`. The failure guidance says the same thing.
+
+The marker lives in the file itself because the file is what gets picked up later. That might be by the operator through `e`, or by an agent session releasing with `--notes-file`, possibly after the terminal output is gone. Accepted cost: the marker line ships if the file is released unread. An attended release shows it at the review gate.
+
+**No file when no chunk finished.** mint saves and names a file only when at least one chunk's notes exist. A wave can fail before any chunk finishes, for example when a login expires or a usage limit lands at the start. Then the failure names no file, the floor's `e` opens empty, and there is no `--notes-file` pointer. A file holding only the marker would otherwise pass `--notes-file`'s empty check and ship as the release's notes.
+
+The file keeps the wave's work. At a terminal the floor's `e` opens it (§12). `--notes-file` releases it (§13), either on the release itself or, for a version already out, through regenerate.
+
+#### 11.5 Ctrl-C mid-wave
+
+A Ctrl-C cancels every call in flight and aborts cleanly. No chunk notes are saved, and `on_notes_failure` does not apply. An interrupted chunked run behaves like an interrupted single-pass one: it stops, and a re-run starts over. mint keeps no resume state.
+
+#### 11.6 Timeouts across a wave
+
+The per-attempt timeout applies to each call on its own: every chunk call, the merge and the classify call. A wave therefore takes roughly as long as its rounds of chunk calls plus the merge.
+
+There is no overall deadline across the calls. One would be a second timing rule whose right value grows with the release, which is exactly what the per-call cap exists to avoid predicting. A chunk call's timeout is a final failure that ends the wave (§11.2). A timeout on a single-pass call is covered in §9.1.
+
 ---
 
 ## Working Notes
