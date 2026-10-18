@@ -238,6 +238,98 @@ A change to mint's config is about how releases are made, not what a release hol
 
 The plain-mode `version_file` exclusion is unchanged. `mint commit`'s AI diff has no built-in excludes, as built, so a config change still reaches its commit message.
 
+### 6. The Exclusion Check
+
+Before a release's notes are written, mint asks the AI which changed paths look like they do not belong in release notes. At a terminal it then asks the operator about each one.
+
+It exists to catch slips that have already shipped: design files and test changes documented in notes they were never meant for. Those slips happened on normal-sized releases, so the check runs on every release whose notes the AI writes, not only big ones.
+
+#### 6.1 When it runs
+
+The check runs on `mint release`, before the size check, which measures what remains (§7). It is skipped in these cases:
+
+- under `--no-ai`
+- with `--notes-file` (§13)
+- on a first release
+- when no path is left to raise: an empty post-exclusion diff, or every changed path already covered by an exclusion or the keep list.
+
+`mint release regenerate` never runs it, for any source, single version or `--all`. Regenerate applies the `[release]` exclusion and keep lists as they stand, so answers given on forward releases carry into regenerated notes. A check there would have it edit and commit `.mint.toml` mid-run, and could pause `--all` at every version. A regenerate that writes only the provider release would otherwise need no clean tree and commit nothing. Accepted cost: noise in an old version that was never asked about is not flagged.
+
+`mint commit` gets no check either. A commit message should describe the tests and specs in the work, and a check there would be asking a different question, closer to "did you mean to stage this?".
+
+#### 6.2 The call
+
+The check is one AI call through the existing transport, with the release command and timeout. It carries no diff, only the release's changed-path list. Each entry is a path not already covered by the built-in always-excludes, the shared or `[release]` `diff_exclude`, or `diff_keep`, listed with its change status and the size of its diff. Big files are listed like any other path; the check passes no separate verdict on them.
+
+When the list would take more than a tenth of the cap, it condenses by folder (§6.3), for example to `vendor/: 4,312 files, 38 MB`. The AI suggests folder-level globs in the main, so a folder-grouped list keeps what it needs. Skipping the check would lose it on exactly the releases where flagging a folder matters most, and splitting the list across calls would split the judgment. A list that cannot get under the cap even condensed counts as a failed check (§6.8).
+
+#### 6.3 Condensing by folder
+
+Two texts condense by folder: the check's file list, and the Change Map (§8). The rule is the same for both:
+
+- A text condenses once it would take more than a tenth of the size cap, which is 150,000 bytes at the default.
+- Condensing replaces a long run of entries under one folder with one summary line for that folder, until the text is under its share.
+- A text under its share renders exactly as it does today.
+
+The result must be deterministic for the same input and must collapse the largest runs first. Which folders collapse, and in what order, is otherwise the implementer's.
+
+#### 6.4 Reading the answer
+
+The AI returns suggested globs, each with a short reason, or an explicit "none".
+
+- mint keeps a suggestion only if it matches at least one uncovered changed path, matched the way git matches `diff_exclude`.
+- An answer that is neither "none" nor yields one usable suggestion is a failed check (§6.8).
+
+The AI never excludes anything itself.
+
+#### 6.5 At a terminal: one pause per suggestion
+
+Each surviving suggestion gets a pause through the presenter's gate seam, in order. A suggestion is skipped when earlier answers in this run already cover everything it matches. The pause shows:
+
+- the glob and the AI's reason
+- how many changed files it matches, and their total size
+- any of those files on the keep list.
+
+It offers two choices:
+
+- **Exclude:** the glob joins `[release].diff_exclude`, and this release's notes are written without those files.
+- **Keep:** the glob joins `[release].diff_keep` and is never raised again.
+
+The default is keep, so no file leaves the notes without the operator choosing it.
+
+#### 6.6 Recording the answers
+
+Answers are held until the last pause, then written together into `.mint.toml`'s `[release]` table. The entry is appended to an existing key, the key is added to an existing table, the table is added, or the file is created holding only that table, as needed. Everything else in the file is left as written: other keys, comments and formatting. Answers go to `[release]` only, never the shared list, so commit messages still see those files.
+
+mint then stages `.mint.toml` by path and commits it through the mutator, with the fixed subject `chore(release): release-notes path answers for {tag}`. The prefix is constant, like the pre-tag artifact commit's, not `commit_prefix`. The commit sits on the release branch and goes out with the release's push.
+
+Answers live in `.mint.toml` rather than in state on one machine, so a teammate, CI or an agent session elsewhere is not asked the same question again.
+
+- **Ctrl-C during the pauses** cancels the run and records nothing.
+- **Abort or failure after answering:** the answers commit stays. The answer is about the repo, not this release, and unwinding it would bring the same question back next time. This is the one deliberate exception to the surgical unwind. A failure before the push unwinds as built, back to the starting commit and taking the pre-tag artifact commit with it. The unwind then re-commits the answers on top of the starting commit.
+- **Everything excluded:** when the answers leave no path in the diff, the release gets the maintenance-release body, as any empty post-exclusion diff does.
+- **Commit-subject bodies:** the commit-subject list (§14) leaves out subjects starting `chore(release): release-notes path answers for `. So the floor's `c` and `fallback` never list mint's own answers commit, on the forward run or on a later regenerate.
+- **`--autostash`:** the answers are written to the committed `.mint.toml`. A stashed edit to the same file that conflicts on restore leaves the stash entry intact, as any conflicting restore does.
+
+#### 6.7 Unattended and dry runs
+
+- **Unattended** (`-y`, non-TTY, an agent run): no pause, and nothing is written. After the notes, each suggestion prints with its reason, what it matches, and the `[release].diff_exclude` line that would exclude it, for whoever reads the output to act on. A flagged file stays in the diff and is read like any other (§8).
+- **Dry run:** the suggestions show as they would at the pause; nothing is asked or written.
+
+#### 6.8 When the check fails
+
+The check counts as failed in five cases:
+
+- a generation failure
+- a timeout
+- a missing binary
+- an answer mint cannot read (§6.4)
+- a list that will not fit (§6.2).
+
+In each case the release carries on with no suggestions. mint prints one warning line, `couldn't check for files that don't belong in the notes`, with the AI's captured output verbatim beneath it where there is any. Without that line, "nothing looked out of place" and "the check never ran" would look the same, and that is how a design file slips into the notes unnoticed.
+
+Any real AI problem surfaces at the notes call, which runs the same command through the normal failure path (§9). The failure classifier never runs for the check itself. A Ctrl-C during the check cancels the run.
+
 ---
 
 ## Working Notes
