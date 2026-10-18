@@ -31,7 +31,7 @@ The other options are dead:
 **Proposed Text**:
 - **`regenerate <version>`, attended:** the same choice, whatever `on_notes_failure` holds, finishing in the same run. `c` gives that version's commit subjects, `e` opens the editor (on the saved chunk notes when a chunk or the merge failed), and `a` aborts, which is as-built regenerate's one outcome and stays the default. As on release, an empty `e` is refused and returns to the choice, and the chosen body goes on to regenerate's own review gate without `r`: accept, edit, abort, since there is no AI output to redo. Regenerate already runs attended with its own review gate, and stopping would only send the operator to re-run with `--notes-file`. Unattended, it stops with guidance, as release does under `abort`.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
