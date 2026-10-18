@@ -146,6 +146,58 @@ None of the user's repos sets `ai_command` (`grep -HE '^[[:space:]]*ai_command[[
 
 The code comments that describe a whitespace split are rewritten to the new rule, in the same change. They sit on the transport's command parsing and on config's `ai_command` field.
 
+### 4. The Per-Call Size Cap
+
+#### 4.1 The key
+
+`max_prompt_bytes` replaces `max_diff_lines`:
+
+- an integer count of bytes, defaulting to 1,500,000
+- at the shared top level only, so one cap covers both verbs.
+
+It bounds the composed prompt mint sends in any single AI call, measured in bytes: instructions, Change Map, diff and closing reminder together. The AI tool's own overhead is invisible to mint and sits outside the cap. No call mint makes is ever bigger than the cap.
+
+As a new key it takes the strict-config path: a schema entry, a friendly type error, a config-metadata row and the README tables.
+
+#### 4.2 What the cap does
+
+The cap is a size policy, not a fit prediction. A prompt under it can still overflow the model; that is the failure classifier's case (§9) and halving's (§10).
+
+It has three jobs:
+
+- **It decides when the single call is skipped.** Release notes whose single-pass prompt would exceed the cap go straight to chunking. Under the cap, mint makes the single call.
+- **It sizes every chunk call** (§8).
+- **It guards where reactive detection is blind.** claude refuses stdin over 10 MB with a separate error. Some providers silently truncate an oversized prompt and return plausible output, so no failure ever reaches the classifier.
+
+#### 4.3 Per consumer
+
+- **`mint release`, and `regenerate <version>` from a fresh source.** A single-pass prompt over the cap goes straight to chunking (§7, §8).
+- **`regenerate --all`.** The same, per version. Skip-and-continue remains only as its floor (§12).
+- **`mint commit`.** A composed prompt over the cap opens `$EDITOR` as today, with the existing `diff too large to summarise — opening editor` note. Commit has no chunking.
+
+#### 4.4 The release timeout
+
+The cap's default and the release timeout's default are chosen together, so that a call at the cap finishes well inside the timeout.
+
+`mint release` gets its own shipped per-attempt timeout default of 180 seconds. It resolves `[release].timeout` → shared `timeout` → 180s, so an explicit value at either level still wins. Regenerate rides on it, as on all `[release]` config. `mint commit` keeps the shipped 60s, because its calls stay small and a hung one should not take minutes to fail.
+
+#### 4.5 The default's grounds
+
+Measured with the lean command on 120,000 bytes of Go diff, with a one-word ask appended and `--output-format json` (2026-10-18): `git log --all -p --no-color -- '*.go' | head -c 120000` → 54,654 input tokens, 2.2s API time.
+
+That is about 2.2 bytes per token, so 1,500,000 bytes is about 675k tokens. It stays under a 1,000,000-token window even at about 1.8 bytes per token for denser content, and far below claude's 10 MB stdin limit. Reading the prompt is fast enough that a call's time is mostly the notes being written. A call at the cap should take about a minute.
+
+The default leans high because the two ways of getting it wrong differ:
+
+- **Too high for the model is loud and corrects itself.** claude rejects an oversized prompt instantly, before sending it. mint halves and still writes the notes, then hints that the cap should come down (§10). An operator on a smaller window lowers the cap.
+- **Too low is silent.** A release one call could have read whole gets chunked and merged notes instead.
+
+#### 4.6 Removing `max_diff_lines`
+
+Under strict config, a `.mint.toml` still setting `max_diff_lines` fails at load. Like the `[hooks]` placement error, it gets a specific message naming its replacement: `invalid .mint.toml: max_diff_lines has been replaced by max_prompt_bytes, a per-call size cap in bytes`.
+
+mint has no users outside the user's own repos. One of them still sets the key, and that line comes out before it upgrades: `grep -lE '^[[:space:]]*max_diff_lines[[:space:]]*=' ~/Code/*/.mint.toml` → `/Users/leeovery/Code/agentic-workflows/.mint.toml`.
+
 ---
 
 ## Working Notes
