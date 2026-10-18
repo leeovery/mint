@@ -746,6 +746,47 @@ The per-chunk notes share the cache entry's lifecycle and need no cleanup of the
 
 In a live run the per-chunk notes live only in memory and end with the run. Only a failure's saved file persists (§11.4).
 
+### 16. Progress Narration
+
+#### 16.1 Pretty mode: one notes line, updated
+
+A chunked run can take minutes: the exclusion check, rounds of chunk calls a few at a time, maybe halving, then the merge. A spinner that sits that long looks the same whether mint is working or hung.
+
+So a chunked run keeps the single notes line and updates it as the run moves:
+
+```text
+⠋ Checking for files that don't belong in the notes…
+⠋ Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done
+⠋ Writing notes: part 4 was too big for the model, retrying it as 2 smaller parts
+⠋ Writing notes: merging 6 parts
+✓ Notes written (6 parts, merged)
+```
+
+- The check line shows on every release that runs the check (§6.1), single-pass included.
+- The split line names the release's size and its part count, then counts parts done out of the total.
+- A single-pass call that halves (§10.1) shows `Writing notes: too big for the model in one call, retrying in 2 parts`.
+- When halving splits a part, the total grows by the parts it adds.
+- A single-pass run otherwise narrates as today.
+- The spinner suspends for the check's pauses (§6.5) and for the floor's choice (§12.2), as it does for any gate.
+
+There is no per-part detail beyond the count. Which folders a part covers, or each part's own status, would be noise unless something fails, and on a failure the ✗ line already names the part (§12.4).
+
+#### 16.2 Plain mode: a line per event
+
+CI and agents get no live line, so in plain mode each of those updates becomes its own line as it happens, one per finished part included. A long run never goes quiet.
+
+#### 16.3 Follow-ups
+
+The follow-ups print after the notes:
+
+- the lower-the-cap hint (§10.3)
+- the exclusion suggestions under `-y` (§6.7)
+- the failed-check warning (§6.8), which prints when the check fails.
+
+#### 16.4 How it is built
+
+The updates are new presenter events in the existing model. Spinners are a pretty-only concern spanning a stage's start and its success or failure, and plain mode renders the same events as terse lines. Each presenter renders the new events in its own way. The engine never touches spinners or TTY state.
+
 ---
 
 ## Working Notes
