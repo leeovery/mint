@@ -172,6 +172,22 @@
           }
         }
       }
+    },
+    "specification": {
+      "items": {
+        "token-aware-diff-sizing": {
+          "status": "in-progress",
+          "sources": {
+            "token-aware-diff-sizing": {
+              "status": "pending"
+            }
+          },
+          "review_cycle": 0,
+          "finding_gate_mode": "gated",
+          "construction_gate_mode": "gated",
+          "date": "2026-10-18"
+        }
+      }
     }
   },
   "seeds": [
