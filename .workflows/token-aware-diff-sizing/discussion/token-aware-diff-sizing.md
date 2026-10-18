@@ -829,6 +829,28 @@ Sibling check: no overlap found — the saved chunk notes and `--notes-file` are
 
 ---
 
+## The Saved Chunk-Notes File
+
+### Context
+
+When the Merge Fails and When a Chunk Fails save the finished chunk notes "to a file outside the repo" and name it in the failure, and The missing slice is marked in the saved file puts "a clearly marked line naming the files that have no notes" at its head; where the file lives, what it is called, how its contents are laid out and what the marker says were left open.
+
+### Journey
+
+mint already keeps per-project state outside the repo for the dry-run notes cache, under the user cache directory in a folder named from the repo's path (`repoScope`, `internal/notescache/cache.go`), so a sibling folder there keeps the file out of git with no new location convention. Unlike a cache entry it must outlive the run and the cache's pruning, because it is what `e` opens and what a later `--notes-file` release reads, possibly from another session after the terminal output is gone. Naming it by the tag makes the release it belongs to obvious, and a second failure of the same release overwrites it with the newer wave's notes. The marker has to survive rendering, since an unread file ships as written: a visible bold line does, where an HTML comment would vanish from the rendered notes.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by When the Merge Fails, When a Chunk Fails and its missing-slice and no-file entries, Notes-File Backdoor (the file is read back through `--notes-file`), and the notes cache's as-built per-project location.
+
+- **Where** — `{user cache dir}/mint/chunk-notes/{repo path, separators as dashes}/{tag}.md`, outside the repo and outside the cache's pruning; a later failure of the same tag overwrites it. The failure names its full path.
+- **Contents** — each finished chunk's notes in chunk order, separated by a blank line, exactly as the chunk calls returned them.
+- **The marker** — when any slice has no notes, the file opens with one bold line, `**Notes missing:** no notes were written for {files} — add them before releasing.`, listing every file with no notes and marking a file whose pieces only partly failed as `(partly)`, then a blank line before the notes.
+
+Sibling check: no overlap found — the saved chunk notes are this topic's own terms.
+
+---
+
 ## When the Whole Wave Fails
 
 ### Context
