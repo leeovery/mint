@@ -613,7 +613,7 @@ On `mint commit`, any AI generation failure prints only `could not generate a me
 
 ### Journey
 
-The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel verbatim in `StageFailure.Output`/`Warning.Output`) already covers the warning commit emits; commit is the one site that drops the output. The classifier's only distinct reaction is the degradation ladder, which commit does not have — every commit failure already ends in the editor — so a classify call there would only delay the editor by one AI call.
+The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel verbatim in `StageFailure.Output`/`Warning.Output`) already covers the warning commit emits; commit drops the output there, as `regenerate --all`'s skip warning does (`grep -n 'Label: "skipped "' internal/engine/regenerate_batch.go` → `382:	p.Warn(presenter.Warning{Label: "skipped " + tag, Message: reason})`, no `Output`), which `regenerate --all`'s Skip Output settles. The classifier's only distinct reaction is the degradation ladder, which commit does not have — every commit failure already ends in the editor — so a classify call there would only delay the editor by one AI call.
 
 ### Decision
 
@@ -623,6 +623,26 @@ The verbatim-diagnostics rule (CLAUDE.md: subprocess failure diagnostics travel 
 - The classifier is release-notes only (forward release and regenerate); `mint commit` makes no classify call.
 
 **Unattended commit** — **Settled by derivation** — not discussed. Determined by CLAUDE.md's verbatim-diagnostics rule (both `StageFailure.Output` and `Warning.Output`) and this decision's own motivation — an expired login or a usage limit — where the unattended run is the one with nobody present to re-run it (review-002 F4). When an unattended `mint commit` (`-y` or non-TTY) fails loud because the AI failed, the failure also carries the AI's captured output verbatim beneath the no-message-source line. The other triggers into that guard — `--no-ai`, oversized, all-excluded — have no AI output and are unchanged.
+
+---
+
+## `regenerate --all`'s Skip Output
+
+### Context
+
+When a version's notes fail under `mint release regenerate --all`, the batch skips it and carries on; skip-and-continue stays its floor, and each skip names the real cause (Scope Across the Three Consumers). As built the skip warning carries only that reason: `reportSkip` emits a `Warning` with a label and a message and no `Output` (`grep -n 'Label: "skipped "' internal/engine/regenerate_batch.go` → `382:	p.Warn(presenter.Warning{Label: "skipped " + tag, Message: reason})`, reached from the notes failure at `:286-289`), and the skip closes the stage with no `StageFailed`, so the AI's captured output appears nowhere. Single-version regenerate renders it beneath the ✗ line (`surface`, `internal/engine/release.go`).
+
+### Journey
+
+An operator whose batch hits an expired login or a usage limit sees each version skipped with `AI call failed`, and never claude's own `Not logged in · Please run /login`; learning why means re-running one version on its own. That is the gap Commit AI-Failure Output closes for `mint commit`, on the same ground: subprocess failure diagnostics travel verbatim in `Warning.Output` (CLAUDE.md). A batch that skips several versions for one cause repeats the same output beneath each warning; that is the cost of each warning standing on its own.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by CLAUDE.md's verbatim-diagnostics rule and Commit AI-Failure Output's motivation, an expired login or a usage limit.
+
+Each skip warning under `regenerate --all` carries the failed call's captured output verbatim beneath it; in a chunked run, that of the first failure that ended the wave (When the Whole Wave Fails). The skip's cause phrase, its saved chunk-notes file and the end-of-run summary stay as Scope Across the Three Consumers settles them.
+
+Sibling check: notes-failure-output-ugly-and-uninformative — its specification left batch `--all`'s skip `Warn` out of scope, naming its absent `Warning.Output` as a residual limitation and routing the carrier's captured output into it as the natural future enhancement; this decision takes that up, and its other residual, the skip reason's own vocabulary, is already replaced by the cause phrases here.
 
 ---
 
