@@ -448,13 +448,77 @@ Each phrase names the cause in a few words and leaves the specifics to the AI's 
 
 **Settled by derivation** — not discussed. Determined by Remediation at the Floor, Classifier Result Alongside the Verbatim Error, Overhead-Dominated Failures, Under-Cap Overflow: Halving's When halving runs out, Stitching and Salience's No room left for diff, When the Merge Fails, When a Chunk Fails and Notes-File Backdoor's revision (regenerate names its own command).
 
-- **Cause phrases** — `AI timed out` and `AI tool not installed` stay; a SIZE answer with no halving left reads `too large for the model, even in smaller parts`; OTHER reads `AI call failed`, or `AI returned empty notes` when there was no output; no room reads `no room for the diff under max_prompt_bytes`; a merge prompt over the cap reads `part notes too large to merge`. In a chunked run the phrase ends with where it happened: `(part 3 of 6)`, `(merging)`.
+- **Cause phrases** — `AI timed out` and `AI tool not installed` stay; a SIZE answer with no halving left reads `too large for the model, even in smaller parts`; OTHER reads `AI call failed`, or `AI returned empty notes` when there was no output; no room reads `no room for the diff under max_prompt_bytes`; a merge prompt over the cap reads `part notes too large to merge`. In a chunked run the phrase ends with where it happened: `(part 3 of 6)`, `(merging)`. *(Amended 2026-10-18 — per A Merge the Model Rejects for Size, a SIZE answer on the merge reads `part notes too large to merge` and takes only the always moves.)*
 - **Next moves** — always the `--notes-file` route (naming the saved file when one exists, `mint release regenerate <version> --notes-file` where the version is already out) and, on forward release, `--no-ai`; unattended, also `on_notes_failure = "fallback"` *(Amended 2026-10-18 — per Remediation at the Floor's revision, regenerate does not read `on_notes_failure`, so this move is offered on an unattended forward release only)*. By cause: size — lower `max_prompt_bytes`, the documented lean command if the `ai_command` carries its own overhead, `[release].diff_exclude` for generated paths; no room — shorten whichever of `[release].prompt` or `context` is outsized, or the size guidance when a halving round caused it; timeout — raise `[release].timeout`; missing tool — install it or set `ai_command`; OTHER — the AI's own message above, plus the lean-command pointer when the `ai_command` is not the shipped default.
 - **The choice** — defaults to `a`.
 - **After `c` or `e`** — the body goes to the non-AI review gate (accept, edit, abort); under `-y` it never arises, since unattended runs get no choice.
-- **Under `fallback`** — the release succeeds with the commit-subject list, and a warning names the saved file and the `regenerate --notes-file` command that puts it on the version.
+- **Under `fallback`** — the release succeeds with the commit-subject list, and a warning names the saved file and the `regenerate --notes-file` command that puts it on the version. *(Amended 2026-10-18 — per The Fallback Warning, the warning appears whatever the cause, leading with the cause phrase and the AI's verbatim output.)*
 
 Sibling check: notes-failure-output-ugly-and-uninformative — its specification built the concise cause phrases and the verbatim output beneath the ✗ line; the new phrases extend that set, and the generation-failure phrase is replaced by the classifier's, as Classifier Result Alongside the Verbatim Error anticipates.
+
+---
+
+## The Fallback Warning
+
+### Context
+
+Floor Wording and Guidance gives `on_notes_failure = fallback` one output beside the commit-subject list: a warning naming the saved chunk-notes file and the `regenerate --notes-file` command that puts it on the version. Most failures leave no file — any single-pass failure, an expired login, a usage limit, a timeout — and the warning as decided carries no cause and none of the AI's output. As built, a `fallback` body ships with no warning at all (`ResolveFailure` returns the body, `internal/notes/resolve.go`).
+
+### Options Considered
+
+**Warn only when a chunk-notes file was saved.**
+- Pros: the output stays as decided.
+- Cons: every single-pass failure ships commit subjects silently.
+
+**Always warn, with the cause.**
+- Pros: the run says the AI failed and why, whatever the cause.
+- Cons: one more warning on every `fallback` run that reaches it.
+
+### Journey
+
+`fallback` is the setting for unattended releases that must not stop, so it is where nobody watches the run: a CI pipeline with an expired login would ship commit-subject notes release after release with no sign of the cause, noticed only when someone reads the published notes. The classifier adds to the AI's verbatim output and never replaces it (Classifier Result Alongside the Verbatim Error), and subprocess failure diagnostics travel verbatim in `Warning.Output` (CLAUDE.md); Commit AI-Failure Output and `regenerate --all`'s Skip Output apply that rule to the two other routes that dropped the output.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by CLAUDE.md's verbatim-diagnostics rule, Classifier Result Alongside the Verbatim Error, and the same rule's application in Commit AI-Failure Output and `regenerate --all`'s Skip Output. The alternative that also fits, a warning only where a file was saved, leaves every single-pass failure silent.
+
+Under `on_notes_failure = fallback`, the release ships the commit-subject list with one warning whatever the cause: the cause phrase (Floor Wording and Guidance), the AI's captured output verbatim beneath it, and, where a chunk-notes file was saved, its path and the `mint release regenerate <version> --notes-file <path>` command that puts it on the version.
+
+Sibling check: notes-failure-output-ugly-and-uninformative — its specification renders the AI's captured output beneath the ✗ line on an abort; a `fallback` run draws no ✗ line, and this carries the same output into its warning.
+
+---
+
+## A Dry Run at the Floor
+
+### Context
+
+A dry run of `mint release` runs the whole notes path — the exclusion check, a chunked wave, the merge — so it can end at the floor. Remediation at the Floor sets the floor by mode and `on_notes_failure` alone: read literally, an attended dry run under `abort` gets the `c` / `e` / `a` choice and a review gate for a run that ships nothing. As built, a dry run asks for nothing: it reuses a cached note silently where a real run prompts (`cacheReuse`, `internal/engine/release.go`), and it ends at the dry-run boundary before any gate (`finishDryRun`). Exclusion Suggestions Before the Notes gives the check its own dry-run rule: the suggestions show as they would at the pause, and nothing is asked or written.
+
+### Options Considered
+
+**Offer the choice.**
+- Pros: the floor behaves the same in a preview as in a release.
+- Cons: whatever is chosen or written in `$EDITOR` is thrown away when the dry run ends.
+
+**Ask nothing, and save no chunk-notes file.**
+- Pros: the dry run writes nothing beyond the notes cache.
+- Cons: a dry run that failed mid-wave keeps none of its work, and the real run pays for the whole wave again before failing the same way.
+
+**Ask nothing, and save the file.**
+- Pros: the wave's work survives the dry run, and its `--notes-file` pointer lets the real run release it.
+- Cons: one more file in the user cache dir.
+
+### Journey
+
+Offering the choice is dead: a dry run produces no release, so a body chosen or written at the floor has nowhere to go. What is left is what an unattended run renders — the ✗ line, the AI's verbatim output, the next moves — which is the account a preview owes. The saved file sits outside the repo beside the dry-run cache, which a dry run already writes, so saving it keeps the dry run's promise about the repo while keeping the wave's work.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the as-built dry run asking for nothing (`cacheReuse`, `finishDryRun`), Exclusion Suggestions Before the Notes' dry-run rule, and The Saved Chunk-Notes File (outside the repo, kept for `--notes-file`). The alternative that also fits, saving no file in a dry run, costs the real run a repeated wave.
+
+A dry run at the floor asks nothing, whatever the mode. Under `abort` it renders the ✗ line, the AI's verbatim output, the saved chunk-notes pointer where a file exists and the cause-fitted next moves, as an unattended run does, then ends as a failed run. Under `fallback` it previews the commit-subject list as the body that would ship, with the fallback warning (The Fallback Warning). The chunk-notes file is saved as on a real run.
+
+Sibling check: no overlap found — the floor is this topic's own, and the dry run is used as built.
 
 ---
 
@@ -884,6 +948,36 @@ The user questioned why the merge would fail at all once every chunk has finishe
 
 ---
 
+## A Merge the Model Rejects for Size
+
+### Context
+
+Under-Cap Overflow: Halving makes a SIZE answer on the merge call a failed merge, never halved, and Floor Wording and Guidance gives the over-cap merge its own phrase, `part notes too large to merge`. A merge the model rejects for size was given no phrase or guidance of its own, and the nearest — a SIZE answer with no halving left, `too large for the model, even in smaller parts`, with the size moves — fits it badly.
+
+### Options Considered
+
+**Its own phrase naming the model**, such as `part notes too large for the model to merge`.
+- Pros: names who refused.
+- Cons: a second phrase for the same next move.
+
+**Share the over-cap merge's phrase and moves.**
+- Pros: one phrase for one situation, whichever limit the merge met.
+- Cons: does not say whether the cap or the model refused; the AI's verbatim output beneath it does.
+
+### Journey
+
+"Even in smaller parts" is untrue of a merge, which is never split. The size moves mislead too: lowering `max_prompt_bytes` cuts the release into more parts, and the merge then has to hold the same release's part notes, no smaller — an operator who follows it waits through the whole wave again and the merge fails again. Over the cap or over the model's window, the next move is the same: the saved part notes and `--notes-file`, which When the Merge Fails' own guidance names.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Under-Cap Overflow: Halving (a merge SIZE is a failed merge, not an exhausted halving), When the Merge Fails (its guidance is the saved-notes route) and Floor Wording and Guidance (the over-cap merge's phrase). The alternative that also fits, a phrase of its own naming the model, costs a second phrase for the same next move.
+
+A SIZE answer on the merge call reads `part notes too large to merge`, as a merge prompt over the cap does. A merge too large, by the cap or by the model, takes only the always moves, led by its saved part notes; the size moves belong to SIZE with no halving left on a single-pass or chunk call.
+
+Sibling check: no overlap found — the merge is this topic's own.
+
+---
+
 ## When a Chunk Fails
 
 ### Context
@@ -1156,6 +1250,38 @@ An agent whose release stops for size gets the floor's generic next move, exclud
 An unattended run's exclusion suggestions print whatever happens to the notes: after the notes when they are written, after the commit-subject list when `fallback` ships it, and with the floor's next moves when the run stops there.
 
 Sibling check: no overlap found — the exclusion check is this topic's own.
+
+---
+
+## Narrating the Kept Answers Commit
+
+### Context
+
+Exclusion Suggestions Before the Notes keeps the answers commit through an abort, the one deliberate exception to the surgical unwind, and Exclusion Check Mechanics carries it out: the unwind resets to the starting commit, then re-commits the answers on top. The unwind's line reports what it undid — `↩ unwound  {what it undid} — repo clean` (cli-presentation's `Unwound` event) — and nothing says it reports the commit it left.
+
+### Options Considered
+
+**No mention.**
+- Cons: a `chore(release): release-notes path answers for {tag}` commit sits at the top of the branch, unexplained, after a release the operator watched abort; the likely reaction is to reset it away as a leftover, and the same questions come back on the next release.
+
+**Narrate the commit when it is made.**
+- Pros: the operator sees it land.
+- Cons: its survival only surprises at the abort, where the line says nothing.
+
+**The unwind's line names it as kept.**
+- Pros: the account of what mint undid also says what it deliberately left.
+
+### Journey
+
+Keeping the commit exists so no path is asked about twice; an unwind line that hides it invites the reset that undoes that. The unwind line is the operator's account of what mint undid, so the exception belongs there.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Exclusion Suggestions Before the Notes (the commit outlives an abort so no path is asked about twice) and the unwind line's role as the account of what mint undid. Narrating the commit when it is made also fits as an addition, but the surprise lands at the abort.
+
+The unwind's narration names the answers commit as kept, so the commit left at the top of the branch does not read as an unwind that failed.
+
+Sibling check: mint-release-tool — its cli-presentation specification's `Unwound` event carries the "what it undid" summary; the kept answers commit joins that summary, and nothing there is contradicted.
 
 ---
 
