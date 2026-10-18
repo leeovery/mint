@@ -713,6 +713,39 @@ The key's config-metadata row and its README table entries go with it. The setup
 
 No repo of the user's sets the key, so none needs a change before upgrading: `grep -lE '^[[:space:]]*fallback[[:space:]]*=' ~/Code/*/.mint.toml` → no output (2026-10-18).
 
+### 15. Chunked Notes at the Review Gate and in the Cache
+
+#### 15.1 `r` on chunked notes
+
+Chunked notes are AI notes, so the attended review gate offers `r`, regenerate with a one-time nudge, as it does for single-pass notes. The review gate is where an operator rejects a weak stitch.
+
+On chunked notes, `r` re-runs only the merge call. It reuses the per-chunk notes already produced and adds the operator's nudge. That is one call, as `r` costs on a single-pass release, and not a re-run of the whole wave.
+
+A nudge asks to change emphasis or ordering, and the merge is where emphasis and ordering are decided; the per-chunk notes do not change with it. The residual this cannot fix, a change a chunk's own notes missed, is rare.
+
+On single-pass notes, `r` re-runs the same AI path as built, with the nudge appended: from the size check onward (§7.2), so the ladder applies to it as to the first attempt. It never re-runs the exclusion check.
+
+**When `r` fails.** A failed `r` aborts the run whatever `on_notes_failure` says, as built. On chunked notes:
+
+- mint first saves the per-chunk notes and names the file (§11.4).
+- `on_notes_failure` does not apply, so `fallback` never ships its body in place of the re-merge the operator asked for.
+- The abort lands before any tag, so the saved notes can still go out through `--notes-file` (§13).
+
+#### 15.2 The dry-run cache
+
+The notes cache keys on inputs, not output: the post-exclusion diff, the version and the resolved instructions. A dry run's chunked notes are therefore cached and offered back to the real run exactly like single-pass notes, sparing the real run the whole wave.
+
+A chunked body is cached together with its per-chunk notes. So `r` on reused chunked notes re-runs only the merge, one call, as on a live run.
+
+The per-chunk notes share the cache entry's lifecycle and need no cleanup of their own. The entry is:
+
+- outside the repo
+- pruned to the latest entry per project on every write
+- stale after the ~1h TTL
+- keyed on the version, so once the release is tagged its key cannot match again.
+
+In a live run the per-chunk notes live only in memory and end with the run. Only a failure's saved file persists (§11.4).
+
 ---
 
 ## Working Notes
