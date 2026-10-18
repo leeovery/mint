@@ -28,7 +28,7 @@ Under `fallback` it previews the commit-subject list as the body that would ship
 **Proposed Text**:
 Under `fallback` it previews the commit-subject list as the body that would ship, with the fallback warning, which names a saved file with `mint release --notes-file <path>` (§12.4), since the version is not out.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
@@ -49,7 +49,7 @@ An implementer who prints only the path leaves the operator holding a file with 
 **Proposal**:
 The failed `r`'s abort names the file with `mint release --notes-file <path>`. What determined it:
 - The abort lands before any tag, so the version is not out, and the `--notes-file` pointer names the release command while the version is not out.
-- `regenerate --all`'s failed `r` already names its file with the command that releases it.
+- A merge that fails during `r` saves the per-chunk notes and names the file "as on any failed merge", and a failed merge names it in its guidance with the command: "tidy them and release with `--notes-file <path>`".
 
 The other reading, the path alone, is dead: an attended operator, who gets no next moves, is left with no route to the file.
 
@@ -59,7 +59,7 @@ The other reading, the path alone, is dead: an attended operator, who gets no ne
 **Proposed Text**:
 - mint first saves the per-chunk notes and names the file with the command that releases it, `mint release --notes-file <path>` (§11.4, §13).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

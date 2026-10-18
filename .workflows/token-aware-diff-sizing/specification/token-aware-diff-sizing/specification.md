@@ -603,7 +603,7 @@ On `mint release`, the floor depends on the mode and `on_notes_failure`. Regener
 
 A failed `r` is not the floor; it aborts (§15).
 
-**A dry run at the floor** asks nothing, whatever the mode. Under `abort` it renders the ✗ line, the AI's verbatim output, the saved chunk-notes pointer where a file exists (§11.4) and the cause-fitted next moves (§12.4), as an unattended run does, then ends as a failed run. Under `fallback` it previews the commit-subject list as the body that would ship, with the fallback warning. The chunk-notes file is saved as on a real run: it sits outside the repo beside the dry-run cache, and the real run can release it with `--notes-file` instead of repeating the wave.
+**A dry run at the floor** asks nothing, whatever the mode. Under `abort` it renders the ✗ line, the AI's verbatim output, the saved chunk-notes pointer where a file exists (§11.4) and the cause-fitted next moves (§12.4), as an unattended run does, then ends as a failed run. Under `fallback` it previews the commit-subject list as the body that would ship, with the fallback warning, which names a saved file with `mint release --notes-file <path>` (§12.4), since the version is not out. The chunk-notes file is saved as on a real run: it sits outside the repo beside the dry-run cache, and the real run can release it with `--notes-file` instead of repeating the wave.
 
 #### 12.2 The choice
 
@@ -743,7 +743,7 @@ On single-pass notes, `r` re-runs the same AI path as built, with the nudge appe
 
 **When `r` fails.** A failed `r` aborts the run whatever `on_notes_failure` says, as built. On chunked notes, and on a single-pass `r` the ladder turned into a chunked run:
 
-- mint first saves the per-chunk notes and names the file (§11.4).
+- mint first saves the per-chunk notes and names the file with the command that releases it, `mint release --notes-file <path>` (§11.4, §13).
 - `on_notes_failure` does not apply, so `fallback` never ships its body in place of the re-merge the operator asked for.
 - The abort lands before any tag, so the saved notes can still go out through `--notes-file` (§13).
 
