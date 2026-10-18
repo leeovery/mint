@@ -72,7 +72,7 @@ What leaned: one term that already carries the per-verb split. The alternative t
 §11.3, last sentence:
 > mint then saves every chunk's notes (§11.4), names the file, and goes to the floor (§12).
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---
@@ -106,9 +106,9 @@ Reading without writing keeps the first cost, and writing without reading keeps 
 Regenerate's fresh source follows the same path without step 1, per version under `--all`.
 
 **Proposed Text**:
-Regenerate's fresh source follows the same path without steps 1 and 2, per version under `--all`. It runs no exclusion check, and it neither offers notes from the dry-run cache nor writes to it. The cache carries a release's dry-run preview to the real run that follows, and a regenerate is asked for new notes on a version already out.
+Regenerate's fresh source follows the same path without steps 1 and 2, per version under `--all`. It runs no exclusion check, and, as built, it neither offers notes from the dry-run cache nor writes to it: the cache carries a release's dry-run preview to the real run that follows, and a regenerate is asked for new notes on a version already out.
 
-**Resolution**: Pending
+**Resolution**: Approved
 **Notes**:
 
 ---

@@ -349,12 +349,12 @@ The first match wins:
 1. **The exclusion check**, on forward releases only (§6). Exclusions it records change the diff that the later steps see. If they leave the diff empty, the maintenance-release body applies (§6.6).
 2. **Cache reuse.** A real run that follows a dry run offers the cached notes, as built (§15).
 3. **The size check.** The composed single-pass prompt is measured against `max_prompt_bytes`. It holds the instructions, the Change Map (condensed if it would take more than its share, §6.3), the diff and the closing reminder.
-4. **Under the cap: one single-pass call**, as built. If it fails, the failure classifier decides what happens next (§9). SIZE halves (§10); anything else falls to `on_notes_failure` (§12).
+4. **Under the cap: one single-pass call**, as built. If it fails, the failure classifier decides what happens next (§9). SIZE halves (§10); anything else falls to the floor (§12).
 5. **Over the cap: chunked generation** (§8). The single-pass call is skipped.
 
 The size check comes after the exclusion check, so it measures the diff the exclusions leave. Take a release over the cap only because of a committed 1.9 MB transcript: once the operator excludes the transcript at the pause, the release is measured under the cap and gets an ordinary single-pass call.
 
-Regenerate's fresh source follows the same path without step 1, per version under `--all`.
+Regenerate's fresh source follows the same path without steps 1 and 2, per version under `--all`. It runs no exclusion check, and, as built, it neither offers notes from the dry-run cache nor writes to it: the cache carries a release's dry-run preview to the real run that follows, and a regenerate is asked for new notes on a version already out.
 
 ### 8. Chunked Generation
 
@@ -417,7 +417,7 @@ mint's framing is fixed text of its own; the exact wording is the implementer's.
 
 #### 8.7 Calls that cannot be made
 
-- **No room for diff.** Even with the Change Map condensed, a call's fixed part can leave no room for diff. That happens with an outsized `[release].prompt` or `context` (operator text mint never trims), or with a halving round aimed below the fixed part (§10). mint then sends no call, and the run falls to `on_notes_failure` (§12) with guidance naming which of the two it was.
+- **No room for diff.** Even with the Change Map condensed, a call's fixed part can leave no room for diff. That happens with an outsized `[release].prompt` or `context` (operator text mint never trims), or with a halving round aimed below the fixed part (§10). mint then sends no call, and the run falls to the floor (§12) with guidance naming which of the two it was.
 - **A merge prompt over the cap** is not sent, and counts as a failed merge (§11).
 
 Chunk notes are held in memory for the run. They persist only in a failure's saved file (§11) and in the dry-run cache (§15).
@@ -443,8 +443,8 @@ Accepted cost: one extra AI call per failure.
 
 The classifier runs only when the call fails with a generation failure: a non-zero exit, or an empty body, surviving the transport's single retry. The transport already tells the other failures apart, and none of them reach the classifier:
 
-- **A timeout** never starts the ladder. It falls to `on_notes_failure` as today, because a timeout is not evidence of size, and a wave fired at a slow service multiplies the wait. The size cap absorbs "too slow because too big" before any call is sent (§4.4). The rule is revisited if timeouts show up on releases that sit under any sensible cap.
-- **A missing binary** falls to `on_notes_failure` as today.
+- **A timeout** never starts the ladder. It falls to the floor (§12), because a timeout is not evidence of size, and a wave fired at a slow service multiplies the wait. The size cap absorbs "too slow because too big" before any call is sent (§4.4). The rule is revisited if timeouts show up on releases that sit under any sensible cap.
+- **A missing binary** falls to the floor (§12).
 - **A cancel** (`context.Canceled`) propagates unchanged and never falls to `on_notes_failure`.
 
 The classifier is release-notes only, for forward release and regenerate. `mint commit` makes no classify call, because every commit failure already ends in the editor (§17). The exclusion check never classifies its own failures either (§6.8).
@@ -466,7 +466,7 @@ The stakes of untrusted text here are bounded. The answer only picks a branch, a
 | Code | Reaction |
 |---|---|
 | SIZE | The ladder: halving for a single-pass or chunk call (§10). On the merge call, a failed merge (§11). |
-| OTHER | No split. `on_notes_failure` applies exactly as today (§12). |
+| OTHER | No split. The run falls to the floor (§12). |
 
 Only about three reactions exist however many codes are defined: split, retry or back off, and surface and stop. No code beyond SIZE has a reaction worth its cost for the subscription case. The set extends additively. A RATE_LIMIT code, with a wait-and-retry that would be a deliberate exception to "consumers never re-retry", can be added if API-key setups hit throttling mid-wave. Anything unrecognised already falls to OTHER.
 
@@ -489,7 +489,7 @@ The classifier adds to the AI's verbatim output; it never replaces it. Its code 
 
 #### 9.7 An explicit `ai_command` that carries its own overhead
 
-A repo whose own `ai_command` carries an overhead that alone overflows the window gets no chunk small enough to fit. Its classify call fails the same way, so the run takes the OTHER path with the AI's verbatim message, then `on_notes_failure`. mint's guidance points at the documented lean command rather than naming claude flags itself (§12).
+A repo whose own `ai_command` carries an overhead that alone overflows the window gets no chunk small enough to fit. Its classify call fails the same way, so the run takes the OTHER path with the AI's verbatim message, then the floor. mint's guidance points at the documented lean command rather than naming claude flags itself (§12).
 
 ### 10. Halving After an Under-Cap Overflow
 
@@ -524,7 +524,7 @@ A chunk call (or piece) ends in failure in either of these cases:
 - after its transport retry, its classify call and, on SIZE, its halving rounds (§10)
 - on a timeout or a missing binary.
 
-When any chunk ends in failure, no merge runs. mint saves the notes of the chunks that did finish (§11.4) and names the file in the failure. The run then goes to `on_notes_failure` like any other failure (§12).
+When any chunk ends in failure, no merge runs. mint saves the notes of the chunks that did finish (§11.4) and names the file in the failure. The run then goes to the floor like any other failure (§12).
 
 Merging what came back is out. The missing slice can be the release's headline feature. Notes that read as complete while quietly leaving out the biggest change are the very failure this feature exists to end, and under `-y` they would ship unreviewed.
 
@@ -557,7 +557,7 @@ A merge counts as failed in three cases:
 - a SIZE answer from the classifier
 - a merge prompt over the cap (§8.7).
 
-mint then saves every chunk's notes (§11.4), names the file, and goes to `on_notes_failure` (§12).
+mint then saves every chunk's notes (§11.4), names the file, and goes to the floor (§12).
 
 #### 11.4 The saved chunk-notes file
 
