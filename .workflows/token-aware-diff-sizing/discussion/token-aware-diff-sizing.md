@@ -7,11 +7,11 @@ Mint's notes engine guards oversized release diffs with a raw line count (`Check
 1. **UX dead-end** — the abort names the cause + counts but points at none of the escape hatches (raise `max_diff_lines`, add `diff_exclude` globs, `on_notes_failure = fallback`, `--no-ai`). A big release reads as a wall.
 2. **Correctness gap** — line count is a crude token proxy. The thing that must fit is the *assembled prompt* (instructions + Change Map + diff + reminder) against the model window. An under-limit diff can still overflow and fail the AI call.
 
-The guard is shared via `notes.CheckDiffSize` / `notes.ErrDiffTooLarge` and consumed by three callers — **release**, **regenerate** (per-version skip on `--all`, forward-like on single), **commit** (generate-SKIP → `$EDITOR`). Any change must account for all three. Confirmed a single coherent feature, not an epic — re-confirmed 2026-10-16 when the scope widened to include a lean default AI command and a notes-file backdoor.
+The guard is shared via `notes.CheckDiffSize` / `notes.ErrDiffTooLarge` and consumed by three callers — **release**, **regenerate** (per-version skip on `--all`, forward-like on single), **commit** (generate-SKIP → `$EDITOR`). Any change must account for all three. The scope widened 2026-10-16 to include a lean default AI command and a notes-file backdoor.
 
-### Research standing position (to ratify / resolve here)
+### Research standing position
 
-Research (`research/token-aware-diff-sizing.md`, incl. two deep-dives + three review passes) has matured most of the design into *emerging directions the discussion phase must ratify*:
+Research (`research/token-aware-diff-sizing.md`, incl. two deep-dives + three review passes) matured most of the design into *emerging directions*, not decisions:
 
 - **mint CANNOT fit-predict** — it can't see the model window, the tokenizer, *or* the `ai_command` CLI's own wrapper overhead (Claude Code's system prompt + tool defs, empirically ~800k tokens in one live case). So any proactive ceiling is a crude **policy** cap, never a fit predictor.
 - **Trigger: reactive-primary.** An **AI-as-error-classifier** (ask the same AI to map its own captured error to one of a closed code set) is the standing front-runner trigger — provider-agnostic, dissolves the string-match portability wall. A crude **proactive byte-cap** survives only as a **backstop** for silent-truncating providers (Ollama) + claude's 10 MB stdin cap. *(Amended 2026-10-16 — this cast the byte cap as a backstop only; the Proactive Size Ceiling decision makes it the replacement for `max_diff_lines`, the route that sends over-cap releases straight to chunking, and every chunk's target size — the blind-spot backstop is one of its three jobs.)*
@@ -223,7 +223,7 @@ Some generation failures carry no text at all — a tool that exits non-zero sil
 
 ### Journey
 
-Classifying empty input can only be a guess; a guessed SIZE would fire the whole parallel chunk wave at a failure chunking cannot fix — exactly the amplification the classifier was chosen to prevent. Sending stdout alone would break the provider-agnostic premise for any tool that writes its errors to stderr. Distinct from the pending prompt-hardening subtopic: that covers how the text is embedded; this covers which text, and the case where there is none.
+Classifying empty input can only be a guess; a guessed SIZE would fire the whole parallel chunk wave at a failure chunking cannot fix — exactly the amplification the classifier was chosen to prevent. Sending stdout alone would break the provider-agnostic premise for any tool that writes its errors to stderr. Distinct from Classifier Prompt Hardening: that covers how the text is embedded; this covers which text, and the case where there is none.
 
 ### Decision
 
@@ -278,14 +278,14 @@ In research the user asked for a setting deciding how a too-big release is handl
 
 **Naming.** The user's own word for the non-default value was "fail". But switching chunking off does not decide failure — `on_notes_failure` still does — and a value called "fail" would make two settings look like they both decide it. "off" says exactly what it does: no chunking, defer to `on_notes_failure`.
 
-**Default.** Research recorded the user's call (2026-06-26) to auto-degrade silently by default — "it just handles it" — rather than stop and ask for consent to the extra AI calls. "Silent" means no consent prompt; how a chunked run is narrated on screen is the progress-narration subtopic's ground.
+**Default.** Research recorded the user's call (2026-06-26) to auto-degrade silently by default — "it just handles it" — rather than stop and ask for consent to the extra AI calls. "Silent" means no consent prompt; how a chunked run is narrated on screen is settled in Progress Narration for a Chunked Run.
 
 ### Decision
 
 #### 2026-10-18 — revised
 *Trigger: review finding — what `off` switches off once the ladder had grown (over-cap chunking, pieces, halving, the merge, the classify call, the exclusion check) (review-003 F14); defining it led the user to ask whether chunking needs a setting at all.*
 
-**No setting: chunking is always on.** The `oversize` key is dropped. Deciding factors: chunking only happens when a release cannot go in one call, so the one thing `off` changes is that such releases get no AI notes — not an outcome anyone wants as a standing policy, and anyone wanting something other than AI notes for a given release already has `--no-ai` and `--notes-file`. And a key is cheap to add and costly to remove: each costs a schema entry, README and config-metadata rows and a setup-guide line, and under strict config a repo carrying the key would fail to load if it were later removed — whereas adding it if a real case appears (an API-key setup where the extra calls cost money, say) is additive. The per-call size cap stays: it is the target every call is sized to, and the setting a smaller-window model needs. What changes from the entry below: no `oversize` key, no `off` path, and the classifier-under-off reasoning no longer applies; the classify call runs on every release-notes failure as decided. User agreed 2026-10-18. Confidence: high.
+**No setting: chunking is always on.** The `oversize` key is dropped. Deciding factors: chunking only happens when a release cannot go in one call, so the one thing `off` changes is that such releases get no AI notes — not an outcome anyone wants as a standing policy, and anyone wanting something other than AI notes for a given release already has `--no-ai` and `--notes-file`. And a key is cheap to add and costly to remove: each costs a schema entry, README and config-metadata rows and a setup-guide line, and under strict config a repo carrying the key would fail to load if it were later removed — whereas adding it if a real case appears (an API-key setup where the extra calls cost money, say) is additive. The per-call size cap stays: it is the target every call is sized to, and the setting a smaller-window model needs. What changes from the entry below: no `oversize` key, no `off` path, and the classifier-under-off reasoning no longer applies; the classify call runs on a release-notes generation failure as decided (AI-as-Error-Classifier as Primary Trigger). User agreed 2026-10-18. Confidence: high.
 
 #### 2026-10-17
 **The setting is `oversize`, with values `"chunk"` and `"off"`; `"chunk"` is the default.** User agreed 2026-10-17, confirming chunk as the default. Confidence: high.
@@ -327,7 +327,7 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 **Commit-message fallback reuse** — the `c` choice is the existing commit-subject body (`internal/notes/noai.go`), surfaced as a choice rather than built anew.
 
-**Single-version regenerate asks too** (raised by the background review, review-004 F6; user agreed 2026-10-18). An attended single-version `regenerate` that reaches the floor under `abort` offers the same `c` / `e` / `a` choice and finishes in the same run: `c` gives that version's commit subjects, `e` opens the editor (on the saved chunk notes when a merge or chunk failed), `a` aborts. It already runs attended with its own review gate (`internal/engine/regenerate_fresh.go`), and stopping would only send the operator to re-run with `--notes-file`. Unattended, it stops with guidance as release does; `--all` keeps skip-and-continue as its floor.
+**Single-version regenerate asks too** (raised by the background review, review-004 F6; user agreed 2026-10-18). An attended single-version `regenerate` that reaches the floor under `abort` offers the same `c` / `e` / `a` choice and finishes in the same run: `c` gives that version's commit subjects, `e` opens the editor (on the saved chunk notes when a merge or chunk failed), `a` aborts. It already runs attended with its own review gate (`reviewGate` behind `usesReviewGate`, `internal/engine/regenerate_write.go`), and stopping would only send the operator to re-run with `--notes-file`. Unattended, it stops with guidance as release does; `--all` keeps skip-and-continue as its floor.
 
 **An empty `e` is refused** (raised by the background review, review-004 F8; user agreed 2026-10-18). When the floor's `e` opens an empty file and the operator closes the editor without writing — the usual way to back out — an empty or whitespace-only body is refused and the operator returns to the `c` / `e` / `a` choice, rather than passing an empty body on to the review gate, where accepting it would ship an empty tag message, changelog entry and provider release (git accepts one: `printf '' | git tag -a v1 -F -` exits 0). Determined alongside Notes-File Backdoor's refusal of an empty file and mint's no-AI bodies falling back so "the tag body is never empty" (`resolveFallbackBody`, `internal/notes/resolve.go`).
 
@@ -353,7 +353,7 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 ### Journey
 
-Across the user's ten repos with a `.mint.toml`, the key is set in one, switchboard, and there it holds hand-written notes for the next release with a comment that it is removed once the release is out — the workaround `--notes-file` replaces (`grep -ln fallback ~/Code/*/.mint.toml` → `switchboard/.mint.toml`). Every other route that ends without AI notes is better served by the commit subjects than by a fixed string. The user agreed (2026-10-18).
+Across the user's eleven repos with a `.mint.toml` (`ls -d ~/Code/*/.mint.toml | wc -l` → 11), the key is set in one, switchboard, and there it holds hand-written notes for the next release with a comment that it is removed once the release is out — the workaround `--notes-file` replaces (`grep -lE '^[[:space:]]*fallback[[:space:]]*=' ~/Code/*/.mint.toml` → `/Users/leeovery/Code/switchboard/.mint.toml`). Every other route that ends without AI notes is better served by the commit subjects than by a fixed string. The user agreed (2026-10-18).
 
 ### Decision
 
@@ -402,6 +402,8 @@ Measured 2026-10-16 in the mint repo (claude CLI flags from `claude --help`), sa
 - `echo "Reply with the single word: ok" | claude -p --model sonnet --output-format json --no-session-persistence` → 105,188 input tokens (cache_creation 105,186 + input 2).
 - `echo "Reply with the single word: ok" | claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --system-prompt "You write release notes." --output-format json --no-session-persistence` → 561 input tokens, answered `ok` on the subscription login — no auth break.
 
+Re-measured 2026-10-18 with the same two commands: 105,994 input tokens (cache_creation 105,992 + input 2) against 561 (cache_creation 559 + input 2), the lean form again answering `ok`.
+
 `--safe-mode` disables CLAUDE.md, skills, plugins, hooks and MCP servers while (per its help text) leaving auth and model selection working; `--tools ""` drops the built-in tool definitions; `--system-prompt` replaces Claude Code's own system prompt. That is roughly a 190× cut of the overhead without touching OAuth — the research's "not mint-fixable" holds for `--bare` only.
 
 Consequence for the live agentic-workflows failure: mint's own prompt there was ~532k tokens against a 1M limit, and the request failed only because ~803k of overhead rode on top. With the lean command it would have fitted in one pass.
@@ -417,7 +419,7 @@ Consequences accepted:
 
 **CLAUDE.md and Claude Code's system prompt are dropped on purpose** (review-001 F3). `--safe-mode` switches off every CLAUDE.md that today loads into mint's calls (the repo's and the user's global), and `--system-prompt` replaces Claude Code's own system prompt. Instructions kept there that currently shape notes or commit messages stop doing so. The user called this a positive side effect, not a cost (2026-10-16): project and global CLAUDE.md "should never really have been included" in writing release notes — they are noise, as is Claude Code's system prompt. The goal is a raw ask of the model carrying only mint's own clear instructions, so mint controls the output strongly. This follows mint's founding rule that mint owns the prompt and the command is only transport (mint-release-tool specification). Conventions an operator wants applied belong in mint's own `[release]`/`[commit]` `context` and `prompt` keys, which ride in every call; the change is documented alongside the lean default.
 
-**System prompt wording** — **Settled by derivation** — not discussed. Determined by the shared shipped default: one `DefaultAICommand` serves release, commit and the classify call (review-001 F2). The shipped `--system-prompt` names no task — neutral wording to the effect of "follow the instructions you are given and output only what they ask for" — and each call's own prompt carries its job. Exact wording is specification detail.
+**System prompt wording** — **Settled by derivation** — not discussed. Determined by the shared shipped default: one `DefaultAICommand` serves release, commit and the classify call (review-001 F2). The shipped `--system-prompt` names no task — neutral wording to the effect of "follow the instructions you are given and output only what they ask for" — and each call's own prompt carries its job. Exact wording is specification detail. *(Amended 2026-10-18 — the same command also serves the chunk calls, the merge and the exclusion check decided later, which only widens the case for task-neutral wording.)*
 
 **Older claude versions** — **Settled by derivation** — not discussed. Determined by ai-model-selection's raw `ai_command` design (mint holds no per-provider knowledge). A claude too old for `--safe-mode` rejects the unknown option and exits non-zero; that lands on the normal generation-failure path; the classify call runs the same command and fails the same way, so mint takes the OTHER path (Classify Call Failure) and claude's own "unknown option" message renders verbatim. mint adds no version probe and no fallback to the plain command — either would put claude-specific knowledge into mint.
 
@@ -551,7 +553,7 @@ A single notes call that runs past the per-attempt timeout returns `ErrTimeout`,
 
 ### Journey
 
-The cap converts "too slow because too big" into "too big" before the call is made, which is the case the agentic-workflows timeout was. What would change the call: timeouts observed on releases that sit under any sensible cap — then sizing alone would not cover them. How the per-attempt timeout reads across a wave of N calls stays with the pending timeout-semantics subtopic.
+The cap converts "too slow because too big" into "too big" before the call is made, which is the case the agentic-workflows timeout was. What would change the call: timeouts observed on releases that sit under any sensible cap — then sizing alone would not cover them. How the per-attempt timeout reads across a wave of N calls is settled in Timeouts Across a Wave.
 
 ### Decision
 
@@ -605,7 +607,7 @@ A chunked release needs a stitch shape. Research named two: **map-reduce** — e
 
 ### Journey
 
-The user set the direction in research (2026-06-26): "the more we can do in parallel, the better", and explicitly not three or four *serial* AI requests. Refine is serial by construction and order-biased (early chunks frame the notes); map-reduce is a parallel wave plus a single serial step. The one serial reduce is therefore the quality-and-risk chokepoint — what happens when it fails is the concat-floor subtopic's ground.
+The user set the direction in research (2026-06-26): "the more we can do in parallel, the better", and explicitly not three or four *serial* AI requests. Refine is serial by construction and order-biased (early chunks frame the notes); map-reduce is a parallel wave plus a single serial step. The one serial reduce is therefore the quality-and-risk chokepoint — what happens when it fails is When the Merge Fails' ground.
 
 ### Decision
 
@@ -761,6 +763,8 @@ The lean rested on one claim: a single file bigger than a whole call's budget is
 **No stand-in. A file whose diff is too big to fit in one chunk call alongside that call's instructions, Change Map and reminder is split into pieces** — slices of its diff, each sized to fit a chunk call, sent in parallel with the other chunk calls and stitched by the merge like any other partial notes; never a serial loop (Map-Reduce, Not Refine). "Too big" is measured the same way as everything else, in bytes against a chunk call's room. Pieces are cut at hunk or line boundaries; a single line longer than a whole call (a minified bundle, say) would need cutting mid-line, which is specification detail. Gone with the stand-in: the stand-in line, its after-notes `diff_exclude` hint (the exclusion check's suggestions replace it), and the AI's hand-written/generated verdict from the entry below. The parked deciding factor — big files are almost always generated noise — now lives with the exclusion check, which asks about them before the notes; under `-y` nobody answers it, so a flagged big file is read in pieces and the printed suggestion names the glob. Change from the entries below: everything that stays in the diff is read. User agreed 2026-10-17. Confidence: high.
 
 #### 2026-10-17 — revised (earlier)
+*Trigger: user, in the engagement on review-003 F6 — asked whether a big file could be read over several calls, and whether the AI could tell which files belong in `diff_exclude`.*
+
 **Re-decided 2026-10-17 — the stand-in is for generated files only** (user, in the engagement on review-003 F6). Per Exclusion Suggestions Before the Notes, the AI judges each file too big for one chunk call. One it judges hand-written is read in pieces: its diff is split into slices that each fit a call, sent in parallel with the other chunk calls and stitched by the merge like any other partial notes — never a serial loop, the refine shape ruled out in Map-Reduce, Not Refine. One it judges generated keeps the stand-in, and at a terminal is raised at the exclusion pause first. The earlier deciding factor still holds for most such files; the judgment catches the exception — notably a hand-written file under a cap set low or halved down.
 
 #### 2026-10-16
@@ -851,6 +855,14 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 ### Decision
 
+#### 2026-10-17 — revised
+*Trigger: review finding — a regenerate whose notes fail saves chunk notes it has no way to put on the version: under `on_notes_failure = fallback` the version ships with the fallback body before the saved notes can be used, and a failed regenerate has no notes source that takes them (review-003 F10).*
+
+**Regenerate takes `--notes-file` for a single version**, a source beside fresh, tag and release. `mint release regenerate <version> --notes-file <path>` puts finished notes — the saved chunk notes among them — onto a version already out. It behaves as on release — read once at startup, byte-identical, the gate without `r`, a bad file refused — and one file answers one version, so giving it with `--all`, or with another `--source`, is a usage error. Where the version has already shipped (the fallback body, or a failed regenerate), the failure guidance names this command rather than `mint release --notes-file`. Change from the entry below: its Regenerate bullet ruled a notes-file out of regenerate, since chunking covers oversized versions and the tag/release sources already rewrite from an existing body — a call made before the saved chunk notes existed. The rest of the entry below stands. User agreed 2026-10-17. Confidence: high.
+
+Sibling check: mint-release-tool — its specification's Regenerate / Backfill Notes defines the sources as a fresh re-diff, the tag annotation and the existing provider release; a supplied file is a new source beside them, nothing there is contradicted, and this decision extends that list once it lands.
+
+#### 2026-10-16
 **The named notes file is excluded from everything mint does** (user, 2026-10-16):
 - mint reads it once at startup, before any stash, check or gate, and holds the body in memory.
 - It does not count against the clean-tree check, is left out of `--autostash`'s stash, and is never staged or committed by any git add/commit mint runs — the pre-tag artifact commit's `git add -A` included.
@@ -864,9 +876,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 - **Body** — passes into the release and changelog byte-identical, exactly like an AI body; the size cap, chunking and AI are all skipped.
 - **With `--no-ai`** — giving both is a usage error: two answers to where the notes come from.
 - **Bad file** — an empty or whitespace-only file is refused; a missing or unreadable one fails before any step runs.
-- **Regenerate** — takes `--notes-file` for a single version, a source beside fresh, tag and release (re-decided 2026-10-17; raised by the background review, review-003 F10; user agreed). The earlier call here — no notes-file in regenerate, since chunking covers its oversized versions and the tag/release sources already rewrite from an existing body — did not see the saved chunk notes: under `on_notes_failure = fallback` the version ships with the fallback body before the saved notes can be used, and a failed regenerate has no route to use them at all. `mint release regenerate <version> --notes-file <path>` puts that finished work onto a version already out. It behaves as on release — read once at startup, byte-identical, the gate without `r`, a bad file refused — and one file answers one version, so giving it with `--all`, or with another `--source`, is a usage error. Where the version has already shipped (the fallback body, or a failed regenerate), the failure guidance names this command rather than `mint release --notes-file`.
-
-  Sibling check: mint-release-tool — its specification's Regenerate / Backfill Notes defines the sources as a fresh re-diff, the tag annotation and the existing provider release; a supplied file is a new source beside them, nothing there is contradicted, and this decision extends that list once it lands.
+- **Regenerate** — no notes-file in this feature: chunking now covers its oversized versions, and its `tag`/`release` sources already rewrite notes from an existing body.
 
 **Precedence over mint's stand-in bodies** — **Settled by derivation** — not discussed. Determined by this section's decision that the supplied body passes into the release byte-identical, and by the purpose of the first-release and degenerate (empty post-exclusion diff) guards in `internal/notes/select.go` — they produce an honest body when there is nothing for an AI to summarise, which a supplied body does not need (review-002 F3). A supplied notes file wins over both guards: whenever the file is given, its body is the release's body — never `Initial release.` or the maintenance stub. (Today those guards run ahead of `--no-ai` and the AI, which is why the `[release].fallback` workaround loses to them.)
 
@@ -876,7 +886,7 @@ The alternative — keep the clean-tree rule absolute and require the file to li
 
 ### Context
 
-Today the notes step is one stage: a spinner in pretty mode (a terse start line in plain), then ✓ or ✗. A chunked release can take minutes — the exclusion check, rounds of chunk calls a few at a time, maybe halving, then the merge — and a spinner that sits that long looks the same whether mint is working or hung. The Oversize Knob's "silent" default meant no consent prompt, leaving how a chunked run is narrated to this subtopic.
+Today the notes step is one stage: a spinner in pretty mode (a terse start line in plain), then ✓ or ✗. A chunked release can take minutes — the exclusion check, rounds of chunk calls a few at a time, maybe halving, then the merge — and a spinner that sits that long looks the same whether mint is working or hung. The Oversize Knob's "silent" default meant no consent prompt, leaving open how a chunked run is narrated.
 
 ### Options Considered
 
@@ -926,7 +936,7 @@ The guide's own contract is that it is version-matched so it never goes stale ag
 
 **Settled by derivation** — not discussed. Determined by the setup guide's version-matched, self-contained contract (`internal/setupguide` package doc) and CLAUDE.md's rule that docs stay true to as-built.
 
-The guide's AI-transport prose is updated to what this feature changes — the lean shipped default, the per-call size cap, chunking and the floor. New and renamed config keys reach its config reference through the source of truth as built.
+The guide's AI-transport prose is updated to what this feature changes — the lean shipped default, the per-call size cap, chunking and the floor. *(Amended 2026-10-18 — and the commit-subject list as the one non-AI body: the paragraph's "fall back to the commit-subject / fallback body" goes with Dropping the Fixed Fallback Body.)* New and renamed config keys reach its config reference through the source of truth as built.
 
 **The guide's `diff_exclude` advice** — **Settled by derivation** — not discussed. Determined by this Decision's grounds (version-matched, kept true where this feature makes it untrue) and the per-verb split's rule that the shared list holds what neither verb should read (Exclusion Suggestions Before the Notes) (review-004 F10). The guide's etiquette section ("diff_exclude scope") and its procedure step 4 send `.workflows/`, `.claude/`, agent directories, `docs/` and lockfiles to a plain `diff_exclude`, which after the split would hide them from commit messages too. That advice is updated to name the levels: noise only release notes should skip goes in `[release]`; the shared list keeps only what neither verb should read, such as lockfiles and build output.
 
@@ -953,10 +963,10 @@ Sibling check: interactive-mint-init-setup — the work that built `mint setup`;
 - Decided: the detection trigger in full — reactive classify-on-failure as primary, a per-call byte cap as the proactive guard, and the classifier's edges (codes, failures, empty output, hardening, retry).
 - Decided: the shipped default AI command becomes the lean claude form.
 - Decided: `max_diff_lines` becomes a per-call byte cap; over it, releases chunk and commit drops to the editor.
-- Decided: at the floor an attended run offers commit-subject notes, the editor or abort; unattended runs stop with cause-fitted guidance.
+- Decided: at the floor an attended release or single-version regenerate offers commit-subject notes, the editor (an empty edit refused) or abort; unattended runs stop with cause-fitted guidance.
 - Decided: the chunked path — parallel chunk calls plus one merge, the Change Map in every call, area-packed chunks, halving after an under-cap overflow; a failed merge, or any one failed chunk, fails the generation — the chunk notes that exist are saved and the run falls to `on_notes_failure`.
 - Decided: everything left in the diff after exclusions is read; a single file too big for one call is split into pieces read in parallel — no stand-ins.
-- Decided: before every release's notes, an AI check flags paths that look out of place; at a terminal mint asks about each, adding a "no" to the `[release]` exclusion list and a "yes" to a keep list, committed, so no path is asked about twice. `diff_exclude` gains `[release]` and `[commit]` levels that add to the shared list; `mint commit` gets no check.
+- Decided: before the AI writes a release's notes on `mint release` (never on regenerate), an AI check flags paths that look out of place; at a terminal mint asks about each, adding a "no" to the `[release]` exclusion list and a "yes" to a keep list, committed, so no path is asked about twice. `diff_exclude` gains `[release]` and `[commit]` levels that add to the shared list; `mint commit` gets no check.
 - Decided: a `--notes-file` backdoor on release and on single-version regenerate; the named file is excluded from every git step mint runs.
 - Decided: the classifier's codes are SIZE / OTHER; its result renders alongside the AI's verbatim error; off-list answers map to OTHER.
 - Decided: chunking is always on — no `oversize` setting; the per-call size cap is the only size setting.
