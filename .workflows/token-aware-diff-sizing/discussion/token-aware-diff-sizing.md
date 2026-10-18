@@ -932,6 +932,36 @@ Sibling check: no overlap found — regenerate's review gate is used as built.
 
 ---
 
+## `r` at `regenerate --all`'s Review Gates
+
+### Context
+
+`r` at Regenerate's Review Gate settles `r` at a single-version regenerate's gate. `regenerate --all` run at a terminal without `-y` shows each fresh version at the same notes-review gate, `r` included (`gatePerVersion` → `gateRegenerate`, `internal/engine/regenerate_batch.go`; `-y` skips the per-version gate), and since Scope Across the Three Consumers each big version in the batch chunks through the shared generator. As built, an error out of that gate, a decline or a failed `r`, ends the batch, while a failed notes call skips the version and the batch carries on. Neither decision named the batch's gates.
+
+### Options Considered
+
+**A failed `r` ends the batch**, as a failed gate does as built.
+- Pros: a failed `r` aborts on every verb, as decided; the operator is at the terminal and sees it.
+- Cons: the versions after it are not reached in that run.
+
+**A failed `r` skips the version**: it keeps its published notes, the summary names it with its saved file, and the batch carries on.
+- Pros: matches the batch's skip-and-continue resilience.
+- Cons: makes a failed `r` a floor on one verb only, where everywhere else it aborts outside the floor.
+
+### Journey
+
+The reason `r` re-runs only the merge on chunked notes, that a nudge changes emphasis and ordering and the merge decides those, holds at each version's gate in a batch as at a single version's. Re-running a version's whole wave for a nudge would cost the batch operator the minutes of calls and the usage-window draw that decision set out to avoid, and Scope Across the Three Consumers has `--all` inherit chunking with no special-casing. A failed `r` aborts whatever `on_notes_failure` says (Regenerate on Chunked Notes), so it is not the floor, and the batch's skip-and-continue floor does not take it; the as-built end of the batch on a failed gate stands. The saved per-chunk notes are that version's, and reach it the way finished notes reach a version already out.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by `r` at Regenerate's Review Gate (the batch's per-version gate is the same gate), Regenerate on Chunked Notes (a nudge's emphasis and ordering are the merge's; a failed `r` aborts whatever `on_notes_failure` says) and Scope Across the Three Consumers (`--all` inherits with no special-casing, skip-and-continue kept only as its floor). The failed-`r` outcome leaned on those rules and the as-built end of the batch on a failed gate. The alternative that also fits, a failed `r` treated as a skip, matches the batch's resilience but makes a failed `r` a floor on one verb only.
+
+At each of `regenerate --all`'s per-version review gates, `r` works as at a single version's: on chunked notes it re-runs only the merge call; on single-pass notes it re-runs the AI path from the size check onward. A failed `r` saves that version's per-chunk notes where the notes were chunked or the ladder turned the `r` into a chunked run, names the file with that version's `mint release regenerate <version> --notes-file <path>`, and ends the batch, as a failed gate does as built. The batch does not skip the version and carry on.
+
+Sibling check: no overlap found — the batch's per-version gate is used as built.
+
+---
+
 ## Map-Reduce, Not Refine
 
 ### Context
