@@ -912,6 +912,26 @@ Sibling check: mint-release-tool — its specification's review gate offers `r` 
 
 ---
 
+## `r` at Regenerate's Review Gate
+
+### Context
+
+Regenerate on Chunked Notes and `r` on Single-Pass Notes settle `r` at a release's review gate: merge-only on chunked notes, the ladder from the size check onward on single-pass notes, and a failed `r` aborts after saving any chunk notes, which can still go out "before any tag". A single-version regenerate from a fresh source has its own review gate, and it offers `r` too (`NotesReviewGate`, `internal/presenter/gate.go`: accept, abort, edit, regenerate); since Scope Across the Three Consumers its fresh source chunks a big version through the shared generator. Neither decision named regenerate's gate.
+
+### Journey
+
+The reason `r` re-runs only the merge on chunked notes is that a nudge changes emphasis and ordering, and the merge decides those; that holds whichever verb runs the gate. Re-running the whole wave for an emphasis nudge would cost a regenerate operator the minutes of calls and the usage-window draw that decision set out to avoid. A failed `r` on a regenerate leaves the version's published notes untouched, and the saved chunk notes reach it the way any finished notes reach a version already out: regenerate's own `--notes-file` (Notes-File Backdoor's revision).
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Regenerate on Chunked Notes (a nudge's emphasis and ordering are the merge's), `r` on Single-Pass Notes, and Notes-File Backdoor's revision (a version already out takes finished notes through `mint release regenerate <version> --notes-file <path>`). The alternative that also fits, a regenerate `r` that re-runs the whole wave, costs the wave the `r` decision set out to avoid.
+
+At a single-version regenerate's review gate, `r` works as at a release's: on chunked notes it re-runs only the merge call; on single-pass notes it re-runs the AI path from the size check onward. A failed `r` aborts the regenerate; where the notes were chunked, or the ladder turned the `r` into a chunked run, mint first saves the per-chunk notes and names the file, and the saved notes go onto the version with `mint release regenerate <version> --notes-file <path>`.
+
+Sibling check: no overlap found — regenerate's review gate is used as built.
+
+---
+
 ## Map-Reduce, Not Refine
 
 ### Context
