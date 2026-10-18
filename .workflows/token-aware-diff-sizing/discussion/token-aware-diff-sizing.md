@@ -876,6 +876,26 @@ A nudge asks to change emphasis or ordering, and the merge call is where emphasi
 
 ---
 
+## `r` on Single-Pass Notes
+
+### Context
+
+Regenerate on Chunked Notes settles `r` on chunked notes (one merge call) and that a failed `r` aborts whatever `on_notes_failure` says. As built, `r` on single-pass notes re-runs the notes generation with the operator's nudge appended (`regenerateBody`, `internal/engine/release.go`). The degradation path this feature adds — the size check against `max_prompt_bytes`, the classify call on a failure, halving into a chunked run on a SIZE answer — was decided for the notes call without naming `r`, and the exclusion check was placed before the notes without naming it either.
+
+### Journey
+
+A single-pass `r` sends a release-notes generation call: the same diff as the first attempt, plus a one-time nudge. The rules decided for those calls apply by their own terms. Proactive Size Ceiling: no call mint makes exceeds the cap, so a nudge that pushes the prompt over it sends the release to chunking rather than one over-cap call. AI-as-Error-Classifier as Primary Trigger: a failed release-notes generation call is classified, which also gives the ✗ line its cause phrase. Under-Cap Overflow: Halving: a SIZE answer halves. The other reading, a bare one-call `r` outside the ladder, would send an over-cap call whenever the nudge crosses the cap, and would lose the cause phrase on a failure. A SIZE answer on an `r` is rare in practice, since the first attempt carried almost the same prompt and succeeded. When the ladder has turned an `r` into a chunked run and it fails, the run holds the chunk notes the wave finished, and When the merge fails during `r` already saves them before the abort. The exclusion check asks about paths, not notes; its answers were recorded before the first attempt, and re-running it would bring back pauses already answered.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Proactive Size Ceiling (no call over the cap), AI-as-Error-Classifier as Primary Trigger (a failed release-notes generation call is classified), Under-Cap Overflow: Halving, Regenerate on Chunked Notes (a failed `r` aborts; its chunk notes are saved first) and Exclusion Suggestions Before the Notes (the check runs once, before the notes, and no path is asked about twice).
+
+On single-pass notes, `r` re-runs the AI path from the size check onward with the nudge appended, so the cap, the classifier and halving apply to it as to the first attempt. A failed `r` aborts whatever `on_notes_failure` says; where the ladder had turned it into a chunked run, mint first saves the chunk notes the wave finished and names the file. `r` never re-runs the exclusion check.
+
+Sibling check: mint-release-tool — its specification's review gate offers `r` with a one-time nudge on AI notes; this keeps that `r` and routes its call through the ladder this topic adds, and nothing there is contradicted.
+
+---
+
 ## Map-Reduce, Not Refine
 
 ### Context
