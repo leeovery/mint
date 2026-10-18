@@ -55,8 +55,8 @@ Source carrying the claim: discussion, Remediation at the Floor → Decision ("S
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Measurement re-run and landed in the discussion as a dated revision of Remediation at the Floor's Decision (regenerate does not read `on_notes_failure`; an attended single-version regenerate offers `c` / `e` / `a` whatever it holds; `fallback` stays forward release's), with Floor Wording and Guidance's unattended `fallback` move amended to forward release. Specification re-aligned in §1.3, §4.4, §6.6, §12.1, §12.3 and §12.4.
 
 ---
 

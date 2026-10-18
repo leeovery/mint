@@ -38,7 +38,7 @@ So mint estimates no tokens and keeps no model registry. Instead it does three t
 | `mint release regenerate --all` | The size cap, chunking, failure classification and halving, per version. Skip-and-continue stays only as its floor and names the real cause. No exclusion check, no `--notes-file`. |
 | `mint commit` | The lean default command, quote-aware parsing, the size cap (over it, the message is written in `$EDITOR` as today), a `[commit]` exclusion level, and the AI's verbatim output on an AI failure. No chunking, failure classification, exclusion check or message file. |
 
-Regenerate rides on `[release]` config throughout, as built. Its `tag` and `release` sources run no AI and are unchanged.
+Regenerate rides on `[release]` config throughout, as built, except `on_notes_failure`, which it never reads (§12.3). Its `tag` and `release` sources run no AI and are unchanged.
 
 #### 1.4 Out of scope
 
@@ -179,7 +179,7 @@ It has three jobs:
 
 The cap's default and the release timeout's default are chosen together, so that a call at the cap finishes well inside the timeout.
 
-`mint release` gets its own shipped per-attempt timeout default of 180 seconds. It resolves `[release].timeout` → shared `timeout` → 180s, so an explicit value at either level still wins. Regenerate rides on it, as on all `[release]` config. `mint commit` keeps the shipped 60s, because its calls stay small and a hung one should not take minutes to fail.
+`mint release` gets its own shipped per-attempt timeout default of 180 seconds. It resolves `[release].timeout` → shared `timeout` → 180s, so an explicit value at either level still wins. Regenerate rides on it, as it does on `[release].ai_command`. `mint commit` keeps the shipped 60s, because its calls stay small and a hung one should not take minutes to fail.
 
 #### 4.5 The default's grounds
 
@@ -308,7 +308,7 @@ Answers live in `.mint.toml` rather than in state on one machine, so a teammate,
 - **Ctrl-C during the pauses** cancels the run and records nothing.
 - **Abort or failure after answering:** the answers commit stays. The answer is about the repo, not this release, and unwinding it would bring the same question back next time. This is the one deliberate exception to the surgical unwind. A failure before the push unwinds as built, back to the starting commit and taking the pre-tag artifact commit with it. The unwind then re-commits the answers on top of the starting commit.
 - **Everything excluded:** when the answers leave no path in the diff, the release gets the maintenance-release body, as any empty post-exclusion diff does.
-- **Commit-subject bodies:** the commit-subject list (§14) leaves out subjects starting `chore(release): release-notes path answers for `. So the floor's `c` and `fallback` never list mint's own answers commit, on the forward run or on a later regenerate.
+- **Commit-subject bodies:** the commit-subject list (§14) leaves out subjects starting `chore(release): release-notes path answers for `. So the floor's `c` and `fallback` never list mint's own answers commit, and neither does `c` on a later regenerate.
 - **`--autostash`:** the answers are written to the committed `.mint.toml`. A stashed edit to the same file that conflicts on restore leaves the stash entry intact, as any conflicting restore does.
 
 #### 6.7 Unattended and dry runs
@@ -591,6 +591,8 @@ The floor is where the ladder ends without AI notes. With the lean default and c
 
 #### 12.1 What applies, by mode
 
+On `mint release`, the floor depends on the mode and `on_notes_failure`. Regenerate does not read `on_notes_failure` and has its own floor (§12.3).
+
 | Situation | What happens |
 |---|---|
 | Attended, `on_notes_failure = abort` | The ✗ line and the AI's verbatim output, the saved chunk-notes pointer where a file exists (§11.4), then a one-keypress choice (§12.2). |
@@ -613,8 +615,10 @@ The chosen body goes on to the review gate a non-AI body gets as built: accept, 
 
 #### 12.3 Regenerate at the floor
 
-- **`regenerate <version>`, attended, `abort`:** the same choice, finishing in the same run. `c` gives that version's commit subjects, `e` opens the editor (on the saved chunk notes when a chunk or the merge failed), and `a` aborts. Regenerate already runs attended with its own review gate, and stopping would only send the operator to re-run with `--notes-file`. Unattended, it stops with guidance, as release does.
-- **`regenerate --all`:** skip-and-continue stays its floor. Each skipped version names its real cause phrase (§12.4), in its warning and in the end-of-run summary, never `diff too large`. A version whose wave left chunk notes saves its own file (§11.4), named in its skip warning and in the summary, to be fed back with that version's own `mint release regenerate <version> --notes-file <path>`. A version whose single-pass call failed, or whose wave produced nothing, names no file.
+Regenerate does not read `on_notes_failure`, as built, and this feature does not make it. As built, a failed regenerate aborts. `fallback` stays release's: it exists so a release goes out without AI notes rather than not at all, and a regenerate blocks nothing, since its version is already out with notes. Shipping the commit-subject list over those notes whenever an AI call failed would replace them with a worse body. An operator who wants the subjects on a version picks `c`.
+
+- **`regenerate <version>`, attended:** the same choice, whatever `on_notes_failure` holds, finishing in the same run. `c` gives that version's commit subjects, `e` opens the editor (on the saved chunk notes when a chunk or the merge failed), and `a` aborts, which is as-built regenerate's one outcome and stays the default. Regenerate already runs attended with its own review gate, and stopping would only send the operator to re-run with `--notes-file`. Unattended, it stops with guidance, as release does under `abort`.
+- **`regenerate --all`:** skip-and-continue stays its floor, whatever `on_notes_failure` holds. Each skipped version names its real cause phrase (§12.4), in its warning and in the end-of-run summary, never `diff too large`. A version whose wave left chunk notes saves its own file (§11.4), named in its skip warning and in the summary, to be fed back with that version's own `mint release regenerate <version> --notes-file <path>`. A version whose single-pass call failed, or whose wave produced nothing, names no file.
 
 #### 12.4 The ✗ line and the next moves
 
@@ -637,7 +641,7 @@ The next moves are cause-fitted. Unattended runs print them; attended runs show 
 - **Always:**
   - The `--notes-file` route. Where a chunk-notes file was saved, it says to tidy the saved notes at its path, filling in any files the marker lists, and release with them. The command is `mint release --notes-file <path>` while the version is not out, or `mint release regenerate <version> --notes-file <path>` once it is: after a regenerate, or a forward release that shipped under `fallback`. Where no file was saved, it says to write the notes and release with `--notes-file`.
   - On forward release, `--no-ai`, for the commit-subject list.
-  - Unattended only, `on_notes_failure = "fallback"` under `[release]`, to ship the commit-subject list rather than stop.
+  - On an unattended forward release only, `on_notes_failure = "fallback"` under `[release]`, to ship the commit-subject list rather than stop.
 - **Size** (SIZE with no halving left; no room caused by a halving round):
   - lower `max_prompt_bytes`, since the model accepts less than the cap
   - if `ai_command` carries a large overhead of its own, use the lean command documented in the README (§2), without mint naming claude flags itself
