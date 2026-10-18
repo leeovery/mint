@@ -159,6 +159,8 @@ It bounds the composed prompt mint sends in any single AI call, measured in byte
 
 As a new key it takes the strict-config path: a schema entry, a friendly type error, a config-metadata row and the README tables.
 
+A value of zero or less is rejected when config loads, before any step runs, in the same load-error shape as a malformed `ai_command`: `invalid .mint.toml: max_prompt_bytes must be a positive number of bytes`. Zero never means "no cap", the way `timeout = 0` means no deadline: the cap sizes every chunk and keeps every call under claude's stdin limit. An operator who wants a cap mint never reaches sets a large one.
+
 #### 4.2 What the cap does
 
 The cap is a size policy, not a fit prediction. A prompt under it can still overflow the model; that is the failure classifier's case (§9) and halving's (§10).
@@ -313,7 +315,7 @@ Answers live in `.mint.toml` rather than in state on one machine, so a teammate,
 
 #### 6.7 Unattended and dry runs
 
-- **Unattended** (`-y`, non-TTY, an agent run): no pause, and nothing is written. After the notes, each suggestion prints with its reason, what it matches, and the `[release].diff_exclude` line that would exclude it, for whoever reads the output to act on. A flagged file stays in the diff and is read like any other (§8).
+- **Unattended** (`-y`, non-TTY, an agent run): no pause, and nothing is written. After the notes, each suggestion prints with its reason, what it matches, and the `[release].diff_exclude` line that would exclude it, for whoever reads the output to act on. A flagged file stays in the diff and is read like any other (§8). They print whatever the notes' outcome: after the commit-subject list when `on_notes_failure = "fallback"` ships it, and with the next moves when the run stops at the floor (§12.4), where the reader is about to act.
 - **Dry run:** the suggestions show as they would at the pause; nothing is asked or written.
 
 #### 6.8 When the check fails
@@ -791,6 +793,8 @@ The follow-ups print after the notes:
 
 - the lower-the-cap hint (§10.3)
 - the exclusion suggestions under `-y` (§6.7)
+
+On an unattended run that stops at the floor, the exclusion suggestions print with the floor's next moves instead (§6.7).
 
 The failed-check warning (§6.8) is not a follow-up: it prints when the check fails, before the notes are written.
 

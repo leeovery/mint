@@ -23,10 +23,10 @@ A literal zero can carry no call, so no informed user would choose it. Reading z
 **Proposed Text**:
 In §4.1, after the paragraph beginning "As a new key it takes the strict-config path":
 
-> A value of zero or less is rejected when config loads, before any step runs, in the same load-error shape as a malformed `ai_command`: `invalid .mint.toml: max_prompt_bytes must be a positive number of bytes`. Zero never means "no cap", as it does for `timeout`: the cap is what sizes every chunk and keeps every call under claude's stdin limit.
+> A value of zero or less is rejected when config loads, before any step runs, in the same load-error shape as a malformed `ai_command`: `invalid .mint.toml: max_prompt_bytes must be a positive number of bytes`. Zero never means "no cap", the way `timeout = 0` means no deadline: the cap sizes every chunk and keeps every call under claude's stdin limit. An operator who wants a cap mint never reaches sets a large one.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, Size Cap Range (zero or less rejected at load; zero never means no cap). Specification §4.1 carries the Proposed Text.
 
 ---
 
@@ -64,8 +64,8 @@ In §16.3, after the list:
 
 > On an unattended run that stops at the floor, the exclusion suggestions print with the floor's next moves instead (§6.7).
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Landed in the discussion as a new subtopic, Unattended Suggestions When the Notes Fail, with the earlier "after the notes" restatements amended. Specification §6.7 and §16.3 carry the Proposed Text.
 
 ---
 
