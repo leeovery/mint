@@ -91,8 +91,8 @@ Source carrying the claim: discussion, Commit AI-Failure Output → Journey: "co
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Measurement re-run. The discussion's Commit AI-Failure Output Journey was corrected in place, and a new subtopic, `regenerate --all`'s Skip Output, landed the rule derived from CLAUDE.md's verbatim-diagnostics rule: each skip warning carries the failed call's captured output, the first final failure's in a chunked run. The specification was re-aligned in §1.3, §12.3 and §17.1.
 
 ---
 

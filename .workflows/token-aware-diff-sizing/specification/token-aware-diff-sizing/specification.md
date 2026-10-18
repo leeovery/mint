@@ -35,7 +35,7 @@ So mint estimates no tokens and keeps no model registry. Instead it does three t
 |---|---|
 | `mint release` | All of it. |
 | `mint release regenerate <version>`, fresh source | The size cap, chunking, failure classification, halving, the floor's choices, and `--notes-file` as a notes source. No exclusion check. |
-| `mint release regenerate --all` | The size cap, chunking, failure classification and halving, per version. Skip-and-continue stays only as its floor and names the real cause. No exclusion check, no `--notes-file`. |
+| `mint release regenerate --all` | The size cap, chunking, failure classification and halving, per version. Skip-and-continue stays only as its floor and names the real cause, with the AI's verbatim output. No exclusion check, no `--notes-file`. |
 | `mint commit` | The lean default command, quote-aware parsing, the size cap (over it, the message is written in `$EDITOR` as today), a `[commit]` exclusion level, and the AI's verbatim output on an AI failure. No chunking, failure classification, exclusion check or message file. |
 
 Regenerate rides on `[release]` config throughout, as built, except `on_notes_failure`, which it never reads (§12.3). Its `tag` and `release` sources run no AI and are unchanged.
@@ -618,7 +618,7 @@ The chosen body goes on to the review gate a non-AI body gets as built: accept, 
 Regenerate does not read `on_notes_failure`, as built, and this feature does not make it. As built, a failed regenerate aborts. `fallback` stays release's: it exists so a release goes out without AI notes rather than not at all, and a regenerate blocks nothing, since its version is already out with notes. Shipping the commit-subject list over those notes whenever an AI call failed would replace them with a worse body. An operator who wants the subjects on a version picks `c`.
 
 - **`regenerate <version>`, attended:** the same choice, whatever `on_notes_failure` holds, finishing in the same run. `c` gives that version's commit subjects, `e` opens the editor (on the saved chunk notes when a chunk or the merge failed), and `a` aborts, which is as-built regenerate's one outcome and stays the default. Regenerate already runs attended with its own review gate, and stopping would only send the operator to re-run with `--notes-file`. Unattended, it stops with guidance, as release does under `abort`.
-- **`regenerate --all`:** skip-and-continue stays its floor, whatever `on_notes_failure` holds. Each skipped version names its real cause phrase (§12.4), in its warning and in the end-of-run summary, never `diff too large`. A version whose wave left chunk notes saves its own file (§11.4), named in its skip warning and in the summary, to be fed back with that version's own `mint release regenerate <version> --notes-file <path>`. A version whose single-pass call failed, or whose wave produced nothing, names no file.
+- **`regenerate --all`:** skip-and-continue stays its floor, whatever `on_notes_failure` holds. Each skipped version names its real cause phrase (§12.4), in its warning and in the end-of-run summary, never `diff too large`. Its skip warning carries the failed call's captured output verbatim beneath it, as the ✗ line does; in a chunked run, that of the first final failure (§11.2). As built the skip warning carries no output at all (`grep -n 'Label: "skipped "' internal/engine/regenerate_batch.go` → `382:	p.Warn(presenter.Warning{Label: "skipped " + tag, Message: reason})`), so an expired login across a batch would otherwise read only as `AI call failed`. A version whose wave left chunk notes saves its own file (§11.4), named in its skip warning and in the summary, to be fed back with that version's own `mint release regenerate <version> --notes-file <path>`. A version whose single-pass call failed, or whose wave produced nothing, names no file.
 
 #### 12.4 The ✗ line and the next moves
 
@@ -802,7 +802,7 @@ The updates are new presenter events in the existing model. Spinners are a prett
 
 #### 17.1 The AI's output, verbatim
 
-As built, any AI generation failure on `mint commit` drops the AI's captured output. Release, by contrast, renders it verbatim under the ✗ line. Commit is the one site that breaks the rule that subprocess failure diagnostics travel verbatim, and it matters for any commit failure: an expired login, a usage limit, a claude too old for the lean flags (§2.5).
+As built, any AI generation failure on `mint commit` drops the AI's captured output. Release, by contrast, renders it verbatim under the ✗ line. Commit breaks the rule that subprocess failure diagnostics travel verbatim, as `regenerate --all`'s skip warning does (§12.3), and it matters for any commit failure: an expired login, a usage limit, a claude too old for the lean flags (§2.5).
 
 - **Attended:** the AI-failure warning, `could not generate a message, opening editor`, carries the AI's captured output verbatim beneath it, then the editor opens as built.
 - **Unattended** (`-y` or non-TTY): when the run fails loud because the AI failed, the failure carries the AI's captured output verbatim beneath its `no AI message and no interactive editor available` line. The unattended run is the one with nobody present to re-run it, so it needs the cause most.
