@@ -389,6 +389,30 @@ Attended versus unattended governs it (CLAUDE.md: fail loud, never hang): under 
 
 ---
 
+## Floor Wording and Guidance
+
+### Context
+
+Remediation at the Floor fixed what the floor offers — a `c` / `e` / `a` choice at a terminal under `abort`, a cause-fitted list of next moves unattended — and the classifier decisions make the ✗ line's cause phrase come from the classifier's result. The phrases themselves, what each cause's list of next moves holds, the choice's default, where a chosen body goes next, and how `fallback` names a saved file were left open. The as-built phrase for every generation failure, `AI returned empty/invalid notes after retry` (`CauseText`, `internal/notes/resolve.go`), misnames a size overflow and a refused login alike.
+
+### Journey
+
+Each phrase names the cause in a few words and leaves the specifics to the AI's verbatim output beneath it; the as-built timeout and missing-tool phrases already do that and stay. A chunked failure adds where it happened, since "AI timed out" means something different on part 3 of 6 than on the merge. The next moves follow from what each cause leaves the operator able to change: a size failure points at the cap, at a command's own overhead and at generated paths; a timeout at the timeout; operator text that leaves no room at that text; and every cause at the routes that always work — `--notes-file`, with the saved notes when a wave left them, and `--no-ai`. Abort is the safe default for the choice: an Enter that ships nothing. A chosen body is not AI output, so it goes on to the review gate a non-AI body gets as built (`gateForKind`, `internal/engine/release.go`: accept, edit, abort; no `r`), which also shows the operator what will ship. Under `fallback` the release succeeds, so the saved file has to be named in a warning rather than a failure.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Remediation at the Floor, Classifier Result Alongside the Verbatim Error, Overhead-Dominated Failures, Under-Cap Overflow: Halving's When halving runs out, Stitching and Salience's No room left for diff, When the Merge Fails, When a Chunk Fails and Notes-File Backdoor's revision (regenerate names its own command).
+
+- **Cause phrases** — `AI timed out` and `AI tool not installed` stay; a SIZE answer with no halving left reads `too large for the model, even in smaller parts`; OTHER reads `AI call failed`, or `AI returned empty notes` when there was no output; no room reads `no room for the diff under max_prompt_bytes`; a merge prompt over the cap reads `part notes too large to merge`. In a chunked run the phrase ends with where it happened: `(part 3 of 6)`, `(merging)`.
+- **Next moves** — always the `--notes-file` route (naming the saved file when one exists, `mint release regenerate <version> --notes-file` where the version is already out) and, on forward release, `--no-ai`; unattended, also `on_notes_failure = "fallback"`. By cause: size — lower `max_prompt_bytes`, the documented lean command if the `ai_command` carries its own overhead, `[release].diff_exclude` for generated paths; no room — shorten whichever of `[release].prompt` or `context` is outsized, or the size guidance when a halving round caused it; timeout — raise `[release].timeout`; missing tool — install it or set `ai_command`; OTHER — the AI's own message above, plus the lean-command pointer when the `ai_command` is not the shipped default.
+- **The choice** — defaults to `a`.
+- **After `c` or `e`** — the body goes to the non-AI review gate (accept, edit, abort); under `-y` it never arises, since unattended runs get no choice.
+- **Under `fallback`** — the release succeeds with the commit-subject list, and a warning names the saved file and the `regenerate --notes-file` command that puts it on the version.
+
+Sibling check: notes-failure-output-ugly-and-uninformative — its specification built the concise cause phrases and the verbatim output beneath the ✗ line; the new phrases extend that set, and the generation-failure phrase is replaced by the classifier's, as Classifier Result Alongside the Verbatim Error anticipates.
+
+---
+
 ## Dropping the Fixed Fallback Body
 
 ### Context
