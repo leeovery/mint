@@ -87,6 +87,27 @@ Sibling check: no overlap found — this topic's own classifier ground.
 
 ---
 
+## Classifier Bound and Answer Reading
+
+### Context
+
+Classifier Prompt Hardening left the bound on the embedded error text open, and Off-List Classifier Answer maps any answer that is not exactly one listed code to OTHER without saying how an answer is read — whether `SIZE.` or `size` is one listed code.
+
+### Journey
+
+The text worth classifying sits at either end of a failure's output: claude's overflow message is the whole of its short stdout, a Go panic names its cause at the top, a Python traceback at the bottom. Keeping each stream's head and tail, with a marker for what was cut, holds both ends whatever the tool, and a few thousand bytes is far more than any real cause line while keeping the call small under any cap. On reading, a model told to answer with one code still sometimes adds a full stop, a quote or a capital; a bare code with that decoration is one listed code, whereas an answer naming both codes, or a sentence, is not. Mapping a decorated `SIZE.` to OTHER would stop a release that chunking could have saved, the very case the classifier exists for.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Classifier Prompt Hardening (bound and fence the untrusted text), Off-List Classifier Answer (anything else is OTHER, no re-ask) and the classifier's purpose (only a size code fires the ladder).
+
+- **The bound** — each captured stream longer than 4,000 bytes keeps its first and last 2,000 bytes, cut at character boundaries, with a line saying how many bytes were omitted between them.
+- **Reading the answer** — the answer, with surrounding whitespace, quotes, backticks and trailing punctuation stripped, is compared case-insensitively against the codes; it is a listed code only when what remains is exactly `SIZE` or exactly `OTHER`. Anything else is OTHER.
+
+Sibling check: no overlap found — this topic's own classifier ground.
+
+---
+
 ## Classifier Result Alongside the Verbatim Error
 
 ### Context
