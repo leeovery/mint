@@ -28,8 +28,8 @@ Skipping the exclusion check on `r` is unsourced too. It is the side any operato
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Derived from the record's own rules for release-notes calls (no call over the cap, the classifier on any failed generation call, halving) and landed in the discussion as a new subtopic, `r` on Single-Pass Notes: a failed `r` aborts and saves any chunk notes the ladder produced first, and `r` never re-runs the exclusion check. Specification §15.1 re-aligned.
 
 ---
 

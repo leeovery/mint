@@ -739,9 +739,9 @@ On chunked notes, `r` re-runs only the merge call. It reuses the per-chunk notes
 
 A nudge asks to change emphasis or ordering, and the merge is where emphasis and ordering are decided; the per-chunk notes do not change with it. The residual this cannot fix, a change a chunk's own notes missed, is rare.
 
-On single-pass notes, `r` re-runs the same AI path as built, with the nudge appended: from the size check onward (§7.2), so the ladder applies to it as to the first attempt. It never re-runs the exclusion check.
+On single-pass notes, `r` re-runs the same AI path as built, with the nudge appended: from the size check onward (§7.2), so the ladder applies to it as to the first attempt. Its call is a release-notes generation call like any other, so the cap (§4.1) and the classifier (§9.1) apply by their own terms: a nudge that pushes the prompt over the cap sends the release to chunking rather than one over-cap call. It never re-runs the exclusion check, which asks about paths, not notes, and whose answers were recorded before the first attempt.
 
-**When `r` fails.** A failed `r` aborts the run whatever `on_notes_failure` says, as built. On chunked notes:
+**When `r` fails.** A failed `r` aborts the run whatever `on_notes_failure` says, as built. On chunked notes, and on a single-pass `r` the ladder turned into a chunked run:
 
 - mint first saves the per-chunk notes and names the file (§11.4).
 - `on_notes_failure` does not apply, so `fallback` never ships its body in place of the re-merge the operator asked for.
