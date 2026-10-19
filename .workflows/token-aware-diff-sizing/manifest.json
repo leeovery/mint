@@ -232,7 +232,8 @@
             "token-aware-diff-sizing-2-6": "tick-56fa24",
             "token-aware-diff-sizing-2-7": "tick-9504f6",
             "token-aware-diff-sizing-2-8": "tick-9fff2e",
-            "token-aware-diff-sizing-2-9": "tick-dc97ae"
+            "token-aware-diff-sizing-2-9": "tick-dc97ae",
+            "token-aware-diff-sizing-2-10": "tick-8d373e"
           },
           "storage_paths": [
             ".tick/"
