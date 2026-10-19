@@ -214,8 +214,8 @@
           "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
-          "phase": 3,
-          "task": "token-aware-diff-sizing-3-6",
+          "phase": 4,
+          "task": null,
           "task_map": {
             "token-aware-diff-sizing-1-1": "tick-242ea4",
             "token-aware-diff-sizing-1": "tick-d30fa2",
@@ -253,18 +253,7 @@
               "p3": "2026-10-19"
             }
           },
-          "staging": {
-            "author-p3": {
-              "tasks": {
-                "token-aware-diff-sizing-3-1": "approved",
-                "token-aware-diff-sizing-3-2": "approved",
-                "token-aware-diff-sizing-3-3": "approved",
-                "token-aware-diff-sizing-3-4": "approved",
-                "token-aware-diff-sizing-3-5": "approved",
-                "token-aware-diff-sizing-3-6": "approved"
-              }
-            }
-          },
+          "staging": {},
           "external_id": "tick-8b9ac3"
         }
       }
