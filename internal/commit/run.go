@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"mint/internal/ai"
 	"mint/internal/aitransport"
@@ -384,14 +385,16 @@ func Run(ctx context.Context, deps Deps) error {
 		// no re-show of a partial message). On an attended run a Warn explains WHY the
 		// editor is opening (and stops the live spinner); the unattended path stays silent
 		// here — the fallback guard fails loud with the single spec message, and a note
-		// promising an editor that never opens would contradict it. The transport's own
-		// bad-content retry is consumed here, never re-run. Any OTHER generate error keeps
-		// the surface abort.
+		// promising an editor that never opens would contradict it. The AI's captured output
+		// travels verbatim beneath whichever line is shown: the warn on an attended run, the
+		// fail-loud on an unattended one. The transport's own bad-content retry is consumed
+		// here, never re-run. Any OTHER generate error keeps the surface abort.
 		if isAITransportFailure(err) {
+			output := aiFailureOutput(err)
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage})
+				p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output})
 			}
-			return runEditorFallback(ctx, deps, root, "")
+			return runEditorFallback(ctx, deps, root, output)
 		}
 		return surface(p, "generate", err)
 	}
@@ -432,11 +435,10 @@ func Run(ctx context.Context, deps Deps) error {
 	return commitAccept(ctx, deps, root, finalBody)
 }
 
-// runEditorFallback is the shared $EDITOR degradation path the three "no AI message"
-// cases converge on (the --no-ai entry is wired here; AI-failure 3-3 and oversized 3-4
-// reuse it unchanged). It opens the editor directly via the reusable OpenEditor
-// roundtrip — initial is the caller-supplied buffer (empty on --no-ai; Phase 4's `e`
-// pre-fills the current message) — and treats the SAVE as the accept event.
+// runEditorFallback is the shared $EDITOR degradation path for a run with no AI message.
+// It opens the editor via OpenEditor against an EMPTY buffer and treats the SAVE as the
+// accept event. aiOutput, a failed AI call's captured output, renders only beneath the
+// unattended fail-loud: an attended caller shows it in its own warn.
 //
 // The no-message-source guard runs FIRST, BEFORE any editor launch, so a run with no
 // way to produce a message fails loud rather than hangs or commits empty. It fires when:
@@ -447,9 +449,8 @@ func Run(ctx context.Context, deps Deps) error {
 //   - OpenEditor reports no launchable editor in git's chain (ErrNoEditor from 3-1, or
 //     runner.ErrCommandNotFound at launch) on a TTY — there is no message to fall back to.
 //
-// All three collapse to errNoMessageSource (the spec's "no AI message and no interactive
-// editor available"), surfaced and aborted — identically across all three converging
-// triggers, since they all reach here. There is NO -m/--message escape.
+// All three collapse to errNoMessageSource ("no AI message and no interactive editor
+// available"), surfaced and aborted. There is NO -m/--message escape.
 //
 // Past the guard, the SAVE is the accept event:
 //
@@ -464,7 +465,7 @@ func Run(ctx context.Context, deps Deps) error {
 //     so a non-empty save is a full accept: `mint commit -Ap --no-ai` stages, commits,
 //     AND pushes. The push fires strictly after the stage→commit ordering completes and
 //     is a no-op when push is disarmed.
-func runEditorFallback(ctx context.Context, deps Deps, root, initial string) error {
+func runEditorFallback(ctx context.Context, deps Deps, root, aiOutput string) error {
 	p := deps.Presenter
 
 	// No-message-source guard, BEFORE any editor launch: an unattended -y run or a non-TTY
@@ -475,10 +476,10 @@ func runEditorFallback(ctx context.Context, deps Deps, root, initial string) err
 	// editorUnavailable predicate is the SINGLE definition of this condition, shared with the
 	// oversized note gate so "will the editor open?" cannot drift between them.
 	if deps.editorUnavailable() {
-		return surface(p, "editor", errNoMessageSource)
+		return surfaceOutput(p, "editor", errNoMessageSource, aiOutput)
 	}
 
-	saved, ok, err := OpenEditor(ctx, deps.Runner, p, initial)
+	saved, ok, err := OpenEditor(ctx, deps.Runner, p, "")
 	if err != nil {
 		// No launchable editor in git's chain on a TTY (ErrNoEditor from 3-1, or
 		// runner.ErrCommandNotFound at launch) is the no-message-source case too — there is
@@ -674,7 +675,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// sentinel so Run owns the fallback call (the same entry point first-generation
 				// failures use): a successful fallback commit exits 0 and never double-stages.
 				if isAITransportFailure(gerr) {
-					p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage})
+					p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr)})
 					return false, body, errRegenerateFallback
 				}
 				// Any OTHER regeneration error (not a transport failure) keeps the defensive
@@ -791,6 +792,23 @@ func isAITransportFailure(err error) bool {
 	return errors.Is(err, ai.ErrGenerationFailed) ||
 		errors.Is(err, ai.ErrTimeout) ||
 		errors.Is(err, ai.ErrCommandMissing)
+}
+
+// aiFailureOutput composes a failed AI call's captured streams by the rule release
+// applies beneath its ✗ line (notesFailureOutput), so the same tool output reads alike on
+// both verbs. A timeout or a missing binary carries no streams and yields "".
+func aiFailureOutput(err error) string {
+	var genErr *ai.GenerationError
+	if !errors.As(err, &genErr) {
+		return ""
+	}
+	var streams []string
+	for _, stream := range []string{genErr.Stdout, genErr.Stderr} {
+		if strings.TrimSpace(stream) != "" {
+			streams = append(streams, stream)
+		}
+	}
+	return strings.TrimRightFunc(strings.Join(streams, "\n"), unicode.IsSpace)
 }
 
 // commitTransport resolves the L2 transport: the injected deps.Transport when set
