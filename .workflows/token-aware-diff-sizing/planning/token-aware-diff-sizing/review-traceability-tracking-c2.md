@@ -72,7 +72,7 @@ In token-aware-diff-sizing-2-9 (tick-dc97ae), Acceptance Criteria, replacing the
 - [ ] Given a release whose single-pass prompt is over the cap, with a `[release].context` or `[release].prompt` override file large enough that a chunk call's fixed part leaves no room for diff, no chunk, merge or single-pass call is sent. The fixed part is the instructions, the condensed Change Map, the framing and the closing reminder (§8.3, §8.7)
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
