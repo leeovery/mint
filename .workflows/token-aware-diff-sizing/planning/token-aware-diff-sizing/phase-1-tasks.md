@@ -62,7 +62,7 @@
   - `--system-prompt`, then `Follow the instructions you are given and output only what they ask for.` as one argument
 - [ ] Given a `.mint.toml` that sets no `ai_command` at any level, `mint release regenerate <version>` from a fresh source and `mint commit` run that same program and arguments (§2.2, §2.4)
 - [ ] Given an explicit `ai_command`, such as `[commit].ai_command = 'claude -p --model opus'` or a shared `ai_command = 'llm -m gpt-4o'`, each verb that resolves to it runs exactly that command, with none of the lean flags added (§2.4)
-- [ ] Given a claude too old for a lean flag, one that exits non-zero rejecting `--safe-mode` as an unknown option, mint runs no version probe and no other command form. The AI tool's only invocations are the lean command's first attempt and the transport's one retry (§2.5)
+- [ ] Given a claude too old for a lean flag, one that exits non-zero rejecting `--safe-mode` as an unknown option, mint runs no version probe and no other command form: every invocation of the AI tool is the lean command, and none is the plain `claude -p --model sonnet` or any other form without the lean flags. On `mint commit` the AI tool's only invocations are the lean command's first attempt and the transport's one retry (§2.5, §17.2)
 - [ ] `mint setup`'s config reference shows the shared `ai_command` row defaulting to the lean command. Its AI-transport paragraph names the lean command where it named `claude -p --model sonnet` (§18.1)
 - [ ] The README (§2.3, §18.2):
   - shows the lean command as the shared `ai_command` default, and no line still calls `claude -p --model sonnet` the shipped default

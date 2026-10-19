@@ -26,7 +26,7 @@ Keep what §2.5 decides as a rule that every invocation meets: no version probe,
 - [ ] Given a claude too old for a lean flag, one that exits non-zero rejecting `--safe-mode` as an unknown option, mint runs no version probe and no other command form: every invocation of the AI tool is the lean command, and none is the plain `claude -p --model sonnet` or any other form without the lean flags. On `mint commit` the AI tool's only invocations are the lean command's first attempt and the transport's one retry (§2.5, §17.2)
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
