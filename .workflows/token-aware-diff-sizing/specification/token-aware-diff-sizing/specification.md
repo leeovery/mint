@@ -781,7 +781,7 @@ So a chunked run keeps the single notes line and updates it as the run moves:
 ⠋ Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done
 ⠋ Writing notes: part 4 was too big for the model, retrying it as 3 smaller parts
 ⠋ Writing notes: merging 8 parts
-✓ Notes written (8 parts, merged)
+✓ Notes written (8 parts, merged) (64.2s)
 ```
 
 - The check line shows on every release that runs the check (§6.1), single-pass included.
@@ -789,6 +789,7 @@ So a chunked run keeps the single notes line and updates it as the run moves:
 - Sizes are written in decimal units, 1 MB being 1,000,000 bytes, so the default cap reads 1.5 MB. Below 10 a size takes one decimal place and from 10 up a whole number: `3.1 MB`, `38 MB`, `850 KB`, and plain bytes under 1 KB (`640 B`). The exclusion check's list (§6.2, §6.3) and its pauses (§6.5) write sizes the same way.
 - A single-pass call that halves (§10.1) shows `Writing notes: too big for the model in one call, retrying in {n} parts`. Here, and when a part halves, n is the number of parts the re-cut yields (§10.1).
 - When halving splits a part, the total grows by the parts it adds.
+- The ✓ line keeps the elapsed time every blocking stage's success line carries, after its own text: `✓ Notes written ({n} parts, merged) ({elapsed})`. A chunked run is the longest wait mint has, so the time tells the most there.
 - A single-pass run otherwise narrates as today.
 - The spinner suspends for the check's pauses (§6.5) and for the floor's choice (§12.2), as it does for any gate.
 
@@ -886,3 +887,5 @@ Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code
 > **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §16.1 said "The split line names the release's size" without saying what is measured or how a size is written — corrected: the size is the composed single-pass prompt the size check measured against the cap; sizes are written in decimal units (1 MB = 1,000,000 bytes), one decimal place below 10 and a whole number from 10 up, KB below 1 MB and bytes below 1 KB, and the exclusion check's list and pauses write sizes the same way — settled by: derivation — the cap and every call size in the feature are composed-prompt bytes (§4.1, §10.1) and the split is decided by that measure (§7.2); the spec's two renderings, `3.1 MB` (§16.1) and `38 MB` (§6.3), both fit the one-decimal-below-10 rule, and decimal units keep the 1,500,000-byte default reading as 1.5 MB.
 
 > **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §4.3 said a `mint commit` prompt over the cap "opens `$EDITOR` as today" without saying what `r` at commit's review gate does when its nudge pushes the regeneration's composed prompt over the cap — corrected: no call is sent, and the editor opens empty with the `diff too large to summarise — opening editor` note, as after a failed regeneration — settled by: §4.1 (no call mint makes is ever bigger than the cap), §1.3 and §4.3 stating commit's over-cap route without limiting it to the first generation, §15.1 applying the cap to release's `r` on release's own terms, and the as-built routing of a failed commit regeneration to the empty editor fallback (`internal/commit/run.go:413`).
+
+> **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §16.1 showed the chunked run ending `✓ Notes written (8 parts, merged)` without saying whether that line keeps the elapsed time every blocking stage's success line carries — corrected: it keeps it, after its own text, `✓ Notes written ({n} parts, merged) ({elapsed})` — settled by: the discussion's Narration Wording decision (2026-10-19 revision), user agreed.
