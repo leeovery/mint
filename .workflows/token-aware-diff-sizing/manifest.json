@@ -210,18 +210,21 @@
           "status": "in-progress",
           "format": "tick",
           "spec_commit": "f9eb182a85fa5a0a84774ea0a68625393cac7f42",
-          "task_list_gate_mode": "gated",
+          "task_list_gate_mode": "auto",
           "author_gate_mode": "gated",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": null,
+          "task": "token-aware-diff-sizing-1-1",
           "task_map": {},
           "storage_paths": [
             ".tick/"
           ],
           "approvals": {
-            "structure": "2026-10-19"
+            "structure": "2026-10-19",
+            "tasks": {
+              "p1": "2026-10-19"
+            }
           }
         }
       }
