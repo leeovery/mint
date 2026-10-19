@@ -78,7 +78,7 @@ In planning.md, Phase 2 task table, row token-aware-diff-sizing-2-4, Edge Cases 
 a chunk call carries the release's instructions (the default prompt with `context`, or the `[release].prompt` override, which replaces both), part-k-of-n framing, its slice and the closing reminder (§8.6)
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---

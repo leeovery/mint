@@ -129,11 +129,12 @@ The line count no longer applies to release notes. Forward releases and regenera
 - [ ] Given no `max_prompt_bytes` set and a release whose composed single-pass prompt is at most 1,500,000 bytes, including one whose diff runs past 50,000 lines, the AI tool receives exactly one call, carrying the single-pass prompt (§4.2, §7.2)
 - [ ] Given a release whose diff alone is under the cap but whose composed single-pass prompt is over it, for example through a long `[release].context`, no single-pass call is made and the notes are chunked (§7.2)
 - [ ] Given a release whose single-pass prompt is over the cap, no single-pass call is made. The AI tool receives chunk calls, none bigger than the cap, each carrying (§4.1, §8.2, §8.6):
-  - the release's instructions: the default prompt or the `[release].prompt` override, with `context`
+  - the release's instructions: the default prompt with `context`, or the `[release].prompt` override, which replaces both, as built
   - the whole-release Change Map
   - framing that names its part (part k of n)
   - its slice of the diff
   - the closing reminder, last
+- [ ] Given an over-cap release with both `[release].prompt` and `[release].context` set, every chunk call and the merge call carry the override file's contents as the release's instructions and none of the `context` text, as the single-pass call does (§8.6)
 - [ ] Given files whose diffs each fit a chunk's room, they are packed in path order, each chunk filled until the next file's diff would not fit. Together the chunks carry every file's diff exactly once (§8.3)
 - [ ] Given the chunk calls succeed, exactly one merge call follows. It carries the release's instructions, the same Change Map, every chunk's notes in chunk order, framing that asks for one set of release notes, and the closing reminder, and none of the diff. Its output ships byte-identical as the tag message, changelog entry and provider release (§8.1, §8.6)
 - [ ] Given chunked notes on an attended run, they reach the review gate as AI notes, offered the same choices as single-pass notes, `r` included (§15.1)
