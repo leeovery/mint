@@ -25,7 +25,7 @@ golangci-lint run     # must report 0 issues
 - `internal/ai` — content-agnostic AI transport (finished prompt in, body out). `internal/aitransport` — the ONE place mapping a resolved config + verb to a production `ai.Transport` (the three wiring sites — release, regenerate, commit — consume it). `internal/notes` — release-specific context assembly (L1); exposes the reusable `CheckDiffSize`/`ErrDiffTooLarge`.
 - `internal/config` — the canonical `.mint.toml` schema, strict decoding, and the config-metadata SoT (`MetadataRows()`: one row per `(level, key)` carrying key·level·default·description, drift-tested against the decode-shape structs). `internal/initgen` — the pure `mint init` generator (now a minimal empty-body + dual-pointer header template; `ReleaseShim()` unchanged).
 - `internal/setupguide` — the embedded `mint setup` guide emitter: renders the SoT config reference plus the marker-anchored guide sections (pipeline/hook model, etiquette, minimalism, existing-config/upgrade). `internal/configtest` — test-only seam indexing the SoT by `(level, key)` (never linked into the binary).
-- Supporting: `internal/version` (SemVer), `internal/publish` (provider drivers), `internal/record` (bookkeeping commit), `internal/hooks`, `internal/notescache`, `internal/preflight`, `internal/release`, `internal/buildinfo`, `internal/fsutil`.
+- Supporting: `internal/version` (SemVer), `internal/publish` (provider drivers), `internal/record` (bookkeeping commit), `internal/hooks`, `internal/notescache`, `internal/preflight`, `internal/release`, `internal/buildinfo`, `internal/fsutil`, `internal/cmdline` (POSIX-quoting `ai_command` split, no shell).
 
 ## Non-negotiable seams
 

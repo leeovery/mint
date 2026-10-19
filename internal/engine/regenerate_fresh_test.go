@@ -429,7 +429,7 @@ func TestRegenerateFreshBody_ReleaseVerbOverrideDrivesAIInvocation(t *testing.T)
 	body := "## TL;DR\n\nShipped auth.\n"
 	f := seedFreshGit(diff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
 	// The [release].ai_command override's BINARY (mybot) is the runner key — the transport
-	// whitespace-splits "mybot gen --json" into name + args. Seeding the default `claude`
+	// splits "mybot gen --json" into name + args. Seeding the default `claude`
 	// here would never be reached; an unseeded `mybot` would error the run, so the seed
 	// proves the [release] override (not the default) is what gets invoked.
 	f.Seed("mybot", runner.Result{Stdout: body}, nil)

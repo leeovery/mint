@@ -1669,8 +1669,8 @@ func TestAICommandFor_PreservesRawCommandString(t *testing.T) {
 	dir := t.TempDir()
 	// The accessor trims ONLY for the empty-check — the returned value is the
 	// operator's RAW string. Internal multi-space runs must survive verbatim (the
-	// transport whitespace-splits it; collapsing here would mutate the operator's
-	// intended argv).
+	// transport splits it by shell quoting rules; altering spacing could change a quoted
+	// argument).
 	const raw = "claude   -p    --model   opus"
 	writeConfig(t, dir, "[release]\nai_command = \"claude   -p    --model   opus\"\n")
 

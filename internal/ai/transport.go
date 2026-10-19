@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"mint/internal/cmdline"
 	"mint/internal/runner"
 )
 
@@ -89,7 +90,8 @@ func (e *GenerationError) Unwrap() error { return ErrGenerationFailed }
 // AICommand is the resolved command config hands the transport — config's floor
 // (config.DefaultAICommand) guarantees it is non-empty, and the multi-layer blank-skip
 // lives once in config.AICommandFor, so the transport never re-defaults it. It is
-// whitespace-split into name + args; see Generate for why a simple split is sufficient.
+// split into name + args by POSIX shell quoting rules and run directly, never through a
+// shell.
 //
 // Timeout is the PER-ATTEMPT deadline applied to each invocation (including the retry).
 // It is a *time.Duration so the boundary distinguishes absent from an operator's
@@ -168,10 +170,9 @@ func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
 // Generate runs the AI command with prompt on stdin and returns the body from
 // stdout, or a typed failure.
 //
-// The ai_command is parsed into name + args by a whitespace split (strings.Fields):
-// it is operator-controlled config, not arbitrary user input, so it never carries
-// quoting or shell metacharacters that a real parser would be needed for — a simple
-// split is sufficient and documented as such.
+// The ai_command is split into name + args by POSIX shell quoting rules and run
+// directly, never through a shell. A command that cannot be split fails before any
+// attempt with a plain error — not a transport sentinel, since nothing reached the AI.
 //
 // Each attempt gets its own deadline via context.WithTimeout ONLY when a positive
 // timeout is set, so the original call and the retry each get a fresh per-attempt
@@ -192,7 +193,10 @@ func NewTransport(r runner.CommandRunner, cfg Config) *Transport {
 //     ONCE; if the second attempt is still bad it becomes ErrGenerationFailed. A good
 //     attempt (first or second) returns its body UNCHANGED.
 func (t *Transport) Generate(ctx context.Context, prompt string) (string, error) {
-	name, args := parseCommand(t.command)
+	name, args, err := parseCommand(t.command)
+	if err != nil {
+		return "", err
+	}
 
 	// First attempt. Timeout and missing-tool short-circuit without a retry; bad
 	// content falls through to the single retry below.
@@ -301,17 +305,17 @@ func isValid(body string) bool {
 	return strings.TrimSpace(body) != ""
 }
 
-// parseCommand splits an ai_command into its binary name and argument list by
-// whitespace. The command is operator-controlled config (e.g. `claude --model sonnet
-// -p`), so a strings.Fields split is sufficient — it carries no quoting or shell syntax a
-// fuller parser would be needed for. Config's floor (config.DefaultAICommand)
-// guarantees a non-empty command, so an empty name is unreachable from production;
-// the empty-fields branch below stays as a defensive no-op (NewTransport no longer
-// guards blank).
-func parseCommand(command string) (name string, args []string) {
-	fields := strings.Fields(command)
-	if len(fields) == 0 {
-		return "", nil
+// parseCommand splits an ai_command into its binary name and argument list by POSIX
+// shell quoting rules. A command with no words yields an empty name; that branch is
+// defensive, since config never hands over a blank command (AICommandFor falls through
+// to its non-empty floor).
+func parseCommand(command string) (name string, args []string, err error) {
+	words, err := cmdline.Split(command)
+	if err != nil {
+		return "", nil, fmt.Errorf("split ai_command: %w", err)
 	}
-	return fields[0], fields[1:]
+	if len(words) == 0 {
+		return "", nil, nil
+	}
+	return words[0], words[1:], nil
 }

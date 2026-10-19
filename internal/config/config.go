@@ -126,8 +126,8 @@ type Config struct {
 	// is carried through unchanged (NOT re-defaulted at Load) so AICommandFor's trim-and-
 	// skip is what falls it through to the floor. Blank-skipping and the verb → shared →
 	// floor chain are AICommandFor's job (the single place blank-detection lives); the
-	// transport just whitespace-splits the resolved command into name + args (it is
-	// operator-controlled config, not arbitrary input).
+	// transport splits the resolved command into name + args by POSIX shell quoting
+	// rules.
 	AICommand string
 
 	// MaxDiffLines is the shared engine-level max_diff_lines guard ceiling (default
@@ -532,8 +532,8 @@ func unknownKeyMessage(key []string) string {
 // command at every layer.
 //
 // The trim is used ONLY for the empty-check: the RAW (untrimmed) candidate is returned
-// so the operator's exact command survives verbatim (the transport whitespace-splits
-// it into name + args; collapsing internal spacing here would mutate the intended argv).
+// so the operator's exact command survives verbatim (the transport splits it into name +
+// args by POSIX shell quoting rules; altering spacing here could change a quoted argument).
 //
 // Resolution is per-key independent: this reads only the ai_command candidates and
 // never consults timeout. verb is the closed two-value enum, so the per-verb candidate

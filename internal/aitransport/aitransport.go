@@ -27,7 +27,7 @@ import (
 // `[verb] → shared → floor`, so a per-verb override drives the call and a zero-config run
 // resolves to the shipped floor (claude -p --model sonnet, 60s). Config — not the transport
 // — owns the default and the blank-skip / no-deadline semantics; the transport runs what it
-// is handed (whitespace-splitting the command into name + args).
+// is handed (splitting the command into name + args by POSIX shell quoting rules).
 //
 // The timeout is sourced from the accessor (a *time.Duration assigned DIRECTLY to
 // ai.Config.Timeout, never zero-by-omission), so "no deadline" stays reachable ONLY via an

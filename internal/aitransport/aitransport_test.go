@@ -12,6 +12,7 @@ package aitransport_test
 // discards the context, so these proofs use runner.DeadlineRecordingRunner.
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -117,3 +118,58 @@ func TestNew_SourcesCommandAndDeadlineFromVerbAccessor(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// TestNew_SplitsQuotedCommandAtEveryLevel runs one quoted ai_command through each level
+// it can be set at, for the verb that reads that level.
+func TestNew_SplitsQuotedCommandAtEveryLevel(t *testing.T) {
+	t.Parallel()
+
+	const command = `tool --system-prompt="Be terse" '$HOME' a\ b "" ''`
+	wantArgs := []string{"--system-prompt=Be terse", "$HOME", "a b", "", ""}
+
+	tests := []struct {
+		name string
+		verb config.Verb
+		cfg  config.Config
+	}{
+		{
+			name: "shared level read by release",
+			verb: config.VerbRelease,
+			cfg:  config.Config{AICommand: command},
+		},
+		{
+			name: "shared level read by commit",
+			verb: config.VerbCommit,
+			cfg:  config.Config{AICommand: command},
+		},
+		{
+			name: "[release] level",
+			verb: config.VerbRelease,
+			cfg:  config.Config{AICommand: "shared-bot", Release: config.Release{AICommand: strPtr(command)}},
+		},
+		{
+			name: "[commit] level",
+			verb: config.VerbCommit,
+			cfg:  config.Config{AICommand: "shared-bot", Commit: config.Commit{AICommand: strPtr(command)}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			tt.cfg.Timeout = runner.DurationPtr(60 * time.Second)
+			spy := &runner.DeadlineRecordingRunner{}
+			if _, err := aitransport.New(spy, tt.cfg, tt.verb).Generate(t.Context(), "prompt"); err != nil {
+				t.Fatalf("Generate returned unexpected error: %v", err)
+			}
+
+			if spy.Name() != "tool" {
+				t.Errorf("invoked binary = %q, want tool", spy.Name())
+			}
+			if !slices.Equal(spy.Args(), wantArgs) {
+				t.Errorf("invoked args = %q, want %q", spy.Args(), wantArgs)
+			}
+		})
+	}
+}

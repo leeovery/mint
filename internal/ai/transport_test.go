@@ -133,7 +133,7 @@ func TestTransport_Generate_PassesBlankAICommandThroughUnchanged(t *testing.T) {
 	// The transport no longer re-defaults a blank/whitespace ai_command to `claude -p`:
 	// config's floor guarantees a non-empty command, so the old blank-re-default path is
 	// dead code and has been removed. A blank command is carried through VERBATIM — it
-	// whitespace-splits to an empty name (the defensive parseCommand no-op), and crucially
+	// splits to an empty name (the defensive parseCommand no-op), and crucially
 	// the transport must NOT substitute `claude`. Production never reaches this because the
 	// config floor is asserted in the config-layer tests.
 	r := runner.NewFakeRunner()
@@ -156,7 +156,7 @@ func TestTransport_Generate_PassesBlankAICommandThroughUnchanged(t *testing.T) {
 func TestTransport_Generate_HonoursOverriddenAICommand(t *testing.T) {
 	t.Parallel()
 
-	// ai_command is overridable: a custom command is whitespace-split into name +
+	// ai_command is overridable: a custom command is split into name +
 	// args and invoked exactly. This guards the swap-the-binary/model future-proofing
 	// — mint owns the prompt, the command is just transport.
 	r := runner.NewFakeRunner()
@@ -176,6 +176,55 @@ func TestTransport_Generate_HonoursOverriddenAICommand(t *testing.T) {
 	}
 	if !equalArgs(inv.Args, []string{"--model", "gpt-4", "chat"}) {
 		t.Errorf("args = %v, want [--model gpt-4 chat]", inv.Args)
+	}
+}
+
+func TestTransport_Generate_SplitsAICommandByShellQuoting(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("tool", runner.Result{Stdout: "ok\n"}, nil)
+
+	tr := ai.NewTransport(r, ai.Config{
+		AICommand: `tool --system-prompt="Be terse" '$HOME' a\ b "" ''`,
+		Timeout:   ptrTo(generousTimeout),
+	})
+	if _, err := tr.Generate(t.Context(), "p"); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	invocations := r.Invocations()
+	if len(invocations) != 1 {
+		t.Fatalf("invocations = %d, want 1", len(invocations))
+	}
+	inv := invocations[0]
+	if inv.Name != "tool" {
+		t.Errorf("command = %q, want tool", inv.Name)
+	}
+	want := []string{"--system-prompt=Be terse", "$HOME", "a b", "", ""}
+	if !equalArgs(inv.Args, want) {
+		t.Errorf("args = %q, want %q", inv.Args, want)
+	}
+}
+
+func TestTransport_Generate_UnsplittableAICommandRunsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("tool", runner.Result{Stdout: "ok\n"}, nil)
+
+	tr := ai.NewTransport(r, ai.Config{AICommand: `tool "unterminated`, Timeout: ptrTo(generousTimeout)})
+	_, err := tr.Generate(t.Context(), "p")
+	if err == nil {
+		t.Fatal("Generate returned nil error, want the split failure")
+	}
+	for _, sentinel := range []error{ai.ErrGenerationFailed, ai.ErrTimeout, ai.ErrCommandMissing} {
+		if errors.Is(err, sentinel) {
+			t.Errorf("errors.Is(err, %v) = true, want an unsplittable command not to read as an AI failure", sentinel)
+		}
+	}
+	if got := len(r.Invocations()); got != 0 {
+		t.Errorf("invocations = %d, want 0", got)
 	}
 }
 
@@ -363,8 +412,8 @@ func TestTransport_Generate_RealDeadlineKillIsNonRetriedTimeout(t *testing.T) {
 	//
 	// For a POSITIVE Config.Timeout the transport applies its own per-attempt deadline
 	// via context.WithTimeout, so a tiny value against a command that sleeps far longer
-	// guarantees the deadline fires regardless of load. The ai_command is whitespace-split
-	// (no shell quoting), so the per-attempt body is a standalone executable script that
+	// guarantees the deadline fires regardless of load. The ai_command runs directly, never
+	// through a shell, so the per-attempt body is a standalone executable script that
 	// simply sleeps well past the deadline.
 	dir := t.TempDir()
 	script := filepath.Join(dir, "ai-command")

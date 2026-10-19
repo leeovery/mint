@@ -202,7 +202,7 @@ The per-key reference tables below are the authoritative human config reference 
 
 | Key | Default | Description |
 |---|---|---|
-| `ai_command` | `claude -p --model sonnet` | the AI invocation: prompt on stdin, message on stdout; resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
+| `ai_command` | `claude -p --model sonnet` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
 | `timeout` | `60` | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
 | `max_diff_lines` | `50000` | diffs over this (post-exclusion) skip the AI |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
@@ -262,6 +262,30 @@ The transport applies a per-attempt deadline — `timeout` seconds, default `60`
 Setting `timeout = 0` disables the per-attempt deadline entirely: the AI call then runs **unbounded**. This is a deliberate, operator-chosen exception to mint's "fail loud, never hang" posture — you are opting a slow command into an open-ended run and you own that trade-off.
 
 `ai_command` and `timeout` resolve independently per verb, so overriding one does **not** touch the other. If you pin a slower model for a verb, raise that verb's `timeout` in the **same** `[release]` / `[commit]` table — mint does **not** auto-bump the timeout, warn, or require the pair, so a slow command left under the default `60` will hit the fatal per-attempt deadline. Overriding both keys together for a slow verb is the supported pattern; it is your responsibility, not enforced.
+
+### Quoting in `ai_command`
+
+Every `ai_command` — shared, `[release]`, `[commit]` and the shipped default — is split into a program name and its arguments by POSIX shell quoting rules. The program then runs directly; no shell is ever started.
+
+- Unquoted whitespace separates words.
+- Single quotes keep everything up to the next single quote literally.
+- Double quotes keep everything up to the next unescaped double quote. Inside them, a backslash escapes `"`, `\`, `$` and the backtick, and is otherwise literal.
+- Outside quotes, a backslash makes the next character literal.
+- A backslash followed by a newline is removed, as a line continuation.
+- Quoted and unquoted parts written together form one word: `--system-prompt="Be terse"` is the single argument `--system-prompt=Be terse`.
+- A quoted empty string, `""` or `''`, is one empty argument.
+- Nothing else is shell syntax. `$`, backticks, `*`, `~`, `|`, `;`, `&`, `<` and `>` are ordinary characters within a word: no variable expansion, command substitution, globbing, pipes or redirection.
+
+Write the value as a TOML literal (single-quoted) string so backslashes and double quotes reach the splitter as written; use a multi-line literal (`'''…'''`) for a line continuation:
+
+```toml
+ai_command = 'claude -p --model sonnet --tools "" --system-prompt "Be terse."'
+ai_command = '''
+claude -p \
+  --model opus'''
+```
+
+A command with no quotes or backslashes splits exactly as it always has, on runs of whitespace.
 
 ## Safety Model
 

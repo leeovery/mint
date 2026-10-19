@@ -37,7 +37,7 @@ func TestRelease_AICommand_ConfigValueDrivesTransport(t *testing.T) {
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
 	// The configured ai_command's BINARY (mybot) is the runner key — the transport
-	// whitespace-splits "mybot gen --json" into name + args. Seeding `claude` here would
+	// splits "mybot gen --json" into name + args. Seeding `claude` here would
 	// never be reached; an unseeded `mybot` would error the run, so the seed proves the
 	// config value (not the default) is what gets invoked.
 	f.Seed("mybot", runner.Result{Stdout: aiBody}, nil)
