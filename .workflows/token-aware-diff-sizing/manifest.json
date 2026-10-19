@@ -211,12 +211,15 @@
           "format": "tick",
           "spec_commit": "f9eb182a85fa5a0a84774ea0a68625393cac7f42",
           "task_list_gate_mode": "auto",
-          "author_gate_mode": "gated",
+          "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "token-aware-diff-sizing-1-1",
-          "task_map": {},
+          "task": "token-aware-diff-sizing-1-2",
+          "task_map": {
+            "token-aware-diff-sizing-1-1": "tick-242ea4",
+            "token-aware-diff-sizing-1": "tick-d30fa2"
+          },
           "storage_paths": [
             ".tick/"
           ],
@@ -225,7 +228,19 @@
             "tasks": {
               "p1": "2026-10-19"
             }
-          }
+          },
+          "staging": {
+            "author-p1": {
+              "tasks": {
+                "token-aware-diff-sizing-1-1": "approved",
+                "token-aware-diff-sizing-1-2": "approved",
+                "token-aware-diff-sizing-1-3": "approved",
+                "token-aware-diff-sizing-1-4": "approved",
+                "token-aware-diff-sizing-1-5": "approved"
+              }
+            }
+          },
+          "external_id": "tick-8b9ac3"
         }
       }
     }
