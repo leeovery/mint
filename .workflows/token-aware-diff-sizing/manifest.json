@@ -343,7 +343,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 1,
-          "current_task": "token-aware-diff-sizing-1-5",
+          "current_task": null,
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -378,7 +378,58 @@
             "token-aware-diff-sizing-1-1",
             "token-aware-diff-sizing-1-2",
             "token-aware-diff-sizing-1-3",
-            "token-aware-diff-sizing-1-4"
+            "token-aware-diff-sizing-1-4",
+            "token-aware-diff-sizing-1-5"
+          ],
+          "bank": [
+            {
+              "task": "token-aware-diff-sizing-1-5",
+              "source": "executor",
+              "summary": "Commit and release each have their own copy of the rule for joining a failed AI call's output streams; it should be one method on ai.GenerationError that both call",
+              "failure": "If release's rule changes (stream order, separator, whitespace-only handling), commit's copy silently keeps the old rule, so commit users see the tool output laid out differently from release's ✗ line and no test ties the two together",
+              "detail": "internal/engine/release.go:1656 notesFailureOutput and internal/commit/run.go aiFailureOutput both implement it; the packages are siblings and cannot import each other, so the shared method belongs in internal/ai/transport.go next to GenerationError",
+              "files": [
+                "internal/engine/release.go",
+                "internal/commit/run.go",
+                "internal/ai/transport.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-1-5",
+              "source": "reviewer",
+              "summary": "Make the failed-AI-output composition one method on ai.GenerationError, called by both commit and release",
+              "failure": "If release's composition rule changes, commit keeps the old rule with no error; commit users would see the same tool failure laid out differently from release's ✗ line, and no test ties the two together",
+              "detail": "internal/engine/release.go:1656 notesFailureOutput and internal/commit/run.go:807 aiFailureOutput hold the same rule; the method belongs beside GenerationError in internal/ai/transport.go:57, both helpers becoming errors.As plus that method call",
+              "files": [
+                "internal/engine/release.go",
+                "internal/commit/run.go",
+                "internal/ai/transport.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-1-5",
+              "source": "executor",
+              "summary": "Commit and release each have their own copy of the rule for joining a failed AI call's output streams; it should be one method on ai.GenerationError that both call",
+              "failure": "If release's rule changes (stream order, separator, whitespace-only handling), commit's copy silently keeps the old rule, so commit users see the tool output laid out differently from release's ✗ line and no test ties the two together",
+              "detail": "internal/engine/release.go:1656 notesFailureOutput and internal/commit/run.go aiFailureOutput both implement it; the shared method belongs in internal/ai/transport.go next to GenerationError",
+              "files": [
+                "internal/engine/release.go",
+                "internal/commit/run.go",
+                "internal/ai/transport.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-1-5",
+              "source": "reviewer",
+              "summary": "Make release's notesFailureOutput and commit's aiFailureOutput one method on ai.GenerationError that both call",
+              "failure": "Later phases rework release's ✗-line rendering around notesFailureOutput; if its stream-joining rule changes, commit's copy keeps the old rule with no error and commit users see the same tool output laid out differently, with no test tying the two together",
+              "detail": "internal/engine/release.go:1656-1673 notesFailureOutput and internal/commit/run.go:802-814 aiFailureOutput implement the same rule; the shared method belongs next to GenerationError at internal/ai/transport.go:57",
+              "files": [
+                "internal/engine/release.go",
+                "internal/commit/run.go",
+                "internal/ai/transport.go"
+              ]
+            }
           ]
         }
       }
