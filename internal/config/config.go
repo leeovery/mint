@@ -34,6 +34,8 @@ import (
 	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
+
+	"mint/internal/cmdline"
 )
 
 // configFileName is the fixed name mint looks for at the repo root.
@@ -124,7 +126,7 @@ type Config struct {
 	// an ABSENT key is seeded with the pinned default, but an explicit empty/blank value
 	// is carried through unchanged (NOT re-defaulted at Load) so AICommandFor's trim-and-
 	// skip is what falls it through to the floor. Blank-skipping and the verb → shared →
-	// floor chain are AICommandFor's job (the single place blank-detection lives); the
+	// floor chain are AICommandFor's job; the
 	// transport splits the resolved command into name + args by POSIX shell quoting
 	// rules.
 	AICommand string
@@ -431,6 +433,9 @@ func Load(root string) (Config, error) {
 	if err := validateOnNotesFailure(shape.Release.OnNotesFailure); err != nil {
 		return Config{}, err
 	}
+	if err := validateAICommands(shape); err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		Release:      resolveRelease(shape.Release),
@@ -523,7 +528,7 @@ func unknownKeyMessage(key []string) string {
 
 // AICommandFor resolves the AI notes-transport command for verb through the layered
 // chain `[verb].ai_command → top-level shared ai_command → shipped DefaultAICommand`.
-// It is the SINGLE place blank-skipping lives: each candidate is trimmed and SKIPPED
+// Each candidate is trimmed and SKIPPED
 // when its trimmed form is empty, so a blank/whitespace per-verb override falls to the
 // shared value, a blank/whitespace shared value falls to the floor, and the floor
 // (always non-empty) guarantees the result is never empty. The transport's old
@@ -630,7 +635,7 @@ func (c Config) TimeoutFor(verb Verb) *time.Duration {
 // absent (nil) and otherwise carries the explicit value verbatim — including an
 // explicit empty, which Load must NOT re-default so AICommandFor's trim-and-skip is
 // what falls it through to the floor. Blank/whitespace detection does NOT live here:
-// it is the AICommandFor accessor's sole job (this is absent→default only, mirroring
+// it is AICommandFor's (this is absent→default only, mirroring
 // the max_diff_lines *int handling).
 func aiCommandOrDefault(v *string) string {
 	if v != nil {
@@ -785,6 +790,46 @@ func validateOnNotesFailure(value string) error {
 		"invalid %s: on_notes_failure must be one of: %s",
 		configFileName, strings.Join(onNotesFailureValues, ", "),
 	)
+}
+
+// validateAICommands checks every level whatever verb is running, so a bad
+// [commit].ai_command also stops `mint release`. A blank value is skipped, not
+// rejected: AICommandFor falls it through to the next level.
+func validateAICommands(shape fileShape) error {
+	levels := []struct {
+		key   string
+		value *string
+	}{
+		{"ai_command", shape.AICommand},
+		{"release.ai_command", shape.Release.AICommand},
+		{"commit.ai_command", shape.Commit.AICommand},
+	}
+	for _, level := range levels {
+		if level.value == nil || strings.TrimSpace(*level.value) == "" {
+			continue
+		}
+		if cause := aiCommandDefect(*level.value); cause != "" {
+			return fmt.Errorf("invalid %s: %s %s", configFileName, level.key, cause)
+		}
+	}
+	return nil
+}
+
+// aiCommandDefect returns why a non-blank command cannot run, or "" when it is well-formed.
+func aiCommandDefect(command string) string {
+	words, err := cmdline.Split(command)
+	switch {
+	case errors.Is(err, cmdline.ErrUnterminatedQuote):
+		return "has an unterminated quote"
+	case errors.Is(err, cmdline.ErrTrailingBackslash):
+		return "ends in a lone backslash"
+	case err != nil:
+		return err.Error()
+	case len(words) == 0 || words[0] == "":
+		return "names no program"
+	default:
+		return ""
+	}
 }
 
 // ResolveCommitPrompt resolves cfg.Commit.Prompt into the full prompt-override text
