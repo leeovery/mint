@@ -34,7 +34,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	"mint/internal/ai"
 	"mint/internal/aitransport"
@@ -1646,30 +1645,12 @@ func hookFailureOutput(cause error) string {
 // abortError's forward chain ("notes generation failed (%s): %w") OR regenerate's shorter
 // "generating notes: %w" chain. Any non-carrier cause (timeout, command-missing,
 // diff-too-large, or a plain error) yields "" so the ✗ line stands alone.
-//
-// Composition follows the settled rule: each stream is trimmed only for the EMPTINESS
-// decision (a whitespace-only stream counts as empty); the non-empty streams are included
-// stdout-first then stderr, joined by a single newline when both are present; the included
-// content is kept VERBATIM (interior whitespace preserved); only the composed result's
-// TRAILING whitespace is trimmed so there is no dangling blank line — the presenter's
-// writeNotesBody re-adds exactly one trailing newline. Both streams empty → "".
 func notesFailureOutput(cause error) string {
 	var genErr *ai.GenerationError
 	if !errors.As(cause, &genErr) {
 		return ""
 	}
-
-	// Decide inclusion on the trimmed view, keep the original (verbatim) values for output.
-	var streams []string
-	if strings.TrimSpace(genErr.Stdout) != "" {
-		streams = append(streams, genErr.Stdout)
-	}
-	if strings.TrimSpace(genErr.Stderr) != "" {
-		streams = append(streams, genErr.Stderr)
-	}
-
-	out := strings.Join(streams, "\n")
-	return strings.TrimRightFunc(out, unicode.IsSpace)
+	return genErr.Output()
 }
 
 // surface renders a stage failure through the presenter and returns the engine's

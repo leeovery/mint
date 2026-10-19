@@ -30,7 +30,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	"mint/internal/ai"
 	"mint/internal/aitransport"
@@ -794,21 +793,14 @@ func isAITransportFailure(err error) bool {
 		errors.Is(err, ai.ErrCommandMissing)
 }
 
-// aiFailureOutput composes a failed AI call's captured streams by the rule release
-// applies beneath its ✗ line (notesFailureOutput), so the same tool output reads alike on
-// both verbs. A timeout or a missing binary carries no streams and yields "".
+// aiFailureOutput extracts a failed AI call's captured output from a *ai.GenerationError
+// carrier. A timeout or a missing binary carries no streams and yields "".
 func aiFailureOutput(err error) string {
 	var genErr *ai.GenerationError
 	if !errors.As(err, &genErr) {
 		return ""
 	}
-	var streams []string
-	for _, stream := range []string{genErr.Stdout, genErr.Stderr} {
-		if strings.TrimSpace(stream) != "" {
-			streams = append(streams, stream)
-		}
-	}
-	return strings.TrimRightFunc(strings.Join(streams, "\n"), unicode.IsSpace)
+	return genErr.Output()
 }
 
 // commitTransport resolves the L2 transport: the injected deps.Transport when set

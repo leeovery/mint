@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"mint/internal/cmdline"
 	"mint/internal/runner"
@@ -51,9 +52,9 @@ var (
 // sentinel.
 //
 // It mirrors how *hooks.HookError holds a failing entry's runner.Result, but holds the
-// two streams as DISTINCT fields: claude's payload arrives on Stdout, diagnostics on
-// Stderr, and composing them into a single rendered Output is a downstream concern, so
-// the transport keeps them separate and un-merged here.
+// two streams as DISTINCT, RAW fields: claude's payload arrives on Stdout, diagnostics on
+// Stderr, each exactly as the command wrote it. Output composes them into the single text
+// shown beneath mint's line.
 type GenerationError struct {
 	// Stdout is the command's captured standard output — where claude writes its
 	// message (the human-readable cause of a non-zero exit).
@@ -84,6 +85,24 @@ func (e *GenerationError) Error() string {
 // Unwrap returns the ErrGenerationFailed sentinel so errors.Is(err, ErrGenerationFailed)
 // matches the carrier — the wrapped target, not a removed sentinel.
 func (e *GenerationError) Unwrap() error { return ErrGenerationFailed }
+
+// Output composes the carrier's raw streams into the text a surfacing site renders
+// beneath mint's line. Each stream is trimmed only for the EMPTINESS decision (a
+// whitespace-only stream counts as empty); the non-empty streams are included
+// stdout-first then stderr, joined by a single newline when both are present; the included
+// content is kept VERBATIM (interior whitespace preserved); only the composed result's
+// TRAILING whitespace is trimmed so there is no dangling blank line — the presenter
+// re-adds exactly one trailing newline. Both streams empty → "". Stdout and Stderr are
+// read, never modified.
+func (e *GenerationError) Output() string {
+	var streams []string
+	for _, stream := range []string{e.Stdout, e.Stderr} {
+		if strings.TrimSpace(stream) != "" {
+			streams = append(streams, stream)
+		}
+	}
+	return strings.TrimRightFunc(strings.Join(streams, "\n"), unicode.IsSpace)
+}
 
 // Config holds the operator-tunable transport settings.
 //
@@ -219,8 +238,9 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 		}
 		// A non-zero exit that survived the retry: pack the RETRY attempt's captured
 		// output (guaranteed populated by the runner contract on a non-zero exit) into
-		// the carrier so a downstream site can render claude's actual message. The
-		// carrier wraps ErrGenerationFailed, so errors.Is still routes it.
+		// the carrier raw, so a surfacing site can render claude's actual message via
+		// GenerationError.Output. The carrier wraps ErrGenerationFailed, so errors.Is
+		// still routes it.
 		return "", &GenerationError{Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode}
 	}
 	if !isValid(res.Stdout) {
@@ -228,9 +248,10 @@ func (t *Transport) Generate(ctx context.Context, prompt string) (string, error)
 		// shape, and it is unified onto the SAME carrier as the non-zero exit above — not a
 		// divergent bare sentinel. A clean (zero-exit) attempt still leaves res fully
 		// populated by the runner contract, so the carrier reflects whatever claude actually
-		// wrote: whitespace on Stdout VERBATIM (the transport never trims — composition is a
-		// downstream concern), and a real message on Stderr even when stdout is whitespace
-		// (an informative diagnostic that must not be discarded). The carrier wraps
+		// wrote: whitespace on Stdout VERBATIM (the fields stay raw — GenerationError.Output
+		// composes them, the transport never trims), and a real message on Stderr even
+		// when stdout is whitespace (an informative diagnostic that must not be
+		// discarded). The carrier wraps
 		// ErrGenerationFailed, so errors.Is still routes it.
 		return "", &GenerationError{Stdout: res.Stdout, Stderr: res.Stderr, ExitCode: res.ExitCode}
 	}
