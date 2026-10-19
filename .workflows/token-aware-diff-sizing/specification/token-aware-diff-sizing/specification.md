@@ -136,6 +136,8 @@ The error takes the existing load-error shape and names the key, as `on_notes_fa
 - `invalid .mint.toml: ai_command ends in a lone backslash`
 - `invalid .mint.toml: commit.ai_command names no program`
 
+A blank or whitespace-only `ai_command` is not malformed. As built, it counts as unset and resolution falls through to the next level (§2.4), and that stays. "Names no program" covers a non-blank value whose split yields no words or an empty first word, such as `'' --flag`.
+
 A malformed command is never left to fail at call time. There it would read as an AI failure, reach the failure classifier (which runs the same command), take the OTHER path, and end in a non-AI body or the editor.
 
 #### 3.3 Compatibility
@@ -690,7 +692,7 @@ Keeping the file out of git is mint's job, not only the caller's. The obvious fi
 
 - **Precedence:** a supplied body wins over everything, including the first-release and empty-diff bodies (§7.1). Those exist to produce an honest body when there is nothing for an AI to summarise, which a supplied body does not need.
 - **Skipped:** the exclusion check, the size cap, chunking and every AI call. `on_notes_failure` never applies, since it governs only an AI failure.
-- **The review gate** is still shown on an attended run, so the operator sees what will ship. It offers accept, edit and abort, without `r`, since there is no AI output to redo. Under `-y` it auto-accepts inside the presenter, as usual.
+- **The review gate** is still shown on an attended run, so the operator sees what will ship. It offers accept, edit and abort, without `r`, since there is no AI output to redo. Under `-y` it auto-accepts inside the presenter, as usual. This holds on both verbs: `mint release regenerate <version> --notes-file P` shows regenerate's own review gate, as its fresh source does and as the floor's `c` and `e` bodies do (§12.3), not the simple confirm the tag and release sources run.
 - **The body** passes into the tag, changelog and provider release byte-identical, exactly like an AI body.
 
 #### 13.4 Refusals
@@ -711,7 +713,7 @@ Keeping the file out of git is mint's job, not only the caller's. The obvious fi
 
 Hand-written notes come through `--notes-file` (§13).
 
-The commit-subject list is `git log --format=%s` over the release's range, as built: `{lastTag}..HEAD` on a forward release, and the version's own range on regenerate. It leaves out mint's own answers commit (§6.6). An empty list gives the maintenance-release body, so the tag body is never empty, as built.
+The commit-subject list is `git log --format=%s` over the release's range, as built: `{lastTag}..HEAD` on a forward release, and the version's own range on regenerate. It leaves out mint's own answers commit (§6.6). On regenerate it also leaves out that version's release bookkeeping commit (`{commit_prefix} Release {tag}`, the commit the tag sits on), where one was made. That commit is made after the notes, so the forward release's list never held it; with it left out, regenerate's list for a version is the one that version's forward release would have shipped. The pre-tag artifact commit stays, as it does on the forward range, where it lands before the notes. An empty list gives the maintenance-release body, so the tag body is never empty, as built.
 
 `on_notes_failure` keeps its two values. `fallback` still reads as falling back to a non-AI body.
 
@@ -871,3 +873,11 @@ Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code
 ---
 
 ## Working Notes
+
+## Corrigenda
+
+> **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §3.2 listed "an empty first word" as malformed without saying whether a blank or whitespace-only `ai_command` is now rejected — corrected: a blank value is not malformed; it counts as unset and resolution falls through as built, and "names no program" covers a non-blank value whose split yields no words or an empty first word — settled by: §2.4's reliance on the as-built fall-through chain, §3.3's compatibility promise that a working command is unchanged, and the as-built `AICommandFor` blank-skipping (`internal/config/config.go:525`).
+
+> **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §13.3 said a supplied body's review gate "is still shown on an attended run" without saying whether `regenerate <version> --notes-file` shows one — corrected: it shows regenerate's own review gate (accept, edit, abort, no `r`), not the tag and release sources' simple confirm — settled by: §13.3's rationale "so the operator sees what will ship", which no verb limits, and §12.3's precedent sending regenerate's non-AI floor bodies through regenerate's review gate without `r`.
+
+> **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §14.1 said regenerate's commit-subject list over "the version's own range" leaves out only the answers commit, which would put the version's release bookkeeping commit into its notes — corrected: regenerate's list also leaves out that version's bookkeeping commit (`{commit_prefix} Release {tag}`), so it matches what the forward release's list held; the pre-tag artifact commit stays, as on the forward range — settled by: measurement — the bookkeeping commit is made after the notes (`internal/engine/release.go:568`) while the pre-tag hook's artifact commit lands before them (`internal/engine/release.go:464`, notes at `:472`), so the forward `{lastTag}..HEAD` list holds the artifact commit and never the bookkeeping one.
