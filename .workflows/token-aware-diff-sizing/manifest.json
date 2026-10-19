@@ -336,14 +336,47 @@
       "items": {
         "token-aware-diff-sizing": {
           "status": "in-progress",
-          "task_gate_mode": "gated",
+          "task_gate_mode": "auto",
           "fix_gate_mode": "gated",
           "analysis_gate_mode": "gated",
           "consolidation_gate_mode": "gated",
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 1,
-          "current_task": null
+          "current_task": "token-aware-diff-sizing-1-2",
+          "project_skills": [
+            ".claude/skills/golang-how-to",
+            ".claude/skills/golang-cli",
+            ".claude/skills/golang-code-style",
+            ".claude/skills/golang-naming",
+            ".claude/skills/golang-structs-interfaces",
+            ".claude/skills/golang-design-patterns",
+            ".claude/skills/golang-error-handling",
+            ".claude/skills/golang-testing",
+            ".claude/skills/golang-stretchr-testify",
+            ".claude/skills/golang-lint",
+            ".claude/skills/golang-safety",
+            ".claude/skills/golang-concurrency",
+            ".claude/skills/golang-project-layout",
+            ".claude/skills/golang-context"
+          ],
+          "linters": [
+            {
+              "name": "gofmt",
+              "command": "gofmt -l -w ."
+            },
+            {
+              "name": "go vet",
+              "command": "go vet ./..."
+            },
+            {
+              "name": "golangci-lint",
+              "command": "golangci-lint run"
+            }
+          ],
+          "completed_tasks": [
+            "token-aware-diff-sizing-1-1"
+          ]
         }
       }
     }
