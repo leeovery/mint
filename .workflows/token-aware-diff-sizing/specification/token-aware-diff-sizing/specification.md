@@ -399,7 +399,7 @@ At most four chunk calls run at once. The bound is fixed, not a setting. Unbound
 #### 8.6 What each call is told
 
 - **A chunk call** carries:
-  - the release's instructions: the default prompt or the `[release].prompt` override, with `context`
+  - the release's instructions: the default prompt with `context`, or the `[release].prompt` override, which replaces both (as built)
   - the Change Map
   - framing that names its part of the release (part k of n; for a piece, the file and which piece of how many)
   - its slice
@@ -419,7 +419,7 @@ mint's framing is fixed text of its own; the exact wording is the implementer's.
 
 #### 8.7 Calls that cannot be made
 
-- **No room for diff.** Even with the Change Map condensed, a call's fixed part can leave no room for diff. That happens with an outsized `[release].prompt` or `context` (operator text mint never trims), or with a halving round aimed below the fixed part (§10). mint then sends no call, and the run falls to the floor (§12) with guidance naming which of the two it was.
+- **No room for diff.** Even with the Change Map condensed, a call's fixed part can leave no room for diff. That happens with an outsized `[release].prompt` or `context` (operator text mint never trims), with a `max_prompt_bytes` below the fixed part of mint's own instructions when neither key is set, or with a halving round aimed below the fixed part (§10). mint then sends no call, and the run falls to the floor (§12) with guidance naming which of these it was.
 - **A merge prompt over the cap** is not sent, and counts as a failed merge (§11).
 
 Chunk notes are held in memory for the run. They persist only in a failure's saved file (§11) and in the dry-run cache (§15).
@@ -639,10 +639,10 @@ The ✗ line's cause phrase comes from the cause. The AI's captured output still
 | SIZE with no halving left, or a halving round with no room (§10.1) | `too large for the model, even in smaller parts` |
 | OTHER, with output | `AI call failed` |
 | OTHER, no output | `AI returned empty notes` |
-| No room for diff caused by operator text (§8.7) | `no room for the diff under max_prompt_bytes` |
+| No room for diff caused by operator text, or by a cap below mint's own fixed part (§8.7) | `no room for the diff under max_prompt_bytes` |
 | Merge too large: its prompt over the cap (§8.7), or a SIZE answer on the merge call (§11.3) | `part notes too large to merge` |
 
-In a chunked run the phrase ends with where the failure happened: `(part 3 of 6)` or `(merging)`. The suffix names the call the failure belongs to, so two cases take none. `part notes too large to merge` already names the merge. A failure no single call owns has no place to name: no room for any part under operator text, or a single-pass call whose first halving round has no room. These phrases replace `AI returned empty/invalid notes after retry`, which misnamed every generation failure. Release-notes failures no longer use `diff too large`.
+In a chunked run the phrase ends with where the failure happened: `(part 3 of 6)` or `(merging)`. The suffix names the call the failure belongs to, so two cases take none. `part notes too large to merge` already names the merge. A failure no single call owns has no place to name: no room for any part under operator text or the cap, or a single-pass call whose first halving round has no room. These phrases replace `AI returned empty/invalid notes after retry`, which misnamed every generation failure. Release-notes failures no longer use `diff too large`.
 
 The next moves are cause-fitted. Unattended runs print them; attended runs show the saved-file pointer and the choice.
 
@@ -654,7 +654,8 @@ The next moves are cause-fitted. Unattended runs print them; attended runs show 
   - lower `max_prompt_bytes`, since the model accepts less than the cap
   - if `ai_command` carries a large overhead of its own, use the lean command documented in the README (§2), without mint naming claude flags itself
   - exclude generated paths with `[release].diff_exclude`.
-- **No room caused by operator text:** shorten the outsized operator text. The move names each of `[release].prompt` and `[release].context` that the release sets, the larger first; with one set, it names that one. mint cannot tell which of two the operator would rather cut.
+- **No room caused by operator text:** shorten the operator text the call carries: `[release].prompt` when the release sets it, since an override replaces the default prompt and `context` with it, otherwise `[release].context`.
+- **No room with neither key set:** raise `max_prompt_bytes`, since the cap is below the fixed part of mint's own instructions.
 - **Timeout:** raise `[release].timeout`.
 - **Missing binary:** install the AI tool, or set `ai_command`.
 - **OTHER:** the AI's own message above names the cause. When the resolved `ai_command` is not the shipped default, add the lean-command pointer.
@@ -925,3 +926,7 @@ Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code
 > **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §12.4 said "shorten whichever of `[release].prompt` or `context` is outsized" without saying which key the move names when the release sets both — corrected: the move names each of the two the release sets, the larger first, and with one set names that one — settled by: derivation — when both fill the fixed part together neither alone is the outsized one, mint never trims operator text (§8.7) and cannot tell which the operator would rather cut, so naming only one could point away from the text the operator would shorten.
 
 > **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §12.1's `fallback` warning named a saved file with "the `mint release regenerate <version> --notes-file <path>` command that puts it on the version", though the warning prints at the notes stage, before the review gate and the push, and a run that then aborts or fails before the push leaves no version for that command — corrected: the warning names both commands, `mint release regenerate <version> --notes-file <path>` for once the release is out and `mint release --notes-file <path>` for a run that ends before the push — settled by: derivation — §12.4 picks the command by whether the version is out, which is not yet known when the warning prints; an attended operator who reads the warning and aborts at the review gate to release the saved notes instead needs the release command, and naming both keeps the one warning §12.1 prescribes without adding output to the unwind.
+
+> **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §12.4's earlier corrigendum said the operator-text move "names each of `[release].prompt` and `[release].context` that the release sets, the larger first", and §8.6 said a chunk call carries "the default prompt or the `[release].prompt` override, with `context`" — corrected: a set `[release].prompt` replaces the default prompt and `context` with it, so a call carries one of the two; the move names `[release].prompt` when the release sets it, otherwise `[release].context`, and §8.6 says the override replaces both — settled by: measurement — `ResolveInstructions` (`internal/notes/prompt.go`) returns the override without reading `context`, the README's two-knob line reads "`context` *injects into* the default prompt; `prompt` *replaces* it", and no section of this specification changes that model.
+
+> **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §8.7 gave no room for diff two causes, outsized operator text or a halving round aimed below the fixed part, leaving out a `max_prompt_bytes` below the fixed part of mint's own instructions when neither `[release].prompt` nor `context` is set — corrected: that is a third cause; it renders `no room for the diff under max_prompt_bytes` with no location, and its move is to raise `max_prompt_bytes` — settled by: derivation — any positive cap loads (§4.1) and the default prompt and closing reminder alone take a few kilobytes, so the case is reachable; the phrase already names the cap, no single call owns the failure (§12.4's suffix rule), there is no operator text to shorten, and lowering the cap, the size move, would make it worse, so raising it is the one move that clears it.
