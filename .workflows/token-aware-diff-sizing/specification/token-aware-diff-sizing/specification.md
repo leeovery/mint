@@ -294,12 +294,12 @@ Each surviving suggestion gets a pause through the presenter's gate seam, in ord
 - how many changed files it matches, and the total size of their diffs, each measured as §6.2 measures a path. The files counted are the changed paths this release's notes diff still carries at that pause: a path the built-in always-excludes, either `diff_exclude` level or an earlier Exclude answer in this run has taken out is not counted, and a path on the keep list is
 - any of those files on the keep list, a glob an earlier Keep answer in this run gave included.
 
-It offers two choices:
+It offers two choices, each picked by its initial letter, as the floor's are (§12.2):
 
-- **Exclude:** the glob joins `[release].diff_exclude`, and this release's notes are written without those files.
-- **Keep:** the glob joins `[release].diff_keep` and is never raised again.
+- **`e`, Exclude:** the glob joins `[release].diff_exclude`, and this release's notes are written without those files.
+- **`k`, Keep:** the glob joins `[release].diff_keep` and is never raised again.
 
-The default is keep, so no file leaves the notes without the operator choosing it.
+The default is keep, which a bare Enter picks, so no file leaves the notes without the operator choosing it.
 
 #### 6.6 Recording the answers
 
@@ -969,3 +969,5 @@ Docs stay true to what is built: CLAUDE.md, the README, the setup guide and code
 > **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §6.7 said that on an unattended run "each suggestion prints with its reason, what it matches, and the `[release].diff_exclude` line that would exclude it" without saying what "what it matches" holds — corrected: it is what the pause shows of the matches: how many changed files the glob matches and the total size of their diffs, and any of those files on the keep list (§6.5) — settled by: derivation — §6.5's pause is the only definition the record gives of what a suggestion shows about its matches, and §6.7 has a dry run show suggestions "as they would at the pause"; a full path list would run to thousands of lines for a folder glob such as `vendor/`, and the keep-list files are the warning the operator at the pause gets before excluding a kept file (§5.2).
 
 > **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §6.7 said "**Dry run:** the suggestions show as they would at the pause; nothing is asked or written", while an unattended run prints them after the notes with the `[release].diff_exclude` line, without saying which rule an unattended dry run (`--dry-run -y`, or a non-TTY dry run) follows — corrected: the suggestions follow the dry run's own mode; a dry run at a terminal without `-y` shows them as they would appear at the pause, and an unattended dry run prints them after the notes as an unattended run does, the `[release].diff_exclude` line included; nothing is asked or written either way — settled by: derivation — a dry run previews the real run, and a real `-y` or non-TTY run never pauses; the §12.1 corrigendum settles the dry run at the floor the same way, by the dry run's own mode; an agent previewing with `mint release --dry-run -y` acts on the `[release].diff_exclude` line the real run will print.
+
+> **Corrigendum 2026-10-19** (from `planning/token-aware-diff-sizing`): §6.5 named the pause's two choices, Exclude and Keep, with keep the default, but not the keys that pick them — corrected: each is picked by its initial letter, `e` for Exclude and `k` for Keep, and a bare Enter picks the default, keep — settled by: derivation — §12.2 names each floor choice by its initial letter (`c`, `e`, `a`); each gate declares its own choice set and default (`internal/presenter/gate.go`, the `Gate` type), so the pause's `e` clashes with no other gate's `e`; as built, a deliberate empty Enter fires the gate's `Default`.
