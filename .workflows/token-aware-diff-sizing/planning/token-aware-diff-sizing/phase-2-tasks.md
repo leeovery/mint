@@ -298,15 +298,16 @@ The line count no longer applies to release notes. Forward releases and regenera
 
 ### Task 2-9: Calls that cannot be made
 
-**Problem**: Some chunked runs need a call that no prompt under the cap can carry. An outsized `[release].prompt` or `context` can leave a chunk call no room for diff, even with the Change Map condensed. And a release's chunk notes together can make a merge prompt bigger than the cap (§8.7). Sending either call would break the rule that no call is bigger than the cap (§4.1), and mint never trims operator text to make room.
+**Problem**: Some chunked runs need a call that no prompt under the cap can carry. An outsized `[release].prompt` or `context` can leave a chunk call no room for diff, even with the Change Map condensed, and so can a `max_prompt_bytes` set below the fixed part of mint's own instructions. And a release's chunk notes together can make a merge prompt bigger than the cap (§8.7). Sending any such call would break the rule that no call is bigger than the cap (§4.1), and mint never trims operator text to make room.
 
-**Solution**: Send no call in either case. When a chunk call's fixed part leaves no room for diff because of operator text, make no AI call at all and fail the notes as `no room for the diff under max_prompt_bytes`. When the merge prompt would exceed the cap, do not send the merge and fail the notes as `part notes too large to merge`. Both failures route like any other notes failure.
+**Solution**: Send no call in either case. When a chunk call's fixed part leaves no room for diff, whether because of operator text or because `max_prompt_bytes` is below the fixed part of mint's own instructions with neither `[release].prompt` nor `[release].context` set, make no AI call at all and fail the notes as `no room for the diff under max_prompt_bytes`. When the merge prompt would exceed the cap, do not send the merge and fail the notes as `part notes too large to merge`. Both failures route like any other notes failure.
 
 **Outcome**: No over-cap prompt ever leaves mint, operator text is never cut, and the ✗ line names which of the two stopped the notes.
 
 **Acceptance Criteria**:
 - [ ] Given a release whose single-pass prompt is over the cap, with a `[release].context` or `[release].prompt` override file large enough that a chunk call's fixed part leaves no room for diff, the AI tool receives no call at all. The fixed part is the instructions, the condensed Change Map, the framing and the closing reminder (§8.3, §8.7)
 - [ ] Given that release under `on_notes_failure = abort`, the run stops before the tag with the ✗ line `no room for the diff under max_prompt_bytes` and no AI output beneath it (§8.7, §12.4)
+- [ ] Given neither `[release].prompt` nor `[release].context` set and a `max_prompt_bytes` below the fixed part of mint's own instructions, no chunk, merge or single-pass call is sent. Under `on_notes_failure = abort` the run stops before the tag with the ✗ line `no room for the diff under max_prompt_bytes` and no AI output beneath it (§4.1, §8.7, §12.4, Corrigendum 2026-10-19 on §8.7)
 - [ ] Given chunk calls that succeed with notes whose merge prompt would exceed the cap, no merge call is sent. The merge prompt is the instructions, the Change Map, every chunk's notes, the framing and the closing reminder. Under `abort` the run stops before the tag with the ✗ line `part notes too large to merge` and no AI output beneath it (§8.7, §11.3, §12.4)
 - [ ] Given either failure under `on_notes_failure = fallback`, the fallback body ships, as on a failed single-pass call (§12.1)
 - [ ] Given either failure on `mint release regenerate <version>` from a fresh source, the regenerate aborts with the same ✗ line. Under `regenerate --all`, that version is skipped and the batch carries on (§12.3)
@@ -315,7 +316,7 @@ The line count no longer applies to release notes. Forward releases and regenera
 - The two phrases join the cause phrases `notes.CauseText` maps (`internal/notes/resolve.go`), which the ✗ line renders as built (§12.4).
 
 **Context**:
-> §8.7: no room for diff happens with an outsized `[release].prompt` or `context` (operator text mint never trims), or with a halving round aimed below the fixed part. Halving is Phase 4, which renders that second case as `too large for the model, even in smaller parts`. Phase 5's floor guidance names which of the two it was, and for operator text says to shorten whichever of `[release].prompt` or `context` is outsized.
+> §8.7 and its corrigendum: no room for diff happens with an outsized `[release].prompt` or `context` (operator text mint never trims), with a `max_prompt_bytes` below the fixed part of mint's own instructions when neither key is set, or with a halving round aimed below the fixed part. Halving is Phase 4, which renders that last case as `too large for the model, even in smaller parts`. Phase 5's floor guidance names which cause it was. For operator text it says to shorten `[release].prompt` when the release sets it, since the override replaces the default prompt and `context`, and otherwise `[release].context`. With neither key set it says to raise `max_prompt_bytes`.
 >
 > A single-pass prompt at or under the cap is sent as one call whatever the size of its instructions (§7.2), so the no-room case arises only once a release is chunked.
 >

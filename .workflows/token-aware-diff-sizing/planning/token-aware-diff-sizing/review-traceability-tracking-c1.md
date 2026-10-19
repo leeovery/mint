@@ -160,7 +160,7 @@ In token-aware-diff-sizing-2-9 (tick-dc97ae), Context, replacing the first parag
 > §8.7 and its corrigendum: no room for diff happens with an outsized `[release].prompt` or `context` (operator text mint never trims), with a `max_prompt_bytes` below the fixed part of mint's own instructions when neither key is set, or with a halving round aimed below the fixed part. Halving is Phase 4, which renders that last case as `too large for the model, even in smaller parts`. Phase 5's floor guidance names which cause it was. For operator text it says to shorten `[release].prompt` when the release sets it, since the override replaces the default prompt and `context`, and otherwise `[release].context`. With neither key set it says to raise `max_prompt_bytes`.
 ```
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
