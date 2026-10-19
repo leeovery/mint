@@ -203,7 +203,7 @@ The per-key reference tables below are the authoritative human config reference 
 | Key | Default | Description |
 |---|---|---|
 | `ai_command` | `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
-| `timeout` | `60` | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
+| `timeout` | `180` on release, `60` on commit | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
 | `max_diff_lines` | `50000` | diffs over this (post-exclusion) skip the AI |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
 
@@ -224,7 +224,7 @@ The per-key reference tables below are the authoritative human config reference 
 | `version_file` | | write the new version into this file (omit = tag-only release) |
 | `version_pattern` | | line to replace inside `version_file` (omit = the whole file is the version) |
 | `ai_command` | shared | optional per-verb override of the AI command for `release` only; resolves `[release]` → shared → default |
-| `timeout` | shared | optional per-verb override of the per-attempt AI deadline (seconds) for `release` only; resolves `[release]` → shared → default |
+| `timeout` | shared, else `180` | optional per-verb override of the per-attempt AI deadline (seconds) for `release` only; resolves `[release]` → shared → default |
 
 ### `[release.hooks]`
 
@@ -241,7 +241,7 @@ The per-key reference tables below are the authoritative human config reference 
 | `context` | | project guidance injected into the commit-message prompt |
 | `prompt` | | path to a full commit-prompt override file |
 | `ai_command` | shared | optional per-verb override of the AI command for `commit` only; resolves `[commit]` → shared → default |
-| `timeout` | shared | optional per-verb override of the per-attempt AI deadline (seconds) for `commit` only; resolves `[commit]` → shared → default |
+| `timeout` | shared, else `60` | optional per-verb override of the per-attempt AI deadline (seconds) for `commit` only; resolves `[commit]` → shared → default |
 
 Both verbs share the two-knob model: `context` *injects into* the default prompt; `prompt` *replaces* it. Unknown or mistyped keys fail loud at load; mint never silently ignores config.
 
@@ -256,11 +256,11 @@ ai_command = 'llm -m gpt-4o'                   # any CLI with the same stdin/std
 
 Both `ai_command` and `timeout` can be set shared (top-level) or per-verb under `[release]` / `[commit]`, each resolving `[verb]` → shared → default.
 
-The transport applies a per-attempt deadline — `timeout` seconds, default `60` — retries bad output (empty/non-zero exit) exactly once, and routes failures by cause: release follows `on_notes_failure`; commit drops to the `$EDITOR` fallback. A timeout is **fatal**: it is reported immediately and never retried (the single retry covers bad *content* only). A Ctrl-C is a clean abort, never a retry.
+The transport applies a per-attempt deadline — `timeout` seconds, default `180` for release and `60` for commit — retries bad output (empty/non-zero exit) exactly once, and routes failures by cause: release follows `on_notes_failure`; commit drops to the `$EDITOR` fallback. A timeout is **fatal**: it is reported immediately and never retried (the single retry covers bad *content* only). A Ctrl-C is a clean abort, never a retry.
 
 Setting `timeout = 0` disables the per-attempt deadline entirely: the AI call then runs **unbounded**. This is a deliberate, operator-chosen exception to mint's "fail loud, never hang" posture — you are opting a slow command into an open-ended run and you own that trade-off.
 
-`ai_command` and `timeout` resolve independently per verb, so overriding one does **not** touch the other. If you pin a slower model for a verb, raise that verb's `timeout` in the **same** `[release]` / `[commit]` table — mint does **not** auto-bump the timeout, warn, or require the pair, so a slow command left under the default `60` will hit the fatal per-attempt deadline. Overriding both keys together for a slow verb is the supported pattern; it is your responsibility, not enforced.
+`ai_command` and `timeout` resolve independently per verb, so overriding one does **not** touch the other. If you pin a slower model for a verb, raise that verb's `timeout` in the **same** `[release]` / `[commit]` table — mint does **not** auto-bump the timeout, warn, or require the pair, so a slow command left under its default (`180` for release, `60` for commit) will hit the fatal per-attempt deadline. Overriding both keys together for a slow verb is the supported pattern; it is your responsibility, not enforced.
 
 ### The shipped default
 

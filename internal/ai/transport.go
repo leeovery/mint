@@ -95,8 +95,8 @@ func (e *GenerationError) Unwrap() error { return ErrGenerationFailed }
 //
 // Timeout is the PER-ATTEMPT deadline applied to each invocation (including the retry).
 // It is a *time.Duration so the boundary distinguishes absent from an operator's
-// explicit zero — the transport carries NO default and config owns the floor
-// (config.DefaultTimeout = 60s), so the three meanings are:
+// explicit zero — the transport carries NO default and config owns the per-verb floor,
+// so the three meanings are:
 //   - nil  → NOT threaded (a wiring bug; production never produces it because all three
 //     sites source config.TimeoutFor, which never returns nil). NewTransport fails loud
 //     on it rather than running unbounded — see NewTransport.
@@ -106,7 +106,7 @@ func (e *GenerationError) Unwrap() error { return ErrGenerationFailed }
 //     owns that trade-off.
 //   - &positive → the per-attempt deadline applied via context.WithTimeout.
 //
-// Tests inject a tiny &value and never wait the production minute.
+// Tests inject a tiny &value and never wait out a production deadline.
 type Config struct {
 	AICommand string
 	Timeout   *time.Duration
@@ -132,8 +132,8 @@ type Transport struct {
 // transport never re-defaults a blank command.
 //
 // It records the resolved per-attempt deadline (or no-deadline) from cfg.Timeout — config
-// owns the default (config.DefaultTimeout = 60s), so the transport no longer re-defaults a
-// non-positive value. cfg.Timeout is MAPPED, not copied, onto the internal deadline carrier
+// owns the default, so the transport never re-defaults a non-positive value. cfg.Timeout is
+// MAPPED, not copied, onto the internal deadline carrier
 // (whose nil-means-no-deadline polarity is the inverse of the boundary's):
 //   - cfg.Timeout == nil → a wiring bug (a site forgot to thread the value). It must NOT
 //     silently become "no deadline" — that is the zero-by-omission case the spec forbids —

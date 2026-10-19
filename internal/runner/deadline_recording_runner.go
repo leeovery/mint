@@ -18,6 +18,7 @@ type DeadlineRecordingRunner struct {
 	name        string
 	args        []string
 	hadDeadline bool
+	remaining   time.Duration
 }
 
 // Compile-time assertion that DeadlineRecordingRunner satisfies the seam.
@@ -33,13 +34,22 @@ func (d *DeadlineRecordingRunner) Args() []string { return d.args }
 // deadline.
 func (d *DeadlineRecordingRunner) HadDeadline() bool { return d.hadDeadline }
 
+// DeadlineRemaining returns how long the most recent call's context had left before its
+// deadline when the call arrived; zero when it carried no deadline.
+func (d *DeadlineRecordingRunner) DeadlineRemaining() time.Duration { return d.remaining }
+
 // RunWith records the argv and the context's deadline presence, drains any stdin,
 // and returns a fixed non-empty body so the calling transport treats the attempt as
 // a successful generation.
 func (d *DeadlineRecordingRunner) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (Result, error) {
 	d.name = name
 	d.args = args
-	_, d.hadDeadline = ctx.Deadline()
+	var deadline time.Time
+	deadline, d.hadDeadline = ctx.Deadline()
+	d.remaining = 0
+	if d.hadDeadline {
+		d.remaining = time.Until(deadline)
+	}
 	if stdin != nil {
 		_, _ = io.ReadAll(stdin)
 	}

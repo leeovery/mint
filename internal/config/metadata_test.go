@@ -3,7 +3,6 @@ package config_test
 import (
 	"strconv"
 	"testing"
-	"time"
 
 	"mint/internal/config"
 	"mint/internal/configtest"
@@ -251,21 +250,16 @@ func TestMetadataRows_DiffExcludeRendersEmptyCollection(t *testing.T) {
 	}
 }
 
-// TestMetadataRows_PerVerbOverridesRenderShared proves the four per-verb
-// ai_command/timeout override rows ([release].ai_command/timeout,
-// [commit].ai_command/timeout) render the word "shared" — they INHERIT the shared
-// top-level value unless overridden, so their default is "inherit", not the real
-// compiled value. This is the inverse of the shared-level rows (asserted below),
-// where the real default lives.
-func TestMetadataRows_PerVerbOverridesRenderShared(t *testing.T) {
+// TestMetadataRows_PerVerbCommandOverridesRenderShared proves the per-verb ai_command
+// override rows render the word "shared" — they INHERIT the shared top-level value
+// unless overridden.
+func TestMetadataRows_PerVerbCommandOverridesRenderShared(t *testing.T) {
 	t.Parallel()
 
 	set := configtest.MustByLevelKey(t)
 	inherit := []configtest.RowKey{
 		{Level: config.LevelRelease, Key: "ai_command"},
-		{Level: config.LevelRelease, Key: "timeout"},
 		{Level: config.LevelCommit, Key: "ai_command"},
-		{Level: config.LevelCommit, Key: "timeout"},
 	}
 
 	for _, want := range inherit {
@@ -275,6 +269,31 @@ func TestMetadataRows_PerVerbOverridesRenderShared(t *testing.T) {
 		}
 		if row.Default != "shared" {
 			t.Errorf("(level %q, key %q) Default = %q, want %q", want.Level, want.Key, row.Default, "shared")
+		}
+	}
+}
+
+// TestMetadataRows_PerVerbTimeoutRowsNameTheirShippedFloor proves each per-verb timeout
+// row inherits the shared value and names the verb's own shipped deadline beneath it.
+func TestMetadataRows_PerVerbTimeoutRowsNameTheirShippedFloor(t *testing.T) {
+	t.Parallel()
+
+	set := configtest.MustByLevelKey(t)
+	tests := []struct {
+		key  configtest.RowKey
+		want string
+	}{
+		{configtest.RowKey{Level: config.LevelRelease, Key: "timeout"}, "shared, else 180"},
+		{configtest.RowKey{Level: config.LevelCommit, Key: "timeout"}, "shared, else 60"},
+	}
+
+	for _, tt := range tests {
+		row, ok := set[tt.key]
+		if !ok {
+			t.Fatalf("missing SoT row for (level %q, key %q)", tt.key.Level, tt.key.Key)
+		}
+		if row.Default != tt.want {
+			t.Errorf("(level %q, key %q) Default = %q, want %q", tt.key.Level, tt.key.Key, row.Default, tt.want)
 		}
 	}
 }
@@ -339,14 +358,10 @@ func TestMetadataRows_SharedMaxDiffLinesDefaultEqualsConfigConstant(t *testing.T
 	}
 }
 
-// TestMetadataRows_SharedTimeoutDefaultEqualsConfigConstant is the DRIFT GUARD tying
-// the shared-level timeout SoT Default cell to config.DefaultTimeout, the timeout twin
-// of the ai_command subsuming pin. The TOML timeout key is integer SECONDS, so the cell
-// is pinned to int(config.DefaultTimeout / time.Second) — the SAME derivation initgen's
-// TestMintTOML_TimeoutValueEqualsConfigConstant uses — NOT a re-typed 60 and NOT the
-// time.Duration String form ("1m0s"). A drift between the cell and the seconds derived
-// from the duration constant fails here.
-func TestMetadataRows_SharedTimeoutDefaultEqualsConfigConstant(t *testing.T) {
+// TestMetadataRows_SharedTimeoutDefaultNamesBothShippedDefaults proves the shared
+// timeout row names both verbs' shipped deadlines in integer seconds, never the
+// time.Duration String form ("3m0s").
+func TestMetadataRows_SharedTimeoutDefaultNamesBothShippedDefaults(t *testing.T) {
 	t.Parallel()
 
 	set := configtest.MustByLevelKey(t)
@@ -354,30 +369,9 @@ func TestMetadataRows_SharedTimeoutDefaultEqualsConfigConstant(t *testing.T) {
 	if !ok {
 		t.Fatal("missing SoT row for (shared, timeout)")
 	}
-	want := int(config.DefaultTimeout / time.Second)
-	if row.Default != strconv.Itoa(want) {
-		t.Errorf("(shared, timeout) Default = %q, want int(config.DefaultTimeout / time.Second) = %d", row.Default, want)
-	}
-}
-
-// TestMetadataRows_SharedTimeoutDefaultIsIntegerSecondsNotDuration proves the shared
-// timeout Default cell renders the INTEGER-SECONDS form ("60"), not the time.Duration
-// String form ("1m0s"). This pins the representation convention so a refactor that
-// accidentally rendered the duration verbatim is caught — the TOML key is integer
-// seconds, so the cell must be the seconds integer, never the duration string.
-func TestMetadataRows_SharedTimeoutDefaultIsIntegerSecondsNotDuration(t *testing.T) {
-	t.Parallel()
-
-	set := configtest.MustByLevelKey(t)
-	row, ok := set[configtest.RowKey{Level: config.LevelShared, Key: "timeout"}]
-	if !ok {
-		t.Fatal("missing SoT row for (shared, timeout)")
-	}
-	if row.Default == config.DefaultTimeout.String() {
-		t.Errorf("(shared, timeout) Default = %q is the duration String form, want integer seconds", row.Default)
-	}
-	if row.Default != "60" {
-		t.Errorf("(shared, timeout) Default = %q, want integer-seconds form %q", row.Default, "60")
+	const want = "180 on release, 60 on commit"
+	if row.Default != want {
+		t.Errorf("(shared, timeout) Default = %q, want %q", row.Default, want)
 	}
 }
 
@@ -386,10 +380,9 @@ func TestMetadataRows_SharedTimeoutDefaultIsIntegerSecondsNotDuration(t *testing
 // [release] scalar defaults are asserted against literals (their config constants
 // are unexported, so the external test cannot reference them — the value-drift
 // pin for those moves to the schema drift test in 1-4); the shared ai_command/
-// timeout/max_diff_lines wants are derived from the EXPORTED config constants so
-// they cannot drift (the dedicated subsuming pins for those three live in
-// TestMetadataRows_Shared*DefaultEqualsConfigConstant above). The timeout-seconds
-// want uses the single production spelling int(config.DefaultTimeout / time.Second).
+// max_diff_lines wants are derived from the EXPORTED config constants so they cannot
+// drift (the dedicated subsuming pins for those two live in
+// TestMetadataRows_Shared*DefaultEqualsConfigConstant above).
 func TestMetadataRows_ConcreteScalarDefaultsRenderVerbatim(t *testing.T) {
 	t.Parallel()
 
@@ -398,13 +391,12 @@ func TestMetadataRows_ConcreteScalarDefaultsRenderVerbatim(t *testing.T) {
 		key  configtest.RowKey
 		want string
 	}{
-		// The three shared rows below intentionally overlap with the dedicated
+		// The two shared rows below intentionally overlap with the dedicated
 		// TestMetadataRows_Shared*DefaultEqualsConfigConstant pins above: they keep this
 		// verbatim-render table complete (it asserts the rendered string form of every
 		// scalar default), while the dedicated pins carry the subsuming drift guard. Both
 		// source the want from the exported constant, so neither copy can drift.
 		{configtest.RowKey{Level: config.LevelShared, Key: "ai_command"}, config.DefaultAICommand},
-		{configtest.RowKey{Level: config.LevelShared, Key: "timeout"}, strconv.Itoa(int(config.DefaultTimeout / time.Second))},
 		{configtest.RowKey{Level: config.LevelShared, Key: "max_diff_lines"}, strconv.Itoa(config.DefaultMaxDiffLines)},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "tag_prefix"}, "v"},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "commit_prefix"}, "🌿"},

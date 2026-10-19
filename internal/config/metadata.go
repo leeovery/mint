@@ -26,16 +26,12 @@ import (
 // tokens: a blank cell for empty-string defaults (genuinely no value), the word "auto"
 // for the sentinel-empty auto-derive/auto-detect keys (release_branch, provider — whose
 // "" MEANS auto, not absence), "[]" for the empty collection (diff_exclude), the word
-// "shared" for the per-verb ai_command/timeout overrides (which inherit the shared value
-// unless overridden), and the concrete scalar default verbatim otherwise. The
-// [release.hooks] keys are activate-only (no compiled default) and carry a blank cell.
-// The two shared-level literal-default cells (ai_command, timeout) are sourced from the
-// EXPORTED config constants (DefaultAICommand / DefaultTimeout) so they cannot drift; a
-// dedicated pinning test in metadata_test.go ties each cell to its constant. This pin
-// SUBSUMES initgen's scaffold value-drift pins — the SoT Default column is now the
-// drift-pinned carrier of those values (the scaffold's defaults are stripped in a later
-// phase). timeout's TOML key is integer seconds, so DefaultTimeout (a duration) renders
-// as int(DefaultTimeout / time.Second), the same derivation initgen used.
+// "shared" for the per-verb ai_command overrides (which inherit the shared value unless
+// overridden), and the concrete scalar default verbatim otherwise. timeout's shipped
+// floor differs per verb, so its shared row names both and each per-verb row reads
+// "shared, else <its floor>", in integer seconds. The [release.hooks] keys are
+// activate-only (no compiled default) and carry a blank cell. The shared-level
+// ai_command cell is sourced from the EXPORTED DefaultAICommand so it cannot drift.
 
 // MetadataLevel is the typed enum naming WHERE a config key lives in the verb-namespaced
 // .mint.toml: the shared top level, the [release] table, the nested [release.hooks]
@@ -97,8 +93,7 @@ func (l MetadataLevel) String() string {
 //
 // Default is the compiled default's rendered representation in the decided convention
 // (see the file header for the full token set): blank, "auto", "[]", "shared", or the
-// concrete scalar default verbatim. The shared-level ai_command/timeout cells are sourced
-// from the exported config constants so they cannot drift (pinned in metadata_test.go).
+// concrete scalar default verbatim, or for timeout the per-verb floors.
 type MetadataRow struct {
 	Key         string
 	Level       MetadataLevel
@@ -119,22 +114,15 @@ type MetadataRow struct {
 func MetadataRows() []MetadataRow {
 	return []MetadataRow{
 		// Shared top-level engine keys (fileShape leaf fields), in field order.
-		// All three shared scalar defaults (ai_command, timeout, max_diff_lines) carry the
-		// REAL compiled defaults, sourced from the exported config constants so they cannot
-		// drift (each pinned in metadata_test.go against DefaultAICommand / DefaultTimeout /
-		// DefaultMaxDiffLines). timeout's TOML key is integer seconds, so DefaultTimeout
-		// (a duration) renders as int(DefaultTimeout / time.Second).
 		{Key: "ai_command", Level: LevelShared, Default: DefaultAICommand, Description: "the AI invocation: composed prompt on stdin, generated body on stdout; resolved [verb] → shared → default"},
 		{Key: "max_diff_lines", Level: LevelShared, Default: strconv.Itoa(DefaultMaxDiffLines), Description: "diffs larger than this (post-exclusion line count) skip the AI"},
-		{Key: "timeout", Level: LevelShared, Default: strconv.Itoa(int(DefaultTimeout / time.Second)), Description: "per-attempt AI deadline in seconds; 0 means no deadline; resolved [verb] → shared → default"},
+		{Key: "timeout", Level: LevelShared, Default: seconds(DefaultReleaseTimeout) + " on release, " + seconds(DefaultCommitTimeout) + " on commit", Description: "per-attempt AI deadline in seconds; 0 means no deadline; resolved [verb] → shared → default"},
 		{Key: "diff_exclude", Level: LevelShared, Default: "[]", Description: "extra pathspec globs kept out of every AI diff, on top of the built-in CHANGELOG.md exclusion"},
 
 		// [release] table leaf keys (releaseShape leaf fields), in field order.
 		// release_branch/provider default to "" in the struct, but their "" is a SENTINEL
 		// meaning auto-derive/auto-detect — so they render "auto", distinct from the genuinely
 		// blank empty-string keys (context/prompt/fallback/version_file/version_pattern).
-		// The per-verb ai_command/timeout overrides render "shared" (inherit the shared
-		// top-level value unless overridden) — the inverse of the shared-level rows.
 		{Key: "tag_prefix", Level: LevelRelease, Default: "v", Description: "prefix on the release tag name (e.g. v1.4.0)"},
 		{Key: "commit_prefix", Level: LevelRelease, Default: "🌿", Description: "brand prefix on mint's bookkeeping commit subject"},
 		{Key: "release_branch", Level: LevelRelease, Default: "auto", Description: "branch releases must run on (empty auto-derives from origin/HEAD)"},
@@ -148,7 +136,7 @@ func MetadataRows() []MetadataRow {
 		{Key: "version_file", Level: LevelRelease, Description: "repo-relative file the new version is mirrored into (empty means tag-only, no projection)"},
 		{Key: "version_pattern", Level: LevelRelease, Description: "version line replaced inside version_file (empty treats the whole file as the version)"},
 		{Key: "ai_command", Level: LevelRelease, Default: "shared", Description: "optional per-verb override of the AI command for release; resolved [release] → shared → default"},
-		{Key: "timeout", Level: LevelRelease, Default: "shared", Description: "optional per-verb override of the per-attempt AI deadline (seconds) for release; resolved [release] → shared → default"},
+		{Key: "timeout", Level: LevelRelease, Default: "shared, else " + seconds(DefaultReleaseTimeout), Description: "optional per-verb override of the per-attempt AI deadline (seconds) for release; resolved [release] → shared → default"},
 
 		// [release.hooks] sub-table keys (hooksShape fields), in field order. These are
 		// activate-only — no compiled default — so their Default cell is left BLANK (the
@@ -157,12 +145,15 @@ func MetadataRows() []MetadataRow {
 		{Key: "pre_tag", Level: LevelReleaseHooks, Description: "runs after notes, before the tag; accepts a single command or an ordered array of commands"},
 		{Key: "post_release", Level: LevelReleaseHooks, Description: "runs after the release is published"},
 
-		// [commit] table keys (commitShape leaf fields), in field order. context/prompt
-		// mirror [release]'s empty-string defaults (blank cell); ai_command/timeout render
-		// "shared" (inherit), mirroring the [release] override rows.
+		// [commit] table keys (commitShape leaf fields), in field order.
 		{Key: "context", Level: LevelCommit, Description: "project guidance injected into the default commit-message prompt"},
 		{Key: "prompt", Level: LevelCommit, Description: "path to a file whose contents fully override the default commit-message prompt"},
 		{Key: "ai_command", Level: LevelCommit, Default: "shared", Description: "optional per-verb override of the AI command for commit; resolved [commit] → shared → default"},
-		{Key: "timeout", Level: LevelCommit, Default: "shared", Description: "optional per-verb override of the per-attempt AI deadline (seconds) for commit; resolved [commit] → shared → default"},
+		{Key: "timeout", Level: LevelCommit, Default: "shared, else " + seconds(DefaultCommitTimeout), Description: "optional per-verb override of the per-attempt AI deadline (seconds) for commit; resolved [commit] → shared → default"},
 	}
+}
+
+// seconds renders d in the integer seconds timeout's TOML key takes.
+func seconds(d time.Duration) string {
+	return strconv.Itoa(int(d / time.Second))
 }

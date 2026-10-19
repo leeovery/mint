@@ -513,7 +513,7 @@ func TestTransport_Generate_NegativeTimeoutIsNotNoDeadline(t *testing.T) {
 
 	// A NEGATIVE timeout must NOT be collapsed into the explicit-0 no-deadline branch — a
 	// negative is not "no deadline". config guarantees the transport only ever receives a
-	// positive value or an explicit 0 (negatives drop through to the 60s floor in
+	// positive value or an explicit 0 (negatives drop through to the verb's shipped floor in
 	// TimeoutFor), so this is defensive: the ONLY no-deadline trigger is an explicit 0. A
 	// negative maps to a per-attempt deadline (which fires immediately, defensively) — it
 	// must never produce an unbounded run on the parent context. Against a real briefly

@@ -12,6 +12,8 @@ package aitransport_test
 // discards the context, so these proofs use runner.DeadlineRecordingRunner.
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -169,6 +171,54 @@ func TestNew_SplitsQuotedCommandAtEveryLevel(t *testing.T) {
 			}
 			if !slices.Equal(spy.Args(), wantArgs) {
 				t.Errorf("invoked args = %q, want %q", spy.Args(), wantArgs)
+			}
+		})
+	}
+}
+
+// TestNew_AppliesEachVerbsResolvedDeadline loads real config files and observes how much
+// time the call the transport hands the runner has before its deadline.
+func TestNew_AppliesEachVerbsResolvedDeadline(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		toml string // "" writes no .mint.toml
+		verb config.Verb
+		want time.Duration
+	}{
+		{name: "no config file gives release 180s", verb: config.VerbRelease, want: 180 * time.Second},
+		{name: "no config file gives commit 60s", verb: config.VerbCommit, want: 60 * time.Second},
+		{name: "a file setting no timeout gives release 180s", toml: "[release]\ntag_prefix = \"v\"\n", verb: config.VerbRelease, want: 180 * time.Second},
+		{name: "a file setting no timeout gives commit 60s", toml: "[release]\ntag_prefix = \"v\"\n", verb: config.VerbCommit, want: 60 * time.Second},
+		{name: "[release].timeout wins for release", toml: "[release]\ntimeout = 90\n", verb: config.VerbRelease, want: 90 * time.Second},
+		{name: "shared timeout wins for release", toml: "timeout = 90\n", verb: config.VerbRelease, want: 90 * time.Second},
+		{name: "shared timeout wins for commit", toml: "timeout = 90\n", verb: config.VerbCommit, want: 90 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			if tt.toml != "" {
+				if err := os.WriteFile(filepath.Join(dir, ".mint.toml"), []byte(tt.toml), 0o600); err != nil {
+					t.Fatalf("writing .mint.toml: %v", err)
+				}
+			}
+			cfg, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load returned unexpected error: %v", err)
+			}
+
+			spy := &runner.DeadlineRecordingRunner{}
+			if _, err := aitransport.New(spy, cfg, tt.verb).Generate(t.Context(), "prompt"); err != nil {
+				t.Fatalf("Generate returned unexpected error: %v", err)
+			}
+
+			got := spy.DeadlineRemaining()
+			if got > tt.want || got < tt.want-5*time.Second {
+				t.Errorf("deadline remaining = %v, want about %v", got, tt.want)
 			}
 		})
 	}

@@ -157,9 +157,9 @@ as well. The shipped default is ` + "`" + config.DefaultAICommand + "`" + `.
 It runs claude lean: no CLAUDE.md files, no Claude Code system prompt, no tools,
 so a call carries mint's prompt and nothing else. Conventions the user keeps in
 CLAUDE.md for notes or commit messages belong in [release] / [commit] context or
-prompt. The transport applies a per-attempt timeout (seconds; default 60; 0
-means unbounded), retries bad or empty output exactly once, and treats a timeout
-as FATAL — reported at once, never retried. On failure, release follows [release].on_notes_failure (abort
+prompt. The transport applies a per-attempt timeout (seconds; default 180 for
+release, 60 for commit; 0 means unbounded), retries bad or empty output exactly
+once, and treats a timeout as FATAL — reported at once, never retried. On failure, release follows [release].on_notes_failure (abort
 loud, or fall back to the commit-subject / fallback body) and commit drops to the
 user's $EDITOR. If you pin a slower model for a verb, raise that verb's timeout in
 the SAME table — mint does not auto-bump it.`

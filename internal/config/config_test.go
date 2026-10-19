@@ -1926,16 +1926,23 @@ func TestResolveCommitPrompt_UnreadablePromptFile_FailsLoudNamingPath(t *testing
 	}
 }
 
-func TestDefaultTimeout_ExportedCanonicalValue(t *testing.T) {
+func TestDefaultTimeouts_ShippedPerVerbValues(t *testing.T) {
 	t.Parallel()
 
-	// DefaultTimeout is the single CANONICAL source of the shipped per-attempt
-	// deadline (60s) — exported so later phases derive the value from here rather than
-	// re-typing the transport's defaultTimeout literal (which Phase 2 deletes). This
-	// pins both that the constant is referenceable from another package and its value.
-	if config.DefaultTimeout != 60*time.Second {
-		t.Errorf("DefaultTimeout = %v, want %v", config.DefaultTimeout, 60*time.Second)
+	if config.DefaultReleaseTimeout != 180*time.Second {
+		t.Errorf("DefaultReleaseTimeout = %v, want %v", config.DefaultReleaseTimeout, 180*time.Second)
 	}
+	if config.DefaultCommitTimeout != 60*time.Second {
+		t.Errorf("DefaultCommitTimeout = %v, want %v", config.DefaultCommitTimeout, 60*time.Second)
+	}
+}
+
+// shippedTimeout is the per-attempt deadline verb falls to with no timeout set at any level.
+func shippedTimeout(verb config.Verb) time.Duration {
+	if verb == config.VerbCommit {
+		return 60 * time.Second
+	}
+	return 180 * time.Second
 }
 
 func TestLoad_TopLevelTimeout_CarriedAsSeconds(t *testing.T) {
@@ -1969,7 +1976,7 @@ func TestLoad_AbsentTimeout_DistinctFromExplicitZero(t *testing.T) {
 		dir := t.TempDir()
 		// With no top-level timeout key at all (a present file setting only an
 		// unrelated key), the carried pointer is nil — the absent sentinel Task 1-7's
-		// accessor treats as "fall through to the 60s floor". A *time.Duration (not a
+		// accessor treats as "fall through to the shipped floor". A *time.Duration (not a
 		// plain duration) is what makes absent distinguishable from an explicit zero.
 		writeConfig(t, dir, "max_diff_lines = 1200\n")
 
@@ -2002,28 +2009,22 @@ func TestLoad_AbsentTimeout_DistinctFromExplicitZero(t *testing.T) {
 			t.Fatalf("Timeout = nil, want a non-nil pointer to the explicit zero")
 		}
 		if *cfg.Timeout != 0 {
-			t.Errorf("Timeout = %v, want explicit 0 (carried verbatim, not coerced to 60s)", *cfg.Timeout)
+			t.Errorf("Timeout = %v, want explicit 0 (carried verbatim, not coerced to a default)", *cfg.Timeout)
 		}
 	})
 }
 
-func TestLoad_AbsentFile_ResolvesShipped60sDefault(t *testing.T) {
+func TestLoad_AbsentFile_LeavesSharedTimeoutUnset(t *testing.T) {
 	t.Parallel()
 
-	// With no .mint.toml at all, defaults() seeds the canonical 60s onto Config.Timeout
-	// directly — the zero-config per-attempt deadline. This mirrors how defaults() seeds
-	// the other top-level shared keys (ai_command, max_diff_lines) so a direct reader of
-	// the zero-config Config sees the shipped value, not a bare nil.
+	// A shared value seeded here would mask each verb's own shipped floor.
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("Load returned unexpected error: %v", err)
 	}
 
-	if cfg.Timeout == nil {
-		t.Fatalf("Timeout = nil, want the shipped 60s default for zero config")
-	}
-	if *cfg.Timeout != config.DefaultTimeout {
-		t.Errorf("Timeout = %v, want the shipped default %v", *cfg.Timeout, config.DefaultTimeout)
+	if cfg.Timeout != nil {
+		t.Errorf("Timeout = %v, want nil (no shared timeout configured)", *cfg.Timeout)
 	}
 }
 
@@ -2031,10 +2032,10 @@ func TestLoad_ExplicitTimeoutZero_CarriedAsDistinguishableExplicitZero(t *testin
 	t.Parallel()
 
 	dir := t.TempDir()
-	// An explicit top-level `timeout = 0` must NOT be coerced to the 60s default — it is
+	// An explicit top-level `timeout = 0` must NOT be coerced to the shipped default — it is
 	// a conscious "no deadline" choice that Task 1-7 honours. The decode-onto-shape must
 	// let an explicit 0 win as a non-nil pointer to 0, never collapsing into the absent
-	// (nil → 60s floor) case.
+	// (nil → shipped floor) case.
 	writeConfig(t, dir, "timeout = 0\n")
 
 	cfg, err := config.Load(dir)
@@ -2046,7 +2047,7 @@ func TestLoad_ExplicitTimeoutZero_CarriedAsDistinguishableExplicitZero(t *testin
 		t.Fatalf("Timeout = nil, want a non-nil pointer to the explicit zero (not the default)")
 	}
 	if *cfg.Timeout != 0 {
-		t.Errorf("Timeout = %v, want explicit 0 honoured (not coerced to the 60s default)", *cfg.Timeout)
+		t.Errorf("Timeout = %v, want explicit 0 honoured (not coerced to the shipped default)", *cfg.Timeout)
 	}
 }
 
@@ -2270,7 +2271,7 @@ func TestTimeoutFor_PresentPositivePerVerbOverride_UsedAsIs(t *testing.T) {
 			dir := t.TempDir()
 			// A present, positive [verb].timeout is the first layer of the chain
 			// (verb → shared → floor), so it is used as-is — neither the shared
-			// top-level nor the 60s floor is consulted.
+			// top-level nor the shipped floor is consulted.
 			writeConfig(t, dir, tc.toml)
 
 			cfg, err := config.Load(dir)
@@ -2380,7 +2381,7 @@ func TestTimeoutFor_NegativePerVerb_DropsThroughToShared(t *testing.T) {
 	}
 }
 
-func TestTimeoutFor_NegativePerVerbNoSharedOverride_DropsToSixtySecondFloor(t *testing.T) {
+func TestTimeoutFor_NegativePerVerbNoSharedOverride_DropsToShippedFloor(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -2405,7 +2406,7 @@ func TestTimeoutFor_NegativePerVerbNoSharedOverride_DropsToSixtySecondFloor(t *t
 
 			dir := t.TempDir()
 			// A negative [verb].timeout with NO shared override drops past the (absent)
-			// shared layer to the 60s floor — NOT to "no deadline" and NOT to a negative.
+			// shared layer to the verb's shipped floor — NOT to "no deadline" and NOT to a negative.
 			// This is the negative-drop interacting correctly with the floor.
 			writeConfig(t, dir, tc.toml)
 
@@ -2416,10 +2417,10 @@ func TestTimeoutFor_NegativePerVerbNoSharedOverride_DropsToSixtySecondFloor(t *t
 
 			got := cfg.TimeoutFor(tc.verb)
 			if got == nil {
-				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", tc.verb)
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shipped floor", tc.verb)
 			}
-			if *got != config.DefaultTimeout {
-				t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (negative dropped, floor applied)", tc.verb, *got, config.DefaultTimeout)
+			if *got != shippedTimeout(tc.verb) {
+				t.Errorf("TimeoutFor(%v) = %v, want the shipped floor %v (negative dropped, floor applied)", tc.verb, *got, shippedTimeout(tc.verb))
 			}
 		})
 	}
@@ -2451,12 +2452,12 @@ func TestTimeoutFor_AbsentPerVerb_FallsToSharedThenFloor(t *testing.T) {
 		}
 	})
 
-	t.Run("absent per-verb and absent shared fall to the 60s floor", func(t *testing.T) {
+	t.Run("absent per-verb and absent shared fall to the verb's shipped floor", func(t *testing.T) {
 		t.Parallel()
 
 		dir := t.TempDir()
 		// A present file with no timeout anywhere: the absent per-verb falls to the
-		// absent shared, which falls to the 60s floor. (Load leaves both nil for a
+		// absent shared, which falls to the shipped floor. (Load leaves both nil for a
 		// present-file-with-no-timeout, so the accessor applies the floor.)
 		writeConfig(t, dir, "[release]\ntag_prefix = \"v\"\n")
 
@@ -2468,21 +2469,21 @@ func TestTimeoutFor_AbsentPerVerb_FallsToSharedThenFloor(t *testing.T) {
 		for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
 			got := cfg.TimeoutFor(verb)
 			if got == nil {
-				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", verb)
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shipped floor", verb)
 			}
-			if *got != config.DefaultTimeout {
-				t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (absent per-verb and shared)", verb, *got, config.DefaultTimeout)
+			if *got != shippedTimeout(verb) {
+				t.Errorf("TimeoutFor(%v) = %v, want the shipped floor %v (absent per-verb and shared)", verb, *got, shippedTimeout(verb))
 			}
 		}
 	})
 }
 
-func TestTimeoutFor_NegativeSharedAbsentPerVerb_DropsToSixtySecondFloor(t *testing.T) {
+func TestTimeoutFor_NegativeSharedAbsentPerVerb_DropsToShippedFloor(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	// A negative shared timeout (with absent per-verb) is value-invalid: it drops past
-	// the shared layer to the 60s floor — never honoured, never collapsed to no-deadline.
+	// the shared layer to the shipped floor — never honoured, never collapsed to no-deadline.
 	writeConfig(t, dir, "timeout = -10\n")
 
 	cfg, err := config.Load(dir)
@@ -2493,19 +2494,18 @@ func TestTimeoutFor_NegativeSharedAbsentPerVerb_DropsToSixtySecondFloor(t *testi
 	for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
 		got := cfg.TimeoutFor(verb)
 		if got == nil {
-			t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", verb)
+			t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shipped floor", verb)
 		}
-		if *got != config.DefaultTimeout {
-			t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (negative shared dropped)", verb, *got, config.DefaultTimeout)
+		if *got != shippedTimeout(verb) {
+			t.Errorf("TimeoutFor(%v) = %v, want the shipped floor %v (negative shared dropped)", verb, *got, shippedTimeout(verb))
 		}
 	}
 }
 
-func TestTimeoutFor_NoConfigFile_ResolvesBothVerbsToSixtySecondFloor(t *testing.T) {
+func TestTimeoutFor_NoConfigFile_ResolvesEachVerbToItsShippedFloor(t *testing.T) {
 	t.Parallel()
 
-	// Zero-config: no .mint.toml at all. Both verbs resolve to the 60s floor — the
-	// shared top-level is the seeded default and no per-verb override exists.
+	// Zero-config: no .mint.toml at all. Release resolves to 180s, commit to 60s.
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("Load returned unexpected error: %v", err)
@@ -2514,10 +2514,10 @@ func TestTimeoutFor_NoConfigFile_ResolvesBothVerbsToSixtySecondFloor(t *testing.
 	for _, verb := range []config.Verb{config.VerbRelease, config.VerbCommit} {
 		got := cfg.TimeoutFor(verb)
 		if got == nil {
-			t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor", verb)
+			t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shipped floor", verb)
 		}
-		if *got != config.DefaultTimeout {
-			t.Errorf("TimeoutFor(%v) = %v, want the shipped 60s floor %v", verb, *got, config.DefaultTimeout)
+		if *got != shippedTimeout(verb) {
+			t.Errorf("TimeoutFor(%v) = %v, want the shipped floor %v", verb, *got, shippedTimeout(verb))
 		}
 	}
 }
@@ -2572,7 +2572,7 @@ func TestTimeoutFor_ReturnDistinguishesExplicitZeroFromPositiveFloor(t *testing.
 			t.Fatalf("TimeoutFor(VerbRelease) = nil, want a non-nil *time.Duration to a positive value")
 		}
 		if *got <= 0 {
-			t.Errorf("*TimeoutFor(VerbRelease) = %v, want a positive value (the 60s floor), not zero/negative", *got)
+			t.Errorf("*TimeoutFor(VerbRelease) = %v, want a positive value (the shipped floor), not zero/negative", *got)
 		}
 	})
 }
@@ -2603,7 +2603,7 @@ func TestResolution_OverrideCommandOnly_LeavesTimeoutAtFloor(t *testing.T) {
 			dir := t.TempDir()
 			// Per-key independence: a verb that overrides ONLY its ai_command (no
 			// per-verb timeout, no shared timeout) must still resolve its timeout
-			// through timeout's OWN chain to the 60s floor. The command override must
+			// through timeout's OWN chain to the shipped floor. The command override must
 			// not perturb the timeout — the accessors read disjoint fields.
 			writeConfig(t, dir, tc.toml)
 
@@ -2617,10 +2617,10 @@ func TestResolution_OverrideCommandOnly_LeavesTimeoutAtFloor(t *testing.T) {
 			}
 			got := cfg.TimeoutFor(tc.verb)
 			if got == nil {
-				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the 60s floor (unperturbed)", tc.verb)
+				t.Fatalf("TimeoutFor(%v) = nil, want a non-nil pointer to the shipped floor (unperturbed)", tc.verb)
 			}
-			if *got != config.DefaultTimeout {
-				t.Errorf("TimeoutFor(%v) = %v, want the 60s floor %v (command override must not perturb timeout)", tc.verb, *got, config.DefaultTimeout)
+			if *got != shippedTimeout(tc.verb) {
+				t.Errorf("TimeoutFor(%v) = %v, want the shipped floor %v (command override must not perturb timeout)", tc.verb, *got, shippedTimeout(tc.verb))
 			}
 		})
 	}
@@ -2732,7 +2732,7 @@ func TestResolution_ReleaseOverride_DoesNotPerturbCommitResolution(t *testing.T)
 	// Cross-verb independence: a [release] override of BOTH keys must not affect commit
 	// resolution — each verb reads only its own table. With no [commit] overrides and no
 	// shared values, both commit keys must fall to their shipped floors (DefaultAICommand
-	// and the 60s timeout), proving the release table never bleeds into the commit verb.
+	// and the 60s commit timeout), proving the release table never bleeds into the commit verb.
 	writeConfig(t, dir, "[release]\nai_command = \"haiku-cmd\"\ntimeout = 120\n")
 
 	cfg, err := config.Load(dir)
@@ -2745,10 +2745,10 @@ func TestResolution_ReleaseOverride_DoesNotPerturbCommitResolution(t *testing.T)
 	}
 	got := cfg.TimeoutFor(config.VerbCommit)
 	if got == nil {
-		t.Fatalf("TimeoutFor(VerbCommit) = nil, want a non-nil pointer to the 60s floor")
+		t.Fatalf("TimeoutFor(VerbCommit) = nil, want a non-nil pointer to the shipped floor")
 	}
-	if *got != config.DefaultTimeout {
-		t.Errorf("TimeoutFor(VerbCommit) = %v, want the 60s floor %v ([release] override must not bleed into commit)", *got, config.DefaultTimeout)
+	if *got != config.DefaultCommitTimeout {
+		t.Errorf("TimeoutFor(VerbCommit) = %v, want the commit floor %v ([release] override must not bleed into commit)", *got, config.DefaultCommitTimeout)
 	}
 
 	// Sanity: the release override itself still resolves, so the cross-verb check is

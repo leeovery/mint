@@ -98,3 +98,21 @@ func TestResolveFreshTransport_PositiveTimeoutThreadsDeadline(t *testing.T) {
 		t.Errorf("context carried no deadline; a positive resolved release timeout must thread a per-attempt deadline through resolveFreshTransport")
 	}
 }
+
+func TestResolveFreshTransport_ZeroConfigAppliesShippedReleaseDeadline(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	spy := &runner.DeadlineRecordingRunner{}
+	if _, err := resolveFreshTransport(spy, nil, cfg).Generate(t.Context(), "prompt"); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	if got := spy.DeadlineRemaining(); got > 180*time.Second || got < 175*time.Second {
+		t.Errorf("deadline remaining = %v, want about 180s", got)
+	}
+}

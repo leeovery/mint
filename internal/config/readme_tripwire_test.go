@@ -214,3 +214,27 @@ func TestReadFileNamingPath_FailsLoudlyOnMissingFile(t *testing.T) {
 		t.Errorf("read error must NAME the attempted path %q, got %v", badPath, err)
 	}
 }
+
+// TestREADME_TimeoutDefaultsNameBothVerbs checks the README's timeout rows and the AI
+// Transport prose state both shipped deadlines, never a lone 60.
+func TestREADME_TimeoutDefaultsNameBothVerbs(t *testing.T) {
+	t.Parallel()
+
+	readme := readREADME(t, readmePath(t))
+
+	for _, want := range []string{
+		"| `timeout` | `180` on release, `60` on commit |",
+		"| `timeout` | shared, else `180` |",
+		"| `timeout` | shared, else `60` |",
+		"`timeout` seconds, default `180` for release and `60` for commit",
+	} {
+		if !strings.Contains(readme, want) {
+			t.Errorf("README is missing %q", want)
+		}
+	}
+	for _, stale := range []string{"| `timeout` | `60` |", "| `timeout` | shared |", "default `60` —", "the default `60` will"} {
+		if strings.Contains(readme, stale) {
+			t.Errorf("README still states a single timeout default: %q", stale)
+		}
+	}
+}

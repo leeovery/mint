@@ -384,6 +384,43 @@ func TestGuide_AITransportParagraphNamesLeanDefault(t *testing.T) {
 	}
 }
 
+func TestGuide_AITransportParagraphNamesBothShippedTimeouts(t *testing.T) {
+	t.Parallel()
+
+	paragraph := aiTransportParagraph(t)
+	flat := strings.Join(strings.Fields(paragraph), " ")
+
+	const want = "per-attempt timeout (seconds; default 180 for release, 60 for commit; 0 means unbounded)"
+	if !strings.Contains(flat, want) {
+		t.Errorf("AI-transport paragraph must carry %q; got:\n%s", want, paragraph)
+	}
+	if strings.Contains(flat, "default 60;") {
+		t.Errorf("AI-transport paragraph still states a single default 60; got:\n%s", paragraph)
+	}
+}
+
+func TestGuide_ConfigReferenceNamesShippedTimeouts(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+	rows := configtest.MustByLevelKey(t)
+
+	tests := []struct {
+		level       config.MetadataLevel
+		wantDefault string
+	}{
+		{config.LevelShared, "180 on release, 60 on commit"},
+		{config.LevelRelease, "shared, else 180"},
+	}
+
+	for _, tt := range tests {
+		row := rows[configtest.RowKey{Level: tt.level, Key: "timeout"}]
+		if !containsRowLine(section, "timeout", setupguide.LevelCell(tt.level), tt.wantDefault, row.Description) {
+			t.Errorf("config reference must render the (level %q, timeout) row with default %q", tt.level, tt.wantDefault)
+		}
+	}
+}
+
 // numberedStep returns the procedure step that opens with the given ordered
 // prefix (e.g. "2."), joined across its continuation lines up to the next
 // numbered step, and trimmed. Procedure steps wrap across multiple indented
@@ -517,7 +554,7 @@ func lineHasKeyAtLevel(section, key, levelCell string) bool {
 // TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim proves the default-column
 // tokens are carried verbatim from the SoT — the empty-collection "[]"
 // (diff_exclude), the sentinel "auto" (release_branch / provider), the per-verb
-// inherit "shared" ([release]/[commit] ai_command/timeout), and a blank cell for
+// inherit "shared" ([release]/[commit] ai_command), and a blank cell for
 // empty-string-default keys ([release] context). The render performs zero
 // metadata logic; it copies row.Default through.
 func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
@@ -535,7 +572,7 @@ func TestGuide_ConfigReferenceCarriesDefaultTokensVerbatim(t *testing.T) {
 		{"sentinel-auto release_branch renders auto", config.LevelRelease, "release_branch"},
 		{"sentinel-auto provider renders auto", config.LevelRelease, "provider"},
 		{"per-verb [release].ai_command inherits shared", config.LevelRelease, "ai_command"},
-		{"per-verb [commit].timeout inherits shared", config.LevelCommit, "timeout"},
+		{"per-verb [commit].ai_command inherits shared", config.LevelCommit, "ai_command"},
 		{"empty-string [release].context renders blank", config.LevelRelease, "context"},
 	}
 

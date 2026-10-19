@@ -99,3 +99,21 @@ func TestCommitTransport_ExplicitZeroTimeoutThreadsNoDeadline(t *testing.T) {
 		t.Errorf("context carried a deadline; a [commit].timeout of explicit 0 must thread NO deadline through commitTransport")
 	}
 }
+
+func TestCommitTransport_ZeroConfigAppliesShippedCommitDeadline(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load returned unexpected error: %v", err)
+	}
+
+	spy := &runner.DeadlineRecordingRunner{}
+	if _, err := commitTransport(Deps{Runner: spy}, cfg).Generate(t.Context(), "prompt"); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	if got := spy.DeadlineRemaining(); got > 60*time.Second || got < 55*time.Second {
+		t.Errorf("deadline remaining = %v, want about 60s", got)
+	}
+}

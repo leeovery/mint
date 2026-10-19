@@ -480,7 +480,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// (versionKey was computed at Stage 1 so RunStarted could lead the run; resolveBody
 	// reuses it to recompute the dry-run cache key for the real-run reuse lookup.)
 	//
-	// Stage 4 is BLOCKING: generating notes can call the AI (~60s). Narrate it with a
+	// Stage 4 is BLOCKING: generating notes can call the AI. Narrate it with a
 	// blocking StageStarted (spinner) and a StageSucceeded carrying the engine-measured
 	// Elapsed once the body resolves.
 	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
