@@ -215,7 +215,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 2,
-          "task": null,
+          "task": "token-aware-diff-sizing-2-1",
           "task_map": {
             "token-aware-diff-sizing-1-1": "tick-242ea4",
             "token-aware-diff-sizing-1": "tick-d30fa2",
@@ -230,7 +230,8 @@
           "approvals": {
             "structure": "2026-10-19",
             "tasks": {
-              "p1": "2026-10-19"
+              "p1": "2026-10-19",
+              "p2": "2026-10-19"
             }
           },
           "staging": {},
