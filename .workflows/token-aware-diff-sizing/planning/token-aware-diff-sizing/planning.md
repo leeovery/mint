@@ -28,6 +28,16 @@ status: draft
 - [ ] `mint setup`'s AI-transport paragraph names the lean default and the 180s release and 60s commit timeouts, in place of `claude -p --model sonnet` and `default 60`
 - [ ] The README tables and `mint setup`'s config reference show `[release].timeout` defaulting to 180s, and the shared `timeout` row names both shipped defaults
 
+#### Tasks
+
+| Internal ID | Name | Edge Cases |
+|-------------|------|------------|
+| token-aware-diff-sizing-1-1 | Quote-aware `ai_command` splitting | `--system-prompt="Be terse"` is one argument `--system-prompt=Be terse` (§3.1), a quoted `""` or `''` is one empty argument (§3.1), inside double quotes a backslash escapes only `"`, `\`, `$` and the backtick (§3.1), backslash-newline removed as a line continuation (§3.1), `$`, backticks, `*`, `~`, `\|`, `;`, `&`, `<`, `>` stay literal with no expansion, globbing, pipes or redirection (§3.1), a command with no quotes or backslashes splits exactly as before (§3.3) |
+| token-aware-diff-sizing-1-2 | Lean shipped default AI command | an explicit `ai_command` at any level is never replaced (§2.4), the model stays the `sonnet` alias (§2.1) |
+| token-aware-diff-sizing-1-3 | Reject a malformed `ai_command` at config load | unterminated quote → `invalid .mint.toml: release.ai_command has an unterminated quote` (§3.2), trailing lone backslash → `invalid .mint.toml: ai_command ends in a lone backslash` (§3.2), empty first word such as `'' --flag` → `invalid .mint.toml: commit.ai_command names no program` (§3.2), a non-blank value whose split yields no words → `names no program` (§3.2), a malformed command at any level fails every command that loads config (§3.2), a blank or whitespace-only value is not malformed and falls through to the next level as built (§3.2, §2.4) |
+| token-aware-diff-sizing-1-4 | 180-second shipped release timeout | an explicit `[release].timeout` or shared `timeout` still wins over 180s (§4.4), regenerate rides on release's 180s (§4.4), `mint commit` keeps the shipped 60s (§4.4), the shared `timeout` row names both shipped defaults (§18.2) |
+| token-aware-diff-sizing-1-5 | Commit's AI failure carries the AI's verbatim output | an unattended (`-y` or non-TTY) failure carries the output beneath its line (§17.1), `--no-ai`, an oversized prompt and an all-excluded diff reach the editor with lines unchanged and no AI output (§17.1), a claude that rejects a lean flag as unknown shows its message verbatim (§2.5), a failed `r` regeneration at the gate carries the same output (§17.1) |
+
 ### Phase 2: Per-call size cap and chunked release notes
 status: draft
 
