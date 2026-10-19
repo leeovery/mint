@@ -203,6 +203,25 @@
           }
         }
       }
+    },
+    "planning": {
+      "items": {
+        "token-aware-diff-sizing": {
+          "status": "in-progress",
+          "format": "tick",
+          "spec_commit": "f9eb182a85fa5a0a84774ea0a68625393cac7f42",
+          "task_list_gate_mode": "gated",
+          "author_gate_mode": "gated",
+          "finding_gate_mode": "gated",
+          "review_cycle": 0,
+          "phase": 1,
+          "task": null,
+          "task_map": {},
+          "storage_paths": [
+            ".tick/"
+          ]
+        }
+      }
     }
   },
   "seeds": [
