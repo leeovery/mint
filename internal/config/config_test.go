@@ -838,33 +838,27 @@ post_release = "scripts/notify.sh"
 	}
 }
 
-func TestLoad_AbsentAICommand_DefaultsToClaudeSonnet(t *testing.T) {
+// leanAICommand is the shipped default ai_command, written out literally.
+const leanAICommand = `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."`
+
+func TestLoad_AbsentAICommand_DefaultsToLeanClaude(t *testing.T) {
 	t.Parallel()
 
-	// ai_command is a shared TOP-LEVEL engine key (not under [release]). Absent from
-	// the file it defaults to the pinned "claude -p --model sonnet" — the model is
-	// pinned so zero-config behaviour is predictable rather than inheriting the
-	// operator's mutable Claude CLI default.
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("Load returned unexpected error: %v", err)
 	}
 
-	if cfg.AICommand != "claude -p --model sonnet" {
-		t.Errorf("AICommand = %q, want default %q", cfg.AICommand, "claude -p --model sonnet")
+	if cfg.AICommand != leanAICommand {
+		t.Errorf("AICommand = %q, want default %q", cfg.AICommand, leanAICommand)
 	}
 }
 
 func TestDefaultAICommand_ExportedCanonicalValue(t *testing.T) {
 	t.Parallel()
 
-	// DefaultAICommand is the single CANONICAL source of the pinned default command:
-	// it is exported so later sites (the transport, initgen's template) derive the
-	// value from here rather than re-typing the literal. This test pins both that the
-	// constant is referenceable from another package and that its value is the pinned
-	// "claude -p --model sonnet".
-	if config.DefaultAICommand != "claude -p --model sonnet" {
-		t.Errorf("DefaultAICommand = %q, want %q", config.DefaultAICommand, "claude -p --model sonnet")
+	if config.DefaultAICommand != leanAICommand {
+		t.Errorf("DefaultAICommand = %q, want %q", config.DefaultAICommand, leanAICommand)
 	}
 }
 
@@ -872,7 +866,7 @@ func TestLoad_ExplicitAICommand_Honoured(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	// An explicit top-level ai_command must override the "claude -p --model sonnet" default. It sits
+	// An explicit top-level ai_command must override the shipped default. It sits
 	// above the [release] table, so it is set with no table header.
 	writeConfig(t, dir, "ai_command = \"llm --model gpt-4 chat\"\n")
 

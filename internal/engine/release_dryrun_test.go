@@ -197,7 +197,7 @@ func TestRelease_DryRun_GeneratesNotesPreview(t *testing.T) {
 	}
 
 	// The AI transport ran (the diff was assembled and handed to the AI).
-	if !invokedWith(f, "claude", "-p", "--model", "sonnet") {
+	if !invokedWith(f, "claude", leanClaudeArgs...) {
 		t.Errorf("dry-run did not run the AI notes path; got %v", commandLines(f.Invocations()))
 	}
 	// The generated body was previewed.

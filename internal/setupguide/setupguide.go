@@ -4,10 +4,7 @@
 // writing the string to a terminal (and the help/dispatch wiring) lives in the
 // `mint setup` cmd-layer tasks, never here. The package deliberately takes no
 // presenter dependency (CLAUDE.md seam 3 leaves the emission surface to the
-// write site). It imports `config` in exactly ONE path — renderConfigReference()
-// reads the config-metadata source of truth (config.MetadataRows()) to render
-// the config-reference table; every prose-authoring helper stays config-free, so
-// the SoT remains the single source of key metadata.
+// write site).
 //
 // Why emit the guide from the binary at all: the instructions are version-
 // matched to the installed mint, so an old mint emits old-but-correct guidance
@@ -156,10 +153,13 @@ prompt) or [commit].prompt (replace the prompt wholesale), plus the shared or
 Both AI verbs call out through ai_command: any executable that reads the finished
 prompt on STDIN and writes the message body to STDOUT — mint owns the prompt, the
 command is just transport, so a non-Claude CLI honouring that contract works just
-as well. The shipped default is ` + "`claude -p --model sonnet`" + `. The transport applies
-a per-attempt timeout (seconds; default 60; 0 means unbounded), retries bad or
-empty output exactly once, and treats a timeout as FATAL — reported at once,
-never retried. On failure, release follows [release].on_notes_failure (abort
+as well. The shipped default is ` + "`" + config.DefaultAICommand + "`" + `.
+It runs claude lean: no CLAUDE.md files, no Claude Code system prompt, no tools,
+so a call carries mint's prompt and nothing else. Conventions the user keeps in
+CLAUDE.md for notes or commit messages belong in [release] / [commit] context or
+prompt. The transport applies a per-attempt timeout (seconds; default 60; 0
+means unbounded), retries bad or empty output exactly once, and treats a timeout
+as FATAL — reported at once, never retried. On failure, release follows [release].on_notes_failure (abort
 loud, or fall back to the commit-subject / fallback body) and commit drops to the
 user's $EDITOR. If you pin a slower model for a verb, raise that verb's timeout in
 the SAME table — mint does not auto-bump it.`
@@ -368,11 +368,7 @@ default column to judge whether a key needs setting at all (see Minimalism).
 
 // renderConfigReference renders the key·level·default·description table that
 // lands inside the config-reference section, sourced ENTIRELY from the
-// config-metadata source of truth (config.MetadataRows()). This is the single
-// place the setupguide package reads config: the prose-authoring helpers above
-// hand-write NO key metadata, so the SoT stays the one source and cannot drift
-// from what the binary accepts (the drift test in the config package guards the
-// SoT itself against the schema).
+// config-metadata source of truth (config.MetadataRows()).
 //
 // The render performs ZERO metadata logic — it iterates the SoT rows in SoT
 // order and copies each row's columns through verbatim:

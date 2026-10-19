@@ -25,7 +25,7 @@ import (
 // command and the per-attempt deadline from the verb's per-key config accessors:
 // cfg.AICommandFor(verb) and cfg.TimeoutFor(verb) each walk the chain
 // `[verb] → shared → floor`, so a per-verb override drives the call and a zero-config run
-// resolves to the shipped floor (claude -p --model sonnet, 60s). Config — not the transport
+// resolves to the shipped floor (config.DefaultAICommand, 60s). Config — not the transport
 // — owns the default and the blank-skip / no-deadline semantics; the transport runs what it
 // is handed (splitting the command into name + args by POSIX shell quoting rules).
 //

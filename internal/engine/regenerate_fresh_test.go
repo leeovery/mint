@@ -452,8 +452,8 @@ func TestRegenerateFreshBody_ReleaseVerbOverrideDrivesAIInvocation(t *testing.T)
 		t.Errorf("[release].ai_command %q was not invoked with a prompt on stdin", override)
 	}
 	// The default `claude` was never invoked — the fresh-regenerate call resolved [release].
-	if invokedWith(f, "claude", "-p", "--model", "sonnet") {
-		t.Error("default `claude -p --model sonnet` was invoked despite a [release].ai_command override; fresh-regenerate did not route through [release]")
+	if invokedWith(f, "claude", leanClaudeArgs...) {
+		t.Error("shipped default claude command was invoked despite a [release].ai_command override; fresh-regenerate did not route through [release]")
 	}
 }
 
@@ -462,7 +462,7 @@ func TestRegenerateFreshBody_CommitOverrideDoesNotDriveAIInvocation(t *testing.T
 
 	// Independence proof: regenerate reads [release], NEVER [commit]. With a
 	// [commit].ai_command override but NO [release] and NO shared override, the
-	// fresh-regenerate call resolves to the FLOOR (claude -p --model sonnet), NOT
+	// fresh-regenerate call resolves to the FLOOR (the shipped default), NOT
 	// `wrongbot` — the [commit] override cannot leak into the release-routed site.
 	diff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
 	body := "notes"
@@ -486,8 +486,8 @@ func TestRegenerateFreshBody_CommitOverrideDoesNotDriveAIInvocation(t *testing.T
 	}
 
 	// The floor drove the call; the [commit] override never leaked in.
-	if stdinOf(t, f, "claude", "-p", "--model", "sonnet") == "" {
-		t.Errorf("floor `claude -p --model sonnet` was not invoked with a prompt on stdin")
+	if stdinOf(t, f, "claude", leanClaudeArgs...) == "" {
+		t.Errorf("floor claude command was not invoked with a prompt on stdin")
 	}
 	if invokedWith(f, "wrongbot") {
 		t.Error("[commit].ai_command `wrongbot` drove the fresh-regenerate call; regenerate must read [release], never [commit]")
@@ -498,7 +498,7 @@ func TestRegenerateFreshBody_ZeroConfigResolvesToClaudeFloor(t *testing.T) {
 	t.Parallel()
 
 	// A zero-config fresh-regenerate (no [release]/[commit]/shared ai_command) resolves to
-	// the shipped floor `claude -p --model sonnet` — the production path builds the real
+	// the shipped floor command — the production path builds the real
 	// transport over the FakeRunner and invokes exactly the pinned default argv.
 	diff := "diff --git a/api.go b/api.go\n@@ -1 +1 @@\n-old\n+new\n"
 	body := "notes"
@@ -514,8 +514,8 @@ func TestRegenerateFreshBody_ZeroConfigResolvesToClaudeFloor(t *testing.T) {
 		t.Errorf("body = %q, want the AI body %q", got, body)
 	}
 
-	if stdinOf(t, f, "claude", "-p", "--model", "sonnet") == "" {
-		t.Errorf("zero-config fresh-regenerate did not invoke the floor `claude -p --model sonnet` with a prompt on stdin")
+	if stdinOf(t, f, "claude", leanClaudeArgs...) == "" {
+		t.Errorf("zero-config fresh-regenerate did not invoke the floor claude command with a prompt on stdin")
 	}
 }
 

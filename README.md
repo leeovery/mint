@@ -202,7 +202,7 @@ The per-key reference tables below are the authoritative human config reference 
 
 | Key | Default | Description |
 |---|---|---|
-| `ai_command` | `claude -p --model sonnet` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
+| `ai_command` | `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
 | `timeout` | `60` | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
 | `max_diff_lines` | `50000` | diffs over this (post-exclusion) skip the AI |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
@@ -250,18 +250,42 @@ Both verbs share the two-knob model: `context` *injects into* the default prompt
 Mint owns the prompt; the command is just transport. `ai_command` is any executable that reads a finished prompt on **stdin** and writes the message body to **stdout**:
 
 ```toml
-ai_command = 'claude -p --model sonnet'        # the shipped default
-ai_command = 'claude -p --model opus'          # pin a different model
+ai_command = 'claude -p --model opus'          # a different model, without the lean flags
 ai_command = 'llm -m gpt-4o'                   # any CLI with the same stdin/stdout contract
 ```
 
-The shipped default pins `--model sonnet` so zero-config behaviour is fixed regardless of the model your Claude CLI happens to default to. Both `ai_command` and `timeout` can be set shared (top-level) or per-verb under `[release]` / `[commit]`, each resolving `[verb]` → shared → default.
+Both `ai_command` and `timeout` can be set shared (top-level) or per-verb under `[release]` / `[commit]`, each resolving `[verb]` → shared → default.
 
 The transport applies a per-attempt deadline — `timeout` seconds, default `60` — retries bad output (empty/non-zero exit) exactly once, and routes failures by cause: release follows `on_notes_failure`; commit drops to the `$EDITOR` fallback. A timeout is **fatal**: it is reported immediately and never retried (the single retry covers bad *content* only). A Ctrl-C is a clean abort, never a retry.
 
 Setting `timeout = 0` disables the per-attempt deadline entirely: the AI call then runs **unbounded**. This is a deliberate, operator-chosen exception to mint's "fail loud, never hang" posture — you are opting a slow command into an open-ended run and you own that trade-off.
 
 `ai_command` and `timeout` resolve independently per verb, so overriding one does **not** touch the other. If you pin a slower model for a verb, raise that verb's `timeout` in the **same** `[release]` / `[commit]` table — mint does **not** auto-bump the timeout, warn, or require the pair, so a slow command left under the default `60` will hit the fatal per-attempt deadline. Overriding both keys together for a slow verb is the supported pattern; it is your responsibility, not enforced.
+
+### The shipped default
+
+With no `ai_command` set at any level, every AI call mint makes runs:
+
+```text
+claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."
+```
+
+An `ai_command` you set replaces this command whole, lean flags included: to change only the model, copy it and edit `--model`.
+
+It is Claude Code in lean form, so a call carries mint's prompt and nothing else:
+
+- `--model sonnet` pins the model, by alias, so zero-config behaviour does not depend on the model your Claude CLI happens to default to.
+- `--safe-mode` switches off CLAUDE.md files (the repo's and your global one), skills, plugins, hooks and MCP servers. Auth and model selection keep working.
+- `--tools ""` drops the built-in tool definitions.
+- `--strict-mcp-config` loads only MCP configuration passed on the command line, and none is passed.
+- `--no-session-persistence` stops each one-shot call being saved to disk as a resumable session.
+- `--system-prompt` replaces Claude Code's own system prompt. It names no task, because the same command serves every call; each call's own prompt carries its job.
+
+`--bare` is not used: it forces API-key auth and breaks the subscription login.
+
+What the lean form drops, it drops on purpose. CLAUDE.md files and Claude Code's own system prompt no longer reach mint's calls, so instructions kept there that shaped release notes or commit messages stop doing so. Conventions you want applied belong in the `[release]` and `[commit]` `context` and `prompt` keys, which ride in every release-notes and commit-message call.
+
+A Claude CLI too old for one of these flags rejects it as an unknown option and exits non-zero, which lands on the ordinary AI-failure path. mint does not probe the version or fall back to a plainer command. Upgrade claude, or set your own `ai_command`.
 
 ### Quoting in `ai_command`
 

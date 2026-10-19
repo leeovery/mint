@@ -122,8 +122,8 @@ func TestRun_AICommand_CommitVerbOverrideDrivesTransport(t *testing.T) {
 	if invokedBinary(r, "sharedbot", "gen") {
 		t.Errorf("shared `sharedbot gen` was invoked despite a [commit].ai_command override; per-verb did not win")
 	}
-	if invokedBinary(r, "claude", "-p", "--model", "sonnet") {
-		t.Errorf("default `claude -p --model sonnet` was invoked despite a [commit].ai_command override")
+	if invokedBinary(r, "claude", leanClaudeArgs...) {
+		t.Errorf("shipped default claude command was invoked despite a [commit].ai_command override")
 	}
 
 	// The body the configured command returned still reaches the commit sink verbatim.
@@ -155,13 +155,13 @@ func TestRun_AICommand_NoCommitOverrideFallsToShared(t *testing.T) {
 	if got := aiInvocationStdin(r, "mybot", "gen"); got == "" {
 		t.Errorf("shared ai_command %q was not invoked with a prompt on stdin", "mybot gen")
 	}
-	if invokedBinary(r, "claude", "-p", "--model", "sonnet") {
-		t.Errorf("default `claude -p --model sonnet` was invoked despite a shared ai_command")
+	if invokedBinary(r, "claude", leanClaudeArgs...) {
+		t.Errorf("shipped default claude command was invoked despite a shared ai_command")
 	}
 }
 
 // TestRun_AICommand_DefaultDrivesTransport proves a zero-config commit (no .mint.toml)
-// still resolves to the documented default `claude -p --model sonnet`: with no
+// still resolves to the shipped default command: with no
 // ai_command set, the production transport invokes the pinned default with the composed
 // prompt on stdin — the per-verb resolution preserves the floor exactly.
 func TestRun_AICommand_DefaultDrivesTransport(t *testing.T) {
@@ -177,7 +177,7 @@ func TestRun_AICommand_DefaultDrivesTransport(t *testing.T) {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}
 
-	if got := aiInvocationStdin(r, "claude", "-p", "--model", "sonnet"); got == "" {
-		t.Errorf("default `claude -p --model sonnet` was not invoked with a prompt on stdin")
+	if got := aiInvocationStdin(r, "claude", leanClaudeArgs...); got == "" {
+		t.Errorf("shipped default claude command was not invoked with a prompt on stdin")
 	}
 }

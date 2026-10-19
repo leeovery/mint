@@ -71,24 +71,24 @@ var onNotesFailureValues = []string{"abort", "fallback"}
 // re-typing the literal, symmetric with DefaultAICommand / DefaultTimeout.
 const DefaultMaxDiffLines = 50000
 
-// DefaultAICommand is the out-of-the-box notes transport command:
-// `claude -p --model sonnet`, the AI invocation mint pipes the composed prompt into.
-// The model is PINNED so zero-config behaviour is predictable — a bare `claude -p`
-// would inherit whatever default model the operator's Claude CLI is set to, an
-// external mutable setting mint does not control, so quality, cost, and latency would
-// vary silently. The pin uses the `sonnet` ALIAS, not a full versioned model ID: the
-// alias tracks the current Sonnet version automatically, whereas a baked-in versioned
-// ID goes stale every model release and would force a rebuild just to track versions.
+// DefaultAICommand is the out-of-the-box AI transport command every verb falls through
+// to when no ai_command is set. It is claude in lean form: the flags keep Claude Code's
+// own system prompt, tool definitions, CLAUDE.md files, skills, plugins, hooks and MCP
+// servers out of the call, and stop each one-shot call being saved as a session, so a
+// call carries mint's prompt and nothing else. The system prompt names no task because
+// the same command serves every AI call mint makes. --bare is not used: it forces
+// API-key auth and breaks the subscription login.
 //
-// This is the single CANONICAL source of the pinned default value — it is EXPORTED so
-// every other site derives the value from here rather than re-typing the literal: the
-// transport carries no self-default of its own, and initgen's scaffold literal is sourced
-// from this constant.
+// The model is PINNED, by the `sonnet` alias, so zero-config behaviour does not inherit
+// whatever model the operator's Claude CLI defaults to, and the alias tracks the current
+// Sonnet without a rebuild.
 //
-// It is a shared engine key (every verb's notes engine uses it), so it lives at the
-// top level of Config (see Config.AICommand). config carries whatever the file holds
-// verbatim, applying this default only when the key is absent.
-const DefaultAICommand = "claude -p --model sonnet"
+// The empty --tools argument and the multi-word system prompt survive only because the
+// transport splits the command by POSIX shell quoting rules.
+//
+// This is the single canonical source of the default value: every other site derives it
+// from here.
+const DefaultAICommand = `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."`
 
 // DefaultTimeout is the shipped per-attempt AI deadline (60s) — the value the transport
 // retries every attempt against. It is the CANONICAL source of that default — the transport
@@ -118,9 +118,8 @@ type Config struct {
 	// serve commit from the top level (these two keys have no [commit] override).
 	Commit Commit
 
-	// AICommand is the shared engine-level ai_command notes-transport command (the
-	// pinned default "claude -p --model sonnet", the single canonical source of which
-	// is config.DefaultAICommand). It is top-level — NOT under [release] — because
+	// AICommand is the shared engine-level ai_command notes-transport command (its
+	// default is config.DefaultAICommand). It is top-level — NOT under [release] — because
 	// every verb's notes engine uses the same AI transport. config carries it verbatim:
 	// an ABSENT key is seeded with the pinned default, but an explicit empty/blank value
 	// is carried through unchanged (NOT re-defaulted at Load) so AICommandFor's trim-and-

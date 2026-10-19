@@ -352,6 +352,38 @@ func TestGuide_OverviewCarriesAITransport(t *testing.T) {
 	}
 }
 
+// aiTransportParagraph returns the guide's "The AI transport" subsection, up to the
+// next heading.
+func aiTransportParagraph(t *testing.T) string {
+	t.Helper()
+
+	const heading = "### The AI transport\n"
+	body := setupguide.Guide()
+	start := strings.Index(body, heading)
+	if start < 0 {
+		t.Fatalf("guide is missing the %q subsection", strings.TrimSpace(heading))
+	}
+	rest := body[start+len(heading):]
+	if end := strings.Index(rest, "\n#"); end >= 0 {
+		rest = rest[:end]
+	}
+	return rest
+}
+
+func TestGuide_AITransportParagraphNamesLeanDefault(t *testing.T) {
+	t.Parallel()
+
+	const lean = "`claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"`"
+	paragraph := aiTransportParagraph(t)
+
+	if !strings.Contains(paragraph, lean) {
+		t.Errorf("AI-transport paragraph must name the lean default %s; got:\n%s", lean, paragraph)
+	}
+	if strings.Contains(paragraph, "`claude -p --model sonnet`") {
+		t.Errorf("AI-transport paragraph still names the plain `claude -p --model sonnet`; got:\n%s", paragraph)
+	}
+}
+
 // numberedStep returns the procedure step that opens with the given ordered
 // prefix (e.g. "2."), joined across its continuation lines up to the next
 // numbered step, and trimmed. Procedure steps wrap across multiple indented
