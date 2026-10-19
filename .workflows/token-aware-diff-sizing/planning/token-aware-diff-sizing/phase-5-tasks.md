@@ -72,7 +72,7 @@ Task 5-2 adds `e` to the same choice. No spinner animates while the choice waits
 - the saved chunk notes, when a chunk or the merge failed and this run saved a file
 - nothing, otherwise. That includes a run whose chunk notes could not be saved, even when a file from an earlier failure of the same tag sits at the path.
 
-The file at the path keeps the chunk notes as the calls returned them, whatever the operator writes; the edited text lives in the run like any edit at the review gate. A non-empty body goes to the review gate with release, abort and edit and no `r`. An empty or whitespace-only body is refused, and mint returns to the `c` / `e` / `a` choice. When no editor can be launched, mint warns and returns to the choice. Any other editor failure is surfaced and aborts, unwinding a pre_tag artifact commit as any failure before the push does. The README's description of the choice covers `e`.
+The file at the path keeps the chunk notes as the calls returned them, whatever the operator writes; the edited text lives in the run like any edit at the review gate. A non-empty body goes to the review gate with release, abort and edit and no `r`. An empty or whitespace-only body is refused, and mint returns to the `c` / `e` / `a` choice. When no editor can be launched, mint warns and returns to the choice. Any other editor failure is surfaced and aborts, unwinding a pre_tag artifact commit as any failure before the push does. The README's description of the choice covers `e`, and so do the other surfaces task 5-1 described the choice on: `on_notes_failure`'s README row, its description in `mint setup`'s config reference, and `mint setup`'s AI-transport paragraph.
 
 **Outcome**: From the floor, an operator can write or finish the notes in the editor and release with them. Backing out of the editor brings the choice back instead of an empty release.
 
@@ -87,10 +87,14 @@ The file at the path keeps the chunk notes as the calls returned them, whatever 
 - [ ] Given no editor can be launched, because the resolved editor is not installed, mint warns that it could not launch the editor and the `c` / `e` / `a` choice shows again (§12.2)
 - [ ] Given a launched editor that exits non-zero, the failure is surfaced and the run aborts before any tag, exiting 1, and a pre_tag artifact commit is unwound, as on `a` (§6.6, §12.2)
 - [ ] The README's description of the floor's choice covers `e`: it opens the editor on the saved chunk notes where this run saved a file, otherwise empty, and an empty body returns to the choice (§18.2)
+- [ ] The surfaces task 5-1 described the choice on say an attended release under `abort` whose notes fail is offered the commit-subject list, writing the notes in the editor, or an abort (§14.2, §18.1, §18.2):
+  - `on_notes_failure`'s README row
+  - `on_notes_failure`'s description, as `mint setup`'s config reference renders it
+  - `mint setup`'s AI-transport paragraph, which still names no command flag
 
 **Do**:
 - `e` runs release's editor seam, `EditorLauncher.Edit` behind the engine's `Editor` (`internal/engine/editor.go`), which edits a temp copy of the body it is given (§12.2).
-- The README text goes in the `release` section, with the floor's choice that task 5-1 documents (§18.2).
+- The README text goes in the `release` section, with the floor's choice that task 5-1 documents, and in `on_notes_failure`'s row in the `[release]` table. The config reference's text is `on_notes_failure`'s row in `config.MetadataRows()` (`internal/config/metadata.go`), and the setup guide's is the "The AI transport" text in `overview()` (`internal/setupguide/setupguide.go`) (§14.2, §18.1, §18.2).
 
 **Context**:
 > §12.2: `e` is a new write-from-scratch route, because release's editor seam had only edited an already-produced body. An empty `e` is refused because closing the editor empty is the usual way to back out of it.
@@ -109,7 +113,7 @@ The file at the path keeps the chunk notes as the calls returned them, whatever 
 >
 > Phase 4 writes the chunk-notes file (task 4-10), its marker (task 4-11) and the warning when it cannot be written (task 4-12). Task 5-1 built the choice with its `c` and `a`, and task 5-9 gives regenerate's floor the same `e`.
 
-**Spec Reference**: `.workflows/token-aware-diff-sizing/specification/token-aware-diff-sizing/specification.md` — §6.6 Recording the answers; §11.2 The first final failure ends the wave; §11.3 A failed merge; §11.4 The saved chunk-notes file; §12.2 The choice; §18.2 The README; Corrigenda (2026-10-19, §11.4 and §12.2)
+**Spec Reference**: `.workflows/token-aware-diff-sizing/specification/token-aware-diff-sizing/specification.md` — §6.6 Recording the answers; §11.2 The first final failure ends the wave; §11.3 A failed merge; §11.4 The saved chunk-notes file; §12.2 The choice; §14.2 Removing the key; §18.1 The setup guide; §18.2 The README; Corrigenda (2026-10-19, §11.4 and §12.2)
 
 ## token-aware-diff-sizing-5-3
 

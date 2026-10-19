@@ -71,7 +71,7 @@ planning.md, Phase 5 task table, row token-aware-diff-sizing-5-2, Edge Cases cel
 
 the README's description of the choice, `on_notes_failure`'s README row and config-reference description, and `mint setup`'s AI-transport paragraph cover `e` (§14.2, §18.1, §18.2)
 
-**Resolution**: Pending
+**Resolution**: Fixed
 **Notes**:
 
 ---
