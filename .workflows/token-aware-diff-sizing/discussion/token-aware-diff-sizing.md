@@ -1490,6 +1490,11 @@ The mock's lines were agreed as shown, so they are the wording. A single-pass ca
 
 ### Decision
 
+#### 2026-10-19 — revised
+*Trigger: the mock's ✓ line carries no elapsed time, while in the existing presenter model every blocking stage's success line ends with one, and the notes stage is blocking on every route (`grep -n 'emitBlockingStageStarted(p, "notes"' internal/engine/*.go` → `release.go:486`, `regenerate_interactive.go:204`, `regenerate_batch.go:285`), so a single-pass run ends `✓ Generated release notes (12.3s)`. The mock left open whether the chunked finish keeps it.*
+
+**The chunked ✓ line keeps the elapsed time** every blocking stage's success line carries, after its own text: `✓ Notes written ({n} parts, merged) (64.2s)`. A chunked run is the longest wait mint has, so the time tells the most there, and the updates are new presenter events in the existing model (Progress Narration for a Chunked Run), whose stage success carries the time. What changes from the entries below: the ✓ line gains the elapsed suffix. The rest stands. User agreed 2026-10-19. Confidence: high.
+
 #### 2026-10-18 — revised
 *Trigger: halving never yields two parts. Halving Bound and the Lower-the-Cap Hint aims each smaller call at half the composed size of the call that failed, and every smaller call still carries the whole fixed part, so each has room for less than half the failed call's diff and the re-cut always yields three parts or more: a 1.4 MB call with a 200 KB fixed part gets a 700 KB target, 500 KB of room each, and 1.2 MB of diff to place — three parts.*
 
