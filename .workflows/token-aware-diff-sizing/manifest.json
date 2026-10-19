@@ -215,7 +215,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 8,
-          "task": "token-aware-diff-sizing-8-2",
+          "task": "token-aware-diff-sizing-8-3",
           "task_map": {
             "token-aware-diff-sizing-1-1": "tick-242ea4",
             "token-aware-diff-sizing-1": "tick-d30fa2",
@@ -296,7 +296,8 @@
             "token-aware-diff-sizing-7-12": "tick-b4fafc",
             "token-aware-diff-sizing-7-13": "tick-e0b46f",
             "token-aware-diff-sizing-8-1": "tick-335d83",
-            "token-aware-diff-sizing-8": "tick-fe7571"
+            "token-aware-diff-sizing-8": "tick-fe7571",
+            "token-aware-diff-sizing-8-2": "tick-075b92"
           },
           "storage_paths": [
             ".tick/"
