@@ -215,7 +215,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 8,
-          "task": "token-aware-diff-sizing-8-1",
+          "task": "token-aware-diff-sizing-8-2",
           "task_map": {
             "token-aware-diff-sizing-1-1": "tick-242ea4",
             "token-aware-diff-sizing-1": "tick-d30fa2",
@@ -294,7 +294,9 @@
             "token-aware-diff-sizing-7-10": "tick-3d7524",
             "token-aware-diff-sizing-7-11": "tick-069f45",
             "token-aware-diff-sizing-7-12": "tick-b4fafc",
-            "token-aware-diff-sizing-7-13": "tick-e0b46f"
+            "token-aware-diff-sizing-7-13": "tick-e0b46f",
+            "token-aware-diff-sizing-8-1": "tick-335d83",
+            "token-aware-diff-sizing-8": "tick-fe7571"
           },
           "storage_paths": [
             ".tick/"
@@ -312,7 +314,20 @@
               "p8": "2026-10-19"
             }
           },
-          "staging": {},
+          "staging": {
+            "author-p8": {
+              "tasks": {
+                "token-aware-diff-sizing-8-1": "approved",
+                "token-aware-diff-sizing-8-2": "approved",
+                "token-aware-diff-sizing-8-3": "approved",
+                "token-aware-diff-sizing-8-4": "approved",
+                "token-aware-diff-sizing-8-5": "approved",
+                "token-aware-diff-sizing-8-6": "approved",
+                "token-aware-diff-sizing-8-7": "approved",
+                "token-aware-diff-sizing-8-8": "approved"
+              }
+            }
+          },
           "external_id": "tick-8b9ac3"
         }
       }
