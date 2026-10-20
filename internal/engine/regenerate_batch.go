@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"strings"
 
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/version"
@@ -229,7 +230,7 @@ type skippedVersion struct {
 	// Tag is the version's canonical tag (e.g. "v1.1.0"), the re-run key shown in the
 	// end summary.
 	Tag string
-	// Reason is the human-readable skip cause (e.g. "notes generation failed").
+	// Reason is the human-readable skip cause (e.g. "AI call failed (part 3 of 6)").
 	Reason string
 }
 
@@ -278,7 +279,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 		return RegeneratedVersion{}, nil, surface(p, "notes", err)
 	}
 	if skipReason != "" {
-		return reportSkip(p, res.Tag, skipReason)
+		return reportSkip(p, skippedVersion{Tag: res.Tag, Reason: skipReason}, "")
 	}
 
 	// Produce the version's body for the resolved source BEFORE the gate — the
@@ -298,7 +299,8 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 		if errors.Is(err, context.Canceled) {
 			return RegeneratedVersion{}, nil, surface(p, "notes", err)
 		}
-		processed, skip, skipErr := reportSkip(p, res.Tag, reasonNotesFailed)
+		reason, output := notesSkipCause(err)
+		processed, skip, skipErr := reportSkip(p, skippedVersion{Tag: res.Tag, Reason: reason}, output)
 		chunkNotes.warnUnsaved(p)
 		return processed, skip, skipErr
 	}
@@ -348,9 +350,20 @@ const (
 	// reasonNoReleaseBody is the `--source release --all` skip reason for a version whose
 	// published release has no body — the variant of reasonNoAnnotationBody.
 	reasonNoReleaseBody = "no release body — use --source fresh"
-	// reasonNotesFailed is the skip reason for any notes-production failure.
+	// reasonNotesFailed is the skip reason for a notes-production failure that is not
+	// the generation's own.
 	reasonNotesFailed = "notes generation failed"
 )
+
+// notesSkipCause is the reason a version whose notes failed with failure is skipped,
+// and the failed call's captured output to render beneath it: the ✗ line's cause
+// phrase and output for a generation failure, the generic reason and none otherwise.
+func notesSkipCause(failure error) (reason, output string) {
+	if phrase, known := notes.CauseText(failure); known {
+		return phrase, notesFailureOutput(failure)
+	}
+	return reasonNotesFailed, ""
+}
 
 // preReadDeterministicBody pre-reads a DETERMINISTIC source's body for the batch skip
 // check, returning the body to thread into ProduceBody (so each version's source is read
@@ -388,11 +401,12 @@ func preReadDeterministicBody(ctx context.Context, deps ReleaseDeps, publisher p
 }
 
 // reportSkip narrates a per-version skip as a non-terminal Warn (which does NOT set
-// failure state and does NOT suppress the end summary) and returns the *skippedVersion
-// the loop records — so the version appears in the closing summary for re-run.
-func reportSkip(p presenter.Presenter, tag, reason string) (RegeneratedVersion, *skippedVersion, error) {
-	p.Warn(presenter.Warning{Label: "skipped " + tag, Message: reason})
-	return RegeneratedVersion{}, &skippedVersion{Tag: tag, Reason: reason}, nil
+// failure state and does NOT suppress the end summary), output verbatim beneath it, and
+// returns the *skippedVersion the loop records — so the version appears in the closing
+// summary for re-run.
+func reportSkip(p presenter.Presenter, skip skippedVersion, output string) (RegeneratedVersion, *skippedVersion, error) {
+	p.Warn(presenter.Warning{Label: "skipped " + skip.Tag, Message: skip.Reason, Output: output})
+	return RegeneratedVersion{}, &skip, nil
 }
 
 // batchSummary computes the end-of-run Summary the presenter renders VERBATIM: the

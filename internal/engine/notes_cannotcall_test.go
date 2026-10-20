@@ -276,10 +276,7 @@ func TestRegenerateAll_FreshNotesCallCannotBeMade_SkipsThatVersionAndCarriesOn(t
 			if got := dispatchedTags(pub); len(got) != 2 || got[0] != batchV1Tag || got[1] != batchV3Tag {
 				t.Errorf("provider writes = %v, want %s and %s with %s skipped", got, batchV1Tag, batchV3Tag, batchV2Tag)
 			}
-			want := "2 regenerated, 1 skipped: " + batchV2Tag + " (notes generation failed)"
-			if got := finishEvent(t, rec).Summary; got != want {
-				t.Errorf("RunFinished.Summary = %q, want %q", got, want)
-			}
+			assertSkippedV2(t, rec, pub, tc.phrase, "")
 		})
 	}
 }

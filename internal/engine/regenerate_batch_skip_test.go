@@ -125,7 +125,7 @@ func TestRegenerateAll_NotesFailureSummaryReports(t *testing.T) {
 	if fin.URL != "" {
 		t.Errorf("RunFinished.URL = %q, want empty (regenerate omits the URL entirely)", fin.URL)
 	}
-	want := "2 regenerated, 1 skipped: " + batchV2Tag + " (notes generation failed)"
+	want := "2 regenerated, 1 skipped: " + batchV2Tag + " (AI returned empty notes)"
 	if fin.Summary != want {
 		t.Errorf("RunFinished.Summary = %q, want %q", fin.Summary, want)
 	}
@@ -391,8 +391,8 @@ func TestRegenerateAll_CancelEndsBatch(t *testing.T) {
 }
 
 // TestRegenerateAll_NotesFailureStillSkipsWithWarn proves a NON-cancel notes failure
-// keeps the skip-and-continue contract: v2 is warned as `skipped <tag>` reading `notes
-// generation failed`, v3's body is still produced and dispatched, and RunFinished lists
+// keeps the skip-and-continue contract: v2 is warned as `skipped <tag>` reading its
+// cause phrase, v3's body is still produced and dispatched, and RunFinished lists
 // the skip.
 func TestRegenerateAll_NotesFailureStillSkipsWithWarn(t *testing.T) {
 	t.Parallel()
@@ -419,7 +419,7 @@ func TestRegenerateAll_NotesFailureStillSkipsWithWarn(t *testing.T) {
 			skipWarns = append(skipWarns, ev.Warn)
 		}
 	}
-	want := []presenter.Warning{{Label: "skipped " + batchV2Tag, Message: "notes generation failed"}}
+	want := []presenter.Warning{{Label: "skipped " + batchV2Tag, Message: "AI returned empty notes"}}
 	if !slices.Equal(skipWarns, want) {
 		t.Errorf("skip warns = %+v, want %+v", skipWarns, want)
 	}
@@ -429,7 +429,7 @@ func TestRegenerateAll_NotesFailureStillSkipsWithWarn(t *testing.T) {
 	if want := []string{batchV1Tag, batchV3Tag}; !slices.Equal(dispatchedTags(pub), want) {
 		t.Errorf("dispatched %v, want %v", dispatchedTags(pub), want)
 	}
-	if got, want := finishEvent(t, rec).Summary, "2 regenerated, 1 skipped: "+batchV2Tag+" (notes generation failed)"; got != want {
+	if got, want := finishEvent(t, rec).Summary, "2 regenerated, 1 skipped: "+batchV2Tag+" (AI returned empty notes)"; got != want {
 		t.Errorf("RunFinished.Summary = %q, want %q", got, want)
 	}
 }

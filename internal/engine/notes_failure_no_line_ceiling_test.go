@@ -81,12 +81,13 @@ func TestRegenerateAll_NotesFailureSkip_NeverReadsDiffTooLarge(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		err  error
+		name   string
+		err    error
+		reason string
 	}{
-		{name: "AI call failed", err: fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed)},
-		{name: "AI timed out", err: fmt.Errorf("generating notes: %w", ai.ErrTimeout)},
-		{name: "size sentinel", err: fmt.Errorf("generating notes: %w", notes.ErrDiffTooLarge)},
+		{name: "AI call failed", err: fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed), reason: "AI returned empty notes"},
+		{name: "AI timed out", err: fmt.Errorf("generating notes: %w", ai.ErrTimeout), reason: "AI timed out"},
+		{name: "size sentinel", err: fmt.Errorf("generating notes: %w", notes.ErrDiffTooLarge), reason: "notes generation failed"},
 	}
 
 	for _, tt := range tests {
@@ -119,12 +120,17 @@ func TestRegenerateAll_NotesFailureSkip_NeverReadsDiffTooLarge(t *testing.T) {
 					skips = append(skips, ev.Warn.Message)
 				}
 			}
-			if len(skips) != 1 || skips[0] != "notes generation failed" {
-				t.Errorf("skip warnings for %s = %q, want exactly [%q]", batchV2Tag, skips, "notes generation failed")
+			if len(skips) != 1 || skips[0] != tt.reason {
+				t.Errorf("skip warnings for %s = %q, want exactly [%q]", batchV2Tag, skips, tt.reason)
 			}
-			want := "2 regenerated, 1 skipped: " + batchV2Tag + " (notes generation failed)"
-			if got := finishEvent(t, rec).Summary; got != want {
-				t.Errorf("RunFinished.Summary = %q, want %q", got, want)
+			summary := finishEvent(t, rec).Summary
+			if want := "2 regenerated, 1 skipped: " + batchV2Tag + " (" + tt.reason + ")"; summary != want {
+				t.Errorf("RunFinished.Summary = %q, want %q", summary, want)
+			}
+			for _, text := range append(skips, summary) {
+				if strings.Contains(text, "diff too large") {
+					t.Errorf("%q reads diff too large", text)
+				}
 			}
 		})
 	}

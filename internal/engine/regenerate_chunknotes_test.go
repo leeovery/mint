@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -121,8 +122,10 @@ func singlePassFails(ctx context.Context, res version.Resolution, sinks engine.N
 	return underCapFresh(ctx, failsNotesCalls, res, sinks)
 }
 
-func skipWarning(tag string) presenter.Warning {
-	return presenter.Warning{Label: "skipped " + tag, Message: "notes generation failed"}
+// skipWarning is tag's skip after a call that failed with the usage limit, its cause
+// phrase phrase.
+func skipWarning(tag, phrase string) presenter.Warning {
+	return presenter.Warning{Label: "skipped " + tag, Message: phrase, Output: usageLimitOutput}
 }
 
 func TestRegenerateRun_FreshChunkedRunFails_SavesTheFinishedNotesUnderTheVersionsTagAndNamesThePath(t *testing.T) {
@@ -190,11 +193,11 @@ func TestRegenerateAll_FreshChunkedRunsFail_EachVersionSavesItsOwnFileAndTheBatc
 	if got := dispatchedTags(run.pub); len(got) != 1 || got[0] != "v1.2.0" {
 		t.Errorf("provider writes = %v, want only v1.2.0", got)
 	}
-	want := "1 regenerated, 2 skipped: v1.1.0 (notes generation failed), v1.3.0 (notes generation failed)"
+	want := "1 regenerated, 2 skipped: v1.1.0 (AI call failed (part 2 of 2)), v1.3.0 (AI call failed (part 2 of 2))"
 	if got := finishEvent(t, run.rec).Summary; got != want {
 		t.Errorf("RunFinished.Summary = %q, want %q", got, want)
 	}
-	if got := warnings(run.rec); len(got) != 2 || got[0] != skipWarning("v1.1.0") || got[1] != skipWarning("v1.3.0") {
+	if got := warnings(run.rec); len(got) != 2 || got[0] != skipWarning("v1.1.0", "AI call failed (part 2 of 2)") || got[1] != skipWarning("v1.3.0", "AI call failed (part 2 of 2)") {
 		t.Errorf("warnings = %+v, want only the two skips", got)
 	}
 }
@@ -205,9 +208,12 @@ func TestRegenerate_NoChunkNotesToKeep_SavesNoFile(t *testing.T) {
 	cases := []struct {
 		name    string
 		produce freshProducer
+		// phrases are the skip's possible cause phrases: either part of a wave whose
+		// parts all fail can be the one that ends it.
+		phrases []string
 	}{
-		{name: "the single-pass call failed without halving", produce: singlePassFails},
-		{name: "the wave produced no notes", produce: overCapFailing(failsEveryChunk)},
+		{name: "the single-pass call failed without halving", produce: singlePassFails, phrases: []string{"AI call failed"}},
+		{name: "the wave produced no notes", produce: overCapFailing(failsEveryChunk), phrases: []string{"AI call failed (part 1 of 2)", "AI call failed (part 2 of 2)"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name+", single version", func(t *testing.T) {
@@ -235,7 +241,10 @@ func TestRegenerate_NoChunkNotesToKeep_SavesNoFile(t *testing.T) {
 			run.regenerateAll(t, tc.produce, "v1.2.0")
 
 			assertNoSavedChunkNotes(t, run.base())
-			assertOnlyWarning(t, run.rec, skipWarning("v1.2.0"))
+			got := warnings(run.rec)
+			if len(got) != 1 || !slices.ContainsFunc(tc.phrases, func(phrase string) bool { return got[0] == skipWarning("v1.2.0", phrase) }) {
+				t.Errorf("warnings = %+v, want only v1.2.0's skip reading one of %q", got, tc.phrases)
+			}
 		})
 	}
 }
@@ -269,7 +278,7 @@ func TestRegenerateAll_ChunkNotesCannotBeWritten_WarnsAfterTheSkipAndTheBatchCar
 
 	run.regenerateAll(t, overCapFailing(failsSecondPart), "v1.1.0")
 
-	want := []presenter.Warning{skipWarning("v1.1.0"), unsavedChunkNotesWarning(errChunkNotesWrite.Error())}
+	want := []presenter.Warning{skipWarning("v1.1.0", "AI call failed (part 2 of 2)"), unsavedChunkNotesWarning(errChunkNotesWrite.Error())}
 	if got := warnings(run.rec); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("warnings = %+v, want %+v", got, want)
 	}
