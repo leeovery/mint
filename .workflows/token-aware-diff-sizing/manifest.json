@@ -345,7 +345,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 3,
-          "current_task": "token-aware-diff-sizing-3-3",
+          "current_task": "token-aware-diff-sizing-3-4",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -395,7 +395,8 @@
             "token-aware-diff-sizing-2-10",
             "token-aware-diff-sizing-2-11",
             "token-aware-diff-sizing-3-1",
-            "token-aware-diff-sizing-3-2"
+            "token-aware-diff-sizing-3-2",
+            "token-aware-diff-sizing-3-3"
           ],
           "staging": {
             "p1": {
@@ -504,6 +505,18 @@
                 "internal/engine/regenerate.go",
                 "internal/record/commit.go",
                 "internal/engine/release.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-3-3",
+              "source": "reviewer",
+              "summary": "Comments untouched by task 3-3 still describe regenerate gating as two kinds (fresh review gate, reuse confirm) and leave out the supplied no-r branch",
+              "failure": "Phase 5 floor (12.3) routes c and e bodies through this gate selection; a developer working from these docs builds a new no-r gate or uses the reuse confirm instead of the existing regenerateSourceSupplied branch, and nobody notices until a reviewer reads gateRegenerate",
+              "detail": "release.go:1479-1482 says regenerate passes presenter.NotesReviewGate() (it now also passes NotesReviewGateNoRegen); regenerate_write.go:56-59 RegenerateSource type doc, :113 RegenerateWriteRequest.Source, :146-147 RegenerateWrite inline comment; regenerate_interactive.go:238-241 fresh/reuse delegation comment; regenerate_interactive.go:170-172 a reuse source FORCES release was already false before this task",
+              "files": [
+                "internal/engine/release.go",
+                "internal/engine/regenerate_write.go",
+                "internal/engine/regenerate_interactive.go"
               ]
             }
           ]
