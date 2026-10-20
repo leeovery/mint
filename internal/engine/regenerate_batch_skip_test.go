@@ -9,6 +9,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -28,8 +29,8 @@ import (
 // freshBodyOrNotesFailure returns a ProduceBody that yields the version's fresh body
 // EXCEPT for failTag, where it returns a wrapped ai.ErrGenerationFailed — the
 // per-version notes failure the batch must SKIP rather than abort on.
-func freshBodyOrNotesFailure(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
-	return func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string) (string, error) {
+func freshBodyOrNotesFailure(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error) {
+	return func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
 		if res.Tag == failTag {
 			return "", fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed)
 		}

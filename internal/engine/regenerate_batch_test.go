@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -44,8 +45,8 @@ func threeVersions() []version.Resolution {
 
 // perVersionBody returns a deterministic body keyed off the version tag and source so
 // a test can assert WHICH body flowed downstream per version without a real AI/tag read.
-func perVersionBody() func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
-	return func(_ context.Context, src engine.RegenerateSource, res version.Resolution, _ string) (string, error) {
+func perVersionBody() func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error) {
+	return func(_ context.Context, src engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
 		prefix := "fresh"
 		if src == engine.RegenerateSourceTag {
 			prefix = "reuse"
@@ -221,7 +222,7 @@ func TestRegenerateAll_Reuse_ThreadsPreReadBodyIntoProducer(t *testing.T) {
 
 	var preReads []string
 	req := batchReq(engine.RegenerateSourceTag, threeVersions(), true)
-	req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, reuseBody string) (string, error) {
+	req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, reuseBody string, _ notes.Progress) (string, error) {
 		preReads = append(preReads, reuseBody)
 		return reuseBody, nil
 	}

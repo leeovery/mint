@@ -210,6 +210,16 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.writef("--- end output ---\n")
 }
 
+// NotesProgress prints a chunked notes run's split and parts done as its own line.
+func (p *PlainPresenter) NotesProgress(n NotesProgress) {
+	p.writef("notes: %s release, in %d parts, %d of %d done\n", formatSize(n.PromptBytes), n.Parts, n.Done, n.Parts)
+}
+
+// NotesMerging prints the merge call that ends a chunked notes run.
+func (p *PlainPresenter) NotesMerging(m NotesMerge) {
+	p.writef("notes: merging %d parts\n", m.Parts)
+}
+
 // Unwound renders the auto-unwind line "unwound: {summary}" to OUT ONLY — the
 // summary is the engine's verbatim "what it undid" text, rendered as-is INCLUDING
 // its own "; repo clean" tail (the presenter synthesises no tail of its own). Per

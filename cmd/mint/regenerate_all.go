@@ -8,6 +8,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/runner"
@@ -94,9 +95,9 @@ func resolveBatchAxes(p presenter.Presenter, req regenerateRequest, changelogEna
 // source. This is the single home of the body source dispatch — the batch path threads
 // each version's Resolution through it, and newRegenerateBodyProducer binds the
 // single-version's fixed Resolution and delegates here. The publisher backs the
-// provider-release read.
-func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string, publisher publish.Publisher) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
-	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution, preReadBody string) (string, error) {
+// provider-release read; a fresh version reports a chunked run to progress.
+func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string, publisher publish.Publisher) func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error) {
+	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution, preReadBody string, progress notes.Progress) (string, error) {
 		switch source {
 		case engine.RegenerateSourceTag:
 			// The batch loop pre-reads the annotation body for its skip check and
@@ -114,7 +115,7 @@ func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string
 			}
 			return engine.RequireReleaseBody(ctx, publisher, res.Tag)
 		default:
-			return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res)
+			return engine.RegenerateFreshBody(ctx, r, nil, root, cfg, res, progress)
 		}
 	}
 }

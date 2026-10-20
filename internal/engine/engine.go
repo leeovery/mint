@@ -146,9 +146,16 @@ func emitGateSucceeded(p presenter.Presenter, name, detail, sentence string) {
 // line ("Generated release notes"); the presenter appends ({elapsed}) to it. detail
 // stays the terse plain completion value, passed to the returned closure.
 func emitBlockingStageStarted(p presenter.Presenter, name, text, sentence string) func(detail string) {
+	succeeded := startBlockingStage(p, name, text)
+	return func(detail string) { succeeded(detail, sentence) }
+}
+
+// startBlockingStage is emitBlockingStageStarted for a stage whose completion
+// sentence is settled only once it succeeds.
+func startBlockingStage(p presenter.Presenter, name, text string) func(detail, sentence string) {
 	p.StageStarted(presenter.StageStart{Name: name, Blocking: true, Text: text})
 	started := time.Now()
-	return func(detail string) {
+	return func(detail, sentence string) {
 		p.StageSucceeded(presenter.StageSuccess{
 			Name:     name,
 			Detail:   detail,

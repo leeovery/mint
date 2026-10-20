@@ -165,11 +165,10 @@ type PrettyPresenter struct {
 	// state on the per-run presenter instance (mirroring terminalFailure), so there is
 	// no shared mutable global.
 	activeSpinner StageSpinner
-	// activeSpinnerText is the dim start text the active spinner was created with —
-	// remembered so SuspendSpinner can carry it over to suspendedText and ResumeSpinner
-	// can recreate the spinner on the SAME stage line. It is set wherever a spinner is
-	// created (StageStarted and ResumeSpinner) and is only meaningful while
-	// activeSpinner is non-nil.
+	// activeSpinnerText is the dim text the active spinner is showing — remembered so
+	// SuspendSpinner can carry it over to suspendedText and ResumeSpinner can recreate
+	// the spinner on the SAME stage line. It is only meaningful while activeSpinner is
+	// non-nil.
 	activeSpinnerText string
 
 	// spinnerSuspended records that SuspendSpinner stopped the active spinner around
@@ -181,7 +180,7 @@ type PrettyPresenter struct {
 	// (so a stage that completes WHILE suspended is not resurrected by a later
 	// ResumeSpinner). Per-run construction state, like activeSpinner.
 	spinnerSuspended bool
-	// suspendedText is the dim start text of the spinner SuspendSpinner stopped,
+	// suspendedText is the dim text the spinner SuspendSpinner stopped was showing,
 	// remembered so ResumeSpinner recreates the spinner on the SAME stage line with
 	// the identical text. It is only meaningful while spinnerSuspended is true.
 	suspendedText string
@@ -424,7 +423,7 @@ func (p *PrettyPresenter) stopSpinner() {
 // editor).
 //
 // When a spinner is active it Stop()s it directly (NOT via stopSpinner, which would
-// clear the suspend flag), REMEMBERS the spinner's start text so ResumeSpinner can
+// clear the suspend flag), REMEMBERS the spinner's current text so ResumeSpinner can
 // recreate it on the SAME stage line, nils the active handle, and sets
 // spinnerSuspended. When NO spinner is active it does NOTHING — a safe no-op that
 // leaves spinnerSuspended false, so a paired ResumeSpinner also no-ops. The stop is a
@@ -441,7 +440,7 @@ func (p *PrettyPresenter) SuspendSpinner() {
 }
 
 // ResumeSpinner restarts the spinner SuspendSpinner stopped, recreating it on the
-// SAME stage line via the remembered start text and Start()ing exactly one — so the
+// SAME stage line via the remembered text and Start()ing exactly one — so the
 // one-spinner-at-a-time invariant holds across any number of suspend/resume cycles.
 // It clears spinnerSuspended once resumed.
 //
@@ -510,6 +509,27 @@ func stageTrailing(s StageSuccess) string {
 		return elapsed
 	}
 	return s.Detail + " " + elapsed
+}
+
+// NotesProgress rewrites the running notes line with a chunked run's split and
+// parts done.
+func (p *PrettyPresenter) NotesProgress(n NotesProgress) {
+	p.setSpinnerText(fmt.Sprintf("Writing notes: %s release, in %d parts · %d of %d done", formatSize(n.PromptBytes), n.Parts, n.Done, n.Parts))
+}
+
+// NotesMerging rewrites the running notes line for the merge call.
+func (p *PrettyPresenter) NotesMerging(m NotesMerge) {
+	p.setSpinnerText(fmt.Sprintf("Writing notes: merging %d parts", m.Parts))
+}
+
+// setSpinnerText rewrites the active spinner's text, dimmed as its start text was,
+// and is a no-op with no spinner running.
+func (p *PrettyPresenter) setSpinnerText(text string) {
+	if p.activeSpinner == nil {
+		return
+	}
+	p.activeSpinnerText = p.dim.Render(text)
+	p.activeSpinner.SetText(p.activeSpinnerText)
 }
 
 // StageFailed first STOPS the active stage spinner (if any) — the spinner clears

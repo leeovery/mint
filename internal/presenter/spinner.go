@@ -9,8 +9,8 @@ import (
 
 // StageSpinner is the small abstraction the pretty presenter depends on for the
 // stage-progress animation. It is the seam that keeps the spinner LIFECYCLE
-// deterministically testable: the presenter only ever calls Start()/Stop(), so a
-// test can inject a fake that records those calls and tracks the active count,
+// deterministically testable: the presenter only ever calls Start()/SetText()/Stop(),
+// so a test can inject a fake that records those calls and tracks the active count,
 // asserting "one spinner at a time" and "started-then-stopped" WITHOUT the real
 // library's timed goroutine and frame output. It is exported solely so the
 // external-package test can supply that spy via WithSpinnerFactory; production code
@@ -21,7 +21,7 @@ import (
 // it owns no event loop and draws no alt-screen, so it composes with the linear,
 // print-style Presenter seam. Stop() signals the animation goroutine to halt; the
 // goroutine then observes the signal and exits, so a stopped spinner leaks no
-// goroutine. Presenter usage is single-goroutine (one stage at a time), so the
+// goroutine. Presenter calls never run concurrently (one stage at a time), so the
 // active handle is never touched concurrently.
 type StageSpinner interface {
 	// Start begins the animation (the real one spawns a goroutine writing timed
@@ -29,6 +29,8 @@ type StageSpinner interface {
 	// writer is not a real terminal). The presenter calls it once on a blocking
 	// StageStarted.
 	Start()
+	// SetText replaces the animated text on the running line, for the next frame on.
+	SetText(text string)
 	// Stop ends the animation, clearing the spinner's line in place. The real
 	// implementation signals its animation goroutine to exit (it does not block-join),
 	// and in practice writes no further frame once stopped. The presenter calls it on
@@ -52,7 +54,7 @@ var brailleCharSet = spinner.CharSets[11]
 const spinnerFrameDelay = 100 * time.Millisecond
 
 // briandownsSpinner is the production StageSpinner: a thin wrapper over the
-// briandowns spinner so the presenter depends only on the Start()/Stop() seam, not
+// briandowns spinner so the presenter depends only on the StageSpinner seam, not
 // the concrete library type.
 type briandownsSpinner struct {
 	s *spinner.Spinner
@@ -80,6 +82,14 @@ func newBriandownsSpinner(out io.Writer, text string) StageSpinner {
 // Start delegates to the library's Start (spawns the animation goroutine; a no-op
 // if out is not a real terminal).
 func (b *briandownsSpinner) Start() { b.s.Start() }
+
+// SetText swaps the suffix under the library's lock, which its animation goroutine
+// holds while drawing a frame.
+func (b *briandownsSpinner) SetText(text string) {
+	b.s.Lock()
+	b.s.Suffix = " " + text
+	b.s.Unlock()
+}
 
 // Stop delegates to the library's Stop, which clears the spinner line in place and
 // signals the animation goroutine to exit (it does not block-join); the goroutine

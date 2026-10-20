@@ -480,14 +480,14 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// reuses it to recompute the dry-run cache key for the real-run reuse lookup.)
 	//
 	// Stage 4 is BLOCKING: generating notes can call the AI. Narrate it with a
-	// blocking StageStarted (spinner) and a StageSucceeded carrying the engine-measured
-	// Elapsed once the body resolves.
-	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
-	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts)
+	// blocking StageStarted (spinner), a chunked run's progress while it runs, and a
+	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
+	stage := startNotesStage(p)
+	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts, stage)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
-	notesDone("generated")
+	stage.done()
 
 	// Show the plan, then the notes — identical in a dry run and a real run up to here;
 	// the two diverge at the DRY-RUN BOUNDARY immediately below.
@@ -808,7 +808,9 @@ func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptio
 
 // resolveBody resolves this run's notes body + Kind via the notes-path precedence
 // (SelectBody), returning the generator it built so the caller can bind a per-run
-// regenerator for the gate's `r` choice. It is the single Stage-4 body decision:
+// regenerator for the gate's `r` choice. The selector's generation reports a chunked
+// run to progress; the returned generator reports nowhere, since the gate's `r` runs
+// outside the notes stage. It is the single Stage-4 body decision:
 //
 //   - opts.NotesBody is a TEST-INJECTION OVERRIDE: when non-empty it bypasses the
 //     selector and returns (opts.NotesBody, opts.NotesKind, nil generator, nil). The
@@ -823,7 +825,7 @@ func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptio
 // resolves to {0,0,0}. An actual v0.0.0 tag is therefore treated as a first release;
 // that edge is acceptable for Phase 2 (a real v0.0.0 release is not a meaningful case
 // to support, and the selector simply records "Initial release." for it).
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, versionKey string, opts ReleaseOptions) (string, notes.Kind, *notes.Generator, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, nil
 	}
@@ -842,7 +844,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		VersionPattern: cfg.Release.VersionPattern,
 	})
 	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
-	selector := notes.NewSelector(generator, assembler, deps.Runner, root)
+	selector := notes.NewSelector(generator.WithProgress(progress), assembler, deps.Runner, root)
 
 	state := notes.SelectState{
 		FirstRelease: current == version.SemVer{},

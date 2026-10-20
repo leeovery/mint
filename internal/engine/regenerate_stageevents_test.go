@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -85,7 +86,7 @@ func TestRegenerateRun_BodyProductionFailure_NoNotesSuccess(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-	req.ProduceBody = func(context.Context, engine.RegenerateSource) (string, error) {
+	req.ProduceBody = func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
 		return "", context.DeadlineExceeded
 	}
 

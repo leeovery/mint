@@ -150,7 +150,7 @@ func TestNewBatchBodyProducer_Reuse(t *testing.T) {
 	f.Seed("git", runner.Result{Stdout: "## reuse body\n"}, nil)
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "")
+	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "", nil)
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestNewBatchBodyProducer_Reuse_ConsumesPreReadBody(t *testing.T) {
 	f := runner.NewFakeRunner()
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "## pre-read body\n")
+	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "## pre-read body\n", nil)
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestNewBatchBodyProducer_Release(t *testing.T) {
 	f.Seed("gh", runner.Result{Stdout: "## release body\n"}, nil)
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "")
+	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "", nil)
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestNewBatchBodyProducer_Release_ConsumesPreReadBody(t *testing.T) {
 	f := runner.NewFakeRunner()
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "## pre-read release\n")
+	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "## pre-read release\n", nil)
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange(t *testi
 	)
 
 	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "")
+	body, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", nil)
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -323,4 +323,72 @@ func batchGateSubjects(rec *presentertest.RecordingPresenter) []string {
 		}
 	}
 	return subjects
+}
+
+// partsProgress counts the progress a chunked run reports.
+type partsProgress struct {
+	parts  []int
+	merged int
+}
+
+func (p *partsProgress) PartsDone(_, parts, _ int) { p.parts = append(p.parts, parts) }
+func (p *partsProgress) Merging(int)               { p.merged++ }
+func (p *partsProgress) Merged(int)                {}
+
+// seedOverCapFreshVersion scripts a fresh version's two-file range diff, over a
+// 20,000-byte cap, and its two chunk calls and merge.
+func seedOverCapFreshVersion(f *runner.FakeRunner) {
+	var diff strings.Builder
+	for _, path := range []string{"api/a.go", "core/b.go"} {
+		diff.WriteString("diff --git a/" + path + " b/" + path + "\n@@ -1 +1,9 @@\n")
+		diff.WriteString(strings.Repeat("+"+strings.Repeat("x", 63)+"\n", 156))
+	}
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: diff.String()}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "M\tapi/a.go\nM\tcore/b.go\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "156\t0\tapi/a.go\n156\t0\tcore/b.go\n"}},
+	)
+	f.SeedSequence("claude",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "- api notes"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "- core notes"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "## merged\n"}},
+	)
+}
+
+func assertTwoPartProgress(t *testing.T, progress *partsProgress) {
+	t.Helper()
+	if !slices.Equal(progress.parts, []int{2, 2, 2}) || progress.merged != 1 {
+		t.Errorf("progress = %d reports over parts %v and %d merges, want the split and two parts of 2, then one merge", len(progress.parts), progress.parts, progress.merged)
+	}
+}
+
+func TestNewBatchBodyProducer_Fresh_OverCapVersionReportsItsProgress(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	seedOverCapFreshVersion(f)
+	progress := &partsProgress{}
+
+	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), publish.NewGitHubPublisher(f))
+	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", progress); err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+
+	assertTwoPartProgress(t, progress)
+}
+
+func TestNewRegenerateBodyProducer_Fresh_OverCapVersionReportsItsProgress(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	seedOverCapFreshVersion(f)
+	progress := &partsProgress{}
+
+	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
+	produce := newRegenerateBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), res, publish.NewGitHubPublisher(f))
+	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, progress); err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+
+	assertTwoPartProgress(t, progress)
 }

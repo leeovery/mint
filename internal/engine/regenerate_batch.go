@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"strings"
 
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/version"
@@ -73,8 +74,9 @@ type BatchRegenerateRequest struct {
 	// the deterministic-source skip check — tag annotation or release body) into the
 	// producer so a deterministic source consumes it instead of reading the SECOND time;
 	// it is empty for a fresh source and for the single-version delegation (which never
-	// pre-reads, so the producer reads).
-	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string) (string, error)
+	// pre-reads, so the producer reads). A fresh producer reports a chunked run to
+	// progress, the version's notes stage it runs inside.
+	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string, progress notes.Progress) (string, error)
 	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
 	// gate's `r` choice consults, bound to that version's fresh AI range. Production
 	// returns nil for a reuse source (no review gate) and binds
@@ -277,16 +279,16 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// notes-review gate (fresh) reviews this body. A notes-production failure (e.g. a
 	// failed AI call) is CAUGHT and skipped rather than aborting the batch.
 	// Body production is BLOCKING (a fresh source re-diffs + calls the AI per version),
-	// so narrate it with a blocking StageStarted (spinner) and a StageSucceeded
-	// carrying the engine-measured Elapsed once the body resolves; a per-version skip
-	// (production failure) closes the stage with no StageSucceeded — the skip Warn
-	// narrates it instead.
-	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
-	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody)
+	// so narrate it with a blocking StageStarted (spinner), a chunked run's progress
+	// while it runs, and a StageSucceeded carrying the engine-measured Elapsed once the
+	// body resolves; a per-version skip (production failure) closes the stage with no
+	// StageSucceeded — the skip Warn narrates it instead.
+	stage := startNotesStage(p)
+	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, stage)
 	if err != nil {
 		return reportSkip(p, res.Tag, reasonNotesFailed)
 	}
-	notesDone("generated")
+	stage.done()
 
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A

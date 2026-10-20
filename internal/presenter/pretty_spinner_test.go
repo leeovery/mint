@@ -22,6 +22,8 @@ type spySpinner struct {
 	started bool
 	stopped bool
 	text    string
+	// texts records each text the running line was updated to, in order.
+	texts []string
 }
 
 func (s *spySpinner) Start() {
@@ -30,6 +32,10 @@ func (s *spySpinner) Start() {
 	if s.tracker.active > s.tracker.maxActive {
 		s.tracker.maxActive = s.tracker.active
 	}
+}
+
+func (s *spySpinner) SetText(text string) {
+	s.texts = append(s.texts, text)
 }
 
 func (s *spySpinner) Stop() {

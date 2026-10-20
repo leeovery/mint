@@ -34,6 +34,7 @@ package engine
 import (
 	"context"
 
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 )
@@ -128,8 +129,9 @@ type RegenerateRunRequest struct {
 	Yes bool
 	// ProduceBody yields the notes body for the RESOLVED source. It is injected so the
 	// flow stays testable without a real AI transport / tag read; production wires the
-	// 5-5 reuse read or the 5-6 fresh re-diff+AI here.
-	ProduceBody func(context.Context, RegenerateSource) (string, error)
+	// reuse read or the fresh re-diff+AI here. A fresh producer reports a
+	// chunked run to the notes.Progress, the notes stage it runs inside.
+	ProduceBody func(context.Context, RegenerateSource, notes.Progress) (string, error)
 	// ProduceRegenerator yields the PER-RUN regenerator the fresh notes-review gate's
 	// `r` choice consults, bound to this version's fresh AI range. It is invoked after
 	// the source resolves; production returns nil for a reuse source (no review gate)
@@ -198,15 +200,16 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// Produce the body for the resolved source BEFORE the confirm — the notes-review
 	// gate (fresh) reviews this body. A production failure aborts before the confirm.
 	// Body production is BLOCKING (a fresh source re-diffs + calls the AI), so narrate
-	// it with a blocking StageStarted (spinner) and a StageSucceeded carrying the
-	// engine-measured Elapsed once the body resolves; a failure surfaces a StageFailed
-	// (via surface) and emits no StageSucceeded.
-	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
-	body, err := req.ProduceBody(ctx, source)
+	// it with a blocking StageStarted (spinner), a chunked run's progress while it
+	// runs, and a StageSucceeded carrying the engine-measured Elapsed once the body
+	// resolves; a failure surfaces a StageFailed (via surface) and emits no
+	// StageSucceeded.
+	stage := startNotesStage(p)
+	body, err := req.ProduceBody(ctx, source, stage)
 	if err != nil {
 		return surface(p, "notes", err)
 	}
-	notesDone("generated")
+	stage.done()
 
 	// Delegate to the 5-9 write path: it shows the notes, runs the source-appropriate
 	// confirm/review gate (fresh → notes-review, reuse → simple confirm), and writes.

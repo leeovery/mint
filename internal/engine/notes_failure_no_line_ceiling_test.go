@@ -62,8 +62,8 @@ func TestRegenerateRun_FreshNotesFailureOverOldLineCeiling_CarriesAICausePhrase(
 	notesGit := seedFreshGit(overOldLineCeilingDiff(), "A\tauth/login.go\n", "50001\t0\tauth/login.go\n")
 	tr := &freshTransport{err: fmt.Errorf("transport: %w", ai.ErrGenerationFailed)}
 	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource) (string, error) {
-		return engine.RegenerateFreshBody(ctx, notesGit, tr, dir, freshCfg(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ notes.Progress) (string, error) {
+		return engine.RegenerateFreshBody(ctx, notesGit, tr, dir, freshCfg(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, nil)
 	}
 
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err == nil {
@@ -104,7 +104,7 @@ func TestRegenerateAll_NotesFailureSkip_NeverReadsDiffTooLarge(t *testing.T) {
 			rec := &presentertest.RecordingPresenter{}
 
 			req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-			req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string) (string, error) {
+			req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
 				if res.Tag == batchV2Tag {
 					return "", tt.err
 				}

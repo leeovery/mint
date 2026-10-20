@@ -22,6 +22,24 @@ type Transport interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 }
 
+// Progress is told how a chunked run advances. Its calls never overlap, but they
+// may arrive from the chunk calls' goroutines.
+type Progress interface {
+	// PartsDone reports done of parts finished, done 0 as the run splits.
+	// promptBytes is the size of the single-pass prompt that was over the cap.
+	PartsDone(promptBytes, parts, done int)
+	// Merging reports the merge call starting over parts' notes.
+	Merging(parts int)
+	// Merged reports the merge call having returned the body.
+	Merged(parts int)
+}
+
+type noProgress struct{}
+
+func (noProgress) PartsDone(int, int, int) {}
+func (noProgress) Merging(int)             {}
+func (noProgress) Merged(int)              {}
+
 // Generator is the NORMAL AI release-notes path: it orchestrates the assembly
 // pieces (diff, Change Map, prompt compose, size check) and hands the finished
 // prompt — or, over the cap, the chunk and merge prompts — to the transport. It
@@ -38,6 +56,7 @@ type Generator struct {
 	assembler *Assembler
 	transport Transport
 	root      string
+	progress  Progress
 }
 
 // NewGenerator builds a Generator over the assembler (the git seam), the AI
@@ -45,7 +64,18 @@ type Generator struct {
 // real Assembler + ai.Transport while tests pass a FakeRunner-backed Assembler
 // and a recording fake transport.
 func NewGenerator(assembler *Assembler, transport Transport, root string) *Generator {
-	return &Generator{assembler: assembler, transport: transport, root: root}
+	return &Generator{assembler: assembler, transport: transport, root: root, progress: noProgress{}}
+}
+
+// WithProgress returns a copy of g that reports its chunked runs to progress; g
+// itself is unchanged. A nil progress reports nowhere.
+func (g *Generator) WithProgress(progress Progress) *Generator {
+	c := *g
+	c.progress = progress
+	if progress == nil {
+		c.progress = noProgress{}
+	}
+	return &c
 }
 
 // Generate produces the AI release-notes body for lastTag..HEAD, orchestrating
@@ -180,7 +210,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 	instructions = appendOneTimeContext(instructions, oneTimeContext)
 	prompt := ComposePrompt(instructions, changeMap, diff)
 	if len(prompt) > cfg.MaxPromptBytes {
-		return g.generateChunked(ctx, instructions, changeMap, diff, cfg.MaxPromptBytes)
+		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
 	}
 
 	body, err := g.transport.Generate(ctx, prompt)

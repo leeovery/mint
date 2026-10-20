@@ -22,6 +22,8 @@ func (p *nopPresenter) RunStarted(info presenter.RunInfo)     { p.lastRun = info
 func (p *nopPresenter) StageStarted(presenter.StageStart)     {}
 func (p *nopPresenter) StageSucceeded(presenter.StageSuccess) {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)    {}
+func (p *nopPresenter) NotesProgress(presenter.NotesProgress) {}
+func (p *nopPresenter) NotesMerging(presenter.NotesMerge)     {}
 func (p *nopPresenter) Warn(presenter.Warning)                {}
 func (p *nopPresenter) Unwound(presenter.Unwind)              {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}

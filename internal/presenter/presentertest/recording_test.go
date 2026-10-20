@@ -162,3 +162,29 @@ func TestRecordingPresenter_AtFetchesNthEvent(t *testing.T) {
 		t.Error("At(-1) ok = true, want false")
 	}
 }
+
+func TestRecordingPresenter_RecordsNotesProgressAndMergePayloads(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+
+	progress := presenter.NotesProgress{PromptBytes: 3_100_000, Parts: 6, Done: 2}
+	merge := presenter.NotesMerge{Parts: 6}
+	rec.NotesProgress(progress)
+	rec.NotesMerging(merge)
+
+	want := []presentertest.EventKind{presentertest.KindNotesProgress, presentertest.KindNotesMerging}
+	if got := rec.Kinds(); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("Kinds() = %v, want %v", got, want)
+	}
+	if got := rec.Events[0].NotesProgress; got != progress {
+		t.Errorf("NotesProgress = %+v, want %+v", got, progress)
+	}
+	if got := rec.Events[1].NotesMerging; got != merge {
+		t.Errorf("NotesMerging = %+v, want %+v", got, merge)
+	}
+	if got, want := presentertest.KindNotesProgress.String(), "NotesProgress"; got != want {
+		t.Errorf("KindNotesProgress.String() = %q, want %q", got, want)
+	}
+	if got, want := presentertest.KindNotesMerging.String(), "NotesMerging"; got != want {
+		t.Errorf("KindNotesMerging.String() = %q, want %q", got, want)
+	}
+}

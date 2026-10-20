@@ -5,6 +5,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/publish"
 	"mint/internal/runner"
 	"mint/internal/version"
@@ -66,13 +67,13 @@ func regenerateTargetAxis(target regenerateTarget) engine.OptionalRegenerateTarg
 // It binds the fixed single-version Resolution and delegates to the canonical, Resolution-
 // keyed newBatchBodyProducer so the source dispatch lives in exactly one place; the batch
 // path uses the same producer threaded with each version's Resolution.
-func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution, publisher publish.Publisher) func(context.Context, engine.RegenerateSource) (string, error) {
+func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution, publisher publish.Publisher) func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
 	produce := newBatchBodyProducer(r, cfg, root, publisher)
-	return func(ctx context.Context, source engine.RegenerateSource) (string, error) {
+	return func(ctx context.Context, source engine.RegenerateSource, progress notes.Progress) (string, error) {
 		// The single-version path has no batch skip check, so it never pre-reads a
 		// deterministic source's body — the producer's reuse/release branch performs the
 		// (single) read.
-		return produce(ctx, source, res, "")
+		return produce(ctx, source, res, "", progress)
 	}
 }
 

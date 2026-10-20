@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -22,8 +23,8 @@ import (
 // echoPreReadBody returns a ProduceBody that yields the loop's pre-read body unchanged —
 // the production wiring for a deterministic source (the batch pre-reads the body for its
 // skip check and threads it through, so the producer consumes it rather than re-reading).
-func echoPreReadBody() func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
-	return func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, preReadBody string) (string, error) {
+func echoPreReadBody() func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error) {
+	return func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, preReadBody string, _ notes.Progress) (string, error) {
 		return preReadBody, nil
 	}
 }

@@ -73,7 +73,7 @@ func TestRegenerateFreshBody_DiffsResolvedRangeNotLastTagHEAD(t *testing.T) {
 	tr := &freshTransport{body: body}
 
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
-	got, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res)
+	got, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res, nil)
 	if err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestRegenerateFreshBody_AlwaysExcludesChangelog(t *testing.T) {
 	tr := &freshTransport{body: "notes"}
 
 	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
-	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res); err != nil {
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res, nil); err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 
@@ -125,7 +125,7 @@ func TestRegenerateFreshBody_PlainModeExcludesVersionFile(t *testing.T) {
 	cfg := freshCfg()
 	cfg.Release.VersionFile = "release.txt"
 	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
-	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res); err != nil {
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res, nil); err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 
@@ -149,7 +149,7 @@ func TestRegenerateFreshBody_EmbeddedModeDoesNotExcludeVersionFile(t *testing.T)
 	cfg.Release.VersionFile = "main.go"
 	cfg.Release.VersionPattern = `RELEASE_VERSION="{version}"`
 	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
-	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res); err != nil {
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res, nil); err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 
@@ -176,7 +176,7 @@ func TestRegenerateFreshBody_PathExclusionEvenWithBookkeepingCommitInRange(t *te
 	cfg := freshCfg()
 	cfg.Release.VersionFile = "release.txt"
 	res := version.Resolution{Tag: "v1.5.0", PreviousTag: "v1.4.0"}
-	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res); err != nil {
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res, nil); err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 
@@ -208,7 +208,7 @@ func TestRegenerateFreshBody_PrependsChangeMapComputedAfterExclusion(t *testing.
 	tr := &freshTransport{body: "notes"}
 
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
-	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res); err != nil {
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res, nil); err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 
@@ -241,7 +241,7 @@ func TestRegenerateFreshBody_OldestReleaseEmitsInitialReleaseNoAINoDiff(t *testi
 	tr := &freshTransport{body: "should not be produced"}
 
 	res := version.Resolution{Tag: "v0.1.0", FirstRelease: true}
-	got, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res)
+	got, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res, nil)
 	if err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestRegenerateFreshBody_OverCap_ChunksAndMergesOverTheVersionsRange(t *test
 	cfg := freshCfg()
 	cfg.MaxPromptBytes = 20_000
 	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
-	body, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res)
+	body, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res, nil)
 	if err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestRegenerateFreshBody_DegenerateRangeReturnsStubNoAI(t *testing.T) {
 	tr := &freshTransport{body: "must never be produced"}
 
 	res := version.Resolution{Tag: "v1.5.0", PreviousTag: "v1.4.0"}
-	got, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res)
+	got, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res, nil)
 	if err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestRegenerateFreshBody_SurfacesAIFailure(t *testing.T) {
 	tr := &freshTransport{err: errFreshAIFailure}
 
 	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
-	_, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res)
+	_, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), freshCfg(), res, nil)
 	if err == nil {
 		t.Fatal("RegenerateFreshBody returned nil error, want the AI failure surfaced")
 	}
@@ -480,7 +480,7 @@ func TestRegenerateFreshBody_ReleaseVerbOverrideDrivesAIInvocation(t *testing.T)
 	cfg.Release.AICommand = &override
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
 
-	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), cfg, res)
+	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), cfg, res, nil)
 	if err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestRegenerateFreshBody_CommitOverrideDoesNotDriveAIInvocation(t *testing.T
 	cfg.Commit.AICommand = &wrong
 	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
 
-	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), cfg, res)
+	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), cfg, res, nil)
 	if err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
@@ -547,7 +547,7 @@ func TestRegenerateFreshBody_ZeroConfigResolvesToClaudeFloor(t *testing.T) {
 	f.Seed("claude", runner.Result{Stdout: body}, nil)
 
 	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
-	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), freshCfg(), res)
+	got, err := engine.RegenerateFreshBody(t.Context(), f, nil, t.TempDir(), freshCfg(), res, nil)
 	if err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestRegenerateFreshBody_OverShareMapIsCondensed(t *testing.T) {
 	cfg.MaxPromptBytes = config.DefaultMaxPromptBytes
 
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
-	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res); err != nil {
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res, nil); err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 

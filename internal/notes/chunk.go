@@ -17,19 +17,22 @@ const fileDiffHeader = "diff --git "
 // maxPromptBytes: the diff's files are cut in path order into chunk calls, each
 // carrying the release's instructions and whole-release Change Map and run
 // concurrently, then one merge call turns every chunk's notes, in chunk order, into
-// the body. The merge output is returned byte-identical.
-func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, maxPromptBytes int) (string, error) {
+// the body. The merge output is returned byte-identical. promptBytes is the
+// single-pass prompt's size, reported to g.progress with the run's advance.
+func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
 	parts := cutParts(instructions, changeMap, splitFileDiffs(diff), maxPromptBytes)
 
-	partNotes, err := g.generateParts(ctx, instructions, changeMap, parts)
+	partNotes, err := g.generateParts(ctx, instructions, changeMap, parts, promptBytes)
 	if err != nil {
 		return "", err
 	}
 
+	g.progress.Merging(len(parts))
 	body, err := g.transport.Generate(ctx, composeMergePrompt(instructions, changeMap, partNotes))
 	if err != nil {
 		return "", fmt.Errorf("merging part notes: %w", err)
 	}
+	g.progress.Merged(len(parts))
 	return body, nil
 }
 
@@ -40,18 +43,29 @@ const maxChunkCallsInFlight = 4
 // generateParts makes one chunk call per part, at most maxChunkCallsInFlight at a
 // time, and returns their notes in part order once every call has finished. Each call
 // runs on ctx itself: the wave sets no deadline of its own, so a timeout is per call.
-// A failure is reported for the lowest-numbered failed part.
-func (g *Generator) generateParts(ctx context.Context, instructions, changeMap string, parts []chunkPart) ([]string, error) {
+// A failure is reported for the lowest-numbered failed part. Each part that
+// succeeds is reported to g.progress as it finishes.
+func (g *Generator) generateParts(ctx context.Context, instructions, changeMap string, parts []chunkPart, promptBytes int) ([]string, error) {
 	partNotes := make([]string, len(parts))
 	errs := make([]error, len(parts))
 	slots := make(chan struct{}, maxChunkCallsInFlight)
 	var wg sync.WaitGroup
+	var reporting sync.Mutex
+	done := 0
+	g.progress.PartsDone(promptBytes, len(parts), done)
 	for i, part := range parts {
 		slots <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-slots }()
 			prompt := composeChunkPrompt(instructions, changeMap, part.framing(i+1, len(parts)), part.slice)
 			partNotes[i], errs[i] = g.transport.Generate(ctx, prompt)
+			if errs[i] != nil {
+				return
+			}
+			reporting.Lock()
+			defer reporting.Unlock()
+			done++
+			g.progress.PartsDone(promptBytes, len(parts), done)
 		})
 	}
 	wg.Wait()

@@ -37,6 +37,8 @@ const (
 	// kinds keep their established values.
 	KindShowMessage
 	KindAskLine
+	KindNotesProgress
+	KindNotesMerging
 )
 
 // String renders the kind for readable test failure output.
@@ -74,6 +76,10 @@ func (k EventKind) String() string {
 		return "ShowMessage"
 	case KindAskLine:
 		return "AskLine"
+	case KindNotesProgress:
+		return "NotesProgress"
+	case KindNotesMerging:
+		return "NotesMerging"
 	default:
 		return "Unknown"
 	}
@@ -91,6 +97,8 @@ type Event struct {
 	StageStarted   presenter.StageStart
 	StageSucceeded presenter.StageSuccess
 	StageFailed    presenter.StageFailure
+	NotesProgress  presenter.NotesProgress
+	NotesMerging   presenter.NotesMerge
 	Warn           presenter.Warning
 	Unwound        presenter.Unwind
 	ShowPlan       presenter.Plan
@@ -163,6 +171,16 @@ func (r *RecordingPresenter) StageSucceeded(s presenter.StageSuccess) {
 // StageFailed records a stage's failure.
 func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 	r.Events = append(r.Events, Event{Kind: KindStageFailed, StageFailed: s})
+}
+
+// NotesProgress records a chunked notes run's progress.
+func (r *RecordingPresenter) NotesProgress(n presenter.NotesProgress) {
+	r.Events = append(r.Events, Event{Kind: KindNotesProgress, NotesProgress: n})
+}
+
+// NotesMerging records a chunked notes run's merge.
+func (r *RecordingPresenter) NotesMerging(m presenter.NotesMerge) {
+	r.Events = append(r.Events, Event{Kind: KindNotesMerging, NotesMerging: m})
 }
 
 // Warn records a warning with its full structured payload — label and message —
