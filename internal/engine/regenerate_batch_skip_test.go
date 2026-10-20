@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"mint/internal/ai"
@@ -296,5 +297,140 @@ func TestRegenerateAllValidated_ValidConfigRunsBatch(t *testing.T) {
 	}
 	if fin := finishEvent(t, rec); fin.Summary != "3 regenerated" {
 		t.Errorf("RunFinished.Summary = %q, want %q", fin.Summary, "3 regenerated")
+	}
+}
+
+// cancellingProducer returns a ProduceBody that yields the version's fresh body EXCEPT
+// for cancelTag, where it returns cancelErr, and the slice of tags it was called for, in
+// call order, so a test can prove no later version's body was produced. The batch loop
+// is sequential, so the slice needs no lock.
+func cancellingProducer(cancelTag string, cancelErr error) (func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error), *[]string) {
+	var called []string
+	produce := func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+		called = append(called, res.Tag)
+		if res.Tag == cancelTag {
+			return "", cancelErr
+		}
+		return "## fresh " + res.Tag + "\n", nil
+	}
+	return produce, &called
+}
+
+// assertCancelEndedBatch proves a cancelled notes stage ENDED the batch rather than
+// skipping a version: the error matches context.Canceled and is an *AbortError with
+// exit code 1, no `skipped …` warn and no RunFinished were recorded, and the cancelled
+// version's notes stage closed as a failed `notes` stage.
+func assertCancelEndedBatch(t *testing.T, rec *presentertest.RecordingPresenter, err error) {
+	t.Helper()
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("a cancelled batch returned %v, want an error matching context.Canceled", err)
+	}
+	var abortErr *engine.AbortError
+	if !errors.As(err, &abortErr) {
+		t.Fatalf("a cancelled batch returned %T (%v), want an *engine.AbortError", err, err)
+	}
+	if abortErr.ExitCode != 1 {
+		t.Errorf("cancel abort ExitCode = %d, want 1", abortErr.ExitCode)
+	}
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && strings.HasPrefix(ev.Warn.Label, "skipped ") {
+			t.Errorf("a cancel was reported as a skip: warn %q %q", ev.Warn.Label, ev.Warn.Message)
+		}
+		if ev.Kind == presentertest.KindRunFinished {
+			t.Errorf("a cancelled batch emitted a RunFinished %+v; a cancel ends the batch with no end summary", ev.RunFinished)
+		}
+	}
+	if got := stageFailedName(t, rec); got != "notes" {
+		t.Errorf("cancelled notes stage closed as StageFailed %q, want \"notes\"", got)
+	}
+}
+
+// TestRegenerateAll_CancelEndsBatch proves a Ctrl-C while v2's notes are produced ENDS
+// the batch — bare or wrapped by the producer the way the production fresh producer
+// wraps it — rather than skipping v2 and failing every later version on the dead
+// context: v3's body is never produced and v3 is never dispatched.
+func TestRegenerateAll_CancelEndsBatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		cancelErr error
+	}{
+		{name: "bare cancel", cancelErr: context.Canceled},
+		{name: "producer-wrapped cancel", cancelErr: fmt.Errorf("regenerating fresh notes for %s: %w", batchV2Tag, context.Canceled)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := runner.NewFakeRunner()
+			f.Seed("git", runner.Result{}, nil)
+			pub := newFakePublisher()
+			pub.seedExists(batchV1Tag, true, nil)
+			pub.seedExists(batchV2Tag, true, nil)
+			pub.seedExists(batchV3Tag, true, nil)
+			rec := &presentertest.RecordingPresenter{}
+
+			req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
+			produce, called := cancellingProducer(batchV2Tag, tt.cancelErr)
+			req.ProduceBody = produce
+
+			bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req)
+
+			assertCancelEndedBatch(t, rec, err)
+			if bodies != nil {
+				t.Errorf("a cancelled batch returned bodies %v, want nil", bodies)
+			}
+			if want := []string{batchV1Tag, batchV2Tag}; !slices.Equal(*called, want) {
+				t.Errorf("ProduceBody called for %v, want %v (no body produced after the cancel)", *called, want)
+			}
+			if want := []string{batchV1Tag}; !slices.Equal(dispatchedTags(pub), want) {
+				t.Errorf("dispatched %v, want %v (no release dispatched at or after the cancel)", dispatchedTags(pub), want)
+			}
+		})
+	}
+}
+
+// TestRegenerateAll_NotesFailureStillSkipsWithWarn proves a NON-cancel notes failure
+// keeps the skip-and-continue contract: v2 is warned as `skipped <tag>` reading `notes
+// generation failed`, v3's body is still produced and dispatched, and RunFinished lists
+// the skip.
+func TestRegenerateAll_NotesFailureStillSkipsWithWarn(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{}, nil)
+	pub := newFakePublisher()
+	pub.seedExists(batchV1Tag, true, nil)
+	pub.seedExists(batchV2Tag, true, nil)
+	pub.seedExists(batchV3Tag, true, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
+	produce, called := cancellingProducer(batchV2Tag, fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed))
+	req.ProduceBody = produce
+
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+		t.Fatalf("a non-cancel notes failure must be skipped, not abort the batch; got: %v", err)
+	}
+
+	var skipWarns []presenter.Warning
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && strings.HasPrefix(ev.Warn.Label, "skipped ") {
+			skipWarns = append(skipWarns, ev.Warn)
+		}
+	}
+	want := []presenter.Warning{{Label: "skipped " + batchV2Tag, Message: "notes generation failed"}}
+	if !slices.Equal(skipWarns, want) {
+		t.Errorf("skip warns = %+v, want %+v", skipWarns, want)
+	}
+	if want := []string{batchV1Tag, batchV2Tag, batchV3Tag}; !slices.Equal(*called, want) {
+		t.Errorf("ProduceBody called for %v, want %v (v3 still processed)", *called, want)
+	}
+	if want := []string{batchV1Tag, batchV3Tag}; !slices.Equal(dispatchedTags(pub), want) {
+		t.Errorf("dispatched %v, want %v", dispatchedTags(pub), want)
+	}
+	if got, want := finishEvent(t, rec).Summary, "2 regenerated, 1 skipped: "+batchV2Tag+" (notes generation failed)"; got != want {
+		t.Errorf("RunFinished.Summary = %q, want %q", got, want)
 	}
 }

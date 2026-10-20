@@ -186,7 +186,8 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 // The run closes with one RunFinished carrying the engine-computed end Summary (the
 // regenerated count + each skipped version with its reason). It returns the COLLECTED
 // per-version bodies (oldest → newest) for the 5-13 whole-file changelog rebuild, or a
-// genuine abort (a gate DECLINE, which is a user choice, not a per-version failure).
+// genuine abort (e.g. a gate DECLINE or a cancel) that ends the batch with no end
+// summary.
 // An empty version set is a clean no-op.
 //
 // The loop holds NO resume state: it reads no checkpoint and writes none, so a re-run
@@ -197,8 +198,6 @@ func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	for _, res := range req.Versions {
 		processed, skip, err := processOneVersion(ctx, deps, publisher, req, res)
 		if err != nil {
-			// A genuine abort (a gate DECLINE) is a user choice, not a per-version
-			// failure — it propagates and ends the batch with no end summary.
 			return nil, err
 		}
 		if skip != nil {
@@ -235,7 +234,8 @@ type skippedVersion struct {
 // per-version gate (unless -y), then dispatches the provider release via the 5-7
 // create-or-update DISPATCH. It returns either the version's collected body (for the
 // 5-13 rebuild) OR a *skippedVersion (a caught per-version failure the loop records
-// and continues past) OR a genuine error (a gate DECLINE).
+// and continues past) OR a genuine error that ends the batch (e.g. a gate DECLINE or
+// a cancel).
 //
 // Per-version FAILURES are caught here and returned as a *skippedVersion rather than
 // surfaced as a terminal abort: this is the skip-and-continue contract that overrides
@@ -243,10 +243,12 @@ type skippedVersion struct {
 //   - reuse against a tag with NO annotation body (lightweight / empty) — detected via
 //     ReadTagBody's has-body branch (the --all variant of 5-5's single-mode fail-loud
 //     read), never written as an empty provider release;
-//   - a notes-production failure (e.g. an AI call that fails) from ProduceBody.
+//   - a notes-production failure (e.g. an AI call that fails) from ProduceBody —
+//     EXCEPT a cancel (context.Canceled, bare or wrapped), which is not a skip.
 //
 // A gate DECLINE is NOT a failure — it is a user choice — so it propagates as an error
-// and ends the batch (preserving the existing decline-aborts behavior).
+// and ends the batch. A cancel (a Ctrl-C) is not a failure either and ends the batch the
+// same way, through a failed `notes` stage.
 func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, req BatchRegenerateRequest, res version.Resolution) (RegeneratedVersion, *skippedVersion, error) {
 	p := deps.Presenter
 	versionKey := batchVersionKey(res.Tag, req.TagPrefix)
@@ -277,7 +279,8 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 
 	// Produce the version's body for the resolved source BEFORE the gate — the
 	// notes-review gate (fresh) reviews this body. A notes-production failure (e.g. a
-	// failed AI call) is CAUGHT and skipped rather than aborting the batch.
+	// failed AI call) is CAUGHT and skipped rather than aborting the batch; a cancel is
+	// not a failure and ends the batch.
 	// Body production is BLOCKING (a fresh source re-diffs + calls the AI per version),
 	// so narrate it with a blocking StageStarted (spinner), a chunked run's progress
 	// while it runs, and a StageSucceeded carrying the engine-measured Elapsed once the
@@ -286,6 +289,9 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	stage := startNotesStage(p)
 	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, stage)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return RegeneratedVersion{}, nil, surface(p, "notes", err)
+		}
 		return reportSkip(p, res.Tag, reasonNotesFailed)
 	}
 	stage.done()

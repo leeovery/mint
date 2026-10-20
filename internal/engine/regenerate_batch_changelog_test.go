@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"testing"
@@ -419,5 +420,67 @@ func TestRegenerateAllValidated_Changelog_ByteIdenticalNoCommit(t *testing.T) {
 	}
 	if got := readChangelogFile(t, dir); got != identical {
 		t.Errorf("a byte-identical rebuild rewrote the file:\n%q", got)
+	}
+}
+
+// TestRegenerateAllValidated_CancelSkipsChangelogRebuild proves a Ctrl-C at v2 on a
+// changelog-writing target ENDS the batch before the end-of-batch rebuild: the error
+// matches context.Canceled as an exit-1 *AbortError, CHANGELOG.md is not rewritten, no
+// `git add`/`git commit`/`git push` runs, and no `record` stage failure is rendered —
+// the only StageFailed is v2's cancelled `notes` stage.
+func TestRegenerateAllValidated_CancelSkipsChangelogRebuild(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		target engine.RegenerateTarget
+	}{
+		{name: "changelog target", target: engine.RegenerateTargetChangelog},
+		{name: "both target", target: engine.RegenerateTargetBoth},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			original := kacPreamble + "\n## [1.0.0] - 2024-01-01\n\nstale v1\n"
+			seedChangelog(t, dir, original)
+
+			f := runner.NewFakeRunner()
+			// The entry-point preflight commits+pushes bucket runs first; any later git
+			// read falls through to the empty-success seed so only the cancel ends the run.
+			f.SeedSequence("git", preflightCommitPushBucket()...)
+			f.Seed("git", runner.Result{}, nil)
+			f.Seed("gh", runner.Result{}, nil) // entry-point preflight gh-auth (both target)
+			pub := newFakePublisher()
+			pub.seedExists(batchV1Tag, true, nil)
+			pub.seedExists(batchV2Tag, true, nil)
+			pub.seedExists(batchV3Tag, true, nil)
+			rec := &presentertest.RecordingPresenter{}
+
+			req := freshChangelogBatchReq(threeVersions(), tt.target)
+			produce, called := cancellingProducer(batchV2Tag, context.Canceled)
+			req.ProduceBody = produce
+
+			err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true)
+
+			assertCancelEndedBatch(t, rec, err)
+			if want := []string{batchV1Tag, batchV2Tag}; !slices.Equal(*called, want) {
+				t.Errorf("ProduceBody called for %v, want %v (no body produced after the cancel)", *called, want)
+			}
+			if got := readChangelogFile(t, dir); got != original {
+				t.Errorf("a cancelled batch rewrote CHANGELOG.md:\n%q\nwant it untouched\n%q", got, original)
+			}
+			for _, inv := range f.Invocations() {
+				if inv.Name == "git" && (slices.Contains(inv.Args, "add") || slices.Contains(inv.Args, "commit") || slices.Contains(inv.Args, "push")) {
+					t.Errorf("a cancelled batch issued %v; the end-of-batch rebuild must never run", inv.Args)
+				}
+			}
+			for _, ev := range rec.Events {
+				if ev.Kind == presentertest.KindStageFailed && ev.StageFailed.Name != "notes" {
+					t.Errorf("a cancelled batch rendered a %q StageFailed; only the cancelled notes stage fails", ev.StageFailed.Name)
+				}
+			}
+		})
 	}
 }
