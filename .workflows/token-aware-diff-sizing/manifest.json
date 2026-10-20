@@ -347,7 +347,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 4,
-          "current_task": "token-aware-diff-sizing-4-11",
+          "current_task": "token-aware-diff-sizing-4-12",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -413,7 +413,8 @@
             "token-aware-diff-sizing-4-7",
             "token-aware-diff-sizing-4-8",
             "token-aware-diff-sizing-4-9",
-            "token-aware-diff-sizing-4-10"
+            "token-aware-diff-sizing-4-10",
+            "token-aware-diff-sizing-4-11"
           ],
           "staging": {
             "p1": {
@@ -442,6 +443,19 @@
             1,
             2,
             3
+          ],
+          "bank": [
+            {
+              "task": "token-aware-diff-sizing-4-11",
+              "source": "reviewer",
+              "summary": "headerPath keys an unprefixed diff header on the whole string, so the marker and piece framing show a doubled path",
+              "failure": "An operator with diff.noprefix=true gets `api/handler.go api/handler.go` in the saved notes marker and in piece framing; seen on opening the saved file or reviewing notes",
+              "detail": "internal/notes/assemble.go:178 builds git diff <range> -- . without --src-prefix=a/ --dst-prefix=b/; internal/notes/chunk.go:290-311 headerPath recognises only the a/P b/P form and quoted paths. Fix by pinning prefixes in the diff argv (also stabilises the sort key) or teaching headerPath the unprefixed P P form",
+              "files": [
+                "internal/notes/assemble.go",
+                "internal/notes/chunk.go"
+              ]
+            }
           ]
         }
       }
