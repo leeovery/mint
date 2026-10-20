@@ -291,11 +291,10 @@ type ReleaseOptions struct {
 	// annotated tag, the atomic push, and the provider release are ALL skipped so a dry
 	// run NEVER reaches the lock-resilient Mutator and the repo is byte-for-byte
 	// unchanged (this guarantee now holds for the --autostash combo too). The -d/--dry-run
-	// flag is wired in production (cmd/mint) and sets this field. The ONE intentional
-	// side effect (task 4-7): after the notes PREVIEW is
-	// generated, the generated AI note is WRITTEN to the gitignored/temp dry-run cache
-	// (keyed by the post-diff_exclude diff + version + prompt/context) so the
-	// subsequent real run can REUSE it (reuse itself is task 4-8).
+	// flag is wired in production (cmd/mint) and sets this field. Outside the repo, a
+	// dry run still writes the AI note it previews to the user-level dry-run cache, so
+	// the following real run can reuse it, and a failed chunked run's finished chunk
+	// notes to their file, as a real run does.
 	DryRun bool
 }
 
