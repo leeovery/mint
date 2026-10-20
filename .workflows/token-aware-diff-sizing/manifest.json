@@ -348,7 +348,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 5,
-          "current_task": "token-aware-diff-sizing-5-5",
+          "current_task": "token-aware-diff-sizing-5-6",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -423,7 +423,8 @@
             "token-aware-diff-sizing-5-1",
             "token-aware-diff-sizing-5-2",
             "token-aware-diff-sizing-5-3",
-            "token-aware-diff-sizing-5-4"
+            "token-aware-diff-sizing-5-4",
+            "token-aware-diff-sizing-5-5"
           ],
           "staging": {
             "p1": {
@@ -496,6 +497,28 @@
                 "internal/engine/release.go",
                 "internal/engine/regenerate_interactive.go",
                 "internal/engine/regenerate_batch.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-5-5",
+              "source": "reviewer",
+              "summary": "Give notes one cause classification that both the ✗ phrase (notes.CauseText) and the floor moves (engine.causeMoves) key on, in place of two switches re-deriving the same sentinel precedence",
+              "failure": "If a cause is added or the order changes in one switch and not the other, the ✗ line names one cause and the moves fit another (e.g. part notes too large to merge followed by the lean pointer); the operator gets the wrong guidance and nothing fails, and the regenerate floor (5-11) adds a third reader",
+              "detail": "internal/notes/resolve.go:98-120 (CauseText switch: NoRoom, MergeTooLarge, TooLargeForModel, Timeout, CommandMissing, GenerationFailed) and internal/engine/notesfloor.go:57-77 (causeMoves switch, same order). A notes.Cause(failure) returning a closed enum would let CauseText map it to a phrase and causeMoves map it to moves, with the order defined once",
+              "files": [
+                "internal/notes/resolve.go",
+                "internal/engine/notesfloor.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-5-5",
+              "source": "reviewer",
+              "summary": "Derive the floor ✗ phrase and its cause moves from one cause classification instead of two switches over the same sentinels",
+              "failure": "Spec §9.3 expects new cause codes (RATE_LIMIT) that would wrap ai.GenerationError; one added to notes.CauseText but not causeMoves falls into the ErrGenerationFailed branch silently, so a repo on its own ai_command is told to switch to the lean command under a rate-limit stop; no test or build fails",
+              "detail": "internal/notes/resolve.go:98-121 (CauseText) and internal/engine/notesfloor.go:57-77 (causeMoves) test the same six sentinels in the same order, which matters because merge-too-large and too-large-for-model also match ErrGenerationFailed. A single exported cause enum from notes, switched on by both, makes an unhandled cause an exhaustiveness or lint failure; tasks 5-7 and 5-11 add consumers",
+              "files": [
+                "internal/notes/resolve.go",
+                "internal/engine/notesfloor.go"
               ]
             }
           ]
