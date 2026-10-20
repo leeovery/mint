@@ -57,14 +57,27 @@ func (s *notesStage) fellBack(failure error) {
 // warnFallback names both commands for saved chunk notes: when it prints, whether this
 // release will go out is not yet known. Call it only once the stage has ended.
 func (s *notesStage) warnFallback(version string) {
+	s.warnFallbackReleasing(func(saved string) string {
+		return "once this release is out, put them on it with mint release regenerate " + version + " --notes-file " + saved +
+			", or if the run ends before the push, release them with mint release --notes-file " + saved
+	})
+}
+
+// warnDryRunFallback names only the --notes-file release for saved chunk notes: a dry
+// run never puts the version out. Call it only once the stage has ended.
+func (s *notesStage) warnDryRunFallback() {
+	s.warnFallbackReleasing(func(saved string) string {
+		return "release them with mint release --notes-file " + saved
+	})
+}
+
+func (s *notesStage) warnFallbackReleasing(release func(saved string) string) {
 	if s.fallbackCause == nil {
 		return
 	}
 	message := failureMessage(s.fallbackCause) + "; falling back to the commit-subject list"
 	if saved := notes.SavedChunkNotesPath(s.fallbackCause); saved != "" {
-		message += "; part notes saved to " + saved +
-			" — once this release is out, put them on it with mint release regenerate " + version + " --notes-file " + saved +
-			", or if the run ends before the push, release them with mint release --notes-file " + saved
+		message += "; part notes saved to " + saved + " — " + release(saved)
 	}
 	s.p.Warn(presenter.Warning{Label: "notes", Message: message, Output: notesFailureOutput(s.fallbackCause)})
 }

@@ -538,11 +538,13 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	} else {
 		stage.done()
 		chunkNotes.warnUnsaved(p)
-		stage.warnFallback(versionKey)
+		if opts.DryRun {
+			stage.warnDryRunFallback()
+		} else {
+			stage.warnFallback(versionKey)
+		}
 	}
 
-	// Show the plan, then the notes — identical in a dry run and a real run up to here;
-	// the two diverge at the DRY-RUN BOUNDARY immediately below.
 	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
 	hintLowerCap(p, stage.lowerCap())
