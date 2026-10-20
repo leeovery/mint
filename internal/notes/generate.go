@@ -15,6 +15,9 @@ import (
 // scripting the real `claude` command through the runner. Production wires the
 // real ai.Transport, which itself goes through the CommandRunner seam, so "every
 // external call via the seam" still holds end to end.
+//
+// Generate is called concurrently, once per chunk call in flight, so an
+// implementation must be safe for concurrent use.
 type Transport interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
+	"sync"
 )
 
 // Invocation is a single recorded call against a FakeRunner. Stdin holds the
@@ -38,10 +40,13 @@ type ScriptedCall struct {
 
 // FakeRunner is the in-memory CommandRunner test double. It never spawns a
 // process: callers Seed each command name with the Result/error it should
-// return, and every call is recorded in order for later assertion. It matches on
-// command name (the args are recorded for assertion but not used for matching),
-// which is sufficient for the engine's scripted-tool tests.
+// return, and every call is recorded in arrival order for later assertion. It
+// matches on command name (the args are recorded for assertion but not used for
+// matching), which is sufficient for the engine's scripted-tool tests. It is safe
+// for concurrent use: each call records itself and consumes its outcome atomically,
+// so concurrent calls never share a SeedSequence entry.
 type FakeRunner struct {
+	mu          sync.Mutex
 	scripts     map[string]scriptedResult
 	sequences   map[string][]ScriptedCall
 	invocations []Invocation
@@ -62,6 +67,8 @@ var _ CommandRunner = (*FakeRunner)(nil)
 // Pass a non-nil err together with a populated Result to model a non-zero exit
 // (the Result stays readable alongside the error, matching the real runner).
 func (f *FakeRunner) Seed(name string, result Result, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.scripts[name] = scriptedResult{result: result, err: err}
 }
 
@@ -72,6 +79,8 @@ func (f *FakeRunner) Seed(name string, result Result, err error) {
 // is exhausted, calls fall through to the static Seed/SeedNotFound script (or the
 // unseeded-command error if none was set).
 func (f *FakeRunner) SeedSequence(name string, calls ...ScriptedCall) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.sequences[name] = append(f.sequences[name], calls...)
 }
 
@@ -79,12 +88,16 @@ func (f *FakeRunner) SeedSequence(name string, calls ...ScriptedCall) {
 // matching ErrCommandNotFound, mirroring ExecRunner so gate tests behave the
 // same against either implementation.
 func (f *FakeRunner) SeedNotFound(name string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.scripts[name] = scriptedResult{notFound: true}
 }
 
-// Invocations returns the recorded calls in the order they were made.
+// Invocations returns a copy of the recorded calls in the order they arrived.
 func (f *FakeRunner) Invocations() []Invocation {
-	return f.invocations
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.invocations)
 }
 
 // Run records the call and returns the seeded outcome for name.
@@ -95,12 +108,7 @@ func (f *FakeRunner) Run(ctx context.Context, name string, args ...string) (Resu
 // RunWith records the call (draining stdin into the Invocation) and returns the
 // seeded outcome for name.
 func (f *FakeRunner) RunWith(_ context.Context, stdin io.Reader, name string, args ...string) (Result, error) {
-	f.invocations = append(f.invocations, Invocation{
-		Name:  name,
-		Args:  args,
-		Stdin: drainStdin(stdin),
-	})
-	return f.outcome(name)
+	return f.record(Invocation{Name: name, Args: args, Stdin: drainStdin(stdin)})
 }
 
 // RunInDir records the call — including the working directory and the injected
@@ -108,13 +116,7 @@ func (f *FakeRunner) RunWith(_ context.Context, stdin io.Reader, name string, ar
 // per-name Seed/SeedSequence/SeedNotFound scripting as Run, so a hook test can
 // script each entry's exit (e.g. first entry fails) while asserting Dir and Env.
 func (f *FakeRunner) RunInDir(_ context.Context, dir string, env []string, name string, args ...string) (Result, error) {
-	f.invocations = append(f.invocations, Invocation{
-		Name: name,
-		Args: args,
-		Dir:  dir,
-		Env:  env,
-	})
-	return f.outcome(name)
+	return f.record(Invocation{Name: name, Args: args, Dir: dir, Env: env})
 }
 
 // RunInteractive records the launch (like the other methods, with no stdin) and
@@ -124,18 +126,23 @@ func (f *FakeRunner) RunInDir(_ context.Context, dir string, env []string, name 
 // running and failing), so a test can simulate the editor being missing or
 // succeeding without spawning a process.
 func (f *FakeRunner) RunInteractive(_ context.Context, name string, args ...string) error {
-	f.invocations = append(f.invocations, Invocation{
-		Name: name,
-		Args: args,
-	})
-	_, err := f.outcome(name)
+	_, err := f.record(Invocation{Name: name, Args: args})
 	return err
+}
+
+// record appends inv and resolves its outcome in one critical section.
+func (f *FakeRunner) record(inv Invocation) (Result, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.invocations = append(f.invocations, inv)
+	return f.outcome(inv.Name)
 }
 
 // outcome resolves the seeded Result/error for name: it consumes the next
 // SeedSequence entry first, then falls back to the name-keyed Seed/SeedNotFound
 // script, and surfaces an unseeded command as an error. It is the shared core of
-// every recorded call so Run, RunWith, and RunInteractive script identically.
+// every recorded call so Run, RunWith, and RunInteractive script identically. The
+// caller holds f.mu.
 func (f *FakeRunner) outcome(name string) (Result, error) {
 	if seq := f.sequences[name]; len(seq) > 0 {
 		call := seq[0]

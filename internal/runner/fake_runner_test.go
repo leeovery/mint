@@ -2,7 +2,9 @@ package runner_test
 
 import (
 	"errors"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"mint/internal/runner"
@@ -283,3 +285,41 @@ func TestFakeRunner_RunInDir_HonoursSeedSequence(t *testing.T) {
 // FakeRunner must be substitutable for the seam wherever a CommandRunner is
 // consumed; this compile-time check guards that.
 var _ runner.CommandRunner = (*runner.FakeRunner)(nil)
+
+func TestFakeRunner_ConcurrentCalls_EachSequenceOutcomeConsumedOnce(t *testing.T) {
+	t.Parallel()
+
+	const n = 16
+	fake := runner.NewFakeRunner()
+	calls := make([]runner.ScriptedCall, n)
+	for i := range calls {
+		calls[i] = runner.ScriptedCall{Result: runner.Result{Stdout: strconv.Itoa(i)}}
+	}
+	fake.SeedSequence("claude", calls...)
+
+	outs := make([]string, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			res, err := fake.RunWith(t.Context(), strings.NewReader("prompt "+strconv.Itoa(i)), "claude", "-p")
+			if err != nil {
+				t.Errorf("RunWith returned unexpected error: %v", err)
+			}
+			outs[i] = res.Stdout
+		})
+	}
+	wg.Wait()
+
+	if got := len(fake.Invocations()); got != n {
+		t.Errorf("invocations = %d, want %d", got, n)
+	}
+	consumed := make(map[string]int)
+	for _, out := range outs {
+		consumed[out]++
+	}
+	for i := range n {
+		if consumed[strconv.Itoa(i)] != 1 {
+			t.Errorf("sequence outcome %d consumed %d times, want exactly once", i, consumed[strconv.Itoa(i)])
+		}
+	}
+}

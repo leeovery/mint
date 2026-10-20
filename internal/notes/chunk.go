@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // fileDiffHeader opens each file's section of a git diff.
@@ -13,20 +14,16 @@ const fileDiffHeader = "diff --git "
 
 // generateChunked writes the notes for a diff whose single-pass prompt is over
 // maxPromptBytes: the diff's files are packed in path order into chunk calls, each
-// carrying the release's instructions and whole-release Change Map, then one merge
-// call turns every chunk's notes, in chunk order, into the body. The merge output is
-// returned byte-identical.
+// carrying the release's instructions and whole-release Change Map and run
+// concurrently, then one merge call turns every chunk's notes, in chunk order, into
+// the body. The merge output is returned byte-identical.
 func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, maxPromptBytes int) (string, error) {
 	files := splitFileDiffs(diff)
 	slices := packChunks(files, chunkRoom(instructions, changeMap, len(files), maxPromptBytes))
 
-	partNotes := make([]string, len(slices))
-	for i, slice := range slices {
-		body, err := g.transport.Generate(ctx, composeChunkPrompt(instructions, changeMap, i+1, len(slices), slice))
-		if err != nil {
-			return "", fmt.Errorf("generating notes for part %d of %d: %w", i+1, len(slices), err)
-		}
-		partNotes[i] = body
+	partNotes, err := g.generateParts(ctx, instructions, changeMap, slices)
+	if err != nil {
+		return "", err
 	}
 
 	body, err := g.transport.Generate(ctx, composeMergePrompt(instructions, changeMap, partNotes))
@@ -34,6 +31,36 @@ func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap
 		return "", fmt.Errorf("merging part notes: %w", err)
 	}
 	return body, nil
+}
+
+// maxChunkCallsInFlight bounds a wave's concurrent chunk calls, so a large release
+// never lands all of its calls on the machine and the provider's limits at once.
+const maxChunkCallsInFlight = 4
+
+// generateParts makes one chunk call per slice, at most maxChunkCallsInFlight at a
+// time, and returns their notes in slice order once every call has finished. Each call
+// runs on ctx itself: the wave sets no deadline of its own, so a timeout is per call.
+// A failure is reported for the lowest-numbered failed part.
+func (g *Generator) generateParts(ctx context.Context, instructions, changeMap string, slices []string) ([]string, error) {
+	partNotes := make([]string, len(slices))
+	errs := make([]error, len(slices))
+	slots := make(chan struct{}, maxChunkCallsInFlight)
+	var wg sync.WaitGroup
+	for i, slice := range slices {
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			partNotes[i], errs[i] = g.transport.Generate(ctx, composeChunkPrompt(instructions, changeMap, i+1, len(slices), slice))
+		})
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			return nil, fmt.Errorf("generating notes for part %d of %d: %w", i+1, len(slices), err)
+		}
+	}
+	return partNotes, nil
 }
 
 // splitFileDiffs cuts diff into one section per file, in path order. git emits path
