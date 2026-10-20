@@ -21,28 +21,29 @@ const fileDiffHeader = "diff --git "
 // notes, in chunk order, into the body. The merge output is returned byte-identical.
 // promptBytes is the single-pass prompt's size, reported to g.progress with the run's
 // split and advance. No call over its bound is sent: ErrNoRoomForDiff in place of a
-// call with no room for diff, ErrMergeTooLarge in place of the merge. A merge call
-// whose failure is classified SIZE is never halved: it fails as ErrMergeTooLarge,
-// carrying the call's own failure.
+// call with no room for diff under maxPromptBytes, ErrMergeTooLarge in place of the
+// merge. A merge call whose failure is classified SIZE is never halved: it fails as
+// ErrMergeTooLarge, carrying the call's own failure.
 func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
 	cut, parts, err := cutRun(instructions, changeMap, diff, maxPromptBytes)
 	if err != nil {
 		return "", err
 	}
 	g.progress.PartsDone(promptBytes, len(parts), 0)
-	return g.writeParts(ctx, cut, parts, promptBytes, maxPromptBytes)
+	return g.writeParts(ctx, cut, parts, 0, promptBytes, maxPromptBytes)
 }
 
-// generateHalved is generateChunked for a single-pass call of promptBytes whose
-// failure was classified SIZE: its chunk calls are at most half its size, and the
-// re-cut is reported to g.progress in place of the split.
-func (g *Generator) generateHalved(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
+// generateHalved is generateChunked for a single-pass call of promptBytes that failed
+// with failure, classified SIZE: its chunk calls are at most half its size, counting
+// as the run's first halving, and the re-cut is reported to g.progress in place of the
+// split. A re-cut with no room for diff fails as ErrTooLargeForModel, carrying failure.
+func (g *Generator) generateHalved(ctx context.Context, instructions, changeMap, diff string, failure error, promptBytes, maxPromptBytes int) (string, error) {
 	cut, parts, err := cutRun(instructions, changeMap, diff, promptBytes/2)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%w: %w", ErrTooLargeForModel, failure)
 	}
 	g.progress.Halved(0, len(parts))
-	return g.writeParts(ctx, cut, parts, promptBytes, maxPromptBytes)
+	return g.writeParts(ctx, cut, parts, 1, promptBytes, maxPromptBytes)
 }
 
 func cutRun(instructions, changeMap, diff string, target int) (cutter, []chunkPart, error) {
@@ -52,8 +53,8 @@ func cutRun(instructions, changeMap, diff string, target int) (cutter, []chunkPa
 	return cut, parts, err
 }
 
-func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPart, promptBytes, maxPromptBytes int) (string, error) {
-	partNotes, err := newWave(g, cut, parts, promptBytes).run(ctx)
+func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPart, halvings, promptBytes, maxPromptBytes int) (string, error) {
+	partNotes, err := newWave(g, cut, parts, halvings, promptBytes).run(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -91,6 +92,10 @@ func (e *callError) Error() string { return e.action + ": " + e.err.Error() }
 
 func (e *callError) Unwrap() error { return e.err }
 
+// maxHalvings bounds how many times one slice of the diff is halved, counted from its
+// first SIZE answer: three halvings take it to an eighth of the size that first failed.
+const maxHalvings = 3
+
 // maxChunkCallsInFlight bounds a wave's concurrent chunk calls, so a large release
 // never lands all of its calls on the machine and the provider's limits at once.
 const maxChunkCallsInFlight = 4
@@ -118,13 +123,16 @@ type wave struct {
 type waveSlot struct {
 	part  chunkPart
 	notes string
+	// halvings is how many times the slice this part was cut from has been halved. It
+	// never changes once the slot is made, so a call's goroutine reads it unlocked.
+	halvings int
 }
 
-func newWave(g *Generator, cut cutter, parts []chunkPart, promptBytes int) *wave {
+func newWave(g *Generator, cut cutter, parts []chunkPart, halvings, promptBytes int) *wave {
 	w := &wave{g: g, cut: cut, promptBytes: promptBytes}
 	w.changed = sync.NewCond(&w.mu)
 	for _, part := range parts {
-		w.slots = append(w.slots, &waveSlot{part: part})
+		w.slots = append(w.slots, &waveSlot{part: part, halvings: halvings})
 	}
 	w.queue = slices.Clone(w.slots)
 	return w
@@ -132,9 +140,11 @@ func newWave(g *Generator, cut cutter, parts []chunkPart, promptBytes int) *wave
 
 // run sends every part and returns their notes in chunk order once every call has
 // finished. A call whose failure is classified SIZE has its slice re-cut at half the
-// call's size, and the new parts are queued behind the parts not yet sent. Any other
-// failure stops the wave: no further call starts, the calls already running finish,
-// and the first such failure is returned. ctx ending stops it too, and its error is
+// call's size, and the new parts are queued behind the parts not yet sent; with its
+// slice already halved maxHalvings times, or no room for diff at half the size, the
+// call fails as ErrTooLargeForModel. Any other failure, and that one, stops the wave:
+// no further call starts, the calls already running finish, and the first such
+// failure is returned. ctx ending stops it too, and its error is
 // returned over any earlier failure. Each part that succeeds, and each re-cut, is
 // reported to g.progress as it happens.
 func (w *wave) run(ctx context.Context) ([]string, error) {
@@ -184,7 +194,8 @@ func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt 
 	notes, code, err := w.g.generate(ctx, prompt)
 	var halves []chunkPart
 	var recutErr error
-	if err != nil && code == codeSize {
+	halving := err != nil && code == codeSize && slot.halvings < maxHalvings
+	if halving {
 		halves, recutErr = w.cut.recut(part, len(prompt)/2)
 	}
 
@@ -198,10 +209,10 @@ func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt 
 		w.done++
 		w.g.progress.CallSucceeded(len(prompt))
 		w.g.progress.PartsDone(w.promptBytes, len(w.slots), w.done)
-	case code == codeSize && recutErr == nil:
+	case halving && recutErr == nil:
 		w.halve(slot, halves)
-	case w.failure == nil && recutErr != nil:
-		w.failure = recutErr
+	case w.failure == nil && code == codeSize:
+		w.failure = partCallError(slices.Index(w.slots, slot)+1, len(w.slots), fmt.Errorf("%w: %w", ErrTooLargeForModel, err))
 	case w.failure == nil:
 		w.failure = partCallError(slices.Index(w.slots, slot)+1, len(w.slots), err)
 	}
@@ -213,7 +224,7 @@ func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt 
 func (w *wave) halve(slot *waveSlot, halves []chunkPart) {
 	replacements := make([]*waveSlot, len(halves))
 	for i, part := range halves {
-		replacements[i] = &waveSlot{part: part}
+		replacements[i] = &waveSlot{part: part, halvings: slot.halvings + 1}
 	}
 	at := slices.Index(w.slots, slot)
 	w.g.progress.Halved(at+1, len(halves))

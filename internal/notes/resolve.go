@@ -89,9 +89,10 @@ func abortError(failure error) error {
 }
 
 // CauseText derives the concise display phrase for a notes/AI failure, matched through
-// the %w chain. A size sentinel's phrase stands alone and wins over the call failure it
-// may wrap. A generation failure reads by whether its captured output holds any text,
-// and one that belongs to one call of a chunked run ends with that call's place in it.
+// the %w chain. A size sentinel's phrase wins over the call failure it may wrap, and
+// only ErrTooLargeForModel's takes a location. A generation failure reads by whether
+// its captured output holds any text, and one that belongs to one call of a chunked
+// run ends with that call's place in it.
 // It returns (phrase, true) for a known notes failure and ("", false) for any other
 // error.
 func CauseText(failure error) (string, bool) {
@@ -101,6 +102,8 @@ func CauseText(failure error) (string, bool) {
 		return ErrNoRoomForDiff.Error(), true
 	case errors.Is(failure, ErrMergeTooLarge):
 		return ErrMergeTooLarge.Error(), true
+	case errors.Is(failure, ErrTooLargeForModel):
+		phrase = ErrTooLargeForModel.Error()
 	case errors.Is(failure, ai.ErrTimeout):
 		phrase = "AI timed out"
 	case errors.Is(failure, ai.ErrCommandMissing):

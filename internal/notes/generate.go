@@ -98,7 +98,8 @@ func (g *Generator) WithProgress(progress Progress) *Generator {
 //     transport.Generate as one call; one over it skips that call and is written by
 //     chunk calls and one merge call instead (generateChunked). A single-pass or
 //     chunk call whose failure is classified SIZE has its slice re-sent as chunk
-//     calls each at most half the failed call's size; a merge call's is not.
+//     calls each at most half the failed call's size, up to three times per slice; a
+//     merge call's is not.
 //
 // The body is returned WHOLE: no parsing, splitting, label extraction, or
 // per-sink reassembly — a valid generation, single-pass or merged, passes through
@@ -230,7 +231,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return body, nil
 	}
 	if code == codeSize {
-		return g.generateHalved(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
+		return g.generateHalved(ctx, instructions, changeMap, diff, err, len(prompt), cfg.MaxPromptBytes)
 	}
 	return "", fmt.Errorf("generating notes: %w", err)
 }

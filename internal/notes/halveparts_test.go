@@ -20,10 +20,10 @@ import (
 const mergeOverflowOutput = "Prompt is too long · the request is ~1300000 tokens (limit 1000000)"
 
 // halvingTransport writes a chunked run in which some chunk calls overflow the model.
-// A chunk call whose slice overflows reports true for fails with an overflow's output;
-// every classify call is answered SIZE. Each chunk call that succeeds is held on
-// release, when set, then answered with notes unique to it. The merge is answered
-// mergeBody, or fails with mergeErr when set.
+// A chunk call whose slice overflows reports true for fails with an overflow's output,
+// as does every single-pass call; every classify call is answered SIZE. Each chunk
+// call that succeeds is held on release, when set, then answered with notes unique to
+// it. The merge is answered mergeBody, or fails with mergeErr when set.
 type halvingTransport struct {
 	overflows func(slice string) bool
 	release   <-chan struct{}
@@ -34,8 +34,9 @@ type halvingTransport struct {
 	inFlight    int
 	maxInFlight int
 	// events logs "send N", "overflow N" and "end N" for chunk call N, counted from 0
-	// in send order, and "classify" and "merge".
+	// in send order, and "single", "classify" and "merge".
 	events     []string
+	single     []string
 	sent       []string
 	overflowed []int
 	written    map[string]string
@@ -53,6 +54,12 @@ func (ht *halvingTransport) Generate(_ context.Context, prompt string) (string, 
 		return "SIZE", nil
 	case isChunkPrompt(prompt):
 		return ht.chunk(prompt)
+	case strings.Contains(prompt, "diff --git "):
+		ht.record(func() {
+			ht.single = append(ht.single, prompt)
+			ht.events = append(ht.events, "single")
+		})
+		return "", &ai.GenerationError{Stdout: overflowOutput + "\n", ExitCode: 1}
 	default:
 		ht.record(func() {
 			ht.events = append(ht.events, "merge")
