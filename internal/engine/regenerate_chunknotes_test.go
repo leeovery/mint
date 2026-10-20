@@ -178,27 +178,40 @@ func TestRegenerateRun_FreshChunkedRunFails_SavesTheFinishedNotesUnderTheVersion
 	}
 }
 
-func TestRegenerateAll_FreshChunkedRunsFail_EachVersionSavesItsOwnFileAndTheBatchCarriesOn(t *testing.T) {
+// savedSkipCause is version's skip cause, its cause phrase phrase, when its chunk
+// notes were saved at path.
+func savedSkipCause(phrase, version, path string) string {
+	return phrase + "; part notes saved to " + path + " — tidy them and put them on it with mint release regenerate " + version + " --notes-file " + path
+}
+
+func TestRegenerateAll_FreshChunkedRunsFail_EachSkipNamesItsOwnSavedFileAndCommand(t *testing.T) {
 	t.Parallel()
 
 	run := newRegenChunkNotes(t)
 
 	run.regenerateAll(t, overCapFailing(failsSecondPart), "v1.1.0", "v1.3.0")
 
-	for _, tag := range []string{"v1.1.0", "v1.3.0"} {
-		if got := readSaved(t, run.savedPath(tag)); got != partOneSaved {
-			t.Errorf("%s saved chunk notes = %q, want %q", tag, got, partOneSaved)
+	p1, p3 := run.savedPath("v1.1.0"), run.savedPath("v1.3.0")
+	for _, path := range []string{p1, p3} {
+		if got := readSaved(t, path); got != partOneSaved {
+			t.Errorf("%s saved chunk notes = %q, want %q", path, got, partOneSaved)
 		}
 	}
 	if got := dispatchedTags(run.pub); len(got) != 1 || got[0] != "v1.2.0" {
 		t.Errorf("provider writes = %v, want only v1.2.0", got)
 	}
-	want := "1 regenerated, 2 skipped: v1.1.0 (AI call failed (part 2 of 2)), v1.3.0 (AI call failed (part 2 of 2))"
+	cause1 := savedSkipCause("AI call failed (part 2 of 2)", "1.1.0", p1)
+	cause3 := savedSkipCause("AI call failed (part 2 of 2)", "1.3.0", p3)
+	want := "1 regenerated, 2 skipped: v1.1.0 (" + cause1 + "), v1.3.0 (" + cause3 + ")"
 	if got := finishEvent(t, run.rec).Summary; got != want {
 		t.Errorf("RunFinished.Summary = %q, want %q", got, want)
 	}
-	if got := warnings(run.rec); len(got) != 2 || got[0] != skipWarning("v1.1.0", "AI call failed (part 2 of 2)") || got[1] != skipWarning("v1.3.0", "AI call failed (part 2 of 2)") {
-		t.Errorf("warnings = %+v, want only the two skips", got)
+	wantWarns := []presenter.Warning{
+		{Label: "skipped v1.1.0", Message: cause1, Output: usageLimitOutput},
+		{Label: "skipped v1.3.0", Message: cause3, Output: usageLimitOutput},
+	}
+	if got := warnings(run.rec); !slices.Equal(got, wantWarns) {
+		t.Errorf("warnings = %+v, want %+v", got, wantWarns)
 	}
 }
 
@@ -245,6 +258,10 @@ func TestRegenerate_NoChunkNotesToKeep_SavesNoFile(t *testing.T) {
 			if len(got) != 1 || !slices.ContainsFunc(tc.phrases, func(phrase string) bool { return got[0] == skipWarning("v1.2.0", phrase) }) {
 				t.Errorf("warnings = %+v, want only v1.2.0's skip reading one of %q", got, tc.phrases)
 			}
+			summary := finishEvent(t, run.rec).Summary
+			if !slices.ContainsFunc(tc.phrases, func(phrase string) bool { return summary == "2 regenerated, 1 skipped: v1.2.0 ("+phrase+")" }) {
+				t.Errorf("RunFinished.Summary = %q, want v1.2.0 skipped reading one of %q and naming no file", summary, tc.phrases)
+			}
 		})
 	}
 }
@@ -284,5 +301,9 @@ func TestRegenerateAll_ChunkNotesCannotBeWritten_WarnsAfterTheSkipAndTheBatchCar
 	}
 	if got := dispatchedTags(run.pub); len(got) != 2 || got[0] != "v1.2.0" || got[1] != "v1.3.0" {
 		t.Errorf("provider writes = %v, want v1.2.0 and v1.3.0 with v1.1.0 skipped", got)
+	}
+	want2 := "2 regenerated, 1 skipped: v1.1.0 (AI call failed (part 2 of 2))"
+	if got := finishEvent(t, run.rec).Summary; got != want2 {
+		t.Errorf("RunFinished.Summary = %q, want %q naming no file", got, want2)
 	}
 }

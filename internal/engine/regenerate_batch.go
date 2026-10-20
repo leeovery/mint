@@ -232,6 +232,28 @@ type skippedVersion struct {
 	Tag string
 	// Reason is the human-readable skip cause (e.g. "AI call failed (part 3 of 6)").
 	Reason string
+	// SavedNotes points at the version's saved chunk notes: the path, then the
+	// version's own regenerate that puts them on it. Empty when its notes failed with
+	// none saved, so the skip names no file.
+	SavedNotes string
+}
+
+// cause is the skip's text in its warning and in the end summary.
+func (s skippedVersion) cause() string {
+	if s.SavedNotes == "" {
+		return s.Reason
+	}
+	return s.Reason + "; " + s.SavedNotes
+}
+
+// savedNotesPointer names the chunk notes failure saved and the regenerate of version
+// that puts them on it, or "" when failure saved none.
+func savedNotesPointer(failure error, version string) string {
+	saved := notes.SavedChunkNotesPath(failure)
+	if saved == "" {
+		return ""
+	}
+	return "part notes saved to " + saved + " — tidy them and put them on it with mint release regenerate " + version + " --notes-file " + saved
 }
 
 // processOneVersion runs the per-version batch step for one resolved version: it opens
@@ -300,9 +322,10 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 			return RegeneratedVersion{}, nil, surface(p, "notes", err)
 		}
 		reason, output := notesSkipCause(err)
-		processed, skip, skipErr := reportSkip(p, skippedVersion{Tag: res.Tag, Reason: reason}, output)
+		skip := skippedVersion{Tag: res.Tag, Reason: reason, SavedNotes: savedNotesPointer(err, versionKey)}
+		processed, recorded, skipErr := reportSkip(p, skip, output)
 		chunkNotes.warnUnsaved(p)
-		return processed, skip, skipErr
+		return processed, recorded, skipErr
 	}
 	stage.done()
 	hint.written(stage)
@@ -401,18 +424,20 @@ func preReadDeterministicBody(ctx context.Context, deps ReleaseDeps, publisher p
 }
 
 // reportSkip narrates a per-version skip as a non-terminal Warn (which does NOT set
-// failure state and does NOT suppress the end summary), output verbatim beneath it, and
+// failure state and does NOT suppress the end summary), its cause naming any saved
+// chunk notes, output verbatim beneath it, and
 // returns the *skippedVersion the loop records — so the version appears in the closing
 // summary for re-run.
 func reportSkip(p presenter.Presenter, skip skippedVersion, output string) (RegeneratedVersion, *skippedVersion, error) {
-	p.Warn(presenter.Warning{Label: "skipped " + skip.Tag, Message: skip.Reason, Output: output})
+	p.Warn(presenter.Warning{Label: "skipped " + skip.Tag, Message: skip.cause(), Output: output})
 	return RegeneratedVersion{}, &skip, nil
 }
 
 // batchSummary computes the end-of-run Summary the presenter renders VERBATIM: the
 // regenerated count, then — only when versions were skipped — a "{N} skipped:" clause
-// listing each skipped version as "tag (reason)" in batch (oldest → newest) order, so
-// the user can re-run the stragglers. With nothing skipped it collapses to the bare
+// listing each skipped version as "tag (cause)" in batch (oldest → newest) order, the
+// cause naming any saved chunk notes and their regenerate, so the user can re-run the
+// stragglers. With nothing skipped it collapses to the bare
 // "{N} regenerated".
 func batchSummary(regenerated int, skipped []skippedVersion) string {
 	if len(skipped) == 0 {
@@ -420,7 +445,7 @@ func batchSummary(regenerated int, skipped []skippedVersion) string {
 	}
 	parts := make([]string, len(skipped))
 	for i, s := range skipped {
-		parts[i] = fmt.Sprintf("%s (%s)", s.Tag, s.Reason)
+		parts[i] = fmt.Sprintf("%s (%s)", s.Tag, s.cause())
 	}
 	return fmt.Sprintf("%d regenerated, %d skipped: %s", regenerated, len(skipped), strings.Join(parts, ", "))
 }
