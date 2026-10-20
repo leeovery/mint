@@ -584,15 +584,9 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	regenerator := regens.narrating(perRunRegenerator(deps, generator, RegenRun{Merged: chunkNotes.merged, Progress: regens}, current.String(cfg.Release.TagPrefix), cfg))
 	body, err = reviewGate(ctx, p, deps.Editor, reviewRegen{regenerator: regenerator, shown: regens.shown}, gateForKind(kind), body, versionKey)
 	if err != nil {
-		// A gate-no is a clean USER abort: route it through the SAME surgical unwind a
-		// pre-push failure takes (reset any pre_tag artifact commit tracked in made;
-		// narrate an identical Unwound). Every OTHER reviewGate error already surfaced its
-		// own StageFailed and is returned as-is. (A dry run never reaches this gate — it
-		// returned at the boundary above — so there is no DryRun branch here.)
-		if errors.Is(err, errGateAborted) {
-			return Unwind(ctx, deps, start, made, errGateAborted)
-		}
-		return err
+		// Unwind, not surfaceAndUnwind: reviewGate has already surfaced whatever
+		// needed a StageFailed.
+		return Unwind(ctx, deps, start, made, err)
 	}
 
 	// Stage 5 — record: project the version file, write the changelog, then fold BOTH
@@ -1578,10 +1572,7 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //     the presenter returns the gate Default (ChoiceYes), so the loop accepts
 //     immediately and `r` is never reached — regenerate is interactive-only.
 //   - ChoiceNo aborts: it returns a clean errGateAborted cause WITHOUT emitting an
-//     Unwound — Release routes the gate-no through the shared auto-unwind (which
-//     authors the Unwound and resets whatever mint made), so a user-abort and a
-//     pre-push failure share one path. The gate sits BEFORE any mutation, so the
-//     unwind finds nothing to reset; the run still exits non-zero.
+//     Unwound.
 //   - ChoiceEdit edits: the editor seam returns the saved text, which REPLACES the
 //     body VERBATIM — no re-parse, no re-validation (a human edit is trusted;
 //     structural validation only ever guards untrusted AI output). The notes are
@@ -1596,6 +1587,8 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //     Regenerator,
 //     REPLACES the body with the regenerated text, re-shows the notes, and LOOPS so
 //     the user may regenerate again or settle on y/n/e.
+//
+// The gate never unwinds or emits an Unwound; any reset is the caller's.
 func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen reviewRegen, gate presenter.Gate, body, versionKey string) (string, error) {
 	for {
 		choice, err := ReviewDecision(p, gate)
