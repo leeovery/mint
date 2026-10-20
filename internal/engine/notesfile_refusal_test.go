@@ -51,15 +51,22 @@ func notesFileRefusals(t *testing.T) []notesFileRefusal {
 // refusal line, having run no command and shown nothing else.
 func assertRefusedBeforeAnyStep(t *testing.T, err error, rec *presentertest.RecordingPresenter, f *runner.FakeRunner, wantMsg string) {
 	t.Helper()
+	if got := f.Invocations(); len(got) != 0 {
+		t.Errorf("commands ran = %v, want none", commandLines(got))
+	}
+	assertNotesRefusal(t, err, rec, wantMsg)
+}
+
+// assertNotesRefusal fails unless err is an exit-1 abort and the presenter showed
+// only the one notes-stage refusal line.
+func assertNotesRefusal(t *testing.T, err error, rec *presentertest.RecordingPresenter, wantMsg string) {
+	t.Helper()
 	var abort *engine.AbortError
 	if !errors.As(err, &abort) {
 		t.Fatalf("error = %v, want an *engine.AbortError", err)
 	}
 	if abort.ExitCode != 1 {
 		t.Errorf("exit code = %d, want 1", abort.ExitCode)
-	}
-	if got := f.Invocations(); len(got) != 0 {
-		t.Errorf("commands ran = %v, want none", commandLines(got))
 	}
 	if len(rec.Events) != 1 || rec.Events[0].Kind != presentertest.KindStageFailed {
 		t.Fatalf("presenter events = %+v, want exactly one StageFailed", rec.Events)
@@ -90,25 +97,59 @@ func TestRelease_UnusableNotesFile_IsRefusedBeforeAnyStep(t *testing.T) {
 	}
 }
 
-func TestRegenerateRun_UnusableNotesFile_IsRefusedBeforeAnyStep(t *testing.T) {
+func TestReadNotesFile_UnusableNotesFile_IsRefusedOnTheNotesStage(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range notesFileRefusals(t) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			root := t.TempDir()
-			f := runner.NewFakeRunner()
 			rec := &presentertest.RecordingPresenter{}
-			req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
-			req.ReleaseBranch = regenReleaseBranch
-			req.NotesFile = tt.path
-			req.NotesFileSet = true
-			req.ProduceBody = noBodyProduction(t)
 
-			err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), newFakePublisher(), root, req)
+			body, err := engine.ReadNotesFile(rec, tt.path, true)
 
-			assertRefusedBeforeAnyStep(t, err, rec, f, tt.wantMsg)
+			if body != nil {
+				t.Errorf("body = %q, want none for an unusable file", *body)
+			}
+			assertNotesRefusal(t, err, rec, tt.wantMsg)
 		})
+	}
+}
+
+func TestReadNotesFile_FlagNotGiven_ReadsNothingAndShowsNothing(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+
+	body, err := engine.ReadNotesFile(rec, "", false)
+
+	if err != nil {
+		t.Fatalf("ReadNotesFile returned error %v, want nil when --notes-file is not given", err)
+	}
+	if body != nil {
+		t.Errorf("body = %q, want none when --notes-file is not given", *body)
+	}
+	if len(rec.Events) != 0 {
+		t.Errorf("presenter events = %+v, want none", rec.Events)
+	}
+}
+
+func TestReadNotesFile_UsableFile_ReturnsItsBodyByteIdentical(t *testing.T) {
+	t.Parallel()
+
+	const raw = "## Notes\n\n- first\r\n- second  \n\n"
+	path := writeNotesFile(t, t.TempDir(), "notes.md", raw)
+	rec := &presentertest.RecordingPresenter{}
+
+	body, err := engine.ReadNotesFile(rec, path, true)
+
+	if err != nil {
+		t.Fatalf("ReadNotesFile returned error: %v", err)
+	}
+	if body == nil || *body != raw {
+		t.Errorf("body = %v, want %q", body, raw)
+	}
+	if len(rec.Events) != 0 {
+		t.Errorf("presenter events = %+v, want none", rec.Events)
 	}
 }

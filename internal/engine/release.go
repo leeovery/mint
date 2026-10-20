@@ -317,9 +317,9 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p := deps.Presenter
 
 	notesPath := notesFilePath(opts.WorkDir, opts.NotesFile)
-	supplied, err := readNotesFile(notesPath, opts.NotesFileSet)
+	supplied, err := ReadNotesFile(p, notesPath, opts.NotesFileSet)
 	if err != nil {
-		return surface(p, "notes", err)
+		return err
 	}
 
 	// Stage 1 — resolve root, load config, resolve branch, compute the tag.
@@ -893,6 +893,17 @@ func realPath(p string) string {
 		return resolved
 	}
 	return p
+}
+
+// ReadNotesFile reads the --notes-file body, or returns nil when the flag was not
+// given. An unusable file is shown on p as the notes stage's failure and returned as
+// an exit-1 *AbortError.
+func ReadNotesFile(p presenter.Presenter, path string, set bool) (*string, error) {
+	supplied, err := readNotesFile(path, set)
+	if err != nil {
+		return nil, surface(p, "notes", err)
+	}
+	return supplied, nil
 }
 
 // readNotesFile reads the --notes-file body, or returns nil when the flag was not

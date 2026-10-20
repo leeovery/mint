@@ -28,11 +28,18 @@ func noBodyProduction(t *testing.T) func(context.Context, engine.RegenerateSourc
 	}
 }
 
+// notesFileRunReq reads path as mint does at startup and builds the run request
+// that carries its body.
 func notesFileRunReq(t *testing.T, path string, target engine.RegenerateTarget) engine.RegenerateRunRequest {
 	t.Helper()
+	supplied, err := engine.ReadNotesFile(&presentertest.RecordingPresenter{}, path, true)
+	if err != nil {
+		t.Fatalf("reading --notes-file %s: %v", path, err)
+	}
 	req := runReq(engine.SourceUnset(), engine.TargetOf(target), false)
 	req.ReleaseBranch = regenReleaseBranch
 	req.NotesFile = path
+	req.Supplied = supplied
 	req.ProduceBody = noBodyProduction(t)
 	return req
 }

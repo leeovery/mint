@@ -101,7 +101,7 @@ func TestRunRegenerate_NotesFileWithAllOrSource_ExitsWithTheUsageCode(t *testing
 	}
 }
 
-func TestRegenerateRunFlags_EmptyNotesFilePath_CountsAsTheFlagGiven(t *testing.T) {
+func TestParseRegenerateFlags_EmptyNotesFilePath_CountsAsTheFlagGiven(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -116,8 +116,8 @@ func TestRegenerateRunFlags_EmptyNotesFilePath_CountsAsTheFlagGiven(t *testing.T
 		if err != nil {
 			t.Fatalf("parseRegenerateFlags(%q) returned error: %v", tc.args, err)
 		}
-		if got := regenerateRunFlags(req).NotesFileSet; got != tc.wantSet {
-			t.Errorf("regenerateRunFlags(%q).NotesFileSet = %v, want %v", tc.args, got, tc.wantSet)
+		if req.NotesFileSet != tc.wantSet {
+			t.Errorf("parseRegenerateFlags(%q) NotesFileSet = %v, want %v", tc.args, req.NotesFileSet, tc.wantSet)
 		}
 	}
 }

@@ -139,10 +139,21 @@ func runRegenerate(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
+	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin)
+	return regenerate(ctx, p, runner.NewExecRunner(), req)
+}
+
+// regenerate runs a parsed regenerate invocation. Any --notes-file is read first, so
+// an unusable one is refused ahead of the repo, config and release-branch resolution.
+func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunner, req regenerateRequest) int {
+	supplied, err := engine.ReadNotesFile(p, req.NotesFile, req.NotesFileSet)
+	if err != nil {
+		return exitCode(err)
+	}
+
 	// The changelog-disabled axis check needs the loaded config; resolve the repo
 	// root and load it the same way the forward release pipeline does (read-only —
 	// no mutation, no network).
-	r := runner.NewExecRunner()
 	root, err := gitrepo.ResolveRoot(ctx, r)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -166,7 +177,6 @@ func runRegenerate(ctx context.Context, rest []string) int {
 	// single-version path threads it into RegenerateRun, which preflights the RESOLVED
 	// target AFTER the interactive source/target prompts — the only point at which a bare
 	// `regenerate <ver>` (no --target) knows which surface(s) it writes.
-	p := presenter.NewForStartup(validated.Plain, validated.Yes, os.Stdout, os.Stderr, os.Stdin)
 	releaseBranch, err := gitrepo.ResolveReleaseBranch(ctx, r, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -190,7 +200,7 @@ func runRegenerate(ctx context.Context, rest []string) int {
 		return runRegenerateAll(ctx, deps, r, cfg, root, releaseBranch, validated)
 	}
 
-	return runRegenerateSingle(ctx, deps, r, cfg, root, releaseBranch, validated)
+	return runRegenerateSingle(ctx, deps, r, cfg, root, releaseBranch, validated, supplied)
 }
 
 // runRegenerateSingle executes one single-version interactive regenerate run: it
@@ -200,8 +210,8 @@ func runRegenerate(ctx context.Context, rest []string) int {
 // showing the plan, and confirming before the write. releaseBranch threads to the
 // engine for the preflight on-branch / remote-sync gates, which run AFTER the
 // interactive target resolves (a bare `regenerate <ver>` does not know its surface(s)
-// until then).
-func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest) int {
+// until then). supplied is the --notes-file body read at startup, nil without the flag.
+func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.CommandRunner, cfg config.Config, root, releaseBranch string, req regenerateRequest, supplied *string) int {
 	res, err := version.ResolveRegenerateTarget(ctx, r, cfg.Release.TagPrefix, req.Version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -227,6 +237,7 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 	}
 
 	runReq := regenerateRunFlags(req)
+	runReq.Supplied = supplied
 	runReq.Tag = res.Tag
 	runReq.VersionKey = versionKey.String("")
 	runReq.Project = filepath.Base(root)

@@ -124,15 +124,13 @@ type RegenerateRunRequest struct {
 	// the changelog/both options are not offerable (the static config check upstream
 	// already rejects a flag-supplied changelog/both target).
 	ChangelogEnabled bool
-	// NotesFile is the --notes-file path, empty when not given. A relative path
-	// resolves against the process working directory. RegenerateRun reads it once,
-	// before any gate or check, and its body takes the place of the source: no source
-	// question is asked and ProduceBody is never called. A file inside the repo is left
-	// out of the clean-tree check and the changelog commit.
+	// NotesFile is the --notes-file path, empty when not given. A file inside the repo
+	// is left out of the clean-tree check and the changelog commit.
 	NotesFile string
-	// NotesFileSet reports that --notes-file was given, so an empty NotesFile is
-	// refused as naming no file rather than read as the flag left off.
-	NotesFileSet bool
+	// Supplied is the body ReadNotesFile read from NotesFile at startup, nil when
+	// --notes-file was not given. It takes the place of the source: no source question
+	// is asked and ProduceBody is never called.
+	Supplied *string
 	// Yes is the -y flag. It does NOT change which gates the engine calls — every gate
 	// is still called and the presenter skips internally — but it threads to the write
 	// request for the confirm/review gate's internal skip.
@@ -161,12 +159,8 @@ type RegenerateRunRequest struct {
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
 
-	supplied, err := readNotesFile(req.NotesFile, req.NotesFileSet)
-	if err != nil {
-		return surface(p, "notes", err)
-	}
 	sourceOpt := req.Source
-	if supplied != nil {
+	if req.Supplied != nil {
 		sourceOpt = SourceOf(regenerateSourceSupplied)
 	}
 
@@ -232,7 +226,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// resolves; a failure surfaces a StageFailed (via surface) and emits no
 	// StageSucceeded.
 	stage := startNotesStage(p)
-	body, err := produceRegenerateBody(ctx, req, source, supplied, stage)
+	body, err := produceRegenerateBody(ctx, req, source, stage)
 	if err != nil {
 		return surface(p, "notes", err)
 	}
@@ -249,9 +243,9 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	})
 }
 
-func produceRegenerateBody(ctx context.Context, req RegenerateRunRequest, source RegenerateSource, supplied *string, progress notes.Progress) (string, error) {
-	if supplied != nil {
-		return *supplied, nil
+func produceRegenerateBody(ctx context.Context, req RegenerateRunRequest, source RegenerateSource, progress notes.Progress) (string, error) {
+	if req.Supplied != nil {
+		return *req.Supplied, nil
 	}
 	return req.ProduceBody(ctx, source, progress)
 }
