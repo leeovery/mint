@@ -87,9 +87,9 @@ func (g *Generator) WithProgress(progress Progress) *Generator {
 //     Change Map + diff + closing reminder, nothing else; no commit messages).
 //  4. The size check — a single-pass prompt within max_prompt_bytes goes to
 //     transport.Generate as one call; one over it skips that call and is written by
-//     chunk calls and one merge call instead (generateChunked). A single-pass call
-//     whose failure is classified SIZE is written the same way, by chunk calls each
-//     at most half the failed call's size.
+//     chunk calls and one merge call instead (generateChunked). A single-pass or
+//     chunk call whose failure is classified SIZE has its slice re-sent as chunk
+//     calls each at most half the failed call's size; a merge call's is not.
 //
 // The body is returned WHOLE: no parsing, splitting, label extraction, or
 // per-sink reassembly — a valid generation, single-pass or merged, passes through

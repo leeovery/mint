@@ -3,6 +3,7 @@ package notes
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,15 +20,18 @@ const fileDiffHeader = "diff --git "
 // one merge call of at most maxPromptBytes turns every chunk's notes, in chunk order,
 // into the body. The merge output is returned byte-identical. promptBytes is the
 // single-pass prompt's size, reported to g.progress with the run's advance. No call
-// over its bound is sent: ErrNoRoomForDiff before any call, ErrMergeTooLarge in
-// place of the merge.
+// over its bound is sent: ErrNoRoomForDiff in place of a call with no room for diff,
+// ErrMergeTooLarge in place of the merge. A merge call whose failure is classified
+// SIZE is never halved: it fails as ErrMergeTooLarge, carrying the call's own failure.
 func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, target, maxPromptBytes int) (string, error) {
-	parts, err := cutParts(instructions, changeMap, splitFileDiffs(diff), target)
+	files := splitFileDiffs(diff)
+	cut := newCutter(instructions, changeMap, files)
+	parts, err := cut.cutParts(files, target)
 	if err != nil {
 		return "", err
 	}
 
-	partNotes, err := g.generateParts(ctx, instructions, changeMap, parts, promptBytes)
+	partNotes, err := newWave(g, cut, parts, promptBytes).run(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -36,12 +40,15 @@ func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap
 	if len(mergePrompt) > maxPromptBytes {
 		return "", ErrMergeTooLarge
 	}
-	g.progress.Merging(len(parts))
-	body, _, err := g.generate(ctx, mergePrompt)
+	g.progress.Merging(len(partNotes))
+	body, code, err := g.generate(ctx, mergePrompt)
 	if err != nil {
+		if code == codeSize {
+			return "", fmt.Errorf("%w: %w", ErrMergeTooLarge, err)
+		}
 		return "", &callError{action: "merging part notes", location: "merging", err: err}
 	}
-	g.progress.Merged(len(parts))
+	g.progress.Merged(len(partNotes))
 	return body, nil
 }
 
@@ -66,60 +73,142 @@ func (e *callError) Unwrap() error { return e.err }
 // never lands all of its calls on the machine and the provider's limits at once.
 const maxChunkCallsInFlight = 4
 
-// generateParts makes one chunk call per part, at most maxChunkCallsInFlight at a
-// time, and returns their notes in part order once every call has finished. Each call
-// runs on ctx itself: the wave sets no deadline of its own, so a timeout is per call.
-// The first call to fail stops the wave: no further call starts, the calls already
-// running finish, and that failure is returned. ctx ending stops it too, and its error
-// is returned over any earlier failure. Each part that succeeds is reported to
-// g.progress as it finishes.
-func (g *Generator) generateParts(ctx context.Context, instructions, changeMap string, parts []chunkPart, promptBytes int) ([]string, error) {
-	partNotes := make([]string, len(parts))
-	slots := make(chan struct{}, maxChunkCallsInFlight)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var firstErr error
-	done := 0
-	stopped := func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return firstErr != nil || ctx.Err() != nil
+// wave makes a chunked run's chunk calls, at most maxChunkCallsInFlight at a time.
+// Parts are numbered by their place in chunk order at the moment each call is
+// composed, so a halved part's new parts, taking its place, move every later part's
+// number up. Its calls run on the run's ctx itself: the wave sets no deadline of its
+// own, so a timeout is per call.
+type wave struct {
+	g           *Generator
+	cut         cutter
+	promptBytes int
+
+	mu      sync.Mutex
+	changed *sync.Cond
+	// slots is every part in chunk order; queue the parts not yet sent, in send order.
+	slots    []*waveSlot
+	queue    []*waveSlot
+	inFlight int
+	done     int
+	failure  error
+}
+
+type waveSlot struct {
+	part  chunkPart
+	notes string
+}
+
+func newWave(g *Generator, cut cutter, parts []chunkPart, promptBytes int) *wave {
+	w := &wave{g: g, cut: cut, promptBytes: promptBytes}
+	w.changed = sync.NewCond(&w.mu)
+	for _, part := range parts {
+		w.slots = append(w.slots, &waveSlot{part: part})
 	}
-	g.progress.PartsDone(promptBytes, len(parts), done)
-	for i, part := range parts {
-		slots <- struct{}{}
-		if stopped() {
-			<-slots
+	w.queue = slices.Clone(w.slots)
+	return w
+}
+
+// run sends every part and returns their notes in chunk order once every call has
+// finished. A call whose failure is classified SIZE has its slice re-cut at half the
+// call's size, and the new parts are queued behind the parts not yet sent. Any other
+// failure stops the wave: no further call starts, the calls already running finish,
+// and the first such failure is returned. ctx ending stops it too, and its error is
+// returned over any earlier failure. Each part that succeeds is reported to
+// g.progress as it finishes.
+func (w *wave) run(ctx context.Context) ([]string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.g.progress.PartsDone(w.promptBytes, len(w.slots), w.done)
+	for {
+		for w.inFlight > 0 && !w.canSend(ctx) {
+			w.changed.Wait()
+		}
+		if !w.canSend(ctx) {
 			break
 		}
-		wg.Go(func() {
-			// Released last, after the outcome is recorded, so the wave sees a failure
-			// before it can start a call in the freed slot.
-			defer func() { <-slots }()
-			prompt := composeChunkPrompt(instructions, changeMap, part.framing(i+1, len(parts)), part.slice)
-			notes, _, err := g.generate(ctx, prompt)
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				if firstErr == nil {
-					firstErr = partCallError(i+1, len(parts), err)
-				}
-				return
-			}
-			partNotes[i] = notes
-			done++
-			g.progress.PartsDone(promptBytes, len(parts), done)
-		})
+		slot := w.queue[0]
+		w.queue = w.queue[1:]
+		w.inFlight++
+		go w.send(ctx, slot, slot.part, w.prompt(slot))
 	}
-	wg.Wait()
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if firstErr != nil {
-		return nil, firstErr
+	if w.failure != nil {
+		return nil, w.failure
+	}
+	partNotes := make([]string, len(w.slots))
+	for i, slot := range w.slots {
+		partNotes[i] = slot.notes
 	}
 	return partNotes, nil
+}
+
+func (w *wave) canSend(ctx context.Context) bool {
+	return w.failure == nil && ctx.Err() == nil && len(w.queue) > 0 && w.inFlight < maxChunkCallsInFlight
+}
+
+func (w *wave) prompt(slot *waveSlot) string {
+	part := slices.Index(w.slots, slot) + 1
+	return composeChunkPrompt(w.cut.instructions, w.cut.changeMap, slot.part.framing(part, len(w.slots)), slot.part.slice)
+}
+
+// send makes one part's chunk call and records its outcome. part is slot's part as
+// it was when the call was composed, copied under the lock, since a halving
+// elsewhere can renumber slot's piece while the call runs. The call's place in flight
+// is freed in the same step that records the outcome, so the wave sees a failure, or
+// a halved part's new parts, before it can send another call in that place.
+func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt string) {
+	notes, code, err := w.g.generate(ctx, prompt)
+	var halves []chunkPart
+	var recutErr error
+	if err != nil && code == codeSize {
+		halves, recutErr = w.cut.recut(part, len(prompt)/2)
+	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	defer w.changed.Broadcast()
+	w.inFlight--
+	switch {
+	case err == nil:
+		slot.notes = notes
+		w.done++
+		w.g.progress.PartsDone(w.promptBytes, len(w.slots), w.done)
+	case code == codeSize && recutErr == nil:
+		w.halve(slot, halves)
+	case w.failure == nil && recutErr != nil:
+		w.failure = recutErr
+	case w.failure == nil:
+		w.failure = partCallError(slices.Index(w.slots, slot)+1, len(w.slots), err)
+	}
+}
+
+// halve puts the parts slot's slice was re-cut into in its place in chunk order and
+// queues them. The pieces of a re-cut piece's file are renumbered by their place
+// among that file's pieces.
+func (w *wave) halve(slot *waveSlot, halves []chunkPart) {
+	replacements := make([]*waveSlot, len(halves))
+	for i, part := range halves {
+		replacements[i] = &waveSlot{part: part}
+	}
+	at := slices.Index(w.slots, slot)
+	w.slots = slices.Replace(w.slots, at, at+1, replacements...)
+	w.queue = append(w.queue, replacements...)
+
+	if slot.part.file == "" {
+		return
+	}
+	var pieces []*waveSlot
+	for _, s := range w.slots {
+		if s.part.file == slot.part.file && s.part.header == slot.part.header {
+			pieces = append(pieces, s)
+		}
+	}
+	for i, s := range pieces {
+		s.part.piece, s.part.pieces = i+1, len(pieces)
+	}
 }
 
 // splitFileDiffs cuts diff into one section per file, in path order. git emits path
@@ -190,25 +279,40 @@ func destinationPath(lines string) (string, bool) {
 // file too big for a chunk on its own.
 type chunkPart struct {
 	slice string
-	// file is the path of the file a piece is cut from, empty for whole files.
-	file          string
+	// file is the path of the file a piece is cut from, empty for whole files, and
+	// header the file's diff header the piece's slice opens with.
+	file, header  string
 	piece, pieces int
+}
+
+// cutter cuts a run's diff into chunk calls carrying its instructions and Change Map.
+type cutter struct {
+	instructions, changeMap string
+	// numberBound bounds the part and piece numbers any of the run's framing names:
+	// the diff's byte length, since every part carries at least one byte of it.
+	numberBound int
+}
+
+func newCutter(instructions, changeMap string, files []string) cutter {
+	diffBytes := 0
+	for _, file := range files {
+		diffBytes += len(file)
+	}
+	return cutter{instructions: instructions, changeMap: changeMap, numberBound: diffBytes}
+}
+
+// fixedPart is the size of p's call without its slice, its framing numbered at the
+// bound so the call fits whatever place it takes in the run.
+func (c cutter) fixedPart(p chunkPart) int {
+	return len(composeChunkPrompt(c.instructions, c.changeMap, p.framing(c.numberBound, c.numberBound), ""))
 }
 
 // cutParts cuts files, in order, into chunk calls of at most target bytes: whole
 // files packed into chunks, and a file bigger than a chunk's room cut into pieces in
-// its place. Room is measured with framing numbered at the diff's byte length, which
-// bounds the part and piece counts since every part carries at least one byte of it.
-// It fails with ErrNoRoomForDiff when any call it would cut has no room for diff.
-func cutParts(instructions, changeMap string, files []string, target int) ([]chunkPart, error) {
-	maxParts := 0
-	for _, file := range files {
-		maxParts += len(file)
-	}
-	fixedPart := func(p chunkPart) int {
-		return len(composeChunkPrompt(instructions, changeMap, p.framing(maxParts, maxParts), ""))
-	}
-	room := target - fixedPart(chunkPart{})
+// its place. It fails with ErrNoRoomForDiff when any call it would cut has no room
+// for diff.
+func (c cutter) cutParts(files []string, target int) ([]chunkPart, error) {
+	room := target - c.fixedPart(chunkPart{})
 	if room <= 0 {
 		return nil, ErrNoRoomForDiff
 	}
@@ -227,9 +331,8 @@ func cutParts(instructions, changeMap string, files []string, target int) ([]chu
 			continue
 		}
 		flush()
-		path := headerPath(file)
-		pieceRoom := target - fixedPart(chunkPart{file: path, piece: maxParts, pieces: maxParts})
-		pieces, err := cutPieces(file, path, pieceRoom)
+		header, body := splitFileHeader(file)
+		pieces, err := c.cutPieces(header, body, headerPath(file), target)
 		if err != nil {
 			return nil, err
 		}
@@ -237,6 +340,15 @@ func cutParts(instructions, changeMap string, files []string, target int) ([]chu
 	}
 	flush()
 	return parts, nil
+}
+
+// recut cuts p's slice again into calls of at most target bytes: a chunk's files by
+// the packing and piece rules, a piece's diff into smaller pieces of its file.
+func (c cutter) recut(p chunkPart, target int) ([]chunkPart, error) {
+	if p.file == "" {
+		return c.cutParts(splitFileDiffs(p.slice), target)
+	}
+	return c.cutPieces(p.header, strings.TrimPrefix(p.slice, p.header), p.file, target)
 }
 
 // packChunks fills each chunk with whole items, in order, until the next item would
@@ -257,11 +369,12 @@ func packChunks(items []string, room int) []string {
 	return chunks
 }
 
-// cutPieces cuts one file's diff into pieces whose slices each repeat the file's
-// header and fit room. Cuts fall between hunks where each hunk fits, else between
-// lines, else between characters. A room the header fills is ErrNoRoomForDiff.
-func cutPieces(file, path string, room int) ([]chunkPart, error) {
-	header, body := splitFileHeader(file)
+// cutPieces cuts the body of path's diff into piece calls of at most target bytes,
+// each slice repeating the file's header. Cuts fall between hunks where each hunk
+// fits, else between lines, else between characters. A room the header fills is
+// ErrNoRoomForDiff.
+func (c cutter) cutPieces(header, body, path string, target int) ([]chunkPart, error) {
+	room := target - c.fixedPart(chunkPart{file: path, piece: c.numberBound, pieces: c.numberBound})
 	bodyRoom := room - len(header)
 	if bodyRoom <= 0 {
 		return nil, ErrNoRoomForDiff
@@ -281,7 +394,7 @@ func cutPieces(file, path string, room int) ([]chunkPart, error) {
 	}
 	pieces := make([]chunkPart, len(bodies))
 	for i, b := range bodies {
-		pieces[i] = chunkPart{slice: header + b, file: path, piece: i + 1, pieces: len(bodies)}
+		pieces[i] = chunkPart{slice: header + b, file: path, header: header, piece: i + 1, pieces: len(bodies)}
 	}
 	return pieces, nil
 }

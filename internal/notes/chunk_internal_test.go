@@ -16,7 +16,7 @@ func TestCutParts_RoomForChunksButNoneForAPieceAfterItsHeader_NoRoomForDiff(t *t
 	// a piece's longer framing needs.
 	maxPromptBytes := chunkFixed + 10
 
-	_, err := cutParts(DefaultPrompt, "", []string{file}, maxPromptBytes)
+	_, err := newCutter(DefaultPrompt, "", []string{file}).cutParts([]string{file}, maxPromptBytes)
 
 	if !errors.Is(err, ErrNoRoomForDiff) {
 		t.Errorf("cutParts error = %v, want ErrNoRoomForDiff", err)
@@ -30,7 +30,7 @@ func TestCutParts_ChunkFixedPartFillsTheCap_NoRoomForDiff(t *testing.T) {
 	maxParts := len(file)
 	chunkFixed := len(composeChunkPrompt(DefaultPrompt, "", chunkPart{}.framing(maxParts, maxParts), ""))
 
-	_, err := cutParts(DefaultPrompt, "", []string{file}, chunkFixed)
+	_, err := newCutter(DefaultPrompt, "", []string{file}).cutParts([]string{file}, chunkFixed)
 
 	if !errors.Is(err, ErrNoRoomForDiff) {
 		t.Errorf("cutParts error = %v, want ErrNoRoomForDiff", err)
@@ -44,7 +44,7 @@ func TestCutParts_OneByteOfRoomForAOneByteFile_CutsOneChunk(t *testing.T) {
 	maxParts := len(file)
 	chunkFixed := len(composeChunkPrompt(DefaultPrompt, "", chunkPart{}.framing(maxParts, maxParts), ""))
 
-	parts, err := cutParts(DefaultPrompt, "", []string{file}, chunkFixed+1)
+	parts, err := newCutter(DefaultPrompt, "", []string{file}).cutParts([]string{file}, chunkFixed+1)
 
 	if err != nil {
 		t.Fatalf("cutParts returned unexpected error: %v", err)
@@ -65,7 +65,7 @@ func TestCutParts_PieceRoomSmallerThanACharacter_NoRoomForDiff(t *testing.T) {
 	// One byte of body room per piece: too little for the two-byte é.
 	maxPromptBytes := pieceFixed + len(header) + 1
 
-	parts, err := cutParts(DefaultPrompt, "", []string{file}, maxPromptBytes)
+	parts, err := newCutter(DefaultPrompt, "", []string{file}).cutParts([]string{file}, maxPromptBytes)
 
 	if !errors.Is(err, ErrNoRoomForDiff) {
 		t.Errorf("cutParts error = %v with %d parts, want ErrNoRoomForDiff", err, len(parts))
