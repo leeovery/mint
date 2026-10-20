@@ -113,30 +113,65 @@ func abortError(failure error) error {
 	return fmt.Errorf("notes generation failed (%s): %w", causeText(failure), failure)
 }
 
-// CauseText derives the concise display phrase for a notes/AI failure, matched through
-// the %w chain. A size sentinel's phrase wins over the call failure it may wrap, and
-// only ErrTooLargeForModel's takes a location. A generation failure reads by whether
-// its captured output holds any text, and one that belongs to one call of a chunked
-// run ends with that call's place in it.
+// Cause is a known notes-failure cause; its zero value is none.
+type Cause int
+
+const (
+	CauseNoRoomForDiff Cause = iota + 1
+	CauseMergeTooLarge
+	CauseTooLargeForModel
+	CauseTimeout
+	CauseCommandMissing
+	CauseGenerationFailed
+)
+
+// ClassifyFailure sorts a notes/AI failure into its Cause, matched through the %w
+// chain. Order matters: a size sentinel may wrap the call's own ai.ErrGenerationFailed,
+// and its size cause wins. It returns (cause, true) for a known notes failure and
+// (0, false) for any other error.
+func ClassifyFailure(failure error) (Cause, bool) {
+	switch {
+	case errors.Is(failure, ErrNoRoomForDiff):
+		return CauseNoRoomForDiff, true
+	case errors.Is(failure, ErrMergeTooLarge):
+		return CauseMergeTooLarge, true
+	case errors.Is(failure, ErrTooLargeForModel):
+		return CauseTooLargeForModel, true
+	case errors.Is(failure, ai.ErrTimeout):
+		return CauseTimeout, true
+	case errors.Is(failure, ai.ErrCommandMissing):
+		return CauseCommandMissing, true
+	case errors.Is(failure, ai.ErrGenerationFailed):
+		return CauseGenerationFailed, true
+	}
+	return 0, false
+}
+
+// CauseText derives the concise display phrase for a notes/AI failure from its
+// ClassifyFailure cause. Of the size causes only a too-large-for-the-model takes a
+// location. A generation failure reads by whether its captured output holds any text,
+// and one that belongs to one call of a chunked run ends with that call's place in it.
 // It returns (phrase, true) for a known notes failure and ("", false) for any other
 // error.
 func CauseText(failure error) (string, bool) {
-	var phrase string
-	switch {
-	case errors.Is(failure, ErrNoRoomForDiff):
-		return ErrNoRoomForDiff.Error(), true
-	case errors.Is(failure, ErrMergeTooLarge):
-		return ErrMergeTooLarge.Error(), true
-	case errors.Is(failure, ErrTooLargeForModel):
-		phrase = ErrTooLargeForModel.Error()
-	case errors.Is(failure, ai.ErrTimeout):
-		phrase = "AI timed out"
-	case errors.Is(failure, ai.ErrCommandMissing):
-		phrase = "AI tool not installed"
-	case errors.Is(failure, ai.ErrGenerationFailed):
-		phrase = generationFailurePhrase(failure)
-	default:
+	cause, known := ClassifyFailure(failure)
+	if !known {
 		return "", false
+	}
+	var phrase string
+	switch cause {
+	case CauseNoRoomForDiff:
+		return ErrNoRoomForDiff.Error(), true
+	case CauseMergeTooLarge:
+		return ErrMergeTooLarge.Error(), true
+	case CauseTooLargeForModel:
+		phrase = ErrTooLargeForModel.Error()
+	case CauseTimeout:
+		phrase = "AI timed out"
+	case CauseCommandMissing:
+		phrase = "AI tool not installed"
+	case CauseGenerationFailed:
+		phrase = generationFailurePhrase(failure)
 	}
 	var call *callError
 	if errors.As(failure, &call) {

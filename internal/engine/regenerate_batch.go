@@ -382,10 +382,11 @@ const (
 // and the failed call's captured output to render beneath it: the ✗ line's cause
 // phrase and output for a generation failure, the generic reason and none otherwise.
 func notesSkipCause(failure error) (reason, output string) {
-	if phrase, known := notes.CauseText(failure); known {
-		return phrase, notesFailureOutput(failure)
+	if _, known := notes.ClassifyFailure(failure); !known {
+		return reasonNotesFailed, ""
 	}
-	return reasonNotesFailed, ""
+	phrase, _ := notes.CauseText(failure)
+	return phrase, notesFailureOutput(failure)
 }
 
 // preReadDeterministicBody pre-reads a DETERMINISTIC source's body for the batch skip

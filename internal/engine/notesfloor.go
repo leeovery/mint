@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"mint/internal/ai"
 	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/presenter"
@@ -27,13 +26,13 @@ func (d ReleaseDeps) offersFloorChoice(opts ReleaseOptions) bool {
 
 // reachesNotesFloor reports whether a notes failure is the notes generation failing,
 // which an attended real run answers at the floor's choice and any other run with the
-// next moves. A cancel is not a notes failure, and an error notes.CauseText does not
-// know came from outside the generation calls.
+// next moves. A cancel is not a notes failure, and an error notes.ClassifyFailure does
+// not know came from outside the generation calls.
 func reachesNotesFloor(failure error) bool {
 	if errors.Is(failure, context.Canceled) {
 		return false
 	}
-	_, generation := notes.CauseText(failure)
+	_, generation := notes.ClassifyFailure(failure)
 	return generation
 }
 
@@ -77,23 +76,29 @@ const leanCommandMove = `if ai_command carries a large overhead of its own, use 
 // command only where the release runs a command of the repo's own, whose overhead
 // alone can overflow the window.
 func causeMoves(failure error, cfg config.Config) []string {
-	switch {
-	case errors.Is(failure, notes.ErrNoRoomForDiff):
-		return []string{noRoomMove(cfg.Release)}
-	case errors.Is(failure, notes.ErrMergeTooLarge):
+	cause, known := notes.ClassifyFailure(failure)
+	if !known {
 		return nil
-	case errors.Is(failure, notes.ErrTooLargeForModel):
+	}
+	switch cause {
+	case notes.CauseNoRoomForDiff:
+		return []string{noRoomMove(cfg.Release)}
+	case notes.CauseMergeTooLarge:
+		return nil
+	case notes.CauseTooLargeForModel:
 		return []string{
 			"lower max_prompt_bytes, since the model accepts less than the cap",
 			leanCommandMove,
 			"exclude generated paths with [release].diff_exclude",
 		}
-	case errors.Is(failure, ai.ErrTimeout):
+	case notes.CauseTimeout:
 		return []string{"raise [release].timeout"}
-	case errors.Is(failure, ai.ErrCommandMissing):
+	case notes.CauseCommandMissing:
 		return []string{"install the AI tool, or set ai_command"}
-	case errors.Is(failure, ai.ErrGenerationFailed) && cfg.AICommandFor(config.VerbRelease) != config.DefaultAICommand:
-		return []string{leanCommandMove}
+	case notes.CauseGenerationFailed:
+		if cfg.AICommandFor(config.VerbRelease) != config.DefaultAICommand {
+			return []string{leanCommandMove}
+		}
 	}
 	return nil
 }
