@@ -345,7 +345,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 3,
-          "current_task": "token-aware-diff-sizing-3-5",
+          "current_task": "token-aware-diff-sizing-3-6",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -397,7 +397,8 @@
             "token-aware-diff-sizing-3-1",
             "token-aware-diff-sizing-3-2",
             "token-aware-diff-sizing-3-3",
-            "token-aware-diff-sizing-3-4"
+            "token-aware-diff-sizing-3-4",
+            "token-aware-diff-sizing-3-5"
           ],
           "staging": {
             "p1": {
@@ -518,6 +519,18 @@
                 "internal/engine/release.go",
                 "internal/engine/regenerate_write.go",
                 "internal/engine/regenerate_interactive.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-3-5",
+              "source": "reviewer",
+              "summary": "On regenerate the --notes-file refusal is not the first thing reported: the cmd layer's publisher resolution runs, and can warn, before RegenerateRun reads the file",
+              "failure": "An operator on a non-github origin or with no remote who hits a refused mint release regenerate <v> --notes-file P first sees 'publish skipped: provider could not be resolved (...); downgrading to tag + push only' and only then the refusal, a downgrade notice for a run that never starts, where 13.2 promises the file is read at startup before any check and the task promises one clear line",
+              "detail": "cmd/mint/main.go:224 resolveRegeneratePublisher calls internal/engine/release.go:1144-1146 warnPublishDowngraded before engine.RegenerateRun reads the file at internal/engine/regenerate_interactive.go:164; version-tag resolution at main.go:205 also comes first but exits 2 as usage-class; fix by reading the file in runRegenerateSingle before publisher resolution and carrying the body into the run request, or moving publisher resolution after the read",
+              "files": [
+                "cmd/mint/main.go",
+                "internal/engine/regenerate_interactive.go",
+                "internal/engine/release.go"
               ]
             }
           ]
