@@ -61,14 +61,9 @@ func ResolveFailure(ctx context.Context, r runner.CommandRunner, failure error, 
 	return "", abortError(failure)
 }
 
+// Not for a released version's own range: VersionNoAIBody drops its bookkeeping commit.
 func resolveFallbackBody(ctx context.Context, r runner.CommandRunner, lastTag string) (string, error) {
-	return RangeNoAIBody(ctx, r, lastTag+"..HEAD")
-}
-
-// RangeNoAIBody is the commit-subject list over revRange, or the maintenance-release
-// body when the range lists none.
-func RangeNoAIBody(ctx context.Context, r runner.CommandRunner, revRange string) (string, error) {
-	body, err := rangeSubjects(ctx, r, revRange)
+	body, err := rangeSubjects(ctx, r, lastTag+"..HEAD")
 	if err != nil {
 		return "", err
 	}
