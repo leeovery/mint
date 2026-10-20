@@ -136,7 +136,11 @@ func forwardRange(lastTag string) string {
 // for downstream layering (the Change Map preamble and the max_prompt_bytes size check
 // are applied by later layers, not here).
 //
-// The diff is produced by `git diff {lastTag}..HEAD -- . {excludePathspecs}`, where
+// The diff is produced by
+// `git diff --src-prefix=a/ --dst-prefix=b/ {lastTag}..HEAD -- . {excludePathspecs}`.
+// The pinned prefixes override any diff.noprefix, diff.mnemonicPrefix or custom
+// diff.srcPrefix/diff.dstPrefix in the operator's git config, so every file header
+// takes the "a/P b/P" form the chunker's headerPath reads.
 // excludePathspecs is `:(exclude)CHANGELOG.md` followed by one `:(exclude)<glob>` per
 // configured diff_exclude glob, and — only in PLAIN mode — the strategy-aware
 // `:(exclude)<version_file>` (see excludePathspecs), run cwd-relative like the other
@@ -163,9 +167,10 @@ func (a *Assembler) AssembleDiff(ctx context.Context, lastTag string) (string, e
 // AssembleRange is AssembleDiff over an ARBITRARY git range — the regenerate fresh
 // source (Phase 5) feeds it `{PreviousTag}..{Tag}` (5-3's DiffRange) instead of the
 // forward `{lastTag}..HEAD`. Everything else is IDENTICAL: the range is diffed via
-// `git diff {range} -- . {excludePathspecs}` with the SAME exclusion tiers — the
-// built-in :(exclude)CHANGELOG.md, the configured diff_exclude globs, and the
-// strategy-aware version_file decision — so the regenerate diff reproduces the forward
+// `git diff --src-prefix=a/ --dst-prefix=b/ {range} -- . {excludePathspecs}` — the
+// same pinned prefixes and the SAME exclusion tiers: the built-in
+// :(exclude)CHANGELOG.md, the configured diff_exclude globs, and the strategy-aware
+// version_file decision — so the regenerate diff reproduces the forward
 // path's source view.
 //
 // Exclusion is PATH-based (the :(exclude) pathspecs), NOT commit-based: a range that
@@ -175,7 +180,7 @@ func (a *Assembler) AssembleDiff(ctx context.Context, lastTag string) (string, e
 // an empty post-exclusion diff is NOT an error. A missing git binary matches
 // runner.ErrCommandNotFound via errors.Is; any other non-zero exit is wrapped.
 func (a *Assembler) AssembleRange(ctx context.Context, diffRange string) (string, error) {
-	args := append([]string{"diff", diffRange, "--", "."}, a.excludePathspecs()...)
+	args := append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", diffRange, "--", "."}, a.excludePathspecs()...)
 	res, err := a.runner.Run(ctx, "git", args...)
 	if err != nil {
 		return "", fmt.Errorf("assembling release diff for %s: %w", diffRange, err)

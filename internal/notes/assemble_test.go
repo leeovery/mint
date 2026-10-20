@@ -9,11 +9,12 @@ import (
 )
 
 // wantArgs is the exact git argv AssembleDiff must issue for a given last tag:
-// `git diff {lastTag}..HEAD -- . ':(exclude)CHANGELOG.md'`. CHANGELOG.md is the
-// built-in non-configurable always-exclude, applied by git via the :(exclude)
+// `git diff --src-prefix=a/ --dst-prefix=b/ {lastTag}..HEAD -- . ':(exclude)CHANGELOG.md'`.
+// The prefixes are pinned so headers read "a/P b/P" whatever the operator's git
+// prefix config. CHANGELOG.md is the built-in non-configurable always-exclude, applied by git via the :(exclude)
 // pathspec — mint does no Go-side text stripping.
 func wantArgs(lastTag string) []string {
-	return []string{"diff", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md"}
+	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md"}
 }
 
 // wantArgsWithExcludes is wantArgs plus one :(exclude)<glob> entry per configured

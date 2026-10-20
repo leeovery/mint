@@ -121,7 +121,7 @@ func TestRegenerateFreshBody_SinglePassClassifiedSize_HalvedOverTheVersionsRange
 	if body != halvedNotesBody {
 		t.Errorf("body = %q, want the merge output byte-identical %q", body, halvedNotesBody)
 	}
-	if !invokedWith(f, "git", "diff", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md") {
 		t.Errorf("the halved run did not diff the version's own range; got %v", f.Invocations())
 	}
 }

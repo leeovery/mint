@@ -245,7 +245,7 @@ func TestGenerator_Generate_DiffExcludeGlobsReachAssembleDiff(t *testing.T) {
 	if len(invs) == 0 {
 		t.Fatal("no git calls recorded; AssembleDiff must run first")
 	}
-	assertGitArgv(t, invs[0], []string{"diff", "v5.0.0..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)skills/**/knowledge.cjs"})
+	assertGitArgv(t, invs[0], []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v5.0.0..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)skills/**/knowledge.cjs"})
 }
 
 func TestGenerator_Generate_TransportTimeout_SurfacesTypedFailureCausePreserved(t *testing.T) {

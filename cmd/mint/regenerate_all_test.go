@@ -272,7 +272,7 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange(t *testi
 	if aiCalls != 3 {
 		t.Errorf("AI calls = %d, want two chunk calls and one merge", aiCalls)
 	}
-	if got := f.Invocations()[0].Args; !slices.Equal(got, []string{"diff", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md"}) {
+	if got := f.Invocations()[0].Args; !slices.Equal(got, []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md"}) {
 		t.Errorf("first git call = %v, want the version's own range diff", got)
 	}
 }

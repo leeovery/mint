@@ -19,10 +19,10 @@ import (
 // the forward source view — the commit is never subtracted as a commit.
 
 // wantRangeArgs is the exact `git diff` argv AssembleRange must issue for a full git
-// range: `git diff {range} -- . ':(exclude)CHANGELOG.md'` — the range substituted
-// verbatim (NOT a tag with `..HEAD` appended).
+// range: `git diff --src-prefix=a/ --dst-prefix=b/ {range} -- . ':(exclude)CHANGELOG.md'`
+// — the range substituted verbatim (NOT a tag with `..HEAD` appended).
 func wantRangeArgs(rng string) []string {
-	return []string{"diff", rng, "--", ".", ":(exclude)CHANGELOG.md"}
+	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", rng, "--", ".", ":(exclude)CHANGELOG.md"}
 }
 
 func TestAssembler_AssembleRange_DiffsArbitraryRange(t *testing.T) {
@@ -126,9 +126,6 @@ func TestAssembler_AssembleRange_PathExclusionNotCommitExclusion(t *testing.T) {
 func TestAssembler_AssembleDiff_StillForwardRangeAfterRefactor(t *testing.T) {
 	t.Parallel()
 
-	// The forward AssembleDiff is preserved BYTE-IDENTICAL after the range refactor:
-	// it still issues `git diff {lastTag}..HEAD ...`. AssembleDiff is the thin wrapper
-	// that builds the forward range and delegates to the shared range path.
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 

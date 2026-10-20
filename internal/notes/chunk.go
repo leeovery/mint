@@ -287,7 +287,7 @@ func splitFileDiffs(diff string) []string {
 // headerPath is the path a file section sorts under: a rename's or copy's
 // destination, else the path its header names. git C-quotes a path holding special
 // or non-ASCII bytes, and its escapes are Go string-literal syntax. A header in any
-// other form, such as diff.noprefix's, keys on itself whole.
+// other form than "a/P b/P" keys on itself whole.
 func headerPath(fileDiff string) string {
 	header, rest, _ := strings.Cut(fileDiff, "\n")
 	if dest, ok := destinationPath(rest); ok {

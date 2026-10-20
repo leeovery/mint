@@ -232,3 +232,53 @@ func TestGenerator_EveryPartFinishedAndTheMergeFailed_SavedNotesCarryNoMarker(t 
 
 	ns.assertSavedOnce(t, err, joinedNotes(area(1), area(2), area(3)))
 }
+
+func TestGenerator_PrefixedHeaders_MarkerFramingAndOrderNameTheRepoPath(t *testing.T) {
+	t.Parallel()
+
+	var mu sync.Mutex
+	var chunks []string
+	fail := pieceOutcomeTransport(func(path string, piece int) bool {
+		return path == "api/handler.go" && piece == 2
+	})
+	transport := transportFunc(func(ctx context.Context, prompt string) (string, error) {
+		if isChunkPrompt(prompt) {
+			mu.Lock()
+			chunks = append(chunks, prompt)
+			mu.Unlock()
+		}
+		return fail.Generate(ctx, prompt)
+	})
+	ns := &noteSaver{}
+	gen, cfg := piecesGeneration(t, transport, []pieceFile{
+		{path: "zeta/z.go", diff: fileDiff("zeta/z.go", 1_000)},
+		{path: "api/handler.go", diff: hunkedFileDiff("api/handler.go", 2, 10_000)},
+	})
+
+	_, err := gen.WithChunkNotes(ns.save).Generate(t.Context(), "v1.0.0", cfg)
+
+	saves := ns.saved()
+	if len(saves) != 1 || !strings.HasPrefix(saves[0], notesMissing("`api/handler.go` (partly)")) {
+		t.Fatalf("saved chunk notes = %q, want once opening with %q", saves, notesMissing("`api/handler.go` (partly)"))
+	}
+	if got := notes.SavedChunkNotesPath(err); got != savedNotesPath {
+		t.Errorf("SavedChunkNotesPath = %q, want %q", got, savedNotesPath)
+	}
+	partOfFile := map[string][]int{}
+	for _, c := range chunks {
+		path := firstPath(sliceOf(c))
+		k, _ := partOf(t, c)
+		partOfFile[path] = append(partOfFile[path], k)
+		if _, _, ok := pieceOf(c); ok && !strings.Contains(framingOf(c), "of the diff for api/handler.go, a file") {
+			t.Errorf("piece of %s framed without its repo path:\n%s", path, framingOf(c))
+		}
+	}
+	if len(partOfFile["api/handler.go"]) != 2 || len(partOfFile["zeta/z.go"]) != 1 {
+		t.Fatalf("fixture: parts per file = %v, want two api/handler.go pieces and one zeta/z.go part", partOfFile)
+	}
+	for _, k := range partOfFile["api/handler.go"] {
+		if k > partOfFile["zeta/z.go"][0] {
+			t.Errorf("api/handler.go piece in part %d after zeta/z.go's part %d, want path order", k, partOfFile["zeta/z.go"][0])
+		}
+	}
+}
