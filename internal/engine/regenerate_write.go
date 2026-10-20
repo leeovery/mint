@@ -28,9 +28,10 @@ package engine
 //
 // SOURCE GATING: fresh runs the full notes-review gate (y/n/e/r) BEFORE writing —
 // backfilled notes are reviewable before they overwrite live surfaces; a supplied
-// --notes-file body runs the same gate without `r`; reuse is a simple two-choice
-// confirm (no review gate — reuse generates no new notes to edit/regenerate). `-y`
-// skips all of them (handled by the presenter, which returns the gate default).
+// --notes-file body and a notes-floor body run the same gate without `r`; reuse is a
+// simple two-choice confirm (no review gate — reuse generates no new notes to
+// edit/regenerate). `-y` skips all of them (handled by the presenter, which returns
+// the gate default).
 //
 // HISTORICAL DATE (carried from 5-8's review): the changelog write MUST keep the
 // version's ORIGINAL historical release date in its `## [x.y.z] - <date>` header —
@@ -75,6 +76,10 @@ const (
 	// runs the review gate without `r`, since no AI wrote it. The run already holds
 	// its body, so no body producer handles it.
 	regenerateSourceSupplied
+	// regenerateSourceFloor is the body chosen at the notes floor after the fresh
+	// source's generation failed. Like a supplied body it runs the review gate without
+	// `r`, since no AI wrote it.
+	regenerateSourceFloor
 )
 
 // RegenerateTarget names which surface(s) a regenerate run writes — the axis that
@@ -203,8 +208,8 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 
 // gateRegenerate runs the source-appropriate gate/confirm BEFORE any mutation and
 // returns the body to write. Fresh runs the full notes-review gate (y/n/e/r), whose
-// edit/regenerate choices may replace the body; a supplied body runs the same gate
-// without `r`; reuse runs a simple two-choice confirm (no review gate). A decline
+// edit/regenerate choices may replace the body; a supplied or floor body runs the same
+// gate without `r`; reuse runs a simple two-choice confirm (no review gate). A decline
 // aborts non-zero. Under `-y` the presenter returns each gate's default (ChoiceYes),
 // so the gate accepts immediately.
 func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRequest) (string, error) {
@@ -225,7 +230,7 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 		// version's fresh AI range — a wired deps.Regenerator OVERRIDES it (the test seam),
 		// mirroring the forward path's perRunRegenerator precedence.
 		return reviewGate(ctx, p, deps.Editor, regenerateRegenerator(deps, req.Regenerator), presenter.NotesReviewGate(), req.Body, req.VersionKey)
-	case regenerateSourceSupplied:
+	case regenerateSourceSupplied, regenerateSourceFloor:
 		return reviewGate(ctx, p, deps.Editor, nil, presenter.NotesReviewGateNoRegen(), req.Body, req.VersionKey)
 	default:
 		// Deterministic source (tag annotation or provider release): the simple

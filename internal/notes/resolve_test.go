@@ -11,61 +11,20 @@ import (
 	"mint/internal/runner"
 )
 
-// wantCommitSubjectArgs is the exact git argv FallbackBody must issue to build the
+// wantCommitSubjectArgs is the exact git argv the non-AI body issues to build the
 // commit-subject list since the last tag: `git log --format=%s {lastTag}..HEAD`.
 // This metadata is a FALLBACK RECORD ONLY — it is NEVER fed to the AI.
 func wantCommitSubjectArgs(lastTag string) []string {
 	return []string{"log", "--format=%s", lastTag + "..HEAD"}
 }
 
-// seedCommitSubjects scripts the single `git log` call FallbackBody makes, returning
+// seedCommitSubjects scripts the single `git log` call the non-AI body makes, returning
 // the given subjects stdout.
 func seedCommitSubjects(t *testing.T, subjects string) *runner.FakeRunner {
 	t.Helper()
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: subjects}, nil)
 	return r
-}
-
-func TestFallbackBody_BuildsCommitSubjectListSinceLastTag(t *testing.T) {
-	t.Parallel()
-
-	// The default fallback body is the commit-subject list since the last tag, built
-	// via `git log --format=%s {lastTag}..HEAD` through the CommandRunner seam. The
-	// returned body is git's stdout verbatim.
-	const subjects = "Add login flow\nFix token refresh\nTidy imports\n"
-	r := seedCommitSubjects(t, subjects)
-
-	body, err := notes.FallbackBody(t.Context(), r, "v1.2.3")
-	if err != nil {
-		t.Fatalf("FallbackBody returned unexpected error: %v", err)
-	}
-	if body != subjects {
-		t.Errorf("body = %q, want the commit-subject list %q", body, subjects)
-	}
-
-	invs := r.Invocations()
-	if len(invs) != 1 {
-		t.Fatalf("invocations = %d, want 1 (git log)", len(invs))
-	}
-	assertGitArgv(t, invs[0], wantCommitSubjectArgs("v1.2.3"))
-}
-
-func TestFallbackBody_GitFails_SurfacesError(t *testing.T) {
-	t.Parallel()
-
-	// A `git log` that runs and exits non-zero is surfaced as an error rather than
-	// silently producing an empty fallback record.
-	r := runner.NewFakeRunner()
-	r.Seed("git", runner.Result{Stderr: "fatal: bad revision\n", ExitCode: 128}, errors.New("exit status 128"))
-
-	body, err := notes.FallbackBody(t.Context(), r, "v9.9.9")
-	if err == nil {
-		t.Fatal("FallbackBody returned nil error on git failure, want it surfaced")
-	}
-	if body != "" {
-		t.Errorf("body = %q, want empty on failure", body)
-	}
 }
 
 func TestResolveFailure_AbortDefault_ReturnsAbortErrorNamingCauseTaggingNothing(t *testing.T) {

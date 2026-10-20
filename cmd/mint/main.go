@@ -140,6 +140,7 @@ func runRegenerate(ctx context.Context, rest []string) int {
 	}
 
 	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin)
+	req.StdinInteractive = presenter.DetectStartupSignals(req.Plain, os.Stdout, os.Stdin).StdinInteractive
 	return regenerate(ctx, p, runner.NewExecRunner(), req)
 }
 
@@ -186,10 +187,12 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 		Presenter: p,
 		Runner:    r,
 		Mutator:   git.NewMutator(r),
-		// The `e` review-gate choice on the fresh notes-review gate hands the notes to
-		// the real $EDITOR resolution, launched through the same presenter + runner.
-		Editor:     engine.NewEditorLauncher(p, r),
-		ChunkNotes: notescache.NewUserChunkNotes(os.UserCacheDir),
+		// The `e` choice at the notes-review gate and at the notes floor hands the notes
+		// to the real $EDITOR resolution, launched through the same presenter + runner.
+		Editor:           engine.NewEditorLauncher(p, r),
+		ChunkNotes:       notescache.NewUserChunkNotes(os.UserCacheDir),
+		Yes:              req.Yes,
+		StdinInteractive: req.StdinInteractive,
 	}
 
 	// The --all batch backfill (every version, oldest → newest) and the single-version
@@ -241,6 +244,7 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 	runReq.Supplied = supplied
 	runReq.Tag = res.Tag
 	runReq.VersionKey = versionKey.String("")
+	runReq.DiffRange = res.DiffRange()
 	runReq.Project = filepath.Base(root)
 	runReq.ReleaseBranch = releaseBranch
 	runReq.ChangelogEnabled = cfg.Release.Changelog

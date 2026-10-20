@@ -77,6 +77,9 @@ type regenerateRequest struct {
 	// global --plain render flag — identical name, default, and meaning as the
 	// forward `mint release` route — so it composes with every regenerate flag.
 	Plain bool
+	// StdinInteractive is the startup stdin-is-a-TTY signal, set by the entry point
+	// rather than parsed from a flag.
+	StdinInteractive bool
 }
 
 // parseRegenerateFlags parses the `mint release regenerate [<version>] [flags]`

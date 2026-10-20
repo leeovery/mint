@@ -531,7 +531,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 			}
 			return Unwind(ctx, deps, start, made, err)
 		}
-		body, kind, err = notesFloor(ctx, deps, current.String(cfg.Release.TagPrefix), chunkNotes.saved)
+		body, kind, err = releaseNotesFloor(ctx, deps, current.String(cfg.Release.TagPrefix), chunkNotes.saved)
 		if err != nil {
 			return Unwind(ctx, deps, start, made, err)
 		}

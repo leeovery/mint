@@ -111,6 +111,9 @@ type RegenerateRunRequest struct {
 	Tag string
 	// VersionKey is the bare x.y.z key used in the changelog header and the notes/plan.
 	VersionKey string
+	// DiffRange is the version's own range, `{PreviousTag}..{Tag}`, the notes floor's
+	// commit subjects are listed over.
+	DiffRange string
 	// Project is the project name shown in the start-of-run header.
 	Project string
 	// ReleaseBranch is the resolved release branch the preflight on-branch and
@@ -154,7 +157,8 @@ type RegenerateRunRequest struct {
 // confirm/review gate
 // and the write/push/recovery. It returns whatever RegenerateWrite returns (nil on
 // success, an *AbortError on a confirm decline or pre-push failure, nil-with-warn on a
-// post-push provider failure), or a surfaced abort on a body-production failure.
+// post-push provider failure), or a surfaced abort on a body-production failure that
+// the notes floor's choice, offered only to an attended run, does not answer.
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
 
@@ -218,24 +222,37 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	p.ShowPlan(regeneratePlan(source, target, req.Tag))
 
 	// Produce the body for the resolved source BEFORE the confirm — the notes-review
-	// gate (fresh) reviews this body. A production failure aborts before the confirm.
+	// gate (fresh) reviews this body. A production failure aborts before the confirm,
+	// unless an attended run takes a body at the notes floor's choice instead.
 	// Body production is BLOCKING (a fresh source re-diffs + calls the AI), so narrate
 	// it with a blocking StageStarted (spinner), a chunked run's progress while it
 	// runs, and a StageSucceeded carrying the engine-measured Elapsed once the body
-	// resolves; a failure surfaces a StageFailed (via surface) and emits no
-	// StageSucceeded.
+	// resolves; a failure surfaces a StageFailed and emits no StageSucceeded.
 	stage := startNotesStage(p)
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, req.Tag)
 	body, err := produceRegenerateBody(ctx, req, source, NotesSinks{Progress: stage, ChunkNotes: chunkNotes.saver()})
+	gateSource := source
 	if err != nil {
-		err = surface(p, "notes", err)
+		// on_notes_failure is release's alone: an attended regenerate whose notes
+		// generation failed takes a body at the floor's choice, whatever it holds.
+		offersChoice := reachesNotesFloor(err) && deps.attended()
+		failure := stageFailure("notes", err)
+		failure.Recoverable = offersChoice
+		p.StageFailed(failure)
 		chunkNotes.warnUnsaved(p)
-		return err
+		if !offersChoice {
+			return abort(err)
+		}
+		if body, err = regenerateNotesFloor(ctx, deps, req.DiffRange, chunkNotes.saved); err != nil {
+			return err
+		}
+		gateSource = regenerateSourceFloor
+	} else {
+		stage.done()
 	}
-	stage.done()
 
 	return RegenerateWrite(ctx, deps, publisher, root, RegenerateWriteRequest{
-		Source:      source,
+		Source:      gateSource,
 		Target:      target,
 		Tag:         req.Tag,
 		VersionKey:  req.VersionKey,

@@ -12,7 +12,7 @@ import (
 )
 
 // errFloorAborted is the cause for an abort at the notes floor's choice.
-var errFloorAborted = errors.New("release aborted at the notes failure")
+var errFloorAborted = errors.New("aborted at the notes failure")
 
 // attended reports a run at a terminal without -y.
 func (d ReleaseDeps) attended() bool {
@@ -99,10 +99,10 @@ func noRoomMove(rel config.Release) string {
 	return "raise max_prompt_bytes, since it is below the fixed part of mint's own instructions"
 }
 
-// notesFloorGate is the choice a failed notes generation leaves an attended release.
-func notesFloorGate() presenter.Gate {
+// notesFloorGate is the choice a failed notes generation leaves an attended run.
+func notesFloorGate(question string) presenter.Gate {
 	return presenter.Gate{
-		Question:   "Release without AI notes?",
+		Question:   question,
 		Subject:    "notes",
 		AcceptEcho: "aborted",
 		Choices: []presenter.GateChoice{
@@ -114,24 +114,25 @@ func notesFloorGate() presenter.Gate {
 	}
 }
 
-// notesFloor returns the body chosen at the floor's choice, re-presenting the choice
-// when the editor wrote nothing or could not be launched. savedNotes is what the
-// editor opens on: the chunk notes this run saved, or "". A way out with no body is
-// an abort, its cause returned for the caller's unwind.
-func notesFloor(ctx context.Context, deps ReleaseDeps, lastTag, savedNotes string) (string, notes.Kind, error) {
+// notesFloor returns the body chosen at gate, the floor's choice, re-presenting it
+// when the editor wrote nothing or could not be launched. subjects builds the
+// commit-subject list; savedNotes is what the editor opens on: the chunk notes this
+// run saved, or "". A way out with no body is an abort, its cause returned for the
+// caller to unwind or abort on.
+func notesFloor(ctx context.Context, deps ReleaseDeps, gate presenter.Gate, subjects func(context.Context) (string, error), savedNotes string) (string, error) {
 	for {
-		choice, err := deps.Presenter.Prompt(notesFloorGate())
+		choice, err := deps.Presenter.Prompt(gate)
 		if err != nil {
-			return "", notes.KindFloor, err
+			return "", err
 		}
 		switch choice {
 		case presenter.ChoiceCommitSubjects:
-			body, err := notes.NoAIBody(ctx, deps.Runner, lastTag)
+			body, err := subjects(ctx)
 			if err != nil {
 				surfaceStageFailure(deps.Presenter, "notes", err)
-				return "", notes.KindFloor, err
+				return "", err
 			}
-			return body, notes.KindFloor, nil
+			return body, nil
 		case presenter.ChoiceEdit:
 			body, err := editBody(ctx, deps.Editor, savedNotes)
 			switch {
@@ -139,19 +140,38 @@ func notesFloor(ctx context.Context, deps ReleaseDeps, lastTag, savedNotes strin
 				continue
 			case err != nil:
 				surfaceStageFailure(deps.Presenter, "edit", err)
-				return "", notes.KindFloor, err
+				return "", err
 			case strings.TrimSpace(body) == "":
 				// Closing the editor empty backs out of it; accepting an empty body would
 				// ship an empty tag message, changelog entry and provider release.
 				continue
 			}
-			return body, notes.KindFloor, nil
+			return body, nil
 		case presenter.ChoiceAbort:
-			return "", notes.KindFloor, errFloorAborted
+			return "", errFloorAborted
 		default:
 			err := errUnexpectedChoice(choice)
 			surfaceStageFailure(deps.Presenter, "notes", err)
-			return "", notes.KindFloor, err
+			return "", err
 		}
 	}
+}
+
+// releaseNotesFloor is the floor's choice on a release, its commit subjects those
+// since lastTag.
+func releaseNotesFloor(ctx context.Context, deps ReleaseDeps, lastTag, savedNotes string) (string, notes.Kind, error) {
+	subjects := func(ctx context.Context) (string, error) { return notes.NoAIBody(ctx, deps.Runner, lastTag) }
+	body, err := notesFloor(ctx, deps, notesFloorGate("Release without AI notes?"), subjects, savedNotes)
+	return body, notes.KindFloor, err
+}
+
+// regenerateNotesFloor is the floor's choice on a single-version regenerate, its
+// commit subjects those of the version's own diffRange.
+func regenerateNotesFloor(ctx context.Context, deps ReleaseDeps, diffRange, savedNotes string) (string, error) {
+	subjects := func(ctx context.Context) (string, error) { return notes.RangeNoAIBody(ctx, deps.Runner, diffRange) }
+	body, err := notesFloor(ctx, deps, notesFloorGate("Regenerate without AI notes?"), subjects, savedNotes)
+	if err != nil {
+		return "", abort(err)
+	}
+	return body, nil
 }

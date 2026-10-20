@@ -11,18 +11,16 @@ import (
 	"mint/internal/runner"
 )
 
-// FallbackBody builds the commit-subject list, the one non-AI body: the subjects since
-// the last tag, produced by `git log --format=%s {lastTag}..HEAD` through the
-// CommandRunner seam. It returns git's stdout verbatim (subjects, one per line).
+// rangeSubjects lists the commit subjects over revRange, git's stdout verbatim.
 //
 // This metadata is a FALLBACK RECORD ONLY — it is NEVER fed to the AI. The AI ingests
 // ONLY the diff (plus the Change Map and instructions); commit messages are out of
-// scope for the AI input by design. FallbackBody exists purely to give the non-AI
-// routes an honest, non-hallucinated record when the AI body is unavailable.
-func FallbackBody(ctx context.Context, r runner.CommandRunner, lastTag string) (string, error) {
-	res, err := r.Run(ctx, "git", "log", "--format=%s", lastTag+"..HEAD")
+// scope for the AI input by design. The list exists purely to give the non-AI routes
+// an honest, non-hallucinated record when the AI body is unavailable.
+func rangeSubjects(ctx context.Context, r runner.CommandRunner, revRange string) (string, error) {
+	res, err := r.Run(ctx, "git", "log", "--format=%s", revRange)
 	if err != nil {
-		return "", fmt.Errorf("building commit-subject fallback for %s..HEAD: %w", lastTag, err)
+		return "", fmt.Errorf("building commit-subject fallback for %s: %w", revRange, err)
 	}
 	return res.Stdout, nil
 }
@@ -64,14 +62,14 @@ func ResolveFailure(ctx context.Context, r runner.CommandRunner, failure error, 
 	return "", abortError(failure)
 }
 
-// resolveFallbackBody is the SHARED non-AI body selector every non-AI route calls,
-// so they can never drift. It produces a NON-EMPTY body:
-//
-//   - the commit-subject list via FallbackBody; a genuine git error surfaces.
-//   - if that list is empty or whitespace-only (no commits since the last tag), the
-//     maintenance-release body (StubBody) instead, so the tag body is never empty.
 func resolveFallbackBody(ctx context.Context, r runner.CommandRunner, lastTag string) (string, error) {
-	body, err := FallbackBody(ctx, r, lastTag)
+	return RangeNoAIBody(ctx, r, lastTag+"..HEAD")
+}
+
+// RangeNoAIBody is the commit-subject list over revRange, or the maintenance-release
+// body when the range lists none.
+func RangeNoAIBody(ctx context.Context, r runner.CommandRunner, revRange string) (string, error) {
+	body, err := rangeSubjects(ctx, r, revRange)
 	if err != nil {
 		return "", err
 	}

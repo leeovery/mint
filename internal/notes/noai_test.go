@@ -191,3 +191,50 @@ func TestNonAIBody_EmptySubjectList_ShipsTheMaintenanceBody(t *testing.T) {
 		}
 	}
 }
+
+func TestRangeNoAIBody_ListsTheRangesCommitSubjects(t *testing.T) {
+	t.Parallel()
+
+	const subjects = "feat: add export\nfix: handle empty input\n"
+	r := seedCommitSubjects(t, subjects)
+
+	body, err := notes.RangeNoAIBody(t.Context(), r, "v1.1.0..v1.2.0")
+	if err != nil {
+		t.Fatalf("RangeNoAIBody returned unexpected error: %v", err)
+	}
+	if body != subjects {
+		t.Errorf("body = %q, want the commit-subject list %q", body, subjects)
+	}
+	invs := r.Invocations()
+	if len(invs) != 1 {
+		t.Fatalf("invocations = %d, want the one git log", len(invs))
+	}
+	assertGitArgv(t, invs[0], []string{"log", "--format=%s", "v1.1.0..v1.2.0"})
+}
+
+func TestRangeNoAIBody_EmptyRangeGivesTheMaintenanceReleaseBody(t *testing.T) {
+	t.Parallel()
+
+	r := seedCommitSubjects(t, "\n")
+
+	body, err := notes.RangeNoAIBody(t.Context(), r, "v1.1.0..v1.2.0")
+	if err != nil {
+		t.Fatalf("RangeNoAIBody returned unexpected error: %v", err)
+	}
+	if body != notes.StubBody() {
+		t.Errorf("body = %q, want the maintenance-release body %q", body, notes.StubBody())
+	}
+}
+
+func TestRangeNoAIBody_GitFailureNamesTheRange(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{}, errors.New("exit status 128"))
+
+	_, err := notes.RangeNoAIBody(t.Context(), r, "v1.1.0..v1.2.0")
+
+	if got, want := err.Error(), "building commit-subject fallback for v1.1.0..v1.2.0: exit status 128"; got != want {
+		t.Errorf("err = %q, want %q", got, want)
+	}
+}

@@ -24,10 +24,9 @@ package engine
 // NO diff.
 //
 // FAILURE ROUTING: an AI failure is SURFACED (wrapped, errors.Is still matches), not
-// swallowed — single-mode fresh follows the on_notes_failure default abort at a higher
-// layer, and 5-12's `--all` intercepts the surfaced failure for skip-and-continue. This
-// function owns the fresh-source body PRODUCTION only; the provider/changelog write and
-// push are later tasks (5-7/5-8).
+// swallowed — a single-version run answers it at the notes floor's choice when attended
+// and aborts otherwise, and `--all` skips the version and carries on. This function
+// owns the fresh-source body PRODUCTION only, not the provider/changelog write and push.
 
 import (
 	"context"
