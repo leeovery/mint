@@ -347,8 +347,8 @@
           "consolidation_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
-          "current_phase": 4,
-          "current_task": "token-aware-diff-sizing-5-1",
+          "current_phase": 5,
+          "current_task": "token-aware-diff-sizing-5-2",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -419,7 +419,8 @@
             "token-aware-diff-sizing-4-12",
             "token-aware-diff-sizing-4-13",
             "token-aware-diff-sizing-4-14",
-            "token-aware-diff-sizing-4-15"
+            "token-aware-diff-sizing-4-15",
+            "token-aware-diff-sizing-5-1"
           ],
           "staging": {
             "p1": {
@@ -455,6 +456,21 @@
             2,
             3,
             4
+          ],
+          "bank": [
+            {
+              "task": "token-aware-diff-sizing-5-1",
+              "source": "reviewer",
+              "summary": "CLAUDE.md seam 4 (-y auto-accept never as an engine-side branch) reads as forbidding the engine attended branch the floor and commit editor fallback rely on",
+              "failure": "Someone enforcing seam 4 as written might route the floor through Prompt under -y; the presenter would auto-pick a and print notes: aborted (-y), so an unattended run shows a choice it was never offered, and task 5-3 next moves lose the engine-side signal they branch on; noticed only in a -y transcript",
+              "detail": "Reword seam 4 to separate auto-accepting a gate (presenter-only) from deciding whether an unattended run gets a gate at all (engine, from Yes/StdinInteractive in deps). Sites: internal/engine/notesfloor.go:15-18 (attended), internal/engine/release.go:158-162, commit.Deps.Yes/StdinInteractive wired at cmd/mint/main.go:375-376",
+              "files": [
+                "CLAUDE.md",
+                "internal/engine/notesfloor.go",
+                "internal/engine/release.go",
+                "cmd/mint/main.go"
+              ]
+            }
           ]
         }
       }
