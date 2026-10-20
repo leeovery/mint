@@ -122,7 +122,7 @@ func MetadataRows() []MetadataRow {
 		// [release] table leaf keys (releaseShape leaf fields), in field order.
 		// release_branch/provider default to "" in the struct, but their "" is a SENTINEL
 		// meaning auto-derive/auto-detect — so they render "auto", distinct from the genuinely
-		// blank empty-string keys (context/prompt/fallback/version_file/version_pattern).
+		// blank empty-string keys (context/prompt/version_file/version_pattern).
 		{Key: "tag_prefix", Level: LevelRelease, Default: "v", Description: "prefix on the release tag name (e.g. v1.4.0)"},
 		{Key: "commit_prefix", Level: LevelRelease, Default: "🌿", Description: "brand prefix on mint's bookkeeping commit subject"},
 		{Key: "release_branch", Level: LevelRelease, Default: "auto", Description: "branch releases must run on (empty auto-derives from origin/HEAD)"},
@@ -131,8 +131,7 @@ func MetadataRows() []MetadataRow {
 		{Key: "provider", Level: LevelRelease, Default: "auto", Description: "publishing-driver override (empty auto-detects from the release remote's host)"},
 		{Key: "context", Level: LevelRelease, Description: "project guidance injected into the default release-notes prompt"},
 		{Key: "prompt", Level: LevelRelease, Description: "path to a file whose contents fully override the default release-notes prompt"},
-		{Key: "on_notes_failure", Level: LevelRelease, Default: "abort", Description: "notes-failure policy: abort fails loud, fallback uses the commit-subject / fixed-string body"},
-		{Key: "fallback", Level: LevelRelease, Description: "fixed fallback body used verbatim by on_notes_failure = fallback and --no-ai (empty uses the commit-subject list)"},
+		{Key: "on_notes_failure", Level: LevelRelease, Default: "abort", Description: "notes-failure policy: abort fails loud, fallback ships the commit-subject list (the maintenance-release body when it is empty)"},
 		{Key: "version_file", Level: LevelRelease, Description: "repo-relative file the new version is mirrored into (empty means tag-only, no projection)"},
 		{Key: "version_pattern", Level: LevelRelease, Description: "version line replaced inside version_file (empty treats the whole file as the version)"},
 		{Key: "ai_command", Level: LevelRelease, Default: "shared", Description: "optional per-verb override of the AI command for release; resolved [release] → shared → default"},

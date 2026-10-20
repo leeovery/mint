@@ -140,39 +140,12 @@ func TestResolveFailure_Fallback_ReturnsCommitSubjectListBody(t *testing.T) {
 	assertGitArgv(t, invs[0], wantCommitSubjectArgs("v2.0.0"))
 }
 
-func TestResolveFailure_FallbackWithFixedString_ReturnsThatStringNoGitLog(t *testing.T) {
-	t.Parallel()
-
-	// In fallback mode with a fixed [release].fallback string set, ResolveFailure
-	// returns that exact string, no error, and runs NO git log (the fixed string is
-	// the body, so the commit-subject record is not built). The fixed string is now
-	// sourced from the dedicated rel.Fallback key, NOT from on_notes_failure (which is
-	// mode-only).
-	const fixed = "Notes unavailable — see commit history."
-	r := runner.NewFakeRunner()
-	rel := config.Release{OnNotesFailure: "fallback", Fallback: fixed}
-
-	body, err := notes.ResolveFailure(t.Context(), r, ai.ErrCommandMissing, "v3.0.0", rel)
-	if err != nil {
-		t.Fatalf("ResolveFailure returned unexpected error for a fixed fallback string: %v", err)
-	}
-	if body != fixed {
-		t.Errorf("body = %q, want the fixed fallback string %q", body, fixed)
-	}
-	if len(r.Invocations()) != 0 {
-		t.Errorf("git was invoked %d times for a fixed fallback string, want 0", len(r.Invocations()))
-	}
-}
-
 func TestResolveFailure_UnknownMode_AbortsTaggingNothing(t *testing.T) {
 	t.Parallel()
 
 	// on_notes_failure is MODE-ONLY (abort | fallback). Any value that is not
-	// "fallback" — including an unknown string — resolves to ABORT for Phase 2: it
-	// returns NO body and an abort error naming the cause, and runs NO git. (Phase 6's
-	// typed validation will reject unknown values up front; this resolver just treats
-	// them as abort defensively.) The old "literal value as fixed body" overload is
-	// gone — the fixed string now comes only from rel.Fallback.
+	// "fallback" — including an unknown string — resolves to ABORT: it returns NO body
+	// and an abort error naming the cause, and runs NO git.
 	r := runner.NewFakeRunner()
 	rel := config.Release{OnNotesFailure: "something-unknown"}
 
@@ -194,10 +167,9 @@ func TestResolveFailure_UnknownMode_AbortsTaggingNothing(t *testing.T) {
 func TestResolveFailure_FallbackEmptyLog_ReturnsNonEmptyFloor(t *testing.T) {
 	t.Parallel()
 
-	// In fallback mode with no fixed string and an EMPTY commit log (no commits since
-	// the last tag), the body must NOT be empty — the selector floors it to a
-	// non-empty minimal record so the tag is never empty. The git log is still run
-	// (there is no fixed string to short-circuit it).
+	// In fallback mode with an EMPTY commit log (no commits since the last tag), the
+	// body must NOT be empty — the selector floors it to a non-empty minimal record so
+	// the tag is never empty. The git log is run first to learn the list is empty.
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "   \n\t\n"}, nil) // whitespace-only log.
 	rel := config.Release{OnNotesFailure: "fallback"}

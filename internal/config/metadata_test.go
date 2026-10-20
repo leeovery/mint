@@ -11,7 +11,7 @@ import (
 // the internal config package's one ordered enumeration) into the shared configtest.RowKey
 // type. The census uses the unexported leafKey type, which config_test cannot name — but
 // leafKey's Level/Key fields are exported, so the projection reads them directly. This keeps
-// the 25-pair enumeration in exactly one place while the naming test below asserts in terms
+// the 24-pair enumeration in exactly one place while the naming test below asserts in terms
 // of the RowKey the (level, key) lookups already use.
 func expectedRowKeys() []configtest.RowKey {
 	census := config.ExpectedLeafKeys()
@@ -22,9 +22,9 @@ func expectedRowKeys() []configtest.RowKey {
 	return out
 }
 
-// TestMetadataRows_OneRowPerLevelKeyPair pins the SoT to exactly the 25 (level, key)
-// pairs spanning every config key: 4 shared, 14 [release], 3 [release.hooks], 4
-// [commit]. The count 25 is a sanity check here (the drift test in 1-4 is the real
+// TestMetadataRows_OneRowPerLevelKeyPair pins the SoT to exactly the 24 (level, key)
+// pairs spanning every config key: 4 shared, 13 [release], 3 [release.hooks], 4
+// [commit]. The count 24 is a sanity check here (the drift test in 1-4 is the real
 // guard against schema divergence); the value of THIS test is naming every expected
 // pair so a dropped or renamed key surfaces precisely.
 func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
@@ -33,7 +33,7 @@ func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 	// Project the single shared census (config.ExpectedLeafKeys, defined in the internal
 	// config package's metadata_census_test.go) into the shared configtest.RowKey type.
 	// config_test cannot name the unexported leafKey, but it can read each pair's exported
-	// Level/Key fields — so the 25 expected pairs live in exactly ONE place. This test
+	// Level/Key fields — so the 24 expected pairs live in exactly ONE place. This test
 	// still matches against MetadataRows() (the SoT side, indexed through the shared
 	// configtest seam), which stays untouched.
 	expected := expectedRowKeys()
@@ -174,7 +174,7 @@ const hooksDefaultCell = ""
 
 // TestMetadataRows_EmptyStringDefaultsRenderBlank proves the keys whose compiled
 // default is the empty string — and whose empty MEANS "no value" (not auto) —
-// render a BLANK default cell: [release] context/prompt/fallback/version_file/
+// render a BLANK default cell: [release] context/prompt/version_file/
 // version_pattern and [commit] context/prompt. This is the genuinely-no-value
 // case, distinct from the sentinel-auto keys asserted below.
 func TestMetadataRows_EmptyStringDefaultsRenderBlank(t *testing.T) {
@@ -184,7 +184,6 @@ func TestMetadataRows_EmptyStringDefaultsRenderBlank(t *testing.T) {
 	blank := []configtest.RowKey{
 		{Level: config.LevelRelease, Key: "context"},
 		{Level: config.LevelRelease, Key: "prompt"},
-		{Level: config.LevelRelease, Key: "fallback"},
 		{Level: config.LevelRelease, Key: "version_file"},
 		{Level: config.LevelRelease, Key: "version_pattern"},
 		{Level: config.LevelCommit, Key: "context"},

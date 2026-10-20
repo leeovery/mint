@@ -778,3 +778,44 @@ func TestGuide_ConfigReferenceListsMaxPromptBytesSharedOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestGuide_ConfigReferenceCarriesNoFallbackRow(t *testing.T) {
+	t.Parallel()
+
+	if line := rowLineFor(configReferenceBody(t), "fallback"); line != "" {
+		t.Errorf("config reference still carries a fallback row: %q", line)
+	}
+}
+
+func TestGuide_ConfigReferenceOnNotesFailureNamesTheCommitSubjectList(t *testing.T) {
+	t.Parallel()
+
+	line := rowLineFor(configReferenceBody(t), "on_notes_failure")
+	if line == "" {
+		t.Fatal("config reference has no on_notes_failure row")
+	}
+	if !strings.Contains(line, "fallback ships the commit-subject list") {
+		t.Errorf("on_notes_failure row = %q, want it to say fallback ships the commit-subject list", line)
+	}
+	if strings.Contains(line, "fixed") {
+		t.Errorf("on_notes_failure row = %q still names a fixed string", line)
+	}
+}
+
+func TestGuide_AITransportParagraphNamesTheOneNonAIBody(t *testing.T) {
+	t.Parallel()
+
+	paragraph := aiTransportParagraph(t)
+	flat := strings.Join(strings.Fields(paragraph), " ")
+
+	const want = "the commit-subject list, the one non-AI body"
+	if !strings.Contains(flat, want) {
+		t.Errorf("AI-transport paragraph must carry %q; got:\n%s", want, paragraph)
+	}
+	if strings.Contains(flat, "fallback body") {
+		t.Errorf("AI-transport paragraph still names a fallback body; got:\n%s", paragraph)
+	}
+	if strings.Contains(flat, "--no-ai") {
+		t.Errorf("AI-transport paragraph names the --no-ai flag in a flag-free guide; got:\n%s", paragraph)
+	}
+}

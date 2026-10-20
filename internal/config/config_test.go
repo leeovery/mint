@@ -333,7 +333,7 @@ func TestLoad_ExplicitOnNotesFailureFallback_Honoured(t *testing.T) {
 
 	dir := t.TempDir()
 	// An explicit on_notes_failure value must be carried through verbatim; the resolver
-	// in the notes engine interprets the value (abort / fallback / fixed string).
+	// in the notes engine interprets the value (abort / fallback).
 	writeConfig(t, dir, "[release]\non_notes_failure = \"fallback\"\n")
 
 	cfg, err := config.Load(dir)
@@ -361,40 +361,6 @@ func TestLoad_ExplicitOnNotesFailureUnknown_Rejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "on_notes_failure") {
 		t.Errorf("error = %q, want it to name the key %q", err.Error(), "on_notes_failure")
-	}
-}
-
-func TestLoad_AbsentFallback_DefaultsToEmpty(t *testing.T) {
-	t.Parallel()
-
-	// [release].fallback is the dedicated fixed-fallback-body key, shared by both the
-	// on_notes_failure=fallback path and --no-ai. Absent from the file it defaults to
-	// the empty string — meaning "no fixed string, use the commit-subject list".
-	cfg, err := config.Load(t.TempDir())
-	if err != nil {
-		t.Fatalf("Load returned unexpected error: %v", err)
-	}
-
-	if cfg.Release.Fallback != "" {
-		t.Errorf("Fallback = %q, want empty (absent key defaults to empty)", cfg.Release.Fallback)
-	}
-}
-
-func TestLoad_ExplicitFallback_Honoured(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	// An explicit [release].fallback is the fixed fallback body string, carried through
-	// verbatim; the notes engine uses it as the literal body for both fallback paths.
-	writeConfig(t, dir, "[release]\nfallback = \"Notes unavailable — see commit history.\"\n")
-
-	cfg, err := config.Load(dir)
-	if err != nil {
-		t.Fatalf("Load returned unexpected error: %v", err)
-	}
-
-	if cfg.Release.Fallback != "Notes unavailable — see commit history." {
-		t.Errorf("Fallback = %q, want the explicit fixed string", cfg.Release.Fallback)
 	}
 }
 
@@ -785,7 +751,6 @@ provider         = "github"
 on_notes_failure = "abort"
 context          = "dev toolkit"
 prompt           = ".mint/notes-prompt.md"
-fallback         = "see history"
 
 [release.hooks]
 preflight    = "scripts/check.sh"

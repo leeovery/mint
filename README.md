@@ -229,8 +229,7 @@ The per-key reference tables below are the authoritative human config reference 
 | `provider` | auto | publishing driver (default: detected from the remote host) |
 | `context` | | project guidance injected into the notes prompt |
 | `prompt` | | path to a full notes-prompt override file |
-| `on_notes_failure` | `abort` | `abort` fails loud; `fallback` uses the commit-subject list (or `fallback` string) |
-| `fallback` | | fixed fallback body, used verbatim by `on_notes_failure = 'fallback'` and `--no-ai` |
+| `on_notes_failure` | `abort` | `abort` fails loud; `fallback` ships the commit-subject list (the maintenance-release body when it is empty) |
 | `version_file` | | write the new version into this file (omit = tag-only release) |
 | `version_pattern` | | line to replace inside `version_file` (omit = the whole file is the version) |
 | `ai_command` | shared | optional per-verb override of the AI command for `release` only; resolves `[release]` → shared → default |

@@ -10,9 +10,10 @@ import (
 )
 
 // TestRun_InvalidConfig_AbortsAtConfigLoad proves a malformed ai_command at any level, a
-// non-positive max_prompt_bytes or the removed max_diff_lines stops `mint commit` at
-// config load: the load error naming the key and cause is surfaced once, and no command
-// runs — no preflight read, no AI call, no commit.
+// non-positive max_prompt_bytes, the removed max_diff_lines or the removed
+// [release].fallback stops `mint commit` at config load: the load error naming the key
+// and cause is surfaced once, and no command runs — no preflight read, no AI call, no
+// commit.
 func TestRun_InvalidConfig_AbortsAtConfigLoad(t *testing.T) {
 	t.Parallel()
 
@@ -50,6 +51,11 @@ func TestRun_InvalidConfig_AbortsAtConfigLoad(t *testing.T) {
 			name:   "removed max_diff_lines",
 			config: "max_diff_lines = 50000\n",
 			want:   "invalid .mint.toml: max_diff_lines has been replaced by max_prompt_bytes, a per-call size cap in bytes",
+		},
+		{
+			name:   "removed release.fallback",
+			config: "[release]\nfallback = \"Notes unavailable\"\n",
+			want:   "invalid .mint.toml: release.fallback has been removed — every non-AI body is the commit-subject list; supply hand-written notes with --notes-file",
 		},
 	}
 

@@ -175,7 +175,7 @@ func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, c
 	}
 
 	if state.NoAI {
-		body, err := NoAIBody(ctx, s.runner, state.LastTag, cfg.Release)
+		body, err := NoAIBody(ctx, s.runner, state.LastTag)
 		if err != nil {
 			return "", KindNoAI, CacheInputs{}, err
 		}

@@ -10,10 +10,10 @@ import (
 )
 
 // TestRelease_InvalidConfig_AbortsAtConfigLoad proves a malformed ai_command, a
-// non-positive max_prompt_bytes or the removed max_diff_lines stops a release at config
-// load, before any pipeline step and with no AI call — including a [commit].ai_command,
-// which release itself never runs. The ✗ config line carries the load error naming the
-// key and the cause.
+// non-positive max_prompt_bytes, the removed max_diff_lines or the removed
+// [release].fallback stops a release at config load, before any pipeline step and with
+// no AI call — including a [commit].ai_command, which release itself never runs. The ✗
+// config line carries the load error naming the key and the cause.
 func TestRelease_InvalidConfig_AbortsAtConfigLoad(t *testing.T) {
 	t.Parallel()
 
@@ -46,6 +46,11 @@ func TestRelease_InvalidConfig_AbortsAtConfigLoad(t *testing.T) {
 			name:   "removed max_diff_lines",
 			config: "max_diff_lines = 50000\n",
 			want:   "invalid .mint.toml: max_diff_lines has been replaced by max_prompt_bytes, a per-call size cap in bytes",
+		},
+		{
+			name:   "removed release.fallback",
+			config: "[release]\nfallback = \"Notes unavailable\"\n",
+			want:   "invalid .mint.toml: release.fallback has been removed — every non-AI body is the commit-subject list; supply hand-written notes with --notes-file",
 		},
 	}
 

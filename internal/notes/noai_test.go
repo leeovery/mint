@@ -20,7 +20,7 @@ func TestNoAIBody_ProducesCommitSubjectListBodyNoAICall(t *testing.T) {
 	const subjects = "Add login flow\nFix token refresh\n"
 	r := seedCommitSubjects(t, subjects)
 
-	body, err := notes.NoAIBody(t.Context(), r, "v1.0.0", config.Release{})
+	body, err := notes.NoAIBody(t.Context(), r, "v1.0.0")
 	if err != nil {
 		t.Fatalf("NoAIBody returned unexpected error: %v", err)
 	}
@@ -35,38 +35,15 @@ func TestNoAIBody_ProducesCommitSubjectListBodyNoAICall(t *testing.T) {
 	assertGitArgv(t, invs[0], wantCommitSubjectArgs("v1.0.0"))
 }
 
-func TestNoAIBody_FixedFallbackStringUsedInsteadNoGitLog(t *testing.T) {
-	t.Parallel()
-
-	// When [release].fallback is set, --no-ai uses that fixed string verbatim instead
-	// of the commit-subject list, and runs NO git log (the fixed string IS the body).
-	const fixed = "Notes unavailable — see commit history."
-	r := runner.NewFakeRunner()
-	rel := config.Release{Fallback: fixed}
-
-	body, err := notes.NoAIBody(t.Context(), r, "v2.0.0", rel)
-	if err != nil {
-		t.Fatalf("NoAIBody returned unexpected error for a fixed fallback string: %v", err)
-	}
-	if body != fixed {
-		t.Errorf("body = %q, want the fixed fallback string %q", body, fixed)
-	}
-	if len(r.Invocations()) != 0 {
-		t.Errorf("git was invoked %d times for a fixed fallback string, want 0", len(r.Invocations()))
-	}
-}
-
 func TestNoAIBody_NeverAbortsEvenWhenAIWouldHaveFailed(t *testing.T) {
 	t.Parallel()
 
-	// --no-ai is NOT a failure path: it has no failure input and never aborts. Even
-	// with on_notes_failure="abort" (which WOULD abort on the normal AI path), --no-ai
-	// just returns a body and nil error — on_notes_failure does NOT govern this path.
+	// --no-ai is NOT a failure path: it has no failure input and never aborts — it
+	// takes no on_notes_failure at all, and just returns a body and nil error.
 	const subjects = "One change\nTwo change\n"
 	r := seedCommitSubjects(t, subjects)
-	rel := config.Release{OnNotesFailure: "abort"}
 
-	body, err := notes.NoAIBody(t.Context(), r, "v3.0.0", rel)
+	body, err := notes.NoAIBody(t.Context(), r, "v3.0.0")
 	if err != nil {
 		t.Fatalf("NoAIBody aborted (err = %v), want it to never abort", err)
 	}
@@ -83,7 +60,7 @@ func TestNoAIBody_NonEmptyBodyWhenNoCommitsSinceLastTag(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil) // empty log: no commits since last tag.
 
-	body, err := notes.NoAIBody(t.Context(), r, "v4.0.0", config.Release{})
+	body, err := notes.NoAIBody(t.Context(), r, "v4.0.0")
 	if err != nil {
 		t.Fatalf("NoAIBody returned unexpected error on empty log: %v", err)
 	}
@@ -95,22 +72,19 @@ func TestNoAIBody_NonEmptyBodyWhenNoCommitsSinceLastTag(t *testing.T) {
 func TestNoAIBody_SharesFallbackBuilderWithOnNotesFailureFallback(t *testing.T) {
 	t.Parallel()
 
-	// The fallback-body builder is SHARED with on_notes_failure=fallback (2-7): for the
-	// same inputs, ResolveFailure (fallback mode) and NoAIBody produce the SAME body.
-	// Asserted across both the commit-subject list and the fixed-string forms.
+	// The non-AI body builder is SHARED with on_notes_failure=fallback: for the same
+	// inputs, ResolveFailure (fallback mode) and NoAIBody produce the SAME body — the
+	// commit-subject list, or the maintenance-release body when that list is empty.
 	cases := []struct {
 		name     string
-		rel      config.Release
-		subjects string // git log stdout; empty means seed nothing (fixed-string path).
+		subjects string // git log stdout.
 	}{
 		{
 			name:     "commit-subject list",
-			rel:      config.Release{},
 			subjects: "Shared subject one\nShared subject two\n",
 		},
 		{
-			name:     "fixed fallback string",
-			rel:      config.Release{Fallback: "A fixed shared body."},
+			name:     "empty commit-subject list",
 			subjects: "",
 		},
 	}
@@ -119,9 +93,8 @@ func TestNoAIBody_SharesFallbackBuilderWithOnNotesFailureFallback(t *testing.T) 
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// ResolveFailure in fallback mode shares the rel.Fallback selector.
-			resolveRel := tc.rel
-			resolveRel.OnNotesFailure = "fallback"
+			// ResolveFailure in fallback mode shares the non-AI body selector.
+			resolveRel := config.Release{OnNotesFailure: "fallback"}
 			resolveRunner := newFallbackRunner(t, tc.subjects)
 			resolveBody, resolveErr := notes.ResolveFailure(t.Context(), resolveRunner, ai.ErrGenerationFailed, "v5.0.0", resolveRel)
 			if resolveErr != nil {
@@ -130,7 +103,7 @@ func TestNoAIBody_SharesFallbackBuilderWithOnNotesFailureFallback(t *testing.T) 
 
 			// NoAIBody must produce an identical body for the same inputs.
 			noAIRunner := newFallbackRunner(t, tc.subjects)
-			noAIBody, noAIErr := notes.NoAIBody(t.Context(), noAIRunner, "v5.0.0", tc.rel)
+			noAIBody, noAIErr := notes.NoAIBody(t.Context(), noAIRunner, "v5.0.0")
 			if noAIErr != nil {
 				t.Fatalf("NoAIBody returned unexpected error: %v", noAIErr)
 			}
@@ -151,19 +124,70 @@ func TestNoAIBody_GitFails_SurfacesGenuineError(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: bad revision\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	_, err := notes.NoAIBody(t.Context(), r, "v9.9.9", config.Release{})
+	_, err := notes.NoAIBody(t.Context(), r, "v9.9.9")
 	if err == nil {
 		t.Fatal("NoAIBody returned nil error on a genuine git failure, want it surfaced")
 	}
 }
 
-// newFallbackRunner returns a FakeRunner ready for the fallback-body selector: when
-// subjects is non-empty it seeds the single `git log` call with that stdout; when
-// empty (the fixed-string path) it seeds nothing, since no git call is made.
+// newFallbackRunner returns a FakeRunner ready for the non-AI body selector, its
+// single `git log` call seeded with subjects as stdout.
 func newFallbackRunner(t *testing.T, subjects string) *runner.FakeRunner {
 	t.Helper()
-	if subjects == "" {
-		return runner.NewFakeRunner()
-	}
 	return seedCommitSubjects(t, subjects)
+}
+
+// TestNonAIBody_EmptySubjectList_ShipsTheMaintenanceBody proves both non-AI routes —
+// --no-ai and on_notes_failure = fallback after a failed AI call — ship the
+// maintenance-release body when the commit-subject list comes back empty or
+// whitespace-only, so the tag body is never empty.
+func TestNonAIBody_EmptySubjectList_ShipsTheMaintenanceBody(t *testing.T) {
+	t.Parallel()
+
+	routes := []struct {
+		name string
+		body func(r runner.CommandRunner) (string, error)
+	}{
+		{
+			name: "--no-ai",
+			body: func(r runner.CommandRunner) (string, error) {
+				return notes.NoAIBody(t.Context(), r, "v6.0.0")
+			},
+		},
+		{
+			name: "on_notes_failure = fallback",
+			body: func(r runner.CommandRunner) (string, error) {
+				return notes.ResolveFailure(t.Context(), r, ai.ErrGenerationFailed, "v6.0.0", config.Release{OnNotesFailure: "fallback"})
+			},
+		},
+	}
+	logs := []struct {
+		name   string
+		stdout string
+	}{
+		{name: "empty", stdout: ""},
+		{name: "whitespace-only", stdout: " \n\t\n"},
+	}
+
+	for _, route := range routes {
+		for _, log := range logs {
+			t.Run(route.name+"/"+log.name, func(t *testing.T) {
+				t.Parallel()
+
+				r := seedCommitSubjects(t, log.stdout)
+				body, err := route.body(r)
+				if err != nil {
+					t.Fatalf("returned unexpected error: %v", err)
+				}
+				if body != notes.StubBody() {
+					t.Errorf("body = %q, want the maintenance-release body %q", body, notes.StubBody())
+				}
+				invs := r.Invocations()
+				if len(invs) != 1 {
+					t.Fatalf("invocations = %d, want 1 (the commit-subject git log)", len(invs))
+				}
+				assertGitArgv(t, invs[0], wantCommitSubjectArgs("v6.0.0"))
+			})
+		}
+	}
 }

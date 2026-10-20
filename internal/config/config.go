@@ -13,8 +13,9 @@
 // Load decodes the file STRICTLY: any key matching no field in the canonical schema
 // — at the top level, inside [release], or inside [release.hooks] — is rejected with
 // an actionable message naming the key and its table (a top-level [hooks] table gets
-// targeted guidance to nest under [release.hooks], and the removed max_diff_lines names
-// its replacement). It also fails loud on bad TYPES: a value that cannot decode into its
+// targeted guidance to nest under [release.hooks], and the removed max_diff_lines and
+// [release].fallback name what replaced them). It also fails loud on bad TYPES: a
+// value that cannot decode into its
 // schema Go type (e.g. a string max_prompt_bytes, a string publish/changelog, a scalar diff_exclude) is re-wrapped into a mint message
 // naming the key and its expected type; a [release.hooks] entry that is neither a
 // command string nor an array of command strings is rejected naming the hook key;
@@ -58,8 +59,8 @@ const (
 const defaultOnNotesFailure = "abort"
 
 // onNotesFailureValues is the closed set of accepted on_notes_failure values. abort
-// (the default) fails loud; fallback opts into the commit-subject / fixed-string
-// fallback body. Any other non-empty value fails loud at load.
+// (the default) fails loud; fallback opts into the one non-AI body, the commit-subject
+// list. Any other non-empty value fails loud at load.
 var onNotesFailureValues = []string{"abort", "fallback"}
 
 // DefaultMaxPromptBytes is the shipped per-call byte cap on the composed prompt of any
@@ -172,13 +173,8 @@ type Config struct {
 // OnNotesFailure is the normal-path notes-failure policy (default "abort"). Load
 // constrains it to the closed set "abort" | "fallback" (an absent key defaults to
 // abort); the notes engine's ResolveFailure interprets the validated value as
-// MODE-ONLY ("abort" → abort; "fallback" → commit-subject / fixed-string fallback).
-//
-// Fallback is the dedicated fixed-fallback-body string (raw [release].fallback,
-// default ""). It is SHARED by both fallback paths — on_notes_failure=fallback and
-// --no-ai: when non-empty it is used verbatim as the body in place of the
-// commit-subject list. Empty means "no fixed string, use the commit-subject list".
-// Unlike OnNotesFailure (a mode), this carries the body string itself.
+// MODE-ONLY ("abort" → abort; "fallback" → the commit-subject list, the one non-AI
+// body --no-ai also ships).
 //
 // VersionFile and VersionPattern are the optional version-file projection knobs
 // (raw [release].version_file / [release].version_pattern, both default ""). They
@@ -214,7 +210,6 @@ type Release struct {
 	Context        string
 	Prompt         string
 	OnNotesFailure string
-	Fallback       string
 	VersionFile    string
 	VersionPattern string
 	AICommand      *string
@@ -290,7 +285,6 @@ func defaults() Config {
 			Context:        "",
 			Prompt:         "",
 			OnNotesFailure: defaultOnNotesFailure,
-			Fallback:       "",
 			VersionFile:    "",
 			VersionPattern: "",
 		},
@@ -348,7 +342,6 @@ type releaseShape struct {
 	Context        string     `toml:"context"`
 	Prompt         string     `toml:"prompt"`
 	OnNotesFailure string     `toml:"on_notes_failure"`
-	Fallback       string     `toml:"fallback"`
 	VersionFile    string     `toml:"version_file"`
 	VersionPattern string     `toml:"version_pattern"`
 	AICommand      *string    `toml:"ai_command"`
@@ -526,9 +519,7 @@ func nonIntegerKey(data []byte) (string, bool) {
 }
 
 // unknownKeyMessage builds the human-readable description for one unknown key,
-// given its full dotted path (e.g. ["release", "foo"]). A top-level [hooks] table
-// gets the targeted nest-guidance variant and a top-level max_diff_lines names the key
-// that replaced it; every other key names the leaf key and its owning table.
+// given its full dotted path (e.g. ["release", "foo"]).
 func unknownKeyMessage(key []string) string {
 	// A top-level [hooks] table contradicts the verb-namespaced shape — hooks must
 	// nest under [release.hooks]. Give that specific guidance instead of the generic
@@ -538,6 +529,9 @@ func unknownKeyMessage(key []string) string {
 	}
 	if len(key) == 1 && key[0] == "max_diff_lines" {
 		return "max_diff_lines has been replaced by max_prompt_bytes, a per-call size cap in bytes"
+	}
+	if len(key) == 2 && key[0] == "release" && key[1] == "fallback" {
+		return "release.fallback has been removed — every non-AI body is the commit-subject list; supply hand-written notes with --notes-file"
 	}
 
 	leaf := key[len(key)-1]
@@ -704,7 +698,6 @@ func resolveRelease(shape releaseShape) Release {
 		Context:        shape.Context,
 		Prompt:         shape.Prompt,
 		OnNotesFailure: shape.OnNotesFailure,
-		Fallback:       shape.Fallback,
 		VersionFile:    shape.VersionFile,
 		VersionPattern: shape.VersionPattern,
 		AICommand:      shape.AICommand,
