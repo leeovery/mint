@@ -10,7 +10,7 @@ import (
 )
 
 // TestCauseText_KnownSentinels_DerivesConcisePhrase proves notes.CauseText maps each
-// of the three known notes-failure sentinels to its exact concise phrase and reports
+// known notes-failure sentinel to its exact concise phrase and reports
 // known=true. The match is errors.Is-based, so it must hold whether the sentinel is
 // passed bare or wrapped behind a %w chain (the engine's display-derivation seam).
 func TestCauseText_KnownSentinels_DerivesConcisePhrase(t *testing.T) {
@@ -24,6 +24,8 @@ func TestCauseText_KnownSentinels_DerivesConcisePhrase(t *testing.T) {
 		{"timeout", ai.ErrTimeout, "AI timed out"},
 		{"missing tool", ai.ErrCommandMissing, "AI tool not installed"},
 		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty/invalid notes after retry"},
+		{"no room for diff", notes.ErrNoRoomForDiff, "no room for the diff under max_prompt_bytes"},
+		{"merge too large", notes.ErrMergeTooLarge, "part notes too large to merge"},
 	}
 
 	for _, tc := range cases {
@@ -53,7 +55,7 @@ func TestCauseText_KnownSentinels_DerivesConcisePhrase(t *testing.T) {
 }
 
 // TestCauseText_UnmappedCause_ReportsNotKnown proves an error that wraps none of the
-// three sentinels reports known=false (and an empty phrase) so the engine falls back to
+// known sentinels reports known=false (and an empty phrase) so the engine falls back to
 // cause.Error().
 func TestCauseText_UnmappedCause_ReportsNotKnown(t *testing.T) {
 	t.Parallel()

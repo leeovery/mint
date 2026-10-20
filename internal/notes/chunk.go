@@ -18,17 +18,26 @@ const fileDiffHeader = "diff --git "
 // carrying the release's instructions and whole-release Change Map and run
 // concurrently, then one merge call turns every chunk's notes, in chunk order, into
 // the body. The merge output is returned byte-identical. promptBytes is the
-// single-pass prompt's size, reported to g.progress with the run's advance.
+// single-pass prompt's size, reported to g.progress with the run's advance. No call
+// over maxPromptBytes is sent: ErrNoRoomForDiff before any call, ErrMergeTooLarge in
+// place of the merge.
 func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
-	parts := cutParts(instructions, changeMap, splitFileDiffs(diff), maxPromptBytes)
+	parts, err := cutParts(instructions, changeMap, splitFileDiffs(diff), maxPromptBytes)
+	if err != nil {
+		return "", err
+	}
 
 	partNotes, err := g.generateParts(ctx, instructions, changeMap, parts, promptBytes)
 	if err != nil {
 		return "", err
 	}
 
+	mergePrompt := composeMergePrompt(instructions, changeMap, partNotes)
+	if len(mergePrompt) > maxPromptBytes {
+		return "", ErrMergeTooLarge
+	}
 	g.progress.Merging(len(parts))
-	body, err := g.transport.Generate(ctx, composeMergePrompt(instructions, changeMap, partNotes))
+	body, err := g.transport.Generate(ctx, mergePrompt)
 	if err != nil {
 		return "", fmt.Errorf("merging part notes: %w", err)
 	}
@@ -155,7 +164,8 @@ type chunkPart struct {
 // files packed into chunks, and a file bigger than a chunk's room cut into pieces in
 // its place. Room is measured with framing numbered at the diff's byte length, which
 // bounds the part and piece counts since every part carries at least one byte of it.
-func cutParts(instructions, changeMap string, files []string, maxPromptBytes int) []chunkPart {
+// It fails with ErrNoRoomForDiff when any call it would cut has no room for diff.
+func cutParts(instructions, changeMap string, files []string, maxPromptBytes int) ([]chunkPart, error) {
 	maxParts := 0
 	for _, file := range files {
 		maxParts += len(file)
@@ -164,6 +174,9 @@ func cutParts(instructions, changeMap string, files []string, maxPromptBytes int
 		return len(composeChunkPrompt(instructions, changeMap, p.framing(maxParts, maxParts), ""))
 	}
 	room := maxPromptBytes - fixedPart(chunkPart{})
+	if room <= 0 {
+		return nil, ErrNoRoomForDiff
+	}
 
 	var parts []chunkPart
 	var fitting []string
@@ -181,10 +194,14 @@ func cutParts(instructions, changeMap string, files []string, maxPromptBytes int
 		flush()
 		path := headerPath(file)
 		pieceRoom := maxPromptBytes - fixedPart(chunkPart{file: path, piece: maxParts, pieces: maxParts})
-		parts = append(parts, cutPieces(file, path, pieceRoom)...)
+		pieces, err := cutPieces(file, path, pieceRoom)
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, pieces...)
 	}
 	flush()
-	return parts
+	return parts, nil
 }
 
 // packChunks fills each chunk with whole items, in order, until the next item would
@@ -207,13 +224,12 @@ func packChunks(items []string, room int) []string {
 
 // cutPieces cuts one file's diff into pieces whose slices each repeat the file's
 // header and fit room. Cuts fall between hunks where each hunk fits, else between
-// lines, else between characters. A room the header leaves nothing of sends the file
-// whole.
-func cutPieces(file, path string, room int) []chunkPart {
+// lines, else between characters. A room the header fills is ErrNoRoomForDiff.
+func cutPieces(file, path string, room int) ([]chunkPart, error) {
 	header, body := splitFileHeader(file)
 	bodyRoom := room - len(header)
 	if bodyRoom <= 0 {
-		return []chunkPart{{slice: file}}
+		return nil, ErrNoRoomForDiff
 	}
 
 	var segments []string
@@ -224,18 +240,22 @@ func cutPieces(file, path string, room int) []chunkPart {
 			segments = append(segments, hunk)
 		}
 	}
-	bodies := packPieceBodies(segments, bodyRoom)
+	bodies, err := packPieceBodies(segments, bodyRoom)
+	if err != nil {
+		return nil, err
+	}
 	pieces := make([]chunkPart, len(bodies))
 	for i, b := range bodies {
 		pieces[i] = chunkPart{slice: header + b, file: path, piece: i + 1, pieces: len(bodies)}
 	}
-	return pieces
+	return pieces, nil
 }
 
 // packPieceBodies packs segments like packChunks, except that a segment longer than
 // room, a single line, fills the rest of the current piece and as many more as it
-// needs, each cut on a UTF-8 character boundary.
-func packPieceBodies(segments []string, room int) []string {
+// needs, each cut on a UTF-8 character boundary. A character longer than room is
+// ErrNoRoomForDiff; an invalid byte is cut on its own.
+func packPieceBodies(segments []string, room int) ([]string, error) {
 	var bodies []string
 	var current strings.Builder
 	flush := func() {
@@ -254,7 +274,11 @@ func packPieceBodies(segments []string, room int) []string {
 		for len(segment) > room {
 			end := characterBoundary(segment, room)
 			if end == 0 {
-				_, end = utf8.DecodeRuneInString(segment)
+				r, size := utf8.DecodeRuneInString(segment)
+				if r != utf8.RuneError || size > 1 {
+					return nil, ErrNoRoomForDiff
+				}
+				end = size
 			}
 			bodies = append(bodies, segment[:end])
 			segment = segment[end:]
@@ -264,7 +288,7 @@ func packPieceBodies(segments []string, room int) []string {
 	if current.Len() > 0 {
 		flush()
 	}
-	return bodies
+	return bodies, nil
 }
 
 // characterBoundary is the length of the longest prefix of s, at most n bytes long,

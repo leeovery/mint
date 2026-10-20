@@ -121,6 +121,10 @@ func CauseText(failure error) (string, bool) {
 		return "AI tool not installed", true
 	case errors.Is(failure, ai.ErrGenerationFailed):
 		return "AI returned empty/invalid notes after retry", true
+	case errors.Is(failure, ErrNoRoomForDiff):
+		return ErrNoRoomForDiff.Error(), true
+	case errors.Is(failure, ErrMergeTooLarge):
+		return ErrMergeTooLarge.Error(), true
 	default:
 		return "", false
 	}
