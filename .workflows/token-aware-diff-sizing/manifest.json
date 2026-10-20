@@ -347,7 +347,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 4,
-          "current_task": "token-aware-diff-sizing-4-12",
+          "current_task": "token-aware-diff-sizing-4-13",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -414,7 +414,8 @@
             "token-aware-diff-sizing-4-8",
             "token-aware-diff-sizing-4-9",
             "token-aware-diff-sizing-4-10",
-            "token-aware-diff-sizing-4-11"
+            "token-aware-diff-sizing-4-11",
+            "token-aware-diff-sizing-4-12"
           ],
           "staging": {
             "p1": {
@@ -454,6 +455,17 @@
               "files": [
                 "internal/notes/assemble.go",
                 "internal/notes/chunk.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-4-12",
+              "source": "executor",
+              "summary": "The note-cache write warning fires while the notes stage spinner is still running",
+              "failure": "The dry-run note-cache write warning prints before the notes stage's success line, breaking the StageStarted stream-discipline wording; PrettyPresenter.Warn stops the spinner first, so the output is not garbled, only reordered (warning, then the check-mark line)",
+              "detail": "resolveBody calls warnNoteCacheFailed(deps.Presenter, werr) in the cacheInputs.Cacheable && deps.NoteCache != nil block (internal/engine/release.go), but stage.done() runs only after resolveBody returns (internal/engine/release.go:518-527). Defer the warning until after stage.done(), as chunkNotesKeeper.warnUnsaved does in internal/engine/chunknotes.go",
+              "files": [
+                "internal/engine/release.go",
+                "internal/engine/chunknotes.go"
               ]
             }
           ]
