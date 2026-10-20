@@ -13,16 +13,16 @@ import (
 // fileDiffHeader opens each file's section of a git diff.
 const fileDiffHeader = "diff --git "
 
-// generateChunked writes the notes for a diff whose single-pass prompt is over
-// maxPromptBytes: the diff's files are cut in path order into chunk calls, each
-// carrying the release's instructions and whole-release Change Map and run
-// concurrently, then one merge call turns every chunk's notes, in chunk order, into
-// the body. The merge output is returned byte-identical. promptBytes is the
+// generateChunked writes the notes for a diff that cannot go in one call: the diff's
+// files are cut in path order into chunk calls of at most target bytes, each carrying
+// the release's instructions and whole-release Change Map and run concurrently, then
+// one merge call of at most maxPromptBytes turns every chunk's notes, in chunk order,
+// into the body. The merge output is returned byte-identical. promptBytes is the
 // single-pass prompt's size, reported to g.progress with the run's advance. No call
-// over maxPromptBytes is sent: ErrNoRoomForDiff before any call, ErrMergeTooLarge in
+// over its bound is sent: ErrNoRoomForDiff before any call, ErrMergeTooLarge in
 // place of the merge.
-func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
-	parts, err := cutParts(instructions, changeMap, splitFileDiffs(diff), maxPromptBytes)
+func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, target, maxPromptBytes int) (string, error) {
+	parts, err := cutParts(instructions, changeMap, splitFileDiffs(diff), target)
 	if err != nil {
 		return "", err
 	}
@@ -37,7 +37,7 @@ func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap
 		return "", ErrMergeTooLarge
 	}
 	g.progress.Merging(len(parts))
-	body, err := g.generate(ctx, mergePrompt)
+	body, _, err := g.generate(ctx, mergePrompt)
 	if err != nil {
 		return "", &callError{action: "merging part notes", location: "merging", err: err}
 	}
@@ -97,7 +97,7 @@ func (g *Generator) generateParts(ctx context.Context, instructions, changeMap s
 			// before it can start a call in the freed slot.
 			defer func() { <-slots }()
 			prompt := composeChunkPrompt(instructions, changeMap, part.framing(i+1, len(parts)), part.slice)
-			notes, err := g.generate(ctx, prompt)
+			notes, _, err := g.generate(ctx, prompt)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -195,12 +195,12 @@ type chunkPart struct {
 	piece, pieces int
 }
 
-// cutParts cuts files, in order, into chunk calls: whole
+// cutParts cuts files, in order, into chunk calls of at most target bytes: whole
 // files packed into chunks, and a file bigger than a chunk's room cut into pieces in
 // its place. Room is measured with framing numbered at the diff's byte length, which
 // bounds the part and piece counts since every part carries at least one byte of it.
 // It fails with ErrNoRoomForDiff when any call it would cut has no room for diff.
-func cutParts(instructions, changeMap string, files []string, maxPromptBytes int) ([]chunkPart, error) {
+func cutParts(instructions, changeMap string, files []string, target int) ([]chunkPart, error) {
 	maxParts := 0
 	for _, file := range files {
 		maxParts += len(file)
@@ -208,7 +208,7 @@ func cutParts(instructions, changeMap string, files []string, maxPromptBytes int
 	fixedPart := func(p chunkPart) int {
 		return len(composeChunkPrompt(instructions, changeMap, p.framing(maxParts, maxParts), ""))
 	}
-	room := maxPromptBytes - fixedPart(chunkPart{})
+	room := target - fixedPart(chunkPart{})
 	if room <= 0 {
 		return nil, ErrNoRoomForDiff
 	}
@@ -228,7 +228,7 @@ func cutParts(instructions, changeMap string, files []string, maxPromptBytes int
 		}
 		flush()
 		path := headerPath(file)
-		pieceRoom := maxPromptBytes - fixedPart(chunkPart{file: path, piece: maxParts, pieces: maxParts})
+		pieceRoom := target - fixedPart(chunkPart{file: path, piece: maxParts, pieces: maxParts})
 		pieces, err := cutPieces(file, path, pieceRoom)
 		if err != nil {
 			return nil, err

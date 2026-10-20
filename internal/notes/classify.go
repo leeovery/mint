@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"mint/internal/ai"
@@ -17,24 +18,50 @@ const (
 	classifyStreamEnd    = 2_000
 )
 
+// failureCode is the classify call's reading of a failed notes call.
+type failureCode int
+
+const (
+	codeOther failureCode = iota
+	codeSize
+)
+
 // generate makes one notes call. A generation failure is followed by one classify
-// call over the failed call's captured output.
-func (g *Generator) generate(ctx context.Context, prompt string) (string, error) {
+// call over the failed call's captured output, whose reading is returned with it.
+func (g *Generator) generate(ctx context.Context, prompt string) (string, failureCode, error) {
 	body, err := g.transport.Generate(ctx, prompt)
 	if err != nil {
-		g.classify(ctx, err)
+		return "", g.classify(ctx, err), err
 	}
-	return body, err
+	return body, codeOther, nil
 }
 
-// classify asks the AI what a failed notes call's captured output means. Every answer
-// takes the OTHER path: the failure stands as the notes call's own.
-func (g *Generator) classify(ctx context.Context, failure error) {
+// classify asks the AI what a failed notes call's captured output means.
+func (g *Generator) classify(ctx context.Context, failure error) failureCode {
 	var genErr *ai.GenerationError
 	if !errors.As(failure, &genErr) {
-		return
+		return codeOther
 	}
-	_, _ = g.transport.Generate(ctx, composeClassifyPrompt(genErr))
+	answer, err := g.transport.Generate(ctx, composeClassifyPrompt(genErr))
+	if err != nil {
+		return codeOther
+	}
+	return readCode(answer)
+}
+
+// readCode reads a classify answer as SIZE only when, stripped of surrounding
+// whitespace, quotes and backticks and of trailing punctuation, it is SIZE in any case.
+func readCode(answer string) failureCode {
+	code := strings.TrimLeftFunc(answer, isAnswerWrapping)
+	code = strings.TrimRightFunc(code, func(r rune) bool { return isAnswerWrapping(r) || unicode.IsPunct(r) })
+	if strings.EqualFold(code, "SIZE") {
+		return codeSize
+	}
+	return codeOther
+}
+
+func isAnswerWrapping(r rune) bool {
+	return unicode.IsSpace(r) || r == '"' || r == '\'' || r == '`' || unicode.In(r, unicode.Pi, unicode.Pf)
 }
 
 func composeClassifyPrompt(failure *ai.GenerationError) string {

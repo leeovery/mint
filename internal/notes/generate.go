@@ -26,7 +26,7 @@ type Transport interface {
 // may arrive from the chunk calls' goroutines.
 type Progress interface {
 	// PartsDone reports done of parts finished, done 0 as the run splits.
-	// promptBytes is the size of the single-pass prompt that was over the cap.
+	// promptBytes is the size of the single-pass prompt the run split from.
 	PartsDone(promptBytes, parts, done int)
 	// Merging reports the merge call starting over parts' notes.
 	Merging(parts int)
@@ -87,7 +87,9 @@ func (g *Generator) WithProgress(progress Progress) *Generator {
 //     Change Map + diff + closing reminder, nothing else; no commit messages).
 //  4. The size check — a single-pass prompt within max_prompt_bytes goes to
 //     transport.Generate as one call; one over it skips that call and is written by
-//     chunk calls and one merge call instead (generateChunked).
+//     chunk calls and one merge call instead (generateChunked). A single-pass call
+//     whose failure is classified SIZE is written the same way, by chunk calls each
+//     at most half the failed call's size.
 //
 // The body is returned WHOLE: no parsing, splitting, label extraction, or
 // per-sink reassembly — a valid generation, single-pass or merged, passes through
@@ -210,14 +212,17 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 	instructions = appendOneTimeContext(instructions, oneTimeContext)
 	prompt := ComposePrompt(instructions, changeMap, diff)
 	if len(prompt) > cfg.MaxPromptBytes {
-		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
+		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes, cfg.MaxPromptBytes)
 	}
 
-	body, err := g.generate(ctx, prompt)
-	if err != nil {
-		return "", fmt.Errorf("generating notes: %w", err)
+	body, code, err := g.generate(ctx, prompt)
+	if err == nil {
+		return body, nil
 	}
-	return body, nil
+	if code == codeSize {
+		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), len(prompt)/2, cfg.MaxPromptBytes)
+	}
+	return "", fmt.Errorf("generating notes: %w", err)
 }
 
 // appendOneTimeContext appends the transient regenerate nudge to the resolved

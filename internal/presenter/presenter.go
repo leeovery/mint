@@ -492,8 +492,7 @@ type StageSuccess struct {
 // NotesProgress carries a chunked notes run's progress: Done of Parts finished,
 // Done 0 as the run splits.
 type NotesProgress struct {
-	// PromptBytes is the size of the composed single-pass prompt whose overflow of
-	// the cap split the run.
+	// PromptBytes is the size of the composed single-pass prompt the run split from.
 	PromptBytes int
 	Parts       int
 	Done        int
