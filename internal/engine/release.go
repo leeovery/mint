@@ -1118,26 +1118,27 @@ func (f regeneratorFunc) Regenerate(ctx context.Context, oneTimeContext string) 
 
 // perRunRegenerator selects the Regenerator the gate's `r` choice consults. A wired
 // deps.Regenerator OVERRIDES everything (the test-injection seam). Otherwise, when a
-// generator was built (the normal-AI selector path), it returns a per-run closure:
-// given merged, it re-merges those part notes with the one-time context, one call;
-// otherwise it binds lastTag + cfg to generator.GenerateWithContext, re-running the
-// AI path with the one-time context appended. When neither is present (an override
-// body, or a no-AI path with no generator), it returns nil; `r` is only offered for
-// KindNormalAI, so the nil is never consulted on the no-AI paths.
-func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, merged *notes.MergeInputs, lastTag string, cfg config.Config) Regenerator {
+// generator was built (the normal-AI selector path), it returns a per-run closure
+// over held, the merge inputs of the chunked run that wrote the notes now at the
+// gate: while it holds any, an `r` re-merges those part notes with the one-time
+// context, one call; otherwise it binds lastTag + cfg to generator.GenerateWithContext,
+// re-running the AI path from the size check with the one-time context appended, and
+// holds the merge inputs of a chunked run that `r` becomes. When neither is present (an
+// override body, or a no-AI path with no generator), it returns nil; `r` is only
+// offered for KindNormalAI, so the nil is never consulted on the no-AI paths.
+func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, held *notes.MergeInputs, lastTag string, cfg config.Config) Regenerator {
 	if deps.Regenerator != nil {
 		return deps.Regenerator
 	}
 	if generator == nil {
 		return nil
 	}
-	if merged != nil {
-		return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
-			return generator.Remerge(ctx, *merged, cfg, oneTimeContext)
-		})
-	}
+	regenerating := generator.WithMergeInputs(func(in notes.MergeInputs) { held = &in })
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
-		return generator.GenerateWithContext(ctx, lastTag, cfg, oneTimeContext)
+		if held != nil {
+			return generator.Remerge(ctx, *held, cfg, oneTimeContext)
+		}
+		return regenerating.GenerateWithContext(ctx, lastTag, cfg, oneTimeContext)
 	})
 }
 
