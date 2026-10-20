@@ -344,7 +344,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 2,
-          "current_task": "token-aware-diff-sizing-2-10",
+          "current_task": null,
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -390,7 +390,8 @@
             "token-aware-diff-sizing-2-6",
             "token-aware-diff-sizing-2-7",
             "token-aware-diff-sizing-2-8",
-            "token-aware-diff-sizing-2-9"
+            "token-aware-diff-sizing-2-9",
+            "token-aware-diff-sizing-2-10"
           ],
           "staging": {
             "p1": {
@@ -457,6 +458,36 @@
               "detail": "internal/notes/chunk.go:200-203 sends the file whole when bodyRoom <= 0; chunk.go:242-244 lets a piece run up to 3 bytes over when the room is narrower than one rune; chunk.go:163 sends every file down that path when room <= 0; a no-room check only on the chunk room in cutParts misses the first two",
               "files": [
                 "internal/notes/chunk.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-2-10",
+              "source": "executor",
+              "summary": "A Ctrl-C during regenerate --all is treated as a skipped version, not an abort",
+              "failure": "An operator who presses Ctrl-C mid-batch sees every remaining version reported as skipped (notes generation failed), each failing at once on the dead context; the batch then finishes with its end summary and returns nil, as if it succeeded with some skips, instead of stopping; they notice from a summary listing versions they never meant to skip",
+              "detail": "processOneVersion sends any ProduceBody error to reportSkip (internal/engine/regenerate_batch.go:288-289) without checking errors.Is(err, context.Canceled); the batch loop (around lines 195-220) then emits RunFinished and returns collected, nil",
+              "files": [
+                "internal/engine/regenerate_batch.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-2-10",
+              "source": "executor",
+              "summary": "A Ctrl-C during regenerate --all is treated as a skipped version, not an abort",
+              "failure": "An operator who presses Ctrl-C mid-batch sees every remaining version reported as skipped (notes generation failed); the batch then finishes with its end summary and returns nil instead of stopping; they notice from a summary listing versions they never meant to skip",
+              "detail": "processOneVersion sends any ProduceBody error to reportSkip (internal/engine/regenerate_batch.go:288-289) without checking errors.Is(err, context.Canceled); RegenerateAll then emits RunFinished and returns nil (around lines 215-220)",
+              "files": [
+                "internal/engine/regenerate_batch.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-2-10",
+              "source": "executor",
+              "summary": "A Ctrl-C during regenerate --all is treated as a skipped version, not an abort",
+              "failure": "An operator who presses Ctrl-C mid-batch sees every remaining version reported as skipped (notes generation failed); the batch then finishes with its end summary and returns nil instead of stopping",
+              "detail": "processOneVersion sends any ProduceBody error to reportSkip (internal/engine/regenerate_batch.go:288-289) without checking errors.Is(err, context.Canceled); RegenerateAll then emits RunFinished and returns nil (around lines 215-220)",
+              "files": [
+                "internal/engine/regenerate_batch.go"
               ]
             }
           ]
