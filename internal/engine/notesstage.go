@@ -19,6 +19,8 @@ type notesStage struct {
 	halved    bool
 	// largestCall is the biggest prompt of the run's succeeded calls carrying diff.
 	largestCall int
+	// fallbackCause is the failure the commit-subject list ships in place of, or nil.
+	fallbackCause error
 }
 
 var _ notes.Progress = (*notesStage)(nil)
@@ -46,6 +48,25 @@ func (s *notesStage) Merged(parts int) {
 
 func (s *notesStage) CallSucceeded(promptBytes int) {
 	s.largestCall = max(s.largestCall, promptBytes)
+}
+
+func (s *notesStage) fellBack(failure error) {
+	s.fallbackCause = failure
+}
+
+// warnFallback names both commands for saved chunk notes: when it prints, whether this
+// release will go out is not yet known. Call it only once the stage has ended.
+func (s *notesStage) warnFallback(version string) {
+	if s.fallbackCause == nil {
+		return
+	}
+	message := failureMessage(s.fallbackCause) + "; falling back to the commit-subject list"
+	if saved := notes.SavedChunkNotesPath(s.fallbackCause); saved != "" {
+		message += "; part notes saved to " + saved +
+			" — once this release is out, put them on it with mint release regenerate " + version + " --notes-file " + saved +
+			", or if the run ends before the push, release them with mint release --notes-file " + saved
+	}
+	s.p.Warn(presenter.Warning{Label: "notes", Message: message, Output: notesFailureOutput(s.fallbackCause)})
 }
 
 // lowerCap is the cap to suggest: the largest succeeded call carrying diff when a

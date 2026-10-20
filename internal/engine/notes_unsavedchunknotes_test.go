@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"mint/internal/ai"
@@ -99,7 +100,7 @@ func TestRelease_ChunkNotesCannotBeSaved_Abort_KeepsTheAIsFailureAndWarnsWithThe
 	}
 }
 
-func TestRelease_ChunkNotesCannotBeWritten_Fallback_WarnsAndShipsTheCommitSubjectList(t *testing.T) {
+func TestRelease_ChunkNotesCannotBeWritten_Fallback_WarnsThenFallsBackNamingNoFile(t *testing.T) {
 	t.Parallel()
 
 	const subjects = "subject one\nsubject two\n"
@@ -113,7 +114,13 @@ func TestRelease_ChunkNotesCannotBeWritten_Fallback_WarnsAndShipsTheCommitSubjec
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	assertOnlyWarning(t, run.rec, unsavedChunkNotesWarning(errChunkNotesWrite.Error()))
+	want := []presenter.Warning{
+		unsavedChunkNotesWarning(errChunkNotesWrite.Error()),
+		fallbackWarning("AI call failed (part 2 of 2)", usageLimitOutput),
+	}
+	if got := warnings(run.rec); !slices.Equal(got, want) {
+		t.Errorf("warnings = %+v, want %+v", got, want)
+	}
 	if body := tagAnnotationBody(t, run.f, nextTag); body != subjects {
 		t.Errorf("tag annotation body = %q, want the commit-subject list %q", body, subjects)
 	}

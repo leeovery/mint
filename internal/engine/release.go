@@ -538,6 +538,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	} else {
 		stage.done()
 		chunkNotes.warnUnsaved(p)
+		stage.warnFallback(versionKey)
 	}
 
 	// Show the plan, then the notes — identical in a dry run and a real run up to here;
@@ -954,8 +955,9 @@ func readNotesFile(path string, set bool) (*string, error) {
 // resolveBody resolves this run's notes body + Kind via the notes-path precedence
 // (SelectBody), returning the generator it built so the caller can bind a per-run
 // regenerator for the gate's `r` choice. The selector's generation reports a chunked
-// run to progress and saves a failed one's chunk notes through chunkNotes; the returned generator
-// does neither. It is the single Stage-4 body decision:
+// run to stage and saves a failed one's chunk notes through chunkNotes, and the
+// selector hands stage the failure a fallback body ships in place of; the returned
+// generator does none of these. It is the single Stage-4 body decision:
 //
 //   - opts.NotesBody is a TEST-INJECTION OVERRIDE: when non-empty it bypasses the
 //     selector and returns (opts.NotesBody, opts.NotesKind, nil generator, nil). The
@@ -965,7 +967,7 @@ func readNotesFile(path string, set bool) (*string, error) {
 //     SelectBody runs the precedence over the run's SelectState. A SelectBody error is
 //     an on_notes_failure=abort notes failure: it returns the error for the caller to
 //     surface and abort on, BEFORE any mutation.
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, chunkNotes *chunkNotesKeeper, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, chunkNotes *chunkNotesKeeper, versionKey string, opts ReleaseOptions, stage *notesStage) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, nil
 	}
@@ -984,7 +986,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		VersionPattern: cfg.Release.VersionPattern,
 	})
 	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
-	selector := notes.NewSelector(generator.WithProgress(progress).WithChunkNotes(chunkNotes.saver()), assembler, deps.Runner, root)
+	selector := notes.NewSelector(generator.WithProgress(stage).WithChunkNotes(chunkNotes.saver()), assembler, deps.Runner, root).WithFallbackNotice(stage.fellBack)
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled

@@ -68,10 +68,11 @@ type SelectState struct {
 // review gate and the orchestrator invoke SelectBody as the one place that decides
 // which body a release gets.
 type Selector struct {
-	generator *Generator
-	assembler *Assembler
-	runner    runner.CommandRunner
-	root      string
+	generator      *Generator
+	assembler      *Assembler
+	runner         runner.CommandRunner
+	root           string
+	fallbackNotice func(failure error)
 }
 
 // NewSelector builds a Selector over the composed providers. The same Assembler
@@ -80,6 +81,14 @@ type Selector struct {
 // fallback commit-subject bodies.
 func NewSelector(generator *Generator, assembler *Assembler, r runner.CommandRunner, root string) *Selector {
 	return &Selector{generator: generator, assembler: assembler, runner: r, root: root}
+}
+
+// WithFallbackNotice returns a copy of s that hands notice the failure each
+// KindFallback body ships in place of; s itself is unchanged.
+func (s *Selector) WithFallbackNotice(notice func(failure error)) *Selector {
+	c := *s
+	c.fallbackNotice = notice
+	return &c
 }
 
 // CacheInputs carries the dry-run note-cache key components the NORMAL-AI path
@@ -221,6 +230,9 @@ func (s *Selector) resolveNormalPathFailure(ctx context.Context, failure error, 
 	body, err := ResolveFailure(ctx, s.runner, failure, lastTag, rel)
 	if err != nil {
 		return "", KindNormalAI, err
+	}
+	if s.fallbackNotice != nil {
+		s.fallbackNotice(failure)
 	}
 	return body, KindFallback, nil
 }
