@@ -168,7 +168,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return "", fmt.Errorf("notes size guard: %w", err)
 	}
 
-	changeMap, err := g.assembler.BuildChangeMapForRange(ctx, diffRange)
+	changeMap, err := g.assembler.BuildChangeMapForRange(ctx, diffRange, cfg.MaxPromptBytes)
 	if err != nil {
 		return "", fmt.Errorf("building change map for notes: %w", err)
 	}

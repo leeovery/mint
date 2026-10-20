@@ -10,9 +10,9 @@ import (
 
 // BuildChangeMap assembles the diff-derived salience preamble for lastTag..HEAD —
 // the Change Map. It is the fix for the "glosses over the big feature" failure: a
-// salience problem, not a missing-data problem. The map is compact METADATA that a
-// later task prepends before the (capped) diff to tell the AI what to prioritize;
-// it is NOT a restatement of the diff and this task does NOT do the prepend.
+// salience problem, not a missing-data problem. The map is compact METADATA that
+// precedes the diff in the prompt to tell the AI what to prioritize; it is NOT a
+// restatement of the diff.
 //
 // Two cheap git calls feed it, run cwd-relative like the other engine git calls and
 // AFTER the SAME exclusion set the diff uses — the built-in :(exclude)CHANGELOG.md
@@ -28,13 +28,15 @@ import (
 // The rendered map orders salience NOVELTY-FIRST (weighted above magnitude): new
 // packages/directories and renamed/removed paths lead, then the per-area churn
 // rollup as supporting context, then individually-notable files (new top-level
-// entries and the single largest file).
+// entries and the single largest file). A map that would take more than a tenth of
+// maxPromptBytes condenses its removal and rename runs by folder, largest first,
+// until it is within that share or no run left would shrink it.
 //
 // A missing git binary is surfaced as a condition matching runner.ErrCommandNotFound
 // (via errors.Is); any other non-zero git exit is wrapped so an unexpected failure
 // is never mistaken for a degenerate map.
-func (a *Assembler) BuildChangeMap(ctx context.Context, lastTag string) (string, error) {
-	return a.BuildChangeMapForRange(ctx, forwardRange(lastTag))
+func (a *Assembler) BuildChangeMap(ctx context.Context, lastTag string, maxPromptBytes int) (string, error) {
+	return a.BuildChangeMapForRange(ctx, forwardRange(lastTag), maxPromptBytes)
 }
 
 // BuildChangeMapForRange is BuildChangeMap over an ARBITRARY git range — the
@@ -45,7 +47,7 @@ func (a *Assembler) BuildChangeMap(ctx context.Context, lastTag string) (string,
 // and an excluded path NEVER appears — the regenerate map matches the forward map's
 // ordering and exclusion exactly. BuildChangeMap is the forward wrapper that builds
 // `{lastTag}..HEAD` and delegates here.
-func (a *Assembler) BuildChangeMapForRange(ctx context.Context, diffRange string) (string, error) {
+func (a *Assembler) BuildChangeMapForRange(ctx context.Context, diffRange string, maxPromptBytes int) (string, error) {
 	excludes := a.excludePathspecs()
 	nameStatusArgs := append([]string{"diff", "--name-status", diffRange, "--", "."}, excludes...)
 	nameStatusRes, err := a.runner.Run(ctx, "git", nameStatusArgs...)
@@ -62,7 +64,7 @@ func (a *Assembler) BuildChangeMapForRange(ctx context.Context, diffRange string
 	changes := parseNameStatus(nameStatusRes.Stdout)
 	churn := parseNumstat(numstatRes.Stdout)
 
-	return renderChangeMap(changes, churn), nil
+	return renderChangeMap(changes, churn, maxPromptBytes), nil
 }
 
 // changeStatus is the structural status of one changed path from name-status.
@@ -172,44 +174,177 @@ func numstatPath(pathFields []string) string {
 // renames and removals), then the MAGNITUDE rollup (per-area churn ranked desc),
 // then NOTABLE files (new top-level entries, single largest file). Sections present
 // only when they have content, so a small change set yields a small map.
-func renderChangeMap(changes []pathChange, churn []fileChurn) string {
+func renderChangeMap(changes []pathChange, churn []fileChurn, maxPromptBytes int) string {
+	novelty := noveltyLines(changes)
+	magnitude := renderMagnitude(churn)
+	notable := renderNotable(changes, churn)
+
+	full := composeChangeMap(novelty, magnitude, notable)
+	share := condenseShare(maxPromptBytes)
+	if len(full) <= share {
+		return full
+	}
+	return composeChangeMap(condenseRuns(novelty, len(full)-share), magnitude, notable)
+}
+
+func composeChangeMap(novelty []noveltyLine, magnitude, notable string) string {
 	var sections []string
-
-	if novelty := renderNovelty(changes); novelty != "" {
-		sections = append(sections, novelty)
+	for _, section := range []string{renderNovelty(novelty), magnitude, notable} {
+		if section != "" {
+			sections = append(sections, section)
+		}
 	}
-	if magnitude := renderMagnitude(churn); magnitude != "" {
-		sections = append(sections, magnitude)
-	}
-	if notable := renderNotable(changes, churn); notable != "" {
-		sections = append(sections, notable)
-	}
-
 	return strings.Join(sections, "\n")
 }
 
-// renderNovelty is the PRIMARY section: structural novelty weighted above magnitude.
-// New packages/directories headline first (the strongest language-agnostic signal),
-// then renamed and removed paths reported as structural changes.
-func renderNovelty(changes []pathChange) string {
-	var lines []string
+// condenseShare is the bytes a folder-condensable text may take before it condenses:
+// a tenth of the per-call cap.
+func condenseShare(maxPromptBytes int) int {
+	return maxPromptBytes / 10
+}
+
+// noveltyLine is one line of the structural-novelty section. run is the folder run
+// the line can condense into; the zero runKey marks a line that never condenses.
+type noveltyLine struct {
+	text string
+	run  runKey
+}
+
+// runKey names a condensable run: one kind of structural change ("Removed",
+// "Renamed") under one leading directory.
+type runKey struct {
+	kind   string
+	folder string
+}
+
+// noveltyLines is the PRIMARY section's content: structural novelty weighted above
+// magnitude. New packages/directories headline first (the strongest language-agnostic
+// signal), then renamed and removed paths reported as structural changes. A rename
+// runs under the folder it moved into, matching the rest of the map.
+func noveltyLines(changes []pathChange) []noveltyLine {
+	var lines []noveltyLine
 
 	for _, dir := range newDirectories(changes) {
-		lines = append(lines, "New package/dir: "+dir)
+		lines = append(lines, noveltyLine{text: "New package/dir: " + dir})
 	}
 	for _, c := range changes {
 		switch c.Status {
 		case statusRenamed:
-			lines = append(lines, "Renamed: "+c.OldPath+" -> "+c.Path)
+			lines = append(lines, noveltyLine{text: "Renamed: " + c.OldPath + " -> " + c.Path, run: runOf("Renamed", c.Path)})
 		case statusDeleted:
-			lines = append(lines, "Removed: "+c.Path)
+			lines = append(lines, noveltyLine{text: "Removed: " + c.Path, run: runOf("Removed", c.Path)})
 		}
 	}
+	return lines
+}
 
+// runOf keys path's line into its leading-directory run; a top-level path has no
+// folder and so no run.
+func runOf(kind, path string) runKey {
+	dir, ok := leadingDir(path)
+	if !ok {
+		return runKey{}
+	}
+	return runKey{kind: kind, folder: dir}
+}
+
+func renderNovelty(lines []noveltyLine) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return "Structural novelty:\n" + indentLines(lines)
+	texts := make([]string, 0, len(lines))
+	for _, l := range lines {
+		texts = append(texts, l.text)
+	}
+	return "Structural novelty:\n" + indentLines(texts)
+}
+
+// runSummary is one candidate collapse: the run, its size, its summary line, and the
+// bytes collapsing it saves.
+type runSummary struct {
+	key   runKey
+	count int
+	text  string
+	saved int
+}
+
+// condenseRuns collapses runs in rankRuns order until at least excess bytes are saved
+// or none is left. Each collapsed run's summary line takes the place of the run's
+// first line.
+func condenseRuns(lines []noveltyLine, excess int) []noveltyLine {
+	collapsed := make(map[runKey]string)
+	saved := 0
+	for _, run := range rankRuns(lines) {
+		if saved >= excess {
+			break
+		}
+		collapsed[run.key] = run.text
+		saved += run.saved
+	}
+
+	out := make([]noveltyLine, 0, len(lines))
+	placed := make(map[runKey]bool)
+	for _, l := range lines {
+		summary, ok := collapsed[l.run]
+		if !ok {
+			out = append(out, l)
+			continue
+		}
+		if !placed[l.run] {
+			out = append(out, noveltyLine{text: summary})
+			placed[l.run] = true
+		}
+	}
+	return out
+}
+
+// rankRuns returns the runs of two or more lines whose collapse would shrink the map,
+// in collapse order: largest first, ties by kind then folder so the order never
+// depends on map iteration.
+func rankRuns(lines []noveltyLine) []runSummary {
+	counts := make(map[runKey]int)
+	costs := make(map[runKey]int)
+	for _, l := range lines {
+		if l.run == (runKey{}) {
+			continue
+		}
+		counts[l.run]++
+		costs[l.run] += len(l.text) + lineOverhead
+	}
+
+	runs := make([]runSummary, 0, len(counts))
+	for key, count := range counts {
+		if count < 2 {
+			continue
+		}
+		text := fmt.Sprintf("%s: %s files under %s/", key.kind, groupThousands(count), key.folder)
+		if saved := costs[key] - (len(text) + lineOverhead); saved > 0 {
+			runs = append(runs, runSummary{key: key, count: count, text: text, saved: saved})
+		}
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		if runs[i].count != runs[j].count {
+			return runs[i].count > runs[j].count
+		}
+		if runs[i].key.kind != runs[j].key.kind {
+			return runs[i].key.kind < runs[j].key.kind
+		}
+		return runs[i].key.folder < runs[j].key.folder
+	})
+	return runs
+}
+
+// lineOverhead is the bytes indentLines adds per line beyond its text: the two-space
+// indent and the joining newline.
+const lineOverhead = 3
+
+// groupThousands renders n with comma thousands separators.
+func groupThousands(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
 
 // newDirectories applies the documented novelty heuristic: group changed paths by

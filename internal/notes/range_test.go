@@ -154,7 +154,7 @@ func TestAssembler_BuildChangeMapForRange_RidesSameExcludesOverRange(t *testing.
 	)
 
 	a := notes.NewAssembler(r, notes.ExcludeConfig{VersionFile: "release.txt"})
-	got, err := a.BuildChangeMapForRange(t.Context(), "v1.3.0..v1.4.0")
+	got, err := a.BuildChangeMapForRange(t.Context(), "v1.3.0..v1.4.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMapForRange returned unexpected error: %v", err)
 	}

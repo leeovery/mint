@@ -3,6 +3,8 @@ package engine_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"mint/internal/config"
@@ -529,4 +531,34 @@ func indexOfSub(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+func TestRegenerateFreshBody_OverShareMapIsCondensed(t *testing.T) {
+	t.Parallel()
+
+	diff := "diff --git a/core/run.go b/core/run.go\n@@ -1 +1 @@\n-old\n+new\n"
+	var nameStatus strings.Builder
+	for i := range 4312 {
+		fmt.Fprintf(&nameStatus, "D\tvendor/github.com/acme/module%02d/internal/pkg/file%05d.go\n", i%7, i)
+	}
+	nameStatus.WriteString("M\tcore/run.go\n")
+	f := seedFreshGit(diff, nameStatus.String(), "10\t2\tcore/run.go\n")
+	tr := &freshTransport{body: "notes"}
+	cfg := freshCfg()
+	cfg.MaxPromptBytes = config.DefaultMaxPromptBytes
+
+	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res); err != nil {
+		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
+	}
+
+	if tr.calls() != 1 {
+		t.Fatalf("transport calls = %d, want 1", tr.calls())
+	}
+	if !strings.Contains(tr.prompts[0], "\n  Removed: 4,312 files under vendor/\n") {
+		t.Errorf("regenerate prompt does not carry the condensed map summary line")
+	}
+	if strings.Contains(tr.prompts[0], "Removed: vendor/") {
+		t.Errorf("regenerate prompt still carries per-path vendor/ removals")
+	}
 }

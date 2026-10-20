@@ -202,7 +202,7 @@ func TestGenerator_Generate_AIInputIsExactlyChangeMapAndDiffAndPrompt(t *testing
 		t.Fatalf("ResolveInstructions returned unexpected error: %v", err)
 	}
 	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus, numstat), notes.ExcludeConfig{}).
-		BuildChangeMap(t.Context(), "v4.0.0")
+		BuildChangeMap(t.Context(), "v4.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
