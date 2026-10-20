@@ -50,8 +50,8 @@ func regenerateAllV140(t *testing.T, notesGit *runner.FakeRunner, tr notes.Trans
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, sinks engine.NotesSinks) (string, error) {
 		return engine.RegenerateFreshBody(ctx, notesGit, tr, "", cfg, res, sinks)
 	}
-	req.ProduceRegenerator = func(_ engine.RegenerateSource, res version.Resolution, merged *notes.MergeInputs) engine.Regenerator {
-		return engine.RegenerateFreshRegenerator(notesGit, tr, "", cfg, res, merged)
+	req.ProduceRegenerator = func(_ engine.RegenerateSource, res version.Resolution, run engine.RegenRun) engine.Regenerator {
+		return engine.RegenerateFreshRegenerator(notesGit, tr, "", cfg, res, run)
 	}
 	if _, err := engine.RegenerateAll(t.Context(), regenWriteDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)

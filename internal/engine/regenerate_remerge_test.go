@@ -79,8 +79,8 @@ func freshRunOf(req *engine.RegenerateRunRequest, notesGit *runner.FakeRunner, t
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
 		return engine.RegenerateFreshBody(ctx, notesGit, tr, "", cfg, res, sinks)
 	}
-	req.ProduceRegenerator = func(_ engine.RegenerateSource, merged *notes.MergeInputs) engine.Regenerator {
-		return engine.RegenerateFreshRegenerator(notesGit, tr, "", cfg, res, merged)
+	req.ProduceRegenerator = func(_ engine.RegenerateSource, run engine.RegenRun) engine.Regenerator {
+		return engine.RegenerateFreshRegenerator(notesGit, tr, "", cfg, res, run)
 	}
 }
 
@@ -243,8 +243,8 @@ func TestRegenerateAll_RegenOnAChunkedVersion_ReMergesOnlyThatVersionsPartNotes(
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, sinks engine.NotesSinks) (string, error) {
 		return engine.RegenerateFreshBody(ctx, notesGits[res.Tag], transports[res.Tag], "", cfg, res, sinks)
 	}
-	req.ProduceRegenerator = func(_ engine.RegenerateSource, res version.Resolution, merged *notes.MergeInputs) engine.Regenerator {
-		return engine.RegenerateFreshRegenerator(notesGits[res.Tag], transports[res.Tag], "", cfg, res, merged)
+	req.ProduceRegenerator = func(_ engine.RegenerateSource, res version.Resolution, run engine.RegenRun) engine.Regenerator {
+		return engine.RegenerateFreshRegenerator(notesGits[res.Tag], transports[res.Tag], "", cfg, res, run)
 	}
 
 	if _, err := engine.RegenerateAll(t.Context(), regenWriteDeps(rec, f), pub, t.TempDir(), req); err != nil {

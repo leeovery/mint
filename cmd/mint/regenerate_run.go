@@ -5,7 +5,6 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/publish"
 	"mint/internal/runner"
 	"mint/internal/version"
@@ -99,9 +98,9 @@ func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root s
 // It binds the fixed single-version Resolution and delegates to the canonical, Resolution-
 // keyed newBatchRegeneratorProducer so the reuse/fresh dispatch lives in exactly one place;
 // the batch path uses the same producer threaded with each version's Resolution.
-func newRegenerateRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(engine.RegenerateSource, *notes.MergeInputs) engine.Regenerator {
+func newRegenerateRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(engine.RegenerateSource, engine.RegenRun) engine.Regenerator {
 	produce := newBatchRegeneratorProducer(r, cfg, root)
-	return func(source engine.RegenerateSource, merged *notes.MergeInputs) engine.Regenerator {
-		return produce(source, res, merged)
+	return func(source engine.RegenerateSource, run engine.RegenRun) engine.Regenerator {
+		return produce(source, res, run)
 	}
 }

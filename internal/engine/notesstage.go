@@ -85,10 +85,55 @@ func (s *notesStage) warnFallbackReleasing(release func(saved string) string) {
 // lowerCap is the cap to suggest: the largest succeeded call carrying diff when a
 // halved run's merge wrote its notes, else 0.
 func (s *notesStage) lowerCap() int {
-	if !s.halved || s.parts == 0 {
+	return suggestedCap(s.halved, s.parts, s.largestCall)
+}
+
+func suggestedCap(halved bool, mergedParts, largestCall int) int {
+	if !halved || mergedParts == 0 {
 		return 0
 	}
-	return s.largestCall
+	return largestCall
+}
+
+// regenStage is the notes.Progress of the `r` generations at a run's review gate. It
+// narrates nothing. An r's succeeded calls fold into the run's notes stage, so the cap
+// suggested after an r is the largest succeeded call of the whole run.
+type regenStage struct {
+	run    *notesStage
+	halved bool
+	parts  int
+	// hint is handed the cap to suggest once an r's notes are shown, 0 for none.
+	hint func(lowerCap int)
+}
+
+var _ notes.Progress = (*regenStage)(nil)
+
+func (s *notesStage) regens(hint func(lowerCap int)) *regenStage {
+	return &regenStage{run: s, hint: hint}
+}
+
+func (r *regenStage) PartsDone(int, int, int) {}
+
+func (r *regenStage) Halved(int, int) {
+	r.halved = true
+}
+
+func (r *regenStage) Merging(int) {}
+
+func (r *regenStage) Merged(parts int) {
+	r.parts = parts
+}
+
+func (r *regenStage) CallSucceeded(promptBytes int) {
+	r.run.CallSucceeded(promptBytes)
+}
+
+// shown hands hint the cap to suggest for the r whose notes were just shown, then
+// forgets that r's halving, so the next r is judged on its own.
+func (r *regenStage) shown() {
+	lowerCap := suggestedCap(r.halved, r.parts, r.run.largestCall)
+	r.halved, r.parts = false, 0
+	r.hint(lowerCap)
 }
 
 // batchLowerCap gathers the one lower-the-cap hint of a batch from its versions' notes
@@ -109,6 +154,12 @@ func (b *batchLowerCap) tried(s *notesStage) {
 func (b *batchLowerCap) written(s *notesStage) {
 	b.tried(s)
 	b.halved = b.halved || s.lowerCap() != 0
+}
+
+// regenWritten folds in an `r` whose notes were written, lowerCap being the cap it
+// suggests; its calls fold in through its version's notes stage.
+func (b *batchLowerCap) regenWritten(lowerCap int) {
+	b.halved = b.halved || lowerCap != 0
 }
 
 func (b *batchLowerCap) lowerCap() int {

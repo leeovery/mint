@@ -135,6 +135,8 @@ type RegenerateWriteRequest struct {
 	// it nil. A wired deps.Regenerator OVERRIDES it (the test-injection seam), mirroring
 	// the forward path's precedence.
 	Regenerator Regenerator
+	// RegenShown runs once each `r`'s notes are shown, nil for nothing.
+	RegenShown func()
 	// KeepOut is the path the changelog commit leaves out, any staged edits to it
 	// still staged afterwards.
 	KeepOut git.Exclusion
@@ -230,9 +232,10 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 		// The `r` choice consults the per-run regenerator (req.Regenerator), bound to this
 		// version's chunk notes or fresh AI range — a wired deps.Regenerator OVERRIDES it
 		// (the test seam), mirroring the forward path's perRunRegenerator precedence.
-		return reviewGate(ctx, p, deps.Editor, regenerateRegenerator(deps, req.Regenerator), presenter.NotesReviewGate(), req.Body, req.VersionKey)
+		regen := reviewRegen{regenerator: regenerateRegenerator(deps, req.Regenerator), shown: req.RegenShown}
+		return reviewGate(ctx, p, deps.Editor, regen, presenter.NotesReviewGate(), req.Body, req.VersionKey)
 	case regenerateSourceSupplied, regenerateSourceFloor:
-		return reviewGate(ctx, p, deps.Editor, nil, presenter.NotesReviewGateNoRegen(), req.Body, req.VersionKey)
+		return reviewGate(ctx, p, deps.Editor, reviewRegen{}, presenter.NotesReviewGateNoRegen(), req.Body, req.VersionKey)
 	default:
 		// Deterministic source (tag annotation or provider release): the simple
 		// two-choice confirm — there are no freshly-generated notes to edit/regenerate.

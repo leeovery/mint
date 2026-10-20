@@ -284,7 +284,7 @@ func TestNewBatchRegeneratorProducer_Reuse(t *testing.T) {
 	t.Parallel()
 
 	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{}, t.TempDir())
-	if got := produce(engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}, nil); got != nil {
+	if got := produce(engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}, engine.RegenRun{}); got != nil {
 		t.Errorf("reuse regenerator = %v, want nil (reuse has no review gate)", got)
 	}
 }
@@ -296,7 +296,7 @@ func TestNewBatchRegeneratorProducer_Release(t *testing.T) {
 	t.Parallel()
 
 	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{}, t.TempDir())
-	if got := produce(engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}, nil); got != nil {
+	if got := produce(engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0", PreviousTag: "v0.9.0"}, engine.RegenRun{}); got != nil {
 		t.Errorf("release regenerator = %v, want nil (the release source has no review gate)", got)
 	}
 }
@@ -308,7 +308,7 @@ func TestNewBatchRegeneratorProducer_Fresh(t *testing.T) {
 	t.Parallel()
 
 	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, t.TempDir())
-	if got := produce(engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, nil); got == nil {
+	if got := produce(engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, engine.RegenRun{}); got == nil {
 		t.Error("fresh regenerator = nil, want a non-nil per-version regenerator for the `r` choice")
 	}
 }

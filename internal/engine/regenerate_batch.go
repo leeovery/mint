@@ -78,12 +78,12 @@ type BatchRegenerateRequest struct {
 	// sinks of the version's notes stage it runs inside.
 	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string, sinks NotesSinks) (string, error)
 	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
-	// gate's `r` choice consults, handed merged, the merge inputs that version's
-	// chunked run kept (nil unless a chunked run wrote its body). Production returns nil
-	// for a reuse source (no review gate) and binds RegenerateFreshRegenerator over
-	// merged and that version's fresh AI range for a fresh source. When nil (older
+	// gate's `r` choice consults, handed run, whose Merged is the merge inputs that
+	// version's chunked run kept (nil unless a chunked run wrote its body). Production
+	// returns nil for a reuse source (no review gate) and binds RegenerateFreshRegenerator
+	// over run and that version's fresh AI range for a fresh source. When nil (older
 	// tests that never reach `r`) no per-version regenerator is supplied.
-	ProduceRegenerator func(source RegenerateSource, res version.Resolution, merged *notes.MergeInputs) Regenerator
+	ProduceRegenerator func(source RegenerateSource, res version.Resolution, run RegenRun) Regenerator
 }
 
 // RegeneratedVersion is one version's produced body collected by the batch loop, in
@@ -334,7 +334,10 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A
 	// gate DECLINE is a user choice (not a failure), so it propagates and ends the batch.
-	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey, chunkNotes.merged)
+	// An `r` prints no hint of its own: its calls and halving fold into the batch's.
+	regens := stage.regens(hint.regenWritten)
+	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey, chunkNotes.merged, regens)
+	hint.tried(stage)
 	if err != nil {
 		return RegeneratedVersion{}, nil, err
 	}
@@ -459,7 +462,7 @@ func batchSummary(regenerated int, skipped []skippedVersion) string {
 // batch's -y contract: unlike the single-version path (which always prompts and lets the
 // presenter skip), the batch suppresses the per-version gate so a large backfill does
 // not emit N auto-accepted prompts.
-func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, res version.Resolution, body, versionKey string, merged *notes.MergeInputs) (string, error) {
+func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, res version.Resolution, body, versionKey string, merged *notes.MergeInputs, regens *regenStage) (string, error) {
 	if req.Yes {
 		return body, nil
 	}
@@ -471,15 +474,16 @@ func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRe
 		Tag:         "",
 		VersionKey:  versionKey,
 		Body:        body,
-		Regenerator: batchRegenerator(req.ProduceRegenerator, req.Source, res, merged),
+		Regenerator: batchRegenerator(req.ProduceRegenerator, req.Source, res, RegenRun{Merged: merged, Progress: regens}),
+		RegenShown:  regens.shown,
 	})
 }
 
-func batchRegenerator(produce func(RegenerateSource, version.Resolution, *notes.MergeInputs) Regenerator, source RegenerateSource, res version.Resolution, merged *notes.MergeInputs) Regenerator {
+func batchRegenerator(produce func(RegenerateSource, version.Resolution, RegenRun) Regenerator, source RegenerateSource, res version.Resolution, run RegenRun) Regenerator {
 	if produce == nil {
 		return nil
 	}
-	return produce(source, res, merged)
+	return produce(source, res, run)
 }
 
 // batchVersionKey derives a version's bare x.y.z key from its canonical tag by

@@ -8,7 +8,6 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/runner"
@@ -129,11 +128,11 @@ func newBatchBodyProducer(r runner.CommandRunner, cfg config.Config, root string
 // regenerator source dispatch — the batch path threads each version's Resolution
 // through it, and newRegenerateRegeneratorProducer binds the single-version's fixed
 // Resolution and delegates here.
-func newBatchRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string) func(engine.RegenerateSource, version.Resolution, *notes.MergeInputs) engine.Regenerator {
-	return func(source engine.RegenerateSource, res version.Resolution, merged *notes.MergeInputs) engine.Regenerator {
+func newBatchRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string) func(engine.RegenerateSource, version.Resolution, engine.RegenRun) engine.Regenerator {
+	return func(source engine.RegenerateSource, res version.Resolution, run engine.RegenRun) engine.Regenerator {
 		if source != engine.RegenerateSourceFresh {
 			return nil
 		}
-		return engine.RegenerateFreshRegenerator(r, nil, root, cfg, res, merged)
+		return engine.RegenerateFreshRegenerator(r, nil, root, cfg, res, run)
 	}
 }

@@ -362,7 +362,7 @@ func TestRegenerateFreshRegenerator_DegenerateRangeReturnsStubNoAI(t *testing.T)
 	tr := &freshTransport{body: "must never be produced"}
 
 	res := version.Resolution{Tag: "v1.5.0", PreviousTag: "v1.4.0"}
-	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res, nil)
+	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res, engine.RegenRun{})
 	got, err := regen.Regenerate(t.Context(), "lead with auth")
 	if err != nil {
 		t.Fatalf("Regenerate returned unexpected error: %v", err)
@@ -409,7 +409,7 @@ func TestRegenerateFreshRegenerator_ReRunsFreshAIRangeWithOneTimeContext(t *test
 	tr := &freshTransport{body: "regenerated body"}
 
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
-	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res, nil)
+	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res, engine.RegenRun{})
 	got, err := regen.Regenerate(t.Context(), oneTime)
 	if err != nil {
 		t.Fatalf("Regenerate returned unexpected error: %v", err)
@@ -439,7 +439,7 @@ func TestRegenerateFreshRegenerator_FirstRelease_ReturnsFixedBodyNoAI(t *testing
 	tr := &freshTransport{body: "should not be produced"}
 
 	res := version.Resolution{Tag: "v0.1.0", FirstRelease: true}
-	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res, nil)
+	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), freshCfg(), res, engine.RegenRun{})
 	got, err := regen.Regenerate(t.Context(), "any context")
 	if err != nil {
 		t.Fatalf("Regenerate returned unexpected error: %v", err)

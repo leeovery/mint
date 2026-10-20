@@ -70,7 +70,7 @@ func TestNewRegenerateRegeneratorProducer_ChunkedNotes_RegenReMergesOnceThroughT
 
 	f := remergeRunner()
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
-	regen := newRegenerateRegeneratorProducer(f, remergeCfg(), t.TempDir(), res)(engine.RegenerateSourceFresh, &notes.MergeInputs{})
+	regen := newRegenerateRegeneratorProducer(f, remergeCfg(), t.TempDir(), res)(engine.RegenerateSourceFresh, engine.RegenRun{Merged: &notes.MergeInputs{}})
 
 	assertOneReleaseRemerge(t, f, regen)
 }
@@ -80,7 +80,7 @@ func TestNewBatchRegeneratorProducer_ChunkedNotes_RegenReMergesOnceThroughTheRel
 
 	f := remergeRunner()
 	res := version.Resolution{Tag: "v1.3.0", PreviousTag: "v1.2.0"}
-	regen := newBatchRegeneratorProducer(f, remergeCfg(), t.TempDir())(engine.RegenerateSourceFresh, res, &notes.MergeInputs{})
+	regen := newBatchRegeneratorProducer(f, remergeCfg(), t.TempDir())(engine.RegenerateSourceFresh, res, engine.RegenRun{Merged: &notes.MergeInputs{}})
 
 	assertOneReleaseRemerge(t, f, regen)
 }
