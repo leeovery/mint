@@ -966,9 +966,7 @@ func readNotesFile(path string, set bool) (*string, error) {
 //     gate's `r` is never reached for the no-AI Kinds these overrides use, so a nil
 //     generator is fine; a normal-AI override test supplies its own deps.Regenerator.
 //   - otherwise the selector is built from deps.Runner (now that root is resolved) and
-//     SelectBody runs the precedence over the run's SelectState. A SelectBody error is
-//     an on_notes_failure=abort notes failure: it returns the error for the caller to
-//     surface and abort on, BEFORE any mutation.
+//     SelectBody runs the precedence over the run's SelectState.
 func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, chunkNotes *chunkNotesKeeper, versionKey string, opts ReleaseOptions, stage *notesStage) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, nil

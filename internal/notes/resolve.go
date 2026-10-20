@@ -32,10 +32,8 @@ func rangeSubjects(ctx context.Context, r runner.CommandRunner, revRange string)
 //
 //   - "" or "abort" → ABORT mode (the default). Return ("", abortErr) where abortErr
 //     NAMES the cause (mapping the known sentinels to readable text) and wraps the
-//     original failure with %w so errors.Is(abortErr, <cause>) still holds. Nothing is
-//     tagged — the run stops before the tag (the presenter surfaces it in a later
-//     wiring task); this resolver just returns the abort error and NO body, and runs
-//     NO git (no fallback record is built when aborting).
+//     original failure with %w so errors.Is(abortErr, <cause>) still holds. It returns
+//     NO body and runs NO git (no fallback record is built when aborting).
 //   - "fallback" → FALLBACK mode. The body comes from the SHARED resolveFallbackBody
 //     selector: the commit-subject list since the last tag, else (empty log) the
 //     maintenance-release body. Return (body, nil).

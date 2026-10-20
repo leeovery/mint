@@ -143,10 +143,8 @@ func (g *Generator) GenerateWithContext(ctx context.Context, lastTag string, cfg
 // chunk calls and a merge over the cap (the SAME AI validation/retry either way).
 //
 // The failure is SURFACED (wrapped, errors.Is still matches) exactly as the forward
-// generator — single-mode fresh routes on_notes_failure at a higher layer and 5-12's
-// --all intercepts the surfaced failure for skip-and-continue, so this method must NOT
-// swallow it. The body is returned WHOLE (no parsing/splitting) for the downstream
-// provider/changelog write in later tasks.
+// generator, never swallowed: routing it is the caller's. The body is returned WHOLE
+// (no parsing/splitting) for the downstream provider/changelog write in later tasks.
 func (g *Generator) GenerateFromRange(ctx context.Context, diffRange string, cfg config.Config) (string, error) {
 	return g.GenerateFromRangeWithContext(ctx, diffRange, cfg, "")
 }

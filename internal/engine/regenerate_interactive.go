@@ -19,12 +19,11 @@ package engine
 // e.g. building a CHANGELOG.md from existing tag annotations or published release notes —
 // not just the provider release.
 //
-// -y handling mirrors the forward path: the engine ALWAYS calls Prompt at every gate
-// (source, target, confirm); the -y SKIP happens INSIDE the presenter, which renders
-// the accept echo and returns the gate Default. So this orchestration never branches
-// around a Prompt call on -y — it asks every applicable gate unconditionally, and a
-// -y presenter answers each with its default + echo. (Flags pre-fill the source/target
-// answers and skip ONLY those questions; the confirm still fires unless -y.)
+// -y handling mirrors the forward path: the engine calls Prompt at the source, target
+// and confirm gates whatever -y holds; the -y SKIP happens INSIDE the presenter, which
+// renders the accept echo and returns the gate Default. (Flags pre-fill the
+// source/target answers and skip ONLY those questions; the confirm still fires unless
+// -y.)
 //
 // SCOPE: this owns the source/target RESOLUTION + plan + delegation only. Body
 // PRODUCTION (5-5 reuse read / 5-6 fresh re-diff+AI) is injected as ProduceBody so the
@@ -137,10 +136,7 @@ type RegenerateRunRequest struct {
 	// Config is the loaded config the next moves of a stopped notes failure are fitted
 	// to.
 	Config config.Config
-	// Yes is the -y flag. It does NOT change which gates the engine calls — every gate
-	// is still called and the presenter skips internally — but it threads to the write
-	// request for the confirm/review gate's internal skip.
-	Yes bool
+	Yes    bool
 	// ProduceBody yields the notes body for the RESOLVED source. It is injected so the
 	// flow stays testable without a real AI transport / tag read; production wires the
 	// reuse read or the fresh re-diff+AI here. A fresh producer reports a chunked run

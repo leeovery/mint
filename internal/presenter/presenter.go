@@ -170,9 +170,9 @@ type Presenter interface {
 	//
 	// The -y skip happens INSIDE this method: a presenter constructed with the -y
 	// decision neither renders the menu nor reads stdin — it emits the rendered
-	// auto-accept echo and returns gate.Default with a nil error. The engine
-	// therefore ALWAYS calls Prompt at a gate point; it never branches around the
-	// call on -y (the echo is a rendered event, not engine-printed text).
+	// auto-accept echo and returns gate.Default with a nil error. The engine never
+	// answers a gate itself on -y: the echo is a rendered event, not engine-printed
+	// text.
 	//
 	// The error return is the machine-readable failure channel, branched via
 	// errors.Is: ErrNotInteractive on the forbidden combination (non-TTY stdin
