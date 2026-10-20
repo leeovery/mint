@@ -351,7 +351,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 6,
-          "current_task": "token-aware-diff-sizing-6-9",
+          "current_task": "token-aware-diff-sizing-6-10",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -446,7 +446,8 @@
             "token-aware-diff-sizing-6-5",
             "token-aware-diff-sizing-6-6",
             "token-aware-diff-sizing-6-7",
-            "token-aware-diff-sizing-6-8"
+            "token-aware-diff-sizing-6-8",
+            "token-aware-diff-sizing-6-9"
           ],
           "staging": {
             "p1": {
@@ -529,6 +530,18 @@
                 "internal/engine/regenerate_interactive.go",
                 "internal/engine/regenerate_batch.go",
                 "internal/engine/release.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-6-9",
+              "source": "reviewer",
+              "summary": "Three call sites repeat the WithProgress/WithChunkNotes/WithMergeInputs chain on a notes generator; route them through one helper",
+              "failure": "A site that leaves a step out compiles and runs, and silently drops its chunked failures or merge inputs; the release r lacked WithChunkNotes until 6-9 and no test caught it",
+              "detail": "release.go:1009 (selecting) and :1161 (regenerating) chain generator.WithProgress(X).WithChunkNotes(chunkNotes.saver()).WithMergeInputs(chunkNotes.keepMerged); regenerate_fresh.go:65 chains the same from NotesSinks built by chunkNotesKeeper.sinks (chunknotes.go:44)",
+              "files": [
+                "internal/engine/release.go",
+                "internal/engine/regenerate_fresh.go",
+                "internal/engine/chunknotes.go"
               ]
             }
           ]
