@@ -155,6 +155,10 @@ type ReleaseDeps struct {
 	// ChunkNotes keeps a failed chunked notes run's finished chunk notes, so the
 	// failure can name the file they were saved to. When nil none are kept.
 	ChunkNotes ChunkNotesSaver
+	// Yes is the -y flag and StdinInteractive the startup stdin-is-a-TTY signal. A
+	// run with StdinInteractive and without Yes is attended.
+	Yes              bool
+	StdinInteractive bool
 }
 
 // ChunkNotesSaver saves a failed chunked run's finished chunk notes for repoRoot's
@@ -502,9 +506,10 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 4 — notes body. resolveBody runs the notes-path PRECEDENCE (SelectBody)
 	// to pick the body + Kind for this run, building the selector from deps.Runner now
 	// that root is resolved. opts.NotesBody is a test-injection override that bypasses
-	// the selector. An on_notes_failure=abort failure aborts here. Nothing is tagged
-	// yet, but a pre_tag artifact commit may already be in made, so this routes through
-	// the surgical unwind (not a plain surface) — exactly like every other pre-push
+	// the selector. An on_notes_failure=abort failure aborts here, unless an attended
+	// run takes a body at the notes floor's choice instead. Nothing is tagged yet, but a
+	// pre_tag artifact commit may already be in made, so an abort routes through the
+	// surgical unwind (not a plain surface) — exactly like every other pre-push
 	// failure — so that artifact commit is reset back to the clean start. Whatever
 	// resolves flows WHOLE to every active sink below — no parsing, no per-sink reassembly.
 	// (versionKey was computed at Stage 1 so RunStarted could lead the run; resolveBody
@@ -517,12 +522,22 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage)
 	if err != nil {
-		surfaceStageFailure(p, "notes", err)
+		atFloor := reachesNotesFloor(deps, opts, err)
+		failure := stageFailure("notes", err)
+		failure.Recoverable = atFloor
+		p.StageFailed(failure)
 		chunkNotes.warnUnsaved(p)
-		return Unwind(ctx, deps, start, made, err)
+		if !atFloor {
+			return Unwind(ctx, deps, start, made, err)
+		}
+		body, kind, err = notesFloor(ctx, deps, current.String(cfg.Release.TagPrefix))
+		if err != nil {
+			return Unwind(ctx, deps, start, made, err)
+		}
+	} else {
+		stage.done()
+		chunkNotes.warnUnsaved(p)
 	}
-	stage.done()
-	chunkNotes.warnUnsaved(p)
 
 	// Show the plan, then the notes — identical in a dry run and a real run up to here;
 	// the two diverge at the DRY-RUN BOUNDARY immediately below.
@@ -1202,7 +1217,12 @@ func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start
 
 // surfaceStageFailure renders stage's ✗ line for cause.
 func surfaceStageFailure(p presenter.Presenter, stage string, cause error) {
-	p.StageFailed(presenter.StageFailure{
+	p.StageFailed(stageFailure(stage, cause))
+}
+
+// stageFailure is the StageFailed payload for stage's cause.
+func stageFailure(stage string, cause error) presenter.StageFailure {
+	return presenter.StageFailure{
 		Name:    stage,
 		Message: failureMessage(cause),
 		// notesFailureOutput is called for EVERY stage (pre_tag, notes, record, preflight,
@@ -1211,7 +1231,7 @@ func surfaceStageFailure(p presenter.Presenter, stage string, cause error) {
 		// stage's failure leaves the ✗ line standing alone.
 		Output:     notesFailureOutput(cause),
 		SavedNotes: notes.SavedChunkNotesPath(cause),
-	})
+	}
 }
 
 // runPreflight runs the Stage 2 gate chain in the spec's order: fetch (read-only,
@@ -1662,10 +1682,10 @@ func regenerateBody(ctx context.Context, p presenter.Presenter, regen Regenerato
 	return regenerated, nil
 }
 
-// errUnexpectedChoice builds the cause for a review-gate choice outside the gate's
-// declared y/n/e set — a presenter-contract violation the loop refuses to ignore.
+// errUnexpectedChoice builds the cause for a choice outside the gate's declared set —
+// a presenter-contract violation the engine refuses to ignore.
 func errUnexpectedChoice(choice presenter.Choice) error {
-	return fmt.Errorf("unexpected review-gate choice %q", choice)
+	return fmt.Errorf("unexpected gate choice %q", choice)
 }
 
 // editBody obtains the edited notes from the editor seam. A nil editor on the `e`

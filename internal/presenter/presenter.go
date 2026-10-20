@@ -533,6 +533,9 @@ type StageFailure struct {
 	Message    string
 	Output     string
 	SavedNotes string
+	// Recoverable marks a failure the run may still go on past: it renders as any
+	// other, but leaves a later RunFinished's success line standing.
+	Recoverable bool
 }
 
 func savedNotesText(path string) string {

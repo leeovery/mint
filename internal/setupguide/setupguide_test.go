@@ -819,3 +819,37 @@ func TestGuide_AITransportParagraphNamesTheOneNonAIBody(t *testing.T) {
 		t.Errorf("AI-transport paragraph names the --no-ai flag in a flag-free guide; got:\n%s", paragraph)
 	}
 }
+
+const (
+	floorOffer = "an attended release is offered the commit-subject list or an abort"
+	floorStop  = "an unattended one stops"
+)
+
+func TestGuide_ConfigReferenceOnNotesFailureNamesTheFloorChoice(t *testing.T) {
+	t.Parallel()
+
+	line := rowLineFor(configReferenceBody(t), "on_notes_failure")
+	for _, want := range []string{floorOffer, floorStop} {
+		if !strings.Contains(line, want) {
+			t.Errorf("on_notes_failure row = %q, want it to say %q", line, want)
+		}
+	}
+}
+
+func TestGuide_AITransportParagraphNamesTheFloorChoiceWithoutAFlag(t *testing.T) {
+	t.Parallel()
+
+	paragraph := aiTransportParagraph(t)
+	flat := strings.Join(strings.Fields(paragraph), " ")
+
+	for _, want := range []string{floorOffer, floorStop} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("AI-transport paragraph must say %q; got:\n%s", want, paragraph)
+		}
+	}
+	for _, flag := range []string{" -y", "--yes", "--no-ai", "--notes-file", "--dry-run"} {
+		if strings.Contains(flat, flag) {
+			t.Errorf("AI-transport paragraph names mint's %q flag; got:\n%s", flag, paragraph)
+		}
+	}
+}

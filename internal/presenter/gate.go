@@ -2,16 +2,15 @@ package presenter
 
 import "slices"
 
-// Choice is one of the semantic answers an interactive gate can return. The four
-// values below are the ENGINE's vocabulary — the engine owns what each choice
-// means (accept, abort, edit, regenerate) and owns the e/r re-entry loop; the
-// presenter only renders the declared set and returns one of these. Choice is a
-// distinct string type (not a bare string) so a gate answer cannot be confused
-// with arbitrary text at a call boundary.
+// Choice is one of the semantic answers an interactive gate can return. The values
+// below are the ENGINE's vocabulary — the engine owns what each choice means and
+// owns the e/r re-entry loop; the presenter only renders the declared set and
+// returns one of these. Choice is a distinct string type (not a bare string) so a
+// gate answer cannot be confused with arbitrary text at a call boundary.
 type Choice string
 
-// The four semantic choices. Not every gate declares all four — a gate carries
-// only the choices it offers (see NotesReviewGate vs ReuseConfirmGate). These
+// The semantic choices. Not every gate declares them all — a gate carries only
+// the choices it offers (see NotesReviewGate vs ReuseConfirmGate). These
 // constants name the vocabulary; the declared SET lives on each Gate value, so no
 // renderer hardcodes "y/n/e/r" — membership and order are always read from the
 // gate via Has/Keys.
@@ -26,6 +25,10 @@ const (
 	// ChoiceRegen regenerates the notes with context (engine-driven; presenter never
 	// invokes claude itself).
 	ChoiceRegen Choice = "r"
+	// ChoiceCommitSubjects takes the release's commit-subject list as its notes.
+	ChoiceCommitSubjects Choice = "c"
+	// ChoiceAbort aborts the run, on a gate whose keys are not y/n.
+	ChoiceAbort Choice = "a"
 )
 
 // gateFailLabel is the FIXED label both presenters render for the

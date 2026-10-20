@@ -167,10 +167,11 @@ over the cap skip the single call: the diff's files are packed in path order int
 chunk calls that each fit the cap, each carrying the instructions and the
 whole-release Change Map, then one merge call writes the release's notes from every
 chunk's notes. Chunking has no setting and asks nothing. A commit prompt over the
-cap opens $EDITOR instead. On failure, release follows [release].on_notes_failure
-(abort loud, or fall back to the commit-subject list, the one non-AI body) and
-commit drops to the user's $EDITOR. If you pin a slower model for a verb, raise
-that verb's timeout in the SAME table — mint does not auto-bump it.`
+cap opens $EDITOR instead. On failure, release follows [release].on_notes_failure:
+abort loud, where an attended release is offered the commit-subject list or an
+abort and an unattended one stops, or fall back to the commit-subject list, the one
+non-AI body. Commit drops to the user's $EDITOR. If you pin a slower model for a
+verb, raise that verb's timeout in the SAME table — mint does not auto-bump it.`
 }
 
 // procedure emits the ordered inspect-and-map flow. Step 1 (cwd-confirm) is the

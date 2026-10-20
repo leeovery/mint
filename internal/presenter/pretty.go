@@ -140,8 +140,8 @@ type PrettyPresenter struct {
 	unwound lipgloss.Style
 
 	// terminalFailure records that the run has hit a terminal failure or abort —
-	// set by StageFailed (a failed stage) and by Unwound (a failure or gate-n
-	// abort). It makes the presenter STATEFUL per run: when set, RunFinished
+	// set by StageFailed (a failed stage, unless Recoverable) and by Unwound (a
+	// failure or gate-n abort). It makes the presenter STATEFUL per run: when set, RunFinished
 	// suppresses the success bottom brand line, which is SUCCESS-ONLY. There is no
 	// failure-flavoured closing brand line — failure/abort is signalled by the
 	// ✗/unwound lines plus the engine-owned non-zero exit code. Warn does NOT set
@@ -561,7 +561,7 @@ func (p *PrettyPresenter) setSpinnerText(text string) {
 // part-notes path follows on a line of its own, out only.
 func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	p.stopSpinner()
-	p.terminalFailure = true
+	p.terminalFailure = p.terminalFailure || !s.Recoverable
 	glyph := p.failure.Render("✗")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), s.Message)
 	p.errf("✗ %s  %s\n", s.Name, s.Message)

@@ -131,7 +131,7 @@ func MetadataRows() []MetadataRow {
 		{Key: "provider", Level: LevelRelease, Default: "auto", Description: "publishing-driver override (empty auto-detects from the release remote's host)"},
 		{Key: "context", Level: LevelRelease, Description: "project guidance injected into the default release-notes prompt"},
 		{Key: "prompt", Level: LevelRelease, Description: "path to a file whose contents fully override the default release-notes prompt"},
-		{Key: "on_notes_failure", Level: LevelRelease, Default: "abort", Description: "notes-failure policy: abort fails loud, fallback ships the commit-subject list (the maintenance-release body when it is empty)"},
+		{Key: "on_notes_failure", Level: LevelRelease, Default: "abort", Description: "notes-failure policy: abort fails loud, where an attended release is offered the commit-subject list or an abort and an unattended one stops; fallback ships the commit-subject list (the maintenance-release body when it is empty)"},
 		{Key: "version_file", Level: LevelRelease, Description: "repo-relative file the new version is mirrored into (empty means tag-only, no projection)"},
 		{Key: "version_pattern", Level: LevelRelease, Description: "version line replaced inside version_file (empty treats the whole file as the version)"},
 		{Key: "ai_command", Level: LevelRelease, Default: "shared", Description: "optional per-verb override of the AI command for release; resolved [release] → shared → default"},

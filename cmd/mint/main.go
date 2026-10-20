@@ -288,6 +288,10 @@ func runRelease(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
+	// The engine gets the stdin signal for the notes floor, which offers its choice
+	// only to an attended run; the Presenter interface exposes no accessor for it.
+	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
+
 	// Construct the presenter ONCE at startup — the single production construction
 	// site. TTY/mode detection never happens downstream.
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
@@ -313,8 +317,10 @@ func runRelease(ctx context.Context, rest []string) int {
 		// generates the note, caches it, and a later run for the SAME diff offers to reuse
 		// it; the wall clock stamps the ~1h TTL. If the cache dir can't be resolved the
 		// cache is simply disabled (nil) — it is an optimization, never required.
-		NoteCache:  newNoteCache(),
-		ChunkNotes: notescache.NewUserChunkNotes(os.UserCacheDir),
+		NoteCache:        newNoteCache(),
+		ChunkNotes:       notescache.NewUserChunkNotes(os.UserCacheDir),
+		Yes:              opts.Yes,
+		StdinInteractive: signals.StdinInteractive,
 	}
 
 	if err := engine.Release(ctx, deps, opts.ReleaseOptions()); err != nil {

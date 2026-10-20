@@ -30,6 +30,9 @@ const (
 	KindFallback
 	// KindSupplied: the operator supplied the finished body (--notes-file), no AI.
 	KindSupplied
+	// KindFloor: the normal AI path failed and the operator chose the body at the
+	// notes floor's choice.
+	KindFloor
 )
 
 // SelectState describes the run inputs the precedence needs: any supplied body,

@@ -56,8 +56,8 @@ type PlainPresenter struct {
 	// place the -y decision is threaded.
 	stdinInteractive bool
 	// terminalFailure records that the run has hit a terminal failure or abort —
-	// set by StageFailed (a failed stage) and by Unwound (a failure or gate-n
-	// abort). It makes the presenter STATEFUL per run: when set, RunFinished
+	// set by StageFailed (a failed stage, unless Recoverable) and by Unwound (a
+	// failure or gate-n abort). It makes the presenter STATEFUL per run: when set, RunFinished
 	// suppresses the success end-of-run line, which is SUCCESS-ONLY. There is no
 	// failure-flavoured closing line — failure/abort is signalled by the
 	// FAILED/unwound lines plus the engine-owned non-zero exit code. Warn does NOT
@@ -199,7 +199,7 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 // rendered verbatim (the plain byte-purity guard scans synthesised narration, not
 // this engine-supplied body).
 func (p *PlainPresenter) StageFailed(s StageFailure) {
-	p.terminalFailure = true
+	p.terminalFailure = p.terminalFailure || !s.Recoverable
 	p.writef("%s: FAILED - %s\n", s.Name, s.Message)
 	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
 	if s.Output != "" {
