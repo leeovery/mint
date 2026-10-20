@@ -308,7 +308,10 @@
             "token-aware-diff-sizing-2-11": "tick-1c2cb0",
             "token-aware-diff-sizing-3-7": "tick-007544",
             "token-aware-diff-sizing-3-8": "tick-cd98fe",
-            "token-aware-diff-sizing-4-15": "tick-84b049"
+            "token-aware-diff-sizing-4-15": "tick-84b049",
+            "token-aware-diff-sizing-5-14": "tick-17f1a0",
+            "token-aware-diff-sizing-5-15": "tick-266a9d",
+            "token-aware-diff-sizing-5-16": "tick-0e92cd"
           },
           "storage_paths": [
             ".tick/"
@@ -455,105 +458,27 @@
               "tasks": {
                 "1": "approved"
               }
+            },
+            "p5": {
+              "tasks": {
+                "1": "approved",
+                "2": "approved",
+                "3": "approved"
+              }
             }
           },
           "consolidated_phases": [
             1,
             2,
             3,
-            4
+            4,
+            5
           ],
           "completed_phases": [
             1,
             2,
             3,
             4
-          ],
-          "bank": [
-            {
-              "task": "token-aware-diff-sizing-5-1",
-              "source": "reviewer",
-              "summary": "CLAUDE.md seam 4 (-y auto-accept never as an engine-side branch) reads as forbidding the engine attended branch the floor and commit editor fallback rely on",
-              "failure": "Someone enforcing seam 4 as written might route the floor through Prompt under -y; the presenter would auto-pick a and print notes: aborted (-y), so an unattended run shows a choice it was never offered, and task 5-3 next moves lose the engine-side signal they branch on; noticed only in a -y transcript",
-              "detail": "Reword seam 4 to separate auto-accepting a gate (presenter-only) from deciding whether an unattended run gets a gate at all (engine, from Yes/StdinInteractive in deps). Sites: internal/engine/notesfloor.go:15-18 (attended), internal/engine/release.go:158-162, commit.Deps.Yes/StdinInteractive wired at cmd/mint/main.go:375-376",
-              "files": [
-                "CLAUDE.md",
-                "internal/engine/notesfloor.go",
-                "internal/engine/release.go",
-                "cmd/mint/main.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-5-2",
-              "source": "executor",
-              "summary": "Release and regenerate floors will each hold their own copy of the e handling (return to the choice on a missing editor or empty body, surface and abort otherwise)",
-              "failure": "If one copy changes, for example in what it treats as empty or whether a missing editor returns to the choice, the other does not; an operator then gets a different answer to the same edit at the regenerate floor, and no test compares the two",
-              "detail": "The presenter.ChoiceEdit case of notesFloor in internal/engine/notesfloor.go; task 5-9 adds the same branch to regenerate floor. Move the branch into one helper, run on the saved notes and returning the body, a return-to-choice signal or an error",
-              "files": [
-                "internal/engine/notesfloor.go",
-                "internal/engine/regenerate_interactive.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-5-3",
-              "source": "reviewer",
-              "summary": "One helper should render every --notes-file <path> command mint prints, shell-quoting the path",
-              "failure": "If the repo directory path contains a space, the saved chunk-notes path keeps it (only separators become dashes); an agent that pastes or runs the printed mint release --notes-file <path> gets a split argv and a usage or missing-file failure, noticed only on the re-run it was told would work",
-              "detail": "internal/engine/notesfloor.go:37 joins the raw path into the command. Sibling tasks print the same shape: the fallback warning two commands, regenerate unattended next moves, the regenerate --all skip naming saved notes. Route them through one renderer so the quoting is identical everywhere",
-              "files": [
-                "internal/engine/notesfloor.go",
-                "internal/engine/release.go",
-                "internal/engine/regenerate_interactive.go",
-                "internal/engine/regenerate_batch.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-5-5",
-              "source": "reviewer",
-              "summary": "Give notes one cause classification that both the ✗ phrase (notes.CauseText) and the floor moves (engine.causeMoves) key on, in place of two switches re-deriving the same sentinel precedence",
-              "failure": "If a cause is added or the order changes in one switch and not the other, the ✗ line names one cause and the moves fit another (e.g. part notes too large to merge followed by the lean pointer); the operator gets the wrong guidance and nothing fails, and the regenerate floor (5-11) adds a third reader",
-              "detail": "internal/notes/resolve.go:98-120 (CauseText switch: NoRoom, MergeTooLarge, TooLargeForModel, Timeout, CommandMissing, GenerationFailed) and internal/engine/notesfloor.go:57-77 (causeMoves switch, same order). A notes.Cause(failure) returning a closed enum would let CauseText map it to a phrase and causeMoves map it to moves, with the order defined once",
-              "files": [
-                "internal/notes/resolve.go",
-                "internal/engine/notesfloor.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-5-5",
-              "source": "reviewer",
-              "summary": "Derive the floor ✗ phrase and its cause moves from one cause classification instead of two switches over the same sentinels",
-              "failure": "Spec §9.3 expects new cause codes (RATE_LIMIT) that would wrap ai.GenerationError; one added to notes.CauseText but not causeMoves falls into the ErrGenerationFailed branch silently, so a repo on its own ai_command is told to switch to the lean command under a rate-limit stop; no test or build fails",
-              "detail": "internal/notes/resolve.go:98-121 (CauseText) and internal/engine/notesfloor.go:57-77 (causeMoves) test the same six sentinels in the same order, which matters because merge-too-large and too-large-for-model also match ErrGenerationFailed. A single exported cause enum from notes, switched on by both, makes an unhandled cause an exhaustiveness or lint failure; tasks 5-7 and 5-11 add consumers",
-              "files": [
-                "internal/notes/resolve.go",
-                "internal/engine/notesfloor.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-5-13",
-              "source": "reviewer",
-              "summary": "Every printed --notes-file <path> command pastes the path unquoted",
-              "failure": "A saved path keeps any space in the repo path (the scope is the repo path with separators as dashes, internal/notescache/cache.go:190), so a pasted command splits the path and --notes-file fails with no such file; noticed only on the failed re-run, and a fix at one site missed at another drifts silently",
-              "detail": "Commands are built by string concatenation at internal/engine/notesfloor.go:67 and :69, internal/engine/notesstage.go:61-62 and :70, and internal/engine/regenerate_batch.go:258; one helper rendering the --notes-file argument with POSIX quoting where needed (the inverse of internal/cmdline's split) would serve all of them",
-              "files": [
-                "internal/engine/notesfloor.go",
-                "internal/engine/notesstage.go",
-                "internal/engine/regenerate_batch.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-5-13",
-              "source": "reviewer",
-              "summary": "Build the put-saved-chunk-notes-on-a-released-version command in one helper instead of three string literals",
-              "failure": "Three sites hand-build the same command (release fallback warning, unattended regenerate next moves, --all skip); a form fix such as shell-quoting a path with a space lands at one and leaves two printing the old form, with no test failing since each pins its own literal",
-              "detail": "internal/engine/notesstage.go:61 builds \"mint release regenerate \" + version + \" --notes-file \" + saved; internal/engine/notesfloor.go:69 builds command + \" --notes-file \" + savedNotes with command from :59; internal/engine/regenerate_batch.go:256 builds the same literal again; the \"part notes saved to \" prefix is also built separately at internal/presenter/presenter.go:552, notesstage.go:80 and regenerate_batch.go:256",
-              "files": [
-                "internal/engine/notesstage.go",
-                "internal/engine/notesfloor.go",
-                "internal/engine/regenerate_batch.go",
-                "internal/presenter/presenter.go"
-              ]
-            }
           ]
         }
       }
