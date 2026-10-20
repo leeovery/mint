@@ -7,8 +7,9 @@
 // This mirrors release's notes prompt composer (the consumed pattern) but with a
 // different default — Conventional Commits 1.0.0 — and commit's two-knob context/
 // override model. It owns prompt composition and the default prompt text ONLY: the
-// AI call is L2's transport (internal/ai), and diff assembly + diff_exclude/
-// max_diff_lines is L1 — neither is built here. The staged diff arrives as an input.
+// AI call is L2's transport (internal/ai), diff assembly + diff_exclude is L1, and the
+// max_prompt_bytes guard runs in the generator — none is built here. The staged diff
+// arrives as an input.
 package commit
 
 import (

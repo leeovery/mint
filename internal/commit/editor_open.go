@@ -1,8 +1,7 @@
 package commit
 
-// This file holds commit's REUSABLE editor file-roundtrip routine — the single way
-// the three "no AI message" fallback cases (--no-ai here, AI-generation failure in
-// 3-3, oversized diff in 3-4) and Phase 4's gate `e` action open an editor against a
+// This file holds commit's REUSABLE editor file-roundtrip routine — the way the
+// "no AI message" fallback cases and the gate's `e` action open an editor against a
 // temp file. It MIRRORS the engine's EditorLauncher.Edit precedent (temp file →
 // strings.Fields argv + path → RunInteractive → read-back, bracketed by the
 // presenter's spinner suspend/resume) WITHOUT importing the engine's release-coupled

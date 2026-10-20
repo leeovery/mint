@@ -11,6 +11,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/commit"
+	"mint/internal/config"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -28,32 +29,18 @@ func aiGenerationFailed() error {
 // fallback, case 3) — asserted byte-for-byte, never substring-matched.
 const oversizedNote = "diff too large to summarise — opening editor"
 
-// writeMaxDiffLines writes a .mint.toml into dir setting only max_diff_lines, so the
-// real config.Load picks up a small ceiling and the over/at/under boundary is cheap
-// to script (no 50000-line diffs). Every other key stays at its default.
-func writeMaxDiffLines(t *testing.T, dir string, max int) {
+// writeMaxPromptBytes writes a .mint.toml into dir setting max_prompt_bytes plus any
+// extra TOML lines, so the real config.Load picks up a cap sized to the test's own
+// composed prompt. Every other key stays at its default.
+func writeMaxPromptBytes(t *testing.T, dir string, max int, extra ...string) {
 	t.Helper()
-	body := "max_diff_lines = " + strconv.Itoa(max) + "\n"
+	body := "max_prompt_bytes = " + strconv.Itoa(max) + "\n" + strings.Join(extra, "\n") + "\n"
 	if err := os.WriteFile(filepath.Join(dir, ".mint.toml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("writing .mint.toml: %v", err)
 	}
 }
 
-// writeMaxDiffLinesWithExclude writes a .mint.toml setting max_diff_lines AND a
-// single diff_exclude glob, so the diff_exclude-then-count ordering can be driven
-// end-to-end through the real Generator (git performs the exclusion via the
-// :(exclude) pathspec; the count then runs on the post-exclusion diff).
-func writeMaxDiffLinesWithExclude(t *testing.T, dir string, max int, glob string) {
-	t.Helper()
-	body := "max_diff_lines = " + strconv.Itoa(max) + "\ndiff_exclude = [\"" + glob + "\"]\n"
-	if err := os.WriteFile(filepath.Join(dir, ".mint.toml"), []byte(body), 0o644); err != nil {
-		t.Fatalf("writing .mint.toml: %v", err)
-	}
-}
-
-// diffOfLines builds a synthetic diff body of exactly n newline-terminated lines, so
-// notes.CheckDiffSize (counting newline-terminated lines) sees exactly n. The content
-// is irrelevant to the guard — only the line count matters.
+// diffOfLines builds a synthetic diff body of exactly n newline-terminated lines.
 func diffOfLines(n int) string {
 	var b strings.Builder
 	for i := 0; i < n; i++ {
@@ -117,16 +104,16 @@ func warnEvents(rec *presentertest.RecordingPresenter) []presenter.Warning {
 	return warns
 }
 
-// TestRun_Oversized_SkipsL2_RoutesToEditor proves an over-limit (diff_exclude-filtered)
-// diff is detected at L1 BEFORE any L2 call — the transport is never invoked — and the
-// run routes to the editor fallback (a RunInteractive launch is recorded) rather than
-// aborting. Driven through the REAL Generator over a FakeRunner so notes.CheckDiffSize
-// fires on the real L1 diff before any transport call.
+// TestRun_Oversized_SkipsL2_RoutesToEditor proves a composed prompt over
+// max_prompt_bytes is caught BEFORE any L2 call — the transport is never invoked — and
+// the run routes to the editor fallback (a RunInteractive launch is recorded) rather
+// than aborting. Driven through the REAL Generator over a FakeRunner so the size guard
+// measures the prompt composed over the real L1 diff.
 func TestRun_Oversized_SkipsL2_RoutesToEditor(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeMaxDiffLines(t, root, 2)
+	writeMaxPromptBytes(t, root, composedSize(diffOfLines(3))-1)
 
 	const saved = "feat: human message for an oversized diff\n"
 	rec := &presentertest.RecordingPresenter{}
@@ -155,7 +142,7 @@ func TestRun_Oversized_EmitsNote(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeMaxDiffLines(t, root, 2)
+	writeMaxPromptBytes(t, root, composedSize(diffOfLines(3))-1)
 
 	rec := &presentertest.RecordingPresenter{}
 	er := &editorRunner{fake: seedOversizedFallback(diffOfLines(3), "myedit"), saved: "feat: msg\n"}
@@ -174,22 +161,22 @@ func TestRun_Oversized_EmitsNote(t *testing.T) {
 	}
 }
 
-// TestRun_Oversized_DiffExcludeAppliedBeforeCount proves diff_exclude is applied FIRST,
-// so excluded noise alone cannot push an otherwise-fine diff over the limit: a run whose
-// post-exclusion L1 diff is WITHIN the ceiling passes to L2 (the AI is called, no
-// fallback, no note), even though the configured exclude glob is present. The real
+// TestRun_Oversized_DiffExcludeAppliedBeforeMeasure proves diff_exclude is applied
+// FIRST, so excluded noise alone cannot push an otherwise-fine prompt over the cap: a
+// run whose prompt over the post-exclusion L1 diff fits passes to L2 (the AI is called,
+// no fallback, no note), even though the configured exclude glob is present. The real
 // Generator issues the :(exclude) pathspec; the FakeRunner returns git's post-exclusion
-// (small) diff, on which the count runs.
-func TestRun_Oversized_DiffExcludeAppliedBeforeCount(t *testing.T) {
+// (small) diff, over which the prompt is composed and measured.
+func TestRun_Oversized_DiffExcludeAppliedBeforeMeasure(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeMaxDiffLinesWithExclude(t, root, 2, "*.min.js")
+	writeMaxPromptBytes(t, root, composedSize(diffOfLines(1)), `diff_exclude = ["*.min.js"]`)
 
-	const message = "feat: post-exclusion diff is within the ceiling"
+	const message = "feat: post-exclusion prompt fits the cap"
 	rec := &presentertest.RecordingPresenter{}
-	// The L1 read returns git's POST-exclusion diff (1 line ≤ 2) — the noisy excluded
-	// file is already gone, so the count never sees it.
+	// The L1 read returns git's POST-exclusion diff — the noisy excluded file is
+	// already gone, so the measure never sees it.
 	er := &editorRunner{fake: seedPassesToL2(diffOfLines(1)), saved: "should never reach the editor\n"}
 	tr := scriptedTransport(message)
 
@@ -203,24 +190,24 @@ func TestRun_Oversized_DiffExcludeAppliedBeforeCount(t *testing.T) {
 		t.Errorf("L1 argv = %v, want it to carry the :(exclude)*.min.js pathspec (exclusion at L1)", l1.Args)
 	}
 	if tr.calls() != 1 {
-		t.Errorf("transport.Generate called %d times; an excluded-noise diff within the ceiling must reach L2 exactly once", tr.calls())
+		t.Errorf("transport.Generate called %d times; an excluded-noise prompt within the cap must reach L2 exactly once", tr.calls())
 	}
 	if len(er.launches) != 0 {
 		t.Errorf("RunInteractive launched %d time(s); excluded noise alone must NOT trigger the oversized fallback", len(er.launches))
 	}
 	if warns := warnEvents(rec); len(warns) != 0 {
-		t.Errorf("Warn count = %d; excluded noise within the ceiling must emit NO oversized note", len(warns))
+		t.Errorf("Warn count = %d; excluded noise within the cap must emit NO oversized note", len(warns))
 	}
 }
 
-// TestRun_Oversized_AtLimitPassesToL2 proves the inclusive boundary: a diff EXACTLY at
-// max_diff_lines passes to L2 normally — the AI is called, the gate accepts, the commit
-// carries the AI body, and NO editor/fallback/note occurs.
+// TestRun_Oversized_AtLimitPassesToL2 proves the inclusive boundary: a composed prompt
+// EXACTLY at max_prompt_bytes passes to L2 normally — the AI is called, the gate
+// accepts, the commit carries the AI body, and NO editor/fallback/note occurs.
 func TestRun_Oversized_AtLimitPassesToL2(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeMaxDiffLines(t, root, 3)
+	writeMaxPromptBytes(t, root, composedSize(diffOfLines(3)))
 
 	const message = "feat: at-limit diff summarised by the AI"
 	rec := &presentertest.RecordingPresenter{}
@@ -232,13 +219,13 @@ func TestRun_Oversized_AtLimitPassesToL2(t *testing.T) {
 	}
 
 	if tr.calls() != 1 {
-		t.Errorf("transport.Generate called %d times; a diff exactly at max_diff_lines must reach L2 (inclusive boundary)", tr.calls())
+		t.Errorf("transport.Generate called %d times; a prompt exactly at max_prompt_bytes must reach L2 (inclusive boundary)", tr.calls())
 	}
 	if len(er.launches) != 0 {
-		t.Errorf("RunInteractive launched %d time(s); an at-limit diff must NOT trigger the fallback", len(er.launches))
+		t.Errorf("RunInteractive launched %d time(s); an at-cap prompt must NOT trigger the fallback", len(er.launches))
 	}
 	if warns := warnEvents(rec); len(warns) != 0 {
-		t.Errorf("Warn count = %d; an at-limit diff must emit NO oversized note", len(warns))
+		t.Errorf("Warn count = %d; an at-cap prompt must emit NO oversized note", len(warns))
 	}
 	if got := editorCommitInvocations(er); len(got) != 1 || got[0].Stdin != message {
 		t.Fatalf("commit invocations = %v, want exactly one carrying the AI body %q", got, message)
@@ -246,16 +233,16 @@ func TestRun_Oversized_AtLimitPassesToL2(t *testing.T) {
 }
 
 // TestRun_Oversized_OverLimitTriggersFallback proves the over-limit half of the
-// boundary: a diff ONE line OVER max_diff_lines triggers the fallback (the AI is
+// boundary: a composed prompt ONE byte OVER max_prompt_bytes triggers the fallback (the AI is
 // skipped and the editor is launched with the note emitted), the strict complement of
 // the at-limit case above.
 func TestRun_Oversized_OverLimitTriggersFallback(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeMaxDiffLines(t, root, 3)
+	writeMaxPromptBytes(t, root, composedSize(diffOfLines(4))-1)
 
-	const saved = "feat: human message; diff was one over the limit\n"
+	const saved = "feat: human message; prompt was one byte over the cap\n"
 	rec := &presentertest.RecordingPresenter{}
 	er := &editorRunner{fake: seedOversizedFallback(diffOfLines(4), "myedit"), saved: saved}
 	tr := scriptedTransport("must never be returned (L2 was skipped)")
@@ -282,7 +269,7 @@ func TestRun_Oversized_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing.T)
 	t.Parallel()
 
 	root := t.TempDir()
-	writeMaxDiffLines(t, root, 2)
+	writeMaxPromptBytes(t, root, composedSize(diffOfLines(3))-1)
 
 	const saved = "feat: staged tracked then committed after oversized fallback\n"
 	rec := &presentertest.RecordingPresenter{}
@@ -333,7 +320,7 @@ func TestRun_Oversized_EmptySave_TrueNoOp(t *testing.T) {
 			t.Parallel()
 
 			root := t.TempDir()
-			writeMaxDiffLines(t, root, 2)
+			writeMaxPromptBytes(t, root, composedSize(diffOfLines(3))-1)
 
 			rec := &presentertest.RecordingPresenter{}
 			f := runner.NewFakeRunner()
@@ -372,7 +359,7 @@ func TestRun_Oversized_EditorBufferIsEmptyTemplate(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeMaxDiffLines(t, root, 2)
+	writeMaxPromptBytes(t, root, composedSize(diffOfLines(3))-1)
 
 	rec := &presentertest.RecordingPresenter{}
 	er := &editorRunner{fake: seedOversizedFallback(diffOfLines(3), "myedit"), saved: "feat: human message\n"}
@@ -404,7 +391,7 @@ func TestRun_Oversized_DistinctFromGenerationFailure(t *testing.T) {
 		t.Parallel()
 
 		root := t.TempDir()
-		writeMaxDiffLines(t, root, 2)
+		writeMaxPromptBytes(t, root, composedSize(diffOfLines(3))-1)
 
 		rec := &presentertest.RecordingPresenter{}
 		er := &editorRunner{fake: seedOversizedFallback(diffOfLines(3), "myedit"), saved: "feat: msg\n"}
@@ -421,13 +408,13 @@ func TestRun_Oversized_DistinctFromGenerationFailure(t *testing.T) {
 		}
 	})
 
-	// AI-failure half: a within-ceiling diff whose transport fails routes to the editor
+	// AI-failure half: a within-cap prompt whose transport fails routes to the editor
 	// (3-3) but emits NO oversized note — the failure path is noteless.
 	t.Run("AIFailurePathCarriesNoOversizedNote", func(t *testing.T) {
 		t.Parallel()
 
 		root := t.TempDir()
-		writeMaxDiffLines(t, root, 50)
+		writeMaxPromptBytes(t, root, composedSize(diffOfLines(3)))
 
 		const saved = "feat: human message after AI failed\n"
 		rec := &presentertest.RecordingPresenter{}
@@ -446,4 +433,137 @@ func TestRun_Oversized_DistinctFromGenerationFailure(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestRun_Oversized_ManyLinesUnderDefaultCap_ShowsAIMessage proves the line count no
+// longer gates commit: with no max_prompt_bytes set, a diff of more than 50,000 lines
+// whose composed prompt fits the shipped cap gets an AI call, and the generated message
+// is shown at the review gate.
+func TestRun_Oversized_ManyLinesUnderDefaultCap_ShowsAIMessage(t *testing.T) {
+	t.Parallel()
+
+	diff := diffOfLines(50001)
+	if size := composedSize(diff); size > config.DefaultMaxPromptBytes {
+		t.Fatalf("fixture prompt is %d bytes, want it within the %d-byte default cap", size, config.DefaultMaxPromptBytes)
+	}
+
+	const message = "feat: summarise a long diff"
+	rec := &presentertest.RecordingPresenter{}
+	er := &editorRunner{fake: seedPassesToL2(diff), saved: "should never reach the editor\n"}
+	tr := scriptedTransport(message)
+
+	if err := commit.Run(context.Background(), oversizedDeps(rec, er, tr, commit.StagedOnly, t.TempDir())); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if tr.calls() != 1 {
+		t.Errorf("transport.Generate called %d times, want exactly 1", tr.calls())
+	}
+	var shown []presenter.Message
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindShowMessage {
+			shown = append(shown, ev.ShowMessage)
+		}
+	}
+	if len(shown) != 1 || shown[0].Body != message {
+		t.Errorf("ShowMessage events = %+v, want exactly one carrying the AI body %q", shown, message)
+	}
+	if len(er.launches) != 0 {
+		t.Errorf("RunInteractive launched %d time(s); a prompt within the cap must NOT open the editor", len(er.launches))
+	}
+}
+
+// TestRun_Oversized_ContextPushesPromptOverCap_OpensEmptyEditor proves the cap measures
+// the composed prompt, not the diff alone: a diff that fits on its own, pushed over the
+// cap by an outsized [commit].context, makes no AI call and opens the editor empty with
+// the oversized note.
+func TestRun_Oversized_ContextPushesPromptOverCap_OpensEmptyEditor(t *testing.T) {
+	t.Parallel()
+
+	diff := diffOfLines(3)
+	root := t.TempDir()
+	writeMaxPromptBytes(t, root, composedSize(diff)+100, "[commit]", `context = "`+strings.Repeat("c", 200)+`"`)
+
+	const saved = "feat: human message; context pushed the prompt over the cap\n"
+	rec := &presentertest.RecordingPresenter{}
+	er := &editorRunner{fake: seedOversizedFallback(diff, "myedit"), saved: saved}
+	opened := "unset"
+	er.onLaunch = func(path string) {
+		b, _ := os.ReadFile(path)
+		opened = string(b)
+	}
+	tr := scriptedTransport("must never be returned (L2 was skipped)")
+
+	if err := commit.Run(context.Background(), oversizedDeps(rec, er, tr, commit.StagedOnly, root)); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if tr.calls() != 0 {
+		t.Errorf("transport.Generate called %d times; an over-cap composed prompt must never be sent", tr.calls())
+	}
+	if warns := warnEvents(rec); len(warns) != 1 || warns[0] != (presenter.Warning{Label: "diff", Message: oversizedNote}) {
+		t.Errorf("Warn events = %+v, want exactly the oversized note %q", warns, oversizedNote)
+	}
+	if opened != "" {
+		t.Errorf("editor opened with buffer %q, want an empty buffer", opened)
+	}
+	if got := editorCommitInvocations(er); len(got) != 1 || got[0].Stdin != saved {
+		t.Fatalf("commit invocations = %v, want exactly one carrying the saved body %q", got, saved)
+	}
+}
+
+// TestRun_Oversized_RegenNudgeOverCap_OpensEmptyEditor proves `r` at the review gate is
+// held to the cap: when the nudge pushes the regeneration's composed prompt over it, no
+// regeneration call is made, the oversized note is shown, and the editor opens EMPTY —
+// not on the prior message — with the save as the accept.
+func TestRun_Oversized_RegenNudgeOverCap_OpensEmptyEditor(t *testing.T) {
+	t.Parallel()
+
+	diff := diffOfLines(3)
+	root := t.TempDir()
+	writeMaxPromptBytes(t, root, composedSize(diff)+100)
+
+	const saved = "feat: human message after an over-cap regeneration\n"
+	rec := &presentertest.RecordingPresenter{
+		NextChoices: []presenter.Choice{presenter.ChoiceRegen},
+		NextLines:   []string{strings.Repeat("n", 200)},
+	}
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},       // git diff --cached -- . (initial L1)
+		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},       // git diff --cached -- . (regeneration L1)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
+		runner.ScriptedCall{}, // git commit -F -
+	)
+	er := &editorRunner{fake: f, saved: saved}
+	opened := "unset"
+	er.onLaunch = func(path string) {
+		b, _ := os.ReadFile(path)
+		opened = string(b)
+	}
+	tr := scriptedTransport("feat: the message shown before r")
+
+	if err := commit.Run(context.Background(), oversizedDeps(rec, er, tr, commit.StagedOnly, root)); err != nil {
+		t.Fatalf("Run returned unexpected error: %v; an over-cap r must fall back to the editor, not abort", err)
+	}
+
+	if tr.calls() != 1 {
+		t.Errorf("transport.Generate called %d times, want exactly 1 (the first generation; no regeneration call)", tr.calls())
+	}
+	if warns := warnEvents(rec); len(warns) != 1 || warns[0] != (presenter.Warning{Label: "diff", Message: oversizedNote}) {
+		t.Errorf("Warn events = %+v, want exactly the oversized note %q", warns, oversizedNote)
+	}
+	if containsKind(rec.Kinds(), presentertest.KindStageFailed) {
+		t.Errorf("over-cap r emitted a StageFailed; it must route to the editor fallback, not abort: %v", rec.Kinds())
+	}
+	if len(er.launches) != 1 {
+		t.Fatalf("RunInteractive launch count = %d, want exactly 1", len(er.launches))
+	}
+	if opened != "" {
+		t.Errorf("editor opened with buffer %q, want an empty buffer (not the prior message)", opened)
+	}
+	if got := editorCommitInvocations(er); len(got) != 1 || got[0].Stdin != saved {
+		t.Fatalf("commit invocations = %v, want exactly one carrying the saved body %q", got, saved)
+	}
 }

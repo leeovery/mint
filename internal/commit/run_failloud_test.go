@@ -391,13 +391,13 @@ func TestRun_NoAI_TTY_LaunchableEditor_SaveAsAcceptStillWorks(t *testing.T) {
 	}
 }
 
-// oversizedRoot writes a tiny max_diff_lines ceiling into a TempDir so the real
-// Generator's size guard fires on the seeded over-limit L1 diff, routing to the
-// oversized fallback. Shared by the fail-loud trigger tables.
+// oversizedRoot writes a 1-byte max_prompt_bytes cap into a TempDir so the real
+// Generator's size guard fires on any composed prompt, routing to the oversized
+// fallback. Shared by the fail-loud trigger tables.
 func oversizedRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	body := "max_diff_lines = " + strconv.Itoa(1) + "\n"
+	body := "max_prompt_bytes = " + strconv.Itoa(1) + "\n"
 	if err := os.WriteFile(filepath.Join(root, ".mint.toml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("writing .mint.toml: %v", err)
 	}

@@ -162,7 +162,7 @@ Short flags bundle: `-Ap`, `-Apy`, `-ay` all work.
 
 At the gate, a single keypress (no Enter needed): **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in `$EDITOR` (loops back to the gate), **`r`** regenerate with a one-time context line, Ctrl-C aborts cleanly.
 
-When the AI can't produce a message (`--no-ai`, a transport failure, or a diff over `max_diff_lines`), mint opens `$EDITOR` (resolved via git's own chain: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`) and the save becomes the accept. Unattended runs with no message source fail loud instead.
+When the AI can't produce a message (`--no-ai`, a transport failure, or a composed prompt over `max_prompt_bytes`), mint opens `$EDITOR` (resolved via git's own chain: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`) and the save becomes the accept. Unattended runs with no message source fail loud instead.
 
 A failed `-p` push never unwinds the commit: mint warns once with git's own stderr passed through verbatim, keeps the commit, and exits non-zero.
 

@@ -45,8 +45,8 @@ type Transport interface {
 
 // Generator is commit's Layer-3 glue: it wires commit's OWN Layer-1 (the would-be-
 // committed diff — staged-only, -a, or -A per the StagingMode — with cfg.DiffExclude
-// mapped to :(exclude) pathspecs and the consumed max_diff_lines guard) to the prompt
-// composer (1-2) and the consumed Layer-2 transport.
+// mapped to :(exclude) pathspecs) to the prompt composer, the max_prompt_bytes guard on
+// the composed prompt, and the consumed Layer-2 transport.
 //
 // It holds the CommandRunner (commit's L1 git seam — production passes the
 // os/exec-backed runner, tests a FakeRunner), the L2 Transport (the consumed
@@ -54,16 +54,16 @@ type Transport interface {
 // ResolveInstructions, which reads the optional [commit].prompt override file, AND as
 // the working directory every L1 git read runs from — see sourceDiff), and the
 // resolved StagingMode (which selects the L1 SOURCE — only the source command differs
-// per mode; the :(exclude) exclusion, the size guard, the compose, and the L2 transport
+// per mode; the :(exclude) exclusion, the compose, the size guard, and the L2 transport
 // are shared across all three).
 //
 // Commit owns its OWN L1 rather than reusing internal/notes because notes is
 // release-specific: range-based (AssembleRange only), release-tier excludes are
 // hardwired (CHANGELOG.md + version_file), and its exclude-pathspec assembly is
 // unexported. Commit therefore builds the would-be-staged source and cfg.DiffExclude-only
-// pathspecs here, while CONSUMING the genuinely shared pieces: notes.CheckDiffSize /
-// notes.ErrDiffTooLarge (the pure size guard) and the ai.Transport (validate + one
-// retry) behind the local Transport seam.
+// pathspecs here, while CONSUMING the genuinely shared pieces: notes.ErrDiffTooLarge
+// (the oversized sentinel Run routes on) and the ai.Transport (validate + one retry)
+// behind the local Transport seam.
 type Generator struct {
 	runner    runner.CommandRunner
 	transport Transport
@@ -91,11 +91,12 @@ func NewGenerator(r runner.CommandRunner, transport Transport, root string, mode
 //     performs every exclusion, so excluded files are absent from the post-exclusion
 //     diff and never reach the prompt. The -a/-A source is computed READ-ONLY — no
 //     `git add`, the index byte-for-byte unchanged.
-//  2. notes.CheckDiffSize — the consumed max_diff_lines guard, applied AFTER
-//     diff_exclude and BEFORE any L2 call. An over-ceiling diff returns the consumed
+//  2. ResolveInstructions + ComposePrompt — the finished AI input (commit's default
+//     Conventional Commits prompt / [commit] knobs, then the would-be-committed diff,
+//     then the closing reminder).
+//  3. checkPromptSize — the max_prompt_bytes guard on the WHOLE composed prompt,
+//     applied BEFORE any L2 call. An over-cap prompt returns the consumed
 //     notes.ErrDiffTooLarge (wrapped) and the transport is NEVER called.
-//  3. ResolveInstructions + ComposePrompt — the finished AI input (commit's default
-//     Conventional Commits prompt / [commit] knobs, then the would-be-committed diff).
 //  4. transport.Generate — the consumed L2: validation + one retry, returning the
 //     validated body or a typed transport failure.
 //
@@ -103,22 +104,22 @@ func NewGenerator(r runner.CommandRunner, transport Transport, root string, mode
 // passes through byte-identical, suitable for the commit sink. Typed failures are
 // surfaced with the cause PRESERVED (wrapped with %w so errors.Is still matches) and
 // remain distinguishable: notes.ErrDiffTooLarge (the guard) vs ai.ErrGenerationFailed
-// / ai.ErrTimeout / ai.ErrCommandMissing (the transport), so Phase 3 can route
-// oversized vs generation-failure. Routing failures to $EDITOR / --no-ai is Phase 3 —
-// this method only surfaces the outcome.
+// / ai.ErrTimeout / ai.ErrCommandMissing (the transport), so Run can route oversized
+// vs generation-failure. This method only surfaces the outcome.
 func (g *Generator) Generate(ctx context.Context, cfg config.Config) (string, error) {
 	return g.GenerateWithContext(ctx, cfg, "")
 }
 
 // GenerateWithContext is Generate with the gate's `r` (regenerate-with-context)
-// one-time context augmentation: it runs the IDENTICAL L1 → size-guard → resolve →
-// compose → L2 path, but layers oneTimeContext onto the resolved instructions (ON TOP
-// of any persisted [commit].context) before composing. An EMPTY oneTimeContext is a
+// one-time context augmentation: it runs the IDENTICAL L1 → resolve → compose →
+// size-guard → L2 path, but layers oneTimeContext onto the resolved instructions (ON
+// TOP of any persisted [commit].context) before composing, so the size guard measures
+// the prompt with the one-time context included. An EMPTY oneTimeContext is a
 // plain re-roll — no block is injected, so the composed prompt is byte-identical to a
 // normal Generate. The one-time context is a local string only; it is NEVER persisted
-// to cfg/[commit].context. The diff source, the :(exclude) exclusion, and the size
-// guard are unchanged; the transport's one retry is consumed here exactly as Generate
-// consumes it. Generate delegates here with an empty context, so the two share one path.
+// to cfg/[commit].context. The diff source and the :(exclude) exclusion are unchanged;
+// the transport's one retry is consumed here exactly as Generate consumes it. Generate
+// delegates here with an empty context, so the two share one path.
 func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, oneTimeContext string) (string, error) {
 	diff, err := g.sourceDiff(ctx, cfg.DiffExclude)
 	if err != nil {
@@ -136,10 +137,6 @@ func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, 
 		return "", errDiffFullyExcluded
 	}
 
-	if err := notes.CheckDiffSize(diff, cfg.MaxDiffLines); err != nil {
-		return "", fmt.Errorf("commit size guard: %w", err)
-	}
-
 	instructions, err := ResolveInstructions(cfg, g.root)
 	if err != nil {
 		return "", fmt.Errorf("resolving commit instructions: %w", err)
@@ -148,11 +145,25 @@ func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, 
 
 	prompt := ComposePrompt(instructions, diff)
 
+	if err := checkPromptSize(prompt, cfg.MaxPromptBytes); err != nil {
+		return "", fmt.Errorf("commit size guard: %w", err)
+	}
+
 	body, err := g.transport.Generate(ctx, prompt)
 	if err != nil {
 		return "", fmt.Errorf("generating commit message: %w", err)
 	}
 	return body, nil
+}
+
+// checkPromptSize is commit's max_prompt_bytes guard on the whole composed prompt. It
+// returns the consumed notes.ErrDiffTooLarge so Run routes an over-cap prompt to the
+// oversized editor fallback; the cap is inclusive.
+func checkPromptSize(prompt string, maxBytes int) error {
+	if len(prompt) > maxBytes {
+		return fmt.Errorf("%w: composed prompt exceeds max_prompt_bytes (%d > %d)", notes.ErrDiffTooLarge, len(prompt), maxBytes)
+	}
+	return nil
 }
 
 // sourceDiff is commit's Layer-1 SOURCE selector: it returns the would-be-committed
@@ -161,7 +172,7 @@ func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, 
 // emptiness path (wouldStageNothing) consumes, so the dispatch (and the AddAll
 // tracked-then-untracked composition) is defined exactly once. Each source applies the
 // SAME cfg.DiffExclude :(exclude) pathspecs; the post-exclusion result flows into the
-// shared size-guard + compose + L2 pipeline unchanged.
+// shared compose + size-guard + L2 pipeline unchanged.
 //
 //   - StagedOnly (the Phase 1 default): the staged diff — `git diff --cached`.
 //   - All (-a): the read-only tracked-vs-HEAD diff (tracked mods + deletions, no

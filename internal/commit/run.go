@@ -7,9 +7,9 @@ package commit
 // conventional-commits message from the mode's would-be-committed diff (the L3
 // Generator in generate.go), present it at the Continue? review gate (y/n/e/r —
 // reviewLoop below), and on accept run the shared stage→commit→push accept tail
-// (commitAccept). Three "no AI message" triggers — --no-ai, an AI transport failure,
-// and an oversized diff — converge on the SAME $EDITOR fallback (runEditorFallback),
-// where the save IS the accept event.
+// (commitAccept). The "no AI message" triggers — --no-ai, an AI transport failure, a
+// composed prompt over max_prompt_bytes, and an all-excluded diff — converge on the
+// SAME $EDITOR fallback (runEditorFallback), where the save IS the accept event.
 //
 // The load-bearing invariant is MUTATE NOTHING UNTIL ACCEPT: every read (preflight
 // probes, the per-mode L1 diff) is computed read-only, the gate and the editor sit
@@ -48,12 +48,12 @@ const commitAction = "committing"
 // convention as the gate Subject/AcceptEcho values).
 const commitMessageTitle = "commit message"
 
-// The oversized-diff fallback note. When commit's L1 size guard reports the
-// (diff_exclude-filtered) diff is over max_diff_lines — a generate-SKIP, distinct from
-// a generate-FAILURE — commit emits this note via the Presenter and routes to the SAME
-// editor fallback as --no-ai. The message is the spec string VERBATIM (Commit Message
-// Format & Prompt → The $EDITOR fallback, case 3), em dash U+2014; the label is a short
-// informational tag prefixed onto the warn line.
+// The oversized fallback note. When commit's size guard reports the composed prompt is
+// over max_prompt_bytes — a generate-SKIP, distinct from a generate-FAILURE — commit
+// emits this note via the Presenter and routes to the SAME editor fallback as --no-ai.
+// The message is the spec string VERBATIM (Commit Message Format & Prompt → The $EDITOR
+// fallback, case 3), em dash U+2014; the label is a short informational tag prefixed
+// onto the warn line.
 const (
 	oversizedNoteLabel   = "diff"
 	oversizedNoteMessage = "diff too large to summarise — opening editor"
@@ -158,13 +158,13 @@ const (
 
 // errRegenerateFallback is an INTERNAL routing sentinel — never user-facing. When the
 // gate's `r` regeneration fails after the engine's one retry (an isAITransportFailure),
-// reviewLoop returns this cause so Run routes to the SAME $EDITOR fallback a
-// first-generation AI failure (3-3) takes. The spec mandates one consistent rule: any
-// failed AI generation lands at the editor (no re-show of the pre-r message). The
-// regeneration happens INSIDE reviewLoop, but the fallback must be owned by Run (the
-// same entry point first-generation failures use) so a successful fallback commit exits 0
-// rather than being turned into errGateAborted, and never double-stages/commits. Run
-// INTERCEPTS this sentinel before it can surface — it carries no user-facing message.
+// or its composed prompt goes over max_prompt_bytes, reviewLoop returns this cause so
+// Run routes to the SAME empty $EDITOR fallback a first-generation AI failure takes,
+// never re-showing the pre-r message. The regeneration happens INSIDE reviewLoop, but
+// the fallback must be owned by Run (the same entry point first-generation failures
+// use) so a successful fallback commit exits 0 rather than being turned into
+// errGateAborted, and never double-stages/commits. Run INTERCEPTS this sentinel before
+// it can surface — it carries no user-facing message.
 var errRegenerateFallback = errors.New("commit: regenerate failed, routing to editor fallback")
 
 // Mutator is commit's git-mutation SINK seam: EVERY git mutation commit makes flows
@@ -280,11 +280,11 @@ func (d Deps) editorUnavailable() bool {
 //  2. Empty-staging preflight: the staging-mode-aware would-be-staged emptiness check
 //     runs BEFORE generate so the AI is never invoked on an empty diff.
 //  3. Generate the conventional-commits message via the L3 Generator: it assembles
-//     the mode's would-be-committed diff (commit's L1, read-only), applies the size
-//     guard, composes the prompt, and calls the L2 transport. The AI infers the type;
+//     the mode's would-be-committed diff (commit's L1, read-only), composes the prompt,
+//     applies the size guard to it, and calls the L2 transport. The AI infers the type;
 //     scope is off by default; the body returns verbatim. --no-ai skips this (and the
-//     gate) for the $EDITOR fallback; an AI transport failure or an oversized diff
-//     routes to the SAME fallback.
+//     gate) for the $EDITOR fallback; an AI transport failure or a composed prompt over
+//     max_prompt_bytes routes to the SAME fallback.
 //  4. Show the minted message (ShowMessage) and present the Continue? review gate
 //     (reviewLoop, with its e edit and r regenerate re-entries) — BOTH before the
 //     mutation half, so an accept proceeds and a decline aborts with nothing mutated
@@ -347,8 +347,8 @@ func Run(ctx context.Context, deps Deps) error {
 	generated := startGenerateStage(p, "generating commit message…", "Generated commit message")
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
-		// An over-limit (diff_exclude-filtered) diff is a generate-SKIP, NOT a failure:
-		// commit's L1 size guard returned notes.ErrDiffTooLarge BEFORE any L2 call (the
+		// A composed prompt over max_prompt_bytes is a generate-SKIP, NOT a failure:
+		// commit's size guard returned notes.ErrDiffTooLarge BEFORE any L2 call (the
 		// transport was never reached). A routine large commit must not abort — route to the
 		// SAME editor fallback as --no-ai (empty buffer, save-as-accept). The oversized NOTE
 		// ("opening editor") is emitted FIRST, but ONLY when the editor will actually open
@@ -569,7 +569,9 @@ func isEmptyEditorBuffer(saved string) bool {
 //     is — per the spec — routed to the SAME $EDITOR fallback as any other AI failure
 //     (3-3): the loop returns the internal errRegenerateFallback sentinel and Run owns
 //     the runEditorFallback call (the editor opens EMPTY/template, no re-show of the
-//     pre-r message). A NON-transport regeneration error keeps a defensive surface-abort.
+//     pre-r message). A nudge that pushes the regeneration's composed prompt over
+//     max_prompt_bytes sends no call and takes the same route under the oversized
+//     note. Any other regeneration error keeps a defensive surface-abort.
 //
 // The `e` and `r` actions are interactive-only: under -y the presenter auto-accepts
 // (returns the Default ChoiceYes) and on a non-TTY Prompt returns ErrNotInteractive, so
@@ -677,9 +679,14 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 					p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr)})
 					return false, body, errRegenerateFallback
 				}
-				// Any OTHER regeneration error (not a transport failure) keeps the defensive
-				// surface-abort — it is unexpected and must fail loud rather than route to the
-				// editor.
+				// A nudge that pushes the regeneration's composed prompt over max_prompt_bytes
+				// sends no call and takes the same empty-editor route, under the oversized note.
+				if errors.Is(gerr, notes.ErrDiffTooLarge) {
+					p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+					return false, body, errRegenerateFallback
+				}
+				// Any OTHER regeneration error keeps the defensive surface-abort — it is
+				// unexpected and must fail loud rather than route to the editor.
 				return false, body, surface(p, "regenerate", gerr)
 			}
 			regenDone("regenerated")
@@ -745,7 +752,7 @@ func generateMessage(ctx context.Context, deps Deps, cfg config.Config, root str
 
 // regenerateMessage is the gate's `r` (regenerate-with-context) re-run: it builds the
 // SAME L3 Generator over the run's seams as generateMessage and re-runs the consumed
-// L1 → size-guard → compose → L2 path via GenerateWithContext, layering the one-time
+// L1 → compose → size-guard → L2 path via GenerateWithContext, layering the one-time
 // context line onto the prompt (ON TOP of any persisted [commit].context). The line is
 // passed verbatim; an EMPTY line is a plain re-roll (no injected block). The transport's
 // own one retry is consumed here exactly as the initial generate consumes it — commit
@@ -784,8 +791,8 @@ func startGenerateStage(p presenter.Presenter, text, sentence string) func(detai
 // content surviving the transport's one retry), ai.ErrTimeout, or ai.ErrCommandMissing
 // (both never retried). It is the single routing predicate for "the AI produced no
 // usable message" → the shared $EDITOR fallback, deliberately distinct from the
-// oversized-skip (notes.ErrDiffTooLarge, task 3-4) which is NOT a transport failure and
-// keeps the surface abort. It is a NAMED predicate so Phase 4's `r` (regenerate)
+// oversized-skip (notes.ErrDiffTooLarge), which is NOT a transport failure and routes
+// under its own note. It is a NAMED predicate so Phase 4's `r` (regenerate)
 // failure can reuse the SAME routing entry point.
 func isAITransportFailure(err error) bool {
 	return errors.Is(err, ai.ErrGenerationFailed) ||

@@ -137,10 +137,16 @@ func findNoIndex(t *testing.T, r *runner.FakeRunner) runner.Invocation {
 	return runner.Invocation{}
 }
 
-// normalCfg is a config with a generous max_diff_lines ceiling and no
+// normalCfg is a config with the shipped max_prompt_bytes cap and no
 // prompt-control knobs or diff_exclude globs — the common happy-path setup.
 func normalCfg() config.Config {
-	return config.Config{MaxDiffLines: 50000}
+	return config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}
+}
+
+// composedSize is the byte size of the prompt the generator sends for diff under the
+// default instructions — the measure the max_prompt_bytes cap is checked against.
+func composedSize(diff string) int {
+	return len(commit.ComposePrompt(commit.DefaultPrompt, diff))
 }
 
 // gitInvocation returns the single recorded `git` call, failing the test if commit's
@@ -270,18 +276,17 @@ func TestGenerator_Generate_ExcludedFilesNeverReachThePrompt(t *testing.T) {
 	}
 }
 
-func TestGenerator_Generate_MaxDiffLinesGuardAppliedBeforeTransport(t *testing.T) {
+func TestGenerator_Generate_PromptOverCapSkipsTransport(t *testing.T) {
 	t.Parallel()
 
-	// The max_diff_lines guard runs at L1 AFTER diff_exclude and BEFORE any L2 call:
-	// an over-ceiling post-exclusion diff short-circuits — the transport is NEVER
-	// called — and the failure is the consumed notes.ErrDiffTooLarge sentinel.
-	diff := "line a\nline b\nline c\n" // 3 lines
+	// A composed prompt one byte over max_prompt_bytes short-circuits — the transport
+	// is NEVER called — and the failure is the consumed notes.ErrDiffTooLarge sentinel.
+	diff := "line a\nline b\nline c\n"
 	r := seedStagedDiff(diff)
 	transport := &recordingTransport{body: "must never be returned (AI was called)"}
 
 	cfg := normalCfg()
-	cfg.MaxDiffLines = 2 // 3 > 2 → over ceiling
+	cfg.MaxPromptBytes = composedSize(diff) - 1
 
 	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	_, err := gen.Generate(t.Context(), cfg)
@@ -296,26 +301,93 @@ func TestGenerator_Generate_MaxDiffLinesGuardAppliedBeforeTransport(t *testing.T
 	}
 }
 
-func TestGenerator_Generate_GuardCountsPostExclusionDiff(t *testing.T) {
+func TestGenerator_Generate_PromptExactlyAtCapReachesTransport(t *testing.T) {
 	t.Parallel()
 
-	// The guard counts the POST-exclusion diff (git's returned stdout, after the
-	// :(exclude) pathspecs), not a pre-exclusion count: a diff within the ceiling
-	// passes through to the transport even with diff_exclude configured.
-	diff := "line a\nline b\n" // 2 lines, == ceiling (inclusive boundary passes)
+	// The cap is inclusive and measures the composed prompt over the POST-exclusion
+	// diff (git's returned stdout): a prompt exactly at the cap reaches the transport
+	// even with diff_exclude configured.
+	diff := "line a\nline b\n"
 	r := seedStagedDiff(diff)
 	transport := &recordingTransport{body: "feat: thing"}
 
 	cfg := normalCfg()
-	cfg.MaxDiffLines = 2
+	cfg.MaxPromptBytes = composedSize(diff)
 	cfg.DiffExclude = []string{"*.min.js"}
 
 	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	if _, err := gen.Generate(t.Context(), cfg); err != nil {
-		t.Fatalf("Generate returned unexpected error for an at-ceiling diff: %v", err)
+		t.Fatalf("Generate returned unexpected error for an at-cap prompt: %v", err)
 	}
 	if transport.calls() != 1 {
-		t.Errorf("transport called %d times; an at-ceiling diff must reach L2", transport.calls())
+		t.Errorf("transport called %d times; an at-cap prompt must reach L2", transport.calls())
+	}
+	if got := len(transport.lastPrompt(t)); got != cfg.MaxPromptBytes {
+		t.Errorf("sent prompt is %d bytes, want exactly the %d-byte cap", got, cfg.MaxPromptBytes)
+	}
+}
+
+func TestGenerator_Generate_ContextPushesPromptOverCap(t *testing.T) {
+	t.Parallel()
+
+	// The cap measures the whole composed prompt, not the diff alone: a diff that fits
+	// on its own is still never sent when an outsized [commit].context pushes the
+	// composed prompt over the cap.
+	diff := "diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-a\n+b\n"
+	r := seedStagedDiff(diff)
+	transport := &recordingTransport{body: "must never be returned"}
+
+	cfg := normalCfg()
+	cfg.MaxPromptBytes = composedSize(diff) + 100
+	cfg.Commit = config.Commit{Context: strings.Repeat("c", 200)}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
+	_, err := gen.Generate(t.Context(), cfg)
+	if !errors.Is(err, notes.ErrDiffTooLarge) {
+		t.Errorf("error = %v, want notes.ErrDiffTooLarge", err)
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; an over-cap composed prompt must never be sent", transport.calls())
+	}
+}
+
+func TestGenerator_GenerateWithContext_NudgePushesPromptOverCap(t *testing.T) {
+	t.Parallel()
+
+	// The regeneration's one-time nudge is part of the measured prompt: a diff whose
+	// first prompt fits is never sent once the nudge pushes it over the cap.
+	diff := "diff --git a/x.go b/x.go\n@@ -1 +1 @@\n-a\n+b\n"
+	r := seedStagedDiff(diff)
+	transport := &recordingTransport{body: "must never be returned"}
+
+	cfg := normalCfg()
+	cfg.MaxPromptBytes = composedSize(diff) + 100
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
+	_, err := gen.GenerateWithContext(t.Context(), cfg, strings.Repeat("n", 200))
+	if !errors.Is(err, notes.ErrDiffTooLarge) {
+		t.Errorf("error = %v, want notes.ErrDiffTooLarge", err)
+	}
+	if transport.calls() != 0 {
+		t.Errorf("transport called %d times; an over-cap regeneration prompt must never be sent", transport.calls())
+	}
+}
+
+func TestGenerator_Generate_LineCountNoLongerGatesTheCall(t *testing.T) {
+	t.Parallel()
+
+	// A diff of more than 50,000 lines whose composed prompt fits the shipped cap
+	// reaches the transport: the line count no longer applies to commit.
+	diff := strings.Repeat("+line\n", 50001)
+	r := seedStagedDiff(diff)
+	transport := &recordingTransport{body: "feat: big"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+	if transport.calls() != 1 {
+		t.Errorf("transport called %d times; a many-line diff under the byte cap must reach L2", transport.calls())
 	}
 }
 
@@ -394,15 +466,15 @@ func TestGenerator_Generate_AppliesCommitPromptKnobs(t *testing.T) {
 func TestGenerator_Generate_SurfacesDiffTooLargeDistinctFromGenerationFailure(t *testing.T) {
 	t.Parallel()
 
-	// The oversized-diff failure is DISTINGUISHABLE from a generation failure via
+	// The oversized failure is DISTINGUISHABLE from a generation failure via
 	// errors.Is: notes.ErrDiffTooLarge matches and ai.ErrGenerationFailed does NOT,
-	// so Phase 3 can route oversized vs generation-failure.
-	diff := "a\nb\nc\nd\n" // 4 lines
+	// so Run can route oversized vs generation-failure.
+	diff := "a\nb\nc\nd\n"
 	r := seedStagedDiff(diff)
 	transport := &recordingTransport{body: "unused"}
 
 	cfg := normalCfg()
-	cfg.MaxDiffLines = 1
+	cfg.MaxPromptBytes = 1
 
 	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
 	_, err := gen.Generate(t.Context(), cfg)
@@ -561,16 +633,15 @@ func TestGenerator_Generate_AllMode_DiffExcludeAndSizeGuardApply(t *testing.T) {
 	t.Parallel()
 
 	// diff_exclude maps to :(exclude) pathspecs on the -a source argv, and the
-	// max_diff_lines guard (notes.CheckDiffSize) applies to the resulting would-be-
-	// staged diff via commit's OWN L1 glue — same glue as the staged-only path, only
-	// the source command differs.
-	diff := "line a\nline b\nline c\n" // 3 lines
+	// max_prompt_bytes cap applies to the prompt composed over the resulting would-be-
+	// staged diff — same glue as the staged-only path, only the source command differs.
+	diff := "line a\nline b\nline c\n"
 	r := seedStagedDiff(diff)
 	transport := &recordingTransport{body: "must never be returned"}
 
 	cfg := normalCfg()
 	cfg.DiffExclude = []string{"*.min.js"}
-	cfg.MaxDiffLines = 2 // 3 > 2 → over ceiling
+	cfg.MaxPromptBytes = composedSize(diff) - 1
 
 	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.All)
 	_, err := gen.Generate(t.Context(), cfg)
@@ -775,12 +846,11 @@ func TestGenerator_Generate_AddAllMode_UntrackedRespectsDiffExclude(t *testing.T
 func TestGenerator_Generate_AddAllMode_SizeGuardAppliesToCombinedDiff(t *testing.T) {
 	t.Parallel()
 
-	// The max_diff_lines guard (notes.CheckDiffSize) applies to the COMBINED would-be-
-	// staged diff (tracked diff + untracked additions) via commit's own L1 glue: the
-	// tracked diff alone is within the ceiling, but combined with the untracked
-	// addition it exceeds it, so the transport is never called.
-	trackedDiff := "tracked a\n"          // 1 line
-	untrackedDiff := "added b\nadded c\n" // 2 lines → combined > 2
+	// The max_prompt_bytes cap measures the prompt over the COMBINED would-be-staged
+	// diff (tracked diff + untracked additions): the tracked diff alone would fit, but
+	// combined with the untracked addition it goes over, so the transport is never called.
+	trackedDiff := "tracked a\n"
+	untrackedDiff := "added b\nadded c\n"
 
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
@@ -791,7 +861,7 @@ func TestGenerator_Generate_AddAllMode_SizeGuardAppliesToCombinedDiff(t *testing
 	transport := &recordingTransport{body: "must never be returned"}
 
 	cfg := normalCfg()
-	cfg.MaxDiffLines = 2 // combined (3 lines) > 2
+	cfg.MaxPromptBytes = composedSize(trackedDiff+untrackedDiff) - 1
 
 	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.AddAll)
 	_, err := gen.Generate(t.Context(), cfg)
