@@ -5,6 +5,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/publish"
 	"mint/internal/runner"
 	"mint/internal/version"
@@ -89,18 +90,18 @@ func newRegenerateBodyProducer(r runner.CommandRunner, cfg config.Config, root s
 
 // newRegenerateRegeneratorProducer builds the engine.RegenerateRun ProduceRegenerator
 // closure for a single-version run: it binds the per-run fresh regenerator
-// (engine.RegenerateFreshRegenerator over the resolved range) for a FRESH source — the
-// backing for the notes-review gate's `r` choice — and returns nil for REUSE, which runs
-// the simple confirm with no review gate. It is the regenerator counterpart of
-// newRegenerateBodyProducer, invoked AFTER the source resolves so an interactively-chosen
-// fresh source gets a working `r`.
+// (engine.RegenerateFreshRegenerator over the merge inputs the body's chunked run kept,
+// else over the resolved range) for a FRESH source — the backing for the notes-review
+// gate's `r` choice — and returns nil for REUSE, which runs the simple confirm with no
+// review gate. It is the regenerator counterpart of newRegenerateBodyProducer, invoked
+// once the body is produced so an interactively-chosen fresh source gets a working `r`.
 //
 // It binds the fixed single-version Resolution and delegates to the canonical, Resolution-
 // keyed newBatchRegeneratorProducer so the reuse/fresh dispatch lives in exactly one place;
 // the batch path uses the same producer threaded with each version's Resolution.
-func newRegenerateRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(engine.RegenerateSource) engine.Regenerator {
+func newRegenerateRegeneratorProducer(r runner.CommandRunner, cfg config.Config, root string, res version.Resolution) func(engine.RegenerateSource, *notes.MergeInputs) engine.Regenerator {
 	produce := newBatchRegeneratorProducer(r, cfg, root)
-	return func(source engine.RegenerateSource) engine.Regenerator {
-		return produce(source, res)
+	return func(source engine.RegenerateSource, merged *notes.MergeInputs) engine.Regenerator {
+		return produce(source, res, merged)
 	}
 }

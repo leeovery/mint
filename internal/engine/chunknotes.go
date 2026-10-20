@@ -41,6 +41,10 @@ func (k *chunkNotesKeeper) keepMerged(in notes.MergeInputs) {
 	k.merged = &in
 }
 
+func (k *chunkNotesKeeper) sinks(progress notes.Progress) NotesSinks {
+	return NotesSinks{Progress: progress, ChunkNotes: k.saver(), MergeInputs: k.keepMerged}
+}
+
 // warnUnsaved warns, with the save's error verbatim beneath, when finished chunk notes
 // were due to be saved and could not be. Call it only once the notes stage has ended,
 // so the warning follows the line that ends it.

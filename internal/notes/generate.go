@@ -154,7 +154,8 @@ func (g *Generator) GenerateFromRange(ctx context.Context, diffRange string, cfg
 // GenerateFromRangeWithContext is GenerateFromRange with a ONE-TIME context line
 // appended to the resolved instructions for THIS generation only — the range
 // counterpart of GenerateWithContext. It is the AI support for the regenerate FRESH
-// path's review-gate `r` (regenerate) choice: the user supplies a transient nudge,
+// path's review-gate `r` (regenerate) choice on notes not written by a chunked run
+// (chunked notes re-merge through Remerge instead): the user supplies a transient nudge,
 // which is appended to the prompt before ComposePrompt and flows into every AI call
 // this generation makes over the resolved `{PreviousTag}..{Tag}` range.
 //

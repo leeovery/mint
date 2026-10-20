@@ -7,6 +7,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -229,7 +230,9 @@ func TestRegenerateAll_BatchEndsEarlyAfterNotesWrittenAfterHalving_HintStillPrin
 			b.rec.NextChoices = tc.choices
 			b.rec.NextLines = []string{"lead with the fix"}
 			if tc.regen != nil {
-				b.req.ProduceRegenerator = func(engine.RegenerateSource, version.Resolution) engine.Regenerator { return tc.regen }
+				b.req.ProduceRegenerator = func(engine.RegenerateSource, version.Resolution, *notes.MergeInputs) engine.Regenerator {
+					return tc.regen
+				}
 			}
 
 			err := b.run(t)

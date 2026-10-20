@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -299,7 +300,7 @@ func TestRegenerateAll_Fresh_RegenChoice_InvokesPerVersionRegenerator(t *testing
 	}
 
 	req := batchReq(engine.RegenerateSourceFresh, []version.Resolution{{Tag: batchV2Tag, PreviousTag: batchV1Tag}}, false)
-	req.ProduceRegenerator = func(_ engine.RegenerateSource, _ version.Resolution) engine.Regenerator {
+	req.ProduceRegenerator = func(engine.RegenerateSource, version.Resolution, *notes.MergeInputs) engine.Regenerator {
 		return regen
 	}
 	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {

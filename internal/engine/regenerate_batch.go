@@ -78,11 +78,12 @@ type BatchRegenerateRequest struct {
 	// sinks of the version's notes stage it runs inside.
 	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string, sinks NotesSinks) (string, error)
 	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
-	// gate's `r` choice consults, bound to that version's fresh AI range. Production
-	// returns nil for a reuse source (no review gate) and binds
-	// notes.Generator.GenerateFromRangeWithContext for a fresh source. When nil (older
+	// gate's `r` choice consults, handed merged, the merge inputs that version's
+	// chunked run kept (nil unless a chunked run wrote its body). Production returns nil
+	// for a reuse source (no review gate) and binds RegenerateFreshRegenerator over
+	// merged and that version's fresh AI range for a fresh source. When nil (older
 	// tests that never reach `r`) no per-version regenerator is supplied.
-	ProduceRegenerator func(RegenerateSource, version.Resolution) Regenerator
+	ProduceRegenerator func(source RegenerateSource, res version.Resolution, merged *notes.MergeInputs) Regenerator
 }
 
 // RegeneratedVersion is one version's produced body collected by the batch loop, in
@@ -315,7 +316,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// StageSucceeded — the skip Warn narrates it instead.
 	stage := startNotesStage(p)
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, res.Tag)
-	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, NotesSinks{Progress: stage, ChunkNotes: chunkNotes.saver()})
+	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, chunkNotes.sinks(stage))
 	if err != nil {
 		hint.tried(stage)
 		if errors.Is(err, context.Canceled) {
@@ -333,7 +334,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A
 	// gate DECLINE is a user choice (not a failure), so it propagates and ends the batch.
-	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey)
+	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey, chunkNotes.merged)
 	if err != nil {
 		return RegeneratedVersion{}, nil, err
 	}
@@ -458,7 +459,7 @@ func batchSummary(regenerated int, skipped []skippedVersion) string {
 // batch's -y contract: unlike the single-version path (which always prompts and lets the
 // presenter skip), the batch suppresses the per-version gate so a large backfill does
 // not emit N auto-accepted prompts.
-func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, res version.Resolution, body, versionKey string) (string, error) {
+func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, res version.Resolution, body, versionKey string, merged *notes.MergeInputs) (string, error) {
 	if req.Yes {
 		return body, nil
 	}
@@ -470,19 +471,15 @@ func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRe
 		Tag:         "",
 		VersionKey:  versionKey,
 		Body:        body,
-		Regenerator: batchRegenerator(req.ProduceRegenerator, req.Source, res),
+		Regenerator: batchRegenerator(req.ProduceRegenerator, req.Source, res, merged),
 	})
 }
 
-// batchRegenerator invokes the batch request's per-version regenerator factory for the
-// resolved source + version, tolerating a nil factory (older callers/tests that never
-// reach the `r` choice) by returning nil. Production wires a factory that returns the
-// fresh AI-range regenerator for a fresh source and nil for reuse.
-func batchRegenerator(produce func(RegenerateSource, version.Resolution) Regenerator, source RegenerateSource, res version.Resolution) Regenerator {
+func batchRegenerator(produce func(RegenerateSource, version.Resolution, *notes.MergeInputs) Regenerator, source RegenerateSource, res version.Resolution, merged *notes.MergeInputs) Regenerator {
 	if produce == nil {
 		return nil
 	}
-	return produce(source, res)
+	return produce(source, res, merged)
 }
 
 // batchVersionKey derives a version's bare x.y.z key from its canonical tag by

@@ -110,10 +110,10 @@ func TestNewRegenerateRegeneratorProducer(t *testing.T) {
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
 	produce := newRegenerateRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, t.TempDir(), res)
 
-	if got := produce(engine.RegenerateSourceTag); got != nil {
+	if got := produce(engine.RegenerateSourceTag, nil); got != nil {
 		t.Errorf("reuse regenerator = %v, want nil (reuse has no review gate)", got)
 	}
-	if got := produce(engine.RegenerateSourceFresh); got == nil {
+	if got := produce(engine.RegenerateSourceFresh, nil); got == nil {
 		t.Error("fresh regenerator = nil, want a non-nil per-run regenerator for the `r` choice")
 	}
 }

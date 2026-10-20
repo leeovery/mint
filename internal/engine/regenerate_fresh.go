@@ -53,7 +53,8 @@ import (
 //
 // The body is returned WHOLE (no parsing/splitting) for the downstream
 // provider/changelog write. An AI/transport failure is surfaced. A chunked run reports
-// to sinks and, when it fails, saves its finished chunk notes there.
+// to sinks and, when it fails, saves its finished chunk notes there; a written one
+// hands sinks the merge inputs its body was merged from.
 func RegenerateFreshBody(ctx context.Context, r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution, sinks NotesSinks) (string, error) {
 	// Oldest release: mirror the forward first-release rule — fixed body, no AI, no
 	// diff. DiffRange would return "" here, so this guard MUST precede any assembly.
@@ -61,39 +62,49 @@ func RegenerateFreshBody(ctx context.Context, r runner.CommandRunner, transport 
 		return record.FirstReleaseBody, nil
 	}
 
-	body, err := freshGenerator(r, transport, root, cfg).WithProgress(sinks.Progress).WithChunkNotes(sinks.ChunkNotes).GenerateFromRange(ctx, res.DiffRange(), cfg)
+	body, err := freshGenerator(r, transport, root, cfg).WithProgress(sinks.Progress).WithChunkNotes(sinks.ChunkNotes).WithMergeInputs(sinks.MergeInputs).GenerateFromRange(ctx, res.DiffRange(), cfg)
 	if err != nil {
 		return "", fmt.Errorf("regenerating fresh notes for %s: %w", res.Tag, err)
 	}
 	return body, nil
 }
 
-// NotesSinks is where a fresh generation reports a chunked run's advance and saves a
-// failed one's finished chunk notes. A nil field reports or saves nothing.
+// NotesSinks is where a fresh generation reports a chunked run's advance, saves a
+// failed one's finished chunk notes, and hands a written one's merge inputs. A nil
+// field reports, saves or is handed nothing.
 type NotesSinks struct {
-	Progress   notes.Progress
-	ChunkNotes notes.SaveChunkNotes
+	Progress    notes.Progress
+	ChunkNotes  notes.SaveChunkNotes
+	MergeInputs func(notes.MergeInputs)
 }
 
 // RegenerateFreshRegenerator builds the PER-RUN Regenerator the fresh notes-review
 // gate's `r` choice consults — the regenerate analogue of the forward path's
-// perRunRegenerator. It binds the SAME fresh generator RegenerateFreshBody builds to
-// the version's resolved `{PreviousTag}..{Tag}` range, so an `r` re-runs the IDENTICAL
-// fresh AI path the body producer took, with the user's one-time context appended for
-// that one generation. The one-time context is TRANSIENT (appended to the prompt only,
-// never persisted), exactly as the forward path's `r`.
+// perRunRegenerator. Given merged, the merge inputs of the chunked run that wrote the
+// version's body, each `r` makes one merge call over those same part notes with only
+// its own one-time context in the release's instructions. Otherwise it binds a fresh
+// generator, built as RegenerateFreshBody builds its own, to the version's resolved
+// `{PreviousTag}..{Tag}` range, so an `r` re-runs the fresh AI path with the one-time
+// context appended for that one generation. Either way the one-time context is
+// TRANSIENT (never persisted), exactly as the forward path's `r`.
 //
 // For the oldest release (res.FirstRelease) there is no range to re-diff, so it mirrors
 // RegenerateFreshBody's first-release rule: the fixed first-release body is returned
 // with NO AI and NO diff, regardless of the one-time context — so `r` on a first-release
 // fresh gate is well-defined and never breaks.
-func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution) Regenerator {
+func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution, merged *notes.MergeInputs) Regenerator {
 	generator := freshGenerator(r, transport, root, cfg)
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
 		if res.FirstRelease {
 			return record.FirstReleaseBody, nil
 		}
-		body, err := generator.GenerateFromRangeWithContext(ctx, res.DiffRange(), cfg, oneTimeContext)
+		var body string
+		var err error
+		if merged != nil {
+			body, err = generator.Remerge(ctx, *merged, cfg, oneTimeContext)
+		} else {
+			body, err = generator.GenerateFromRangeWithContext(ctx, res.DiffRange(), cfg, oneTimeContext)
+		}
 		if err != nil {
 			return "", fmt.Errorf("regenerating fresh notes for %s: %w", res.Tag, err)
 		}
@@ -103,9 +114,10 @@ func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transpor
 
 // freshGenerator builds the notes Generator the fresh regenerate path drives: the
 // Assembler with the consolidated fresh ExcludeConfig (the SAME tiers the forward path
-// uses) over the resolved transport. Both RegenerateFreshBody and
-// RegenerateFreshRegenerator build it identically, so an `r` re-run ranges over exactly
-// what the initial body production did — only the range range/context differ.
+// uses) over the resolved transport. RegenerateFreshBody and RegenerateFreshRegenerator
+// each build their own through it, so an `r` that re-runs the AI path ranges over
+// exactly what the initial body production did and a re-merge goes through the same
+// release transport.
 func freshGenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config) *notes.Generator {
 	assembler := notes.NewAssembler(r, freshExcludeConfig(cfg))
 	return notes.NewGenerator(assembler, resolveFreshTransport(r, transport, cfg), root)

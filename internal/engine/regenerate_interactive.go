@@ -35,6 +35,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/git"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 )
@@ -143,11 +144,13 @@ type RegenerateRunRequest struct {
 	// to the sinks of the notes stage it runs inside.
 	ProduceBody func(context.Context, RegenerateSource, NotesSinks) (string, error)
 	// ProduceRegenerator yields the PER-RUN regenerator the fresh notes-review gate's
-	// `r` choice consults, bound to this version's fresh AI range. It is invoked after
-	// the source resolves; production returns nil for a reuse source (no review gate)
-	// and binds notes.Generator.GenerateFromRangeWithContext for a fresh source. When
-	// nil (older tests that never reach `r`) no per-run regenerator is supplied.
-	ProduceRegenerator func(RegenerateSource) Regenerator
+	// `r` choice consults. It is invoked once the body is produced, handed merged, the
+	// merge inputs ProduceBody's chunked run kept (nil unless a chunked run wrote the
+	// body); production returns nil for a reuse source (no review gate) and binds
+	// RegenerateFreshRegenerator over merged and this version's fresh AI range for a
+	// fresh source. When nil (older tests that never reach `r`) no per-run regenerator
+	// is supplied.
+	ProduceRegenerator func(source RegenerateSource, merged *notes.MergeInputs) Regenerator
 }
 
 // RegenerateRun runs the interactive default flow for one resolved version: it asks
@@ -231,7 +234,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// resolves; a failure surfaces a StageFailed and emits no StageSucceeded.
 	stage := startNotesStage(p)
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, req.Tag)
-	body, err := produceRegenerateBody(ctx, req, source, NotesSinks{Progress: stage, ChunkNotes: chunkNotes.saver()})
+	body, err := produceRegenerateBody(ctx, req, source, chunkNotes.sinks(stage))
 	gateSource := source
 	if err != nil {
 		// on_notes_failure is release's alone: an attended regenerate whose notes
@@ -261,7 +264,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		Tag:         req.Tag,
 		VersionKey:  req.VersionKey,
 		Body:        body,
-		Regenerator: produceRegenerator(req.ProduceRegenerator, source),
+		Regenerator: produceRegenerator(req.ProduceRegenerator, source, chunkNotes.merged),
 		KeepOut:     keepOut,
 		LowerCap:    stage.lowerCap(),
 	})
@@ -274,15 +277,11 @@ func produceRegenerateBody(ctx context.Context, req RegenerateRunRequest, source
 	return req.ProduceBody(ctx, source, sinks)
 }
 
-// produceRegenerator invokes the request's per-run regenerator factory for the resolved
-// source, tolerating a nil factory (older callers/tests that never reach the `r`
-// choice) by returning nil. Production wires a factory that returns the fresh AI-range
-// regenerator for a fresh source and nil for reuse (reuse runs no review gate).
-func produceRegenerator(produce func(RegenerateSource) Regenerator, source RegenerateSource) Regenerator {
+func produceRegenerator(produce func(RegenerateSource, *notes.MergeInputs) Regenerator, source RegenerateSource, merged *notes.MergeInputs) Regenerator {
 	if produce == nil {
 		return nil
 	}
-	return produce(source)
+	return produce(source, merged)
 }
 
 // regenerateAction is the start-of-run verb word the header renders for a regenerate
