@@ -307,7 +307,8 @@
             "token-aware-diff-sizing-1-6": "tick-fb826b",
             "token-aware-diff-sizing-2-11": "tick-1c2cb0",
             "token-aware-diff-sizing-3-7": "tick-007544",
-            "token-aware-diff-sizing-3-8": "tick-cd98fe"
+            "token-aware-diff-sizing-3-8": "tick-cd98fe",
+            "token-aware-diff-sizing-4-15": "tick-84b049"
           },
           "storage_paths": [
             ".tick/"
@@ -435,51 +436,23 @@
                 "1": "approved",
                 "2": "approved"
               }
+            },
+            "p4": {
+              "tasks": {
+                "1": "approved"
+              }
             }
           },
           "consolidated_phases": [
             1,
             2,
-            3
+            3,
+            4
           ],
           "completed_phases": [
             1,
             2,
             3
-          ],
-          "bank": [
-            {
-              "task": "token-aware-diff-sizing-4-11",
-              "source": "reviewer",
-              "summary": "headerPath keys an unprefixed diff header on the whole string, so the marker and piece framing show a doubled path",
-              "failure": "An operator with diff.noprefix=true gets `api/handler.go api/handler.go` in the saved notes marker and in piece framing; seen on opening the saved file or reviewing notes",
-              "detail": "internal/notes/assemble.go:178 builds git diff <range> -- . without --src-prefix=a/ --dst-prefix=b/; internal/notes/chunk.go:290-311 headerPath recognises only the a/P b/P form and quoted paths. Fix by pinning prefixes in the diff argv (also stabilises the sort key) or teaching headerPath the unprefixed P P form",
-              "files": [
-                "internal/notes/assemble.go",
-                "internal/notes/chunk.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-4-12",
-              "source": "executor",
-              "summary": "The note-cache write warning fires while the notes stage spinner is still running",
-              "failure": "The dry-run note-cache write warning prints before the notes stage's success line, breaking the StageStarted stream-discipline wording; PrettyPresenter.Warn stops the spinner first, so the output is not garbled, only reordered (warning, then the check-mark line)",
-              "detail": "resolveBody calls warnNoteCacheFailed(deps.Presenter, werr) in the cacheInputs.Cacheable && deps.NoteCache != nil block (internal/engine/release.go), but stage.done() runs only after resolveBody returns (internal/engine/release.go:518-527). Defer the warning until after stage.done(), as chunkNotesKeeper.warnUnsaved does in internal/engine/chunknotes.go",
-              "files": [
-                "internal/engine/release.go",
-                "internal/engine/chunknotes.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-4-13",
-              "source": "reviewer",
-              "summary": "Test the production ChunkNotes wiring in the cmd layer for both release and regenerate",
-              "failure": "If a later edit to main.go drops ChunkNotes from either deps literal, production quietly stops saving chunk notes while every test stays green; the operator finds out only when a real failed chunked run names no file and the finished work is gone",
-              "detail": "cmd/mint/main.go:192 (regenerate) and cmd/mint/main.go:317 (release) each wire notescache.NewUserChunkNotes(os.UserCacheDir) inline in a ReleaseDeps literal no test builds. Pull each verb deps construction into a testable function asserting ChunkNotes is set, or add one cmd-level test per verb driving a failed chunked run with XDG_CACHE_HOME/HOME at a temp dir",
-              "files": [
-                "cmd/mint/main.go"
-              ]
-            }
           ]
         }
       }
