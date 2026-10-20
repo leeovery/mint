@@ -169,8 +169,8 @@ whole-release Change Map, then one merge call writes the release's notes from ev
 chunk's notes. Chunking has no setting and asks nothing. A commit prompt over the
 cap opens $EDITOR instead. On failure, release follows [release].on_notes_failure:
 abort loud, where an attended release is offered the commit-subject list, writing
-the notes in the editor, or an abort, and an unattended one stops, or fall back to
-the commit-subject list, the one non-AI body. Commit drops to the user's $EDITOR.
+the notes in the editor, or an abort, and an unattended one stops with next moves
+fitted to the cause, or fall back to the commit-subject list, the one non-AI body. Commit drops to the user's $EDITOR.
 If you pin a slower model for a verb, raise that verb's timeout in the SAME table —
 mint does not auto-bump it.`
 }

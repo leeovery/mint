@@ -823,6 +823,7 @@ func TestGuide_AITransportParagraphNamesTheOneNonAIBody(t *testing.T) {
 const (
 	floorOffer = "an attended release is offered the commit-subject list, writing the notes in the editor, or an abort"
 	floorStop  = "an unattended one stops"
+	floorMoves = "an unattended one stops with next moves fitted to the cause"
 )
 
 func TestGuide_ConfigReferenceOnNotesFailureNamesTheFloorChoice(t *testing.T) {
@@ -842,7 +843,7 @@ func TestGuide_AITransportParagraphNamesTheFloorChoiceWithoutAFlag(t *testing.T)
 	paragraph := aiTransportParagraph(t)
 	flat := strings.Join(strings.Fields(paragraph), " ")
 
-	for _, want := range []string{floorOffer, floorStop} {
+	for _, want := range []string{floorOffer, floorStop, floorMoves} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("AI-transport paragraph must say %q; got:\n%s", want, paragraph)
 		}

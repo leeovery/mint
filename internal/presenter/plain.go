@@ -212,6 +212,13 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 	}
 }
 
+// NextMoves prints each move as its own "{stage}: NEXT - {move}" line.
+func (p *PlainPresenter) NextMoves(m NextMoves) {
+	for _, move := range m.Moves {
+		p.writef("%s: NEXT - %s\n", m.Stage, move)
+	}
+}
+
 // NotesProgress prints a chunked notes run's split and parts done as its own line.
 func (p *PlainPresenter) NotesProgress(n NotesProgress) {
 	p.writef("notes: %s release, in %d parts, %d of %d done\n", formatSize(n.PromptBytes), n.Parts, n.Done, n.Parts)

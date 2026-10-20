@@ -40,6 +40,7 @@ const (
 	KindNotesProgress
 	KindNotesMerging
 	KindNotesHalving
+	KindNextMoves
 )
 
 // String renders the kind for readable test failure output.
@@ -83,6 +84,8 @@ func (k EventKind) String() string {
 		return "NotesMerging"
 	case KindNotesHalving:
 		return "NotesHalving"
+	case KindNextMoves:
+		return "NextMoves"
 	default:
 		return "Unknown"
 	}
@@ -103,6 +106,7 @@ type Event struct {
 	NotesProgress  presenter.NotesProgress
 	NotesMerging   presenter.NotesMerge
 	NotesHalving   presenter.NotesHalving
+	NextMoves      presenter.NextMoves
 	Warn           presenter.Warning
 	Unwound        presenter.Unwind
 	ShowPlan       presenter.Plan
@@ -190,6 +194,11 @@ func (r *RecordingPresenter) NotesHalving(h presenter.NotesHalving) {
 // NotesMerging records a chunked notes run's merge.
 func (r *RecordingPresenter) NotesMerging(m presenter.NotesMerge) {
 	r.Events = append(r.Events, Event{Kind: KindNotesMerging, NotesMerging: m})
+}
+
+// NextMoves records the ways forward from a failure.
+func (r *RecordingPresenter) NextMoves(m presenter.NextMoves) {
+	r.Events = append(r.Events, Event{Kind: KindNextMoves, NextMoves: m})
 }
 
 // Warn records a warning with its full structured payload — label and message —

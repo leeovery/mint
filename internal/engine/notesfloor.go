@@ -17,16 +17,33 @@ func (d ReleaseDeps) attended() bool {
 	return !d.Yes && d.StdinInteractive
 }
 
-// reachesNotesFloor reports whether a notes failure leads to the floor's choice
-// rather than ending the run: an attended real run whose notes generation failed.
-// A cancel is not a notes failure, and an error notes.CauseText does not know came
-// from outside the generation calls.
-func reachesNotesFloor(deps ReleaseDeps, opts ReleaseOptions, failure error) bool {
-	if opts.DryRun || !deps.attended() || errors.Is(failure, context.Canceled) {
+// reachesNotesFloor reports whether a notes failure is a real run's notes generation
+// failing, which an attended run answers at the floor's choice and an unattended one
+// with the next moves. A cancel is not a notes failure, and an error notes.CauseText
+// does not know came from outside the generation calls.
+func reachesNotesFloor(opts ReleaseOptions, failure error) bool {
+	if opts.DryRun || errors.Is(failure, context.Canceled) {
 		return false
 	}
 	_, generation := notes.CauseText(failure)
 	return generation
+}
+
+// notesFloorMoves are the ways an unattended release that stopped at the floor can
+// still go out. savedNotes is the path the failed run saved its chunk notes to, or "".
+func notesFloorMoves(savedNotes string) presenter.NextMoves {
+	notesFile := "write the notes to a file and release with mint release --notes-file <file>"
+	if savedNotes != "" {
+		notesFile = "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with mint release --notes-file " + savedNotes
+	}
+	return presenter.NextMoves{
+		Stage: "notes",
+		Moves: []string{
+			notesFile,
+			"re-run with --no-ai to release with the commit-subject list",
+			`set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
+		},
+	}
 }
 
 // notesFloorGate is the choice a failed notes generation leaves an attended release.

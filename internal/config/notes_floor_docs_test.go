@@ -66,3 +66,13 @@ func TestREADME_ReleaseSectionDescribesTheFloorsEdit(t *testing.T) {
 		}
 	}
 }
+
+func TestREADME_ReleaseSectionSaysAnUnattendedStopPrintsNextMoves(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	if want := "an unattended one stops with next moves fitted to the cause"; !strings.Contains(flat, want) {
+		t.Errorf("README release section does not say %q", want)
+	}
+}

@@ -573,6 +573,17 @@ func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	}
 }
 
+// NextMoves lists the moves beneath a "next moves:" heading.
+func (p *PrettyPresenter) NextMoves(m NextMoves) {
+	if len(m.Moves) == 0 {
+		return
+	}
+	p.writef("%snext moves:\n", stageIndent)
+	for _, move := range m.Moves {
+		p.writef("%s  - %s\n", stageIndent, move)
+	}
+}
+
 // Unwound renders the auto-unwind line to OUT ONLY, MIRRORING the StageSucceeded
 // line shape exactly: two-space indent, the ↩ glyph styled through the renderer,
 // the literal label "unwound" padded to the stage column, then the engine-supplied

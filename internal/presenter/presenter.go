@@ -91,6 +91,9 @@ type Presenter interface {
 	NotesHalving(h NotesHalving)
 	// NotesMerging narrates the merge call that ends a chunked notes run.
 	NotesMerging(m NotesMerge)
+	// NextMoves renders the ways forward from a failure that ends the run, to out
+	// only. Like Warn it sets no failure state.
+	NextMoves(m NextMoves)
 	// Warn renders a structured, label-prefixed warning. It is INDEPENDENT of
 	// StageFailed/Unwound: it does not set failure state and does not suppress the
 	// success end-of-run line. Per the stream contract a warning is narration → out
@@ -536,6 +539,13 @@ type StageFailure struct {
 	// Recoverable marks a failure the run may still go on past: it renders as any
 	// other, but leaves a later RunFinished's success line standing.
 	Recoverable bool
+}
+
+// NextMoves carries the NextMoves payload: the engine-authored ways forward from
+// stage's failure, each rendered verbatim in order.
+type NextMoves struct {
+	Stage string
+	Moves []string
 }
 
 func savedNotesText(path string) string {
