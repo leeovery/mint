@@ -93,3 +93,20 @@ func TestREADME_ReleaseSectionNamesTheSizeStopsSettings(t *testing.T) {
 		}
 	}
 }
+
+func TestREADME_ReleaseSectionNamesTheTimeoutMissingToolAndOtherMoves(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"A timeout adds raise `[release].timeout`",
+		"a missing AI tool adds install it, or set `ai_command`",
+		"Any other failure leaves the AI's own output to name the cause",
+		"where the release's `ai_command` is not the shipped default, the moves point at the lean command",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
+}

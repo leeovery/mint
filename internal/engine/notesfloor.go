@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"mint/internal/ai"
 	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/presenter"
@@ -31,9 +32,9 @@ func reachesNotesFloor(opts ReleaseOptions, failure error) bool {
 }
 
 // notesFloorMoves are the ways an unattended release that stopped at the floor on
-// failure can still go out, then the settings that clear failure's cause when it was
-// a size one. savedNotes is the path the failed run saved its chunk notes to, or "".
-func notesFloorMoves(failure error, rel config.Release, savedNotes string) presenter.NextMoves {
+// failure can still go out, then the moves that clear failure's cause. savedNotes is
+// the path the failed run saved its chunk notes to, or "".
+func notesFloorMoves(failure error, cfg config.Config, savedNotes string) presenter.NextMoves {
 	notesFile := "write the notes to a file and release with mint release --notes-file <file>"
 	if savedNotes != "" {
 		notesFile = "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with mint release --notes-file " + savedNotes
@@ -43,21 +44,34 @@ func notesFloorMoves(failure error, rel config.Release, savedNotes string) prese
 		"re-run with --no-ai to release with the commit-subject list",
 		`set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
 	}
-	return presenter.NextMoves{Stage: "notes", Moves: append(moves, sizeMoves(failure, rel)...)}
+	return presenter.NextMoves{Stage: "notes", Moves: append(moves, causeMoves(failure, cfg)...)}
 }
 
-// sizeMoves are the settings that clear a size failure. A merge too large gets none:
-// a lower cap cuts the release into more parts and does not shrink what the merge holds.
-func sizeMoves(failure error, rel config.Release) []string {
+const leanCommandMove = `if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`
+
+// causeMoves are the moves that clear failure's cause. A merge too large gets none: a
+// lower cap cuts the release into more parts and does not shrink what the merge holds.
+// An OTHER failure leaves the AI's own output to name its cause, adding the lean
+// command only where the release runs a command of the repo's own, whose overhead
+// alone can overflow the window.
+func causeMoves(failure error, cfg config.Config) []string {
 	switch {
 	case errors.Is(failure, notes.ErrNoRoomForDiff):
-		return []string{noRoomMove(rel)}
+		return []string{noRoomMove(cfg.Release)}
+	case errors.Is(failure, notes.ErrMergeTooLarge):
+		return nil
 	case errors.Is(failure, notes.ErrTooLargeForModel):
 		return []string{
 			"lower max_prompt_bytes, since the model accepts less than the cap",
-			`if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`,
+			leanCommandMove,
 			"exclude generated paths with [release].diff_exclude",
 		}
+	case errors.Is(failure, ai.ErrTimeout):
+		return []string{"raise [release].timeout"}
+	case errors.Is(failure, ai.ErrCommandMissing):
+		return []string{"install the AI tool, or set ai_command"}
+	case errors.Is(failure, ai.ErrGenerationFailed) && cfg.AICommandFor(config.VerbRelease) != config.DefaultAICommand:
+		return []string{leanCommandMove}
 	}
 	return nil
 }
