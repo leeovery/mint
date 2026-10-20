@@ -26,27 +26,41 @@ const (
 	codeSize
 )
 
-// generate makes one notes call. A generation failure is followed by one classify
-// call over the failed call's captured output, whose reading is returned with it.
-func (g *Generator) generate(ctx context.Context, prompt string) (string, failureCode, error) {
+// generate makes one notes call. A failure is returned with classify's reading of it,
+// or, when the classify call is cancelled, with that cancel in its place.
+func (g *Generator) generate(ctx context.Context, prompt string, maxPromptBytes int) (string, failureCode, error) {
 	body, err := g.transport.Generate(ctx, prompt)
-	if err != nil {
-		return "", g.classify(ctx, err), err
+	if err == nil {
+		return body, codeOther, nil
 	}
-	return body, codeOther, nil
+	code, cancelErr := g.classify(ctx, err, maxPromptBytes)
+	if cancelErr != nil {
+		return "", codeOther, cancelErr
+	}
+	return "", code, err
 }
 
-// classify asks the AI what a failed notes call's captured output means.
-func (g *Generator) classify(ctx context.Context, failure error) failureCode {
+// classify asks the AI what a failed notes call's captured output means. Only a
+// generation failure with text on either stream is asked about, and only by a
+// classify prompt within maxPromptBytes; every other failure, and a classify call
+// that fails, reads as OTHER. A cancel during the classify call is returned.
+func (g *Generator) classify(ctx context.Context, failure error, maxPromptBytes int) (failureCode, error) {
 	var genErr *ai.GenerationError
-	if !errors.As(failure, &genErr) {
-		return codeOther
+	if !errors.As(failure, &genErr) || genErr.Output() == "" {
+		return codeOther, nil
 	}
-	answer, err := g.transport.Generate(ctx, composeClassifyPrompt(genErr))
+	prompt := composeClassifyPrompt(genErr)
+	if len(prompt) > maxPromptBytes {
+		return codeOther, nil
+	}
+	answer, err := g.transport.Generate(ctx, prompt)
+	if errors.Is(err, context.Canceled) {
+		return codeOther, err
+	}
 	if err != nil {
-		return codeOther
+		return codeOther, nil
 	}
-	return readCode(answer)
+	return readCode(answer), nil
 }
 
 // readCode reads a classify answer as SIZE only when, stripped of surrounding

@@ -54,7 +54,7 @@ func cutRun(instructions, changeMap, diff string, target int) (cutter, []chunkPa
 }
 
 func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPart, halvings, promptBytes, maxPromptBytes int) (string, error) {
-	partNotes, err := newWave(g, cut, parts, halvings, promptBytes).run(ctx)
+	partNotes, err := newWave(g, cut, parts, halvings, promptBytes, maxPromptBytes).run(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -64,7 +64,7 @@ func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPar
 		return "", ErrMergeTooLarge
 	}
 	g.progress.Merging(len(partNotes))
-	body, code, err := g.generate(ctx, mergePrompt)
+	body, code, err := g.generate(ctx, mergePrompt, maxPromptBytes)
 	if err != nil {
 		if code == codeSize {
 			return "", fmt.Errorf("%w: %w", ErrMergeTooLarge, err)
@@ -106,9 +106,10 @@ const maxChunkCallsInFlight = 4
 // number up. Its calls run on the run's ctx itself: the wave sets no deadline of its
 // own, so a timeout is per call.
 type wave struct {
-	g           *Generator
-	cut         cutter
-	promptBytes int
+	g              *Generator
+	cut            cutter
+	promptBytes    int
+	maxPromptBytes int
 
 	mu      sync.Mutex
 	changed *sync.Cond
@@ -128,8 +129,8 @@ type waveSlot struct {
 	halvings int
 }
 
-func newWave(g *Generator, cut cutter, parts []chunkPart, halvings, promptBytes int) *wave {
-	w := &wave{g: g, cut: cut, promptBytes: promptBytes}
+func newWave(g *Generator, cut cutter, parts []chunkPart, halvings, promptBytes, maxPromptBytes int) *wave {
+	w := &wave{g: g, cut: cut, promptBytes: promptBytes, maxPromptBytes: maxPromptBytes}
 	w.changed = sync.NewCond(&w.mu)
 	for _, part := range parts {
 		w.slots = append(w.slots, &waveSlot{part: part, halvings: halvings})
@@ -191,7 +192,7 @@ func (w *wave) prompt(slot *waveSlot) string {
 // is freed in the same step that records the outcome, so the wave sees a failure, or
 // a halved part's new parts, before it can send another call in that place.
 func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt string) {
-	notes, code, err := w.g.generate(ctx, prompt)
+	notes, code, err := w.g.generate(ctx, prompt, w.maxPromptBytes)
 	var halves []chunkPart
 	var recutErr error
 	halving := err != nil && code == codeSize && slot.halvings < maxHalvings

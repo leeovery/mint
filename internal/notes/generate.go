@@ -225,7 +225,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
 	}
 
-	body, code, err := g.generate(ctx, prompt)
+	body, code, err := g.generate(ctx, prompt, cfg.MaxPromptBytes)
 	if err == nil {
 		g.progress.CallSucceeded(len(prompt))
 		return body, nil

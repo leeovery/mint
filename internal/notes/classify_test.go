@@ -349,3 +349,43 @@ func TestGenerator_ClassifyAnswersOther_TheFailureIsTheNotesCallsOwn(t *testing.
 		t.Errorf("failure output = %q, want the notes call's output verbatim", got)
 	}
 }
+
+func TestGenerator_ClassifyPromptAgainstTheCap_SentOnlyWhenItFits(t *testing.T) {
+	t.Parallel()
+
+	stream := strings.Repeat("a line of captured tool output\n", 100)
+	failure := &ai.GenerationError{Stdout: stream, Stderr: stream, ExitCode: 1}
+	classifyBytes := len(wantClassifyPrompt(stream, stream))
+	cases := []struct {
+		name         string
+		cap          int
+		wantClassify bool
+	}{
+		{"a cap the classify prompt fills exactly", classifyBytes, true},
+		{"a cap one byte short of the classify prompt", classifyBytes - 1, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			st := &sequenceTransport{replies: []reply{{err: failure}, {body: "OTHER"}}}
+			r := seedNormalPathGit(t, "diff --git a/a.go b/a.go\n+x\n", "M\ta.go\n", "1\t0\ta.go\n")
+			gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), st, t.TempDir())
+			cfg := normalCfg()
+			cfg.MaxPromptBytes = tc.cap
+
+			_, err := gen.Generate(t.Context(), "v1.0.0", cfg)
+
+			if len(st.prompts) == 0 || isClassifyPrompt(st.prompts[0]) || strings.Contains(st.prompts[0], "What follows is part ") {
+				t.Fatalf("fixture: the first call is not the single-pass notes call under a %d-byte cap", tc.cap)
+			}
+			if got := len(st.prompts) == 2 && isClassifyPrompt(st.prompts[1]); got != tc.wantClassify || len(st.prompts) > 2 {
+				t.Errorf("calls = %d (classify sent: %v), want the notes call then classify sent: %v", len(st.prompts), got, tc.wantClassify)
+			}
+			var genErr *ai.GenerationError
+			if !errors.As(err, &genErr) || genErr != failure {
+				t.Errorf("error = %v, want the notes call's own failure", err)
+			}
+		})
+	}
+}
