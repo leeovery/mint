@@ -19,8 +19,7 @@
 // naming the key and its expected type; a [release.hooks] entry that is neither a
 // command string nor an array of command strings is rejected naming the hook key;
 // max_prompt_bytes must be positive; and on_notes_failure is constrained to the closed
-// set abort | fallback. The provider-VALUE carve-out (unsupported-but-recognised
-// provider names) is a SEPARATE Phase 6 task and is NOT done here.
+// set abort | fallback.
 package config
 
 import (

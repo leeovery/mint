@@ -51,9 +51,6 @@ const commitMessageTitle = "commit message"
 // The oversized fallback note. When commit's size guard reports the composed prompt is
 // over max_prompt_bytes — a generate-SKIP, distinct from a generate-FAILURE — commit
 // emits this note via the Presenter and routes to the SAME editor fallback as --no-ai.
-// The message is the spec string VERBATIM (Commit Message Format & Prompt → The $EDITOR
-// fallback, case 3), em dash U+2014; the label is a short informational tag prefixed
-// onto the warn line.
 const (
 	oversizedNoteLabel   = "diff"
 	oversizedNoteMessage = "diff too large to summarise — opening editor"
@@ -792,8 +789,7 @@ func startGenerateStage(p presenter.Presenter, text, sentence string) func(detai
 // (both never retried). It is the single routing predicate for "the AI produced no
 // usable message" → the shared $EDITOR fallback, deliberately distinct from the
 // oversized-skip (notes.ErrDiffTooLarge), which is NOT a transport failure and routes
-// under its own note. It is a NAMED predicate so Phase 4's `r` (regenerate)
-// failure can reuse the SAME routing entry point.
+// under its own note.
 func isAITransportFailure(err error) bool {
 	return errors.Is(err, ai.ErrGenerationFailed) ||
 		errors.Is(err, ai.ErrTimeout) ||
