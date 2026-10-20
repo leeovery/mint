@@ -4,8 +4,8 @@
 //
 // Config is the single CANONICAL schema for the verb-namespaced .mint.toml: the
 // shared engine keys at the top level (ai_command, diff_exclude, max_diff_lines,
-// timeout), the [release] table, and the nested [release.hooks] sub-table. Every documented
-// key has its Go type here and a default applied uniformly — on zero config (file
+// max_prompt_bytes, timeout), the [release] table, and the nested [release.hooks]
+// sub-table. Every documented key has its Go type here and a default applied uniformly — on zero config (file
 // absent, empty, or comment-only) every key comes back at its documented default,
 // and a file that sets only part of a table leaves the unset keys at their
 // defaults individually.
@@ -17,10 +17,10 @@
 // a value that cannot decode into its schema Go type (e.g. a string max_diff_lines, a
 // string publish/changelog, a scalar diff_exclude) is re-wrapped into a mint message
 // naming the key and its expected type; a [release.hooks] entry that is neither a
-// command string nor an array of command strings is rejected naming the hook key; and
-// on_notes_failure is constrained to the closed set abort | fallback. The
-// provider-VALUE carve-out (unsupported-but-recognised provider names) is a SEPARATE
-// Phase 6 task and is NOT done here.
+// command string nor an array of command strings is rejected naming the hook key;
+// max_prompt_bytes must be positive; and on_notes_failure is constrained to the closed
+// set abort | fallback. The provider-VALUE carve-out (unsupported-but-recognised
+// provider names) is a SEPARATE Phase 6 task and is NOT done here.
 package config
 
 import (
@@ -73,6 +73,12 @@ var onNotesFailureValues = []string{"abort", "fallback"}
 // re-typing the literal, symmetric with DefaultAICommand.
 const DefaultMaxDiffLines = 50000
 
+// DefaultMaxPromptBytes is the shipped per-call byte cap on the composed prompt of any
+// single AI call (instructions, Change Map, diff and closing reminder together). It is
+// deliberately high: too high for the model fails loud, too low fails silent. Exported so
+// the SoT default column derives the value from here.
+const DefaultMaxPromptBytes = 1_500_000
+
 // DefaultAICommand is the out-of-the-box AI transport command every verb falls through
 // to when no ai_command is set. It is claude in lean form: the flags keep Claude Code's
 // own system prompt, tool definitions, CLAUDE.md files, skills, plugins, hooks and MCP
@@ -101,8 +107,8 @@ const (
 )
 
 // Config is the loaded mint configuration: the [release] and [commit] verb tables
-// plus the shared top-level engine keys (ai_command, max_diff_lines, timeout,
-// diff_exclude).
+// plus the shared top-level engine keys (ai_command, max_diff_lines, max_prompt_bytes,
+// timeout, diff_exclude).
 type Config struct {
 	Release Release
 
@@ -112,8 +118,8 @@ type Config struct {
 	// Context/Prompt are the commit-specific counterparts of [release]'s
 	// Context/Prompt. The ai_command / timeout overrides resolve through the layered
 	// chain [commit] → shared top-level → shipped default (mirroring [release]); the
-	// other shared engine keys diff_exclude / max_diff_lines stay shared-only and
-	// serve commit from the top level (these two keys have no [commit] override).
+	// other shared engine keys diff_exclude / max_diff_lines / max_prompt_bytes stay
+	// shared-only and serve commit from the top level (they have no [commit] override).
 	Commit Commit
 
 	// AICommand is the shared engine-level ai_command notes-transport command (its
@@ -132,6 +138,11 @@ type Config struct {
 	// notes engine, not just release. The notes size guard compares the
 	// post-exclusion diff's line count against it.
 	MaxDiffLines int
+
+	// MaxPromptBytes is the shared per-call byte cap on the composed prompt of any single
+	// AI call (default DefaultMaxPromptBytes), one cap for both verbs. Load guarantees it
+	// is positive: zero never means "no cap", unlike timeout's 0.
+	MaxPromptBytes int
 
 	// Timeout is the shared engine-level timeout per-attempt AI deadline, carried as a
 	// *time.Duration so the absent-vs-explicit-zero distinction survives to the
@@ -300,8 +311,9 @@ func defaults() Config {
 			VersionFile:    "",
 			VersionPattern: "",
 		},
-		AICommand:    DefaultAICommand,
-		MaxDiffLines: DefaultMaxDiffLines,
+		AICommand:      DefaultAICommand,
+		MaxDiffLines:   DefaultMaxDiffLines,
+		MaxPromptBytes: DefaultMaxPromptBytes,
 	}
 }
 
@@ -310,20 +322,22 @@ func defaults() Config {
 // (false) is a meaningful, explicit choice: nil means "key absent, apply default
 // true" while a non-nil false means the surface is disabled. MaxDiffLines is a *int for the same
 // reason — nil means "key absent, apply default 50000" while a non-nil value
-// (even 0) is an explicit operator choice. Timeout is a *int (integer SECONDS) for the
-// SAME reason — nil means "key absent" (TimeoutFor applies the verb's shipped floor) while
+// (even 0) is an explicit operator choice. MaxPromptBytes is a *int too, so an explicit
+// 0 reaches Load's positive-value check rather than reading as absent. Timeout is a *int
+// (integer SECONDS) for the SAME reason — nil means "key absent" (TimeoutFor applies the verb's shipped floor) while
 // a non-nil value (even 0) is an explicit operator choice; integer seconds makes a
 // non-integer TOML value a strict decode error at Load, exactly like max_diff_lines. The
 // string fields are decoded onto a struct pre-seeded with defaults, so the decoder only
 // overwrites keys actually present in the file — an explicit empty tag_prefix overwrites
 // "v" with "" (a valid prefix-less choice) while an absent key leaves the default intact.
 type fileShape struct {
-	Release      releaseShape `toml:"release"`
-	Commit       commitShape  `toml:"commit"`
-	AICommand    *string      `toml:"ai_command"`
-	MaxDiffLines *int         `toml:"max_diff_lines"`
-	Timeout      *int         `toml:"timeout"`
-	DiffExclude  []string     `toml:"diff_exclude"`
+	Release        releaseShape `toml:"release"`
+	Commit         commitShape  `toml:"commit"`
+	AICommand      *string      `toml:"ai_command"`
+	MaxDiffLines   *int         `toml:"max_diff_lines"`
+	MaxPromptBytes *int         `toml:"max_prompt_bytes"`
+	Timeout        *int         `toml:"timeout"`
+	DiffExclude    []string     `toml:"diff_exclude"`
 }
 
 // commitShape mirrors the on-disk [commit] table. Context and Prompt are plain strings
@@ -411,7 +425,7 @@ func Load(root string) (Config, error) {
 		}
 		var decErr *toml.DecodeError
 		if errors.As(err, &decErr) {
-			return Config{}, translateTypeError(decErr)
+			return Config{}, translateTypeError(decErr, data)
 		}
 		return Config{}, fmt.Errorf("parsing %s: %w", configFileName, err)
 	}
@@ -425,14 +439,18 @@ func Load(root string) (Config, error) {
 	if err := validateAICommands(shape); err != nil {
 		return Config{}, err
 	}
+	if err := validateMaxPromptBytes(shape.MaxPromptBytes); err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		Release:      resolveRelease(shape.Release),
-		Commit:       resolveCommit(shape.Commit),
-		AICommand:    aiCommandOrDefault(shape.AICommand),
-		MaxDiffLines: resolveMaxDiffLines(shape.MaxDiffLines),
-		Timeout:      resolveTimeout(shape.Timeout),
-		DiffExclude:  shape.DiffExclude,
+		Release:        resolveRelease(shape.Release),
+		Commit:         resolveCommit(shape.Commit),
+		AICommand:      aiCommandOrDefault(shape.AICommand),
+		MaxDiffLines:   resolveMaxDiffLines(shape.MaxDiffLines),
+		MaxPromptBytes: resolveMaxPromptBytes(shape.MaxPromptBytes),
+		Timeout:        resolveTimeout(shape.Timeout),
+		DiffExclude:    shape.DiffExclude,
 	}, nil
 }
 
@@ -463,35 +481,70 @@ func translateStrict(strict *toml.StrictMissingError) error {
 // constrained enough to misuse (the bool toggles, the integer guard, the string
 // array).
 var typeErrorMessages = map[string]string{
-	"fileShape.MaxDiffLines": "max_diff_lines must be an integer",
-	"fileShape.Timeout":      "timeout must be an integer (seconds)",
-	"fileShape.DiffExclude":  "diff_exclude must be an array of strings",
-	"releaseShape.Publish":   "publish must be a boolean",
-	"releaseShape.Changelog": "changelog must be a boolean",
-	"releaseShape.AICommand": "release.ai_command must be a string",
-	"releaseShape.Timeout":   "release.timeout must be an integer (seconds)",
-	"commitShape.Context":    "commit.context must be a string",
-	"commitShape.Prompt":     "commit.prompt must be a string",
-	"commitShape.AICommand":  "commit.ai_command must be a string",
-	"commitShape.Timeout":    "commit.timeout must be an integer (seconds)",
+	"fileShape.MaxDiffLines":   "max_diff_lines must be an integer",
+	"fileShape.MaxPromptBytes": "max_prompt_bytes must be an integer (bytes)",
+	"fileShape.Timeout":        "timeout must be an integer (seconds)",
+	"fileShape.DiffExclude":    "diff_exclude must be an array of strings",
+	"releaseShape.Publish":     "publish must be a boolean",
+	"releaseShape.Changelog":   "changelog must be a boolean",
+	"releaseShape.AICommand":   "release.ai_command must be a string",
+	"releaseShape.Timeout":     "release.timeout must be an integer (seconds)",
+	"commitShape.Context":      "commit.context must be a string",
+	"commitShape.Prompt":       "commit.prompt must be a string",
+	"commitShape.AICommand":    "commit.ai_command must be a string",
+	"commitShape.Timeout":      "commit.timeout must be an integer (seconds)",
+}
+
+// topLevelIntegerKeys maps a top-level integer key to its typeErrorMessages field
+// path, for the mismatches go-toml reports WITHOUT a struct-field path: a float or
+// boolean assigned to an int ("float cannot be assigned to int") names no field, so the
+// field-path lookup cannot see it. translateTypeError finds such a key by its value's
+// type in a generic decode instead.
+var topLevelIntegerKeys = map[string]string{
+	"max_prompt_bytes": "fileShape.MaxPromptBytes",
 }
 
 // translateTypeError turns the decoder's *toml.DecodeError (a value that cannot
 // unmarshal into its schema Go type) into mint's actionable message naming the key
 // and expected type. The DecodeError carries no usable Key() for type mismatches, so
 // it identifies the offending field by the struct-field path embedded in the error
-// text and maps it via typeErrorMessages; a field not in the map (no constrained
-// type to misuse) falls back to the library's positioned description so nothing is
-// silently swallowed. The map iteration order is non-deterministic but safe: a single
-// DecodeError names exactly one offending field, so at most one entry can match.
-func translateTypeError(decErr *toml.DecodeError) error {
+// text and maps it via typeErrorMessages. When the text names no field (a float or
+// boolean into an int), the keys in topLevelIntegerKeys are checked against a generic
+// decode of data. Anything still unmatched falls back to the library's positioned
+// description so nothing is silently swallowed. The map iteration order is
+// non-deterministic but safe: a single DecodeError names exactly one offending field,
+// so at most one entry can match.
+func translateTypeError(decErr *toml.DecodeError, data []byte) error {
 	text := decErr.Error()
 	for field, msg := range typeErrorMessages {
 		if strings.Contains(text, field+" ") {
 			return fmt.Errorf("invalid %s: %s", configFileName, msg)
 		}
 	}
+	if field, ok := nonIntegerKey(data); ok {
+		return fmt.Errorf("invalid %s: %s", configFileName, typeErrorMessages[field])
+	}
 	return fmt.Errorf("invalid %s: %s", configFileName, decErr.String())
+}
+
+// nonIntegerKey reports the typeErrorMessages field of a topLevelIntegerKeys key that
+// is present in data with a non-integer value. A generic decode carries a TOML integer
+// as int64, so any other type is the mismatch.
+func nonIntegerKey(data []byte) (string, bool) {
+	var doc map[string]any
+	if err := toml.Unmarshal(data, &doc); err != nil {
+		return "", false
+	}
+	for key, field := range topLevelIntegerKeys {
+		value, ok := doc[key]
+		if !ok {
+			continue
+		}
+		if _, isInt := value.(int64); !isInt {
+			return field, true
+		}
+	}
+	return "", false
 }
 
 // unknownKeyMessage builds the human-readable description for one unknown key,
@@ -641,6 +694,16 @@ func resolveMaxDiffLines(v *int) int {
 	return DefaultMaxDiffLines
 }
 
+// resolveMaxPromptBytes applies DefaultMaxPromptBytes when the key was absent (nil) and
+// otherwise carries the explicit value, which validateMaxPromptBytes has already proven
+// positive.
+func resolveMaxPromptBytes(v *int) int {
+	if v != nil {
+		return *v
+	}
+	return DefaultMaxPromptBytes
+}
+
 // resolveTimeout converts the decoded *int integer seconds into the *time.Duration
 // carried on Config, preserving the absent-vs-explicit distinction the accessor needs.
 // An ABSENT key (nil) stays nil — TimeoutFor resolves it to the verb's shipped floor, so
@@ -777,6 +840,15 @@ func validateOnNotesFailure(value string) error {
 		"invalid %s: on_notes_failure must be one of: %s",
 		configFileName, strings.Join(onNotesFailureValues, ", "),
 	)
+}
+
+// validateMaxPromptBytes rejects an explicit max_prompt_bytes of zero or less: zero is
+// never "no cap". An absent key (nil) passes and resolves to the default.
+func validateMaxPromptBytes(v *int) error {
+	if v != nil && *v <= 0 {
+		return fmt.Errorf("invalid %s: max_prompt_bytes must be a positive number of bytes", configFileName)
+	}
+	return nil
 }
 
 // validateAICommands checks every level whatever verb is running, so a bad

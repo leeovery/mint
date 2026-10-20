@@ -19,14 +19,15 @@ package config
 // expected census keeps that anti-drift value intact while removing the editor-trap of a
 // duplicate list that could silently diverge.
 
-// expectedLeafKeys is the one ordered source of the 25 expected (level, key) pairs
-// spanning every config key: 4 shared, 14 [release], 3 [release.hooks], 4 [commit]. Both
+// expectedLeafKeys is the one ordered source of the 26 expected (level, key) pairs
+// spanning every config key: 5 shared, 14 [release], 3 [release.hooks], 4 [commit]. Both
 // naming tests assert against this single list — a schema key added, renamed, or removed
 // is now edited here ONCE, and the two tests stay in lockstep automatically.
 var expectedLeafKeys = []leafKey{
 	// Shared top-level engine keys.
 	{LevelShared, "ai_command"},
 	{LevelShared, "max_diff_lines"},
+	{LevelShared, "max_prompt_bytes"},
 	{LevelShared, "timeout"},
 	{LevelShared, "diff_exclude"},
 	// [release] leaf keys.

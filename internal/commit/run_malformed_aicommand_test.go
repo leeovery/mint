@@ -9,10 +9,11 @@ import (
 	"mint/internal/runner"
 )
 
-// TestRun_MalformedAICommand_AbortsAtConfigLoad proves a malformed ai_command at any
-// level stops `mint commit` at config load: the load error naming the level and cause is
-// surfaced once, and no command runs — no preflight read, no AI call, no commit.
-func TestRun_MalformedAICommand_AbortsAtConfigLoad(t *testing.T) {
+// TestRun_InvalidConfig_AbortsAtConfigLoad proves a malformed ai_command at any level, or
+// a non-positive max_prompt_bytes, stops `mint commit` at config load: the load error
+// naming the key and cause is surfaced once, and no command runs — no preflight read, no
+// AI call, no commit.
+func TestRun_InvalidConfig_AbortsAtConfigLoad(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -34,6 +35,16 @@ func TestRun_MalformedAICommand_AbortsAtConfigLoad(t *testing.T) {
 			name:   "empty first word in commit.ai_command",
 			config: "[commit]\nai_command = \"'' --flag\"\n",
 			want:   "invalid .mint.toml: commit.ai_command names no program",
+		},
+		{
+			name:   "zero max_prompt_bytes",
+			config: "max_prompt_bytes = 0\n",
+			want:   "invalid .mint.toml: max_prompt_bytes must be a positive number of bytes",
+		},
+		{
+			name:   "negative max_prompt_bytes",
+			config: "max_prompt_bytes = -1\n",
+			want:   "invalid .mint.toml: max_prompt_bytes must be a positive number of bytes",
 		},
 	}
 

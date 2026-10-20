@@ -733,3 +733,22 @@ func splitRow(line string) []string {
 	}
 	return cells
 }
+
+// TestGuide_ConfigReferenceListsMaxPromptBytesSharedOnly proves the config reference
+// renders the per-call byte cap at the top level with its 1500000 default, and at no
+// verb level.
+func TestGuide_ConfigReferenceListsMaxPromptBytesSharedOnly(t *testing.T) {
+	t.Parallel()
+
+	section := configReferenceBody(t)
+
+	const description = "cap, in bytes, on the composed prompt of any single AI call"
+	if !containsRowLine(section, "max_prompt_bytes", "top-level", "1500000", description) {
+		t.Errorf("config reference must render a top-level max_prompt_bytes row with default %q and description %q", "1500000", description)
+	}
+	for _, level := range []config.MetadataLevel{config.LevelRelease, config.LevelCommit} {
+		if lineHasKeyAtLevel(section, "max_prompt_bytes", setupguide.LevelCell(level)) {
+			t.Errorf("config reference renders max_prompt_bytes at %q; the key is shared-only", setupguide.LevelCell(level))
+		}
+	}
+}

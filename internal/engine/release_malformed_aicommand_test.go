@@ -9,11 +9,11 @@ import (
 	"mint/internal/runner"
 )
 
-// TestRelease_MalformedAICommand_AbortsAtConfigLoad proves a malformed ai_command stops
-// a release at config load, before any pipeline step and with no AI call — including a
-// [commit].ai_command, which release itself never runs. The ✗ config line carries the
-// load error naming the level and the cause.
-func TestRelease_MalformedAICommand_AbortsAtConfigLoad(t *testing.T) {
+// TestRelease_InvalidConfig_AbortsAtConfigLoad proves a malformed ai_command or a
+// non-positive max_prompt_bytes stops a release at config load, before any pipeline step
+// and with no AI call — including a [commit].ai_command, which release itself never runs.
+// The ✗ config line carries the load error naming the key and the cause.
+func TestRelease_InvalidConfig_AbortsAtConfigLoad(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -30,6 +30,16 @@ func TestRelease_MalformedAICommand_AbortsAtConfigLoad(t *testing.T) {
 			name:   "empty first word in commit.ai_command",
 			config: "[commit]\nai_command = \"'' --flag\"\n",
 			want:   "invalid .mint.toml: commit.ai_command names no program",
+		},
+		{
+			name:   "zero max_prompt_bytes",
+			config: "max_prompt_bytes = 0\n",
+			want:   "invalid .mint.toml: max_prompt_bytes must be a positive number of bytes",
+		},
+		{
+			name:   "negative max_prompt_bytes",
+			config: "max_prompt_bytes = -1\n",
+			want:   "invalid .mint.toml: max_prompt_bytes must be a positive number of bytes",
 		},
 	}
 
