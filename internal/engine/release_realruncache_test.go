@@ -52,7 +52,7 @@ func newDepsWithRealRunCache(rec *presentertest.RecordingPresenter, f *runner.Fa
 func seedCacheEntry(t *testing.T, cacheBase, root, diff, version, body string) {
 	t.Helper()
 	store := notescache.NewStore(cacheBase, func() time.Time { return cacheWriteClock })
-	if err := store.Write(root, cachedKey(diff, version), body); err != nil {
+	if err := store.Write(root, cachedKey(diff, version), body, nil); err != nil {
 		t.Fatalf("pre-seeding cache entry: %v", err)
 	}
 }

@@ -98,7 +98,7 @@ func TestStore_Write_PersistsBodyAndTTLStamp(t *testing.T) {
 	key := notescache.Key(diff, version, instructions)
 	const body = "TL;DR: cached preview body.\n"
 
-	if err := store.Write(repoRoot, key, body); err != nil {
+	if err := store.Write(repoRoot, key, body, nil); err != nil {
 		t.Fatalf("Write returned unexpected error: %v", err)
 	}
 
@@ -125,10 +125,10 @@ func TestStore_Write_RepoScoped(t *testing.T) {
 	diff, version, instructions := keyInputs()
 	key := notescache.Key(diff, version, instructions)
 
-	if err := store.Write(repoA, key, "body A"); err != nil {
+	if err := store.Write(repoA, key, "body A", nil); err != nil {
 		t.Fatalf("Write repoA: %v", err)
 	}
-	if err := store.Write(repoB, key, "body B"); err != nil {
+	if err := store.Write(repoB, key, "body B", nil); err != nil {
 		t.Fatalf("Write repoB: %v", err)
 	}
 
@@ -158,7 +158,7 @@ func TestStore_Lookup_ReturnsFreshEntry(t *testing.T) {
 	diff, version, instructions := keyInputs()
 	key := notescache.Key(diff, version, instructions)
 	const body = "TL;DR: cached preview body.\n"
-	if err := writeStore.Write(repoRoot, key, body); err != nil {
+	if err := writeStore.Write(repoRoot, key, body, nil); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
@@ -209,7 +209,7 @@ func TestStore_Lookup_ExpiredEntryNotFound(t *testing.T) {
 
 	diff, version, instructions := keyInputs()
 	key := notescache.Key(diff, version, instructions)
-	if err := writeStore.Write(repoRoot, key, "stale body"); err != nil {
+	if err := writeStore.Write(repoRoot, key, "stale body", nil); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
@@ -235,7 +235,7 @@ func TestStore_Lookup_EntryAtTTLBoundaryStillFresh(t *testing.T) {
 
 	diff, version, instructions := keyInputs()
 	key := notescache.Key(diff, version, instructions)
-	if err := writeStore.Write(repoRoot, key, "boundary body"); err != nil {
+	if err := writeStore.Write(repoRoot, key, "boundary body", nil); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 
@@ -321,7 +321,7 @@ func TestStore_Prune(t *testing.T) {
 	staleA := notescache.Key("stale-A", "1.0.0", "prompt")
 	staleB := notescache.Key("stale-B", "0.9.0", "prompt")
 	for _, k := range []string{keepKey, staleA, staleB} {
-		if err := store.Write(repoRoot, k, "body-"+k); err != nil {
+		if err := store.Write(repoRoot, k, "body-"+k, nil); err != nil {
 			t.Fatalf("Write(%s): %v", k, err)
 		}
 	}

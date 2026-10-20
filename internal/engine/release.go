@@ -152,16 +152,14 @@ type ReleaseDeps struct {
 	// blank-skip / no-deadline semantics, so production leaves it nil and gets the real
 	// transport configured by the loaded schema.
 	Transport notes.Transport
-	// NoteCache is the dry-run note-cache seam — BOTH the WRITE side (task 4-7) and the
-	// real-run REUSE/READ side (task 4-8). On a --dry-run that generated an AI note
-	// preview, Release writes the generated body keyed by a hash of (the
-	// post-diff_exclude diff + the computed version + the resolved prompt/context) with
-	// a TTL stamp. On the REAL run Release recomputes the SAME key and Looks it up: a
-	// live (within-TTL) match reuses the exact previewed bytes and SKIPS the AI; a miss
-	// (or an expired entry) regenerates. When nil (the no-cache default used by tests
-	// that do not assert caching) both the write and the reuse lookup are skipped (the
-	// real run always generates); production wires a repo-path notescache.Store, and
-	// the cache tests inject a temp-dir store so nothing lands in the real repo.
+	// NoteCache is the note-cache seam, written and read by dry and real runs alike. A
+	// run that generates AI notes writes the body, with a chunked run's merge inputs,
+	// keyed by a hash of (the post-diff_exclude diff + the computed version + the
+	// resolved prompt/context) with a TTL stamp. A later run recomputes the SAME key and
+	// Looks it up: a live (within-TTL) match reuses the exact bytes and SKIPS the AI, and
+	// `r` on reused chunked notes re-merges the cached part notes; a miss (or an expired
+	// entry) regenerates. When nil both the write and the reuse lookup are skipped (the
+	// run always generates); production wires a user-cache-dir notescache.Store.
 	NoteCache NoteCache
 	// ChunkNotes keeps a failed chunked notes run's finished chunk notes, so the
 	// failure can name the file they were saved to. When nil none are kept.
@@ -178,8 +176,8 @@ type ChunkNotesSaver interface {
 	Save(repoRoot, tag, notes string) (string, error)
 }
 
-// NoteCache is the engine's dry-run note-cache seam: the WRITE side that persists a
-// generated preview and the READ side that reuses it on the real run. It composes the
+// NoteCache is the engine's note-cache seam: the WRITE side that persists generated
+// notes and the READ side that reuses them on a later run. It composes the
 // segregated writer and reader interfaces, defined HERE (the consumer) per the
 // accept-interfaces convention; notescache.Store satisfies it.
 type NoteCache interface {
@@ -187,14 +185,15 @@ type NoteCache interface {
 	NoteCacheReader
 }
 
-// NoteCacheWriter is the engine's dry-run note-cache WRITE seam: it persists a
-// generated note body under a precomputed key, scoped to a repo root, with its own
-// TTL stamp. It is defined HERE (the consumer) per the accept-interfaces
-// convention; notescache.Store satisfies it.
+// NoteCacheWriter is the engine's note-cache WRITE seam: it persists a generated note
+// body, with the merge inputs of the chunked run that wrote it, under a precomputed
+// key, scoped to a repo root, with its own TTL stamp. It is defined HERE (the
+// consumer) per the accept-interfaces convention; notescache.Store satisfies it.
 type NoteCacheWriter interface {
-	// Write persists body under key for repoRoot. A non-nil error means the cache
-	// entry could not be written; the run warns and carries on.
-	Write(repoRoot, key, body string) error
+	// Write persists body and merge, nil for notes a single pass wrote, under key for
+	// repoRoot. A non-nil error means the cache entry could not be written; the run
+	// warns and carries on.
+	Write(repoRoot, key, body string, merge *notes.MergeInputs) error
 	// Prune deletes every cached note for repoRoot except keepKey's, bounding the
 	// per-project cache to the current diff's note so stale entries never accumulate.
 	// Best-effort housekeeping — there is no error to handle (a leftover entry is
@@ -202,8 +201,8 @@ type NoteCacheWriter interface {
 	Prune(repoRoot, keepKey string)
 }
 
-// NoteCacheReader is the engine's real-run note-cache REUSE seam (task 4-8): it looks
-// up a previously-written preview by its precomputed key, reporting found ONLY for a
+// NoteCacheReader is the engine's note-cache REUSE seam: it looks up previously
+// written notes by their precomputed key, reporting found ONLY for a
 // live (within-TTL) entry. The TTL check lives behind the seam (the store owns the
 // clock), so an EXPIRED entry yields found=false and the real run regenerates rather
 // than ever reusing a stale preview. It is defined HERE (the consumer) per the
@@ -1010,10 +1009,14 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	// ONCE here). It consults the reuse hook BEFORE the AI — a live cache match skips the
 	// AI and reuses the cached body. The hook differs by mode: a real run PROMPTS
 	// (use/regenerate) on a match, a dry run reuses SILENTLY (a dry run asks for nothing).
-	// reused records whether the body came from the cache so the write below skips a
-	// no-op re-write.
+	// reuse records that the body came from the cache, so the write below skips a no-op
+	// re-write, and keeps a chunked entry's merge inputs for the gate's `r`.
 	reused := false
-	body, kind, cacheInputs, err := selector.SelectBodyWithReuse(ctx, state, cfg, cacheReuse(deps, root, versionKey, opts.DryRun, &reused))
+	reuse := func(entry notescache.Entry) {
+		reused = true
+		chunkNotes.merged = entry.Merge
+	}
+	body, kind, cacheInputs, err := selector.SelectBodyWithReuse(ctx, state, cfg, cacheReuse(deps, root, versionKey, opts.DryRun, reuse))
 	if err != nil {
 		return "", kind, nil, err
 	}
@@ -1024,7 +1027,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	if cacheInputs.Cacheable && deps.NoteCache != nil {
 		key := notescache.Key(cacheInputs.Diff, versionKey, cacheInputs.Instructions)
 		if !reused {
-			if werr := deps.NoteCache.Write(root, key, body); werr != nil {
+			if werr := deps.NoteCache.Write(root, key, body, chunkNotes.merged); werr != nil {
 				warnNoteCacheFailed(deps.Presenter, werr)
 			}
 		}
@@ -1049,12 +1052,12 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 //     corrupt body is never shipped (the AI regenerates; the fresh write overwrites a
 //     corrupt entry). The cache is purely an optimization, so a read failure must NEVER
 //     abort the release.
-//   - a live (within-TTL) match → reuse the cached body (reused=true), so the selector
-//     SKIPS the AI. The two modes differ ONLY here: a real run PROMPTS first
+//   - a live (within-TTL) match → hand the entry to reuse and return its body, so the
+//     selector SKIPS the AI. The two modes differ ONLY here: a real run PROMPTS first
 //     (use/regenerate — the spinner is suspended around reuseConfirmGate, so "regenerate"
 //     re-runs the AI under a live spinner; under -y the gate auto-accepts "use"), while a
 //     dry run reuses SILENTLY (a dry run asks for nothing — it is a no-action preview).
-func cacheReuse(deps ReleaseDeps, root, versionKey string, dryRun bool, reused *bool) notes.ReuseFunc {
+func cacheReuse(deps ReleaseDeps, root, versionKey string, dryRun bool, reuse func(notescache.Entry)) notes.ReuseFunc {
 	// Guard: a nil NoteCache (no cache wired) yields a nil hook — always generate.
 	if deps.NoteCache == nil {
 		return nil
@@ -1068,7 +1071,7 @@ func cacheReuse(deps ReleaseDeps, root, versionKey string, dryRun bool, reused *
 		// A live entry matches this exact diff. A dry run reuses it without asking — a
 		// preview prompts for nothing.
 		if dryRun {
-			*reused = true
+			reuse(entry)
 			return entry.Body, true, nil
 		}
 		// A real run asks use/regenerate: the spinner is suspended for the prompt and
@@ -1084,7 +1087,7 @@ func cacheReuse(deps ReleaseDeps, root, versionKey string, dryRun bool, reused *
 		if choice == presenter.ChoiceRegen {
 			return "", false, nil
 		}
-		*reused = true
+		reuse(entry)
 		return entry.Body, true, nil
 	}
 }

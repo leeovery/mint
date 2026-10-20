@@ -66,7 +66,7 @@ func TestChunkNotes_Save_SavedFileOutlivesTheNoteCachePrune(t *testing.T) {
 		t.Fatalf("Save returned unexpected error: %v", err)
 	}
 	cache := notescache.NewStore(filepath.Join(userCache, "mint", "cache"), func() time.Time { return fixedClock })
-	if err := cache.Write(root, "keep", "previewed body"); err != nil {
+	if err := cache.Write(root, "keep", "previewed body", nil); err != nil {
 		t.Fatalf("cache Write returned unexpected error: %v", err)
 	}
 

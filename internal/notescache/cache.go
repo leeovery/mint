@@ -1,18 +1,18 @@
-// Package notescache is mint's dry-run note cache: the WRITE side that lets a
-// `mint release --dry-run` persist the generated AI note, and the READ side
-// (Lookup) that lets the subsequent real run reuse the EXACT bytes that were
-// previewed.
+// Package notescache is mint's notes cache: Write persists a run's generated AI notes
+// and Lookup lets a later run for the same inputs reuse the exact bytes, so a real run
+// that follows a dry run ships what was previewed.
 //
 // The cache KEY is a hash of (the post-diff_exclude diff fed to the AI + the
 // computed next version + the resolved prompt/[release].context) — deliberately
 // NOT the HEAD sha, because a pre_tag hook can move HEAD between the dry run and
-// the real run without changing what would ship. Each entry stores the note body
-// alongside a TTL stamp (the write time) so Lookup can enforce the ~1h default TTL
-// (see TTL): an entry older than the window is treated as absent so a stale preview
-// is never reused. The cache is REPO-SCOPED (entries are namespaced by the resolved
-// repo root, so previews never collide across repos) and lives under the user's cache
-// directory (os.UserCacheDir) in a per-project sub-directory — so no project is ever
-// polluted with an in-repo cache dir.
+// the real run without changing what would ship. Each entry stores the note body,
+// with what its merge was composed from when a chunked run wrote it, alongside a TTL
+// stamp (the write time) so Lookup can enforce the ~1h default TTL (see TTL): an entry
+// older than the window is treated as absent so a stale preview is never reused. The
+// cache is REPO-SCOPED (entries are namespaced by the resolved repo root, so previews
+// never collide across repos) and lives under the user's cache directory
+// (os.UserCacheDir) in a per-project sub-directory — so no project is ever polluted
+// with an in-repo cache dir.
 //
 // ChunkNotes keeps a failed chunked run's finished chunk notes under the same per-project
 // naming, in a base directory of its own.
@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"mint/internal/fsutil"
+	"mint/internal/notes"
 )
 
 // entryFileExt is the on-disk extension for a cache entry's JSON document.
@@ -42,16 +43,16 @@ const entryFileExt = ".json"
 // against the store's injected clock and treats anything older than TTL as absent.
 const TTL = time.Hour
 
-// Entry is a single cached dry-run note: the generated body plus the TTL stamp
-// (the write time). The stamp is recorded so the reuse side (task 4-8) can expire
-// a stale preview against the ~1h default TTL; this package only WRITES it.
+// Entry is a single cached note: the generated body, what its merge was composed from
+// when a chunked run wrote it, and the TTL stamp (the write time).
 type Entry struct {
-	// Body is the generated AI note body, stored verbatim so the real run reuses
-	// the exact bytes that were previewed.
+	// Body is the generated AI note body, stored verbatim so a reusing run gets the
+	// exact bytes that were previewed.
 	Body string `json:"body"`
-	// WrittenAt is the write time — the TTL stamp 4-8 measures the ~1h default TTL
-	// against. It is the store's injected clock, never time.Now() directly, so the
-	// stamp is deterministic in tests.
+	// Merge is nil unless a chunked run wrote Body.
+	Merge *notes.MergeInputs `json:"merge,omitempty"`
+	// WrittenAt is the write time Lookup measures the TTL against. It is the store's
+	// injected clock, never time.Now() directly, so the stamp is deterministic in tests.
 	WrittenAt time.Time `json:"written_at"`
 }
 
@@ -97,16 +98,16 @@ func NewStore(base string, now func() time.Time) *Store {
 	return &Store{base: base, now: now}
 }
 
-// Write persists body under key for repoRoot, stamping the entry with the store's
-// clock. It creates the repo-scoped cache directory (and, in repo-path mode, the
-// .gitignore guard) as needed, then writes the JSON entry atomically.
-func (s *Store) Write(repoRoot, key, body string) error {
+// Write persists body, with merge, nil for notes a single pass wrote, under key for
+// repoRoot, stamping the entry with the store's clock. It creates the repo-scoped cache
+// directory as needed, then writes the JSON entry atomically.
+func (s *Store) Write(repoRoot, key, body string, merge *notes.MergeInputs) error {
 	dir := s.cacheDir(repoRoot)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating note cache dir %q: %w", dir, err)
 	}
 
-	entry := Entry{Body: body, WrittenAt: s.now()}
+	entry := Entry{Body: body, Merge: merge, WrittenAt: s.now()}
 	data, err := json.Marshal(entry)
 	if err != nil {
 		return fmt.Errorf("encoding note cache entry: %w", err)

@@ -2,6 +2,7 @@ package notes
 
 import (
 	"context"
+	"encoding/json"
 
 	"mint/internal/config"
 )
@@ -12,6 +13,27 @@ import (
 type MergeInputs struct {
 	instructions, changeMap string
 	partNotes               []string
+}
+
+type mergeInputsJSON struct {
+	Instructions string   `json:"instructions"`
+	ChangeMap    string   `json:"change_map"`
+	PartNotes    []string `json:"part_notes"`
+}
+
+// MarshalJSON encodes in so a re-merge can be composed from it after a round trip.
+func (in MergeInputs) MarshalJSON() ([]byte, error) {
+	return json.Marshal(mergeInputsJSON{Instructions: in.instructions, ChangeMap: in.changeMap, PartNotes: in.partNotes})
+}
+
+// UnmarshalJSON decodes merge inputs MarshalJSON encoded.
+func (in *MergeInputs) UnmarshalJSON(data []byte) error {
+	var doc mergeInputsJSON
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	*in = MergeInputs{instructions: doc.Instructions, changeMap: doc.ChangeMap, partNotes: doc.PartNotes}
+	return nil
 }
 
 // WithMergeInputs returns a copy of g that hands keep the merge inputs of each
