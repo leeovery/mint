@@ -7,21 +7,21 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // fileDiffHeader opens each file's section of a git diff.
 const fileDiffHeader = "diff --git "
 
 // generateChunked writes the notes for a diff whose single-pass prompt is over
-// maxPromptBytes: the diff's files are packed in path order into chunk calls, each
+// maxPromptBytes: the diff's files are cut in path order into chunk calls, each
 // carrying the release's instructions and whole-release Change Map and run
 // concurrently, then one merge call turns every chunk's notes, in chunk order, into
 // the body. The merge output is returned byte-identical.
 func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, maxPromptBytes int) (string, error) {
-	files := splitFileDiffs(diff)
-	slices := packChunks(files, chunkRoom(instructions, changeMap, len(files), maxPromptBytes))
+	parts := cutParts(instructions, changeMap, splitFileDiffs(diff), maxPromptBytes)
 
-	partNotes, err := g.generateParts(ctx, instructions, changeMap, slices)
+	partNotes, err := g.generateParts(ctx, instructions, changeMap, parts)
 	if err != nil {
 		return "", err
 	}
@@ -37,27 +37,28 @@ func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap
 // never lands all of its calls on the machine and the provider's limits at once.
 const maxChunkCallsInFlight = 4
 
-// generateParts makes one chunk call per slice, at most maxChunkCallsInFlight at a
-// time, and returns their notes in slice order once every call has finished. Each call
+// generateParts makes one chunk call per part, at most maxChunkCallsInFlight at a
+// time, and returns their notes in part order once every call has finished. Each call
 // runs on ctx itself: the wave sets no deadline of its own, so a timeout is per call.
 // A failure is reported for the lowest-numbered failed part.
-func (g *Generator) generateParts(ctx context.Context, instructions, changeMap string, slices []string) ([]string, error) {
-	partNotes := make([]string, len(slices))
-	errs := make([]error, len(slices))
+func (g *Generator) generateParts(ctx context.Context, instructions, changeMap string, parts []chunkPart) ([]string, error) {
+	partNotes := make([]string, len(parts))
+	errs := make([]error, len(parts))
 	slots := make(chan struct{}, maxChunkCallsInFlight)
 	var wg sync.WaitGroup
-	for i, slice := range slices {
+	for i, part := range parts {
 		slots <- struct{}{}
 		wg.Go(func() {
 			defer func() { <-slots }()
-			partNotes[i], errs[i] = g.transport.Generate(ctx, composeChunkPrompt(instructions, changeMap, i+1, len(slices), slice))
+			prompt := composeChunkPrompt(instructions, changeMap, part.framing(i+1, len(parts)), part.slice)
+			partNotes[i], errs[i] = g.transport.Generate(ctx, prompt)
 		})
 	}
 	wg.Wait()
 
 	for i, err := range errs {
 		if err != nil {
-			return nil, fmt.Errorf("generating notes for part %d of %d: %w", i+1, len(slices), err)
+			return nil, fmt.Errorf("generating notes for part %d of %d: %w", i+1, len(parts), err)
 		}
 	}
 	return partNotes, nil
@@ -127,24 +128,62 @@ func destinationPath(lines string) (string, bool) {
 	return "", false
 }
 
-// chunkRoom is the bytes of diff a chunk call can carry: the cap less the chunk
-// prompt's fixed part. The framing is measured at maxParts, the most chunks the files
-// can pack into, so no real part number makes a chunk prompt longer than measured.
-func chunkRoom(instructions, changeMap string, maxParts, maxPromptBytes int) int {
-	return maxPromptBytes - len(composeChunkPrompt(instructions, changeMap, maxParts, maxParts, ""))
+// chunkPart is one chunk call's slice of the diff: whole files, or one piece of a
+// file too big for a chunk on its own.
+type chunkPart struct {
+	slice string
+	// file is the path of the file a piece is cut from, empty for whole files.
+	file          string
+	piece, pieces int
 }
 
-// packChunks fills each chunk with whole files, in order, until the next file's diff
-// would not fit in room. A file larger than room on its own takes a chunk to itself.
-func packChunks(files []string, room int) []string {
+// cutParts cuts files, in order, into chunk calls: whole
+// files packed into chunks, and a file bigger than a chunk's room cut into pieces in
+// its place. Room is measured with framing numbered at the diff's byte length, which
+// bounds the part and piece counts since every part carries at least one byte of it.
+func cutParts(instructions, changeMap string, files []string, maxPromptBytes int) []chunkPart {
+	maxParts := 0
+	for _, file := range files {
+		maxParts += len(file)
+	}
+	fixedPart := func(p chunkPart) int {
+		return len(composeChunkPrompt(instructions, changeMap, p.framing(maxParts, maxParts), ""))
+	}
+	room := maxPromptBytes - fixedPart(chunkPart{})
+
+	var parts []chunkPart
+	var fitting []string
+	flush := func() {
+		for _, chunk := range packChunks(fitting, room) {
+			parts = append(parts, chunkPart{slice: chunk})
+		}
+		fitting = nil
+	}
+	for _, file := range files {
+		if len(file) <= room {
+			fitting = append(fitting, file)
+			continue
+		}
+		flush()
+		path := headerPath(file)
+		pieceRoom := maxPromptBytes - fixedPart(chunkPart{file: path, piece: maxParts, pieces: maxParts})
+		parts = append(parts, cutPieces(file, path, pieceRoom)...)
+	}
+	flush()
+	return parts
+}
+
+// packChunks fills each chunk with whole items, in order, until the next item would
+// not fit in room.
+func packChunks(items []string, room int) []string {
 	var chunks []string
 	var current strings.Builder
-	for _, file := range files {
-		if current.Len() > 0 && current.Len()+len(file) > room {
+	for _, item := range items {
+		if current.Len() > 0 && current.Len()+len(item) > room {
 			chunks = append(chunks, current.String())
 			current.Reset()
 		}
-		current.WriteString(file)
+		current.WriteString(item)
 	}
 	if current.Len() > 0 {
 		chunks = append(chunks, current.String())
@@ -152,15 +191,123 @@ func packChunks(files []string, room int) []string {
 	return chunks
 }
 
-func composeChunkPrompt(instructions, changeMap string, part, parts int, slice string) string {
-	return strings.Join([]string{instructions, changeMap, chunkFraming(part, parts), slice, OutputReminder}, "\n\n")
+// cutPieces cuts one file's diff into pieces whose slices each repeat the file's
+// header and fit room. Cuts fall between hunks where each hunk fits, else between
+// lines, else between characters. A room the header leaves nothing of sends the file
+// whole.
+func cutPieces(file, path string, room int) []chunkPart {
+	header, body := splitFileHeader(file)
+	bodyRoom := room - len(header)
+	if bodyRoom <= 0 {
+		return []chunkPart{{slice: file}}
+	}
+
+	var segments []string
+	for _, hunk := range splitBefore(body, "\n@@") {
+		if len(hunk) > bodyRoom {
+			segments = append(segments, strings.SplitAfter(hunk, "\n")...)
+		} else {
+			segments = append(segments, hunk)
+		}
+	}
+	bodies := packPieceBodies(segments, bodyRoom)
+	pieces := make([]chunkPart, len(bodies))
+	for i, b := range bodies {
+		pieces[i] = chunkPart{slice: header + b, file: path, piece: i + 1, pieces: len(bodies)}
+	}
+	return pieces
 }
 
-func chunkFraming(part, parts int) string {
-	return fmt.Sprintf("This release's diff is too large to read in one pass, so it has been split into parts. "+
-		"What follows is part %d of %d. The Change Map above covers the whole release; the diff below covers only this part. "+
-		"Write release notes for the changes in this part, in the format above. They will be merged with the other parts' notes.",
-		part, parts)
+// packPieceBodies packs segments like packChunks, except that a segment longer than
+// room, a single line, fills the rest of the current piece and as many more as it
+// needs, each cut on a UTF-8 character boundary.
+func packPieceBodies(segments []string, room int) []string {
+	var bodies []string
+	var current strings.Builder
+	flush := func() {
+		bodies = append(bodies, current.String())
+		current.Reset()
+	}
+	for _, segment := range segments {
+		if current.Len() > 0 && current.Len()+len(segment) > room {
+			if len(segment) > room {
+				end := characterBoundary(segment, room-current.Len())
+				current.WriteString(segment[:end])
+				segment = segment[end:]
+			}
+			flush()
+		}
+		for len(segment) > room {
+			end := characterBoundary(segment, room)
+			if end == 0 {
+				_, end = utf8.DecodeRuneInString(segment)
+			}
+			bodies = append(bodies, segment[:end])
+			segment = segment[end:]
+		}
+		current.WriteString(segment)
+	}
+	if current.Len() > 0 {
+		flush()
+	}
+	return bodies
+}
+
+// characterBoundary is the length of the longest prefix of s, at most n bytes long,
+// that ends on a UTF-8 character boundary.
+func characterBoundary(s string, n int) int {
+	if n >= len(s) {
+		return len(s)
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return n
+}
+
+// splitFileHeader parts a file's diff into its header, the lines before its first
+// hunk, and the rest. A file with no hunk keeps only its "diff --git" line as header.
+func splitFileHeader(file string) (header, body string) {
+	if i := strings.Index(file, "\n@@"); i >= 0 {
+		return file[:i+1], file[i+1:]
+	}
+	line, _, _ := strings.Cut(file, "\n")
+	end := min(len(line)+1, len(file))
+	return file[:end], file[end:]
+}
+
+// splitBefore cuts s just after each sep's leading byte, so every segment past the
+// first opens with the rest of sep.
+func splitBefore(s, sep string) []string {
+	var out []string
+	for {
+		i := strings.Index(s, sep)
+		if i < 0 {
+			return append(out, s)
+		}
+		out = append(out, s[:i+1])
+		s = s[i+1:]
+	}
+}
+
+func composeChunkPrompt(instructions, changeMap, framing, slice string) string {
+	return strings.Join([]string{instructions, changeMap, framing, slice, OutputReminder}, "\n\n")
+}
+
+const chunkFramingOpening = "This release's diff is too large to read in one pass, so it has been split into parts. "
+
+func (p chunkPart) framing(part, parts int) string {
+	if p.file == "" {
+		return fmt.Sprintf(chunkFramingOpening+
+			"What follows is part %d of %d. The Change Map above covers the whole release; the diff below covers only this part. "+
+			"Write release notes for the changes in this part, in the format above. They will be merged with the other parts' notes.",
+			part, parts)
+	}
+	return fmt.Sprintf(chunkFramingOpening+
+		"What follows is part %d of %d: piece %d of %d of the diff for %s, a file too large to read in one part, so its diff has been cut into pieces. "+
+		"The Change Map above covers the whole release; the diff below covers only this piece of that file. "+
+		"Write release notes for the changes in this piece, in the format above. They will be merged with the other parts' notes.",
+		part, parts, p.piece, p.pieces, p.file)
 }
 
 func composeMergePrompt(instructions, changeMap string, partNotes []string) string {
