@@ -29,7 +29,7 @@ func TestFailureMessage_CollapsesForwardAbortChain(t *testing.T) {
 	}{
 		{"timeout", ai.ErrTimeout, "AI timed out"},
 		{"missing tool", ai.ErrCommandMissing, "AI tool not installed"},
-		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty/invalid notes after retry"},
+		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty notes"},
 	}
 
 	for _, tc := range cases {
@@ -57,7 +57,7 @@ func TestFailureMessage_CollapsesRegenerateShortChain(t *testing.T) {
 	cause := fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed)
 	got := failureMessage(cause)
 
-	const want = "AI returned empty/invalid notes after retry"
+	const want = "AI returned empty notes"
 	if got != want {
 		t.Errorf("failureMessage = %q, want the concise phrase %q", got, want)
 	}

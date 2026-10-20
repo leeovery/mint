@@ -3,6 +3,7 @@ package engine_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -16,20 +17,16 @@ import (
 	"mint/internal/version"
 )
 
-// failedCallPhrase is the ✗ line's cause phrase for an AI call that failed after the
-// transport's retry.
-const failedCallPhrase = "AI returned empty/invalid notes after retry"
-
 const (
 	apiPartNotes  = "- api part notes"
 	corePartNotes = "- core part notes"
 )
 
 // failingCallTransport answers a two-part chunked run, failing every call whose prompt
-// fails reports true with output as the AI's captured stdout.
+// fails reports true with failure.
 type failingCallTransport struct {
-	fails  func(prompt string) bool
-	output string
+	fails   func(prompt string) bool
+	failure error
 
 	mu    sync.Mutex
 	calls int
@@ -40,7 +37,7 @@ func (ft *failingCallTransport) Generate(_ context.Context, prompt string) (stri
 	ft.calls++
 	ft.mu.Unlock()
 	if ft.fails(prompt) {
-		return "", &ai.GenerationError{Stdout: ft.output, ExitCode: 1}
+		return "", ft.failure
 	}
 	switch {
 	case strings.Contains(prompt, "What follows is part 1 of"):
@@ -57,31 +54,54 @@ func isMergePrompt(prompt string) bool {
 }
 
 type chunkFailureCase struct {
-	name   string
-	fails  func(prompt string) bool
-	output string
+	name    string
+	fails   func(prompt string) bool
+	failure error
 	// wantMerge reports whether the run makes a merge call.
-	wantMerge bool
+	wantMerge   bool
+	wantMessage string
+	wantOutput  string
+}
+
+func isSecondPartPrompt(prompt string) bool {
+	return strings.Contains(prompt, "What follows is part 2 of")
 }
 
 func chunkFailureCases() []chunkFailureCase {
 	return []chunkFailureCase{
 		{
-			name:   "a chunk call fails",
-			fails:  func(prompt string) bool { return strings.Contains(prompt, "What follows is part 2 of") },
-			output: "API Error: usage limit reached for this account",
+			name:        "a chunk call fails",
+			fails:       isSecondPartPrompt,
+			failure:     &ai.GenerationError{Stdout: "API Error: usage limit reached for this account", ExitCode: 1},
+			wantMessage: "AI call failed (part 2 of 2)",
+			wantOutput:  "API Error: usage limit reached for this account",
 		},
 		{
-			name:      "the merge call fails",
-			fails:     isMergePrompt,
-			output:    "Invalid API key · Please run /login",
-			wantMerge: true,
+			name:        "a chunk call times out",
+			fails:       isSecondPartPrompt,
+			failure:     fmt.Errorf("%w: context deadline exceeded", ai.ErrTimeout),
+			wantMessage: "AI timed out (part 2 of 2)",
+		},
+		{
+			name:        "the merge call fails",
+			fails:       isMergePrompt,
+			failure:     &ai.GenerationError{Stdout: "Invalid API key · Please run /login", ExitCode: 1},
+			wantMerge:   true,
+			wantMessage: "AI call failed (merging)",
+			wantOutput:  "Invalid API key · Please run /login",
+		},
+		{
+			name:        "the merge call returns empty notes",
+			fails:       isMergePrompt,
+			failure:     &ai.GenerationError{Stderr: " \n"},
+			wantMerge:   true,
+			wantMessage: "AI returned empty notes (merging)",
 		},
 	}
 }
 
 func (tc chunkFailureCase) transport() *failingCallTransport {
-	return &failingCallTransport{fails: tc.fails, output: tc.output}
+	return &failingCallTransport{fails: tc.fails, failure: tc.failure}
 }
 
 // seedOverCapRelease scripts a release over a two-file diff of about 10 KB a file
@@ -124,11 +144,11 @@ func TestRelease_ChunkedRunFails_Abort_StopsBeforeTheTagWithTheOutputVerbatim(t 
 				t.Errorf("AI calls = %d, want %d", tr.calls, wantCalls)
 			}
 			sf := onlyStageFailureEvent(t, rec)
-			if sf.Name != "notes" || sf.Message != failedCallPhrase {
-				t.Errorf("StageFailure = %q %q, want notes %q", sf.Name, sf.Message, failedCallPhrase)
+			if sf.Name != "notes" || sf.Message != tc.wantMessage {
+				t.Errorf("StageFailure = %q %q, want notes %q", sf.Name, sf.Message, tc.wantMessage)
 			}
-			if sf.Output != tc.output {
-				t.Errorf("StageFailure.Output = %q, want the failed call's output %q", sf.Output, tc.output)
+			if sf.Output != tc.wantOutput {
+				t.Errorf("StageFailure.Output = %q, want the failed call's output %q", sf.Output, tc.wantOutput)
 			}
 		})
 	}
@@ -197,8 +217,8 @@ func TestRegenerateRun_FreshChunkedRunFails_AbortsWithTheOutputVerbatim(t *testi
 			}
 
 			sf := onlyStageFailureEvent(t, rec)
-			if sf.Message != failedCallPhrase || sf.Output != tc.output {
-				t.Errorf("StageFailure = %q with output %q, want %q with %q", sf.Message, sf.Output, failedCallPhrase, tc.output)
+			if sf.Message != tc.wantMessage || sf.Output != tc.wantOutput {
+				t.Errorf("StageFailure = %q with output %q, want %q with %q", sf.Message, sf.Output, tc.wantMessage, tc.wantOutput)
 			}
 			if len(pub.dispatched) != 0 {
 				t.Errorf("provider writes = %d, want none for an aborted regenerate", len(pub.dispatched))

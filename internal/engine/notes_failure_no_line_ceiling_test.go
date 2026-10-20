@@ -21,8 +21,6 @@ func overOldLineCeilingDiff() string {
 	return "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1,50001 @@\n" + strings.Repeat("+x\n", 50001)
 }
 
-const aiFailurePhrase = "AI returned empty/invalid notes after retry"
-
 func TestRelease_NotesFailureOverOldLineCeiling_CarriesAICausePhrase(t *testing.T) {
 	t.Parallel()
 
@@ -41,8 +39,8 @@ func TestRelease_NotesFailureOverOldLineCeiling_CarriesAICausePhrase(t *testing.
 
 	assertAbortNonZero(t, err)
 	sf := onlyStageFailureEvent(t, rec)
-	if sf.Message != aiFailurePhrase {
-		t.Errorf("StageFailure.Message = %q, want the AI failure's phrase %q", sf.Message, aiFailurePhrase)
+	if sf.Message != "AI call failed" {
+		t.Errorf("StageFailure.Message = %q, want the AI failure's phrase %q", sf.Message, "AI call failed")
 	}
 	if sf.Output != "Prompt is too long" {
 		t.Errorf("StageFailure.Output = %q, want the AI's captured output", sf.Output)
@@ -74,8 +72,8 @@ func TestRegenerateRun_FreshNotesFailureOverOldLineCeiling_CarriesAICausePhrase(
 		t.Errorf("transport called %d times, want the single-pass call", tr.calls())
 	}
 	sf := onlyStageFailureEvent(t, rec)
-	if sf.Message != aiFailurePhrase {
-		t.Errorf("StageFailure.Message = %q, want the AI failure's phrase %q", sf.Message, aiFailurePhrase)
+	if sf.Message != "AI returned empty notes" {
+		t.Errorf("StageFailure.Message = %q, want the AI failure's phrase %q", sf.Message, "AI returned empty notes")
 	}
 }
 

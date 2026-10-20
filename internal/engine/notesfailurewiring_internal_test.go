@@ -71,7 +71,7 @@ func onlyStageFailure(t *testing.T, rec *presentertest.RecordingPresenter) prese
 	return *found
 }
 
-const conciseGenMessage = "AI returned empty/invalid notes after retry"
+const conciseGenMessage = "AI call failed"
 
 // TestSurfaceAndUnwind_PopulatesOutputWithCapturedStdout proves the forward-release notes
 // failure path feeds claude's captured stdout into StageFailure.Output while the top-line

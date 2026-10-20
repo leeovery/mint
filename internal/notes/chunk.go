@@ -39,11 +39,28 @@ func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap
 	g.progress.Merging(len(parts))
 	body, err := g.transport.Generate(ctx, mergePrompt)
 	if err != nil {
-		return "", fmt.Errorf("merging part notes: %w", err)
+		return "", &callError{action: "merging part notes", location: "merging", err: err}
 	}
 	g.progress.Merged(len(parts))
 	return body, nil
 }
+
+// callError is a chunked run's failed call, carrying where the call sat in the run so
+// a failure's cause phrase can name it.
+type callError struct {
+	action   string
+	location string
+	err      error
+}
+
+func partCallError(part, parts int, err error) *callError {
+	location := fmt.Sprintf("part %d of %d", part, parts)
+	return &callError{action: "generating notes for " + location, location: location, err: err}
+}
+
+func (e *callError) Error() string { return e.action + ": " + e.err.Error() }
+
+func (e *callError) Unwrap() error { return e.err }
 
 // maxChunkCallsInFlight bounds a wave's concurrent chunk calls, so a large release
 // never lands all of its calls on the machine and the provider's limits at once.
@@ -85,7 +102,7 @@ func (g *Generator) generateParts(ctx context.Context, instructions, changeMap s
 			defer mu.Unlock()
 			if err != nil {
 				if firstErr == nil {
-					firstErr = fmt.Errorf("generating notes for part %d of %d: %w", i+1, len(parts), err)
+					firstErr = partCallError(i+1, len(parts), err)
 				}
 				return
 			}

@@ -202,7 +202,7 @@ func TestResolveFailure_VariedCauses_RouteThroughBothModes(t *testing.T) {
 	}{
 		{"timeout", ai.ErrTimeout, "AI timed out"},
 		{"missing tool", ai.ErrCommandMissing, "AI tool not installed"},
-		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty/invalid notes after retry"},
+		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty notes"},
 	}
 
 	for _, tc := range cases {

@@ -88,26 +88,20 @@ func abortError(failure error) error {
 	return fmt.Errorf("notes generation failed (%s): %w", causeText(failure), failure)
 }
 
-// CauseText derives the CONCISE display phrase for a notes/AI failure from the SENTINEL
-// it wraps, matched via errors.Is so it traverses the %w chain regardless of how the
-// cause was wrapped — abortError's forward chain ("notes generation failed (%s): %w")
-// OR regenerate's shorter "generating notes: %w" chain both resolve to the same phrase.
-// It returns (phrase, true) for a known notes-failure sentinel and
-// ("", false) for any other error.
-//
-// It is the SINGLE SOURCE of the concise phrasing: the unexported causeText (which
-// names the cause in abortError's message) delegates to it, and the engine's
-// failureMessage display helper reuses it to collapse the verbose nested %w chain into
-// one concise line — neither can drift from the other. The phrase is derived WITHOUT
-// rendering the wrapped cause.Error(); the %w chain is left intact for errors.Is/logs.
+// CauseText derives the concise display phrase for a notes/AI failure, matched through
+// the %w chain. A generation failure reads by whether its captured output holds any
+// text. A failure that belongs to one call of a chunked run ends with that call's place
+// in it. It returns (phrase, true) for a known notes failure and ("", false) for any
+// other error.
 func CauseText(failure error) (string, bool) {
+	var phrase string
 	switch {
 	case errors.Is(failure, ai.ErrTimeout):
-		return "AI timed out", true
+		phrase = "AI timed out"
 	case errors.Is(failure, ai.ErrCommandMissing):
-		return "AI tool not installed", true
+		phrase = "AI tool not installed"
 	case errors.Is(failure, ai.ErrGenerationFailed):
-		return "AI returned empty/invalid notes after retry", true
+		phrase = generationFailurePhrase(failure)
 	case errors.Is(failure, ErrNoRoomForDiff):
 		return ErrNoRoomForDiff.Error(), true
 	case errors.Is(failure, ErrMergeTooLarge):
@@ -115,6 +109,19 @@ func CauseText(failure error) (string, bool) {
 	default:
 		return "", false
 	}
+	var call *callError
+	if errors.As(failure, &call) {
+		phrase += " (" + call.location + ")"
+	}
+	return phrase, true
+}
+
+func generationFailurePhrase(failure error) string {
+	var genErr *ai.GenerationError
+	if errors.As(failure, &genErr) && genErr.Output() != "" {
+		return "AI call failed"
+	}
+	return "AI returned empty notes"
 }
 
 // causeText maps a known notes-failure sentinel to a readable cause phrase for the

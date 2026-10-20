@@ -673,7 +673,7 @@ func TestRelease_PriorTag_PublishFailsAfterPush_WarnsOnly(t *testing.T) {
 }
 
 // TestRelease_PriorTag_NotesFailureAbort_AbortsBeforeMutation proves an
-// on_notes_failure=abort notes failure (the AI returns empty/invalid after retry)
+// on_notes_failure=abort notes failure (the AI returns an empty body after retry)
 // surfaces and aborts. With no pre_tag hook nothing was committed, so the surgical
 // unwind it routes through has zero MadeState and no-ops (no reset, no Unwound): the
 // run surfaces a StageFailed and exits non-zero with nothing tagged. (The case where a
@@ -743,8 +743,8 @@ func TestRelease_PriorTag_NotesFailureAbort_CapturedOutputReachesStageFailure(t 
 
 	// claude's actual message on stdout behind a non-zero exit (e.g. an over-long prompt).
 	const claudeStdout = "Prompt is too long"
-	// The concise post-retry phrase notes.CauseText derives from ai.ErrGenerationFailed.
-	const conciseMessage = "AI returned empty/invalid notes after retry"
+	// The concise phrase notes.CauseText derives for a generation failure with output.
+	const conciseMessage = "AI call failed"
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
