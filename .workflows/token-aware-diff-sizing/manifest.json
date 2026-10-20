@@ -347,7 +347,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 4,
-          "current_task": "token-aware-diff-sizing-4-3",
+          "current_task": "token-aware-diff-sizing-4-4",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -405,7 +405,8 @@
             "token-aware-diff-sizing-3-7",
             "token-aware-diff-sizing-3-8",
             "token-aware-diff-sizing-4-1",
-            "token-aware-diff-sizing-4-2"
+            "token-aware-diff-sizing-4-2",
+            "token-aware-diff-sizing-4-3"
           ],
           "staging": {
             "p1": {
