@@ -187,6 +187,8 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 // per-version bodies (oldest → newest) for the 5-13 whole-file changelog rebuild, or a
 // genuine abort (e.g. a gate DECLINE or a cancel) that ends the batch with no end
 // summary.
+// Once any version's notes were written after halving, one lower-the-cap hint prints as
+// the batch ends, however it ends, and no version prints its own.
 // An empty version set is a clean no-op.
 //
 // The loop holds NO resume state: it reads no checkpoint and writes none, so a re-run
@@ -194,9 +196,11 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest) ([]RegeneratedVersion, error) {
 	collected := make([]RegeneratedVersion, 0, len(req.Versions))
 	var skipped []skippedVersion
+	var hint batchLowerCap
 	for _, res := range req.Versions {
-		processed, skip, err := processOneVersion(ctx, deps, publisher, root, req, res)
+		processed, skip, err := processOneVersion(ctx, deps, publisher, root, req, res, &hint)
 		if err != nil {
+			hintLowerCap(deps.Presenter, hint.lowerCap())
 			return nil, err
 		}
 		if skip != nil {
@@ -210,6 +214,7 @@ func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// each skipped version with its reason, so the user can re-run the stragglers. The
 	// URL is omitted ENTIRELY (regenerate publishes no release); the presenter renders
 	// the Summary verbatim and never computes the version set.
+	hintLowerCap(deps.Presenter, hint.lowerCap())
 	deps.Presenter.RunFinished(presenter.RunResult{
 		Project: req.Project,
 		Verb:    presenter.VerbRegenerate,
@@ -248,7 +253,7 @@ type skippedVersion struct {
 // A gate DECLINE is NOT a failure — it is a user choice — so it propagates as an error
 // and ends the batch. A cancel (a Ctrl-C) is not a failure either and ends the batch the
 // same way, through a failed `notes` stage.
-func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, res version.Resolution) (RegeneratedVersion, *skippedVersion, error) {
+func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, res version.Resolution, hint *batchLowerCap) (RegeneratedVersion, *skippedVersion, error) {
 	p := deps.Presenter
 	versionKey := batchVersionKey(res.Tag, req.TagPrefix)
 
@@ -289,6 +294,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, res.Tag)
 	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, NotesSinks{Progress: stage, ChunkNotes: chunkNotes.saver()})
 	if err != nil {
+		hint.tried(stage)
 		if errors.Is(err, context.Canceled) {
 			return RegeneratedVersion{}, nil, surface(p, "notes", err)
 		}
@@ -297,6 +303,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 		return processed, skip, skipErr
 	}
 	stage.done()
+	hint.written(stage)
 
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A

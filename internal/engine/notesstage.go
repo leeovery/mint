@@ -57,6 +57,33 @@ func (s *notesStage) lowerCap() int {
 	return s.largestCall
 }
 
+// batchLowerCap gathers the one lower-the-cap hint of a batch from its versions' notes
+// stages: the largest succeeded call carrying diff in any version, suggested once any
+// version's notes were written after halving.
+type batchLowerCap struct {
+	largestCall int
+	halved      bool
+}
+
+// tried folds in the calls of a version's generation, whether or not its notes were
+// written.
+func (b *batchLowerCap) tried(s *notesStage) {
+	b.largestCall = max(b.largestCall, s.largestCall)
+}
+
+// written folds in a version whose notes were written.
+func (b *batchLowerCap) written(s *notesStage) {
+	b.tried(s)
+	b.halved = b.halved || s.lowerCap() != 0
+}
+
+func (b *batchLowerCap) lowerCap() int {
+	if !b.halved {
+		return 0
+	}
+	return b.largestCall
+}
+
 // hintLowerCap writes bytes exact, never rounded: a rounded value can sit above the
 // largest call the model accepted.
 func hintLowerCap(p presenter.Presenter, bytes int) {
