@@ -34,6 +34,7 @@ package engine
 import (
 	"context"
 
+	"mint/internal/config"
 	"mint/internal/git"
 	"mint/internal/presenter"
 	"mint/internal/publish"
@@ -133,6 +134,9 @@ type RegenerateRunRequest struct {
 	// --notes-file was not given. It takes the place of the source: no source question
 	// is asked and ProduceBody is never called.
 	Supplied *string
+	// Config is the loaded config the next moves of a stopped notes failure are fitted
+	// to.
+	Config config.Config
 	// Yes is the -y flag. It does NOT change which gates the engine calls — every gate
 	// is still called and the presenter skips internally — but it threads to the write
 	// request for the confirm/review gate's internal skip.
@@ -158,7 +162,8 @@ type RegenerateRunRequest struct {
 // and the write/push/recovery. It returns whatever RegenerateWrite returns (nil on
 // success, an *AbortError on a confirm decline or pre-push failure, nil-with-warn on a
 // post-push provider failure), or a surfaced abort on a body-production failure that
-// the notes floor's choice, offered only to an attended run, does not answer.
+// the notes floor's choice, offered only to an attended run, does not answer; a notes
+// generation failure that stops an unattended run prints its next moves first.
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
 
@@ -241,6 +246,9 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		p.StageFailed(failure)
 		chunkNotes.warnUnsaved(p)
 		if !offersChoice {
+			if reachesNotesFloor(err) {
+				p.NextMoves(regenerateNotesFloorMoves(err, req.Config, req.VersionKey, failure.SavedNotes))
+			}
 			return abort(err)
 		}
 		if body, err = regenerateNotesFloor(ctx, deps, req, chunkNotes.saved); err != nil {

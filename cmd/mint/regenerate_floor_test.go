@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -70,5 +72,43 @@ func TestRegenerate_UnattendedFreshFailure_OffersNoChoice(t *testing.T) {
 	}
 	if got := promptSubjects(rec); len(got) != 0 {
 		t.Errorf("gate subjects = %v, want no gate under -y", got)
+	}
+}
+
+func TestRegenerate_UnattendedFreshFailure_FitsTheNextMovesToTheLoadedConfig(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".mint.toml"), []byte("ai_command = \"mytool --print\"\n"), 0o644); err != nil {
+		t.Fatalf("writing .mint.toml: %v", err)
+	}
+	f := runner.NewFakeRunner()
+	seedRegenStartup(f, root, gitOut(githubOrigin))
+	f.SeedSequence("git",
+		gitOut("diff --git a/a.go b/a.go\n+change\n"),
+		gitOut("M\ta.go\n"),
+		gitOut("1\t0\ta.go\n"),
+	)
+	f.Seed("gh", runner.Result{}, nil)
+	f.Seed("mytool", runner.Result{Stdout: "API Error: usage limit reached"}, errors.New("exit status 1"))
+	rec := &presentertest.RecordingPresenter{}
+	req := parseRegenArgs(t, "1.4.0", "--source", "fresh", "--target", "release", "-y")
+
+	if code := regenerate(t.Context(), rec, f, req); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	var moves []presenter.NextMoves
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindNextMoves {
+			moves = append(moves, ev.NextMoves)
+		}
+	}
+	want := []string{
+		"write the notes to a file and release with mint release regenerate 1.4.0 --notes-file <file>",
+		`if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`,
+	}
+	if len(moves) != 1 || !slices.Equal(moves[0].Moves, want) {
+		t.Errorf("NextMoves = %+v, want one carrying %q", moves, want)
 	}
 }
