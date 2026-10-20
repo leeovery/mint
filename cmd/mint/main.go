@@ -313,7 +313,7 @@ func runRelease(ctx context.Context, rest []string) int {
 		// it; the wall clock stamps the ~1h TTL. If the cache dir can't be resolved the
 		// cache is simply disabled (nil) — it is an optimization, never required.
 		NoteCache:  newNoteCache(),
-		ChunkNotes: newChunkNotes(),
+		ChunkNotes: notescache.NewUserChunkNotes(os.UserCacheDir),
 	}
 
 	if err := engine.Release(ctx, deps, opts.ReleaseOptions()); err != nil {
@@ -464,17 +464,6 @@ func newNoteCache() engine.NoteCache {
 		return nil
 	}
 	return notescache.NewStore(filepath.Join(dir, "mint", "cache"), time.Now)
-}
-
-// newChunkNotes builds the store a failed chunked notes run saves its finished chunk
-// notes to: the user cache dir's mint/chunk-notes, beside the note cache and outside
-// its pruning, or nil, saving none, when the dir can't be resolved.
-func newChunkNotes() engine.ChunkNotesSaver {
-	dir, err := os.UserCacheDir()
-	if err != nil {
-		return nil
-	}
-	return notescache.NewChunkNotes(filepath.Join(dir, "mint", "chunk-notes"))
 }
 
 // exitCode resolves the process exit code for a non-nil Release error: an engine

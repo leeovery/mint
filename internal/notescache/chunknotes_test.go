@@ -1,6 +1,7 @@
 package notescache_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,5 +74,37 @@ func TestChunkNotes_Save_SavedFileOutlivesTheNoteCachePrune(t *testing.T) {
 
 	if got := readFile(t, path); got != "- saved notes" {
 		t.Errorf("saved file after the cache prune = %q, want it untouched", got)
+	}
+}
+
+func TestUserChunkNotes_Save_WritesUnderTheUserCacheDirsMintChunkNotes(t *testing.T) {
+	t.Parallel()
+
+	userCache := t.TempDir()
+	store := notescache.NewUserChunkNotes(func() (string, error) { return userCache, nil })
+
+	path, err := store.Save("/Users/lee/Code/app", "v1.4.0", "- saved notes")
+	if err != nil {
+		t.Fatalf("Save returned unexpected error: %v", err)
+	}
+
+	if want := filepath.Join(userCache, "mint", "chunk-notes", "-Users-lee-Code-app", "v1.4.0.md"); path != want {
+		t.Errorf("Save path = %q, want %q", path, want)
+	}
+	if got := readFile(t, path); got != "- saved notes" {
+		t.Errorf("saved file = %q, want the notes byte for byte", got)
+	}
+}
+
+func TestUserChunkNotes_Save_AnUnresolvableUserCacheDirReturnsItsErrorVerbatim(t *testing.T) {
+	t.Parallel()
+
+	unresolved := errors.New("neither $XDG_CACHE_HOME nor $HOME are defined")
+	store := notescache.NewUserChunkNotes(func() (string, error) { return "", unresolved })
+
+	path, err := store.Save("/Users/lee/Code/app", "v1.4.0", "- saved notes")
+
+	if path != "" || err == nil || err.Error() != unresolved.Error() {
+		t.Errorf("Save = (%q, %v), want no path and the resolution error %q verbatim", path, err, unresolved)
 	}
 }

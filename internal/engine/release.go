@@ -515,11 +515,15 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// blocking StageStarted (spinner), a chunked run's progress while it runs, and a
 	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
 	stage := startNotesStage(p)
-	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), tag, versionKey, opts, stage)
+	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
+	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage)
 	if err != nil {
-		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
+		surfaceStageFailure(p, "notes", err)
+		chunkNotes.warnUnsaved(p)
+		return Unwind(ctx, deps, start, made, err)
 	}
 	stage.done()
+	chunkNotes.warnUnsaved(p)
 
 	// Show the plan, then the notes — identical in a dry run and a real run up to here;
 	// the two diverge at the DRY-RUN BOUNDARY immediately below.
@@ -935,7 +939,7 @@ func readNotesFile(path string, set bool) (*string, error) {
 // resolveBody resolves this run's notes body + Kind via the notes-path precedence
 // (SelectBody), returning the generator it built so the caller can bind a per-run
 // regenerator for the gate's `r` choice. The selector's generation reports a chunked
-// run to progress and saves a failed one's chunk notes for tag; the returned generator
+// run to progress and saves a failed one's chunk notes through chunkNotes; the returned generator
 // does neither. It is the single Stage-4 body decision:
 //
 //   - opts.NotesBody is a TEST-INJECTION OVERRIDE: when non-empty it bypasses the
@@ -946,7 +950,7 @@ func readNotesFile(path string, set bool) (*string, error) {
 //     SelectBody runs the precedence over the run's SelectState. A SelectBody error is
 //     an on_notes_failure=abort notes failure: it returns the error for the caller to
 //     surface and abort on, BEFORE any mutation.
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, tag, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, chunkNotes *chunkNotesKeeper, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, nil
 	}
@@ -965,7 +969,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		VersionPattern: cfg.Release.VersionPattern,
 	})
 	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
-	selector := notes.NewSelector(generator.WithProgress(progress).WithChunkNotes(chunkNotesSaver(deps, root, tag)), assembler, deps.Runner, root)
+	selector := notes.NewSelector(generator.WithProgress(progress).WithChunkNotes(chunkNotes.saver()), assembler, deps.Runner, root)
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
@@ -995,17 +999,6 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		deps.NoteCache.Prune(root, key)
 	}
 	return body, kind, generator, nil
-}
-
-// chunkNotesSaver saves a failed chunked run's chunk notes for root's tag through
-// deps.ChunkNotes, or nil when none is wired.
-func chunkNotesSaver(deps ReleaseDeps, root, tag string) notes.SaveChunkNotes {
-	if deps.ChunkNotes == nil {
-		return nil
-	}
-	return func(chunkNotes string) (string, error) {
-		return deps.ChunkNotes.Save(root, tag, chunkNotes)
-	}
 }
 
 // cacheReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path to
@@ -1204,7 +1197,13 @@ func RemoteURL(ctx context.Context, r runner.CommandRunner) string {
 // the tag deleted iff made.TagCreated. It is the stage-failure sibling of the gate-no
 // path, which calls Unwind directly with no StageFailed.
 func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start StartState, made MadeState, cause error) error {
-	deps.Presenter.StageFailed(presenter.StageFailure{
+	surfaceStageFailure(deps.Presenter, stage, cause)
+	return Unwind(ctx, deps, start, made, cause)
+}
+
+// surfaceStageFailure renders stage's ✗ line for cause.
+func surfaceStageFailure(p presenter.Presenter, stage string, cause error) {
+	p.StageFailed(presenter.StageFailure{
 		Name:    stage,
 		Message: failureMessage(cause),
 		// notesFailureOutput is called for EVERY stage (pre_tag, notes, record, preflight,
@@ -1214,7 +1213,6 @@ func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start
 		Output:     notesFailureOutput(cause),
 		SavedNotes: notes.SavedChunkNotesPath(cause),
 	})
-	return Unwind(ctx, deps, start, made, cause)
 }
 
 // runPreflight runs the Stage 2 gate chain in the spec's order: fetch (read-only,
