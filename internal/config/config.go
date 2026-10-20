@@ -63,10 +63,8 @@ const defaultOnNotesFailure = "abort"
 // fallback body. Any other non-empty value fails loud at load.
 var onNotesFailureValues = []string{"abort", "fallback"}
 
-// DefaultMaxDiffLines is the out-of-the-box ceiling for the notes-engine
-// max_diff_lines guard: a post-exclusion diff larger than this is too costly to
-// summarise well, so the AI is skipped. It is a shared engine key, not release
-// specific, so it lives at the top level of Config (see Config.MaxDiffLines).
+// DefaultMaxDiffLines is the default for the shared max_diff_lines key;
+// max_prompt_bytes, not this line count, sizes AI calls.
 //
 // It is the single CANONICAL source of this default — it is EXPORTED so other sites
 // (the SoT default column in metadata.go) derive the value from here rather than
@@ -133,10 +131,8 @@ type Config struct {
 	// rules.
 	AICommand string
 
-	// MaxDiffLines is the shared engine-level max_diff_lines guard ceiling (default
-	// 50000). It is top-level — NOT under [release] — because it serves every verb's
-	// notes engine, not just release. The notes size guard compares the
-	// post-exclusion diff's line count against it.
+	// MaxDiffLines is the shared max_diff_lines value (default 50000);
+	// max_prompt_bytes, not this line count, sizes AI calls.
 	MaxDiffLines int
 
 	// MaxPromptBytes is the shared per-call byte cap on the composed prompt of any single

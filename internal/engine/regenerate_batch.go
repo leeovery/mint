@@ -181,7 +181,7 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 // per-version gate (unless -y), and dispatches the provider release (create-or-update
 // per version). A per-version FAILURE is CAUGHT, RECORDED with a human reason, and the
 // loop CONTINUES — consciously OVERRIDING the single-version on_notes_failure=abort
-// default (a single huge release tripping max_diff_lines must not kill the others).
+// default (one version whose notes fail must not kill the others).
 // The run closes with one RunFinished carrying the engine-computed end Summary (the
 // regenerated count + each skipped version with its reason). It returns the COLLECTED
 // per-version bodies (oldest → newest) for the 5-13 whole-file changelog rebuild, or a
@@ -242,7 +242,7 @@ type skippedVersion struct {
 //   - reuse against a tag with NO annotation body (lightweight / empty) — detected via
 //     ReadTagBody's has-body branch (the --all variant of 5-5's single-mode fail-loud
 //     read), never written as an empty provider release;
-//   - a notes-production failure (e.g. a diff exceeding max_diff_lines) from ProduceBody.
+//   - a notes-production failure (e.g. an AI call that fails) from ProduceBody.
 //
 // A gate DECLINE is NOT a failure — it is a user choice — so it propagates as an error
 // and ends the batch (preserving the existing decline-aborts behavior).
@@ -276,7 +276,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 
 	// Produce the version's body for the resolved source BEFORE the gate — the
 	// notes-review gate (fresh) reviews this body. A notes-production failure (e.g. a
-	// diff over max_diff_lines) is CAUGHT and skipped rather than aborting the batch.
+	// failed AI call) is CAUGHT and skipped rather than aborting the batch.
 	// Body production is BLOCKING (a fresh source re-diffs + calls the AI per version),
 	// so narrate it with a blocking StageStarted (spinner) and a StageSucceeded
 	// carrying the engine-measured Elapsed once the body resolves; a per-version skip
@@ -332,9 +332,7 @@ const (
 	// reasonNoReleaseBody is the `--source release --all` skip reason for a version whose
 	// published release has no body — the variant of reasonNoAnnotationBody.
 	reasonNoReleaseBody = "no release body — use --source fresh"
-	// reasonDiffTooLarge is the skip reason for a notes failure caused by a diff over
-	// max_diff_lines (the distinguishable ErrDiffTooLarge case).
-	reasonDiffTooLarge = "diff too large"
+	reasonDiffTooLarge  = "diff too large"
 	// reasonNotesFailed is the fallback skip reason for any other notes-production
 	// failure that is not the diff-too-large case.
 	reasonNotesFailed = "notes generation failed"

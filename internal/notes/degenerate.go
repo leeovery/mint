@@ -7,10 +7,9 @@ import "strings"
 // not here). It is kept a package-level constant so the wording is tunable in one
 // place. The em-dash matches the spec's example wording verbatim.
 //
-// This is the small-end mirror of the max_diff_lines guard: where a too-large
-// diff routes to abort/fallback, a too-small (empty/whitespace-only) diff routes
-// to this stub — a truthful record for a no-op release, never a hallucination,
-// never a hard error, never a skipped entry.
+// A too-small (empty/whitespace-only) diff routes to this stub — a truthful
+// record for a no-op release, never a hallucination, never a hard error, never a
+// skipped entry.
 const stubBody = "Maintenance release — no notable source changes"
 
 // IsDegenerate reports whether the POST-exclusion diff carries nothing notable:

@@ -384,6 +384,24 @@ func TestGuide_AITransportParagraphNamesLeanDefault(t *testing.T) {
 	}
 }
 
+func TestGuide_AITransportParagraphCoversThePerCallCapAndChunking(t *testing.T) {
+	t.Parallel()
+
+	flat := strings.Join(strings.Fields(aiTransportParagraph(t)), " ")
+
+	for _, want := range []string{
+		"max_prompt_bytes",
+		"default 1,500,000",
+		"chunk calls",
+		"one merge call",
+		"Chunking has no setting",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("AI-transport paragraph must carry %q; got:\n%s", want, flat)
+		}
+	}
+}
+
 func TestGuide_AITransportParagraphNamesBothShippedTimeouts(t *testing.T) {
 	t.Parallel()
 

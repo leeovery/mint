@@ -9,7 +9,8 @@ package engine
 // DiffRange (`vX-1..vX`). Every other layer is reused unchanged — the consolidated
 // exclusion tiers (built-in CHANGELOG.md, configured diff_exclude globs, the
 // strategy-aware version_file decision), the Change Map computed AFTER exclusion and
-// prepended to the AI input, the max_diff_lines guard, and the AI validation/retry.
+// prepended to the AI input, the max_prompt_bytes size check with chunking over it,
+// and the AI validation/retry.
 //
 // Exclusion is PATH-based, not commit-based: the `vX-1..vX` range already contains
 // mint's release-bookkeeping commit (`{commit_prefix} Release {tag}`), and a range

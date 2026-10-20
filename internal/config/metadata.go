@@ -115,7 +115,7 @@ func MetadataRows() []MetadataRow {
 	return []MetadataRow{
 		// Shared top-level engine keys (fileShape leaf fields), in field order.
 		{Key: "ai_command", Level: LevelShared, Default: DefaultAICommand, Description: "the AI invocation: composed prompt on stdin, generated body on stdout; resolved [verb] → shared → default"},
-		{Key: "max_diff_lines", Level: LevelShared, Default: strconv.Itoa(DefaultMaxDiffLines), Description: "diffs larger than this (post-exclusion line count) skip the AI"},
+		{Key: "max_diff_lines", Level: LevelShared, Default: strconv.Itoa(DefaultMaxDiffLines), Description: "not read: release notes over max_prompt_bytes are chunked, and commit's cap is max_prompt_bytes"},
 		{Key: "max_prompt_bytes", Level: LevelShared, Default: strconv.Itoa(DefaultMaxPromptBytes), Description: "cap, in bytes, on the composed prompt of any single AI call"},
 		{Key: "timeout", Level: LevelShared, Default: seconds(DefaultReleaseTimeout) + " on release, " + seconds(DefaultCommitTimeout) + " on commit", Description: "per-attempt AI deadline in seconds; 0 means no deadline; resolved [verb] → shared → default"},
 		{Key: "diff_exclude", Level: LevelShared, Default: "[]", Description: "extra pathspec globs kept out of every AI diff, on top of the built-in CHANGELOG.md exclusion"},

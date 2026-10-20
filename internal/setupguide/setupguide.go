@@ -159,9 +159,17 @@ so a call carries mint's prompt and nothing else. Conventions the user keeps in
 CLAUDE.md for notes or commit messages belong in [release] / [commit] context or
 prompt. The transport applies a per-attempt timeout (seconds; default 180 for
 release, 60 for commit; 0 means unbounded), retries bad or empty output exactly
-once, and treats a timeout as FATAL — reported at once, never retried. On failure, release follows [release].on_notes_failure (abort
-loud, or fall back to the commit-subject / fallback body) and commit drops to the
-user's $EDITOR. If you pin a slower model for a verb, raise that verb's timeout in
+once, and treats a timeout as FATAL — reported at once, never retried. Every call
+mint makes is capped by max_prompt_bytes (shared top level only; default 1,500,000
+bytes of composed prompt: instructions, Change Map, diff and closing reminder; the
+AI tool's own overhead sits outside it). Release notes whose single prompt would be
+over the cap skip the single call: the diff's files are packed in path order into
+chunk calls that each fit the cap, each carrying the instructions and the
+whole-release Change Map, then one merge call writes the release's notes from every
+chunk's notes. Chunking has no setting and asks nothing. A commit prompt over the
+cap opens $EDITOR instead. On failure, release follows [release].on_notes_failure
+(abort loud, or fall back to the commit-subject / fallback body) and commit drops to
+the user's $EDITOR. If you pin a slower model for a verb, raise that verb's timeout in
 the SAME table — mint does not auto-bump it.`
 }
 

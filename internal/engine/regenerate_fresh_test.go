@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"mint/internal/config"
@@ -39,12 +40,12 @@ func (ft *freshTransport) Generate(_ context.Context, prompt string) (string, er
 
 func (ft *freshTransport) calls() int { return len(ft.prompts) }
 
-// freshCfg is the default config for the fresh-source tests: a generous
-// max_diff_lines ceiling and the default tag prefix, no prompt-control knobs.
+// freshCfg is the default config for the fresh-source tests: the default per-call
+// cap and the default tag prefix, no prompt-control knobs.
 func freshCfg() config.Config {
 	return config.Config{
-		MaxDiffLines: 50000,
-		Release:      config.Release{TagPrefix: "v"},
+		MaxPromptBytes: config.DefaultMaxPromptBytes,
+		Release:        config.Release{TagPrefix: "v"},
 	}
 }
 
@@ -259,28 +260,66 @@ func TestRegenerateFreshBody_OldestReleaseEmitsInitialReleaseNoAINoDiff(t *testi
 	}
 }
 
-func TestRegenerateFreshBody_AppliesMaxDiffLinesGuard(t *testing.T) {
+// splitTransport answers a prompt carrying diff with part notes and any other
+// prompt with mergeBody, so a chunked run's merge output is recognisable whatever
+// order its calls arrive in.
+type splitTransport struct {
+	mu        sync.Mutex
+	mergeBody string
+	prompts   []string
+}
+
+func (st *splitTransport) Generate(_ context.Context, prompt string) (string, error) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.prompts = append(st.prompts, prompt)
+	if strings.Contains(prompt, "diff --git ") {
+		return fmt.Sprintf("- part notes %d", len(st.prompts)), nil
+	}
+	return st.mergeBody, nil
+}
+
+// twoFileDiff is a range diff of two files of about size bytes each.
+func twoFileDiff(size int) string {
+	var b strings.Builder
+	for _, path := range []string{"api/a.go", "core/b.go"} {
+		b.WriteString("diff --git a/" + path + " b/" + path + "\n@@ -1 +1,9 @@\n")
+		b.WriteString(strings.Repeat("+"+strings.Repeat("x", 63)+"\n", size/64))
+	}
+	return b.String()
+}
+
+func TestRegenerateFreshBody_OverCap_ChunksAndMergesOverTheVersionsRange(t *testing.T) {
 	t.Parallel()
 
-	// max_diff_lines behaves as the forward path: an over-ceiling range diff returns
-	// ErrDiffTooLarge (wrapped) and the AI is NEVER called.
-	diff := "l1\nl2\nl3\nl4\n"
-	f := runner.NewFakeRunner()
-	f.Seed("git", runner.Result{Stdout: diff}, nil)
-	tr := &freshTransport{body: "should not be produced"}
+	diff := twoFileDiff(10_000)
+	f := seedFreshGit(diff, "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
+	tr := &splitTransport{mergeBody: "## merged fresh notes\n"}
 
 	cfg := freshCfg()
-	cfg.MaxDiffLines = 2
+	cfg.MaxPromptBytes = 20_000
 	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
-	_, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res)
-	if err == nil {
-		t.Fatal("RegenerateFreshBody returned nil error, want ErrDiffTooLarge")
+	body, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res)
+	if err != nil {
+		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
-	if !errors.Is(err, notes.ErrDiffTooLarge) {
-		t.Errorf("error = %v, want it to match notes.ErrDiffTooLarge", err)
+
+	if body != "## merged fresh notes\n" {
+		t.Errorf("body = %q, want the merge output byte-identical", body)
 	}
-	if tr.calls() != 0 {
-		t.Errorf("transport called %d times, want 0 — the AI must NOT run on an over-ceiling diff", tr.calls())
+	if len(tr.prompts) != 3 {
+		t.Fatalf("AI calls = %d, want two chunk calls and one merge", len(tr.prompts))
+	}
+	for i, p := range tr.prompts {
+		if len(p) > cfg.MaxPromptBytes {
+			t.Errorf("call %d is %d bytes, over the %d cap", i, len(p), cfg.MaxPromptBytes)
+		}
+		if strings.Contains(p, diff) {
+			t.Errorf("call %d carries the whole diff in one call", i)
+		}
+	}
+	if !invokedWith(f, "git", "diff", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md") {
+		t.Errorf("fresh chunked run did not diff the version's own range; got %v", f.Invocations())
 	}
 }
 

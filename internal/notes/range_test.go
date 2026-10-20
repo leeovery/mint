@@ -204,7 +204,7 @@ func TestGenerator_GenerateFromRange_AssemblesRangePrependsChangeMapRunsAI(t *te
 	transport := &recordingTransport{body: body}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
-	got, err := gen.GenerateFromRange(t.Context(), "v1.3.0..v1.4.0", config.Config{MaxDiffLines: 50000})
+	got, err := gen.GenerateFromRange(t.Context(), "v1.3.0..v1.4.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err != nil {
 		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
 	}
@@ -241,30 +241,6 @@ func indexOf(s, sub string) int {
 	return -1
 }
 
-func TestGenerator_GenerateFromRange_AppliesMaxDiffLinesGuard(t *testing.T) {
-	t.Parallel()
-
-	// The max_diff_lines guard is REUSED unchanged: an over-ceiling range diff returns
-	// ErrDiffTooLarge (wrapped) and the AI is NEVER called — exactly as the forward
-	// path. The guard runs on the post-exclusion range diff.
-	diff := "line1\nline2\nline3\nline4\n"
-	r := runner.NewFakeRunner()
-	r.Seed("git", runner.Result{Stdout: diff}, nil)
-	transport := &recordingTransport{body: "should not be produced"}
-
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
-	_, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 2})
-	if err == nil {
-		t.Fatal("GenerateFromRange returned nil error, want ErrDiffTooLarge")
-	}
-	if !errors.Is(err, notes.ErrDiffTooLarge) {
-		t.Errorf("error = %v, want it to match notes.ErrDiffTooLarge", err)
-	}
-	if transport.calls() != 0 {
-		t.Errorf("transport called %d times, want 0 — the AI must NOT run on an over-ceiling diff", transport.calls())
-	}
-}
-
 func TestGenerator_GenerateFromRange_SurfacesTransportFailure(t *testing.T) {
 	t.Parallel()
 
@@ -281,7 +257,7 @@ func TestGenerator_GenerateFromRange_SurfacesTransportFailure(t *testing.T) {
 	transport := &recordingTransport{err: errTransportFailure}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
-	_, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000})
+	_, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err == nil {
 		t.Fatal("GenerateFromRange returned nil error, want the transport failure surfaced")
 	}
@@ -309,7 +285,7 @@ func TestGenerator_GenerateFromRangeWithContext_AppendsOneTimeContextOverRange(t
 	transport := &recordingTransport{body: "regenerated body"}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
-	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.3.0..v1.4.0", config.Config{MaxDiffLines: 50000}, oneTime)
+	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.3.0..v1.4.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, oneTime)
 	if err != nil {
 		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
 	}
@@ -338,7 +314,7 @@ func TestGenerator_GenerateFromRange_DegenerateRangeReturnsStubNoAI(t *testing.T
 	transport := &recordingTransport{body: "must never be produced"}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
-	got, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000})
+	got, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err != nil {
 		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
 	}
@@ -363,7 +339,7 @@ func TestGenerator_GenerateFromRangeWithContext_DegenerateRangeReturnsStubNoAI(t
 	transport := &recordingTransport{body: "must never be produced"}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
-	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000}, "lead with auth")
+	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, "lead with auth")
 	if err != nil {
 		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
 	}
@@ -395,13 +371,13 @@ func TestGenerator_GenerateFromRangeWithContext_EmptyContextMatchesGenerateFromR
 
 	plainTransport := &recordingTransport{body: "body"}
 	plainGen := notes.NewGenerator(notes.NewAssembler(seed(), notes.ExcludeConfig{}), plainTransport, root)
-	if _, err := plainGen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000}); err != nil {
+	if _, err := plainGen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}); err != nil {
 		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
 	}
 
 	emptyTransport := &recordingTransport{body: "body"}
 	emptyGen := notes.NewGenerator(notes.NewAssembler(seed(), notes.ExcludeConfig{}), emptyTransport, root)
-	if _, err := emptyGen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxDiffLines: 50000}, ""); err != nil {
+	if _, err := emptyGen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, ""); err != nil {
 		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
 	}
 

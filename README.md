@@ -105,6 +105,8 @@ At the notes review gate, a single keypress (no Enter needed): **`y`** accept (E
 
 A `--dry-run` generates and caches the notes (~1 hour); a real run within the window reuses the previewed bytes instead of calling the AI again.
 
+Notes of any size go through the AI. When the composed notes prompt (instructions, Change Map, diff and closing reminder) fits in `max_prompt_bytes` (default 1,500,000 bytes), mint makes one call. Over it, mint skips that call and **chunks** the notes: the diff's files are packed in path order into chunk calls that each fit the cap, every one carrying the release's instructions (the default prompt with `context`, or your `[release].prompt` override), the whole-release Change Map and which part it is; then exactly one merge call turns every part's notes into the release's notes. The merge output ships byte-identical, reaches the review gate as AI notes (`r` included), and is what the tag, changelog and provider release carry. Chunking has no setting and asks nothing. `release regenerate` from a fresh source chunks the same way, per version.
+
 ```bash
 mint release                        # patch release, interactive
 mint release -m -y                  # minor release, unattended
@@ -204,7 +206,7 @@ The per-key reference tables below are the authoritative human config reference 
 |---|---|---|
 | `ai_command` | `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
 | `timeout` | `180` on release, `60` on commit | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
-| `max_diff_lines` | `50000` | diffs over this (post-exclusion) skip the AI |
+| `max_diff_lines` | `50000` | not read: release notes over `max_prompt_bytes` are chunked, and commit's cap is `max_prompt_bytes` |
 | `max_prompt_bytes` | `1500000` | cap, in bytes, on the composed prompt of any single AI call: instructions, Change Map, diff and closing reminder together; no call mint makes is bigger. Must be positive — `0` is rejected, never "no cap" |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
 

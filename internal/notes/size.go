@@ -6,31 +6,13 @@ import (
 	"strings"
 )
 
-// ErrDiffTooLarge is the distinguishable sentinel returned (wrapped) when the
-// post-exclusion diff exceeds max_diff_lines. It is matched with errors.Is so the
-// on_notes_failure routing (task 2-7) can branch on the too-large case and NAME
-// it ("diff too large") distinctly from other notes failures. The wrapped error
-// carries the actual line count and configured limit in its message.
+// ErrDiffTooLarge is the sentinel for an input over its size limit, matched with
+// errors.Is.
 var ErrDiffTooLarge = errors.New("diff too large")
 
-// CheckDiffSize is the max_diff_lines guard: a cost+quality ceiling on the
-// POST-exclusion diff. It counts the diff's lines and, if that exceeds maxLines,
-// returns a wrapped ErrDiffTooLarge so the caller skips the AI entirely (a huge
-// diff is slow, costly, and summarises to mush). A diff within the ceiling
-// returns nil, and the caller proceeds to the AI in a later wiring task.
-//
-// The input is ALREADY post-exclusion (the output of AssembleDiff, where git has
-// dropped CHANGELOG.md and any configured diff_exclude paths), so excluded-path
-// lines are inherently absent and cannot count toward the ceiling — the guard
-// counts only what it is handed.
-//
-// maxLines is passed in (the orchestrator resolves it from config.MaxDiffLines)
-// rather than read here, keeping the guard a pure function of (diff, maxLines).
-// The boundary is INCLUSIVE: exactly maxLines passes; strictly more fails.
-//
-// Deferred: the parked "Change Map + trimmed diff" escalation — trimming the diff
-// down to the ceiling instead of failing — is intentionally NOT implemented here
-// (revisit only on observed need; see the spec's Big-diff handling section).
+// CheckDiffSize reports whether diff runs past maxLines lines, returning a wrapped
+// ErrDiffTooLarge when it does. The boundary is INCLUSIVE: exactly maxLines passes;
+// strictly more fails.
 func CheckDiffSize(diff string, maxLines int) error {
 	got := countDiffLines(diff)
 	if got > maxLines {

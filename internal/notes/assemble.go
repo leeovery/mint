@@ -7,8 +7,8 @@
 // The diff base and exclusion tiers are layered in: the last_tag..HEAD diff with
 // the built-in CHANGELOG.md always-exclude (Phase 2), the configurable diff_exclude
 // globs, and the strategy-aware version_file exclusion (plain mode excludes the
-// bookkeeping file; embedded mode keeps the real source). The max_diff_lines cap is
-// a later layer — deliberately not here.
+// bookkeeping file; embedded mode keeps the real source). The max_prompt_bytes size
+// check is a later layer — deliberately not here.
 package notes
 
 import (
@@ -133,8 +133,8 @@ func forwardRange(lastTag string) string {
 
 // AssembleDiff returns the release diff for lastTag..HEAD with CHANGELOG.md and the
 // configured diff_exclude globs excluded, as git's raw post-exclusion stdout, ready
-// for downstream layering (the Change Map preamble and max_diff_lines cap are applied
-// by later layers, not here).
+// for downstream layering (the Change Map preamble and the max_prompt_bytes size check
+// are applied by later layers, not here).
 //
 // The diff is produced by `git diff {lastTag}..HEAD -- . {excludePathspecs}`, where
 // excludePathspecs is `:(exclude)CHANGELOG.md` followed by one `:(exclude)<glob>` per

@@ -22,7 +22,7 @@ var _ notes.Transport = (*recordingTransport)(nil)
 
 // recordingTransport is the recording fake for the notes.Transport seam: it
 // captures every prompt it receives and returns a scripted body/error. It lets
-// the generator tests assert the COMPOSED PROMPT (proving assemble + guard +
+// the generator tests assert the COMPOSED PROMPT (proving assemble + size check +
 // change map + compose ran first) and the body passthrough WITHOUT scripting the
 // real `claude` command through the runner — production wires the real
 // ai.Transport, which itself goes through the CommandRunner seam.
@@ -39,8 +39,6 @@ func (rt *recordingTransport) Generate(_ context.Context, prompt string) (string
 	return rt.body, rt.err
 }
 
-// calls reports how many times Generate was invoked — the load-bearing count for
-// "the AI is NEVER called" on the too-large-diff guard.
 func (rt *recordingTransport) calls() int {
 	return len(rt.prompts)
 }
@@ -70,10 +68,10 @@ func seedNormalPathGit(t *testing.T, diff, nameStatus, numstat string) *runner.F
 	return r
 }
 
-// normalCfg is a config with a generous max_diff_lines ceiling and no
+// normalCfg is a config with the default per-call cap and no
 // prompt-control knobs, the common setup for the happy-path tests.
 func normalCfg() config.Config {
-	return config.Config{MaxDiffLines: 50000}
+	return config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}
 }
 
 func TestGenerator_Generate_ReturnsValidatedAIBodyForPriorTagRelease(t *testing.T) {
@@ -141,14 +139,14 @@ func TestGenerator_Generate_ValidGenerationPassesThroughUnchanged(t *testing.T) 
 	}
 }
 
-func TestGenerator_Generate_InvokesAssembleGuardChangeMapComposeTransportInOrder(t *testing.T) {
+func TestGenerator_Generate_InvokesAssembleChangeMapComposeTransportInOrder(t *testing.T) {
 	t.Parallel()
 
-	// ORDER: assemble -> guard -> change map -> compose -> transport. Two
+	// ORDER: assemble -> change map -> compose -> size check -> transport. Two
 	// independent assertions prove the sequence:
 	//   1. The recording transport received a prompt that CONTAINS the diff text,
 	//      the Change Map text, AND the default instructions — proving
-	//      assemble + guard + changemap + compose all ran before the transport.
+	//      assemble + changemap + compose all ran before the transport.
 	//   2. The FakeRunner recorded the assemble `git diff` BEFORE the change map's
 	//      `--name-status`/`--numstat`.
 	diff := "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\n+package auth\n"
@@ -224,55 +222,25 @@ func TestGenerator_Generate_AIInputIsExactlyChangeMapAndDiffAndPrompt(t *testing
 	}
 }
 
-func TestGenerator_Generate_TooLargeDiff_SurfacesNotesFailureWithoutCallingAI(t *testing.T) {
+func TestGenerator_Generate_DiffExcludeGlobsReachAssembleDiff(t *testing.T) {
 	t.Parallel()
 
-	// A post-exclusion diff over max_diff_lines surfaces ErrDiffTooLarge as a typed
-	// notes failure (matchable via errors.Is) and the AI is NEVER called — the
-	// guard short-circuits before any transport call.
-	diff := "line1\nline2\nline3\nline4\nline5\n" // 5 lines, ceiling is 2.
-	r := seedNormalPathGit(t, diff, "A\tbig.go\n", "5\t0\tbig.go\n")
-	transport := &recordingTransport{body: "must never be returned"}
-
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
-	got, err := gen.Generate(t.Context(), "v5.0.0", config.Config{MaxDiffLines: 2})
-	if err == nil {
-		t.Fatal("Generate returned nil error for an over-ceiling diff, want ErrDiffTooLarge")
-	}
-	if !errors.Is(err, notes.ErrDiffTooLarge) {
-		t.Errorf("error = %v, want it to match notes.ErrDiffTooLarge", err)
-	}
-	if got != "" {
-		t.Errorf("body = %q, want empty when the guard fails", got)
-	}
-	if transport.calls() != 0 {
-		t.Errorf("transport called %d times, want 0 (AI must not run on an over-ceiling diff)", transport.calls())
-	}
-}
-
-func TestGenerator_Generate_DiffExcludeGlobsReachAssembleDiff_SizeGuardCountsPostExclusion(t *testing.T) {
-	t.Parallel()
-
-	// STRUCTURAL: diff_exclude excluded lines never count toward max_diff_lines because
-	// the size guard runs on AssembleDiff's POST-exclusion output. Here the configured
-	// glob rides into the FIRST git call (AssembleDiff), and git's post-exclusion stdout
-	// is the SMALL diff seeded — only those 2 lines reach CheckDiffSize, so a ceiling of
-	// 2 PASSES even though the pre-exclusion change set was conceptually larger.
-	diff := "line1\nline2\n" // post-exclusion: 2 lines, exactly the ceiling.
+	// The configured glob rides into the FIRST git call (AssembleDiff), so git — not
+	// Go — strips the excluded paths and the size check measures only the
+	// post-exclusion diff.
+	diff := "line1\nline2\n"
 	r := seedNormalPathGit(t, diff, "M\tapi/a.go\n", "1\t1\tapi/a.go\n")
 	transport := &recordingTransport{body: "notes body"}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}}), transport, t.TempDir())
-	got, err := gen.Generate(t.Context(), "v5.0.0", config.Config{MaxDiffLines: 2})
+	got, err := gen.Generate(t.Context(), "v5.0.0", normalCfg())
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
 	if got != "notes body" {
-		t.Errorf("body = %q, want the AI body %q (post-exclusion diff within the ceiling)", got, "notes body")
+		t.Errorf("body = %q, want the AI body %q", got, "notes body")
 	}
 
-	// The glob must reach AssembleDiff (the FIRST git call) so git — not Go — strips the
-	// excluded paths BEFORE the size guard ever counts.
 	invs := r.Invocations()
 	if len(invs) == 0 {
 		t.Fatal("no git calls recorded; AssembleDiff must run first")

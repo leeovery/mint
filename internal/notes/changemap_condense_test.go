@@ -282,7 +282,7 @@ func TestGenerator_Generate_SinglePassCarriesCondensedMap(t *testing.T) {
 	nameStatus := nameStatusOf(removedRun("vendor", 4312), []string{"M\tcore/run.go"})
 	r := seedNormalPathGit(t, diff, nameStatus, "10\t2\tcore/run.go\n")
 	transport := &recordingTransport{body: "notes"}
-	cfg := config.Config{MaxDiffLines: 50000, MaxPromptBytes: config.DefaultMaxPromptBytes}
+	cfg := config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
 	if _, err := gen.Generate(t.Context(), "v1.0.0", cfg); err != nil {
@@ -325,7 +325,7 @@ func TestGenerator_Generate_ConfiguredCapSetsTheMapsShare(t *testing.T) {
 	nameStatus := nameStatusOf(removedRun("vendor", 40), []string{"M\tcore/run.go"})
 	r := seedNormalPathGit(t, diff, nameStatus, "10\t2\tcore/run.go\n")
 	transport := &recordingTransport{body: "notes"}
-	cfg := config.Config{MaxDiffLines: 50000, MaxPromptBytes: 20_000}
+	cfg := config.Config{MaxPromptBytes: 20_000}
 
 	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
 	if _, err := gen.Generate(t.Context(), "v1.0.0", cfg); err != nil {

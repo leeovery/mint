@@ -2,6 +2,7 @@ package main
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"mint/internal/config"
@@ -222,6 +223,57 @@ func TestNewBatchBodyProducer_Release_ConsumesPreReadBody(t *testing.T) {
 	}
 	if got := len(f.Invocations()); got != 0 {
 		t.Errorf("gh invocations = %d, want 0 (the pre-read body must not be re-read)", got)
+	}
+}
+
+// TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange proves a fresh
+// version under `--all` whose single-pass prompt is over max_prompt_bytes gets its
+// notes from chunk calls and one merge over that version's own range, through the
+// release-notes transport.
+func TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange(t *testing.T) {
+	t.Parallel()
+
+	var diff strings.Builder
+	for _, path := range []string{"api/a.go", "core/b.go"} {
+		diff.WriteString("diff --git a/" + path + " b/" + path + "\n@@ -1 +1,9 @@\n")
+		diff.WriteString(strings.Repeat("+"+strings.Repeat("x", 63)+"\n", 156))
+	}
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: diff.String()}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "M\tapi/a.go\nM\tcore/b.go\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "156\t0\tapi/a.go\n156\t0\tcore/b.go\n"}},
+	)
+	const merged = "## merged notes for v1.1.0\n"
+	f.SeedSequence("claude",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "- api notes"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "- core notes"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: merged}},
+	)
+
+	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), publish.NewGitHubPublisher(f))
+	body, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "")
+	if err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+
+	if body != merged {
+		t.Errorf("fresh body = %q, want the merge output %q", body, merged)
+	}
+	var aiCalls int
+	for _, inv := range f.Invocations() {
+		if inv.Name == "claude" {
+			aiCalls++
+			if len(inv.Stdin) > 20_000 {
+				t.Errorf("an AI call is %d bytes, over the 20000-byte cap", len(inv.Stdin))
+			}
+		}
+	}
+	if aiCalls != 3 {
+		t.Errorf("AI calls = %d, want two chunk calls and one merge", aiCalls)
+	}
+	if got := f.Invocations()[0].Args; !slices.Equal(got, []string{"diff", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md"}) {
+		t.Errorf("first git call = %v, want the version's own range diff", got)
 	}
 }
 

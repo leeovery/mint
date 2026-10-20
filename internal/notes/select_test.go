@@ -161,7 +161,7 @@ func TestSelector_SelectBody_NormalAIPathRunsOnlyWhenNoEarlierGuardApplies(t *te
 	sel := newSelector(t, r, transport)
 
 	state := notes.SelectState{LastTag: "v1.0.0", NoAI: false}
-	body, kind, err := sel.SelectBody(t.Context(), state, config.Config{Release: abortRel(), MaxDiffLines: 50000})
+	body, kind, err := sel.SelectBody(t.Context(), state, config.Config{Release: abortRel(), MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err != nil {
 		t.Fatalf("SelectBody returned unexpected error: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestSelector_SelectBody_OnNotesFailureGovernsOnlyNormalAIPath_Abort(t *test
 	sel := newSelector(t, r, transport)
 
 	state := notes.SelectState{LastTag: "v1.0.0", NoAI: false}
-	body, kind, err := sel.SelectBody(t.Context(), state, config.Config{Release: config.Release{OnNotesFailure: "abort"}, MaxDiffLines: 50000})
+	body, kind, err := sel.SelectBody(t.Context(), state, config.Config{Release: config.Release{OnNotesFailure: "abort"}, MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err == nil {
 		t.Fatal("SelectBody returned nil error on a transport failure with abort, want the abort error")
 	}
@@ -232,7 +232,7 @@ func TestSelector_SelectBody_OnNotesFailureGovernsOnlyNormalAIPath_Fallback(t *t
 	sel := newSelector(t, r, transport)
 
 	state := notes.SelectState{LastTag: "v1.0.0", NoAI: false}
-	body, kind, err := sel.SelectBody(t.Context(), state, config.Config{Release: config.Release{OnNotesFailure: "fallback"}, MaxDiffLines: 50000})
+	body, kind, err := sel.SelectBody(t.Context(), state, config.Config{Release: config.Release{OnNotesFailure: "fallback"}, MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err != nil {
 		t.Fatalf("SelectBody returned unexpected error in fallback mode: %v", err)
 	}

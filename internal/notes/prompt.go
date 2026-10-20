@@ -85,14 +85,14 @@ const OutputReminder = "Now output ONLY the release notes themselves, exactly as
 // ComposePrompt assembles the final AI input from its parts, in EXACTLY this
 // order and nothing else:
 //
-//	{instructions} + {Change Map preamble} + {post-exclusion, capped diff} + {OutputReminder}
+//	{instructions} + {Change Map preamble} + {post-exclusion diff} + {OutputReminder}
 //
 // instructions is the resolved prompt (the default prompt, the default plus an
 // injected [release].context, or a full [release].prompt override — see
 // ResolveInstructions). changeMap is the diff-derived salience preamble from
-// BuildChangeMap. diff is the post-exclusion, max_diff_lines-capped diff from
-// AssembleDiff. The function is PURE: it only orders and joins, performing no IO
-// and no transport — it produces the AI INPUT, never parses the AI output.
+// BuildChangeMap. diff is the post-exclusion diff from AssembleDiff. The function
+// is PURE: it only orders and joins, performing no IO and no transport — it
+// produces the AI INPUT, never parses the AI output.
 //
 // The parts are separated by a blank line so the AI sees clearly delimited
 // blocks; no labels or machine-parseable wrappers are added (the AI returns the

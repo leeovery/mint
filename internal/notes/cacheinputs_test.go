@@ -28,7 +28,7 @@ func TestSelector_CacheInputs_NormalAIPath(t *testing.T) {
 	sel := newSelector(t, r, transport)
 
 	state := notes.SelectState{LastTag: "v1.0.0", NoAI: false}
-	body, kind, inputs, err := sel.SelectBodyWithCacheInputs(t.Context(), state, config.Config{Release: abortRel(), MaxDiffLines: 50000})
+	body, kind, inputs, err := sel.SelectBodyWithCacheInputs(t.Context(), state, config.Config{Release: abortRel(), MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err != nil {
 		t.Fatalf("SelectBodyWithCacheInputs returned unexpected error: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestSelector_Reuse_KeyMatch_SkipsAI(t *testing.T) {
 	}
 
 	state := notes.SelectState{LastTag: "v1.0.0"}
-	body, kind, inputs, err := sel.SelectBodyWithReuse(t.Context(), state, config.Config{Release: abortRel(), MaxDiffLines: 50000}, reuse)
+	body, kind, inputs, err := sel.SelectBodyWithReuse(t.Context(), state, config.Config{Release: abortRel(), MaxPromptBytes: config.DefaultMaxPromptBytes}, reuse)
 	if err != nil {
 		t.Fatalf("SelectBodyWithReuse returned unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestSelector_Reuse_KeyMiss_Generates(t *testing.T) {
 	reuse := func(string, string) (string, bool, error) { return "", false, nil } // a miss.
 
 	state := notes.SelectState{LastTag: "v1.0.0"}
-	body, kind, _, err := sel.SelectBodyWithReuse(t.Context(), state, config.Config{Release: abortRel(), MaxDiffLines: 50000}, reuse)
+	body, kind, _, err := sel.SelectBodyWithReuse(t.Context(), state, config.Config{Release: abortRel(), MaxPromptBytes: config.DefaultMaxPromptBytes}, reuse)
 	if err != nil {
 		t.Fatalf("SelectBodyWithReuse returned unexpected error: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestSelector_Reuse_NilHook_AlwaysGenerates(t *testing.T) {
 	sel := newSelector(t, r, transport)
 
 	state := notes.SelectState{LastTag: "v1.0.0"}
-	body, kind, inputs, err := sel.SelectBodyWithReuse(t.Context(), state, config.Config{Release: abortRel(), MaxDiffLines: 50000}, nil)
+	body, kind, inputs, err := sel.SelectBodyWithReuse(t.Context(), state, config.Config{Release: abortRel(), MaxPromptBytes: config.DefaultMaxPromptBytes}, nil)
 	if err != nil {
 		t.Fatalf("SelectBodyWithReuse returned unexpected error: %v", err)
 	}

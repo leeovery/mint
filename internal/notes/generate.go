@@ -20,10 +20,11 @@ type Transport interface {
 }
 
 // Generator is the NORMAL AI release-notes path: it orchestrates the assembly
-// pieces (diff, size guard, Change Map, prompt compose) and hands the finished
-// prompt to the transport. It holds the git-aware Assembler, the AI Transport,
-// and the repo root (for ResolveInstructions, which reads context/prompt files);
-// max_diff_lines and the [release] knobs arrive per-call via config.Config.
+// pieces (diff, Change Map, prompt compose, size check) and hands the finished
+// prompt — or, over the cap, the chunk and merge prompts — to the transport. It
+// holds the git-aware Assembler, the AI Transport, and the repo root (for
+// ResolveInstructions, which reads context/prompt files); max_prompt_bytes and the
+// [release] knobs arrive per-call via config.Config.
 //
 // This is the NORMAL PATH ONLY: it assumes a NON-DEGENERATE (non-empty) diff. The
 // notes-path precedence that selects this path over the first-release, --no-ai,
@@ -48,19 +49,19 @@ func NewGenerator(assembler *Assembler, transport Transport, root string) *Gener
 // the engine pieces in EXACTLY this order:
 //
 //  1. AssembleDiff — the post-exclusion diff.
-//  2. CheckDiffSize — the max_diff_lines guard. An over-ceiling diff returns
-//     ErrDiffTooLarge (wrapped) and the AI is NEVER called.
-//  3. BuildChangeMap — the salience preamble.
-//  4. ResolveInstructions + ComposePrompt — the full AI input (instructions +
-//     Change Map + capped diff, nothing else; no commit messages).
-//  5. transport.Generate — the validated body, or a typed transport failure.
+//  2. BuildChangeMap — the salience preamble.
+//  3. ResolveInstructions + ComposePrompt — the single-pass AI input (instructions +
+//     Change Map + diff + closing reminder, nothing else; no commit messages).
+//  4. The size check — a single-pass prompt within max_prompt_bytes goes to
+//     transport.Generate as one call; one over it skips that call and is written by
+//     chunk calls and one merge call instead (generateChunked).
 //
 // The body is returned WHOLE: no parsing, splitting, label extraction, or
-// per-sink reassembly — a valid generation passes through byte-identical. Typed
-// notes failures (ErrDiffTooLarge from the guard; ai.ErrTimeout /
-// ai.ErrCommandMissing / ai.ErrGenerationFailed from the transport) are surfaced with
-// the cause PRESERVED (wrapped with %w so errors.Is still matches). The decision
-// of abort-vs-fallback is on_notes_failure routing, NOT this method's concern.
+// per-sink reassembly — a valid generation, single-pass or merged, passes through
+// byte-identical. Typed transport failures (ai.ErrTimeout / ai.ErrCommandMissing /
+// ai.ErrGenerationFailed) are surfaced with the cause PRESERVED (wrapped with %w so
+// errors.Is still matches). The decision of abort-vs-fallback is on_notes_failure
+// routing, NOT this method's concern.
 func (g *Generator) Generate(ctx context.Context, lastTag string, cfg config.Config) (string, error) {
 	return g.GenerateWithContext(ctx, lastTag, cfg, "")
 }
@@ -69,7 +70,7 @@ func (g *Generator) Generate(ctx context.Context, lastTag string, cfg config.Con
 // resolved instructions for THIS generation only. It is the AI support for the
 // review gate's `r` (regenerate) choice: the user supplies a transient nudge
 // ("lead with the auth package"), which is appended to the prompt's instructions
-// before ComposePrompt and flows into this one AI call.
+// before ComposePrompt and flows into every AI call this generation makes.
 //
 // The one-time context is TRANSIENT — it is appended to the prompt only and is
 // NEVER written back to cfg/[release].context. cfg is passed by value and is not
@@ -90,9 +91,9 @@ func (g *Generator) GenerateWithContext(ctx context.Context, lastTag string, cfg
 // release-notes body for an ARBITRARY git range — 5-3's `{PreviousTag}..{Tag}` —
 // instead of the forward `{lastTag}..HEAD`. It REUSES the forward orchestration end to
 // end: AssembleRange (the post-exclusion range diff with the SAME exclusion tiers) ->
-// CheckDiffSize (the max_diff_lines guard) -> BuildChangeMapForRange (the Change Map
-// computed AFTER exclusion, prepended to the AI input) -> ComposePrompt ->
-// transport.Generate (the SAME AI validation/retry).
+// BuildChangeMapForRange (the Change Map computed AFTER exclusion, prepended to the AI
+// input) -> ComposePrompt -> the size check -> transport.Generate as one call, or
+// chunk calls and a merge over the cap (the SAME AI validation/retry either way).
 //
 // The failure is SURFACED (wrapped, errors.Is still matches) exactly as the forward
 // generator — single-mode fresh routes on_notes_failure at a higher layer and 5-12's
@@ -107,8 +108,8 @@ func (g *Generator) GenerateFromRange(ctx context.Context, diffRange string, cfg
 // appended to the resolved instructions for THIS generation only — the range
 // counterpart of GenerateWithContext. It is the AI support for the regenerate FRESH
 // path's review-gate `r` (regenerate) choice: the user supplies a transient nudge,
-// which is appended to the prompt before ComposePrompt and flows into this one AI call
-// over the resolved `{PreviousTag}..{Tag}` range.
+// which is appended to the prompt before ComposePrompt and flows into every AI call
+// this generation makes over the resolved `{PreviousTag}..{Tag}` range.
 //
 // The one-time context is TRANSIENT — appended to the prompt only, NEVER written back
 // to cfg/[release].context (cfg is passed by value and not mutated). An EMPTY
@@ -124,7 +125,7 @@ func (g *Generator) GenerateFromRangeWithContext(ctx context.Context, diffRange 
 }
 
 // GenerateFromDiff is Generate's body over an ALREADY-ASSEMBLED post-exclusion
-// diff: it runs the size guard, change map, prompt compose, and transport on the
+// diff: it runs the change map, prompt compose, size check, and transport on the
 // supplied diff instead of assembling it itself. It exists so the notes-path
 // precedence (SelectBody), which already assembles the diff for the degenerate
 // check, can pass that same diff straight into the AI path — assembling ONCE
@@ -132,23 +133,22 @@ func (g *Generator) GenerateFromRangeWithContext(ctx context.Context, diffRange 
 // so its behaviour is byte-identical to before; callers needing the assemble +
 // generate in one step keep using Generate.
 //
-// Steps 2-5 of Generate's documented order run here unchanged: CheckDiffSize ->
-// BuildChangeMap -> ResolveInstructions + ComposePrompt -> transport.Generate.
-// The diff IS NOT re-assembled, so the caller is responsible for passing the same
+// Steps 2-4 of Generate's documented order run here unchanged. The diff IS NOT
+// re-assembled, so the caller is responsible for passing the same
 // post-exclusion diff AssembleDiff would have produced for lastTag.
 func (g *Generator) GenerateFromDiff(ctx context.Context, lastTag, diff string, cfg config.Config) (string, error) {
 	return g.generateFromDiffWithContext(ctx, forwardRange(lastTag), diff, cfg, "")
 }
 
 // generateFromDiffWithContext is the shared body of GenerateFromDiff,
-// GenerateWithContext, and GenerateFromRange: it runs steps 2-5 of Generate's
-// documented order over the supplied diff (CheckDiffSize ->
-// BuildChangeMapForRange -> ResolveInstructions + appendOneTimeContext +
-// ComposePrompt -> transport.Generate). diffRange is the git range the Change Map is
+// GenerateWithContext, and GenerateFromRange: it runs steps 2-4 of Generate's
+// documented order over the supplied diff (BuildChangeMapForRange ->
+// ResolveInstructions + appendOneTimeContext + ComposePrompt -> the size check ->
+// transport.Generate or generateChunked). diffRange is the git range the Change Map is
 // computed over — `{lastTag}..HEAD` on the forward path, `{PreviousTag}..{Tag}` on the
 // regenerate fresh path — so the map matches the diff exactly. The one-time context is
-// appended to the resolved instructions ONLY for this prompt; an empty context appends
-// nothing, so GenerateFromDiff (which passes "") is byte-identical to before.
+// appended to the resolved instructions ONLY for this generation, so it rides in every
+// call a chunked run makes; an empty context appends nothing.
 func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, diff string, cfg config.Config, oneTimeContext string) (string, error) {
 	// Degenerate guard, shared by EVERY range producer that reaches this core: an
 	// empty/whitespace-only post-exclusion diff returns StubBody with NO AI call —
@@ -156,16 +156,12 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 	// is the one input the AI reliably hallucinates on, so the rule is path-agnostic.
 	// The fresh `vX-1..vX` range always carries mint's release-bookkeeping commit, so
 	// a version whose only non-excluded change was that bookkeeping lands here with an
-	// empty diff; this guard catches it before the size check, change map, and
+	// empty diff; this guard catches it before the change map, size check, and
 	// transport. GenerateFromDiff (the forward AI path) reaches this core ONLY after
 	// SelectBody has already excluded degenerate diffs, so re-asserting it here is a
 	// harmless, never-true check on that path — the rule lives in ONE place.
 	if IsDegenerate(diff) {
 		return StubBody(), nil
-	}
-
-	if err := CheckDiffSize(diff, cfg.MaxDiffLines); err != nil {
-		return "", fmt.Errorf("notes size guard: %w", err)
 	}
 
 	changeMap, err := g.assembler.BuildChangeMapForRange(ctx, diffRange, cfg.MaxPromptBytes)
@@ -178,7 +174,11 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return "", fmt.Errorf("resolving notes instructions: %w", err)
 	}
 
-	prompt := ComposePrompt(appendOneTimeContext(instructions, oneTimeContext), changeMap, diff)
+	instructions = appendOneTimeContext(instructions, oneTimeContext)
+	prompt := ComposePrompt(instructions, changeMap, diff)
+	if len(prompt) > cfg.MaxPromptBytes {
+		return g.generateChunked(ctx, instructions, changeMap, diff, cfg.MaxPromptBytes)
+	}
 
 	body, err := g.transport.Generate(ctx, prompt)
 	if err != nil {
