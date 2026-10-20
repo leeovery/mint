@@ -31,6 +31,7 @@ import (
 	"context"
 	"strings"
 
+	"mint/internal/git"
 	"mint/internal/presenter"
 )
 
@@ -46,8 +47,12 @@ const noChangesToStash = "No local changes to save"
 // (stashed=false): mint never owes a pop it cannot safely make, and the subsequent
 // clean-tree gate still guards correctness (a dirty tree that failed to stash simply
 // aborts at the gate as it would without --autostash).
-func autostashPush(ctx context.Context, deps ReleaseDeps) bool {
-	res, err := deps.Mutator.Mutate(ctx, nil, "git", "stash", "push", "--include-untracked")
+//
+// A keepOut path is left out of the stash and stays in the work tree, staged edits
+// still staged. When it is the only change, git saves nothing and no pop is owed.
+func autostashPush(ctx context.Context, deps ReleaseDeps, keepOut git.Exclusion) bool {
+	args := append([]string{"stash", "push", "--include-untracked"}, keepOut.Pathspec()...)
+	res, err := deps.Mutator.Mutate(ctx, nil, "git", args...)
 	if err != nil {
 		return false
 	}

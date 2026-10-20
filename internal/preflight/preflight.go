@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	"mint/internal/git"
 	"mint/internal/runner"
 )
 
@@ -78,9 +79,9 @@ func newGateError(format string, args ...any) *GateError {
 // sole purpose is to clean the tree for this gate, the gate must be bypassed too so a
 // dirty-tree dry run still completes its preview rather than newly aborting here. It
 // weakens ONLY the clean-tree gate; the on-branch and tag-free gates still run.
-func RunLocalGates(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch, skipCleanTree bool) error {
+func RunLocalGates(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch, skipCleanTree bool, keepOut git.Exclusion) error {
 	if !skipCleanTree {
-		if err := CheckCleanTree(ctx, r); err != nil {
+		if err := CheckCleanTree(ctx, r, keepOut); err != nil {
 			return err
 		}
 	}
@@ -96,9 +97,11 @@ func RunLocalGates(ctx context.Context, r runner.CommandRunner, releaseBranch, t
 // must be empty. Any porcelain entry — uncommitted/unstaged tracked changes or a
 // non-ignored untracked file — fails the gate. Gitignored files are exempt:
 // porcelain omits them by default and --ignored is deliberately not passed, so
-// build outputs never trip the gate.
-func CheckCleanTree(ctx context.Context, r runner.CommandRunner) error {
-	res, err := r.Run(ctx, "git", "status", "--porcelain")
+// build outputs never trip the gate. A keepOut path is left out of the probe, so
+// its changes never count.
+func CheckCleanTree(ctx context.Context, r runner.CommandRunner, keepOut git.Exclusion) error {
+	args := append([]string{"status", "--porcelain"}, keepOut.Pathspec()...)
+	res, err := r.Run(ctx, "git", args...)
 	if err != nil {
 		return fmt.Errorf("checking working tree status: %w", err)
 	}

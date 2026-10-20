@@ -2,6 +2,7 @@ package record
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,10 +25,15 @@ import (
 // A non-zero `git status` or `git add` exit short-circuits before the next step (so
 // a failed probe or stage can never produce a commit) and the error is surfaced for
 // the orchestrator to abort/unwind on.
-func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string) (bool, error) {
+//
+// A keepOut path is left out of the probe, the stage and the commit: its changes
+// neither trigger the commit nor ride in it, and any of them already staged stay
+// staged (see commitStaged). When that path's staged edits are all the index holds,
+// no commit is made and committed is false.
+func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, keepOut git.Exclusion) (bool, error) {
 	// The status probe is a READ, so it goes through the Mutator's plain pass-through
 	// (m.Run) — no lock logic. Only the add/commit mutations carry lock resilience.
-	status, err := m.Run(ctx, "git", "-C", dir, "status", "--porcelain")
+	status, err := m.Run(ctx, "git", withExclusion(keepOut, "-C", dir, "status", "--porcelain")...)
 	if err != nil {
 		return false, fmt.Errorf("probing tree status in %s: %w", dir, err)
 	}
@@ -35,20 +41,21 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string) (
 		return false, nil
 	}
 
-	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "add", "-A"); err != nil {
+	if _, err := m.Mutate(ctx, nil, "git", withExclusion(keepOut, "-C", dir, "add", "-A")...); err != nil {
 		return false, fmt.Errorf("staging dirty tree in %s: %w", dir, err)
 	}
-	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
+	committed, err := commitStaged(ctx, m, dir, subject, keepOut)
+	if err != nil {
 		return false, fmt.Errorf("committing dirty tree %q: %w", subject, err)
 	}
-	return true, nil
+	return committed, nil
 }
 
 // CommitBookkeeping builds the single release-bookkeeping commit, FOLDING the
 // changelog change and the version-file projection into ONE commit with subject
 // `{commitPrefix} Release {tag}` (e.g. the default 🌿 prefix yields
-// `🌿 Release v0.0.1`). Both git invocations target dir (the repo root) via
-// `git -C {dir}` so they are independent of the process working directory.
+// `🌿 Release v0.0.1`). Every git invocation targets dir (the repo root) via
+// `git -C {dir}` so it is independent of the process working directory.
 //
 // changelogChanged and versionChanged are the net-change signals from
 // WriteChangelog and ProjectVersionFile. Only what actually changed is staged: the
@@ -66,7 +73,11 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string) (
 //
 // This bookkeeping commit is kept DISTINCT from the pre_tag hook-artifact commit
 // (CommitDirtyTree), which precedes it with its own chore subject.
-func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool) error {
+//
+// A keepOut path is left out of the commit, so edits to it the operator had already
+// staged neither ride in the commit nor lose their staged state (see commitStaged).
+// Should nothing else be staged, it fails rather than report a commit it never made.
+func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool, keepOut git.Exclusion) error {
 	// The no-op branch consumes the SAME shared predicate the engine spine consults
 	// to fold the resulting commit into its tracked state, so the two can never desync.
 	if !BookkeepingWillCommit(versionFile, changelogChanged, versionChanged) {
@@ -80,10 +91,75 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 	}
 
 	subject := BookkeepingSubject(commitPrefix, tag)
-	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
+	committed, err := commitStaged(ctx, m, dir, subject, keepOut)
+	if err != nil {
 		return fmt.Errorf("committing release bookkeeping %q: %w", subject, err)
 	}
+	if !committed {
+		return fmt.Errorf("committing release bookkeeping %q: %w", subject, errNothingStaged)
+	}
 	return nil
+}
+
+// errNothingStaged reports a commit that had nothing to take once keepOut was left out.
+var errNothingStaged = errors.New("nothing staged to commit")
+
+// commitStaged commits the index in dir with subject, reporting whether a commit was
+// made. Only when keepOut has staged edits does it name the other staged paths on
+// stdin instead: a bare exclusion pathspec on `git commit` would commit the work-tree
+// content of every other tracked path, sweeping in unstaged and assume-unchanged
+// edits. The named paths are still committed from the work tree, which matches the
+// index only for paths staged just before the call. The list is never empty when the
+// commit runs, since an empty pathspec file commits the whole index, keepOut's staged
+// edits included. On this pathspec route git runs the commit hooks against a
+// temporary index, so a hook that re-stages its rewrite leaves the real index behind.
+func commitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keepOut git.Exclusion) (bool, error) {
+	keepOutStaged, err := hasStagedEdits(ctx, m, dir, keepOut)
+	if err != nil {
+		return false, err
+	}
+	if !keepOutStaged {
+		if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	staged, err := m.Run(ctx, "git", withExclusion(keepOut, "-C", dir, "diff", "--cached", "--name-only", "-z", "--no-renames")...)
+	if err != nil {
+		return false, fmt.Errorf("listing staged paths in %s: %w", dir, err)
+	}
+	if staged.Stdout == "" {
+		return false, nil
+	}
+	if _, err := m.Mutate(ctx, literalPathspecs(staged.Stdout), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// hasStagedEdits reports whether keepOut names a path with edits in the index.
+func hasStagedEdits(ctx context.Context, m *git.Mutator, dir string, keepOut git.Exclusion) (bool, error) {
+	if keepOut == "" {
+		return false, nil
+	}
+	res, err := m.Run(ctx, "git", "-C", dir, "diff", "--cached", "--name-only", "-z", "--no-renames", "--", git.LiteralPathspec(string(keepOut)))
+	if err != nil {
+		return false, fmt.Errorf("checking %s for staged edits: %w", keepOut, err)
+	}
+	return res.Stdout != "", nil
+}
+
+// literalPathspecs turns a NUL-terminated path list into NUL-terminated root-anchored
+// literal pathspecs. The magic goes on each entry rather than `--literal-pathspecs`,
+// which would export GIT_LITERAL_PATHSPECS to the commit hooks and break their globs.
+func literalPathspecs(paths string) []byte {
+	var b strings.Builder
+	for _, path := range strings.Split(strings.TrimSuffix(paths, "\x00"), "\x00") {
+		b.WriteString(git.LiteralPathspec(path))
+		b.WriteByte(0)
+	}
+	return []byte(b.String())
 }
 
 // BookkeepingSubject is the SINGLE source of the release-bookkeeping commit subject
@@ -119,4 +195,8 @@ func bookkeepingPaths(versionFile string, changelogChanged, versionChanged bool)
 		paths = append(paths, versionFile)
 	}
 	return paths
+}
+
+func withExclusion(keepOut git.Exclusion, args ...string) []string {
+	return append(args, keepOut.Pathspec()...)
 }

@@ -28,7 +28,7 @@ func TestCommitBookkeeping_ChangelogOnly_StagesChangelogAndCommitsWithSubject(t 
 	r.Seed("git", runner.Result{}, nil)
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, false); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, false, ""); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -61,7 +61,7 @@ func TestCommitBookkeeping_BothChanged_FoldsIntoOneCommit(t *testing.T) {
 	r.Seed("git", runner.Result{}, nil)
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, true); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, true, ""); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -94,7 +94,7 @@ func TestCommitBookkeeping_VersionOnly_StagesVersionFileAndCommits(t *testing.T)
 	r.Seed("git", runner.Result{}, nil)
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", false, true); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", false, true, ""); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -125,7 +125,7 @@ func TestCommitBookkeeping_NeitherChanged_SkipsCommit(t *testing.T) {
 	r := runner.NewFakeRunner()
 
 	const dir = "/repo/root"
-	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", false, false); err != nil {
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", false, false, ""); err != nil {
 		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 	}
 
@@ -157,7 +157,7 @@ func TestCommitBookkeeping_SubjectHonoursPrefixAndTag(t *testing.T) {
 			r := runner.NewFakeRunner()
 			r.Seed("git", runner.Result{}, nil)
 
-			if err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", tt.commitPrefix, tt.tag, "version.txt", true, false); err != nil {
+			if err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", tt.commitPrefix, tt.tag, "version.txt", true, false, ""); err != nil {
 				t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
 			}
 
@@ -179,7 +179,7 @@ func TestCommitBookkeeping_StageFails_SurfacesError(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: pathspec error\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "version.txt", true, false)
+	err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "version.txt", true, false, "")
 	if err == nil {
 		t.Fatal("CommitBookkeeping returned nil error, want the git add failure to surface")
 	}
@@ -204,7 +204,7 @@ func TestCommitDirtyTree_DirtyTree_StagesAllAndCommits(t *testing.T) {
 	)
 
 	const dir = "/repo/root"
-	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), dir, "chore(release): pre-tag artifacts for v0.0.1")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), dir, "chore(release): pre-tag artifacts for v0.0.1", "")
 	if err != nil {
 		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestCommitDirtyTree_CleanTree_CommitsNothing(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil) // status --porcelain (clean)
 
-	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "chore(release): pre-tag artifacts for v0.0.1")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "chore(release): pre-tag artifacts for v0.0.1", "")
 	if err != nil {
 		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestCommitDirtyTree_StatusProbeFails_SurfacesError(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stderr: "fatal: not a git repo\n", ExitCode: 128}, errors.New("exit status 128"))
 
-	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject", "")
 	if err == nil {
 		t.Fatal("CommitDirtyTree returned nil error, want the status probe failure to surface")
 	}
@@ -289,7 +289,7 @@ func TestCommitDirtyTree_StageFails_SurfacesErrorBeforeCommit(t *testing.T) {
 		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("exit status 1")}, // add -A fails
 	)
 
-	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject")
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject", "")
 	if err == nil {
 		t.Fatal("CommitDirtyTree returned nil error, want the git add failure to surface")
 	}
@@ -298,6 +298,248 @@ func TestCommitDirtyTree_StageFails_SurfacesErrorBeforeCommit(t *testing.T) {
 	}
 	if got := len(r.Invocations()); got != 2 {
 		t.Errorf("invocations = %d, want 2 (commit must not run after a failed stage)", got)
+	}
+}
+
+const notesExclusionPathspec = ":(top,literal,exclude)NEXT_RELEASE.md"
+
+// stagedPathsArgs is the staged-path read a commit that keeps NEXT_RELEASE.md out
+// makes in dir.
+func stagedPathsArgs(dir string) []string {
+	return []string{"-C", dir, "diff", "--cached", "--name-only", "-z", "--no-renames", "--", notesExclusionPathspec}
+}
+
+// notesStagedArgs is the probe for staged edits to NEXT_RELEASE.md in dir.
+func notesStagedArgs(dir string) []string {
+	return []string{"-C", dir, "diff", "--cached", "--name-only", "-z", "--no-renames", "--", ":(top,literal)NEXT_RELEASE.md"}
+}
+
+// notesStaged is the probe's answer when NEXT_RELEASE.md has staged edits.
+var notesStaged = runner.ScriptedCall{Result: runner.Result{Stdout: "NEXT_RELEASE.md\x00"}}
+
+// pathspecCommitArgs is the commit of exactly the paths named on stdin in dir.
+func pathspecCommitArgs(dir, subject string) []string {
+	return []string{"-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"}
+}
+
+type wantCall struct {
+	args  []string
+	stdin string
+}
+
+func assertCalls(t *testing.T, r *runner.FakeRunner, want []wantCall) {
+	t.Helper()
+	invs := r.Invocations()
+	if len(invs) != len(want) {
+		t.Fatalf("invocations = %d, want %d\n got: %v", len(invs), len(want), invs)
+	}
+	for i, inv := range invs {
+		if inv.Name != "git" || !equalArgs(inv.Args, want[i].args) || inv.Stdin != want[i].stdin {
+			t.Errorf("invocation %d = %s %q stdin %q, want git %q stdin %q", i, inv.Name, inv.Args, inv.Stdin, want[i].args, want[i].stdin)
+		}
+	}
+}
+
+func TestCommitDirtyTree_Exclusion_CommitsOnlyTheOtherStagedPaths(t *testing.T) {
+	t.Parallel()
+
+	const staged = "bundle.js\x00odd [x]*.txt\x00"
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: " M bundle.js\n"}}, // status --porcelain (dirty)
+		runner.ScriptedCall{}, // add -A
+		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
+		runner.ScriptedCall{Result: runner.Result{Stdout: staged}}, // diff --cached --name-only
+		runner.ScriptedCall{}, // commit --pathspec-from-file
+	)
+
+	const dir = "/repo/root"
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), dir, "subject", "NEXT_RELEASE.md")
+	if err != nil {
+		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
+	}
+	if !committed {
+		t.Errorf("committed = false, want true (another path is staged)")
+	}
+
+	assertCalls(t, r, []wantCall{
+		{args: []string{"-C", dir, "status", "--porcelain", "--", notesExclusionPathspec}},
+		{args: []string{"-C", dir, "add", "-A", "--", notesExclusionPathspec}},
+		{args: notesStagedArgs(dir)},
+		{args: stagedPathsArgs(dir)},
+		{args: pathspecCommitArgs(dir, "subject"), stdin: ":(top,literal)bundle.js\x00:(top,literal)odd [x]*.txt\x00"},
+	})
+}
+
+func TestCommitDirtyTree_Exclusion_NothingElseStaged_CommitsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "?? vendor/\n"}}, // status --porcelain (dirty)
+		runner.ScriptedCall{}, // add -A
+		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
+		runner.ScriptedCall{}, // diff --cached --name-only (nothing staged)
+	)
+
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject", "NEXT_RELEASE.md")
+	if err != nil {
+		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
+	}
+	if committed {
+		t.Errorf("committed = true, want false (nothing but the excluded path could be committed)")
+	}
+	if got := len(r.Invocations()); got != 4 {
+		t.Errorf("invocations = %d, want 4 (no commit after an empty staged list)", got)
+	}
+}
+
+func TestCommitDirtyTree_Exclusion_OnlyTheExcludedPathDirty_CommitsNothing(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: ""}, nil) // the excluded path is all that changed
+
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject", "NEXT_RELEASE.md")
+	if err != nil {
+		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
+	}
+	if committed {
+		t.Errorf("committed = true, want false")
+	}
+	if got := len(r.Invocations()); got != 1 {
+		t.Errorf("invocations = %d, want 1 (only the status probe)", got)
+	}
+}
+
+func TestCommitBookkeeping_Exclusion_CommitsOnlyTheOtherStagedPaths(t *testing.T) {
+	t.Parallel()
+
+	const staged = "CHANGELOG.md\x00version.txt\x00"
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{}, // add CHANGELOG.md version.txt
+		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
+		runner.ScriptedCall{Result: runner.Result{Stdout: staged}}, // diff --cached --name-only
+		runner.ScriptedCall{}, // commit --pathspec-from-file
+	)
+
+	const dir = "/repo/root"
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "version.txt", true, true, "NEXT_RELEASE.md"); err != nil {
+		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
+	}
+
+	assertCalls(t, r, []wantCall{
+		{args: []string{"-C", dir, "add", "CHANGELOG.md", "version.txt"}},
+		{args: notesStagedArgs(dir)},
+		{args: stagedPathsArgs(dir)},
+		{args: pathspecCommitArgs(dir, "🌿 Release v0.0.1"), stdin: ":(top,literal)CHANGELOG.md\x00:(top,literal)version.txt\x00"},
+	})
+}
+
+func TestCommitBookkeeping_Exclusion_NothingElseStaged_FailsWithoutCommitting(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{}, // add CHANGELOG.md
+		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
+		runner.ScriptedCall{}, // diff --cached --name-only (nothing staged)
+	)
+
+	err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "", true, false, "NEXT_RELEASE.md")
+	const want = `committing release bookkeeping "🌿 Release v0.0.1": nothing staged to commit`
+	if err == nil || err.Error() != want {
+		t.Fatalf("CommitBookkeeping error = %v, want %q", err, want)
+	}
+	if got := len(r.Invocations()); got != 3 {
+		t.Errorf("invocations = %d, want 3 (no commit after an empty staged list)", got)
+	}
+}
+
+func TestCommitDirtyTree_Exclusion_StagedPathReadFails_SurfacesErrorWithoutCommitting(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: " M bundle.js\n"}}, // status --porcelain (dirty)
+		runner.ScriptedCall{}, // add -A
+		notesStaged,           // diff --cached -- NEXT_RELEASE.md (staged edits)
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("exit status 128")}, // diff --cached fails
+	)
+
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject", "NEXT_RELEASE.md")
+	if err == nil {
+		t.Fatal("CommitDirtyTree returned nil error, want the staged-path read failure to surface")
+	}
+	if committed {
+		t.Errorf("committed = true, want false on a failed read")
+	}
+	if got := len(r.Invocations()); got != 4 {
+		t.Errorf("invocations = %d, want 4 (no commit after a failed read)", got)
+	}
+}
+
+func TestCommitDirtyTree_Exclusion_NoStagedEditsToKeepOut_CommitsAsBuilt(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: " M bundle.js\n"}}, // status --porcelain (dirty)
+		runner.ScriptedCall{}, // add -A
+		runner.ScriptedCall{}, // diff --cached -- NEXT_RELEASE.md (no staged edits)
+		runner.ScriptedCall{}, // commit -m
+	)
+
+	const dir = "/repo/root"
+	committed, err := record.CommitDirtyTree(t.Context(), mutator(r), dir, "subject", "NEXT_RELEASE.md")
+	if err != nil {
+		t.Fatalf("CommitDirtyTree returned unexpected error: %v", err)
+	}
+	if !committed {
+		t.Errorf("committed = false, want true")
+	}
+
+	assertCalls(t, r, []wantCall{
+		{args: []string{"-C", dir, "status", "--porcelain", "--", notesExclusionPathspec}},
+		{args: []string{"-C", dir, "add", "-A", "--", notesExclusionPathspec}},
+		{args: notesStagedArgs(dir)},
+		{args: []string{"-C", dir, "commit", "-m", "subject"}},
+	})
+}
+
+func TestCommitBookkeeping_Exclusion_NoStagedEditsToKeepOut_CommitsAsBuilt(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{}, nil) // add, the empty staged-edit probe, commit
+
+	const dir = "/repo/root"
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), dir, "🌿", "v0.0.1", "", true, false, "NEXT_RELEASE.md"); err != nil {
+		t.Fatalf("CommitBookkeeping returned unexpected error: %v", err)
+	}
+
+	assertCalls(t, r, []wantCall{
+		{args: []string{"-C", dir, "add", "CHANGELOG.md"}},
+		{args: notesStagedArgs(dir)},
+		{args: []string{"-C", dir, "commit", "-m", "🌿 Release v0.0.1"}},
+	})
+}
+
+func TestCommitStaged_Exclusion_StagedEditProbeFails_SurfacesErrorWithoutCommitting(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{}, // add CHANGELOG.md
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 128}, Err: errors.New("exit status 128")}, // probe fails
+	)
+
+	if err := record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "", true, false, "NEXT_RELEASE.md"); err == nil {
+		t.Fatal("CommitBookkeeping returned nil error, want the staged-edit probe failure to surface")
+	}
+	if got := len(r.Invocations()); got != 2 {
+		t.Errorf("invocations = %d, want 2 (no commit after a failed probe)", got)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestCheckCleanTree_Empty_Passes(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil)
 
-	if err := preflight.CheckCleanTree(t.Context(), r); err != nil {
+	if err := preflight.CheckCleanTree(t.Context(), r, ""); err != nil {
 		t.Fatalf("CheckCleanTree returned unexpected error: %v", err)
 	}
 
@@ -65,7 +66,7 @@ func TestCheckCleanTree_DirtyOrUntracked_Fails(t *testing.T) {
 			r := runner.NewFakeRunner()
 			r.Seed("git", runner.Result{Stdout: tt.stdout}, nil)
 
-			err := preflight.CheckCleanTree(t.Context(), r)
+			err := preflight.CheckCleanTree(t.Context(), r, "")
 			if err == nil {
 				t.Fatalf("CheckCleanTree returned nil error, want a dirty-tree abort")
 			}
@@ -78,6 +79,63 @@ func TestCheckCleanTree_DirtyOrUntracked_Fails(t *testing.T) {
 				t.Error("GateError.Message() is empty, want an actionable abort message")
 			}
 		})
+	}
+}
+
+func TestCheckCleanTree_Exclusion_LeavesThePathOutOfTheStatusProbe(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		stdout  string
+		wantErr bool
+	}{
+		{name: "nothing else is dirty, so the tree counts as clean", stdout: ""},
+		{name: "another path is dirty, so the gate still fails", stdout: "?? scratch.txt\n", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := runner.NewFakeRunner()
+			r.Seed("git", runner.Result{Stdout: tt.stdout}, nil)
+
+			err := preflight.CheckCleanTree(t.Context(), r, "docs/notes.md")
+
+			var gateErr *preflight.GateError
+			if tt.wantErr != errors.As(err, &gateErr) {
+				t.Fatalf("CheckCleanTree error = %v, want a *GateError: %v", err, tt.wantErr)
+			}
+			invs := r.Invocations()
+			if len(invs) != 1 {
+				t.Fatalf("invocations = %d, want 1", len(invs))
+			}
+			want := []string{"status", "--porcelain", "--", ":(top,literal,exclude)docs/notes.md"}
+			if got := invs[0]; got.Name != "git" || !slices.Equal(got.Args, want) {
+				t.Errorf("invocation = %s %q, want git %q", got.Name, got.Args, want)
+			}
+		})
+	}
+}
+
+func TestRunLocalGates_Exclusion_ReachesTheCleanTreeGate(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "main\n"}},
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("exit status 1")},
+	)
+
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, false, "notes.md"); err != nil {
+		t.Fatalf("RunLocalGates returned unexpected error: %v", err)
+	}
+
+	want := []string{"status", "--porcelain", "--", ":(top,literal,exclude)notes.md"}
+	if got := r.Invocations()[0]; !slices.Equal(got.Args, want) {
+		t.Errorf("clean-tree probe = git %q, want git %q", got.Args, want)
 	}
 }
 
@@ -211,7 +269,7 @@ func TestRunLocalGates_AllPass(t *testing.T) {
 		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
 	}}
 
-	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, false); err != nil {
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, false, ""); err != nil {
 		t.Fatalf("RunLocalGates returned unexpected error: %v", err)
 	}
 }
@@ -227,7 +285,7 @@ func TestRunLocalGates_AnyBranch_SkipsOnBranchGate(t *testing.T) {
 		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
 	}}
 
-	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true, false); err != nil {
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true, false, ""); err != nil {
 		t.Fatalf("RunLocalGates returned unexpected error under --any-branch: %v", err)
 	}
 
@@ -252,7 +310,7 @@ func TestRunLocalGates_AnyBranch_StillRunsCleanTreeGate(t *testing.T) {
 		"status --porcelain": {result: runner.Result{Stdout: " M file.go\n"}},
 	}}
 
-	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true, false)
+	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", true, false, "")
 	var gateErr *preflight.GateError
 	if !errors.As(err, &gateErr) {
 		t.Fatalf("error = %v, want the clean-tree *GateError even under --any-branch", err)
@@ -271,7 +329,7 @@ func TestRunLocalGates_SkipCleanTree_SkipsCleanTreeGate(t *testing.T) {
 		"rev-parse -q --verify refs/tags/v1.2.3": {result: runner.Result{ExitCode: 1}, err: errExit},
 	}}
 
-	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, true); err != nil {
+	if err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, true, ""); err != nil {
 		t.Fatalf("RunLocalGates returned unexpected error under skipCleanTree: %v", err)
 	}
 
@@ -297,7 +355,7 @@ func TestRunLocalGates_CheapFirstAbort(t *testing.T) {
 		"status --porcelain": {result: runner.Result{Stdout: " M file.go\n"}},
 	}}
 
-	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, false)
+	err := preflight.RunLocalGates(t.Context(), r, "main", "v1.2.3", false, false, "")
 	if err == nil {
 		t.Fatalf("RunLocalGates returned nil error, want the clean-tree abort")
 	}

@@ -88,7 +88,7 @@ func RegeneratePreflight(ctx context.Context, deps ReleaseDeps, releaseBranch st
 	p := deps.Presenter
 
 	if set.CommitsAndPushes {
-		if err := preflight.CheckCleanTree(ctx, deps.Runner); err != nil {
+		if err := preflight.CheckCleanTree(ctx, deps.Runner, ""); err != nil {
 			return surface(p, regeneratePreflightStage, err)
 		}
 		if err := preflight.CheckOnBranch(ctx, deps.Runner, releaseBranch); err != nil {

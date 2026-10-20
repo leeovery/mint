@@ -237,8 +237,13 @@ type ReleaseOptions struct {
 	// resolves against the directory mint was run from. Release reads it once, before
 	// any other step, so a later change to the file never reaches the run. Its body
 	// wins the notes precedence outright: no AI path step runs and on_notes_failure
-	// never applies.
+	// never applies. A file inside the repo is left out of the clean-tree check, the
+	// stash and every commit the run makes, so a successful run leaves it as it
+	// started, staged edits still staged.
 	NotesFile string
+	// WorkDir is the directory a relative NotesFile resolves against. Empty means the
+	// process working directory.
+	WorkDir string
 	// AutoStash is the --autostash escape hatch: when set, mint runs `git stash push
 	// --include-untracked` BEFORE the clean-tree gate (so a dirty tree passes the gate)
 	// and restores the WIP with `git stash pop` afterward — on success AND on
@@ -308,13 +313,18 @@ type ReleaseOptions struct {
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p := deps.Presenter
 
-	supplied, err := readNotesFile(opts.NotesFile)
+	notesPath := notesFilePath(opts)
+	supplied, err := readNotesFile(notesPath)
 	if err != nil {
 		return surface(p, "notes", err)
 	}
 
 	// Stage 1 — resolve root, load config, resolve branch, compute the tag.
 	root, err := gitrepo.ResolveRoot(ctx, deps.Runner)
+	if err != nil {
+		return surface(p, "preflight", err)
+	}
+	keepOut, err := notesExclusion(ctx, deps.Runner, root, notesPath)
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
@@ -401,7 +411,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// for this same DryRun && AutoStash combo (passed into runPreflight below) so a
 	// dirty-tree dry run still completes its preview rather than aborting at the gate.
 	if opts.AutoStash && !opts.DryRun {
-		if autostashPush(ctx, deps) {
+		if autostashPush(ctx, deps, keepOut) {
 			defer autostashPop(ctx, deps)
 		}
 	}
@@ -421,7 +431,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// dirty-tree dry run would newly abort here instead of completing its preview. The
 	// bypass is conditioned on DryRun && AutoStash, never DryRun alone, so a non-autostash
 	// dirty dry run still aborts at the clean-tree gate (correctly flagging the dirty tree).
-	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch, opts.DryRun && opts.AutoStash); err != nil {
+	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch, opts.DryRun && opts.AutoStash, keepOut); err != nil {
 		return surface(p, "preflight", err)
 	}
 
@@ -472,7 +482,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// step failed) is reset back to startingHEAD. The committed signal is folded into
 	// made.Commits the moment the artifact commit lands, so it is tracked even if a
 	// LATER stage fails.
-	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun)
+	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun, keepOut)
 	if artifactCommitted {
 		made.Commits++
 	}
@@ -576,7 +586,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// HEAD just moved, so made.Commits is bumped exactly when a commit landed —
 	// tracked, not inferred by probing git.
 	bookkeepingCommitted := record.BookkeepingWillCommit(cfg.Release.VersionFile, writeResult.Changed, versionChanged)
-	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged); err != nil {
+	if err := record.CommitBookkeeping(ctx, deps.Mutator, root, cfg.Release.CommitPrefix, tag, cfg.Release.VersionFile, writeResult.Changed, versionChanged, keepOut); err != nil {
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
 	if bookkeepingCommitted {
@@ -828,6 +838,58 @@ func selectState(current version.SemVer, cfg config.Config, opts ReleaseOptions,
 		LastTag:      current.String(cfg.Release.TagPrefix),
 		NoAI:         opts.NoAI,
 	}
+}
+
+func notesFilePath(opts ReleaseOptions) string {
+	if opts.WorkDir == "" || opts.NotesFile == "" || filepath.IsAbs(opts.NotesFile) {
+		return opts.NotesFile
+	}
+	return filepath.Join(opts.WorkDir, opts.NotesFile)
+}
+
+// notesExclusion is the zero Exclusion when no file was given, the file lies outside
+// the repo, or git ignores it. An ignored file needs none, since git already leaves it
+// out, and an exclusion naming it makes `add -A` and `stash push` fail.
+func notesExclusion(ctx context.Context, r runner.CommandRunner, root, path string) (git.Exclusion, error) {
+	rel := repoRelativePath(root, path)
+	if rel == "" {
+		return "", nil
+	}
+	res, err := r.Run(ctx, "git", "-C", root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--", git.LiteralPathspec(rel))
+	if err != nil {
+		return "", fmt.Errorf("checking whether git ignores --notes-file %s: %w", path, err)
+	}
+	if res.Stdout != "" {
+		return "", nil
+	}
+	return git.Exclusion(rel), nil
+}
+
+// repoRelativePath is path relative to root, slash-separated, or "" when path is
+// empty or lies outside the repo. The file's directory and root are both resolved
+// through symlinks first, since git reports root by its real path; the file itself is
+// not, as git tracks a symlink by its own path.
+func repoRelativePath(root, path string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+	file := filepath.Join(realPath(filepath.Dir(abs)), filepath.Base(abs))
+	rel, err := filepath.Rel(realPath(root), file)
+	if err != nil || !filepath.IsLocal(rel) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}
+
+func realPath(p string) string {
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
 }
 
 // readNotesFile reads the --notes-file body, or returns nil when no path was given.
@@ -1131,11 +1193,13 @@ func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start
 // caller sets it ONLY for DryRun && AutoStash — a dry run skips the real autostash, so
 // the clean-tree gate it would have satisfied is bypassed too, letting a dirty-tree dry
 // run finish its preview. It affects ONLY the clean-tree gate.
-func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch, skipCleanTree bool) error {
+//
+// keepOut is the path the clean-tree gate does not count.
+func runPreflight(ctx context.Context, r runner.CommandRunner, releaseBranch, tag string, anyBranch, skipCleanTree bool, keepOut git.Exclusion) error {
 	if err := preflight.Fetch(ctx, r); err != nil {
 		return err
 	}
-	if err := preflight.RunLocalGates(ctx, r, releaseBranch, tag, anyBranch, skipCleanTree); err != nil {
+	if err := preflight.RunLocalGates(ctx, r, releaseBranch, tag, anyBranch, skipCleanTree, keepOut); err != nil {
 		return err
 	}
 	if err := preflight.CheckRemoteSync(ctx, r, releaseBranch); err != nil {
@@ -1208,7 +1272,9 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 // `chore(release): pre-tag artifacts for {tag}` commit must be produced (committed is
 // false). The skip is reported via the presenter and the function returns immediately.
 // An ABSENT hook stays a silent no-op (no run, no report, no probe).
-func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) (bool, error) {
+//
+// keepOut is left out of the artifact commit: its changes neither trigger nor ride in it.
+func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool, keepOut git.Exclusion) (bool, error) {
 	if cfg.Release.Hooks.PreTag == nil {
 		return false, nil
 	}
@@ -1238,7 +1304,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, err
 	}
-	committed, err := record.CommitDirtyTree(ctx, deps.Mutator, root, pretagArtifactSubject(tag))
+	committed, err := record.CommitDirtyTree(ctx, deps.Mutator, root, pretagArtifactSubject(tag), keepOut)
 	if err != nil {
 		return committed, err
 	}
