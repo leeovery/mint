@@ -50,12 +50,9 @@ func FallbackBody(ctx context.Context, r runner.CommandRunner, lastTag string) (
 // the body regardless of cause. The cause only changes the abort message's named text,
 // never the routing.
 //
-// CONTRACT — NORMAL PATH ONLY: ResolveFailure governs ONLY the normal AI path. It is
-// invoked solely when the generator surfaces a typed failure. The notes-path precedence
-// (a later task) sits IN FRONT and ensures first-release, degenerate/empty-diff, and
-// --no-ai NEVER reach here — those paths never call the AI, so they can never produce a
-// failure for this resolver to route. This is a pure function of (failure, lastTag,
-// rel): it is meaningful ONLY given a real failure, and does not itself implement that
+// CONTRACT — NORMAL PATH ONLY: ResolveFailure is invoked solely when the generator
+// surfaces a typed failure. Every non-AI branch of the notes precedence returns before
+// the AI is called, so none reaches here; this function does not itself implement that
 // precedence.
 func ResolveFailure(ctx context.Context, r runner.CommandRunner, failure error, lastTag string, rel config.Release) (string, error) {
 	if errors.Is(failure, context.Canceled) {
@@ -64,7 +61,6 @@ func ResolveFailure(ctx context.Context, r runner.CommandRunner, failure error, 
 	if rel.OnNotesFailure == "fallback" {
 		return resolveFallbackBody(ctx, r, lastTag)
 	}
-	// "" / "abort" and any unknown (Phase-6-rejected) value abort, tagging nothing.
 	return "", abortError(failure)
 }
 

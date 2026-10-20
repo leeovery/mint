@@ -54,9 +54,8 @@ import (
 )
 
 // RegenerateSource names where a regenerate run sourced its notes body — the axis
-// that drives the gating: fresh notes are reviewable (the full y/n/e/r gate), the two
-// reuse-style sources are deterministic (a simple confirm). It is the engine-level
-// concrete enum so the orchestration never threads the cmd-layer flag types.
+// that drives the gating (gateRegenerate). It is the engine-level concrete enum so the
+// orchestration never threads the cmd-layer flag types.
 type RegenerateSource int
 
 const (
@@ -110,7 +109,7 @@ func (t RegenerateTarget) writesProvider() bool {
 // consumes. The body is already produced upstream (5-5 reuse read or 5-6 fresh AI),
 // so this struct holds only what the write/push/recovery sequence needs.
 type RegenerateWriteRequest struct {
-	// Source selects the gating: fresh → notes-review gate, reuse → simple confirm.
+	// Source selects the gate gateRegenerate runs.
 	Source RegenerateSource
 	// Target selects the surface(s) written: release, changelog, or both.
 	Target RegenerateTarget
@@ -149,8 +148,7 @@ type RegenerateWriteRequest struct {
 func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateWriteRequest) error {
 	p := deps.Presenter
 
-	// Gate/confirm by source BEFORE any mutation. Fresh runs the notes-review gate
-	// (the reviewed body may be edited/regenerated); reuse is a simple confirm.
+	// Gate/confirm by source BEFORE any mutation.
 	body, err := gateRegenerate(ctx, deps, req)
 	if err != nil {
 		return err

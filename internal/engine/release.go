@@ -1484,11 +1484,9 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 // returns the (possibly edited or regenerated) FINAL body the caller threads to
 // every sink. Rendering stays in the presenter; this owns only the semantics.
 //
-// The gate is supplied by the caller: release passes gateForKind(kind)
-// (ReleaseReviewGate's y/n/e/r for normal-AI, FirstReleaseReviewGate's y/n/e
-// otherwise), regenerate passes presenter.NotesReviewGate() (its own wording). The
-// loop is gate-agnostic — it acts on the choice keys the supplied gate declares, and
-// the SAME gate is re-rendered on every iteration.
+// The gate is supplied by the caller. The loop is gate-agnostic — it acts on the
+// choice keys the supplied gate declares, and the SAME gate is re-rendered on every
+// iteration.
 //
 // Each pass reads one decision and acts on it:
 //

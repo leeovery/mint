@@ -22,10 +22,6 @@ import (
 // GENUINE git failure surfaced by the selector — the no-AI policy itself never
 // produces an error. on_notes_failure is deliberately NOT consulted: it governs only
 // the normal AI path.
-//
-// The notes-path precedence (a later task) selects this provider when --no-ai is set
-// (after the first-release and degenerate checks); the flag parsing and wiring are
-// separate tasks. This provides only the body behaviour the flag selects.
 func NoAIBody(ctx context.Context, r runner.CommandRunner, lastTag string) (string, error) {
 	return resolveFallbackBody(ctx, r, lastTag)
 }

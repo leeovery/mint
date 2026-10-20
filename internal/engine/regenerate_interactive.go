@@ -171,8 +171,8 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	}
 
 	// Resolve both axes — source then target — via the shared resolver: a supplied flag
-	// skips its question, an unset axis is asked, and a reuse source FORCES release (no
-	// target question). Both questions are asked back-to-back before any slow work.
+	// skips its question and an unset axis is asked. Both questions are asked
+	// back-to-back before any slow work.
 	source, target, err := ResolveRegenerateAxes(p, sourceOpt, req.Target, req.ChangelogEnabled)
 	if err != nil {
 		return err
@@ -238,10 +238,6 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	}
 	stage.done()
 
-	// Delegate to the 5-9 write path: it shows the notes, runs the source-appropriate
-	// confirm/review gate (fresh → notes-review, reuse → simple confirm), and writes.
-	// The per-run regenerator (bound to this version's fresh AI range) backs the fresh
-	// gate's `r` choice.
 	return RegenerateWrite(ctx, deps, publisher, root, RegenerateWriteRequest{
 		Source:      source,
 		Target:      target,
