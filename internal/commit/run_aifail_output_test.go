@@ -252,3 +252,27 @@ func TestRun_NonAIFallbackTriggers_CarryNoAIOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestRun_AIFailure_MakesNoClassifyCall_EditorFallbackRuns(t *testing.T) {
+	t.Parallel()
+
+	f := seedAIFailFallback("myedit")
+	seedClaudeFailing(f, "Prompt is too long\n", "")
+	rec := &presentertest.RecordingPresenter{}
+	er := &editorRunner{fake: f, saved: "feat: human message after AI failed\n"}
+
+	if err := commit.Run(context.Background(), editorDeps(rec, er, editorDepsOptions{Root: t.TempDir()})); err != nil {
+		t.Fatalf("Run returned unexpected error: %v; want a fall-back to the editor", err)
+	}
+
+	invs := invocationsNamed(f, "claude")
+	if len(invs) != 2 {
+		t.Fatalf("claude invocations = %d, want only the commit prompt's two attempts", len(invs))
+	}
+	if invs[0].Stdin == "" || invs[1].Stdin != invs[0].Stdin {
+		t.Errorf("claude stdins = %q, %q; want the same commit prompt on both attempts", invs[0].Stdin, invs[1].Stdin)
+	}
+	if len(er.launches) != 1 {
+		t.Errorf("editor launches = %d, want 1", len(er.launches))
+	}
+}

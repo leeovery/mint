@@ -37,7 +37,7 @@ func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap
 		return "", ErrMergeTooLarge
 	}
 	g.progress.Merging(len(parts))
-	body, err := g.transport.Generate(ctx, mergePrompt)
+	body, err := g.generate(ctx, mergePrompt)
 	if err != nil {
 		return "", &callError{action: "merging part notes", location: "merging", err: err}
 	}
@@ -97,7 +97,7 @@ func (g *Generator) generateParts(ctx context.Context, instructions, changeMap s
 			// before it can start a call in the freed slot.
 			defer func() { <-slots }()
 			prompt := composeChunkPrompt(instructions, changeMap, part.framing(i+1, len(parts)), part.slice)
-			notes, err := g.transport.Generate(ctx, prompt)
+			notes, err := g.generate(ctx, prompt)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {

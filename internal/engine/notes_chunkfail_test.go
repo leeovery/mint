@@ -22,8 +22,9 @@ const (
 	corePartNotes = "- core part notes"
 )
 
-// failingCallTransport answers a two-part chunked run, failing every call whose prompt
-// fails reports true with failure.
+// failingCallTransport answers a two-part chunked run, failing every notes call whose
+// prompt fails reports true with failure, and answers a classify call OTHER. calls
+// counts the notes calls.
 type failingCallTransport struct {
 	fails   func(prompt string) bool
 	failure error
@@ -33,6 +34,9 @@ type failingCallTransport struct {
 }
 
 func (ft *failingCallTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isClassifyPrompt(prompt) {
+		return "OTHER", nil
+	}
 	ft.mu.Lock()
 	ft.calls++
 	ft.mu.Unlock()

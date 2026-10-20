@@ -213,7 +213,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
 	}
 
-	body, err := g.transport.Generate(ctx, prompt)
+	body, err := g.generate(ctx, prompt)
 	if err != nil {
 		return "", fmt.Errorf("generating notes: %w", err)
 	}

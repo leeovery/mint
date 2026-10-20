@@ -154,7 +154,8 @@ func TestGenerator_OverCap_TwoChunksFailInFlight_ErrorCarriesTheFirstToFail(t *t
 	}
 }
 
-// failingMergeTransport answers chunk calls with notes and fails the merge with cause.
+// failingMergeTransport answers chunk calls with notes, fails the merge with cause and
+// answers a classify call OTHER.
 type failingMergeTransport struct {
 	cause error
 
@@ -163,6 +164,9 @@ type failingMergeTransport struct {
 }
 
 func (ft *failingMergeTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isClassifyPrompt(prompt) {
+		return "OTHER", nil
+	}
 	if isChunkPrompt(prompt) {
 		return chunkNotesFor(firstPath(sliceOf(prompt))), nil
 	}
@@ -255,8 +259,8 @@ func TestGenerator_OverCap_CancelledMidWave_CancelsCallsInFlightAndStartsNoMore(
 	}
 }
 
-// failThenHoldTransport fails part 2 once fail is closed and holds every other chunk
-// call until its context is done.
+// failThenHoldTransport fails part 2 once fail is closed, holds every other chunk call
+// until its context is done and answers a classify call OTHER.
 type failThenHoldTransport struct {
 	fail      chan struct{}
 	twoFailed chan struct{}
@@ -267,6 +271,9 @@ type failThenHoldTransport struct {
 }
 
 func (ft *failThenHoldTransport) Generate(ctx context.Context, prompt string) (string, error) {
+	if isClassifyPrompt(prompt) {
+		return "OTHER", nil
+	}
 	ft.mu.Lock()
 	if !isChunkPrompt(prompt) {
 		ft.merges++
