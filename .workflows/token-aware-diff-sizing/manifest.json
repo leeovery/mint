@@ -351,7 +351,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 6,
-          "current_task": "token-aware-diff-sizing-6-10",
+          "current_task": null,
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -447,7 +447,8 @@
             "token-aware-diff-sizing-6-6",
             "token-aware-diff-sizing-6-7",
             "token-aware-diff-sizing-6-8",
-            "token-aware-diff-sizing-6-9"
+            "token-aware-diff-sizing-6-9",
+            "token-aware-diff-sizing-6-10"
           ],
           "staging": {
             "p1": {
@@ -542,6 +543,19 @@
                 "internal/engine/release.go",
                 "internal/engine/regenerate_fresh.go",
                 "internal/engine/chunknotes.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-6-10",
+              "source": "reviewer",
+              "summary": "Release and regenerate r regenerators are two separate implementations of one rule: re-merge held merge inputs, else regenerate from the size check while saving chunk notes and keeping merge inputs",
+              "failure": "A rule added to one verb r silently misses the other, as regenerate lacked WithChunkNotes and the keeper hand-off until 6-10; users notice when one verb loses finished chunk notes",
+              "detail": "perRunRegenerator (release.go:1154-1168) reads chunkNotes.merged directly; RegenerateFreshRegenerator (regenerate_fresh.go:98-122) keeps a closure-local merged and forwards it to run.MergeInputs; one helper taking the generator, a merged-inputs reader and the range-generation function would make the keeper the single holder",
+              "files": [
+                "internal/engine/release.go",
+                "internal/engine/regenerate_fresh.go",
+                "internal/engine/chunknotes.go",
+                "cmd/mint/regenerate_all.go"
               ]
             }
           ]
