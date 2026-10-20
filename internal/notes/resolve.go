@@ -8,6 +8,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/config"
+	"mint/internal/record"
 	"mint/internal/runner"
 )
 
@@ -73,10 +74,38 @@ func RangeNoAIBody(ctx context.Context, r runner.CommandRunner, revRange string)
 	if err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(body) == "" {
-		return StubBody(), nil
+	return floorEmptySubjects(body), nil
+}
+
+// VersionNoAIBody is the commit-subject list over a released version's own revRange,
+// leaving out the version's bookkeeping commit as its forward release's list never held
+// it, or the maintenance-release body when no subject is left. The bookkeeping commit
+// is the one tag sits on when its subject ends in " Release {tag}", under any
+// commit_prefix the version was released with.
+func VersionNoAIBody(ctx context.Context, r runner.CommandRunner, revRange, tag string) (string, error) {
+	body, err := rangeSubjects(ctx, r, revRange)
+	if err != nil {
+		return "", err
 	}
-	return body, nil
+	return floorEmptySubjects(withoutBookkeepingCommit(body, tag)), nil
+}
+
+// withoutBookkeepingCommit drops the first subject when it is tag's bookkeeping
+// commit. git log lists a range's tip first, so the first subject is the commit the
+// tag sits on.
+func withoutBookkeepingCommit(subjects, tag string) string {
+	first, rest, _ := strings.Cut(subjects, "\n")
+	if strings.HasSuffix(first, record.BookkeepingSubject("", tag)) {
+		return rest
+	}
+	return subjects
+}
+
+func floorEmptySubjects(body string) string {
+	if strings.TrimSpace(body) == "" {
+		return StubBody()
+	}
+	return body
 }
 
 // abortError builds the abort-mode error: a readable cause phrase derived from the

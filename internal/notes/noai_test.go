@@ -238,3 +238,82 @@ func TestRangeNoAIBody_GitFailureNamesTheRange(t *testing.T) {
 		t.Errorf("err = %q, want %q", got, want)
 	}
 }
+
+func TestVersionNoAIBody_ListsTheVersionsSubjectsAsItsForwardReleaseDid(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		subjects string
+		want     string
+	}{
+		{
+			name:     "the bookkeeping commit the tag sits on is left out",
+			subjects: "🌿 Release v1.2.0\nfix: handle empty input\nfeat: add export\n",
+			want:     "fix: handle empty input\nfeat: add export\n",
+		},
+		{
+			name:     "a bookkeeping commit made under an earlier commit_prefix is left out",
+			subjects: "🚀 Release v1.2.0\nfix: handle empty input\nfeat: add export\n",
+			want:     "fix: handle empty input\nfeat: add export\n",
+		},
+		{
+			name:     "a tag on a commit that is not its bookkeeping commit leaves the list whole",
+			subjects: "fix: handle empty input\nfeat: add export\n",
+			want:     "fix: handle empty input\nfeat: add export\n",
+		},
+		{
+			name:     "the pre-tag artifact commit stays listed",
+			subjects: "🌿 Release v1.2.0\nchore(release): pre-tag artifacts for v1.2.0\nfeat: add export\n",
+			want:     "chore(release): pre-tag artifacts for v1.2.0\nfeat: add export\n",
+		},
+		{
+			name:     "another version's release subject on the tag leaves the list whole",
+			subjects: "🌿 Release v1.1.0\nfeat: add export\n",
+			want:     "🌿 Release v1.1.0\nfeat: add export\n",
+		},
+		{
+			name:     "a release subject below the tag's commit stays listed",
+			subjects: "fix: handle empty input\n🌿 Release v1.2.0\n",
+			want:     "fix: handle empty input\n🌿 Release v1.2.0\n",
+		},
+		{
+			name:     "a range holding only the bookkeeping commit gives the maintenance-release body",
+			subjects: "🌿 Release v1.2.0\n",
+			want:     notes.StubBody(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := seedCommitSubjects(t, tt.subjects)
+
+			body, err := notes.VersionNoAIBody(t.Context(), r, "v1.1.0..v1.2.0", "v1.2.0")
+			if err != nil {
+				t.Fatalf("VersionNoAIBody returned unexpected error: %v", err)
+			}
+			if body != tt.want {
+				t.Errorf("body = %q, want %q", body, tt.want)
+			}
+			invs := r.Invocations()
+			if len(invs) != 1 {
+				t.Fatalf("invocations = %d, want the one git log", len(invs))
+			}
+			assertGitArgv(t, invs[0], []string{"log", "--format=%s", "v1.1.0..v1.2.0"})
+		})
+	}
+}
+
+func TestVersionNoAIBody_GitFailureNamesTheRange(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{}, errors.New("exit status 128"))
+
+	_, err := notes.VersionNoAIBody(t.Context(), r, "v1.1.0..v1.2.0", "v1.2.0")
+
+	if got, want := err.Error(), "building commit-subject fallback for v1.1.0..v1.2.0: exit status 128"; got != want {
+		t.Errorf("err = %q, want %q", got, want)
+	}
+}

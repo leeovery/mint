@@ -165,6 +165,20 @@ func TestRegenerateRun_NotesFloor_CommitSubjectsGoThroughTheReviewGateWithoutReg
 	assertOnlyBodyWritten(t, run, regenFloorSubjects)
 }
 
+func TestRegenerateRun_NotesFloor_CommitSubjectsLeaveOutTheVersionsBookkeepingCommit(t *testing.T) {
+	t.Parallel()
+
+	run := newAttendedRegenFloor(t, &fakeEditor{})
+	run.deps.Runner.(*runner.FakeRunner).SeedSequence("git", ScriptedOut("🌿 Release "+regenFloorTag+"\n"+regenFloorSubjects))
+	run.rec.PromptResult = answerFloor(presenter.ChoiceCommitSubjects)
+
+	if err := run.regenerateAttended(t.Context(), singlePassFailsUnder("")); err != nil {
+		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
+	}
+
+	assertOnlyBodyWritten(t, run, regenFloorSubjects)
+}
+
 func TestRegenerateRun_NotesFloorEdit_OpensOnTheChunkNotesThisRunSaved(t *testing.T) {
 	t.Parallel()
 

@@ -243,7 +243,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		if !offersChoice {
 			return abort(err)
 		}
-		if body, err = regenerateNotesFloor(ctx, deps, req.DiffRange, chunkNotes.saved); err != nil {
+		if body, err = regenerateNotesFloor(ctx, deps, req, chunkNotes.saved); err != nil {
 			return err
 		}
 		gateSource = regenerateSourceFloor
