@@ -126,6 +126,28 @@ func TestRelease_ChunkNotesCannotBeWritten_Fallback_WarnsThenFallsBackNamingNoFi
 	}
 }
 
+func TestRelease_ChunkNotesCannotBeWritten_Fallback_DeclinedAtTheReviewGate_WarnsOnce(t *testing.T) {
+	t.Parallel()
+
+	run := newChunkNotesRun(t, "fallback", twoPartTransport(failsSecondPart))
+	run.deps.ChunkNotes = failingChunkNotes{err: errChunkNotesWrite}
+	run.f.SeedSequence("git", ScriptedOut("subject one\nsubject two\n")) // log --format=%s
+	run.rec.NextChoices = []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceNo}
+
+	assertAbortNonZero(t, run.release(t, t.Context()))
+
+	if got := reviewAsks(run.rec, engine.FirstReleaseReviewGate()); got != 1 {
+		t.Fatalf("review gate asks = %d, want the run declined at the review gate", got)
+	}
+	want := []presenter.Warning{
+		unsavedChunkNotesWarning(errChunkNotesWrite.Error()),
+		fallbackWarning("AI call failed (part 2 of 2)", usageLimitOutput),
+	}
+	if got := warnings(run.rec); !slices.Equal(got, want) {
+		t.Errorf("warnings = %+v, want %+v", got, want)
+	}
+}
+
 func TestRelease_NoChunkFinished_WarnsNothingAboutSavingChunkNotes(t *testing.T) {
 	t.Parallel()
 

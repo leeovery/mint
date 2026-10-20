@@ -45,9 +45,9 @@ func (k *chunkNotesKeeper) sinks(progress notes.Progress) NotesSinks {
 	return NotesSinks{Progress: progress, ChunkNotes: k.saver(), MergeInputs: k.keepMerged}
 }
 
-// warnUnsaved warns, with the save's error verbatim beneath, when finished chunk notes
-// were due to be saved and could not be. Call it only once the notes stage has ended,
-// so the warning follows the line that ends it.
+// warnUnsaved warns once, with the save's error verbatim beneath, when finished chunk
+// notes were due to be saved and could not be. Call it only once the line that ends
+// the stage whose save failed is shown, so the warning follows it.
 func (k *chunkNotesKeeper) warnUnsaved(p presenter.Presenter) {
 	if k.saveErr == nil {
 		return
@@ -57,4 +57,23 @@ func (k *chunkNotesKeeper) warnUnsaved(p presenter.Presenter) {
 		Message: "the finished chunk notes could not be saved",
 		Output:  k.saveErr.Error(),
 	})
+	k.saveErr = nil
+}
+
+// keepRegen saves the part notes of the chunked notes at the review gate when an `r`
+// on them fails, returning failure naming the saved file.
+func (k *chunkNotesKeeper) keepRegen(failure error) error {
+	if k.merged == nil {
+		return failure
+	}
+	return notes.KeepPartNotes(failure, *k.merged, k.saver())
+}
+
+// reportKept warns where the chunk notes of a review-gate abort, cause, could not be
+// saved, and names a saved file with the command that releases it.
+func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error) {
+	k.warnUnsaved(p)
+	if saved := notes.SavedChunkNotesPath(cause); saved != "" {
+		p.NextMoves(presenter.NextMoves{Stage: "regenerate", Moves: []string{notesFileMove("mint release", saved)}})
+	}
 }

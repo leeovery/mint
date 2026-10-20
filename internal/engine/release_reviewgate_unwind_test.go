@@ -28,12 +28,14 @@ type gateAbortTransport struct {
 	regen    func(ctx context.Context, prompt string) (string, error)
 
 	mu       sync.Mutex
+	calls    int
 	classifs int
 }
 
 func (gt *gateAbortTransport) Generate(ctx context.Context, prompt string) (string, error) {
 	gt.mu.Lock()
 	defer gt.mu.Unlock()
+	gt.calls++
 	switch {
 	case isClassifyPrompt(prompt):
 		gt.classifs++

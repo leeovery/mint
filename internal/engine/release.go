@@ -93,11 +93,21 @@ type RegenRun struct {
 	Progress notes.Progress
 }
 
-// reviewRegen is the review gate's `r`: the Regenerator it consults, and shown, run
-// once each regenerated body is shown, nil for nothing.
+// reviewRegen is the review gate's `r`: the Regenerator it consults; shown, run once
+// each regenerated body is shown; and keep, handed the cause of an `r` that failed
+// before any ✗ line shows it, returning the cause naming whatever it kept. A nil shown
+// or keep does nothing.
 type reviewRegen struct {
 	regenerator Regenerator
 	shown       func()
+	keep        func(error) error
+}
+
+func (r reviewRegen) keepFailed(cause error) error {
+	if r.keep == nil {
+		return cause
+	}
+	return r.keep(cause)
 }
 
 // regenContextPrompt is the AskLine label shown when the user chooses `r`: it asks
@@ -581,11 +591,12 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// per-run regenerator re-merges the held part notes of chunked notes, else binds
 	// this run's lastTag + cfg to the generator so an `r` re-runs the AI path.
 	regens := stage.regens(func(lowerCap int) { hintLowerCap(p, lowerCap) })
-	regenerator := regens.narrating(perRunRegenerator(deps, generator, RegenRun{Merged: chunkNotes.merged, Progress: regens}, current.String(cfg.Release.TagPrefix), cfg))
-	body, err = reviewGate(ctx, p, deps.Editor, reviewRegen{regenerator: regenerator, shown: regens.shown}, gateForKind(kind), body, versionKey)
+	regenerator := regens.narrating(perRunRegenerator(deps, generator, chunkNotes, regens, current.String(cfg.Release.TagPrefix), cfg))
+	body, err = reviewGate(ctx, p, deps.Editor, reviewRegen{regenerator: regenerator, shown: regens.shown, keep: chunkNotes.keepRegen}, gateForKind(kind), body, versionKey)
 	if err != nil {
 		// Unwind, not surfaceAndUnwind: reviewGate has already surfaced whatever
 		// needed a StageFailed.
+		chunkNotes.reportKept(p, err)
 		return Unwind(ctx, deps, start, made, err)
 	}
 
@@ -1132,26 +1143,25 @@ func (f regeneratorFunc) Regenerate(ctx context.Context, oneTimeContext string) 
 // perRunRegenerator selects the Regenerator the gate's `r` choice consults. A wired
 // deps.Regenerator OVERRIDES everything (the test-injection seam). Otherwise, when a
 // generator was built (the normal-AI selector path), it returns a per-run closure
-// over held, the merge inputs of the chunked run that wrote the notes now at the
-// gate: while it holds any, an `r` re-merges those part notes with the one-time
+// over chunkNotes' merge inputs, those of the chunked run that wrote the notes now at
+// the gate: while it holds any, an `r` re-merges those part notes with the one-time
 // context, one call; otherwise it binds lastTag + cfg to generator.GenerateWithContext,
 // re-running the AI path from the size check with the one-time context appended,
-// reporting to run.Progress, and holds the merge inputs of a chunked run that `r`
-// becomes. When neither is present (an override body, or a no-AI path with no
+// reporting to progress, and keeps in chunkNotes the merge inputs of a chunked run
+// that `r` becomes. When neither is present (an override body, or a no-AI path with no
 // generator), it returns nil; `r` is only offered for KindNormalAI, so the nil is never
 // consulted on the no-AI paths.
-func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, run RegenRun, lastTag string, cfg config.Config) Regenerator {
+func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, chunkNotes *chunkNotesKeeper, progress notes.Progress, lastTag string, cfg config.Config) Regenerator {
 	if deps.Regenerator != nil {
 		return deps.Regenerator
 	}
 	if generator == nil {
 		return nil
 	}
-	held := run.Merged
-	regenerating := generator.WithProgress(run.Progress).WithMergeInputs(func(in notes.MergeInputs) { held = &in })
+	regenerating := generator.WithProgress(progress).WithMergeInputs(chunkNotes.keepMerged)
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
-		if held != nil {
-			return generator.Remerge(ctx, *held, cfg, oneTimeContext)
+		if chunkNotes.merged != nil {
+			return generator.Remerge(ctx, *chunkNotes.merged, cfg, oneTimeContext)
 		}
 		return regenerating.GenerateWithContext(ctx, lastTag, cfg, oneTimeContext)
 	})
@@ -1688,7 +1698,7 @@ func regenerateBody(ctx context.Context, p presenter.Presenter, regen reviewRege
 		// A closed/non-interactive input on the one-time-context read is fail-loud: the
 		// presenter leaves ErrInputClosed unrendered, so the abort (and any closing
 		// narration) is the engine's to surface — done via abort, mirroring ReviewDecision.
-		return "", abort(err)
+		return "", abort(regen.keepFailed(err))
 	}
 
 	if regen.regenerator == nil {
@@ -1700,7 +1710,7 @@ func regenerateBody(ctx context.Context, p presenter.Presenter, regen reviewRege
 	regenerated, rerr := regen.regenerator.Regenerate(ctx, line)
 	if rerr != nil {
 		// A regenerate failure is fail-loud: surface and abort.
-		return "", surface(p, "regenerate", rerr)
+		return "", surface(p, "regenerate", regen.keepFailed(rerr))
 	}
 
 	// Re-show the regenerated notes so the user reviews them before the gate re-prompts.

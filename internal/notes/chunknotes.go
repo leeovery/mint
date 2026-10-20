@@ -47,14 +47,29 @@ func (e *chunkNotesSavedError) Unwrap() error { return e.err }
 // and a failed save keep nothing and return failure as it is.
 func (g *Generator) keepChunkNotes(failure error, parts []chunkPart, partNotes []string) error {
 	finished := slices.DeleteFunc(slices.Clone(partNotes), func(notes string) bool { return notes == "" })
-	if g.saveChunkNotes == nil || len(finished) == 0 || errors.Is(failure, context.Canceled) {
+	if len(finished) == 0 {
 		return failure
 	}
 	saved := joinChunkNotes(finished)
 	if missing := notesMissingLine(parts, partNotes); missing != "" {
 		saved = missing + "\n\n" + saved
 	}
-	path, err := g.saveChunkNotes(saved)
+	return saveFailedChunkNotes(failure, saved, g.saveChunkNotes)
+}
+
+// KeepPartNotes saves in's part notes, in chunk order, through save as the chunk notes
+// of a regeneration from them that failed with failure, and returns failure naming the
+// saved file. A cancel, a nil save and a failed save keep nothing
+// and return failure as it is.
+func KeepPartNotes(failure error, in MergeInputs, save SaveChunkNotes) error {
+	return saveFailedChunkNotes(failure, joinChunkNotes(in.partNotes), save)
+}
+
+func saveFailedChunkNotes(failure error, chunkNotes string, save SaveChunkNotes) error {
+	if save == nil || errors.Is(failure, context.Canceled) {
+		return failure
+	}
+	path, err := save(chunkNotes)
 	if err != nil {
 		return failure
 	}
