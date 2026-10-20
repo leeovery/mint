@@ -31,6 +31,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -224,14 +225,20 @@ type ReleaseOptions struct {
 	// the NotesBody test-injection override. When NotesBody is empty (production),
 	// Release ignores this and uses the Kind SelectBody returns. It selects the review
 	// gate variant: notes.KindNormalAI offers the four-choice y/n/e/r gate (the only
-	// path with an AI to regenerate), while EVERY other Kind (first-release,
-	// degenerate, --no-ai, fallback) offers the y/n/e variant with no `r`.
+	// path with an AI to regenerate), while EVERY other Kind offers the y/n/e variant
+	// with no `r`.
 	NotesKind notes.Kind
 	// NoAI is the --no-ai flag: a DELIBERATE skip of the AI path (after the
 	// first-release and degenerate guards). It is threaded into the selector's
 	// SelectState so the precedence routes to the commit-subject fallback body and
 	// never calls the AI. It is irrelevant when NotesBody overrides the selector.
 	NoAI bool
+	// NotesFile is the --notes-file path, empty when not given. A relative path
+	// resolves against the directory mint was run from. Release reads it once, before
+	// any other step, so a later change to the file never reaches the run. Its body
+	// wins the notes precedence outright: no AI path step runs and on_notes_failure
+	// never applies.
+	NotesFile string
 	// AutoStash is the --autostash escape hatch: when set, mint runs `git stash push
 	// --include-untracked` BEFORE the clean-tree gate (so a dirty tree passes the gate)
 	// and restores the WIP with `git stash pop` afterward — on success AND on
@@ -300,6 +307,11 @@ type ReleaseOptions struct {
 // Mutator.
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p := deps.Presenter
+
+	supplied, err := readNotesFile(opts.NotesFile)
+	if err != nil {
+		return surface(p, "notes", err)
+	}
 
 	// Stage 1 — resolve root, load config, resolve branch, compute the tag.
 	root, err := gitrepo.ResolveRoot(ctx, deps.Runner)
@@ -483,7 +495,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// blocking StageStarted (spinner), a chunked run's progress while it runs, and a
 	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
 	stage := startNotesStage(p)
-	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, current, versionKey, opts, stage)
+	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), versionKey, opts, stage)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
@@ -806,6 +818,31 @@ func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptio
 	return pinned, version.BumpExplicit, nil
 }
 
+// selectState builds the notes precedence inputs for this run. A tagless repo
+// resolves current to the zero SemVer, so an actual v0.0.0 tag also reads as a first
+// release.
+func selectState(current version.SemVer, cfg config.Config, opts ReleaseOptions, supplied *string) notes.SelectState {
+	return notes.SelectState{
+		Supplied:     supplied,
+		FirstRelease: current == version.SemVer{},
+		LastTag:      current.String(cfg.Release.TagPrefix),
+		NoAI:         opts.NoAI,
+	}
+}
+
+// readNotesFile reads the --notes-file body, or returns nil when no path was given.
+func readNotesFile(path string) (*string, error) {
+	if path == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading --notes-file %s: %w", path, err)
+	}
+	body := string(data)
+	return &body, nil
+}
+
 // resolveBody resolves this run's notes body + Kind via the notes-path precedence
 // (SelectBody), returning the generator it built so the caller can bind a per-run
 // regenerator for the gate's `r` choice. The selector's generation reports a chunked
@@ -820,12 +857,7 @@ func resolveNextVersion(current version.SemVer, prefix string, opts ReleaseOptio
 //     SelectBody runs the precedence over the run's SelectState. A SelectBody error is
 //     an on_notes_failure=abort notes failure: it returns the error for the caller to
 //     surface and abort on, BEFORE any mutation.
-//
-// FirstRelease is detected by comparing current to the zero SemVer — a tagless repo
-// resolves to {0,0,0}. An actual v0.0.0 tag is therefore treated as a first release;
-// that edge is acceptable for Phase 2 (a real v0.0.0 release is not a meaningful case
-// to support, and the selector simply records "Initial release." for it).
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, current version.SemVer, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, nil
 	}
@@ -846,11 +878,6 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
 	selector := notes.NewSelector(generator.WithProgress(progress), assembler, deps.Runner, root)
 
-	state := notes.SelectState{
-		FirstRelease: current == version.SemVer{},
-		LastTag:      current.String(cfg.Release.TagPrefix),
-		NoAI:         opts.NoAI,
-	}
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
 	// ONCE here). It consults the reuse hook BEFORE the AI — a live cache match skips the
@@ -1481,9 +1508,9 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 
 // gateForKind selects the review-gate variant for the precedence path that
 // produced the body: notes.KindNormalAI gets the four-choice y/n/e/r gate (the one
-// path with an AI to regenerate), and EVERY other Kind (first-release, degenerate,
-// --no-ai, fallback) gets the y/n/e gate with no `r` — offering `r` there would be
-// meaningless (no AI to nudge) and, under --no-ai, would contradict the flag.
+// path with an AI to regenerate), and EVERY other Kind gets the y/n/e gate with no
+// `r` — offering `r` there would be meaningless (no AI to nudge) and, under --no-ai,
+// would contradict the flag.
 func gateForKind(kind notes.Kind) presenter.Gate {
 	if kind == notes.KindNormalAI {
 		return presenter.ReleaseReviewGate()

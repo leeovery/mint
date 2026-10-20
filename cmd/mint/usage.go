@@ -38,6 +38,7 @@ changelog, commit, tag, push atomically, and publish the provider release.
   -d, --dry-run        read-only run: print the plan, make no changes
   -y, --yes            skip the confirmation/notes-review gate
       --no-ai          skip the AI notes path; use the commit-subject fallback body
+      --notes-file P   release with the finished notes in file P (no AI)
       --autostash      stash/restore unrelated WIP around the run
       --any-branch     bypass the release-branch gate
       --plain          force plain (un-styled) output

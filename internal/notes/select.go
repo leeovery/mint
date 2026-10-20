@@ -28,18 +28,25 @@ const (
 	KindNormalAI
 	// KindFallback: the normal AI path failed and on_notes_failure=fallback produced the body.
 	KindFallback
+	// KindSupplied: the operator supplied the finished body (--notes-file), no AI.
+	KindSupplied
 )
 
-// SelectState describes the run inputs the precedence needs: whether this is a
-// FIRST RELEASE (no prior tag — the strongest guard), the LastTag the diff base
+// SelectState describes the run inputs the precedence needs: any supplied body,
+// whether this is a FIRST RELEASE (no prior tag), the LastTag the diff base
 // and git-log fallbacks range from, and whether --no-ai was set. FirstRelease and
 // LastTag are complementary: when FirstRelease is true there is no diff base and
 // LastTag is unused; otherwise LastTag names the prior tag every git range
 // (`{LastTag}..HEAD`) is computed against.
 type SelectState struct {
-	// FirstRelease is true when there is no prior tag. It wins over everything: mint
-	// records FirstReleaseBody and never assembles a diff, runs the degenerate check,
-	// consults --no-ai, or reaches on_notes_failure.
+	// Supplied is the finished body the operator handed mint, nil when none was. It
+	// wins over everything, first release included: no diff is assembled and no AI,
+	// cache or on_notes_failure is consulted.
+	Supplied *string
+
+	// FirstRelease is true when there is no prior tag. It wins over everything but a
+	// supplied body: mint records FirstReleaseBody and never assembles a diff, runs the
+	// degenerate check, consults --no-ai, or reaches on_notes_failure.
 	FirstRelease bool
 
 	// LastTag is the prior tag the diff and commit-subject fallback range from. It is
@@ -77,8 +84,8 @@ func NewSelector(generator *Generator, assembler *Assembler, r runner.CommandRun
 // prompt/context instructions. Together with the caller's computed version these
 // are exactly the three fields the cache key hashes (notescache.Key). Cacheable is
 // true ONLY for the normal-AI path — the one path that produced a stochastic AI
-// body worth caching; every other Kind (first-release, degenerate, --no-ai,
-// fallback) leaves it false and the dry-run write is skipped (nothing to cache).
+// body worth caching; every other Kind leaves it false and the dry-run write is
+// skipped (nothing to cache).
 type CacheInputs struct {
 	// Cacheable is true only when an AI body was produced (KindNormalAI). When false
 	// Diff and Instructions are zero and the caller must not write a cache entry.
@@ -106,9 +113,11 @@ type ReuseFunc func(diff, instructions string) (body string, reused bool, err er
 // SelectBody resolves the notes body via the STRICT precedence (each branch
 // returns immediately; on_notes_failure is consulted ONLY in branch 4):
 //
+//  0. SUPPLIED (--notes-file) → the supplied body verbatim, KindSupplied. Wins over
+//     everything, first release included.
 //  1. FIRST RELEASE (no prior tag) → record.FirstReleaseBody, KindFirstRelease.
-//     Wins over everything: no diff is assembled, no degenerate check, no --no-ai,
-//     no on_notes_failure.
+//     Wins over everything below: no diff is assembled, no degenerate check, no
+//     --no-ai, no on_notes_failure.
 //  2. DEGENERATE (prior tag, empty/whitespace post-exclusion diff) → StubBody,
 //     KindDegenerate, no AI. Wins over --no-ai.
 //  3. --no-ai → NoAIBody, KindNoAI, no AI, never aborts.
@@ -148,6 +157,10 @@ func (s *Selector) SelectBodyWithCacheInputs(ctx context.Context, state SelectSt
 // A nil reuse hook makes this byte-identical to the always-generate path, so the
 // dry-run write path passes nil and gets unchanged behaviour.
 func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, cfg config.Config, reuse ReuseFunc) (string, Kind, CacheInputs, error) {
+	if state.Supplied != nil {
+		return *state.Supplied, KindSupplied, CacheInputs{}, nil
+	}
+
 	if state.FirstRelease {
 		return record.FirstReleaseBody, KindFirstRelease, CacheInputs{}, nil
 	}

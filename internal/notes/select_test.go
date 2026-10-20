@@ -300,3 +300,42 @@ func TestSelector_SelectBody_DegenerateNeverRoutesThroughOnNotesFailure(t *testi
 	}
 	assertGitArgv(t, invs[0], wantArgs("v1.0.0"))
 }
+
+func TestSelector_SelectBody_SuppliedBodyWinsOverEveryOtherPath(t *testing.T) {
+	t.Parallel()
+
+	for _, state := range []notes.SelectState{
+		{FirstRelease: true},
+		{LastTag: "v1.0.0"},
+		{LastTag: "v1.0.0", NoAI: true},
+	} {
+		supplied := "## Hand-written\n- shipped verbatim  \n\n"
+		state.Supplied = &supplied
+		transport := &recordingTransport{body: "must never be returned"}
+		r := runner.NewFakeRunner() // nothing seeded: any git call would error.
+		sel := newSelector(t, r, transport)
+
+		body, kind, inputs, err := sel.SelectBodyWithReuse(t.Context(), state, config.Config{Release: config.Release{OnNotesFailure: "fallback"}}, func(string, string) (string, bool, error) {
+			t.Errorf("the cache reuse hook was consulted for a supplied body")
+			return "", false, nil
+		})
+		if err != nil {
+			t.Fatalf("SelectBodyWithReuse(%+v) returned unexpected error: %v", state, err)
+		}
+		if body != supplied {
+			t.Errorf("body = %q, want the supplied body %q", body, supplied)
+		}
+		if kind != notes.KindSupplied {
+			t.Errorf("kind = %v, want KindSupplied", kind)
+		}
+		if inputs.Cacheable {
+			t.Errorf("a supplied body was marked cacheable")
+		}
+		if transport.calls() != 0 {
+			t.Errorf("transport called %d times, want 0", transport.calls())
+		}
+		if len(r.Invocations()) != 0 {
+			t.Errorf("git invoked %d times, want 0 (a supplied body assembles no diff)", len(r.Invocations()))
+		}
+	}
+}

@@ -97,11 +97,14 @@ mint release [-p | -m | -M | --set-version X.Y.Z] [options]
 | `-d, --dry-run` | read-only run: print the plan, make no changes |
 | `-y, --yes` | skip the confirmation/notes-review gate |
 | `--no-ai` | skip the AI notes path; use the commit-subject fallback body |
+| `--notes-file P` | release with the finished notes in file P (no AI) |
 | `--autostash` | stash/restore unrelated WIP around the run |
 | `--any-branch` | bypass the release-branch gate |
 | `--plain` | force plain (un-styled) output |
 
 At the notes review gate, a single keypress (no Enter needed): **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in `$EDITOR`, **`r`** regenerate, Ctrl-C aborts cleanly.
+
+`--notes-file P` releases a finished body you already hold: mint reads P once at startup (a relative path resolves against the directory you ran mint from; there is no stdin form) and ships its contents byte-identical as the notes, in place of every other body, first-release and empty-diff ones included. It makes no AI call, so the size cap, chunking, the dry-run cache and `on_notes_failure` never apply. An attended run still shows the body at the notes review gate first (`y`, `n`, `e`; no `r`, since there is no AI output to redo); `-y` accepts it unattended.
 
 A `--dry-run` generates and caches the notes (~1 hour); a real run within the window reuses the previewed bytes instead of calling the AI again.
 
@@ -112,6 +115,7 @@ mint release                        # patch release, interactive
 mint release -m -y                  # minor release, unattended
 mint release --set-version 2.0.0    # explicit version
 mint release -d                     # preview the full plan, change nothing
+mint release -y --notes-file /tmp/notes.md  # finished notes, no AI
 ```
 
 ### `release regenerate`

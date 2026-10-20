@@ -176,7 +176,7 @@ func TestUsageTexts_CoverTheirFlagSets(t *testing.T) {
 		usage string
 		flags []string
 	}{
-		{"release", releaseUsage, []string{"--patch", "--minor", "--major", "--set-version", "--dry-run", "--yes", "--no-ai", "--autostash", "--any-branch", "--plain"}},
+		{"release", releaseUsage, []string{"--patch", "--minor", "--major", "--set-version", "--dry-run", "--yes", "--no-ai", "--notes-file", "--autostash", "--any-branch", "--plain"}},
 		{"regenerate", regenerateUsage, []string{"--source", "--target", "--all", "--yes", "--plain"}},
 		{"commit", commitUsage, []string{"--all", "--add-all", "--push", "--yes", "--no-ai", "--plain"}},
 		{"init", initUsage, []string{"--force", "--plain"}},
@@ -237,5 +237,15 @@ func TestRootUsage_CarriesNoConfigReference(t *testing.T) {
 		if strings.Contains(rootUsage, key) {
 			t.Errorf("rootUsage must not carry the config key %q (mint help stays free of the config reference)", key)
 		}
+	}
+}
+
+// TestReleaseUsage_NotesFileLine pins --notes-file's usage line word for word.
+func TestReleaseUsage_NotesFileLine(t *testing.T) {
+	t.Parallel()
+
+	const want = "      --notes-file P   release with the finished notes in file P (no AI)\n"
+	if !strings.Contains(releaseUsage, want) {
+		t.Errorf("release usage text is missing the line %q; got:\n%s", want, releaseUsage)
 	}
 }

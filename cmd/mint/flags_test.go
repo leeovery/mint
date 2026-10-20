@@ -157,3 +157,26 @@ func TestParseReleaseFlags_SetVersionWithBumpFlag(t *testing.T) {
 		}
 	}
 }
+
+// TestParseReleaseFlags_NotesFile threads the --notes-file path through to the
+// engine options exactly as given — including a bare "-", which names a file, never
+// stdin.
+func TestParseReleaseFlags_NotesFile(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{"notes.md", "/tmp/release-notes.md", "-"} {
+		opts, err := parseReleaseFlags([]string{"--notes-file", path, "-y"})
+		if err != nil {
+			t.Fatalf("parseReleaseFlags(--notes-file %s) returned error: %v", path, err)
+		}
+		if opts.NotesFile != path {
+			t.Errorf("NotesFile = %q, want %q", opts.NotesFile, path)
+		}
+		if !opts.Yes {
+			t.Errorf("Yes = false after --notes-file %s -y, want true", path)
+		}
+		if got := opts.ReleaseOptions().NotesFile; got != path {
+			t.Errorf("ReleaseOptions().NotesFile = %q, want %q", got, path)
+		}
+	}
+}
