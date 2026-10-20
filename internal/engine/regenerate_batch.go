@@ -253,7 +253,7 @@ func savedNotesPointer(failure error, version string) string {
 	if saved == "" {
 		return ""
 	}
-	return "part notes saved to " + saved + " — tidy them and put them on it with mint release regenerate " + version + " --notes-file " + saved
+	return "part notes saved to " + saved + " — tidy them and put them on it with " + notesFileCommand("mint release regenerate "+version, saved)
 }
 
 // processOneVersion runs the per-version batch step for one resolved version: it opens

@@ -25,7 +25,13 @@ type chunkNotesRun struct {
 
 func newChunkNotesRun(t *testing.T, onNotesFailure string, transport func(ctx context.Context, prompt string) (string, error)) *chunkNotesRun {
 	t.Helper()
-	run := &chunkNotesRun{root: t.TempDir(), userCache: t.TempDir(), f: runner.NewFakeRunner(), rec: &presentertest.RecordingPresenter{}}
+	return newChunkNotesRunAt(t, t.TempDir(), onNotesFailure, transport)
+}
+
+// newChunkNotesRunAt is newChunkNotesRun from the repo at root.
+func newChunkNotesRunAt(t *testing.T, root, onNotesFailure string, transport func(ctx context.Context, prompt string) (string, error)) *chunkNotesRun {
+	t.Helper()
+	run := &chunkNotesRun{root: root, userCache: t.TempDir(), f: runner.NewFakeRunner(), rec: &presentertest.RecordingPresenter{}}
 	seedOverCapRelease(t, run.root, run.f, onNotesFailure)
 	run.deps = newDeps(run.rec, run.f)
 	run.deps.Transport = transportFunc(transport)

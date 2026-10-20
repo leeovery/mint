@@ -58,8 +58,8 @@ func (s *notesStage) fellBack(failure error) {
 // release will go out is not yet known. Call it only once the stage has ended.
 func (s *notesStage) warnFallback(version string) {
 	s.warnFallbackReleasing(func(saved string) string {
-		return "once this release is out, put them on it with mint release regenerate " + version + " --notes-file " + saved +
-			", or if the run ends before the push, release them with mint release --notes-file " + saved
+		return "once this release is out, put them on it with " + notesFileCommand("mint release regenerate "+version, saved) +
+			", or if the run ends before the push, release them with " + notesFileCommand("mint release", saved)
 	})
 }
 
@@ -67,7 +67,7 @@ func (s *notesStage) warnFallback(version string) {
 // run never puts the version out. Call it only once the stage has ended.
 func (s *notesStage) warnDryRunFallback() {
 	s.warnFallbackReleasing(func(saved string) string {
-		return "release them with mint release --notes-file " + saved
+		return "release them with " + notesFileCommand("mint release", saved)
 	})
 }
 

@@ -2,6 +2,8 @@
 // shell quoting rules, without being a shell: quotes, backslashes and line continuations
 // are honoured, and nothing else is syntax — `$`, backticks, `*`, `~`, `|`, `;`, `&`, `<`
 // and `>` are ordinary word characters. Callers run the resulting words directly.
+// Quote is Split's inverse for one word: it writes a word, such as a path in a command
+// printed for the reader to paste, so that Split and a POSIX shell read it back whole.
 package cmdline
 
 import (

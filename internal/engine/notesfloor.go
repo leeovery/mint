@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"mint/internal/cmdline"
 	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/presenter"
@@ -65,7 +66,14 @@ func notesFileMove(command, savedNotes string) string {
 	if savedNotes == "" {
 		return "write the notes to a file and release with " + command + " --notes-file <file>"
 	}
-	return "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with " + command + " --notes-file " + savedNotes
+	return "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with " + notesFileCommand(command, savedNotes)
+}
+
+// notesFileCommand is base run with --notes-file path. The reader pastes the command
+// into a shell, so path is shell-quoted where a byte in it needs it; a saved path shown
+// in prose rather than passed stays raw.
+func notesFileCommand(base, path string) string {
+	return base + " --notes-file " + cmdline.Quote(path)
 }
 
 const leanCommandMove = `if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`
