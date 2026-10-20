@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/presenter"
 )
@@ -29,21 +30,50 @@ func reachesNotesFloor(opts ReleaseOptions, failure error) bool {
 	return generation
 }
 
-// notesFloorMoves are the ways an unattended release that stopped at the floor can
-// still go out. savedNotes is the path the failed run saved its chunk notes to, or "".
-func notesFloorMoves(savedNotes string) presenter.NextMoves {
+// notesFloorMoves are the ways an unattended release that stopped at the floor on
+// failure can still go out, then the settings that clear failure's cause when it was
+// a size one. savedNotes is the path the failed run saved its chunk notes to, or "".
+func notesFloorMoves(failure error, rel config.Release, savedNotes string) presenter.NextMoves {
 	notesFile := "write the notes to a file and release with mint release --notes-file <file>"
 	if savedNotes != "" {
 		notesFile = "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with mint release --notes-file " + savedNotes
 	}
-	return presenter.NextMoves{
-		Stage: "notes",
-		Moves: []string{
-			notesFile,
-			"re-run with --no-ai to release with the commit-subject list",
-			`set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
-		},
+	moves := []string{
+		notesFile,
+		"re-run with --no-ai to release with the commit-subject list",
+		`set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
 	}
+	return presenter.NextMoves{Stage: "notes", Moves: append(moves, sizeMoves(failure, rel)...)}
+}
+
+// sizeMoves are the settings that clear a size failure. A merge too large gets none:
+// a lower cap cuts the release into more parts and does not shrink what the merge holds.
+func sizeMoves(failure error, rel config.Release) []string {
+	switch {
+	case errors.Is(failure, notes.ErrNoRoomForDiff):
+		return []string{noRoomMove(rel)}
+	case errors.Is(failure, notes.ErrTooLargeForModel):
+		return []string{
+			"lower max_prompt_bytes, since the model accepts less than the cap",
+			`if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`,
+			"exclude generated paths with [release].diff_exclude",
+		}
+	}
+	return nil
+}
+
+// noRoomMove names the operator text that leaves a call no room for diff, prompt over
+// context since a set prompt replaces context, or with neither set a cap too small for
+// mint's own instructions.
+func noRoomMove(rel config.Release) string {
+	const leaveRoom = ", which every call carries in full, to leave room for the diff under max_prompt_bytes"
+	switch {
+	case rel.Prompt != "":
+		return "shorten [release].prompt" + leaveRoom
+	case rel.Context != "":
+		return "shorten [release].context" + leaveRoom
+	}
+	return "raise max_prompt_bytes, since it is below the fixed part of mint's own instructions"
 }
 
 // notesFloorGate is the choice a failed notes generation leaves an attended release.

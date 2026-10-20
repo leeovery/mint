@@ -76,3 +76,20 @@ func TestREADME_ReleaseSectionSaysAnUnattendedStopPrintsNextMoves(t *testing.T) 
 		t.Errorf("README release section does not say %q", want)
 	}
 }
+
+func TestREADME_ReleaseSectionNamesTheSizeStopsSettings(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"A stop on size adds the setting to change.",
+		"shorten `[release].prompt` when it is set, since it replaces `context`, and `[release].context` otherwise",
+		"so raise `max_prompt_bytes`",
+		"Part notes too large to merge get only the moves above",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
+}

@@ -527,7 +527,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		chunkNotes.warnUnsaved(p)
 		if !offersChoice {
 			if atFloor {
-				p.NextMoves(notesFloorMoves(failure.SavedNotes))
+				p.NextMoves(notesFloorMoves(err, cfg.Release, failure.SavedNotes))
 			}
 			return Unwind(ctx, deps, start, made, err)
 		}
