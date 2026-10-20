@@ -153,8 +153,13 @@ func emitBlockingStageStarted(p presenter.Presenter, name, text, sentence string
 // startBlockingStage is emitBlockingStageStarted for a stage whose completion
 // sentence is settled only once it succeeds.
 func startBlockingStage(p presenter.Presenter, name, text string) func(detail, sentence string) {
+	return startBlockingStageSince(p, name, text, time.Now())
+}
+
+// startBlockingStageSince is startBlockingStage for a stage whose wait began at
+// started, before the stage was narrated.
+func startBlockingStageSince(p presenter.Presenter, name, text string, started time.Time) func(detail, sentence string) {
 	p.StageStarted(presenter.StageStart{Name: name, Blocking: true, Text: text})
-	started := time.Now()
 	return func(detail, sentence string) {
 		p.StageSucceeded(presenter.StageSuccess{
 			Name:     name,

@@ -582,7 +582,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// per-run regenerator re-merges the held part notes of chunked notes, else binds
 	// this run's lastTag + cfg to the generator so an `r` re-runs the AI path.
 	regens := stage.regens(func(lowerCap int) { hintLowerCap(p, lowerCap) })
-	regenerator := perRunRegenerator(deps, generator, RegenRun{Merged: chunkNotes.merged, Progress: regens}, current.String(cfg.Release.TagPrefix), cfg)
+	regenerator := regens.narrating(perRunRegenerator(deps, generator, RegenRun{Merged: chunkNotes.merged, Progress: regens}, current.String(cfg.Release.TagPrefix), cfg))
 	body, err = reviewGate(ctx, p, deps.Editor, reviewRegen{regenerator: regenerator, shown: regens.shown}, gateForKind(kind), body, versionKey)
 	if err != nil {
 		// A gate-no is a clean USER abort: route it through the SAME surgical unwind a

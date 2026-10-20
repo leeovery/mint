@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"mint/internal/notes"
 	"mint/internal/presenter"
@@ -25,8 +27,10 @@ type notesStage struct {
 
 var _ notes.Progress = (*notesStage)(nil)
 
+const notesStageText = "generating release notes…"
+
 func startNotesStage(p presenter.Presenter) *notesStage {
-	return &notesStage{p: p, succeeded: startBlockingStage(p, "notes", "generating release notes…")}
+	return &notesStage{p: p, succeeded: startBlockingStage(p, "notes", notesStageText)}
 }
 
 func (s *notesStage) PartsDone(promptBytes, parts, done int) {
@@ -95,15 +99,21 @@ func suggestedCap(halved bool, mergedParts, largestCall int) int {
 	return largestCall
 }
 
-// regenStage is the notes.Progress of the `r` generations at a run's review gate. It
-// narrates nothing. An r's succeeded calls fold into the run's notes stage, so the cap
-// suggested after an r is the largest succeeded call of the whole run.
+// regenStage is the notes.Progress of the `r` generations at a run's review gate. An r
+// that makes one call narrates nothing; one that becomes a chunked run opens its own
+// notes line at its first update and narrates as the run's notes stage does. An r's
+// succeeded calls fold into the run's notes stage, so the cap suggested after an r is
+// the largest succeeded call of the whole run.
 type regenStage struct {
 	run    *notesStage
 	halved bool
 	parts  int
 	// hint is handed the cap to suggest once an r's notes are shown, 0 for none.
 	hint func(lowerCap int)
+	// began is when the r now generating started.
+	began time.Time
+	// succeeded closes the notes line the r now generating opened, nil while it has none.
+	succeeded func(detail, sentence string)
 }
 
 var _ notes.Progress = (*regenStage)(nil)
@@ -112,13 +122,43 @@ func (s *notesStage) regens(hint func(lowerCap int)) *regenStage {
 	return &regenStage{run: s, hint: hint}
 }
 
-func (r *regenStage) PartsDone(int, int, int) {}
-
-func (r *regenStage) Halved(int, int) {
-	r.halved = true
+// narrating wraps regenerator so the notes line an r opens closes once its notes are
+// written, before they are shown. A nil regenerator stays nil.
+func (r *regenStage) narrating(regenerator Regenerator) Regenerator {
+	if regenerator == nil {
+		return nil
+	}
+	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
+		r.began, r.succeeded = time.Now(), nil
+		body, err := regenerator.Regenerate(ctx, oneTimeContext)
+		if err == nil && r.succeeded != nil {
+			r.succeeded(mergedCompletion(r.parts))
+		}
+		return body, err
+	})
 }
 
-func (r *regenStage) Merging(int) {}
+// chunked opens the r's notes line, timed from the r's start, unless it is open.
+func (r *regenStage) chunked() {
+	if r.succeeded == nil {
+		r.succeeded = startBlockingStageSince(r.run.p, "notes", notesStageText, r.began)
+	}
+}
+
+func (r *regenStage) PartsDone(promptBytes, parts, done int) {
+	r.chunked()
+	r.run.p.NotesProgress(presenter.NotesProgress{PromptBytes: promptBytes, Parts: parts, Done: done})
+}
+
+func (r *regenStage) Halved(part, parts int) {
+	r.halved = true
+	r.chunked()
+	r.run.p.NotesHalving(presenter.NotesHalving{Part: part, Parts: parts})
+}
+
+func (r *regenStage) Merging(parts int) {
+	r.run.p.NotesMerging(presenter.NotesMerge{Parts: parts})
+}
 
 func (r *regenStage) Merged(parts int) {
 	r.parts = parts
@@ -187,5 +227,11 @@ func (s *notesStage) done() {
 		s.succeeded("generated", "Generated release notes")
 		return
 	}
-	s.succeeded(fmt.Sprintf("generated in %d parts, merged", s.parts), fmt.Sprintf("Notes written (%d parts, merged)", s.parts))
+	s.succeeded(mergedCompletion(s.parts))
+}
+
+// mergedCompletion is the detail and sentence of a notes stage whose merge wrote the
+// body from parts.
+func mergedCompletion(parts int) (detail, sentence string) {
+	return fmt.Sprintf("generated in %d parts, merged", parts), fmt.Sprintf("Notes written (%d parts, merged)", parts)
 }
