@@ -344,7 +344,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 2,
-          "current_task": "token-aware-diff-sizing-2-4",
+          "current_task": "token-aware-diff-sizing-2-5",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -384,7 +384,8 @@
             "token-aware-diff-sizing-1-6",
             "token-aware-diff-sizing-2-1",
             "token-aware-diff-sizing-2-2",
-            "token-aware-diff-sizing-2-3"
+            "token-aware-diff-sizing-2-3",
+            "token-aware-diff-sizing-2-4"
           ],
           "staging": {
             "p1": {
@@ -409,6 +410,18 @@
               "files": [
                 "internal/config/config.go",
                 "internal/config/config_test.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-2-4",
+              "source": "reviewer",
+              "summary": "notes.CheckDiffSize lost its last production caller but CLAUDE.md still lists it as reusable",
+              "failure": "An agent reading CLAUDE.md layout line (internal/notes exposes the reusable CheckDiffSize/ErrDiffTooLarge) would reach for the line ceiling the feature removes and bring back the dead end; only a review would catch it",
+              "detail": "internal/notes/size.go:13-21 is now referenced only by size_test.go; ErrDiffTooLarge is still used by commit. Task 2-5 AC (layout line for internal/notes names no removed export) implies removing it, but 2-5 Do list never names CheckDiffSize",
+              "files": [
+                "internal/notes/size.go",
+                "internal/notes/size_test.go",
+                "CLAUDE.md"
               ]
             }
           ]
