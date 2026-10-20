@@ -351,7 +351,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 6,
-          "current_task": "token-aware-diff-sizing-6-7",
+          "current_task": "token-aware-diff-sizing-6-8",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -444,7 +444,8 @@
             "token-aware-diff-sizing-6-3",
             "token-aware-diff-sizing-6-4",
             "token-aware-diff-sizing-6-5",
-            "token-aware-diff-sizing-6-6"
+            "token-aware-diff-sizing-6-6",
+            "token-aware-diff-sizing-6-7"
           ],
           "staging": {
             "p1": {
@@ -489,6 +490,18 @@
             3,
             4,
             5
+          ],
+          "bank": [
+            {
+              "task": "token-aware-diff-sizing-6-7",
+              "source": "reviewer",
+              "summary": "Comments around the review gate still say the gate and its r/e failures happen before any mutation, though a pre_tag artifact commit can precede the gate",
+              "failure": "A maintainer trusting them drops the Unwind for a gate or r abort, and a declined or failed release leaves the pre_tag artifact commit on the user branch",
+              "detail": "release.go:579-580 (gate positioned BEFORE any mutation); release.go:1547 errEditorUnavailable doc; release.go:1554 errRegeneratorUnavailable doc; release.go:1671 regenerateBody doc; release.go:1639-1640 ChoiceRegen comment says closed input is surfaced, but it only aborts",
+              "files": [
+                "internal/engine/release.go"
+              ]
+            }
           ]
         }
       }
