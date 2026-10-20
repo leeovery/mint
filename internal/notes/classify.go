@@ -26,18 +26,24 @@ const (
 	codeSize
 )
 
-// generate makes one notes call. A failure is returned with classify's reading of it,
-// or, when the classify call is cancelled, with that cancel in its place.
+// generate makes one notes call. A failure is returned as readFailure returns it.
 func (g *Generator) generate(ctx context.Context, prompt string, maxPromptBytes int) (string, failureCode, error) {
 	body, err := g.transport.Generate(ctx, prompt)
 	if err == nil {
 		return body, codeOther, nil
 	}
-	code, cancelErr := g.classify(ctx, err, maxPromptBytes)
-	if cancelErr != nil {
-		return "", codeOther, cancelErr
-	}
+	code, err := g.readFailure(ctx, err, maxPromptBytes)
 	return "", code, err
+}
+
+// readFailure returns a failed notes call's failure with classify's reading of it,
+// or, when the classify call is cancelled, that cancel in its place.
+func (g *Generator) readFailure(ctx context.Context, failure error, maxPromptBytes int) (failureCode, error) {
+	code, cancelErr := g.classify(ctx, failure, maxPromptBytes)
+	if cancelErr != nil {
+		return codeOther, cancelErr
+	}
+	return code, failure
 }
 
 // classify asks the AI what a failed notes call's captured output means. Only a

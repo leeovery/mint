@@ -143,11 +143,12 @@ func newWave(g *Generator, cut cutter, parts []chunkPart, halvings, promptBytes,
 // finished. A call whose failure is classified SIZE has its slice re-cut at half the
 // call's size, and the new parts are queued behind the parts not yet sent; with its
 // slice already halved maxHalvings times, or no room for diff at half the size, the
-// call fails as ErrTooLargeForModel. Any other failure, and that one, stops the wave:
-// no further call starts, the calls already running finish, and the first such
-// failure is returned. ctx ending stops it too, and its error is
-// returned over any earlier failure. Each part that succeeds, and each re-cut, is
-// reported to g.progress as it happens.
+// call fails as ErrTooLargeForModel. Any other failure, and that one, ends the wave:
+// no further call starts, the calls already running finish, a failure among them is
+// not halved, nor classified when it comes after the end, and the first such failure
+// is returned. ctx ending stops it too, and its error is returned over any earlier
+// failure. Each part that succeeds, and each re-cut, is reported to g.progress as it
+// happens.
 func (w *wave) run(ctx context.Context) ([]string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -192,7 +193,11 @@ func (w *wave) prompt(slot *waveSlot) string {
 // is freed in the same step that records the outcome, so the wave sees a failure, or
 // a halved part's new parts, before it can send another call in that place.
 func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt string) {
-	notes, code, err := w.g.generate(ctx, prompt, w.maxPromptBytes)
+	notes, err := w.g.transport.Generate(ctx, prompt)
+	code := codeOther
+	if err != nil && !w.ended() {
+		code, err = w.g.readFailure(ctx, err, w.maxPromptBytes)
+	}
 	var halves []chunkPart
 	var recutErr error
 	halving := err != nil && code == codeSize && slot.halvings < maxHalvings
@@ -210,13 +215,22 @@ func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt 
 		w.done++
 		w.g.progress.CallSucceeded(len(prompt))
 		w.g.progress.PartsDone(w.promptBytes, len(w.slots), w.done)
+	case w.failure != nil:
+		// The wave has already ended: a later failure is neither recorded nor halved.
 	case halving && recutErr == nil:
 		w.halve(slot, halves)
-	case w.failure == nil && code == codeSize:
+	case code == codeSize:
 		w.failure = partCallError(slices.Index(w.slots, slot)+1, len(w.slots), fmt.Errorf("%w: %w", ErrTooLargeForModel, err))
-	case w.failure == nil:
+	default:
 		w.failure = partCallError(slices.Index(w.slots, slot)+1, len(w.slots), err)
 	}
+}
+
+// ended reports whether a part has failed for good, which ends the wave.
+func (w *wave) ended() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.failure != nil
 }
 
 // halve reports slot's re-cut, then puts the parts its slice was re-cut into in its
