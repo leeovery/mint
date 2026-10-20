@@ -347,7 +347,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 4,
-          "current_task": "token-aware-diff-sizing-4-13",
+          "current_task": "token-aware-diff-sizing-4-14",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -415,7 +415,8 @@
             "token-aware-diff-sizing-4-9",
             "token-aware-diff-sizing-4-10",
             "token-aware-diff-sizing-4-11",
-            "token-aware-diff-sizing-4-12"
+            "token-aware-diff-sizing-4-12",
+            "token-aware-diff-sizing-4-13"
           ],
           "staging": {
             "p1": {
@@ -466,6 +467,16 @@
               "files": [
                 "internal/engine/release.go",
                 "internal/engine/chunknotes.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-4-13",
+              "source": "reviewer",
+              "summary": "Test the production ChunkNotes wiring in the cmd layer for both release and regenerate",
+              "failure": "If a later edit to main.go drops ChunkNotes from either deps literal, production quietly stops saving chunk notes while every test stays green; the operator finds out only when a real failed chunked run names no file and the finished work is gone",
+              "detail": "cmd/mint/main.go:192 (regenerate) and cmd/mint/main.go:317 (release) each wire notescache.NewUserChunkNotes(os.UserCacheDir) inline in a ReleaseDeps literal no test builds. Pull each verb deps construction into a testable function asserting ChunkNotes is set, or add one cmd-level test per verb driving a failed chunked run with XDG_CACHE_HOME/HOME at a temp dir",
+              "files": [
+                "cmd/mint/main.go"
               ]
             }
           ]
