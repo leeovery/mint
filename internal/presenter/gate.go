@@ -1,5 +1,7 @@
 package presenter
 
+import "slices"
+
 // Choice is one of the semantic answers an interactive gate can return. The four
 // values below are the ENGINE's vocabulary — the engine owns what each choice
 // means (accept, abort, edit, regenerate) and owns the e/r re-entry loop; the
@@ -158,6 +160,14 @@ func NotesReviewGate() Gate {
 		},
 		Default: ChoiceYes,
 	}
+}
+
+// NotesReviewGateNoRegen is NotesReviewGate without `r`: y/n/e, for a regenerate body
+// no AI wrote, so there is no output to redo.
+func NotesReviewGateNoRegen() Gate {
+	g := NotesReviewGate()
+	g.Choices = slices.DeleteFunc(g.Choices, func(c GateChoice) bool { return c.Key == ChoiceRegen })
+	return g
 }
 
 // ReleaseReviewGate is the four-choice notes-review gate on the RELEASE path

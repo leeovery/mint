@@ -177,7 +177,7 @@ func TestUsageTexts_CoverTheirFlagSets(t *testing.T) {
 		flags []string
 	}{
 		{"release", releaseUsage, []string{"--patch", "--minor", "--major", "--set-version", "--dry-run", "--yes", "--no-ai", "--notes-file", "--autostash", "--any-branch", "--plain"}},
-		{"regenerate", regenerateUsage, []string{"--source", "--target", "--all", "--yes", "--plain"}},
+		{"regenerate", regenerateUsage, []string{"--source", "--notes-file", "--target", "--all", "--yes", "--plain"}},
 		{"commit", commitUsage, []string{"--all", "--add-all", "--push", "--yes", "--no-ai", "--plain"}},
 		{"init", initUsage, []string{"--force", "--plain"}},
 		{"setup", setupUsage, []string{"--help"}},
@@ -247,5 +247,16 @@ func TestReleaseUsage_NotesFileLine(t *testing.T) {
 	const want = "      --notes-file P   release with the finished notes in file P (no AI)\n"
 	if !strings.Contains(releaseUsage, want) {
 		t.Errorf("release usage text is missing the line %q; got:\n%s", want, releaseUsage)
+	}
+}
+
+// TestRegenerateUsage_NotesFileLine pins regenerate's --notes-file usage line word for
+// word.
+func TestRegenerateUsage_NotesFileLine(t *testing.T) {
+	t.Parallel()
+
+	const want = "      --notes-file P     notes source: the finished notes in file P (one version only)\n"
+	if !strings.Contains(regenerateUsage, want) {
+		t.Errorf("regenerate usage text is missing the line %q; got:\n%s", want, regenerateUsage)
 	}
 }

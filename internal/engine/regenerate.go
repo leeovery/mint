@@ -18,6 +18,7 @@ package engine
 import (
 	"context"
 
+	"mint/internal/git"
 	"mint/internal/preflight"
 )
 
@@ -27,9 +28,9 @@ import (
 const regeneratePreflightStage = "preflight"
 
 // RegenerateGateSet is the RESOLVED preflight selection for one regenerate run,
-// derived from the request's target surface. It carries only the two facts that
-// drive the subset, so the selector stays a pure mapping with no knowledge of the
-// cmd-layer source/target enums:
+// derived from the request's target surface, plus the path the clean-tree gate
+// leaves out. Two facts drive the subset, so the selector stays a pure mapping with
+// no knowledge of the cmd-layer source/target enums:
 //
 //   - CallsProvider is set when the run writes the provider release (target
 //     release or both), which requires the gh-auth gate — even for a deterministic
@@ -47,6 +48,8 @@ type RegenerateGateSet struct {
 	// CommitsAndPushes selects the clean-tree + on-branch + remote-sync gates: true
 	// when the run commits + pushes the changelog (target changelog or both).
 	CommitsAndPushes bool
+	// KeepOut is the path the clean-tree gate does not count.
+	KeepOut git.Exclusion
 }
 
 // regenerateGateSet maps a RESOLVED engine target — together with whether the
@@ -88,7 +91,7 @@ func RegeneratePreflight(ctx context.Context, deps ReleaseDeps, releaseBranch st
 	p := deps.Presenter
 
 	if set.CommitsAndPushes {
-		if err := preflight.CheckCleanTree(ctx, deps.Runner, ""); err != nil {
+		if err := preflight.CheckCleanTree(ctx, deps.Runner, set.KeepOut); err != nil {
 			return surface(p, regeneratePreflightStage, err)
 		}
 		if err := preflight.CheckOnBranch(ctx, deps.Runner, releaseBranch); err != nil {

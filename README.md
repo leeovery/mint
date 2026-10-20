@@ -130,12 +130,15 @@ mint release regenerate --all [options]
 | Flag | Description |
 |---|---|
 | `--source SOURCE` | where notes come from: `fresh` (re-diff + AI, default), `tag` (annotation body), or `release` (existing provider release body) |
+| `--notes-file P` | notes source: the finished notes in file P (one version only) |
 | `--target SURFACE` | surface(s) to write: `release`, `changelog`, or `both` |
 | `--all` | regenerate every version, oldest → newest |
 | `-y, --yes` | skip the confirmation / per-version review gate |
 | `--plain` | force plain (un-styled) output |
 
 The two axes are symmetric and independent: `--source` picks *where the notes come from*, `--target` picks *what gets written*. The `tag` and `release` sources run no AI — they read existing notes verbatim, which makes them a fast way to *backfill a `CHANGELOG.md`* from tags or releases you already have. `--source release` needs a resolvable provider (e.g. a GitHub origin). Under `-y` a `--target` is required (mint never guesses which live surface to rewrite unattended). In an `--all` run, a version with no usable source (a tag with no annotation, a release with no body, or a diff that fails AI generation) is skipped and reported — the other versions still land.
+
+`--notes-file P` is a fourth notes source beside `fresh`, `tag` and `release`: the finished body in file P, such as notes you wrote by hand for an old version. It runs no AI. Giving it settles the source, so mint asks no source question; it reads P once at startup (a relative path resolves against the directory you ran mint from) and writes its contents byte-identical to the chosen target(s), the oldest version included. One file answers one version, so it serves `regenerate <version>` only. An attended run shows the body at the review gate first (`y` accept, `n` abort, `e` edit; no `r`, since there is no AI output to redo); an edit changes what is written, never P itself. On a `changelog` or `both` target, P may sit in the repo, untracked or a tracked file with uncommitted edits: mint keeps it out of the clean-tree check and the changelog commit, and leaves it as it was.
 
 Targets differ in what they touch: a `changelog` (or `both`) target **commits `CHANGELOG.md` and pushes it**; a `release` target updates the provider release in place with **no git changes**. Regenerated changelog entries keep each version's *original* release date, not today's. `both` is non-atomic — the changelog is committed and pushed first, then the provider release. There are only two surfaces, so `both` is how you write more than one; there is no partial multi-select beyond `release`, `changelog`, or `both`.
 
@@ -145,6 +148,7 @@ mint release regenerate v1.4.0 --source tag                     # tag body → G
 mint release regenerate --all --source tag --target changelog   # build the whole changelog from tag annotations
 mint release regenerate --all --source release --target changelog # …or from the published GitHub releases
 mint release regenerate --all --source fresh --target both      # re-diff every version, rewrite releases + changelog
+mint release regenerate 1.4.0 --notes-file notes.md --target both -y  # finished notes, no AI
 ```
 
 ### `commit`

@@ -226,22 +226,17 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 		return code
 	}
 
-	source, target := regenerateRunAxes(req)
-	runReq := engine.RegenerateRunRequest{
-		Source:           source,
-		Target:           target,
-		Tag:              res.Tag,
-		VersionKey:       versionKey.String(""),
-		Project:          filepath.Base(root),
-		ReleaseBranch:    releaseBranch,
-		ChangelogEnabled: cfg.Release.Changelog,
-		Yes:              req.Yes,
-		ProduceBody:      newRegenerateBodyProducer(r, cfg, root, res, publisher),
-		// The fresh notes-review gate's `r` choice consults this per-run regenerator,
-		// bound to the resolved range — the regenerate analogue of the forward path's
-		// per-run regenerator. Without it the rendered `r` would abort.
-		ProduceRegenerator: newRegenerateRegeneratorProducer(r, cfg, root, res),
-	}
+	runReq := regenerateRunFlags(req)
+	runReq.Tag = res.Tag
+	runReq.VersionKey = versionKey.String("")
+	runReq.Project = filepath.Base(root)
+	runReq.ReleaseBranch = releaseBranch
+	runReq.ChangelogEnabled = cfg.Release.Changelog
+	runReq.ProduceBody = newRegenerateBodyProducer(r, cfg, root, res, publisher)
+	// The fresh notes-review gate's `r` choice consults this per-run regenerator,
+	// bound to the resolved range — the regenerate analogue of the forward path's
+	// per-run regenerator. Without it the rendered `r` would abort.
+	runReq.ProduceRegenerator = newRegenerateRegeneratorProducer(r, cfg, root, res)
 
 	if err := engine.RegenerateRun(ctx, deps, publisher, root, runReq); err != nil {
 		return exitCode(err)

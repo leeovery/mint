@@ -117,3 +117,32 @@ func TestNewRegenerateRegeneratorProducer(t *testing.T) {
 		t.Error("fresh regenerator = nil, want a non-nil per-run regenerator for the `r` choice")
 	}
 }
+
+// TestRegenerateRunFlags_NotesFile carries the parsed --notes-file path into the
+// engine's run request, and leaves it empty when the flag is not given.
+func TestRegenerateRunFlags_NotesFile(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"1.4.0", "--notes-file", "notes.md", "--target", "both", "-y"}, want: "notes.md"},
+		{args: []string{"1.4.0", "--target", "both", "-y"}, want: ""},
+	} {
+		req, err := parseRegenerateFlags(tc.args)
+		if err != nil {
+			t.Fatalf("parseRegenerateFlags(%v) returned error: %v", tc.args, err)
+		}
+		run := regenerateRunFlags(req)
+		if run.NotesFile != tc.want {
+			t.Errorf("regenerateRunFlags(%v).NotesFile = %q, want %q", tc.args, run.NotesFile, tc.want)
+		}
+		if !run.Yes {
+			t.Errorf("regenerateRunFlags(%v).Yes = false, want true", tc.args)
+		}
+		if run.Target != engine.TargetOf(engine.RegenerateTargetBoth) {
+			t.Errorf("regenerateRunFlags(%v).Target = %+v, want both", tc.args, run.Target)
+		}
+	}
+}

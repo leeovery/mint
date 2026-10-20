@@ -34,6 +34,7 @@ package engine
 import (
 	"context"
 
+	"mint/internal/git"
 	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
@@ -123,6 +124,12 @@ type RegenerateRunRequest struct {
 	// the changelog/both options are not offerable (the static config check upstream
 	// already rejects a flag-supplied changelog/both target).
 	ChangelogEnabled bool
+	// NotesFile is the --notes-file path, empty when not given. A relative path
+	// resolves against the process working directory. RegenerateRun reads it once,
+	// before any gate or check, and its body takes the place of the source: no source
+	// question is asked and ProduceBody is never called. A file inside the repo is left
+	// out of the clean-tree check and the changelog commit.
+	NotesFile string
 	// Yes is the -y flag. It does NOT change which gates the engine calls — every gate
 	// is still called and the presenter skips internally — but it threads to the write
 	// request for the confirm/review gate's internal skip.
@@ -151,10 +158,19 @@ type RegenerateRunRequest struct {
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
 
+	supplied, err := readNotesFile(req.NotesFile)
+	if err != nil {
+		return surface(p, "notes", err)
+	}
+	sourceOpt := req.Source
+	if supplied != nil {
+		sourceOpt = SourceOf(regenerateSourceSupplied)
+	}
+
 	// Resolve both axes — source then target — via the shared resolver: a supplied flag
 	// skips its question, an unset axis is asked, and a reuse source FORCES release (no
 	// target question). Both questions are asked back-to-back before any slow work.
-	source, target, err := ResolveRegenerateAxes(p, req.Source, req.Target, req.ChangelogEnabled)
+	source, target, err := ResolveRegenerateAxes(p, sourceOpt, req.Target, req.ChangelogEnabled)
 	if err != nil {
 		return err
 	}
@@ -180,7 +196,15 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// provider write is nil-guarded and skipped) does NOT run gh-auth, mirroring the
 	// forward spine's `if publisher != nil` guard. A failing applicable gate routes
 	// through the same surfaced abort as every other failure.
-	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(target, publisher != nil)); err != nil {
+	var keepOut git.Exclusion
+	if target.writesChangelog() {
+		if keepOut, err = notesExclusion(ctx, deps.Runner, root, req.NotesFile); err != nil {
+			return surface(p, regeneratePreflightStage, err)
+		}
+	}
+	gates := regenerateGateSet(target, publisher != nil)
+	gates.KeepOut = keepOut
+	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, gates); err != nil {
 		return err
 	}
 
@@ -205,7 +229,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// resolves; a failure surfaces a StageFailed (via surface) and emits no
 	// StageSucceeded.
 	stage := startNotesStage(p)
-	body, err := req.ProduceBody(ctx, source, stage)
+	body, err := produceRegenerateBody(ctx, req, source, supplied, stage)
 	if err != nil {
 		return surface(p, "notes", err)
 	}
@@ -222,7 +246,15 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		VersionKey:  req.VersionKey,
 		Body:        body,
 		Regenerator: produceRegenerator(req.ProduceRegenerator, source),
+		KeepOut:     keepOut,
 	})
+}
+
+func produceRegenerateBody(ctx context.Context, req RegenerateRunRequest, source RegenerateSource, supplied *string, progress notes.Progress) (string, error) {
+	if supplied != nil {
+		return *supplied, nil
+	}
+	return req.ProduceBody(ctx, source, progress)
 }
 
 // produceRegenerator invokes the request's per-run regenerator factory for the resolved
@@ -365,6 +397,8 @@ func sourceLabel(source RegenerateSource) string {
 		return string(choiceSourceTag)
 	case RegenerateSourceRelease:
 		return string(choiceSourceRelease)
+	case regenerateSourceSupplied:
+		return "notes file"
 	default:
 		return string(choiceSourceFresh)
 	}

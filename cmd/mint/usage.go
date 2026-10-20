@@ -55,6 +55,7 @@ Source and target are independent: any source can write any surface.
       --source SOURCE    notes source: fresh (re-diff + AI), tag (annotation
                          body), or release (existing provider release body);
                          tag and release run no AI. Default fresh.
+      --notes-file P     notes source: the finished notes in file P (one version only)
       --target SURFACE   surface(s) to write: release, changelog, or both
       --all              regenerate every version, oldest → newest
   -y, --yes              skip the confirmation / per-version review gate

@@ -49,12 +49,13 @@ import (
 // for a changelog/both target, having already validated changelog != false up front).
 // When the write nets a change, the changelog is staged in ONE `git -C {root} add
 // CHANGELOG.md` and committed with subject `docs(changelog): regenerate notes for {tag}`
-// through the lock-resilient Mutator; committed is true. When the write nets NO change,
+// through the lock-resilient Mutator, leaving keepOut out of the commit; committed is
+// true. When the write nets NO change,
 // nothing is staged or committed and committed is false.
 //
 // A failed write or a failed `git add` is surfaced (so 5-9 can reset the local write);
 // a failed stage short-circuits before the commit so it can never produce a commit.
-func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, tag string, date time.Time, body string) (committed bool, err error) {
+func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, tag string, date time.Time, body string, keepOut git.Exclusion) (committed bool, err error) {
 	writeResult, err := record.WriteChangelog(root, versionKey, date, body, true)
 	if err != nil {
 		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
@@ -66,7 +67,7 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 	}
 
 	subject := fmt.Sprintf("docs(changelog): regenerate notes for %s", tag)
-	if err := stageAndCommitChangelog(ctx, m, root, subject); err != nil {
+	if err := stageAndCommitChangelog(ctx, m, root, subject, keepOut); err != nil {
 		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
 	}
 	return true, nil

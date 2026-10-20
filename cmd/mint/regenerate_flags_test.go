@@ -288,3 +288,33 @@ func TestParseRegenerateFlags_TwoPositionalsIsError(t *testing.T) {
 		t.Errorf("error = %q, want %q", err.Error(), wantMsg)
 	}
 }
+
+// TestParseRegenerateFlags_NotesFile takes --notes-file's separate-token value as the
+// path, never as a second positional, on either side of the <version>.
+func TestParseRegenerateFlags_NotesFile(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{
+		{"1.4.0", "--notes-file", "notes.md", "--target", "both", "-y"},
+		{"--notes-file", "notes.md", "1.4.0", "--target", "both", "-y"},
+		{"-notes-file", "notes.md", "1.4.0", "--target", "both", "-y"},
+		{"--notes-file=notes.md", "1.4.0", "--target", "both", "-y"},
+	} {
+		req, err := parseRegenerateFlags(args)
+		if err != nil {
+			t.Fatalf("parseRegenerateFlags(%v) returned error: %v", args, err)
+		}
+		if req.NotesFile != "notes.md" {
+			t.Errorf("parseRegenerateFlags(%v) NotesFile = %q, want %q", args, req.NotesFile, "notes.md")
+		}
+		if req.Version != "1.4.0" {
+			t.Errorf("parseRegenerateFlags(%v) Version = %q, want %q", args, req.Version, "1.4.0")
+		}
+		if req.Target != targetBoth || !req.Yes {
+			t.Errorf("parseRegenerateFlags(%v) Target = %v, Yes = %v, want targetBoth and true", args, req.Target, req.Yes)
+		}
+		if req.SourceSet {
+			t.Errorf("parseRegenerateFlags(%v) SourceSet = true, want false", args)
+		}
+	}
+}

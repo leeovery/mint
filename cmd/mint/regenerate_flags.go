@@ -61,6 +61,9 @@ type regenerateRequest struct {
 	// when --source was supplied, so "no flag" must be distinguishable from an explicit
 	// --source fresh — which Source alone cannot express (both resolve to sourceFresh).
 	SourceSet bool
+	// NotesFile is the raw --notes-file path, threaded unresolved: the engine reads it
+	// relative to the directory mint was run from.
+	NotesFile string
 	// Target is the resolved write surface, or targetUnset when --target is
 	// omitted.
 	Target regenerateTarget
@@ -84,8 +87,9 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
 
 	var all, yes, plain bool
-	var source, target string
+	var source, notesFile, target string
 	fs.StringVar(&source, "source", "", "notes source: fresh, tag, or release (default fresh)")
+	fs.StringVar(&notesFile, "notes-file", "", "notes source: the finished notes in file P (one version only)")
 	fs.StringVar(&target, "target", "", "surface(s) to write: release, changelog, or both")
 	fs.BoolVar(&all, "all", false, "regenerate every version, oldest → newest")
 	fs.BoolVar(&yes, "y", false, "skip the confirmation / per-version review gate")
@@ -124,6 +128,7 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 		// An empty --source is the omitted state (ask interactively); any explicit
 		// value — including "fresh" — marks the source supplied so the prompt is skipped.
 		SourceSet: source != "",
+		NotesFile: notesFile,
 		Target:    parsedTarget,
 		All:       all,
 		Yes:       yes,
@@ -137,7 +142,7 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 // before a flag (`<version> --source tag`) would otherwise swallow the flags.
 //
 // It walks the tokens, passing flag tokens (and the VALUE of a value-taking flag —
-// --source or --target — when written as a separate token) straight through, and
+// --source, --notes-file or --target — when written as a separate token) straight through, and
 // treats any bare non-flag token as the positional. More than one bare positional is
 // a usage error (regenerate takes at most one <version>).
 func splitRegeneratePositional(args []string) (version string, flagArgs []string, err error) {
@@ -172,12 +177,12 @@ func isFlagToken(arg string) bool {
 }
 
 // isValueFlag reports whether a flag token is one of the value-taking flags
-// (--source, --target) in its separate-token form (i.e. without an inline "=value").
+// (--source, --notes-file, --target) in its separate-token form (i.e. without an inline "=value").
 // Both the "--flag" and "-flag" spellings are recognised, mirroring the flag
 // package's leniency.
 func isValueFlag(arg string) bool {
 	switch arg {
-	case "--source", "-source", "--target", "-target":
+	case "--source", "-source", "--notes-file", "-notes-file", "--target", "-target":
 		return true
 	default:
 		return false

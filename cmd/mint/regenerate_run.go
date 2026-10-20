@@ -27,6 +27,17 @@ func regenerateRunAxes(req regenerateRequest) (engine.OptionalRegenerateSource, 
 	return regenerateSourceAxis(req), regenerateTargetAxis(req.Target)
 }
 
+// regenerateRunFlags is the part of the engine run request the parsed flags decide.
+func regenerateRunFlags(req regenerateRequest) engine.RegenerateRunRequest {
+	source, target := regenerateRunAxes(req)
+	return engine.RegenerateRunRequest{
+		Source:    source,
+		Target:    target,
+		NotesFile: req.NotesFile,
+		Yes:       req.Yes,
+	}
+}
+
 // regenerateSourceAxis maps the source selection: a supplied flag is a present engine
 // source; no flag is the engine UNSET (ask the source prompt).
 func regenerateSourceAxis(req regenerateRequest) engine.OptionalRegenerateSource {

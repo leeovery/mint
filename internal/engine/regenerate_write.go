@@ -27,10 +27,10 @@ package engine
 //     changelog push is the warn-only case, not a rollback.
 //
 // SOURCE GATING: fresh runs the full notes-review gate (y/n/e/r) BEFORE writing —
-// backfilled notes are reviewable before they overwrite live surfaces; reuse is a
-// simple two-choice confirm (no review gate — reuse generates no new notes to
-// edit/regenerate). `-y` skips both (handled by the presenter, which returns the
-// gate default).
+// backfilled notes are reviewable before they overwrite live surfaces; a supplied
+// --notes-file body runs the same gate without `r`; reuse is a simple two-choice
+// confirm (no review gate — reuse generates no new notes to edit/regenerate). `-y`
+// skips all of them (handled by the presenter, which returns the gate default).
 //
 // HISTORICAL DATE (carried from 5-8's review): the changelog write MUST keep the
 // version's ORIGINAL historical release date in its `## [x.y.z] - <date>` header —
@@ -72,15 +72,11 @@ const (
 	// changelog. Like reuse it is deterministic (no AI), so it runs the simple confirm,
 	// not the review gate.
 	RegenerateSourceRelease
+	// regenerateSourceSupplied is the finished body handed over with --notes-file. It
+	// runs the review gate without `r`, since no AI wrote it. The run already holds
+	// its body, so no body producer handles it.
+	regenerateSourceSupplied
 )
-
-// usesReviewGate reports whether the source produces fresh, editable notes that run
-// the full y/n/e/r notes-review gate. Only fresh does; the deterministic reuse-style
-// sources (tag annotation, provider release) run the simple two-choice confirm because
-// they have no freshly-generated notes to edit or regenerate.
-func (s RegenerateSource) usesReviewGate() bool {
-	return s == RegenerateSourceFresh
-}
 
 // RegenerateTarget names which surface(s) a regenerate run writes — the axis that
 // drives whether the changelog is committed + pushed and whether the provider
@@ -134,6 +130,9 @@ type RegenerateWriteRequest struct {
 	// has no review gate); a reuse run leaves it nil. A wired deps.Regenerator OVERRIDES
 	// it (the test-injection seam), mirroring the forward path's precedence.
 	Regenerator Regenerator
+	// KeepOut is the path the changelog commit leaves out, any staged edits to it
+	// still staged afterwards.
+	KeepOut git.Exclusion
 }
 
 // RegenerateWrite runs the single-version regenerate write/push/recovery sequence for
@@ -204,9 +203,10 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 
 // gateRegenerate runs the source-appropriate gate/confirm BEFORE any mutation and
 // returns the body to write. Fresh runs the full notes-review gate (y/n/e/r), whose
-// edit/regenerate choices may replace the body; reuse runs a simple two-choice
-// confirm (no review gate). A decline aborts non-zero. `-y` skips both — the
-// presenter returns the gate default (ChoiceYes), so the gate accepts immediately.
+// edit/regenerate choices may replace the body; a supplied body runs the same gate
+// without `r`; reuse runs a simple two-choice confirm (no review gate). A decline
+// aborts non-zero. Under `-y` the presenter returns each gate's default (ChoiceYes),
+// so the gate accepts immediately.
 func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRequest) (string, error) {
 	p := deps.Presenter
 	// Show the notes BEFORE the gate so the user reviews the body they are accepting —
@@ -216,17 +216,21 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 	// prompt over an empty preview. Both the single-version (RegenerateWrite) and batch
 	// (gatePerVersion) fresh/reuse paths route through here, so one render covers both.
 	p.ShowNotes(presenter.Notes{Version: req.VersionKey, Body: req.Body})
-	if !req.Source.usesReviewGate() {
+	switch req.Source {
+	case RegenerateSourceFresh:
+		// Fresh: the notes-review gate. A decline returns errGateAborted (a clean user
+		// abort); the gate sits before the changelog commit, so there is nothing to reset.
+		// The `r` choice consults the per-run regenerator (req.Regenerator), bound to this
+		// version's fresh AI range — a wired deps.Regenerator OVERRIDES it (the test seam),
+		// mirroring the forward path's perRunRegenerator precedence.
+		return reviewGate(ctx, p, deps.Editor, regenerateRegenerator(deps, req.Regenerator), presenter.NotesReviewGate(), req.Body, req.VersionKey)
+	case regenerateSourceSupplied:
+		return reviewGate(ctx, p, deps.Editor, nil, presenter.NotesReviewGateNoRegen(), req.Body, req.VersionKey)
+	default:
 		// Deterministic source (tag annotation or provider release): the simple
 		// two-choice confirm — there are no freshly-generated notes to edit/regenerate.
 		return reuseConfirm(p, req.Body)
 	}
-	// Fresh: the notes-review gate. A decline returns errGateAborted (a clean user
-	// abort); the gate sits before the changelog commit, so there is nothing to reset.
-	// The `r` choice consults the per-run regenerator (req.Regenerator), bound to this
-	// version's fresh AI range — a wired deps.Regenerator OVERRIDES it (the test seam),
-	// mirroring the forward path's perRunRegenerator precedence.
-	return reviewGate(ctx, p, deps.Editor, regenerateRegenerator(deps, req.Regenerator), presenter.NotesReviewGate(), req.Body, req.VersionKey)
 }
 
 // regenerateRegenerator selects the Regenerator the fresh regenerate gate's `r` choice
@@ -281,7 +285,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return false, surface(p, "record", err)
 	}
 
-	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body)
+	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body, req.KeepOut)
 	if err != nil {
 		// A failed write/stage/commit makes no commit, but a partial commit could have
 		// landed before a later step; reset iff one did, then abort. (RegenerateChangelog
@@ -305,21 +309,26 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 
 // stageAndCommitChangelog is the SHARED regenerate stage+commit half both the
 // single-version (RegenerateChangelog) and batch (commitAndPushRebuild) paths invoke to
-// land a CHANGELOG commit: it runs `git -C {root} add CHANGELOG.md` then
-// `git -C {root} commit -m {subject}` through the lock-resilient Mutator, parameterised
-// ONLY by subject so each path keeps its own commit subject. A failed step short-circuits
-// (a failed stage never reaches the commit) and the returned error names which step
-// failed (`staging …` / `committing …`) so each caller can apply its own distinct
-// error-recovery to the returned error — the single-version path wraps it with the tag,
-// the batch path routes it through resetAndAbort. Keeping the stage/commit idiom here
-// means the two regenerate paths can no longer drift on the stage/commit half (the mirror
-// of pushChangelogCommit owning the push/recovery half).
-func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string) error {
+// land a CHANGELOG commit: it runs `git -C {root} add CHANGELOG.md` then commits the
+// index under subject through the lock-resilient Mutator, parameterised by subject so
+// each path keeps its own commit subject. A keepOut path is left out of the commit, any
+// staged edits to it still staged afterwards (record.CommitStaged). A failed step
+// short-circuits (a failed stage never reaches the commit) and the returned error names
+// which step failed (`staging …` / `committing …`) so each caller can apply its own
+// distinct error-recovery to the returned error — the single-version path wraps it with
+// the tag, the batch path routes it through resetAndAbort. Keeping the stage/commit
+// idiom here means the two regenerate paths can no longer drift on the stage/commit half
+// (the mirror of pushChangelogCommit owning the push/recovery half).
+func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, keepOut git.Exclusion) error {
 	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
 		return fmt.Errorf("staging %s: %w", record.ChangelogFileName, err)
 	}
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "commit", "-m", subject); err != nil {
+	committed, err := record.CommitStaged(ctx, m, root, subject, keepOut)
+	if err != nil {
 		return fmt.Errorf("committing %q: %w", subject, err)
+	}
+	if !committed {
+		return fmt.Errorf("committing %q: %w", subject, record.ErrNothingStaged)
 	}
 	return nil
 }

@@ -28,7 +28,7 @@ import (
 //
 // A keepOut path is left out of the probe, the stage and the commit: its changes
 // neither trigger the commit nor ride in it, and any of them already staged stay
-// staged (see commitStaged). When that path's staged edits are all the index holds,
+// staged (see CommitStaged). When that path's staged edits are all the index holds,
 // no commit is made and committed is false.
 func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, keepOut git.Exclusion) (bool, error) {
 	// The status probe is a READ, so it goes through the Mutator's plain pass-through
@@ -44,7 +44,7 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 	if _, err := m.Mutate(ctx, nil, "git", withExclusion(keepOut, "-C", dir, "add", "-A")...); err != nil {
 		return false, fmt.Errorf("staging dirty tree in %s: %w", dir, err)
 	}
-	committed, err := commitStaged(ctx, m, dir, subject, keepOut)
+	committed, err := CommitStaged(ctx, m, dir, subject, keepOut)
 	if err != nil {
 		return false, fmt.Errorf("committing dirty tree %q: %w", subject, err)
 	}
@@ -75,7 +75,7 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 // (CommitDirtyTree), which precedes it with its own chore subject.
 //
 // A keepOut path is left out of the commit, so edits to it the operator had already
-// staged neither ride in the commit nor lose their staged state (see commitStaged).
+// staged neither ride in the commit nor lose their staged state (see CommitStaged).
 // Should nothing else be staged, it fails rather than report a commit it never made.
 func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, tag, versionFile string, changelogChanged, versionChanged bool, keepOut git.Exclusion) error {
 	// The no-op branch consumes the SAME shared predicate the engine spine consults
@@ -91,20 +91,20 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 	}
 
 	subject := BookkeepingSubject(commitPrefix, tag)
-	committed, err := commitStaged(ctx, m, dir, subject, keepOut)
+	committed, err := CommitStaged(ctx, m, dir, subject, keepOut)
 	if err != nil {
 		return fmt.Errorf("committing release bookkeeping %q: %w", subject, err)
 	}
 	if !committed {
-		return fmt.Errorf("committing release bookkeeping %q: %w", subject, errNothingStaged)
+		return fmt.Errorf("committing release bookkeeping %q: %w", subject, ErrNothingStaged)
 	}
 	return nil
 }
 
-// errNothingStaged reports a commit that had nothing to take once keepOut was left out.
-var errNothingStaged = errors.New("nothing staged to commit")
+// ErrNothingStaged reports a commit that had nothing to take once keepOut was left out.
+var ErrNothingStaged = errors.New("nothing staged to commit")
 
-// commitStaged commits the index in dir with subject, reporting whether a commit was
+// CommitStaged commits the index in dir with subject, reporting whether a commit was
 // made. Only when keepOut has staged edits does it name the other staged paths on
 // stdin instead: a bare exclusion pathspec on `git commit` would commit the work-tree
 // content of every other tracked path, sweeping in unstaged and assume-unchanged
@@ -113,7 +113,7 @@ var errNothingStaged = errors.New("nothing staged to commit")
 // commit runs, since an empty pathspec file commits the whole index, keepOut's staged
 // edits included. On this pathspec route git runs the commit hooks against a
 // temporary index, so a hook that re-stages its rewrite leaves the real index behind.
-func commitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keepOut git.Exclusion) (bool, error) {
+func CommitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keepOut git.Exclusion) (bool, error) {
 	keepOutStaged, err := hasStagedEdits(ctx, m, dir, keepOut)
 	if err != nil {
 		return false, err

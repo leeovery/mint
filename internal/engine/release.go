@@ -313,7 +313,7 @@ type ReleaseOptions struct {
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p := deps.Presenter
 
-	notesPath := notesFilePath(opts)
+	notesPath := notesFilePath(opts.WorkDir, opts.NotesFile)
 	supplied, err := readNotesFile(notesPath)
 	if err != nil {
 		return surface(p, "notes", err)
@@ -840,11 +840,11 @@ func selectState(current version.SemVer, cfg config.Config, opts ReleaseOptions,
 	}
 }
 
-func notesFilePath(opts ReleaseOptions) string {
-	if opts.WorkDir == "" || opts.NotesFile == "" || filepath.IsAbs(opts.NotesFile) {
-		return opts.NotesFile
+func notesFilePath(workDir, notesFile string) string {
+	if workDir == "" || notesFile == "" || filepath.IsAbs(notesFile) {
+		return notesFile
 	}
-	return filepath.Join(opts.WorkDir, opts.NotesFile)
+	return filepath.Join(workDir, notesFile)
 }
 
 // notesExclusion is the zero Exclusion when no file was given, the file lies outside
