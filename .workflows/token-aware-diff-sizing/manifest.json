@@ -304,7 +304,8 @@
             "token-aware-diff-sizing-8-6": "tick-7b18f0",
             "token-aware-diff-sizing-8-7": "tick-2c0f33",
             "token-aware-diff-sizing-8-8": "tick-c40020",
-            "token-aware-diff-sizing-1-6": "tick-fb826b"
+            "token-aware-diff-sizing-1-6": "tick-fb826b",
+            "token-aware-diff-sizing-2-11": "tick-1c2cb0"
           },
           "storage_paths": [
             ".tick/"
@@ -398,98 +399,19 @@
               "tasks": {
                 "1": "approved"
               }
+            },
+            "p2": {
+              "tasks": {
+                "1": "approved"
+              }
             }
           },
           "consolidated_phases": [
-            1
+            1,
+            2
           ],
           "completed_phases": [
             1
-          ],
-          "bank": [
-            {
-              "task": "token-aware-diff-sizing-2-1",
-              "source": "executor",
-              "summary": "Integer keys other than max_prompt_bytes still give raw go-toml errors for float or boolean values",
-              "failure": "An operator who writes max_diff_lines = 1.5, timeout = 1.5 or [release] timeout = true gets go-toml's positioned float cannot be assigned to int text instead of mint's must be an integer message; TestLoad_TypeMismatch_MappedFriendlyMessages only tests string values, so it never catches it",
-              "detail": "go-toml leaves the struct-field path out of int-assignment mismatches, so the field-path lookup in translateTypeError (internal/config/config.go, typeErrorMessages loop) misses them; the new topLevelIntegerKeys / nonIntegerKey fallback covers only max_prompt_bytes; max_diff_lines and the shared timeout are one map entry each, the [release]/[commit] timeout keys need a nested-path lookup",
-              "files": [
-                "internal/config/config.go",
-                "internal/config/config_test.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-2-4",
-              "source": "reviewer",
-              "summary": "notes.CheckDiffSize lost its last production caller but CLAUDE.md still lists it as reusable",
-              "failure": "An agent reading CLAUDE.md layout line (internal/notes exposes the reusable CheckDiffSize/ErrDiffTooLarge) would reach for the line ceiling the feature removes and bring back the dead end; only a review would catch it",
-              "detail": "internal/notes/size.go:13-21 is now referenced only by size_test.go; ErrDiffTooLarge is still used by commit. Task 2-5 AC (layout line for internal/notes names no removed export) implies removing it, but 2-5 Do list never names CheckDiffSize",
-              "files": [
-                "internal/notes/size.go",
-                "internal/notes/size_test.go",
-                "CLAUDE.md"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-2-7",
-              "source": "reviewer",
-              "summary": "Task 2-9 no-room refusal must also cover a piece with no room left after its framing and the file header, not just a chunk room <= 0",
-              "failure": "Under a cap that leaves a chunk call a small positive room for diff but less than the piece framing extra text plus the file header, mint sends any file over room as one whole call bigger than the cap, breaking the rule that no call is bigger than the cap; the operator gets at most the AI overflow error; a 2-9 check written as room <= 0 misses this window",
-              "detail": "cutPieces returns []chunkPart{{slice: file}} when bodyRoom <= 0 (internal/notes/chunk.go:199-203); cutParts reaches it for every file over room (chunk.go:162-170), so room <= 0 also lands there; in the bodyRoom 1-3 range the end == 0 fallback (chunk.go:242-244) takes one whole rune and can overshoot room by up to 3 bytes",
-              "files": [
-                "internal/notes/chunk.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-2-7",
-              "source": "reviewer",
-              "summary": "When a piece has no room (or less than 4 bytes) for its body, cutPieces sends the file whole over the cap; task 2-9 no-room rule must cover pieces as well as a chunk whose room is 0 or less",
-              "failure": "Some caps leave a whole-file chunk some room but less than the piece framing extra text plus the file header (a band of a few hundred bytes above the fixed part); every file bigger than the room then goes out as one call far over max_prompt_bytes instead of failing as no room for the diff under max_prompt_bytes; the operator sees a provider refusal or an oversize call that succeeds and no message names the cap",
-              "detail": "room (internal/notes/chunk.go:152) is measured with whole-file framing; pieceRoom (chunk.go:169) is smaller by the piece framing extra text; cutPieces returns []chunkPart{{slice: file}} when pieceRoom - len(header) <= 0 (chunk.go:200-203); packPieceBodies cuts one whole rune when the room is narrower than that rune (chunk.go:242-244), up to 3 bytes over; treating a piece body room below utf8.UTFMax as no room fixes both",
-              "files": [
-                "internal/notes/chunk.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-2-7",
-              "source": "reviewer",
-              "summary": "The no-room failure task 2-9 builds must cover a piece left with no room for its body, not only a chunk room <= 0",
-              "failure": "When instructions and Change Map sit a few hundred bytes under max_prompt_bytes, or a Phase 4 halving round lands just above the fixed part, the chunk room is positive but smaller than a piece framing plus repeated header; mint sends the whole file as one call over the cap, breaking the rule that no call exceeds the cap; it shows only as an unexplained provider failure or not at all",
-              "detail": "internal/notes/chunk.go:200-203 sends the file whole when bodyRoom <= 0; chunk.go:242-244 lets a piece run up to 3 bytes over when the room is narrower than one rune; chunk.go:163 sends every file down that path when room <= 0; a no-room check only on the chunk room in cutParts misses the first two",
-              "files": [
-                "internal/notes/chunk.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-2-10",
-              "source": "executor",
-              "summary": "A Ctrl-C during regenerate --all is treated as a skipped version, not an abort",
-              "failure": "An operator who presses Ctrl-C mid-batch sees every remaining version reported as skipped (notes generation failed), each failing at once on the dead context; the batch then finishes with its end summary and returns nil, as if it succeeded with some skips, instead of stopping; they notice from a summary listing versions they never meant to skip",
-              "detail": "processOneVersion sends any ProduceBody error to reportSkip (internal/engine/regenerate_batch.go:288-289) without checking errors.Is(err, context.Canceled); the batch loop (around lines 195-220) then emits RunFinished and returns collected, nil",
-              "files": [
-                "internal/engine/regenerate_batch.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-2-10",
-              "source": "executor",
-              "summary": "A Ctrl-C during regenerate --all is treated as a skipped version, not an abort",
-              "failure": "An operator who presses Ctrl-C mid-batch sees every remaining version reported as skipped (notes generation failed); the batch then finishes with its end summary and returns nil instead of stopping; they notice from a summary listing versions they never meant to skip",
-              "detail": "processOneVersion sends any ProduceBody error to reportSkip (internal/engine/regenerate_batch.go:288-289) without checking errors.Is(err, context.Canceled); RegenerateAll then emits RunFinished and returns nil (around lines 215-220)",
-              "files": [
-                "internal/engine/regenerate_batch.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-2-10",
-              "source": "executor",
-              "summary": "A Ctrl-C during regenerate --all is treated as a skipped version, not an abort",
-              "failure": "An operator who presses Ctrl-C mid-batch sees every remaining version reported as skipped (notes generation failed); the batch then finishes with its end summary and returns nil instead of stopping",
-              "detail": "processOneVersion sends any ProduceBody error to reportSkip (internal/engine/regenerate_batch.go:288-289) without checking errors.Is(err, context.Canceled); RegenerateAll then emits RunFinished and returns nil (around lines 215-220)",
-              "files": [
-                "internal/engine/regenerate_batch.go"
-              ]
-            }
           ]
         }
       }
