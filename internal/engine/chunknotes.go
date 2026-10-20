@@ -6,11 +6,11 @@ import (
 )
 
 // chunkNotesKeeper saves a failed chunked run's finished chunk notes for one repo's
-// tag and remembers why a save failed, so the run can warn once its notes stage has
-// ended.
+// tag, remembering what it saved and why a save failed.
 type chunkNotesKeeper struct {
 	store     ChunkNotesSaver
 	root, tag string
+	saved     string
 	saveErr   error
 }
 
@@ -27,6 +27,9 @@ func (k *chunkNotesKeeper) saver() notes.SaveChunkNotes {
 	return func(chunkNotes string) (string, error) {
 		path, err := k.store.Save(k.root, k.tag, chunkNotes)
 		k.saveErr = err
+		if err == nil {
+			k.saved = chunkNotes
+		}
 		return path, err
 	}
 }

@@ -821,7 +821,7 @@ func TestGuide_AITransportParagraphNamesTheOneNonAIBody(t *testing.T) {
 }
 
 const (
-	floorOffer = "an attended release is offered the commit-subject list or an abort"
+	floorOffer = "an attended release is offered the commit-subject list, writing the notes in the editor, or an abort"
 	floorStop  = "an unattended one stops"
 )
 

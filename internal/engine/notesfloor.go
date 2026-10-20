@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"mint/internal/notes"
 	"mint/internal/presenter"
@@ -36,32 +37,51 @@ func notesFloorGate() presenter.Gate {
 		AcceptEcho: "aborted",
 		Choices: []presenter.GateChoice{
 			{Key: presenter.ChoiceCommitSubjects, Action: "use the commit subjects"},
+			{Key: presenter.ChoiceEdit, Action: "write in $EDITOR"},
 			{Key: presenter.ChoiceAbort, Action: "abort"},
 		},
 		Default: presenter.ChoiceAbort,
 	}
 }
 
-// notesFloor returns the body chosen at the floor's choice. A way out with no body
-// is an abort, its cause returned for the caller's unwind.
-func notesFloor(ctx context.Context, deps ReleaseDeps, lastTag string) (string, notes.Kind, error) {
-	choice, err := deps.Presenter.Prompt(notesFloorGate())
-	if err != nil {
-		return "", notes.KindFloor, err
-	}
-	switch choice {
-	case presenter.ChoiceCommitSubjects:
-		body, err := notes.NoAIBody(ctx, deps.Runner, lastTag)
+// notesFloor returns the body chosen at the floor's choice, re-presenting the choice
+// when the editor wrote nothing or could not be launched. savedNotes is what the
+// editor opens on: the chunk notes this run saved, or "". A way out with no body is
+// an abort, its cause returned for the caller's unwind.
+func notesFloor(ctx context.Context, deps ReleaseDeps, lastTag, savedNotes string) (string, notes.Kind, error) {
+	for {
+		choice, err := deps.Presenter.Prompt(notesFloorGate())
 		if err != nil {
+			return "", notes.KindFloor, err
+		}
+		switch choice {
+		case presenter.ChoiceCommitSubjects:
+			body, err := notes.NoAIBody(ctx, deps.Runner, lastTag)
+			if err != nil {
+				surfaceStageFailure(deps.Presenter, "notes", err)
+				return "", notes.KindFloor, err
+			}
+			return body, notes.KindFloor, nil
+		case presenter.ChoiceEdit:
+			body, err := editBody(ctx, deps.Editor, savedNotes)
+			switch {
+			case errors.Is(err, ErrEditorReturnToGate):
+				continue
+			case err != nil:
+				surfaceStageFailure(deps.Presenter, "edit", err)
+				return "", notes.KindFloor, err
+			case strings.TrimSpace(body) == "":
+				// Closing the editor empty backs out of it; accepting an empty body would
+				// ship an empty tag message, changelog entry and provider release.
+				continue
+			}
+			return body, notes.KindFloor, nil
+		case presenter.ChoiceAbort:
+			return "", notes.KindFloor, errFloorAborted
+		default:
+			err := errUnexpectedChoice(choice)
 			surfaceStageFailure(deps.Presenter, "notes", err)
 			return "", notes.KindFloor, err
 		}
-		return body, notes.KindFloor, nil
-	case presenter.ChoiceAbort:
-		return "", notes.KindFloor, errFloorAborted
-	default:
-		err := errUnexpectedChoice(choice)
-		surfaceStageFailure(deps.Presenter, "notes", err)
-		return "", notes.KindFloor, err
 	}
 }

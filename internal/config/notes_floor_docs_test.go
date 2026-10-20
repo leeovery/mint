@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	floorOffer = "an attended release is offered the commit-subject list or an abort"
+	floorOffer = "an attended release is offered the commit-subject list, writing the notes in the editor, or an abort"
 	floorStop  = "an unattended one stops"
 )
 
@@ -50,4 +50,19 @@ func TestREADME_ReleaseSectionNamesTheFloorChoice(t *testing.T) {
 	t.Parallel()
 
 	assertNamesTheFloor(t, "README release section", readmeSection(t, readREADME(t, readmePath(t)), "### `release`"))
+}
+
+func TestREADME_ReleaseSectionDescribesTheFloorsEdit(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"**`e`** opens `$EDITOR` on the chunk notes this run saved, where it saved a file, and otherwise empty",
+		"an empty or whitespace-only body returns to the choice",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
 }

@@ -47,7 +47,7 @@ func indexOfKindFrom(rec *presentertest.RecordingPresenter, kind presentertest.E
 }
 
 // assertFloorFollowsFailure checks the floor's choice is the next gate after the
-// notes ✗ line, with c and a offered, a the default, and no spinner started between.
+// notes ✗ line, with c, e and a offered, a the default, and no spinner started between.
 func assertFloorFollowsFailure(t *testing.T, rec *presentertest.RecordingPresenter) {
 	t.Helper()
 	failedAt := indexOfKind(rec, presentertest.KindStageFailed)
@@ -59,7 +59,7 @@ func assertFloorFollowsFailure(t *testing.T, rec *presentertest.RecordingPresent
 		t.Fatalf("no gate after the notes failure; kinds = %v", rec.Kinds())
 	}
 	gate := rec.Events[promptAt].Prompt
-	if got, want := gate.Keys(), []presenter.Choice{presenter.ChoiceCommitSubjects, presenter.ChoiceAbort}; !slices.Equal(got, want) {
+	if got, want := gate.Keys(), []presenter.Choice{presenter.ChoiceCommitSubjects, presenter.ChoiceEdit, presenter.ChoiceAbort}; !slices.Equal(got, want) {
 		t.Errorf("floor keys = %v, want %v", got, want)
 	}
 	if gate.Default != presenter.ChoiceAbort {

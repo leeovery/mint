@@ -56,12 +56,8 @@ import (
 // releaseAction is the engine-supplied verb word for the start-of-run header.
 const releaseAction = "releasing"
 
-// Editor is the engine's edit seam: the `e` review-gate choice hands the current
-// notes body to Edit and uses whatever it returns VERBATIM (no re-parse, no
-// re-validation — a human edit is trusted). The interface is intentionally tiny so
-// production can wire the real $EDITOR resolution (task 2-13) behind it while the
-// gate-loop tests drive a scripted fake. It is defined HERE (the consumer) rather
-// than where it is implemented, per the accept-interfaces convention.
+// Editor is the engine's edit seam: an `e` choice hands a notes body to Edit and
+// uses the text it returns VERBATIM, never re-parsed — a human edit is trusted.
 type Editor interface {
 	// Edit presents the current body to the user's editor and returns the saved
 	// text. A non-nil error means no edit could be obtained (e.g. no editor on PATH);
@@ -115,11 +111,11 @@ type ReleaseDeps struct {
 	Mutator *git.Mutator
 	// Releaser performs the point-of-no-return tag + atomic push through the same Mutator.
 	Releaser *release.Releaser
-	// Editor is the OPTIONAL edit seam consulted ONLY on the `e` review-gate choice.
-	// Runs that never reach `e` (every non-interactive and accept/abort path) may
-	// leave it nil; production wires the real $EDITOR resolution (task 2-13). If `e`
-	// is chosen with a nil Editor (a misconfiguration), the gate surfaces a clear
-	// error and aborts rather than panicking.
+	// Editor is the OPTIONAL edit seam consulted ONLY on an `e` choice, at the review
+	// gate or the notes floor. Runs that never reach `e` (every non-interactive and
+	// accept/abort path) may leave it nil; production wires the real $EDITOR
+	// resolution. If `e` is chosen with a nil Editor (a misconfiguration), the run
+	// surfaces a clear error and aborts rather than panicking.
 	Editor Editor
 	// Regenerator is the OPTIONAL regenerate seam consulted ONLY on the `r`
 	// review-gate choice, which the gate offers ONLY for notes.KindNormalAI. Every
@@ -530,7 +526,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		if !atFloor {
 			return Unwind(ctx, deps, start, made, err)
 		}
-		body, kind, err = notesFloor(ctx, deps, current.String(cfg.Release.TagPrefix))
+		body, kind, err = notesFloor(ctx, deps, current.String(cfg.Release.TagPrefix), chunkNotes.saved)
 		if err != nil {
 			return Unwind(ctx, deps, start, made, err)
 		}

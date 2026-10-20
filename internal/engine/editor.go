@@ -1,11 +1,11 @@
 package engine
 
 // This file implements the engine's Editor seam (declared in release.go): the
-// real $EDITOR hand-off the `e` review-gate choice uses. It lives in the engine
-// package because it is tightly coupled to the review-gate flow — it drives the
-// presenter's spinner suspend/resume hooks around the terminal hand-off and
-// signals "return to the gate" via ErrEditorReturnToGate when no editor can be
-// launched, both of which the gate loop in release.go consumes directly.
+// real $EDITOR hand-off an `e` choice uses. It lives in the engine package because
+// it is tightly coupled to the gate flow — it drives the presenter's spinner
+// suspend/resume hooks around the terminal hand-off and signals "return to the
+// gate" via ErrEditorReturnToGate when no editor can be launched, both of which the
+// engine's gate loops consume directly.
 
 import (
 	"context"
@@ -29,7 +29,7 @@ var ErrEditorReturnToGate = errors.New("editor could not be launched; return to 
 // — the conventional always-present Unix editor.
 const defaultEditor = "vi"
 
-// ResolveEditor resolves which editor to launch for the `e` review-gate choice,
+// ResolveEditor resolves which editor to launch for an `e` choice,
 // honouring the conventional precedence: $VISUAL (when set and non-blank), then
 // $EDITOR (when set and non-blank), then the "vi" fallback.
 //
