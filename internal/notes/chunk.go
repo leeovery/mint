@@ -52,37 +52,55 @@ const maxChunkCallsInFlight = 4
 // generateParts makes one chunk call per part, at most maxChunkCallsInFlight at a
 // time, and returns their notes in part order once every call has finished. Each call
 // runs on ctx itself: the wave sets no deadline of its own, so a timeout is per call.
-// A failure is reported for the lowest-numbered failed part. Each part that
-// succeeds is reported to g.progress as it finishes.
+// The first call to fail stops the wave: no further call starts, the calls already
+// running finish, and that failure is returned. ctx ending stops it too, and its error
+// is returned over any earlier failure. Each part that succeeds is reported to
+// g.progress as it finishes.
 func (g *Generator) generateParts(ctx context.Context, instructions, changeMap string, parts []chunkPart, promptBytes int) ([]string, error) {
 	partNotes := make([]string, len(parts))
-	errs := make([]error, len(parts))
 	slots := make(chan struct{}, maxChunkCallsInFlight)
 	var wg sync.WaitGroup
-	var reporting sync.Mutex
+	var mu sync.Mutex
+	var firstErr error
 	done := 0
+	stopped := func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return firstErr != nil || ctx.Err() != nil
+	}
 	g.progress.PartsDone(promptBytes, len(parts), done)
 	for i, part := range parts {
 		slots <- struct{}{}
+		if stopped() {
+			<-slots
+			break
+		}
 		wg.Go(func() {
+			// Released last, after the outcome is recorded, so the wave sees a failure
+			// before it can start a call in the freed slot.
 			defer func() { <-slots }()
 			prompt := composeChunkPrompt(instructions, changeMap, part.framing(i+1, len(parts)), part.slice)
-			partNotes[i], errs[i] = g.transport.Generate(ctx, prompt)
-			if errs[i] != nil {
+			notes, err := g.transport.Generate(ctx, prompt)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				if firstErr == nil {
+					firstErr = fmt.Errorf("generating notes for part %d of %d: %w", i+1, len(parts), err)
+				}
 				return
 			}
-			reporting.Lock()
-			defer reporting.Unlock()
+			partNotes[i] = notes
 			done++
 			g.progress.PartsDone(promptBytes, len(parts), done)
 		})
 	}
 	wg.Wait()
 
-	for i, err := range errs {
-		if err != nil {
-			return nil, fmt.Errorf("generating notes for part %d of %d: %w", i+1, len(parts), err)
-		}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	return partNotes, nil
 }

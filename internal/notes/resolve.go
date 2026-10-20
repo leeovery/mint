@@ -51,6 +51,9 @@ func FallbackBody(ctx context.Context, r runner.CommandRunner, lastTag string) (
 //     fixed-fallback-string overload that previously rode on this key is GONE — the
 //     fixed string now comes only from the dedicated rel.Fallback key.
 //
+// A cancellation (context.Canceled) is not a notes failure: it is returned unchanged
+// in either mode, so an interrupted run never ships a fallback body.
+//
 // VARIED CAUSES all route the SAME way: abort names whichever cause; fallback produces
 // the body regardless of cause. The cause only changes the abort message's named text,
 // never the routing.
@@ -63,6 +66,9 @@ func FallbackBody(ctx context.Context, r runner.CommandRunner, lastTag string) (
 // rel): it is meaningful ONLY given a real failure, and does not itself implement that
 // precedence.
 func ResolveFailure(ctx context.Context, r runner.CommandRunner, failure error, lastTag string, rel config.Release) (string, error) {
+	if errors.Is(failure, context.Canceled) {
+		return "", failure
+	}
 	if rel.OnNotesFailure == "fallback" {
 		return resolveFallbackBody(ctx, r, lastTag, rel.Fallback)
 	}

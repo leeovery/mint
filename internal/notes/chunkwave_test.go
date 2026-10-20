@@ -23,7 +23,7 @@ import (
 const waitLimit = 5 * time.Second
 
 // waveTransport is a concurrency-recording fake: it counts the chunk calls in flight,
-// logs when each call starts and ends, and holds each chunk call in gate until the
+// logs when each call starts and ends (or ends on a cancelled context), and holds each chunk call in gate until the
 // test lets it finish, calling ended once its end is logged. Chunk calls answer with chunkNotesFor their slice's first file;
 // the merge call answers mergeBody.
 type waveTransport struct {
@@ -37,7 +37,7 @@ type waveTransport struct {
 	ended       func(part int)
 }
 
-func (wt *waveTransport) Generate(_ context.Context, prompt string) (string, error) {
+func (wt *waveTransport) Generate(ctx context.Context, prompt string) (string, error) {
 	if !isChunkPrompt(prompt) {
 		wt.record(func() {
 			wt.events = append(wt.events, "merge")
@@ -54,7 +54,11 @@ func (wt *waveTransport) Generate(_ context.Context, prompt string) (string, err
 	err := wt.gate(part)
 	wt.record(func() {
 		wt.inFlight--
-		wt.events = append(wt.events, fmt.Sprintf("end %d", part))
+		if ctx.Err() != nil {
+			wt.events = append(wt.events, fmt.Sprintf("cancelled %d", part))
+		} else {
+			wt.events = append(wt.events, fmt.Sprintf("end %d", part))
+		}
 	})
 	if wt.ended != nil {
 		wt.ended(part)
