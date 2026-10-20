@@ -3,8 +3,8 @@
 // requires a file to exist.
 //
 // Config is the single CANONICAL schema for the verb-namespaced .mint.toml: the
-// shared engine keys at the top level (ai_command, diff_exclude, max_diff_lines,
-// max_prompt_bytes, timeout), the [release] table, and the nested [release.hooks]
+// shared engine keys at the top level (ai_command, diff_exclude, max_prompt_bytes,
+// timeout), the [release] table, and the nested [release.hooks]
 // sub-table. Every documented key has its Go type here and a default applied uniformly — on zero config (file
 // absent, empty, or comment-only) every key comes back at its documented default,
 // and a file that sets only part of a table leaves the unset keys at their
@@ -13,9 +13,9 @@
 // Load decodes the file STRICTLY: any key matching no field in the canonical schema
 // — at the top level, inside [release], or inside [release.hooks] — is rejected with
 // an actionable message naming the key and its table (a top-level [hooks] table gets
-// targeted guidance to nest under [release.hooks]). It also fails loud on bad TYPES:
-// a value that cannot decode into its schema Go type (e.g. a string max_diff_lines, a
-// string publish/changelog, a scalar diff_exclude) is re-wrapped into a mint message
+// targeted guidance to nest under [release.hooks], and the removed max_diff_lines names
+// its replacement). It also fails loud on bad TYPES: a value that cannot decode into its
+// schema Go type (e.g. a string max_prompt_bytes, a string publish/changelog, a scalar diff_exclude) is re-wrapped into a mint message
 // naming the key and its expected type; a [release.hooks] entry that is neither a
 // command string nor an array of command strings is rejected naming the hook key;
 // max_prompt_bytes must be positive; and on_notes_failure is constrained to the closed
@@ -63,14 +63,6 @@ const defaultOnNotesFailure = "abort"
 // fallback body. Any other non-empty value fails loud at load.
 var onNotesFailureValues = []string{"abort", "fallback"}
 
-// DefaultMaxDiffLines is the default for the shared max_diff_lines key;
-// max_prompt_bytes, not this line count, sizes AI calls.
-//
-// It is the single CANONICAL source of this default — it is EXPORTED so other sites
-// (the SoT default column in metadata.go) derive the value from here rather than
-// re-typing the literal, symmetric with DefaultAICommand.
-const DefaultMaxDiffLines = 50000
-
 // DefaultMaxPromptBytes is the shipped per-call byte cap on the composed prompt of any
 // single AI call (instructions, Change Map, diff and closing reminder together). It is
 // deliberately high: too high for the model fails loud, too low fails silent. Exported so
@@ -105,8 +97,8 @@ const (
 )
 
 // Config is the loaded mint configuration: the [release] and [commit] verb tables
-// plus the shared top-level engine keys (ai_command, max_diff_lines, max_prompt_bytes,
-// timeout, diff_exclude).
+// plus the shared top-level engine keys (ai_command, max_prompt_bytes, timeout,
+// diff_exclude).
 type Config struct {
 	Release Release
 
@@ -116,7 +108,7 @@ type Config struct {
 	// Context/Prompt are the commit-specific counterparts of [release]'s
 	// Context/Prompt. The ai_command / timeout overrides resolve through the layered
 	// chain [commit] → shared top-level → shipped default (mirroring [release]); the
-	// other shared engine keys diff_exclude / max_diff_lines / max_prompt_bytes stay
+	// other shared engine keys diff_exclude / max_prompt_bytes stay
 	// shared-only and serve commit from the top level (they have no [commit] override).
 	Commit Commit
 
@@ -130,10 +122,6 @@ type Config struct {
 	// transport splits the resolved command into name + args by POSIX shell quoting
 	// rules.
 	AICommand string
-
-	// MaxDiffLines is the shared max_diff_lines value (default 50000);
-	// max_prompt_bytes, not this line count, sizes AI calls.
-	MaxDiffLines int
 
 	// MaxPromptBytes is the shared per-call byte cap on the composed prompt of any single
 	// AI call (default DefaultMaxPromptBytes), one cap for both verbs. Load guarantees it
@@ -308,7 +296,6 @@ func defaults() Config {
 			VersionPattern: "",
 		},
 		AICommand:      DefaultAICommand,
-		MaxDiffLines:   DefaultMaxDiffLines,
 		MaxPromptBytes: DefaultMaxPromptBytes,
 	}
 }
@@ -316,13 +303,12 @@ func defaults() Config {
 // fileShape mirrors the on-disk TOML so absent keys can be told apart from
 // present-but-zero ones. Publish and Changelog are *bool because their zero value
 // (false) is a meaningful, explicit choice: nil means "key absent, apply default
-// true" while a non-nil false means the surface is disabled. MaxDiffLines is a *int for the same
-// reason — nil means "key absent, apply default 50000" while a non-nil value
-// (even 0) is an explicit operator choice. MaxPromptBytes is a *int too, so an explicit
-// 0 reaches Load's positive-value check rather than reading as absent. Timeout is a *int
-// (integer SECONDS) for the SAME reason — nil means "key absent" (TimeoutFor applies the verb's shipped floor) while
-// a non-nil value (even 0) is an explicit operator choice; integer seconds makes a
-// non-integer TOML value a strict decode error at Load, exactly like max_diff_lines. The
+// true" while a non-nil false means the surface is disabled. MaxPromptBytes is a *int for
+// the same reason, so an explicit 0 reaches Load's positive-value check rather than
+// reading as absent. Timeout is a *int (integer SECONDS) too — nil means "key absent"
+// (TimeoutFor applies the verb's shipped floor) while a non-nil value (even 0) is an
+// explicit operator choice; integer seconds makes a non-integer TOML value a strict
+// decode error at Load, exactly like max_prompt_bytes. The
 // string fields are decoded onto a struct pre-seeded with defaults, so the decoder only
 // overwrites keys actually present in the file — an explicit empty tag_prefix overwrites
 // "v" with "" (a valid prefix-less choice) while an absent key leaves the default intact.
@@ -330,7 +316,6 @@ type fileShape struct {
 	Release        releaseShape `toml:"release"`
 	Commit         commitShape  `toml:"commit"`
 	AICommand      *string      `toml:"ai_command"`
-	MaxDiffLines   *int         `toml:"max_diff_lines"`
 	MaxPromptBytes *int         `toml:"max_prompt_bytes"`
 	Timeout        *int         `toml:"timeout"`
 	DiffExclude    []string     `toml:"diff_exclude"`
@@ -443,7 +428,6 @@ func Load(root string) (Config, error) {
 		Release:        resolveRelease(shape.Release),
 		Commit:         resolveCommit(shape.Commit),
 		AICommand:      aiCommandOrDefault(shape.AICommand),
-		MaxDiffLines:   resolveMaxDiffLines(shape.MaxDiffLines),
 		MaxPromptBytes: resolveMaxPromptBytes(shape.MaxPromptBytes),
 		Timeout:        resolveTimeout(shape.Timeout),
 		DiffExclude:    shape.DiffExclude,
@@ -455,7 +439,7 @@ func Load(root string) (Config, error) {
 // message. It reports the first offending key — naming both the key and its owning
 // table so the offender is unambiguous — and special-cases a TOP-LEVEL [hooks] table
 // (the documented contradiction) with targeted guidance to nest under
-// [release.hooks].
+// [release.hooks], and the removed top-level max_diff_lines with its replacement.
 func translateStrict(strict *toml.StrictMissingError) error {
 	for _, de := range strict.Errors {
 		key := de.Key()
@@ -470,14 +454,13 @@ func translateStrict(strict *toml.StrictMissingError) error {
 }
 
 // typeErrorMessages maps a schema struct-field path (as it appears in the decoder's
-// *toml.DecodeError text, e.g. "fileShape.MaxDiffLines") to the actionable mint
+// *toml.DecodeError text, e.g. "fileShape.MaxPromptBytes") to the actionable mint
 // message naming the TOML key and its expected type. The decoder reports a type
 // mismatch by Go field path with a nil Key(), so this lookup re-attaches the
 // user-facing key + type. Each entry covers one schema field whose TOML type is
-// constrained enough to misuse (the bool toggles, the integer guard, the string
+// constrained enough to misuse (the bool toggles, the integer keys, the string
 // array).
 var typeErrorMessages = map[string]string{
-	"fileShape.MaxDiffLines":   "max_diff_lines must be an integer",
 	"fileShape.MaxPromptBytes": "max_prompt_bytes must be an integer (bytes)",
 	"fileShape.Timeout":        "timeout must be an integer (seconds)",
 	"fileShape.DiffExclude":    "diff_exclude must be an array of strings",
@@ -545,14 +528,17 @@ func nonIntegerKey(data []byte) (string, bool) {
 
 // unknownKeyMessage builds the human-readable description for one unknown key,
 // given its full dotted path (e.g. ["release", "foo"]). A top-level [hooks] table
-// gets the targeted nest-guidance variant; every other key names the leaf key and
-// its owning table.
+// gets the targeted nest-guidance variant and a top-level max_diff_lines names the key
+// that replaced it; every other key names the leaf key and its owning table.
 func unknownKeyMessage(key []string) string {
 	// A top-level [hooks] table contradicts the verb-namespaced shape — hooks must
 	// nest under [release.hooks]. Give that specific guidance instead of the generic
 	// unknown-key message.
 	if key[0] == "hooks" {
 		return "[hooks] is not valid at the top level — nest hooks under [release.hooks]"
+	}
+	if len(key) == 1 && key[0] == "max_diff_lines" {
+		return "max_diff_lines has been replaced by max_prompt_bytes, a per-call size cap in bytes"
 	}
 
 	leaf := key[len(key)-1]
@@ -672,22 +658,12 @@ func (c Config) TimeoutFor(verb Verb) *time.Duration {
 // absent (nil) and otherwise carries the explicit value verbatim — including an
 // explicit empty, which Load must NOT re-default so AICommandFor's trim-and-skip is
 // what falls it through to the floor. Blank/whitespace detection does NOT live here:
-// it is AICommandFor's (this is absent→default only, mirroring
-// the max_diff_lines *int handling).
+// it is AICommandFor's (this is absent→default only).
 func aiCommandOrDefault(v *string) string {
 	if v != nil {
 		return *v
 	}
 	return DefaultAICommand
-}
-
-// resolveMaxDiffLines applies the 50000 default when the key was absent (nil) and
-// otherwise honours the explicit value (mirroring the publish *bool handling).
-func resolveMaxDiffLines(v *int) int {
-	if v != nil {
-		return *v
-	}
-	return DefaultMaxDiffLines
 }
 
 // resolveMaxPromptBytes applies DefaultMaxPromptBytes when the key was absent (nil) and
@@ -706,8 +682,8 @@ func resolveMaxPromptBytes(v *int) int {
 // it is DELIBERATELY not pre-defaulted here. A PRESENT
 // value (including an explicit 0, "no deadline", or a negative TimeoutFor drops) is
 // carried verbatim as seconds → duration, so absent (nil) is distinguishable from an
-// explicit 0 (a non-nil pointer to 0). Mirrors the max_diff_lines *int nil-vs-present idiom,
-// adding only the seconds→duration boundary conversion.
+// explicit 0 (a non-nil pointer to 0). Mirrors the max_prompt_bytes *int nil-vs-present
+// idiom, adding only the seconds→duration boundary conversion.
 func resolveTimeout(seconds *int) *time.Duration {
 	if seconds == nil {
 		return nil

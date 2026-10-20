@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"mint/internal/ai"
-	"mint/internal/notes"
 )
 
 // TestFailureMessage_CollapsesForwardAbortChain proves the forward abortError chain
@@ -29,7 +28,6 @@ func TestFailureMessage_CollapsesForwardAbortChain(t *testing.T) {
 		want     string
 	}{
 		{"timeout", ai.ErrTimeout, "AI timed out"},
-		{"diff too large", notes.ErrDiffTooLarge, "diff too large"},
 		{"missing tool", ai.ErrCommandMissing, "AI tool not installed"},
 		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty/invalid notes after retry"},
 	}

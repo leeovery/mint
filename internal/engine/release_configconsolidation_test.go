@@ -150,7 +150,7 @@ func TestRelease_BadConfig_AbortsBeforePipelineWork(t *testing.T) {
 	}{
 		{name: "unknown top-level key", config: "not_a_real_key = true\n"},
 		{name: "unknown release key", config: "[release]\nbogus = 1\n"},
-		{name: "bad type max_diff_lines", config: "max_diff_lines = \"lots\"\n"},
+		{name: "bad type max_prompt_bytes", config: "max_prompt_bytes = \"lots\"\n"},
 		{name: "bad type publish", config: "[release]\npublish = \"yes\"\n"},
 	}
 

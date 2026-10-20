@@ -677,9 +677,9 @@ func TestGuide_ConfigReferenceSharedLevelUsesNonCollidingToken(t *testing.T) {
 
 	section := configReferenceBody(t)
 
-	// max_diff_lines is a shared-level-only key (no dual-level twin), so its row
+	// max_prompt_bytes is a shared-level-only key (no dual-level twin), so its row
 	// is unambiguously a shared row: its level cell is the placeholder under test.
-	const sharedOnlyKey = "max_diff_lines"
+	const sharedOnlyKey = "max_prompt_bytes"
 	line := rowLineFor(section, sharedOnlyKey)
 	if line == "" {
 		t.Fatalf("config reference has no row line for shared-only key %q", sharedOnlyKey)
@@ -692,6 +692,14 @@ func TestGuide_ConfigReferenceSharedLevelUsesNonCollidingToken(t *testing.T) {
 	if strings.Contains(levelCell, "shared") {
 		t.Errorf("shared-level row %q level cell %q must not collide with the Default inherit token %q",
 			sharedOnlyKey, levelCell, "shared")
+	}
+}
+
+func TestGuide_ConfigReferenceCarriesNoMaxDiffLinesRow(t *testing.T) {
+	t.Parallel()
+
+	if line := rowLineFor(configReferenceBody(t), "max_diff_lines"); line != "" {
+		t.Errorf("config reference still carries a max_diff_lines row: %q", line)
 	}
 }
 

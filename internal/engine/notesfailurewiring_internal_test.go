@@ -9,9 +9,9 @@ package engine
 // Both build presenter.StageFailure{Name, Message} and must now ALSO set
 // Output: notesFailureOutput(cause). The two paths must render IDENTICALLY for the same
 // cause (Acceptance Criteria #3). Only the generation-failed CARRIER populates Output;
-// the other three causes (timeout / command-missing / diff-too-large) yield "" so the
-// ✗ line stands alone. These assert Output POPULATION via the RecordingPresenter, not the
-// rendered stream — the pinned presenter test already covers stream placement.
+// the other causes (timeout / command-missing) yield "" so the ✗ line stands alone.
+// These assert Output POPULATION via the RecordingPresenter, not the rendered stream —
+// the pinned presenter test already covers stream placement.
 
 import (
 	"errors"
@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"mint/internal/ai"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 )
@@ -119,9 +118,8 @@ func TestSurface_PopulatesOutputIdenticallyToForwardPath(t *testing.T) {
 	}
 }
 
-// TestNotesSurfacing_NonCarrierCausesYieldEmptyOutput proves the other three causes
-// (timeout / command-missing / diff-too-large) render the concise phrase with an EMPTY
-// Output — the ✗ line stands alone — identically on both surfacing paths.
+// TestNotesSurfacing_NonCarrierCausesYieldEmptyOutput proves the other causes
+// (timeout / command-missing) render the concise phrase with an EMPTY Output — the ✗ line stands alone — identically on both surfacing paths.
 func TestNotesSurfacing_NonCarrierCausesYieldEmptyOutput(t *testing.T) {
 	t.Parallel()
 
@@ -132,7 +130,6 @@ func TestNotesSurfacing_NonCarrierCausesYieldEmptyOutput(t *testing.T) {
 	}{
 		{"timeout", ai.ErrTimeout, "AI timed out"},
 		{"command missing", ai.ErrCommandMissing, "AI tool not installed"},
-		{"diff too large", notes.ErrDiffTooLarge, "diff too large"},
 	}
 
 	for _, tc := range cases {

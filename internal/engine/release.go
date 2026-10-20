@@ -1643,8 +1643,8 @@ func hookFailureOutput(cause error) string {
 // so a literal copy of the hook helper would render nothing. errors.As is used precisely
 // because it traverses the %w chain, so the carrier still matches when it sits inside
 // abortError's forward chain ("notes generation failed (%s): %w") OR regenerate's shorter
-// "generating notes: %w" chain. Any non-carrier cause (timeout, command-missing,
-// diff-too-large, or a plain error) yields "" so the ✗ line stands alone.
+// "generating notes: %w" chain. Any non-carrier cause (timeout, command-missing, or a
+// plain error) yields "" so the ✗ line stands alone.
 func notesFailureOutput(cause error) string {
 	var genErr *ai.GenerationError
 	if !errors.As(cause, &genErr) {
@@ -1683,7 +1683,7 @@ func surface(p presenter.Presenter, stage string, cause error) error {
 //     generation failed (%s): %w") or regenerate's shorter "generating notes: %w"
 //     chain, instead of rendering the verbose nested %w concatenation. The %w chain is
 //     left intact for errors.Is/logs; only this DISPLAY string changes. Ordered after
-//     the gate branch because a gate error is never one of the four AI sentinels.
+//     the gate branch because a gate error never wraps a notes-failure sentinel.
 //   - everything else falls back to the wrapped error text (the defensive path for an
 //     unmapped cause, e.g. resetAndAbort's git record/push failure).
 func failureMessage(cause error) string {

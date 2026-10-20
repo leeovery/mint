@@ -105,7 +105,7 @@ func abortError(failure error) error {
 // it wraps, matched via errors.Is so it traverses the %w chain regardless of how the
 // cause was wrapped — abortError's forward chain ("notes generation failed (%s): %w")
 // OR regenerate's shorter "generating notes: %w" chain both resolve to the same phrase.
-// It returns (phrase, true) for one of the four known notes-failure sentinels and
+// It returns (phrase, true) for a known notes-failure sentinel and
 // ("", false) for any other error.
 //
 // It is the SINGLE SOURCE of the concise phrasing: the unexported causeText (which
@@ -117,8 +117,6 @@ func CauseText(failure error) (string, bool) {
 	switch {
 	case errors.Is(failure, ai.ErrTimeout):
 		return "AI timed out", true
-	case errors.Is(failure, ErrDiffTooLarge):
-		return "diff too large", true
 	case errors.Is(failure, ai.ErrCommandMissing):
 		return "AI tool not installed", true
 	case errors.Is(failure, ai.ErrGenerationFailed):

@@ -332,7 +332,7 @@ func TestAssembler_AssembleDiff_ReturnsPostExclusionDiffText(t *testing.T) {
 	t.Parallel()
 
 	// The assembler returns the RAW post-exclusion diff text (git's stdout) for
-	// downstream layering — no Change Map preamble, no max_diff_lines cap added
+	// downstream layering — no Change Map preamble, no size cap applied
 	// here. The returned text equals git's stdout byte-for-byte.
 	diff := "diff --git a/x.go b/x.go\nindex 111..222 100644\n--- a/x.go\n+++ b/x.go\n@@ -1,2 +1,2 @@\n a\n-b\n+c\n"
 	r := runner.NewFakeRunner()

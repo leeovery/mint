@@ -206,7 +206,6 @@ The per-key reference tables below are the authoritative human config reference 
 |---|---|---|
 | `ai_command` | `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
 | `timeout` | `180` on release, `60` on commit | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
-| `max_diff_lines` | `50000` | not read: release notes over `max_prompt_bytes` are chunked, and commit's cap is `max_prompt_bytes` |
 | `max_prompt_bytes` | `1500000` | cap, in bytes, on the composed prompt of any single AI call: instructions, Change Map, diff and closing reminder together; no call mint makes is bigger. Must be positive — `0` is rejected, never "no cap" |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
 

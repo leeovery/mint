@@ -100,12 +100,12 @@ func TestResolveFailure_AbortExplicit_BehavesLikeDefault(t *testing.T) {
 	r := runner.NewFakeRunner()
 	rel := config.Release{OnNotesFailure: "abort"}
 
-	body, err := notes.ResolveFailure(t.Context(), r, notes.ErrDiffTooLarge, "v1.0.0", rel)
+	body, err := notes.ResolveFailure(t.Context(), r, ai.ErrTimeout, "v1.0.0", rel)
 	if err == nil {
 		t.Fatal("ResolveFailure returned nil error for explicit abort, want an abort error")
 	}
-	if !errors.Is(err, notes.ErrDiffTooLarge) {
-		t.Errorf("error = %v, want it to match notes.ErrDiffTooLarge", err)
+	if !errors.Is(err, ai.ErrTimeout) {
+		t.Errorf("error = %v, want it to match ai.ErrTimeout", err)
 	}
 	if body != "" {
 		t.Errorf("body = %q, want empty in abort mode", body)
@@ -231,7 +231,6 @@ func TestResolveFailure_VariedCauses_RouteThroughBothModes(t *testing.T) {
 		{"timeout", ai.ErrTimeout, "AI timed out"},
 		{"missing tool", ai.ErrCommandMissing, "AI tool not installed"},
 		{"empty after retry", ai.ErrGenerationFailed, "AI returned empty/invalid notes after retry"},
-		{"diff too large", notes.ErrDiffTooLarge, "diff too large"},
 	}
 
 	for _, tc := range cases {

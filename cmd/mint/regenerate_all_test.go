@@ -307,7 +307,7 @@ func TestNewBatchRegeneratorProducer_Release(t *testing.T) {
 func TestNewBatchRegeneratorProducer_Fresh(t *testing.T) {
 	t.Parallel()
 
-	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxDiffLines: 50000}, t.TempDir())
+	produce := newBatchRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, t.TempDir())
 	if got := produce(engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}); got == nil {
 		t.Error("fresh regenerator = nil, want a non-nil per-version regenerator for the `r` choice")
 	}

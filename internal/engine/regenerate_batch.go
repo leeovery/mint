@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"strings"
 
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/version"
@@ -225,7 +224,7 @@ type skippedVersion struct {
 	// Tag is the version's canonical tag (e.g. "v1.1.0"), the re-run key shown in the
 	// end summary.
 	Tag string
-	// Reason is the human-readable skip cause (e.g. "diff too large").
+	// Reason is the human-readable skip cause (e.g. "notes generation failed").
 	Reason string
 }
 
@@ -285,7 +284,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	notesDone := emitBlockingStageStarted(p, "notes", "generating release notes…", "Generated release notes")
 	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody)
 	if err != nil {
-		return reportSkip(p, res.Tag, classifyNotesFailure(err))
+		return reportSkip(p, res.Tag, reasonNotesFailed)
 	}
 	notesDone("generated")
 
@@ -332,9 +331,7 @@ const (
 	// reasonNoReleaseBody is the `--source release --all` skip reason for a version whose
 	// published release has no body — the variant of reasonNoAnnotationBody.
 	reasonNoReleaseBody = "no release body — use --source fresh"
-	reasonDiffTooLarge  = "diff too large"
-	// reasonNotesFailed is the fallback skip reason for any other notes-production
-	// failure that is not the diff-too-large case.
+	// reasonNotesFailed is the skip reason for any notes-production failure.
 	reasonNotesFailed = "notes generation failed"
 )
 
@@ -379,16 +376,6 @@ func preReadDeterministicBody(ctx context.Context, deps ReleaseDeps, publisher p
 func reportSkip(p presenter.Presenter, tag, reason string) (RegeneratedVersion, *skippedVersion, error) {
 	p.Warn(presenter.Warning{Label: "skipped " + tag, Message: reason})
 	return RegeneratedVersion{}, &skippedVersion{Tag: tag, Reason: reason}, nil
-}
-
-// classifyNotesFailure maps a notes-production error to its human skip reason: the
-// distinguishable diff-too-large case (matched with errors.Is) names itself; anything
-// else falls back to the generic notes-failed reason.
-func classifyNotesFailure(err error) string {
-	if errors.Is(err, notes.ErrDiffTooLarge) {
-		return reasonDiffTooLarge
-	}
-	return reasonNotesFailed
 }
 
 // batchSummary computes the end-of-run Summary the presenter renders VERBATIM: the

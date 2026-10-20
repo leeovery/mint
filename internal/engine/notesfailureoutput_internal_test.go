@@ -19,7 +19,6 @@ import (
 	"testing"
 
 	"mint/internal/ai"
-	"mint/internal/notes"
 )
 
 // TestNotesFailureOutput_ExtractsStdoutThroughAbortChain proves the helper finds the
@@ -154,7 +153,6 @@ func TestNotesFailureOutput_EmptyForNonCarrierCause(t *testing.T) {
 	}{
 		{"timeout", ai.ErrTimeout},
 		{"command missing", ai.ErrCommandMissing},
-		{"diff too large", notes.ErrDiffTooLarge},
 		{"plain error", errors.New("git reset failed: exit status 128")},
 	}
 

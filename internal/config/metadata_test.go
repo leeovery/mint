@@ -1,7 +1,6 @@
 package config_test
 
 import (
-	"strconv"
 	"testing"
 
 	"mint/internal/config"
@@ -12,7 +11,7 @@ import (
 // the internal config package's one ordered enumeration) into the shared configtest.RowKey
 // type. The census uses the unexported leafKey type, which config_test cannot name — but
 // leafKey's Level/Key fields are exported, so the projection reads them directly. This keeps
-// the 26-pair enumeration in exactly one place while the naming test below asserts in terms
+// the 25-pair enumeration in exactly one place while the naming test below asserts in terms
 // of the RowKey the (level, key) lookups already use.
 func expectedRowKeys() []configtest.RowKey {
 	census := config.ExpectedLeafKeys()
@@ -23,9 +22,9 @@ func expectedRowKeys() []configtest.RowKey {
 	return out
 }
 
-// TestMetadataRows_OneRowPerLevelKeyPair pins the SoT to exactly the 26 (level, key)
-// pairs spanning every config key: 5 shared, 14 [release], 3 [release.hooks], 4
-// [commit]. The count 26 is a sanity check here (the drift test in 1-4 is the real
+// TestMetadataRows_OneRowPerLevelKeyPair pins the SoT to exactly the 25 (level, key)
+// pairs spanning every config key: 4 shared, 14 [release], 3 [release.hooks], 4
+// [commit]. The count 25 is a sanity check here (the drift test in 1-4 is the real
 // guard against schema divergence); the value of THIS test is naming every expected
 // pair so a dropped or renamed key surfaces precisely.
 func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
@@ -34,7 +33,7 @@ func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 	// Project the single shared census (config.ExpectedLeafKeys, defined in the internal
 	// config package's metadata_census_test.go) into the shared configtest.RowKey type.
 	// config_test cannot name the unexported leafKey, but it can read each pair's exported
-	// Level/Key fields — so the 26 expected pairs live in exactly ONE place. This test
+	// Level/Key fields — so the 25 expected pairs live in exactly ONE place. This test
 	// still matches against MetadataRows() (the SoT side, indexed through the shared
 	// configtest seam), which stays untouched.
 	expected := expectedRowKeys()
@@ -338,26 +337,6 @@ func TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant(t *testing.T) {
 	}
 }
 
-// TestMetadataRows_SharedMaxDiffLinesDefaultEqualsConfigConstant is the DRIFT GUARD
-// tying the shared-level max_diff_lines SoT Default cell to config.DefaultMaxDiffLines,
-// the max_diff_lines twin of the ai_command / timeout subsuming pins. The cell is
-// sourced FROM the exported constant (strconv.Itoa(config.DefaultMaxDiffLines)), so a
-// re-typed literal that drifts from config.DefaultMaxDiffLines fails here — making the
-// "SoT Default column is the drift-pinned carrier" invariant total across all three
-// shared scalar defaults.
-func TestMetadataRows_SharedMaxDiffLinesDefaultEqualsConfigConstant(t *testing.T) {
-	t.Parallel()
-
-	set := configtest.MustByLevelKey(t)
-	row, ok := set[configtest.RowKey{Level: config.LevelShared, Key: "max_diff_lines"}]
-	if !ok {
-		t.Fatal("missing SoT row for (shared, max_diff_lines)")
-	}
-	if row.Default != strconv.Itoa(config.DefaultMaxDiffLines) {
-		t.Errorf("(shared, max_diff_lines) Default = %q, want strconv.Itoa(config.DefaultMaxDiffLines) %q", row.Default, strconv.Itoa(config.DefaultMaxDiffLines))
-	}
-}
-
 // TestMetadataRows_SharedTimeoutDefaultNamesBothShippedDefaults proves the shared
 // timeout row names both verbs' shipped deadlines in integer seconds, never the
 // time.Duration String form ("3m0s").
@@ -379,10 +358,10 @@ func TestMetadataRows_SharedTimeoutDefaultNamesBothShippedDefaults(t *testing.T)
 // concrete scalar default renders that default's string form verbatim. The
 // [release] scalar defaults are asserted against literals (their config constants
 // are unexported, so the external test cannot reference them — the value-drift
-// pin for those moves to the schema drift test in 1-4); the shared ai_command/
-// max_diff_lines wants are derived from the EXPORTED config constants so they cannot
-// drift (the dedicated subsuming pins for those two live in
-// TestMetadataRows_Shared*DefaultEqualsConfigConstant above).
+// pin for those moves to the schema drift test in 1-4); the shared ai_command want
+// is derived from the EXPORTED config constant so it cannot drift (its dedicated
+// subsuming pin lives in TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant
+// above).
 func TestMetadataRows_ConcreteScalarDefaultsRenderVerbatim(t *testing.T) {
 	t.Parallel()
 
@@ -391,13 +370,12 @@ func TestMetadataRows_ConcreteScalarDefaultsRenderVerbatim(t *testing.T) {
 		key  configtest.RowKey
 		want string
 	}{
-		// The two shared rows below intentionally overlap with the dedicated
-		// TestMetadataRows_Shared*DefaultEqualsConfigConstant pins above: they keep this
-		// verbatim-render table complete (it asserts the rendered string form of every
-		// scalar default), while the dedicated pins carry the subsuming drift guard. Both
+		// The shared row below intentionally overlaps with the dedicated
+		// TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant pin above: it keeps
+		// this verbatim-render table complete (it asserts the rendered string form of every
+		// scalar default), while the dedicated pin carries the subsuming drift guard. Both
 		// source the want from the exported constant, so neither copy can drift.
 		{configtest.RowKey{Level: config.LevelShared, Key: "ai_command"}, config.DefaultAICommand},
-		{configtest.RowKey{Level: config.LevelShared, Key: "max_diff_lines"}, strconv.Itoa(config.DefaultMaxDiffLines)},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "tag_prefix"}, "v"},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "commit_prefix"}, "🌿"},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "publish"}, "true"},

@@ -162,7 +162,7 @@ func TestRegenerateAllValidated_Changelog_DropsStraySection(t *testing.T) {
 
 // TestRegenerateAllValidated_Changelog_PreservesSkippedSectionVerbatim proves a SKIPPED
 // real version's existing section is PRESERVED verbatim in the rebuild (the user-resolved
-// no-data-loss rule): v2 fails (diff too large) and is skipped, but its existing section
+// no-data-loss rule): v2's notes fail and it is skipped, but its existing section
 // survives untouched while v1 and v3 are regenerated.
 func TestRegenerateAllValidated_Changelog_PreservesSkippedSectionVerbatim(t *testing.T) {
 	t.Parallel()
@@ -181,7 +181,7 @@ func TestRegenerateAllValidated_Changelog_PreservesSkippedSectionVerbatim(t *tes
 	rec := &presentertest.RecordingPresenter{}
 
 	req := freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog)
-	req.ProduceBody = freshBodyOrDiffTooLarge(batchV2Tag) // v2 fails → skipped
+	req.ProduceBody = freshBodyOrNotesFailure(batchV2Tag) // v2 fails → skipped
 
 	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true); err != nil {
 		t.Fatalf("RegenerateAllValidated returned unexpected error: %v", err)
@@ -217,7 +217,7 @@ func TestRegenerateAllValidated_Changelog_SkippedSectionAbsent_OmittedNotFatal(t
 	rec := &presentertest.RecordingPresenter{}
 
 	req := freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog)
-	req.ProduceBody = freshBodyOrDiffTooLarge(batchV2Tag) // v2 fails → skipped, never recorded
+	req.ProduceBody = freshBodyOrNotesFailure(batchV2Tag) // v2 fails → skipped, never recorded
 
 	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true); err != nil {
 		t.Fatalf("RegenerateAllValidated returned unexpected error (the skipped-but-absent section must be omitted, not fatal): %v", err)

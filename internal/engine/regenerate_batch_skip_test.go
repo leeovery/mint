@@ -7,8 +7,8 @@ import (
 	"slices"
 	"testing"
 
+	"mint/internal/ai"
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -16,7 +16,7 @@ import (
 )
 
 // This file pins task 5-12: batch `--all` SKIP-AND-CONTINUE + END SUMMARY. A
-// per-version FAILURE (notes/diff-too-large; `--source tag --all` against a body-less tag)
+// per-version FAILURE (a failed notes call; `--source tag --all` against a body-less tag)
 // is CAUGHT, RECORDED with a human reason, and the loop CONTINUES — consciously
 // OVERRIDING the single-version on_notes_failure=abort default. A CONFIG-level fact
 // (a changelog/both target with changelog=false) aborts the WHOLE batch UP FRONT,
@@ -25,13 +25,13 @@ import (
 // and each skipped version with its reason (so the user re-runs stragglers); the
 // presenter renders that Summary VERBATIM.
 
-// freshBodyOrDiffTooLarge returns a ProduceBody that yields the version's fresh body
-// EXCEPT for failTag, where it returns a wrapped notes.ErrDiffTooLarge — the
+// freshBodyOrNotesFailure returns a ProduceBody that yields the version's fresh body
+// EXCEPT for failTag, where it returns a wrapped ai.ErrGenerationFailed — the
 // per-version notes failure the batch must SKIP rather than abort on.
-func freshBodyOrDiffTooLarge(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
+func freshBodyOrNotesFailure(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution, string) (string, error) {
 	return func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string) (string, error) {
 		if res.Tag == failTag {
-			return "", fmt.Errorf("%w: diff exceeds max_diff_lines (9000 > 800)", notes.ErrDiffTooLarge)
+			return "", fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed)
 		}
 		return "## fresh " + res.Tag + "\n", nil
 	}
@@ -60,10 +60,10 @@ func finishEvent(t *testing.T, rec *presentertest.RecordingPresenter) presenter.
 	return results[0]
 }
 
-// TestRegenerateAll_DiffTooLargeSkippedBatchContinues proves a per-version notes
-// failure (diff too large) is SKIPPED and the batch CONTINUES: the other versions
+// TestRegenerateAll_NotesFailureSkippedBatchContinues proves a per-version notes
+// failure is SKIPPED and the batch CONTINUES: the other versions
 // still dispatch, only the failing one is absent.
-func TestRegenerateAll_DiffTooLargeSkippedBatchContinues(t *testing.T) {
+func TestRegenerateAll_NotesFailureSkippedBatchContinues(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
@@ -75,7 +75,7 @@ func TestRegenerateAll_DiffTooLargeSkippedBatchContinues(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = freshBodyOrDiffTooLarge(batchV2Tag)
+	req.ProduceBody = freshBodyOrNotesFailure(batchV2Tag)
 
 	bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req)
 	if err != nil {
@@ -93,10 +93,10 @@ func TestRegenerateAll_DiffTooLargeSkippedBatchContinues(t *testing.T) {
 	}
 }
 
-// TestRegenerateAll_DiffTooLargeSummaryReports proves the skipped version appears in
+// TestRegenerateAll_NotesFailureSummaryReports proves the skipped version appears in
 // the end summary with its reason, and the regenerated count reflects only the
 // dispatched versions.
-func TestRegenerateAll_DiffTooLargeSummaryReports(t *testing.T) {
+func TestRegenerateAll_NotesFailureSummaryReports(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
@@ -108,7 +108,7 @@ func TestRegenerateAll_DiffTooLargeSummaryReports(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = freshBodyOrDiffTooLarge(batchV2Tag)
+	req.ProduceBody = freshBodyOrNotesFailure(batchV2Tag)
 
 	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
@@ -124,7 +124,7 @@ func TestRegenerateAll_DiffTooLargeSummaryReports(t *testing.T) {
 	if fin.URL != "" {
 		t.Errorf("RunFinished.URL = %q, want empty (regenerate omits the URL entirely)", fin.URL)
 	}
-	want := "2 regenerated, 1 skipped: " + batchV2Tag + " (diff too large)"
+	want := "2 regenerated, 1 skipped: " + batchV2Tag + " (notes generation failed)"
 	if fin.Summary != want {
 		t.Errorf("RunFinished.Summary = %q, want %q", fin.Summary, want)
 	}
@@ -188,7 +188,7 @@ func TestRegenerateAll_SkipOverridesOnNotesFailureAbort(t *testing.T) {
 	// The OLDEST version fails — under the single-version abort default this would kill
 	// the run before any later version. Skip-and-continue overrides that.
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = freshBodyOrDiffTooLarge(batchV1Tag)
+	req.ProduceBody = freshBodyOrNotesFailure(batchV1Tag)
 
 	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
 		t.Fatalf("skip-and-continue must override on_notes_failure=abort; got error: %v", err)

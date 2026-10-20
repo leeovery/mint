@@ -45,39 +45,6 @@ func TestLoad_AbsentFile_ReturnsAllDefaults(t *testing.T) {
 	}
 }
 
-func TestLoad_AbsentMaxDiffLines_DefaultsTo50000(t *testing.T) {
-	t.Parallel()
-
-	// max_diff_lines is a shared TOP-LEVEL engine key (not under [release]). When
-	// absent it must default to 50000, the cost+quality guard ceiling.
-	cfg, err := config.Load(t.TempDir())
-	if err != nil {
-		t.Fatalf("Load returned unexpected error: %v", err)
-	}
-
-	if cfg.MaxDiffLines != 50000 {
-		t.Errorf("MaxDiffLines = %d, want default 50000", cfg.MaxDiffLines)
-	}
-}
-
-func TestLoad_ExplicitMaxDiffLines_Honoured(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	// An explicit top-level max_diff_lines must override the 50000 default. It sits
-	// above the [release] table, so it is set with no table header.
-	writeConfig(t, dir, "max_diff_lines = 1200\n")
-
-	cfg, err := config.Load(dir)
-	if err != nil {
-		t.Fatalf("Load returned unexpected error: %v", err)
-	}
-
-	if cfg.MaxDiffLines != 1200 {
-		t.Errorf("MaxDiffLines = %d, want explicit 1200", cfg.MaxDiffLines)
-	}
-}
-
 func TestLoad_SubsetOfKeys_OverridesPresentRestDefault(t *testing.T) {
 	t.Parallel()
 
@@ -753,7 +720,7 @@ func TestLoad_TypeMismatch_MappedFriendlyMessages(t *testing.T) {
 		toml string
 		want string
 	}{
-		{"max_diff_lines not an integer", "max_diff_lines = \"lots\"\n", "max_diff_lines must be an integer"},
+		{"max_prompt_bytes not an integer", "max_prompt_bytes = \"lots\"\n", "max_prompt_bytes must be an integer (bytes)"},
 		{"timeout not an integer", "timeout = \"fast\"\n", "timeout must be an integer (seconds)"},
 		{"release.timeout not an integer", "[release]\ntimeout = \"slow\"\n", "release.timeout must be an integer (seconds)"},
 		{"commit.timeout not an integer", "[commit]\ntimeout = \"slow\"\n", "commit.timeout must be an integer (seconds)"},
@@ -804,7 +771,7 @@ func TestLoad_FullyValidFile_LoadsWithoutError(t *testing.T) {
 	// [release.hooks]) must still load with no error once strict validation is on.
 	writeConfig(t, dir, `ai_command     = "claude -p"
 diff_exclude   = ["*.min.js"]
-max_diff_lines = 50000
+max_prompt_bytes = 1500000
 
 [release]
 tag_prefix       = "v"
@@ -887,7 +854,7 @@ func TestLoad_OnlyTopLevelKeys_ReleaseAndHooksFullyDefaulted(t *testing.T) {
 	// A file that sets ONLY shared top-level engine keys carries no [release] table at
 	// all: the entire [release] table and the [release.hooks] sub-table must come back
 	// fully defaulted, key by key, exactly as if absent.
-	writeConfig(t, dir, "ai_command = \"custom\"\nmax_diff_lines = 99\n")
+	writeConfig(t, dir, "ai_command = \"custom\"\nmax_prompt_bytes = 99\n")
 
 	cfg, err := config.Load(dir)
 	if err != nil {
@@ -897,8 +864,8 @@ func TestLoad_OnlyTopLevelKeys_ReleaseAndHooksFullyDefaulted(t *testing.T) {
 	if cfg.AICommand != "custom" {
 		t.Errorf("AICommand = %q, want explicit %q", cfg.AICommand, "custom")
 	}
-	if cfg.MaxDiffLines != 99 {
-		t.Errorf("MaxDiffLines = %d, want explicit 99", cfg.MaxDiffLines)
+	if cfg.MaxPromptBytes != 99 {
+		t.Errorf("MaxPromptBytes = %d, want explicit 99", cfg.MaxPromptBytes)
 	}
 	if cfg.Release.TagPrefix != "v" {
 		t.Errorf("Release.TagPrefix = %q, want default %q", cfg.Release.TagPrefix, "v")
@@ -995,27 +962,6 @@ func TestLoad_MalformedTOML_ReturnsError(t *testing.T) {
 
 	if _, err := config.Load(dir); err == nil {
 		t.Fatal("Load returned nil error for malformed TOML, want non-nil")
-	}
-}
-
-func TestLoad_MaxDiffLinesString_RejectedNamingIntegerType(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	// Fail-loud bad-type validation (Phase 6): max_diff_lines is an integer key. A
-	// string value must be rejected with a message naming both the key and the
-	// expected integer type — not opaque decoder field-path output.
-	writeConfig(t, dir, "max_diff_lines = \"big\"\n")
-
-	_, err := config.Load(dir)
-	if err == nil {
-		t.Fatal("Load returned nil error for string max_diff_lines, want non-nil")
-	}
-	if !strings.Contains(err.Error(), "max_diff_lines") {
-		t.Errorf("error = %q, want it to name the key %q", err.Error(), "max_diff_lines")
-	}
-	if !strings.Contains(err.Error(), "integer") {
-		t.Errorf("error = %q, want it to name the expected integer type", err.Error())
 	}
 }
 
@@ -1978,7 +1924,7 @@ func TestLoad_AbsentTimeout_DistinctFromExplicitZero(t *testing.T) {
 		// unrelated key), the carried pointer is nil — the absent sentinel Task 1-7's
 		// accessor treats as "fall through to the shipped floor". A *time.Duration (not a
 		// plain duration) is what makes absent distinguishable from an explicit zero.
-		writeConfig(t, dir, "max_diff_lines = 1200\n")
+		writeConfig(t, dir, "max_prompt_bytes = 1200\n")
 
 		cfg, err := config.Load(dir)
 		if err != nil {
@@ -2056,7 +2002,7 @@ func TestLoad_NonIntegerTimeout_RejectedNamingKeyAndIntegerType(t *testing.T) {
 
 	dir := t.TempDir()
 	// timeout is an integer-seconds key, so a non-integer TOML value (a string here) is
-	// a strict decode (type) error at Load — exactly like max_diff_lines. The friendly
+	// a strict decode (type) error at Load — exactly like max_prompt_bytes. The friendly
 	// message must name both the key and the expected integer/seconds type, not opaque
 	// decoder field-path output.
 	writeConfig(t, dir, "timeout = \"fast\"\n")

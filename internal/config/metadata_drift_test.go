@@ -114,8 +114,8 @@ func leafKeySet(t *testing.T) map[leafKey]int {
 	return out
 }
 
-// TestSchemaLeafKeys_DerivesAllLeafPairs proves the helper derives exactly the 26 leaf
-// (level, key) pairs from the decode-shape struct tags: 5 shared, 14 [release], 3
+// TestSchemaLeafKeys_DerivesAllLeafPairs proves the helper derives exactly the 25 leaf
+// (level, key) pairs from the decode-shape struct tags: 4 shared, 14 [release], 3
 // [release.hooks], 4 [commit]. Every expected pair is named so an added/renamed/removed
 // struct field surfaces precisely. This is the derivation-correctness counterpart of
 // the 1-4 bijection (which matches this derived set against the SoT).
@@ -123,7 +123,7 @@ func TestSchemaLeafKeys_DerivesAllLeafPairs(t *testing.T) {
 	t.Parallel()
 
 	// Assert against the single shared census (metadata_census_test.go), the one place
-	// the 26 expected pairs are enumerated. The schema side (schemaLeafKeys) is still
+	// the 25 expected pairs are enumerated. The schema side (schemaLeafKeys) is still
 	// derived purely from the decode-shape struct tags — this test only swaps its inline
 	// duplicate of the census for the shared list, leaving the derivation untouched.
 	expected := expectedLeafKeys

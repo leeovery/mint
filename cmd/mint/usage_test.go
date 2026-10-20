@@ -233,7 +233,7 @@ func TestRootUsage_CarriesNoConfigReference(t *testing.T) {
 	if strings.Contains(rootUsage, setupguide.MarkerConfigReference) {
 		t.Errorf("rootUsage must not carry the config-reference marker %q", setupguide.MarkerConfigReference)
 	}
-	for _, key := range []string{"diff_exclude", "tag_prefix", "ai_command", "max_diff_lines"} {
+	for _, key := range []string{"diff_exclude", "tag_prefix", "ai_command", "max_prompt_bytes"} {
 		if strings.Contains(rootUsage, key) {
 			t.Errorf("rootUsage must not carry the config key %q (mint help stays free of the config reference)", key)
 		}

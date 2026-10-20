@@ -108,7 +108,7 @@ func TestNewRegenerateRegeneratorProducer(t *testing.T) {
 	t.Parallel()
 
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
-	produce := newRegenerateRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxDiffLines: 50000}, t.TempDir(), res)
+	produce := newRegenerateRegeneratorProducer(runner.NewFakeRunner(), config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, t.TempDir(), res)
 
 	if got := produce(engine.RegenerateSourceTag); got != nil {
 		t.Errorf("reuse regenerator = %v, want nil (reuse has no review gate)", got)

@@ -415,7 +415,7 @@ func TestRegenerateRun_BodyProducerError_Surfaces(t *testing.T) {
 
 	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
 	req.ProduceBody = func(context.Context, engine.RegenerateSource) (string, error) {
-		return "", errors.New("diff too large")
+		return "", errors.New("notes generation failed")
 	}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req)
