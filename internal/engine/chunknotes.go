@@ -5,13 +5,16 @@ import (
 	"mint/internal/presenter"
 )
 
-// chunkNotesKeeper saves a failed chunked run's finished chunk notes for one repo's
-// tag, remembering what it saved and why a save failed.
+// chunkNotesKeeper keeps a run's chunk notes for one repo's tag: a failed chunked
+// run's finished notes it saves, remembering what it saved and why a save failed, and
+// a written run's it holds with the rest of what their merge was composed from.
 type chunkNotesKeeper struct {
 	store     ChunkNotesSaver
 	root, tag string
 	saved     string
 	saveErr   error
+	// merged is nil unless the run's notes were written by a chunked run.
+	merged *notes.MergeInputs
 }
 
 func newChunkNotesKeeper(store ChunkNotesSaver, root, tag string) *chunkNotesKeeper {
@@ -32,6 +35,10 @@ func (k *chunkNotesKeeper) saver() notes.SaveChunkNotes {
 		}
 		return path, err
 	}
+}
+
+func (k *chunkNotesKeeper) keepMerged(in notes.MergeInputs) {
+	k.merged = &in
 }
 
 // warnUnsaved warns, with the save's error verbatim beneath, when finished chunk notes

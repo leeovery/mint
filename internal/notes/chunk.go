@@ -23,11 +23,12 @@ const fileDiffHeader = "diff --git "
 // split and advance. No call over its bound is sent: ErrNoRoomForDiff in place of a
 // call with no room for diff under maxPromptBytes, ErrMergeTooLarge in place of the
 // merge. A merge call whose failure is classified SIZE is never halved: it fails as
-// ErrMergeTooLarge, carrying the call's own failure.
-func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
+// ErrMergeTooLarge, carrying the call's own failure. A written run also returns the
+// parts' notes it merged, in chunk order.
+func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, []string, error) {
 	cut, parts, err := cutRun(instructions, changeMap, diff, maxPromptBytes)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	g.progress.PartsDone(promptBytes, len(parts), 0)
 	return g.writeParts(ctx, cut, parts, 0, promptBytes, maxPromptBytes)
@@ -37,10 +38,10 @@ func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap
 // with failure, classified SIZE: its chunk calls are at most half its size, counting
 // as the run's first halving, and the re-cut is reported to g.progress in place of the
 // split. A re-cut with no room for diff fails as ErrTooLargeForModel, carrying failure.
-func (g *Generator) generateHalved(ctx context.Context, instructions, changeMap, diff string, failure error, promptBytes, maxPromptBytes int) (string, error) {
+func (g *Generator) generateHalved(ctx context.Context, instructions, changeMap, diff string, failure error, promptBytes, maxPromptBytes int) (string, []string, error) {
 	cut, parts, err := cutRun(instructions, changeMap, diff, promptBytes/2)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrTooLargeForModel, failure)
+		return "", nil, fmt.Errorf("%w: %w", ErrTooLargeForModel, failure)
 	}
 	g.progress.Halved(0, len(parts))
 	return g.writeParts(ctx, cut, parts, 1, promptBytes, maxPromptBytes)
@@ -53,15 +54,15 @@ func cutRun(instructions, changeMap, diff string, target int) (cutter, []chunkPa
 	return cut, parts, err
 }
 
-func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPart, halvings, promptBytes, maxPromptBytes int) (string, error) {
+func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPart, halvings, promptBytes, maxPromptBytes int) (string, []string, error) {
 	sent, partNotes, err := newWave(g, cut, parts, halvings, promptBytes, maxPromptBytes).run(ctx)
 	if err == nil {
 		var body string
 		if body, err = g.merge(ctx, cut, partNotes, maxPromptBytes); err == nil {
-			return body, nil
+			return body, partNotes, nil
 		}
 	}
-	return "", g.keepChunkNotes(err, sent, partNotes)
+	return "", nil, g.keepChunkNotes(err, sent, partNotes)
 }
 
 func (g *Generator) merge(ctx context.Context, cut cutter, partNotes []string, maxPromptBytes int) (string, error) {
@@ -70,6 +71,15 @@ func (g *Generator) merge(ctx context.Context, cut cutter, partNotes []string, m
 		return "", ErrMergeTooLarge
 	}
 	g.progress.Merging(len(partNotes))
+	body, err := g.sendMerge(ctx, mergePrompt, maxPromptBytes)
+	if err != nil {
+		return "", err
+	}
+	g.progress.Merged(len(partNotes))
+	return body, nil
+}
+
+func (g *Generator) sendMerge(ctx context.Context, mergePrompt string, maxPromptBytes int) (string, error) {
 	body, code, err := g.generate(ctx, mergePrompt, maxPromptBytes)
 	if err != nil {
 		if code == codeSize {
@@ -77,7 +87,6 @@ func (g *Generator) merge(ctx context.Context, cut cutter, partNotes []string, m
 		}
 		return "", &callError{action: "merging part notes", location: "merging", err: err}
 	}
-	g.progress.Merged(len(partNotes))
 	return body, nil
 }
 

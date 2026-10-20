@@ -68,6 +68,8 @@ type Generator struct {
 	progress  Progress
 	// saveChunkNotes keeps a failed chunked run's finished chunk notes; nil keeps none.
 	saveChunkNotes SaveChunkNotes
+	// keepMergeInputs is handed a written chunked run's merge inputs; nil is handed none.
+	keepMergeInputs func(MergeInputs)
 }
 
 // NewGenerator builds a Generator over the assembler (the git seam), the AI
@@ -214,15 +216,16 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return "", fmt.Errorf("building change map for notes: %w", err)
 	}
 
-	instructions, err := ResolveInstructions(g.root, cfg.Release)
+	releaseInstructions, err := ResolveInstructions(g.root, cfg.Release)
 	if err != nil {
 		return "", fmt.Errorf("resolving notes instructions: %w", err)
 	}
 
-	instructions = appendOneTimeContext(instructions, oneTimeContext)
+	instructions := appendOneTimeContext(releaseInstructions, oneTimeContext)
 	prompt := ComposePrompt(instructions, changeMap, diff)
 	if len(prompt) > cfg.MaxPromptBytes {
-		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
+		body, partNotes, err := g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
+		return g.chunkedBody(releaseInstructions, changeMap, body, partNotes, err)
 	}
 
 	body, code, err := g.generate(ctx, prompt, cfg.MaxPromptBytes)
@@ -231,7 +234,8 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return body, nil
 	}
 	if code == codeSize {
-		return g.generateHalved(ctx, instructions, changeMap, diff, err, len(prompt), cfg.MaxPromptBytes)
+		body, partNotes, err := g.generateHalved(ctx, instructions, changeMap, diff, err, len(prompt), cfg.MaxPromptBytes)
+		return g.chunkedBody(releaseInstructions, changeMap, body, partNotes, err)
 	}
 	return "", fmt.Errorf("generating notes: %w", err)
 }

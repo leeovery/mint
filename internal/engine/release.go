@@ -68,18 +68,18 @@ type Editor interface {
 // Regenerator is the engine's regenerate seam: the `r` review-gate choice hands a
 // ONE-TIME context line to Regenerate and uses the regenerated body it returns as
 // the new notes body. The one-time context is TRANSIENT — it flows into this one
-// AI call only and is NEVER persisted to [release].context. The interface is
-// intentionally tiny so production (task 2-16) can wire the real AI path
-// (notes.Generator.GenerateWithContext over the run's lastTag/cfg) behind it while
-// the gate-loop tests drive a scripted fake. It is defined HERE (the consumer)
+// regeneration only and is NEVER persisted to [release].context. The interface is
+// intentionally tiny so production can wire the real AI path behind it (a re-merge
+// of chunked notes, else notes.Generator.GenerateWithContext over the run's
+// lastTag/cfg) while the gate-loop tests drive a scripted fake. It is defined HERE (the consumer)
 // rather than where it is implemented, per the accept-interfaces convention.
 //
 // It is consulted ONLY on `r`, which the gate offers ONLY for notes.KindNormalAI
 // (the one path the AI produced the body), so the no-AI paths never reach it and
 // may leave the seam nil.
 type Regenerator interface {
-	// Regenerate re-runs the normal AI path with oneTimeContext appended to the
-	// prompt and returns the new body. An empty oneTimeContext is legal (regenerate
+	// Regenerate re-runs the AI with oneTimeContext appended to the release's
+	// instructions and returns the new body. An empty oneTimeContext is legal (regenerate
 	// with no extra context). A non-nil error means the regeneration failed; the
 	// engine surfaces it and aborts (fail-loud) rather than looping on a broken AI.
 	Regenerate(ctx context.Context, oneTimeContext string) (string, error)
@@ -121,8 +121,8 @@ type ReleaseDeps struct {
 	// review-gate choice, which the gate offers ONLY for notes.KindNormalAI. Every
 	// other path (the no-AI Kinds, every non-interactive and accept/abort path) may
 	// leave it nil. In production it is left nil: Release builds a PER-RUN regenerator
-	// closure that binds the run's lastTag + cfg to the resolved Generator (see
-	// resolveBody). When non-nil it OVERRIDES that closure — the test-injection seam
+	// closure over the resolved Generator (see perRunRegenerator). When non-nil it
+	// OVERRIDES that closure — the test-injection seam
 	// the gate-loop `r` tests drive with a scripted fake. If `r` is chosen with neither
 	// a wired Regenerator nor a Generator (a misconfiguration), the gate surfaces a
 	// clear error and aborts rather than panicking.
@@ -564,9 +564,9 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// `e` choice) or REGENERATE (`r`, normal-AI only) the body; capture the returned final
 	// body and thread IT to every downstream sink. The gate stays positioned BEFORE any
 	// mutation (before Record). gateForKind selects the variant (y/n/e vs y/n/e/r); the
-	// per-run regenerator binds this run's lastTag + cfg to the generator so an `r` re-runs
-	// the SAME AI path SelectBody took.
-	regenerator := perRunRegenerator(deps, generator, current.String(cfg.Release.TagPrefix), cfg)
+	// per-run regenerator re-merges the held part notes of chunked notes, else binds
+	// this run's lastTag + cfg to the generator so an `r` re-runs the AI path.
+	regenerator := perRunRegenerator(deps, generator, chunkNotes.merged, current.String(cfg.Release.TagPrefix), cfg)
 	body, err = reviewGate(ctx, p, deps.Editor, regenerator, gateForKind(kind), body, versionKey)
 	if err != nil {
 		// A gate-no is a clean USER abort: route it through the SAME surgical unwind a
@@ -957,9 +957,9 @@ func readNotesFile(path string, set bool) (*string, error) {
 // resolveBody resolves this run's notes body + Kind via the notes-path precedence
 // (SelectBody), returning the generator it built so the caller can bind a per-run
 // regenerator for the gate's `r` choice. The selector's generation reports a chunked
-// run to stage and saves a failed one's chunk notes through chunkNotes, and the
-// selector hands stage the failure a fallback body ships in place of; the returned
-// generator does none of these. It is the single Stage-4 body decision:
+// run to stage, saves a failed one's chunk notes through chunkNotes and keeps a
+// written one's merge inputs there, and the selector hands stage the failure a
+// fallback body ships in place of; the returned generator does none of these. It is the single Stage-4 body decision:
 //
 //   - opts.NotesBody is a TEST-INJECTION OVERRIDE: when non-empty it bypasses the
 //     selector and returns (opts.NotesBody, opts.NotesKind, nil generator, nil). The
@@ -986,7 +986,8 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		VersionPattern: cfg.Release.VersionPattern,
 	})
 	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
-	selector := notes.NewSelector(generator.WithProgress(stage).WithChunkNotes(chunkNotes.saver()), assembler, deps.Runner, root).WithFallbackNotice(stage.fellBack)
+	selecting := generator.WithProgress(stage).WithChunkNotes(chunkNotes.saver()).WithMergeInputs(chunkNotes.keepMerged)
+	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).WithFallbackNotice(stage.fellBack)
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
@@ -1117,17 +1118,23 @@ func (f regeneratorFunc) Regenerate(ctx context.Context, oneTimeContext string) 
 
 // perRunRegenerator selects the Regenerator the gate's `r` choice consults. A wired
 // deps.Regenerator OVERRIDES everything (the test-injection seam). Otherwise, when a
-// generator was built (the normal-AI selector path), it returns a per-run closure
-// binding lastTag + cfg to generator.GenerateWithContext — so an `r` re-runs the SAME
-// AI path SelectBody took, with the one-time context appended. When neither is present
-// (an override body, or a no-AI path with no generator), it returns nil; `r` is only
-// offered for KindNormalAI, so the nil is never consulted on the no-AI paths.
-func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, lastTag string, cfg config.Config) Regenerator {
+// generator was built (the normal-AI selector path), it returns a per-run closure:
+// given merged, it re-merges those part notes with the one-time context, one call;
+// otherwise it binds lastTag + cfg to generator.GenerateWithContext, re-running the
+// AI path with the one-time context appended. When neither is present (an override
+// body, or a no-AI path with no generator), it returns nil; `r` is only offered for
+// KindNormalAI, so the nil is never consulted on the no-AI paths.
+func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, merged *notes.MergeInputs, lastTag string, cfg config.Config) Regenerator {
 	if deps.Regenerator != nil {
 		return deps.Regenerator
 	}
 	if generator == nil {
 		return nil
+	}
+	if merged != nil {
+		return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
+			return generator.Remerge(ctx, *merged, cfg, oneTimeContext)
+		})
 	}
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
 		return generator.GenerateWithContext(ctx, lastTag, cfg, oneTimeContext)
@@ -1563,7 +1570,8 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //     nil-editor misconfiguration) is surfaced and aborts rather than blocking the
 //     spine.
 //   - ChoiceRegen regenerates (only reachable on the four-choice gate): see
-//     regenerateBody. It reads a one-time context line via AskLine, re-runs the AI,
+//     regenerateBody. It reads a one-time context line via AskLine, hands it to the
+//     Regenerator,
 //     REPLACES the body with the regenerated text, re-shows the notes, and LOOPS so
 //     the user may regenerate again or settle on y/n/e.
 func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen Regenerator, gate presenter.Gate, body, versionKey string) (string, error) {
@@ -1612,7 +1620,7 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			body = edited
 			p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
 		case presenter.ChoiceRegen:
-			// Regenerate (only reachable on the four-choice gate): re-run the AI with a
+			// Regenerate (only reachable on the four-choice gate): regenerate with a
 			// one-time context line, replace the body, re-show, and loop. Any failure
 			// (closed input, nil seam, regenerate error) is surfaced and aborts.
 			regenerated, rerr := regenerateBody(ctx, p, regen, versionKey)
