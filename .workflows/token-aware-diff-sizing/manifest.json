@@ -348,7 +348,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 5,
-          "current_task": "token-aware-diff-sizing-5-2",
+          "current_task": "token-aware-diff-sizing-5-3",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -420,7 +420,8 @@
             "token-aware-diff-sizing-4-13",
             "token-aware-diff-sizing-4-14",
             "token-aware-diff-sizing-4-15",
-            "token-aware-diff-sizing-5-1"
+            "token-aware-diff-sizing-5-1",
+            "token-aware-diff-sizing-5-2"
           ],
           "staging": {
             "p1": {
@@ -469,6 +470,17 @@
                 "internal/engine/notesfloor.go",
                 "internal/engine/release.go",
                 "cmd/mint/main.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-5-2",
+              "source": "executor",
+              "summary": "Release and regenerate floors will each hold their own copy of the e handling (return to the choice on a missing editor or empty body, surface and abort otherwise)",
+              "failure": "If one copy changes, for example in what it treats as empty or whether a missing editor returns to the choice, the other does not; an operator then gets a different answer to the same edit at the regenerate floor, and no test compares the two",
+              "detail": "The presenter.ChoiceEdit case of notesFloor in internal/engine/notesfloor.go; task 5-9 adds the same branch to regenerate floor. Move the branch into one helper, run on the saved notes and returning the body, a return-to-choice signal or an error",
+              "files": [
+                "internal/engine/notesfloor.go",
+                "internal/engine/regenerate_interactive.go"
               ]
             }
           ]
