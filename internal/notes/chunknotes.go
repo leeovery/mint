@@ -41,14 +41,20 @@ func (e *chunkNotesSavedError) Error() string { return e.err.Error() }
 func (e *chunkNotesSavedError) Unwrap() error { return e.err }
 
 // keepChunkNotes saves the finished parts' notes of a run that failed with failure,
-// in chunk order, and returns failure naming the saved file. A cancel, a run with no
-// finished part and a failed save keep nothing and return failure as it is.
-func (g *Generator) keepChunkNotes(failure error, partNotes []string) error {
+// in chunk order, and returns failure naming the saved file. partNotes holds parts'
+// notes, "" for a part with none; when any part has none, the saved notes open with
+// the line naming the files left without notes. A cancel, a run with no finished part
+// and a failed save keep nothing and return failure as it is.
+func (g *Generator) keepChunkNotes(failure error, parts []chunkPart, partNotes []string) error {
 	finished := slices.DeleteFunc(slices.Clone(partNotes), func(notes string) bool { return notes == "" })
 	if g.saveChunkNotes == nil || len(finished) == 0 || errors.Is(failure, context.Canceled) {
 		return failure
 	}
-	path, err := g.saveChunkNotes(joinChunkNotes(finished))
+	saved := joinChunkNotes(finished)
+	if missing := notesMissingLine(parts, partNotes); missing != "" {
+		saved = missing + "\n\n" + saved
+	}
+	path, err := g.saveChunkNotes(saved)
 	if err != nil {
 		return failure
 	}
@@ -69,4 +75,53 @@ func joinChunkNotes(partNotes []string) string {
 		b.WriteString(notes)
 	}
 	return b.String()
+}
+
+// notesMissingLine names, in chunk order, every file a part with no notes carries, or
+// is "" when every part has notes. A file cut into pieces, only some of which have
+// notes, is marked "(partly)".
+func notesMissingLine(parts []chunkPart, partNotes []string) string {
+	var order []string
+	written, missing := map[string]bool{}, map[string]bool{}
+	for i, part := range parts {
+		for _, path := range part.paths() {
+			if !written[path] && !missing[path] {
+				order = append(order, path)
+			}
+			if partNotes[i] == "" {
+				missing[path] = true
+			} else {
+				written[path] = true
+			}
+		}
+	}
+
+	var listed []string
+	for _, path := range order {
+		if !missing[path] {
+			continue
+		}
+		entry := "`" + path + "`"
+		if written[path] {
+			entry += " (partly)"
+		}
+		listed = append(listed, entry)
+	}
+	if len(listed) == 0 {
+		return ""
+	}
+	return "**Notes missing:** no notes were written for " + strings.Join(listed, ", ") + " — add them before releasing."
+}
+
+// paths is the path of every file p carries a slice of.
+func (p chunkPart) paths() []string {
+	if p.file != "" {
+		return []string{p.file}
+	}
+	fileDiffs := splitFileDiffs(p.slice)
+	paths := make([]string, len(fileDiffs))
+	for i, fileDiff := range fileDiffs {
+		paths[i] = headerPath(fileDiff)
+	}
+	return paths
 }

@@ -133,7 +133,7 @@ func TestGenerator_WaveFailsForGood_SavesTheFinishedPartsNotesInChunkOrder(t *te
 	if got := causeOf(err); got != "AI call failed (part 3 of 6)" {
 		t.Errorf("CauseText = %q, want part 3's failure", got)
 	}
-	ns.assertSavedOnce(t, err, joinedNotes(area(1), area(2), area(4), area(5)))
+	ns.assertSavedOnce(t, err, notesMissing("`area3/file.go`, `area6/file.go`")+joinedNotes(area(1), area(2), area(4), area(5)))
 }
 
 func TestGenerator_SavedNotes_KeepEachPartsNotesByteForByteWithOneBlankLineBetween(t *testing.T) {
@@ -289,7 +289,7 @@ func TestGenerator_HalvedSinglePassPartlyFinishes_SavesTheFinishedPartsNotes(t *
 	if got := sp.inChunkOrder(); !slices.Equal(got, []string{"alpha/a.go", "beta/b.go"}) {
 		t.Fatalf("fixture: halved parts that returned notes = %v, want alpha's and beta's", got)
 	}
-	ns.assertSavedOnce(t, err, joinedNotes("alpha/a.go", "beta/b.go"))
+	ns.assertSavedOnce(t, err, notesMissing("`gamma/c.go`")+joinedNotes("alpha/a.go", "beta/b.go"))
 }
 
 func TestGenerator_NoPartFinished_SavesNothingAndNamesNoFile(t *testing.T) {

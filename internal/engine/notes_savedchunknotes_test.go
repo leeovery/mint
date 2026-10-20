@@ -98,6 +98,10 @@ func twoPartTransport(fail func(prompt string) error) func(context.Context, stri
 	}
 }
 
+// partOneSaved is the saved file of a two-part run whose second part, core/b.go's,
+// failed: part 1's notes under the line naming the file with none.
+const partOneSaved = "**Notes missing:** no notes were written for `core/b.go` — add them before releasing.\n\n" + apiPartNotes
+
 const usageLimitOutput = "API Error: usage limit reached for this account"
 
 func failsSecondPart(prompt string) error {
@@ -124,8 +128,8 @@ func TestRelease_ChunkFailsForGood_Abort_SavesTheFinishedNotesAndNamesTheFileAft
 	assertAbortNonZero(t, err)
 	assertNoMutation(t, run.f)
 	path := run.savedPath(nextTag)
-	if got := readSaved(t, path); got != apiPartNotes {
-		t.Errorf("saved chunk notes = %q, want part 1's notes %q", got, apiPartNotes)
+	if got := readSaved(t, path); got != partOneSaved {
+		t.Errorf("saved chunk notes = %q, want part 1's notes %q", got, partOneSaved)
 	}
 	sf := onlyStageFailureEvent(t, run.rec)
 	if sf.Message != "AI call failed (part 2 of 2)" || sf.Output != usageLimitOutput {
@@ -165,8 +169,8 @@ func TestRelease_ChunkFailsForGood_Fallback_SavesTheNotesAndShipsTheCommitSubjec
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if got := readSaved(t, run.savedPath(nextTag)); got != apiPartNotes {
-		t.Errorf("saved chunk notes = %q, want part 1's notes %q", got, apiPartNotes)
+	if got := readSaved(t, run.savedPath(nextTag)); got != partOneSaved {
+		t.Errorf("saved chunk notes = %q, want part 1's notes %q", got, partOneSaved)
 	}
 	if body := tagAnnotationBody(t, run.f, nextTag); body != subjects {
 		t.Errorf("tag annotation body = %q, want the commit-subject list %q", body, subjects)
@@ -203,8 +207,8 @@ func TestRelease_ALaterFailureForTheSameTag_OverwritesTheSavedFile(t *testing.T)
 
 	assertAbortNonZero(t, run.release(t, t.Context()))
 
-	if got := readSaved(t, path); got != apiPartNotes {
-		t.Errorf("saved chunk notes = %q, want only the later run's %q", got, apiPartNotes)
+	if got := readSaved(t, path); got != partOneSaved {
+		t.Errorf("saved chunk notes = %q, want only the later run's %q", got, partOneSaved)
 	}
 }
 
