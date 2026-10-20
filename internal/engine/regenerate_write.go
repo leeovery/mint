@@ -14,10 +14,10 @@ package engine
 //     forward `git push --atomic origin HEAD {tag}`. This push is the POINT OF NO
 //     RETURN for the changelog surface.
 //   - RECOVERY (pre-PONR) is LIGHTER than the forward surgical unwind: there is no
-//     tag to delete, so a gate abort (fresh) or any pre-push failure just RESETS the
-//     local CHANGELOG commit (`git reset --hard {startingHEAD}`) back to the clean
-//     start. A release-only TARGET (any source) makes no commit, so there is nothing
-//     to reset.
+//     tag to delete, so any pre-push failure just RESETS the local CHANGELOG commit
+//     back to the clean start, leaving any notes file as it was (resetTo). A gate
+//     abort lands before the commit, and a release-only TARGET (any source) makes no
+//     commit, so neither has anything to reset.
 //   - POST-PONR a provider create/update failure AFTER the changelog push is WARN
 //     ONLY — the changelog is already public, so the run never unwinds; the user
 //     re-heals the provider with `--target release`. This is the SAME warn-only
@@ -277,6 +277,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	if err != nil {
 		return false, surface(p, "record", err)
 	}
+	start := resetTarget{HEAD: startingHEAD, KeepOut: req.KeepOut}
 
 	// Recover the version's ORIGINAL historical date from the tag metadata so the
 	// healed `## [x.y.z] - <date>` header keeps its original date, not today.
@@ -290,7 +291,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		// A failed write/stage/commit makes no commit, but a partial commit could have
 		// landed before a later step; reset iff one did, then abort. (RegenerateChangelog
 		// returns committed=false on a failed stage/commit, so the reset no-ops there.)
-		return false, resetAndAbort(ctx, deps, startingHEAD, committed, "record", err)
+		return false, resetAndAbort(ctx, deps, start, committed, "record", err)
 	}
 	if !committed {
 		// No net change → no commit → nothing to push. Reaching here with a no-op write
@@ -301,7 +302,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	// The changelog commit landed: push it (the point of no return) via the shared
 	// regenerate push tail. A successful push crosses the PONR (return pushed=true); a
 	// pre-push failure is already routed through the helper's reset-on-abort.
-	if err := pushChangelogCommit(ctx, deps, startingHEAD); err != nil {
+	if err := pushChangelogCommit(ctx, deps, start); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -342,36 +343,35 @@ func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject 
 // and a StageSucceeded carrying the engine-measured Elapsed once it crosses the PONR.
 // A pre-push failure routes through resetAndAbort, which surfaces a "push" StageFailed
 // (so no StageSucceeded fires) and resets the local CHANGELOG commit back to the
-// captured startingHEAD — both call sites reach this only after a commit landed, so the
+// captured starting HEAD — both call sites reach this only after a commit landed, so the
 // reset always applies. Keeping the push form, PONR narration, and reset wiring here
 // means the two regenerate paths can no longer drift on push form or recovery.
-func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, startingHEAD string) error {
+func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) error {
 	pushDone := emitBlockingStageStarted(deps.Presenter, "push", "pushing to origin…", "Pushed to origin")
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
-		return resetAndAbort(ctx, deps, startingHEAD, true, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
+		return resetAndAbort(ctx, deps, start, true, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
 	}
 	pushDone("pushed to origin")
 	return nil
 }
 
 // resetAndAbort handles a pre-PONR changelog failure: it surfaces the failed stage,
-// resets the local CHANGELOG commit back to the captured starting HEAD when a commit
-// landed (a plain `git reset --hard` through the lock-resilient Mutator — no tag,
-// best-effort), and returns the abort. With no commit made the reset is skipped.
-func resetAndAbort(ctx context.Context, deps ReleaseDeps, startingHEAD string, committed bool, stage string, cause error) error {
+// resets the local CHANGELOG commit back to start when a commit landed (resetTo — no
+// tag, best-effort), and returns the abort. With no commit made the reset is skipped.
+func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, committed bool, stage string, cause error) error {
 	deps.Presenter.StageFailed(presenter.StageFailure{Name: stage, Message: failureMessage(cause)})
 	if committed {
 		// The reset is RECOVERY that must run even when the abort was the parent context's
 		// own cancellation (a SIGINT/SIGTERM pre-PONR abort). Detaching with
-		// context.WithoutCancel keeps the local-only `git reset --hard` from being killed by
+		// context.WithoutCancel keeps the local-only reset from being killed by
 		// the same signal, so the changelog commit is rolled back and the repo left clean —
 		// the regenerate sibling of the forward Unwind's cancellation resilience.
 		//
 		// A failed reset is no longer swallowed: it surfaces a manual-cleanup Warn naming
-		// the exact `git reset --hard {startingHEAD}` the user must run, so the leftover
-		// CHANGELOG commit is not silently left in place.
-		if _, err := deps.Mutator.Mutate(context.WithoutCancel(ctx), nil, "git", "reset", "--hard", startingHEAD); err != nil {
-			warnUnwindIncomplete(deps.Presenter, "reset HEAD back to "+startingHEAD+" (`git reset --hard "+startingHEAD+"`) to drop the leftover changelog commit", err)
+		// the steps the user must run, so the leftover CHANGELOG commit is not silently
+		// left in place.
+		if manual, err := resetTo(context.WithoutCancel(ctx), deps.Mutator, start); err != nil {
+			warnUnwindIncomplete(deps.Presenter, manual+" to drop the leftover changelog commit", err)
 		}
 	}
 	return abort(cause)

@@ -147,10 +147,10 @@ func regeneratedByTag(collected []RegeneratedVersion) map[string]string {
 // 5-9 path uses, run once for the whole batch. The push is the point of no return.
 func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string) error {
 	if err := stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject, ""); err != nil {
-		return resetAndAbort(ctx, deps, startingHEAD, false, "record", fmt.Errorf("batch rebuild: %w", err))
+		return resetAndAbort(ctx, deps, resetTarget{HEAD: startingHEAD}, false, "record", fmt.Errorf("batch rebuild: %w", err))
 	}
 	// The rebuild commit landed: push it (the end-of-batch point of no return) via the
 	// SHARED regenerate push tail — the same plain-push form, blocking "push" narration,
 	// and reset-on-abort recovery the single-version path uses, run once for the batch.
-	return pushChangelogCommit(ctx, deps, startingHEAD)
+	return pushChangelogCommit(ctx, deps, resetTarget{HEAD: startingHEAD})
 }

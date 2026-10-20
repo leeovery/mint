@@ -463,7 +463,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
-	start := StartState{HEAD: startingHEAD, Tag: tag, TagExisted: false}
+	start := StartState{HEAD: startingHEAD, Tag: tag, TagExisted: false, KeepOut: keepOut}
 
 	// Track what mint actually makes this run (NOT inferred by probing git): each
 	// commit count is bumped as the step that made it runs, and TagCreated is set when

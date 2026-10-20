@@ -69,11 +69,12 @@ func reuseWriteReq(target engine.RegenerateTarget) engine.RegenerateWriteRequest
 	}
 }
 
-// resetIssued reports whether the FakeRunner recorded a `git reset --hard` (the
-// regenerate commit-reset recovery).
+// resetIssued reports whether the FakeRunner recorded any step of the regenerate
+// commit-reset recovery: a `git reset`, or the `git restore` that follows a soft
+// reset when a notes file is kept.
 func resetIssued(f *runner.FakeRunner) bool {
 	for _, inv := range f.Invocations() {
-		if inv.Name == "git" && len(inv.Args) >= 2 && inv.Args[0] == "reset" && inv.Args[1] == "--hard" {
+		if inv.Name == "git" && len(inv.Args) >= 1 && (inv.Args[0] == "reset" || inv.Args[0] == "restore") {
 			return true
 		}
 	}

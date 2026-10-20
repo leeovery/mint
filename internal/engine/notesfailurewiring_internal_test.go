@@ -168,7 +168,7 @@ func TestResetAndAbort_NoOutputForGitFailure(t *testing.T) {
 	cause := fmt.Errorf("pushing regenerated changelog: %w", errors.New("git push failed: exit status 128"))
 
 	// committed=false so no reset mutation runs — the Mutator is never touched.
-	_ = resetAndAbort(t.Context(), ReleaseDeps{Presenter: rec}, "startsha", false, "push", cause)
+	_ = resetAndAbort(t.Context(), ReleaseDeps{Presenter: rec}, resetTarget{HEAD: "startsha"}, false, "push", cause)
 
 	sf := onlyStageFailure(t, rec)
 	if sf.Output != "" {

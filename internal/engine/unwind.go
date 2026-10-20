@@ -11,7 +11,7 @@ package engine
 // exact clean starting state and REPORTING each undone item.
 //
 // LOAD-BEARING INVARIANT: this is a PRE-PONR operation ONLY. It issues local-only
-// mutations (tag-delete, reset --hard) and never a `git push` or any publish, so it
+// mutations (tag-delete, reset) and never a `git push` or any publish, so it
 // can never rewrite published history. After `git push --atomic` succeeds the tag is
 // public and mint MUST NOT call Unwind — that asymmetry is the spine's (a publish
 // failure post-PONR is warn-only). The operation refuses to do anything destructive
@@ -30,6 +30,7 @@ import (
 	"context"
 	"fmt"
 
+	"mint/internal/git"
 	"mint/internal/presenter"
 )
 
@@ -50,6 +51,9 @@ type StartState struct {
 	// normal path; it is captured to document the starting fact and to never delete a
 	// pre-existing tag mint did not create.
 	TagExisted bool
+	// KeepOut is the path the reset leaves as it was, its content and staged state
+	// untouched.
+	KeepOut git.Exclusion
 }
 
 // MadeState is what mint actually created this run, tracked as the spine steps run
@@ -69,9 +73,10 @@ type MadeState struct {
 // tracked MadeState it:
 //
 //   - deletes the exact tag (local) when made.TagCreated — `git tag -d {start.Tag}`;
-//   - resets HEAD to the captured starting commit when made.Commits > 0 —
-//     `git reset --hard {start.HEAD}` — dropping exactly the N commits mint made and
-//     their working-tree changes (changelog, version-file projection, hook artifacts);
+//   - resets HEAD to the captured starting commit when made.Commits > 0 (see
+//     resetTo), dropping exactly the N commits mint made and their working-tree
+//     changes (changelog, version-file projection, hook artifacts) while start.KeepOut
+//     keeps its content and staged state;
 //   - reports each undone item via the Presenter's Unwound(Unwind{Summary}), the
 //     engine authoring the COMPLETE summary including its "; repo clean" tail.
 //
@@ -122,20 +127,55 @@ func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, ma
 // resetCommitsIfMade resets HEAD to the captured starting commit when mint made any
 // commits this run, returning whether a reset was issued AND whether it succeeded. It
 // uses the captured sha (not HEAD~N) so the tree returns to the EXACT starting state,
-// discarding mint's release commits and their working-tree changes. The reset is a
-// MUTATION, so it flows through the lock-resilient Mutator. A non-zero exit is no longer
-// discarded: it is surfaced as a manual-cleanup Warn naming the reset target so the user
-// is not told the repo is clean when mint's commit(s) still live — the recovery DID NOT
-// complete.
+// discarding mint's release commits and their working-tree changes, all but
+// start.KeepOut's. A non-zero exit is no longer discarded: it is surfaced as a
+// manual-cleanup Warn naming the steps left so the user is not told the repo is clean
+// when mint's commit(s) still live — the recovery DID NOT complete.
 func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState) (issued, ok bool) {
 	if made.Commits <= 0 {
 		return false, true
 	}
-	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "reset", "--hard", start.HEAD); err != nil {
-		warnUnwindIncomplete(deps.Presenter, "reset HEAD back to "+start.HEAD+" (`git reset --hard "+start.HEAD+"`)", err)
+	if manual, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut}); err != nil {
+		warnUnwindIncomplete(deps.Presenter, manual, err)
 		return true, false
 	}
 	return true, true
+}
+
+// resetTarget is where a recovery reset returns the repo: HEAD at the starting commit,
+// with KeepOut left as it was.
+type resetTarget struct {
+	HEAD    string
+	KeepOut git.Exclusion
+}
+
+// resetTo returns HEAD, the index and the work tree to target.HEAD as
+// `git reset --hard` does, except that target.KeepOut keeps its content and staged
+// state. On failure it returns the manual step that finishes the reset.
+//
+// With a path to keep, `git reset --hard` cannot be used, as it takes no pathspec: the
+// soft reset moves HEAD alone, then restore rewrites the index and work tree everywhere
+// but the excluded path, removing tracked paths the starting commit lacks.
+func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual string, err error) {
+	sha := target.HEAD
+	if target.KeepOut == "" {
+		if _, err := m.Mutate(ctx, nil, "git", "reset", "--hard", sha); err != nil {
+			return "reset HEAD back to " + sha + " (`git reset --hard " + sha + "`)", err
+		}
+		return "", nil
+	}
+
+	pathspec := target.KeepOut.Pathspec()
+	restoreArgs := append([]string{"restore", "--source=" + sha, "--staged", "--worktree"}, pathspec...)
+	restoreLine := "`git restore --source=" + sha + " --staged --worktree " + pathspec[0] + " '" + pathspec[1] + "'`"
+	keeping := ", leaving " + string(target.KeepOut) + " as it is ("
+	if _, err := m.Mutate(ctx, nil, "git", "reset", "--soft", sha); err != nil {
+		return "reset HEAD back to " + sha + keeping + "`git reset --soft " + sha + "` then " + restoreLine + ")", err
+	}
+	if _, err := m.Mutate(ctx, nil, "git", restoreArgs...); err != nil {
+		return "restore the index and work tree to " + sha + keeping + restoreLine + ")", err
+	}
+	return "", nil
 }
 
 // warnUnwindIncomplete emits the manual-cleanup notice when a recovery mutation
