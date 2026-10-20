@@ -1147,10 +1147,10 @@ func (f regeneratorFunc) Regenerate(ctx context.Context, oneTimeContext string) 
 // the gate: while it holds any, an `r` re-merges those part notes with the one-time
 // context, one call; otherwise it binds lastTag + cfg to generator.GenerateWithContext,
 // re-running the AI path from the size check with the one-time context appended,
-// reporting to progress, and keeps in chunkNotes the merge inputs of a chunked run
-// that `r` becomes. When neither is present (an override body, or a no-AI path with no
-// generator), it returns nil; `r` is only offered for KindNormalAI, so the nil is never
-// consulted on the no-AI paths.
+// reporting to progress; of a chunked run that `r` becomes, chunkNotes saves a failed
+// one's finished chunk notes and keeps a written one's merge inputs. When neither is
+// present (an override body, or a no-AI path with no generator), it returns nil; `r`
+// is only offered for KindNormalAI, so the nil is never consulted on the no-AI paths.
 func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, chunkNotes *chunkNotesKeeper, progress notes.Progress, lastTag string, cfg config.Config) Regenerator {
 	if deps.Regenerator != nil {
 		return deps.Regenerator
@@ -1158,7 +1158,7 @@ func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, chunkNotes 
 	if generator == nil {
 		return nil
 	}
-	regenerating := generator.WithProgress(progress).WithMergeInputs(chunkNotes.keepMerged)
+	regenerating := generator.WithProgress(progress).WithChunkNotes(chunkNotes.saver()).WithMergeInputs(chunkNotes.keepMerged)
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
 		if chunkNotes.merged != nil {
 			return generator.Remerge(ctx, *chunkNotes.merged, cfg, oneTimeContext)
