@@ -86,8 +86,9 @@ type NotesSinks struct {
 // instructions. Otherwise it binds a fresh generator, built as RegenerateFreshBody
 // builds its own, to the version's resolved `{PreviousTag}..{Tag}` range, so an `r`
 // re-runs the fresh AI path from the size check with the one-time context appended for
-// that one generation, reporting to run.Progress, and holds the merge inputs of a
-// chunked run that `r` becomes. Either way the one-time context is
+// that one generation, reporting to run's sinks; of a chunked run that `r` becomes, they
+// save a failed one's finished chunk notes, and it holds a written one's merge inputs,
+// handing them on to run.MergeInputs too. Either way the one-time context is
 // TRANSIENT (never persisted), exactly as the forward path's `r`.
 //
 // For the oldest release (res.FirstRelease) there is no range to re-diff, so it mirrors
@@ -96,7 +97,12 @@ type NotesSinks struct {
 // fresh gate is well-defined and never breaks.
 func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution, run RegenRun) Regenerator {
 	merged := run.Merged
-	generator := freshGenerator(r, transport, root, cfg).WithProgress(run.Progress).WithMergeInputs(func(in notes.MergeInputs) { merged = &in })
+	generator := freshGenerator(r, transport, root, cfg).WithProgress(run.Progress).WithChunkNotes(run.ChunkNotes).WithMergeInputs(func(in notes.MergeInputs) {
+		merged = &in
+		if run.MergeInputs != nil {
+			run.MergeInputs(in)
+		}
+	})
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
 		if res.FirstRelease {
 			return record.FirstReleaseBody, nil

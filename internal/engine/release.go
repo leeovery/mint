@@ -86,11 +86,11 @@ type Regenerator interface {
 }
 
 // RegenRun is what a run's `r` regenerates from and reports to: Merged, the merge
-// inputs of the chunked run that wrote the notes now at the gate, nil for none; and
-// Progress, told how each r's generation advances, nil for nowhere.
+// inputs of the chunked run that wrote the notes now at the gate, nil for none; and the
+// sinks of the chunked run an `r` becomes.
 type RegenRun struct {
-	Merged   *notes.MergeInputs
-	Progress notes.Progress
+	Merged *notes.MergeInputs
+	NotesSinks
 }
 
 // reviewRegen is the review gate's `r`: the Regenerator it consults; shown, run once
@@ -596,7 +596,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	if err != nil {
 		// Unwind, not surfaceAndUnwind: reviewGate has already surfaced whatever
 		// needed a StageFailed.
-		chunkNotes.reportKept(p, err)
+		chunkNotes.reportKept(p, err, "mint release")
 		return Unwind(ctx, deps, start, made, err)
 	}
 

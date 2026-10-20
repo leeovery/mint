@@ -142,6 +142,9 @@ type RegenerateWriteRequest struct {
 	KeepOut git.Exclusion
 	// LowerCap is the cap hinted after the notes, 0 for none.
 	LowerCap int
+	// chunkNotes keeps the version's chunk notes, saving those of a failed `r`; nil
+	// keeps none.
+	chunkNotes *chunkNotesKeeper
 }
 
 // RegenerateWrite runs the single-version regenerate write/push/recovery sequence for
@@ -232,8 +235,7 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 		// The `r` choice consults the per-run regenerator (req.Regenerator), bound to this
 		// version's chunk notes or fresh AI range — a wired deps.Regenerator OVERRIDES it
 		// (the test seam), mirroring the forward path's perRunRegenerator precedence.
-		regen := reviewRegen{regenerator: regenerateRegenerator(deps, req.Regenerator), shown: req.RegenShown}
-		return reviewGate(ctx, p, deps.Editor, regen, presenter.NotesReviewGate(), req.Body, req.VersionKey)
+		return reviewFresh(ctx, deps, req)
 	case regenerateSourceSupplied, regenerateSourceFloor:
 		return reviewGate(ctx, p, deps.Editor, reviewRegen{}, presenter.NotesReviewGateNoRegen(), req.Body, req.VersionKey)
 	default:
@@ -241,6 +243,20 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 		// two-choice confirm — there are no freshly-generated notes to edit/regenerate.
 		return reuseConfirm(p, req.Body)
 	}
+}
+
+// reviewFresh runs the fresh notes-review gate. An `r` that fails saves the version's
+// chunk notes, named with the version's regenerate that puts them on it.
+func reviewFresh(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRequest) (string, error) {
+	regen := reviewRegen{regenerator: regenerateRegenerator(deps, req.Regenerator), shown: req.RegenShown}
+	if req.chunkNotes != nil {
+		regen.keep = req.chunkNotes.keepRegen
+	}
+	body, err := reviewGate(ctx, deps.Presenter, deps.Editor, regen, presenter.NotesReviewGate(), req.Body, req.VersionKey)
+	if err != nil && req.chunkNotes != nil {
+		req.chunkNotes.reportKept(deps.Presenter, err, "mint release regenerate "+req.VersionKey)
+	}
+	return body, err
 }
 
 // regenerateRegenerator selects the Regenerator the fresh regenerate gate's `r` choice

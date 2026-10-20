@@ -70,10 +70,16 @@ func (k *chunkNotesKeeper) keepRegen(failure error) error {
 }
 
 // reportKept warns where the chunk notes of a review-gate abort, cause, could not be
-// saved, and names a saved file with the command that releases it.
-func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error) {
+// saved, and names a saved file with command, the run that releases it.
+func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error, command string) {
 	k.warnUnsaved(p)
 	if saved := notes.SavedChunkNotesPath(cause); saved != "" {
-		p.NextMoves(presenter.NextMoves{Stage: "regenerate", Moves: []string{notesFileMove("mint release", saved)}})
+		p.NextMoves(presenter.NextMoves{Stage: "regenerate", Moves: []string{notesFileMove(command, saved)}})
 	}
+}
+
+// regenRun is what an `r` on the run's notes regenerates from, its chunked run
+// reporting to progress and kept here.
+func (k *chunkNotesKeeper) regenRun(progress notes.Progress) RegenRun {
+	return RegenRun{Merged: k.merged, NotesSinks: k.sinks(progress)}
 }

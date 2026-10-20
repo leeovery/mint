@@ -336,7 +336,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// gate DECLINE is a user choice (not a failure), so it propagates and ends the batch.
 	// An `r` prints no hint of its own: its calls and halving fold into the batch's.
 	regens := stage.regens(hint.regenWritten)
-	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey, chunkNotes.merged, regens)
+	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey, chunkNotes, regens)
 	hint.tried(stage)
 	if err != nil {
 		return RegeneratedVersion{}, nil, err
@@ -462,7 +462,7 @@ func batchSummary(regenerated int, skipped []skippedVersion) string {
 // batch's -y contract: unlike the single-version path (which always prompts and lets the
 // presenter skip), the batch suppresses the per-version gate so a large backfill does
 // not emit N auto-accepted prompts.
-func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, res version.Resolution, body, versionKey string, merged *notes.MergeInputs, regens *regenStage) (string, error) {
+func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRequest, res version.Resolution, body, versionKey string, chunkNotes *chunkNotesKeeper, regens *regenStage) (string, error) {
 	if req.Yes {
 		return body, nil
 	}
@@ -474,8 +474,9 @@ func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRe
 		Tag:         "",
 		VersionKey:  versionKey,
 		Body:        body,
-		Regenerator: regens.narrating(batchRegenerator(req.ProduceRegenerator, req.Source, res, RegenRun{Merged: merged, Progress: regens})),
+		Regenerator: regens.narrating(batchRegenerator(req.ProduceRegenerator, req.Source, res, chunkNotes.regenRun(regens))),
 		RegenShown:  regens.shown,
+		chunkNotes:  chunkNotes,
 	})
 }
 
