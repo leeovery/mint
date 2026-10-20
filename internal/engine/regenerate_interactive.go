@@ -130,6 +130,9 @@ type RegenerateRunRequest struct {
 	// question is asked and ProduceBody is never called. A file inside the repo is left
 	// out of the clean-tree check and the changelog commit.
 	NotesFile string
+	// NotesFileSet reports that --notes-file was given, so an empty NotesFile is
+	// refused as naming no file rather than read as the flag left off.
+	NotesFileSet bool
 	// Yes is the -y flag. It does NOT change which gates the engine calls — every gate
 	// is still called and the presenter skips internally — but it threads to the write
 	// request for the confirm/review gate's internal skip.
@@ -158,7 +161,7 @@ type RegenerateRunRequest struct {
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
 
-	supplied, err := readNotesFile(req.NotesFile)
+	supplied, err := readNotesFile(req.NotesFile, req.NotesFileSet)
 	if err != nil {
 		return surface(p, "notes", err)
 	}

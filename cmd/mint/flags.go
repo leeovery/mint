@@ -53,12 +53,14 @@ type releaseFlags struct {
 	// NotesFile is the raw --notes-file path, threaded unresolved: the engine reads it
 	// relative to the directory mint was run from. "-" names a file, never stdin.
 	NotesFile string
+	// NotesFileSet reports that --notes-file was given, an empty value included.
+	NotesFileSet bool
 }
 
 // ReleaseOptions converts the parsed flags into the engine's run options, binding
 // the production clock (time.Now) so the changelog date is the real release date.
 func (f releaseFlags) ReleaseOptions() engine.ReleaseOptions {
-	return engine.ReleaseOptions{Bump: f.Bump, SetVersion: f.SetVersion, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash, AnyBranch: f.AnyBranch, DryRun: f.DryRun, NotesFile: f.NotesFile}
+	return engine.ReleaseOptions{Bump: f.Bump, SetVersion: f.SetVersion, Now: time.Now(), NoAI: f.NoAI, AutoStash: f.AutoStash, AnyBranch: f.AnyBranch, DryRun: f.DryRun, NotesFile: f.NotesFile, NotesFileSet: f.NotesFileSet}
 }
 
 // parseReleaseFlags parses the `mint release [bump] [options]` arguments into a
@@ -97,7 +99,11 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	if err != nil {
 		return releaseFlags{}, err
 	}
-	return releaseFlags{Bump: bump, SetVersion: setVersion, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash, AnyBranch: anyBranch, DryRun: dryRun, NotesFile: notesFile}, nil
+	notesFileSet := flagGiven(fs, "notes-file")
+	if notesFileSet && noAI {
+		return releaseFlags{}, fmt.Errorf("can't combine --notes-file with --no-ai")
+	}
+	return releaseFlags{Bump: bump, SetVersion: setVersion, Yes: yes, Plain: plain, NoAI: noAI, AutoStash: autoStash, AnyBranch: anyBranch, DryRun: dryRun, NotesFile: notesFile, NotesFileSet: notesFileSet}, nil
 }
 
 // resolveVersionSelection enforces the version-selection rules and returns the
@@ -142,4 +148,16 @@ func boolsSet(bs ...bool) int {
 		}
 	}
 	return n
+}
+
+// flagGiven reports whether the named flag appeared on the command line, which a
+// string flag's value cannot say: an empty value and an absent flag both read as "".
+func flagGiven(fs *flag.FlagSet, name string) bool {
+	given := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			given = true
+		}
+	})
+	return given
 }

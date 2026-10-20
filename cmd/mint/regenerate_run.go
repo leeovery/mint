@@ -31,10 +31,11 @@ func regenerateRunAxes(req regenerateRequest) (engine.OptionalRegenerateSource, 
 func regenerateRunFlags(req regenerateRequest) engine.RegenerateRunRequest {
 	source, target := regenerateRunAxes(req)
 	return engine.RegenerateRunRequest{
-		Source:    source,
-		Target:    target,
-		NotesFile: req.NotesFile,
-		Yes:       req.Yes,
+		Source:       source,
+		Target:       target,
+		NotesFile:    req.NotesFile,
+		NotesFileSet: req.NotesFileSet,
+		Yes:          req.Yes,
 	}
 }
 

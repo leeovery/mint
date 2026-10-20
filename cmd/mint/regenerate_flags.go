@@ -64,6 +64,8 @@ type regenerateRequest struct {
 	// NotesFile is the raw --notes-file path, threaded unresolved: the engine reads it
 	// relative to the directory mint was run from.
 	NotesFile string
+	// NotesFileSet reports that --notes-file was given, an empty value included.
+	NotesFileSet bool
 	// Target is the resolved write surface, or targetUnset when --target is
 	// omitted.
 	Target regenerateTarget
@@ -79,9 +81,10 @@ type regenerateRequest struct {
 
 // parseRegenerateFlags parses the `mint release regenerate [<version>] [flags]`
 // arguments into a regenerateRequest. It enforces the two scope-presence rules
-// (rule A: neither <version> nor --all; rule B: both) and rejects an unrecognised
-// --source or --target value. It performs NO mutation, network call, or semantic
-// axis validation (that is validateRegenerateRequest).
+// (rule A: neither <version> nor --all; rule B: both), rejects --notes-file beside
+// --all or --source, and rejects an unrecognised --source or --target value. It
+// performs NO mutation, network call, or semantic axis validation (that is
+// validateRegenerateRequest).
 func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 	fs := flag.NewFlagSet("regenerate", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
@@ -122,18 +125,37 @@ func parseRegenerateFlags(args []string) (regenerateRequest, error) {
 		return regenerateRequest{}, err
 	}
 
+	notesFileSet := flagGiven(fs, "notes-file")
+	if err := checkNotesFileScope(notesFileSet, all, flagGiven(fs, "source")); err != nil {
+		return regenerateRequest{}, err
+	}
+
 	return regenerateRequest{
 		Version: version,
 		Source:  parsedSource,
 		// An empty --source is the omitted state (ask interactively); any explicit
 		// value — including "fresh" — marks the source supplied so the prompt is skipped.
-		SourceSet: source != "",
-		NotesFile: notesFile,
-		Target:    parsedTarget,
-		All:       all,
-		Yes:       yes,
-		Plain:     plain,
+		SourceSet:    source != "",
+		NotesFile:    notesFile,
+		NotesFileSet: notesFileSet,
+		Target:       parsedTarget,
+		All:          all,
+		Yes:          yes,
+		Plain:        plain,
 	}, nil
+}
+
+// checkNotesFileScope rejects --notes-file beside --all or --source: one file is the
+// finished notes for one version, and it is that version's notes source.
+func checkNotesFileScope(notesFileSet, all, sourceSet bool) error {
+	switch {
+	case notesFileSet && all:
+		return fmt.Errorf("cannot combine --notes-file with --all")
+	case notesFileSet && sourceSet:
+		return fmt.Errorf("cannot combine --notes-file with --source")
+	default:
+		return nil
+	}
 }
 
 // splitRegeneratePositional lifts the single optional <version> positional out of

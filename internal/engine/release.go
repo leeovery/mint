@@ -241,6 +241,9 @@ type ReleaseOptions struct {
 	// stash and every commit the run makes, so a successful run leaves it as it
 	// started, staged edits still staged.
 	NotesFile string
+	// NotesFileSet reports that --notes-file was given, so an empty NotesFile is
+	// refused as naming no file rather than read as the flag left off.
+	NotesFileSet bool
 	// WorkDir is the directory a relative NotesFile resolves against. Empty means the
 	// process working directory.
 	WorkDir string
@@ -314,7 +317,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p := deps.Presenter
 
 	notesPath := notesFilePath(opts.WorkDir, opts.NotesFile)
-	supplied, err := readNotesFile(notesPath)
+	supplied, err := readNotesFile(notesPath, opts.NotesFileSet)
 	if err != nil {
 		return surface(p, "notes", err)
 	}
@@ -892,9 +895,11 @@ func realPath(p string) string {
 	return p
 }
 
-// readNotesFile reads the --notes-file body, or returns nil when no path was given.
-func readNotesFile(path string) (*string, error) {
-	if path == "" {
+// readNotesFile reads the --notes-file body, or returns nil when the flag was not
+// given. A given empty path names no file and fails as a missing file does. A blank
+// body is refused, since git accepts an empty tag message and the run would ship it.
+func readNotesFile(path string, set bool) (*string, error) {
+	if path == "" && !set {
 		return nil, nil
 	}
 	data, err := os.ReadFile(path)
@@ -902,6 +907,9 @@ func readNotesFile(path string) (*string, error) {
 		return nil, fmt.Errorf("reading --notes-file %s: %w", path, err)
 	}
 	body := string(data)
+	if strings.TrimSpace(body) == "" {
+		return nil, fmt.Errorf("--notes-file %s is empty", path)
+	}
 	return &body, nil
 }
 
