@@ -351,7 +351,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 6,
-          "current_task": "token-aware-diff-sizing-6-8",
+          "current_task": "token-aware-diff-sizing-6-9",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -445,7 +445,8 @@
             "token-aware-diff-sizing-6-4",
             "token-aware-diff-sizing-6-5",
             "token-aware-diff-sizing-6-6",
-            "token-aware-diff-sizing-6-7"
+            "token-aware-diff-sizing-6-7",
+            "token-aware-diff-sizing-6-8"
           ],
           "staging": {
             "p1": {
@@ -499,6 +500,34 @@
               "failure": "A maintainer trusting them drops the Unwind for a gate or r abort, and a declined or failed release leaves the pre_tag artifact commit on the user branch",
               "detail": "release.go:579-580 (gate positioned BEFORE any mutation); release.go:1547 errEditorUnavailable doc; release.go:1554 errRegeneratorUnavailable doc; release.go:1671 regenerateBody doc; release.go:1639-1640 ChoiceRegen comment says closed input is surfaced, but it only aborts",
               "files": [
+                "internal/engine/release.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-6-8",
+              "source": "reviewer",
+              "summary": "Regenerate holds its r merge inputs in a closure-local merged, while release now holds them in chunkNotesKeeper",
+              "failure": "If a regenerate-gate keep reads the keeper, an r the ladder turned chunked updates only the closure, so a later failed re-merge saves no part notes and names no file, with no test failing",
+              "detail": "regenerate_fresh.go:98-107 copies run.Merged into a local updated via WithMergeInputs; regenerate_interactive.go:267 and regenerate_batch.go:477 pass a RegenRun{Merged} snapshot; release routes the same state through chunkNotes.keepMerged (release.go:1161-1164)",
+              "files": [
+                "internal/engine/regenerate_fresh.go",
+                "internal/engine/regenerate_interactive.go",
+                "internal/engine/regenerate_batch.go",
+                "internal/engine/release.go",
+                "cmd/mint/regenerate_run.go",
+                "cmd/mint/regenerate_all.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-6-8",
+              "source": "reviewer",
+              "summary": "Release r keeps its merge inputs on the shared chunkNotesKeeper; regenerate r keeps them in a closure-local merged snapshot taken from RegenRun",
+              "failure": "If 6-10 wires regenerate keep through the keeper, a ladder-chunked r followed by an r whose re-merge fails saves nothing, and the operator loses that wave part notes",
+              "detail": "regenerate_fresh.go:97-115 merged := run.Merged updated via WithMergeInputs; regenerate_interactive.go:267 RegenRun{Merged: chunkNotes.merged}; regenerate_batch.go:477; compare release.go:1155-1167 via chunkNotes.keepMerged",
+              "files": [
+                "internal/engine/regenerate_fresh.go",
+                "internal/engine/regenerate_interactive.go",
+                "internal/engine/regenerate_batch.go",
                 "internal/engine/release.go"
               ]
             }
