@@ -23,6 +23,10 @@ func (pl *progressLog) PartsDone(promptBytes, parts, done int) {
 	pl.reports = append(pl.reports, fmt.Sprintf("%d bytes, %d of %d done", promptBytes, done, parts))
 }
 
+func (pl *progressLog) Halved(part, parts int) {
+	pl.reports = append(pl.reports, fmt.Sprintf("part %d re-cut into %d parts", part, parts))
+}
+
 func (pl *progressLog) Merged(parts int) {
 	pl.reports = append(pl.reports, fmt.Sprintf("merged %d parts", parts))
 }

@@ -332,6 +332,7 @@ type partsProgress struct {
 }
 
 func (p *partsProgress) PartsDone(_, parts, _ int) { p.parts = append(p.parts, parts) }
+func (p *partsProgress) Halved(int, int)           {}
 func (p *partsProgress) Merging(int)               { p.merged++ }
 func (p *partsProgress) Merged(int)                {}
 

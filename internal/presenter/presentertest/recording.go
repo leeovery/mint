@@ -39,6 +39,7 @@ const (
 	KindAskLine
 	KindNotesProgress
 	KindNotesMerging
+	KindNotesHalving
 )
 
 // String renders the kind for readable test failure output.
@@ -80,6 +81,8 @@ func (k EventKind) String() string {
 		return "NotesProgress"
 	case KindNotesMerging:
 		return "NotesMerging"
+	case KindNotesHalving:
+		return "NotesHalving"
 	default:
 		return "Unknown"
 	}
@@ -99,6 +102,7 @@ type Event struct {
 	StageFailed    presenter.StageFailure
 	NotesProgress  presenter.NotesProgress
 	NotesMerging   presenter.NotesMerge
+	NotesHalving   presenter.NotesHalving
 	Warn           presenter.Warning
 	Unwound        presenter.Unwind
 	ShowPlan       presenter.Plan
@@ -176,6 +180,11 @@ func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 // NotesProgress records a chunked notes run's progress.
 func (r *RecordingPresenter) NotesProgress(n presenter.NotesProgress) {
 	r.Events = append(r.Events, Event{Kind: KindNotesProgress, NotesProgress: n})
+}
+
+// NotesHalving records a re-cut of a call too big for the model.
+func (r *RecordingPresenter) NotesHalving(h presenter.NotesHalving) {
+	r.Events = append(r.Events, Event{Kind: KindNotesHalving, NotesHalving: h})
 }
 
 // NotesMerging records a chunked notes run's merge.

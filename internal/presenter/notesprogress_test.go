@@ -132,3 +132,158 @@ func TestPresenters_NotesProgress_WriteSizesInDecimalUnits(t *testing.T) {
 		})
 	}
 }
+
+// driveHalvedSinglePassStage plays a notes stage whose single-pass call is re-cut
+// into three parts: the halving, each part finishing, the merge, then the completion.
+func driveHalvedSinglePassStage(p presenter.Presenter) {
+	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
+	p.NotesHalving(presenter.NotesHalving{Parts: 3})
+	for done := 1; done <= 3; done++ {
+		p.NotesProgress(presenter.NotesProgress{PromptBytes: 1_200_000, Parts: 3, Done: done})
+	}
+	p.NotesMerging(presenter.NotesMerge{Parts: 3})
+	p.StageSucceeded(presenter.StageSuccess{
+		Name:     "notes",
+		Detail:   "generated in 3 parts, merged",
+		Sentence: "Notes written (3 parts, merged)",
+		Elapsed:  12300 * time.Millisecond,
+		Blocking: true,
+	})
+}
+
+// driveHalvedPartStage plays a six-part chunked notes stage whose part 4 is re-cut
+// into three parts once two parts are done, taking the run to eight parts.
+func driveHalvedPartStage(p presenter.Presenter) {
+	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
+	for done := 0; done <= 2; done++ {
+		p.NotesProgress(presenter.NotesProgress{PromptBytes: 3_100_000, Parts: 6, Done: done})
+	}
+	p.NotesHalving(presenter.NotesHalving{Part: 4, Parts: 3})
+	for done := 3; done <= 8; done++ {
+		p.NotesProgress(presenter.NotesProgress{PromptBytes: 3_100_000, Parts: 8, Done: done})
+	}
+	p.NotesMerging(presenter.NotesMerge{Parts: 8})
+	p.StageSucceeded(presenter.StageSuccess{
+		Name:     "notes",
+		Detail:   "generated in 8 parts, merged",
+		Sentence: "Notes written (8 parts, merged)",
+		Elapsed:  64200 * time.Millisecond,
+		Blocking: true,
+	})
+}
+
+func TestPrettyPresenter_SinglePassHalved_NamesTheRecutThenCountsItsParts(t *testing.T) {
+	t.Parallel()
+
+	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { driveHalvedSinglePassStage(p) })
+
+	if len(tr.created) != 1 {
+		t.Fatalf("spinners created = %d, want the one notes line", len(tr.created))
+	}
+	want := []string{
+		"Writing notes: too big for the model in one call, retrying in 3 parts",
+		"Writing notes: 1.2 MB release, in 3 parts · 1 of 3 done",
+		"Writing notes: 1.2 MB release, in 3 parts · 2 of 3 done",
+		"Writing notes: 1.2 MB release, in 3 parts · 3 of 3 done",
+		"Writing notes: merging 3 parts",
+	}
+	if got := tr.created[0].texts; !slices.Equal(got, want) {
+		t.Errorf("notes line texts =\n%q\nwant\n%q", got, want)
+	}
+	if got, want := out.String(), "✓ Notes written (3 parts, merged) (12.3s)\n"; got != want {
+		t.Errorf("output = %q, want only the completion line %q", got, want)
+	}
+}
+
+func TestPrettyPresenter_PartHalved_NamesThePartThenCountsOutOfTheGrownTotal(t *testing.T) {
+	t.Parallel()
+
+	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { driveHalvedPartStage(p) })
+
+	if len(tr.created) != 1 {
+		t.Fatalf("spinners created = %d, want the one notes line", len(tr.created))
+	}
+	want := []string{
+		"Writing notes: 3.1 MB release, in 6 parts · 0 of 6 done",
+		"Writing notes: 3.1 MB release, in 6 parts · 1 of 6 done",
+		"Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done",
+		"Writing notes: part 4 was too big for the model, retrying it as 3 smaller parts",
+		"Writing notes: 3.1 MB release, in 8 parts · 3 of 8 done",
+		"Writing notes: 3.1 MB release, in 8 parts · 4 of 8 done",
+		"Writing notes: 3.1 MB release, in 8 parts · 5 of 8 done",
+		"Writing notes: 3.1 MB release, in 8 parts · 6 of 8 done",
+		"Writing notes: 3.1 MB release, in 8 parts · 7 of 8 done",
+		"Writing notes: 3.1 MB release, in 8 parts · 8 of 8 done",
+		"Writing notes: merging 8 parts",
+	}
+	if got := tr.created[0].texts; !slices.Equal(got, want) {
+		t.Errorf("notes line texts =\n%q\nwant\n%q", got, want)
+	}
+	if got, want := out.String(), "✓ Notes written (8 parts, merged) (64.2s)\n"; got != want {
+		t.Errorf("output = %q, want only the completion line %q", got, want)
+	}
+}
+
+func TestPrettyPresenter_NotesHalvingWithNoNotesLine_StartsNoSpinner(t *testing.T) {
+	t.Parallel()
+
+	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
+		p.NotesHalving(presenter.NotesHalving{Parts: 3})
+		p.NotesHalving(presenter.NotesHalving{Part: 4, Parts: 3})
+	})
+
+	if len(tr.created) != 0 {
+		t.Errorf("spinners created = %d, want none with no notes line running", len(tr.created))
+	}
+	if out.Len() != 0 {
+		t.Errorf("output = %q, want nothing", out.String())
+	}
+}
+
+func TestPlainPresenter_SinglePassHalved_PrintsTheRecutAndEachFinishedPartAsLines(t *testing.T) {
+	t.Parallel()
+
+	out, errBuf := drive(func(p *presenter.PlainPresenter) { driveHalvedSinglePassStage(p) })
+
+	want := "notes: running...\n" +
+		"notes: too big for the model in one call, retrying in 3 parts\n" +
+		"notes: 1.2 MB release, in 3 parts, 1 of 3 done\n" +
+		"notes: 1.2 MB release, in 3 parts, 2 of 3 done\n" +
+		"notes: 1.2 MB release, in 3 parts, 3 of 3 done\n" +
+		"notes: merging 3 parts\n" +
+		"notes: generated in 3 parts, merged (12.3s)\n"
+	if got := out.String(); got != want {
+		t.Errorf("output =\n%s\nwant\n%s", got, want)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("err = %q, want nothing", errBuf.String())
+	}
+	assertBytePureASCIIStreams(t, "plain halved single-pass narration", out, errBuf)
+}
+
+func TestPlainPresenter_PartHalved_PrintsTheRecutAsItsOwnLineAmongThePartLines(t *testing.T) {
+	t.Parallel()
+
+	out, errBuf := drive(func(p *presenter.PlainPresenter) { driveHalvedPartStage(p) })
+
+	want := "notes: running...\n" +
+		"notes: 3.1 MB release, in 6 parts, 0 of 6 done\n" +
+		"notes: 3.1 MB release, in 6 parts, 1 of 6 done\n" +
+		"notes: 3.1 MB release, in 6 parts, 2 of 6 done\n" +
+		"notes: part 4 was too big for the model, retrying it as 3 smaller parts\n" +
+		"notes: 3.1 MB release, in 8 parts, 3 of 8 done\n" +
+		"notes: 3.1 MB release, in 8 parts, 4 of 8 done\n" +
+		"notes: 3.1 MB release, in 8 parts, 5 of 8 done\n" +
+		"notes: 3.1 MB release, in 8 parts, 6 of 8 done\n" +
+		"notes: 3.1 MB release, in 8 parts, 7 of 8 done\n" +
+		"notes: 3.1 MB release, in 8 parts, 8 of 8 done\n" +
+		"notes: merging 8 parts\n" +
+		"notes: generated in 8 parts, merged (64.2s)\n"
+	if got := out.String(); got != want {
+		t.Errorf("output =\n%s\nwant\n%s", got, want)
+	}
+	if errBuf.Len() != 0 {
+		t.Errorf("err = %q, want nothing", errBuf.String())
+	}
+	assertBytePureASCIIStreams(t, "plain halved part narration", out, errBuf)
+}

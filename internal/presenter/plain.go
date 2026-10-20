@@ -215,6 +215,11 @@ func (p *PlainPresenter) NotesProgress(n NotesProgress) {
 	p.writef("notes: %s release, in %d parts, %d of %d done\n", formatSize(n.PromptBytes), n.Parts, n.Done, n.Parts)
 }
 
+// NotesHalving prints a re-cut of a call too big for the model as its own line.
+func (p *PlainPresenter) NotesHalving(h NotesHalving) {
+	p.writef("notes: %s\n", halvingText(h))
+}
+
 // NotesMerging prints the merge call that ends a chunked notes run.
 func (p *PlainPresenter) NotesMerging(m NotesMerge) {
 	p.writef("notes: merging %d parts\n", m.Parts)

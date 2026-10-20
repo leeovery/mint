@@ -4,6 +4,7 @@
 package presenter
 
 import (
+	"fmt"
 	"io"
 	"time"
 )
@@ -68,9 +69,9 @@ type Presenter interface {
 	// frames are written to out from the spinner's own goroutine until the stage
 	// completes. Between a blocking StageStarted and its StageSucceeded/StageFailed
 	// the engine should therefore emit only SuspendSpinner/ResumeSpinner, the notes
-	// stage's NotesProgress/NotesMerging, and the completion event itself — any other
-	// narration (Warn, ShowPlan, …) would interleave with animation frames on the
-	// same stream and garble the display.
+	// stage's NotesProgress/NotesHalving/NotesMerging, and the completion event
+	// itself — any other narration (Warn, ShowPlan, …) would interleave with
+	// animation frames on the same stream and garble the display.
 	// Emit such events before the stage starts or after it completes (or wrap them
 	// in SuspendSpinner/ResumeSpinner).
 	StageStarted(s StageStart)
@@ -78,13 +79,16 @@ type Presenter interface {
 	StageSucceeded(s StageSuccess)
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
-	// NotesProgress and NotesMerging narrate a chunked notes run inside its blocking
-	// notes stage: pretty rewrites the running notes line in place, plain prints a
-	// line per event. They are the stream-discipline exception — events the
-	// presenter renders without breaking the running line. With no notes line
-	// running, pretty renders nothing. Either may be called from any goroutine, but
-	// never concurrently with another Presenter call.
+	// NotesProgress, NotesHalving and NotesMerging narrate a chunked notes run
+	// inside its blocking notes stage: pretty rewrites the running notes line in
+	// place, plain prints a line per event. They are the stream-discipline
+	// exception — events the presenter renders without breaking the running line.
+	// With no notes line running, pretty renders nothing. Each may be called from
+	// any goroutine, but never concurrently with another Presenter call.
 	NotesProgress(n NotesProgress)
+	// NotesHalving narrates a call too big for the model being re-cut into smaller
+	// parts.
+	NotesHalving(h NotesHalving)
 	// NotesMerging narrates the merge call that ends a chunked notes run.
 	NotesMerging(m NotesMerge)
 	// Warn renders a structured, label-prefixed warning. It is INDEPENDENT of
@@ -496,6 +500,22 @@ type NotesProgress struct {
 	PromptBytes int
 	Parts       int
 	Done        int
+}
+
+// NotesHalving carries the NotesHalving payload: the re-cut call and the number of
+// parts its re-cut yields.
+type NotesHalving struct {
+	// Part is the re-cut part's number within the run's total before the re-cut, 0
+	// when the re-cut call is the single-pass call.
+	Part  int
+	Parts int
+}
+
+func halvingText(h NotesHalving) string {
+	if h.Part == 0 {
+		return fmt.Sprintf("too big for the model in one call, retrying in %d parts", h.Parts)
+	}
+	return fmt.Sprintf("part %d was too big for the model, retrying it as %d smaller parts", h.Part, h.Parts)
 }
 
 // NotesMerge carries the NotesMerging payload: the number of parts being merged.

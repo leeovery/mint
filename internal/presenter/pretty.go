@@ -517,6 +517,12 @@ func (p *PrettyPresenter) NotesProgress(n NotesProgress) {
 	p.setSpinnerText(fmt.Sprintf("Writing notes: %s release, in %d parts · %d of %d done", formatSize(n.PromptBytes), n.Parts, n.Done, n.Parts))
 }
 
+// NotesHalving rewrites the running notes line with a re-cut of a call too big for
+// the model.
+func (p *PrettyPresenter) NotesHalving(h NotesHalving) {
+	p.setSpinnerText("Writing notes: " + halvingText(h))
+}
+
 // NotesMerging rewrites the running notes line for the merge call.
 func (p *PrettyPresenter) NotesMerging(m NotesMerge) {
 	p.setSpinnerText(fmt.Sprintf("Writing notes: merging %d parts", m.Parts))

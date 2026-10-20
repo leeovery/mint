@@ -188,3 +188,25 @@ func TestRecordingPresenter_RecordsNotesProgressAndMergePayloads(t *testing.T) {
 		t.Errorf("KindNotesMerging.String() = %q, want %q", got, want)
 	}
 }
+
+func TestRecordingPresenter_RecordsNotesHalvingPayloads(t *testing.T) {
+	rec := &presentertest.RecordingPresenter{}
+
+	single := presenter.NotesHalving{Parts: 3}
+	part := presenter.NotesHalving{Part: 4, Parts: 3}
+	rec.NotesHalving(single)
+	rec.NotesHalving(part)
+
+	if got := rec.Kinds(); len(got) != 2 || got[0] != presentertest.KindNotesHalving || got[1] != presentertest.KindNotesHalving {
+		t.Fatalf("Kinds() = %v, want two NotesHalving", got)
+	}
+	if got := rec.Events[0].NotesHalving; got != single {
+		t.Errorf("first NotesHalving = %+v, want %+v", got, single)
+	}
+	if got := rec.Events[1].NotesHalving; got != part {
+		t.Errorf("second NotesHalving = %+v, want %+v", got, part)
+	}
+	if got, want := presentertest.KindNotesHalving.String(), "NotesHalving"; got != want {
+		t.Errorf("KindNotesHalving.String() = %q, want %q", got, want)
+	}
+}

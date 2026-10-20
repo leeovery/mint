@@ -28,6 +28,10 @@ type Progress interface {
 	// PartsDone reports done of parts finished, done 0 as the run splits.
 	// promptBytes is the size of the single-pass prompt the run split from.
 	PartsDone(promptBytes, parts, done int)
+	// Halved reports a call classified SIZE re-cut into parts smaller calls, in place
+	// of the split when the call is the single-pass call. part is the re-cut part's
+	// number within the run's total before the re-cut, 0 for the single-pass call.
+	Halved(part, parts int)
 	// Merging reports the merge call starting over parts' notes.
 	Merging(parts int)
 	// Merged reports the merge call having returned the body.
@@ -37,6 +41,7 @@ type Progress interface {
 type noProgress struct{}
 
 func (noProgress) PartsDone(int, int, int) {}
+func (noProgress) Halved(int, int)         {}
 func (noProgress) Merging(int)             {}
 func (noProgress) Merged(int)              {}
 
@@ -212,7 +217,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 	instructions = appendOneTimeContext(instructions, oneTimeContext)
 	prompt := ComposePrompt(instructions, changeMap, diff)
 	if len(prompt) > cfg.MaxPromptBytes {
-		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes, cfg.MaxPromptBytes)
+		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
 	}
 
 	body, code, err := g.generate(ctx, prompt)
@@ -220,7 +225,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 		return body, nil
 	}
 	if code == codeSize {
-		return g.generateChunked(ctx, instructions, changeMap, diff, len(prompt), len(prompt)/2, cfg.MaxPromptBytes)
+		return g.generateHalved(ctx, instructions, changeMap, diff, len(prompt), cfg.MaxPromptBytes)
 	}
 	return "", fmt.Errorf("generating notes: %w", err)
 }

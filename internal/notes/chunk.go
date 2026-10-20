@@ -15,28 +15,50 @@ import (
 const fileDiffHeader = "diff --git "
 
 // generateChunked writes the notes for a diff that cannot go in one call: the diff's
-// files are cut in path order into chunk calls of at most target bytes, each carrying
-// the release's instructions and whole-release Change Map and run concurrently, then
-// one merge call of at most maxPromptBytes turns every chunk's notes, in chunk order,
-// into the body. The merge output is returned byte-identical. promptBytes is the
-// single-pass prompt's size, reported to g.progress with the run's advance. No call
-// over its bound is sent: ErrNoRoomForDiff in place of a call with no room for diff,
-// ErrMergeTooLarge in place of the merge. A merge call whose failure is classified
-// SIZE is never halved: it fails as ErrMergeTooLarge, carrying the call's own failure.
-func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, target, maxPromptBytes int) (string, error) {
-	files := splitFileDiffs(diff)
-	cut := newCutter(instructions, changeMap, files)
-	parts, err := cut.cutParts(files, target)
+// files are cut in path order into chunk calls of at most maxPromptBytes, each
+// carrying the release's instructions and whole-release Change Map and run
+// concurrently, then one merge call of at most maxPromptBytes turns every chunk's
+// notes, in chunk order, into the body. The merge output is returned byte-identical.
+// promptBytes is the single-pass prompt's size, reported to g.progress with the run's
+// split and advance. No call over its bound is sent: ErrNoRoomForDiff in place of a
+// call with no room for diff, ErrMergeTooLarge in place of the merge. A merge call
+// whose failure is classified SIZE is never halved: it fails as ErrMergeTooLarge,
+// carrying the call's own failure.
+func (g *Generator) generateChunked(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
+	cut, parts, err := cutRun(instructions, changeMap, diff, maxPromptBytes)
 	if err != nil {
 		return "", err
 	}
+	g.progress.PartsDone(promptBytes, len(parts), 0)
+	return g.writeParts(ctx, cut, parts, promptBytes, maxPromptBytes)
+}
 
+// generateHalved is generateChunked for a single-pass call of promptBytes whose
+// failure was classified SIZE: its chunk calls are at most half its size, and the
+// re-cut is reported to g.progress in place of the split.
+func (g *Generator) generateHalved(ctx context.Context, instructions, changeMap, diff string, promptBytes, maxPromptBytes int) (string, error) {
+	cut, parts, err := cutRun(instructions, changeMap, diff, promptBytes/2)
+	if err != nil {
+		return "", err
+	}
+	g.progress.Halved(0, len(parts))
+	return g.writeParts(ctx, cut, parts, promptBytes, maxPromptBytes)
+}
+
+func cutRun(instructions, changeMap, diff string, target int) (cutter, []chunkPart, error) {
+	files := splitFileDiffs(diff)
+	cut := newCutter(instructions, changeMap, files)
+	parts, err := cut.cutParts(files, target)
+	return cut, parts, err
+}
+
+func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPart, promptBytes, maxPromptBytes int) (string, error) {
 	partNotes, err := newWave(g, cut, parts, promptBytes).run(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	mergePrompt := composeMergePrompt(instructions, changeMap, partNotes)
+	mergePrompt := composeMergePrompt(cut.instructions, cut.changeMap, partNotes)
 	if len(mergePrompt) > maxPromptBytes {
 		return "", ErrMergeTooLarge
 	}
@@ -113,12 +135,11 @@ func newWave(g *Generator, cut cutter, parts []chunkPart, promptBytes int) *wave
 // call's size, and the new parts are queued behind the parts not yet sent. Any other
 // failure stops the wave: no further call starts, the calls already running finish,
 // and the first such failure is returned. ctx ending stops it too, and its error is
-// returned over any earlier failure. Each part that succeeds is reported to
-// g.progress as it finishes.
+// returned over any earlier failure. Each part that succeeds, and each re-cut, is
+// reported to g.progress as it happens.
 func (w *wave) run(ctx context.Context) ([]string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.g.progress.PartsDone(w.promptBytes, len(w.slots), w.done)
 	for {
 		for w.inFlight > 0 && !w.canSend(ctx) {
 			w.changed.Wait()
@@ -185,15 +206,16 @@ func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt 
 	}
 }
 
-// halve puts the parts slot's slice was re-cut into in its place in chunk order and
-// queues them. The pieces of a re-cut piece's file are renumbered by their place
-// among that file's pieces.
+// halve reports slot's re-cut, then puts the parts its slice was re-cut into in its
+// place in chunk order and queues them. The pieces of a re-cut piece's file are
+// renumbered by their place among that file's pieces.
 func (w *wave) halve(slot *waveSlot, halves []chunkPart) {
 	replacements := make([]*waveSlot, len(halves))
 	for i, part := range halves {
 		replacements[i] = &waveSlot{part: part}
 	}
 	at := slices.Index(w.slots, slot)
+	w.g.progress.Halved(at+1, len(halves))
 	w.slots = slices.Replace(w.slots, at, at+1, replacements...)
 	w.queue = append(w.queue, replacements...)
 

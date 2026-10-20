@@ -27,6 +27,10 @@ func (s *notesStage) PartsDone(promptBytes, parts, done int) {
 	s.p.NotesProgress(presenter.NotesProgress{PromptBytes: promptBytes, Parts: parts, Done: done})
 }
 
+func (s *notesStage) Halved(part, parts int) {
+	s.p.NotesHalving(presenter.NotesHalving{Part: part, Parts: parts})
+}
+
 func (s *notesStage) Merging(parts int) {
 	s.p.NotesMerging(presenter.NotesMerge{Parts: parts})
 }

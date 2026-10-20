@@ -24,6 +24,7 @@ func (p *nopPresenter) StageSucceeded(presenter.StageSuccess) {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)    {}
 func (p *nopPresenter) NotesProgress(presenter.NotesProgress) {}
 func (p *nopPresenter) NotesMerging(presenter.NotesMerge)     {}
+func (p *nopPresenter) NotesHalving(presenter.NotesHalving)   {}
 func (p *nopPresenter) Warn(presenter.Warning)                {}
 func (p *nopPresenter) Unwound(presenter.Unwind)              {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
