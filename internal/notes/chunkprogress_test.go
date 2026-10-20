@@ -31,6 +31,8 @@ func (pl *progressLog) Merged(parts int) {
 	pl.reports = append(pl.reports, fmt.Sprintf("merged %d parts", parts))
 }
 
+func (pl *progressLog) CallSucceeded(int) {}
+
 func (pl *progressLog) Merging(parts int) {
 	pl.ct.mu.Lock()
 	merges := len(pl.ct.mergePrompts())

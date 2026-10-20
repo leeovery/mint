@@ -132,6 +132,8 @@ type RegenerateWriteRequest struct {
 	// KeepOut is the path the changelog commit leaves out, any staged edits to it
 	// still staged afterwards.
 	KeepOut git.Exclusion
+	// LowerCap is the cap hinted after the notes, 0 for none.
+	LowerCap int
 }
 
 // RegenerateWrite runs the single-version regenerate write/push/recovery sequence for
@@ -214,6 +216,7 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 	// prompt over an empty preview. Both the single-version (RegenerateWrite) and batch
 	// (gatePerVersion) fresh/reuse paths route through here, so one render covers both.
 	p.ShowNotes(presenter.Notes{Version: req.VersionKey, Body: req.Body})
+	hintLowerCap(p, req.LowerCap)
 	switch req.Source {
 	case RegenerateSourceFresh:
 		// Fresh: the notes-review gate. A decline returns errGateAborted (a clean user

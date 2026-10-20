@@ -22,7 +22,7 @@ type Transport interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 }
 
-// Progress is told how a chunked run advances. Its calls never overlap, but they
+// Progress is told how a generation advances. Its calls never overlap, but they
 // may arrive from the chunk calls' goroutines.
 type Progress interface {
 	// PartsDone reports done of parts finished, done 0 as the run splits.
@@ -36,6 +36,9 @@ type Progress interface {
 	Merging(parts int)
 	// Merged reports the merge call having returned the body.
 	Merged(parts int)
+	// CallSucceeded reports a call carrying diff, the single-pass call or a chunk or
+	// piece call, having returned its notes. promptBytes is the call's whole prompt.
+	CallSucceeded(promptBytes int)
 }
 
 type noProgress struct{}
@@ -44,6 +47,7 @@ func (noProgress) PartsDone(int, int, int) {}
 func (noProgress) Halved(int, int)         {}
 func (noProgress) Merging(int)             {}
 func (noProgress) Merged(int)              {}
+func (noProgress) CallSucceeded(int)       {}
 
 // Generator is the NORMAL AI release-notes path: it orchestrates the assembly
 // pieces (diff, Change Map, prompt compose, size check) and hands the finished
@@ -72,7 +76,7 @@ func NewGenerator(assembler *Assembler, transport Transport, root string) *Gener
 	return &Generator{assembler: assembler, transport: transport, root: root, progress: noProgress{}}
 }
 
-// WithProgress returns a copy of g that reports its chunked runs to progress; g
+// WithProgress returns a copy of g that reports its generations to progress; g
 // itself is unchanged. A nil progress reports nowhere.
 func (g *Generator) WithProgress(progress Progress) *Generator {
 	c := *g
@@ -222,6 +226,7 @@ func (g *Generator) generateFromDiffWithContext(ctx context.Context, diffRange, 
 
 	body, code, err := g.generate(ctx, prompt)
 	if err == nil {
+		g.progress.CallSucceeded(len(prompt))
 		return body, nil
 	}
 	if code == codeSize {

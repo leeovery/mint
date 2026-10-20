@@ -335,6 +335,7 @@ func (p *partsProgress) PartsDone(_, parts, _ int) { p.parts = append(p.parts, p
 func (p *partsProgress) Halved(int, int)           {}
 func (p *partsProgress) Merging(int)               { p.merged++ }
 func (p *partsProgress) Merged(int)                {}
+func (p *partsProgress) CallSucceeded(int)         {}
 
 // seedOverCapFreshVersion scripts a fresh version's two-file range diff, over a
 // 20,000-byte cap, and its two chunk calls and merge.

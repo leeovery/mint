@@ -196,6 +196,7 @@ func (w *wave) send(ctx context.Context, slot *waveSlot, part chunkPart, prompt 
 	case err == nil:
 		slot.notes = notes
 		w.done++
+		w.g.progress.CallSucceeded(len(prompt))
 		w.g.progress.PartsDone(w.promptBytes, len(w.slots), w.done)
 	case code == codeSize && recutErr == nil:
 		w.halve(slot, halves)

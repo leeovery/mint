@@ -518,6 +518,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// the two diverge at the DRY-RUN BOUNDARY immediately below.
 	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
+	hintLowerCap(p, stage.lowerCap())
 
 	// DRY-RUN BOUNDARY: a dry run takes no action, so it asks for nothing — it stops
 	// HERE, before the review gate, having shown the full preview (version, plan, notes),

@@ -35,6 +35,8 @@ func (rl *recutLog) Merged(parts int) {
 	rl.reports = append(rl.reports, fmt.Sprintf("merged %d parts", parts))
 }
 
+func (rl *recutLog) CallSucceeded(int) {}
+
 // halvings returns the re-cut reports in order.
 func (rl *recutLog) halvings() []string {
 	var out []string

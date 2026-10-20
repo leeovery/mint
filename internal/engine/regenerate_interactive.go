@@ -240,6 +240,7 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		Body:        body,
 		Regenerator: produceRegenerator(req.ProduceRegenerator, source),
 		KeepOut:     keepOut,
+		LowerCap:    stage.lowerCap(),
 	})
 }
 
