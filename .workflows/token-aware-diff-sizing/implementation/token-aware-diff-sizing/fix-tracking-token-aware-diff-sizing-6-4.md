@@ -1,0 +1,23 @@
+## Attempt 1
+
+ISSUES:
+- The `r`-call bookkeeping that criteria 5 and 6 depend on is unguarded.
+  - The code: `regenStage.CallSucceeded` forwarding at `/Users/leeovery/Code/mint/internal/engine/notesstage.go:127-129`, and the batch's post-gate `hint.tried(stage)` at `/Users/leeovery/Code/mint/internal/engine/regenerate_batch.go:340`.
+  - The tests that should catch its loss: `TestRelease_RegenWrittenAfterHalving_HintsTheLargestSucceededCallOfTheRunBeforeTheGateAsksAgain`, `TestRelease_RegenWrittenAfterItsPartHalved_HintsBeforeTheGateAsksAgain`, `TestRegenerateRun_RegenClassifiedSize_HalvesAndHintsBeforeTheGateAsksAgain` and `TestRegenerateAll_RegenClassifiedSize_HalvesWithNoHintOfItsOwnAndCountsTowardTheBatchEndHint` (`/Users/leeovery/Code/mint/internal/engine/regen_halve_test.go:387-526`). Each one asserts `len(tr.first[0])` or `nearCapPromptBytes`, the first attempt's call. A halved `r`'s chunks are always under half that size, so these tests pass whether or not the `r`'s calls are counted.
+  - Mutation check, run in a scratch copy of the repo: making `regenStage.CallSucceeded` a no-op leaves `go test ./internal/engine/ ./cmd/...` passing; deleting the batch's post-gate `hint.tried(stage)` leaves the suite passing.
+  - Concrete failure: a real run that reuses dry-run-cached notes makes no first-attempt call. If its `r` then halves, the hint comes only from the `r`'s forwarded calls. Losing the forwarding makes `suggestedCap` return 0, and the operator silently gets no hint at all.
+  - Risk: task 6-5 is about to rewrite `regenStage` to narrate, which is exactly where this regression would happen.
+  FIX: Add tests in `/Users/leeovery/Code/mint/internal/engine/regen_halve_test.go` where an `r`'s succeeded call is the run's largest, and assert the hint names that call's exact `len(prompt)`.
+  - Release: two `r`s. The first has a long nudge, stays single-pass and succeeds (bigger than the first attempt by the nudge). The second has a different nudge, overflows and halves. Assert `assertHintAfterRegen(t, rec, len(firstRegenPrompt), presenter.ReleaseReviewGate())` after the second `r`.
+  - Batch: the same two-`r` shape on one version under `RegenerateAll`, asserting `assertOneBatchEndHint(t, rec, len(firstRegenPrompt))`. This kills both mutations: the batch sees `r` calls only through the post-gate `tried`.
+  - Transport change: `regenOverflowTransport` currently decides "first attempt" from a single nudge prefix. Generalise it to record per-nudge prompts, e.g. a `nudges []string` slice, with `overflows` keyed on which nudge the prompt carries.
+  ALTERNATIVE: For the release, seed a notes-cache entry so the first attempt makes no call. Use `seedCacheEntry` / `newDepsWithRealRunCache` from `/Users/leeovery/Code/mint/internal/engine/release_realruncache_test.go`, accept the reuse gate, then let one `r` halve and assert the hint names `largest(tr.chunks)`. This covers the real cache-reuse case directly, but it needs the cache fixture and does not cover the batch. The batch would still need the two-`r` (or two-version) shape. Recommended: the two-`r` shape for both, because one transport change covers release and batch.
+  CONFIDENCE: high
+
+NOTES:
+- The executor's call that a re-merge `r` after a halved `r` shows no hint of its own is defensible. "An `r` whose notes were written after halving" reads as the `r` itself halving, and the halved `r` already showed the hint. `TestRelease_ReMergeAfterARegenThatHalved_HintsOnlyAfterTheHalvedRegen` pins it, and it also proves `shown`'s reset.
+- `assertCoreSliceHalved` (`/Users/leeovery/Code/mint/internal/engine/regen_halve_test.go:179-195`) collects every chunk call carrying `core/b.go`, not just the re-cut ones. In the 100 KB fixture that includes the original piece 2. It passes only because greedy piece cutting makes piece 2 small. It is stable as built (20× clean, per the executor), but it is checking more than its comment claims.
+- The comment on `regenOverflowTransport` (`/Users/leeovery/Code/mint/internal/engine/regen_halve_test.go:25-28`), "fails each `r` call overflows picks with failure … Classify calls are answered answer", is hard to parse but not false, so no correction is filed.
+- The task's Solution mentions a missing binary getting no classify call. The criteria do not ask for it, and no new test covers it for an `r`. The classifier's handling of it predates this task.
+- Nothing rode the dispatch beyond the enumerated inputs. The orchestrator's ADDITION inside the task content is marked with its origin and was reviewed as task content.
+- The mutation checks ran in a scratch copy. No project file was touched.
