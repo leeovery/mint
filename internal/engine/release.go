@@ -502,10 +502,10 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// Stage 4 — notes body. resolveBody runs the notes-path PRECEDENCE (SelectBody)
 	// to pick the body + Kind for this run, building the selector from deps.Runner now
 	// that root is resolved. opts.NotesBody is a test-injection override that bypasses
-	// the selector. An on_notes_failure=abort failure aborts here, with the next moves
-	// on an unattended real run, unless an attended one takes a body at the notes floor's
-	// choice instead. Nothing is tagged yet, but a pre_tag artifact commit may already
-	// be in made, so an abort routes through the surgical unwind (not a plain surface)
+	// the selector. An on_notes_failure=abort failure aborts here, with the next moves,
+	// unless an attended real run takes a body at the notes floor's choice instead.
+	// Nothing is tagged yet, but a pre_tag artifact commit may already be in made, so an
+	// abort routes through the surgical unwind (not a plain surface)
 	// — exactly like every other pre-push failure — so that artifact commit is reset
 	// back to the clean start. Whatever
 	// resolves flows WHOLE to every active sink below — no parsing, no per-sink reassembly.
@@ -519,15 +519,15 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage)
 	if err != nil {
-		atFloor := reachesNotesFloor(opts, err)
-		offersChoice := atFloor && deps.attended()
+		atFloor := reachesNotesFloor(err)
+		offersChoice := atFloor && deps.offersFloorChoice(opts)
 		failure := stageFailure("notes", err)
 		failure.Recoverable = offersChoice
 		p.StageFailed(failure)
 		chunkNotes.warnUnsaved(p)
 		if !offersChoice {
 			if atFloor {
-				p.NextMoves(notesFloorMoves(err, cfg, failure.SavedNotes))
+				p.NextMoves(deps.notesFloorMoves(err, cfg, failure.SavedNotes))
 			}
 			return Unwind(ctx, deps, start, made, err)
 		}
