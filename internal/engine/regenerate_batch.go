@@ -29,7 +29,6 @@ import (
 	"fmt"
 	"strings"
 
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/version"
@@ -74,9 +73,9 @@ type BatchRegenerateRequest struct {
 	// the deterministic-source skip check — tag annotation or release body) into the
 	// producer so a deterministic source consumes it instead of reading the SECOND time;
 	// it is empty for a fresh source and for the single-version delegation (which never
-	// pre-reads, so the producer reads). A fresh producer reports a chunked run to
-	// progress, the version's notes stage it runs inside.
-	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string, progress notes.Progress) (string, error)
+	// pre-reads, so the producer reads). A fresh producer reports a chunked run to the
+	// sinks of the version's notes stage it runs inside.
+	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string, sinks NotesSinks) (string, error)
 	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
 	// gate's `r` choice consults, bound to that version's fresh AI range. Production
 	// returns nil for a reuse source (no review gate) and binds
@@ -147,7 +146,7 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(req.Target, publisher != nil)); err != nil {
 		return err
 	}
-	collected, err := RegenerateAll(ctx, deps, publisher, req)
+	collected, err := RegenerateAll(ctx, deps, publisher, root, req)
 	if err != nil {
 		return err
 	}
@@ -192,11 +191,11 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 //
 // The loop holds NO resume state: it reads no checkpoint and writes none, so a re-run
 // simply re-processes every version from the top.
-func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, req BatchRegenerateRequest) ([]RegeneratedVersion, error) {
+func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest) ([]RegeneratedVersion, error) {
 	collected := make([]RegeneratedVersion, 0, len(req.Versions))
 	var skipped []skippedVersion
 	for _, res := range req.Versions {
-		processed, skip, err := processOneVersion(ctx, deps, publisher, req, res)
+		processed, skip, err := processOneVersion(ctx, deps, publisher, root, req, res)
 		if err != nil {
 			return nil, err
 		}
@@ -249,7 +248,7 @@ type skippedVersion struct {
 // A gate DECLINE is NOT a failure — it is a user choice — so it propagates as an error
 // and ends the batch. A cancel (a Ctrl-C) is not a failure either and ends the batch the
 // same way, through a failed `notes` stage.
-func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, req BatchRegenerateRequest, res version.Resolution) (RegeneratedVersion, *skippedVersion, error) {
+func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, res version.Resolution) (RegeneratedVersion, *skippedVersion, error) {
 	p := deps.Presenter
 	versionKey := batchVersionKey(res.Tag, req.TagPrefix)
 
@@ -287,12 +286,15 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// body resolves; a per-version skip (production failure) closes the stage with no
 	// StageSucceeded — the skip Warn narrates it instead.
 	stage := startNotesStage(p)
-	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, stage)
+	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, res.Tag)
+	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, NotesSinks{Progress: stage, ChunkNotes: chunkNotes.saver()})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return RegeneratedVersion{}, nil, surface(p, "notes", err)
 		}
-		return reportSkip(p, res.Tag, reasonNotesFailed)
+		processed, skip, skipErr := reportSkip(p, res.Tag, reasonNotesFailed)
+		chunkNotes.warnUnsaved(p)
+		return processed, skip, skipErr
 	}
 	stage.done()
 

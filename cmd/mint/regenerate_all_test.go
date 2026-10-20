@@ -150,7 +150,7 @@ func TestNewBatchBodyProducer_Reuse(t *testing.T) {
 	f.Seed("git", runner.Result{Stdout: "## reuse body\n"}, nil)
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "", nil)
+	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "", engine.NotesSinks{})
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestNewBatchBodyProducer_Reuse_ConsumesPreReadBody(t *testing.T) {
 	f := runner.NewFakeRunner()
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "## pre-read body\n", nil)
+	body, err := produce(t.Context(), engine.RegenerateSourceTag, version.Resolution{Tag: "v1.0.0"}, "## pre-read body\n", engine.NotesSinks{})
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestNewBatchBodyProducer_Release(t *testing.T) {
 	f.Seed("gh", runner.Result{Stdout: "## release body\n"}, nil)
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "", nil)
+	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "", engine.NotesSinks{})
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestNewBatchBodyProducer_Release_ConsumesPreReadBody(t *testing.T) {
 	f := runner.NewFakeRunner()
 
 	produce := newBatchBodyProducer(f, config.Config{}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "## pre-read release\n", nil)
+	body, err := produce(t.Context(), engine.RegenerateSourceRelease, version.Resolution{Tag: "v1.0.0"}, "## pre-read release\n", engine.NotesSinks{})
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange(t *testi
 	)
 
 	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", nil)
+	body, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", engine.NotesSinks{})
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionReportsItsProgress(t *testing.
 	progress := &partsProgress{}
 
 	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), publish.NewGitHubPublisher(f))
-	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", progress); err != nil {
+	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", engine.NotesSinks{Progress: progress}); err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
 
@@ -388,7 +388,7 @@ func TestNewRegenerateBodyProducer_Fresh_OverCapVersionReportsItsProgress(t *tes
 
 	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
 	produce := newRegenerateBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), res, publish.NewGitHubPublisher(f))
-	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, progress); err != nil {
+	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, engine.NotesSinks{Progress: progress}); err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
 

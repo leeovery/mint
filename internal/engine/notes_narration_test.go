@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -197,11 +196,11 @@ func TestRelease_UnderCap_NotesStageNarratesAsBuilt(t *testing.T) {
 
 // overCapFreshBody produces a fresh version's notes over a two-file range diff whose
 // single-pass prompt is over a 20,000-byte cap.
-func overCapFreshBody(ctx context.Context, res version.Resolution, progress notes.Progress) (string, error) {
+func overCapFreshBody(ctx context.Context, res version.Resolution, sinks engine.NotesSinks) (string, error) {
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
 	cfg := freshCfg()
 	cfg.MaxPromptBytes = 20_000
-	return engine.RegenerateFreshBody(ctx, notesGit, &splitTransport{mergeBody: "## merged\n"}, "", cfg, res, progress)
+	return engine.RegenerateFreshBody(ctx, notesGit, &splitTransport{mergeBody: "## merged\n"}, "", cfg, res, sinks)
 }
 
 func TestRegenerateRun_FreshOverCap_NarratesLikeAChunkedRelease(t *testing.T) {
@@ -216,8 +215,8 @@ func TestRegenerateRun_FreshOverCap_NarratesLikeAChunkedRelease(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, progress notes.Progress) (string, error) {
-		return overCapFreshBody(ctx, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, progress)
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
+		return overCapFreshBody(ctx, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, sinks)
 	}
 
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
@@ -243,11 +242,11 @@ func TestRegenerateAll_FreshOverCapVersions_EachNarrateLikeAChunkedRelease(t *te
 	rec := &presentertest.RecordingPresenter{}
 
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, progress notes.Progress) (string, error) {
-		return overCapFreshBody(ctx, res, progress)
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, sinks engine.NotesSinks) (string, error) {
+		return overCapFreshBody(ctx, res, sinks)
 	}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 

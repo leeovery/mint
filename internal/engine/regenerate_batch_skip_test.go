@@ -10,7 +10,6 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -30,8 +29,8 @@ import (
 // freshBodyOrNotesFailure returns a ProduceBody that yields the version's fresh body
 // EXCEPT for failTag, where it returns a wrapped ai.ErrGenerationFailed — the
 // per-version notes failure the batch must SKIP rather than abort on.
-func freshBodyOrNotesFailure(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error) {
-	return func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+func freshBodyOrNotesFailure(failTag string) func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error) {
+	return func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 		if res.Tag == failTag {
 			return "", fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed)
 		}
@@ -79,7 +78,7 @@ func TestRegenerateAll_NotesFailureSkippedBatchContinues(t *testing.T) {
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
 	req.ProduceBody = freshBodyOrNotesFailure(batchV2Tag)
 
-	bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req)
+	bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req)
 	if err != nil {
 		t.Fatalf("a per-version failure must not abort the batch; got error: %v", err)
 	}
@@ -112,7 +111,7 @@ func TestRegenerateAll_NotesFailureSummaryReports(t *testing.T) {
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
 	req.ProduceBody = freshBodyOrNotesFailure(batchV2Tag)
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 
@@ -153,7 +152,7 @@ func TestRegenerateAll_ReuseNoAnnotationBodySkipped(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		reuseBatchReq(threeVersions(), true)); err != nil {
 		t.Fatalf("a body-less tag must be skipped, not error the batch; got: %v", err)
 	}
@@ -192,7 +191,7 @@ func TestRegenerateAll_SkipOverridesOnNotesFailureAbort(t *testing.T) {
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
 	req.ProduceBody = freshBodyOrNotesFailure(batchV1Tag)
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("skip-and-continue must override on_notes_failure=abort; got error: %v", err)
 	}
 
@@ -220,7 +219,7 @@ func TestRegenerateAll_AllRegeneratedNoneSkippedSummary(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		reuseBatchReq(threeVersions(), true)); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
@@ -304,9 +303,9 @@ func TestRegenerateAllValidated_ValidConfigRunsBatch(t *testing.T) {
 // for cancelTag, where it returns cancelErr, and the slice of tags it was called for, in
 // call order, so a test can prove no later version's body was produced. The batch loop
 // is sequential, so the slice needs no lock.
-func cancellingProducer(cancelTag string, cancelErr error) (func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error), *[]string) {
+func cancellingProducer(cancelTag string, cancelErr error) (func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error), *[]string) {
 	var called []string
-	produce := func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+	produce := func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 		called = append(called, res.Tag)
 		if res.Tag == cancelTag {
 			return "", cancelErr
@@ -375,7 +374,7 @@ func TestRegenerateAll_CancelEndsBatch(t *testing.T) {
 			produce, called := cancellingProducer(batchV2Tag, tt.cancelErr)
 			req.ProduceBody = produce
 
-			bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req)
+			bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req)
 
 			assertCancelEndedBatch(t, rec, err)
 			if bodies != nil {
@@ -410,7 +409,7 @@ func TestRegenerateAll_NotesFailureStillSkipsWithWarn(t *testing.T) {
 	produce, called := cancellingProducer(batchV2Tag, fmt.Errorf("generating notes: %w", ai.ErrGenerationFailed))
 	req.ProduceBody = produce
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("a non-cancel notes failure must be skipped, not abort the batch; got: %v", err)
 	}
 

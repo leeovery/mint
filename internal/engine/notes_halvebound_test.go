@@ -111,7 +111,7 @@ func (tc halvingOutCase) produce(ctx context.Context, t *testing.T, tr notes.Tra
 		cfg.Release.Context = "context.md"
 	}
 	notesGit := seedFreshGit(twoFileDiff(tc.fileBytes), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
-	return engine.RegenerateFreshBody(ctx, notesGit, tr, dir, cfg, res, nil)
+	return engine.RegenerateFreshBody(ctx, notesGit, tr, dir, cfg, res, engine.NotesSinks{})
 }
 
 func TestRelease_HalvingRunsOut_Abort_StopsBeforeTheTagWithTheOutputVerbatim(t *testing.T) {
@@ -190,7 +190,7 @@ func TestRegenerateRun_FreshHalvingRunsOut_StopsWithTheSameLineAndWritesNothing(
 			rec := &presentertest.RecordingPresenter{}
 			tr := &firstPartOverflowTransport{}
 			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ notes.Progress) (string, error) {
+			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
 				return tc.produce(ctx, t, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 			}
 
@@ -228,14 +228,14 @@ func TestRegenerateAll_FreshHalvingRunsOut_SkipsThatVersionAndCarriesOn(t *testi
 			rec := &presentertest.RecordingPresenter{}
 			tr := &firstPartOverflowTransport{}
 			req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 				if res.Tag == batchV2Tag {
 					return tc.produce(ctx, t, tr, res)
 				}
 				return "## fresh " + res.Tag + "\n", nil
 			}
 
-			if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+			if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 				t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 			}
 

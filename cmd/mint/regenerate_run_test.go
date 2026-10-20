@@ -91,7 +91,7 @@ func TestNewRegenerateBodyProducer_Reuse(t *testing.T) {
 
 	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
 	produce := newRegenerateBodyProducer(f, config.Config{}, t.TempDir(), res, publish.NewGitHubPublisher(f))
-	body, err := produce(t.Context(), engine.RegenerateSourceTag, nil)
+	body, err := produce(t.Context(), engine.RegenerateSourceTag, engine.NotesSinks{})
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}

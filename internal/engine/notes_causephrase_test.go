@@ -7,7 +7,6 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 	"mint/internal/version"
@@ -92,8 +91,8 @@ func TestRegenerateRun_FreshSinglePassNotesFailure_TheLineNamesTheCause(t *testi
 			rec := &presentertest.RecordingPresenter{}
 			notesGit := seedFreshGit(priorTagDiff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
 			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ notes.Progress) (string, error) {
-				return engine.RegenerateFreshBody(ctx, notesGit, &freshTransport{err: tc.failure}, dir, freshCfg(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, nil)
+			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
+				return engine.RegenerateFreshBody(ctx, notesGit, &freshTransport{err: tc.failure}, dir, freshCfg(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, engine.NotesSinks{})
 			}
 
 			if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), newFakePublisher(), dir, req); err == nil {

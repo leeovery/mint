@@ -90,7 +90,7 @@ func TestRegenerateAll_NilPublisher_SkipsProviderNoPanic(t *testing.T) {
 	seedReuseGit(f)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes, presenter.ChoiceYes}}
 
-	collected, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), nil,
+	collected, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), nil, t.TempDir(),
 		batchReq(engine.RegenerateSourceTag, threeVersions(), false))
 	if err != nil {
 		t.Fatalf("RegenerateAll with a nil publisher returned %v, want nil (warned downgrade, provider skipped)", err)

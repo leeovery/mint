@@ -263,9 +263,9 @@ func TestRelease_ChunkClassifiedSize_PlainMode_PrintsTheRecutAsItsOwnLine(t *tes
 
 // halvedFreshBody produces a fresh version's notes over a two-file range diff under
 // the default cap whose single-pass call tr overflows.
-func halvedFreshBody(ctx context.Context, tr notes.Transport, res version.Resolution, progress notes.Progress) (string, error) {
+func halvedFreshBody(ctx context.Context, tr notes.Transport, res version.Resolution, sinks engine.NotesSinks) (string, error) {
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
-	return engine.RegenerateFreshBody(ctx, notesGit, tr, "", freshCfg(), res, progress)
+	return engine.RegenerateFreshBody(ctx, notesGit, tr, "", freshCfg(), res, sinks)
 }
 
 func TestRegenerateRun_FreshSinglePassClassifiedSize_NarratesLikeAHalvedRelease(t *testing.T) {
@@ -281,8 +281,8 @@ func TestRegenerateRun_FreshSinglePassClassifiedSize_NarratesLikeAHalvedRelease(
 	tr := &sizeOverflowTransport{}
 
 	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, progress notes.Progress) (string, error) {
-		return halvedFreshBody(ctx, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, progress)
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
+		return halvedFreshBody(ctx, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, sinks)
 	}
 
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
@@ -305,14 +305,14 @@ func TestRegenerateAll_FreshVersionClassifiedSize_ItsNotesLineNarratesTheRecut(t
 	tr := &sizeOverflowTransport{}
 
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, progress notes.Progress) (string, error) {
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, sinks engine.NotesSinks) (string, error) {
 		if res.Tag == batchV2Tag {
-			return halvedFreshBody(ctx, tr, res, progress)
+			return halvedFreshBody(ctx, tr, res, sinks)
 		}
 		return "## fresh " + res.Tag + "\n", nil
 	}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 

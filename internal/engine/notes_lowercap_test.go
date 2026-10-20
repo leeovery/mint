@@ -284,8 +284,8 @@ func TestRegenerateRun_FreshSinglePassClassifiedSize_HintsBetweenTheNotesAndTheR
 	tr := &sizeOverflowTransport{}
 
 	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, progress notes.Progress) (string, error) {
-		return halvedFreshBody(ctx, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, progress)
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
+		return halvedFreshBody(ctx, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, sinks)
 	}
 
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {

@@ -188,7 +188,8 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 		Mutator:   git.NewMutator(r),
 		// The `e` review-gate choice on the fresh notes-review gate hands the notes to
 		// the real $EDITOR resolution, launched through the same presenter + runner.
-		Editor: engine.NewEditorLauncher(p, r),
+		Editor:     engine.NewEditorLauncher(p, r),
+		ChunkNotes: notescache.NewUserChunkNotes(os.UserCacheDir),
 	}
 
 	// The --all batch backfill (every version, oldest → newest) and the single-version

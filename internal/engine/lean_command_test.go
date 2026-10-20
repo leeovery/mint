@@ -127,7 +127,7 @@ func TestRegenerateFreshBody_ConfigWithoutAICommand_RunsLeanClaudeCommand(t *tes
 	f.Seed("claude", runner.Result{Stdout: "notes"}, nil)
 
 	res := version.Resolution{Tag: "v2.0.0", PreviousTag: "v1.0.0"}
-	if _, err := engine.RegenerateFreshBody(t.Context(), f, nil, root, cfg, res, nil); err != nil {
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, nil, root, cfg, res, engine.NotesSinks{}); err != nil {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 

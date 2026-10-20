@@ -1789,16 +1789,7 @@ func notesFailureOutput(cause error) string {
 // terminal. A *GateError surfaces its actionable Message; any other error
 // surfaces its Error() text.
 func surface(p presenter.Presenter, stage string, cause error) error {
-	p.StageFailed(presenter.StageFailure{
-		Name:    stage,
-		Message: failureMessage(cause),
-		// notesFailureOutput composes claude's captured output for a notes/AI
-		// generation-failure carrier and returns "" for every other cause (so a config /
-		// preflight / version failure here leaves the ✗ line standing alone). This makes
-		// the regenerate single-version/interactive notes path render IDENTICALLY to the
-		// forward-release surfaceAndUnwind path for the same cause.
-		Output: notesFailureOutput(cause),
-	})
+	surfaceStageFailure(p, stage, cause)
 	return abort(cause)
 }
 

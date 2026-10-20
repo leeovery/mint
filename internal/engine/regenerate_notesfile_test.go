@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/record"
@@ -20,9 +19,9 @@ const regenNotesStaleChangelog = kacPreamble + "\n## [1.4.0] - 2024-02-15\n\nSta
 
 // noBodyProduction fails the test if the run asks for a body from fresh, tag or
 // release: a supplied body takes the place of every source's production.
-func noBodyProduction(t *testing.T) func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
+func noBodyProduction(t *testing.T) func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 	t.Helper()
-	return func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
+	return func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 		t.Errorf("ProduceBody was called; a supplied body produces nothing")
 		return regenRunFreshBody, nil
 	}
@@ -200,7 +199,7 @@ func TestRegenerateRun_NotesFile_OldestVersionShipsTheFileNotInitialRelease(t *t
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 	req := notesFileRunReq(t, path, engine.RegenerateTargetBoth)
-	req.ProduceBody = func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
+	req.ProduceBody = func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 		return record.FirstReleaseBody, nil
 	}
 

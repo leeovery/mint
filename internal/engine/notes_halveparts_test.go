@@ -138,7 +138,7 @@ func produceCoreOverflow(ctx context.Context, tr notes.Transport, root string, r
 	cfg := freshCfg()
 	cfg.MaxPromptBytes = 20_000
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
-	body, err := engine.RegenerateFreshBody(ctx, notesGit, tr, root, cfg, res, nil)
+	body, err := engine.RegenerateFreshBody(ctx, notesGit, tr, root, cfg, res, engine.NotesSinks{})
 	return body, notesGit, err
 }
 
@@ -173,7 +173,7 @@ func TestRegenerateAll_FreshVersionChunkClassifiedSize_HalvedAndWritten(t *testi
 	rec := &presentertest.RecordingPresenter{}
 	tr := &partOverflowTransport{overflowCore: true}
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 		if res.Tag == batchV2Tag {
 			body, _, err := produceCoreOverflow(ctx, tr, t.TempDir(), res)
 			return body, err
@@ -181,7 +181,7 @@ func TestRegenerateAll_FreshVersionChunkClassifiedSize_HalvedAndWritten(t *testi
 		return "## fresh " + res.Tag + "\n", nil
 	}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 

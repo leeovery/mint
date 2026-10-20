@@ -163,7 +163,7 @@ func produceSixAreaWave(ctx context.Context, tr notes.Transport, root string, re
 	cfg := freshCfg()
 	cfg.MaxPromptBytes = 20_000
 	notesGit := seedFreshGit(sixAreaGit())
-	return engine.RegenerateFreshBody(ctx, notesGit, tr, root, cfg, res, nil)
+	return engine.RegenerateFreshBody(ctx, notesGit, tr, root, cfg, res, engine.NotesSinks{})
 }
 
 func TestRegenerateRun_Unattended_WaveEnds_StopsNamingTheFailureThatEndedIt(t *testing.T) {
@@ -176,7 +176,7 @@ func TestRegenerateRun_Unattended_WaveEnds_StopsNamingTheFailureThatEndedIt(t *t
 	rec := &presentertest.RecordingPresenter{}
 	tr := newWaveEndTransport()
 	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), true)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ notes.Progress) (string, error) {
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
 		return produceSixAreaWave(ctx, tr, t.TempDir(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 	}
 
@@ -206,14 +206,14 @@ func TestRegenerateAll_WaveEnds_SkipsThatVersionAndCarriesOn(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	tr := newWaveEndTransport()
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 		if res.Tag == batchV2Tag {
 			return produceSixAreaWave(ctx, tr, t.TempDir(), res)
 		}
 		return "## fresh " + res.Tag + "\n", nil
 	}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 

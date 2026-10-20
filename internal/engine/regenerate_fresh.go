@@ -53,20 +53,27 @@ import (
 // seam (production wires the real ai.Transport; tests inject a recording fake).
 //
 // The body is returned WHOLE (no parsing/splitting) for the downstream
-// provider/changelog write. An AI/transport failure is surfaced. A
-// chunked run reports its advance to progress, which may be nil.
-func RegenerateFreshBody(ctx context.Context, r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution, progress notes.Progress) (string, error) {
+// provider/changelog write. An AI/transport failure is surfaced. A chunked run reports
+// to sinks and, when it fails, saves its finished chunk notes there.
+func RegenerateFreshBody(ctx context.Context, r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution, sinks NotesSinks) (string, error) {
 	// Oldest release: mirror the forward first-release rule — fixed body, no AI, no
 	// diff. DiffRange would return "" here, so this guard MUST precede any assembly.
 	if res.FirstRelease {
 		return record.FirstReleaseBody, nil
 	}
 
-	body, err := freshGenerator(r, transport, root, cfg).WithProgress(progress).GenerateFromRange(ctx, res.DiffRange(), cfg)
+	body, err := freshGenerator(r, transport, root, cfg).WithProgress(sinks.Progress).WithChunkNotes(sinks.ChunkNotes).GenerateFromRange(ctx, res.DiffRange(), cfg)
 	if err != nil {
 		return "", fmt.Errorf("regenerating fresh notes for %s: %w", res.Tag, err)
 	}
 	return body, nil
+}
+
+// NotesSinks is where a fresh generation reports a chunked run's advance and saves a
+// failed one's finished chunk notes. A nil field reports or saves nothing.
+type NotesSinks struct {
+	Progress   notes.Progress
+	ChunkNotes notes.SaveChunkNotes
 }
 
 // RegenerateFreshRegenerator builds the PER-RUN Regenerator the fresh notes-review

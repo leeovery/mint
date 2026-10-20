@@ -33,7 +33,7 @@ func (k *chunkNotesKeeper) saver() notes.SaveChunkNotes {
 
 // warnUnsaved warns, with the save's error verbatim beneath, when finished chunk notes
 // were due to be saved and could not be. Call it only once the notes stage has ended,
-// so the warning follows the stage's ✓ or ✗ line.
+// so the warning follows the line that ends it.
 func (k *chunkNotesKeeper) warnUnsaved(p presenter.Presenter) {
 	if k.saveErr == nil {
 		return

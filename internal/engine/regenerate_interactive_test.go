@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/publish"
@@ -40,8 +39,8 @@ const (
 // staticBody returns a ProduceBody closure that yields the source-appropriate canned
 // body — fresh vs reuse — so a test can assert which body flowed downstream without a
 // real AI/transport or tag read.
-func staticBody() func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
-	return func(_ context.Context, src engine.RegenerateSource, _ notes.Progress) (string, error) {
+func staticBody() func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
+	return func(_ context.Context, src engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
 		if src == engine.RegenerateSourceTag {
 			return regenRunReuseBody, nil
 		}
@@ -415,7 +414,7 @@ func TestRegenerateRun_BodyProducerError_Surfaces(t *testing.T) {
 	}
 
 	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
-	req.ProduceBody = func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
+	req.ProduceBody = func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 		return "", errors.New("notes generation failed")
 	}
 

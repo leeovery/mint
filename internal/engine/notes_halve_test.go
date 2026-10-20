@@ -103,7 +103,7 @@ func TestRelease_SinglePassClassifiedSize_HalvedNotesShipByteIdentical(t *testin
 // the default cap whose single-pass call overflows.
 func produceHalved(ctx context.Context, tr notes.Transport, root string, res version.Resolution) (string, *runner.FakeRunner, error) {
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
-	body, err := engine.RegenerateFreshBody(ctx, notesGit, tr, root, freshCfg(), res, nil)
+	body, err := engine.RegenerateFreshBody(ctx, notesGit, tr, root, freshCfg(), res, engine.NotesSinks{})
 	return body, notesGit, err
 }
 
@@ -138,7 +138,7 @@ func TestRegenerateAll_FreshVersionClassifiedSize_HalvedAndWritten(t *testing.T)
 	rec := &presentertest.RecordingPresenter{}
 	tr := &sizeOverflowTransport{}
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 		if res.Tag == batchV2Tag {
 			body, _, err := produceHalved(ctx, tr, t.TempDir(), res)
 			return body, err
@@ -146,7 +146,7 @@ func TestRegenerateAll_FreshVersionClassifiedSize_HalvedAndWritten(t *testing.T)
 		return "## fresh " + res.Tag + "\n", nil
 	}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 

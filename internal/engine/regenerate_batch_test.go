@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -45,8 +44,8 @@ func threeVersions() []version.Resolution {
 
 // perVersionBody returns a deterministic body keyed off the version tag and source so
 // a test can assert WHICH body flowed downstream per version without a real AI/tag read.
-func perVersionBody() func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error) {
-	return func(_ context.Context, src engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+func perVersionBody() func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error) {
+	return func(_ context.Context, src engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 		prefix := "fresh"
 		if src == engine.RegenerateSourceTag {
 			prefix = "reuse"
@@ -118,7 +117,7 @@ func TestRegenerateAll_ProcessesOldestToNewest(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes, presenter.ChoiceYes}}
 
-	_, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	_, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceTag, threeVersions(), false))
 	if err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
@@ -143,7 +142,7 @@ func TestRegenerateAll_OneRunStartedBlockPerVersion(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes, presenter.ChoiceYes}}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceTag, threeVersions(), false)); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
@@ -174,7 +173,7 @@ func TestRegenerateAll_GeneratesNotesPerVersion(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes, presenter.ChoiceYes}}
 
-	bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceTag, threeVersions(), false))
 	if err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
@@ -222,12 +221,12 @@ func TestRegenerateAll_Reuse_ThreadsPreReadBodyIntoProducer(t *testing.T) {
 
 	var preReads []string
 	req := batchReq(engine.RegenerateSourceTag, threeVersions(), true)
-	req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, reuseBody string, _ notes.Progress) (string, error) {
+	req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, reuseBody string, _ engine.NotesSinks) (string, error) {
 		preReads = append(preReads, reuseBody)
 		return reuseBody, nil
 	}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 
@@ -264,7 +263,7 @@ func TestRegenerateAll_PerVersionReviewGateByDefault(t *testing.T) {
 	// One confirm per version.
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes, presenter.ChoiceYes}}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceFresh, threeVersions(), false)); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
@@ -303,7 +302,7 @@ func TestRegenerateAll_Fresh_RegenChoice_InvokesPerVersionRegenerator(t *testing
 	req.ProduceRegenerator = func(_ engine.RegenerateSource, _ version.Resolution) engine.Regenerator {
 		return regen
 	}
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
 
@@ -331,7 +330,7 @@ func TestRegenerateAll_YesOptsOutOfPerVersionGate(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceFresh, threeVersions(), true)); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
@@ -361,7 +360,7 @@ func TestRegenerateAll_MixesUpdateAndCreate(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)  // exists → update
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceYes, presenter.ChoiceYes}}
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceTag, threeVersions(), false)); err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 	}
@@ -391,7 +390,7 @@ func TestRegenerateAll_NoResumeState(t *testing.T) {
 		pub.seedExists(batchV2Tag, true, nil)
 		pub.seedExists(batchV3Tag, true, nil)
 		rec := &presentertest.RecordingPresenter{}
-		if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+		if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 			batchReq(engine.RegenerateSourceTag, threeVersions(), true)); err != nil {
 			t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 		}
@@ -428,7 +427,7 @@ func TestRegenerateAll_DeclineAbortsBatch(t *testing.T) {
 	// Decline the FIRST version's confirm.
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceNo}}
 
-	_, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	_, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceTag, threeVersions(), false))
 
 	assertAbortNonZero(t, err)
@@ -446,7 +445,7 @@ func TestRegenerateAll_EmptyVersions_NoOp(t *testing.T) {
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 
-	bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub,
+	bodies, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(),
 		batchReq(engine.RegenerateSourceTag, nil, true))
 	if err != nil {
 		t.Fatalf("RegenerateAll returned unexpected error: %v", err)

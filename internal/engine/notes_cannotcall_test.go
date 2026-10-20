@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 	"mint/internal/version"
@@ -202,7 +201,7 @@ func (tc uncallableRegenerateCase) produce(t *testing.T, tr *fixedNotesTransport
 		cfg.Release.Context = "context.md"
 	}
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
-	return engine.RegenerateFreshBody(t.Context(), notesGit, tr, dir, cfg, res, nil)
+	return engine.RegenerateFreshBody(t.Context(), notesGit, tr, dir, cfg, res, engine.NotesSinks{})
 }
 
 func TestRegenerateRun_FreshNotesCallCannotBeMade_AbortsNamingTheCause(t *testing.T) {
@@ -219,7 +218,7 @@ func TestRegenerateRun_FreshNotesCallCannotBeMade_AbortsNamingTheCause(t *testin
 			rec := &presentertest.RecordingPresenter{}
 			tr := &fixedNotesTransport{notes: tc.notes}
 			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
-			req.ProduceBody = func(context.Context, engine.RegenerateSource, notes.Progress) (string, error) {
+			req.ProduceBody = func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 				return tc.produce(t, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 			}
 
@@ -260,14 +259,14 @@ func TestRegenerateAll_FreshNotesCallCannotBeMade_SkipsThatVersionAndCarriesOn(t
 			rec := &presentertest.RecordingPresenter{}
 			tr := &fixedNotesTransport{notes: tc.notes}
 			req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
-			req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ notes.Progress) (string, error) {
+			req.ProduceBody = func(_ context.Context, _ engine.RegenerateSource, res version.Resolution, _ string, _ engine.NotesSinks) (string, error) {
 				if res.Tag == batchV2Tag {
 					return tc.produce(t, tr, res)
 				}
 				return "## fresh " + res.Tag + "\n", nil
 			}
 
-			if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+			if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 				t.Fatalf("RegenerateAll returned unexpected error: %v", err)
 			}
 

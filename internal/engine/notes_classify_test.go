@@ -122,7 +122,7 @@ func TestRegenerateFreshBody_NotesCallFails_ClassifyRunsTheReleaseCommandAndTime
 	seedToolAFailsThenClassified(f)
 	d := &deadlineRunner{FakeRunner: f}
 
-	_, err = engine.RegenerateFreshBody(t.Context(), d, nil, root, cfg, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, nil)
+	_, err = engine.RegenerateFreshBody(t.Context(), d, nil, root, cfg, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, engine.NotesSinks{})
 
 	if !errors.Is(err, ai.ErrGenerationFailed) {
 		t.Fatalf("RegenerateFreshBody error = %v, want the notes call's generation failure", err)

@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -23,8 +22,8 @@ import (
 // echoPreReadBody returns a ProduceBody that yields the loop's pre-read body unchanged —
 // the production wiring for a deterministic source (the batch pre-reads the body for its
 // skip check and threads it through, so the producer consumes it rather than re-reading).
-func echoPreReadBody() func(context.Context, engine.RegenerateSource, version.Resolution, string, notes.Progress) (string, error) {
-	return func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, preReadBody string, _ notes.Progress) (string, error) {
+func echoPreReadBody() func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error) {
+	return func(_ context.Context, _ engine.RegenerateSource, _ version.Resolution, preReadBody string, _ engine.NotesSinks) (string, error) {
 		return preReadBody, nil
 	}
 }
@@ -49,7 +48,7 @@ func TestRegenerateAll_ReleaseSource_ReadsBodyAndSkipsBodyless(t *testing.T) {
 	req := batchReq(engine.RegenerateSourceRelease, threeVersions(), true)
 	req.ProduceBody = echoPreReadBody() // consume the pre-read release body, as production does
 
-	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, req); err != nil {
+	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
 		t.Fatalf("a body-less release must be skipped, not error the batch; got: %v", err)
 	}
 

@@ -35,7 +35,6 @@ import (
 	"context"
 
 	"mint/internal/git"
-	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 )
@@ -137,9 +136,9 @@ type RegenerateRunRequest struct {
 	Yes bool
 	// ProduceBody yields the notes body for the RESOLVED source. It is injected so the
 	// flow stays testable without a real AI transport / tag read; production wires the
-	// reuse read or the fresh re-diff+AI here. A fresh producer reports a
-	// chunked run to the notes.Progress, the notes stage it runs inside.
-	ProduceBody func(context.Context, RegenerateSource, notes.Progress) (string, error)
+	// reuse read or the fresh re-diff+AI here. A fresh producer reports a chunked run
+	// to the sinks of the notes stage it runs inside.
+	ProduceBody func(context.Context, RegenerateSource, NotesSinks) (string, error)
 	// ProduceRegenerator yields the PER-RUN regenerator the fresh notes-review gate's
 	// `r` choice consults, bound to this version's fresh AI range. It is invoked after
 	// the source resolves; production returns nil for a reuse source (no review gate)
@@ -226,9 +225,12 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// resolves; a failure surfaces a StageFailed (via surface) and emits no
 	// StageSucceeded.
 	stage := startNotesStage(p)
-	body, err := produceRegenerateBody(ctx, req, source, stage)
+	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, req.Tag)
+	body, err := produceRegenerateBody(ctx, req, source, NotesSinks{Progress: stage, ChunkNotes: chunkNotes.saver()})
 	if err != nil {
-		return surface(p, "notes", err)
+		err = surface(p, "notes", err)
+		chunkNotes.warnUnsaved(p)
+		return err
 	}
 	stage.done()
 
@@ -244,11 +246,11 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	})
 }
 
-func produceRegenerateBody(ctx context.Context, req RegenerateRunRequest, source RegenerateSource, progress notes.Progress) (string, error) {
+func produceRegenerateBody(ctx context.Context, req RegenerateRunRequest, source RegenerateSource, sinks NotesSinks) (string, error) {
 	if req.Supplied != nil {
 		return *req.Supplied, nil
 	}
-	return req.ProduceBody(ctx, source, progress)
+	return req.ProduceBody(ctx, source, sinks)
 }
 
 // produceRegenerator invokes the request's per-run regenerator factory for the resolved
