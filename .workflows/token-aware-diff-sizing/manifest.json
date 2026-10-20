@@ -348,7 +348,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 5,
-          "current_task": "token-aware-diff-sizing-5-13",
+          "current_task": null,
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -431,7 +431,8 @@
             "token-aware-diff-sizing-5-9",
             "token-aware-diff-sizing-5-10",
             "token-aware-diff-sizing-5-11",
-            "token-aware-diff-sizing-5-12"
+            "token-aware-diff-sizing-5-12",
+            "token-aware-diff-sizing-5-13"
           ],
           "staging": {
             "p1": {
@@ -526,6 +527,31 @@
               "files": [
                 "internal/notes/resolve.go",
                 "internal/engine/notesfloor.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-5-13",
+              "source": "reviewer",
+              "summary": "Every printed --notes-file <path> command pastes the path unquoted",
+              "failure": "A saved path keeps any space in the repo path (the scope is the repo path with separators as dashes, internal/notescache/cache.go:190), so a pasted command splits the path and --notes-file fails with no such file; noticed only on the failed re-run, and a fix at one site missed at another drifts silently",
+              "detail": "Commands are built by string concatenation at internal/engine/notesfloor.go:67 and :69, internal/engine/notesstage.go:61-62 and :70, and internal/engine/regenerate_batch.go:258; one helper rendering the --notes-file argument with POSIX quoting where needed (the inverse of internal/cmdline's split) would serve all of them",
+              "files": [
+                "internal/engine/notesfloor.go",
+                "internal/engine/notesstage.go",
+                "internal/engine/regenerate_batch.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-5-13",
+              "source": "reviewer",
+              "summary": "Build the put-saved-chunk-notes-on-a-released-version command in one helper instead of three string literals",
+              "failure": "Three sites hand-build the same command (release fallback warning, unattended regenerate next moves, --all skip); a form fix such as shell-quoting a path with a space lands at one and leaves two printing the old form, with no test failing since each pins its own literal",
+              "detail": "internal/engine/notesstage.go:61 builds \"mint release regenerate \" + version + \" --notes-file \" + saved; internal/engine/notesfloor.go:69 builds command + \" --notes-file \" + savedNotes with command from :59; internal/engine/regenerate_batch.go:256 builds the same literal again; the \"part notes saved to \" prefix is also built separately at internal/presenter/presenter.go:552, notesstage.go:80 and regenerate_batch.go:256",
+              "files": [
+                "internal/engine/notesstage.go",
+                "internal/engine/notesfloor.go",
+                "internal/engine/regenerate_batch.go",
+                "internal/presenter/presenter.go"
               ]
             }
           ]
