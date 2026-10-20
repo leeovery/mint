@@ -13,6 +13,9 @@
 // repo root, so previews never collide across repos) and lives under the user's cache
 // directory (os.UserCacheDir) in a per-project sub-directory — so no project is ever
 // polluted with an in-repo cache dir.
+//
+// ChunkNotes keeps a failed chunked run's finished chunk notes under the same per-project
+// naming, in a base directory of its own.
 package notescache
 
 import (
@@ -182,9 +185,7 @@ func (s *Store) Prune(repoRoot, keepKey string) {
 // repo's absolute path — a readable munge (path separators → dashes, like Claude's
 // session-transcript directories) so a human browsing the cache can tell which project
 // a directory belongs to. e.g. /Users/lee/Code/mint → -Users-lee-Code-mint. (Two paths
-// that differ only by a literal dash vs a separator would collide; the cost is at most
-// a cache regenerate, never data loss, so a readable name is preferred to an opaque
-// hash.)
+// that differ only by a literal dash vs a separator would collide.)
 func repoScope(repoRoot string) string {
 	return strings.ReplaceAll(filepath.Clean(repoRoot), string(filepath.Separator), "-")
 }

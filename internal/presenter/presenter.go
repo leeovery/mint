@@ -525,12 +525,18 @@ type NotesMerge struct {
 
 // StageFailure carries the StageFailed payload. Output is the underlying
 // command output the engine captured (git/claude/gh chatter) rather than
-// streamed; the presenter renders it. Rendering of Output is exercised in a
-// later phase — the field exists now so the contract is stable.
+// streamed; the presenter renders it. SavedNotes is the path of the file a failed
+// chunked notes run saved its finished part notes to, named after Output; empty
+// names none.
 type StageFailure struct {
-	Name    string
-	Message string
-	Output  string
+	Name       string
+	Message    string
+	Output     string
+	SavedNotes string
+}
+
+func savedNotesText(path string) string {
+	return "part notes saved to " + path
 }
 
 // Warning carries the Warn payload: a structured, engine-supplied Label and

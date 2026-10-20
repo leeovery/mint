@@ -55,10 +55,16 @@ func cutRun(instructions, changeMap, diff string, target int) (cutter, []chunkPa
 
 func (g *Generator) writeParts(ctx context.Context, cut cutter, parts []chunkPart, halvings, promptBytes, maxPromptBytes int) (string, error) {
 	partNotes, err := newWave(g, cut, parts, halvings, promptBytes, maxPromptBytes).run(ctx)
-	if err != nil {
-		return "", err
+	if err == nil {
+		var body string
+		if body, err = g.merge(ctx, cut, partNotes, maxPromptBytes); err == nil {
+			return body, nil
+		}
 	}
+	return "", g.keepChunkNotes(err, partNotes)
+}
 
+func (g *Generator) merge(ctx context.Context, cut cutter, partNotes []string, maxPromptBytes int) (string, error) {
 	mergePrompt := composeMergePrompt(cut.instructions, cut.changeMap, partNotes)
 	if len(mergePrompt) > maxPromptBytes {
 		return "", ErrMergeTooLarge
@@ -140,15 +146,15 @@ func newWave(g *Generator, cut cutter, parts []chunkPart, halvings, promptBytes,
 }
 
 // run sends every part and returns their notes in chunk order once every call has
-// finished. A call whose failure is classified SIZE has its slice re-cut at half the
-// call's size, and the new parts are queued behind the parts not yet sent; with its
-// slice already halved maxHalvings times, or no room for diff at half the size, the
-// call fails as ErrTooLargeForModel. Any other failure, and that one, ends the wave:
-// no further call starts, the calls already running finish, a failure among them is
-// not halved, nor classified when it comes after the end, and the first such failure
-// is returned. ctx ending stops it too, and its error is returned over any earlier
-// failure. Each part that succeeds, and each re-cut, is reported to g.progress as it
-// happens.
+// finished, a part with none holding "". A call whose failure is classified SIZE has
+// its slice re-cut at half the call's size, and the new parts are queued behind the
+// parts not yet sent; with its slice already halved maxHalvings times, or no room for
+// diff at half the size, the call fails as ErrTooLargeForModel. Any other failure, and
+// that one, ends the wave: no further call starts, the calls already running finish,
+// a failure among them is not halved, nor classified when it comes after the end, and
+// the first such failure is returned with the notes. ctx ending stops it too, and its
+// error is returned, with no notes, over any earlier failure. Each part that
+// succeeds, and each re-cut, is reported to g.progress as it happens.
 func (w *wave) run(ctx context.Context) ([]string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -168,14 +174,11 @@ func (w *wave) run(ctx context.Context) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if w.failure != nil {
-		return nil, w.failure
-	}
 	partNotes := make([]string, len(w.slots))
 	for i, slot := range w.slots {
 		partNotes[i] = slot.notes
 	}
-	return partNotes, nil
+	return partNotes, w.failure
 }
 
 func (w *wave) canSend(ctx context.Context) bool {

@@ -557,18 +557,20 @@ func (p *PrettyPresenter) setSpinnerText(text string) {
 // downgrade leaves them untouched.
 //
 // The captured body is narration → out only and is NEVER duplicated to err: only
-// the one-line summary goes there. An empty Output renders NO body block — the ✗
-// line stands alone.
+// the one-line summary goes there. An empty Output renders NO body block. A saved
+// part-notes path follows on a line of its own, out only.
 func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	p.stopSpinner()
 	p.terminalFailure = true
 	glyph := p.failure.Render("✗")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage(s.Name), s.Message)
 	p.errf("✗ %s  %s\n", s.Name, s.Message)
-	if s.Output == "" {
-		return
+	if s.Output != "" {
+		writeNotesBody(p.out, s.Output)
 	}
-	writeNotesBody(p.out, s.Output)
+	if s.SavedNotes != "" {
+		p.writef("%s%s\n", stageIndent, savedNotesText(s.SavedNotes))
+	}
 }
 
 // Unwound renders the auto-unwind line to OUT ONLY, MIRRORING the StageSucceeded

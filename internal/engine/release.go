@@ -147,12 +147,20 @@ type ReleaseDeps struct {
 	// post-diff_exclude diff + the computed version + the resolved prompt/context) with
 	// a TTL stamp. On the REAL run Release recomputes the SAME key and Looks it up: a
 	// live (within-TTL) match reuses the exact previewed bytes and SKIPS the AI; a miss
-	// (or an expired entry) regenerates. The dry-run write is the SOLE filesystem side
-	// effect of a dry run. When nil (the no-cache default used by tests that do not
-	// assert caching) both the write and the reuse lookup are skipped (the real run
-	// always generates); production wires a repo-path notescache.Store, and the cache
-	// tests inject a temp-dir store so nothing lands in the real repo.
+	// (or an expired entry) regenerates. When nil (the no-cache default used by tests
+	// that do not assert caching) both the write and the reuse lookup are skipped (the
+	// real run always generates); production wires a repo-path notescache.Store, and
+	// the cache tests inject a temp-dir store so nothing lands in the real repo.
 	NoteCache NoteCache
+	// ChunkNotes keeps a failed chunked notes run's finished chunk notes, so the
+	// failure can name the file they were saved to. When nil none are kept.
+	ChunkNotes ChunkNotesSaver
+}
+
+// ChunkNotesSaver saves a failed chunked run's finished chunk notes for repoRoot's
+// tag and returns the saved file's path; notescache.ChunkNotes satisfies it.
+type ChunkNotesSaver interface {
+	Save(repoRoot, tag, notes string) (string, error)
 }
 
 // NoteCache is the engine's dry-run note-cache seam: the WRITE side that persists a
@@ -170,8 +178,7 @@ type NoteCache interface {
 // convention; notescache.Store satisfies it.
 type NoteCacheWriter interface {
 	// Write persists body under key for repoRoot. A non-nil error means the cache
-	// entry could not be written; the dry run surfaces it (the cache write is the
-	// dry run's only side effect, so a failure to perform it is worth reporting).
+	// entry could not be written; the run warns and carries on.
 	Write(repoRoot, key, body string) error
 	// Prune deletes every cached note for repoRoot except keepKey's, bounding the
 	// per-project cache to the current diff's note so stale entries never accumulate.
@@ -508,7 +515,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// blocking StageStarted (spinner), a chunked run's progress while it runs, and a
 	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
 	stage := startNotesStage(p)
-	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), versionKey, opts, stage)
+	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), tag, versionKey, opts, stage)
 	if err != nil {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
 	}
@@ -928,8 +935,8 @@ func readNotesFile(path string, set bool) (*string, error) {
 // resolveBody resolves this run's notes body + Kind via the notes-path precedence
 // (SelectBody), returning the generator it built so the caller can bind a per-run
 // regenerator for the gate's `r` choice. The selector's generation reports a chunked
-// run to progress; the returned generator reports nowhere, since the gate's `r` runs
-// outside the notes stage. It is the single Stage-4 body decision:
+// run to progress and saves a failed one's chunk notes for tag; the returned generator
+// does neither. It is the single Stage-4 body decision:
 //
 //   - opts.NotesBody is a TEST-INJECTION OVERRIDE: when non-empty it bypasses the
 //     selector and returns (opts.NotesBody, opts.NotesKind, nil generator, nil). The
@@ -939,7 +946,7 @@ func readNotesFile(path string, set bool) (*string, error) {
 //     SelectBody runs the precedence over the run's SelectState. A SelectBody error is
 //     an on_notes_failure=abort notes failure: it returns the error for the caller to
 //     surface and abort on, BEFORE any mutation.
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, tag, versionKey string, opts ReleaseOptions, progress notes.Progress) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, nil
 	}
@@ -958,7 +965,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		VersionPattern: cfg.Release.VersionPattern,
 	})
 	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
-	selector := notes.NewSelector(generator.WithProgress(progress), assembler, deps.Runner, root)
+	selector := notes.NewSelector(generator.WithProgress(progress).WithChunkNotes(chunkNotesSaver(deps, root, tag)), assembler, deps.Runner, root)
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
@@ -988,6 +995,17 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		deps.NoteCache.Prune(root, key)
 	}
 	return body, kind, generator, nil
+}
+
+// chunkNotesSaver saves a failed chunked run's chunk notes for root's tag through
+// deps.ChunkNotes, or nil when none is wired.
+func chunkNotesSaver(deps ReleaseDeps, root, tag string) notes.SaveChunkNotes {
+	if deps.ChunkNotes == nil {
+		return nil
+	}
+	return func(chunkNotes string) (string, error) {
+		return deps.ChunkNotes.Save(root, tag, chunkNotes)
+	}
 }
 
 // cacheReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path to
@@ -1193,7 +1211,8 @@ func surfaceAndUnwind(ctx context.Context, deps ReleaseDeps, stage string, start
 		// tag) — not special-cased to "notes" — because it returns "" for any non-carrier
 		// cause, so only a notes/AI generation-failure carrier populates Output; every other
 		// stage's failure leaves the ✗ line standing alone.
-		Output: notesFailureOutput(cause),
+		Output:     notesFailureOutput(cause),
+		SavedNotes: notes.SavedChunkNotesPath(cause),
 	})
 	return Unwind(ctx, deps, start, made, cause)
 }

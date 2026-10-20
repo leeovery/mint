@@ -190,8 +190,8 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 // package-shared writeNotesBody helper UNCHANGED — byte-for-byte verbatim — so a
 // body line that itself reads like a delimiter is written through as-is; the real
 // closing delimiter still follows (delimiters are positional, never
-// content-matched). An empty Output renders NO delimiter block — the FAILED line
-// stands alone.
+// content-matched). An empty Output renders NO delimiter block. A saved part-notes
+// path follows on a line of its own, out only.
 //
 // The captured body is narration → out only and is NEVER duplicated to err: only
 // the one-line summary goes there. The synthesised delimiter lines are byte-pure
@@ -202,12 +202,14 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 	p.terminalFailure = true
 	p.writef("%s: FAILED - %s\n", s.Name, s.Message)
 	p.errf("%s: FAILED - %s\n", s.Name, s.Message)
-	if s.Output == "" {
-		return
+	if s.Output != "" {
+		p.writef("--- output ---\n")
+		writeNotesBody(p.out, s.Output)
+		p.writef("--- end output ---\n")
 	}
-	p.writef("--- output ---\n")
-	writeNotesBody(p.out, s.Output)
-	p.writef("--- end output ---\n")
+	if s.SavedNotes != "" {
+		p.writef("%s: %s\n", s.Name, savedNotesText(s.SavedNotes))
+	}
 }
 
 // NotesProgress prints a chunked notes run's split and parts done as its own line.

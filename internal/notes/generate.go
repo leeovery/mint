@@ -66,6 +66,8 @@ type Generator struct {
 	transport Transport
 	root      string
 	progress  Progress
+	// saveChunkNotes keeps a failed chunked run's finished chunk notes; nil keeps none.
+	saveChunkNotes SaveChunkNotes
 }
 
 // NewGenerator builds a Generator over the assembler (the git seam), the AI
