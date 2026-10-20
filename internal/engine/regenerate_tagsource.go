@@ -3,11 +3,12 @@ package engine
 // This file is the regenerate tag SOURCE read (`--source tag`, task 5-5): reading a
 // tag's annotation body back as the source mint consumes on the tag-source path.
 //
-// The forward path writes the annotated tag as `git tag -a … -F -` with the message
-// subject `{commit_prefix} Release {tag}`, a blank line, then the FULL notes body
-// verbatim (see internal/release). `git for-each-ref --format=%(contents:body)
-// refs/tags/<tag>` returns exactly that body part (git splits off the subject and
-// the blank separator), so the read is a single deterministic git call and the body
+// The forward path writes the annotated tag as `git tag -a --cleanup=verbatim … -F -`
+// with the message subject `{commit_prefix} Release {tag}`, a blank line, then the
+// FULL notes body verbatim, newline-terminated (see internal/release). `git
+// for-each-ref --format=%(contents:body) refs/tags/<tag>` returns that body part (git
+// splits off the subject, the blank lines after it, and any signature), so the read
+// is a single deterministic git call and the body
 // is used WHOLE — no parsing, no splitting, no validation transform. It was already
 // presentation-format when written, so the bytes flow straight to the downstream write.
 //

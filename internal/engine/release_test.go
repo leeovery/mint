@@ -148,7 +148,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git -C " + root + " commit -m 🌿 Release v0.0.1",
 		"git remote get-url origin",
 		"gh auth status",
-		"git tag -a v0.0.1 -F -",
+		"git tag -a --cleanup=verbatim v0.0.1 -F -",
 		"git push --atomic origin HEAD v0.0.1",
 		"gh release create v0.0.1 --title v0.0.1 --notes-file - --verify-tag",
 	}
@@ -384,7 +384,7 @@ func TestRelease_BumpSelection(t *testing.T) {
 			}
 
 			// The annotated tag invocation must carry the bumped tag.
-			if !invokedWith(f, "git", "tag", "-a", tt.wantTag, "-F", "-") {
+			if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", tt.wantTag, "-F", "-") {
 				t.Errorf("no `git tag -a %s` invocation; got %v", tt.wantTag, commandLines(f.Invocations()))
 			}
 			// The provider release create must carry the bumped tag.
@@ -447,8 +447,8 @@ func TestRelease_AlwaysPromptsUnderYes(t *testing.T) {
 	// The run proceeds on the returned default with notes as GENERATED — the
 	// original first-release body reaches the sinks unchanged.
 	const want = "Initial release."
-	if got := tagAnnotationBody(t, f, "v0.0.1"); got != want {
-		t.Errorf("tag annotation body = %q, want original (as-generated) body %q", got, want)
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != terminatedAnnotationBody(want) {
+		t.Errorf("tag annotation body = %q, want original (as-generated) body %q", got, terminatedAnnotationBody(want))
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.Kind != presentertest.KindRunFinished {
@@ -1533,16 +1533,29 @@ func stdinOf(t *testing.T, f *runner.FakeRunner, name string, args ...string) st
 
 // tagAnnotationBody extracts the notes body from a piped `git tag -a … -F -`
 // stdin: the composed message is the `{commit_prefix} Release {tag}` subject, a
-// blank line, then the full body verbatim. Splitting on the first blank line
-// returns the body untouched so tests assert it byte-for-byte.
+// blank line, then the full body verbatim plus one terminating "\n" when the body
+// lacked one. Splitting on the first blank line returns that part untouched so tests
+// assert it byte-for-byte — against the body itself when it ends in "\n", or against
+// terminatedAnnotationBody(body) when it does not.
 func tagAnnotationBody(t *testing.T, f *runner.FakeRunner, tag string) string {
 	t.Helper()
-	message := stdinOf(t, f, "git", "tag", "-a", tag, "-F", "-")
+	message := stdinOf(t, f, "git", "tag", "-a", "--cleanup=verbatim", tag, "-F", "-")
 	_, body, found := strings.Cut(message, "\n\n")
 	if !found {
 		t.Fatalf("tag annotation message has no subject/body separator: %q", message)
 	}
 	return body
+}
+
+// terminatedAnnotationBody is what the tag annotation carries after the subject and
+// blank line for body: the body unchanged when it already ends in "\n", otherwise the
+// body plus the one "\n" the annotation adds as its own terminator (so a signed tag's
+// signature starts on its own line).
+func terminatedAnnotationBody(body string) string {
+	if strings.HasSuffix(body, "\n") {
+		return body
+	}
+	return body + "\n"
 }
 
 // changelogSectionBody reads {root}/CHANGELOG.md and returns the body under the
@@ -1629,8 +1642,8 @@ func TestRelease_EmptyNotesBody_FallsBackToFirstReleaseDefault(t *testing.T) {
 	}
 
 	const want = "Initial release."
-	if got := tagAnnotationBody(t, f, "v0.0.1"); got != want {
-		t.Errorf("tag annotation body = %q, want first-release default %q", got, want)
+	if got := tagAnnotationBody(t, f, "v0.0.1"); got != terminatedAnnotationBody(want) {
+		t.Errorf("tag annotation body = %q, want first-release default %q", got, terminatedAnnotationBody(want))
 	}
 	if got := changelogSectionBody(t, root, "0.0.1"); got != want {
 		t.Errorf("CHANGELOG body = %q, want first-release default %q", got, want)

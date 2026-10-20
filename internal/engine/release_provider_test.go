@@ -115,7 +115,7 @@ func assertGhAuthBeforeTag(t *testing.T, f *runner.FakeRunner) {
 			if authAt == -1 {
 				authAt = i
 			}
-		case "git tag -a v0.0.1 -F -":
+		case "git tag -a --cleanup=verbatim v0.0.1 -F -":
 			if tagAt == -1 {
 				tagAt = i
 			}

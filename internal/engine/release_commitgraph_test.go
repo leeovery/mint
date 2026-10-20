@@ -26,11 +26,11 @@ const (
 	commitGraphBookkeepingSubject = "🌿 Release v0.0.1"
 )
 
-// tagAt returns the index of the annotated `git tag -a {tag} -F -` invocation, or
+// tagAt returns the index of the annotated `git tag -a --cleanup=verbatim {tag} -F -` invocation, or
 // -1 if it never ran. The tag tags HEAD, so "the tag points at commit X" is proven
 // by X being the LAST commit invocation before this index.
 func tagAt(f *runner.FakeRunner, tag string) int {
-	return indexOfCmd(f, "git", "tag", "-a", tag, "-F", "-")
+	return indexOfCmd(f, "git", "tag", "-a", "--cleanup=verbatim", tag, "-F", "-")
 }
 
 // lastCommitBeforeTag returns the subject of the LAST `git -C {root} commit -m …`

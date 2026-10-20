@@ -205,7 +205,7 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 	}
 
 	// The run still proceeded to tag and push.
-	if !invokedWith(f, "git", "tag", "-a", "v0.0.1", "-F", "-") {
+	if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", "v0.0.1", "-F", "-") {
 		t.Errorf("combined no-op did not proceed to the tag; got %v", commandLines(f.Invocations()))
 	}
 	if !invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", "v0.0.1") {

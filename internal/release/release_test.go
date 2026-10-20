@@ -13,9 +13,9 @@ import (
 func TestReleaser_TagAndPush_CreatesAnnotatedTagWithSubjectAndBody(t *testing.T) {
 	t.Parallel()
 
-	// The annotated tag must be created via `git tag -a {tag} -F -` with the
-	// message piped on stdin: subject `{commit_prefix} Release {tag}`, a blank
-	// line, then the FULL notes body verbatim. -a/-F makes it an ANNOTATED tag
+	// The annotated tag must be created via `git tag -a --cleanup=verbatim {tag} -F -`
+	// with the message piped on stdin: subject `{commit_prefix} Release {tag}`, a
+	// blank line, then the FULL notes body verbatim, newline-terminated. -a/-F makes it an ANNOTATED tag
 	// (never lightweight) — the annotation body is the single source mint reads
 	// later. Asserting the recorded stdin pins the exact composed message.
 	r := runner.NewFakeRunner()
@@ -37,13 +37,49 @@ func TestReleaser_TagAndPush_CreatesAnnotatedTagWithSubjectAndBody(t *testing.T)
 	if tagInv.Name != "git" {
 		t.Errorf("tag command = %q, want git", tagInv.Name)
 	}
-	wantTagArgs := []string{"tag", "-a", "v0.0.1", "-F", "-"}
+	wantTagArgs := []string{"tag", "-a", "--cleanup=verbatim", "v0.0.1", "-F", "-"}
 	if !equalArgs(tagInv.Args, wantTagArgs) {
 		t.Errorf("tag args = %v, want %v", tagInv.Args, wantTagArgs)
 	}
-	wantMessage := "🌿 Release v0.0.1\n\nInitial release."
+	wantMessage := "🌿 Release v0.0.1\n\nInitial release.\n"
 	if tagInv.Stdin != wantMessage {
 		t.Errorf("tag message (stdin) = %q, want %q", tagInv.Stdin, wantMessage)
+	}
+}
+
+func TestReleaser_TagAndPush_AnnotationEndsInExactlyOneTerminatingNewline(t *testing.T) {
+	t.Parallel()
+
+	// git appends a signed tag's signature right after the message's last byte, so
+	// the annotation must end in "\n": a body without one gets exactly one appended
+	// (the annotation's terminator, not part of the notes); a body that already ends
+	// in "\n" — or in several — is piped exactly as given.
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{name: "no final newline gets one", body: "- shipped", want: "🌿 Release v1.0.0\n\n- shipped\n"},
+		{name: "final newline piped as given", body: "- shipped\n", want: "🌿 Release v1.0.0\n\n- shipped\n"},
+		{name: "repeated final newlines piped as given", body: "- shipped\n\n\n", want: "🌿 Release v1.0.0\n\n- shipped\n\n\n"},
+		{name: "trailing spaces kept before the terminator", body: "- shipped  ", want: "🌿 Release v1.0.0\n\n- shipped  \n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := runner.NewFakeRunner()
+			r.Seed("git", runner.Result{}, nil)
+			rel := release.NewReleaser(git.NewMutator(r))
+
+			if _, err := rel.TagAndPush(t.Context(), "v1.0.0", "🌿", tt.body); err != nil {
+				t.Fatalf("TagAndPush returned unexpected error: %v", err)
+			}
+
+			if got := r.Invocations()[0].Stdin; got != tt.want {
+				t.Errorf("tag message (stdin) = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

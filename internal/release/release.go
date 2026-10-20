@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"mint/internal/git"
 	"mint/internal/record"
@@ -63,10 +64,12 @@ func NewReleaser(m *git.Mutator) *Releaser {
 // TagAndPush creates the annotated release tag at the current HEAD and then pushes
 // the commits and tag together atomically.
 //
-// The tag is created with `git tag -a {tag} -F -`, the message piped on stdin:
-// the subject `{commitPrefix} Release {tag}` (e.g. `🌿 Release v0.0.1`), a blank
-// line, then the full notes body verbatim. -a/-F guarantees an annotated tag
-// carrying that body — the single source mint reads later.
+// The tag is created with `git tag -a --cleanup=verbatim {tag} -F -`, the message
+// piped on stdin: the subject `{commitPrefix} Release {tag}` (e.g. `🌿 Release
+// v0.0.1`), a blank line, then the full notes body verbatim, plus one terminating
+// "\n" when the body lacks one (see composeTagMessage). -a/-F guarantees an
+// annotated tag carrying that body — the single source mint reads later — and
+// --cleanup=verbatim keeps git from rewriting it.
 //
 // The push is the exact form `git push --atomic origin HEAD {tag}` so commits and
 // tag go up together or not at all — the single point of no return.
@@ -89,14 +92,20 @@ func (rel *Releaser) TagAndPush(ctx context.Context, tag, commitPrefix, body str
 	return Outcome{PointOfNoReturnCrossed: true}, nil
 }
 
-// createAnnotatedTag runs `git tag -a {tag} -F -`, piping the composed annotation
-// message on stdin so the body is never packed into an argv arg (it is long and
-// multiline). A non-zero exit (including a missing git binary, which matches
+// createAnnotatedTag runs `git tag -a --cleanup=verbatim {tag} -F -`, piping the
+// composed annotation message on stdin so the body is never packed into an argv arg
+// (it is long and multiline). --cleanup=verbatim is load-bearing: git's default for
+// `git tag` is `strip`, which drops every `#`-led line (Markdown `## ` headings,
+// `#123` references), trailing whitespace (two-space line breaks) and repeated blank
+// lines, so the annotation would silently diverge from the changelog section and the
+// provider release. Verbatim is the only mode that keeps the reviewed body
+// byte-identical on every notes route; the one terminating newline composeTagMessage
+// guarantees keeps a signed tag's signature on its own line. A non-zero exit (including a missing git binary, which matches
 // ErrCommandNotFound) surfaces as-is; it is deliberately NOT wrapped in
 // ErrPushRejected because no push has happened yet.
 func (rel *Releaser) createAnnotatedTag(ctx context.Context, tag, commitPrefix, body string) error {
 	message := composeTagMessage(tag, commitPrefix, body)
-	if _, err := rel.mutator.Mutate(ctx, []byte(message), "git", "tag", "-a", tag, "-F", "-"); err != nil {
+	if _, err := rel.mutator.Mutate(ctx, []byte(message), "git", "tag", "-a", "--cleanup=verbatim", tag, "-F", "-"); err != nil {
 		return fmt.Errorf("creating annotated tag %q: %w", tag, err)
 	}
 	return nil
@@ -120,8 +129,17 @@ func (rel *Releaser) atomicPush(ctx context.Context, tag string) error {
 }
 
 // composeTagMessage builds the annotation message: subject
-// `{commitPrefix} Release {tag}`, a blank line, then the full notes body verbatim.
+// `{commitPrefix} Release {tag}`, a blank line, then the full notes body verbatim,
+// newline-terminated. The terminator belongs to the annotation, like the subject and
+// the blank line, not to the notes: under --cleanup=verbatim git appends a signed
+// tag's signature right after the message's last byte, so an unterminated body would
+// fuse with it — `git verify-tag` would find no signature and `%(contents:body)`
+// would read the signature back as body.
 func composeTagMessage(tag, commitPrefix, body string) string {
 	subject := record.BookkeepingSubject(commitPrefix, tag)
-	return subject + "\n\n" + body
+	message := subject + "\n\n" + body
+	if !strings.HasSuffix(message, "\n") {
+		message += "\n"
+	}
+	return message
 }

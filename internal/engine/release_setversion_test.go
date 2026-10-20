@@ -174,11 +174,11 @@ func TestRelease_SetVersion_GreaterThanLatest_BecomesNext(t *testing.T) {
 	}
 
 	// The PINNED version became the next version: the annotated tag is v2.0.0.
-	if !invokedWith(f, "git", "tag", "-a", "v2.0.0", "-F", "-") {
+	if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", "v2.0.0", "-F", "-") {
 		t.Errorf("annotated tag was not v2.0.0; got %v", commandLines(f.Invocations()))
 	}
 	// A computed patch (v1.2.4) must NOT have been tagged.
-	if invokedWith(f, "git", "tag", "-a", "v1.2.4", "-F", "-") {
+	if invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", "v1.2.4", "-F", "-") {
 		t.Errorf("computed patch v1.2.4 was tagged; --set-version must bypass Next")
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
@@ -221,7 +221,7 @@ func TestRelease_SetVersion_FirstRelease_Accepted(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if !invokedWith(f, "git", "tag", "-a", "v1.0.0", "-F", "-") {
+	if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", "v1.0.0", "-F", "-") {
 		t.Errorf("first-release explicit tag was not v1.0.0; got %v", commandLines(f.Invocations()))
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)

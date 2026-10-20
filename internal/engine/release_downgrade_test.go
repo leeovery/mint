@@ -59,7 +59,7 @@ func assertDowngradedTagPush(t *testing.T, f *runner.FakeRunner, tag string) {
 			t.Errorf("gh was invoked on a downgrade (gate or publish must be skipped): %q", commandLine(inv))
 		}
 	}
-	if !invokedWith(f, "git", "tag", "-a", tag, "-F", "-") {
+	if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", tag, "-F", "-") {
 		t.Errorf("downgrade did not create the annotated tag %s\ngot: %v", tag, commandLines(f.Invocations()))
 	}
 	if !invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", tag) {

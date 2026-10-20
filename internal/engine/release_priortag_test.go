@@ -387,7 +387,7 @@ func TestRelease_PriorTag_GateAccept_ProceedsToRecord(t *testing.T) {
 	if !invokedWith(f, "git", "-C", root, "commit", "-m", "🌿 Release "+nextTag) {
 		t.Errorf("gate accept did not reach Record (no bookkeeping commit)")
 	}
-	if !invokedWith(f, "git", "tag", "-a", nextTag, "-F", "-") {
+	if !invokedWith(f, "git", "tag", "-a", "--cleanup=verbatim", nextTag, "-F", "-") {
 		t.Errorf("gate accept did not tag")
 	}
 	if !invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", nextTag) {
@@ -615,8 +615,8 @@ func TestRelease_PriorTag_Degenerate_EndToEnd(t *testing.T) {
 		}
 	}
 	want := "Maintenance release — no notable source changes"
-	if got := tagAnnotationBody(t, f, nextTag); got != want {
-		t.Errorf("tag annotation body = %q, want degenerate StubBody %q", got, want)
+	if got := tagAnnotationBody(t, f, nextTag); got != terminatedAnnotationBody(want) {
+		t.Errorf("tag annotation body = %q, want degenerate StubBody %q", got, terminatedAnnotationBody(want))
 	}
 	// ShowNotes now sits at index 6 (after the version/preflight gate completions, the
 	// blocking notes stage pair, RunStarted, and ShowPlan).

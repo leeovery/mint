@@ -101,6 +101,42 @@ func TestRelease_NotesFile_ShipsFileContentsByteIdenticalWithNoAICall(t *testing
 	assertSuppliedBodyShipped(t, f, root, nextTag, "1.2.4", suppliedBody)
 }
 
+func TestRelease_NotesFile_MarkdownGitWouldStripReachesTheTagVerbatim(t *testing.T) {
+	t.Parallel()
+
+	// Every line here is one git's default `strip` cleanup would remove or rewrite:
+	// `#`-led headings and issue references, a two-space Markdown line break, and
+	// repeated blank lines. The tag must be created with --cleanup=verbatim so the
+	// annotation carries these bytes exactly as the changelog and provider do.
+	const markdownBody = "## ✨ Added\n" +
+		"- hard line break  \n" +
+		"#123 closes the issue\n\n\n" +
+		"## 🐛 Fixed\n" +
+		"# a top-level heading\n\n\n\n"
+
+	root := t.TempDir()
+	path := writeNotesFile(t, t.TempDir(), "notes.md", markdownBody)
+	f := runner.NewFakeRunner()
+	seedPriorTagNotesFileGit(f, root)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), notesFileOptions(path)); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	message := stdinOf(t, f, "git", "tag", "-a", "--cleanup=verbatim", nextTag, "-F", "-")
+	if want := "🌿 Release " + nextTag + "\n\n" + markdownBody; message != want {
+		t.Errorf("tag annotation message = %q, want %q", message, want)
+	}
+	assertSuppliedBodyShipped(t, f, root, nextTag, "1.2.4", markdownBody)
+
+	lines := commandLines(f.Invocations())
+	tagAt := slices.Index(lines, "git tag -a --cleanup=verbatim "+nextTag+" -F -")
+	if tagAt == -1 || tagAt+1 >= len(lines) || lines[tagAt+1] != "git push --atomic origin HEAD "+nextTag {
+		t.Errorf("want the verbatim tag immediately followed by the atomic push; got %v", lines)
+	}
+}
+
 func TestRelease_NotesFile_WinsOverEveryOtherBodySource(t *testing.T) {
 	t.Parallel()
 
