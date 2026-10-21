@@ -75,8 +75,8 @@ func TestRelease_Attended_PausesOnEachSuggestionShowingItsGlobAndReason(t *testi
 	}
 
 	want := []string{
-		"Exclude docs/design/ from the notes? (design documents, not shipped behaviour)",
-		"Exclude test/fixtures/ from the notes? (test data)",
+		"Exclude docs/design/ from the notes? (design documents, not shipped behaviour; 1 file, 176 B)",
+		"Exclude test/fixtures/ from the notes? (test data; 1 file, 175 B)",
 	}
 	if got := pauseQuestions(pauseGates(rec)); !slices.Equal(got, want) {
 		t.Errorf("pauses = %q, want %q", got, want)
@@ -169,7 +169,7 @@ func TestRelease_SuggestionsMatchingNoUncoveredPath_GetNoPauseWhileTheOthersDo(t
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	want := []string{"Exclude test/fixtures/ from the notes? (test data)"}
+	want := []string{"Exclude test/fixtures/ from the notes? (test data; 1 file, 175 B)"}
 	if got := pauseQuestions(pauseGates(rec)); !slices.Equal(got, want) {
 		t.Errorf("pauses = %q, want only %q", got, want)
 	}
@@ -196,7 +196,7 @@ func TestRelease_AStarGlobMatchingANestedChange_GetsAPause(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	want := []string{"Exclude *.md from the notes? (documentation)"}
+	want := []string{"Exclude *.md from the notes? (documentation; 1 file, 77 B)"}
 	if got := pauseQuestions(pauseGates(rec)); !slices.Equal(got, want) {
 		t.Errorf("pauses = %q, want %q", got, want)
 	}

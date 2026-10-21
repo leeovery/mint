@@ -9,20 +9,28 @@ import (
 	"mint/internal/notes"
 )
 
-// recordedPauses answers every pause with answer, or fails it with err, recording each
-// suggestion it was paused on.
+// recordedPauses answers each pause with the next of answers, then with answer, or
+// fails it with err, recording each suggestion it was paused on and what it matched.
 type recordedPauses struct {
-	answer notes.Answer
-	err    error
+	answers []notes.Answer
+	answer  notes.Answer
+	err     error
 	// during, when set, runs as each pause waits for its answer.
-	during func()
-	paused []notes.Suggestion
+	during  func()
+	paused  []notes.Suggestion
+	matches []notes.Matches
 }
 
-func (p *recordedPauses) Pause(_ context.Context, s notes.Suggestion) (notes.Answer, error) {
+func (p *recordedPauses) Pause(_ context.Context, s notes.Suggestion, m notes.Matches) (notes.Answer, error) {
 	p.paused = append(p.paused, s)
+	p.matches = append(p.matches, m)
 	if p.during != nil {
 		p.during()
+	}
+	if len(p.answers) > 0 {
+		answer := p.answers[0]
+		p.answers = p.answers[1:]
+		return answer, p.err
 	}
 	return p.answer, p.err
 }

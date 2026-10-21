@@ -46,9 +46,18 @@ const (
 	AnswerExclude
 )
 
+// Matches is what an Exclude answer to a suggestion would take out of the notes.
+type Matches struct {
+	Paths []string
+	// DiffBytes is the total of Paths' diff sizes.
+	DiffBytes int
+	// Kept is those of Paths the keep list, or a Keep answer earlier in the run, covers.
+	Kept []string
+}
+
 // SuggestionPauses asks the operator about one suggestion and returns the answer.
 type SuggestionPauses interface {
-	Pause(ctx context.Context, s Suggestion) (Answer, error)
+	Pause(ctx context.Context, s Suggestion, m Matches) (Answer, error)
 }
 
 // NewExclusionCheck builds the check over transport, leaving out the paths the keep
@@ -72,10 +81,12 @@ func (c *ExclusionCheck) WithPauses(pauses SuggestionPauses) *ExclusionCheck {
 // Check makes the check's call over diff, the post-exclusion notes diff, unless the
 // keep list covers every path in it: then it neither calls nor narrates. A failed call
 // leaves the release to carry on, so only a cancel is returned. With pauses wired, each
-// suggestion matching a listed path is paused on in the answer's order; a pause's
-// error, or a cancel while it waits, is returned and ends the pauses.
+// suggestion matching a listed path is paused on in the answer's order, unless earlier
+// answers already decide every listed path it matches; a pause's error, or a cancel
+// while it waits, is returned and ends the pauses.
 func (c *ExclusionCheck) Check(ctx context.Context, diff string) error {
-	paths := c.uncoveredPaths(diff)
+	files := diffPaths(diff)
+	paths := slices.DeleteFunc(slices.Clone(files), func(p checkedPath) bool { return coveredBy(c.keep, p.path) })
 	if len(paths) == 0 {
 		return nil
 	}
@@ -88,20 +99,67 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string) error {
 	if err != nil || c.pauses == nil {
 		return nil
 	}
-	return c.pause(ctx, usableSuggestions(answer, paths))
+	return c.pause(ctx, usableSuggestions(answer, paths), files)
 }
 
-func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion) error {
+func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) error {
+	decided := runAnswers{keep: slices.Clip(c.keep)}
 	for _, s := range suggestions {
-		_, err := c.pauses.Pause(ctx, s)
+		if !decided.leavesUndecided(s.Glob, files) {
+			continue
+		}
+		answer, err := c.pauses.Pause(ctx, s, decided.matches(s.Glob, files))
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
 		if err != nil {
 			return err
 		}
+		decided.record(s.Glob, answer)
 	}
 	return nil
+}
+
+// runAnswers is the keep list grown by this run's Keep answers, and the globs of its
+// Exclude answers.
+type runAnswers struct {
+	keep     []string
+	excluded []string
+}
+
+func (a *runAnswers) record(glob string, answer Answer) {
+	if answer == AnswerExclude {
+		a.excluded = append(a.excluded, glob)
+		return
+	}
+	a.keep = append(a.keep, glob)
+}
+
+// leavesUndecided reports whether glob matches a path of files neither the keep list
+// nor an earlier answer covers.
+func (a *runAnswers) leavesUndecided(glob string, files []checkedPath) bool {
+	return slices.ContainsFunc(files, func(p checkedPath) bool {
+		return pathspecMatches(glob, p.path) && !coveredBy(a.excluded, p.path) && !coveredBy(a.keep, p.path)
+	})
+}
+
+func (a *runAnswers) matches(glob string, files []checkedPath) Matches {
+	var m Matches
+	for _, p := range files {
+		if !pathspecMatches(glob, p.path) || coveredBy(a.excluded, p.path) {
+			continue
+		}
+		m.Paths = append(m.Paths, p.path)
+		m.DiffBytes += p.diffBytes
+		if coveredBy(a.keep, p.path) {
+			m.Kept = append(m.Kept, p.path)
+		}
+	}
+	return m
+}
+
+func coveredBy(specs []string, path string) bool {
+	return slices.ContainsFunc(specs, func(spec string) bool { return pathspecMatches(spec, path) })
 }
 
 // usableSuggestions reads answer's "glob: reason" lines, keeping each suggestion whose
@@ -130,14 +188,10 @@ type checkedPath struct {
 	diffBytes int
 }
 
-func (c *ExclusionCheck) uncoveredPaths(diff string) []checkedPath {
+func diffPaths(diff string) []checkedPath {
 	var paths []checkedPath
 	for _, file := range splitFileDiffs(diff) {
-		path := headerPath(file)
-		if slices.ContainsFunc(c.keep, func(spec string) bool { return pathspecMatches(spec, path) }) {
-			continue
-		}
-		paths = append(paths, checkedPath{path: path, change: fileChange(file), diffBytes: len(file)})
+		paths = append(paths, checkedPath{path: headerPath(file), change: fileChange(file), diffBytes: len(file)})
 	}
 	return paths
 }

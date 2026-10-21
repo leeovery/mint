@@ -38,6 +38,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/aitransport"
+	"mint/internal/bytesize"
 	"mint/internal/config"
 	"mint/internal/git"
 	"mint/internal/gitrepo"
@@ -1052,9 +1053,9 @@ type exclusionPauses struct {
 	p presenter.Presenter
 }
 
-func (e exclusionPauses) Pause(_ context.Context, s notes.Suggestion) (notes.Answer, error) {
+func (e exclusionPauses) Pause(_ context.Context, s notes.Suggestion, m notes.Matches) (notes.Answer, error) {
 	e.p.SuspendSpinner()
-	choice, err := e.p.Prompt(exclusionPauseGate(s))
+	choice, err := e.p.Prompt(exclusionPauseGate(s, m))
 	e.p.ResumeSpinner()
 	if err != nil {
 		return notes.AnswerKeep, err
@@ -1068,9 +1069,9 @@ func (e exclusionPauses) Pause(_ context.Context, s notes.Suggestion) (notes.Ans
 	return notes.AnswerKeep, errUnexpectedChoice(choice)
 }
 
-func exclusionPauseGate(s notes.Suggestion) presenter.Gate {
+func exclusionPauseGate(s notes.Suggestion, m notes.Matches) presenter.Gate {
 	return presenter.Gate{
-		Question:   fmt.Sprintf("Exclude %s from the notes? (%s)", s.Glob, s.Reason),
+		Question:   fmt.Sprintf("Exclude %s from the notes? (%s; %s)", s.Glob, s.Reason, describeMatches(m)),
 		Subject:    s.Glob,
 		AcceptEcho: "kept",
 		Choices: []presenter.GateChoice{
@@ -1079,6 +1080,19 @@ func exclusionPauseGate(s notes.Suggestion) presenter.Gate {
 		},
 		Default: presenter.ChoiceKeep,
 	}
+}
+
+// describeMatches writes what an Exclude answer would take out of the notes.
+func describeMatches(m notes.Matches) string {
+	files := "1 file"
+	if len(m.Paths) != 1 {
+		files = fmt.Sprintf("%d files", len(m.Paths))
+	}
+	description := files + ", " + bytesize.Format(m.DiffBytes)
+	if len(m.Kept) > 0 {
+		description += "; on the keep list: " + strings.Join(m.Kept, ", ")
+	}
+	return description
 }
 
 // cacheReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path to
