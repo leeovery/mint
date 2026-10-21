@@ -233,7 +233,11 @@ func TestRegenerateRun_Yes_AlwaysCallsPrompt(t *testing.T) {
 	// is exactly how the recorder models the presenter-internal -y skip+echo.
 	rec := &presentertest.RecordingPresenter{}
 
-	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
+	deps := freshRunDeps(rec, f)
+	deps.Yes = true
+	deps.StdinInteractive = true
+
+	err := engine.RegenerateRun(t.Context(), deps, pub, dir,
 		runReq(engine.SourceUnset(), engine.TargetUnset()))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)

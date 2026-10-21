@@ -134,7 +134,7 @@ command's flags.
   fires is the pipeline section below.
 - ` + "`mint release regenerate`" + ` — rewrite the notes for an EXISTING release (the
   provider release body, CHANGELOG.md, or both), sourced from a fresh diff, the
-  tag annotation, or the published release. It rides on the same [release] config.
+  tag annotation, or the published release. It rides on the same [release] config, except on_notes_failure.
 - ` + "`mint commit`" + ` — mint an AI Conventional-Commits message from the
   would-be-committed diff, review it at a gate, then create the commit (see the
   commit model below).
@@ -176,10 +176,10 @@ cap opens $EDITOR instead. When a release-notes call fails with output and does
 not time out, mint asks the model, in one more call through ai_command, whether
 that call was too big for it. A single call or chunk call it was too big for is
 re-sent in smaller parts, up to three halvings per call, and when that writes the
-notes mint suggests a lower max_prompt_bytes. Notes still unwritten follow
+notes mint suggests a lower max_prompt_bytes. A release's notes still unwritten follow
 [release].on_notes_failure: abort loud, where an attended release is offered the
 commit-subject list, writing the notes in the editor, or an abort, and an
-unattended one stops with next moves fitted to the cause, or fall back to the commit-subject list, the one non-AI body. Commit drops to the user's $EDITOR.
+unattended one stops with next moves fitted to the cause, or fall back to the commit-subject list, the one non-AI body. Regenerate never reads on_notes_failure and never ships the commit-subject list on its own. Commit drops to the user's $EDITOR.
 If you pin a slower model for a verb, raise that verb's timeout in the SAME table —
 mint does not auto-bump it.`
 }
