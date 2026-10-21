@@ -8,14 +8,16 @@ package engine
 // operation instead drives off what mint KNOWS it created this run — the exact
 // captured StartState and the tracked MadeState — so it deletes exactly the tag it
 // made (if any) and resets exactly the N commits it made, returning the repo to the
-// exact clean starting state and REPORTING each undone item.
+// exact clean starting state and REPORTING each undone item. The one exception is the
+// exclusion answers commit: an answer is about the repo, not the release, so after the
+// reset the answers are re-committed on the starting commit and narrated as kept.
 //
 // LOAD-BEARING INVARIANT: this is a PRE-PONR operation ONLY. It issues local-only
-// mutations (tag-delete, reset) and never a `git push` or any publish, so it
-// can never rewrite published history. After `git push --atomic` succeeds the tag is
-// public and mint MUST NOT call Unwind — that asymmetry is the spine's (a publish
-// failure post-PONR is warn-only). The operation refuses to do anything destructive
-// to a remote: there is simply no push/publish path through it.
+// mutations (tag-delete, reset, the answers re-commit) and never a `git push` or any
+// publish, so it can never rewrite published history. After `git push --atomic`
+// succeeds the tag is public and mint MUST NOT call Unwind — that asymmetry is the
+// spine's (a publish failure post-PONR is warn-only). The operation refuses to do
+// anything destructive to a remote: there is simply no push/publish path through it.
 //
 // All git mutations flow through the lock-resilient git.Mutator (task 4-1): a
 // contended `.git` lock during the unwind is retried, a provably-stale lock cleared.
@@ -75,6 +77,9 @@ type MadeState struct {
 	// answersEdit is the exclusion answers' write to .mint.toml when no commit holds
 	// it; the unwind reverts it.
 	answersEdit *fileEdit
+	// keptAnswers is the exclusion answers' commit, counted in Commits; the unwind
+	// re-commits it on the starting commit after its reset.
+	keptAnswers *answersCommit
 }
 
 // Unwind is the surgical pre-PONR recovery. Given the captured StartState and the
@@ -87,8 +92,11 @@ type MadeState struct {
 //     resetTo), dropping exactly the N commits mint made and their working-tree
 //     changes (changelog, version-file projection, hook artifacts) while start.KeepOut
 //     keeps its content and staged state;
-//   - reports each undone item via the Presenter's Unwound(Unwind{Summary}), the
-//     engine authoring the COMPLETE summary including its "; repo clean" tail.
+//   - re-commits the exclusion answers on the starting commit when made.keptAnswers
+//     holds their commit and the reset succeeded;
+//   - reports each undone item and the kept answers commit via the Presenter's
+//     Unwound(Unwind{Summary}), the engine authoring the COMPLETE summary including
+//     its "; repo clean" tail.
 //
 // With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
 // Unwound and issues NO git command. A reverted write alone emits no Unwound either.
@@ -97,8 +105,9 @@ type MadeState struct {
 //
 // Its git mutations flow through the lock-resilient Mutator and are best-effort — a "tag
 // not found" or a reset hiccup is not fatal, since the goal is that nothing mint made
-// this run survives the abort; the abort still carries the original reason. The
-// operation NEVER pushes or publishes: it is pre-PONR recovery only.
+// this run but the answers commit survives the abort; the abort still carries the
+// original reason. The operation NEVER pushes or publishes: it is pre-PONR recovery
+// only.
 func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, reason error) error {
 	// The unwind is RECOVERY work that must run to completion even when the triggering
 	// failure was the parent context's own cancellation (a SIGINT/SIGTERM pre-PONR
@@ -113,11 +122,25 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	// commit whatever the write found there.
 	editOK := revertEditIfMade(ctx, deps, start, made.answersEdit)
 	commitsReset, resetOK := resetCommitsIfMade(ctx, deps, start, made)
+	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK)
 
 	if tagDeleted || commitsReset {
-		deps.Presenter.Unwound(unwindEvent(start.Tag, made, tagOK && editOK && resetOK))
+		deps.Presenter.Unwound(unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: tagOK && editOK && resetOK && keptOK}))
 	}
 	return abort(reason)
+}
+
+// recommitAnswersIfKept commits the exclusion answers again on the commit the reset
+// returned to, reporting whether they were re-committed AND whether nothing failed.
+// A failed reset left the answers commit on the branch, so it is not re-committed.
+func recommitAnswersIfKept(ctx context.Context, deps ReleaseDeps, answers *answersCommit, resetOK bool) (kept, ok bool) {
+	if answers == nil || !resetOK {
+		return false, true
+	}
+	if err := answers.recommit(ctx, deps.Mutator); err != nil {
+		return false, false
+	}
+	return true, true
 }
 
 // deleteTagIfMade deletes the local tag mint created this run, returning whether a
@@ -272,20 +295,26 @@ func warnUnwindIncomplete(p presenter.Presenter, action, output string) {
 	})
 }
 
+// unwindOutcome is how an unwind ended: whether the exclusion answers were
+// re-committed, and whether EVERY recovery mutation succeeded.
+type unwindOutcome struct {
+	answersKept bool
+	clean       bool
+}
+
 // unwindEvent builds the Unwound payload whose engine-authored Summary names each
-// undone item. clean reports whether EVERY recovery mutation succeeded — only then does
-// the summary carry the "; repo clean" tail; a failed reset/tag-delete (already warned
-// with the manual step) drops it so the narration never contradicts the warning.
-func unwindEvent(tag string, made MadeState, clean bool) presenter.Unwind {
-	return presenter.Unwind{Summary: surgicalSummary(tag, made, clean)}
+// undone item and the kept answers commit. Only a clean outcome carries the
+// "; repo clean" tail, so the narration never calls the repo clean after a failed step.
+func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
+	return presenter.Unwind{Summary: surgicalSummary(tag, made, outcome)}
 }
 
 // surgicalSummary authors the engine-owned Unwound Summary describing what the unwind
-// ATTEMPTED to undo — the count of commits reset and the deleted tag — and its trailing
-// status tail. When every recovery mutation succeeded (clean) the tail is the original
-// "; repo clean"; when a reset/tag-delete FAILED (clean=false, already warned with the
-// manual step) the tail becomes "; manual cleanup required" so the summary never
-// falsely claims the repo is clean. It is ASCII and semicolon-joined (matching the
+// ATTEMPTED to undo — the count of commits reset and the deleted tag — then the kept
+// answers commit when it was re-committed, and its trailing status tail. When every
+// recovery mutation succeeded the tail is "; repo clean"; when one FAILED the tail
+// becomes "; manual cleanup required" so the summary never falsely claims the repo is
+// clean. It is ASCII and semicolon-joined (matching the
 // existing "…; repo clean" style) so the plain presenter stays byte-pure; the presenter
 // renders it VERBATIM and synthesises no part of it. It never leads with a
 // "Reverted:"-style prefix — the presenter prefixes the line with "unwound", so a prefix
@@ -294,8 +323,11 @@ func unwindEvent(tag string, made MadeState, clean bool) presenter.Unwind {
 // It is only ever called when something was undone (a commit reset and/or a tag
 // deleted), so the zero/zero case is unreachable here; the operation no-ops before
 // reaching it.
-func surgicalSummary(tag string, made MadeState, clean bool) string {
-	tail := summaryTail(clean)
+func surgicalSummary(tag string, made MadeState, outcome unwindOutcome) string {
+	tail := summaryTail(outcome.clean)
+	if outcome.answersKept {
+		tail = "; kept the answers commit on the starting commit" + tail
+	}
 	reset := made.Commits > 0
 	deleted := made.TagCreated
 	switch {

@@ -7,10 +7,11 @@ package engine
 // success AND on abort/failure.
 //
 // LOAD-BEARING ORDERING: on a pre-PONR abort the surgical unwind (4-2) runs FIRST,
-// returning the repo to its exact clean starting state, and the pop is layered ON TOP
-// of that. Because the unwind runs inside the spine and the pop runs after the spine
-// returns, the unwind-then-pop ordering holds for every abort path by construction —
-// popping before the unwind would apply WIP against mint's release commits.
+// returning the repo to its starting commit (plus any kept exclusion answers commit),
+// and the pop is layered ON TOP of that. Because the unwind runs inside the spine and
+// the pop runs after the spine returns, the unwind-then-pop ordering holds for every
+// abort path by construction — popping before the unwind would apply WIP against
+// mint's release commits.
 //
 // NO-WIP NO-OP: `git stash push` with a clean tree saves nothing and prints "No local
 // changes to save"; mint detects that and records that NOTHING was stashed, so no pop
@@ -61,8 +62,8 @@ func autostashPush(ctx context.Context, deps ReleaseDeps, keepOut git.Exclusion)
 
 // autostashPop restores the WIP with `git stash pop` through the lock-resilient
 // Mutator. It is called AFTER the spine returns — on success, on top of the released
-// state; on abort, on top of the surgically-unwound clean state — so the unwind-then-
-// pop ordering holds for every abort path by construction.
+// state; on abort, on top of the surgically-unwound state — so the unwind-then-pop
+// ordering holds for every abort path by construction.
 //
 // A clean pop succeeds and git drops the stash entry itself, so mint issues no drop.
 // A CONFLICTING pop exits non-zero and git leaves the stash intact; mint NEVER runs

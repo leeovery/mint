@@ -19,9 +19,10 @@ package engine
 // optional pre_tag artifact commit, answers commit and bookkeeping commit — and whether
 // the annotated tag was created). On a gate-no or any pre-push failure it hands those
 // captured inputs to Unwind, which resets EXACTLY the commits mint made and deletes the
-// tag iff mint created it — no HEAD probe, no inference. The two triggers are
-// deliberately identical: a declined gate and a rejected push with the same MadeState
-// produce a byte-identical clean state and Unwound summary. With nothing made the
+// tag iff mint created it — no HEAD probe, no inference — then re-commits the exclusion
+// answers on the starting commit when their commit had landed, the one thing it keeps.
+// The two triggers are deliberately identical: a declined gate and a rejected push with
+// the same MadeState produce a byte-identical state and Unwound summary. With nothing made the
 // surgical unwind no-ops (no reset, no Unwound). The PRE-mutation / preflight failures
 // (before the StartState is captured) stay plain surface; there is nothing to unwind.
 // All recovery mutations flow through the lock-resilient Mutator (4-1). --autostash
@@ -285,7 +286,7 @@ type ReleaseOptions struct {
 	// --include-untracked` BEFORE the clean-tree gate (so a dirty tree passes the gate)
 	// and restores the WIP with `git stash pop` afterward — on success AND on
 	// abort/failure. On an abort the restore is layered ON TOP of the surgical unwind:
-	// the unwind returns the repo to its clean starting state first, THEN the pop applies
+	// the unwind runs first, THEN the pop applies
 	// the WIP, so the WIP is never popped against mint's release commits. A no-WIP run is
 	// a no-op (nothing stashed → nothing popped); a pop conflict leaves the stash intact
 	// and warns rather than discarding the user's work. It is OPT-IN because the release
@@ -336,9 +337,9 @@ type ReleaseOptions struct {
 // a DEFERRED `git stash pop` that runs when Release returns. Because the surgical
 // unwind runs inline before any abort return and the deferred pop runs after, the
 // load-bearing unwind-then-pop ordering holds for EVERY abort path by construction: on
-// a pre-PONR abort the repo is already back at its clean starting state by the time the
-// pop applies the WIP on top. A no-WIP run is a no-op (nothing stashed → no deferred
-// pop); a pop conflict warns and leaves the stash intact (never discarded).
+// a pre-PONR abort the repo is already unwound by the time the pop applies the WIP on
+// top. A no-WIP run is a no-op (nothing stashed → no deferred pop); a pop conflict
+// warns and leaves the stash intact (never discarded).
 //
 // Under --dry-run the autostash stash push/pop is SKIPPED — a dry run takes no action,
 // so it never mutates the tree. Because that skipped stash is what would have cleaned
@@ -433,11 +434,10 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// gate so a dirty tree passes (opt-in; without the flag a dirty tree still aborts at
 	// the gate below). The DEFERRED pop restores the WIP when Release returns — on
 	// success on top of the released state, on abort on top of the surgically-unwound
-	// clean state. Deferring is load-bearing: the surgical unwind runs inline before any
-	// abort return, so by the time this deferred pop fires the repo is already back at
-	// its clean starting state — unwind-then-pop holds for every abort path. A no-WIP
-	// tree stashes nothing (no pop is owed and none is deferred); a pop conflict warns
-	// and leaves the stash intact.
+	// state. Deferring is load-bearing: the surgical unwind runs inline before any abort
+	// return, so by the time this deferred pop fires the repo is already unwound —
+	// unwind-then-pop holds for every abort path. A no-WIP tree stashes nothing (no pop
+	// is owed and none is deferred); a pop conflict warns and leaves the stash intact.
 	//
 	// DRY-RUN: a dry run takes no action, so neither the stash push NOR the deferred pop
 	// runs — the autostash block is gated on !opts.DryRun. Skipping the real stash keeps
@@ -550,6 +550,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
 	if answers.landed {
 		made.Commits++
+		made.keptAnswers = answers
 	}
 	made.answersEdit = answers.edit
 	var recordingErr *answersRecordingError
@@ -1074,6 +1075,7 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 // made, and edit is the write when it is not.
 type answersCommit struct {
 	root, tag string
+	globs     config.ReleaseGlobs
 	landed    bool
 	edit      *fileEdit
 }
@@ -1088,11 +1090,12 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 		if err != nil {
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
 		}
-		if err := config.AppendReleaseGlobs(a.root, config.ReleaseGlobs{DiffExclude: answers.Exclude, DiffKeep: answers.Keep}); err != nil {
+		a.globs = config.ReleaseGlobs{DiffExclude: answers.Exclude, DiffKeep: answers.Keep}
+		if err := a.write(); err != nil {
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
 		}
 		a.edit = edit
-		if err := record.CommitFile(ctx, deps.Mutator, a.root, config.FileName, answersSubject(a.tag)); err != nil {
+		if err := a.commit(ctx, deps.Mutator); err != nil {
 			return &answersRecordingError{step: "committing the exclusion answers", err: err, output: gitOutput(err)}
 		}
 		a.landed = true
@@ -1102,6 +1105,22 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 		deps.Presenter.ResumeSpinner()
 		return nil
 	}
+}
+
+func (a *answersCommit) write() error {
+	return config.AppendReleaseGlobs(a.root, a.globs)
+}
+
+func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
+	return record.CommitFile(ctx, m, a.root, config.FileName, answersSubject(a.tag))
+}
+
+// recommit records the answers again on whatever HEAD is now.
+func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator) error {
+	if err := a.write(); err != nil {
+		return err
+	}
+	return a.commit(ctx, m)
 }
 
 // answersRecordingError is the exclusion answers failing to be written or committed;
