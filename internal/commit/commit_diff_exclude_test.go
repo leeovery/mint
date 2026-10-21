@@ -163,3 +163,41 @@ func TestRun_CommitDiffExclude_AllExcludedOpensTheEditorAndCommits(t *testing.T)
 		t.Fatalf("commit invocations = %v, want exactly one carrying %q", commits, saved)
 	}
 }
+
+func TestRun_MakesOneAICallForTheMessageAndNoExclusionCheck(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeMintTOML(t, root, "[release]\ndiff_keep = [\"docs/api/\"]\n")
+
+	const message = "feat: export"
+	rec := &presentertest.RecordingPresenter{}
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "src/export.go\n"}}, // preflight probe
+		runner.ScriptedCall{Result: runner.Result{Stdout: commitExportDiff}},  // L1 staged diff
+		runner.ScriptedCall{}, // git commit -F -
+	)
+	transport := scriptedTransport(message)
+	deps := newCommitDeps(rec, r, transport, root)
+	deps.Staging = commit.StagedOnly
+
+	if err := commit.Run(context.Background(), deps); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if got := transport.calls(); got != 1 {
+		t.Fatalf("AI calls = %d, want only the commit message's", got)
+	}
+	if prompt := transport.lastPrompt(t); !strings.Contains(prompt, commitExportDiff) {
+		t.Errorf("the one AI call is not the commit message call over the staged diff:\n%s", prompt)
+	}
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindNotesChecking || ev.Kind == presentertest.KindNotesChecked {
+			t.Errorf("the commit showed the exclusion check's line: %v", ev.Kind)
+		}
+	}
+	if commitInv := findCommitInvocation(t, r); commitInv.Stdin != message {
+		t.Errorf("commit stdin = %q, want %q", commitInv.Stdin, message)
+	}
+}

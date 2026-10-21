@@ -169,6 +169,29 @@ func TestExclusionCheck_LeavesOutPathsTheKeepListCovers(t *testing.T) {
 	}
 }
 
+func TestExclusionCheck_KeepListCoversEveryPath_MakesNoCallAndNarratesNothing(t *testing.T) {
+	t.Parallel()
+
+	narration := &checkNarration{}
+	calls := 0
+	tr := transportFunc(func(context.Context, string) (string, error) {
+		calls++
+		return "none", nil
+	})
+	diff := addedFileDiff("docs/api/export.md", "+# Export API\n") + modifiedFileDiff("docs/api/import.md", "+# Import API\n")
+
+	if err := notes.NewExclusionCheck(tr, []string{"docs/api/"}, narration).Check(t.Context(), diff); err != nil {
+		t.Fatalf("Check returned unexpected error: %v", err)
+	}
+
+	if calls != 0 {
+		t.Errorf("check calls = %d, want none", calls)
+	}
+	if len(narration.events) != 0 {
+		t.Errorf("narration = %v, want none", narration.events)
+	}
+}
+
 func TestExclusionCheck_NarratesTheCallStartingAndEnding(t *testing.T) {
 	t.Parallel()
 

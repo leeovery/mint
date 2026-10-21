@@ -40,11 +40,16 @@ func NewExclusionCheck(transport Transport, keep []string, narration CheckNarrat
 	return &ExclusionCheck{transport: transport, keep: keep, narration: narration}
 }
 
-// Check makes the check's call over diff, the post-exclusion notes diff. A failed call
+// Check makes the check's call over diff, the post-exclusion notes diff, unless the
+// keep list covers every path in it: then it neither calls nor narrates. A failed call
 // leaves the release to carry on, so only a cancel is returned.
 func (c *ExclusionCheck) Check(ctx context.Context, diff string) error {
+	paths := c.uncoveredPaths(diff)
+	if len(paths) == 0 {
+		return nil
+	}
 	c.narration.Checking()
-	_, err := c.transport.Generate(ctx, composeCheckPrompt(c.uncoveredPaths(diff)))
+	_, err := c.transport.Generate(ctx, composeCheckPrompt(paths))
 	c.narration.Checked()
 	if errors.Is(err, context.Canceled) {
 		return err
