@@ -355,7 +355,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 8,
-          "current_task": "token-aware-diff-sizing-8-6",
+          "current_task": "token-aware-diff-sizing-8-7",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -474,7 +474,8 @@
             "token-aware-diff-sizing-8-2",
             "token-aware-diff-sizing-8-3",
             "token-aware-diff-sizing-8-4",
-            "token-aware-diff-sizing-8-5"
+            "token-aware-diff-sizing-8-5",
+            "token-aware-diff-sizing-8-6"
           ],
           "staging": {
             "p1": {
@@ -575,6 +576,28 @@
                 "internal/record/commit.go",
                 "internal/engine/release.go",
                 "internal/engine/unwind.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-8-6",
+              "source": "reviewer",
+              "summary": "Manual steps in unwind warnings quote shell words inconsistently: the re-commit step uses cmdline.Quote, two earlier steps do not",
+              "failure": "An operator whose repo root contains a space pastes the unstage step from an unwind incomplete warning and git fails with cannot change to the truncated path; a --notes-file path with an apostrophe breaks the reset step hand-quoted restore line the same way; noticed only at paste time, mid-recovery",
+              "detail": "unstageEdit puts edit.root and edit.path into the command unquoted (internal/engine/unwind.go:248, task 8-4). resetTo wraps pathspec[1] in bare single quotes with no escaping (unwind.go:293). 8-6 recommit quotes the same kind of words with cmdline.Quote (release.go:1128-1131). Route all three through cmdline.Quote",
+              "files": [
+                "internal/engine/unwind.go",
+                "internal/engine/release.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-8-6",
+              "source": "reviewer",
+              "summary": "Task 8-4 unstage warning builds a copy-paste command from an unquoted repo root; 8-6 quotes its own",
+              "failure": "When the repo root contains a space or shell metacharacter, an operator pasting the 8-4 manual step gets fatal: cannot change to the truncated path and cannot finish the recovery as printed; no test catches it because t.TempDir paths have no spaces",
+              "detail": "internal/engine/unwind.go:258 (8-4 unstageEdit) concatenates edit.root raw; 8-6 re-commit step at internal/engine/release.go:1130-1132 wraps root and subject in cmdline.Quote. Route the 8-4 root and path through cmdline.Quote",
+              "files": [
+                "internal/engine/unwind.go",
+                "internal/engine/release.go"
               ]
             }
           ]
