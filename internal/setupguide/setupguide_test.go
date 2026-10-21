@@ -928,6 +928,24 @@ func TestGuide_ProcedureStepFourRoutesNoiseByLevel(t *testing.T) {
 	}
 }
 
+// A set ai_command replaces the shipped default whole, lean flags included, so
+// step 4 must say so and name the copy-it-and-edit-`--model` remedy: an agent
+// that writes a model-only command silently drops the lean flags on that verb.
+func TestGuide_ProcedureStepFourSaysAICommandReplacesDefaultWhole(t *testing.T) {
+	t.Parallel()
+
+	step := numberedStep(setupguide.Guide(), "4.")
+	for _, want := range []string{
+		"replaces the shipped default WHOLE, lean flags included",
+		"copy the shipped default",
+		"--model",
+	} {
+		if !strings.Contains(step, want) {
+			t.Errorf("procedure step 4 does not say %q; got:\n%s", want, step)
+		}
+	}
+}
+
 func TestGuide_ConfigReferenceListsCommitDiffExclude(t *testing.T) {
 	t.Parallel()
 

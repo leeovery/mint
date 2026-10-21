@@ -230,7 +230,12 @@ func procedure() string {
      write the shared top-level ai_command. DIFFERENT models -> write
      [release].ai_command and [commit].ai_command as per-verb overrides. A
      non-Claude command is fine: ai_command is any executable that takes the
-     prompt on stdin and returns the message on stdout.
+     prompt on stdin and returns the message on stdout. An ai_command you
+     write replaces the shipped default WHOLE, lean flags included: one that
+     names only a model drops them, so every call it serves carries CLAUDE.md
+     files and Claude Code's system prompt again. To change only the model,
+     copy the shipped default (the AI transport section above names it) and
+     edit its ` + "`--model`" + ` value.
    - provider / release_branch -> ONLY if mint's auto-detection would be wrong.
 5. Propose -> explain -> approve. Present the proposed config, explain each
    activated key's project-specific reason, and get the user's approval per the
