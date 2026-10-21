@@ -106,7 +106,7 @@ func TestAssembler_BuildChangeMap_NewPackageHeadlinesAboveLargerExistingArea(t *
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v1.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -145,7 +145,7 @@ func TestAssembler_BuildChangeMap_ReportsRenamedAndRemovedPaths(t *testing.T) {
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v2.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -181,7 +181,7 @@ func TestAssembler_BuildChangeMap_RanksPerAreaChurnAsSupportingMagnitude(t *test
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v3.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -214,7 +214,7 @@ func TestAssembler_BuildChangeMap_CallsOutSingleLargestFile(t *testing.T) {
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v4.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -247,7 +247,7 @@ func TestAssembler_BuildChangeMap_CallsOutNewTopLevelEntries(t *testing.T) {
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v5.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -278,7 +278,7 @@ func TestAssembler_BuildChangeMap_AllInOneExistingArea_RollsUpNoFalseHeadline(t 
 	}, "\n") + "\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v6.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -303,7 +303,7 @@ func TestAssembler_BuildChangeMap_ComputedAfterChangelogExclusion(t *testing.T) 
 	numstat := "5\t5\tapi/a.go\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	if _, err := a.BuildChangeMap(t.Context(), "v7.0.0", config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
@@ -321,7 +321,7 @@ func TestAssembler_BuildChangeMap_ConfiguredGlob_AppliedToBothCallsOnTopOfChange
 	numstat := "5\t5\tapi/a.go\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}})
 	if _, err := a.BuildChangeMap(t.Context(), "v7.0.0", config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
@@ -339,7 +339,7 @@ func TestAssembler_BuildChangeMap_MultipleGlobs_AllAppliedToBothCallsInOrder(t *
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
 	globs := []string{"skills/**/knowledge.cjs", "*.min.js"}
-	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: globs})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{Globs: globs})
 	if _, err := a.BuildChangeMap(t.Context(), "v8.0.0", config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestAssembler_BuildChangeMap_AbsentDiffExclude_ExcludesOnlyChangelog(t *tes
 	numstat := "5\t5\tapi/a.go\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	if _, err := a.BuildChangeMap(t.Context(), "v9.0.0", config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestAssembler_BuildChangeMap_NameStatusGitFails_SurfacesError(t *testing.T)
 		},
 	)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v9.9.9", config.DefaultMaxPromptBytes)
 	if err == nil {
 		t.Fatalf("BuildChangeMap returned nil error, want the git failure surfaced")
@@ -395,7 +395,7 @@ func TestAssembler_BuildChangeMap_CommandNotFound_SurfacesDistinguishableError(t
 	r := runner.NewFakeRunner()
 	r.SeedNotFound("git")
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.BuildChangeMap(t.Context(), "v1.0.0", config.DefaultMaxPromptBytes)
 	if err == nil {
 		t.Fatalf("BuildChangeMap returned nil error, want a command-not-found condition")

@@ -60,14 +60,14 @@ func piecesGeneration(t *testing.T, transport notes.Transport, files []pieceFile
 		nameStatus.WriteString("M\t" + f.path + "\n")
 		fmt.Fprintf(&numstat, "%d\t0\t%s\n", len(f.diff)/64, f.path)
 	}
-	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus.String(), numstat.String()), notes.ExcludeConfig{}).
+	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus.String(), numstat.String()), "/repo", notes.ExcludeConfig{}).
 		BuildChangeMap(t.Context(), "v1.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
 	cfg := config.Config{MaxPromptBytes: len(notes.ComposePrompt(notes.DefaultPrompt, changeMap, "")) + pieceRoomOverFixed}
 	r := seedNormalPathGit(t, diff.String(), nameStatus.String(), numstat.String())
-	return notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir()), cfg
+	return notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir()), cfg
 }
 
 // runPieces runs an over-cap Generate over files and returns the cap it ran under.

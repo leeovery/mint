@@ -33,7 +33,7 @@ func nameStatusOf(lines ...[]string) string {
 func buildMap(t *testing.T, nameStatus string, maxPromptBytes int) string {
 	t.Helper()
 	r := seedChangeMapGit(t, nameStatus, "10\t2\tcore/run.go\n")
-	got, err := notes.NewAssembler(r, notes.ExcludeConfig{}).BuildChangeMap(t.Context(), "v1.0.0", maxPromptBytes)
+	got, err := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}).BuildChangeMap(t.Context(), "v1.0.0", maxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestGenerator_Generate_SinglePassCarriesCondensedMap(t *testing.T) {
 	transport := &recordingTransport{body: "notes"}
 	cfg := config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	if _, err := gen.Generate(t.Context(), "v1.0.0", cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestGenerator_Generate_ConfiguredCapSetsTheMapsShare(t *testing.T) {
 	transport := &recordingTransport{body: "notes"}
 	cfg := config.Config{MaxPromptBytes: 20_000}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	if _, err := gen.Generate(t.Context(), "v1.0.0", cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}

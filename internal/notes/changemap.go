@@ -14,9 +14,9 @@ import (
 // precedes the diff in the prompt to tell the AI what to prioritize; it is NOT a
 // restatement of the diff.
 //
-// Two cheap git calls feed it, run cwd-relative like the other engine git calls and
-// AFTER the SAME exclusion set the diff uses (the shared excludePathspecs, on BOTH),
-// so excluded churn never appears in the map:
+// Two cheap git calls feed it, run at the repo root like the diff and AFTER the SAME
+// exclusion set the diff uses (the shared excludePathspecs, on BOTH), so excluded
+// churn never appears in the map:
 //
 //   - `git diff --name-status {lastTag}..HEAD -- . {excludePathspecs}` —
 //     A/M/D/R status per path, the STRUCTURAL NOVELTY signal.
@@ -48,13 +48,13 @@ func (a *Assembler) BuildChangeMap(ctx context.Context, lastTag string, maxPromp
 func (a *Assembler) BuildChangeMapForRange(ctx context.Context, diffRange string, maxPromptBytes int) (string, error) {
 	excludes := a.excludePathspecs()
 	nameStatusArgs := append([]string{"diff", "--name-status", diffRange, "--", "."}, excludes...)
-	nameStatusRes, err := a.runner.Run(ctx, "git", nameStatusArgs...)
+	nameStatusRes, err := a.runner.RunInDir(ctx, a.root, nil, "git", nameStatusArgs...)
 	if err != nil {
 		return "", fmt.Errorf("building change map name-status for %s: %w", diffRange, err)
 	}
 
 	numstatArgs := append([]string{"diff", "--numstat", diffRange, "--", "."}, excludes...)
-	numstatRes, err := a.runner.Run(ctx, "git", numstatArgs...)
+	numstatRes, err := a.runner.RunInDir(ctx, a.root, nil, "git", numstatArgs...)
 	if err != nil {
 		return "", fmt.Errorf("building change map numstat for %s: %w", diffRange, err)
 	}

@@ -33,7 +33,7 @@ func TestAssembler_AssembleRange_DiffsArbitraryRange(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.AssembleRange(t.Context(), "v1.3.0..v1.4.0")
 	if err != nil {
 		t.Fatalf("AssembleRange returned unexpected error: %v", err)
@@ -53,7 +53,7 @@ func TestAssembler_AssembleRange_AlwaysExcludesChangelog(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	if _, err := a.AssembleRange(t.Context(), "v1.0.0..v1.1.0"); err != nil {
 		t.Fatalf("AssembleRange returned unexpected error: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestAssembler_AssembleRange_PlainModeExcludesVersionFile(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{VersionFile: "release.txt"})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{VersionFile: "release.txt"})
 	if _, err := a.AssembleRange(t.Context(), "v2.0.0..v2.1.0"); err != nil {
 		t.Fatalf("AssembleRange returned unexpected error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestAssembler_AssembleRange_EmbeddedModeDoesNotExcludeVersionFile(t *testin
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/main.go b/main.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{
 		VersionFile:    "main.go",
 		VersionPattern: `RELEASE_VERSION="{version}"`,
 	})
@@ -111,7 +111,7 @@ func TestAssembler_AssembleRange_PathExclusionNotCommitExclusion(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{VersionFile: "release.txt"})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{VersionFile: "release.txt"})
 	if _, err := a.AssembleRange(t.Context(), "v1.4.0..v1.5.0"); err != nil {
 		t.Fatalf("AssembleRange returned unexpected error: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestAssembler_AssembleDiff_StillForwardRangeAfterRefactor(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	if _, err := a.AssembleDiff(t.Context(), "v1.2.3"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestAssembler_BuildChangeMapForRange_RidesSameExcludesOverRange(t *testing.
 		runner.ScriptedCall{Result: runner.Result{Stdout: "20\t0\tauth/login.go\n"}},
 	)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{VersionFile: "release.txt"})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{VersionFile: "release.txt"})
 	got, err := a.BuildChangeMapForRange(t.Context(), "v1.3.0..v1.4.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMapForRange returned unexpected error: %v", err)
@@ -199,7 +199,7 @@ func TestGenerator_GenerateFromRange_AssemblesRangePrependsChangeMapRunsAI(t *te
 	)
 	transport := &recordingTransport{body: body}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.GenerateFromRange(t.Context(), "v1.3.0..v1.4.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err != nil {
 		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
@@ -252,7 +252,7 @@ func TestGenerator_GenerateFromRange_SurfacesTransportFailure(t *testing.T) {
 	)
 	transport := &recordingTransport{err: errTransportFailure}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	_, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err == nil {
 		t.Fatal("GenerateFromRange returned nil error, want the transport failure surfaced")
@@ -280,7 +280,7 @@ func TestGenerator_GenerateFromRangeWithContext_AppendsOneTimeContextOverRange(t
 	)
 	transport := &recordingTransport{body: "regenerated body"}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.3.0..v1.4.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, oneTime)
 	if err != nil {
 		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
@@ -309,7 +309,7 @@ func TestGenerator_GenerateFromRange_DegenerateRangeReturnsStubNoAI(t *testing.T
 	r.Seed("git", runner.Result{Stdout: "   \n\n\t\n"}, nil)
 	transport := &recordingTransport{body: "must never be produced"}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes})
 	if err != nil {
 		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
@@ -334,7 +334,7 @@ func TestGenerator_GenerateFromRangeWithContext_DegenerateRangeReturnsStubNoAI(t
 	r.Seed("git", runner.Result{Stdout: ""}, nil)
 	transport := &recordingTransport{body: "must never be produced"}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, "lead with auth")
 	if err != nil {
 		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
@@ -366,13 +366,13 @@ func TestGenerator_GenerateFromRangeWithContext_EmptyContextMatchesGenerateFromR
 	root := t.TempDir()
 
 	plainTransport := &recordingTransport{body: "body"}
-	plainGen := notes.NewGenerator(notes.NewAssembler(seed(), notes.ExcludeConfig{}), plainTransport, root)
+	plainGen := notes.NewGenerator(notes.NewAssembler(seed(), "/repo", notes.ExcludeConfig{}), plainTransport, root)
 	if _, err := plainGen.GenerateFromRange(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}); err != nil {
 		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)
 	}
 
 	emptyTransport := &recordingTransport{body: "body"}
-	emptyGen := notes.NewGenerator(notes.NewAssembler(seed(), notes.ExcludeConfig{}), emptyTransport, root)
+	emptyGen := notes.NewGenerator(notes.NewAssembler(seed(), "/repo", notes.ExcludeConfig{}), emptyTransport, root)
 	if _, err := emptyGen.GenerateFromRangeWithContext(t.Context(), "v1.0.0..v1.1.0", config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}, ""); err != nil {
 		t.Fatalf("GenerateFromRangeWithContext returned unexpected error: %v", err)
 	}

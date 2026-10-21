@@ -16,7 +16,7 @@ import (
 func (s chunkScenario) generateErr(t *testing.T, transport notes.Transport) error {
 	t.Helper()
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root)
 	body, err := gen.Generate(t.Context(), "v1.0.0", s.cfg)
 	if err == nil {
 		t.Fatalf("Generate returned body %q and nil error, want a failure", body)
@@ -93,7 +93,7 @@ func TestGenerator_OverCap_NoRoomForDiff_ReportsNoProgress(t *testing.T) {
 	ct := &chunkTransport{mergeBody: "merged notes"}
 	log := &progressLog{ct: ct}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), ct, s.root).WithProgress(log)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), ct, s.root).WithProgress(log)
 
 	if _, err := gen.Generate(t.Context(), "v1.0.0", s.cfg); !errors.Is(err, notes.ErrNoRoomForDiff) {
 		t.Fatalf("Generate error = %v, want ErrNoRoomForDiff", err)
@@ -122,7 +122,7 @@ func (s chunkScenario) generateWithNotesOf(t *testing.T, notesSize int) (*sizedN
 	t.Helper()
 	st := &sizedNotesTransport{chunkTransport: chunkTransport{mergeBody: "merged notes"}, notesSize: notesSize}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), st, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), st, s.root)
 	body, err := gen.Generate(t.Context(), "v1.0.0", s.cfg)
 	return st, body, err
 }
@@ -185,7 +185,7 @@ func TestGenerator_OverCap_MergePromptOverCap_ReportsNoMerging(t *testing.T) {
 	st := &sizedNotesTransport{chunkTransport: chunkTransport{mergeBody: "merged notes"}, notesSize: 10_000}
 	log := &progressLog{ct: &st.chunkTransport}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), st, s.root).WithProgress(log)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), st, s.root).WithProgress(log)
 
 	if _, err := gen.Generate(t.Context(), "v1.0.0", s.cfg); !errors.Is(err, notes.ErrMergeTooLarge) {
 		t.Fatalf("Generate error = %v, want ErrMergeTooLarge", err)

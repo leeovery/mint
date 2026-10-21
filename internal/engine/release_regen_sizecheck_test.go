@@ -49,7 +49,7 @@ func newNearCapRelease(t *testing.T, paths []string, promptBytes int) nearCapRel
 	}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git", ScriptedOut(nameStatus.String()), ScriptedOut(numstat.String()))
-	changeMap, err := notes.NewAssembler(f, notes.ExcludeConfig{}).BuildChangeMapForRange(t.Context(), priorTag+"..HEAD", config.DefaultMaxPromptBytes)
+	changeMap, err := notes.NewAssembler(f, "/repo", notes.ExcludeConfig{}).BuildChangeMapForRange(t.Context(), priorTag+"..HEAD", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("building the Change Map: %v", err)
 	}

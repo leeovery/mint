@@ -91,16 +91,19 @@ type ExcludeConfig struct {
 // layered on top of the built-in always-excludes.
 type Assembler struct {
 	runner  runner.CommandRunner
+	root    string
 	exclude ExcludeConfig
 }
 
 // NewAssembler builds an Assembler over r with the consolidated ExcludeConfig. The
 // runner is injected for the same seam-testability reason as the sibling engine
-// packages. exclude carries the diff_exclude globs and the version_file strategy
-// inputs, all excluded ON TOP OF the built-in always-excludes. A zero ExcludeConfig
-// (no globs, no version_file) excludes the built-ins alone.
-func NewAssembler(r runner.CommandRunner, exclude ExcludeConfig) *Assembler {
-	return &Assembler{runner: r, exclude: exclude}
+// packages. root is the `git rev-parse --show-toplevel` root every diff and Change Map
+// read runs at: git reads their `-- .` and `:(exclude)` pathspecs cwd-relative, and the
+// globs are root-relative. exclude carries the diff_exclude globs and the version_file
+// strategy inputs, all excluded ON TOP OF the built-in always-excludes. A zero
+// ExcludeConfig (no globs, no version_file) excludes the built-ins alone.
+func NewAssembler(r runner.CommandRunner, root string, exclude ExcludeConfig) *Assembler {
+	return &Assembler{runner: r, root: root, exclude: exclude}
 }
 
 // Exclude adds globs to those a leaves out of every later diff and Change Map.
@@ -146,8 +149,9 @@ func forwardRange(lastTag string) string {
 // The pinned prefixes override any diff.noprefix, diff.mnemonicPrefix or custom
 // diff.srcPrefix/diff.dstPrefix in the operator's git config, so every file header
 // takes the "a/P b/P" form the chunker's headerPath reads.
-// It runs cwd-relative like the other engine git calls. GIT
-// performs every exclusion via the :(exclude) pathspecs; mint does no Go-side hunk
+// It runs at the repo root, so `-- .` covers the whole tree and git reads every
+// :(exclude) glob root-relative. GIT performs every exclusion via the :(exclude)
+// pathspecs; mint does no Go-side hunk
 // stripping or glob matching. The returned text is git's stdout verbatim — whatever
 // git emits flows through unfiltered. A consequence: a gitignored-but-force-added file
 // is tracked, so git includes it in this commit-to-commit diff unless a configured
@@ -183,7 +187,7 @@ func (a *Assembler) AssembleDiff(ctx context.Context, lastTag string) (string, e
 // runner.ErrCommandNotFound via errors.Is; any other non-zero exit is wrapped.
 func (a *Assembler) AssembleRange(ctx context.Context, diffRange string) (string, error) {
 	args := append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", diffRange, "--", "."}, a.excludePathspecs()...)
-	res, err := a.runner.Run(ctx, "git", args...)
+	res, err := a.runner.RunInDir(ctx, a.root, nil, "git", args...)
 	if err != nil {
 		return "", fmt.Errorf("assembling release diff for %s: %w", diffRange, err)
 	}

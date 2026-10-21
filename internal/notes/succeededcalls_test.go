@@ -33,7 +33,7 @@ func (s chunkScenario) generateReporting(t *testing.T, transport notes.Transport
 	t.Helper()
 	log := &succeededLog{}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, s.root).WithProgress(log)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root).WithProgress(log)
 	if _, err := gen.Generate(t.Context(), "v1.0.0", s.cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}

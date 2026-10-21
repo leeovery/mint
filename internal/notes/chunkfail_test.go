@@ -33,7 +33,7 @@ func awaitFailure(t *testing.T, done <-chan generation) error {
 func (s chunkScenario) startGenerateIn(t *testing.T, ctx context.Context, transport notes.Transport) <-chan generation {
 	t.Helper()
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root)
 	done := make(chan generation, 1)
 	go func() {
 		body, err := gen.Generate(ctx, "v1.0.0", s.cfg)

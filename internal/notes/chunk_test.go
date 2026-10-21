@@ -160,7 +160,7 @@ func (s chunkScenario) numstat() string {
 // scripted git output and cap.
 func (s chunkScenario) changeMap(t *testing.T) string {
 	t.Helper()
-	m, err := notes.NewAssembler(seedChangeMapGit(t, s.nameStatus(), s.numstat()), notes.ExcludeConfig{}).
+	m, err := notes.NewAssembler(seedChangeMapGit(t, s.nameStatus(), s.numstat()), "/repo", notes.ExcludeConfig{}).
 		BuildChangeMap(t.Context(), "v1.0.0", s.cfg.MaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -193,7 +193,7 @@ func (s chunkScenario) run(t *testing.T, mergeBody string) (*chunkTransport, str
 	t.Helper()
 	ct := &chunkTransport{mergeBody: mergeBody}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), ct, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), ct, s.root)
 	body, err := gen.Generate(t.Context(), "v1.0.0", s.cfg)
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -218,7 +218,7 @@ func TestGenerator_UnderCap_DiffPast50000Lines_MakesOneSinglePassCall(t *testing
 	r := seedNormalPathGit(t, diff, s.nameStatus(), s.numstat())
 	ct := &chunkTransport{mergeBody: "single-pass notes"}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), ct, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), ct, s.root)
 	body, err := gen.Generate(t.Context(), "v1.0.0", s.cfg)
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -399,14 +399,14 @@ func TestGenerator_OverCap_QuotedPathPacksInItsPathOrderPlace(t *testing.T) {
 	const numstat = "156\t0\talpha/a.go\n156\t0\tdocs/a.md\n156\t0\tdocs/caf\303\251.md\n156\t0\tzeta/z.go\n"
 	root := t.TempDir()
 
-	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus, numstat), notes.ExcludeConfig{}).
+	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus, numstat), "/repo", notes.ExcludeConfig{}).
 		BuildChangeMap(t.Context(), "v1.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
 	cfg := config.Config{MaxPromptBytes: len(notes.ComposePrompt(notes.DefaultPrompt, changeMap, "")) + 15_000}
 	ct := &chunkTransport{mergeBody: "merged notes"}
-	gen := notes.NewGenerator(notes.NewAssembler(seedNormalPathGit(t, diff, nameStatus, numstat), notes.ExcludeConfig{}), ct, root)
+	gen := notes.NewGenerator(notes.NewAssembler(seedNormalPathGit(t, diff, nameStatus, numstat), "/repo", notes.ExcludeConfig{}), ct, root)
 	if _, err := gen.Generate(t.Context(), "v1.0.0", cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -430,14 +430,14 @@ func overCapSections(t *testing.T, sections []string) []string {
 	diff := strings.Join(sections, "")
 	const nameStatus = "M\tx.go\n"
 	const numstat = "1\t0\tx.go\n"
-	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus, numstat), notes.ExcludeConfig{}).
+	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus, numstat), "/repo", notes.ExcludeConfig{}).
 		BuildChangeMap(t.Context(), "v1.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
 	cfg := config.Config{MaxPromptBytes: len(notes.ComposePrompt(notes.DefaultPrompt, changeMap, "")) + 15_000}
 	ct := &chunkTransport{mergeBody: "merged notes"}
-	gen := notes.NewGenerator(notes.NewAssembler(seedNormalPathGit(t, diff, nameStatus, numstat), notes.ExcludeConfig{}), ct, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(seedNormalPathGit(t, diff, nameStatus, numstat), "/repo", notes.ExcludeConfig{}), ct, t.TempDir())
 	if _, err := gen.Generate(t.Context(), "v1.0.0", cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -580,7 +580,7 @@ func TestGenerator_GenerateFromRange_OverCap_ChunksOverThatRange(t *testing.T) {
 	ct := &chunkTransport{mergeBody: "merged range notes"}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), ct, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), ct, s.root)
 	body, err := gen.GenerateFromRange(t.Context(), "v1.3.0..v1.4.0", s.cfg)
 	if err != nil {
 		t.Fatalf("GenerateFromRange returned unexpected error: %v", err)

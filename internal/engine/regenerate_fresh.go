@@ -118,7 +118,7 @@ func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transpor
 // exactly what the initial body production did and a re-merge goes through the same
 // release transport.
 func freshGenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config) *notes.Generator {
-	assembler := notes.NewAssembler(r, notesExcludeConfig(cfg))
+	assembler := notes.NewAssembler(r, root, notesExcludeConfig(cfg))
 	return notes.NewGenerator(assembler, resolveFreshTransport(r, transport, cfg), root)
 }
 

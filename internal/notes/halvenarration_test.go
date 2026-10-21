@@ -133,7 +133,7 @@ func (rt *recutTransport) recutsOf(slice string) int {
 func (s chunkScenario) startWithProgress(t *testing.T, transport notes.Transport, progress notes.Progress) <-chan generation {
 	t.Helper()
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, s.root).WithProgress(progress)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root).WithProgress(progress)
 	done := make(chan generation, 1)
 	go func() {
 		body, err := gen.Generate(t.Context(), "v1.0.0", s.cfg)
@@ -168,7 +168,7 @@ func TestGenerator_SinglePassClassifiedSize_ReportsTheRecutThenEachFinishedPartT
 	ot := &overflowTransport{classifyAnswer: "SIZE"}
 	log := &recutLog{}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), ot, s.root).WithProgress(log)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), ot, s.root).WithProgress(log)
 
 	if _, err := gen.Generate(t.Context(), "v1.0.0", s.cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)

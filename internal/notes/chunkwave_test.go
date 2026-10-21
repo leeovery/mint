@@ -148,7 +148,7 @@ type generation struct {
 func (s chunkScenario) startGenerate(t *testing.T, transport notes.Transport) <-chan generation {
 	t.Helper()
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root)
 	done := make(chan generation, 1)
 	go func() {
 		body, err := gen.Generate(t.Context(), "v1.0.0", s.cfg)

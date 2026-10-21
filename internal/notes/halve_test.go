@@ -70,7 +70,7 @@ func underCapScenario(t *testing.T, files []chunkFile) chunkScenario {
 func (s chunkScenario) generateOver(t *testing.T, transport notes.Transport) (string, error) {
 	t.Helper()
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, s.root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root)
 	return gen.Generate(t.Context(), "v1.0.0", s.cfg)
 }
 

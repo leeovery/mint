@@ -45,7 +45,7 @@ func (s chunkScenario) runWithProgress(t *testing.T) (*chunkTransport, *progress
 	ct := &chunkTransport{mergeBody: "merged notes"}
 	log := &progressLog{ct: ct}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), ct, s.root).WithProgress(log)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), ct, s.root).WithProgress(log)
 	if _, err := gen.Generate(t.Context(), "v1.0.0", s.cfg); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestGenerator_OverCap_FailedMerge_ReportsMergingButNotMerged(t *testing.T) 
 	mt := &mergeFailingTransport{}
 	log := &progressLog{ct: &mt.chunkTransport}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), mt, s.root).WithProgress(log)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), mt, s.root).WithProgress(log)
 	if _, err := gen.Generate(t.Context(), "v1.0.0", s.cfg); err == nil {
 		t.Fatal("Generate returned nil error for a failed merge")
 	}

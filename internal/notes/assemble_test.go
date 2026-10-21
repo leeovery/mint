@@ -67,7 +67,7 @@ func TestAssembler_AssembleDiff_PlainModeVersionFile_ExcludedAfterChangelog(t *t
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{VersionFile: "release.txt"})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{VersionFile: "release.txt"})
 	if _, err := a.AssembleDiff(t.Context(), "v1.0.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestAssembler_AssembleDiff_EmbeddedModeVersionFile_NotExcluded(t *testing.T
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/main.go b/main.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{
 		VersionFile:    "main.go",
 		VersionPattern: `RELEASE_VERSION="{version}"`,
 	})
@@ -103,7 +103,7 @@ func TestAssembler_AssembleDiff_NoVersionFile_AddsNothingForRule(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	if _, err := a.AssembleDiff(t.Context(), "v1.0.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestAssembler_AssembleDiff_VersionFileEntryFollowsGlobs(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{
 		Globs:       []string{"skills/**/knowledge.cjs", "*.min.js"},
 		VersionFile: "release.txt",
 	})
@@ -145,7 +145,7 @@ func TestAssembler_AssembleDiff_EmbeddedVersionFileAlsoInGlobs_ExcludedByGlobTie
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/main.go b/main.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{
 		Globs:          []string{"main.go"},
 		VersionFile:    "main.go",
 		VersionPattern: `RELEASE_VERSION="{version}"`,
@@ -167,7 +167,7 @@ func TestAssembler_AssembleDiff_DiffsLastTagToHEAD(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v1.2.3")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -187,7 +187,7 @@ func TestAssembler_AssembleDiff_ExcludesChangelogViaPathspec(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	if _, err := a.AssembleDiff(t.Context(), "v0.9.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestAssembler_AssembleDiff_ConfiguredGlob_AppliedOnTopOfChangelog(t *testin
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}})
 	if _, err := a.AssembleDiff(t.Context(), "v0.9.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestAssembler_AssembleDiff_MultipleGlobs_AllAppliedInOrder(t *testing.T) {
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
 	globs := []string{"skills/**/knowledge.cjs", "*.min.js"}
-	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: globs})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{Globs: globs})
 	if _, err := a.AssembleDiff(t.Context(), "v1.5.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestAssembler_AssembleDiff_GlobMatchingNothing_IsHarmless(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"no/such/path/**"}})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{Globs: []string{"no/such/path/**"}})
 	got, err := a.AssembleDiff(t.Context(), "v2.1.0")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -261,7 +261,7 @@ func TestAssembler_AssembleDiff_ForceAddedTrackedFileMatchingGlob_ExcludedByPath
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"dist/bundle.js"}})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{Globs: []string{"dist/bundle.js"}})
 	if _, err := a.AssembleDiff(t.Context(), "v3.0.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestAssembler_AssembleDiff_AbsentDiffExclude_ExcludesOnlyChangelog(t *testi
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	if _, err := a.AssembleDiff(t.Context(), "v0.8.0"); err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
 	}
@@ -293,7 +293,7 @@ func TestAssembler_AssembleDiff_ChangelogOnlyChange_ReturnsEmptyDiff(t *testing.
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: ""}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v2.0.0")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error on empty diff: %v", err)
@@ -316,7 +316,7 @@ func TestAssembler_AssembleDiff_ForceAddedGitignoredFile_PassesGitOutputThrough(
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v1.0.0")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -337,7 +337,7 @@ func TestAssembler_AssembleDiff_ReturnsPostExclusionDiffText(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: diff}, nil)
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v3.1.4")
 	if err != nil {
 		t.Fatalf("AssembleDiff returned unexpected error: %v", err)
@@ -357,7 +357,7 @@ func TestAssembler_AssembleDiff_CommandNotFound_SurfacesDistinguishableError(t *
 	r := runner.NewFakeRunner()
 	r.SeedNotFound("git")
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v1.0.0")
 	if err == nil {
 		t.Fatalf("AssembleDiff returned nil error, want a command-not-found condition")
@@ -381,7 +381,7 @@ func TestAssembler_AssembleDiff_GitFails_SurfacesError(t *testing.T) {
 		ExitCode: 128,
 	}, errors.New("exit status 128"))
 
-	a := notes.NewAssembler(r, notes.ExcludeConfig{})
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	got, err := a.AssembleDiff(t.Context(), "v9.9.9")
 	if err == nil {
 		t.Fatalf("AssembleDiff returned nil error, want the git failure surfaced")

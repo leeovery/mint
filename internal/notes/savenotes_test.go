@@ -63,7 +63,7 @@ func (s chunkScenario) startSaving(t *testing.T, ctx context.Context, transport 
 	t.Helper()
 	ns := &noteSaver{}
 	r := seedNormalPathGit(t, s.diff(), s.nameStatus(), s.numstat())
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, s.root).WithChunkNotes(ns.save)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, s.root).WithChunkNotes(ns.save)
 	done := make(chan generation, 1)
 	go func() {
 		body, err := gen.Generate(ctx, "v1.0.0", s.cfg)

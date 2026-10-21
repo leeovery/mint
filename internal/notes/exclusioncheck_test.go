@@ -382,7 +382,7 @@ func TestSelector_ExclusionCheck_RunsBeforeCacheReuseAndTheNotesCall(t *testing.
 	r := seedNormalPathGit(t, modifiedFileDiff("src/a.go", "+a\n"), "M\tsrc/a.go\n", "1\t0\tsrc/a.go\n")
 	tr := &orderTransport{}
 	root := t.TempDir()
-	assembler := notes.NewAssembler(r, notes.ExcludeConfig{})
+	assembler := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	sel := notes.NewSelector(notes.NewGenerator(assembler, tr, root), assembler, r, root).
 		WithExclusionCheck(notes.NewExclusionCheck(tr, nil, nil))
 	reuse := func(string, string) (string, bool, error) {
@@ -412,7 +412,7 @@ func TestSelector_ExclusionCheckCancelled_ReturnsTheCancelBeforeAnyNotesCall(t *
 		return "", context.Canceled
 	})
 	root := t.TempDir()
-	assembler := notes.NewAssembler(r, notes.ExcludeConfig{})
+	assembler := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	sel := notes.NewSelector(notes.NewGenerator(assembler, tr, root), assembler, r, root).
 		WithExclusionCheck(notes.NewExclusionCheck(tr, nil, nil))
 
@@ -431,7 +431,7 @@ func TestSelector_PromptFileMissing_FailsBeforeTheCheckCall(t *testing.T) {
 	r := seedNormalPathGit(t, modifiedFileDiff("src/a.go", "+a\n"), "M\tsrc/a.go\n", "1\t0\tsrc/a.go\n")
 	tr := &recordingTransport{body: "none"}
 	root := t.TempDir()
-	assembler := notes.NewAssembler(r, notes.ExcludeConfig{})
+	assembler := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
 	sel := notes.NewSelector(notes.NewGenerator(assembler, tr, root), assembler, r, root).
 		WithExclusionCheck(notes.NewExclusionCheck(tr, nil, nil))
 	cfg := normalCfg()

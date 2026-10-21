@@ -84,7 +84,7 @@ func TestGenerator_Generate_ReturnsValidatedAIBodyForPriorTagRelease(t *testing.
 	r := seedNormalPathGit(t, diff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
 	transport := &recordingTransport{body: body}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.Generate(t.Context(), "v1.0.0", normalCfg())
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -106,7 +106,7 @@ func TestGenerator_Generate_UsesBodyWholeNoParsingOrSplitting(t *testing.T) {
 	r := seedNormalPathGit(t, diff, "M\tapi/handler.go\n", "5\t5\tapi/handler.go\n")
 	transport := &recordingTransport{body: body}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.Generate(t.Context(), "v2.0.0", normalCfg())
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -128,7 +128,7 @@ func TestGenerator_Generate_ValidGenerationPassesThroughUnchanged(t *testing.T) 
 	r := seedNormalPathGit(t, diff, "M\tx.go\n", "1\t1\tx.go\n")
 	transport := &recordingTransport{body: body}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.Generate(t.Context(), "v3.0.0", normalCfg())
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -153,7 +153,7 @@ func TestGenerator_Generate_InvokesAssembleChangeMapComposeTransportInOrder(t *t
 	r := seedNormalPathGit(t, diff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
 	transport := &recordingTransport{body: "notes body"}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	if _, err := gen.Generate(t.Context(), "v1.0.0", normalCfg()); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestGenerator_Generate_AIInputIsExactlyChangeMapAndDiffAndPrompt(t *testing
 	transport := &recordingTransport{body: "body"}
 	root := t.TempDir()
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, root)
 	if _, err := gen.Generate(t.Context(), "v4.0.0", normalCfg()); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestGenerator_Generate_AIInputIsExactlyChangeMapAndDiffAndPrompt(t *testing
 	if err != nil {
 		t.Fatalf("ResolveInstructions returned unexpected error: %v", err)
 	}
-	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus, numstat), notes.ExcludeConfig{}).
+	changeMap, err := notes.NewAssembler(seedChangeMapGit(t, nameStatus, numstat), "/repo", notes.ExcludeConfig{}).
 		BuildChangeMap(t.Context(), "v4.0.0", config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
@@ -232,7 +232,7 @@ func TestGenerator_Generate_DiffExcludeGlobsReachAssembleDiff(t *testing.T) {
 	r := seedNormalPathGit(t, diff, "M\tapi/a.go\n", "1\t1\tapi/a.go\n")
 	transport := &recordingTransport{body: "notes body"}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{Globs: []string{"skills/**/knowledge.cjs"}}), transport, t.TempDir())
 	got, err := gen.Generate(t.Context(), "v5.0.0", normalCfg())
 	if err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
@@ -258,7 +258,7 @@ func TestGenerator_Generate_TransportTimeout_SurfacesTypedFailureCausePreserved(
 	r := seedNormalPathGit(t, diff, "M\ta.go\n", "1\t1\ta.go\n")
 	transport := &recordingTransport{err: ai.ErrTimeout}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.Generate(t.Context(), "v6.0.0", normalCfg())
 	if err == nil {
 		t.Fatal("Generate returned nil error on a transport timeout, want ai.ErrTimeout surfaced")
@@ -280,7 +280,7 @@ func TestGenerator_Generate_TransportNotesFailure_SurfacesTypedFailureCausePrese
 	r := seedNormalPathGit(t, diff, "M\ta.go\n", "1\t1\ta.go\n")
 	transport := &recordingTransport{err: ai.ErrGenerationFailed}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.Generate(t.Context(), "v7.0.0", normalCfg())
 	if err == nil {
 		t.Fatal("Generate returned nil error on a transport notes failure, want ai.ErrGenerationFailed surfaced")
@@ -304,7 +304,7 @@ func TestGenerator_GenerateWithContext_AppendsOneTimeContextToPrompt(t *testing.
 	r := seedNormalPathGit(t, diff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
 	transport := &recordingTransport{body: "notes body"}
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	got, err := gen.GenerateWithContext(t.Context(), "v1.0.0", normalCfg(), oneTime)
 	if err != nil {
 		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
@@ -330,14 +330,14 @@ func TestGenerator_GenerateWithContext_EmptyContextIsIdenticalToGenerate(t *test
 
 	plainRunner := seedNormalPathGit(t, diff, nameStatus, numstat)
 	plainTransport := &recordingTransport{body: "body"}
-	plainGen := notes.NewGenerator(notes.NewAssembler(plainRunner, notes.ExcludeConfig{}), plainTransport, root)
+	plainGen := notes.NewGenerator(notes.NewAssembler(plainRunner, "/repo", notes.ExcludeConfig{}), plainTransport, root)
 	if _, err := plainGen.Generate(t.Context(), "v4.0.0", normalCfg()); err != nil {
 		t.Fatalf("Generate returned unexpected error: %v", err)
 	}
 
 	emptyRunner := seedNormalPathGit(t, diff, nameStatus, numstat)
 	emptyTransport := &recordingTransport{body: "body"}
-	emptyGen := notes.NewGenerator(notes.NewAssembler(emptyRunner, notes.ExcludeConfig{}), emptyTransport, root)
+	emptyGen := notes.NewGenerator(notes.NewAssembler(emptyRunner, "/repo", notes.ExcludeConfig{}), emptyTransport, root)
 	if _, err := emptyGen.GenerateWithContext(t.Context(), "v4.0.0", normalCfg(), ""); err != nil {
 		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestGenerator_GenerateWithContext_DoesNotMutateConfigContext(t *testing.T) 
 	cfg := normalCfg()
 	cfg.Release.Context = "persistent project context"
 
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 	if _, err := gen.GenerateWithContext(t.Context(), "v8.0.0", cfg, oneTime); err != nil {
 		t.Fatalf("GenerateWithContext returned unexpected error: %v", err)
 	}

@@ -1013,7 +1013,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	// NewSelector documents. On the forward path the version_file rule is inert (notes
 	// generate at Stage 4 precedes the version write at Stage 5, so the file is unchanged
 	// at notes time).
-	assembler := notes.NewAssembler(deps.Runner, notesExcludeConfig(cfg))
+	assembler := notes.NewAssembler(deps.Runner, root, notesExcludeConfig(cfg))
 	transport := aiTransport(deps, cfg)
 	generator := notes.NewGenerator(assembler, transport, root)
 	selecting := chunkNotes.sinks(stage).wire(generator)

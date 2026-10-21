@@ -70,7 +70,7 @@ func classifyPromptFor(t *testing.T, failure *ai.GenerationError) string {
 	t.Helper()
 	st := &sequenceTransport{replies: []reply{{err: failure}, {body: "OTHER"}}}
 	r := seedNormalPathGit(t, "diff --git a/a.go b/a.go\n+x\n", "M\ta.go\n", "1\t0\ta.go\n")
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), st, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), st, t.TempDir())
 
 	if _, err := gen.Generate(t.Context(), "v1.0.0", normalCfg()); err == nil {
 		t.Fatal("Generate returned nil error, want the failed call's failure")
@@ -92,7 +92,7 @@ func TestGenerator_SinglePassFailsWithOutput_ToolGetsThePromptTwiceThenOneClassi
 	r.SeedSequence("claude", failed, failed, runner.ScriptedCall{Result: runner.Result{Stdout: "SIZE\n"}})
 	transport := ai.NewTransport(r, ai.Config{AICommand: "claude", Timeout: runner.DurationPtr(0)})
 	root := t.TempDir()
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, root)
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, root)
 
 	if _, err := gen.Generate(t.Context(), "v1.0.0", normalCfg()); err == nil {
 		t.Fatal("Generate returned nil error, want the failed call's failure")
@@ -307,7 +307,7 @@ func TestGenerator_ClassifyCallReturnsEmptyFirst_TransportRetriesItOnce(t *testi
 		runner.ScriptedCall{Result: runner.Result{Stdout: "OTHER\n"}},
 	)
 	transport := ai.NewTransport(r, ai.Config{AICommand: "claude", Timeout: runner.DurationPtr(0)})
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), transport, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir())
 
 	if _, err := gen.Generate(t.Context(), "v1.0.0", normalCfg()); err == nil {
 		t.Fatal("Generate returned nil error, want the failed call's failure")
@@ -334,7 +334,7 @@ func TestGenerator_ClassifyAnswersOther_TheFailureIsTheNotesCallsOwn(t *testing.
 	failure := &ai.GenerationError{Stdout: "Not logged in · Please run /login\n", ExitCode: 1}
 	st := &sequenceTransport{replies: []reply{{err: failure}, {body: "OTHER"}}}
 	r := seedNormalPathGit(t, "diff --git a/a.go b/a.go\n+x\n", "M\ta.go\n", "1\t0\ta.go\n")
-	gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), st, t.TempDir())
+	gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), st, t.TempDir())
 
 	_, err := gen.Generate(t.Context(), "v1.0.0", normalCfg())
 
@@ -370,7 +370,7 @@ func TestGenerator_ClassifyPromptAgainstTheCap_SentOnlyWhenItFits(t *testing.T) 
 
 			st := &sequenceTransport{replies: []reply{{err: failure}, {body: "OTHER"}}}
 			r := seedNormalPathGit(t, "diff --git a/a.go b/a.go\n+x\n", "M\ta.go\n", "1\t0\ta.go\n")
-			gen := notes.NewGenerator(notes.NewAssembler(r, notes.ExcludeConfig{}), st, t.TempDir())
+			gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), st, t.TempDir())
 			cfg := normalCfg()
 			cfg.MaxPromptBytes = tc.cap
 
