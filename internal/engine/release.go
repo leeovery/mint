@@ -1116,7 +1116,7 @@ func (a *answersCommit) write() error {
 }
 
 func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
-	return record.CommitFile(ctx, m, a.root, config.FileName, answersSubject(a.tag))
+	return record.CommitFile(ctx, m, a.root, config.FileName, record.AnswersSubject(a.tag))
 }
 
 // recommit records the answers again on whatever HEAD is now. On failure it returns
@@ -1129,7 +1129,7 @@ func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore st
 	if err := a.commit(ctx, m); err != nil {
 		root := cmdline.Quote(a.root)
 		manual = "commit the exclusion answers mint wrote to " + config.FileName +
-			" (`git -C " + root + " add " + config.FileName + "` then `git -C " + root + " commit -m " + cmdline.Quote(answersSubject(a.tag)) + "`)"
+			" (`git -C " + root + " add " + config.FileName + "` then `git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)) + "`)"
 		return manual, gitOutput(err), err
 	}
 	return "", "", nil
@@ -1590,13 +1590,6 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 // from the release bookkeeping commit (`{commit_prefix} Release {tag}`).
 func pretagArtifactSubject(tag string) string {
 	return "chore(release): pre-tag artifacts for " + tag
-}
-
-// answersSubject is the fixed subject of the commit carrying the exclusion check's
-// answers: a constant prefix, never commit_prefix, since the commit records how
-// releases are made rather than being the release.
-func answersSubject(tag string) string {
-	return "chore(release): release-notes path answers for " + tag
 }
 
 // buildHookEnv assembles the shared MINT_* hook environment from the run's computed

@@ -195,6 +195,20 @@ func BookkeepingSubject(commitPrefix, tag string) string {
 	return fmt.Sprintf("%s Release %s", commitPrefix, tag)
 }
 
+const answersSubjectPrefix = "chore(release): release-notes path answers for "
+
+// AnswersSubject is the subject of the commit recording the exclusion check's answers
+// for tag. Its prefix is fixed, never commit_prefix: the commit records how releases
+// are made rather than being the release.
+func AnswersSubject(tag string) string {
+	return answersSubjectPrefix + tag
+}
+
+// IsAnswersSubject reports whether subject is an answers commit's, for any tag.
+func IsAnswersSubject(subject string) bool {
+	return strings.HasPrefix(subject, answersSubjectPrefix)
+}
+
 // BookkeepingWillCommit is the SINGLE commit-or-not predicate for the bookkeeping
 // commit: it reports whether CommitBookkeeping will make a commit for the given
 // net-change signals — exactly when bookkeepingPaths yields something to stage (the

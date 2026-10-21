@@ -14,7 +14,7 @@ import (
 // SAME builder on_notes_failure=fallback uses, so the two paths can never drift:
 //
 //   - the commit-subject list since the last tag (`git log --format=%s`);
-//   - else (no commits since the last tag) the maintenance-release body, so the tag
+//   - else (no subject left once mint's answers commits are out) the maintenance-release body, so the tag
 //     body is never empty.
 //
 // CONTRACT — NO AI, NO ABORT: this file imports nothing AI-related (no internal/ai),

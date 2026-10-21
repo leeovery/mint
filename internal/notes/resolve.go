@@ -35,7 +35,7 @@ func rangeSubjects(ctx context.Context, r runner.CommandRunner, revRange string)
 //     original failure with %w so errors.Is(abortErr, <cause>) still holds. It returns
 //     NO body and runs NO git (no fallback record is built when aborting).
 //   - "fallback" → FALLBACK mode. The body comes from the SHARED resolveFallbackBody
-//     selector: the commit-subject list since the last tag, else (empty log) the
+//     selector: the commit-subject list since the last tag, else (no subject left) the
 //     maintenance-release body. Return (body, nil).
 //   - any OTHER value → ABORT. Load already rejects such values; aborting keeps an
 //     unvalidated Release from tagging on a misconfigured value.
@@ -67,7 +67,7 @@ func resolveFallbackBody(ctx context.Context, r runner.CommandRunner, lastTag st
 	if err != nil {
 		return "", err
 	}
-	return floorEmptySubjects(body), nil
+	return subjectBody(body), nil
 }
 
 // VersionNoAIBody is the commit-subject list over a released version's own revRange,
@@ -80,7 +80,7 @@ func VersionNoAIBody(ctx context.Context, r runner.CommandRunner, revRange, tag 
 	if err != nil {
 		return "", err
 	}
-	return floorEmptySubjects(withoutBookkeepingCommit(body, tag)), nil
+	return subjectBody(withoutBookkeepingCommit(body, tag)), nil
 }
 
 // withoutBookkeepingCommit drops the first subject when it is tag's bookkeeping
@@ -94,11 +94,24 @@ func withoutBookkeepingCommit(subjects, tag string) string {
 	return subjects
 }
 
-func floorEmptySubjects(body string) string {
+// Answers commits are left out: they record how releases are made, not what a
+// release holds.
+func subjectBody(subjects string) string {
+	body := withoutAnswersCommits(subjects)
 	if strings.TrimSpace(body) == "" {
 		return StubBody()
 	}
 	return body
+}
+
+func withoutAnswersCommits(subjects string) string {
+	var kept strings.Builder
+	for _, line := range strings.SplitAfter(subjects, "\n") {
+		if !record.IsAnswersSubject(line) {
+			kept.WriteString(line)
+		}
+	}
+	return kept.String()
 }
 
 // abortError builds the abort-mode error: a readable cause phrase derived from the

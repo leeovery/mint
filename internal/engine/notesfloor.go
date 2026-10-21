@@ -192,7 +192,7 @@ func releaseNotesFloor(ctx context.Context, deps ReleaseDeps, lastTag, savedNote
 }
 
 // regenerateNotesFloor is the floor's choice on a single-version regenerate, its
-// commit subjects those of the version's own range less its bookkeeping commit.
+// commit subjects those VersionNoAIBody lists over the version's own range.
 func regenerateNotesFloor(ctx context.Context, deps ReleaseDeps, req RegenerateRunRequest, savedNotes string) (string, error) {
 	subjects := func(ctx context.Context) (string, error) {
 		return notes.VersionNoAIBody(ctx, deps.Runner, req.DiffRange, req.Tag)
