@@ -93,9 +93,13 @@ func newAnsweredAbort(t *testing.T, rec *presentertest.RecordingPresenter, confi
 	return &answeredAbort{root: root, atStart: config, f: f, deps: deps}
 }
 
-// unwound scripts the unwind's reset and its re-commit of the answers.
-func (a *answeredAbort) unwound() *answeredAbort {
-	a.f.SeedSequence("git", ScriptedOut(""), ScriptedOut(""), ScriptedOut(""))
+// answersSHA is the answers commit's sha, as the unwind reads it.
+const answersSHA = "answerssha"
+
+// unwound scripts the unwind's read of the answers commit's sha, beforeReset, then the
+// reset and its re-commit of the answers.
+func (a *answeredAbort) unwound(beforeReset ...runner.ScriptedCall) *answeredAbort {
+	a.f.SeedSequence("git", append(append([]runner.ScriptedCall{ScriptedOut(answersSHA + "\n")}, beforeReset...), ScriptedOut(""), ScriptedOut(""), ScriptedOut(""))...)
 	return a
 }
 
@@ -275,9 +279,10 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name    string
-		tail    []runner.ScriptedCall
-		summary string
+		name        string
+		tail        []runner.ScriptedCall
+		beforeReset []runner.ScriptedCall
+		summary     string
 	}{
 		{
 			name:    "the bookkeeping commit fails",
@@ -292,9 +297,9 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 				ScriptedOut(githubRemoteURL), // remote get-url origin
 				ScriptedOut(""),              // tag -a v1.3.0 -F -
 				pushRejected(),               // push --atomic origin HEAD v1.3.0
-				ScriptedOut(""),              // unwind: tag -d v1.3.0
 			},
-			summary: "reset 3 commits and deleted tag " + minorTagV130 + "; kept the answers commit on the starting commit; repo clean",
+			beforeReset: []runner.ScriptedCall{ScriptedOut("")}, // tag -d v1.3.0
+			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; kept the answers commit on the starting commit; repo clean",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -304,7 +309,7 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 			a := newAnsweredAbort(t, rec, preTagHookConfig)
 			a.f.SeedSequence("git", tc.tail...)
 			a.f.Seed("gh", runner.Result{}, nil)
-			a.unwound()
+			a.unwound(tc.beforeReset...)
 
 			err := a.release(t.Context())
 

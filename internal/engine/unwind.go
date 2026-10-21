@@ -35,6 +35,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"mint/internal/fsutil"
 	"mint/internal/git"
@@ -117,12 +118,13 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	// triggered the abort, stranding mint's commit(s) and tag.
 	ctx = context.WithoutCancel(ctx)
 
+	restore := answersRestoreStep(ctx, deps, made)
 	tagDeleted, tagOK := deleteTagIfMade(ctx, deps, start, made)
 	// Reverted before the reset, which then returns a tracked file to the starting
 	// commit whatever the write found there.
 	editOK := revertEditIfMade(ctx, deps, start, made.answersEdit)
-	commitsReset, resetOK := resetCommitsIfMade(ctx, deps, start, made)
-	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK)
+	commitsReset, resetOK := resetCommitsIfMade(ctx, deps, start, made, restore)
+	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK, restore)
 
 	if tagDeleted || commitsReset {
 		deps.Presenter.Unwound(unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: tagOK && editOK && resetOK && keptOK}))
@@ -131,16 +133,38 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 }
 
 // recommitAnswersIfKept commits the exclusion answers again on the commit the reset
-// returned to, reporting whether they were re-committed AND whether nothing failed.
-// A failed reset left the answers commit on the branch, so it is not re-committed.
-func recommitAnswersIfKept(ctx context.Context, deps ReleaseDeps, answers *answersCommit, resetOK bool) (kept, ok bool) {
+// returned to, reporting whether they were re-committed AND whether nothing failed; a
+// failure warns with the manual step that restores them. A failed reset left the
+// answers commit on the branch, so it is not re-committed.
+func recommitAnswersIfKept(ctx context.Context, deps ReleaseDeps, answers *answersCommit, resetOK bool, restore string) (kept, ok bool) {
 	if answers == nil || !resetOK {
 		return false, true
 	}
-	if err := answers.recommit(ctx, deps.Mutator); err != nil {
+	if manual, output, err := answers.recommit(ctx, deps.Mutator, restore); err != nil {
+		warnUnwindIncomplete(deps.Presenter, manual, output)
 		return false, false
 	}
 	return true, true
+}
+
+// answersRestoreStep is the manual step that puts the answers commit back on top of the
+// starting commit once a reset has dropped it, or "" when made holds no answers commit.
+// It names the commit by sha, read while HEAD is still the tip mint built. Should that
+// read fail it falls back to ORIG_HEAD, which every reset that moves HEAD sets to the
+// tip it moved off, though a later reset, stash or merge moves it again.
+func answersRestoreStep(ctx context.Context, deps ReleaseDeps, made MadeState) string {
+	if made.keptAnswers == nil {
+		return ""
+	}
+	below := ""
+	if above := made.Commits - made.keptAnswers.position; above > 0 {
+		below = fmt.Sprintf("~%d", above)
+	}
+	commit := "ORIG_HEAD" + below
+	if res, err := deps.Mutator.Run(ctx, "git", "rev-parse", "HEAD"+below); err == nil && strings.TrimSpace(res.Stdout) != "" {
+		commit = strings.TrimSpace(res.Stdout)
+	}
+	return "restore the exclusion answers commit on top (`git cherry-pick " + commit + "`)"
 }
 
 // deleteTagIfMade deletes the local tag mint created this run, returning whether a
@@ -168,11 +192,15 @@ func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, ma
 // start.KeepOut's. A non-zero exit is no longer discarded: it is surfaced as a
 // manual-cleanup Warn naming the steps left so the user is not told the repo is clean
 // when mint's commit(s) still live — the recovery DID NOT complete.
-func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState) (issued, ok bool) {
+func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, restore string) (issued, ok bool) {
 	if made.Commits <= 0 {
 		return false, true
 	}
 	if manual, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut}); err != nil {
+		// The manual reset drops the answers commit along with mint's other commits.
+		if restore != "" {
+			manual += ", then " + restore
+		}
 		warnUnwindIncomplete(deps.Presenter, manual, err.Error())
 		return true, false
 	}
@@ -342,7 +370,7 @@ func surgicalSummary(tag string, made MadeState, outcome unwindOutcome) string {
 
 // summaryTail selects the Unwound summary's trailing status: the "; repo clean"
 // confirmation when all recovery succeeded, or the "; manual cleanup required" notice
-// when a reset/tag-delete failed (the failure was already warned with the exact manual
+// when a recovery step failed (the failure was already warned with the exact manual
 // step).
 func summaryTail(clean bool) string {
 	if clean {

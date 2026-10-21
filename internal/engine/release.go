@@ -40,6 +40,7 @@ import (
 	"mint/internal/ai"
 	"mint/internal/aitransport"
 	"mint/internal/bytesize"
+	"mint/internal/cmdline"
 	"mint/internal/config"
 	"mint/internal/git"
 	"mint/internal/gitrepo"
@@ -550,6 +551,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
 	if answers.landed {
 		made.Commits++
+		answers.position = made.Commits
 		made.keptAnswers = answers
 	}
 	made.answersEdit = answers.edit
@@ -1072,11 +1074,13 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 
 // answersCommit records the exclusion check's answers in root's .mint.toml and
 // commits that file alone for tag's release; landed reports whether the commit was
-// made, and edit is the write when it is not.
+// made, position is how many of mint's commits it brought the run to, and edit is the
+// write when it is not.
 type answersCommit struct {
 	root, tag string
 	globs     config.ReleaseGlobs
 	landed    bool
+	position  int
 	edit      *fileEdit
 }
 
@@ -1115,12 +1119,20 @@ func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
 	return record.CommitFile(ctx, m, a.root, config.FileName, answersSubject(a.tag))
 }
 
-// recommit records the answers again on whatever HEAD is now.
-func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator) error {
+// recommit records the answers again on whatever HEAD is now. On failure it returns
+// the manual step that finishes the re-commit, given restore as the step that brings
+// back the answers commit itself, and the failing tool's own message.
+func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore string) (manual, output string, err error) {
 	if err := a.write(); err != nil {
-		return err
+		return restore, err.Error(), err
 	}
-	return a.commit(ctx, m)
+	if err := a.commit(ctx, m); err != nil {
+		root := cmdline.Quote(a.root)
+		manual = "commit the exclusion answers mint wrote to " + config.FileName +
+			" (`git -C " + root + " add " + config.FileName + "` then `git -C " + root + " commit -m " + cmdline.Quote(answersSubject(a.tag)) + "`)"
+		return manual, gitOutput(err), err
+	}
+	return "", "", nil
 }
 
 // answersRecordingError is the exclusion answers failing to be written or committed;
@@ -1317,8 +1329,8 @@ func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, chunkNotes 
 // resolveHEAD reads the current commit SHA via `git rev-parse HEAD` through the
 // runner seam (every git op goes through the seam). It captures the clean starting
 // state before the gate — the exact sha the surgical unwind resets back to. The
-// surgical unwind no longer probes HEAD (it drives off the tracked MadeState), so
-// this is the run's single rev-parse HEAD.
+// surgical unwind never probes HEAD to decide what to undo; it drives off the tracked
+// MadeState.
 func resolveHEAD(ctx context.Context, r runner.CommandRunner) (string, error) {
 	res, err := r.Run(ctx, "git", "rev-parse", "HEAD")
 	if err != nil {
