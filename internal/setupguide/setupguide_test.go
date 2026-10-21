@@ -1,8 +1,10 @@
 package setupguide_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"mint/internal/config"
 	"mint/internal/configtest"
@@ -391,7 +393,7 @@ func TestGuide_AITransportParagraphCoversThePerCallCapAndChunking(t *testing.T) 
 
 	for _, want := range []string{
 		"max_prompt_bytes",
-		"default 1,500,000",
+		"default " + strconv.Itoa(config.DefaultMaxPromptBytes) + " bytes",
 		"chunk calls",
 		"one merge call",
 		"Chunking has no setting",
@@ -408,13 +410,30 @@ func TestGuide_AITransportParagraphNamesBothShippedTimeouts(t *testing.T) {
 	paragraph := aiTransportParagraph(t)
 	flat := strings.Join(strings.Fields(paragraph), " ")
 
-	const want = "per-attempt timeout (seconds; default 180 for release, 60 for commit; 0 means unbounded)"
+	want := "per-attempt timeout (seconds; default " + wholeSeconds(config.DefaultReleaseTimeout) +
+		" for release, " + wholeSeconds(config.DefaultCommitTimeout) + " for commit; 0 means unbounded)"
 	if !strings.Contains(flat, want) {
 		t.Errorf("AI-transport paragraph must carry %q; got:\n%s", want, paragraph)
 	}
 	if strings.Contains(flat, "default 60;") {
 		t.Errorf("AI-transport paragraph still states a single default 60; got:\n%s", paragraph)
 	}
+}
+
+// The cap is stated in the ungrouped digits an agent writes in .mint.toml and
+// the config reference's own cell uses — never a thousands-grouped copy.
+func TestGuide_StatesThePromptCapUngrouped(t *testing.T) {
+	t.Parallel()
+
+	if strings.Contains(setupguide.Guide(), "1,500,000") {
+		t.Error("guide still states the prompt cap thousands-grouped as 1,500,000")
+	}
+}
+
+// wholeSeconds renders d in the integer seconds a timeout key takes, matching
+// how the guide states a shipped timeout.
+func wholeSeconds(d time.Duration) string {
+	return strconv.Itoa(int(d / time.Second))
 }
 
 func TestGuide_ConfigReferenceNamesShippedTimeouts(t *testing.T) {

@@ -36,7 +36,9 @@
 package setupguide
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
 	"mint/internal/config"
 )
@@ -113,7 +115,10 @@ change with the user.`
 // pre-self-contained guide delegated to mint's README; emitting it here is what
 // removes the only reason the agent had to reach for an external, possibly-stale
 // doc. The release one-liner stays short and defers to the pipeline section to
-// avoid restating (and drifting from) the stage model.
+// avoid restating (and drifting from) the stage model. Every shipped default the
+// transport paragraph states is spliced from its config constant, never
+// hand-typed, so the prose cannot disagree with the config reference, which
+// derives from the same constants.
 func overview() string {
 	return MarkerOverview + `
 ## What mint does
@@ -157,10 +162,10 @@ as well. The shipped default is ` + "`" + config.DefaultAICommand + "`" + `.
 It runs claude lean: no CLAUDE.md files, no Claude Code system prompt, no tools,
 so a call carries mint's prompt and nothing else. Conventions the user keeps in
 CLAUDE.md for notes or commit messages belong in [release] / [commit] context or
-prompt. The transport applies a per-attempt timeout (seconds; default 180 for
-release, 60 for commit; 0 means unbounded), retries bad or empty output exactly
+prompt. The transport applies a per-attempt timeout (seconds; default ` + wholeSeconds(config.DefaultReleaseTimeout) + ` for
+release, ` + wholeSeconds(config.DefaultCommitTimeout) + ` for commit; 0 means unbounded), retries bad or empty output exactly
 once, and treats a timeout as FATAL — reported at once, never retried. Every call
-mint makes is capped by max_prompt_bytes (shared top level only; default 1,500,000
+mint makes is capped by max_prompt_bytes (shared top level only; default ` + strconv.Itoa(config.DefaultMaxPromptBytes) + `
 bytes of composed prompt: instructions, Change Map, diff and closing reminder; the
 AI tool's own overhead sits outside it). Release notes whose single prompt would be
 over the cap skip the single call: the diff's files are packed in path order into
@@ -173,6 +178,13 @@ the notes in the editor, or an abort, and an unattended one stops with next move
 fitted to the cause, or fall back to the commit-subject list, the one non-AI body. Commit drops to the user's $EDITOR.
 If you pin a slower model for a verb, raise that verb's timeout in the SAME table —
 mint does not auto-bump it.`
+}
+
+// wholeSeconds renders d in the integer seconds a timeout key takes — the form
+// the config reference's Default cells use (config/metadata.go's seconds), so
+// the transport paragraph and the reference state a shipped timeout alike.
+func wholeSeconds(d time.Duration) string {
+	return strconv.Itoa(int(d / time.Second))
 }
 
 // procedure emits the ordered inspect-and-map flow. Step 1 (cwd-confirm) is the
