@@ -202,6 +202,33 @@ When in doubt, leave it out: the AI writes a headline only when one body of work
 
 ---
 
+## Picking The Headline
+
+### Context
+
+What the AI judges the headline from. mint's notes AI reads the instructions, the Change Map and the post-exclusion diff — nothing else. Commit history is deliberately not an input: the release-notes-quality discussion dropped commit intent and made the diff the sole source of truth. In mint's own repo the planning and discussion trees are in `diff_exclude` (`.mint.toml`: `diff_exclude = ['.workflows', '.claude', '.tick', '.agntc', '.github']`), so the work that makes a feature's weight obvious to the people who built it never reaches the AI. The known limit — the session that built a feature knows the headline better than the diff does — is the supplied-headline question (Room For A Supplied Headline), not this one.
+
+The Change Map orders salience novelty-first: new directories lead, weighted above magnitude (`internal/notes/changemap.go`), and the default prompt tells the AI "new structure (a whole new package or directory) is the strongest signal — weight it above raw size".
+
+### Journey
+
+Raised by the background review (review-001 F5): the session had identified the next release's main work by counting commit scopes, which the AI never sees. Measured against what the AI does see, the problem is sharper than an absent signal — mint's strongest signal points the wrong way on exactly the release this feature is for:
+
+- The only directories new since v0.0.11 are two small helpers (`for d in $(git ls-tree -d -r --name-only HEAD internal cmd); do git cat-file -e v0.0.11:$d 2>/dev/null || echo "NEW $d"; done` → `NEW internal/bytesize`, `NEW internal/cmdline`), together `git diff --numstat v0.0.11..HEAD -- internal/bytesize internal/cmdline | awk '{a+=$1} END {print a}'` → 436 added lines.
+- The diff-sizing work lives in the existing notes package: `git diff --numstat v0.0.11..HEAD -- internal/notes | awk '{a+=$1} END {print a}'` → 9749, of `git diff --numstat v0.0.11..HEAD -- . ':!.workflows' ':!.claude' ':!.tick' ':!.agntc' ':!.github' | awk '{a+=$1} END {print a}'` → 40888 added lines after exclusion.
+
+In today's format a misread salience only reorders a list. With a headline, the novelty signal can hand the AI a confident wrong pick — and When in doubt, leave it out (No Clear Headline) does not catch it, because mint's own signal is what makes the AI sure.
+
+The novelty-first weighting was built to stop a large new package being buried in the list; it still does that job for ordering within the sections. The headline needs the opposite guard: a small new helper is not a feature because it got its own folder. The alternative — leave the signals as they are and rely on the doubt bias — guards only against an AI that is unsure. The user agreed.
+
+Rejected path not reopened: feeding commit history to the AI (dropped in release-notes-quality; the diff stays the sole source of truth).
+
+### Decision
+
+The AI picks the headline by what the release changes for its user, read from the diff. The Change Map's new-structure signal keeps its role in ranking within the sections but does not pick the headline: a new folder is not, of itself, the release's main thing. Inputs are unchanged — diff and Change Map only, no commit history. Deciding factor: on the next release the strongest structural signal points at two helper packages while the main feature sits in an existing one, and a headline turns that misread from a reordered list into a confident misstatement in the most-read line. Confidence: medium-high — the rule is clear; whether the prompt wording achieves it is judged by eye on real releases, this one first. (Resolves review-001 F5.)
+
+---
+
 ## Summary
 
 ### Key Insights
