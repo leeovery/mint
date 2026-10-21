@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -304,36 +305,42 @@ func countPrefix(events []string, prefix string) int {
 }
 
 // pacedAIRunner stands in for the AI command behind a real ai.Transport: each call
-// takes callTime, honouring its context, and records how long its deadline gave it.
-// It is safe for concurrent calls.
+// takes callTime. It is safe for concurrent calls.
+//
+// It ignores its context on purpose: it never returns a context error, so no
+// scheduler stall can time a call out (ai.Transport.attempt hands back a successful
+// RunWith result without re-checking the context). The cost is that the notes being
+// written no longer tell a per-call deadline from a shared one — the deadline
+// orderings the test checks are what do.
 type pacedAIRunner struct {
 	callTime time.Duration
 
-	mu         sync.Mutex
-	allotted   []time.Duration
-	noDeadline int
+	mu    sync.Mutex
+	calls []pacedCall
+}
+
+// pacedCall is one RunWith call as pacedAIRunner saw it on entry.
+type pacedCall struct {
+	entered     time.Time
+	deadline    time.Time
+	hasDeadline bool
+	chunk       bool
 }
 
 func (r *pacedAIRunner) RunWith(ctx context.Context, stdin io.Reader, _ string, _ ...string) (runner.Result, error) {
-	start := time.Now()
+	entered := time.Now()
 	prompt, err := io.ReadAll(stdin)
 	if err != nil {
 		return runner.Result{}, err
 	}
+	deadline, hasDeadline := ctx.Deadline()
+	chunk := isChunkPrompt(string(prompt))
 	r.mu.Lock()
-	if deadline, ok := ctx.Deadline(); ok {
-		r.allotted = append(r.allotted, deadline.Sub(start))
-	} else {
-		r.noDeadline++
-	}
+	r.calls = append(r.calls, pacedCall{entered: entered, deadline: deadline, hasDeadline: hasDeadline, chunk: chunk})
 	r.mu.Unlock()
 
-	select {
-	case <-time.After(r.callTime):
-	case <-ctx.Done():
-		return runner.Result{}, ctx.Err()
-	}
-	if isChunkPrompt(string(prompt)) {
+	time.Sleep(r.callTime)
+	if chunk {
 		return runner.Result{Stdout: chunkNotesFor(firstPath(sliceOf(string(prompt))))}, nil
 	}
 	return runner.Result{Stdout: "merged within every deadline"}, nil
@@ -351,11 +358,19 @@ func (r *pacedAIRunner) RunInDir(context.Context, string, []string, string, ...s
 	return runner.Result{}, errors.New("unexpected RunInDir")
 }
 
+// Every check here holds by construction, never by a timing margin: no call can time
+// out, and no check bounds from below the time a call has left at runner entry. What
+// tells a fresh per-attempt deadline from one spanning the wave (or the chunk calls)
+// is the ordering of the deadlines: the merge starts only after every chunk call has
+// slept callTime, and with at most four chunk calls in flight a second-round chunk
+// call starts only after a first-round one has — so each later call's own deadline
+// lies at least callTime past the earlier one's, where a shared deadline is equal.
 func TestGenerator_OverCap_WaveLongerThanTimeout_EachCallOwnDeadline_NotesWritten(t *testing.T) {
 	t.Parallel()
 
 	const timeout = 500 * time.Millisecond
-	aiRunner := &pacedAIRunner{callTime: 200 * time.Millisecond}
+	const callTime = 200 * time.Millisecond
+	aiRunner := &pacedAIRunner{callTime: callTime}
 	perAttempt := timeout
 	transport := ai.NewTransport(aiRunner, ai.Config{AICommand: "claude -p", Timeout: &perAttempt})
 	s := capOneFilePerChunk(t, tenKBFiles(6))
@@ -372,12 +387,41 @@ func TestGenerator_OverCap_WaveLongerThanTimeout_EachCallOwnDeadline_NotesWritte
 	}
 	aiRunner.mu.Lock()
 	defer aiRunner.mu.Unlock()
-	if aiRunner.noDeadline != 0 || len(aiRunner.allotted) != 7 {
-		t.Fatalf("calls with a deadline = %d, without = %d; want all 7 with one", len(aiRunner.allotted), aiRunner.noDeadline)
+	calls := aiRunner.calls
+	var chunks []pacedCall
+	var merges []pacedCall
+	for i, c := range calls {
+		if !c.hasDeadline {
+			t.Fatalf("call %d carried no deadline, want every call with one", i+1)
+		}
+		if allotted := c.deadline.Sub(c.entered); allotted > timeout {
+			t.Errorf("call %d was given %v by its deadline, want at most the per-attempt %v", i+1, allotted, timeout)
+		}
+		if c.chunk {
+			chunks = append(chunks, c)
+		} else {
+			merges = append(merges, c)
+		}
 	}
-	for i, allotted := range aiRunner.allotted {
-		if allotted > timeout || allotted < timeout-100*time.Millisecond {
-			t.Errorf("call %d was given %v by its deadline, want a fresh per-attempt %v", i+1, allotted, timeout)
+	if len(chunks) != 6 || len(merges) != 1 {
+		t.Fatalf("chunk calls = %d, merges = %d; want 6 chunk calls then 1 merge", len(chunks), len(merges))
+	}
+
+	merge := merges[0]
+	for i, c := range chunks {
+		if gap := merge.deadline.Sub(c.deadline); gap < callTime {
+			t.Errorf("merge deadline lies %v past chunk call %d's, want at least %v (a deadline spanning the wave?)", gap, i+1, callTime)
+		}
+	}
+	// The two latest deadlines are checked, not the last two calls to record
+	// themselves: a first-round call stalled before recording itself would pass for a
+	// second-round one. Both second-round calls' deadlines lie callTime past the
+	// earliest, so the two latest do too, however the deadlines interleave.
+	slices.SortFunc(chunks, func(a, b pacedCall) int { return a.deadline.Compare(b.deadline) })
+	earliestFirstRound := chunks[0].deadline
+	for i, c := range chunks[4:] {
+		if gap := c.deadline.Sub(earliestFirstRound); gap < callTime {
+			t.Errorf("second-round chunk call %d's deadline lies %v past the earliest first-round one, want at least %v (a deadline spanning the chunk calls?)", i+1, gap, callTime)
 		}
 	}
 }
