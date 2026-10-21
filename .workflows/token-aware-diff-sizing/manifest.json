@@ -501,7 +501,8 @@
             "token-aware-diff-sizing-10-1",
             "token-aware-diff-sizing-10-2",
             "token-aware-diff-sizing-11-1",
-            "token-aware-diff-sizing-11-2"
+            "token-aware-diff-sizing-11-2",
+            "token-aware-diff-sizing-11-3"
           ],
           "staging": {
             "p1": {
@@ -603,7 +604,8 @@
             7,
             8,
             9,
-            10
+            10,
+            11
           ]
         }
       }
