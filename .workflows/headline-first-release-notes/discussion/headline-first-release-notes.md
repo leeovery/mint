@@ -174,9 +174,27 @@ Release notes for diffs of any size, now opening with a line that names what the
 
 The session leaned 1, capped at two and still one sentence, on the costs above: 2 misrepresents the release, 3 punishes size. Three co-equal features would fail the one-sentence limit and read as a list; at mint's release cadence that is rare enough not to design for. The user agreed.
 
+**A release that is only its main thing** (raised by the background review, review-001 F3). Small releases have a clear main thing, so the no-main-feature cases don't catch them, yet a headline there restates the whole body. mint's 0.0.11 is two bullets, both about `--dry-run --autostash`; under Headline Shape it would open:
+
+```text
+`--dry-run --autostash` previews a release against a dirty working tree and leaves the repo untouched.
+
+✨ Added
+
+- `--dry-run --autostash` now previews a release against a dirty working tree — the real stash is skipped and the repo stays unchanged.
+
+🔧 Changed
+
+- A dirty-tree dry run without `--autostash` still aborts at the clean-tree gate.
+```
+
+Three lines saying one thing. 0.0.7 (two bullets, both `mint setup`) is the same shape. The session's position: the headline exists to stand the main thing apart from the rest, so where the notes hold nothing else, it only repeats. Framed as that principle rather than a bullet count, because a count would wrongly drop the case this feature exists for — one big feature written as a single bullet beside four small fixes still has a rest to stand apart from, and still gets its headline. The alternative weighed was consistency — every release opening the same way, even when the top line repeats the only change; the user accepted the position over it.
+
 ### Decision
 
 A release with two bodies of work of equal weight names both in its one headline sentence — at most two, and still one sentence, benefit-led per Headline Shape. Beyond two co-equal bodies of work is not designed for: the one-sentence limit stands, and the case is left to how the model meets it (YAGNI at mint's cadence). Deciding factor: a headline that names one of two equal halves misrepresents the release, and omitting it costs the lead on the largest releases. Confidence: high. (Resolves review-001 F4, which raised the same case independently.)
+
+A release whose notes hold nothing but its main thing carries no headline — the notes start with the first section, as today. The test is whether anything else is in the notes for the headline to stand apart from, not how many bullets the main thing takes: a single-bullet main feature beside unrelated changes keeps its headline. Deciding factor: the headline's job is separation; with nothing to separate from it is repetition, the padding the prompt forbids. Confidence: high. (Resolves review-001 F3.)
 
 ---
 
