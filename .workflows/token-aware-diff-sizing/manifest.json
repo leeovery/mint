@@ -355,7 +355,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 8,
-          "current_task": "token-aware-diff-sizing-8-3",
+          "current_task": "token-aware-diff-sizing-8-4",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -471,7 +471,8 @@
             "token-aware-diff-sizing-7-14",
             "token-aware-diff-sizing-7-15",
             "token-aware-diff-sizing-8-1",
-            "token-aware-diff-sizing-8-2"
+            "token-aware-diff-sizing-8-2",
+            "token-aware-diff-sizing-8-3"
           ],
           "staging": {
             "p1": {
@@ -532,6 +533,36 @@
             5,
             6,
             7
+          ],
+          "bank": [
+            {
+              "task": "token-aware-diff-sizing-8-3",
+              "source": "reviewer",
+              "summary": "assertNoTag never matches the production tag command, so 12 tests no-tag checks prove nothing",
+              "failure": "A regression that creates a tag after a floor abort, a floor dry run or a review-gate unwind passes every caller that does not also call assertNoMutation; noticed only when a real run leaves a stray tag",
+              "detail": "internal/engine/notes_floor_test.go:77 matches git tag -a {nextTag} -F - exactly; production runs git tag -a --cleanup=verbatim {tag} -F - (internal/release/release.go:108). Helper from task 5-1 (816b9e0). Fix: match the git tag -a prefix as assertNoMutation does (internal/engine/release_test.go:1311), or call tagAt (internal/engine/release_commitgraph_test.go:32). Callers: notes_floor_test.go:120,291,324,348,365; notes_floor_edit_test.go:292,326; notes_floor_nextmoves_test.go:92; notes_floor_dryrun_test.go:32; notes_fallback_warning_test.go:282; release_exclusionsuggestions_test.go:347; release_reviewgate_unwind_test.go:109",
+              "files": [
+                "internal/engine/notes_floor_test.go",
+                "internal/engine/notes_floor_edit_test.go",
+                "internal/engine/notes_floor_nextmoves_test.go",
+                "internal/engine/notes_floor_dryrun_test.go",
+                "internal/engine/notes_fallback_warning_test.go",
+                "internal/engine/release_exclusionsuggestions_test.go",
+                "internal/engine/release_reviewgate_unwind_test.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-8-3",
+              "source": "reviewer",
+              "summary": "assertNoTag is a dead guard: its exact-match command line can never equal the production tag command",
+              "failure": "A regression that creates the release tag on a floor-abort, next-moves, edit-abort, dry-run or fallback path still passes every test relying on assertNoTag; the check counts 0 whatever happens",
+              "detail": "internal/engine/notes_floor_test.go:75-80 calls countCmd(f, git, tag, -a, nextTag, -F, -); countCmd matches the whole line (release_surgicalunwind_test.go:341); production runs git tag -a --cleanup=verbatim {tag} -F - (internal/release/release.go:108). 12 call sites: notes_floor_test.go:120,291,324,348,365; notes_floor_edit_test.go:292,326; notes_floor_nextmoves_test.go:92; notes_floor_dryrun_test.go:32; notes_fallback_warning_test.go:282; release_exclusionsuggestions_test.go:347; release_reviewgate_unwind_test.go:109 (only the last also calls assertNoMutation). Fix: prefix-match git tag -a as assertNoMutation does (release_test.go:1306) or route through tagAt (release_commitgraph_test.go:32)",
+              "files": [
+                "internal/engine/notes_floor_test.go",
+                "internal/engine/release_test.go",
+                "internal/engine/release_commitgraph_test.go"
+              ]
+            }
           ]
         }
       }
