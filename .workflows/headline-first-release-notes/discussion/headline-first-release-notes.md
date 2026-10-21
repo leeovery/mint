@@ -17,6 +17,15 @@ Pulled from the product roadmap (horizon Next), parked there on 2026-10-16 durin
 - **Today's manual route to a headline.** On an attended release the review gate's `r` regenerates with a one-time nudge — the recorded example is "lead with the auth work". It is the only way to steer emphasis, and only at a terminal; on chunked notes `r` re-runs only the merge. `e` edits the body in `$EDITOR`.
 - **Non-AI bodies.** `--no-ai` and the notes-failure fallback ship the commit-subject list; an empty post-exclusion diff ships the fixed stub "Maintenance release — no notable source changes"; `--notes-file` ships a finished body verbatim. None goes through the notes prompt.
 
+### History: the TL;DR that was built and removed
+
+A headline is not new ground — the format once had one, and lost it for length.
+
+- **The original quality bar is this feature's goal.** The mint-release-tool specification's success criterion for the notes: "on a big release, the headline feature leads the notes", aimed at by the Change Map (new structure as the headline signal) plus forced Keep a Changelog classification, judged by eye on real releases with the prompt tuned when the criterion isn't met.
+- **That design carried a TL;DR.** The specification and the release-notes-quality discussion retained "a TL;DR one-liner at the top (may be multi-line) — what the release is really about", framed as mint's value-add: "a unified cross-change narrative synthesised from the whole diff", sitting above the categorised sections. The first default prompt (737e84dc, 2026-06-10) asked for exactly that — "not a list; it is the through-line that ties the changes together" — and told the AI to "bold the notable features and describe them — celebrate them, do not bury them in a flat list".
+- **It was removed three days later.** 886c6100 (2026-06-13, "right-size release notes"; `git log -S "NO TL;DR" --format="%h %ad %s" --date=short -- internal/notes/prompt.go` → `886c6100 2026-06-13 fix(presenter,notes): right-size release notes; clearer gate prompt`): notes were essay-length — "a TL;DR narrative paragraph plus bold, multi-sentence, rationale-laden bullets (and ~30s to generate)". The rebalance brought in the one-line one-sentence bullet rule, the worked altitude examples and "NO TL;DR, NO summary paragraph, NO preamble". mint's own 0.0.2 changelog section records it: "The release notes prompt now asks for concise one-line bullets per change with no TL;DR, so changelogs read at a glance."
+- **What this leaves.** The removal fixed length and took the only place the main feature could stand apart with it. Whatever this design puts above the sections has to win the headline back without reopening the essay: the failure was a narrative through-line inviting a paragraph, not the existence of a lead.
+
 ### Ground from the token-aware-diff-sizing discussion
 
 - Stitching and Salience framed the chunk problem as "no chunk knows whether its slice is the headline or a footnote"; the merge call is where the whole release is ranked.
@@ -38,6 +47,9 @@ Pulled from the product roadmap (horizon Next), parked there on 2026-10-16 durin
 
 - [Discovery session 001](../discovery/sessions/session-001.md)
 - [Token-aware diff sizing discussion](../../token-aware-diff-sizing/discussion/token-aware-diff-sizing.md) — Stitching and Salience; When a Chunk Fails; Summary → Open Threads
+- [Mint release tool specification](../../mint-release-tool/specification/mint-release-tool/specification.md) — Stage 4: success criterion; default notes format (the TL;DR as specified)
+- [Release-notes quality discussion](../../mint-release-tool/discussion/release-notes-quality.md) — the TL;DR retained above the KaC sections; the success criterion
+- Commits 737e84dc (first default prompt, with the TL;DR) and 886c6100 (TL;DR removed, one-line bullets)
 - `internal/notes/prompt.go` — `DefaultPrompt`, `OutputReminder`, `ComposePrompt`, `ResolveInstructions`
 - `internal/notes/chunk.go` — chunk and merge framing
 - `CHANGELOG.md` — as-shipped notes in the current format
