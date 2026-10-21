@@ -737,7 +737,8 @@
             "token-aware-diff-sizing-11-2",
             "token-aware-diff-sizing-11-3",
             "token-aware-diff-sizing-12-1",
-            "token-aware-diff-sizing-12-2"
+            "token-aware-diff-sizing-12-2",
+            "token-aware-diff-sizing-13-1"
           ],
           "out_of_scope": [
             {
@@ -758,6 +759,18 @@
                 "internal/setupguide/setupguide.go",
                 "README.md",
                 "internal/config/metadata.go"
+              ]
+            },
+            {
+              "id": "A2",
+              "summary": "Plain-mode gate reads ignore Ctrl-C until Enter",
+              "kind": "bug",
+              "fails": "In plain mode, §6.6's 'Ctrl-C during the pauses cancels the run' holds only once Enter is pressed. After Ctrl-C the run looks hung, and the Enter is read as an answer before the cancel is noticed. A second Ctrl-C kills the process with no unwind, which leaves mint's pre_tag artifact commit behind. Every plain-mode gate shares this.",
+              "files": [
+                "internal/presenter/prompt.go",
+                "internal/presenter/plain.go",
+                "internal/engine/release.go",
+                "cmd/mint/main.go"
               ]
             }
           ],
