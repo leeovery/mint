@@ -144,6 +144,42 @@ Deciding factor: in the common release — one body of work built from many piec
 
 ---
 
+## No Clear Headline
+
+### Context
+
+Headline Shape makes the headline a summary of the release's main body of work, on the premise that a release is usually — not always — primarily one thing. This subtopic covers the "not always": releases where that body is missing (a grab-bag of small unrelated changes), too small to summarise (one or two changes), or doubled (two bodies of work of equal weight).
+
+### Options Considered
+
+For a release carrying two bodies of work of equal weight:
+
+**1 — Name both in the one sentence**
+- Pros: the headline tells the truth about what the release is; the reader gets the lead on exactly the releases where there is most to lead with.
+- Cons: a sentence naming two things leans toward the inventory Headline Shape rules out; needs a cap.
+
+**2 — Pick the bigger one; the other lives only in the sections**
+- Cons: misleads — the headline claims the release is about one thing when it is about two.
+
+**3 — Omit the headline whenever no single thing dominates**
+- Cons: drops the headline on the releases where it helps most — the biggest ones.
+
+### Journey
+
+Worked instance: if headline-first notes is built before mint is next tagged, that release carries two co-equal bodies of work — token-aware diff sizing and this feature. Under option 1 it opens:
+
+```text
+Release notes for diffs of any size, now opening with a line that names what the release is about.
+```
+
+The session leaned 1, capped at two and still one sentence, on the costs above: 2 misrepresents the release, 3 punishes size. Three co-equal features would fail the one-sentence limit and read as a list; at mint's release cadence that is rare enough not to design for. The user agreed.
+
+### Decision
+
+A release with two bodies of work of equal weight names both in its one headline sentence — at most two, and still one sentence, benefit-led per Headline Shape. Beyond two co-equal bodies of work is not designed for: the one-sentence limit stands, and the case is left to how the model meets it (YAGNI at mint's cadence). Deciding factor: a headline that names one of two equal halves misrepresents the release, and omitting it costs the lead on the largest releases. Confidence: high.
+
+---
+
 ## Summary
 
 ### Key Insights
