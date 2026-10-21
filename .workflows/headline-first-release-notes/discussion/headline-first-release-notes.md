@@ -73,6 +73,44 @@ Mid-discussion the user asked to move forward from evidence: some releases' note
 
 ---
 
+## Scope
+
+### Context
+
+The work unit came off the roadmap as headline-first notes alone. Mid-discussion the user widened the frame: the notes are one body used on three surfaces (tag, changelog, provider release), adding a summary is one way to improve it, and "we could expand this into improving it in general" — some releases' notes "really don't portray what happened, and definitely not in the right order", with small stuff at the top and big stuff lost down the list. The audit (Context → Evidence) was run to decide the width from evidence.
+
+### Options Considered
+
+**Headline only** — the roadmap item as pulled.
+- Cons: leaves the audit's accuracy failures shipping in the same notes, and a later fix rewrites the same prompt again.
+
+**Headline plus ordering** — the user's stated complaint.
+- Cons: same as above for accuracy, which the audit found to be the larger defect after scatter.
+
+**Headline, ordering and the accuracy failures** — everything whose fix lives in the notes prompt or the signals mint hands the AI.
+
+**Pivot to an epic** (one topic per failure class).
+- Cons: ceremony for what is one prompt and one output; the Discussion Map carries the parts.
+
+### Journey
+
+The audit's ranking of defects: scatter of the main work and the missing statement of the whole first (the headline's ground); then accuracy — false or stale claims (~7 of 31), in-release work presented as a change or fix to the last release (~7), internal and dev-only changes shown to users (~19), section misfiling (~15), buried breaking changes (5); ordering within sections real but modest. Most accuracy failures share one cause: from the diff alone the AI cannot tell new behaviour from newly documented behaviour, nor what a user meets from what only the code sees. The session argued for taking them in: they ship in the same notes, their fixes are rules in the prompt this feature already rewrites, and they are judged the same way — by eye on real releases — so splitting them off means rewriting that prompt twice. One feature, not an epic. The user agreed: "bring it all in".
+
+### Decision
+
+The feature covers what the notes say and in what order, wherever the fix lives in the notes prompt or in the salience signals mint hands the AI:
+
+- the headline (Headline Shape, No Clear Headline, Picking The Headline);
+- ordering within sections, and the salience signals behind it (the Change Map's novelty and largest-file lines, the prompt's new-structure rule);
+- section placement — misfiling, reshaping work buried under the fixed section order, the main work scattered and stated twice;
+- user-facing only — internal and dev-only changes kept out, phrasing in the user's terms rather than mechanism or spec jargon;
+- true to the release — no behaviour claimed from docs, comments or tests alone; work built in this release not presented as a change or fix to the last; nothing old presented as new;
+- breaking changes flagged.
+
+Out of scope, recorded where they go: the `diff_exclude` pathspec bug (a mint bug, handled on its own); the largest releases never reaching the AI (closed by token-aware diff sizing, on main and not yet released); CHANGELOG drift after regenerate. One feature, not an epic. The work unit keeps its name. Deciding factor: one prompt, one output, one way of judging it.
+
+---
+
 ## Headline Shape
 
 ### Context

@@ -3,7 +3,7 @@
   "work_type": "feature",
   "status": "in-progress",
   "created": "2026-10-21",
-  "description": "Release notes open by naming the release's main feature, with the smaller changes that shipped alongside it listed after",
+  "description": "Release notes portray what a release actually did: they open by naming its main work, order changes by their weight to the user, and state only true, user-facing changes in the right section",
   "phases": {
     "discussion": {
       "items": {
@@ -39,6 +39,30 @@
               "parent": null
             },
             "ordering-within-sections": {
+              "status": "pending",
+              "parent": null
+            },
+            "scope": {
+              "status": "decided",
+              "parent": null
+            },
+            "change-map-signals": {
+              "status": "pending",
+              "parent": "ordering-within-sections"
+            },
+            "section-placement": {
+              "status": "pending",
+              "parent": null
+            },
+            "user-facing-only": {
+              "status": "pending",
+              "parent": null
+            },
+            "true-to-the-release": {
+              "status": "pending",
+              "parent": null
+            },
+            "breaking-changes": {
               "status": "pending",
               "parent": null
             }
