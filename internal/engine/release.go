@@ -584,12 +584,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 
 	// The review gate is the FINAL gate of a real release: accepting it proceeds straight
 	// through Record → tag → push → publish (there is no further confirmation), which is
-	// why ReleaseReviewGate's wording says "release", not "accept". It may first EDIT (the
-	// `e` choice) or REGENERATE (`r`, normal-AI only) the body; capture the returned final
-	// body and thread IT to every downstream sink. The gate stays positioned BEFORE any
-	// mutation (before Record). gateForKind selects the variant (y/n/e vs y/n/e/r); the
-	// per-run regenerator re-merges the held part notes of chunked notes, else binds
-	// this run's lastTag + cfg to the generator so an `r` re-runs the AI path.
+	// why ReleaseReviewGate's wording says "release", not "accept".
 	regens := stage.regens(func(lowerCap int) { hintLowerCap(p, lowerCap) })
 	regenerator := regens.narrating(perRunRegenerator(deps, generator, chunkNotes, regens, current.String(cfg.Release.TagPrefix), cfg))
 	body, err = reviewGate(ctx, p, deps.Editor, reviewRegen{regenerator: regenerator, shown: regens.shown, keep: chunkNotes.keepRegen}, gateForKind(kind), body, versionKey)
@@ -1551,17 +1546,8 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 	return nil
 }
 
-// errEditorUnavailable is the cause surfaced when the `e` choice is taken but no
-// Editor seam was wired — a misconfiguration that should never reach production
-// (task 2-13 wires the editor). It is surfaced rather than panicked so the spine
-// fails loud and clean before any mutation.
 var errEditorUnavailable = errors.New("edit chosen but no editor is configured")
 
-// errRegeneratorUnavailable is the cause surfaced when the `r` choice is taken but
-// no Regenerator seam was wired — a misconfiguration that should never reach
-// production (the gate offers `r` only for KindNormalAI, which task 2-16 wires with
-// a Regenerator). It is surfaced rather than panicked so the spine fails loud and
-// clean before any mutation.
 var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator is configured")
 
 // reviewGate runs the notes review gate as the engine-owned re-entry LOOP and
@@ -1678,7 +1664,7 @@ func gateForKind(kind notes.Kind) presenter.Gate {
 // It reads a one-time context line via the presenter's AskLine input seam (the
 // engine NEVER reads stdin directly), an EMPTY answer being legal (regenerate with
 // no extra context), then hands that line to the Regenerator. Each failure mode is
-// fail-loud and surfaced before any mutation:
+// fail-loud:
 //
 //   - AskLine's ErrInputClosed / ErrNotInteractive abort (the read failed; the
 //     engine owns surfacing ErrInputClosed). Any AskLine error — including a
