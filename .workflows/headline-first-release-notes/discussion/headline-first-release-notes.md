@@ -176,7 +176,7 @@ The session leaned 1, capped at two and still one sentence, on the costs above: 
 
 ### Decision
 
-A release with two bodies of work of equal weight names both in its one headline sentence — at most two, and still one sentence, benefit-led per Headline Shape. Beyond two co-equal bodies of work is not designed for: the one-sentence limit stands, and the case is left to how the model meets it (YAGNI at mint's cadence). Deciding factor: a headline that names one of two equal halves misrepresents the release, and omitting it costs the lead on the largest releases. Confidence: high.
+A release with two bodies of work of equal weight names both in its one headline sentence — at most two, and still one sentence, benefit-led per Headline Shape. Beyond two co-equal bodies of work is not designed for: the one-sentence limit stands, and the case is left to how the model meets it (YAGNI at mint's cadence). Deciding factor: a headline that names one of two equal halves misrepresents the release, and omitting it costs the lead on the largest releases. Confidence: high. (Resolves review-001 F4, which raised the same case independently.)
 
 ---
 
