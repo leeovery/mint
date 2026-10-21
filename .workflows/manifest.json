@@ -74,7 +74,10 @@
         "origin": "park:token-aware-diff-sizing",
         "sources": [
           "token-aware-diff-sizing/discussion/token-aware-diff-sizing.md"
-        ]
+        ],
+        "pulled_to": {
+          "work_unit": "headline-first-release-notes"
+        }
       },
       "agent-authored-release-notes": {
         "horizon": "Next",
