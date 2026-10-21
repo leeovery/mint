@@ -172,10 +172,14 @@ over the cap skip the single call: the diff's files are packed in path order int
 chunk calls that each fit the cap, each carrying the instructions and the
 whole-release Change Map, then one merge call writes the release's notes from every
 chunk's notes. Chunking has no setting and asks nothing. A commit prompt over the
-cap opens $EDITOR instead. On failure, release follows [release].on_notes_failure:
-abort loud, where an attended release is offered the commit-subject list, writing
-the notes in the editor, or an abort, and an unattended one stops with next moves
-fitted to the cause, or fall back to the commit-subject list, the one non-AI body. Commit drops to the user's $EDITOR.
+cap opens $EDITOR instead. When a release-notes call fails with output and does
+not time out, mint asks the model, in one more call through ai_command, whether
+that call was too big for it. A single call or chunk call it was too big for is
+re-sent in smaller parts, up to three halvings per call, and when that writes the
+notes mint suggests a lower max_prompt_bytes. Notes still unwritten follow
+[release].on_notes_failure: abort loud, where an attended release is offered the
+commit-subject list, writing the notes in the editor, or an abort, and an
+unattended one stops with next moves fitted to the cause, or fall back to the commit-subject list, the one non-AI body. Commit drops to the user's $EDITOR.
 If you pin a slower model for a verb, raise that verb's timeout in the SAME table —
 mint does not auto-bump it.`
 }
