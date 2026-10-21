@@ -315,7 +315,9 @@
             "token-aware-diff-sizing-6-11": "tick-1da885",
             "token-aware-diff-sizing-6-12": "tick-fedaa4",
             "token-aware-diff-sizing-7-14": "tick-636b7b",
-            "token-aware-diff-sizing-7-15": "tick-185c1b"
+            "token-aware-diff-sizing-7-15": "tick-185c1b",
+            "token-aware-diff-sizing-8-9": "tick-a59166",
+            "token-aware-diff-sizing-8-10": "tick-8c4b48"
           },
           "storage_paths": [
             ".tick/"
@@ -519,6 +521,12 @@
                 "1": "approved",
                 "2": "approved"
               }
+            },
+            "p8": {
+              "tasks": {
+                "1": "approved",
+                "2": "approved"
+              }
             }
           },
           "consolidated_phases": [
@@ -528,7 +536,8 @@
             4,
             5,
             6,
-            7
+            7,
+            8
           ],
           "completed_phases": [
             1,
@@ -538,70 +547,6 @@
             5,
             6,
             7
-          ],
-          "bank": [
-            {
-              "task": "token-aware-diff-sizing-8-3",
-              "source": "reviewer",
-              "summary": "assertNoTag never matches the production tag command, so 12 tests no-tag checks prove nothing",
-              "failure": "A regression that creates a tag after a floor abort, a floor dry run or a review-gate unwind passes every caller that does not also call assertNoMutation; noticed only when a real run leaves a stray tag",
-              "detail": "internal/engine/notes_floor_test.go:77 matches git tag -a {nextTag} -F - exactly; production runs git tag -a --cleanup=verbatim {tag} -F - (internal/release/release.go:108). Helper from task 5-1 (816b9e0). Fix: match the git tag -a prefix as assertNoMutation does (internal/engine/release_test.go:1311), or call tagAt (internal/engine/release_commitgraph_test.go:32). Callers: notes_floor_test.go:120,291,324,348,365; notes_floor_edit_test.go:292,326; notes_floor_nextmoves_test.go:92; notes_floor_dryrun_test.go:32; notes_fallback_warning_test.go:282; release_exclusionsuggestions_test.go:347; release_reviewgate_unwind_test.go:109",
-              "files": [
-                "internal/engine/notes_floor_test.go",
-                "internal/engine/notes_floor_edit_test.go",
-                "internal/engine/notes_floor_nextmoves_test.go",
-                "internal/engine/notes_floor_dryrun_test.go",
-                "internal/engine/notes_fallback_warning_test.go",
-                "internal/engine/release_exclusionsuggestions_test.go",
-                "internal/engine/release_reviewgate_unwind_test.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-8-3",
-              "source": "reviewer",
-              "summary": "assertNoTag is a dead guard: its exact-match command line can never equal the production tag command",
-              "failure": "A regression that creates the release tag on a floor-abort, next-moves, edit-abort, dry-run or fallback path still passes every test relying on assertNoTag; the check counts 0 whatever happens",
-              "detail": "internal/engine/notes_floor_test.go:75-80 calls countCmd(f, git, tag, -a, nextTag, -F, -); countCmd matches the whole line (release_surgicalunwind_test.go:341); production runs git tag -a --cleanup=verbatim {tag} -F - (internal/release/release.go:108). 12 call sites: notes_floor_test.go:120,291,324,348,365; notes_floor_edit_test.go:292,326; notes_floor_nextmoves_test.go:92; notes_floor_dryrun_test.go:32; notes_fallback_warning_test.go:282; release_exclusionsuggestions_test.go:347; release_reviewgate_unwind_test.go:109 (only the last also calls assertNoMutation). Fix: prefix-match git tag -a as assertNoMutation does (release_test.go:1306) or route through tagAt (release_commitgraph_test.go:32)",
-              "files": [
-                "internal/engine/notes_floor_test.go",
-                "internal/engine/release_test.go",
-                "internal/engine/release_commitgraph_test.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-8-4",
-              "source": "executor",
-              "summary": "The pre-tag artifact commit and the bookkeeping commit drop git stderr on failure",
-              "failure": "When git refuses either commit (a pre-commit hook rejects it, GPG signing fails), the ✗ line shows only the runner exit status with nothing underneath; the operator must rerun git by hand to see why, and the unwind manual-step warning carries the same exit-code text",
-              "detail": "record.CommitDirtyTree (internal/record/commit.go:33), CommitBookkeeping (:80) and CommitStaged (:140) wrap the Mutator error and discard the runner.Result. record.GitError (added in 8-4 beside CommitFile) and failureOutput (internal/engine/release.go:1954) could carry the stderr for these too. warnUnwindIncomplete (internal/engine/unwind.go:252) puts cause.Error() in Warning.Output",
-              "files": [
-                "internal/record/commit.go",
-                "internal/engine/release.go",
-                "internal/engine/unwind.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-8-6",
-              "source": "reviewer",
-              "summary": "Manual steps in unwind warnings quote shell words inconsistently: the re-commit step uses cmdline.Quote, two earlier steps do not",
-              "failure": "An operator whose repo root contains a space pastes the unstage step from an unwind incomplete warning and git fails with cannot change to the truncated path; a --notes-file path with an apostrophe breaks the reset step hand-quoted restore line the same way; noticed only at paste time, mid-recovery",
-              "detail": "unstageEdit puts edit.root and edit.path into the command unquoted (internal/engine/unwind.go:248, task 8-4). resetTo wraps pathspec[1] in bare single quotes with no escaping (unwind.go:293). 8-6 recommit quotes the same kind of words with cmdline.Quote (release.go:1128-1131). Route all three through cmdline.Quote",
-              "files": [
-                "internal/engine/unwind.go",
-                "internal/engine/release.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-8-6",
-              "source": "reviewer",
-              "summary": "Task 8-4 unstage warning builds a copy-paste command from an unquoted repo root; 8-6 quotes its own",
-              "failure": "When the repo root contains a space or shell metacharacter, an operator pasting the 8-4 manual step gets fatal: cannot change to the truncated path and cannot finish the recovery as printed; no test catches it because t.TempDir paths have no spaces",
-              "detail": "internal/engine/unwind.go:258 (8-4 unstageEdit) concatenates edit.root raw; 8-6 re-commit step at internal/engine/release.go:1130-1132 wraps root and subject in cmdline.Quote. Route the 8-4 root and path through cmdline.Quote",
-              "files": [
-                "internal/engine/unwind.go",
-                "internal/engine/release.go"
-              ]
-            }
           ]
         }
       }
