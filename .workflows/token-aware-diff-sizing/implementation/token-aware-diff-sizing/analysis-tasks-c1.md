@@ -30,6 +30,20 @@ Derivation: regenerate's split in this plan is the precedent for these same sign
 
 **Outcome**: If release's wiring drops or crosses `Yes`, `StdinInteractive` or `ChunkNotes`, a cmd-level test fails, as the same signals already do on regenerate.
 
+**Acceptance Criteria**:
+- [ ] A `-y` release through the seam with stdin a terminal, whose exclusion check suggests a glob, presents no exclusion-check pause, writes nothing to `.mint.toml`, and makes no answers commit (§6.7)
+- [ ] A release without `-y` whose stdin is not a terminal, and whose notes call fails under the default `on_notes_failure`, is offered no floor choice; it stops with the next moves, the `on_notes_failure = "fallback"` move among them (§12.1, §12.4)
+- [ ] The same failure with stdin a terminal and no `-y` is offered the floor's `c` / `e` / `a` choice instead of the next moves (§12.1, §12.2)
+- [ ] A release whose chunked notes run fails after at least one part finished saves the finished parts' notes in a file under the chunk-notes store the seam was given, and the notes failure names that file's path (§11.4)
+- [ ] `mint release` behaves as it does today: `--help` prints the release usage to stdout and exits 0, a flag error exits 2 before the seam runs, and a real run is wired with the same presenter, exec runner, user-cache note cache and user-cache chunk-notes store as now; the existing suite stays green
+
+**Do**:
+- `runRelease` (cmd/mint/main.go:284-335) becomes the shell: flag parsing with today's `--help` and usage-error handling, `presenter.DetectStartupSignals`, `presenter.NewForStartup`, `runner.NewExecRunner()`, `newNoteCache()` and `notescache.NewUserChunkNotes(os.UserCacheDir)`, all handed to the seam.
+- The seam `release(...)` builds every `engine.ReleaseDeps` field `runRelease` sets today (main.go:310-329) from its parameters: `Mutator` through `git.NewMutator`, `Releaser` through `release.NewReleaser` over that Mutator, `Editor` through `engine.NewEditorLauncher`, `NoteCache` and `ChunkNotes` from the passed stores, `Yes` from the parsed flags, and `StdinInteractive` from the passed signal. It runs `engine.Release` with `opts.ReleaseOptions()` and returns the exit code through `exitCode`, as `runRelease` does now.
+- main.go:30 imports `mint/internal/release` under the seam's name. Go rejects one identifier declared in both a file block and the package block, so that import takes an alias.
+- The tests sit in cmd/mint, in `package main` beside regenerate_floor_test.go and regenerate_exclusioncheck_test.go, and root the repo, the note cache and the chunk-notes store in `t.TempDir()`. `notescache.NewStore(base, now)` and `notescache.NewChunkNotes(base)` each take a base directory.
+- `regenerate(...)` keeps its hard-wired chunk-notes store (main.go:193). The engine is untouched.
+
 ## Task 2: Build the setup guide's transport-paragraph defaults from the config constants
 severity: low
 sources: duplication
@@ -49,6 +63,21 @@ Ungrouped digits are the settled form, for three reasons:
 
 The two prose tests build their expected text from the same constants. The paragraph still names release's 180s default beside commit's 60s, as §18.1 requires, and the rest of the guide stays byte-identical.
 
+**Outcome**: The setup guide's transport paragraph and its config reference state the shipped timeouts and cap from the same constants, so a changed default reaches both, and the prose tests follow the constants rather than pinning copies.
+
+**Acceptance Criteria**:
+- [ ] `mint setup` prints the transport paragraph's timeout clause as `default 180 for release, 60 for commit` and its cap as `default 1500000`; `1,500,000` no longer appears in the guide (§18.1)
+- [ ] The paragraph's three numbers are `config.DefaultReleaseTimeout` and `config.DefaultCommitTimeout` in whole seconds and `config.DefaultMaxPromptBytes` in ungrouped digits; the paragraph holds no hand-typed copy of a shipped default
+- [ ] `TestGuide_AITransportParagraphNamesBothShippedTimeouts` and `TestGuide_AITransportParagraphCoversThePerCallCapAndChunking` build the timeout clause and the cap text they expect from those constants
+- [ ] Apart from `1,500,000` becoming `1500000`, `mint setup` prints the guide byte-for-byte as it does today
+
+**Do**:
+- The conversion set, measured: `rg -n '180|\b60\b|1,500,000|1500000' internal/setupguide/setupguide.go` returns 3 lines, all in `overview()`'s "The AI transport" paragraph: :160 (`default 180 for`), :161 (`60 for commit`) and :163 (`default 1,500,000`). The paragraph already splices `config.DefaultAICommand` at :156.
+- The constants: `config.DefaultReleaseTimeout` and `config.DefaultCommitTimeout` are `time.Duration` (internal/config/config.go:94-95), and `config.DefaultMaxPromptBytes` is an int (config.go:69). metadata.go renders its cells through its unexported `seconds` (internal/config/metadata.go:159) and `strconv.Itoa` (:118).
+- The cap is written as `strconv.Itoa(config.DefaultMaxPromptBytes)`, with no thousands formatter and no `internal/notes` import.
+- The prose tests' copies: the `"default 1,500,000"` entry at internal/setupguide/setupguide_test.go:394 and the `want` const at :411.
+- `TestGuide_ConfigReferenceNamesShippedTimeouts` (setupguide_test.go:420) and README.md:127's `1,500,000` stay as they are.
+
 ## Task 3: Corrections
 severity: corrections
 sources: standards
@@ -57,3 +86,12 @@ sources: standards
 
 **Solution**:
 - CLAUDE.md:42: replace "The one exception is the exclusion check's answers commit: the unwind resets past it with the rest, then re-commits the answers on the starting commit and narrates it as kept." with "The one exception is the exclusion check's answers: the unwind resets past their commit with the rest, then re-commits them on the starting commit and narrates it as kept; where git ignores an untracked `.mint.toml`, the uncommitted write is left in place."
+
+**Outcome**: CLAUDE.md's "Surgical unwind, then PONR" invariant names both ways the exclusion check's answers survive an unwind, matching README.md:117, the unwind.go header (internal/engine/unwind.go:11-14) and the answers recording in internal/engine/release.go:1107-1115.
+
+**Acceptance Criteria**:
+- [ ] CLAUDE.md's "Surgical unwind, then PONR" bullet carries the Solution's replacement sentence verbatim in place of the old exception sentence (§18.3, §6.6)
+- [ ] The bullet's other sentences and the rest of CLAUDE.md are unchanged, and no code, test or other doc changes; every gate stays green
+
+**Do**:
+- Apply the Solution's one edit at CLAUDE.md:42, and nothing else.
