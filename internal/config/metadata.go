@@ -143,7 +143,7 @@ func MetadataRows() []MetadataRow {
 		// activate-only — no compiled default — so their Default cell is left BLANK (the
 		// chosen no-default token; the description carries when each hook runs).
 		{Key: "preflight", Level: LevelReleaseHooks, Description: "runs before any release work; failure aborts the release"},
-		{Key: "pre_tag", Level: LevelReleaseHooks, Description: "runs after notes, before the tag; accepts a single command or an ordered array of commands"},
+		{Key: "pre_tag", Level: LevelReleaseHooks, Description: "runs after preflight, before the notes, changelog and tag; accepts a single command or an ordered array of commands"},
 		{Key: "post_release", Level: LevelReleaseHooks, Description: "runs after the release is published"},
 
 		// [commit] table keys (commitShape leaf fields), in field order.

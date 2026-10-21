@@ -259,14 +259,22 @@ func pipelineSection() string {
 A release runs these stages in order, with the three hook phases bracketing the
 core:
 
-    preflight -> notes -> pre_tag -> tag + push (PONR) -> publish -> post_release
+    preflight -> pre_tag -> notes -> tag + push (PONR) -> publish -> post_release
 
 - preflight runs BEFORE any release work (clean tree, right branch, tag free,
   remote in sync, provider auth). Its failure ABORTS the release.
-- notes generates the AI release notes from the diff, reviewed at a gate.
-- pre_tag runs AFTER notes and BEFORE the tag. It accepts a single command OR an
-  ARRAY of commands run in order — so a linear multi-step build/test sequence
-  (e.g. install -> build -> test) maps cleanly onto a pre_tag array.
+- pre_tag runs AFTER preflight and BEFORE the notes, so the notes are written
+  from the tree its artifacts leave. It also runs before the changelog and
+  version file are updated: in the tree a pre_tag step sees, the changelog has
+  no entry for this release and the version file still holds the previous
+  version (the new version reaches the hook as MINT_NEW_VERSION in its
+  environment). It accepts a single command OR an ARRAY of commands run in
+  order — so a linear multi-step build/test sequence (e.g. install -> build ->
+  test) maps cleanly onto a pre_tag array. A pre_tag build runs before anyone
+  reviews the notes: declining at the review gate unwinds the commit mint made
+  of its artifacts.
+- notes generates the AI release notes from the diff, reviewed at a gate. The
+  changelog and version file are then updated and committed, before the tag.
 - tag + atomic push is the POINT OF NO RETURN (PONR): the annotated tag and the
   branch go up together in one ` + "`git push --atomic`" + `. Everything before it is
   unwindable; nothing after it is. The one exception: after an abort or failure

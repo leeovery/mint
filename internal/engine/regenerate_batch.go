@@ -1,6 +1,6 @@
 package engine
 
-// This file is the regenerate batch `--all` LOOP (task 5-11): the orchestration that
+// This file is the regenerate batch `--all` LOOP: the orchestration that
 // backfills EVERY matching version in one run. The version set is enumerated OLDEST →
 // NEWEST upstream (version.ResolveAllRegenerateTargets), and this loop processes each
 // in turn: it opens ONE narration block per version (each with its OWN RunStarted,
@@ -8,16 +8,16 @@ package engine
 // ordering is ENGINE-owned), produces the version's notes body (reuse read or fresh
 // re-diff+AI, injected as ProduceBody), runs a per-version review gate BY DEFAULT
 // (-y opts out to run fully unattended), and dispatches the RELEASE surface via the
-// 5-7 create-or-update DISPATCH — so the batch transparently mixes updates and creates
+// create-or-update DISPATCH — so the batch transparently mixes updates and creates
 // per version.
 //
-// SCOPE: this task owns the RELEASE surface dispatch + per-version notes only. It does
+// SCOPE: this file owns the RELEASE surface dispatch + per-version notes only. It does
 // NO per-version changelog commit — in `--all` mode the changelog is a whole-file
-// rebuild + single END commit (task 5-13), so the loop COLLECTS each version's produced
-// body (oldest → newest) and returns the collection for 5-13 to consume. The
-// per-version processing is factored into processOneVersion (returning a per-version
-// result + error the loop currently propagates) so task 5-12 can wrap each iteration in
-// skip-and-continue without restructuring the loop.
+// rebuild + single END commit (rebuildBatchChangelog, regenerate_batch_changelog.go), so
+// the loop COLLECTS each version's produced body (oldest → newest) and returns the
+// collection for that rebuild. Each version runs through processOneVersion, which
+// catches a per-version failure and returns it as a skip the loop records before moving
+// on to the next version: skip-and-continue is the batch's floor.
 //
 // NO RESUME STATE: the loop reads no checkpoint and writes none — a re-run simply
 // re-processes from the top. `--source tag --all` is deterministic; `--source fresh --all`
