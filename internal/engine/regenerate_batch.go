@@ -78,7 +78,7 @@ type BatchRegenerateRequest struct {
 	// sinks of the version's notes stage it runs inside.
 	ProduceBody func(ctx context.Context, source RegenerateSource, res version.Resolution, preReadBody string, sinks NotesSinks) (string, error)
 	// ProduceRegenerator yields the PER-VERSION regenerator the fresh notes-review
-	// gate's `r` choice consults, handed run, whose Merged is the merge inputs that
+	// gate's `r` choice consults, handed run, whose Merged reads the merge inputs that
 	// version's chunked run kept (nil unless a chunked run wrote its body). Production
 	// returns nil for a reuse source (no review gate) and binds RegenerateFreshRegenerator
 	// over run and that version's fresh AI range for a fresh source. When nil (older

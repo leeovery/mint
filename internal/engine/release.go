@@ -85,11 +85,13 @@ type Regenerator interface {
 	Regenerate(ctx context.Context, oneTimeContext string) (string, error)
 }
 
-// RegenRun is what a run's `r` regenerates from and reports to: Merged, the merge
-// inputs of the chunked run that wrote the notes now at the gate, nil for none; and the
-// sinks of the chunked run an `r` becomes.
+// RegenRun is what a run's `r` regenerates from and reports to: Merged, the reader of
+// the merge inputs of the chunked run that wrote the notes now at the gate, returning
+// nil for none (a nil reader reads as none); and the sinks of the chunked run an `r`
+// becomes. Build one through chunkNotesKeeper.regenRun, which binds both to the keeper,
+// so an `r` re-merges from the same inputs a failed `r` saves from.
 type RegenRun struct {
-	Merged *notes.MergeInputs
+	Merged func() *notes.MergeInputs
 	NotesSinks
 }
 
@@ -1001,7 +1003,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		VersionPattern: cfg.Release.VersionPattern,
 	})
 	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
-	selecting := generator.WithProgress(stage).WithChunkNotes(chunkNotes.saver()).WithMergeInputs(chunkNotes.keepMerged)
+	selecting := chunkNotes.sinks(stage).wire(generator)
 	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).WithFallbackNotice(stage.fellBack)
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
@@ -1137,13 +1139,9 @@ func (f regeneratorFunc) Regenerate(ctx context.Context, oneTimeContext string) 
 
 // perRunRegenerator selects the Regenerator the gate's `r` choice consults. A wired
 // deps.Regenerator OVERRIDES everything (the test-injection seam). Otherwise, when a
-// generator was built (the normal-AI selector path), it returns a per-run closure
-// over chunkNotes' merge inputs, those of the chunked run that wrote the notes now at
-// the gate: while it holds any, an `r` re-merges those part notes with the one-time
-// context, one call; otherwise it binds lastTag + cfg to generator.GenerateWithContext,
-// re-running the AI path from the size check with the one-time context appended,
-// reporting to progress; of a chunked run that `r` becomes, chunkNotes saves a failed
-// one's finished chunk notes and keeps a written one's merge inputs. When neither is
+// generator was built (the normal-AI selector path), it returns the gate's `r` rule
+// (RegenRun.regenerator) over chunkNotes' regenRun, its size-check generation
+// GenerateWithContext over lastTag + cfg, reporting to progress. When neither is
 // present (an override body, or a no-AI path with no generator), it returns nil; `r`
 // is only offered for KindNormalAI, so the nil is never consulted on the no-AI paths.
 func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, chunkNotes *chunkNotesKeeper, progress notes.Progress, lastTag string, cfg config.Config) Regenerator {
@@ -1153,11 +1151,7 @@ func perRunRegenerator(deps ReleaseDeps, generator *notes.Generator, chunkNotes 
 	if generator == nil {
 		return nil
 	}
-	regenerating := generator.WithProgress(progress).WithChunkNotes(chunkNotes.saver()).WithMergeInputs(chunkNotes.keepMerged)
-	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
-		if chunkNotes.merged != nil {
-			return generator.Remerge(ctx, *chunkNotes.merged, cfg, oneTimeContext)
-		}
+	return chunkNotes.regenRun(progress).regenerator(generator, cfg, func(ctx context.Context, regenerating *notes.Generator, oneTimeContext string) (string, error) {
 		return regenerating.GenerateWithContext(ctx, lastTag, cfg, oneTimeContext)
 	})
 }

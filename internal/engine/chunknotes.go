@@ -1,6 +1,9 @@
 package engine
 
 import (
+	"context"
+
+	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/presenter"
 )
@@ -79,7 +82,34 @@ func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error, comman
 }
 
 // regenRun is what an `r` on the run's notes regenerates from, its chunked run
-// reporting to progress and kept here.
+// reporting to progress and kept here. Its Merged reads the keeper's merge inputs live,
+// so the `r` re-merges from the same inputs keepRegen saves from.
 func (k *chunkNotesKeeper) regenRun(progress notes.Progress) RegenRun {
-	return RegenRun{Merged: k.merged, NotesSinks: k.sinks(progress)}
+	return RegenRun{Merged: k.heldMerged, NotesSinks: k.sinks(progress)}
+}
+
+func (k *chunkNotesKeeper) heldMerged() *notes.MergeInputs {
+	return k.merged
+}
+
+// regenerateFunc is a verb's size-check generation for an `r`: generator, wired to the
+// run's sinks, re-runs the AI path with oneTimeContext appended.
+type regenerateFunc func(ctx context.Context, generator *notes.Generator, oneTimeContext string) (string, error)
+
+// regenerator is the review gate's `r` rule. While run holds merge inputs, those of the
+// chunked run that wrote the notes now at the gate, an `r` makes one merge call over
+// those part notes with only its own one-time context in the release's instructions.
+// Otherwise it runs regenerate, the verb's size-check generation, over generator wired
+// to run's sinks; of a chunked run that `r` becomes, they save a failed one's finished
+// chunk notes and keep a written one's merge inputs for the next `r`.
+func (run RegenRun) regenerator(generator *notes.Generator, cfg config.Config, regenerate regenerateFunc) regeneratorFunc {
+	wired := run.wire(generator)
+	return func(ctx context.Context, oneTimeContext string) (string, error) {
+		if run.Merged != nil {
+			if in := run.Merged(); in != nil {
+				return wired.Remerge(ctx, *in, cfg, oneTimeContext)
+			}
+		}
+		return regenerate(ctx, wired, oneTimeContext)
+	}
 }

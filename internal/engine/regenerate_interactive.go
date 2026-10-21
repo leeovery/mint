@@ -144,8 +144,8 @@ type RegenerateRunRequest struct {
 	ProduceBody func(context.Context, RegenerateSource, NotesSinks) (string, error)
 	// ProduceRegenerator yields the PER-RUN regenerator the fresh notes-review gate's
 	// `r` choice consults. It is invoked once the body is produced, handed run, whose
-	// Merged is the merge inputs ProduceBody's chunked run kept (nil unless a chunked run
-	// wrote the body); production returns nil for a reuse source (no review gate) and
+	// Merged reads the merge inputs ProduceBody's chunked run kept (nil unless a chunked
+	// run wrote the body); production returns nil for a reuse source (no review gate) and
 	// binds RegenerateFreshRegenerator over run and this version's fresh AI range for a
 	// fresh source. When nil (older tests that never reach `r`) no per-run regenerator
 	// is supplied.

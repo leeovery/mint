@@ -62,7 +62,7 @@ func RegenerateFreshBody(ctx context.Context, r runner.CommandRunner, transport 
 		return record.FirstReleaseBody, nil
 	}
 
-	body, err := freshGenerator(r, transport, root, cfg).WithProgress(sinks.Progress).WithChunkNotes(sinks.ChunkNotes).WithMergeInputs(sinks.MergeInputs).GenerateFromRange(ctx, res.DiffRange(), cfg)
+	body, err := sinks.wire(freshGenerator(r, transport, root, cfg)).GenerateFromRange(ctx, res.DiffRange(), cfg)
 	if err != nil {
 		return "", fmt.Errorf("regenerating fresh notes for %s: %w", res.Tag, err)
 	}
@@ -78,42 +78,31 @@ type NotesSinks struct {
 	MergeInputs func(notes.MergeInputs)
 }
 
+// wire returns a copy of generator reporting to, saving to and handing to s.
+func (s NotesSinks) wire(generator *notes.Generator) *notes.Generator {
+	return generator.WithProgress(s.Progress).WithChunkNotes(s.ChunkNotes).WithMergeInputs(s.MergeInputs)
+}
+
 // RegenerateFreshRegenerator builds the PER-RUN Regenerator the fresh notes-review
 // gate's `r` choice consults — the regenerate analogue of the forward path's
-// perRunRegenerator. While it holds merged, at first run.Merged, the merge inputs of
-// the chunked run that wrote the notes now at the gate, each `r` makes one merge call
-// over those part notes with only its own one-time context in the release's
-// instructions. Otherwise it binds a fresh generator, built as RegenerateFreshBody
-// builds its own, to the version's resolved `{PreviousTag}..{Tag}` range, so an `r`
-// re-runs the fresh AI path from the size check with the one-time context appended for
-// that one generation, reporting to run's sinks; of a chunked run that `r` becomes, they
-// save a failed one's finished chunk notes, and it holds a written one's merge inputs,
-// handing them on to run.MergeInputs too. Either way the one-time context is
-// TRANSIENT (never persisted), exactly as the forward path's `r`.
+// perRunRegenerator, sharing its `r` rule (RegenRun.regenerator) over run. Its size-check
+// generation re-runs the fresh AI path, over a generator built as RegenerateFreshBody
+// builds its own, over the version's resolved `{PreviousTag}..{Tag}` range. The
+// one-time context is TRANSIENT (never persisted), exactly as the forward path's `r`.
 //
 // For the oldest release (res.FirstRelease) there is no range to re-diff, so it mirrors
 // RegenerateFreshBody's first-release rule: the fixed first-release body is returned
 // with NO AI and NO diff, regardless of the one-time context — so `r` on a first-release
 // fresh gate is well-defined and never breaks.
 func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config, res version.Resolution, run RegenRun) Regenerator {
-	merged := run.Merged
-	generator := freshGenerator(r, transport, root, cfg).WithProgress(run.Progress).WithChunkNotes(run.ChunkNotes).WithMergeInputs(func(in notes.MergeInputs) {
-		merged = &in
-		if run.MergeInputs != nil {
-			run.MergeInputs(in)
-		}
+	regenerate := run.regenerator(freshGenerator(r, transport, root, cfg), cfg, func(ctx context.Context, generator *notes.Generator, oneTimeContext string) (string, error) {
+		return generator.GenerateFromRangeWithContext(ctx, res.DiffRange(), cfg, oneTimeContext)
 	})
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
 		if res.FirstRelease {
 			return record.FirstReleaseBody, nil
 		}
-		var body string
-		var err error
-		if merged != nil {
-			body, err = generator.Remerge(ctx, *merged, cfg, oneTimeContext)
-		} else {
-			body, err = generator.GenerateFromRangeWithContext(ctx, res.DiffRange(), cfg, oneTimeContext)
-		}
+		body, err := regenerate(ctx, oneTimeContext)
 		if err != nil {
 			return "", fmt.Errorf("regenerating fresh notes for %s: %w", res.Tag, err)
 		}
