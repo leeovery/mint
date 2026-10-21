@@ -29,11 +29,11 @@ func TestRelease_APause_ShowsHowManyFilesTheNotesCarryTheirSizeAndTheKeptOnes(t 
 		fileDiffOfSize(t, "docs/design/b.md", 3_000)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
-	f.SeedSequence("git",
+	f.SeedSequence("git", withAnswersCommit(
 		ScriptedOut(diff),
 		ScriptedOut("M\tdocs/api.md\nM\tdocs/design/a.md\nM\tdocs/design/b.md\n"),
 		ScriptedOut("1\t1\tdocs/api.md\n1\t1\tdocs/design/a.md\n1\t1\tdocs/design/b.md\n"),
-	)
+	)...)
 	f.SeedSequence("claude", ScriptedOut("docs/: documentation\n"), ScriptedOut(aiBody))
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)

@@ -25,15 +25,19 @@ const twoSuggestions = "docs/design/: design documents, not shipped behaviour\nt
 
 // pausedRelease runs an attended prior-tag release under config whose notes diff is
 // the export source, the design doc and the fixtures, claude answering the check with
-// checkAnswer and the notes with aiBody. rec answers the gates.
+// checkAnswer and the notes with aiBody. rec answers the gates, and git the answers
+// commit unless checkAnswer is none.
 func pausedRelease(t *testing.T, rec *presentertest.RecordingPresenter, config, checkAnswer string) (*runner.FakeRunner, error) {
 	t.Helper()
 	root := t.TempDir()
 	writeConfig(t, root, config)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
+	f.SeedSequence("git", ScriptedOut(exportGoDiff+designDocDiff+fixturesDiff))
+	if checkAnswer != "none" {
+		f.SeedSequence("git", answersCommitCalls...)
+	}
 	f.SeedSequence("git",
-		ScriptedOut(exportGoDiff+designDocDiff+fixturesDiff),
 		ScriptedOut("M\tsrc/export.go\nA\tdocs/design/export.md\nA\ttest/fixtures/export.json\n"),
 		ScriptedOut("1\t1\tsrc/export.go\n1\t0\tdocs/design/export.md\n1\t0\ttest/fixtures/export.json\n"),
 	)
@@ -153,11 +157,11 @@ func TestRelease_SuggestionsMatchingNoUncoveredPath_GetNoPauseWhileTheOthersDo(t
 	writeConfig(t, root, config)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
-	f.SeedSequence("git",
+	f.SeedSequence("git", withAnswersCommit(
 		ScriptedOut(keptDiff+exportGoDiff+fixturesDiff),
 		ScriptedOut("A\tdocs/api/export.md\nM\tsrc/export.go\nA\ttest/fixtures/export.json\n"),
 		ScriptedOut("1\t0\tdocs/api/export.md\n1\t1\tsrc/export.go\n1\t0\ttest/fixtures/export.json\n"),
-	)
+	)...)
 	f.SeedSequence("claude",
 		ScriptedOut("build/: build output\nspecs/: specs\ndocs/api/: API docs\ntest/fixtures/: test data\n"),
 		ScriptedOut(aiBody))
@@ -182,11 +186,11 @@ func TestRelease_AStarGlobMatchingANestedChange_GetsAPause(t *testing.T) {
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
-	f.SeedSequence("git",
+	f.SeedSequence("git", withAnswersCommit(
 		ScriptedOut(exportGoDiff+guideDiff),
 		ScriptedOut("M\tsrc/export.go\nM\tdocs/guide/intro.md\n"),
 		ScriptedOut("1\t1\tsrc/export.go\n1\t1\tdocs/guide/intro.md\n"),
-	)
+	)...)
 	f.SeedSequence("claude", ScriptedOut("*.md: documentation\n"), ScriptedOut(aiBody))
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)

@@ -22,7 +22,7 @@ func startState(head, tag string) engine.StartState {
 }
 
 // TestUnwind_TwoCommitsAndTag_ResetsBothAndDeletesTag proves the surgical unwind for
-// the maximal pre-PONR state — two commits made (hook-artifact + bookkeeping) AND the
+// a pre-PONR state of two commits made (hook-artifact + bookkeeping) AND the
 // annotated tag created. It deletes the exact tag and resets HEAD to the captured
 // starting sha (dropping exactly the two commits), narrating both undone items with
 // the engine-authored "repo clean" tail.

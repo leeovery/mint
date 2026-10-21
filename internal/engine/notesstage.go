@@ -102,7 +102,7 @@ func (s *notesStage) showSuggestions(releaseExclude []string) {
 	for i := range shown {
 		shown[i].Line = diffExcludeLine(releaseExclude, shown[i].Glob)
 	}
-	s.p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: "[release]", Suggestions: shown})
+	s.p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: releaseTable, Suggestions: shown})
 }
 
 // diffExcludeLine is the diff_exclude key holding entries with glob appended.

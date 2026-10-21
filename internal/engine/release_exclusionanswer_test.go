@@ -114,7 +114,7 @@ func TestRelease_AnExcludeAnswer_LeavesItsFilesOutOfASinglePassRunsDiffAndChange
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	f, _, err := answeredRelease(t, rec, "",
-		append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...),
+		withAnswersCommit(append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...),
 		"docs/design/: design documents\n", aiBody)
 	if err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
@@ -136,12 +136,12 @@ func TestRelease_AnExcludeAnswer_LeavesItsFilesOutOfEveryCallOfAChunkedRun(t *te
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	f, _, err := answeredRelease(t, rec, "max_prompt_bytes = 20000\n",
-		[]runner.ScriptedCall{
-			ScriptedOut(twoFileDiff(10_000) + designDocDiff),
+		withAnswersCommit(
+			ScriptedOut(twoFileDiff(10_000)+designDocDiff),
 			ScriptedOut(twoFileDiff(10_000)),
 			ScriptedOut("M\tapi/a.go\nM\tcore/b.go\n"),
 			ScriptedOut("156\t0\tapi/a.go\n156\t0\tcore/b.go\n"),
-		},
+		),
 		"docs/design/: design documents\n", "- api notes", "- core notes", chunkedMergeBody)
 	if err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
@@ -162,7 +162,7 @@ func TestRelease_AnExcludeAnswer_TakesOutAFileTheKeepListCovers(t *testing.T) {
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	f, _, err := answeredRelease(t, rec, "[release]\ndiff_keep = [\"docs/design/spec.md\"]\n",
-		append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designSpecDiff + designADiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...),
+		withAnswersCommit(append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designSpecDiff + designADiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...),
 		"docs/design/: design documents\n", aiBody)
 	if err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
@@ -189,7 +189,7 @@ func TestRelease_ExcludingTheTranscriptThatPutItOverTheCap_GivesOneSinglePassCal
 	}
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	f, _, err := answeredRelease(t, rec, "",
-		append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + transcriptDiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...),
+		withAnswersCommit(append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + transcriptDiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...),
 		"notes/session.jsonl: an agent session transcript\n", aiBody)
 	if err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
@@ -213,7 +213,7 @@ func TestRelease_ExcludeAnswersLeavingNoPath_GiveTheMaintenanceBodyWithNoNotesCa
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	f, _, err := answeredRelease(t, rec, "",
-		[]runner.ScriptedCall{ScriptedOut(designDocDiff), ScriptedOut("")},
+		withAnswersCommit(ScriptedOut(designDocDiff), ScriptedOut("")),
 		"docs/design/: design documents\n")
 	if err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
@@ -262,7 +262,7 @@ func TestRelease_AnExcludeAnswerAfterADryRunCachedItsNotes_WritesFreshNotesWitho
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	f := cachedAnsweredRelease(t, rec,
-		append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...),
+		withAnswersCommit(append([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap...)...),
 		aiBody)
 
 	if reuseConfirmPrompted(rec) {
@@ -282,7 +282,7 @@ func TestRelease_EveryPauseAnsweredKeepAfterADryRunCachedItsNotes_OffersTheCache
 	t.Parallel()
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceKeep}, nil)
-	f := cachedAnsweredRelease(t, rec, []runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff)})
+	f := cachedAnsweredRelease(t, rec, withAnswersCommit(ScriptedOut(exportGoDiff+designDocDiff)))
 
 	if !reuseConfirmPrompted(rec) {
 		t.Errorf("the cached notes were not offered when every pause was answered Keep")
@@ -302,10 +302,10 @@ func TestRelease_AnRAfterAnExcludeAnswer_WritesItsNotesWithoutTheExcludedFiles(t
 	rec.NextLines = []string{"lead with the export feature"}
 	const regenBody = "✨ Added\n- Regenerated without the design docs   \n"
 	f, _, err := answeredRelease(t, rec, "",
-		slices.Concat(
+		withAnswersCommit(slices.Concat(
 			[]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), ScriptedOut(exportGoDiff)}, exportOnlyChangeMap,
 			[]runner.ScriptedCall{ScriptedOut(exportGoDiff)}, exportOnlyChangeMap,
-		),
+		)...),
 		"docs/design/: design documents\n", aiBody, regenBody)
 	if err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)
@@ -334,12 +334,12 @@ func TestRelease_AKeepAnswerAfterAnExcludeAnswer_NeverBringsBackAFileTheExcludeT
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude, presenter.ChoiceKeep}, nil)
 	f, _, err := answeredRelease(t, rec, "",
-		[]runner.ScriptedCall{
-			ScriptedOut(exportGoDiff + readmeDiff + designADiff),
-			ScriptedOut(exportGoDiff + readmeDiff),
+		withAnswersCommit(
+			ScriptedOut(exportGoDiff+readmeDiff+designADiff),
+			ScriptedOut(exportGoDiff+readmeDiff),
 			ScriptedOut("M\tsrc/export.go\nM\tREADME.md\n"),
 			ScriptedOut("1\t1\tsrc/export.go\n1\t1\tREADME.md\n"),
-		},
+		),
 		"docs/design/: design documents\n*.md: documentation\n", aiBody)
 	if err != nil {
 		t.Fatalf("Release returned unexpected error: %v", err)

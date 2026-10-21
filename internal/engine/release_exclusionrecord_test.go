@@ -12,14 +12,15 @@ import (
 	"mint/internal/runner"
 )
 
-// excludeThenKeepCalls is git's notes answers for a release changing src/export.go,
-// docs/design/ and test/fixtures/, once with every path and once docs/design/ is out.
-var excludeThenKeepCalls = []runner.ScriptedCall{
-	ScriptedOut(exportGoDiff + designDocDiff + fixturesDiff),
-	ScriptedOut(exportGoDiff + fixturesDiff),
+// excludeThenKeepCalls is git's answers for a release changing src/export.go,
+// docs/design/ and test/fixtures/: the notes diff with every path, the answers commit,
+// then the notes diff once docs/design/ is out.
+var excludeThenKeepCalls = withAnswersCommit(
+	ScriptedOut(exportGoDiff+designDocDiff+fixturesDiff),
+	ScriptedOut(exportGoDiff+fixturesDiff),
 	ScriptedOut("M\tsrc/export.go\nA\ttest/fixtures/export.json\n"),
 	ScriptedOut("1\t1\tsrc/export.go\n1\t0\ttest/fixtures/export.json\n"),
-}
+)
 
 func TestRelease_ExcludeAndKeepAnswers_JoinTheReleaseTablesExistingLists(t *testing.T) {
 	t.Parallel()
@@ -55,11 +56,11 @@ func TestRelease_AKeepAnswerWithNoConfigFile_CreatesItHoldingOnlyTheReleaseTable
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
-	f.SeedSequence("git",
+	f.SeedSequence("git", withAnswersCommit(
 		ScriptedOut(exportGoDiff+fixturesDiff),
 		ScriptedOut("M\tsrc/export.go\nA\ttest/fixtures/export.json\n"),
 		ScriptedOut("1\t1\tsrc/export.go\n1\t0\ttest/fixtures/export.json\n"),
-	)
+	)...)
 	f.SeedSequence("claude", ScriptedOut("test/fixtures/: test data\n"), ScriptedOut(aiBody))
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)

@@ -60,9 +60,9 @@ type StartState struct {
 // (not inferred by probing git). It drives the surgical unwind: delete the tag iff
 // TagCreated, reset iff Commits > 0, and reset by exactly Commits.
 type MadeState struct {
-	// Commits is the count of commits mint made before the tag — 0, 1 (a lone
-	// hook-artifact or bookkeeping commit), or 2 (hook-artifact + bookkeeping). The
-	// unwind reports this count and resets to StartState.HEAD when it is non-zero.
+	// Commits is the count of commits mint made before the tag, 0 to 3: the
+	// hook-artifact, answers and bookkeeping commits, each optional. The unwind reports
+	// this count and resets to StartState.HEAD when it is non-zero.
 	Commits int
 	// TagCreated reports whether mint created the annotated tag this run. When true the
 	// unwind deletes it (local only — pre-PONR never pushed it).

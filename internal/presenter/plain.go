@@ -229,6 +229,11 @@ func (p *PlainPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
 	}
 }
 
+// ExclusionAnswersRecorded prints, as its own line, where the answers were recorded.
+func (p *PlainPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
+	p.writef("%s: answers %s\n", a.Stage, exclusionAnswersText(a))
+}
+
 // PreviewGate prints the gate's question as Prompt would, the key hint replaced by
 // the dry-run marker.
 func (p *PlainPresenter) PreviewGate(gate Gate) {

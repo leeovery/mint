@@ -104,6 +104,9 @@ type Presenter interface {
 	// about, each with the config line that acts on it, to out only. Like Warn it sets
 	// no failure state.
 	ExclusionSuggestions(s ExclusionSuggestions)
+	// ExclusionAnswersRecorded renders one line saying the exclusion check's answers
+	// were written to a table of the config file and committed, to out only.
+	ExclusionAnswersRecorded(a ExclusionAnswers)
 	// PreviewGate renders the question gate would ask, without its choices, for a dry
 	// run that shows where a real run would stop to ask. It reads no input and sets no
 	// failure state.
@@ -568,6 +571,18 @@ type ExclusionSuggestions struct {
 	Stage       string
 	Table       string
 	Suggestions []ExclusionSuggestion
+}
+
+// ExclusionAnswers carries the ExclusionAnswersRecorded payload: stage's answers went
+// into Table of File.
+type ExclusionAnswers struct {
+	Stage string
+	File  string
+	Table string
+}
+
+func exclusionAnswersText(a ExclusionAnswers) string {
+	return "written to " + a.File + "'s " + a.Table + " table and committed"
 }
 
 // ExclusionSuggestion is one glob the exclusion check suggests leaving out, the AI's

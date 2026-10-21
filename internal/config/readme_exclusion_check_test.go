@@ -82,3 +82,18 @@ func TestREADME_ReleaseSectionDescribesTheFailedCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestREADME_ReleaseSectionSaysThePausesAnswersAreRecordedAndCommittedWithTheRelease(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"The answers are recorded once the last pause is answered: written to `.mint.toml`'s `[release]` table",
+		"and committed with the release as a commit of `.mint.toml` alone, `chore(release): release-notes path answers for {tag}` whatever `commit_prefix` says, which goes out with the release's push",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
+}

@@ -30,6 +30,7 @@ func (p *nopPresenter) NotesHalving(presenter.NotesHalving)                 {}
 func (p *nopPresenter) NextMoves(presenter.NextMoves)                       {}
 func (p *nopPresenter) ExclusionSuggestions(presenter.ExclusionSuggestions) {}
 func (p *nopPresenter) PreviewGate(presenter.Gate)                          {}
+func (p *nopPresenter) ExclusionAnswersRecorded(presenter.ExclusionAnswers) {}
 func (p *nopPresenter) Warn(presenter.Warning)                              {}
 func (p *nopPresenter) Unwound(presenter.Unwind)                            {}
 func (p *nopPresenter) ShowPlan(presenter.Plan)                             {}

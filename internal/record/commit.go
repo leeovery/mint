@@ -101,6 +101,18 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 	return nil
 }
 
+// CommitFile stages path in dir by name and commits it with subject. The commit takes
+// the whole index, so it carries path alone only when nothing else is staged.
+func CommitFile(ctx context.Context, m *git.Mutator, dir, path, subject string) error {
+	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "add", path); err != nil {
+		return fmt.Errorf("staging %s: %w", path, err)
+	}
+	if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
+		return fmt.Errorf("committing %q: %w", subject, err)
+	}
+	return nil
+}
+
 // ErrNothingStaged reports a commit that had nothing to take once keepOut was left out.
 var ErrNothingStaged = errors.New("nothing staged to commit")
 

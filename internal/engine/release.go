@@ -16,8 +16,8 @@ package engine
 // POST-MUTATION pre-PONR failure share ONE recovery path — the surgical Unwind (task
 // 4-2). The spine captures the clean StartState (HEAD + target tag) before the gate
 // and TRACKS the MadeState as it proceeds (the count of commits mint made — an
-// optional pre_tag artifact commit and/or the bookkeeping commit — and whether the
-// annotated tag was created). On a gate-no or any pre-push failure it hands those
+// optional pre_tag artifact commit, answers commit and bookkeeping commit — and whether
+// the annotated tag was created). On a gate-no or any pre-push failure it hands those
 // captured inputs to Unwind, which resets EXACTLY the commits mint made and deletes the
 // tag iff mint created it — no HEAD probe, no inference. The two triggers are
 // deliberately identical: a declined gate and a rejected push with the same MadeState
@@ -531,6 +531,8 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// that root is resolved. opts.NotesBody is a test-injection override that bypasses
 	// the selector. An on_notes_failure=abort failure aborts here, with the next moves,
 	// unless an attended real run takes a body at the notes floor's choice instead.
+	// The exclusion check's answers are committed inside this stage, before the first
+	// notes attempt, and folded into made whether or not the stage then fails.
 	// Nothing is tagged yet, but a pre_tag artifact commit may already be in made, so an
 	// abort routes through the surgical unwind (not a plain surface)
 	// — exactly like every other pre-push failure — so that artifact commit is reset
@@ -544,7 +546,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
 	stage := startNotesStage(p)
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
-	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage)
+	answers := &answersCommit{root: root, tag: tag}
+	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
+	if answers.landed {
+		made.Commits++
+	}
 	if err != nil {
 		atFloor := reachesNotesFloor(err)
 		offersChoice := atFloor && deps.asksAtTerminal(opts)
@@ -701,19 +707,22 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 
 	// Stage 6 — tag + atomic push.
 	//
-	// COMMIT-GRAPH INVARIANT (assembled across stages 3 and 5): this run produces UP
-	// TO TWO commits before the tag — an OPTIONAL pre_tag hook-artifact commit
-	// (`chore(release): pre-tag artifacts for {tag}`, Stage 3, made only when the hook
-	// dirtied the tree) followed by an OPTIONAL release-bookkeeping commit
+	// COMMIT-GRAPH INVARIANT (assembled across stages 3, 4 and 5): this run produces UP
+	// TO THREE commits before the tag, in this order — an OPTIONAL pre_tag
+	// hook-artifact commit (`chore(release): pre-tag artifacts for {tag}`, Stage 3, made
+	// only when the hook dirtied the tree), an OPTIONAL answers commit of .mint.toml
+	// alone (`chore(release): release-notes path answers for {tag}`, Stage 4, made only
+	// when an exclusion pause was answered), and an OPTIONAL release-bookkeeping commit
 	// (`{commit_prefix} Release {tag}`, Stage 5, made only when the changelog and/or
 	// version file netted a change). The annotated tag conceptually points at the
 	// release-bookkeeping commit; because TagAndPush creates it with `git tag -a {tag}`
 	// (which tags the CURRENT HEAD) and HEAD EQUALS the bookkeeping commit whenever one
-	// was made, the tag is correct by construction — no explicit target is passed. When
-	// only the hook-artifact commit was made the tag sits on it; when neither commit was
-	// made the tag sits on the pre-existing HEAD. NO-OP SAFETY: zero, one, or two commits
-	// are all valid and no empty commit is ever created (CommitDirtyTree and
-	// CommitBookkeeping each commit only when there is a real change). The single atomic
+	// was made, the tag is correct by construction — no explicit target is passed.
+	// Without a bookkeeping commit the tag sits on the latest commit mint did make, or
+	// on the pre-existing HEAD when it made none. NO-OP SAFETY: any of the three commits
+	// may be absent and no empty commit is ever created (CommitDirtyTree and
+	// CommitBookkeeping each commit only when there is a real change, the answers commit
+	// only once answers were written). The single atomic
 	// push (`git push --atomic origin HEAD {tag}`) sends whatever commits HEAD carries
 	// together with the tag — the one point of no return for the whole graph.
 	//
@@ -986,7 +995,7 @@ func readNotesFile(path string, set bool) (*string, error) {
 //     generator is fine; a normal-AI override test supplies its own deps.Regenerator.
 //   - otherwise the selector is built from deps.Runner (now that root is resolved) and
 //     SelectBody runs the precedence over the run's SelectState.
-func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, chunkNotes *chunkNotesKeeper, versionKey string, opts ReleaseOptions, stage *notesStage) (string, notes.Kind, *notes.Generator, error) {
+func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.Config, state notes.SelectState, chunkNotes *chunkNotesKeeper, versionKey string, opts ReleaseOptions, stage *notesStage, answers *answersCommit) (string, notes.Kind, *notes.Generator, error) {
 	if opts.NotesBody != "" {
 		return opts.NotesBody, opts.NotesKind, nil, nil
 	}
@@ -1002,7 +1011,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	selecting := chunkNotes.sinks(stage).wire(generator)
 	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).
 		WithFallbackNotice(stage.fellBack).
-		WithExclusionCheck(exclusionCheck(deps, root, cfg, opts, transport, stage))
+		WithExclusionCheck(exclusionCheck(deps, cfg, opts, transport, stage, answers))
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// diff the exclusions and the check's Exclude answers leave + resolved prompt/context
@@ -1040,14 +1049,14 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 }
 
 // exclusionCheck is the release's exclusion check, pausing on its suggestions on an
-// attended real run and recording the answers in root's .mint.toml, handing them to
-// stage to print on an unattended one, and on an attended dry run showing each where its
+// attended real run and recording the answers through answers, handing them to stage
+// to print on an unattended one, and on an attended dry run showing each where its
 // pause would be, unanswered.
-func exclusionCheck(deps ReleaseDeps, root string, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage) *notes.ExclusionCheck {
+func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage, answers *answersCommit) *notes.ExclusionCheck {
 	check := notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage)
 	switch {
 	case deps.asksAtTerminal(opts):
-		return check.WithPauses(exclusionPauses{p: deps.Presenter}).WithRecord(recordAnswers(root))
+		return check.WithPauses(exclusionPauses{p: deps.Presenter}).WithRecord(answers.record(deps))
 	case !deps.attended():
 		return check.WithReport(stage.suggested)
 	default:
@@ -1055,11 +1064,29 @@ func exclusionCheck(deps ReleaseDeps, root string, cfg config.Config, opts Relea
 	}
 }
 
-func recordAnswers(root string) func(context.Context, notes.Answers) error {
-	return func(_ context.Context, a notes.Answers) error {
-		if err := config.AppendReleaseGlobs(root, config.ReleaseGlobs{DiffExclude: a.Exclude, DiffKeep: a.Keep}); err != nil {
+// answersCommit records the exclusion check's answers in root's .mint.toml and
+// commits that file alone for tag's release; landed reports whether the commit was
+// made.
+type answersCommit struct {
+	root, tag string
+	landed    bool
+}
+
+// releaseTable is the .mint.toml table the answers are written to.
+const releaseTable = "[release]"
+
+func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Answers) error {
+	return func(ctx context.Context, answers notes.Answers) error {
+		if err := config.AppendReleaseGlobs(a.root, config.ReleaseGlobs{DiffExclude: answers.Exclude, DiffKeep: answers.Keep}); err != nil {
 			return fmt.Errorf("recording the exclusion answers: %w", err)
 		}
+		if err := record.CommitFile(ctx, deps.Mutator, a.root, config.FileName, answersSubject(a.tag)); err != nil {
+			return fmt.Errorf("committing the exclusion answers: %w", err)
+		}
+		a.landed = true
+		deps.Presenter.SuspendSpinner()
+		deps.Presenter.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", File: config.FileName, Table: releaseTable})
+		deps.Presenter.ResumeSpinner()
 		return nil
 	}
 }
@@ -1499,6 +1526,13 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 // from the release bookkeeping commit (`{commit_prefix} Release {tag}`).
 func pretagArtifactSubject(tag string) string {
 	return "chore(release): pre-tag artifacts for " + tag
+}
+
+// answersSubject is the fixed subject of the commit carrying the exclusion check's
+// answers: a constant prefix, never commit_prefix, since the commit records how
+// releases are made rather than being the release.
+func answersSubject(tag string) string {
+	return "chore(release): release-notes path answers for " + tag
 }
 
 // buildHookEnv assembles the shared MINT_* hook environment from the run's computed

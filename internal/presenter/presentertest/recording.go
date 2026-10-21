@@ -45,6 +45,7 @@ const (
 	KindNotesChecked
 	KindExclusionSuggestions
 	KindPreviewGate
+	KindExclusionAnswersRecorded
 )
 
 // String renders the kind for readable test failure output.
@@ -98,6 +99,8 @@ func (k EventKind) String() string {
 		return "ExclusionSuggestions"
 	case KindPreviewGate:
 		return "PreviewGate"
+	case KindExclusionAnswersRecorded:
+		return "ExclusionAnswersRecorded"
 	default:
 		return "Unknown"
 	}
@@ -120,6 +123,7 @@ type Event struct {
 	NotesHalving         presenter.NotesHalving
 	NextMoves            presenter.NextMoves
 	ExclusionSuggestions presenter.ExclusionSuggestions
+	ExclusionAnswers     presenter.ExclusionAnswers
 	Warn                 presenter.Warning
 	Unwound              presenter.Unwind
 	ShowPlan             presenter.Plan
@@ -193,6 +197,11 @@ func (r *RecordingPresenter) StageSucceeded(s presenter.StageSuccess) {
 // StageFailed records a stage's failure.
 func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 	r.Events = append(r.Events, Event{Kind: KindStageFailed, StageFailed: s})
+}
+
+// ExclusionAnswersRecorded records the exclusion check's answers being recorded.
+func (r *RecordingPresenter) ExclusionAnswersRecorded(a presenter.ExclusionAnswers) {
+	r.Events = append(r.Events, Event{Kind: KindExclusionAnswersRecorded, ExclusionAnswers: a})
 }
 
 // NotesChecking records the exclusion check's call starting.

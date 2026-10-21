@@ -612,6 +612,11 @@ func (p *PrettyPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
 	}
 }
 
+// ExclusionAnswersRecorded renders, as a ✓ line, where the answers were recorded.
+func (p *PrettyPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
+	p.writef("%s%s Answers %s\n", stageIndent, p.success.Render("✓"), exclusionAnswersText(a))
+}
+
 // PreviewGate opens as renderGate does, with the bold question, and puts the dim
 // dry-run marker where the choices would be.
 func (p *PrettyPresenter) PreviewGate(gate Gate) {
