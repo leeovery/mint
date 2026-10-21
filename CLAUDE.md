@@ -39,7 +39,7 @@ golangci-lint run     # must report 0 issues
 ## Load-bearing invariants
 
 - **Mutate nothing until accept** (commit): preflight probes and the would-be-committed diff are computed read-only; `git add` runs only inside the accept tail. A decline/abort leaves the index byte-for-byte untouched.
-- **Surgical unwind, then PONR** (release): every pre-push mutation is tracked and unwound on failure — mint removes only what it created. The one exception is the exclusion check's answers commit: the unwind resets past it with the rest, then re-commits the answers on the starting commit and narrates it as kept. The point of no return is the single `git push --atomic origin HEAD <tag>`. After it: warn-only, never unwind.
+- **Surgical unwind, then PONR** (release): every pre-push mutation is tracked and unwound on failure — mint removes only what it created. The one exception is the exclusion check's answers: the unwind resets past their commit with the rest, then re-commits them on the starting commit and narrates it as kept; where git ignores an untracked `.mint.toml`, the uncommitted write is left in place. The point of no return is the single `git push --atomic origin HEAD <tag>`. After it: warn-only, never unwind.
 - **Never unwind after accept** (commit): a failed `-p` push warns once (git stderr verbatim in `Warning.Output`) and keeps the commit; exit non-zero via the sentinel, no `StageFailed`.
 - **Byte-identical bodies**: notes and commit messages pass through verbatim — no reformatting, no branding injected into message text (`commit_prefix` is release-bookkeeping only).
 - **Fail loud, never hang**: unattended (`-y` or non-TTY) paths that would need a human abort with one clear message.
