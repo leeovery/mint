@@ -302,7 +302,7 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual st
 
 	pathspec := target.KeepOut.Pathspec()
 	restoreArgs := append([]string{"restore", "--source=" + sha, "--staged", "--worktree"}, pathspec...)
-	restoreLine := "`git restore --source=" + sha + " --staged --worktree " + pathspec[0] + " '" + pathspec[1] + "'`"
+	restoreLine := "`git restore --source=" + sha + " --staged --worktree " + pathspec[0] + " " + cmdline.Quote(pathspec[1]) + "`"
 	keeping := ", leaving " + string(target.KeepOut) + " as it is ("
 	if _, err := m.Mutate(ctx, nil, "git", "reset", "--soft", sha); err != nil {
 		return "reset HEAD back to " + sha + keeping + "`git reset --soft " + sha + "` then " + restoreLine + ")", err
