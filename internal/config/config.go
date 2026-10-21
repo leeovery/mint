@@ -53,10 +53,8 @@ const (
 	defaultChangelog    = true
 )
 
-// defaultOnNotesFailure is the out-of-the-box notes-failure policy: "abort" — when
-// the normal AI path fails, mint fails loud and tags nothing. The opt-in alternative
-// is "fallback". These two are the closed valid set: an absent key defaults to abort
-// and any other non-empty value is rejected by Load (see validateOnNotesFailure).
+// defaultOnNotesFailure is the notes-failure policy an absent on_notes_failure key
+// resolves to.
 const defaultOnNotesFailure = "abort"
 
 // onNotesFailureValues is the closed set of accepted on_notes_failure values. abort

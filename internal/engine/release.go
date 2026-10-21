@@ -1996,15 +1996,6 @@ func failureOutput(cause error) string {
 	return notesFailureOutput(cause)
 }
 
-// notesFailureOutput extracts claude's captured output from a *ai.GenerationError
-// carrier and composes it for StageFailure.Output. It mirrors hookFailureOutput's
-// PATTERN — a typed-carrier extraction — but NOT its field choice: the hook helper reads
-// Result.Stderr, whereas claude writes its payload (e.g. "Prompt is too long") to STDOUT,
-// so a literal copy of the hook helper would render nothing. errors.As is used precisely
-// because it traverses the %w chain, so the carrier still matches when it sits inside
-// abortError's forward chain ("notes generation failed (%s): %w") OR regenerate's shorter
-// "generating notes: %w" chain. Any non-carrier cause (timeout, command-missing, or a
-// plain error) yields "" so the ✗ line stands alone.
 func notesFailureOutput(cause error) string {
 	var genErr *ai.GenerationError
 	if !errors.As(cause, &genErr) {

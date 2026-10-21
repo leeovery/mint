@@ -182,8 +182,7 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 // set: for each version it opens a narration block, produces the body, runs the
 // per-version gate (unless -y), and dispatches the provider release (create-or-update
 // per version). A per-version FAILURE is CAUGHT, RECORDED with a human reason, and the
-// loop CONTINUES — consciously OVERRIDING the single-version on_notes_failure=abort
-// default (one version whose notes fail must not kill the others).
+// loop CONTINUES, so one version whose notes fail does not stop the others.
 // The run closes with one RunFinished carrying the engine-computed end Summary (the
 // regenerated count + each skipped version with its reason). It returns the COLLECTED
 // per-version bodies (oldest → newest) for the 5-13 whole-file changelog rebuild, or a
@@ -266,8 +265,7 @@ func savedNotesPointer(failure error, version string) string {
 // a cancel).
 //
 // Per-version FAILURES are caught here and returned as a *skippedVersion rather than
-// surfaced as a terminal abort: this is the skip-and-continue contract that overrides
-// the single-version on_notes_failure=abort default. The covered failures are:
+// surfaced as a terminal abort: skip-and-continue is the batch's floor. The covered failures are:
 //   - reuse against a tag with NO annotation body (lightweight / empty) — detected via
 //     ReadTagBody's has-body branch (the --all variant of 5-5's single-mode fail-loud
 //     read), never written as an empty provider release;
