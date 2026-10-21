@@ -321,7 +321,8 @@
             "token-aware-diff-sizing-9": "tick-67d23a",
             "token-aware-diff-sizing-9-1": "tick-f67ba7",
             "token-aware-diff-sizing-9-2": "tick-375328",
-            "token-aware-diff-sizing-9-3": "tick-49df08"
+            "token-aware-diff-sizing-9-3": "tick-49df08",
+            "token-aware-diff-sizing-9-4": "tick-e9883a"
           },
           "storage_paths": [
             ".tick/"
@@ -543,6 +544,11 @@
                 "2": "approved",
                 "3": "approved"
               }
+            },
+            "p9": {
+              "tasks": {
+                "1": "approved"
+              }
             }
           },
           "consolidated_phases": [
@@ -553,7 +559,8 @@
             5,
             6,
             7,
-            8
+            8,
+            9
           ],
           "completed_phases": [
             1,
