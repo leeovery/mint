@@ -347,7 +347,7 @@ func TestAssembler_BuildChangeMap_MultipleGlobs_AllAppliedToBothCallsInOrder(t *
 	assertChangeMapInvocationsWithExcludes(t, r, "v8.0.0", globs...)
 }
 
-func TestAssembler_BuildChangeMap_AbsentDiffExclude_ExcludesOnlyChangelog(t *testing.T) {
+func TestAssembler_BuildChangeMap_AbsentDiffExclude_ExcludesOnlyTheBuiltIns(t *testing.T) {
 	t.Parallel()
 
 	// With no configured globs (nil), BOTH calls carry only the built-in excludes.

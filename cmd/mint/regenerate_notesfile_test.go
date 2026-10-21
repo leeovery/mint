@@ -8,6 +8,7 @@ import (
 	"slices"
 	"testing"
 
+	"mint/internal/notescache"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -144,7 +145,7 @@ func TestRegenerate_UnusableNotesFileWithUnresolvableProvider_IsTheOnlyThingRepo
 				rec := &presentertest.RecordingPresenter{}
 				req := parseRegenArgs(t, "1.4.0", "--notes-file", file.path)
 
-				code := regenerate(t.Context(), rec, f, req)
+				code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir()))
 
 				assertOnlyNotesRefusal(t, code, rec, f, file.wantMsg)
 			})
@@ -164,7 +165,7 @@ func TestRegenerate_UnusableNotesFileForAnUntaggedVersion_IsRefusedNotAUsageErro
 			rec := &presentertest.RecordingPresenter{}
 			req := parseRegenArgs(t, "9.9.9", "--notes-file", file.path)
 
-			code := regenerate(t.Context(), rec, f, req)
+			code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir()))
 
 			assertOnlyNotesRefusal(t, code, rec, f, file.wantMsg)
 		})
@@ -201,7 +202,7 @@ func TestRegenerate_RelativeNotesFile_ShipsTheBodyReadAtStartupWithNoSourceQuest
 	rec := &presentertest.RecordingPresenter{}
 	req := parseRegenArgs(t, "1.4.0", "--notes-file", "notes.md", "--target", "release")
 
-	if code := regenerate(t.Context(), rec, r, req); code != 0 {
+	if code := regenerate(t.Context(), rec, r, req, notescache.NewChunkNotes(t.TempDir())); code != 0 {
 		t.Fatalf("exit code = %d, want 0; events %+v", code, rec.Events)
 	}
 
@@ -239,7 +240,7 @@ func TestRegenerate_NoNotesFile_ResolvesThePublisherAndAsksTheSource(t *testing.
 	}
 	req := parseRegenArgs(t, "1.4.0")
 
-	code := regenerate(t.Context(), rec, f, req)
+	code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir()))
 
 	if code != 1 {
 		t.Errorf("exit code = %d, want 1 once the source question's input closes", code)

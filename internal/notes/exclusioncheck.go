@@ -12,9 +12,11 @@ import (
 	"mint/internal/bytesize"
 )
 
-// CheckNarration is told when the exclusion check's call starts and when it ends, and,
-// after the end, when the check failed: output is the AI's captured output, or its
-// unreadable answer, verbatim but for trailing whitespace, and empty when there is none.
+// CheckNarration is told when the exclusion check's call starts and when it ends, and
+// when the check failed: after the call ends when the call failed or its answer was
+// unreadable, and with no call at all when the call would not fit under the cap.
+// output is the AI's captured output, or its unreadable answer, verbatim but for
+// trailing whitespace, and empty when there is none.
 type CheckNarration interface {
 	Checking()
 	Checked()

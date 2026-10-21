@@ -141,12 +141,12 @@ func runRegenerate(ctx context.Context, rest []string) int {
 
 	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin)
 	req.StdinInteractive = presenter.DetectStartupSignals(req.Plain, os.Stdout, os.Stdin).StdinInteractive
-	return regenerate(ctx, p, runner.NewExecRunner(), req)
+	return regenerate(ctx, p, runner.NewExecRunner(), req, notescache.NewUserChunkNotes(os.UserCacheDir))
 }
 
 // regenerate runs a parsed regenerate invocation. Any --notes-file is read first, so
 // an unusable one is refused ahead of the repo, config and release-branch resolution.
-func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunner, req regenerateRequest) int {
+func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunner, req regenerateRequest, chunkNotes engine.ChunkNotesSaver) int {
 	supplied, err := engine.ReadNotesFile(p, req.NotesFile, req.NotesFileSet)
 	if err != nil {
 		return exitCode(err)
@@ -190,7 +190,7 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 		// The `e` choice at the notes-review gate and at the notes floor hands the notes
 		// to the real $EDITOR resolution, launched through the same presenter + runner.
 		Editor:           engine.NewEditorLauncher(p, r),
-		ChunkNotes:       notescache.NewUserChunkNotes(os.UserCacheDir),
+		ChunkNotes:       chunkNotes,
 		Yes:              req.Yes,
 		StdinInteractive: req.StdinInteractive,
 	}

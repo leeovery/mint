@@ -131,7 +131,7 @@ func TestRelease_RangeChangingOnlyExcludedPaths_MakesNoCheckCallAndShipsTheMaint
 				t.Fatalf("Release returned unexpected error: %v", err)
 			}
 
-			args := append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag + "..HEAD", "--", "."}, tt.pathspecs...)
+			args := append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", priorTag + "..HEAD", "--", "."}, tt.pathspecs...)
 			if !invokedWith(f, "git", args...) {
 				t.Errorf("no `git %s` call; got %v", strings.Join(args, " "), commandLines(f.Invocations()))
 			}

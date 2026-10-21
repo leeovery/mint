@@ -15,8 +15,7 @@ import (
 )
 
 // generousTimeout is a per-attempt deadline large enough never to expire during a
-// fast, in-memory FakeRunner call. The transport's timeout is a configurable
-// field precisely so tests never wait the production ~60s.
+// fast, in-memory FakeRunner call.
 const generousTimeout = time.Minute
 
 // ptrTo returns a pointer to v. ai.Config.Timeout is *time.Duration (the boundary

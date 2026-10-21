@@ -42,7 +42,7 @@ func notesReads(f *runner.FakeRunner) []runner.Invocation {
 func notesReadArgv(diffRange string, pathspecs ...string) [][]string {
 	tail := append([]string{diffRange, "--", "."}, pathspecs...)
 	return [][]string{
-		slices.Concat([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/"}, tail),
+		slices.Concat([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff"}, tail),
 		slices.Concat([]string{"diff", "--name-status"}, tail),
 		slices.Concat([]string{"diff", "--numstat"}, tail),
 	}

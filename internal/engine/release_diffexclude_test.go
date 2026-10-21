@@ -27,7 +27,7 @@ func assertNotesGitCallsExclude(t *testing.T, f *runner.FakeRunner, diffRange st
 	t.Helper()
 	tail := append([]string{diffRange, "--", "."}, pathspecs...)
 	for _, head := range [][]string{
-		{"diff", "--src-prefix=a/", "--dst-prefix=b/"},
+		{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff"},
 		{"diff", "--name-status"},
 		{"diff", "--numstat"},
 	} {
@@ -103,7 +103,7 @@ func TestRelease_ReleaseDiffExclude_OnlyExcludedChangesGiveTheMaintenanceBody(t 
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)specs/") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)specs/") {
 		t.Errorf("notes diff does not exclude specs/; got %v", commandLines(f.Invocations()))
 	}
 	for _, inv := range f.Invocations() {

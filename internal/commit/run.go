@@ -661,8 +661,9 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// The regeneration is the same slow AI wait as the first generation, so it
 			// carries the SAME blocking "message" stage (spinner in pretty). Every exit
 			// closes it: success via the timed completion closure, a transport failure via
-			// the spinner-stopping AI-failure Warn (`r` is interactive-only, so this path
-			// is always attended), any other failure via surface's StageFailed.
+			// the spinner-stopping AI-failure Warn and an over-cap prompt via the oversized
+			// Warn (`r` is interactive-only, so both paths are always attended), any other
+			// failure via surface's StageFailed.
 			regenDone := startGenerateStage(p, "regenerating commit message…", "Regenerated commit message")
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 
+	"mint/internal/notescache"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -33,7 +34,7 @@ func TestRegenerate_AttendedFreshFailure_PutsTheVersionsCommitSubjectsOnIt(t *te
 	req := parseRegenArgs(t, "1.4.0", "--source", "fresh", "--target", "release")
 	req.StdinInteractive = true
 
-	if code := regenerate(t.Context(), rec, f, req); code != 0 {
+	if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code != 0 {
 		t.Fatalf("exit code = %d, want 0; events %+v", code, rec.Events)
 	}
 
@@ -67,7 +68,7 @@ func TestRegenerate_UnattendedFreshFailure_OffersNoChoice(t *testing.T) {
 	req := parseRegenArgs(t, "1.4.0", "--source", "fresh", "--target", "release", "-y")
 	req.StdinInteractive = true
 
-	if code := regenerate(t.Context(), rec, f, req); code != 1 {
+	if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
 	if got := promptSubjects(rec); len(got) != 0 {
@@ -94,7 +95,7 @@ func TestRegenerate_UnattendedFreshFailure_FitsTheNextMovesToTheLoadedConfig(t *
 	rec := &presentertest.RecordingPresenter{}
 	req := parseRegenArgs(t, "1.4.0", "--source", "fresh", "--target", "release", "-y")
 
-	if code := regenerate(t.Context(), rec, f, req); code != 1 {
+	if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
 

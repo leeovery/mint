@@ -21,7 +21,7 @@ import (
 // wantRangeArgs is the exact `git diff` argv AssembleRange must issue for a full git
 // range, the range substituted verbatim (NOT a tag with `..HEAD` appended).
 func wantRangeArgs(rng string) []string {
-	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", rng, "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
+	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", rng, "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 }
 
 func TestAssembler_AssembleRange_DiffsArbitraryRange(t *testing.T) {

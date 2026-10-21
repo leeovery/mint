@@ -20,7 +20,8 @@ package engine
 // the annotated tag was created). On a gate-no or any pre-push failure it hands those
 // captured inputs to Unwind, which resets EXACTLY the commits mint made and deletes the
 // tag iff mint created it — no HEAD probe, no inference — then re-commits the exclusion
-// answers on the starting commit when their commit had landed, the one thing it keeps.
+// answers on the starting commit when their commit had landed, and leaves their
+// uncommitted write to a .mint.toml git ignores in place.
 // The two triggers are deliberately identical: a declined gate and a rejected push with
 // the same MadeState produce a byte-identical state and Unwound summary. With nothing made the
 // surgical unwind no-ops (no reset, no Unwound). The PRE-mutation / preflight failures
@@ -63,8 +64,9 @@ const releaseAction = "releasing"
 // uses the text it returns VERBATIM, never re-parsed — a human edit is trusted.
 type Editor interface {
 	// Edit presents the current body to the user's editor and returns the saved
-	// text. A non-nil error means no edit could be obtained (e.g. no editor on PATH);
-	// the engine surfaces it and aborts rather than blocking on an unwired editor.
+	// text. A non-nil error means no edit could be obtained: ErrEditorReturnToGate (no
+	// editor could be launched, already reported) sends the engine back to the gate or
+	// choice it came from; any other error is surfaced and aborts.
 	Edit(ctx context.Context, current string) (string, error)
 }
 

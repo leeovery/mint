@@ -8,15 +8,15 @@ import (
 	"mint/internal/runner"
 )
 
-// This file pins the up-to-two-commit graph end to end (task 3-8): the optional
-// pre_tag hook-artifact commit (0/1) and the optional release-bookkeeping commit
-// (0/1) assemble in order, the annotated tag (which tags HEAD) lands on the LAST
-// commit mint made this run — the bookkeeping commit when one exists, else the
-// hook-artifact commit, else the pre-existing HEAD — and the single atomic push
-// sends every resulting commit + the tag together. The four combinations (BOTH,
+// This file pins the hook-artifact/bookkeeping combinations of a first release end
+// to end (a first release runs no exclusion check, so no answers commit is made): the
+// optional pre_tag hook-artifact commit (0/1) and the optional release-bookkeeping
+// commit (0/1) assemble in order, the annotated tag (which tags HEAD) lands on the
+// last commit mint made this run, else the pre-existing HEAD, and the single atomic
+// push sends every resulting commit + the tag together. The four combinations (BOTH,
 // ONLY BOOKKEEPING, ONLY HOOK, NEITHER) are each driven through the real spine on a
-// FakeRunner + RecordingPresenter; the constituent commits (3-3 / 3-7) and the
-// tag+push PONR (Phase 1) are exercised together here as one graph.
+// FakeRunner + RecordingPresenter; the constituent commits and the tag+push PONR are
+// exercised together here as one graph.
 
 // These mirror the production subject producers (record.BookkeepingSubject and
 // pretagArtifactSubject) for v0.0.1 with the default 🌿 prefix — the source of truth a

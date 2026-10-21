@@ -13,7 +13,7 @@ import (
 // config. CHANGELOG.md and .mint.toml are the built-in non-configurable always-excludes,
 // applied by git via the :(exclude) pathspecs — mint does no Go-side text stripping.
 func wantArgs(lastTag string) []string {
-	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
+	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 }
 
 // wantArgsWithExcludes is wantArgs plus one :(exclude)<glob> entry per configured
@@ -269,7 +269,7 @@ func TestAssembler_AssembleDiff_ForceAddedTrackedFileMatchingGlob_ExcludedByPath
 	assertGitDiffInvocation(t, r, wantArgsWithExcludes("v3.0.0", "dist/bundle.js"))
 }
 
-func TestAssembler_AssembleDiff_AbsentDiffExclude_ExcludesOnlyChangelog(t *testing.T) {
+func TestAssembler_AssembleDiff_AbsentDiffExclude_ExcludesOnlyTheBuiltIns(t *testing.T) {
 	t.Parallel()
 
 	// With no configured globs (nil), the only excludes are the built-ins.

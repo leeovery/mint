@@ -85,12 +85,12 @@ func TestRegenerateFreshBody_DiffsResolvedRangeNotLastTagHEAD(t *testing.T) {
 		t.Errorf("body = %q, want the AI body %q", got, body)
 	}
 
-	wantDiffArgs := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
+	wantDiffArgs := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 	if !invokedWith(f, "git", wantDiffArgs...) {
 		t.Errorf("git diff argv not found; want %q in %v", wantDiffArgs, f.Invocations())
 	}
 	// And NOT a forward last_tag..HEAD range.
-	if invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.4.0..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
+	if invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.4.0..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
 		t.Error("fresh path diffed last_tag..HEAD; want the resolved vX-1..vX range")
 	}
 }
@@ -109,7 +109,7 @@ func TestRegenerateFreshBody_AlwaysExcludesChangelog(t *testing.T) {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 
-	wantDiffArgs := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
+	wantDiffArgs := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 	if !invokedWith(f, "git", wantDiffArgs...) {
 		t.Errorf("CHANGELOG.md exclude pathspec missing; want %q in %v", wantDiffArgs, f.Invocations())
 	}
@@ -132,7 +132,7 @@ func TestRegenerateFreshBody_PlainModeExcludesVersionFile(t *testing.T) {
 		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
 	}
 
-	want := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)release.txt"}
+	want := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)release.txt"}
 	if !invokedWith(f, "git", want...) {
 		t.Errorf("plain-mode version_file not excluded; want %q in %v", want, f.Invocations())
 	}
@@ -157,10 +157,10 @@ func TestRegenerateFreshBody_EmbeddedModeDoesNotExcludeVersionFile(t *testing.T)
 	}
 
 	// CHANGELOG.md is excluded; main.go is NOT.
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
-		t.Errorf("embedded-mode diff argv wrong; want CHANGELOG.md exclude only, got %v", f.Invocations())
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
+		t.Errorf("embedded-mode diff argv wrong; want the built-in excludes only, got %v", f.Invocations())
 	}
-	if invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)main.go") {
+	if invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.0.0..v2.0.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)main.go") {
 		t.Error("embedded-mode version_file was excluded; it must NOT be (real source we want in notes)")
 	}
 }
@@ -184,7 +184,7 @@ func TestRegenerateFreshBody_PathExclusionEvenWithBookkeepingCommitInRange(t *te
 	}
 
 	// The diff invocation is the full range + path excludes, nothing more.
-	want := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.4.0..v1.5.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)release.txt"}
+	want := []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.4.0..v1.5.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)release.txt"}
 	if !invokedWith(f, "git", want...) {
 		t.Errorf("path-based exclusion argv wrong; want %q in %v", want, f.Invocations())
 	}
@@ -324,7 +324,7 @@ func TestRegenerateFreshBody_OverCap_ChunksAndMergesOverTheVersionsRange(t *test
 			t.Errorf("call %d carries the whole diff in one call", i)
 		}
 	}
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
 		t.Errorf("fresh chunked run did not diff the version's own range; got %v", f.Invocations())
 	}
 }
@@ -424,7 +424,7 @@ func TestRegenerateFreshRegenerator_ReRunsFreshAIRangeWithOneTimeContext(t *test
 	if got != "regenerated body" {
 		t.Errorf("body = %q, want the AI body %q", got, "regenerated body")
 	}
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
 		t.Errorf("regenerator did not diff the resolved range v1.3.0..v1.4.0; got %v", f.Invocations())
 	}
 	if tr.calls() != 1 {

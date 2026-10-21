@@ -16,10 +16,9 @@ import (
 	"mint/internal/version"
 )
 
-// This file pins task 5-12: batch `--all` SKIP-AND-CONTINUE + END SUMMARY. A
-// per-version FAILURE (a failed notes call; `--source tag --all` against a body-less tag)
-// is CAUGHT, RECORDED with a human reason, and the loop CONTINUES — consciously
-// OVERRIDING the single-version on_notes_failure=abort default. A CONFIG-level fact
+// This file pins batch `--all` SKIP-AND-CONTINUE + END SUMMARY. A per-version FAILURE
+// (a failed notes call; `--source tag --all` against a body-less tag) is CAUGHT,
+// RECORDED with a human reason, and the loop CONTINUES. A CONFIG-level fact
 // (a changelog/both target with changelog=false) aborts the WHOLE batch UP FRONT,
 // before any version is processed. The run closes with one RunFinished carrying a
 // VerbRegenerate, URL-less, engine-computed Summary that lists the regenerated count
@@ -171,11 +170,10 @@ func TestRegenerateAll_ReuseNoAnnotationBodySkipped(t *testing.T) {
 	}
 }
 
-// TestRegenerateAll_SkipOverridesOnNotesFailureAbort proves per-version
-// skip-and-continue OVERRIDES the single-version on_notes_failure=abort default: a
-// per-version notes failure does NOT abort the batch — RegenerateAll returns no
-// error and the run still closes with a success RunFinished.
-func TestRegenerateAll_SkipOverridesOnNotesFailureAbort(t *testing.T) {
+// TestRegenerateAll_OldestVersionFails_BatchContinues proves a failing oldest version
+// does not stop the later ones: a per-version notes failure does NOT abort the batch —
+// RegenerateAll returns no error and the run still closes with a success RunFinished.
+func TestRegenerateAll_OldestVersionFails_BatchContinues(t *testing.T) {
 	t.Parallel()
 
 	f := runner.NewFakeRunner()
@@ -186,13 +184,12 @@ func TestRegenerateAll_SkipOverridesOnNotesFailureAbort(t *testing.T) {
 	pub.seedExists(batchV3Tag, true, nil)
 	rec := &presentertest.RecordingPresenter{}
 
-	// The OLDEST version fails — under the single-version abort default this would kill
-	// the run before any later version. Skip-and-continue overrides that.
+	// The OLDEST version fails; the later versions must still be processed.
 	req := batchReq(engine.RegenerateSourceFresh, threeVersions(), true)
 	req.ProduceBody = freshBodyOrNotesFailure(batchV1Tag)
 
 	if _, err := engine.RegenerateAll(t.Context(), batchDeps(rec, f), pub, t.TempDir(), req); err != nil {
-		t.Fatalf("skip-and-continue must override on_notes_failure=abort; got error: %v", err)
+		t.Fatalf("a failing oldest version must not stop the later ones; got error: %v", err)
 	}
 
 	// The two later versions still dispatch despite the first one failing.

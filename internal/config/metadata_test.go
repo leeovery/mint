@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"strconv"
 	"testing"
 
 	"mint/internal/config"
@@ -368,12 +369,13 @@ func TestMetadataRows_ConcreteScalarDefaultsRenderVerbatim(t *testing.T) {
 		key  configtest.RowKey
 		want string
 	}{
-		// The shared row below intentionally overlaps with the dedicated
+		// The shared ai_command row below intentionally overlaps with the dedicated
 		// TestMetadataRows_SharedAICommandDefaultEqualsConfigConstant pin above: it keeps
 		// this verbatim-render table complete (it asserts the rendered string form of every
 		// scalar default), while the dedicated pin carries the subsuming drift guard. Both
 		// source the want from the exported constant, so neither copy can drift.
 		{configtest.RowKey{Level: config.LevelShared, Key: "ai_command"}, config.DefaultAICommand},
+		{configtest.RowKey{Level: config.LevelShared, Key: "max_prompt_bytes"}, strconv.Itoa(config.DefaultMaxPromptBytes)},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "tag_prefix"}, "v"},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "commit_prefix"}, "🌿"},
 		{configtest.RowKey{Level: config.LevelRelease, Key: "publish"}, "true"},

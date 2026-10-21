@@ -74,7 +74,7 @@ func assertFloorFollowsFailure(t *testing.T, rec *presentertest.RecordingPresent
 
 func assertNoTag(t *testing.T, f *runner.FakeRunner) {
 	t.Helper()
-	if countCmd(f, "git", "tag", "-a", nextTag, "-F", "-") != 0 {
+	if firstIndexWithPrefix(f, "git tag -a") != -1 {
 		t.Errorf("a tag was created; got %v", commandLines(f.Invocations()))
 	}
 }

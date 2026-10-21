@@ -94,7 +94,7 @@ func notesDiffCalls(f *runner.FakeRunner) [][]string {
 }
 
 func notesDiffArgs(pathspecs ...string) []string {
-	return append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag + "..HEAD", "--", "."}, pathspecs...)
+	return append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", priorTag + "..HEAD", "--", "."}, pathspecs...)
 }
 
 var builtinExcludes = []string{":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}

@@ -53,7 +53,7 @@ func TestRelease_MintConfigOnlyRangeGetsTheMaintenanceBody(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
 		t.Errorf("notes diff does not exclude .mint.toml; got %v", commandLines(f.Invocations()))
 	}
 	for _, inv := range f.Invocations() {

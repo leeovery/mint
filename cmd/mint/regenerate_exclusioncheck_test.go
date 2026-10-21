@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"mint/internal/notescache"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -79,7 +80,7 @@ func TestRegenerate_FreshSingleVersion_MakesNoCheckCall(t *testing.T) {
 			req := parseRegenArgs(t, tt.args...)
 			req.StdinInteractive = true
 
-			if code := regenerate(t.Context(), rec, f, req); code != 0 {
+			if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code != 0 {
 				t.Fatalf("exit code = %d, want 0; events %+v", code, rec.Events)
 			}
 
@@ -119,7 +120,7 @@ func TestRegenerate_FreshAll_MakesNoCheckCallForAnyVersion(t *testing.T) {
 			req := parseRegenArgs(t, tt.args...)
 			req.StdinInteractive = true
 
-			if code := regenerate(t.Context(), rec, f, req); code != 0 {
+			if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code != 0 {
 				t.Fatalf("exit code = %d, want 0; events %+v", code, rec.Events)
 			}
 

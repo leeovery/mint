@@ -97,6 +97,8 @@ func TargetUnset() OptionalRegenerateTarget {
 	return OptionalRegenerateTarget{}
 }
 
+// RegenerateRunRequest carries one version's inputs to RegenerateRun, the
+// single-version counterpart of BatchRegenerateRequest.
 type RegenerateRunRequest struct {
 	// Source is the flag-supplied source or unset (ask the source prompt).
 	Source OptionalRegenerateSource

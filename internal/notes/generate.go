@@ -116,10 +116,9 @@ func (g *Generator) Generate(ctx context.Context, lastTag string, cfg config.Con
 }
 
 // GenerateWithContext is Generate with a ONE-TIME context line appended to the
-// resolved instructions for THIS generation only. It is the AI support for the
-// review gate's `r` (regenerate) choice: the user supplies a transient nudge
-// ("lead with the auth package"), which is appended to the prompt's instructions
-// before ComposePrompt and flows into every AI call this generation makes.
+// resolved instructions for THIS generation only: a transient nudge ("lead with the
+// auth package") appended to the prompt's instructions before ComposePrompt, flowing
+// into every AI call this generation makes.
 //
 // The one-time context is TRANSIENT — it is appended to the prompt only and is
 // NEVER written back to cfg/[release].context. cfg is passed by value and is not

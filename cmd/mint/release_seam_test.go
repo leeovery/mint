@@ -151,8 +151,7 @@ func stageFailures(rec *presentertest.RecordingPresenter) []presenter.StageFailu
 	return failures
 }
 
-// touchesConfig reports whether any git call named .mint.toml: the answers commit's
-// ignore probe, staging or commit.
+// touchesConfig reports whether any git call named .mint.toml.
 func touchesConfig(f *runner.FakeRunner) bool {
 	for _, inv := range f.Invocations() {
 		if inv.Name == "git" && slices.Contains(inv.Args, ".mint.toml") {

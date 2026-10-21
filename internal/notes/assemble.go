@@ -141,10 +141,13 @@ func forwardRange(lastTag string) string {
 // are applied by later layers, not here).
 //
 // The diff is produced by
-// `git diff --src-prefix=a/ --dst-prefix=b/ {lastTag}..HEAD -- . {excludePathspecs}`.
+// `git diff --src-prefix=a/ --dst-prefix=b/ --no-color --no-ext-diff {lastTag}..HEAD -- . {excludePathspecs}`.
 // The pinned prefixes override any diff.noprefix, diff.mnemonicPrefix or custom
 // diff.srcPrefix/diff.dstPrefix in the operator's git config, so every file header
-// takes the "a/P b/P" form the chunker's headerPath reads.
+// takes the "a/P b/P" form the chunker's headerPath reads. --no-color and
+// --no-ext-diff stop color config (e.g. color.diff=always) and a configured external
+// diff tool (diff.external) from rewriting the "diff --git a/P b/P" headers the
+// chunker and the exclusion check read.
 // It runs at the repo root, so `-- .` covers the whole tree and git reads every
 // :(exclude) glob root-relative. GIT performs every exclusion via the :(exclude)
 // pathspecs. The returned text is git's stdout verbatim — whatever
@@ -168,10 +171,10 @@ func (a *Assembler) AssembleDiff(ctx context.Context, lastTag string) (string, e
 // AssembleRange is AssembleDiff over an ARBITRARY git range — the regenerate fresh
 // source (Phase 5) feeds it `{PreviousTag}..{Tag}` (5-3's DiffRange) instead of the
 // forward `{lastTag}..HEAD`. Everything else is IDENTICAL: the range is diffed via
-// `git diff --src-prefix=a/ --dst-prefix=b/ {range} -- . {excludePathspecs}` — the
-// same pinned prefixes and the SAME exclusion tiers: the built-in
-// always-excludes, the configured diff_exclude globs, and the strategy-aware
-// version_file decision — so the regenerate diff reproduces the forward
+// `git diff --src-prefix=a/ --dst-prefix=b/ --no-color --no-ext-diff {range} -- . {excludePathspecs}` —
+// the same pinned prefixes and --no-color/--no-ext-diff flags, and the SAME exclusion
+// tiers: the built-in always-excludes, the configured diff_exclude globs, and the
+// strategy-aware version_file decision — so the regenerate diff reproduces the forward
 // path's source view.
 //
 // Exclusion is PATH-based (the :(exclude) pathspecs), NOT commit-based: a range that
@@ -181,7 +184,7 @@ func (a *Assembler) AssembleDiff(ctx context.Context, lastTag string) (string, e
 // an empty post-exclusion diff is NOT an error. A missing git binary matches
 // runner.ErrCommandNotFound via errors.Is; any other non-zero exit is wrapped.
 func (a *Assembler) AssembleRange(ctx context.Context, diffRange string) (string, error) {
-	args := append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", diffRange, "--", "."}, a.excludePathspecs()...)
+	args := append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "--no-color", "--no-ext-diff", diffRange, "--", "."}, a.excludePathspecs()...)
 	res, err := a.runner.RunInDir(ctx, a.root, nil, "git", args...)
 	if err != nil {
 		return "", fmt.Errorf("assembling release diff for %s: %w", diffRange, err)
