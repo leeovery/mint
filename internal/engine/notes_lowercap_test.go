@@ -289,7 +289,7 @@ func TestRegenerateRun_FreshSinglePassClassifiedSize_HintsBetweenTheNotesAndTheR
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 	tr := &sizeOverflowTransport{}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
 		return halvedFreshBody(ctx, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, sinks)
 	}

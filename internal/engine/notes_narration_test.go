@@ -215,7 +215,7 @@ func TestRegenerateRun_FreshOverCap_NarratesLikeAChunkedRelease(t *testing.T) {
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
 		return overCapFreshBody(ctx, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, sinks)
 	}

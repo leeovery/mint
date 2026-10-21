@@ -65,7 +65,7 @@ type freshProducer func(ctx context.Context, res version.Resolution, sinks engin
 
 func (run *regenChunkNotes) regenerate(t *testing.T, tag string, produce freshProducer) error {
 	t.Helper()
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), true)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.Tag = tag
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
 		return produce(ctx, version.Resolution{Tag: tag, PreviousTag: "v1.1.0"}, sinks)

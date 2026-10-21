@@ -33,7 +33,7 @@ func newAttendedRegenFloor(t *testing.T, ed engine.Editor) *regenChunkNotes {
 }
 
 func (run *regenChunkNotes) regenerateAttended(ctx context.Context, produce freshProducer) error {
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.Tag = regenFloorTag
 	req.DiffRange = regenFloorRange
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {

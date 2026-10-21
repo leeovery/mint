@@ -178,7 +178,7 @@ func TestRegenerateRun_Unattended_WaveEnds_StopsNamingTheFailureThatEndedIt(t *t
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 	tr := newWaveEndTransport()
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), true)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
 		return produceSixAreaWave(ctx, tr, t.TempDir(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 	}

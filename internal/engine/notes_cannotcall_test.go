@@ -213,7 +213,7 @@ func TestRegenerateRun_FreshNotesCallCannotBeMade_AbortsNamingTheCause(t *testin
 			pub := newFakePublisher()
 			rec := &presentertest.RecordingPresenter{}
 			tr := &fixedNotesTransport{notes: tc.notes}
-			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 			req.ProduceBody = func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 				return tc.produce(t, tr, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 			}

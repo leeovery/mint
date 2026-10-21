@@ -42,7 +42,7 @@ func newUnattendedRegenFloor(t *testing.T, yes, stdinInteractive bool) *regenChu
 }
 
 func (run *regenChunkNotes) regenerateUnattended(ctx context.Context, cfg config.Config, produce freshProducer) error {
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), run.deps.Yes)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.Tag = regenFloorTag
 	req.VersionKey = regenFloorVersion
 	req.DiffRange = regenFloorRange

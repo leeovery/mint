@@ -49,8 +49,8 @@ func staticBody() func(context.Context, engine.RegenerateSource, engine.NotesSin
 }
 
 // runReq builds a RegenerateRunRequest with the canned tag/version/project, the
-// static body producer, changelog enabled, and the given axis options + Yes flag.
-func runReq(source engine.OptionalRegenerateSource, target engine.OptionalRegenerateTarget, yes bool) engine.RegenerateRunRequest {
+// static body producer, changelog enabled, and the given axis options.
+func runReq(source engine.OptionalRegenerateSource, target engine.OptionalRegenerateTarget) engine.RegenerateRunRequest {
 	return engine.RegenerateRunRequest{
 		Source:           source,
 		Target:           target,
@@ -58,7 +58,6 @@ func runReq(source engine.OptionalRegenerateSource, target engine.OptionalRegene
 		VersionKey:       regenRunVersionKey,
 		Project:          regenRunProject,
 		ChangelogEnabled: true,
-		Yes:              yes,
 		ProduceBody:      staticBody(),
 	}
 }
@@ -120,7 +119,7 @@ func TestRegenerateRun_NoFlags_AsksSourceThenTargetThenPlanThenConfirm(t *testin
 	}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceUnset(), engine.TargetUnset(), false))
+		runReq(engine.SourceUnset(), engine.TargetUnset()))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -154,7 +153,7 @@ func TestRegenerateRun_SourceFlag_SkipsSourceQuestion(t *testing.T) {
 	}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetUnset(), false))
+		runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetUnset()))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -185,7 +184,7 @@ func TestRegenerateRun_TargetFlag_SkipsTargetQuestion(t *testing.T) {
 	}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceUnset(), engine.TargetOf(engine.RegenerateTargetRelease), false))
+		runReq(engine.SourceUnset(), engine.TargetOf(engine.RegenerateTargetRelease)))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -209,7 +208,7 @@ func TestRegenerateRun_BothFlags_NoYes_StillConfirms(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false))
+		runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease)))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -237,7 +236,7 @@ func TestRegenerateRun_Yes_AlwaysCallsPrompt(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceUnset(), engine.TargetUnset(), true))
+		runReq(engine.SourceUnset(), engine.TargetUnset()))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -269,7 +268,7 @@ func TestRegenerateRun_Fresh_RunsNotesReviewGate(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false))
+		runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease)))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -297,7 +296,7 @@ func TestRegenerateRun_Reuse_SimpleConfirmOnly(t *testing.T) {
 
 	// Reuse source + release target both supplied: neither axis question is asked.
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease), false))
+		runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease)))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -344,7 +343,7 @@ func TestRegenerateRun_TagChosenInteractively_AsksTarget(t *testing.T) {
 	}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceUnset(), engine.TargetUnset(), false))
+		runReq(engine.SourceUnset(), engine.TargetUnset()))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -383,7 +382,7 @@ func TestRegenerateRun_ConfirmDecline_Aborts(t *testing.T) {
 	}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceUnset(), engine.TargetUnset(), false))
+		runReq(engine.SourceUnset(), engine.TargetUnset()))
 
 	assertAbortNonZero(t, err)
 	if len(pub.dispatched) != 0 {
@@ -413,7 +412,7 @@ func TestRegenerateRun_BodyProducerError_Surfaces(t *testing.T) {
 		},
 	}
 
-	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
+	req := runReq(engine.SourceUnset(), engine.TargetUnset())
 	req.ProduceBody = func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 		return "", errors.New("notes generation failed")
 	}
@@ -468,7 +467,7 @@ func TestRegenerateRun_InteractiveChangelog_RunsCommitPushGates(t *testing.T) {
 		},
 	}
 
-	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
+	req := runReq(engine.SourceUnset(), engine.TargetUnset())
 	req.ReleaseBranch = regenRunReleaseBranch
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
@@ -517,7 +516,7 @@ func TestRegenerateRun_InteractiveRelease_RunsGhAuthBeforeProviderWrite(t *testi
 		},
 	}
 
-	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
+	req := runReq(engine.SourceUnset(), engine.TargetUnset())
 	req.ReleaseBranch = regenRunReleaseBranch
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
@@ -559,7 +558,7 @@ func TestRegenerateRun_FailingGate_AbortsBeforeMutation(t *testing.T) {
 		},
 	}
 
-	req := runReq(engine.SourceUnset(), engine.TargetUnset(), false)
+	req := runReq(engine.SourceUnset(), engine.TargetUnset())
 	req.ReleaseBranch = regenRunReleaseBranch
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req)
 
@@ -594,7 +593,7 @@ func TestRegenerateRun_DowngradedReuse_SkipsGhAuthGate(t *testing.T) {
 	var pub publish.Publisher
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ReleaseBranch = regenRunReleaseBranch
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
 		t.Fatalf("downgraded --source tag run aborted: %v; the gh-auth gate must be skipped on a nil publisher", err)
@@ -619,7 +618,7 @@ func TestRegenerateRun_ResolvedRelease_RunsGhAuthGate(t *testing.T) {
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceTag), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ReleaseBranch = regenRunReleaseBranch
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)

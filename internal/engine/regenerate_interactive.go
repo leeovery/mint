@@ -100,7 +100,7 @@ func TargetUnset() OptionalRegenerateTarget {
 // RegenerateRunRequest carries the single-version interactive run inputs: the
 // optional axis selections (a supplied flag skips its prompt), the resolved tag /
 // version key / project, whether the changelog is enabled (which target options are
-// offerable), the -y flag, and the injected body producer.
+// offerable), and the injected body producer.
 type RegenerateRunRequest struct {
 	// Source is the flag-supplied source or unset (ask the source prompt).
 	Source OptionalRegenerateSource
@@ -136,7 +136,6 @@ type RegenerateRunRequest struct {
 	// Config is the loaded config the next moves of a stopped notes failure are fitted
 	// to.
 	Config config.Config
-	Yes    bool
 	// ProduceBody yields the notes body for the RESOLVED source. It is injected so the
 	// flow stays testable without a real AI transport / tag read; production wires the
 	// reuse read or the fresh re-diff+AI here. A fresh producer reports a chunked run

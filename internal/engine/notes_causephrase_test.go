@@ -90,7 +90,7 @@ func TestRegenerateRun_FreshSinglePassNotesFailure_TheLineNamesTheCause(t *testi
 			f.Seed("gh", runner.Result{}, nil)
 			rec := &presentertest.RecordingPresenter{}
 			notesGit := seedFreshGit(priorTagDiff, "A\tauth/login.go\n", "20\t0\tauth/login.go\n")
-			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
 				return engine.RegenerateFreshBody(ctx, notesGit, &freshTransport{err: tc.failure}, dir, freshCfg(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, engine.NotesSinks{})
 			}

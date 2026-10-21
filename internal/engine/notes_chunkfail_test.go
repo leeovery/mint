@@ -213,7 +213,7 @@ func TestRegenerateRun_FreshChunkedRunFails_AbortsWithTheOutputVerbatim(t *testi
 			f.Seed("gh", runner.Result{}, nil)
 			pub := newFakePublisher()
 			rec := &presentertest.RecordingPresenter{}
-			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+			req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 			req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
 				return tc.produceFresh(t, ctx, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 			}

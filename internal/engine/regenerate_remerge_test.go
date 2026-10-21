@@ -105,7 +105,7 @@ func regenerateV140(t *testing.T, notesGit *runner.FakeRunner, tr notes.Transpor
 		pub: newFakePublisher(),
 	}
 	run.pub.seedExists(regenRunTag, true, nil)
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	freshRunOf(&req, notesGit, tr, cfg, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 	if err := engine.RegenerateRun(t.Context(), regenWriteDeps(run.rec, f), run.pub, t.TempDir(), req); err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)

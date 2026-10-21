@@ -69,7 +69,7 @@ func TestRegenerateRun_DepsRegeneratorWired_RegenUsesTheOverridesBody(t *testing
 	perRun := &fakeRegenerator{bodies: []string{regen2Body}}
 	deps := regenWriteDeps(rec, f)
 	deps.Regenerator = override
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ProduceRegenerator = func(engine.RegenerateSource, engine.RegenRun) engine.Regenerator { return perRun }
 
 	if err := engine.RegenerateRun(t.Context(), deps, pub, t.TempDir(), req); err != nil {

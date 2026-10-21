@@ -59,7 +59,7 @@ func TestRegenerateRun_FreshNotesFailureOverOldLineCeiling_CarriesAICausePhrase(
 
 	notesGit := seedFreshGit(overOldLineCeilingDiff(), "A\tauth/login.go\n", "50001\t0\tauth/login.go\n")
 	tr := &freshTransport{err: fmt.Errorf("transport: %w", ai.ErrGenerationFailed)}
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ProduceBody = func(ctx context.Context, _ engine.RegenerateSource, _ engine.NotesSinks) (string, error) {
 		return engine.RegenerateFreshBody(ctx, notesGit, tr, dir, freshCfg(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"}, engine.NotesSinks{})
 	}

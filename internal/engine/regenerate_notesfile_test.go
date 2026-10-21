@@ -35,7 +35,7 @@ func notesFileRunReq(t *testing.T, path string, target engine.RegenerateTarget) 
 	if err != nil {
 		t.Fatalf("reading --notes-file %s: %v", path, err)
 	}
-	req := runReq(engine.SourceUnset(), engine.TargetOf(target), false)
+	req := runReq(engine.SourceUnset(), engine.TargetOf(target))
 	req.ReleaseBranch = regenReleaseBranch
 	req.NotesFile = path
 	req.Supplied = supplied
@@ -334,7 +334,6 @@ func TestRegenerateRun_NotesFile_YesAutoAcceptsTheReviewGateInsideThePresenter(t
 	deps := freshRunDeps(&presentertest.RecordingPresenter{}, f)
 	deps.Presenter = presenter.NewForStartup(true, true, out, errOut, in)
 	req := notesFileRunReq(t, path, engine.RegenerateTargetBoth)
-	req.Yes = true
 
 	if err := engine.RegenerateRun(t.Context(), deps, pub, root, req); err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)

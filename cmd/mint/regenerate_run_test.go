@@ -138,9 +138,6 @@ func TestRegenerateRunFlags_NotesFile(t *testing.T) {
 		if run.NotesFile != tc.want {
 			t.Errorf("regenerateRunFlags(%v).NotesFile = %q, want %q", tc.args, run.NotesFile, tc.want)
 		}
-		if !run.Yes {
-			t.Errorf("regenerateRunFlags(%v).Yes = false, want true", tc.args)
-		}
 		if run.Target != engine.TargetOf(engine.RegenerateTargetBoth) {
 			t.Errorf("regenerateRunFlags(%v).Target = %+v, want both", tc.args, run.Target)
 		}

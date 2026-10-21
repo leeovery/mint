@@ -30,7 +30,7 @@ func TestRegenerateRun_EmitsBlockingNotesStage(t *testing.T) {
 	pub.seedExists(regenRunTag, true, nil)
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	if err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir, req); err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestRegenerateRun_BodyProductionFailure_NoNotesSuccess(t *testing.T) {
 	pub := newFakePublisher()
 	rec := &presentertest.RecordingPresenter{}
 
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	req.ProduceBody = func(context.Context, engine.RegenerateSource, engine.NotesSinks) (string, error) {
 		return "", context.DeadlineExceeded
 	}

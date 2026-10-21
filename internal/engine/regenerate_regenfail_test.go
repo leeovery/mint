@@ -99,7 +99,7 @@ func newRegenFailRun(t *testing.T, rec *presentertest.RecordingPresenter) *regen
 
 func (run *regenFailRun) regenerate(t *testing.T, notesGit *runner.FakeRunner, tr notes.Transport, cfg config.Config) error {
 	t.Helper()
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetBoth), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetBoth))
 	req.ReleaseBranch = regenRunReleaseBranch
 	freshRunOf(&req, notesGit, tr, cfg, version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 	return engine.RegenerateRun(t.Context(), run.deps, run.pub, run.root, req)

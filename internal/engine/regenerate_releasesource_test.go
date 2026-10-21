@@ -105,7 +105,7 @@ func TestRegenerateRun_ReleaseSource_SimpleConfirmAndDispatch(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), pub, dir,
-		runReq(engine.SourceOf(engine.RegenerateSourceRelease), engine.TargetOf(engine.RegenerateTargetRelease), false))
+		runReq(engine.SourceOf(engine.RegenerateSourceRelease), engine.TargetOf(engine.RegenerateTargetRelease)))
 	if err != nil {
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestRegenerateRun_ReleaseSource_NilPublisherFailsLoud(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.RegenerateRun(t.Context(), freshRunDeps(rec, f), nil, dir,
-		runReq(engine.SourceOf(engine.RegenerateSourceRelease), engine.TargetOf(engine.RegenerateTargetRelease), false))
+		runReq(engine.SourceOf(engine.RegenerateSourceRelease), engine.TargetOf(engine.RegenerateTargetRelease)))
 
 	assertAbortNonZero(t, err)
 	if stageFailedName(t, rec) != "publish" {

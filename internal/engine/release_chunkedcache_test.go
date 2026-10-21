@@ -339,7 +339,7 @@ func TestRegenerateRun_FreshChunkedNotes_NeitherOfferNorWriteCachedNotes(t *test
 	pub := newFakePublisher()
 	pub.seedExists(regenRunTag, true, nil)
 	tr := &mergeTransport{label: "v1.4.0", firstMerge: fivePartMergeBody}
-	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease), false)
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
 	freshRunOf(&req, seedFivePartFreshGit(), tr, chunkingCfg(), version.Resolution{Tag: regenRunTag, PreviousTag: "v1.3.0"})
 	deps := regenWriteDeps(rec, f)
 	deps.NoteCache = notescache.NewStore(cacheBase, func() time.Time { return cacheWriteClock })

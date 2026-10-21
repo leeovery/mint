@@ -33,7 +33,6 @@ func regenerateRunFlags(req regenerateRequest) engine.RegenerateRunRequest {
 		Source:    source,
 		Target:    target,
 		NotesFile: req.NotesFile,
-		Yes:       req.Yes,
 	}
 }
 
