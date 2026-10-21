@@ -105,10 +105,7 @@ func (a *Assembler) Exclude(globs ...string) {
 }
 
 // excludePathspecs returns the ordered :(exclude) pathspec arguments shared by the
-// diff and Change Map git calls — the UNION of the exclusion tiers in a fixed order:
-// FIRST the built-in always-excludes, THEN one :(exclude)<glob> per configured
-// diff_exclude glob (in config order), THEN — only in PLAIN mode — the strategy-aware
-// :(exclude)<version_file> (embedded mode / no version_file appends nothing here). git
+// diff and Change Map git calls — the UNION of the exclusion tiers. git
 // interprets each glob as a pathspec pattern — mint does NO Go-side glob matching — so a
 // glob matching nothing is harmless and a force-added tracked file matching a glob is
 // excluded by git like any other path. A version_file ALSO listed in Globs is excluded
@@ -145,10 +142,7 @@ func forwardRange(lastTag string) string {
 // The pinned prefixes override any diff.noprefix, diff.mnemonicPrefix or custom
 // diff.srcPrefix/diff.dstPrefix in the operator's git config, so every file header
 // takes the "a/P b/P" form the chunker's headerPath reads.
-// excludePathspecs is `:(exclude)CHANGELOG.md :(exclude).mint.toml` followed by one
-// `:(exclude)<glob>` per configured diff_exclude glob, and — only in PLAIN mode — the strategy-aware
-// `:(exclude)<version_file>` (see excludePathspecs), run cwd-relative like the other
-// engine git calls. GIT
+// It runs cwd-relative like the other engine git calls. GIT
 // performs every exclusion via the :(exclude) pathspecs; mint does no Go-side hunk
 // stripping or glob matching. The returned text is git's stdout verbatim — whatever
 // git emits flows through unfiltered. A consequence: a gitignored-but-force-added file

@@ -15,9 +15,7 @@ import (
 // restatement of the diff.
 //
 // Two cheap git calls feed it, run cwd-relative like the other engine git calls and
-// AFTER the SAME exclusion set the diff uses — the built-in always-excludes
-// (CHANGELOG.md, .mint.toml) plus one :(exclude)<glob> per configured diff_exclude glob plus, in PLAIN mode, the
-// strategy-aware :(exclude)<version_file> (the shared excludePathspecs) rides on BOTH —
+// AFTER the SAME exclusion set the diff uses (the shared excludePathspecs, on BOTH),
 // so excluded churn never appears in the map:
 //
 //   - `git diff --name-status {lastTag}..HEAD -- . {excludePathspecs}` —
@@ -42,8 +40,8 @@ func (a *Assembler) BuildChangeMap(ctx context.Context, lastTag string, maxPromp
 // BuildChangeMapForRange is BuildChangeMap over an ARBITRARY git range — the
 // regenerate fresh source (Phase 5) feeds it `{PreviousTag}..{Tag}` (5-3's DiffRange).
 // It runs the SAME two git calls (--name-status, --numstat) over the range with the
-// SAME post-exclusion set the diff uses (the shared excludePathspecs: the built-ins +
-// configured globs + strategy version_file), so the map is computed AFTER exclusion
+// SAME post-exclusion set the diff uses (the shared excludePathspecs), so the map is
+// computed AFTER exclusion
 // and an excluded path NEVER appears — the regenerate map matches the forward map's
 // ordering and exclusion exactly. BuildChangeMap is the forward wrapper that builds
 // `{lastTag}..HEAD` and delegates here.

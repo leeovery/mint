@@ -4,7 +4,7 @@ package engine
 // resolved `{PreviousTag}..{Tag}` range and running the AI to produce a fresh notes
 // body, REUSING the forward notes engine end to end.
 //
-// The fresh path is the forward Stage-4 AI path with ONE substitution: the diff base.
+// The fresh path is the forward Stage-4 AI path less the exclusion check, over its own diff base.
 // The forward path ranges `last_tag..HEAD`; the fresh path ranges 5-3's resolved
 // DiffRange (`vX-1..vX`). Every other layer is reused unchanged — the consolidated
 // exclusion tiers (built-in CHANGELOG.md and .mint.toml, the shared and [release] diff_exclude globs,
