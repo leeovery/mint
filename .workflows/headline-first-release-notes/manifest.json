@@ -4,5 +4,43 @@
   "status": "in-progress",
   "created": "2026-10-21",
   "description": "Release notes open by naming the release's main feature, with the smaller changes that shipped alongside it listed after",
-  "phases": {}
+  "phases": {
+    "discussion": {
+      "items": {
+        "headline-first-release-notes": {
+          "status": "in-progress",
+          "subtopics": {
+            "headline-shape": {
+              "status": "pending",
+              "parent": null
+            },
+            "no-clear-headline": {
+              "status": "pending",
+              "parent": null
+            },
+            "picking-the-headline": {
+              "status": "pending",
+              "parent": null
+            },
+            "chunked-path": {
+              "status": "pending",
+              "parent": null
+            },
+            "room-for-a-supplied-headline": {
+              "status": "pending",
+              "parent": null
+            },
+            "prompt-overrides-and-reminder": {
+              "status": "pending",
+              "parent": null
+            },
+            "release-title": {
+              "status": "pending",
+              "parent": null
+            }
+          }
+        }
+      }
+    }
+  }
 }
