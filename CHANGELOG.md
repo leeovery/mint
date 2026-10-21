@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] - 2026-10-21
+
+✨ Added
+- Releases too big for one AI call are now written in parts and merged into a single set of notes — no setting needed.
+- If the model rejects a call as too large, mint retries it in smaller parts and suggests a `max_prompt_bytes` that works.
+- Before writing notes, mint asks the AI which changed files don't belong in them (specs, design docs, test fixtures) and lets you exclude or keep each one, remembering your answers in `.mint.toml`.
+- `mint release --notes-file P` and `mint release regenerate --notes-file P` — release with finished notes from a file, no AI involved.
+- When the AI fails to write notes, an attended release now offers the commit subjects, writing the notes in your editor, or aborting; unattended runs stop with next-step suggestions.
+- Part notes from a failed chunked run are saved to a file you can tidy and release with `--notes-file`.
+- `[release].diff_exclude`, `[release].diff_keep` and `[commit].diff_exclude` — exclude paths from release notes or commit messages only, on top of the shared list.
+- `max_prompt_bytes` — a per-call size cap on the prompt sent to the AI.
+- Regenerating with `r` on chunked notes re-merges the existing part notes instead of rereading the whole diff.
+- `ai_command` now understands shell-style quoting, so arguments with spaces or empty values work.
+- Dry runs now show where each exclusion question would be asked, and cached notes are reused across runs within an hour.
+
+🔧 Changed
+- The default AI command now runs Claude Code in a lean mode with no CLAUDE.md, skills, plugins, hooks, MCP servers or tools — each call carries only mint's prompt.
+- The default AI timeout is now 180 seconds for releases and stays 60 for commits.
+- Release notes now always exclude `.mint.toml` as well as `CHANGELOG.md`.
+- The `pre_tag` hook now runs before the notes are written, so the notes reflect what it produces.
+- Commit messages fall back to your editor when the prompt exceeds `max_prompt_bytes`, and the AI's own error output is shown when a call fails.
+- The non-AI release body is now always the commit-subject list (or the maintenance-release line when empty), with mint's own answers commits left out.
+- Annotated release tags now keep the notes byte-for-byte, including `#` headings and trailing whitespace.
+- `mint init`, `release` and `commit` now reject stray positional arguments instead of silently ignoring later flags.
+- `mint init` now reports why it stopped when it fails.
+- Unwinding a failed or aborted release keeps your exclusion answers committed on the starting commit.
+- A `--notes-file` inside the repo is kept out of the clean-tree check, stash and release commits.
+
+🗑️ Removed
+- `max_diff_lines` is replaced by `max_prompt_bytes`; setting the old key now fails with a message saying what replaced it.
+- `[release].fallback` is removed; hand-written notes go in with `--notes-file`.
+
+🐛 Fixed
+- Regenerating with `--all` no longer wipes `CHANGELOG.md` when no tags match the prefix.
+- Diffs are no longer corrupted by color or external-diff settings in your git config.
+- The regenerate changelog commit no longer sweeps in staged edits to an in-repo notes file.
+
 ## [0.0.11] - 2026-06-18
 
 ✨ Added
