@@ -368,12 +368,12 @@
         "token-aware-diff-sizing": {
           "status": "in-progress",
           "task_gate_mode": "auto",
-          "fix_gate_mode": "auto",
-          "analysis_gate_mode": "auto",
-          "consolidation_gate_mode": "auto",
+          "fix_gate_mode": "gated",
+          "analysis_gate_mode": "gated",
+          "consolidation_gate_mode": "gated",
           "fix_attempts": 0,
           "analysis_cycle_total": 5,
-          "current_phase": 12,
+          "current_phase": 13,
           "current_task": null,
           "project_skills": [
             ".claude/skills/golang-how-to",
@@ -509,7 +509,8 @@
             "token-aware-diff-sizing-11-2",
             "token-aware-diff-sizing-11-3",
             "token-aware-diff-sizing-12-1",
-            "token-aware-diff-sizing-12-2"
+            "token-aware-diff-sizing-12-2",
+            "token-aware-diff-sizing-13-1"
           ],
           "staging": {
             "p1": {
@@ -622,7 +623,32 @@
             11,
             12
           ],
-          "updated": "2026-10-21"
+          "updated": "2026-10-21",
+          "bank": [
+            {
+              "task": "token-aware-diff-sizing-13-1",
+              "source": "executor",
+              "summary": "Make the other wall-clock-grace wave tests deterministic, the way the chunk-wave deadline test now is",
+              "failure": "The go test -race gate goes red intermittently on a loaded machine or CI runner with no defect: in a 20-process -test.count=15 run, TestGenerator_Wave_PartEndsForGood_EndsTheWaveTheSameWay failed 3 times (a held call usage-limit failure classified before part 2) and TestGenerator_OverCap_OneChunkFails_NoMergeNoNewCallsAndRunningCallsFinish/after_the_transport retry failed once (6 calls started instead of 4)",
+              "detail": "Both rely on a fixed sleep after part 2 ends before close(release): internal/notes/waveend_test.go:274 (time.Sleep(recordGrace)), internal/notes/chunkfail_test.go:93-95 (time.Sleep(50ms)); under load the wave misses the window",
+              "files": [
+                "internal/notes/waveend_test.go",
+                "internal/notes/chunkfail_test.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-13-1",
+              "source": "reviewer",
+              "summary": "Make the remaining sleep-grace wave tests deterministic",
+              "failure": "The go test -race gate goes red intermittently on a loaded machine or CI runner with no defect; in a 20-process -test.count=15 run, 6 of 20 processes failed: TestGenerator_Wave_PartEndsForGood_EndsTheWaveTheSameWay x4 (its_halving_round_has_no_room x3, its_binary_is_missing x1 naming part 3 not part 2) and TestGenerator_OverCap_OneChunkFails_NoMergeNoNewCallsAndRunningCallsFinish/after_the_transport retry x2",
+              "detail": "Both sleep a fixed grace before close(release): internal/notes/waveend_test.go:278 (time.Sleep(recordGrace); recordGrace=50ms at :18, also used at :174, :333, :415, :418, :454, :491 and internal/notes/notesmissing_test.go:80), internal/notes/chunkfail_test.go:95 (time.Sleep(50ms))",
+              "files": [
+                "internal/notes/waveend_test.go",
+                "internal/notes/chunkfail_test.go",
+                "internal/notes/notesmissing_test.go"
+              ]
+            }
+          ]
         }
       }
     },
