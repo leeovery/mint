@@ -40,6 +40,17 @@ func TestPathspecMatches_MatchesAsGitMatchesAPathspecWithoutMagic(t *testing.T) 
 		{spec: "a.b", path: "aXb", want: false},
 		{spec: "**/fixtures/", path: "test/fixtures/a.json", want: false},
 		{spec: "**/fixtures/*", path: "test/fixtures/a.json", want: true},
+		{spec: "./docs/", path: "docs/design/a.md", want: true},
+		{spec: "./*.md", path: "docs/design/a.md", want: true},
+		{spec: "docs//design/", path: "docs/design/a.md", want: true},
+		{spec: "docs/./design/", path: "docs/design/a.md", want: true},
+		{spec: "src/../docs/", path: "docs/design/a.md", want: true},
+		{spec: "src/../docs/", path: "src/b.go", want: false},
+		{spec: "./docs/", path: "docs", want: false},
+		{spec: ".", path: "src/b.go", want: true},
+		{spec: "./", path: "src/b.go", want: true},
+		{spec: "docs/..", path: "src/b.go", want: true},
+		{spec: "", path: "src/b.go", want: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.spec+" "+tt.path, func(t *testing.T) {

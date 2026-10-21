@@ -19,3 +19,18 @@ func TestREADME_ReleaseSectionDescribesTheExclusionCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestREADME_ReleaseSectionDescribesTheExclusionPauses(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"An attended release then pauses once on each suggestion that matches a changed path nothing already covers, in the order the AI gave them, showing the glob and the AI's reason",
+		"**`e`** excludes the glob's files from this release's notes, **`k`** keeps them (Enter also keeps)",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
+}

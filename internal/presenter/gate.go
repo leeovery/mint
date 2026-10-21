@@ -29,6 +29,10 @@ const (
 	ChoiceCommitSubjects Choice = "c"
 	// ChoiceAbort aborts the run, on a gate whose keys are not y/n.
 	ChoiceAbort Choice = "a"
+	// ChoiceExclude takes a suggested glob's files out of the release's notes.
+	ChoiceExclude Choice = "e"
+	// ChoiceKeep keeps a suggested glob's files in the release's notes.
+	ChoiceKeep Choice = "k"
 )
 
 // gateFailLabel is the FIXED label both presenters render for the

@@ -546,7 +546,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage)
 	if err != nil {
 		atFloor := reachesNotesFloor(err)
-		offersChoice := atFloor && deps.offersFloorChoice(opts)
+		offersChoice := atFloor && deps.asksAtTerminal(opts)
 		failure := stageFailure("notes", err)
 		failure.Recoverable = offersChoice
 		p.StageFailed(failure)
@@ -999,7 +999,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	selecting := chunkNotes.sinks(stage).wire(generator)
 	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).
 		WithFallbackNotice(stage.fellBack).
-		WithExclusionCheck(notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage))
+		WithExclusionCheck(exclusionCheck(deps, cfg, opts, transport, stage))
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
@@ -1034,6 +1034,51 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		deps.NoteCache.Prune(root, key)
 	}
 	return body, kind, generator, nil
+}
+
+// exclusionCheck is the release's exclusion check, pausing on its suggestions only on
+// an attended real run.
+func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage) *notes.ExclusionCheck {
+	check := notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage)
+	if !deps.asksAtTerminal(opts) {
+		return check
+	}
+	return check.WithPauses(exclusionPauses{p: deps.Presenter})
+}
+
+// exclusionPauses asks the operator about each suggestion at a gate, the spinner
+// suspended while it waits.
+type exclusionPauses struct {
+	p presenter.Presenter
+}
+
+func (e exclusionPauses) Pause(_ context.Context, s notes.Suggestion) (notes.Answer, error) {
+	e.p.SuspendSpinner()
+	choice, err := e.p.Prompt(exclusionPauseGate(s))
+	e.p.ResumeSpinner()
+	if err != nil {
+		return notes.AnswerKeep, err
+	}
+	switch choice {
+	case presenter.ChoiceExclude:
+		return notes.AnswerExclude, nil
+	case presenter.ChoiceKeep:
+		return notes.AnswerKeep, nil
+	}
+	return notes.AnswerKeep, errUnexpectedChoice(choice)
+}
+
+func exclusionPauseGate(s notes.Suggestion) presenter.Gate {
+	return presenter.Gate{
+		Question:   fmt.Sprintf("Exclude %s from the notes? (%s)", s.Glob, s.Reason),
+		Subject:    s.Glob,
+		AcceptEcho: "kept",
+		Choices: []presenter.GateChoice{
+			{Key: presenter.ChoiceExclude, Action: "exclude"},
+			{Key: presenter.ChoiceKeep, Action: "keep"},
+		},
+		Default: presenter.ChoiceKeep,
+	}
 }
 
 // cacheReuse builds the notes.ReuseFunc the selector consults on the NORMAL-AI path to

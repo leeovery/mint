@@ -1,6 +1,7 @@
 package notes
 
 import (
+	pathpkg "path"
 	"regexp"
 	"strings"
 )
@@ -8,8 +9,14 @@ import (
 // pathspecMatches reports whether git matches path to spec, a pathspec without magic:
 // spec names path itself or a leading directory of it, or, holding a wildcard, matches
 // the whole path with * and ? crossing "/" (git's wildmatch without WM_PATHNAME). A
-// malformed bracket expression matches only literally, as git's does.
+// malformed bracket expression matches only literally, as git's does. As git does,
+// spec is first normalised: "." and ".." segments and doubled slashes resolve, and a
+// spec naming the top of the repo matches every path.
 func pathspecMatches(spec, path string) bool {
+	spec, everything := normalisePathspec(spec)
+	if everything {
+		return true
+	}
 	if rest, ok := strings.CutPrefix(path, spec); ok {
 		if rest == "" || strings.HasSuffix(spec, "/") || strings.HasPrefix(rest, "/") {
 			return true
@@ -20,6 +27,19 @@ func pathspecMatches(spec, path string) bool {
 	}
 	pattern, ok := wildmatchPattern(spec)
 	return ok && pattern.MatchString(path)
+}
+
+// normalisePathspec resolves spec lexically, keeping a trailing "/", and reports
+// whether it names the top of the repo.
+func normalisePathspec(spec string) (string, bool) {
+	cleaned := pathpkg.Clean(spec)
+	if cleaned == "." {
+		return "", true
+	}
+	if strings.HasSuffix(spec, "/") {
+		cleaned += "/"
+	}
+	return cleaned, false
 }
 
 // characterClasses maps the bracket-expression class names wildmatch accepts to their

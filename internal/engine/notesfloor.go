@@ -19,9 +19,9 @@ func (d ReleaseDeps) attended() bool {
 	return !d.Yes && d.StdinInteractive
 }
 
-// offersFloorChoice reports whether a notes failure that reached the floor is answered
-// at the floor's choice rather than with the next moves: a dry run asks nothing.
-func (d ReleaseDeps) offersFloorChoice(opts ReleaseOptions) bool {
+// asksAtTerminal reports whether the run is offered the notes floor's choice and the
+// exclusion check's pauses: it is attended, and a dry run asks nothing.
+func (d ReleaseDeps) asksAtTerminal(opts ReleaseOptions) bool {
 	return d.attended() && !opts.DryRun
 }
 
