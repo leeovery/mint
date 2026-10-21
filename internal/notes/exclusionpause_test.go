@@ -41,7 +41,7 @@ func pausedCheck(t *testing.T, keep []string, diff, answer string) []notes.Sugge
 	t.Helper()
 	pauses := &recordedPauses{}
 	check := notes.NewExclusionCheck(&recordingTransport{body: answer}, keep, nil).WithPauses(pauses)
-	if err := check.Check(t.Context(), diff); err != nil {
+	if _, err := check.Check(t.Context(), diff); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 	return pauses.paused
@@ -117,7 +117,7 @@ func TestExclusionCheck_WithoutPauses_AsksNothingAndCarriesOn(t *testing.T) {
 	t.Parallel()
 
 	tr := &recordingTransport{body: "docs/design/: design documents\n"}
-	if err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), designDiff); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), designDiff); err != nil {
 		t.Errorf("Check returned %v, want nil", err)
 	}
 }
@@ -129,7 +129,7 @@ func TestExclusionCheck_APauseThatFails_ReturnsItsErrorAndAsksNoMore(t *testing.
 	pauses := &recordedPauses{err: closed}
 	tr := &recordingTransport{body: "docs/design/: design documents\ntest/fixtures/: test data\n"}
 
-	err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), designDiff+fixturesDiff)
+	_, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), designDiff+fixturesDiff)
 
 	if !errors.Is(err, closed) {
 		t.Errorf("Check returned %v, want the pause's error", err)
@@ -147,12 +147,44 @@ func TestExclusionCheck_ACancelWhileAPauseWaits_ReturnsTheCancelWhateverItsAnswe
 	pauses := &recordedPauses{answer: notes.AnswerKeep, during: cancel}
 	tr := &recordingTransport{body: "docs/design/: design documents\ntest/fixtures/: test data\n"}
 
-	err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(ctx, designDiff+fixturesDiff)
+	_, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(ctx, designDiff+fixturesDiff)
 
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Check returned %v, want the cancel", err)
 	}
 	if len(pauses.paused) != 1 {
 		t.Errorf("pauses = %d, want none after the cancel", len(pauses.paused))
+	}
+}
+
+func TestExclusionCheck_ReturnsTheGlobsAnsweredExcludeInTheOrderAnswered(t *testing.T) {
+	t.Parallel()
+
+	pauses := &recordedPauses{answers: []notes.Answer{notes.AnswerExclude, notes.AnswerKeep, notes.AnswerExclude}}
+	tr := &recordingTransport{body: "docs/design/: design documents\nsrc/: source\ntest/fixtures/: test data\n"}
+
+	excluded, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), sourceDiff+designDiff+fixturesDiff)
+	if err != nil {
+		t.Fatalf("Check returned unexpected error: %v", err)
+	}
+
+	if want := []string{"docs/design/", "test/fixtures/"}; !slices.Equal(excluded, want) {
+		t.Errorf("excluded = %q, want %q", excluded, want)
+	}
+}
+
+func TestExclusionCheck_EveryPauseAnsweredKeep_ReturnsNoGlob(t *testing.T) {
+	t.Parallel()
+
+	pauses := &recordedPauses{answer: notes.AnswerKeep}
+	tr := &recordingTransport{body: "docs/design/: design documents\ntest/fixtures/: test data\n"}
+
+	excluded, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), sourceDiff+designDiff+fixturesDiff)
+	if err != nil {
+		t.Fatalf("Check returned unexpected error: %v", err)
+	}
+
+	if len(excluded) != 0 {
+		t.Errorf("excluded = %q, want none", excluded)
 	}
 }

@@ -14,6 +14,7 @@ package notes
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"mint/internal/runner"
 )
@@ -96,6 +97,11 @@ type Assembler struct {
 // (no globs, no version_file) excludes the built-ins alone.
 func NewAssembler(r runner.CommandRunner, exclude ExcludeConfig) *Assembler {
 	return &Assembler{runner: r, exclude: exclude}
+}
+
+// Exclude adds globs to those a leaves out of every later diff and Change Map.
+func (a *Assembler) Exclude(globs ...string) {
+	a.exclude.Globs = slices.Concat(a.exclude.Globs, globs)
 }
 
 // excludePathspecs returns the ordered :(exclude) pathspec arguments shared by the

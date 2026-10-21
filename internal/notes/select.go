@@ -143,12 +143,14 @@ type ReuseFunc func(diff, instructions string) (body string, reused bool, err er
 //     KindDegenerate, no AI. Wins over --no-ai.
 //  3. --no-ai → NoAIBody, KindNoAI, no AI, never aborts.
 //  4. NORMAL AI PATH → the exclusion check when one is wired, then the reuse hook,
-//     then the Generator over the already-assembled diff. On success →
-//     body, KindNormalAI. On failure → ResolveFailure: an abort error propagates
-//     (no body, KindNormalAI), a fallback body returns as KindFallback.
+//     then the Generator over the already-assembled diff. Exclude answers at the
+//     check re-assemble the diff without their globs; one they leave empty gives
+//     StubBody, KindDegenerate, no AI. On success → body, KindNormalAI. On failure →
+//     ResolveFailure: an abort error propagates (no body, KindNormalAI), a fallback
+//     body returns as KindFallback.
 //
-// The diff is assembled ONCE (branch 2) and reused by branch 4 via
-// GenerateFromDiff, so branches 2-4 share a single AssembleDiff call.
+// The diff is assembled once (branch 2), and again only after Exclude answers, and
+// reused by branch 4 via GenerateFromDiff.
 func (s *Selector) SelectBody(ctx context.Context, state SelectState, cfg config.Config) (string, Kind, error) {
 	body, kind, _, err := s.SelectBodyWithCacheInputs(ctx, state, cfg)
 	return body, kind, err
@@ -209,10 +211,12 @@ func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, c
 		return "", KindNormalAI, CacheInputs{}, fmt.Errorf("resolving notes instructions for cache key: %w", err)
 	}
 
-	if s.check != nil {
-		if err := s.check.Check(ctx, diff); err != nil {
-			return "", KindNormalAI, CacheInputs{}, err
-		}
+	diff, err = s.checkExclusions(ctx, state.LastTag, diff)
+	if err != nil {
+		return "", KindNormalAI, CacheInputs{}, err
+	}
+	if IsDegenerate(diff) {
+		return StubBody(), KindDegenerate, CacheInputs{}, nil
 	}
 
 	cacheInputs := CacheInputs{Cacheable: true, Diff: diff, Instructions: instructions}
@@ -236,6 +240,22 @@ func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, c
 		return body, kind, CacheInputs{}, ferr
 	}
 	return body, KindNormalAI, cacheInputs, nil
+}
+
+// checkExclusions runs the exclusion check over diff when one is wired and returns the
+// diff its Exclude answers leave. The answered globs join the shared Assembler's
+// excludes, so the Change Map and every later generation, an `r` included, leave them
+// out too.
+func (s *Selector) checkExclusions(ctx context.Context, lastTag, diff string) (string, error) {
+	if s.check == nil {
+		return diff, nil
+	}
+	excluded, err := s.check.Check(ctx, diff)
+	if err != nil || len(excluded) == 0 {
+		return diff, err
+	}
+	s.assembler.Exclude(excluded...)
+	return s.assembler.AssembleDiff(ctx, lastTag)
 }
 
 // resolveNormalPathFailure routes a branch-4 generator failure through the

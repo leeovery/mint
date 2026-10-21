@@ -83,26 +83,27 @@ func (c *ExclusionCheck) WithPauses(pauses SuggestionPauses) *ExclusionCheck {
 // leaves the release to carry on, so only a cancel is returned. With pauses wired, each
 // suggestion matching a listed path is paused on in the answer's order, unless earlier
 // answers already decide every listed path it matches; a pause's error, or a cancel
-// while it waits, is returned and ends the pauses.
-func (c *ExclusionCheck) Check(ctx context.Context, diff string) error {
+// while it waits, is returned and ends the pauses. It returns the globs answered
+// Exclude, in the order answered.
+func (c *ExclusionCheck) Check(ctx context.Context, diff string) ([]string, error) {
 	files := diffPaths(diff)
 	paths := slices.DeleteFunc(slices.Clone(files), func(p checkedPath) bool { return coveredBy(c.keep, p.path) })
 	if len(paths) == 0 {
-		return nil
+		return nil, nil
 	}
 	c.narration.Checking()
 	answer, err := c.transport.Generate(ctx, composeCheckPrompt(paths))
 	c.narration.Checked()
 	if errors.Is(err, context.Canceled) {
-		return err
+		return nil, err
 	}
 	if err != nil || c.pauses == nil {
-		return nil
+		return nil, nil
 	}
 	return c.pause(ctx, usableSuggestions(answer, paths), files)
 }
 
-func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) error {
+func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) ([]string, error) {
 	decided := runAnswers{keep: slices.Clip(c.keep)}
 	for _, s := range suggestions {
 		if !decided.leavesUndecided(s.Glob, files) {
@@ -110,14 +111,14 @@ func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, fi
 		}
 		answer, err := c.pauses.Pause(ctx, s, decided.matches(s.Glob, files))
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
+			return nil, ctxErr
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		decided.record(s.Glob, answer)
 	}
-	return nil
+	return decided.excluded, nil
 }
 
 // runAnswers is the keep list grown by this run's Keep answers, and the globs of its

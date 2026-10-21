@@ -1003,8 +1003,8 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 		WithExclusionCheck(exclusionCheck(deps, cfg, opts, transport, stage))
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
-	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
-	// ONCE here). After the exclusion check, it consults the reuse hook BEFORE the notes
+	// diff the exclusions and the check's Exclude answers leave + resolved prompt/context
+	// the cache key hashes. After the exclusion check, it consults the reuse hook BEFORE the notes
 	// calls — a live cache match skips them and reuses the cached body. The hook differs
 	// by mode: a real run PROMPTS (use/regenerate) on a match, a dry run reuses SILENTLY
 	// (a dry run asks for nothing).

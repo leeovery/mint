@@ -25,7 +25,7 @@ func answeredCheck(t *testing.T, keep []string, diff, answer string, answers ...
 	t.Helper()
 	pauses := &recordedPauses{answers: answers}
 	check := notes.NewExclusionCheck(&recordingTransport{body: answer}, keep, nil).WithPauses(pauses)
-	if err := check.Check(t.Context(), diff); err != nil {
+	if _, err := check.Check(t.Context(), diff); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 	return pauses

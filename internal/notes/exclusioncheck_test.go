@@ -89,7 +89,7 @@ func TestExclusionCheck_ListsEachChangedPathWithItsChangeAndDiffSize_AndNoDiffCo
 	tr := &recordingTransport{body: "none"}
 	check := notes.NewExclusionCheck(tr, nil, nil)
 
-	if err := check.Check(t.Context(), exportGo+designDoc); err != nil {
+	if _, err := check.Check(t.Context(), exportGo+designDoc); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -117,7 +117,7 @@ func TestExclusionCheck_NamesDeletionsAndRenames(t *testing.T) {
 	moved := renamedFileDiff("pkg/a.go", "pkg/b.go")
 	tr := &recordingTransport{body: "none"}
 
-	if err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), removed+moved); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), removed+moved); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -137,7 +137,7 @@ func TestExclusionCheck_BigFilesAreOrdinaryEntriesInDecimalSizes(t *testing.T) {
 	small := sized(t, func(body string) string { return modifiedFileDiff("src/small.go", body) }, 640)
 	tr := &recordingTransport{body: "none"}
 
-	if err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), small+transcript); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), small+transcript); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -159,7 +159,7 @@ func TestExclusionCheck_LeavesOutPathsTheKeepListCovers(t *testing.T) {
 	tr := &recordingTransport{body: "none"}
 	check := notes.NewExclusionCheck(tr, []string{"docs/api/", "docs/*/intro.md"}, nil)
 
-	if err := check.Check(t.Context(), kept+keptByGlob+listed); err != nil {
+	if _, err := check.Check(t.Context(), kept+keptByGlob+listed); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -180,7 +180,7 @@ func TestExclusionCheck_KeepListCoversEveryPath_MakesNoCallAndNarratesNothing(t 
 	})
 	diff := addedFileDiff("docs/api/export.md", "+# Export API\n") + modifiedFileDiff("docs/api/import.md", "+# Import API\n")
 
-	if err := notes.NewExclusionCheck(tr, []string{"docs/api/"}, narration).Check(t.Context(), diff); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, []string{"docs/api/"}, narration).Check(t.Context(), diff); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -201,7 +201,7 @@ func TestExclusionCheck_NarratesTheCallStartingAndEnding(t *testing.T) {
 		return "none", nil
 	})
 
-	if err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n")); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n")); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -220,7 +220,7 @@ func TestExclusionCheck_AFailedCallLetsTheReleaseCarryOn(t *testing.T) {
 			narration := &checkNarration{}
 			tr := &recordingTransport{err: failure}
 
-			if err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n")); err != nil {
+			if _, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n")); err != nil {
 				t.Errorf("Check returned %v, want nil so the release carries on", err)
 			}
 			if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
@@ -235,7 +235,7 @@ func TestExclusionCheck_ACancelDuringTheCallIsReturned(t *testing.T) {
 
 	tr := &recordingTransport{err: fmt.Errorf("ai call: %w", context.Canceled)}
 
-	err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"))
+	_, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"))
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Check returned %v, want the cancel", err)
 	}
