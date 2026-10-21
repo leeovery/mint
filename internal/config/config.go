@@ -20,8 +20,9 @@
 // schema Go type (e.g. a string max_prompt_bytes, a string publish/changelog, a scalar diff_exclude) is re-wrapped into a mint message
 // naming the key and its expected type; a [release.hooks] entry that is neither a
 // command string nor an array of command strings is rejected naming the hook key;
-// max_prompt_bytes must be positive; and on_notes_failure is constrained to the closed
-// set abort | fallback.
+// max_prompt_bytes must be positive; an ai_command at any level must split into a
+// program and its arguments; and on_notes_failure is constrained to the closed set
+// abort | fallback.
 package config
 
 import (
@@ -446,7 +447,8 @@ func Load(root string) (Config, error) {
 // message. It reports the first offending key — naming both the key and its owning
 // table so the offender is unambiguous — and special-cases a TOP-LEVEL [hooks] table
 // (the documented contradiction) with targeted guidance to nest under
-// [release.hooks], and the removed top-level max_diff_lines with its replacement.
+// [release.hooks], and the removed max_diff_lines and release.fallback with what
+// replaced them.
 func translateStrict(strict *toml.StrictMissingError) error {
 	for _, de := range strict.Errors {
 		key := de.Key()
