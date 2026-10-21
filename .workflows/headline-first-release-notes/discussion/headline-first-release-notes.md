@@ -31,6 +31,19 @@ A headline is not new ground — the format once had one, and lost it for length
 - Stitching and Salience framed the chunk problem as "no chunk knows whether its slice is the headline or a footnote"; the merge call is where the whole release is ranked.
 - When a Chunk Fails rejected merging surviving chunks with a gap because "the missing slice can be the release's headline feature" — notes that read as complete while leaving out the biggest change are named there as "the one the parked headline-first roadmap item targets".
 
+### Evidence: an audit of 31 released notes (2026-10-21)
+
+Mid-discussion the user asked to move forward from evidence: some releases' notes "really don't portray what happened, and definitely not in the right order". Six read-only auditors compared 31 AI-written releases across nine projects on this machine (all on the default prompt, all since the 2026-06-13 format) with their code, judging each release's real main work from full history. Full method, synthesis and per-release reports: [Release-notes audit](../imports/release-notes-audit.md). Judgement-based, not a controlled measurement. In brief:
+
+- **Leading:** of 30 releases with a main body of work, the notes led with it cleanly in 17, partly in 7, not at all in 6.
+- **Fragmentation is near-universal:** the main work split over 4–14 bullets across two to four sections in all but one; almost never does a line state the whole; items stated twice in five. The model over-splits — it never collapsed a large feature into one bullet.
+- **The fixed section order buries reshaping work:** a main work that reshapes existing behaviour lands in 🔧 Changed below ✨ Added, so small new items outrank it (eight releases); twice the model broke the order to compensate.
+- **Inversions within sections** in about half — rank follows commit/file granularity and how nameable an item is, not user weight; README prose weighted as content.
+- **The Change Map's structural signals barely work:** first-segment-only novelty fired in 6 of 31, never on the whole main work — on a pre-existing `design/` (false novelty), a docs site that then led, README demo assets, a 6-line wrapper, the smaller of two co-equal bodies. The largest-file line is often a test, a deletion or a dev script. The prompt's "new structure is the strongest signal" turned new internal packages into feature bullets (mint v0.0.6).
+- **The headline** under the decided rules applies in about 23 of 31. Four of six auditors independently flagged the only-the-main-thing exemption as suppressing it exactly where the main work is most fragmented.
+- **Beyond salience:** false or stale claims shipped (~7 — behaviour invented from README, comment or test edits; old features re-announced); work new in the release presented as a change or fix to the last (~7); internal and dev-only changes presented to users (~19 of 31); section misfiling (~15); breaking changes buried (5); missing items (~6).
+- **Outside notes design:** a mint exclusion bug (`diff_exclude` globs passed as plain `:(exclude)` pathspecs; `**/testdata/**` misses a root `testdata/` — 172 files leaked on switchboard v0.1.0, `git diff --name-only v0.0.6 v0.1.0 -- . ':(exclude)**/testdata/**' | grep -c '^testdata/'` → 172, 0 with `:(exclude,glob)`); the largest release in five of six groups never reached the AI (over the limit — the gap token-aware diff sizing closes); CHANGELOG drift after regenerate in stitch-cli.
+
 ### Adjacent roadmap item (not pulled)
 
 **Agent-authored release notes** proposes taking a one-line statement of what the release is about from the outer agent — the session that built the feature knows the headline better than mint's diff-only view. Pulled alone, this work designs the format and how mint's own AI fills it; whether a supplied statement overrides the AI's pick is that item's question, and the format should not foreclose it.
