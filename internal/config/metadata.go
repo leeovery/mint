@@ -150,6 +150,7 @@ func MetadataRows() []MetadataRow {
 		{Key: "prompt", Level: LevelCommit, Description: "path to a file whose contents fully override the default commit-message prompt"},
 		{Key: "ai_command", Level: LevelCommit, Default: "shared", Description: "optional per-verb override of the AI command for commit; resolved [commit] → shared → default"},
 		{Key: "timeout", Level: LevelCommit, Default: "shared, else " + seconds(DefaultCommitTimeout), Description: "optional per-verb override of the per-attempt AI deadline (seconds) for commit; resolved [commit] → shared → default"},
+		{Key: "diff_exclude", Level: LevelCommit, Default: "[]", Description: "pathspec globs kept out of the commit-message diff only, added to the shared diff_exclude list"},
 	}
 }
 

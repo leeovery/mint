@@ -108,7 +108,8 @@ type Config struct {
 	// Context/Prompt are the commit-specific counterparts of [release]'s
 	// Context/Prompt. The ai_command / timeout overrides resolve through the layered
 	// chain [commit] → shared top-level → shipped default (mirroring [release]);
-	// max_prompt_bytes and the shared diff_exclude list serve commit from the top level.
+	// max_prompt_bytes serves commit from the top level, and commit's AI diff excludes the
+	// shared diff_exclude list plus Commit.DiffExclude.
 	Commit Commit
 
 	// AICommand is the shared engine-level ai_command notes-transport command (its
@@ -140,7 +141,7 @@ type Config struct {
 
 	// DiffExclude is the shared list of glob pathspecs every verb's AI diff excludes —
 	// what neither release notes nor commit messages should read. A per-verb list
-	// (Release.DiffExclude) adds to it and never replaces it. Each entry is a git
+	// (Release.DiffExclude, Commit.DiffExclude) adds to it and never replaces it. Each entry is a git
 	// pathspec glob (e.g. "skills/**/knowledge.cjs") turned into a :(exclude)<glob>
 	// argument; git performs the matching, mint does no Go-side glob matching.
 	DiffExclude []string
@@ -220,8 +221,8 @@ type Release struct {
 }
 
 // Commit holds the [commit] table values: the commit verb's two prompt-control
-// knobs (Context and Prompt) plus optional per-verb ai_command and timeout overrides
-// (AICommand, Timeout). Context and Prompt are carried as raw TOML strings (both default
+// knobs (Context and Prompt), optional per-verb ai_command and timeout overrides
+// (AICommand, Timeout), and the [commit] diff_exclude list (DiffExclude). Context and Prompt are carried as raw TOML strings (both default
 // empty): Context injects project guidance into the default commit prompt
 // (empty = no injection); Prompt is a file path that fully overrides the default
 // commit prompt (empty = use the default). config carries both verbatim — the
@@ -252,6 +253,11 @@ type Commit struct {
 	// boundary (resolveTimeout). This per-verb override is the commit-verb counterpart
 	// of AICommand.
 	Timeout *time.Duration
+
+	// DiffExclude is the [commit] list of glob pathspecs commit's AI diff excludes on top
+	// of the shared top-level list — never in place of it. Release notes never read it, and
+	// commit's preflight ignores it like every other level.
+	DiffExclude []string
 }
 
 // HookValue is the dedicated string-or-array type for a [release.hooks] entry: a
@@ -328,10 +334,11 @@ type fileShape struct {
 // TimeoutFor needs that distinction to honour 0 ("no deadline") vs falling through;
 // integer seconds makes a non-integer TOML value a strict decode error at Load.
 type commitShape struct {
-	Context   string  `toml:"context"`
-	Prompt    string  `toml:"prompt"`
-	AICommand *string `toml:"ai_command"`
-	Timeout   *int    `toml:"timeout"`
+	Context     string   `toml:"context"`
+	Prompt      string   `toml:"prompt"`
+	AICommand   *string  `toml:"ai_command"`
+	Timeout     *int     `toml:"timeout"`
+	DiffExclude []string `toml:"diff_exclude"`
 }
 
 type releaseShape struct {
@@ -468,6 +475,7 @@ var typeErrorMessages = map[string]string{
 	"commitShape.Prompt":       "commit.prompt must be a string",
 	"commitShape.AICommand":    "commit.ai_command must be a string",
 	"commitShape.Timeout":      "commit.timeout must be an integer (seconds)",
+	"commitShape.DiffExclude":  "commit.diff_exclude must be an array of strings",
 }
 
 // topLevelIntegerKeys maps a top-level integer key to its typeErrorMessages field
@@ -731,10 +739,11 @@ func resolveRelease(shape releaseShape) Release {
 // breaks), mirroring resolveRelease.
 func resolveCommit(shape commitShape) Commit {
 	return Commit{
-		Context:   shape.Context,
-		Prompt:    shape.Prompt,
-		AICommand: shape.AICommand,
-		Timeout:   resolveTimeout(shape.Timeout),
+		Context:     shape.Context,
+		Prompt:      shape.Prompt,
+		AICommand:   shape.AICommand,
+		Timeout:     resolveTimeout(shape.Timeout),
+		DiffExclude: shape.DiffExclude,
 	}
 }
 

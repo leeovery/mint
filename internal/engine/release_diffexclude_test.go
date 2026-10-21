@@ -116,3 +116,35 @@ func TestRelease_ReleaseDiffExclude_OnlyExcludedChangesGiveTheMaintenanceBody(t 
 		t.Errorf("tag annotation body = %q, want the maintenance-release body %q", got, terminatedAnnotationBody(want))
 	}
 }
+
+func TestRelease_CommitDiffExclude_NeverReachesTheNotesDiffOrChangeMap(t *testing.T) {
+	t.Parallel()
+
+	const bothDiff = "diff --git a/src/export.go b/src/export.go\n@@ -0,0 +1 @@\n+package src\n" +
+		"diff --git a/tmp/run.log b/tmp/run.log\n@@ -0,0 +1 @@\n+run\n"
+	root := t.TempDir()
+	writeConfig(t, root, "[commit]\ndiff_exclude = [\"tmp/\"]\n")
+	f := runner.NewFakeRunner()
+	seedPriorTagReadGates(f, root, "main")
+	f.SeedSequence("git",
+		ScriptedOut(bothDiff),                                    // diff priorTag..HEAD
+		ScriptedOut("A\tsrc/export.go\nA\ttmp/run.log\n"),        // diff --name-status (change map)
+		ScriptedOut("12\t0\tsrc/export.go\n1\t0\ttmp/run.log\n"), // diff --numstat (change map)
+	)
+	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedRecordTagPush(f, root)
+	f.Seed("gh", runner.Result{}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), priorTagNormalAIOptions()); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md")
+	prompt := stdinOf(t, f, "claude", leanClaudeArgs...)
+	for _, want := range []string{bothDiff, "src/export.go", "tmp/run.log"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("notes call does not carry %q; got:\n%s", want, prompt)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"mint/internal/config"
@@ -44,8 +45,8 @@ type Transport interface {
 }
 
 // Generator is commit's Layer-3 glue: it wires commit's OWN Layer-1 (the would-be-
-// committed diff — staged-only, -a, or -A per the StagingMode — with cfg.DiffExclude
-// mapped to :(exclude) pathspecs) to the prompt composer, the max_prompt_bytes guard on
+// committed diff — staged-only, -a, or -A per the StagingMode — with the shared and
+// [commit] diff_exclude lists mapped to :(exclude) pathspecs) to the prompt composer, the max_prompt_bytes guard on
 // the composed prompt, and the consumed Layer-2 transport.
 //
 // It holds the CommandRunner (commit's L1 git seam — production passes the
@@ -60,8 +61,8 @@ type Transport interface {
 // Commit owns its OWN L1 rather than reusing internal/notes because notes is
 // release-specific: range-based (AssembleRange only), release-tier excludes are
 // hardwired (CHANGELOG.md + version_file), and its exclude-pathspec assembly is
-// unexported. Commit therefore builds the would-be-staged source and cfg.DiffExclude-only
-// pathspecs here, while CONSUMING the genuinely shared pieces: notes.ErrDiffTooLarge
+// unexported. Commit therefore builds the would-be-staged source and its own pathspecs
+// (the shared plus [commit] diff_exclude lists, never [release]'s) here, while CONSUMING the genuinely shared pieces: notes.ErrDiffTooLarge
 // (the oversized sentinel Run routes on) and the ai.Transport (validate + one retry)
 // behind the local Transport seam.
 type Generator struct {
@@ -84,7 +85,8 @@ func NewGenerator(r runner.CommandRunner, transport Transport, root string, mode
 // orchestrating the L3 pieces in EXACTLY this order:
 //
 //  1. sourceDiff — commit's L1: the would-be-committed diff for the resolved
-//     StagingMode, with cfg.DiffExclude mapped to :(exclude) pathspecs (no CHANGELOG.md
+//     StagingMode, with the shared diff_exclude list plus cfg.Commit.DiffExclude
+//     mapped to :(exclude) pathspecs (no CHANGELOG.md
 //     / version_file tiers — those are release-specific). The SOURCE command differs per
 //     mode (StagedOnly: `git diff --cached`; All: the read-only tracked-vs-HEAD diff;
 //     AddAll: that diff plus untracked files rendered read-only as additions), but git
@@ -121,13 +123,13 @@ func (g *Generator) Generate(ctx context.Context, cfg config.Config) (string, er
 // the transport's one retry is consumed here exactly as Generate consumes it. Generate
 // delegates here with an empty context, so the two share one path.
 func (g *Generator) GenerateWithContext(ctx context.Context, cfg config.Config, oneTimeContext string) (string, error) {
-	diff, err := g.sourceDiff(ctx, cfg.DiffExclude)
+	diff, err := g.sourceDiff(ctx, slices.Concat(cfg.DiffExclude, cfg.Commit.DiffExclude))
 	if err != nil {
 		return "", fmt.Errorf("assembling would-be-committed diff for commit: %w", err)
 	}
 
-	// The preflight (diff_exclude-blind) already proved the tree is dirty for this mode,
-	// so an empty POST-exclusion diff means diff_exclude removed EVERY would-be-committed
+	// The preflight (blind to every diff_exclude level) already proved the tree is dirty
+	// for this mode, so an empty POST-exclusion diff means diff_exclude removed EVERY would-be-committed
 	// change: the model has nothing to read. Don't compose a blank prompt or call the
 	// transport — return the typed skip so Run routes to the SAME $EDITOR fallback as
 	// --no-ai/oversized. The excluded changes still get committed (the editor save IS the
@@ -171,7 +173,7 @@ func checkPromptSize(prompt string, maxBytes int) error {
 // sourcesForMode descriptor lists for the mode — the SAME descriptor the preflight
 // emptiness path (wouldStageNothing) consumes, so the dispatch (and the AddAll
 // tracked-then-untracked composition) is defined exactly once. Each source applies the
-// SAME cfg.DiffExclude :(exclude) pathspecs; the post-exclusion result flows into the
+// SAME diffExclude :(exclude) pathspecs (the shared plus [commit] lists); the post-exclusion result flows into the
 // shared compose + size-guard + L2 pipeline unchanged.
 //
 //   - StagedOnly (the Phase 1 default): the staged diff — `git diff --cached`.
@@ -223,7 +225,7 @@ func (g *Generator) renderSource(ctx context.Context, spec sourceSpec, diffExclu
 
 // diffSourceText runs a diffSource — a `git diff …` whose stdout IS the post-exclusion
 // diff — built from the shared base prefix (stagedBaseArgs / trackedBaseArgs) plus the
-// cfg.DiffExclude :(exclude) pathspecs via the single shared sourceArgs composer. The
+// diffExclude :(exclude) pathspecs via the single shared sourceArgs composer. The
 // SAME base feeds the matching preflight probe (which adds `--name-only` and NO exclusion
 // tail — the preflight is diff_exclude-blind; see preflight.go), so the L1 diff and the
 // emptiness probe share the source COMMAND and differ only in the tail: the L1 diff
@@ -248,7 +250,7 @@ func (g *Generator) diffSourceText(ctx context.Context, base, diffExclude []stri
 
 // untrackedAdditions renders an untrackedListSource — the AddAll (-A) untracked source —
 // into its L1 diff text: enumerate the repo's untracked, non-ignored files from the shared
-// untracked base prefix plus the cfg.DiffExclude :(exclude) pathspecs (so excluded
+// untracked base prefix plus the diffExclude :(exclude) pathspecs (so excluded
 // untracked files are never enumerated and never reach the prompt), then render EACH as a
 // read-only added-file diff in enumeration order, matching `git add -A` semantics
 // (everything, including untracked) — all computed READ-ONLY, leaving the index

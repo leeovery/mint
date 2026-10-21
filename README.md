@@ -220,7 +220,7 @@ The per-key reference tables below are the authoritative human config reference 
 
 ### Shared engine keys
 
-`ai_command` and `timeout` live at **both** the shared (top) level and per-verb (`[release]` / `[commit]`). `max_prompt_bytes` is shared-only. `diff_exclude` has a shared list and a `[release]` list, and the `[release]` list adds to the shared one rather than replacing it. Each of `ai_command` and `timeout` resolves per-key independently through `[verb].<key>` → top-level shared `<key>` → shipped default — so a verb override repoints only that key for that verb, and an unset override falls through to the shared value, then to the compiled default.
+`ai_command` and `timeout` live at **both** the shared (top) level and per-verb (`[release]` / `[commit]`). `max_prompt_bytes` is shared-only. `diff_exclude` has a shared list plus a `[release]` and a `[commit]` list, and each verb's list adds to the shared one rather than replacing it. Each of `ai_command` and `timeout` resolves per-key independently through `[verb].<key>` → top-level shared `<key>` → shipped default — so a verb override repoints only that key for that verb, and an unset override falls through to the shared value, then to the compiled default.
 
 | Key | Default | Description |
 |---|---|---|
@@ -264,6 +264,7 @@ The per-key reference tables below are the authoritative human config reference 
 | `prompt` | | path to a full commit-prompt override file |
 | `ai_command` | shared | optional per-verb override of the AI command for `commit` only; resolves `[commit]` → shared → default |
 | `timeout` | shared, else `60` | optional per-verb override of the per-attempt AI deadline (seconds) for `commit` only; resolves `[commit]` → shared → default |
+| `diff_exclude` | `[]` | pathspec globs kept out of the commit-message diff only, added to the shared `diff_exclude` list; release notes still read these paths |
 
 Both verbs share the two-knob model: `context` *injects into* the default prompt; `prompt` *replaces* it. Unknown or mistyped keys fail loud at load; mint never silently ignores config.
 

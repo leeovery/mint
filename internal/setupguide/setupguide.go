@@ -293,13 +293,16 @@ func etiquetteSection() string {
 
 ### diff_exclude scope
 
-diff_exclude is for NOISE, not generated code. It has two levels, and the
-[release] list adds to the shared one rather than replacing it:
+diff_exclude is for NOISE, not generated code. It has three levels, and each
+verb's list adds to the shared one rather than replacing it:
 
 - [release].diff_exclude keeps paths out of the release-notes diff only, so
   commit messages still read them. Release-notes noise goes here: TRACKED
   process / meta / doc files that churn but are not user-facing release
   content, such as .workflows/, .claude/, other agent directories, and docs/.
+- [commit].diff_exclude keeps paths out of the commit-message diff only, so
+  release notes still read them. It is for paths that are noise in a commit
+  message but belong in release notes.
 - The shared top-level diff_exclude keeps paths out of every verb's AI diff.
   Keep it for what neither release notes nor commit messages should read, such
   as lockfiles and tracked build output.

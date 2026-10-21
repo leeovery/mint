@@ -108,14 +108,15 @@ func sourcesForMode(mode StagingMode) []sourceSpec {
 // sourceArgs is the L1 argv for a source: its base prefix plus the diff_exclude
 // excludePathspecs tail. It is the single place the L1 diff sources turn a base prefix
 // into the executed argv. The preflight probe deliberately does NOT use this composer —
-// it is diff_exclude-blind, so it appends no exclusion tail (see probeArgs).
+// it is blind to every diff_exclude level, so it appends no exclusion tail (see probeArgs).
 func sourceArgs(base, diffExclude []string) []string {
 	return append(append([]string{}, base...), excludePathspecs(diffExclude)...)
 }
 
 // excludePathspecs maps each diff_exclude glob to its :(exclude)<glob> pathspec, in
-// config order. Unlike the notes assembler's union of exclusion tiers, commit carries
-// ONLY the configured globs — there is no built-in CHANGELOG.md or strategy-aware
+// config order: the shared diff_exclude list, then the [commit] list (never [release]'s).
+// Unlike the notes assembler's union of exclusion tiers, commit carries ONLY the
+// configured globs — there is no built-in CHANGELOG.md or strategy-aware
 // version_file exclusion here (both are release-specific). A nil/empty slice yields no
 // pathspecs, so the bare argv is exactly `git diff --cached -- .`. It lives HERE,
 // beside sourceArgs (its only caller), so the full per-mode argv-assembly surface is

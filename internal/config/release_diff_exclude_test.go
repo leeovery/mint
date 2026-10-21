@@ -98,7 +98,7 @@ func TestREADME_SharedEngineKeysDoNotCallDiffExcludeSharedOnly(t *testing.T) {
 	if strings.Contains(flat, "the rest are shared-only") {
 		t.Error("README shared engine keys section still calls every other key shared-only, diff_exclude included")
 	}
-	want := "`diff_exclude` has a shared list and a `[release]` list, and the `[release]` list adds to the shared one rather than replacing it"
+	want := "`diff_exclude` has a shared list plus a `[release]` and a `[commit]` list, and each verb's list adds to the shared one rather than replacing it"
 	if !strings.Contains(flat, want) {
 		t.Errorf("README shared engine keys section does not say %q", want)
 	}

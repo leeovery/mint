@@ -111,13 +111,13 @@ func TestMetadataSoT_BijectsSchemaLeafKeys(t *testing.T) {
 }
 
 // TestMetadataSoT_BijectionPairCount sanity-pins the current schema/SoT size so a future
-// reader sees the expected scale: 25 leaf (level, key) pairs on both sides, matched
+// reader sees the expected scale: 26 leaf (level, key) pairs on both sides, matched
 // exactly. The bijection above is the authoritative guard; this asserts the shared count
 // the two sides agree on today.
 func TestMetadataSoT_BijectionPairCount(t *testing.T) {
 	t.Parallel()
 
-	const wantPairs = 25
+	const wantPairs = 26
 	if got := len(sotLeafKeys()); got != wantPairs {
 		t.Errorf("SoT projected to %d (level, key) pairs, want %d", got, wantPairs)
 	}

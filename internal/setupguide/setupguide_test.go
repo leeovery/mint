@@ -908,3 +908,29 @@ func TestGuide_ProcedureStepFourRoutesNoiseByLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestGuide_ConfigReferenceListsCommitDiffExclude(t *testing.T) {
+	t.Parallel()
+
+	row, ok := configtest.MustByLevelKey(t)[configtest.RowKey{Level: config.LevelCommit, Key: "diff_exclude"}]
+	if !ok {
+		t.Fatal("missing SoT row for ([commit], diff_exclude)")
+	}
+	if !containsRowLine(configReferenceBody(t), "diff_exclude", "[commit]", "[]", row.Description) {
+		t.Error("config reference has no [commit] diff_exclude row with the [] default")
+	}
+}
+
+func TestGuide_DiffExcludeScopeNamesTheCommitLevel(t *testing.T) {
+	t.Parallel()
+
+	flat := strings.Join(strings.Fields(etiquetteBody(t)), " ")
+	for _, want := range []string{
+		"It has three levels, and each verb's list adds to the shared one rather than replacing it",
+		"[commit].diff_exclude keeps paths out of the commit-message diff only, so release notes still read them",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("diff_exclude scope does not say %q", want)
+		}
+	}
+}
