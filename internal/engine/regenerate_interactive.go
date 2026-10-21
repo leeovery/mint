@@ -264,10 +264,10 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		Tag:         req.Tag,
 		VersionKey:  req.VersionKey,
 		Body:        body,
-		Regenerator: regens.narrating(produceRegenerator(req.ProduceRegenerator, source, chunkNotes.regenRun(regens))),
-		RegenShown:  regens.shown,
+		Regenerator: produceRegenerator(req.ProduceRegenerator, source, chunkNotes.regenRun(regens)),
 		KeepOut:     keepOut,
 		LowerCap:    stage.lowerCap(),
+		regens:      regens,
 		chunkNotes:  chunkNotes,
 	})
 }

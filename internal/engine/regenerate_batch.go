@@ -474,8 +474,8 @@ func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRe
 		Tag:         "",
 		VersionKey:  versionKey,
 		Body:        body,
-		Regenerator: regens.narrating(batchRegenerator(req.ProduceRegenerator, req.Source, res, chunkNotes.regenRun(regens))),
-		RegenShown:  regens.shown,
+		Regenerator: batchRegenerator(req.ProduceRegenerator, req.Source, res, chunkNotes.regenRun(regens)),
+		regens:      regens,
 		chunkNotes:  chunkNotes,
 	})
 }

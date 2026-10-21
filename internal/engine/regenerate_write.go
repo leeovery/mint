@@ -135,15 +135,15 @@ type RegenerateWriteRequest struct {
 	// it nil. A wired deps.Regenerator OVERRIDES it (the test-injection seam), mirroring
 	// the forward path's precedence.
 	Regenerator Regenerator
-	// RegenShown runs once each `r`'s notes are shown, nil for nothing.
-	RegenShown func()
 	// KeepOut is the path the changelog commit leaves out, any staged edits to it
 	// still staged afterwards.
 	KeepOut git.Exclusion
 	// LowerCap is the cap hinted after the notes, 0 for none.
 	LowerCap int
-	// chunkNotes keeps the version's chunk notes, saving those of a failed `r`; nil
-	// keeps none.
+	// regens narrates each `r` and hints after its notes; chunkNotes keeps the version's
+	// chunk notes, saving those of a failed `r`. With either nil, an `r` is neither
+	// narrated nor hinted and keeps nothing.
+	regens     *regenStage
 	chunkNotes *chunkNotesKeeper
 }
 
@@ -248,15 +248,12 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 // reviewFresh runs the fresh notes-review gate. An `r` that fails saves the version's
 // chunk notes, named with the version's regenerate that puts them on it.
 func reviewFresh(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRequest) (string, error) {
-	regen := reviewRegen{regenerator: regenerateRegenerator(deps, req.Regenerator), shown: req.RegenShown}
-	if req.chunkNotes != nil {
-		regen.keep = req.chunkNotes.keepRegen
+	regenerator := regenerateRegenerator(deps, req.Regenerator)
+	if req.regens == nil || req.chunkNotes == nil {
+		return reviewGate(ctx, deps.Presenter, deps.Editor, reviewRegen{regenerator: regenerator}, presenter.NotesReviewGate(), req.Body, req.VersionKey)
 	}
-	body, err := reviewGate(ctx, deps.Presenter, deps.Editor, regen, presenter.NotesReviewGate(), req.Body, req.VersionKey)
-	if err != nil && req.chunkNotes != nil {
-		req.chunkNotes.reportKept(deps.Presenter, err, "mint release regenerate "+req.VersionKey)
-	}
-	return body, err
+	regen := req.regens.review(regenerator, req.chunkNotes)
+	return req.chunkNotes.reviewGate(ctx, deps, regen, presenter.NotesReviewGate(), req.Body, req.VersionKey, "mint release regenerate "+req.VersionKey)
 }
 
 // regenerateRegenerator selects the Regenerator the fresh regenerate gate's `r` choice

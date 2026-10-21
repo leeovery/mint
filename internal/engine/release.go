@@ -588,12 +588,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// through Record → tag → push → publish (there is no further confirmation), which is
 	// why ReleaseReviewGate's wording says "release", not "accept".
 	regens := stage.regens(func(lowerCap int) { hintLowerCap(p, lowerCap) })
-	regenerator := regens.narrating(perRunRegenerator(deps, generator, chunkNotes, regens, current.String(cfg.Release.TagPrefix), cfg))
-	body, err = reviewGate(ctx, p, deps.Editor, reviewRegen{regenerator: regenerator, shown: regens.shown, keep: chunkNotes.keepRegen}, gateForKind(kind), body, versionKey)
+	regen := regens.review(perRunRegenerator(deps, generator, chunkNotes, regens, current.String(cfg.Release.TagPrefix), cfg), chunkNotes)
+	body, err = chunkNotes.reviewGate(ctx, deps, regen, gateForKind(kind), body, versionKey, "mint release")
 	if err != nil {
 		// Unwind, not surfaceAndUnwind: reviewGate has already surfaced whatever
 		// needed a StageFailed.
-		chunkNotes.reportKept(p, err, "mint release")
 		return Unwind(ctx, deps, start, made, err)
 	}
 

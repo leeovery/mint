@@ -81,6 +81,16 @@ func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error, comman
 	}
 }
 
+// reviewGate runs the review gate with regen as its `r`, then reports what an abort
+// kept, a saved file named with command.
+func (k *chunkNotesKeeper) reviewGate(ctx context.Context, deps ReleaseDeps, regen reviewRegen, gate presenter.Gate, body, versionKey, command string) (string, error) {
+	body, err := reviewGate(ctx, deps.Presenter, deps.Editor, regen, gate, body, versionKey)
+	if err != nil {
+		k.reportKept(deps.Presenter, err, command)
+	}
+	return body, err
+}
+
 // regenRun is what an `r` on the run's notes regenerates from, its chunked run
 // reporting to progress and kept here. Its Merged reads the keeper's merge inputs live,
 // so the `r` re-merges from the same inputs keepRegen saves from.
