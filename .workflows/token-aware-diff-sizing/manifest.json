@@ -754,7 +754,15 @@
                 "internal/config/metadata.go"
               ]
             }
-          ]
+          ],
+          "staging": {
+            "c1": {
+              "gate_mode": "gated",
+              "tasks": {
+                "1": "pending"
+              }
+            }
+          }
         }
       }
     }
