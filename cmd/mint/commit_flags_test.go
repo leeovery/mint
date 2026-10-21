@@ -116,6 +116,18 @@ func TestParseCommitFlags_UnknownFlag_Errors(t *testing.T) {
 	}
 }
 
+func TestParseCommitFlags_StrayArgument_Errors(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseCommitFlags([]string{"-a", "fix", "-p"})
+	if err == nil {
+		t.Fatal("parseCommitFlags(-a fix -p) returned nil error, want a stray-argument error")
+	}
+	if want := "unexpected argument fix (commit takes no arguments)"; err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
 // conflictingStagingMessage is the spec's EXACT conflicting-flags message (Staging
 // Model → Decision — two faithful flags). -a and -A are mutually exclusive — -A
 // already includes -a's changes — so combining them is fail-loud, never a silent

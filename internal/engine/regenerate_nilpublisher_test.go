@@ -3,6 +3,7 @@ package engine_test
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"mint/internal/config"
@@ -131,6 +132,15 @@ func TestResolvePublisher_Downgrade_WarnsReturnsNilNoError(t *testing.T) {
 	// The warn names the downgrade, not a failure.
 	if got := downgradeWarnLabels(rec); !slices.Contains(got, "publish skipped") {
 		t.Errorf("downgrade warn labels = %v, want one to be %q", got, "publish skipped")
+	}
+	// Regenerate cuts no tag, so its warning names what it skips, not a tag + push.
+	for _, ev := range rec.Events {
+		if ev.Kind != presentertest.KindWarn || ev.Warn.Label != "publish skipped" {
+			continue
+		}
+		if !strings.HasSuffix(ev.Warn.Message, "; no provider release can be written") || strings.Contains(ev.Warn.Message, "tag + push") {
+			t.Errorf("downgrade warn = %q, want it to end \"; no provider release can be written\" and name no tag + push", ev.Warn.Message)
+		}
 	}
 }
 

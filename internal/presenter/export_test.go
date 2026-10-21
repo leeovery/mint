@@ -61,3 +61,7 @@ func (p *PrettyPresenter) WithTermWidth(w int) *PrettyPresenter {
 
 // DeclineChoiceForTest exposes declineChoice (the Escape→"no" mapping) for tests.
 func DeclineChoiceForTest(g Gate) (Choice, bool) { return declineChoice(g) }
+
+// SingleKeyGate exposes singleKeyGate, the test for whether a pretty gate can be
+// answered with one keypress, to the external gate tests.
+func SingleKeyGate(g Gate) bool { return singleKeyGate(g) }

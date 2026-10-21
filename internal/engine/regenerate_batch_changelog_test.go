@@ -484,3 +484,41 @@ func TestRegenerateAllValidated_CancelSkipsChangelogRebuild(t *testing.T) {
 		})
 	}
 }
+
+// TestRegenerateAllValidated_Changelog_PlanNamesTheChangelog proves each version's
+// plan names the surface the batch writes: a changelog-only batch plans `changelog
+// {tag}` and never a provider `release` step.
+func TestRegenerateAllValidated_Changelog_PlanNamesTheChangelog(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	seedChangelog(t, dir, kacPreamble)
+
+	f := runner.NewFakeRunner()
+	seedRebuildGit(f, batchV1Date, batchV2Date, batchV3Date)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), newFakePublisher(), dir,
+		freshChangelogBatchReq(threeVersions(), engine.RegenerateTargetChangelog), true)
+	if err != nil {
+		t.Fatalf("RegenerateAllValidated returned unexpected error: %v", err)
+	}
+
+	var plans int
+	for _, ev := range rec.Events {
+		if ev.Kind != presentertest.KindShowPlan {
+			continue
+		}
+		plans++
+		verbs := make([]string, 0, len(ev.ShowPlan.Steps))
+		for _, step := range ev.ShowPlan.Steps {
+			verbs = append(verbs, step.Verb)
+		}
+		if want := []string{"source", "changelog"}; !slices.Equal(verbs, want) {
+			t.Errorf("plan steps = %v, want %v", verbs, want)
+		}
+	}
+	if plans != 3 {
+		t.Errorf("plans shown = %d, want one per version (3)", plans)
+	}
+}

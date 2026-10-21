@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"mint/internal/engine"
@@ -351,7 +352,8 @@ func TestInit_NoRunFinishedNoPrompt(t *testing.T) {
 }
 
 // TestInit_RootResolutionFails_Aborts proves a non-git invocation aborts cleanly
-// (the runner's root read fails) without emitting any InitResult.
+// (the runner's root read fails) without emitting any InitResult, and says why: one
+// "init" StageFailed naming the unresolvable repo root.
 func TestInit_RootResolutionFails_Aborts(t *testing.T) {
 	t.Parallel()
 
@@ -366,4 +368,49 @@ func TestInit_RootResolutionFails_Aborts(t *testing.T) {
 	if got := initEvents(p); len(got) != 0 {
 		t.Errorf("outcomes = %+v, want none when the root cannot be resolved", got)
 	}
+	failures := initFailures(p)
+	if len(failures) != 1 {
+		t.Fatalf("StageFailed events = %+v, want exactly one", failures)
+	}
+	if failures[0].Name != "init" || !strings.Contains(failures[0].Message, "resolving repo root for init") {
+		t.Errorf("StageFailed = %+v, want an init failure naming the repo-root resolution", failures[0])
+	}
+}
+
+// TestInit_WriteFails_SaysWhy proves a target that cannot be written aborts with one
+// "init" StageFailed naming the file, rather than exiting silently.
+func TestInit_WriteFails_SaysWhy(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// A directory where the config file should go makes its write fail.
+	if err := os.Mkdir(filepath.Join(root, ".mint.toml"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: root + "\n"}, nil)
+	p := &presentertest.RecordingPresenter{}
+
+	err := engine.Init(context.Background(), engine.InitDeps{Presenter: p, Runner: r}, engine.InitOptions{Force: true})
+	if err == nil {
+		t.Fatal("Init returned nil error when a target could not be written")
+	}
+	failures := initFailures(p)
+	if len(failures) != 1 {
+		t.Fatalf("StageFailed events = %+v, want exactly one", failures)
+	}
+	if failures[0].Name != "init" || !strings.Contains(failures[0].Message, "writing .mint.toml") {
+		t.Errorf("StageFailed = %+v, want an init failure naming .mint.toml", failures[0])
+	}
+}
+
+// initFailures returns every StageFailed payload p recorded, in order.
+func initFailures(p *presentertest.RecordingPresenter) []presenter.StageFailure {
+	var out []presenter.StageFailure
+	for _, ev := range p.Events {
+		if ev.Kind == presentertest.KindStageFailed {
+			out = append(out, ev.StageFailed)
+		}
+	}
+	return out
 }

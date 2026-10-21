@@ -158,12 +158,12 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 	root, err := gitrepo.ResolveRoot(ctx, r)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
-		return usageExitCode
+		return exitCode(err)
 	}
 	cfg, err := config.Load(root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
-		return usageExitCode
+		return exitCode(err)
 	}
 
 	validated, err := validateRegenerateRequest(req, cfg.Release.Changelog)
@@ -181,7 +181,7 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 	releaseBranch, err := gitrepo.ResolveReleaseBranch(ctx, r, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
-		return usageExitCode
+		return exitCode(err)
 	}
 	deps := engine.ReleaseDeps{
 		Presenter: p,
@@ -219,7 +219,7 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 	res, err := version.ResolveRegenerateTarget(ctx, r, cfg.Release.TagPrefix, req.Version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
-		return usageExitCode
+		return exitCode(err)
 	}
 
 	// The bare x.y.z key (no tag prefix) used in the changelog header and the
@@ -227,7 +227,7 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 	versionKey, err := version.ParseSemVer(res.Tag, cfg.Release.TagPrefix)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
-		return usageExitCode
+		return exitCode(err)
 	}
 
 	// Resolve the publishing driver through the SHARED engine helper, which handles an

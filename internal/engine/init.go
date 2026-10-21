@@ -82,6 +82,9 @@ type initTarget struct {
 
 const shimFileName = "release"
 
+// initStage names init's StageFailed line.
+const initStage = "init"
+
 // configFileMode is the ordinary (non-executable) mode the `.mint.toml` template is
 // written with; the shim uses initgen.ShimMode instead.
 const configFileMode os.FileMode = 0o644
@@ -103,11 +106,13 @@ const configFileMode os.FileMode = 0o644
 // output.
 //
 // A root-resolution failure (not a git work tree) aborts BEFORE any target is
-// considered, so a non-repo invocation writes nothing and emits no outcome.
+// considered, so a non-repo invocation writes nothing and emits no outcome. That
+// failure, like a failed write, is surfaced as an "init" StageFailed before the abort
+// returns, so the user is told why init stopped.
 func Init(ctx context.Context, deps InitDeps, opts InitOptions) error {
 	root, err := gitrepo.ResolveRoot(ctx, deps.Runner)
 	if err != nil {
-		return fmt.Errorf("resolving repo root for init: %w", err)
+		return surface(deps.Presenter, initStage, fmt.Errorf("resolving repo root for init: %w", err))
 	}
 
 	targets := []initTarget{
@@ -116,7 +121,7 @@ func Init(ctx context.Context, deps InitDeps, opts InitOptions) error {
 	}
 	for _, t := range targets {
 		if err := scaffoldTarget(deps.Presenter, root, t, opts.Force); err != nil {
-			return err
+			return surface(deps.Presenter, initStage, err)
 		}
 	}
 	return nil

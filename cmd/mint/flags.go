@@ -94,6 +94,9 @@ func parseReleaseFlags(args []string) (releaseFlags, error) {
 	if err := fs.Parse(args); err != nil {
 		return releaseFlags{}, err
 	}
+	if err := rejectArguments(fs, "release"); err != nil {
+		return releaseFlags{}, err
+	}
 
 	bump, err := resolveVersionSelection(setVersion, patch, minor, major)
 	if err != nil {
@@ -137,6 +140,17 @@ func resolveBump(patch, minor, major bool) (version.Bump, error) {
 	default: // patch explicitly, or no bump flag (default patch)
 		return version.BumpPatch, nil
 	}
+}
+
+// rejectArguments fails a verb that takes no positional arguments when any is left
+// once its flags are parsed. The stdlib parser stops at the first non-flag, so without
+// this a stray word, and every flag after it, would be silently dropped
+// (`mint release -d 2.0.0 -M` would preview a patch).
+func rejectArguments(fs *flag.FlagSet, verb string) error {
+	if fs.NArg() > 0 {
+		return fmt.Errorf("unexpected argument %s (%s takes no arguments)", fs.Arg(0), verb)
+	}
+	return nil
 }
 
 // boolsSet counts how many of the given booleans are true.

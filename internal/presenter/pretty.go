@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -864,7 +865,9 @@ func (p *PrettyPresenter) ShowVersion(v Version) {
 // needed; Enter/Space select the default, Ctrl-C/Ctrl-D abort as a closed input,
 // unrecognised keys are ignored), falling back to the shared line-read loop when
 // stdin is not a raw-capable terminal (tests inject plain readers; the loop
-// re-renders the bar after unrecognised lines).
+// re-renders the bar after unrecognised lines). A gate whose keys are words (the
+// regenerate source and target gates) always takes the line read: one keypress can
+// never spell a word, so a keypress read could only ever take the default.
 //
 // Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the vertical menu is
 // not rendered and the input stream is NOT read at all. Instead the auto-accept is
@@ -888,12 +891,23 @@ func (p *PrettyPresenter) Prompt(gate Gate) (Choice, error) {
 		p.failNotInteractive(gateFailLabel)
 		return "", ErrNotInteractive
 	}
-	if f, ok := rawKeyFile(p.in); ok {
+	if f, ok := rawKeyFile(p.in); ok && singleKeyGate(gate) {
 		return p.readKeyChoice(f, gate)
 	}
 	reader := bufferedReader(p.in, &p.reader)
 	render := func() { p.renderGate(gate) }
 	return readChoice(reader, render, gate)
+}
+
+// singleKeyGate reports whether every key g declares is one character, so a single
+// keypress can name each choice.
+func singleKeyGate(g Gate) bool {
+	for _, key := range g.Keys() {
+		if utf8.RuneCountInString(string(key)) != 1 {
+			return false
+		}
+	}
+	return true
 }
 
 // rawKeyFile reports whether in can host the single-keypress read: a real

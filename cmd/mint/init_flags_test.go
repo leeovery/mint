@@ -41,3 +41,17 @@ func TestParseInitFlags_UnknownFlag(t *testing.T) {
 		t.Fatal("parseInitFlags accepted an unknown flag; want a usage error")
 	}
 }
+
+// TestParseInitFlags_StrayArgument is a usage error naming the argument, so a stray
+// word (and any flag after it) is never silently dropped.
+func TestParseInitFlags_StrayArgument(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseInitFlags([]string{"here", "--force"})
+	if err == nil {
+		t.Fatal("parseInitFlags accepted a stray argument; want a usage error")
+	}
+	if want := "unexpected argument here (init takes no arguments)"; err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}

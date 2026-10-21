@@ -317,6 +317,27 @@ func TestRelease_PreTagHook_NonZeroAbortsBeforeTag(t *testing.T) {
 	}
 }
 
+// TestRelease_PreTagHook_NonZeroCarriesItsStderr proves a failing pre_tag hook's own
+// stderr travels verbatim beneath its ✗ line, so a broken build says why it broke.
+func TestRelease_PreTagHook_NonZeroCarriesItsStderr(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "[release.hooks]\npre_tag = \"build.sh\"\n")
+
+	f := runner.NewFakeRunner()
+	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
+	f.Seed("sh", runner.Result{ExitCode: 2, Stderr: "build.sh: compile error in api.go\n"}, errors.New("exit status 2"))
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	assertAbortNonZero(t, err)
+	if got, want := stageFailedOutput(t, rec), "build.sh: compile error in api.go\n"; got != want {
+		t.Errorf("StageFailed.Output = %q, want the hook's stderr %q", got, want)
+	}
+}
+
 // TestRelease_PreTagHook_NonZero_SurgicalNoOpsOnZeroMadeState proves the surgical
 // model's boundary when a pre_tag hook exits non-zero: because the hook failed BEFORE
 // mint's own artifact commit (record.CommitDirtyTree never runs), mint made ZERO

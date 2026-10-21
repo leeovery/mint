@@ -113,6 +113,20 @@ func TestParseReleaseFlags_ConflictingBumps(t *testing.T) {
 	}
 }
 
+// TestParseReleaseFlags_StrayArgument_Errors proves a positional argument is a usage
+// error naming it, rather than silently dropped along with every flag after it.
+func TestParseReleaseFlags_StrayArgument_Errors(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseReleaseFlags([]string{"-d", "2.0.0", "-M"})
+	if err == nil {
+		t.Fatal("parseReleaseFlags(-d 2.0.0 -M) returned nil error, want a stray-argument error")
+	}
+	if want := "unexpected argument 2.0.0 (release takes no arguments)"; err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
 // TestParseReleaseFlags_SetVersion threads the --set-version value through to the
 // engine options unparsed (the engine owns parsing + the strictly-greater gate). A
 // bare --set-version (no bump flag) is legal and leaves the bump at its default.

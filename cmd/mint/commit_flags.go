@@ -70,6 +70,9 @@ func parseCommitFlags(args []string) (commitFlags, error) {
 	if err := fs.Parse(expandShortFlagBundles(args, fs)); err != nil {
 		return commitFlags{}, err
 	}
+	if err := rejectArguments(fs, "commit"); err != nil {
+		return commitFlags{}, err
+	}
 
 	staging, err := resolveStagingMode(all, addAll)
 	if err != nil {

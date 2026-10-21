@@ -152,7 +152,10 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	if err != nil {
 		return err
 	}
-	if !req.Target.writesChangelog() {
+	// With no version in the set there is nothing to rebuild from: a rebuild would cut
+	// CHANGELOG.md down to its bare preamble (a tag_prefix that matches no tag gets
+	// here), then commit and push that, so the file is left as it is.
+	if !req.Target.writesChangelog() || len(req.Versions) == 0 {
 		return nil
 	}
 	return rebuildBatchChangelog(ctx, deps, root, req, collected)
@@ -287,7 +290,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 		Version: versionKey,
 		Action:  regenerateAction,
 	})
-	p.ShowPlan(regeneratePlan(req.Source, RegenerateTargetRelease, res.Tag))
+	p.ShowPlan(regeneratePlan(req.Source, req.Target, res.Tag))
 
 	// A deterministic source against a body-less version is a per-version SKIP (not the
 	// single-mode fail-loud error): read the existing body up front — the tag annotation

@@ -281,3 +281,24 @@ func TestNotesReuseEchoUnchangedAfterGeneralisation(t *testing.T) {
 		t.Errorf("notes -y echo after generalisation = %q, want unchanged %q", got, "notes: accepted (-y)\n")
 	}
 }
+
+// TestWordKeyGatesTakeTheLineRead proves a gate whose keys are words is never offered
+// the pretty single-keypress read, where no one key could name a choice and only the
+// default could be taken; a gate of one-letter keys still is.
+func TestWordKeyGatesTakeTheLineRead(t *testing.T) {
+	source := presenter.SourceGate([]presenter.GateChoice{
+		{Key: presenter.Choice("fresh"), Action: "re-diff + AI"},
+		{Key: presenter.Choice("tag"), Action: "tag annotation body"},
+		{Key: presenter.Choice("release"), Action: "published release body"},
+	}, presenter.Choice("fresh"))
+	if presenter.SingleKeyGate(source) {
+		t.Error("the fresh/tag/release source gate would be read a keypress at a time; want the line read")
+	}
+	target := presenter.TargetGate(targetOptions(), presenter.Choice("stable"))
+	if presenter.SingleKeyGate(target) {
+		t.Error("a word-key target gate would be read a keypress at a time; want the line read")
+	}
+	if !presenter.SingleKeyGate(presenter.NotesReviewGate()) {
+		t.Error("the y/n/e/r notes review gate lost its single-keypress read")
+	}
+}

@@ -697,7 +697,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		resolved, err := resolvePublisher(ctx, deps, cfg)
 		switch {
 		case errors.Is(err, publish.ErrProviderUnresolved):
-			warnPublishDowngraded(p, err)
+			warnPublishDowngraded(p, err, "downgrading to tag + push only")
 		case err != nil:
 			return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
 		default:
@@ -1399,7 +1399,7 @@ func ResolvePublisher(ctx context.Context, deps ReleaseDeps, cfg config.Config) 
 	publisher, err := resolvePublisher(ctx, deps, cfg)
 	switch {
 	case errors.Is(err, publish.ErrProviderUnresolved):
-		warnPublishDowngraded(deps.Presenter, err)
+		warnPublishDowngraded(deps.Presenter, err, "no provider release can be written")
 		return nil, nil
 	case err != nil:
 		return nil, surface(deps.Presenter, regeneratePreflightStage, err)
@@ -1911,17 +1911,18 @@ func editBody(ctx context.Context, editor Editor, current string) (string, error
 	return editor.Edit(ctx, current)
 }
 
-// warnPublishDowngraded emits the LOUD pre-tag warning when the publishing provider
-// could not be resolved and the run is downgrading to tag + push only. It NAMES the
-// reason (an unsupported provider value, an unrecognised host, no remote, or an
-// unparseable remote) so the user can see WHY publishing was skipped. It rides the
-// Warn seam (which does not set failure state), so the run proceeds to a normal
-// tag + push and finishes successfully — distinct from publish=false, which is a
-// SILENT opt-out with no warning at all.
-func warnPublishDowngraded(p presenter.Presenter, cause error) {
+// warnPublishDowngraded emits the LOUD warning when the publishing provider could not
+// be resolved. It NAMES the reason (an unsupported provider value, an unrecognised
+// host, no remote, or an unparseable remote) so the user can see WHY publishing was
+// skipped, and consequence says what the run does instead: a release downgrades to
+// tag + push only, while a regenerate, which cuts no tag, writes no provider release.
+// It rides the Warn seam (which does not set failure state), so the run proceeds and
+// finishes successfully — distinct from publish=false, which is a SILENT opt-out with
+// no warning at all.
+func warnPublishDowngraded(p presenter.Presenter, cause error, consequence string) {
 	p.Warn(presenter.Warning{
 		Label:   "publish skipped",
-		Message: "provider could not be resolved (" + downgradeReason(cause) + "); downgrading to tag + push only",
+		Message: "provider could not be resolved (" + downgradeReason(cause) + "); " + consequence,
 	})
 }
 
@@ -1999,11 +2000,15 @@ func hookFailureOutput(cause error) string {
 }
 
 // failureOutput is the failing tool's own message for cause, shown beneath its ✗ line:
-// a failed answers recording's write error or git stderr, or claude's output.
+// a failed answers recording's write error or git stderr, a failed preflight or
+// pre_tag hook entry's stderr, or claude's output.
 func failureOutput(cause error) string {
 	var recordingErr *answersRecordingError
 	if errors.As(cause, &recordingErr) {
 		return recordingErr.output
+	}
+	if output := hookFailureOutput(cause); output != "" {
+		return output
 	}
 	return notesFailureOutput(cause)
 }

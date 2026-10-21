@@ -140,6 +140,27 @@ func TestRelease_PreflightHook_NonZeroAbortsBeforeMutation(t *testing.T) {
 	}
 }
 
+// TestRelease_PreflightHook_NonZeroCarriesItsStderr proves a failing preflight hook's
+// own stderr travels verbatim beneath its ✗ line, so the user sees why it failed.
+func TestRelease_PreflightHook_NonZeroCarriesItsStderr(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, "[release.hooks]\npreflight = \"scripts/check.sh\"\n")
+
+	f := runner.NewFakeRunner()
+	seedHappyGit(f, root, "main", "v0.0.1")
+	f.Seed("sh", runner.Result{ExitCode: 1, Stdout: "checking…\n", Stderr: "lint: 3 problems\n"}, errors.New("exit status 1"))
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	assertAbortNonZero(t, err)
+	if got, want := stageFailedOutput(t, rec), "lint: 3 problems\n"; got != want {
+		t.Errorf("StageFailed.Output = %q, want the hook's stderr %q", got, want)
+	}
+}
+
 // TestRelease_PreflightHook_ArrayAbortsOnFirstNonZero proves an array preflight
 // hook aborts on the FIRST non-zero entry: with two entries the first exits
 // non-zero, so only one `sh` runs (the second entry never executes) and the run
@@ -260,6 +281,19 @@ func stageFailedName(t *testing.T, rec *presentertest.RecordingPresenter) string
 	for _, ev := range rec.Events {
 		if ev.Kind == presentertest.KindStageFailed {
 			return ev.StageFailed.Name
+		}
+	}
+	t.Fatalf("no StageFailed event recorded; kinds = %v", rec.Kinds())
+	return ""
+}
+
+// stageFailedOutput returns the first StageFailed event's Output, failing the test
+// when none was recorded.
+func stageFailedOutput(t *testing.T, rec *presentertest.RecordingPresenter) string {
+	t.Helper()
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageFailed {
+			return ev.StageFailed.Output
 		}
 	}
 	t.Fatalf("no StageFailed event recorded; kinds = %v", rec.Kinds())

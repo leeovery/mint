@@ -32,8 +32,9 @@ func (f initFlags) InitOptions() engine.InitOptions {
 }
 
 // parseInitFlags parses the `mint init [--force] [--plain]` arguments into an
-// initFlags. init takes no positional arguments; an unknown flag is a usage error
-// (the parser surfaces it) so a typo fails loudly rather than being ignored.
+// initFlags. init takes no positional arguments: a stray one is a usage error, as an
+// unknown flag is (the parser surfaces it), so a typo fails loudly rather than being
+// ignored.
 func parseInitFlags(args []string) (initFlags, error) {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // main prints its own error; suppress flag's default usage dump
@@ -43,6 +44,9 @@ func parseInitFlags(args []string) (initFlags, error) {
 	fs.BoolVar(&plain, "plain", false, "force plain (un-styled) output")
 
 	if err := fs.Parse(args); err != nil {
+		return initFlags{}, err
+	}
+	if err := rejectArguments(fs, "init"); err != nil {
 		return initFlags{}, err
 	}
 	return initFlags{Force: force, Plain: plain}, nil

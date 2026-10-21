@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -75,8 +76,9 @@ func TestRegenerate_UnloadableConfig_StopsBeforeAnyTagReadOrAICall(t *testing.T)
 			rec := &presentertest.RecordingPresenter{}
 			req := parseRegenArgs(t, "1.4.0", "--source", "fresh", "--target", "release")
 
-			if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code == 0 {
-				t.Fatalf("exit code = 0, want non-zero; events %+v", rec.Events)
+			// A config that fails to load is a runtime failure, not a usage error: exit 1.
+			if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code != 1 {
+				t.Fatalf("exit code = %d, want 1; events %+v", code, rec.Events)
 			}
 
 			got := f.Invocations()
@@ -84,5 +86,21 @@ func TestRegenerate_UnloadableConfig_StopsBeforeAnyTagReadOrAICall(t *testing.T)
 				t.Errorf("commands ran = %+v, want only `git rev-parse --show-toplevel` (no tag read, no AI call)", got)
 			}
 		})
+	}
+}
+
+// TestRegenerate_NotARepository_ExitsOneNotTwo proves a runtime failure ahead of the
+// engine (here, no git work tree) exits 1 like any other runtime failure; exit 2 is
+// for usage errors only.
+func TestRegenerate_NotARepository_ExitsOneNotTwo(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{ExitCode: 128}, errors.New("exit status 128"))
+	rec := &presentertest.RecordingPresenter{}
+	req := parseRegenArgs(t, "1.4.0", "--source", "fresh", "--target", "release")
+
+	if code := regenerate(t.Context(), rec, f, req, notescache.NewChunkNotes(t.TempDir())); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
 	}
 }

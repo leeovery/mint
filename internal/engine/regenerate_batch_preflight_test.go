@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"mint/internal/engine"
@@ -264,5 +265,40 @@ func TestRegenerateAllValidated_FailingGate_AbortsBeforeAnyWork(t *testing.T) {
 	// No version narration block should have opened (the batch never started its loop).
 	if len(runStartedVersions(rec)) != 0 {
 		t.Errorf("a failing gate opened %d version blocks; it must abort before the loop", len(runStartedVersions(rec)))
+	}
+}
+
+// TestRegenerateAllValidated_NoVersions_LeavesTheChangelogAlone proves a changelog
+// batch with an empty version set (a tag_prefix that matches no tag) rebuilds nothing:
+// CHANGELOG.md keeps every entry, and no commit or push runs.
+func TestRegenerateAllValidated_NoVersions_LeavesTheChangelogAlone(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	const existing = kacPreamble + "\n## [1.0.0] - 2024-01-01\n\nkept v1\n"
+	seedChangelog(t, dir, existing)
+
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(""),                 // status --porcelain (clean)
+		ScriptedOut(regenReleaseBranch), // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedOut(""),                 // fetch --tags
+		ScriptedOut("0\t0"),             // rev-list left-right count (in sync)
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	req := freshChangelogBatchReq(nil, engine.RegenerateTargetChangelog)
+	req.ReleaseBranch = regenReleaseBranch
+	if err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), newFakePublisher(), dir, req, true); err != nil {
+		t.Fatalf("RegenerateAllValidated returned unexpected error: %v", err)
+	}
+
+	if got := readChangelogFile(t, dir); got != existing {
+		t.Errorf("CHANGELOG.md = %q, want it untouched %q", got, existing)
+	}
+	for _, inv := range f.Invocations() {
+		if inv.Name == "git" && (slices.Contains(inv.Args, "commit") || slices.Contains(inv.Args, "push")) {
+			t.Errorf("git %v ran for an empty version set; want no commit or push", inv.Args)
+		}
 	}
 }

@@ -38,7 +38,7 @@ func runRegenerateAll(ctx context.Context, deps engine.ReleaseDeps, r runner.Com
 	versions, err := version.ResolveAllRegenerateTargets(ctx, r, cfg.Release.TagPrefix)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
-		return usageExitCode
+		return exitCode(err)
 	}
 
 	// Resolve the publishing driver through the SHARED engine helper, exactly as the
