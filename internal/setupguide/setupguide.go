@@ -261,8 +261,9 @@ core:
 - tag + atomic push is the POINT OF NO RETURN (PONR): the annotated tag and the
   branch go up together in one ` + "`git push --atomic`" + `. Everything before it is
   unwindable; nothing after it is. The one exception: after an abort or failure
-  before the push, the exclusion check's answers commit stays, re-committed on the
-  starting commit.
+  before the push, the exclusion check's answers stay: their commit is
+  re-committed on the starting commit, and where git ignores an untracked
+  .mint.toml, their uncommitted write is left in place.
 - publish creates the provider (e.g. GitHub) release.
 - post_release runs AFTER the release is published (notifications, downstream
   triggers).

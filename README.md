@@ -27,7 +27,7 @@ Release scripts accrete: bump the version file, regenerate the changelog, rememb
 Mint folds that into one binary with one config file:
 
 - **AI does the writing.** Release notes are generated from the actual diff and commit history; commit messages from the staged changes. You review, edit, or regenerate at a gate; the AI never gets the last word.
-- **One atomic point of no return.** Everything before the `git push --atomic` is unwindable: if anything fails pre-push, mint surgically unwinds its own commits, tag, and stash, and only its own, leaving the repo exactly as it found it. The one exception is the exclusion check's answers commit: after an abort or failure before the push it stays on the branch, re-committed on the starting commit.
+- **One atomic point of no return.** Everything before the `git push --atomic` is unwindable: if anything fails pre-push, mint surgically unwinds its own commits, tag, and stash, and only its own, leaving the repo exactly as it found it. The one exception is the exclusion check's answers: after an abort or failure before the push their commit stays on the branch, re-committed on the starting commit, and where git ignores an untracked `.mint.toml`, their uncommitted write is left in place.
 - **Mutations are lock-safe.** Every git mutation retries past a contended `.git` lock and clears provably stale ones, so a background agent or editor holding the index lock can't blow up a release.
 - **Unattended means unattended.** `-y` runs end to end or fails loud. Mint never hangs on a hidden prompt and never commits an empty message because nobody was there.
 
@@ -348,7 +348,7 @@ A command with no quotes or backslashes splits exactly as it always has, on runs
 ## Safety Model
 
 - **Mutate nothing until accept.** `mint commit` computes the would-be-committed diff read-only; staging (`git add`) happens only after you accept. Declining is a true no-op.
-- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked; on any pre-push failure (including Ctrl-C) mint removes *its own* commits, tag, and autostash (never your work) and reports exactly what it undid. The one exception is the exclusion check's answers commit: once you have answered, it stays on the branch, re-committed on the starting commit, and the unwind says it kept it.
+- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked; on any pre-push failure (including Ctrl-C) mint removes *its own* commits, tag, and autostash (never your work) and reports exactly what it undid. The one exception is the exclusion check's answers: once you have answered, their commit stays on the branch, re-committed on the starting commit, and the unwind says it kept it; where git ignores an untracked `.mint.toml`, their uncommitted write is left in place.
 - **One atomic push.** Branch and tag go up in a single `git push --atomic`; there is no window where the tag exists without its commit.
 - **Never unwind after success.** A failed post-commit push or `post_release` hook warns, with the tool's own output passed through verbatim, and keeps the work.
 - **Lock-resilient mutations.** Every `git` mutation retries contended `.git` locks and clears provably stale ones.
