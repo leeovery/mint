@@ -355,7 +355,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 8,
-          "current_task": "token-aware-diff-sizing-8-4",
+          "current_task": "token-aware-diff-sizing-8-5",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -472,7 +472,8 @@
             "token-aware-diff-sizing-7-15",
             "token-aware-diff-sizing-8-1",
             "token-aware-diff-sizing-8-2",
-            "token-aware-diff-sizing-8-3"
+            "token-aware-diff-sizing-8-3",
+            "token-aware-diff-sizing-8-4"
           ],
           "staging": {
             "p1": {
@@ -561,6 +562,18 @@
                 "internal/engine/notes_floor_test.go",
                 "internal/engine/release_test.go",
                 "internal/engine/release_commitgraph_test.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-8-4",
+              "source": "executor",
+              "summary": "The pre-tag artifact commit and the bookkeeping commit drop git stderr on failure",
+              "failure": "When git refuses either commit (a pre-commit hook rejects it, GPG signing fails), the ✗ line shows only the runner exit status with nothing underneath; the operator must rerun git by hand to see why, and the unwind manual-step warning carries the same exit-code text",
+              "detail": "record.CommitDirtyTree (internal/record/commit.go:33), CommitBookkeeping (:80) and CommitStaged (:140) wrap the Mutator error and discard the runner.Result. record.GitError (added in 8-4 beside CommitFile) and failureOutput (internal/engine/release.go:1954) could carry the stderr for these too. warnUnwindIncomplete (internal/engine/unwind.go:252) puts cause.Error() in Warning.Output",
+              "files": [
+                "internal/record/commit.go",
+                "internal/engine/release.go",
+                "internal/engine/unwind.go"
               ]
             }
           ]
