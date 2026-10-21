@@ -111,8 +111,8 @@ func (a *Assembler) Exclude(globs ...string) {
 
 // excludePathspecs returns the ordered :(exclude) pathspec arguments shared by the
 // diff and Change Map git calls — the UNION of the exclusion tiers. git
-// interprets each glob as a pathspec pattern — mint does NO Go-side glob matching — so a
-// glob matching nothing is harmless and a force-added tracked file matching a glob is
+// interprets each glob as a pathspec pattern, so a glob matching nothing is harmless
+// and a force-added tracked file matching a glob is
 // excluded by git like any other path. A version_file ALSO listed in Globs is excluded
 // by the glob tier regardless of mode; the resulting duplicate (in plain mode) is
 // harmless and not de-duplicated.
