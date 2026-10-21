@@ -336,10 +336,7 @@ func release(ctx context.Context, p presenter.Presenter, r runner.CommandRunner,
 
 // runCommit wires the production seams and runs the bare `mint commit` generate-and-
 // commit thread for a parsed `mint commit` invocation, returning the process exit
-// code. It mirrors runRelease's seam-wiring idiom: construct the presenter ONCE via
-// NewForStartup, one ExecRunner backing the read-side staged-diff seam, and the
-// lock-resilient git Mutator (git_safe) as the commit sink over that same runner. All
-// orchestration lives in the testable commit.Run; main stays thin.
+// code. All orchestration lives in the testable commit.Run; main stays thin.
 func runCommit(ctx context.Context, rest []string) int {
 	opts, err := parseCommitFlags(rest)
 	if err != nil {
