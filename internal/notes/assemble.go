@@ -147,8 +147,7 @@ func forwardRange(lastTag string) string {
 // takes the "a/P b/P" form the chunker's headerPath reads.
 // It runs at the repo root, so `-- .` covers the whole tree and git reads every
 // :(exclude) glob root-relative. GIT performs every exclusion via the :(exclude)
-// pathspecs; mint does no Go-side hunk
-// stripping or glob matching. The returned text is git's stdout verbatim — whatever
+// pathspecs. The returned text is git's stdout verbatim — whatever
 // git emits flows through unfiltered. A consequence: a gitignored-but-force-added file
 // is tracked, so git includes it in this commit-to-commit diff unless a configured
 // glob excludes it; that path-based (never commit-based) behaviour is git's and is NOT

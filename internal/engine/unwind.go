@@ -313,8 +313,7 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual, o
 // warnUnwindIncomplete emits the manual-cleanup notice when a recovery step failed
 // mid-unwind: the repo is NOT clean, so the user must finish the recovery by hand.
 // action names the exact manual step; the failing step's own output rides the Warn's
-// Output verbatim, mirroring the engine's other captured-output warns (warnPublishFailed
-// et al).
+// Output verbatim.
 func warnUnwindIncomplete(p presenter.Presenter, action, output string) {
 	p.Warn(presenter.Warning{
 		Label:   "unwind incomplete",
