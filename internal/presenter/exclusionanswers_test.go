@@ -80,3 +80,28 @@ func TestRecordingPresenter_ExclusionAnswersRecorded_RecordsItsPayload(t *testin
 		t.Errorf("kind string = %q, want ExclusionAnswersRecorded", got)
 	}
 }
+
+var ignoredReleaseTableAnswers = presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]", Ignored: true}
+
+func TestPrettyPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNotCommitted(t *testing.T) {
+	t.Parallel()
+
+	out, _ := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { p.ExclusionAnswersRecorded(ignoredReleaseTableAnswers) })
+
+	want := "✓ Answers written to .mint.toml's [release] table and not committed, as git ignores .mint.toml\n"
+	if got := out.String(); got != want {
+		t.Errorf("output =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestPlainPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNotCommitted(t *testing.T) {
+	t.Parallel()
+
+	out, errBuf := drive(func(p *presenter.PlainPresenter) { p.ExclusionAnswersRecorded(ignoredReleaseTableAnswers) })
+
+	want := "notes: answers written to .mint.toml's [release] table and not committed, as git ignores .mint.toml\n"
+	if got := out.String(); got != want {
+		t.Errorf("output =\n%s\nwant\n%s", got, want)
+	}
+	assertBytePureASCIIStreams(t, "plain ignored exclusion answers narration", out, errBuf)
+}

@@ -28,7 +28,8 @@ const (
 )
 
 // answersFailure is one way recording an Exclude answer fails: an unwritable
-// .mint.toml, or git's answers to staging and committing it.
+// .mint.toml, or git's answers to whether it ignores the file, then to staging and
+// committing it.
 type answersFailure struct {
 	name     string
 	readOnly bool
@@ -37,8 +38,8 @@ type answersFailure struct {
 
 var (
 	writeFails  = answersFailure{name: "writing .mint.toml", readOnly: true}
-	stageFails  = answersFailure{name: "staging .mint.toml", git: []runner.ScriptedCall{gitFailing(stageStderr)}}
-	commitFails = answersFailure{name: "committing .mint.toml", git: []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}}
+	stageFails  = answersFailure{name: "staging .mint.toml", git: []runner.ScriptedCall{configNotIgnored, gitFailing(stageStderr)}}
+	commitFails = answersFailure{name: "committing .mint.toml", git: []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), gitFailing(commitStderr)}}
 )
 
 // failedAnswers is a run whose Exclude answer to docs/design/ could not be recorded.

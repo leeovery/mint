@@ -532,7 +532,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// that root is resolved. opts.NotesBody is a test-injection override that bypasses
 	// the selector. An on_notes_failure=abort failure aborts here, with the next moves,
 	// unless an attended real run takes a body at the notes floor's choice instead.
-	// The exclusion check's answers are committed inside this stage, before the first
+	// The exclusion check's answers are recorded inside this stage, before the first
 	// notes attempt, and folded into made whether or not the stage then fails.
 	// Nothing is tagged yet, but a pre_tag artifact commit may already be in made, so an
 	// abort routes through the surgical unwind (not a plain surface)
@@ -1073,9 +1073,9 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 }
 
 // answersCommit records the exclusion check's answers in root's .mint.toml and
-// commits that file alone for tag's release; landed reports whether the commit was
-// made, position is how many of mint's commits it brought the run to, and edit is the
-// write when it is not.
+// commits that file alone for tag's release, unless git ignores it; landed reports
+// whether the commit was made, position is how many of mint's commits it brought the
+// run to, and edit is the write until a commit holds it or git is found to ignore it.
 type answersCommit struct {
 	root, tag string
 	globs     config.ReleaseGlobs
@@ -1099,16 +1099,29 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
 		}
 		a.edit = edit
-		if err := a.commit(ctx, deps.Mutator); err != nil {
-			return &answersRecordingError{step: "committing the exclusion answers", err: err, output: gitOutput(err)}
+		const committing = "committing the exclusion answers"
+		ignored, err := record.IsIgnored(ctx, deps.Mutator, a.root, config.FileName)
+		if err != nil {
+			return &answersRecordingError{step: committing, err: err, output: gitOutput(err)}
 		}
-		a.landed = true
+		// An ignored file is the operator's local config: staging it would take
+		// `add -f`, and the unwind keeps the write as it keeps an answers commit.
+		if !ignored {
+			if err := a.commit(ctx, deps.Mutator); err != nil {
+				return &answersRecordingError{step: committing, err: err, output: gitOutput(err)}
+			}
+			a.landed = true
+		}
 		a.edit = nil
-		deps.Presenter.SuspendSpinner()
-		deps.Presenter.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", File: config.FileName, Table: releaseTable})
-		deps.Presenter.ResumeSpinner()
+		narrateAnswers(deps.Presenter, ignored)
 		return nil
 	}
+}
+
+func narrateAnswers(p presenter.Presenter, ignored bool) {
+	p.SuspendSpinner()
+	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", File: config.FileName, Table: releaseTable, Ignored: ignored})
+	p.ResumeSpinner()
 }
 
 func (a *answersCommit) write() error {

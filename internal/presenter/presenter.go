@@ -105,7 +105,8 @@ type Presenter interface {
 	// no failure state.
 	ExclusionSuggestions(s ExclusionSuggestions)
 	// ExclusionAnswersRecorded renders one line saying the exclusion check's answers
-	// were written to a table of the config file and committed, to out only.
+	// were written to a table of the config file, and whether they were committed, to
+	// out only.
 	ExclusionAnswersRecorded(a ExclusionAnswers)
 	// PreviewGate renders the question gate would ask, without its choices, for a dry
 	// run that shows where a real run would stop to ask. It reads no input and sets no
@@ -574,15 +575,20 @@ type ExclusionSuggestions struct {
 }
 
 // ExclusionAnswers carries the ExclusionAnswersRecorded payload: stage's answers went
-// into Table of File.
+// into Table of File, committed unless Ignored reports that git ignores File.
 type ExclusionAnswers struct {
-	Stage string
-	File  string
-	Table string
+	Stage   string
+	File    string
+	Table   string
+	Ignored bool
 }
 
 func exclusionAnswersText(a ExclusionAnswers) string {
-	return "written to " + a.File + "'s " + a.Table + " table and committed"
+	written := "written to " + a.File + "'s " + a.Table + " table"
+	if a.Ignored {
+		return written + " and not committed, as git ignores " + a.File
+	}
+	return written + " and committed"
 }
 
 // ExclusionSuggestion is one glob the exclusion check suggests leaving out, the AI's

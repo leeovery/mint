@@ -9,8 +9,9 @@ package engine
 // captured StartState and the tracked MadeState — so it deletes exactly the tag it
 // made (if any) and resets exactly the N commits it made, returning the repo to the
 // exact clean starting state and REPORTING each undone item. The one exception is the
-// exclusion answers commit: an answer is about the repo, not the release, so after the
-// reset the answers are re-committed on the starting commit and narrated as kept.
+// exclusion answers: an answer is about the repo, not the release, so after the reset
+// the answers are re-committed on the starting commit and narrated as kept, and their
+// write to a .mint.toml git ignores, never committed, is left in place.
 //
 // LOAD-BEARING INVARIANT: this is a PRE-PONR operation ONLY. It issues local-only
 // mutations (tag-delete, reset, the answers re-commit) and never a `git push` or any
@@ -75,8 +76,8 @@ type MadeState struct {
 	// TagCreated reports whether mint created the annotated tag this run. When true the
 	// unwind deletes it (local only — pre-PONR never pushed it).
 	TagCreated bool
-	// answersEdit is the exclusion answers' write to .mint.toml when no commit holds
-	// it; the unwind reverts it.
+	// answersEdit is the exclusion answers' write to .mint.toml while no commit holds it
+	// and git is not found to ignore the file; the unwind reverts it.
 	answersEdit *fileEdit
 	// keptAnswers is the exclusion answers' commit, counted in Commits; the unwind
 	// re-commits it on the starting commit after its reset.
@@ -87,8 +88,8 @@ type MadeState struct {
 // tracked MadeState it:
 //
 //   - deletes the exact tag (local) when made.TagCreated — `git tag -d {start.Tag}`;
-//   - reverts the exclusion answers' uncommitted write to .mint.toml, unstaging it and
-//     restoring its content, or removing a file the write created;
+//   - reverts made.answersEdit, the exclusion answers' uncommitted write to .mint.toml,
+//     unstaging it and restoring its content, or removing a file the write created;
 //   - resets HEAD to the captured starting commit when made.Commits > 0 (see
 //     resetTo), dropping exactly the N commits mint made and their working-tree
 //     changes (changelog, version-file projection, hook artifacts) while start.KeepOut
@@ -106,7 +107,7 @@ type MadeState struct {
 //
 // Its git mutations flow through the lock-resilient Mutator and are best-effort — a "tag
 // not found" or a reset hiccup is not fatal, since the goal is that nothing mint made
-// this run but the answers commit survives the abort; the abort still carries the
+// this run but the exclusion answers survives the abort; the abort still carries the
 // original reason. The operation NEVER pushes or publishes: it is pre-PONR recovery
 // only.
 func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, reason error) error {

@@ -29,8 +29,15 @@ func answersSubject(tag string) string {
 	return "chore(release): release-notes path answers for " + tag
 }
 
-// answersCommitCalls is git's answers to staging and committing .mint.toml.
-var answersCommitCalls = []runner.ScriptedCall{ScriptedOut(""), ScriptedOut("")}
+// configNotIgnored and configIgnored are git check-ignore's answers about .mint.toml.
+var (
+	configNotIgnored = ScriptedNonZero()
+	configIgnored    = ScriptedOut("")
+)
+
+// answersCommitCalls is git's answers to whether it ignores .mint.toml, then to
+// staging and committing it.
+var answersCommitCalls = []runner.ScriptedCall{configNotIgnored, ScriptedOut(""), ScriptedOut("")}
 
 // withAnswersCommit is git's answers to a release whose pauses follow the first of
 // calls: the notes diff they ask about, the answers commit, then the rest of calls.
@@ -171,7 +178,7 @@ func TestRelease_AFailedAnswersCommit_NarratesNoAnswersLine(t *testing.T) {
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
 	_, _, err := answeredRelease(t, rec, "",
-		[]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), ScriptedOut(""), ScriptedNonZero()},
+		[]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff), configNotIgnored, ScriptedOut(""), ScriptedNonZero()},
 		"docs/design/: design documents\n", aiBody)
 	if err == nil {
 		t.Fatal("Release succeeded with the answers commit failing")

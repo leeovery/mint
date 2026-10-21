@@ -114,6 +114,21 @@ func CommitFile(ctx context.Context, m *git.Mutator, dir, path, subject string) 
 	return nil
 }
 
+// IsIgnored reports whether git ignores path in dir: untracked and matched by an ignore
+// rule, whether or not it exists. A tracked path is never ignored. A failed probe's
+// error carries git's stderr as a *GitError.
+func IsIgnored(ctx context.Context, m *git.Mutator, dir, path string) (bool, error) {
+	res, err := m.Run(ctx, "git", "-C", dir, "check-ignore", "-q", "--", path)
+	switch {
+	case err == nil:
+		return true, nil
+	case res.ExitCode == 1:
+		return false, nil
+	default:
+		return false, fmt.Errorf("checking whether git ignores %s: %w", path, &GitError{Stderr: res.Stderr, err: err})
+	}
+}
+
 // GitError is a failed git step, carrying the stderr git wrote.
 type GitError struct {
 	Stderr string
