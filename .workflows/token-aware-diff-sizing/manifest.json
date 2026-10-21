@@ -632,7 +632,7 @@
     "review": {
       "items": {
         "token-aware-diff-sizing": {
-          "status": "in-progress",
+          "status": "completed",
           "reviewed_tasks": [
             "token-aware-diff-sizing-1-1",
             "token-aware-diff-sizing-1-2",
@@ -739,40 +739,6 @@
             "token-aware-diff-sizing-12-1",
             "token-aware-diff-sizing-12-2",
             "token-aware-diff-sizing-13-1"
-          ],
-          "out_of_scope": [
-            {
-              "id": "A16",
-              "summary": "Batch header describes skip-and-continue as future work",
-              "kind": "quick-fix",
-              "fails": "The header of the file that implements skip-and-continue describes it as future work, against CLAUDE.md's no-stale-scope-claims rule.",
-              "files": [
-                "internal/engine/regenerate_batch.go"
-              ]
-            },
-            {
-              "id": "A17",
-              "summary": "Docs place pre_tag after notes; code runs it before",
-              "kind": "quick-fix",
-              "fails": "An operator mapping a release script onto the hooks puts a step that reads the new CHANGELOG entry or bumped version_file in pre_tag, where it reads the previous release's content, and expects an expensive build to start only after the notes are accepted.",
-              "files": [
-                "internal/setupguide/setupguide.go",
-                "README.md",
-                "internal/config/metadata.go"
-              ]
-            },
-            {
-              "id": "A2",
-              "summary": "Plain-mode gate reads ignore Ctrl-C until Enter",
-              "kind": "bug",
-              "fails": "In plain mode, §6.6's 'Ctrl-C during the pauses cancels the run' holds only once Enter is pressed. After Ctrl-C the run looks hung, and the Enter is read as an answer before the cancel is noticed. A second Ctrl-C kills the process with no unwind, which leaves mint's pre_tag artifact commit behind. Every plain-mode gate shares this.",
-              "files": [
-                "internal/presenter/prompt.go",
-                "internal/presenter/plain.go",
-                "internal/engine/release.go",
-                "cmd/mint/main.go"
-              ]
-            }
           ],
           "staging": {
             "c1": {
