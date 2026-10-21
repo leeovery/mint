@@ -109,11 +109,38 @@ The session's first lean was A, on the premise that the headlined change is one 
 
 So repetition is the design, not padding: the top line is the terse "sales piece" — what was done, short, addressing the feature, the bug or the large epic — and the sections are how the release got there, every piece listed as today. That is what moved the session off A: A only holds for a release whose main feature is a single change (0.0.6), and even there B costs one repeated line.
 
+The next release, worked in the agreed shape:
+
+```text
+Release notes for diffs of any size — a diff too big for the model is split into parts, and their notes are merged into one coherent set.
+
+✨ Added
+
+- Oversized diffs are chunked into parts that each fit `max_prompt_bytes`, with one merge call writing the release's notes.
+- A call the model rejects as too big is retried as smaller parts, and mint tells you the largest size that worked.
+- Before the notes are written, mint flags files that don't belong in them (specs, design docs, tests) and records your answers in `.mint.toml`.
+- `--notes-file` releases a finished body you already hold, with no AI call.
+- A failed chunked run saves the part notes that finished, so they can be tidied and released.
+
+🐛 Fixed
+
+- …
+```
+
+**What the sentence leads with.** The user's framing included "the amount of work that's been done". The session pushed back on that half: asked to convey scale, the model writes an inventory with an adjective on the front — "A major rework of release-notes generation, adding chunking, size-based retries, an exclusion check and a notes-file route" — which is the TL;DR compressed into one long sentence, plus marketing inflation. What sells is what the reader can now do; the list beneath already shows how much work it took, and shows it better than "major". The user agreed: the headline leads with what the release gives its user, and the scale is left to the sections.
+
+**Typography.** Plain, not bold: position and the blank line already set it apart, and in a raw `CHANGELOG.md` the asterisks are noise. Stated as the session's lean; the user agreed.
+
 ### Decision
 
-*Provisional — what the sentence leads with, and its typography, still open.*
+A one-sentence headline above the first section, summarising the release's main body of work; beneath it the categorised sections exactly as today, listing every notable change, the main feature's pieces included. The headline and the sections overlap by design — summary, then detail — and the sections are never thinned to avoid it.
 
-A one-sentence headline above the first section, summarising the release's main body of work; beneath it the categorised sections exactly as today, listing every notable change, the main feature's pieces included. The headline and the sections overlap by design — summary, then detail — and the sections are never thinned to avoid it. The headline is held to one sentence at bullet altitude: terse, plain, no narrative through-line (the TL;DR failure).
+- **One sentence, at bullet altitude** — terse, plain language, no narrative through-line (the TL;DR failure 886c6100 cut).
+- **Leads with what the release gives its user**, not the scope of the work: no superlatives or scale words ("major", "overhaul", "powerful"), no inventory of the pieces — the sections carry the scale.
+- **The main thing can be any kind of change** — a feature, a fix, a large epic; the headline names it whatever its category.
+- **Plain text**, unbolded, separated from the first section by a blank line.
+
+Deciding factor: in the common release — one body of work built from many pieces plus sideline changes — the main feature is many bullets, not one, so the headline cannot be a lifted bullet; it has to be a summary, and a summary overlaps its detail. Confidence: high on the shape; the exact wording the prompt uses to get it is prompt-tuning, judged by eye on real releases as the original success criterion prescribes.
 
 ---
 

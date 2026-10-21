@@ -11,11 +11,11 @@
           "status": "in-progress",
           "subtopics": {
             "headline-shape": {
-              "status": "converging",
+              "status": "decided",
               "parent": null
             },
             "no-clear-headline": {
-              "status": "pending",
+              "status": "exploring",
               "parent": null
             },
             "picking-the-headline": {
