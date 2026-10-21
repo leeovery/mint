@@ -84,11 +84,7 @@ type ExcludeConfig struct {
 	VersionPattern string
 }
 
-// Assembler builds the release diff context through the CommandRunner seam. It
-// holds the runner (so production wiring passes the os/exec-backed runner while
-// tests pass a FakeRunner — no real git, fully scriptable) and the consolidated
-// ExcludeConfig (diff_exclude globs + the strategy-aware version_file decision)
-// layered on top of the built-in always-excludes.
+// Assembler builds the release diff context through the CommandRunner seam.
 type Assembler struct {
 	runner  runner.CommandRunner
 	root    string
