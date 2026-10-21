@@ -61,6 +61,9 @@ type checkNarration struct{ events []string }
 
 func (n *checkNarration) Checking() { n.events = append(n.events, "checking") }
 func (n *checkNarration) Checked()  { n.events = append(n.events, "checked") }
+func (n *checkNarration) CheckFailed(output string) {
+	n.events = append(n.events, "failed: "+output)
+}
 
 const checkPromptOpening = "A software release's notes are about to be written from its diff."
 
@@ -210,23 +213,136 @@ func TestExclusionCheck_NarratesTheCallStartingAndEnding(t *testing.T) {
 	}
 }
 
-func TestExclusionCheck_AFailedCallLetsTheReleaseCarryOn(t *testing.T) {
+func TestExclusionCheck_AFailedCallLetsTheReleaseCarryOn_NarratingTheFailure(t *testing.T) {
 	t.Parallel()
 
-	for _, failure := range []error{ai.ErrGenerationFailed, ai.ErrTimeout, ai.ErrCommandMissing} {
-		t.Run(failure.Error(), func(t *testing.T) {
+	tests := []struct {
+		name       string
+		failure    error
+		wantOutput string
+	}{
+		{name: "bare generation failure", failure: ai.ErrGenerationFailed},
+		{
+			name:       "generation failure with output",
+			failure:    fmt.Errorf("ai call: %w", &ai.GenerationError{Stdout: "Not logged in · Please run /login\n", ExitCode: 1}),
+			wantOutput: "Not logged in · Please run /login",
+		},
+		{name: "timeout", failure: ai.ErrTimeout},
+		{name: "missing binary", failure: ai.ErrCommandMissing},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			narration := &checkNarration{}
-			tr := &recordingTransport{err: failure}
+			tr := &recordingTransport{err: tt.failure}
 
-			if _, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n")); err != nil {
+			excluded, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"))
+			if err != nil {
 				t.Errorf("Check returned %v, want nil so the release carries on", err)
 			}
-			if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
-				t.Errorf("narration = %v, want %v", narration.events, want)
+			if excluded != nil {
+				t.Errorf("excluded = %q, want nothing", excluded)
+			}
+			if want := []string{"checking", "checked", "failed: " + tt.wantOutput}; !slices.Equal(narration.events, want) {
+				t.Errorf("narration = %q, want %q", narration.events, want)
 			}
 		})
+	}
+}
+
+func TestExclusionCheck_AnAnswerYieldingNoUsableSuggestion_IsAFailedCheckCarryingTheAnswer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		answer string
+	}{
+		{name: "every glob matches no listed path", answer: "vendor/: vendored code\nspecs/: plans\n"},
+		{name: "no suggestion lines", answer: "I could not tell which files belong.\n"},
+		{name: "empty answer", answer: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			narration := &checkNarration{}
+			pauses := &recordedPauses{}
+			tr := &recordingTransport{body: tt.answer}
+			check := notes.NewExclusionCheck(tr, nil, narration).WithPauses(pauses)
+
+			excluded, err := check.Check(t.Context(), sourceDiff+designDiff)
+			if err != nil {
+				t.Errorf("Check returned %v, want nil so the release carries on", err)
+			}
+			if excluded != nil {
+				t.Errorf("excluded = %q, want nothing", excluded)
+			}
+			if want := []string{"checking", "checked", "failed: " + strings.TrimSuffix(tt.answer, "\n")}; !slices.Equal(narration.events, want) {
+				t.Errorf("narration = %q, want %q", narration.events, want)
+			}
+			if len(pauses.paused) != 0 {
+				t.Errorf("paused on %v, want no pause", pauses.paused)
+			}
+			if tr.calls() != 1 {
+				t.Errorf("check calls = %d, want one", tr.calls())
+			}
+		})
+	}
+}
+
+func TestExclusionCheck_AReportingCheckWhoseAnswerIsUnreadable_ReportsNothingAndNarratesTheFailure(t *testing.T) {
+	t.Parallel()
+
+	narration := &checkNarration{}
+	var reported []notes.Suggestion
+	const answer = "vendor/: vendored code\n"
+	check := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).
+		WithReport(func(s notes.Suggestion, _ notes.Matches) { reported = append(reported, s) })
+
+	if _, err := check.Check(t.Context(), sourceDiff+designDiff); err != nil {
+		t.Fatalf("Check returned unexpected error: %v", err)
+	}
+
+	if len(reported) != 0 {
+		t.Errorf("reported %v, want nothing", reported)
+	}
+	if want := []string{"checking", "checked", "failed: vendor/: vendored code"}; !slices.Equal(narration.events, want) {
+		t.Errorf("narration = %q, want %q", narration.events, want)
+	}
+}
+
+func TestExclusionCheck_AnswerNone_IsNoFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, answer := range []string{"none", "none\n", "  None \n"} {
+		t.Run(answer, func(t *testing.T) {
+			t.Parallel()
+
+			narration := &checkNarration{}
+			if _, err := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).Check(t.Context(), sourceDiff); err != nil {
+				t.Fatalf("Check returned unexpected error: %v", err)
+			}
+			if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
+				t.Errorf("narration = %q, want %q", narration.events, want)
+			}
+		})
+	}
+}
+
+func TestExclusionCheck_AnAnswerWithOneUsableSuggestion_IsNoFailure(t *testing.T) {
+	t.Parallel()
+
+	narration := &checkNarration{}
+	check := notes.NewExclusionCheck(&recordingTransport{body: "vendor/: vendored\ndocs/design/: design documents\n"}, nil, narration).
+		WithPauses(&recordedPauses{})
+
+	if _, err := check.Check(t.Context(), sourceDiff+designDiff); err != nil {
+		t.Fatalf("Check returned unexpected error: %v", err)
+	}
+
+	if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
+		t.Errorf("narration = %q, want %q", narration.events, want)
 	}
 }
 
@@ -235,9 +351,14 @@ func TestExclusionCheck_ACancelDuringTheCallIsReturned(t *testing.T) {
 
 	tr := &recordingTransport{err: fmt.Errorf("ai call: %w", context.Canceled)}
 
-	_, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"))
+	narration := &checkNarration{}
+
+	_, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"))
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Check returned %v, want the cancel", err)
+	}
+	if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
+		t.Errorf("narration = %q, want %q, no failure narrated for a cancel", narration.events, want)
 	}
 }
 

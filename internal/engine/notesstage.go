@@ -48,6 +48,16 @@ func (s *notesStage) Checked() {
 	s.p.NotesChecked()
 }
 
+func (s *notesStage) CheckFailed(output string) {
+	s.p.SuspendSpinner()
+	s.p.Warn(presenter.Warning{
+		Label:   "notes",
+		Message: "couldn't check for files that don't belong in the notes",
+		Output:  output,
+	})
+	s.p.ResumeSpinner()
+}
+
 func (s *notesStage) PartsDone(promptBytes, parts, done int) {
 	s.p.NotesProgress(presenter.NotesProgress{PromptBytes: promptBytes, Parts: parts, Done: done})
 }

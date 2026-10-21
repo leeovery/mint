@@ -157,10 +157,13 @@ func sixFileDiff(size int) string {
 	return b.String()
 }
 
-// sixPartTransport answers a six-part chunked run's classify calls OTHER and its
-// parts with their notes, failing part 3 with partThreeOutput.
+// sixPartTransport answers the exclusion check "none", a six-part chunked run's
+// classify calls OTHER and its parts with their notes, failing part 3 with
+// partThreeOutput.
 func sixPartTransport(_ context.Context, prompt string) (string, error) {
 	switch {
+	case isCheckPrompt(prompt):
+		return "none", nil
 	case isClassifyPrompt(prompt):
 		return "OTHER", nil
 	case strings.Contains(prompt, "What follows is part 3 of 6"):
@@ -240,7 +243,10 @@ func TestRelease_Fallback_MergePromptOverTheCap_WarningNamesThePathAndBothComman
 	t.Parallel()
 
 	run := newChunkNotesRun(t, "fallback", func(_ context.Context, prompt string) (string, error) {
-		if isChunkCallPrompt(prompt) {
+		switch {
+		case isCheckPrompt(prompt):
+			return "none", nil
+		case isChunkCallPrompt(prompt):
 			return bigPartNotes, nil
 		}
 		return "merged notes", nil

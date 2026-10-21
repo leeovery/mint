@@ -310,7 +310,7 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
-	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedClaudeAfterCheck(f, ScriptedOut(aiBody))
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}

@@ -65,3 +65,18 @@ func TestREADME_ReleaseSectionDescribesTheDryRunSuggestions(t *testing.T) {
 		}
 	}
 }
+
+func TestREADME_ReleaseSectionDescribesTheFailedCheck(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"mint warns `couldn't check for files that don't belong in the notes`, with the AI's output beneath it where there is any, and the release carries on to its notes with no suggestions",
+		"Ctrl-C during the check cancels the run",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
+}

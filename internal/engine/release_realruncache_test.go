@@ -158,7 +158,7 @@ func TestRelease_RealRun_KeyMiss_RegeneratesSilently(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f) // a miss runs the full AI path: assemble + change map
-	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedClaudeAfterCheck(f, ScriptedOut(aiBody))
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -218,7 +218,7 @@ func TestRelease_RealRun_CorruptCacheEntry_RegeneratesAndDoesNotAbort(t *testing
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f) // a corrupt read regenerates: the full AI path runs
-	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedClaudeAfterCheck(f, ScriptedOut(aiBody))
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -547,7 +547,7 @@ func TestRelease_RealRun_NoPreviewEver_NoMissNotice(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
-	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
+	seedClaudeAfterCheck(f, ScriptedOut(aiBody))
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}

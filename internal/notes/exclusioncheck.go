@@ -6,20 +6,26 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
+	"mint/internal/ai"
 	"mint/internal/bytesize"
 )
 
-// CheckNarration is told when the exclusion check's call starts and when it ends.
+// CheckNarration is told when the exclusion check's call starts and when it ends, and,
+// after the end, when the check failed: output is the AI's captured output, or its
+// unreadable answer, verbatim but for trailing whitespace, and empty when there is none.
 type CheckNarration interface {
 	Checking()
 	Checked()
+	CheckFailed(output string)
 }
 
 type noCheckNarration struct{}
 
-func (noCheckNarration) Checking() {}
-func (noCheckNarration) Checked()  {}
+func (noCheckNarration) Checking()          {}
+func (noCheckNarration) Checked()           {}
+func (noCheckNarration) CheckFailed(string) {}
 
 // ExclusionCheck asks the AI which of a release's changed paths look out of place in
 // its notes. Its call carries no diff, only the changed paths the notes diff carries
@@ -89,10 +95,11 @@ func (c *ExclusionCheck) WithReport(report func(Suggestion, Matches)) *Exclusion
 }
 
 // Check makes the check's call over diff, the post-exclusion notes diff, unless the
-// keep list covers every path in it: then it neither calls nor narrates. A failed call
-// leaves the release to carry on, so only a cancel is returned. With pauses wired, each
-// suggestion matching a listed path is paused on in the answer's order, unless earlier
-// answers already decide every listed path it matches; a pause's error, or a cancel
+// keep list covers every path in it: then it neither calls nor narrates. A failed check,
+// its call failing or its answer neither "none" nor yielding one usable suggestion, is
+// narrated and leaves the release to carry on, so only a cancel is returned. With
+// pauses wired, each suggestion matching a listed path is paused on in the answer's
+// order, unless earlier answers already decide every listed path it matches; a pause's error, or a cancel
 // while it waits, is returned and ends the pauses. It returns the globs answered
 // Exclude, in the order answered; a report excludes nothing.
 func (c *ExclusionCheck) Check(ctx context.Context, diff string) ([]string, error) {
@@ -108,9 +115,17 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string) ([]string, erro
 		return nil, err
 	}
 	if err != nil {
+		c.narration.CheckFailed(failureOutput(err))
+		return nil, nil
+	}
+	if strings.EqualFold(strings.TrimSpace(answer), "none") {
 		return nil, nil
 	}
 	suggestions := usableSuggestions(answer, paths)
+	if len(suggestions) == 0 {
+		c.narration.CheckFailed(strings.TrimRightFunc(answer, unicode.IsSpace))
+		return nil, nil
+	}
 	switch {
 	case c.pauses != nil:
 		return c.pause(ctx, suggestions, files)
@@ -118,6 +133,14 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string) ([]string, erro
 		c.reportAll(suggestions, files)
 	}
 	return nil, nil
+}
+
+func failureOutput(err error) string {
+	var genErr *ai.GenerationError
+	if errors.As(err, &genErr) {
+		return genErr.Output()
+	}
+	return ""
 }
 
 func (c *ExclusionCheck) reportAll(suggestions []Suggestion, files []checkedPath) {

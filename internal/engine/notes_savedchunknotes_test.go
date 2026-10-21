@@ -84,10 +84,14 @@ func (f transportFunc) Generate(ctx context.Context, prompt string) (string, err
 	return f(ctx, prompt)
 }
 
-// twoPartTransport answers a two-part chunked run's classify calls OTHER and its
-// parts with their notes, unless fail answers the call with a failure first.
+// twoPartTransport answers the exclusion check "none", a two-part chunked run's
+// classify calls OTHER and its parts with their notes, unless fail answers the call
+// with a failure first.
 func twoPartTransport(fail func(prompt string) error) func(context.Context, string) (string, error) {
 	return func(_ context.Context, prompt string) (string, error) {
+		if isCheckPrompt(prompt) {
+			return "none", nil
+		}
 		if err := fail(prompt); err != nil {
 			return "", err
 		}
