@@ -2,15 +2,16 @@
 # defaults are set; everything else rides on the defaults. Full key reference and
 # defaults: run `mint setup`.
 
-# Keep mint's large agent / workflow / CI meta trees out of the release-notes
-# diff — tracked but not release-relevant, and big enough to blow past the AI
-# model's context window ("Prompt is too long").
+# Keep mint's agent / workflow / CI meta trees out of every AI diff, release
+# notes and commit messages alike: tracked, but not what a release or a commit
+# is about.
 diff_exclude = ['.workflows', '.claude', '.tick', '.agntc', '.github']
 
 [release.hooks]
 # No CI job runs the test suite before the tag (release.yml only builds via
 # GoReleaser on tag push), so gate the release here: this array runs in order
-# after the notes gate and before the irreversible tag + push.
+# after preflight and before the notes, so a failing gate stops the release
+# before any notes are written or anything is tagged or pushed.
 pre_tag = [
     'go build ./...',
     'go vet ./...',
@@ -19,4 +20,6 @@ pre_tag = [
 ]
 
 [release]
+# Recorded by mint's exclusion check: paths answered Exclude at a release's
+# pauses, kept out of the release-notes diff only.
 diff_exclude = ["*_test.go", ".worktreeinclude", "CLAUDE.md", "internal/presenter/presentertest/", "internal/runner/fake_runner.go", "internal/runner/deadline_recording_runner.go"]
