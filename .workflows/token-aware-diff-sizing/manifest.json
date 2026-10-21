@@ -325,7 +325,10 @@
             "token-aware-diff-sizing-9-4": "tick-e9883a",
             "token-aware-diff-sizing-10": "tick-d228ce",
             "token-aware-diff-sizing-10-1": "tick-3e30c1",
-            "token-aware-diff-sizing-10-2": "tick-873a4f"
+            "token-aware-diff-sizing-10-2": "tick-873a4f",
+            "token-aware-diff-sizing-11": "tick-fa3744",
+            "token-aware-diff-sizing-11-1": "tick-604f13",
+            "token-aware-diff-sizing-11-2": "tick-a38892"
           },
           "storage_paths": [
             ".tick/"
@@ -564,8 +567,8 @@
             },
             "c3": {
               "tasks": {
-                "1": "pending",
-                "2": "pending"
+                "1": "approved",
+                "2": "approved"
               }
             }
           },
