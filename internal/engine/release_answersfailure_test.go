@@ -56,7 +56,12 @@ type failedAnswers struct {
 // artifact commit.
 func recordAnswersFailing(t *testing.T, config *string, preTag bool, failure answersFailure) failedAnswers {
 	t.Helper()
-	root := t.TempDir()
+	return recordAnswersFailingIn(t, t.TempDir(), config, preTag, failure)
+}
+
+// recordAnswersFailingIn is recordAnswersFailing run in the given repo root.
+func recordAnswersFailingIn(t *testing.T, root string, config *string, preTag bool, failure answersFailure) failedAnswers {
+	t.Helper()
 	if config != nil {
 		writeConfig(t, root, *config)
 	}
@@ -286,6 +291,35 @@ func TestRelease_AnswersCommitFailing_WhenUnstagingTheWriteFails_WarnsTheManualS
 	}
 	if got, want := unwoundSummary(t, run.rec), "reset 1 commit; manual cleanup required"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	}
+}
+
+func TestRelease_AnswersCommitFailing_WhenUnstagingFailsInARootWithASpace_WarnsTheStepWithTheRootQuoted(t *testing.T) {
+	t.Parallel()
+
+	const unstageStderr = "fatal: Unable to create '.git/index.lock': Permission denied\n"
+	root := filepath.Join(t.TempDir(), "My App")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatalf("creating %s: %v", root, err)
+	}
+	failure := commitFails
+	failure.git = append(slices.Clone(failure.git), gitFailing(unstageStderr))
+	run := recordAnswersFailingIn(t, root, ptr(answeredConfig), false, failure)
+
+	assertAbortedBeforeTheNotes(t, run)
+	var warns []presenter.Warning
+	for _, ev := range run.rec.Events {
+		if ev.Kind == presentertest.KindWarn {
+			warns = append(warns, ev.Warn)
+		}
+	}
+	want := presenter.Warning{
+		Label:   "unwind incomplete",
+		Message: "automatic recovery failed; manually unstage .mint.toml (`git -C '" + root + "' reset -q " + startingSHA + " -- .mint.toml`)",
+		Output:  unstageStderr,
+	}
+	if len(warns) != 1 || warns[0] != want {
+		t.Errorf("warnings = %+v, want only %+v", warns, want)
 	}
 }
 

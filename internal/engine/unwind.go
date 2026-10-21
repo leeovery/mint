@@ -38,6 +38,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"mint/internal/cmdline"
 	"mint/internal/fsutil"
 	"mint/internal/git"
 	"mint/internal/presenter"
@@ -256,7 +257,7 @@ func unstageEdit(ctx context.Context, deps ReleaseDeps, start StartState, edit *
 	if output == "" {
 		output = err.Error()
 	}
-	warnUnwindIncomplete(deps.Presenter, "unstage "+edit.path+" (`git -C "+edit.root+" reset -q "+start.HEAD+" -- "+edit.path+"`)", output)
+	warnUnwindIncomplete(deps.Presenter, "unstage "+edit.path+" (`git -C "+cmdline.Quote(edit.root)+" reset -q "+start.HEAD+" -- "+cmdline.Quote(edit.path)+"`)", output)
 	return false
 }
 
