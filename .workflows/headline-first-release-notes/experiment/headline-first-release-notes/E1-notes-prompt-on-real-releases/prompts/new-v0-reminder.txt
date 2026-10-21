@@ -1,0 +1,1 @@
+Now output ONLY the release notes themselves, exactly as they should be published: the one-sentence headline if this release has one, then the sections. No preamble, no commentary, no explanation, no code fences, nothing before or after the notes.
