@@ -29,7 +29,7 @@ func (noCheckNarration) CheckFailed(string) {}
 
 // ExclusionCheck asks the AI which of a release's changed paths look out of place in
 // its notes. Its call carries no diff, only the changed paths the notes diff carries
-// that the keep list does not cover, each with its change and the size of its diff.
+// that the keep list does not cover.
 type ExclusionCheck struct {
 	transport Transport
 	keep      []string
@@ -86,7 +86,7 @@ func (c *ExclusionCheck) WithPauses(pauses SuggestionPauses) *ExclusionCheck {
 }
 
 // WithReport returns a copy of c that, unless pauses are wired, hands report each
-// suggestion matching a listed path, in the answer's order, with what it matches
+// suggestion matching a path the list covers, in the answer's order, with what it matches
 // against the keep list alone; c itself is unchanged.
 func (c *ExclusionCheck) WithReport(report func(Suggestion, Matches)) *ExclusionCheck {
 	d := *c
@@ -95,21 +95,28 @@ func (c *ExclusionCheck) WithReport(report func(Suggestion, Matches)) *Exclusion
 }
 
 // Check makes the check's call over diff, the post-exclusion notes diff, unless the
-// keep list covers every path in it: then it neither calls nor narrates. A failed check,
-// its call failing or its answer neither "none" nor yielding one usable suggestion, is
-// narrated and leaves the release to carry on, so only a cancel is returned. With
-// pauses wired, each suggestion matching a listed path is paused on in the answer's
-// order, unless earlier answers already decide every listed path it matches; a pause's error, or a cancel
-// while it waits, is returned and ends the pauses. It returns the globs answered
+// keep list covers every path in it: then it neither calls nor narrates. The call's
+// list condenses by folder past a tenth of maxPromptBytes, and a call that would still
+// exceed maxPromptBytes is never made. A failed check, the call not fitting or failing
+// or its answer neither "none" nor yielding one usable suggestion, is narrated and
+// leaves the release to carry on, so only a cancel is returned. With pauses wired, each
+// suggestion matching a path the list covers is paused on in the answer's order, unless
+// earlier answers already decide every such path it matches; a pause's error, or a
+// cancel while it waits, is returned and ends the pauses. It returns the globs answered
 // Exclude, in the order answered; a report excludes nothing.
-func (c *ExclusionCheck) Check(ctx context.Context, diff string) ([]string, error) {
+func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes int) ([]string, error) {
 	files := diffPaths(diff)
 	paths := slices.DeleteFunc(slices.Clone(files), func(p checkedPath) bool { return coveredBy(c.keep, p.path) })
 	if len(paths) == 0 {
 		return nil, nil
 	}
+	prompt := composeCheckPrompt(checkList(paths, maxPromptBytes))
+	if len(prompt) > maxPromptBytes {
+		c.narration.CheckFailed("")
+		return nil, nil
+	}
 	c.narration.Checking()
-	answer, err := c.transport.Generate(ctx, composeCheckPrompt(paths))
+	answer, err := c.transport.Generate(ctx, prompt)
 	c.narration.Checked()
 	if errors.Is(err, context.Canceled) {
 		return nil, err
@@ -267,19 +274,57 @@ func fileChange(fileDiff string) string {
 	return "modified"
 }
 
-func composeCheckPrompt(paths []checkedPath) string {
-	lines := make([]string, len(paths))
+// checkList lists paths one per line, condensed by folder once the list would take more
+// than its share of maxPromptBytes.
+func checkList(paths []checkedPath, maxPromptBytes int) pathList {
+	lines := make([]foldLine, len(paths))
 	for i, p := range paths {
-		lines[i] = "- " + p.path + " (" + p.change + ", " + bytesize.Format(p.diffBytes) + ")"
+		lines[i] = foldLine{
+			text:  p.path + " (" + p.change + ", " + bytesize.Format(p.diffBytes) + ")",
+			run:   runOf("", p.path),
+			bytes: p.diffBytes,
+		}
+	}
+	full := renderCheckList(lines)
+	share := condenseShare(maxPromptBytes)
+	if len(full) <= share {
+		return pathList{text: full}
+	}
+	return pathList{text: renderCheckList(condenseRuns(lines, len(full)-share, summarizeCheckRun)), condensed: true}
+}
+
+// pathList is the check's rendered list, and whether it took more than its share, so
+// folder summaries may stand in for some of its paths.
+type pathList struct {
+	text      string
+	condensed bool
+}
+
+func summarizeCheckRun(key runKey, count, bytes int) string {
+	return key.folder + "/: " + groupThousands(count) + " files, " + bytesize.Format(bytes)
+}
+
+func renderCheckList(lines []foldLine) string {
+	texts := make([]string, len(lines))
+	for i, l := range lines {
+		texts[i] = "- " + l.text
+	}
+	return strings.Join(texts, "\n")
+}
+
+func composeCheckPrompt(list pathList) string {
+	intro := "Each line below is one changed path, with its change and the size of its diff"
+	if list.condensed {
+		intro += ", or one folder's changed paths summed up as how many and the total size of their diffs"
 	}
 	return "A software release's notes are about to be written from its diff. Release notes are a public list of what the release holds, for the people who use it. " +
 		"Before they are written, check the release's changed paths for any that do not belong in its notes: " +
 		"files about how the software is made rather than what it does, such as design documents, specs and plans, " +
 		"tests and their fixtures, agent and tooling configuration, transcripts, and generated or vendored files.\n" +
 		"\n" +
-		"Each line below is one changed path, with its change and the size of its diff:\n" +
+		intro + ":\n" +
 		"\n" +
-		strings.Join(lines, "\n") + "\n" +
+		list.text + "\n" +
 		"\n" +
 		"Suggest git pathspec globs that cover the paths that do not belong. A glob ending in / covers a whole folder, " +
 		"and * matches across folders. Prefer one folder glob to a glob per file where a folder holds them.\n" +

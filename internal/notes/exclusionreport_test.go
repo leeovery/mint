@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"mint/internal/ai"
+	"mint/internal/config"
 	"mint/internal/notes"
 )
 
@@ -21,7 +22,7 @@ func reportedCheck(t *testing.T, keep []string, diff, answer string) ([]reported
 	var reports []reported
 	check := notes.NewExclusionCheck(&recordingTransport{body: answer}, keep, nil).
 		WithReport(func(s notes.Suggestion, m notes.Matches) { reports = append(reports, reported{s, m}) })
-	excluded, err := check.Check(t.Context(), diff)
+	excluded, err := check.Check(t.Context(), diff, config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestExclusionCheck_Reporting_AFailedCall_ReportsNothing(t *testing.T) {
 	var reports int
 	check := notes.NewExclusionCheck(&recordingTransport{err: ai.ErrGenerationFailed}, nil, nil).
 		WithReport(func(notes.Suggestion, notes.Matches) { reports++ })
-	if _, err := check.Check(t.Context(), sourceDiff+designDiff); err != nil {
+	if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 	if reports != 0 {

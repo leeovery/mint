@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"mint/internal/config"
 	"mint/internal/notes"
 )
 
@@ -41,7 +42,7 @@ func pausedCheck(t *testing.T, keep []string, diff, answer string) []notes.Sugge
 	t.Helper()
 	pauses := &recordedPauses{}
 	check := notes.NewExclusionCheck(&recordingTransport{body: answer}, keep, nil).WithPauses(pauses)
-	if _, err := check.Check(t.Context(), diff); err != nil {
+	if _, err := check.Check(t.Context(), diff, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 	return pauses.paused
@@ -117,7 +118,7 @@ func TestExclusionCheck_WithoutPauses_AsksNothingAndCarriesOn(t *testing.T) {
 	t.Parallel()
 
 	tr := &recordingTransport{body: "docs/design/: design documents\n"}
-	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), designDiff); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), designDiff, config.DefaultMaxPromptBytes); err != nil {
 		t.Errorf("Check returned %v, want nil", err)
 	}
 }
@@ -129,7 +130,7 @@ func TestExclusionCheck_APauseThatFails_ReturnsItsErrorAndAsksNoMore(t *testing.
 	pauses := &recordedPauses{err: closed}
 	tr := &recordingTransport{body: "docs/design/: design documents\ntest/fixtures/: test data\n"}
 
-	_, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), designDiff+fixturesDiff)
+	_, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), designDiff+fixturesDiff, config.DefaultMaxPromptBytes)
 
 	if !errors.Is(err, closed) {
 		t.Errorf("Check returned %v, want the pause's error", err)
@@ -147,7 +148,7 @@ func TestExclusionCheck_ACancelWhileAPauseWaits_ReturnsTheCancelWhateverItsAnswe
 	pauses := &recordedPauses{answer: notes.AnswerKeep, during: cancel}
 	tr := &recordingTransport{body: "docs/design/: design documents\ntest/fixtures/: test data\n"}
 
-	_, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(ctx, designDiff+fixturesDiff)
+	_, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(ctx, designDiff+fixturesDiff, config.DefaultMaxPromptBytes)
 
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Check returned %v, want the cancel", err)
@@ -163,7 +164,7 @@ func TestExclusionCheck_ReturnsTheGlobsAnsweredExcludeInTheOrderAnswered(t *test
 	pauses := &recordedPauses{answers: []notes.Answer{notes.AnswerExclude, notes.AnswerKeep, notes.AnswerExclude}}
 	tr := &recordingTransport{body: "docs/design/: design documents\nsrc/: source\ntest/fixtures/: test data\n"}
 
-	excluded, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), sourceDiff+designDiff+fixturesDiff)
+	excluded, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), sourceDiff+designDiff+fixturesDiff, config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
@@ -179,7 +180,7 @@ func TestExclusionCheck_EveryPauseAnsweredKeep_ReturnsNoGlob(t *testing.T) {
 	pauses := &recordedPauses{answer: notes.AnswerKeep}
 	tr := &recordingTransport{body: "docs/design/: design documents\ntest/fixtures/: test data\n"}
 
-	excluded, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), sourceDiff+designDiff+fixturesDiff)
+	excluded, err := notes.NewExclusionCheck(tr, nil, nil).WithPauses(pauses).Check(t.Context(), sourceDiff+designDiff+fixturesDiff, config.DefaultMaxPromptBytes)
 	if err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}

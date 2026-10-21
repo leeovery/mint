@@ -184,10 +184,10 @@ func renderChangeMap(changes []pathChange, churn []fileChurn, maxPromptBytes int
 	if len(full) <= share {
 		return full
 	}
-	return composeChangeMap(condenseRuns(novelty, len(full)-share), magnitude, notable)
+	return composeChangeMap(condenseRuns(novelty, len(full)-share, summarizeNoveltyRun), magnitude, notable)
 }
 
-func composeChangeMap(novelty []noveltyLine, magnitude, notable string) string {
+func composeChangeMap(novelty []foldLine, magnitude, notable string) string {
 	var sections []string
 	for _, section := range []string{renderNovelty(novelty), magnitude, notable} {
 		if section != "" {
@@ -197,58 +197,32 @@ func composeChangeMap(novelty []noveltyLine, magnitude, notable string) string {
 	return strings.Join(sections, "\n")
 }
 
-// condenseShare is the bytes a folder-condensable text may take before it condenses:
-// a tenth of the per-call cap.
-func condenseShare(maxPromptBytes int) int {
-	return maxPromptBytes / 10
-}
-
-// noveltyLine is one line of the structural-novelty section. run is the folder run
-// the line can condense into; the zero runKey marks a line that never condenses.
-type noveltyLine struct {
-	text string
-	run  runKey
-}
-
-// runKey names a condensable run: one kind of structural change ("Removed",
-// "Renamed") under one leading directory.
-type runKey struct {
-	kind   string
-	folder string
-}
-
 // noveltyLines is the PRIMARY section's content: structural novelty weighted above
 // magnitude. New packages/directories headline first (the strongest language-agnostic
 // signal), then renamed and removed paths reported as structural changes. A rename
 // runs under the folder it moved into, matching the rest of the map.
-func noveltyLines(changes []pathChange) []noveltyLine {
-	var lines []noveltyLine
+func noveltyLines(changes []pathChange) []foldLine {
+	var lines []foldLine
 
 	for _, dir := range newDirectories(changes) {
-		lines = append(lines, noveltyLine{text: "New package/dir: " + dir})
+		lines = append(lines, foldLine{text: "New package/dir: " + dir})
 	}
 	for _, c := range changes {
 		switch c.Status {
 		case statusRenamed:
-			lines = append(lines, noveltyLine{text: "Renamed: " + c.OldPath + " -> " + c.Path, run: runOf("Renamed", c.Path)})
+			lines = append(lines, foldLine{text: "Renamed: " + c.OldPath + " -> " + c.Path, run: runOf("Renamed", c.Path)})
 		case statusDeleted:
-			lines = append(lines, noveltyLine{text: "Removed: " + c.Path, run: runOf("Removed", c.Path)})
+			lines = append(lines, foldLine{text: "Removed: " + c.Path, run: runOf("Removed", c.Path)})
 		}
 	}
 	return lines
 }
 
-// runOf keys path's line into its leading-directory run; a top-level path has no
-// folder and so no run.
-func runOf(kind, path string) runKey {
-	dir, ok := leadingDir(path)
-	if !ok {
-		return runKey{}
-	}
-	return runKey{kind: kind, folder: dir}
+func summarizeNoveltyRun(key runKey, count, _ int) string {
+	return fmt.Sprintf("%s: %s files under %s/", key.kind, groupThousands(count), key.folder)
 }
 
-func renderNovelty(lines []noveltyLine) string {
+func renderNovelty(lines []foldLine) string {
 	if len(lines) == 0 {
 		return ""
 	}
@@ -257,94 +231,6 @@ func renderNovelty(lines []noveltyLine) string {
 		texts = append(texts, l.text)
 	}
 	return "Structural novelty:\n" + indentLines(texts)
-}
-
-// runSummary is one candidate collapse: the run, its size, its summary line, and the
-// bytes collapsing it saves.
-type runSummary struct {
-	key   runKey
-	count int
-	text  string
-	saved int
-}
-
-// condenseRuns collapses runs in rankRuns order until at least excess bytes are saved
-// or none is left. Each collapsed run's summary line takes the place of the run's
-// first line.
-func condenseRuns(lines []noveltyLine, excess int) []noveltyLine {
-	collapsed := make(map[runKey]string)
-	saved := 0
-	for _, run := range rankRuns(lines) {
-		if saved >= excess {
-			break
-		}
-		collapsed[run.key] = run.text
-		saved += run.saved
-	}
-
-	out := make([]noveltyLine, 0, len(lines))
-	placed := make(map[runKey]bool)
-	for _, l := range lines {
-		summary, ok := collapsed[l.run]
-		if !ok {
-			out = append(out, l)
-			continue
-		}
-		if !placed[l.run] {
-			out = append(out, noveltyLine{text: summary})
-			placed[l.run] = true
-		}
-	}
-	return out
-}
-
-// rankRuns returns the runs of two or more lines whose collapse would shrink the map,
-// in collapse order: largest first, ties by kind then folder so the order never
-// depends on map iteration.
-func rankRuns(lines []noveltyLine) []runSummary {
-	counts := make(map[runKey]int)
-	costs := make(map[runKey]int)
-	for _, l := range lines {
-		if l.run == (runKey{}) {
-			continue
-		}
-		counts[l.run]++
-		costs[l.run] += len(l.text) + lineOverhead
-	}
-
-	runs := make([]runSummary, 0, len(counts))
-	for key, count := range counts {
-		if count < 2 {
-			continue
-		}
-		text := fmt.Sprintf("%s: %s files under %s/", key.kind, groupThousands(count), key.folder)
-		if saved := costs[key] - (len(text) + lineOverhead); saved > 0 {
-			runs = append(runs, runSummary{key: key, count: count, text: text, saved: saved})
-		}
-	}
-	sort.Slice(runs, func(i, j int) bool {
-		if runs[i].count != runs[j].count {
-			return runs[i].count > runs[j].count
-		}
-		if runs[i].key.kind != runs[j].key.kind {
-			return runs[i].key.kind < runs[j].key.kind
-		}
-		return runs[i].key.folder < runs[j].key.folder
-	})
-	return runs
-}
-
-// lineOverhead is the bytes indentLines adds per line beyond its text: the two-space
-// indent and the joining newline.
-const lineOverhead = 3
-
-// groupThousands renders n with comma thousands separators.
-func groupThousands(n int) string {
-	s := strconv.Itoa(n)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	return s
 }
 
 // newDirectories applies the documented novelty heuristic: group changed paths by

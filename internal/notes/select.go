@@ -211,7 +211,7 @@ func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, c
 		return "", KindNormalAI, CacheInputs{}, fmt.Errorf("resolving notes instructions for cache key: %w", err)
 	}
 
-	diff, err = s.checkExclusions(ctx, state.LastTag, diff)
+	diff, err = s.checkExclusions(ctx, state.LastTag, diff, cfg.MaxPromptBytes)
 	if err != nil {
 		return "", KindNormalAI, CacheInputs{}, err
 	}
@@ -246,11 +246,11 @@ func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, c
 // diff its Exclude answers leave. The answered globs join the shared Assembler's
 // excludes, so the Change Map and every later generation, an `r` included, leave them
 // out too.
-func (s *Selector) checkExclusions(ctx context.Context, lastTag, diff string) (string, error) {
+func (s *Selector) checkExclusions(ctx context.Context, lastTag, diff string, maxPromptBytes int) (string, error) {
 	if s.check == nil {
 		return diff, nil
 	}
-	excluded, err := s.check.Check(ctx, diff)
+	excluded, err := s.check.Check(ctx, diff, maxPromptBytes)
 	if err != nil || len(excluded) == 0 {
 		return diff, err
 	}

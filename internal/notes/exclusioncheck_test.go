@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"mint/internal/ai"
+	"mint/internal/config"
 	"mint/internal/notes"
 )
 
@@ -92,7 +93,7 @@ func TestExclusionCheck_ListsEachChangedPathWithItsChangeAndDiffSize_AndNoDiffCo
 	tr := &recordingTransport{body: "none"}
 	check := notes.NewExclusionCheck(tr, nil, nil)
 
-	if _, err := check.Check(t.Context(), exportGo+designDoc); err != nil {
+	if _, err := check.Check(t.Context(), exportGo+designDoc, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -120,7 +121,7 @@ func TestExclusionCheck_NamesDeletionsAndRenames(t *testing.T) {
 	moved := renamedFileDiff("pkg/a.go", "pkg/b.go")
 	tr := &recordingTransport{body: "none"}
 
-	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), removed+moved); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), removed+moved, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -140,7 +141,7 @@ func TestExclusionCheck_BigFilesAreOrdinaryEntriesInDecimalSizes(t *testing.T) {
 	small := sized(t, func(body string) string { return modifiedFileDiff("src/small.go", body) }, 640)
 	tr := &recordingTransport{body: "none"}
 
-	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), small+transcript); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, nil).Check(t.Context(), small+transcript, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -162,7 +163,7 @@ func TestExclusionCheck_LeavesOutPathsTheKeepListCovers(t *testing.T) {
 	tr := &recordingTransport{body: "none"}
 	check := notes.NewExclusionCheck(tr, []string{"docs/api/", "docs/*/intro.md"}, nil)
 
-	if _, err := check.Check(t.Context(), kept+keptByGlob+listed); err != nil {
+	if _, err := check.Check(t.Context(), kept+keptByGlob+listed, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -183,7 +184,7 @@ func TestExclusionCheck_KeepListCoversEveryPath_MakesNoCallAndNarratesNothing(t 
 	})
 	diff := addedFileDiff("docs/api/export.md", "+# Export API\n") + modifiedFileDiff("docs/api/import.md", "+# Import API\n")
 
-	if _, err := notes.NewExclusionCheck(tr, []string{"docs/api/"}, narration).Check(t.Context(), diff); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, []string{"docs/api/"}, narration).Check(t.Context(), diff, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -204,7 +205,7 @@ func TestExclusionCheck_NarratesTheCallStartingAndEnding(t *testing.T) {
 		return "none", nil
 	})
 
-	if _, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n")); err != nil {
+	if _, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"), config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -237,7 +238,7 @@ func TestExclusionCheck_AFailedCallLetsTheReleaseCarryOn_NarratingTheFailure(t *
 			narration := &checkNarration{}
 			tr := &recordingTransport{err: tt.failure}
 
-			excluded, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"))
+			excluded, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"), config.DefaultMaxPromptBytes)
 			if err != nil {
 				t.Errorf("Check returned %v, want nil so the release carries on", err)
 			}
@@ -271,7 +272,7 @@ func TestExclusionCheck_AnAnswerYieldingNoUsableSuggestion_IsAFailedCheckCarryin
 			tr := &recordingTransport{body: tt.answer}
 			check := notes.NewExclusionCheck(tr, nil, narration).WithPauses(pauses)
 
-			excluded, err := check.Check(t.Context(), sourceDiff+designDiff)
+			excluded, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes)
 			if err != nil {
 				t.Errorf("Check returned %v, want nil so the release carries on", err)
 			}
@@ -300,7 +301,7 @@ func TestExclusionCheck_AReportingCheckWhoseAnswerIsUnreadable_ReportsNothingAnd
 	check := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).
 		WithReport(func(s notes.Suggestion, _ notes.Matches) { reported = append(reported, s) })
 
-	if _, err := check.Check(t.Context(), sourceDiff+designDiff); err != nil {
+	if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -320,7 +321,7 @@ func TestExclusionCheck_AnswerNone_IsNoFailure(t *testing.T) {
 			t.Parallel()
 
 			narration := &checkNarration{}
-			if _, err := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).Check(t.Context(), sourceDiff); err != nil {
+			if _, err := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).Check(t.Context(), sourceDiff, config.DefaultMaxPromptBytes); err != nil {
 				t.Fatalf("Check returned unexpected error: %v", err)
 			}
 			if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
@@ -337,7 +338,7 @@ func TestExclusionCheck_AnAnswerWithOneUsableSuggestion_IsNoFailure(t *testing.T
 	check := notes.NewExclusionCheck(&recordingTransport{body: "vendor/: vendored\ndocs/design/: design documents\n"}, nil, narration).
 		WithPauses(&recordedPauses{})
 
-	if _, err := check.Check(t.Context(), sourceDiff+designDiff); err != nil {
+	if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); err != nil {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
@@ -353,7 +354,7 @@ func TestExclusionCheck_ACancelDuringTheCallIsReturned(t *testing.T) {
 
 	narration := &checkNarration{}
 
-	_, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"))
+	_, err := notes.NewExclusionCheck(tr, nil, narration).Check(t.Context(), modifiedFileDiff("a.go", "+a\n"), config.DefaultMaxPromptBytes)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Check returned %v, want the cancel", err)
 	}
