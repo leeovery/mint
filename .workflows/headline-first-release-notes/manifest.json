@@ -1,0 +1,8 @@
+{
+  "name": "headline-first-release-notes",
+  "work_type": "feature",
+  "status": "in-progress",
+  "created": "2026-10-21",
+  "description": "Release notes open by naming the release's main feature, with the smaller changes that shipped alongside it listed after",
+  "phases": {}
+}

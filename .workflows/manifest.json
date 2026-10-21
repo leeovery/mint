@@ -17,6 +17,9 @@
     },
     "token-aware-diff-sizing": {
       "work_type": "feature"
+    },
+    "headline-first-release-notes": {
+      "work_type": "feature"
     }
   },
   "defaults": {
