@@ -37,6 +37,10 @@
             "release-title": {
               "status": "pending",
               "parent": null
+            },
+            "ordering-within-sections": {
+              "status": "pending",
+              "parent": null
             }
           }
         }
