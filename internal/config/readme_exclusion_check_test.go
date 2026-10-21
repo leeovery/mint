@@ -26,7 +26,8 @@ func TestREADME_ReleaseSectionDescribesTheExclusionPauses(t *testing.T) {
 	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
 	flat := strings.Join(strings.Fields(section), " ")
 	for _, want := range []string{
-		"An attended release then pauses once on each suggestion that matches a changed path nothing already covers, in the order the AI gave them, showing the glob and the AI's reason",
+		"An attended release then pauses once on each suggestion that matches a changed path nothing already covers, in the order the AI gave them, showing the glob and the AI's reason, then how many changed files the notes still carry that the glob matches, the total size of their diffs, and any of them on `[release].diff_keep` or kept earlier in the run, which an Exclude takes out too",
+		"A suggestion that matches no changed path, or only paths a `diff_exclude` level or `[release].diff_keep` already covers or earlier answers in the run already decide, gets no pause",
 		"**`e`** excludes the glob's files from this release's notes, **`k`** keeps them (Enter also keeps)",
 	} {
 		if !strings.Contains(flat, want) {
@@ -73,6 +74,7 @@ func TestREADME_ReleaseSectionDescribesTheFailedCheck(t *testing.T) {
 	flat := strings.Join(strings.Fields(section), " ")
 	for _, want := range []string{
 		"mint warns `couldn't check for files that don't belong in the notes`, with the AI's output beneath it where there is any, and the release carries on to its notes with no suggestions",
+		"or because the list of changed paths will not fit in `max_prompt_bytes` even condensed",
 		"Ctrl-C during the check cancels the run",
 	} {
 		if !strings.Contains(flat, want) {
