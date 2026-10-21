@@ -66,6 +66,22 @@
               "status": "pending",
               "parent": null
             }
+          },
+          "awaiting_experiments": [
+            "E1"
+          ]
+        }
+      }
+    },
+    "experiment": {
+      "items": {
+        "headline-first-release-notes": {
+          "status": "in-progress",
+          "experiments": {
+            "E1": {
+              "slug": "notes-prompt-on-real-releases",
+              "status": "conceived"
+            }
           }
         }
       }
