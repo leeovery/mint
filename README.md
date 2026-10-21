@@ -4,34 +4,36 @@
 
 **AI-minted releases and commits**
 
-A Go CLI that cuts releases and writes commits with AI-generated notes,
-<br>wrapped in git-safe automation that reviews everything before it mutates anything.
+A Go CLI that cuts releases and writes commits with AI-written notes,
+<br>and shows you every word before anything leaves your machine.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://go.dev)
 
-[Install](#install) · [Quick Start](#quick-start) · [Commands](#commands) · [Configuration](#configuration) · [The AI Transport](#the-ai-transport) · [Safety Model](#safety-model)
+[Install](#install) · [Quick Start](#quick-start) · [Commands](#commands) · [Release Notes in Depth](#release-notes-in-depth) · [Configuration](#configuration) · [The AI Transport](#the-ai-transport) · [Safety Model](#safety-model)
 
 </div>
 
 ---
 
-Mint replaces the per-project release script. `mint release` runs the whole pipeline (version bump, AI release notes, changelog, tag, atomic push, provider release) with a review gate before anything is written. `mint commit` mints a Conventional Commits message from your diff, shows it to you, and commits on accept.
-
-Everything interactive is reviewable, everything unattended fails loud, and nothing touches your repo until you say yes.
+Mint replaces the release script every project grows. `mint release` bumps the version, has the AI write the release notes from the diff, updates the changelog, tags, pushes and publishes the GitHub release, and stops to show you the notes before anything is pushed. `mint commit` writes a Conventional Commits message from the diff you're about to commit, and commits when you accept it.
 
 ## Why Mint?
 
-Release scripts accrete: bump the version file, regenerate the changelog, remember the tag prefix, push the tag *and* the branch, create the GitHub release, don't forget the build hook. Every project grows its own slightly-broken copy.
+Release scripts accrete: bump the version file, regenerate the changelog, remember the tag prefix, push the tag *and* the branch, create the GitHub release, don't forget the build hook. Every project grows its own slightly broken copy. Mint folds all of it into one binary and one optional config file.
 
-Mint folds that into one binary with one config file:
-
-- **AI does the writing.** Release notes are generated from the actual diff and commit history; commit messages from the staged changes. You review, edit, or regenerate at a gate; the AI never gets the last word.
-- **One atomic point of no return.** Everything before the `git push --atomic` is unwindable: if anything fails pre-push, mint surgically unwinds its own commits, tag, and stash, and only its own, leaving the repo exactly as it found it. The one exception is the exclusion check's answers: after an abort or failure before the push their commit stays on the branch, re-committed on the starting commit, and where git ignores an untracked `.mint.toml`, their uncommitted write is left in place.
-- **Mutations are lock-safe.** Every git mutation retries past a contended `.git` lock and clears provably stale ones, so a background agent or editor holding the index lock can't blow up a release.
-- **Unattended means unattended.** `-y` runs end to end or fails loud. Mint never hangs on a hidden prompt and never commits an empty message because nobody was there.
+- **Notes from the code that changed.** The AI reads the release's diff, not its commit subjects, so the notes say what changed for the people who use it. You accept, edit or regenerate them before anything ships.
+- **Releases of any size.** A release too big for one AI call is written in parts and merged into one set of notes. If the model turns a call down as too big, mint retries it in smaller parts and tells you the size that worked.
+- **Notes about the product, not how it was made.** Before writing, mint asks the AI which changed files don't belong in release notes: specs, design docs, test fixtures. You answer once per suggestion, and mint remembers the answer in `.mint.toml`.
+- **A failed AI call never strands a release.** At a terminal you choose: ship the commit subjects, write the notes yourself, or abort. Unattended, mint stops and says what to do next. Notes from the parts that finished are saved, ready to release with `--notes-file`.
+- **One point of no return.** Branch and tag go up in a single `git push --atomic`. Decline or fail before it, and mint unwinds the commits and tag it made and restores your stashed work. The one thing it keeps is your answers about which files to leave out of the notes.
+- **Lean AI calls.** The default command runs Claude Code with CLAUDE.md files, skills, plugins, hooks, MCP servers and tools switched off, so each call carries mint's prompt and nothing else. Any command that reads a prompt on stdin and writes on stdout works.
+- **Lock-safe git.** Every git write retries past a held `.git` lock and clears stale ones, so an editor or background agent holding the index can't break a release.
+- **Unattended means unattended.** `-y` runs end to end or fails with one clear message. Mint never hangs on a hidden prompt, and never commits an empty message because nobody was there.
 
 ## Install
+
+You need git. The default AI command runs [Claude Code](https://claude.com/claude-code) (`claude`), and publishing GitHub releases needs the [GitHub CLI](https://cli.github.com) (`gh`), signed in.
 
 **Homebrew**
 
@@ -39,7 +41,7 @@ Mint folds that into one binary with one config file:
 brew install leeovery/tools/mint
 ```
 
-**From source**
+**From source** (Go 1.26 or later)
 
 ```bash
 go build -o mint ./cmd/mint
@@ -48,87 +50,83 @@ go build -o mint ./cmd/mint
 ## Quick Start
 
 ```bash
-mint init                 # drop .mint.toml + the release shim into your repo
-mint release              # cut a patch release: notes → review → tag → push → publish
+mint init                 # add .mint.toml and the ./release shim to your repo
+mint release              # patch release: review the notes, then tag, push and publish
 mint release -m           # minor bump
-mint commit -a            # stage tracked changes, mint a commit message, review, commit
-mint commit -Apy          # stage everything, auto-accept, push: fully unattended
+mint release -d           # dry run: preview the version and notes, change nothing in the repo
+mint commit -a            # stage tracked changes, write the message, review, commit
+mint commit -Apy          # stage everything, accept, push: no questions asked
 ```
 
 ### Setup
 
-mint is an AI tool for commits & releases. To configure it for your project, pass the prompt below to your AI of choice — Claude, Codex, or whatever you run (we find Opus-level models do the best work here):
+To configure mint for your project, give your AI of choice (Claude, Codex, or whatever you run) this prompt. Opus-level models do the best work here.
 
 ```bash
 Run `mint setup` and follow what it prints.
 ```
 
-`mint setup` emits a version-matched setup guide that inspects your project and proposes a config — it is the source of truth, so this README does not reproduce it here. (This assumes mint is already installed; see [Install](#install).)
+`mint setup` prints a setup guide matched to the installed version: the agent inspects your project and proposes a config for you to approve. The guide is the source of truth for setup, so this README doesn't repeat it.
 
 ## Commands
 
+| Command | What it does |
+|---|---|
+| [`mint init`](#init) | Adds `.mint.toml` and a `release` shim to the repo |
+| [`mint release`](#release) | Cuts a release: version, AI notes, changelog, tag, atomic push, GitHub release |
+| [`mint release regenerate`](#release-regenerate) | Rewrites the notes of a release that's already out, on GitHub, in `CHANGELOG.md`, or both |
+| [`mint commit`](#commit) | Writes a commit message from your diff and commits when you accept it |
+| [`mint setup`](#setup-1) | Prints the setup guide for an AI agent to follow |
+| [`mint version`](#version) | Prints mint's version |
+| [`mint help`](#help) | Lists the commands |
+
 ### `init`
 
-Scaffold mint into a repo: writes a minimal `.mint.toml` (empty body plus a short header comment pointing to the GitHub docs and `mint setup`) and a `release` shim at the git-resolved repo root. Idempotent: existing files are skipped unless `--force`.
+Adds mint to a repo: a minimal `.mint.toml` (an empty body under a short header that points to this README and to `mint setup`) and a `release` shim, both at the repo root. `./release` runs `mint release` with whatever arguments you give it, and says how to install mint where it's missing. Existing files are left alone unless you pass `--force`.
 
 ```bash
 mint init [--force] [--plain]
 ```
 
-| Flag | Description |
+| Flag | What it does |
 |---|---|
-| `--force` | regenerate (overwrite) existing files |
+| `--force` | overwrite existing files |
 | `--plain` | force plain (un-styled) output |
 
 ### `release`
 
-Cut a release. The pipeline: preflight gates (clean tree, on the release branch, tag free, remote in sync, provider auth) → resolve the new version → generate AI release notes from the diff → **notes review gate** → changelog update + bookkeeping commit → `pre_tag` hook → annotated tag → **atomic push** (branch + tag in one `git push --atomic`) → provider release → `post_release` hook.
+Cuts a release. An attended run asks you twice: once to confirm the version, once to accept the notes.
+
+1. **Confirm the version.** `Release v1.4.0 → v1.4.1 (patch)?`, or `Release v0.0.1 (first release)?` the first time.
+2. **Check the repo.** Mint fetches tags, then checks the tree is clean, you're on the release branch, the tag is free here and on `origin`, and the branch is in sync with `origin`. Then the `preflight` hook runs.
+3. **Build.** The `pre_tag` hook runs, and whatever it leaves in the tree is committed as `chore(release): pre-tag artifacts for v1.4.1`.
+4. **Write the notes.** Mint checks for [files that don't belong in the notes](#files-that-dont-belong-in-the-notes), then the AI writes the notes from the diff since the last tag.
+5. **Review.** The notes review gate shows you the notes.
+6. **Record.** The new version goes into `version_file` and the notes into `CHANGELOG.md`, committed together as `🌿 Release v1.4.1`.
+7. **Tag and push.** Mint checks `gh` is signed in (when publishing), tags, and pushes the branch and the tag in one `git push --atomic`. This is the point of no return.
+8. **Publish.** The GitHub release is created, then the `post_release` hook runs.
 
 ```bash
 mint release [-p | -m | -M | --set-version X.Y.Z] [options]
 ```
 
-| Flag | Description |
+| Flag | What it does |
 |---|---|
 | `-p, --patch` | patch bump (default) |
 | `-m, --minor` | minor bump |
 | `-M, --major` | major bump |
-| `--set-version V` | explicit version `X.Y.Z` (mutually exclusive with bump flags) |
-| `-d, --dry-run` | read-only run: print the plan, make no changes |
-| `-y, --yes` | skip the confirmation/notes-review gate |
-| `--no-ai` | skip the AI notes path; use the commit-subject fallback body |
-| `--notes-file P` | release with the finished notes in file P (no AI) |
-| `--autostash` | stash/restore unrelated WIP around the run |
-| `--any-branch` | bypass the release-branch gate |
+| `--set-version V` | explicit version `X.Y.Z`, higher than the latest (can't be combined with a bump flag) |
+| `-d, --dry-run` | preview the run: print the plan and the notes, change nothing in the repo |
+| `-y, --yes` | accept the version and the notes without asking |
+| `--no-ai` | skip the AI; release with the commit-subject list |
+| `--notes-file P` | release with the finished notes in file P (no AI; can't be combined with `--no-ai`) |
+| `--autostash` | stash unrelated work before the run and restore it after |
+| `--any-branch` | release from the current branch, whatever `release_branch` says |
 | `--plain` | force plain (un-styled) output |
 
-At the notes review gate, a single keypress (no Enter needed): **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in `$EDITOR`, **`r`** regenerate, Ctrl-C aborts cleanly.
+At the notes review gate: **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in your editor, **`r`** regenerate, with an optional line of extra context for the AI. At a terminal each is a single keypress; with `--plain` or piped output, type the key and press Enter. Ctrl-C aborts. Notes the AI didn't write (`--notes-file`, `--no-ai`, the commit-subject list) get `y`, `n` and `e`, since there's no AI output for `r` to redo.
 
-`--notes-file P` releases a finished body you already hold: mint reads P once at startup (a relative path resolves against the directory you ran mint from; there is no stdin form) and ships its contents byte-identical as the notes, in place of every other body, first-release and empty-diff ones included. It makes no AI call, so the size cap, chunking, the dry-run cache and `on_notes_failure` never apply. An attended run still shows the body at the notes review gate first (`y`, `n`, `e`; no `r`, since there is no AI output to redo); `-y` accepts it unattended. P may sit in the repo, untracked or a tracked file with uncommitted edits: mint keeps it out of the clean-tree check, out of `--autostash`'s stash and out of every commit the release makes (the `pre_tag` artifact commit and the bookkeeping commit alike), and leaves it as it was, edits you had staged still staged and unstaged ones unstaged. Removing it afterwards is up to you.
-
-When the notes fail under `on_notes_failure = abort` (the default), whatever the cause (a failed call, a timeout, the AI tool not installed, chunking exhausted), an attended release is offered the commit-subject list, writing the notes in the editor, or an abort, while an unattended one stops with next moves fitted to the cause (`-y`). At the terminal, beneath the ✗ line, the AI's own output and the saved part-notes path where a file was written, a single keypress chooses: **`c`** releases with this release's commit-subject list (`git log --format=%s {lastTag}..HEAD`, leaving out mint's own answers commits, `chore(release): release-notes path answers for {tag}`; the maintenance-release body when no subject is left), **`e`** opens `$EDITOR` on the chunk notes this run saved, where it saved a file, and otherwise empty, **`a`** aborts (Enter also aborts). `e` edits a copy: the saved file keeps the chunk notes as the calls returned them, and an empty or whitespace-only body returns to the choice, as does an editor that cannot be launched. `c` and `e` take the body to the notes review gate as a non-AI body (`y`, `n`, `e`; no `r`), and the release goes on as usual. An abort, like an editor that fails or stdin closing at the choice, ends the run before any tag and unwinds what the run made, the `pre_tag` artifact commit included. A failed `r` at the review gate and a Ctrl-C during the notes abort without the choice.
-
-An unattended release that stops there asks nothing: beneath the ✗ line and the AI's own output it prints its next moves and exits `1` before any tag. They always name the `--notes-file` route: where the run saved chunk notes, tidy the saved notes at their path, filling in any files the marker lists, and release with `mint release --notes-file <path>`; where it saved none, write the notes and release with `--notes-file`. They also name `--no-ai`, for the commit-subject list, and `on_notes_failure = "fallback"` under `[release]`, to ship the commit-subject list rather than stop. An attended run gets the choice instead and prints none. A `--dry-run` asks nothing whatever the mode: it prints the next moves and exits `1`, leaving out `on_notes_failure = "fallback"` at a terminal without `-y`, since the real run there offers the choice, and the chunk notes it saved stay for the real run to release with `--notes-file` instead of calling the AI again. A stop on size adds the setting to change. Where the model rejected even the smallest parts, lower `max_prompt_bytes`, switch to the lean command (see [The shipped default](#the-shipped-default)) if your `ai_command` carries a large overhead of its own, or exclude generated paths with `[release].diff_exclude`. Where operator text left no room for the diff, shorten `[release].prompt` when it is set, since it replaces `context`, and `[release].context` otherwise; with neither set, the cap is below mint's own instructions, so raise `max_prompt_bytes`. Part notes too large to merge get only the moves above: a lower cap cuts the release into more parts and does not shrink what the merge holds. A timeout adds raise `[release].timeout`, which each AI call gets on its own, and a missing AI tool adds install it, or set `ai_command`. Any other failure leaves the AI's own output to name the cause, though where the release's `ai_command` is not the shipped default, the moves point at the lean command, for a command whose overhead alone can overflow the model's window.
-
-Under `on_notes_failure = "fallback"`, attended or not, there is no choice: the commit-subject list replaces the AI notes and the run goes on, with one warning that names the cause, with the AI's own output beneath it. Where the run saved chunk notes, the warning also names the file and both commands that release it: `mint release regenerate <version> --notes-file <path>`, which puts it on the version once this release is out, and `mint release --notes-file <path>`, for a run that ends before the push, such as an abort at the review gate. An attended run then shows the list at the review gate (`y`, `n`, `e`; no `r`). A `--dry-run` asks nothing and previews the list as the notes that would ship, with the same warning, except that a saved file is named with `mint release --notes-file <path>` only, since a dry run never puts the version out.
-
-Before the AI writes a release's notes, mint asks the AI which changed paths look like they don't belong in them: design documents, specs, test changes and other files about how the software is made rather than what it does. That call carries no diff, only the changed paths the notes diff carries, less any `[release].diff_keep` covers, each with its change and the size of its diff. Once that list would take more than a tenth of `max_prompt_bytes`, it condenses by folder, a folder's paths summed up as a count and a total diff size (`vendor/: 4,312 files, 38 MB`). The call runs with the release's `ai_command` and timeout, before the dry-run cache is consulted and before the size check. While it runs, the notes line reads `Checking for files that don't belong in the notes…`. `r` at the review gate never repeats it: the check asks about paths, not notes.
-
-The AI answers with suggested globs, each with a short reason, or `none`; it never excludes anything itself. An attended release then pauses once on each suggestion that matches a changed path nothing already covers, in the order the AI gave them, showing the glob and the AI's reason, then how many changed files the notes still carry that the glob matches, the total size of their diffs, and any of them on `[release].diff_keep` or kept earlier in the run, which an Exclude takes out too. A suggestion that matches no changed path, or only paths a `diff_exclude` level or `[release].diff_keep` already covers or earlier answers in the run already decide, gets no pause. At each pause a single keypress chooses: **`e`** excludes the glob's files from this release's notes, **`k`** keeps them (Enter also keeps), so no file leaves the notes without you choosing it. The answers are recorded once the last pause is answered: written to `.mint.toml`'s `[release]` table, an Exclude joining `diff_exclude` and a Keep joining `diff_keep`, and committed with the release as a commit of `.mint.toml` alone, `chore(release): release-notes path answers for {tag}` whatever `commit_prefix` says, which goes out with the release's push. One line says so before the notes are written. A later release, from this clone or any other once the push lands, reads them from the config, so it never asks about those paths again. Once recorded they survive an abort or failure before the push: the unwind takes everything else the run made and re-commits the answers on the starting commit. Where `.mint.toml` is untracked and a `.gitignore` rule matches it, the answers are written to it but neither staged nor committed, since that would take `git add -f` on a file you keep out of the repo: the line says they were not committed because git ignores the file, and the release goes on. Later releases from this clone read them; other clones are asked again. The write survives an abort or failure before the push, as an answers commit does. Ctrl-C at a pause cancels the run; stdin closing at one aborts it before any tag, unwinding what the run made, the `pre_tag` artifact commit included.
-
-When the check fails, because its call fails, times out or finds no AI tool, or because its answer is neither `none` nor yields one suggestion matching a changed path nothing already covers, or because the list of changed paths will not fit in `max_prompt_bytes` even condensed (then no call is made), mint warns `couldn't check for files that don't belong in the notes`, with the AI's output beneath it where there is any, and the release carries on to its notes with no suggestions: no pause, and nothing printed after the notes. A real AI problem then surfaces at the notes call, which runs the same command through the notes failure path above. A Ctrl-C during the check cancels the run.
-
-An unattended release (`-y`) pauses on nothing and excludes nothing: a flagged file stays in the diff and the notes read it like any other, and `.mint.toml` is left as it is. After the notes it prints each suggestion with the AI's reason, how many changed files it matches and the total size of their diffs, any of those files on `[release].diff_keep`, and the `[release].diff_exclude` line that would exclude it, to set under `[release]`. That line holds the entries the key holds now with the suggested glob appended, or the glob alone where the key is unset, so it replaces any existing line and keeps the earlier exclusions; each suggestion's line is worked out from the config as loaded, so it never carries another suggestion's glob. The suggestions print whatever the notes' outcome: after AI notes, beside the lower-the-cap hint; after the commit-subject list that `on_notes_failure = "fallback"` ships; and with the next moves when the run stops on a notes failure.
-
-A `--dry-run` asks nothing about the suggestions and writes nothing, so its notes read every flagged file. The suggestions follow the dry run's own mode, as the real run would show them: at a terminal without `-y` it shows each one where its pause would be, as the pause would show it, with no choice offered; an unattended dry run (`-y`, or stdin not a terminal) prints them as an unattended release does, `[release].diff_exclude` line included.
-
-A `--dry-run` generates and caches the notes (~1 hour); a real run within the window reuses the previewed bytes instead of calling the AI for the notes again.
-
-Notes of any size go through the AI. When the composed notes prompt (instructions, Change Map, diff and closing reminder) fits in `max_prompt_bytes` (default 1,500,000 bytes), mint makes one call. Over it, mint skips that call and **chunks** the notes: the diff's files are packed in path order into chunk calls that each fit the cap, every one carrying the release's instructions (the default prompt with `context`, or your `[release].prompt` override), the whole-release Change Map and which part it is; then exactly one merge call turns every part's notes into the release's notes. The merge output ships byte-identical, reaches the review gate as AI notes (`r` included), and is what the tag, changelog and provider release carry. Chunking has no setting and asks nothing. `release regenerate` from a fresh source chunks the same way, per version.
-
-When a notes call fails, whether the single-pass call, a chunk call or the merge call, mint asks what the failure means with one more call through the release's `ai_command`, carrying the failed call's own output. Only a generation failure whose AI output holds text on either stream is asked about: a timeout, a missing AI tool, empty output, a classify prompt over `max_prompt_bytes` and a classify call that fails all go straight to the notes failure path above. When the answer is SIZE, the model rejecting the call as too big for it, on the single-pass call or a chunk call, mint re-sends that slice of the diff as calls aimed at half the failed call's composed size (`too big for the model in one call, retrying in N parts`, or `part N was too big for the model, retrying it as M smaller parts`). A slice's rounds come one after another, each starting only once its call has answered SIZE, and at most three per slice; a further SIZE fails the slice, and the notes with it. The new parts still go out beside the run's other chunk calls, at most four in flight at once. SIZE on the merge call is a failed merge (part notes too large to merge), and any other answer goes to the notes failure path. When halving wrote the notes, mint then warns `set higher than this model accepts; set max_prompt_bytes = N, the largest call that succeeded` under `max_prompt_bytes`, the lower-the-cap hint, N being the exact size in bytes of the largest diff-carrying call that succeeded. Under `release regenerate --all` the hint prints once, at the end of the batch, however the batch ends. `r` at the review gate on chunked notes re-runs only the merge, over the part notes already written, with the one-time context line you give it: a change a part's notes missed is not re-read.
-
-When a chunked run fails, through a part that fails for good or a merge that fails, mint keeps the part notes that did finish in `{user cache dir}/mint/chunk-notes/{repo path, separators as dashes}/{tag}.md` (the user cache dir is `~/Library/Caches` on macOS, `~/.cache` on Linux), beside the dry-run cache but outside its pruning, so the file outlives the run. It holds each finished part's notes exactly as the AI wrote them, in part order, with a blank line between one part's notes and the next; notes from calls still running when the run failed are kept with the rest. When any part has no notes, the file opens with a marker line, then a blank line: `**Notes missing:** no notes were written for {files} — add them before releasing.` It lists every file with no notes, including files in parts that never started, and marks `(partly)` a file cut into pieces of which only some have notes. When every part finished and only the merge failed, the file carries no marker. The failure names the file's full path, and the file is written whatever `on_notes_failure` holds. A later failure for the same tag overwrites it. When the file cannot be written, or the user cache dir cannot be resolved, the failure stays the AI's and names no file, and mint warns that the finished chunk notes could not be saved, with the error beneath the warning. A run in which no part finished writes no file, nor does a failed single call that was never split into parts, and a Ctrl-C saves nothing. Tidy the notes, filling in the files the marker lists and removing the marker line, before releasing them with `--notes-file`: `mint release --notes-file <path>` while the version is not out, or `mint release regenerate <version> --notes-file <path>` once it is.
+Under `--no-ai` the notes are the commit subjects since the last tag (`git log --format=%s`), less mint's own answers commits. Without `--notes-file`, a first release ships `Initial release.` and a release whose diff is empty once exclusions are taken out ships `Maintenance release — no notable source changes`, with or without the AI.
 
 ```bash
 mint release                        # patch release, interactive
@@ -138,67 +136,80 @@ mint release -d                     # preview the full plan, change nothing
 mint release -y --notes-file /tmp/notes.md  # finished notes, no AI
 ```
 
+How mint writes notes for big releases, what it does with files that don't belong in the notes, and what happens when the AI fails are covered in [Release Notes in Depth](#release-notes-in-depth).
+
 ### `release regenerate`
 
-Regenerate the notes for an *existing* release and rewrite the chosen surface(s): the provider release body, `CHANGELOG.md`, or both. The **source** (where the notes come from) and the **target** (what gets written) are independent — any source can write any surface.
+Rewrites the notes of a release that's already out, on the GitHub release, in `CHANGELOG.md`, or both. Where the notes come from (the **source**) and what gets written (the **target**) are independent: any source can write any target.
 
 ```bash
 mint release regenerate <version> [options]
 mint release regenerate --all [options]
 ```
 
-| Flag | Description |
+| Flag | What it does |
 |---|---|
-| `--source SOURCE` | where notes come from: `fresh` (re-diff + AI, default), `tag` (annotation body), or `release` (existing provider release body) |
-| `--notes-file P` | notes source: the finished notes in file P (one version only) |
-| `--target SURFACE` | surface(s) to write: `release`, `changelog`, or `both` |
-| `--all` | regenerate every version, oldest → newest |
-| `-y, --yes` | skip the confirmation / per-version review gate |
+| `--source SOURCE` | where the notes come from: `fresh`, `tag` or `release` |
+| `--notes-file P` | take the notes from file P instead (one version only; can't be combined with `--source`) |
+| `--target SURFACE` | what to write: `release`, `changelog` or `both` |
+| `--all` | regenerate every version, oldest to newest |
+| `-y, --yes` | skip the questions and the review gate (needs `--target`) |
 | `--plain` | force plain (un-styled) output |
 
-The two axes are symmetric and independent: `--source` picks *where the notes come from*, `--target` picks *what gets written*. The `tag` and `release` sources run no AI — they read existing notes verbatim, which makes them a fast way to *backfill a `CHANGELOG.md`* from tags or releases you already have. `--source release` needs a resolvable provider (e.g. a GitHub origin). Under `-y` a `--target` is required (mint never guesses which live surface to rewrite unattended). In an `--all` run, a version with no usable source (a tag with no annotation, a release with no body, or a diff that fails AI generation) is skipped and reported — the other versions still land.
+| Source | Where the notes come from |
+|---|---|
+| `fresh` | the AI, from the version's diff against the version before it (the default) |
+| `tag` | the tag's annotation body, as it is; no AI |
+| `release` | the GitHub release's body, as it is; no AI |
+| `--notes-file P` | the finished notes in file P, written byte for byte; no AI |
 
-`--notes-file P` is a fourth notes source beside `fresh`, `tag` and `release`: the finished body in file P, such as notes you wrote by hand for an old version. It runs no AI. Giving it settles the source, so mint asks no source question; it reads P once at startup (a relative path resolves against the directory you ran mint from) and writes its contents byte-identical to the chosen target(s), the oldest version included. One file answers one version, so it serves `regenerate <version>` only. An attended run shows the body at the review gate first (`y` accept, `n` abort, `e` edit; no `r`, since there is no AI output to redo); an edit changes what is written, never P itself. On a `changelog` or `both` target, P may sit in the repo, untracked or a tracked file with uncommitted edits: mint keeps it out of the clean-tree check and the changelog commit, and leaves it as it was.
+| Target | What it writes |
+|---|---|
+| `release` | creates or updates the GitHub release, titled with the tag; no git changes |
+| `changelog` | rewrites the version's `CHANGELOG.md` entry, keeping its original release date, then commits (`docs(changelog): regenerate notes for v1.4.0`) and pushes it |
+| `both` | the changelog first, then the GitHub release; not atomic |
 
-A `fresh` regenerate whose chunked run fails saves its finished chunk notes exactly as a forward release does (see [`release`](#release)): to `{user cache dir}/mint/chunk-notes/{repo path, separators as dashes}/{tag}.md`, keyed by the version's own tag, with the same missing-notes marker, and with the same warning when the file cannot be written. A single-version run names the file's full path in its failure. Under `--all`, each failed version saves its own file and is skipped, its skip warning and its end-of-run summary entry naming that file with the version's own `mint release regenerate <version> --notes-file <path>`, and the batch carries on. A version whose single call failed, or whose run finished no part, saves no file. Tidy a saved file, then put it on its version with `mint release regenerate <version> --notes-file <path>`, one version at a time.
+The `tag` and `release` sources make a fast way to backfill a `CHANGELOG.md` from tags or releases you already have. A tag's annotation body is the message below its subject line, so a one-line tag message counts as no body. `--source release` needs a GitHub remote. The version can be given with or without the tag prefix (`1.4.0` or `v1.4.0`).
 
-Regenerate does not read `on_notes_failure`: `fallback` is release's alone, so a regenerate never ships the commit-subject list over a version's notes on its own. When the notes of an attended `regenerate <version>` from a `fresh` source fail, whatever `on_notes_failure` holds and whatever the cause, mint shows the ✗ line, the AI's own output and the saved part-notes path where a file was written, then a single keypress chooses: **`c`** the version's commit subjects (`git log --format=%s {previous tag}..{tag}`, leaving out the version's own release bookkeeping commit, the `Release {tag}` commit the tag sits on, under whatever `commit_prefix` it was released with, and mint's own answers commits, so the list is the one its release would have shipped; a range with no other commit gives the maintenance-release body), **`e`** writes the notes in `$EDITOR`, opening on the chunk notes this run saved, where it saved a file, and otherwise empty, **`a`** aborts (Enter also aborts). `e` edits a copy: the saved file keeps the chunk notes as the calls returned them, and an empty or whitespace-only body returns to the choice, as does an editor that cannot be launched; an editor that fails aborts. `c` and `e` take the body to the review gate (`y`, `n`, `e`; no `r`, since there is no AI output to redo), and the run writes it as usual. An abort writes nothing to any target and exits `1`. A failed `r` at the review gate and a Ctrl-C during the notes abort without the choice. An unattended one (`-y`, or stdin not a terminal) asks nothing and writes nothing: beneath the ✗ line and the AI's own output it prints next moves for putting notes on the version, then exits `1`. They name the `--notes-file` route: where the run saved chunk notes, tidy the saved notes at their path, filling in any files the marker lists, and release with `mint release regenerate <version> --notes-file <path>`; where it saved none, write the notes and release with `--notes-file`. The moves that clear the cause follow, as on a release, naming the same `[release]` keys (a timeout adds raise `[release].timeout`). There is no `--no-ai` or `on_notes_failure = "fallback"` move: both are the forward release's. Under `--all`, a version whose notes fail is skipped instead, whatever the mode: its skip warning names the cause as the ✗ line would, with the AI's own output beneath it, and its entry in the end-of-run summary names the same cause.
+Without `--source` or `--target`, an attended run asks for them (`Source?`, then `Target?`): type the answer and press Enter, or press Enter alone for `fresh` and `release`. Under `-y` a `--target` is required, since mint never guesses which live surface to rewrite unattended. An attended run shows the notes at the review gate before writing: `y`, `n`, `e` and `r` for fresh notes, `y` and `n` for a tag or release body, `y`, `n` and `e` for a `--notes-file` body. An edit changes what's written, never the file itself.
 
-Targets differ in what they touch: a `changelog` (or `both`) target **commits `CHANGELOG.md` and pushes it**; a `release` target updates the provider release in place with **no git changes**. Regenerated changelog entries keep each version's *original* release date, not today's. `both` is non-atomic — the changelog is committed and pushed first, then the provider release. There are only two surfaces, so `both` is how you write more than one; there is no partial multi-select beyond `release`, `changelog`, or `both`.
+Before writing, a `changelog` target checks the tree is clean, you're on the release branch and in sync with `origin`; a `release` target checks `gh` is signed in. No hooks run. A `fresh` source reads the shared and `[release]` `diff_exclude` lists and `[release]`'s `ai_command` and `timeout`. The oldest version has nothing to diff against, so `fresh` gives it `Initial release.`; a `--notes-file` body is the way to give it real notes. Regenerate has no `--dry-run` and never runs the exclusion check. With a `changelog` or `both` target, `--notes-file` P may sit in the repo, untracked or with uncommitted edits: mint keeps it out of the clean-tree check and the changelog commit, and leaves it as it was.
 
 ```bash
-mint release regenerate 1.4.0                                    # interactive: asks source then target
-mint release regenerate v1.4.0 --source tag                     # tag body → GitHub release, no AI
-mint release regenerate --all --source tag --target changelog   # build the whole changelog from tag annotations
-mint release regenerate --all --source release --target changelog # …or from the published GitHub releases
-mint release regenerate --all --source fresh --target both      # re-diff every version, rewrite releases + changelog
+mint release regenerate 1.4.0                                    # interactive: asks source, then target
+mint release regenerate 1.4.0 --source tag --target release      # tag body → GitHub release, no AI
+mint release regenerate --all --source tag --target changelog    # build the whole changelog from tag annotations
+mint release regenerate --all --source release --target changelog  # …or from the published GitHub releases
+mint release regenerate --all --source fresh --target both       # re-diff every version, rewrite releases + changelog
 mint release regenerate 1.4.0 --notes-file notes.md --target both -y  # finished notes, no AI
 ```
 
+What `--all` does with versions it can't regenerate, and how it rebuilds `CHANGELOG.md`, is covered in [Regenerating every version](#regenerating-every-version).
+
 ### `commit`
 
-Mint an AI-generated Conventional Commits message from the would-be-committed diff, review it at the gate, and create the commit. Nothing is staged or committed until you accept; a decline leaves the index byte-for-byte untouched.
+Writes an AI Conventional Commits message from the diff you'd commit, shows it at the review gate, and commits when you accept. The diff is the index as staged, or with `-a`/`-A` the changes those flags will stage. Nothing is staged or committed until you accept, so declining leaves the index exactly as it was.
 
 ```bash
 mint commit [-a | -A] [-p] [-y] [--no-ai] [--plain]
 ```
 
-| Flag | Description |
+| Flag | What it does |
 |---|---|
 | `-a, --all` | stage tracked changes at accept (`git commit -a` semantics) |
-| `-A, --add-all` | stage everything incl. untracked at accept (`git add -A`) |
-| `-p, --push` | push after a successful commit (mint never pushes without this flag) |
-| `-y, --yes` | auto-accept the review gate |
-| `--no-ai` | skip AI generation; write the message in `$EDITOR` |
+| `-A, --add-all` | stage everything, untracked files included, at accept (`git add -A`) |
+| `-p, --push` | push after the commit (mint never pushes without it) |
+| `-y, --yes` | accept the message without asking |
+| `--no-ai` | skip the AI; write the message in your editor |
 | `--plain` | force plain (un-styled) output |
 
-Short flags bundle: `-Ap`, `-Apy`, `-ay` all work.
+Short flags bundle: `-Ap`, `-Apy` and `-ay` all work. `-a` and `-A` can't be combined, since `-A` already covers `-a`.
 
-At the gate, a single keypress (no Enter needed): **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in `$EDITOR` (loops back to the gate), **`r`** regenerate with a one-time context line, Ctrl-C aborts cleanly.
+At the gate: **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in your editor (back to the gate after), **`r`** regenerate, with an optional line of extra context. At a terminal each is a single keypress; with `--plain` or piped output, type the key and press Enter. Ctrl-C aborts.
 
-When the AI can't produce a message (`--no-ai`, a transport failure, or a composed prompt over `max_prompt_bytes`), mint opens `$EDITOR` (resolved via git's own chain: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`) and the save becomes the accept. Unattended runs with no message source fail loud instead.
+When there's no AI message to show (`--no-ai`, a failed or timed-out AI call, a prompt over `max_prompt_bytes`, a diff that `diff_exclude` empties, or a failed `r`), mint opens your editor on an empty message, and saving it is the accept. An empty save aborts. The editor is git's: `GIT_EDITOR`, `core.editor`, `$VISUAL`, `$EDITOR`, then `vi`. An unattended run with no message to commit fails instead.
 
-A failed `-p` push never unwinds the commit: mint warns once with git's own stderr passed through verbatim, keeps the commit, and exits non-zero.
+`-p` runs a plain `git push` after the commit. If the push fails, mint keeps the commit, shows git's own error, and exits `1`.
 
 ```bash
 mint commit                # commit the index as staged
@@ -207,17 +218,128 @@ mint commit -Ap            # stage everything, commit, push
 mint commit --no-ai        # skip the AI, write it yourself
 ```
 
+### `setup`
+
+Prints a setup guide for an AI agent to follow: what mint does, every config key with its default, and a procedure for inspecting your project and proposing a `.mint.toml`. It matches the installed version, takes no flags beyond `--help`, and runs anywhere, no repo needed. See [Setup](#setup).
+
 ### `version`
 
-Print mint's own version. `mint --version` is equivalent.
+Prints mint's own version. `mint --version` does the same.
 
 ### `help`
 
-`mint help` lists the commands; every verb also takes `-h`/`--help`.
+`mint help` (or `-h`, `--help`) lists the commands, and `mint <command> --help` shows a command's flags.
+
+## Release Notes in Depth
+
+### Big releases
+
+When the notes prompt (mint's instructions, the Change Map summarising every changed file, the diff and a closing reminder) fits in `max_prompt_bytes` (default 1,500,000 bytes), mint makes one call. Over it, mint skips that call and writes the notes in parts. The diff's files are packed, in path order, into calls that each fit the cap, and a file too big for one part is cut into pieces of its own. Every part's call carries the release's instructions (the default prompt with `[release].context`, or your `[release].prompt`), the whole release's Change Map, and which part it is. One merge call then turns the parts' notes into the release's notes. There's no setting for this and nothing to answer, and `release regenerate` from a fresh source does the same, per version.
+
+The merged notes ship byte for byte and reach the review gate as AI notes. `r` there re-runs only the merge, over the part notes already written, with the line of context you give it: a change a part's notes missed isn't read again.
+
+A model can have a limit of its own below `max_prompt_bytes`. When a notes call fails and the AI tool printed something, mint asks the AI, in one more call carrying that output, whether the failure means the call was too big for the model. If it does, mint retries that slice of the diff as calls half the size (`too big for the model in one call, retrying in 2 parts`, or `part 2 was too big for the model, retrying it as 2 smaller parts`), up to three times per slice. When the smaller calls wrote the notes, mint warns with a cap the model accepts:
+
+```text
+set higher than this model accepts; set max_prompt_bytes = 612000, the largest call that succeeded
+```
+
+Under `release regenerate --all` that warning prints once, at the end of the batch. A merge call the model rejects, a timeout, a missing AI tool, or any other failure goes to [When the notes fail](#when-the-notes-fail).
+
+### Files that don't belong in the notes
+
+Before the AI writes a release's notes, mint asks the AI which changed paths look like they don't belong in them: design documents, specs, test changes and other files about how the software is made rather than what it does. The call carries no diff, only the changed paths the notes diff carries, less any `[release].diff_keep` covers, each with its kind of change and the size of its diff. A list that would take more than a tenth of `max_prompt_bytes` is summed up by top-level folder (`vendor/: 4,312 files, 38 MB`). The call runs with the release's `ai_command` and timeout, and with mint's own prompt: `[release].context` and `[release].prompt` don't reach it. While it runs, the notes line reads `Checking for files that don't belong in the notes…`. It runs once per release, so `r` at the review gate never repeats it: the check asks about paths, not notes. It doesn't run for `--notes-file`, `--no-ai`, a first release or an empty diff, and `release regenerate` never runs it.
+
+The AI answers with suggested globs, each with a short reason, or `none`. It never excludes anything itself.
+
+**At a terminal**, an attended release then pauses once on each suggestion that matches a changed path nothing already covers, in the order the AI gave them. Each pause shows the glob and the AI's reason, how many changed files the notes still carry that it matches, the total size of their diffs, and any of them on `[release].diff_keep` or kept earlier in the run, which an Exclude takes out too. A suggestion that only matches files already excluded, kept, or decided earlier in the run gets no pause. Press **`e`** to exclude the glob's files from this release's notes, or **`k`** to keep them (Enter also keeps), so no file leaves the notes unless you choose it.
+
+Once the last pause is answered, mint records the answers in `.mint.toml`'s `[release]` table, an Exclude joining `diff_exclude` and a Keep joining `diff_keep`, and keeps the file's comments and layout as they were. It commits `.mint.toml` alone as `chore(release): release-notes path answers for {tag}`, whatever `commit_prefix` says, and one line says so before the notes are written. The commit goes out with the release's push, so later releases from any clone read the answers and never ask about those paths again. Recorded answers survive an abort or a failure before the push: the unwind takes everything else the run made and re-commits the answers on the commit you started from. Where `.mint.toml` is untracked and git ignores it, mint writes the answers but neither stages nor commits them, since that would take `git add -f` on a file you keep out of the repo, and the line says so. Later releases from this clone read them; other clones are asked again.
+
+Ctrl-C, or stdin closing, at a pause aborts the release before any tag and unwinds what the run made, the `pre_tag` artifact commit included. Nothing is recorded until the last pause is answered.
+
+**Unattended** (`-y`), a release pauses on nothing and excludes nothing: flagged files stay in the diff, the notes read them like any other, and `.mint.toml` is left as it is. After the notes, mint prints each suggestion with the AI's reason, how many changed files it matches and the total size of their diffs, any of those files on `[release].diff_keep`, and the `diff_exclude` line that would exclude it, to set under `[release]`. That line holds the key's current entries with the suggested glob appended, so it replaces the existing line and keeps the earlier exclusions. The suggestions print whatever happens to the notes, including when the run stops on a notes failure.
+
+**A `--dry-run`** asks nothing about the suggestions and writes nothing, so its notes read every flagged file. At a terminal without `-y` it shows each suggestion as a pause would, without asking; an unattended dry run (`-y`, or stdin not a terminal) prints them as an unattended release does, `diff_exclude` line included.
+
+When the check fails, because its call fails, times out or finds no AI tool, because its answer can't be read, or because the list of changed paths won't fit in `max_prompt_bytes` even summed up (then no call is made), mint warns `couldn't check for files that don't belong in the notes`, with the AI's output beneath it where there is any, and the release carries on to its notes with no suggestions. A real AI problem then shows up at the notes call. Ctrl-C during the check cancels the run.
+
+### When the notes fail
+
+What happens when the AI can't write a release's notes, whatever the cause (a failed call, a timeout, the AI tool not installed, a release too big even in parts), depends on `[release].on_notes_failure`.
+
+**Under `abort`** (the default), an attended release is offered the commit-subject list, writing the notes in the editor, or an abort, while an unattended one stops with next moves fitted to the cause. At a terminal mint shows the ✗ line, the AI's own output and, where it saved any, the path of the [saved part notes](#saved-part-notes), then asks `Release without AI notes?`:
+
+- **`c`** releases with the commit subjects since the last tag, less mint's own answers commits (the maintenance-release body when none are left).
+- **`e`** opens your editor on the chunk notes this run saved, where it saved a file, and otherwise empty. You edit a copy: the saved file keeps the notes as the AI wrote them. An empty or whitespace-only body returns to the choice, as does an editor that can't be launched.
+- **`a`** aborts (Enter also aborts).
+
+`c` and `e` take the body to the review gate (`y`, `n`, `e`; no `r`), and the release goes on as usual. An abort, an editor that fails, or stdin closing at the choice ends the run before any tag and unwinds what it made, the `pre_tag` artifact commit included. A failed `r` at the review gate and a Ctrl-C during the notes abort without the choice.
+
+An unattended release (`-y`) asks nothing. Beneath the ✗ line and the AI's output it prints its next moves, unwinds, and exits `1` before any tag. The moves always include:
+
+- the `--notes-file` route: where the run saved part notes, tidy them and release with `mint release --notes-file <path>`; where it saved none, write the notes and release with `--notes-file`
+- `--no-ai`, to release with the commit-subject list
+- `on_notes_failure = "fallback"` under `[release]`, to ship the commit-subject list instead of stopping
+
+Then the moves that clear the cause:
+
+| Cause | Next moves |
+|---|---|
+| The model rejected even the smallest parts | Lower `max_prompt_bytes`; use the lean command (see [The shipped default](#the-shipped-default)) if your `ai_command` carries a large overhead of its own; exclude generated paths with `[release].diff_exclude` |
+| Mint's prompt left no room for the diff | Shorten `[release].prompt` when it's set (it replaces `context`), else `[release].context`; with neither set, the cap is below mint's own instructions, so raise `max_prompt_bytes` |
+| Part notes too large to merge | None beyond the three above: a lower cap cuts the release into more parts and doesn't shrink what the merge holds |
+| Timeout | Raise `[release].timeout`, which each AI call gets on its own |
+| AI tool missing | Install it, or set `ai_command` |
+| Anything else | The AI's own output names the cause; where the release's `ai_command` isn't the shipped default, the moves also point at the lean command, for a command whose overhead alone can overflow the model's window |
+
+A `--dry-run` asks nothing in any mode: it prints the next moves and exits `1`. At a terminal without `-y` it leaves out the `on_notes_failure = "fallback"` move, since the real run there offers the choice. Part notes it saved stay for the real run to release with `--notes-file` instead of calling the AI again.
+
+**Under `fallback`**, attended or not, there's no choice: the commit-subject list replaces the AI notes and the run goes on, with a warning that names the cause and the AI's output beneath it. Where the run saved part notes, the warning names the file and both commands that release it: `mint release regenerate <version> --notes-file <path>`, which puts them on the version once this release is out, and `mint release --notes-file <path>`, for a run that ends before the push, such as an abort at the review gate. An attended run then shows the list at the review gate (`y`, `n`, `e`). A `--dry-run` previews the list as the notes that would ship, with the same warning, naming a saved file with `mint release --notes-file <path>` only.
+
+**`release regenerate` doesn't read `on_notes_failure`**, so it never ships the commit-subject list over a version's notes on its own. When the notes of an attended `regenerate <version>` from a `fresh` source fail, mint shows the ✗ line, the AI's output and any saved part-notes path, then asks `Regenerate without AI notes?` with the same keys: **`c`** the version's commit subjects (less its own `Release` commit and mint's answers commits, so the list is the one its release would have shipped), **`e`** the editor, opening on any saved part notes, **`a`** abort (Enter also aborts). An abort writes nothing and exits `1`. Unattended (`-y`, or stdin not a terminal), it asks nothing, writes nothing, and prints next moves: the `--notes-file` route, with `mint release regenerate <version> --notes-file <path>`, and the same moves for the cause as a release. There's no `--no-ai` or `fallback` move: both belong to the forward release. Under `--all`, a version whose notes fail is skipped instead (see [Regenerating every version](#regenerating-every-version)).
+
+### Saved part notes
+
+When a release written in parts fails, through a part that fails for good or a merge that fails, mint keeps the part notes that finished in:
+
+```text
+{user cache dir}/mint/chunk-notes/{repo path, separators as dashes}/{tag}.md
+```
+
+The user cache dir is `~/Library/Caches` on macOS, and `$XDG_CACHE_HOME` (else `~/.cache`) on Linux. The file sits beside the dry-run cache but outside its pruning, so it outlives the run. It holds each finished part's notes exactly as the AI wrote them, in part order, a blank line between one part's notes and the next. When any part has no notes, the file opens with a marker line listing every file without notes, files in parts that never started included, and marking `(partly)` a file cut into pieces of which only some have notes:
+
+```markdown
+**Notes missing:** no notes were written for `api/a.go` (partly), `api/b.go` — add them before releasing.
+```
+
+When every part finished and only the merge failed, there's no marker. The failure names the file's full path, the file is written whatever `on_notes_failure` says, and a later failure for the same tag overwrites it. Nothing is saved when no part finished, when the notes were one call that was never split, or on Ctrl-C. A failed `r` on part notes saves them too. When the file can't be written, mint warns that the finished chunk notes could not be saved, with the error beneath, and the failure names no file.
+
+To release a saved file, fill in the files the marker lists, delete the marker line, then release it with `--notes-file`: `mint release --notes-file <path>` while the version isn't out, or `mint release regenerate <version> --notes-file <path>` once it is. Mint doesn't check for the marker: a file that still has it ships with it.
+
+A `fresh` regenerate saves its part notes the same way, keyed by the version's own tag.
+
+### Finished notes with `--notes-file`
+
+`--notes-file P` releases a finished body you already hold. Mint reads P once at startup (a relative path resolves against the directory you ran mint from; there's no stdin form) and ships its contents byte for byte as the notes, in place of every other body, first-release and empty-diff ones included. An empty file is refused. There's no AI call, so the size cap, parts, the exclusion check, the dry-run cache and `on_notes_failure` never apply. An attended run still shows the body at the review gate (`y`, `n`, `e`); `-y` accepts it.
+
+P may sit in the repo, untracked or a tracked file with uncommitted edits. Mint keeps it out of the clean-tree check, out of `--autostash`'s stash and out of every commit the release makes (the `pre_tag` artifact commit and the bookkeeping commit alike), and leaves it as it was: edits you had staged stay staged, unstaged ones unstaged. Removing it afterwards is up to you.
+
+### Dry runs and cached notes
+
+`-d` runs the release up to the review gate without changing the repo. It fetches tags and calls the AI (the exclusion check and the notes), but runs no hooks, asks nothing, and makes no commit, stash or tag; then it prints the plan and the notes that would ship. With `--autostash` it previews a dirty tree without stashing; without it, a dirty tree fails the clean-tree check as a real run would.
+
+The previewed notes are cached for an hour, outside the repo. A real run within the hour whose diff, version and prompt match asks `Cached notes found for this diff — use them?` (`y` uses them, `r` writes new ones; `-y` uses them) instead of calling the AI for the notes again. A real run that stops before the push leaves its notes cached the same way. Since a dry run skips the hooks, a `pre_tag` that changes files, or an Exclude you answer in the real run, changes the diff, and the real run writes fresh notes.
+
+### Regenerating every version
+
+`release regenerate --all` regenerates every version, oldest to newest: every tag that matches `tag_prefix` followed by a plain `X.Y.Z`. A version with no usable notes (a tag with no annotation body, a release with no body, or notes the AI couldn't write) is skipped with a warning naming the cause, and the other versions still land. A skipped `fresh` version whose part notes were saved names the file and its own `mint release regenerate <version> --notes-file <path>`. The end-of-run summary lists every skip, and the run exits `0`. Declining a version at the review gate, a failed GitHub write, or Ctrl-C ends the batch there.
+
+With a `changelog` or `both` target, `--all` rebuilds `CHANGELOG.md` whole, then commits (`docs(changelog): regenerate release notes`) and pushes it once, at the end: the standard Keep a Changelog preamble, then one entry per version, newest first, each with its original release date. A custom preamble, and entries for anything that isn't a release tag (such as `## [Unreleased]`), are dropped; a skipped version keeps the entry it had. With `both`, each version's GitHub release is written as the batch goes, and the changelog last.
 
 ## Configuration
 
-`mint init` writes a **minimal** `.mint.toml` at the repo root: an empty body plus a short header comment that points to the GitHub docs (this human config reference) and to `mint setup` (AI-assisted setup). The file is fully optional — every key has a compiled default, so an empty file is valid and changes nothing; add a key only to set a value that differs from its default.
+`mint init` writes a **minimal** `.mint.toml` at the repo root: an empty body under a short header that points to this README and to `mint setup`. The file is optional: every key has a compiled default, so an empty file is valid and changes nothing. Add a key only to set a value that differs from its default.
 
 ```toml
 # .mint.toml — mint configuration. This file is fully OPTIONAL: every default is
@@ -228,36 +350,38 @@ Print mint's own version. `mint --version` is equivalent.
 # AI-assisted setup (inspects your project and proposes config): run `mint setup`
 ```
 
-The per-key reference tables below are the authoritative human config reference — every key, its level, and its default.
+The tables below are the config reference: every key, its level, and its default. Unknown keys and mistyped values fail at load, so a typo never goes unnoticed.
 
 ### Shared engine keys
 
-`ai_command` and `timeout` live at **both** the shared (top) level and per-verb (`[release]` / `[commit]`). `max_prompt_bytes` is shared-only. `diff_exclude` has a shared list plus a `[release]` and a `[commit]` list, and each verb's list adds to the shared one rather than replacing it. Each of `ai_command` and `timeout` resolves per-key independently through `[verb].<key>` → top-level shared `<key>` → shipped default — so a verb override repoints only that key for that verb, and an unset override falls through to the shared value, then to the compiled default.
+`ai_command` and `timeout` live at **both** the shared (top) level and per verb (`[release]`, `[commit]`). `max_prompt_bytes` is shared-only. `diff_exclude` has a shared list plus a `[release]` and a `[commit]` list, and each verb's list adds to the shared one rather than replacing it. `ai_command` and `timeout` each resolve on their own, `[verb]` → shared → shipped default, so a verb override repoints only that key for that verb, and an unset override falls through to the shared value, then to the default.
 
 | Key | Default | Description |
 |---|---|---|
-| `ai_command` | `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
-| `timeout` | `180` on release, `60` on commit | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
-| `max_prompt_bytes` | `1500000` | cap, in bytes, on the composed prompt of any single AI call: instructions, Change Map, diff and closing reminder together; no call mint makes is bigger. Must be positive — `0` is rejected, never "no cap" |
+| `ai_command` | `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."` | the AI invocation: prompt on stdin, message on stdout; split into program and arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); a blank value counts as unset |
+| `timeout` | `180` on release, `60` on commit | per-attempt AI deadline in seconds; `0` means no limit; a negative value counts as unset. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
+| `max_prompt_bytes` | `1500000` | cap, in bytes, on the composed prompt of any single AI call: no call mint makes is bigger. Must be positive: `0` is rejected, never "no cap" |
 | `diff_exclude` | `[]` | pathspec globs kept out of every AI diff: what neither release notes nor commit messages should read (lockfiles, build output) |
+
+The release-notes diff always leaves out `CHANGELOG.md`, `.mint.toml`, and `version_file` when it holds nothing but the version (no `version_pattern`). Commit messages read all three.
 
 ### `[release]`
 
 | Key | Default | Description |
 |---|---|---|
 | `tag_prefix` | `v` | tag name prefix (`v1.4.0`) |
-| `commit_prefix` | `🌿` | brand prefix on mint's bookkeeping commit |
-| `release_branch` | auto | branch releases must run on (default: derived from `origin/HEAD`) |
-| `publish` | `true` | create the provider (GitHub) release |
+| `commit_prefix` | `🌿` | brand prefix on mint's bookkeeping commit and the tag message |
+| `release_branch` | auto | branch releases must run on (default: derived from `origin/HEAD`; set it where that isn't set) |
+| `publish` | `true` | create the GitHub release; `false` stops at tag and push |
 | `changelog` | `true` | maintain `CHANGELOG.md` |
-| `provider` | auto | publishing driver (default: detected from the remote host) |
-| `context` | | project guidance injected into the notes prompt |
-| `prompt` | | path to a full notes-prompt override file |
-| `on_notes_failure` | `abort` | `abort` fails loud: an attended release is offered the commit-subject list, writing the notes in the editor, or an abort, while an unattended one stops (`-y`); `fallback` ships the commit-subject list (the maintenance-release body when it is empty) |
+| `provider` | auto | publishing driver (default: detected from the remote host); an unsupported value skips publishing with a warning |
+| `context` | | project guidance added to the notes prompt: the text itself, or the path of a file under the repo root |
+| `prompt` | | path, from the repo root, to a file that replaces the notes prompt; `context` is then ignored |
+| `on_notes_failure` | `abort` | `abort` fails loud: an attended release is offered the commit-subject list, writing the notes in the editor, or an abort, while an unattended one stops (`-y`); `fallback` ships the commit-subject list (the maintenance-release body when it is empty). See [When the notes fail](#when-the-notes-fail) |
 | `version_file` | | write the new version into this file (omit = tag-only release) |
-| `version_pattern` | | line to replace inside `version_file` (omit = the whole file is the version) |
-| `ai_command` | shared | optional per-verb override of the AI command for `release` only; resolves `[release]` → shared → default |
-| `timeout` | shared, else `180` | optional per-verb override of the per-attempt AI deadline (seconds) for `release` only; resolves `[release]` → shared → default |
+| `version_pattern` | | the line inside `version_file` to rewrite, with `{version}` where the version sits (`VERSION = "{version}"`); a pattern that matches nothing aborts the release before the tag (omit = the whole file is the version) |
+| `ai_command` | shared | override of the AI command for every release AI call and regenerate's `fresh` source; resolves `[release]` → shared → default |
+| `timeout` | shared, else `180` | override of the per-attempt AI deadline (seconds) for release and regenerate; resolves `[release]` → shared → default |
 | `diff_exclude` | `[]` | pathspec globs kept out of the release-notes diff only, added to the shared `diff_exclude` list; commit messages still read these paths (`.workflows/`, `.claude/`, `docs/`) |
 | `diff_keep` | `[]` | pathspec globs whose paths the exclusion check never raises; they add nothing to the release-notes diff and never override an exclusion, so a path both kept and excluded stays out of the notes |
 
@@ -265,38 +389,55 @@ The per-key reference tables below are the authoritative human config reference 
 
 | Hook | Runs |
 |---|---|
-| `preflight` | before any release work; failure aborts |
-| `pre_tag` | after notes, before the tag (string or array of commands) |
-| `post_release` | after the release is published |
+| `preflight` | after mint's own repo checks, before any commit; failure aborts the release |
+| `pre_tag` | after preflight, before the notes, changelog and tag; whatever it leaves in the tree is committed as `chore(release): pre-tag artifacts for {tag}` |
+| `post_release` | after the push lands, whether or not a GitHub release was created; failure warns, with the hook's stderr, and keeps the release |
+
+Each hook takes a command or an array of commands, run in order from the repo root through `sh -c`, stopping at the first that fails. Every hook gets `MINT_NEW_VERSION` (`1.4.1`), `MINT_PREVIOUS_VERSION` (`1.4.0`, or `0.0.0` on a first release), `MINT_VERSION_TAG` (`v1.4.1`), `MINT_BUMP` (`patch`, `minor`, `major` or `explicit`) and `MINT_DRY_RUN` in its environment. A `--dry-run` runs no hooks and says which it skipped.
+
+`pre_tag` runs before the notes, so the notes read the tree it leaves: its artifact commit is in the notes diff, and its subject is in the commit-subject list. It runs before the changelog and version file are updated, so it sees the previous version there (the new one is in `MINT_NEW_VERSION`). Files git ignores are never committed. A failing `pre_tag` leaves what it wrote in the tree for you to clean up.
+
+```toml
+[release.hooks]
+pre_tag = ["npm ci", "npm run build", "npm test"]
+post_release = "./scripts/announce.sh"
+```
 
 ### `[commit]`
 
 | Key | Default | Description |
 |---|---|---|
-| `context` | | project guidance injected into the commit-message prompt |
-| `prompt` | | path to a full commit-prompt override file |
-| `ai_command` | shared | optional per-verb override of the AI command for `commit` only; resolves `[commit]` → shared → default |
-| `timeout` | shared, else `60` | optional per-verb override of the per-attempt AI deadline (seconds) for `commit` only; resolves `[commit]` → shared → default |
+| `context` | | project guidance added to the commit-message prompt (text only) |
+| `prompt` | | path, from the repo root, to a file that replaces the commit-message prompt; `context` is then ignored |
+| `ai_command` | shared | override of the AI command for `commit` only; resolves `[commit]` → shared → default |
+| `timeout` | shared, else `60` | override of the per-attempt AI deadline (seconds) for `commit` only; resolves `[commit]` → shared → default |
 | `diff_exclude` | `[]` | pathspec globs kept out of the commit-message diff only, added to the shared `diff_exclude` list; release notes still read these paths |
 
-Both verbs share the two-knob model: `context` *injects into* the default prompt; `prompt` *replaces* it. Unknown or mistyped keys fail loud at load; mint never silently ignores config.
+Both verbs share the two-knob model: `context` *adds to* the default prompt; `prompt` *replaces* it.
+
+### Upgrading
+
+Two keys have gone, and naming either fails at load with a message saying what replaced it:
+
+- `max_diff_lines` is replaced by `max_prompt_bytes`, a per-call size cap in bytes.
+- `[release].fallback` is gone: every non-AI body is now the commit-subject list. Hand-written notes go in with `--notes-file`.
 
 ## The AI Transport
 
-Mint owns the prompt; the command is just transport. `ai_command` is any executable that reads a finished prompt on **stdin** and writes the message body to **stdout**:
+Mint owns the prompt; the command is only the transport. `ai_command` is any executable that reads a finished prompt on **stdin** and writes the message body to **stdout**:
 
 ```toml
 ai_command = 'claude -p --model opus'          # a different model, without the lean flags
 ai_command = 'llm -m gpt-4o'                   # any CLI with the same stdin/stdout contract
 ```
 
-Both `ai_command` and `timeout` can be set shared (top-level) or per-verb under `[release]` / `[commit]`, each resolving `[verb]` → shared → default.
+Both `ai_command` and `timeout` can be set shared (top-level) or per verb under `[release]` and `[commit]`, each resolving `[verb]` → shared → default.
 
-The transport applies a per-attempt deadline — `timeout` seconds, default `180` for release and `60` for commit — retries bad output (empty/non-zero exit) exactly once, and routes failures by cause: a release's failed notes call reaches `on_notes_failure` only once classification and halving (see [`release`](#release)) have not written the notes; commit drops to the `$EDITOR` fallback. A timeout is **fatal**: it is reported immediately and never retried (the single retry covers bad *content* only). A Ctrl-C is a clean abort, never a retry.
+Each call gets a per-attempt deadline: `timeout` seconds, default `180` for release and `60` for commit. Bad output (empty or whitespace-only, or a non-zero exit) is retried exactly once. A timeout or a missing AI tool is never retried, since the retry covers bad *content* only, and a Ctrl-C is a clean abort, never a retry. A failure then takes its verb's path: a release's notes go to [When the notes fail](#when-the-notes-fail) unless smaller parts wrote them (see [Big releases](#big-releases)); a commit opens your editor.
 
-Setting `timeout = 0` disables the per-attempt deadline entirely: the AI call then runs **unbounded**. This is a deliberate, operator-chosen exception to mint's "fail loud, never hang" posture — you are opting a slow command into an open-ended run and you own that trade-off.
+Setting `timeout = 0` turns the deadline off: the call runs **unbounded**. This is a deliberate, operator-chosen exception to mint's "fail loud, never hang" posture: you opt a slow command into an open-ended run and own that trade-off.
 
-`ai_command` and `timeout` resolve independently per verb, so overriding one does **not** touch the other. If you pin a slower model for a verb, raise that verb's `timeout` in the **same** `[release]` / `[commit]` table — mint does **not** auto-bump the timeout, warn, or require the pair, so a slow command left under its default (`180` for release, `60` for commit) will hit the fatal per-attempt deadline. Overriding both keys together for a slow verb is the supported pattern; it is your responsibility, not enforced.
+`ai_command` and `timeout` resolve independently, so overriding one doesn't touch the other. If you pin a slower model for a verb, raise that verb's `timeout` in the **same** `[release]` or `[commit]` table. Mint doesn't bump the timeout, warn, or require the pair, so a slow command left under its default (`180` for release, `60` for commit) will hit the deadline.
 
 ### The shipped default
 
@@ -308,35 +449,35 @@ claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session
 
 An `ai_command` you set replaces this command whole, lean flags included: to change only the model, copy it and edit `--model`.
 
-It is Claude Code in lean form, so a call carries mint's prompt and nothing else:
+It's Claude Code in lean form, so a call carries mint's prompt and nothing else:
 
-- `--model sonnet` pins the model, by alias, so zero-config behaviour does not depend on the model your Claude CLI happens to default to.
+- `--model sonnet` pins the model, by alias, so zero-config behaviour doesn't depend on the model your Claude CLI happens to default to.
 - `--safe-mode` switches off CLAUDE.md files (the repo's and your global one), skills, plugins, hooks and MCP servers. Auth and model selection keep working.
 - `--tools ""` drops the built-in tool definitions.
 - `--strict-mcp-config` loads only MCP configuration passed on the command line, and none is passed.
 - `--no-session-persistence` stops each one-shot call being saved to disk as a resumable session.
 - `--system-prompt` replaces Claude Code's own system prompt. It names no task, because the same command serves every call; each call's own prompt carries its job.
 
-`--bare` is not used: it forces API-key auth and breaks the subscription login.
+`--bare` isn't used: it forces API-key auth and breaks the subscription login.
 
 What the lean form drops, it drops on purpose. CLAUDE.md files and Claude Code's own system prompt no longer reach mint's calls, so instructions kept there that shaped release notes or commit messages stop doing so. Conventions you want applied belong in the `[release]` and `[commit]` `context` and `prompt` keys, which ride in every release-notes and commit-message call.
 
-A Claude CLI too old for one of these flags rejects it as an unknown option and exits non-zero, which lands on the ordinary AI-failure path. mint does not probe the version or fall back to a plainer command. Upgrade claude, or set your own `ai_command`.
+A Claude CLI too old for one of these flags rejects it as an unknown option and exits non-zero, which lands on the ordinary AI-failure path. Mint doesn't probe the version or fall back to a plainer command: upgrade claude, or set your own `ai_command`.
 
 ### Quoting in `ai_command`
 
-Every `ai_command` — shared, `[release]`, `[commit]` and the shipped default — is split into a program name and its arguments by POSIX shell quoting rules. The program then runs directly; no shell is ever started.
+Every `ai_command` (shared, `[release]`, `[commit]` and the shipped default) is split into a program name and its arguments by POSIX shell quoting rules. The program then runs directly; no shell is ever started.
 
-- Unquoted whitespace separates words.
+- Unquoted whitespace, newlines included, separates words.
 - Single quotes keep everything up to the next single quote literally.
 - Double quotes keep everything up to the next unescaped double quote. Inside them, a backslash escapes `"`, `\`, `$` and the backtick, and is otherwise literal.
 - Outside quotes, a backslash makes the next character literal.
 - A backslash followed by a newline is removed, as a line continuation.
 - Quoted and unquoted parts written together form one word: `--system-prompt="Be terse"` is the single argument `--system-prompt=Be terse`.
 - A quoted empty string, `""` or `''`, is one empty argument.
-- Nothing else is shell syntax. `$`, backticks, `*`, `~`, `|`, `;`, `&`, `<` and `>` are ordinary characters within a word: no variable expansion, command substitution, globbing, pipes or redirection.
+- Nothing else is shell syntax. `$`, backticks, `*`, `~`, `#`, `|`, `;`, `&`, `<` and `>` are ordinary characters within a word: no variable expansion, command substitution, globbing, comments, pipes or redirection.
 
-Write the value as a TOML literal (single-quoted) string so backslashes and double quotes reach the splitter as written; use a multi-line literal (`'''…'''`) for a line continuation:
+Write the value as a TOML literal (single-quoted) string so backslashes and double quotes reach the splitter as written. A multi-line literal (`'''…'''`) spreads a long command over lines:
 
 ```toml
 ai_command = 'claude -p --model sonnet --tools "" --system-prompt "Be terse."'
@@ -345,20 +486,34 @@ claude -p \
   --model opus'''
 ```
 
-A command with no quotes or backslashes splits exactly as it always has, on runs of whitespace.
+A command with no quotes or backslashes splits exactly as it always has, on runs of whitespace. Every level is checked at load, whichever verb runs, and a value that can't be split fails there: `ai_command has an unterminated quote`, `ends in a lone backslash`, or `names no program`.
 
 ## Safety Model
 
-- **Mutate nothing until accept.** `mint commit` computes the would-be-committed diff read-only; staging (`git add`) happens only after you accept. Declining is a true no-op.
-- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked; on any pre-push failure (including Ctrl-C) mint removes *its own* commits, tag, and autostash (never your work) and reports exactly what it undid. The one exception is the exclusion check's answers: once you have answered, their commit stays on the branch, re-committed on the starting commit, and the unwind says it kept it; where git ignores an untracked `.mint.toml`, their uncommitted write is left in place.
-- **One atomic push.** Branch and tag go up in a single `git push --atomic`; there is no window where the tag exists without its commit.
-- **Never unwind after success.** A failed post-commit push or `post_release` hook warns, with the tool's own output passed through verbatim, and keeps the work.
-- **Lock-resilient mutations.** Every `git` mutation retries contended `.git` locks and clears provably stale ones.
-- **Fail loud, never hang.** Non-TTY without `-y` is a hard error. Unattended runs with no message source abort with one clear line.
+- **Mutate nothing until accept.** `mint commit` works out the would-be-committed diff read-only; staging (`git add`) happens only after you accept. Declining is a true no-op.
+- **Surgical unwind before the point of no return.** Everything `mint release` does before the atomic push is tracked. On any failure or abort before the push (Ctrl-C included), mint resets its own commits, deletes its tag and restores your autostash, never touching your work, and reports exactly what it undid. The one exception is the exclusion check's answers: once recorded, their commit stays on the branch, re-committed on the starting commit, and the unwind says it kept it; where git ignores an untracked `.mint.toml`, their uncommitted write is left in place.
+- **One atomic push.** Branch and tag go up in a single `git push --atomic`; there's no moment where the tag exists without its commit.
+- **Never unwind after the push.** A failed GitHub release or `post_release` hook only warns, and the release stands. A failed `mint commit -p` push keeps the commit.
+- **Lock-resilient mutations.** Every `git` mutation retries a held `.git` lock and clears provably stale ones.
+- **Fail loud, never hang.** A question with no terminal to ask at and no `-y` fails with one clear line telling you to pass `-y`. Unattended runs with no message to commit abort.
 
 ## Output
 
-Mint renders styled output on a TTY and plain byte-pure lines when piped (or under `--plain`). Failures are mirrored to stderr for scripting. Exit codes: `0` success, `1` runtime failure or user abort, `2` usage error.
+Mint renders styled output at a terminal and plain, byte-pure lines when piped (or under `--plain`). Failures and warnings are also written to stderr for scripting. Exit codes: `0` success, `1` runtime failure or abort, `2` usage error.
+
+## Contributing
+
+`CLAUDE.md` has the house rules. Every change passes the gates:
+
+```bash
+go build ./...
+gofmt -l .            # must print nothing
+go vet ./...
+go test -race ./...
+golangci-lint run     # must report 0 issues
+```
+
+Tests never run real `git`, `claude` or editors: subprocesses are scripted through the runner's fake, and output is recorded through the presenter's.
 
 ## License
 

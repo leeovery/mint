@@ -10,6 +10,8 @@ import (
 const (
 	floorOffer = "an attended release is offered the commit-subject list, writing the notes in the editor, or an abort"
 	floorStop  = "an unattended one stops"
+
+	notesFailureHeading = "### When the notes fail"
 )
 
 func assertNamesTheFloor(t *testing.T, where, text string) {
@@ -20,6 +22,14 @@ func assertNamesTheFloor(t *testing.T, where, text string) {
 			t.Errorf("%s does not say %q; got:\n%s", where, want, text)
 		}
 	}
+}
+
+// notesFailureSection is the README's notes-failure section, whitespace-flattened so a
+// pinned phrase matches across line wraps.
+func notesFailureSection(t *testing.T) string {
+	t.Helper()
+	section := readmeSection(t, readREADME(t, readmePath(t)), notesFailureHeading)
+	return strings.Join(strings.Fields(section), " ")
 }
 
 func TestMetadataRows_OnNotesFailureNamesTheFloorChoice(t *testing.T) {
@@ -46,67 +56,70 @@ func TestREADME_OnNotesFailureRowNamesTheFloorChoice(t *testing.T) {
 	t.Fatal("README carries no on_notes_failure row")
 }
 
-func TestREADME_ReleaseSectionNamesTheFloorChoice(t *testing.T) {
+func TestREADME_NotesFailureSectionNamesTheFloorChoice(t *testing.T) {
 	t.Parallel()
 
-	assertNamesTheFloor(t, "README release section", readmeSection(t, readREADME(t, readmePath(t)), "### `release`"))
+	assertNamesTheFloor(t, "README notes-failure section", readmeSection(t, readREADME(t, readmePath(t)), notesFailureHeading))
 }
 
-func TestREADME_ReleaseSectionDescribesTheFloorsEdit(t *testing.T) {
+func TestREADME_NotesFailureSectionDescribesTheFloorsEdit(t *testing.T) {
 	t.Parallel()
 
-	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
-	flat := strings.Join(strings.Fields(section), " ")
+	flat := notesFailureSection(t)
 	for _, want := range []string{
-		"**`e`** opens `$EDITOR` on the chunk notes this run saved, where it saved a file, and otherwise empty",
-		"an empty or whitespace-only body returns to the choice",
+		"**`e`** opens your editor on the chunk notes this run saved, where it saved a file, and otherwise empty",
+		"empty or whitespace-only body returns to the choice",
 	} {
 		if !strings.Contains(flat, want) {
-			t.Errorf("README release section does not say %q", want)
+			t.Errorf("README notes-failure section does not say %q", want)
 		}
 	}
 }
 
-func TestREADME_ReleaseSectionSaysAnUnattendedStopPrintsNextMoves(t *testing.T) {
+func TestREADME_NotesFailureSectionSaysAnUnattendedStopPrintsNextMoves(t *testing.T) {
 	t.Parallel()
 
-	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
-	flat := strings.Join(strings.Fields(section), " ")
-	if want := "an unattended one stops with next moves fitted to the cause"; !strings.Contains(flat, want) {
-		t.Errorf("README release section does not say %q", want)
+	flat := notesFailureSection(t)
+	for _, want := range []string{
+		"an unattended one stops with next moves fitted to the cause",
+		"the `--notes-file` route",
+		"`--no-ai`, to release with the commit-subject list",
+		"`on_notes_failure = \"fallback\"` under `[release]`",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README notes-failure section does not say %q", want)
+		}
 	}
 }
 
-func TestREADME_ReleaseSectionNamesTheSizeStopsSettings(t *testing.T) {
+func TestREADME_NotesFailureSectionNamesTheSizeStopsSettings(t *testing.T) {
 	t.Parallel()
 
-	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
-	flat := strings.Join(strings.Fields(section), " ")
+	flat := notesFailureSection(t)
 	for _, want := range []string{
-		"A stop on size adds the setting to change.",
-		"shorten `[release].prompt` when it is set, since it replaces `context`, and `[release].context` otherwise",
+		"Lower `max_prompt_bytes`",
+		"Shorten `[release].prompt` when it's set (it replaces `context`), else `[release].context`",
 		"so raise `max_prompt_bytes`",
-		"Part notes too large to merge get only the moves above",
+		"| Part notes too large to merge | None beyond the three above",
 	} {
 		if !strings.Contains(flat, want) {
-			t.Errorf("README release section does not say %q", want)
+			t.Errorf("README notes-failure section does not say %q", want)
 		}
 	}
 }
 
-func TestREADME_ReleaseSectionNamesTheTimeoutMissingToolAndOtherMoves(t *testing.T) {
+func TestREADME_NotesFailureSectionNamesTheTimeoutMissingToolAndOtherMoves(t *testing.T) {
 	t.Parallel()
 
-	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
-	flat := strings.Join(strings.Fields(section), " ")
+	flat := notesFailureSection(t)
 	for _, want := range []string{
-		"A timeout adds raise `[release].timeout`",
-		"a missing AI tool adds install it, or set `ai_command`",
-		"Any other failure leaves the AI's own output to name the cause",
-		"where the release's `ai_command` is not the shipped default, the moves point at the lean command",
+		"| Timeout | Raise `[release].timeout`",
+		"| AI tool missing | Install it, or set `ai_command` |",
+		"The AI's own output names the cause",
+		"where the release's `ai_command` isn't the shipped default, the moves also point at the lean command",
 	} {
 		if !strings.Contains(flat, want) {
-			t.Errorf("README release section does not say %q", want)
+			t.Errorf("README notes-failure section does not say %q", want)
 		}
 	}
 }

@@ -134,7 +134,9 @@ command's flags.
   fires is the pipeline section below.
 - ` + "`mint release regenerate`" + ` — rewrite the notes for an EXISTING release (the
   provider release body, CHANGELOG.md, or both), sourced from a fresh diff, the
-  tag annotation, or the published release. It rides on the same [release] config, except on_notes_failure.
+  tag annotation, the published release, or a finished notes file. It rides on
+  the same [release] config, except that it never reads on_notes_failure or
+  diff_keep and runs no hooks and no exclusion check.
 - ` + "`mint commit`" + ` — mint an AI Conventional-Commits message from the
   would-be-committed diff, review it at a gate, then create the commit (see the
   commit model below).
@@ -172,14 +174,19 @@ over the cap skip the single call: the diff's files are packed in path order int
 chunk calls that each fit the cap, each carrying the instructions and the
 whole-release Change Map, then one merge call writes the release's notes from every
 chunk's notes. Chunking has no setting and asks nothing. A commit prompt over the
-cap opens $EDITOR instead. When a release-notes call fails with output and does
+cap opens the editor instead on an attended run, and fails loud on an unattended
+one. When a release-notes call fails with output and does
 not time out, mint asks the model, in one more call through ai_command, whether
 that call was too big for it. A single call or chunk call it was too big for is
 re-sent in smaller parts, up to three halvings per call, and when that writes the
 notes mint suggests a lower max_prompt_bytes. A release's notes still unwritten follow
 [release].on_notes_failure: abort loud, where an attended release is offered the
 commit-subject list, writing the notes in the editor, or an abort, and an
-unattended one stops with next moves fitted to the cause, or fall back to the commit-subject list, the one non-AI body. Regenerate never reads on_notes_failure and never ships the commit-subject list on its own. Commit drops to the user's $EDITOR.
+unattended one stops with next moves fitted to the cause, or fall back to the
+commit-subject list, the one non-AI body (the maintenance-release body when no
+subject is left). Regenerate never reads on_notes_failure and never ships the
+commit-subject list on its own. A failed commit call drops an attended run to
+the user's editor (git's editor chain) and fails an unattended one loud.
 If you pin a slower model for a verb, raise that verb's timeout in the SAME table —
 mint does not auto-bump it.`
 }
@@ -243,8 +250,9 @@ func procedure() string {
 6. Sanity-check. mint's schema is strict: an unknown, renamed, or mistyped key
    fails loudly at the next mint run (DisallowUnknownFields), so a stale key
    never passes silently. After writing, do a natural "verify the config loads"
-   step (run a mint command, or mint init's backstop) to confirm the file is
-   accepted.`
+   step to confirm the file is accepted: run a mint command that reads the
+   config (release, regenerate or commit). mint init, setup and version never
+   read it, so they cannot confirm it.`
 }
 
 // pipelineSection carries mint's pipeline/stage model — the ordered stages and
@@ -261,8 +269,10 @@ core:
 
     preflight -> pre_tag -> notes -> tag + push (PONR) -> publish -> post_release
 
-- preflight runs BEFORE any release work (clean tree, right branch, tag free,
-  remote in sync, provider auth). Its failure ABORTS the release.
+- preflight runs after the user confirms the version and mint's own gates pass
+  (clean tree, right branch, tag free, remote in sync), and before anything is
+  committed. Its failure ABORTS the release. Provider auth (gh) is checked later,
+  just before the tag, and only when publishing.
 - pre_tag runs AFTER preflight and BEFORE the notes, so the notes are written
   from the tree its artifacts leave. It also runs before the changelog and
   version file are updated: in the tree a pre_tag step sees, the changelog has
@@ -270,11 +280,20 @@ core:
   version (the new version reaches the hook as MINT_NEW_VERSION in its
   environment). It accepts a single command OR an ARRAY of commands run in
   order — so a linear multi-step build/test sequence (e.g. install -> build ->
-  test) maps cleanly onto a pre_tag array. A pre_tag build runs before anyone
-  reviews the notes: declining at the review gate unwinds the commit mint made
-  of its artifacts.
-- notes generates the AI release notes from the diff, reviewed at a gate. The
-  changelog and version file are then updated and committed, before the tag.
+  test) maps cleanly onto a pre_tag array. Whatever pre_tag leaves in the tree
+  (git-ignored files aside) is committed as "chore(release): pre-tag artifacts
+  for {tag}", so its artifacts are in the notes diff unless diff_exclude covers
+  them. A pre_tag build runs before anyone reviews the notes: declining at the
+  review gate unwinds the commit mint made of its artifacts.
+- notes generates the AI release notes from the diff, reviewed at a gate. First
+  comes the exclusion check: mint asks the AI which changed paths do not belong
+  in release notes. An attended release pauses on each suggestion (exclude or
+  keep) and records the answers itself, appending them to [release].diff_exclude
+  and [release].diff_keep in .mint.toml and committing .mint.toml alone as
+  "chore(release): release-notes path answers for {tag}"; an unattended release
+  only prints the suggestions. Keep the entries mint recorded: they are the
+  user's answers. The changelog and version file are then updated and committed,
+  before the tag.
 - tag + atomic push is the POINT OF NO RETURN (PONR): the annotated tag and the
   branch go up together in one ` + "`git push --atomic`" + `. Everything before it is
   unwindable; nothing after it is. The one exception: after an abort or failure
@@ -282,8 +301,14 @@ core:
   re-committed on the starting commit, and where git ignores an untracked
   .mint.toml, their uncommitted write is left in place.
 - publish creates the provider (e.g. GitHub) release.
-- post_release runs AFTER the release is published (notifications, downstream
-  triggers).
+- post_release runs AFTER the push lands, whether or not a provider release was
+  created (notifications, downstream triggers). Its failure only warns.
+
+Every hook takes a single command or an array of commands, run in order through
+sh -c from the repo root and stopping at the first failure. Each gets
+MINT_NEW_VERSION, MINT_PREVIOUS_VERSION, MINT_VERSION_TAG, MINT_BUMP (patch,
+minor, major or explicit) and MINT_DRY_RUN in its environment. A dry run runs no
+hooks.
 
 The release shim: ` + "`./release`" + ` is the small executable wrapper mint init drops
 at the repo root alongside .mint.toml; it invokes mint release so the project
@@ -325,8 +350,9 @@ func etiquetteSection() string {
 
 ### diff_exclude scope
 
-diff_exclude is for NOISE, not generated code. It has three levels, and each
-verb's list adds to the shared one rather than replacing it:
+diff_exclude is for NOISE: tracked paths whose changes say nothing about what
+the software does. It has three levels, and each verb's list adds to the shared
+one rather than replacing it:
 
 - [release].diff_exclude keeps paths out of the release-notes diff only, so
   commit messages still read them. Release-notes noise goes here: TRACKED
