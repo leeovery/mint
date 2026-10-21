@@ -599,6 +599,19 @@ func (p *PrettyPresenter) NextMoves(m NextMoves) {
 	}
 }
 
+// ExclusionSuggestions lists each suggestion, with its line beneath it, under a
+// heading.
+func (p *PrettyPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
+	if len(s.Suggestions) == 0 {
+		return
+	}
+	p.writef("%sfiles that may not belong in the notes:\n", stageIndent)
+	for _, x := range s.Suggestions {
+		p.writef("%s  - %s (%s; %s)\n", stageIndent, x.Glob, x.Reason, x.Matches)
+		p.writef("%s    to exclude it, set under %s: %s\n", stageIndent, s.Table, x.Line)
+	}
+}
+
 // Unwound renders the auto-unwind line to OUT ONLY, MIRRORING the StageSucceeded
 // line shape exactly: two-space indent, the ↩ glyph styled through the renderer,
 // the literal label "unwound" padded to the stage column, then the engine-supplied

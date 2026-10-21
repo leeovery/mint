@@ -34,3 +34,18 @@ func TestREADME_ReleaseSectionDescribesTheExclusionPauses(t *testing.T) {
 		}
 	}
 }
+
+func TestREADME_ReleaseSectionDescribesTheUnattendedSuggestions(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"An unattended release (`-y`) pauses on nothing and excludes nothing",
+		"After the notes it prints each suggestion with the AI's reason, how many changed files it matches and the total size of their diffs, any of those files on `[release].diff_keep`, and the `[release].diff_exclude` line that would exclude it",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
+}

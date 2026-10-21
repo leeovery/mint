@@ -18,26 +18,27 @@ type nopPresenter struct {
 	lastRun presenter.RunInfo
 }
 
-func (p *nopPresenter) RunStarted(info presenter.RunInfo)     { p.lastRun = info }
-func (p *nopPresenter) StageStarted(presenter.StageStart)     {}
-func (p *nopPresenter) StageSucceeded(presenter.StageSuccess) {}
-func (p *nopPresenter) StageFailed(presenter.StageFailure)    {}
-func (p *nopPresenter) NotesProgress(presenter.NotesProgress) {}
-func (p *nopPresenter) NotesMerging(presenter.NotesMerge)     {}
-func (p *nopPresenter) NotesChecking()                        {}
-func (p *nopPresenter) NotesChecked()                         {}
-func (p *nopPresenter) NotesHalving(presenter.NotesHalving)   {}
-func (p *nopPresenter) NextMoves(presenter.NextMoves)         {}
-func (p *nopPresenter) Warn(presenter.Warning)                {}
-func (p *nopPresenter) Unwound(presenter.Unwind)              {}
-func (p *nopPresenter) ShowPlan(presenter.Plan)               {}
-func (p *nopPresenter) ShowNotes(presenter.Notes)             {}
-func (p *nopPresenter) ShowMessage(presenter.Message)         {}
-func (p *nopPresenter) ShowVersion(presenter.Version)         {}
-func (p *nopPresenter) SuspendSpinner()                       {}
-func (p *nopPresenter) ResumeSpinner()                        {}
-func (p *nopPresenter) InitResult(presenter.InitOutcome)      {}
-func (p *nopPresenter) RunFinished(presenter.RunResult)       {}
+func (p *nopPresenter) RunStarted(info presenter.RunInfo)                   { p.lastRun = info }
+func (p *nopPresenter) StageStarted(presenter.StageStart)                   {}
+func (p *nopPresenter) StageSucceeded(presenter.StageSuccess)               {}
+func (p *nopPresenter) StageFailed(presenter.StageFailure)                  {}
+func (p *nopPresenter) NotesProgress(presenter.NotesProgress)               {}
+func (p *nopPresenter) NotesMerging(presenter.NotesMerge)                   {}
+func (p *nopPresenter) NotesChecking()                                      {}
+func (p *nopPresenter) NotesChecked()                                       {}
+func (p *nopPresenter) NotesHalving(presenter.NotesHalving)                 {}
+func (p *nopPresenter) NextMoves(presenter.NextMoves)                       {}
+func (p *nopPresenter) ExclusionSuggestions(presenter.ExclusionSuggestions) {}
+func (p *nopPresenter) Warn(presenter.Warning)                              {}
+func (p *nopPresenter) Unwound(presenter.Unwind)                            {}
+func (p *nopPresenter) ShowPlan(presenter.Plan)                             {}
+func (p *nopPresenter) ShowNotes(presenter.Notes)                           {}
+func (p *nopPresenter) ShowMessage(presenter.Message)                       {}
+func (p *nopPresenter) ShowVersion(presenter.Version)                       {}
+func (p *nopPresenter) SuspendSpinner()                                     {}
+func (p *nopPresenter) ResumeSpinner()                                      {}
+func (p *nopPresenter) InitResult(presenter.InitOutcome)                    {}
+func (p *nopPresenter) RunFinished(presenter.RunResult)                     {}
 func (p *nopPresenter) Prompt(g presenter.Gate) (presenter.Choice, error) {
 	return g.Default, nil
 }

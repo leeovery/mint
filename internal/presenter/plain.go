@@ -221,6 +221,14 @@ func (p *PlainPresenter) NextMoves(m NextMoves) {
 	}
 }
 
+// ExclusionSuggestions prints each suggestion, its line included, as its own
+// "{stage}: SUGGEST - …" line.
+func (p *PlainPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
+	for _, x := range s.Suggestions {
+		p.writef("%s: SUGGEST - exclude %s (%s; %s) with %s under %s\n", s.Stage, x.Glob, x.Reason, x.Matches, x.Line, s.Table)
+	}
+}
+
 // NotesChecking prints the exclusion check's call as its own line.
 func (p *PlainPresenter) NotesChecking() {
 	p.writef("notes: checking for files that don't belong in the notes\n")

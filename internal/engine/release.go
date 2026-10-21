@@ -555,6 +555,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 		if !offersChoice {
 			if atFloor {
 				p.NextMoves(deps.notesFloorMoves(err, cfg, failure.SavedNotes))
+				stage.showSuggestions(cfg.Release.DiffExclude)
 			}
 			return Unwind(ctx, deps, start, made, err)
 		}
@@ -575,6 +576,7 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	p.ShowPlan(buildPlan(tag, cfg.Release.Publish))
 	p.ShowNotes(presenter.Notes{Version: versionKey, Body: body})
 	hintLowerCap(p, stage.lowerCap())
+	stage.showSuggestions(cfg.Release.DiffExclude)
 
 	// DRY-RUN BOUNDARY: a dry run takes no action, so it asks for nothing — it stops
 	// HERE, before the review gate, having shown the full preview (version, plan, notes),
@@ -1038,13 +1040,16 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 }
 
 // exclusionCheck is the release's exclusion check, pausing on its suggestions only on
-// an attended real run.
+// an attended real run, and handing them to stage to print on an unattended one.
 func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage) *notes.ExclusionCheck {
 	check := notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage)
-	if !deps.asksAtTerminal(opts) {
-		return check
+	switch {
+	case deps.asksAtTerminal(opts):
+		return check.WithPauses(exclusionPauses{p: deps.Presenter})
+	case !deps.attended():
+		return check.WithReport(stage.suggested)
 	}
-	return check.WithPauses(exclusionPauses{p: deps.Presenter})
+	return check
 }
 
 // exclusionPauses asks the operator about each suggestion at a gate, the spinner

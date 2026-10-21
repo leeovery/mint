@@ -3,7 +3,9 @@ package engine
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"mint/internal/notes"
@@ -23,6 +25,8 @@ type notesStage struct {
 	largestCall int
 	// fallbackCause is the failure the commit-subject list ships in place of, or nil.
 	fallbackCause error
+	// suggestions are what the exclusion check reported on an unattended run.
+	suggestions []presenter.ExclusionSuggestion
 }
 
 var (
@@ -67,6 +71,56 @@ func (s *notesStage) CallSucceeded(promptBytes int) {
 
 func (s *notesStage) fellBack(failure error) {
 	s.fallbackCause = failure
+}
+
+func (s *notesStage) suggested(suggestion notes.Suggestion, m notes.Matches) {
+	s.suggestions = append(s.suggestions, presenter.ExclusionSuggestion{
+		Glob:    suggestion.Glob,
+		Reason:  suggestion.Reason,
+		Matches: describeMatches(m),
+	})
+}
+
+// showSuggestions prints the suggestions an unattended run's check reported, each with the
+// [release].diff_exclude line that would exclude it: releaseExclude, the key as
+// loaded, with its glob appended.
+func (s *notesStage) showSuggestions(releaseExclude []string) {
+	if len(s.suggestions) == 0 {
+		return
+	}
+	shown := slices.Clone(s.suggestions)
+	for i := range shown {
+		shown[i].Line = diffExcludeLine(releaseExclude, shown[i].Glob)
+	}
+	s.p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: "[release]", Suggestions: shown})
+}
+
+// diffExcludeLine is the diff_exclude key holding entries with glob appended, each a
+// TOML basic string.
+func diffExcludeLine(entries []string, glob string) string {
+	quoted := make([]string, 0, len(entries)+1)
+	for _, e := range append(slices.Clip(entries), glob) {
+		quoted = append(quoted, tomlBasicString(e))
+	}
+	return "diff_exclude = [" + strings.Join(quoted, ", ") + "]"
+}
+
+func tomlBasicString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch {
+		case r == '"' || r == '\\':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\u%04X`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 // warnFallback names both commands for saved chunk notes: when it prints, whether this

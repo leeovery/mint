@@ -100,6 +100,10 @@ type Presenter interface {
 	// NextMoves renders the ways forward from a failure that ends the run, to out
 	// only. Like Warn it sets no failure state.
 	NextMoves(m NextMoves)
+	// ExclusionSuggestions renders the exclusion check's suggestions no pause asked
+	// about, each with the config line that acts on it, to out only. Like Warn it sets
+	// no failure state.
+	ExclusionSuggestions(s ExclusionSuggestions)
 	// Warn renders a structured, label-prefixed warning. It is INDEPENDENT of
 	// StageFailed/Unwound: it does not set failure state and does not suppress the
 	// success end-of-run line. Per the stream contract a warning is narration → out
@@ -552,6 +556,23 @@ type StageFailure struct {
 type NextMoves struct {
 	Stage string
 	Moves []string
+}
+
+// ExclusionSuggestions carries the ExclusionSuggestions payload: stage's suggestions,
+// each rendered verbatim in order, their Lines set under Table.
+type ExclusionSuggestions struct {
+	Stage       string
+	Table       string
+	Suggestions []ExclusionSuggestion
+}
+
+// ExclusionSuggestion is one glob the exclusion check suggests leaving out, the AI's
+// reason for it, what it matches, and the config line that would exclude it.
+type ExclusionSuggestion struct {
+	Glob    string
+	Reason  string
+	Matches string
+	Line    string
 }
 
 func savedNotesText(path string) string {

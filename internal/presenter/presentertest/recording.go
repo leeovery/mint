@@ -43,6 +43,7 @@ const (
 	KindNextMoves
 	KindNotesChecking
 	KindNotesChecked
+	KindExclusionSuggestions
 )
 
 // String renders the kind for readable test failure output.
@@ -92,6 +93,8 @@ func (k EventKind) String() string {
 		return "NotesChecking"
 	case KindNotesChecked:
 		return "NotesChecked"
+	case KindExclusionSuggestions:
+		return "ExclusionSuggestions"
 	default:
 		return "Unknown"
 	}
@@ -104,22 +107,23 @@ func (k EventKind) String() string {
 // inspect Kind to know which method fired, then read the matching payload field.
 // Only the field named by Kind is populated; the rest are zero values.
 type Event struct {
-	Kind           EventKind
-	RunStarted     presenter.RunInfo
-	StageStarted   presenter.StageStart
-	StageSucceeded presenter.StageSuccess
-	StageFailed    presenter.StageFailure
-	NotesProgress  presenter.NotesProgress
-	NotesMerging   presenter.NotesMerge
-	NotesHalving   presenter.NotesHalving
-	NextMoves      presenter.NextMoves
-	Warn           presenter.Warning
-	Unwound        presenter.Unwind
-	ShowPlan       presenter.Plan
-	ShowNotes      presenter.Notes
-	ShowMessage    presenter.Message
-	ShowVersion    presenter.Version
-	Prompt         presenter.Gate
+	Kind                 EventKind
+	RunStarted           presenter.RunInfo
+	StageStarted         presenter.StageStart
+	StageSucceeded       presenter.StageSuccess
+	StageFailed          presenter.StageFailure
+	NotesProgress        presenter.NotesProgress
+	NotesMerging         presenter.NotesMerge
+	NotesHalving         presenter.NotesHalving
+	NextMoves            presenter.NextMoves
+	ExclusionSuggestions presenter.ExclusionSuggestions
+	Warn                 presenter.Warning
+	Unwound              presenter.Unwind
+	ShowPlan             presenter.Plan
+	ShowNotes            presenter.Notes
+	ShowMessage          presenter.Message
+	ShowVersion          presenter.Version
+	Prompt               presenter.Gate
 	// AskLine is the engine-supplied prompt label the AskLine call carried (the
 	// scripted ANSWER is configured on the recorder, not stored here).
 	AskLine     string
@@ -215,6 +219,11 @@ func (r *RecordingPresenter) NotesMerging(m presenter.NotesMerge) {
 // NextMoves records the ways forward from a failure.
 func (r *RecordingPresenter) NextMoves(m presenter.NextMoves) {
 	r.Events = append(r.Events, Event{Kind: KindNextMoves, NextMoves: m})
+}
+
+// ExclusionSuggestions records the exclusion check's suggestions.
+func (r *RecordingPresenter) ExclusionSuggestions(s presenter.ExclusionSuggestions) {
+	r.Events = append(r.Events, Event{Kind: KindExclusionSuggestions, ExclusionSuggestions: s})
 }
 
 // Warn records a warning with its full structured payload — label and message —

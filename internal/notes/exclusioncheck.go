@@ -29,6 +29,7 @@ type ExclusionCheck struct {
 	keep      []string
 	narration CheckNarration
 	pauses    SuggestionPauses
+	report    func(Suggestion, Matches)
 }
 
 // Suggestion is a glob the check's answer suggests leaving out of the notes, with the
@@ -78,13 +79,22 @@ func (c *ExclusionCheck) WithPauses(pauses SuggestionPauses) *ExclusionCheck {
 	return &d
 }
 
+// WithReport returns a copy of c that, unless pauses are wired, hands report each
+// suggestion matching a listed path, in the answer's order, with what it matches
+// against the keep list alone; c itself is unchanged.
+func (c *ExclusionCheck) WithReport(report func(Suggestion, Matches)) *ExclusionCheck {
+	d := *c
+	d.report = report
+	return &d
+}
+
 // Check makes the check's call over diff, the post-exclusion notes diff, unless the
 // keep list covers every path in it: then it neither calls nor narrates. A failed call
 // leaves the release to carry on, so only a cancel is returned. With pauses wired, each
 // suggestion matching a listed path is paused on in the answer's order, unless earlier
 // answers already decide every listed path it matches; a pause's error, or a cancel
 // while it waits, is returned and ends the pauses. It returns the globs answered
-// Exclude, in the order answered.
+// Exclude, in the order answered; a report excludes nothing.
 func (c *ExclusionCheck) Check(ctx context.Context, diff string) ([]string, error) {
 	files := diffPaths(diff)
 	paths := slices.DeleteFunc(slices.Clone(files), func(p checkedPath) bool { return coveredBy(c.keep, p.path) })
@@ -97,10 +107,24 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string) ([]string, erro
 	if errors.Is(err, context.Canceled) {
 		return nil, err
 	}
-	if err != nil || c.pauses == nil {
+	if err != nil {
 		return nil, nil
 	}
-	return c.pause(ctx, usableSuggestions(answer, paths), files)
+	suggestions := usableSuggestions(answer, paths)
+	switch {
+	case c.pauses != nil:
+		return c.pause(ctx, suggestions, files)
+	case c.report != nil:
+		c.reportAll(suggestions, files)
+	}
+	return nil, nil
+}
+
+func (c *ExclusionCheck) reportAll(suggestions []Suggestion, files []checkedPath) {
+	unanswered := runAnswers{keep: c.keep}
+	for _, s := range suggestions {
+		c.report(s, unanswered.matches(s.Glob, files))
+	}
 }
 
 func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) ([]string, error) {
