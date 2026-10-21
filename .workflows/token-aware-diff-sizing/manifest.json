@@ -313,7 +313,9 @@
             "token-aware-diff-sizing-5-15": "tick-266a9d",
             "token-aware-diff-sizing-5-16": "tick-0e92cd",
             "token-aware-diff-sizing-6-11": "tick-1da885",
-            "token-aware-diff-sizing-6-12": "tick-fedaa4"
+            "token-aware-diff-sizing-6-12": "tick-fedaa4",
+            "token-aware-diff-sizing-7-14": "tick-636b7b",
+            "token-aware-diff-sizing-7-15": "tick-185c1b"
           },
           "storage_paths": [
             ".tick/"
@@ -501,6 +503,12 @@
                 "1": "approved",
                 "2": "approved"
               }
+            },
+            "p7": {
+              "tasks": {
+                "1": "approved",
+                "2": "approved"
+              }
             }
           },
           "consolidated_phases": [
@@ -509,7 +517,8 @@
             3,
             4,
             5,
-            6
+            6,
+            7
           ],
           "completed_phases": [
             1,
@@ -518,54 +527,6 @@
             4,
             5,
             6
-          ],
-          "bank": [
-            {
-              "task": "token-aware-diff-sizing-7-3",
-              "source": "executor",
-              "summary": "The .mint.toml filename is written out separately in config loading, mint init and the release-notes built-in exclusion",
-              "failure": "Renaming the config file in config or init leaves release notes excluding the old name, so every config edit (the Phase 8 answers commits included) shows up as a tooling line in published notes and regenerates, with no test or compile error",
-              "detail": "internal/config/config.go:42 configFileName (unexported); internal/engine/init.go:85 its own configFileName; internal/notes/assemble.go builtinExcludePathspecs literal :(exclude).mint.toml; one exported config constant would remove the drift",
-              "files": [
-                "internal/config/config.go",
-                "internal/engine/init.go",
-                "internal/notes/assemble.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-7-3",
-              "source": "reviewer",
-              "summary": "The built-in excluded filenames are retyped as literals in notes, away from the packages that own them",
-              "failure": "Renaming the config file (config.configFileName) or the changelog projection (record.ChangelogFileName) leaves release notes excluding the old name, so every config edit or changelog projection reaches the notes AI diff and Change Map with no compile or test failure, noticed only in published notes",
-              "detail": "internal/notes/assemble.go:27 hand-writes :(exclude)CHANGELOG.md and :(exclude).mint.toml; internal/config/config.go:42 configFileName (unexported) and internal/engine/init.go:85 its own configFileName hold .mint.toml; internal/record/changelog.go:20 exports ChangelogFileName; notes already imports config and record, so building builtinExcludePathspecs from exported constants creates no cycle and init.go would consume the same export",
-              "files": [
-                "internal/notes/assemble.go",
-                "internal/config/config.go",
-                "internal/engine/init.go",
-                "internal/record/changelog.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-7-7",
-              "source": "executor",
-              "summary": "The pretty presenter raw-keypress read maps Ctrl-C to ErrInputClosed at every gate",
-              "failure": "At a real terminal in pretty mode raw mode disables SIGINT, so Ctrl-C at any gate (exclusion pause, review gate, floor) is handled as closed input rather than a cancel; the operator sees prompt: input closed before a choice was entered instead of the cancel narration, though the run still aborts and unwinds; engine tests model Ctrl-C as a cancelled context so only a real terminal shows it",
-              "detail": "internal/presenter/pretty.go:917-920 case 0x03, 0x04 returns ErrInputClosed; spec §6.6 and §16 treat Ctrl-C at a pause as cancelling the run",
-              "files": [
-                "internal/presenter/pretty.go",
-                "internal/engine/release.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-7-8",
-              "source": "reviewer",
-              "summary": "The README pause paragraph says nothing of the count, the size, the kept-file names, or the skip earlier answers cause",
-              "failure": "An operator or agent reading the release section learns only that a pause shows the glob and reason, not that it names kept files an Exclude would also take out or why a later suggestion asked nothing; only a docs-versus-behaviour review against §18.2 notices, and no later task in phases 7-8 plans this text (8-2 adds only the recording sentence)",
-              "detail": "README.md:117 (the 7-7 pause paragraph) should add the count and decimal size of the matched files the notes still carry, any matched files on the keep list, and that a suggestion whose uncovered matches earlier answers in the run already decide gets no pause",
-              "files": [
-                "README.md"
-              ]
-            }
           ]
         }
       }
