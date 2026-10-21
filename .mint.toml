@@ -17,3 +17,6 @@ pre_tag = [
     'go test -race ./...',
     'golangci-lint run',
 ]
+
+[release]
+diff_exclude = ["*_test.go", ".worktreeinclude", "CLAUDE.md", "internal/presenter/presentertest/", "internal/runner/fake_runner.go", "internal/runner/deadline_recording_runner.go"]
