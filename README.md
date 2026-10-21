@@ -220,14 +220,14 @@ The per-key reference tables below are the authoritative human config reference 
 
 ### Shared engine keys
 
-`ai_command` and `timeout` live at **both** the shared (top) level and per-verb (`[release]` / `[commit]`); the rest are shared-only. Each of the two resolves per-key independently through `[verb].<key>` → top-level shared `<key>` → shipped default — so a verb override repoints only that key for that verb, and an unset override falls through to the shared value, then to the compiled default.
+`ai_command` and `timeout` live at **both** the shared (top) level and per-verb (`[release]` / `[commit]`). `max_prompt_bytes` is shared-only. `diff_exclude` has a shared list and a `[release]` list, and the `[release]` list adds to the shared one rather than replacing it. Each of `ai_command` and `timeout` resolves per-key independently through `[verb].<key>` → top-level shared `<key>` → shipped default — so a verb override repoints only that key for that verb, and an unset override falls through to the shared value, then to the compiled default.
 
 | Key | Default | Description |
 |---|---|---|
 | `ai_command` | `claude -p --model sonnet --safe-mode --tools "" --strict-mcp-config --no-session-persistence --system-prompt "Follow the instructions you are given and output only what they ask for."` | the AI invocation: prompt on stdin, message on stdout; split into program + arguments by POSIX shell quoting rules and run directly, never through a shell (see [Quoting in `ai_command`](#quoting-in-ai_command)); resolves `[verb]` → shared → default (see [The AI Transport](#the-ai-transport)) |
 | `timeout` | `180` on release, `60` on commit | per-attempt AI deadline in seconds; `0` = no limit; resolves `[verb]` → shared → default. Raise it if your `ai_command` runs slowly (see [The AI Transport](#the-ai-transport)) |
 | `max_prompt_bytes` | `1500000` | cap, in bytes, on the composed prompt of any single AI call: instructions, Change Map, diff and closing reminder together; no call mint makes is bigger. Must be positive — `0` is rejected, never "no cap" |
-| `diff_exclude` | `[]` | pathspec globs kept out of every AI diff (lockfiles, generated code) |
+| `diff_exclude` | `[]` | pathspec globs kept out of every AI diff: what neither release notes nor commit messages should read (lockfiles, build output) |
 
 ### `[release]`
 
@@ -246,6 +246,7 @@ The per-key reference tables below are the authoritative human config reference 
 | `version_pattern` | | line to replace inside `version_file` (omit = the whole file is the version) |
 | `ai_command` | shared | optional per-verb override of the AI command for `release` only; resolves `[release]` → shared → default |
 | `timeout` | shared, else `180` | optional per-verb override of the per-attempt AI deadline (seconds) for `release` only; resolves `[release]` → shared → default |
+| `diff_exclude` | `[]` | pathspec globs kept out of the release-notes diff only, added to the shared `diff_exclude` list; commit messages still read these paths (`.workflows/`, `.claude/`, `docs/`) |
 
 ### `[release.hooks]`
 

@@ -107,9 +107,8 @@ type Config struct {
 	// per-verb engine overrides ai_command (AICommand) and timeout (Timeout).
 	// Context/Prompt are the commit-specific counterparts of [release]'s
 	// Context/Prompt. The ai_command / timeout overrides resolve through the layered
-	// chain [commit] → shared top-level → shipped default (mirroring [release]); the
-	// other shared engine keys diff_exclude / max_prompt_bytes stay
-	// shared-only and serve commit from the top level (they have no [commit] override).
+	// chain [commit] → shared top-level → shipped default (mirroring [release]);
+	// max_prompt_bytes and the shared diff_exclude list serve commit from the top level.
 	Commit Commit
 
 	// AICommand is the shared engine-level ai_command notes-transport command (its
@@ -139,12 +138,11 @@ type Config struct {
 	// shipped deadline differs per verb, so only TimeoutFor can apply it.
 	Timeout *time.Duration
 
-	// DiffExclude is the shared engine-level list of extra glob pathspecs to exclude
-	// from the diff, ON TOP OF the built-in CHANGELOG.md exclusion. It is top-level —
-	// NOT under [release] — because it serves every verb's notes engine. Each entry is
-	// a git pathspec glob (e.g. "skills/**/knowledge.cjs") the notes engine turns into
-	// a :(exclude)<glob> argument; git performs the matching, mint does no Go-side glob
-	// matching. Absent → nil/empty, so only CHANGELOG.md is excluded.
+	// DiffExclude is the shared list of glob pathspecs every verb's AI diff excludes —
+	// what neither release notes nor commit messages should read. A per-verb list
+	// (Release.DiffExclude) adds to it and never replaces it. Each entry is a git
+	// pathspec glob (e.g. "skills/**/knowledge.cjs") turned into a :(exclude)<glob>
+	// argument; git performs the matching, mint does no Go-side glob matching.
 	DiffExclude []string
 }
 
@@ -200,6 +198,9 @@ type Config struct {
 // here; TimeoutFor drops the negative to the floor, NOT Load). config seeds NO per-verb
 // timeout default — the absent baseline is "no override" (nil). The seconds → duration
 // conversion happens at the config boundary (resolveTimeout).
+//
+// DiffExclude is the [release] list of glob pathspecs the release-notes diff excludes on
+// top of the shared top-level list — never in place of it. Commit's AI diff never reads it.
 type Release struct {
 	TagPrefix      string
 	CommitPrefix   string
@@ -214,6 +215,7 @@ type Release struct {
 	VersionPattern string
 	AICommand      *string
 	Timeout        *time.Duration
+	DiffExclude    []string
 	Hooks          Hooks
 }
 
@@ -346,6 +348,7 @@ type releaseShape struct {
 	VersionPattern string     `toml:"version_pattern"`
 	AICommand      *string    `toml:"ai_command"`
 	Timeout        *int       `toml:"timeout"`
+	DiffExclude    []string   `toml:"diff_exclude"`
 	Hooks          hooksShape `toml:"hooks"`
 }
 
@@ -460,6 +463,7 @@ var typeErrorMessages = map[string]string{
 	"releaseShape.Changelog":   "changelog must be a boolean",
 	"releaseShape.AICommand":   "release.ai_command must be a string",
 	"releaseShape.Timeout":     "release.timeout must be an integer (seconds)",
+	"releaseShape.DiffExclude": "release.diff_exclude must be an array of strings",
 	"commitShape.Context":      "commit.context must be a string",
 	"commitShape.Prompt":       "commit.prompt must be a string",
 	"commitShape.AICommand":    "commit.ai_command must be a string",
@@ -702,6 +706,7 @@ func resolveRelease(shape releaseShape) Release {
 		VersionPattern: shape.VersionPattern,
 		AICommand:      shape.AICommand,
 		Timeout:        resolveTimeout(shape.Timeout),
+		DiffExclude:    shape.DiffExclude,
 		Hooks: Hooks{
 			Preflight:   shape.Hooks.Preflight,
 			PreTag:      shape.Hooks.PreTag,

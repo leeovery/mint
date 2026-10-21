@@ -7,8 +7,8 @@ package engine
 // The fresh path is the forward Stage-4 AI path with ONE substitution: the diff base.
 // The forward path ranges `last_tag..HEAD`; the fresh path ranges 5-3's resolved
 // DiffRange (`vX-1..vX`). Every other layer is reused unchanged — the consolidated
-// exclusion tiers (built-in CHANGELOG.md, configured diff_exclude globs, the
-// strategy-aware version_file decision), the Change Map computed AFTER exclusion and
+// exclusion tiers (built-in CHANGELOG.md, the shared and [release] diff_exclude globs,
+// the strategy-aware version_file decision), the Change Map computed AFTER exclusion and
 // prepended to the AI input, the max_prompt_bytes size check with chunking over it,
 // and the AI validation/retry.
 //
@@ -31,6 +31,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"mint/internal/aitransport"
 	"mint/internal/config"
@@ -46,10 +47,10 @@ import (
 // `{PreviousTag}..{Tag}` range and runs the forward AI path over it.
 //
 // It REUSES the forward notes engine: the Assembler is built with the SAME
-// consolidated ExcludeConfig the forward path uses (diff_exclude globs + the
-// strategy-aware version_file inputs), so the regenerate diff and Change Map apply the
-// identical exclusion tiers — only the range differs. The transport is the notes.Transport
-// seam (production wires the real ai.Transport; tests inject a recording fake).
+// ExcludeConfig the forward path uses (notesExcludeConfig), so the regenerate diff and
+// Change Map apply the identical exclusion tiers — only the range differs. The transport
+// is the notes.Transport seam (production wires the real ai.Transport; tests inject a
+// recording fake).
 //
 // The body is returned WHOLE (no parsing/splitting) for the downstream
 // provider/changelog write. An AI/transport failure is surfaced. A chunked run reports
@@ -117,19 +118,15 @@ func RegenerateFreshRegenerator(r runner.CommandRunner, transport notes.Transpor
 // exactly what the initial body production did and a re-merge goes through the same
 // release transport.
 func freshGenerator(r runner.CommandRunner, transport notes.Transport, root string, cfg config.Config) *notes.Generator {
-	assembler := notes.NewAssembler(r, freshExcludeConfig(cfg))
+	assembler := notes.NewAssembler(r, notesExcludeConfig(cfg))
 	return notes.NewGenerator(assembler, resolveFreshTransport(r, transport, cfg), root)
 }
 
-// freshExcludeConfig builds the consolidated ExcludeConfig the fresh Assembler layers
-// on top of the built-in CHANGELOG.md always-exclude — the SAME tiers the forward
-// path's resolveBody threads: the configured diff_exclude globs AND the strategy-aware
-// version_file inputs (plain mode excludes the whole-file version; embedded mode keeps
-// the real source). It is the exact forward decision, consumed over the regenerate
-// range — the tier logic is reused, never reimplemented.
-func freshExcludeConfig(cfg config.Config) notes.ExcludeConfig {
+// notesExcludeConfig is the exclusion set release notes are built over: a forward
+// release and a regenerate of the same range must read the same paths.
+func notesExcludeConfig(cfg config.Config) notes.ExcludeConfig {
 	return notes.ExcludeConfig{
-		Globs:          cfg.DiffExclude,
+		Globs:          slices.Concat(cfg.DiffExclude, cfg.Release.DiffExclude),
 		VersionFile:    cfg.Release.VersionFile,
 		VersionPattern: cfg.Release.VersionPattern,
 	}

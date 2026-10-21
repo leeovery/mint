@@ -205,8 +205,9 @@ func procedure() string {
 4. Inspect the project and map findings to config:
    - existing release process / scripts -> mint's hooks (the centrepiece — see
      the pipeline/hook model below);
-   - noise directories that pollute the release-notes diff -> diff_exclude (see
-     diff_exclude scope below);
+   - noise only release notes should skip -> [release].diff_exclude, and
+     what neither verb should read (lockfiles, build output) -> the shared
+     diff_exclude (see diff_exclude scope below);
    - a version file the release bumps -> version_file / version_pattern;
    - the AI model the project wants per verb -> ai_command. Ask in natural
      language which model each verb should use. SAME model for both verbs ->
@@ -292,14 +293,18 @@ func etiquetteSection() string {
 
 ### diff_exclude scope
 
-diff_exclude is for release-notes NOISE, not generated code. Keep its scope
-honest:
+diff_exclude is for NOISE, not generated code. It has two levels, and the
+[release] list adds to the shared one rather than replacing it:
 
+- [release].diff_exclude keeps paths out of the release-notes diff only, so
+  commit messages still read them. Release-notes noise goes here: TRACKED
+  process / meta / doc files that churn but are not user-facing release
+  content, such as .workflows/, .claude/, other agent directories, and docs/.
+- The shared top-level diff_exclude keeps paths out of every verb's AI diff.
+  Keep it for what neither release notes nor commit messages should read, such
+  as lockfiles and tracked build output.
 - .gitignore'd paths (node_modules, vendor, build output) are already absent
   from the diff — do not list them.
-- The real targets are TRACKED process / meta / doc files that churn but are not
-  user-facing release content: .workflows/, .claude/, other agent directories,
-  docs/, and lockfiles.
 - The right set is project-specific, so propose patterns and surface them in the
   confirmation step above rather than assuming a default — mint ships none.`
 }

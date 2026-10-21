@@ -854,3 +854,57 @@ func TestGuide_AITransportParagraphNamesTheFloorChoiceWithoutAFlag(t *testing.T)
 		}
 	}
 }
+
+func TestGuide_ConfigReferenceListsReleaseDiffExclude(t *testing.T) {
+	t.Parallel()
+
+	row, ok := configtest.MustByLevelKey(t)[configtest.RowKey{Level: config.LevelRelease, Key: "diff_exclude"}]
+	if !ok {
+		t.Fatal("missing SoT row for ([release], diff_exclude)")
+	}
+	if !containsRowLine(configReferenceBody(t), "diff_exclude", "[release]", "[]", row.Description) {
+		t.Error("config reference has no [release] diff_exclude row with the [] default")
+	}
+}
+
+// etiquetteBody returns the etiquette section: from its marker to the next section's.
+func etiquetteBody(t *testing.T) string {
+	t.Helper()
+
+	body := setupguide.Guide()
+	start := strings.Index(body, setupguide.MarkerEtiquette)
+	end := strings.Index(body, setupguide.MarkerMinimalism)
+	if start < 0 || end < start {
+		t.Fatal("guide has no etiquette section ahead of the minimalism section")
+	}
+	return body[start:end]
+}
+
+func TestGuide_DiffExcludeScopeSplitsTheLevels(t *testing.T) {
+	t.Parallel()
+
+	flat := strings.Join(strings.Fields(etiquetteBody(t)), " ")
+	for _, want := range []string{
+		"[release].diff_exclude keeps paths out of the release-notes diff only, so commit messages still read them",
+		"such as .workflows/, .claude/, other agent directories, and docs/",
+		"Keep it for what neither release notes nor commit messages should read, such as lockfiles and tracked build output",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("diff_exclude scope does not say %q", want)
+		}
+	}
+}
+
+func TestGuide_ProcedureStepFourRoutesNoiseByLevel(t *testing.T) {
+	t.Parallel()
+
+	step := numberedStep(setupguide.Guide(), "4.")
+	for _, want := range []string{
+		"noise only release notes should skip -> [release].diff_exclude",
+		"what neither verb should read (lockfiles, build output) -> the shared diff_exclude",
+	} {
+		if !strings.Contains(step, want) {
+			t.Errorf("procedure step 4 does not say %q; got:\n%s", want, step)
+		}
+	}
+}

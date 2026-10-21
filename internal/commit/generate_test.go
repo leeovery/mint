@@ -238,6 +238,27 @@ func TestGenerator_Generate_DiffExcludeMapsToExcludePathspecs(t *testing.T) {
 	}
 }
 
+func TestGenerator_Generate_ReleaseDiffExcludeNeverReachesTheCommitDiff(t *testing.T) {
+	t.Parallel()
+
+	specDiff := "diff --git a/specs/export.md b/specs/export.md\n@@ -0,0 +1 @@\n+# Export\n"
+	r := seedStagedDiff(specDiff)
+	transport := &recordingTransport{body: "docs: export spec"}
+
+	cfg := normalCfg()
+	cfg.Release.DiffExclude = []string{"specs/"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
+	if _, err := gen.Generate(t.Context(), cfg); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	assertArgs(t, gitInvocation(t, r).Args, []string{"diff", "--cached", "--", "."})
+	if prompt := transport.lastPrompt(t); !strings.Contains(prompt, specDiff) {
+		t.Errorf("commit AI call does not carry the staged specs/export.md diff:\n%s", prompt)
+	}
+}
+
 func TestGenerator_Generate_ExcludedFilesNeverReachThePrompt(t *testing.T) {
 	t.Parallel()
 

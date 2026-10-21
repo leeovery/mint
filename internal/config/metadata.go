@@ -136,6 +136,7 @@ func MetadataRows() []MetadataRow {
 		{Key: "version_pattern", Level: LevelRelease, Description: "version line replaced inside version_file (empty treats the whole file as the version)"},
 		{Key: "ai_command", Level: LevelRelease, Default: "shared", Description: "optional per-verb override of the AI command for release; resolved [release] → shared → default"},
 		{Key: "timeout", Level: LevelRelease, Default: "shared, else " + seconds(DefaultReleaseTimeout), Description: "optional per-verb override of the per-attempt AI deadline (seconds) for release; resolved [release] → shared → default"},
+		{Key: "diff_exclude", Level: LevelRelease, Default: "[]", Description: "pathspec globs kept out of the release-notes diff only, added to the shared diff_exclude list"},
 
 		// [release.hooks] sub-table keys (hooksShape fields), in field order. These are
 		// activate-only — no compiled default — so their Default cell is left BLANK (the

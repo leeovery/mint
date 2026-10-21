@@ -601,3 +601,40 @@ func TestRegenerateFreshBody_OverShareMapIsCondensed(t *testing.T) {
 		t.Errorf("regenerate prompt still carries per-path vendor/ removals")
 	}
 }
+
+func TestRegenerateFreshBody_ReleaseDiffExcludeAddsToTheSharedList(t *testing.T) {
+	t.Parallel()
+
+	diff := "diff --git a/src/export.go b/src/export.go\n@@ -0,0 +1 @@\n+package src\n"
+	f := seedFreshGit(diff, "A\tsrc/export.go\n", "12\t0\tsrc/export.go\n")
+	tr := &freshTransport{body: "notes"}
+
+	cfg := freshCfg()
+	cfg.DiffExclude = []string{"*.lock"}
+	cfg.Release.DiffExclude = []string{"specs/"}
+	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
+	if _, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res, engine.NotesSinks{}); err != nil {
+		t.Fatalf("RegenerateFreshBody returned unexpected error: %v", err)
+	}
+
+	assertNotesGitCallsExclude(t, f, "v1.3.0..v1.4.0", ":(exclude)CHANGELOG.md", ":(exclude)*.lock", ":(exclude)specs/")
+}
+
+func TestRegenerateFreshRegenerator_ReleaseDiffExcludeAddsToTheSharedList(t *testing.T) {
+	t.Parallel()
+
+	diff := "diff --git a/src/export.go b/src/export.go\n@@ -0,0 +1 @@\n+package src\n"
+	f := seedFreshGit(diff, "A\tsrc/export.go\n", "12\t0\tsrc/export.go\n")
+	tr := &freshTransport{body: "notes"}
+
+	cfg := freshCfg()
+	cfg.DiffExclude = []string{"*.lock"}
+	cfg.Release.DiffExclude = []string{"specs/"}
+	res := version.Resolution{Tag: "v1.4.0", PreviousTag: "v1.3.0"}
+	regen := engine.RegenerateFreshRegenerator(f, tr, t.TempDir(), cfg, res, engine.RegenRun{})
+	if _, err := regen.Regenerate(t.Context(), ""); err != nil {
+		t.Fatalf("Regenerate returned unexpected error: %v", err)
+	}
+
+	assertNotesGitCallsExclude(t, f, "v1.3.0..v1.4.0", ":(exclude)CHANGELOG.md", ":(exclude)*.lock", ":(exclude)specs/")
+}

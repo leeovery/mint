@@ -394,3 +394,71 @@ func TestNewRegenerateBodyProducer_Fresh_OverCapVersionReportsItsProgress(t *tes
 
 	assertTwoPartProgress(t, progress)
 }
+
+// releaseDiffExcludeCfg sets a shared and a [release] diff_exclude list.
+func releaseDiffExcludeCfg() config.Config {
+	return config.Config{
+		MaxPromptBytes: config.DefaultMaxPromptBytes,
+		DiffExclude:    []string{"*.lock"},
+		Release:        config.Release{DiffExclude: []string{"specs/"}},
+	}
+}
+
+func seedFreshExportVersion(f *runner.FakeRunner) {
+	f.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/src/export.go b/src/export.go\n@@ -0,0 +1 @@\n+package src\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "A\tsrc/export.go\n"}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "12\t0\tsrc/export.go\n"}},
+	)
+	f.Seed("claude", runner.Result{Stdout: "## notes\n"}, nil)
+}
+
+// assertFreshGitCallsExclude fails unless the version's notes diff and both Change Map
+// git calls end with the shared and [release] exclusions.
+func assertFreshGitCallsExclude(t *testing.T, f *runner.FakeRunner, diffRange string) {
+	t.Helper()
+	tail := []string{diffRange, "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)*.lock", ":(exclude)specs/"}
+	want := [][]string{
+		append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/"}, tail...),
+		append([]string{"diff", "--name-status"}, tail...),
+		append([]string{"diff", "--numstat"}, tail...),
+	}
+	var got [][]string
+	for _, inv := range f.Invocations() {
+		if inv.Name == "git" {
+			got = append(got, inv.Args)
+		}
+	}
+	if !slices.EqualFunc(got, want, slices.Equal[[]string]) {
+		t.Errorf("fresh git calls = %v, want %v", got, want)
+	}
+}
+
+func TestNewBatchBodyProducer_Fresh_LeavesOutReleaseDiffExcludePaths(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	seedFreshExportVersion(f)
+
+	produce := newBatchBodyProducer(f, releaseDiffExcludeCfg(), t.TempDir(), publish.NewGitHubPublisher(f))
+	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", engine.NotesSinks{}); err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+
+	assertFreshGitCallsExclude(t, f, "v1.0.0..v1.1.0")
+}
+
+func TestNewRegenerateBodyProducer_Fresh_LeavesOutReleaseDiffExcludePaths(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	seedFreshExportVersion(f)
+
+	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
+	produce := newRegenerateBodyProducer(f, releaseDiffExcludeCfg(), t.TempDir(), res, publish.NewGitHubPublisher(f))
+	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, engine.NotesSinks{}); err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+
+	assertFreshGitCallsExclude(t, f, "v1.0.0..v1.1.0")
+}

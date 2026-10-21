@@ -66,8 +66,9 @@ func versionFileExcludePathspec(versionFile, versionPattern string) (pathspec st
 // duplicate :(exclude) entries (e.g. a version_file also listed in Globs) are harmless,
 // git tolerates them, so there is deliberately no de-dup.
 type ExcludeConfig struct {
-	// Globs are the extra project-artifact pathspec globs (config's diff_exclude),
-	// excluded in order ON TOP OF CHANGELOG.md. nil/empty adds no glob entries.
+	// Globs are the extra project-artifact pathspec globs (config's shared and [release]
+	// diff_exclude lists), excluded in order ON TOP OF CHANGELOG.md. nil/empty adds no
+	// glob entries.
 	Globs []string
 	// VersionFile is the configured version_file path (config's version_file). Empty
 	// means tag-only (no projection) — nothing for the strategy rule.
