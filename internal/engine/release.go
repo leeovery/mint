@@ -633,9 +633,9 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 
 	// When changelog=false WriteChangelog no-ops (Changed:false). When the version file
-	// also nets no change, CommitBookkeeping makes NO commit — the tag then points at the
-	// existing HEAD (or any pre_tag artifact commit) and STILL carries the full body via
-	// TagAndPush. Nothing durable is lost.
+	// also nets no change, CommitBookkeeping makes NO commit — the tag then points at
+	// HEAD as it stands and STILL carries the full body via TagAndPush. Nothing durable
+	// is lost.
 	writeResult, err := record.WriteChangelog(root, versionKey, opts.Now, body, cfg.Release.Changelog)
 	if err != nil {
 		// Post-mutation, pre-PONR: route through the surgical unwind so any artifact commit
