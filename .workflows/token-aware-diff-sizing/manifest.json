@@ -353,7 +353,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 7,
-          "current_task": "token-aware-diff-sizing-7-3",
+          "current_task": "token-aware-diff-sizing-7-4",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -454,7 +454,8 @@
             "token-aware-diff-sizing-6-11",
             "token-aware-diff-sizing-6-12",
             "token-aware-diff-sizing-7-1",
-            "token-aware-diff-sizing-7-2"
+            "token-aware-diff-sizing-7-2",
+            "token-aware-diff-sizing-7-3"
           ],
           "staging": {
             "p1": {
@@ -507,6 +508,33 @@
             4,
             5,
             6
+          ],
+          "bank": [
+            {
+              "task": "token-aware-diff-sizing-7-3",
+              "source": "executor",
+              "summary": "The .mint.toml filename is written out separately in config loading, mint init and the release-notes built-in exclusion",
+              "failure": "Renaming the config file in config or init leaves release notes excluding the old name, so every config edit (the Phase 8 answers commits included) shows up as a tooling line in published notes and regenerates, with no test or compile error",
+              "detail": "internal/config/config.go:42 configFileName (unexported); internal/engine/init.go:85 its own configFileName; internal/notes/assemble.go builtinExcludePathspecs literal :(exclude).mint.toml; one exported config constant would remove the drift",
+              "files": [
+                "internal/config/config.go",
+                "internal/engine/init.go",
+                "internal/notes/assemble.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-7-3",
+              "source": "reviewer",
+              "summary": "The built-in excluded filenames are retyped as literals in notes, away from the packages that own them",
+              "failure": "Renaming the config file (config.configFileName) or the changelog projection (record.ChangelogFileName) leaves release notes excluding the old name, so every config edit or changelog projection reaches the notes AI diff and Change Map with no compile or test failure, noticed only in published notes",
+              "detail": "internal/notes/assemble.go:27 hand-writes :(exclude)CHANGELOG.md and :(exclude).mint.toml; internal/config/config.go:42 configFileName (unexported) and internal/engine/init.go:85 its own configFileName hold .mint.toml; internal/record/changelog.go:20 exports ChangelogFileName; notes already imports config and record, so building builtinExcludePathspecs from exported constants creates no cycle and init.go would consume the same export",
+              "files": [
+                "internal/notes/assemble.go",
+                "internal/config/config.go",
+                "internal/engine/init.go",
+                "internal/record/changelog.go"
+              ]
+            }
           ]
         }
       }
