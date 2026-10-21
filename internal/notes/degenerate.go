@@ -19,11 +19,11 @@ const stubBody = "Maintenance release — no notable source changes"
 // will reliably hallucinate on.
 //
 // The input is ALREADY post-exclusion (the output of AssembleDiff, where git has
-// dropped CHANGELOG.md and any configured diff_exclude paths). So three distinct
+// dropped the built-in always-excludes and any configured diff_exclude paths). So three distinct
 // situations collapse to the SAME degenerate signal and are handled uniformly:
 //   - a re-tag with no source change → empty diff;
-//   - a release where every changed file fell under exclusion (Phase 2: only
-//     CHANGELOG.md changed) → empty diff straight from git;
+//   - a release where every changed file fell under exclusion (e.g. only
+//     CHANGELOG.md or .mint.toml changed) → empty diff straight from git;
 //   - pure churn that leaves only whitespace → whitespace-only diff.
 //
 // Whitespace AROUND real content does NOT make a diff degenerate — only an

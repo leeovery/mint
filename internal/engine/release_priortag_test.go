@@ -125,7 +125,7 @@ func TestRelease_PriorTag_NormalAI_EndToEnd(t *testing.T) {
 	}
 
 	// The diff base is priorTag..HEAD — the assemble step ranged from the prior tag.
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
 		t.Errorf("diff base is not %s..HEAD; got %v", priorTag, commandLines(f.Invocations()))
 	}
 	// The claude transport was driven over the FakeRunner (no real process), receiving
@@ -201,13 +201,13 @@ func TestRelease_PriorTag_DiffExcludeGlobsReachDiffAndChangeMapGitCalls(t *testi
 	// The configured globs ride on top of CHANGELOG.md on the assemble diff and both
 	// Change Map git calls, in config order — git does the exclusion.
 	const g1, g2 = ":(exclude)skills/**/knowledge.cjs", ":(exclude)*.min.js"
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", g1, g2) {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", g1, g2) {
 		t.Errorf("assemble diff did not carry the configured diff_exclude globs; got %v", commandLines(f.Invocations()))
 	}
-	if !invokedWith(f, "git", "diff", "--name-status", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", g1, g2) {
+	if !invokedWith(f, "git", "diff", "--name-status", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", g1, g2) {
 		t.Errorf("change map name-status did not carry the configured diff_exclude globs; got %v", commandLines(f.Invocations()))
 	}
-	if !invokedWith(f, "git", "diff", "--numstat", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", g1, g2) {
+	if !invokedWith(f, "git", "diff", "--numstat", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", g1, g2) {
 		t.Errorf("change map numstat did not carry the configured diff_exclude globs; got %v", commandLines(f.Invocations()))
 	}
 }
@@ -242,13 +242,13 @@ func TestRelease_PriorTag_PlainVersionFile_ExcludeReachesDiffAndChangeMapButIsIn
 	// The plain-mode version_file decision is COMPUTED: the :(exclude)release.txt entry
 	// rides the assemble diff and BOTH Change Map git calls, after :(exclude)CHANGELOG.md.
 	const vf = ":(exclude)release.txt"
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", vf) {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", vf) {
 		t.Errorf("assemble diff did not carry the plain-mode version_file exclude; got %v", commandLines(f.Invocations()))
 	}
-	if !invokedWith(f, "git", "diff", "--name-status", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", vf) {
+	if !invokedWith(f, "git", "diff", "--name-status", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", vf) {
 		t.Errorf("change map name-status did not carry the plain-mode version_file exclude; got %v", commandLines(f.Invocations()))
 	}
-	if !invokedWith(f, "git", "diff", "--numstat", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", vf) {
+	if !invokedWith(f, "git", "diff", "--numstat", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", vf) {
 		t.Errorf("change map numstat did not carry the plain-mode version_file exclude; got %v", commandLines(f.Invocations()))
 	}
 
@@ -292,10 +292,10 @@ func TestRelease_PriorTag_EmbeddedVersionFile_NotExcludedFromDiff(t *testing.T) 
 
 	// The assemble diff carries the built-in CHANGELOG.md exclude but NOT the version_file
 	// — embedded mode keeps the source file in the notes.
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml") {
 		t.Errorf("assemble diff did not carry the built-in CHANGELOG.md exclude; got %v", commandLines(f.Invocations()))
 	}
-	if invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)main.go") {
+	if invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)main.go") {
 		t.Errorf("assemble diff excluded the embedded-mode version_file; embedded source must stay in the notes")
 	}
 }

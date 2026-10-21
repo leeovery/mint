@@ -117,7 +117,7 @@ func MetadataRows() []MetadataRow {
 		{Key: "ai_command", Level: LevelShared, Default: DefaultAICommand, Description: "the AI invocation: composed prompt on stdin, generated body on stdout; resolved [verb] → shared → default"},
 		{Key: "max_prompt_bytes", Level: LevelShared, Default: strconv.Itoa(DefaultMaxPromptBytes), Description: "cap, in bytes, on the composed prompt of any single AI call"},
 		{Key: "timeout", Level: LevelShared, Default: seconds(DefaultReleaseTimeout) + " on release, " + seconds(DefaultCommitTimeout) + " on commit", Description: "per-attempt AI deadline in seconds; 0 means no deadline; resolved [verb] → shared → default"},
-		{Key: "diff_exclude", Level: LevelShared, Default: "[]", Description: "extra pathspec globs kept out of every AI diff, on top of the built-in CHANGELOG.md exclusion"},
+		{Key: "diff_exclude", Level: LevelShared, Default: "[]", Description: "extra pathspec globs kept out of every AI diff, on top of the built-in CHANGELOG.md and .mint.toml release-notes exclusions"},
 
 		// [release] table leaf keys (releaseShape leaf fields), in field order.
 		// release_branch/provider default to "" in the struct, but their "" is a SENTINEL

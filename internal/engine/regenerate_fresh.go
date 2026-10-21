@@ -7,7 +7,7 @@ package engine
 // The fresh path is the forward Stage-4 AI path with ONE substitution: the diff base.
 // The forward path ranges `last_tag..HEAD`; the fresh path ranges 5-3's resolved
 // DiffRange (`vX-1..vX`). Every other layer is reused unchanged — the consolidated
-// exclusion tiers (built-in CHANGELOG.md, the shared and [release] diff_exclude globs,
+// exclusion tiers (built-in CHANGELOG.md and .mint.toml, the shared and [release] diff_exclude globs,
 // the strategy-aware version_file decision), the Change Map computed AFTER exclusion and
 // prepended to the AI input, the max_prompt_bytes size check with chunking over it,
 // and the AI validation/retry.

@@ -11,17 +11,16 @@ import (
 )
 
 // wantNameStatusArgs is the exact argv of the name-status git call BuildChangeMap
-// must issue: `git diff --name-status {lastTag}..HEAD -- . ':(exclude)CHANGELOG.md'`.
-// The :(exclude)CHANGELOG.md pathspec is load-bearing — the map is computed AFTER
-// the built-in CHANGELOG.md exclusion, so excluded churn can never appear.
+// must issue. The built-in :(exclude) pathspecs are load-bearing — the map is computed
+// AFTER the built-in exclusions, so excluded churn can never appear.
 func wantNameStatusArgs(lastTag string) []string {
-	return []string{"diff", "--name-status", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md"}
+	return []string{"diff", "--name-status", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 }
 
 // wantNumstatArgs is the exact argv of the numstat git call: same range and same
 // exclusion as name-status, differing only in the --numstat selector.
 func wantNumstatArgs(lastTag string) []string {
-	return []string{"diff", "--numstat", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md"}
+	return []string{"diff", "--numstat", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 }
 
 // seedChangeMapGit scripts the two ordered git calls BuildChangeMap makes:
@@ -39,8 +38,8 @@ func seedChangeMapGit(t *testing.T, nameStatus, numstat string) *runner.FakeRunn
 }
 
 // withExcludes appends one :(exclude)<glob> entry per configured diff_exclude glob,
-// in config order, to a base argv that already ends with :(exclude)CHANGELOG.md —
-// the same on-top-of-CHANGELOG.md layering BuildChangeMap applies to both git calls.
+// in config order, to a base argv that already ends with the built-in :(exclude)
+// pathspecs — the same layering BuildChangeMap applies to both git calls.
 func withExcludes(base []string, globs ...string) []string {
 	args := append([]string(nil), base...)
 	for _, g := range globs {
@@ -58,9 +57,8 @@ func assertChangeMapInvocations(t *testing.T, r *runner.FakeRunner, lastTag stri
 }
 
 // assertChangeMapInvocationsWithExcludes is assertChangeMapInvocations parameterised
-// by extra diff_exclude globs: BOTH git calls must carry :(exclude)CHANGELOG.md
-// FOLLOWED BY one :(exclude)<glob> per configured glob, in order. With no globs it is
-// exactly the Phase-2 assertion.
+// by extra diff_exclude globs: BOTH git calls must carry the built-in :(exclude)
+// pathspecs FOLLOWED BY one :(exclude)<glob> per configured glob, in order.
 func assertChangeMapInvocationsWithExcludes(t *testing.T, r *runner.FakeRunner, lastTag string, globs ...string) {
 	t.Helper()
 
@@ -352,8 +350,7 @@ func TestAssembler_BuildChangeMap_MultipleGlobs_AllAppliedToBothCallsInOrder(t *
 func TestAssembler_BuildChangeMap_AbsentDiffExclude_ExcludesOnlyChangelog(t *testing.T) {
 	t.Parallel()
 
-	// With no configured globs (nil), BOTH calls reproduce EXACTLY the Phase-2 argv:
-	// the only exclude is :(exclude)CHANGELOG.md, with no extra entries.
+	// With no configured globs (nil), BOTH calls carry only the built-in excludes.
 	nameStatus := "M\tapi/a.go\n"
 	numstat := "5\t5\tapi/a.go\n"
 	r := seedChangeMapGit(t, nameStatus, numstat)

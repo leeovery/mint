@@ -934,3 +934,20 @@ func TestGuide_DiffExcludeScopeNamesTheCommitLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestGuide_ConfigReferenceSharedDiffExcludeNamesBothBuiltInExclusions(t *testing.T) {
+	t.Parallel()
+
+	for _, line := range strings.Split(configReferenceBody(t), "\n") {
+		if !strings.HasPrefix(line, "| diff_exclude | top-level |") {
+			continue
+		}
+		for _, want := range []string{"CHANGELOG.md", ".mint.toml"} {
+			if !strings.Contains(line, want) {
+				t.Errorf("shared diff_exclude row does not name the built-in %s exclusion; got %q", want, line)
+			}
+		}
+		return
+	}
+	t.Fatal("config reference has no shared diff_exclude row")
+}

@@ -116,7 +116,7 @@ func sourceArgs(base, diffExclude []string) []string {
 // excludePathspecs maps each diff_exclude glob to its :(exclude)<glob> pathspec, in
 // config order: the shared diff_exclude list, then the [commit] list (never [release]'s).
 // Unlike the notes assembler's union of exclusion tiers, commit carries ONLY the
-// configured globs — there is no built-in CHANGELOG.md or strategy-aware
+// configured globs — there is no built-in always-exclude or strategy-aware
 // version_file exclusion here (both are release-specific). A nil/empty slice yields no
 // pathspecs, so the bare argv is exactly `git diff --cached -- .`. It lives HERE,
 // beside sourceArgs (its only caller), so the full per-mode argv-assembly surface is

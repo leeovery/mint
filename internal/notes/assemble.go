@@ -5,7 +5,7 @@
 // quality work on the diff/context changes only this side, never transport.
 //
 // The diff base and exclusion tiers are layered in: the last_tag..HEAD diff with
-// the built-in CHANGELOG.md always-exclude (Phase 2), the configurable diff_exclude
+// the built-in CHANGELOG.md and .mint.toml always-excludes, the configurable diff_exclude
 // globs, and the strategy-aware version_file exclusion (plain mode excludes the
 // bookkeeping file; embedded mode keeps the real source). The max_prompt_bytes size
 // check is a later layer — deliberately not here.
@@ -18,13 +18,13 @@ import (
 	"mint/internal/runner"
 )
 
-// changelogExcludePathspec is the built-in, NON-configurable always-exclude:
-// CHANGELOG.md is pure mint output and never meaningful source, so it is dropped
-// from the diff in both the forward and regenerate paths. The exclusion is
-// performed by GIT via the :(exclude) pathspec — mint does no Go-side text
-// stripping — so a change set whose only modification is CHANGELOG.md yields an
-// empty post-exclusion diff straight from git.
-const changelogExcludePathspec = ":(exclude)CHANGELOG.md"
+// builtinExcludePathspecs are the NON-configurable always-excludes, dropped from the
+// diff in both the forward and regenerate paths: CHANGELOG.md is pure mint output, and
+// .mint.toml is about how releases are made, not what a release holds. The exclusion is
+// performed by GIT via the :(exclude) pathspecs — mint does no Go-side text stripping —
+// so a change set touching only these paths yields an empty post-exclusion diff
+// straight from git.
+var builtinExcludePathspecs = []string{":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 
 // versionFileExcludePathspec is the STRATEGY-AWARE decision for the configured
 // version_file: whether it is excluded from the diff, and if so as which :(exclude)
@@ -58,7 +58,7 @@ func versionFileExcludePathspec(versionFile, versionPattern string) (pathspec st
 }
 
 // ExcludeConfig is the consolidated diff-exclusion input the Assembler layers on top
-// of the built-in CHANGELOG.md always-exclude. It bundles the configurable diff_exclude
+// of the built-in always-excludes. It bundles the configurable diff_exclude
 // globs with the strategy-aware version_file decision so the constructor signature is
 // STABLE across exclusion tiers — the same struct feeds the forward path here and the
 // regenerate path (Phase 5), which inherits the identical version_file rule. The final
@@ -67,7 +67,7 @@ func versionFileExcludePathspec(versionFile, versionPattern string) (pathspec st
 // git tolerates them, so there is deliberately no de-dup.
 type ExcludeConfig struct {
 	// Globs are the extra project-artifact pathspec globs (config's shared and [release]
-	// diff_exclude lists), excluded in order ON TOP OF CHANGELOG.md. nil/empty adds no
+	// diff_exclude lists), excluded in order ON TOP OF the built-ins. nil/empty adds no
 	// glob entries.
 	Globs []string
 	// VersionFile is the configured version_file path (config's version_file). Empty
@@ -83,7 +83,7 @@ type ExcludeConfig struct {
 // holds the runner (so production wiring passes the os/exec-backed runner while
 // tests pass a FakeRunner — no real git, fully scriptable) and the consolidated
 // ExcludeConfig (diff_exclude globs + the strategy-aware version_file decision)
-// layered on top of the built-in CHANGELOG.md exclusion.
+// layered on top of the built-in always-excludes.
 type Assembler struct {
 	runner  runner.CommandRunner
 	exclude ExcludeConfig
@@ -92,16 +92,15 @@ type Assembler struct {
 // NewAssembler builds an Assembler over r with the consolidated ExcludeConfig. The
 // runner is injected for the same seam-testability reason as the sibling engine
 // packages. exclude carries the diff_exclude globs and the version_file strategy
-// inputs, all excluded ON TOP OF the built-in CHANGELOG.md. A zero ExcludeConfig
-// (no globs, no version_file) reproduces exactly the built-in-only behaviour (only
-// CHANGELOG.md excluded).
+// inputs, all excluded ON TOP OF the built-in always-excludes. A zero ExcludeConfig
+// (no globs, no version_file) excludes the built-ins alone.
 func NewAssembler(r runner.CommandRunner, exclude ExcludeConfig) *Assembler {
 	return &Assembler{runner: r, exclude: exclude}
 }
 
 // excludePathspecs returns the ordered :(exclude) pathspec arguments shared by the
 // diff and Change Map git calls — the UNION of the exclusion tiers in a fixed order:
-// FIRST the built-in :(exclude)CHANGELOG.md, THEN one :(exclude)<glob> per configured
+// FIRST the built-in always-excludes, THEN one :(exclude)<glob> per configured
 // diff_exclude glob (in config order), THEN — only in PLAIN mode — the strategy-aware
 // :(exclude)<version_file> (embedded mode / no version_file appends nothing here). git
 // interprets each glob as a pathspec pattern — mint does NO Go-side glob matching — so a
@@ -110,11 +109,9 @@ func NewAssembler(r runner.CommandRunner, exclude ExcludeConfig) *Assembler {
 // by the glob tier regardless of mode; the resulting duplicate (in plain mode) is
 // harmless and not de-duplicated.
 func (a *Assembler) excludePathspecs() []string {
-	// cap = CHANGELOG (1) + globs + worst-case version_file headroom (1); the literal
-	// 2 is that deliberate +1 headroom, not a magic number — do not "tighten" it to
-	// 1+len(...) or the plain-mode version_file entry would force a reallocation.
-	pathspecs := make([]string, 0, 2+len(a.exclude.Globs))
-	pathspecs = append(pathspecs, changelogExcludePathspec)
+	// The +1 is headroom for the plain-mode version_file entry.
+	pathspecs := make([]string, 0, len(builtinExcludePathspecs)+len(a.exclude.Globs)+1)
+	pathspecs = append(pathspecs, builtinExcludePathspecs...)
 	for _, glob := range a.exclude.Globs {
 		pathspecs = append(pathspecs, ":(exclude)"+glob)
 	}
@@ -132,9 +129,9 @@ func forwardRange(lastTag string) string {
 	return lastTag + "..HEAD"
 }
 
-// AssembleDiff returns the release diff for lastTag..HEAD with CHANGELOG.md and the
-// configured diff_exclude globs excluded, as git's raw post-exclusion stdout, ready
-// for downstream layering (the Change Map preamble and the max_prompt_bytes size check
+// AssembleDiff returns the release diff for lastTag..HEAD with the built-in
+// always-excludes and the configured diff_exclude globs excluded, as git's raw
+// post-exclusion stdout, ready for downstream layering (the Change Map preamble and the max_prompt_bytes size check
 // are applied by later layers, not here).
 //
 // The diff is produced by
@@ -142,8 +139,8 @@ func forwardRange(lastTag string) string {
 // The pinned prefixes override any diff.noprefix, diff.mnemonicPrefix or custom
 // diff.srcPrefix/diff.dstPrefix in the operator's git config, so every file header
 // takes the "a/P b/P" form the chunker's headerPath reads.
-// excludePathspecs is `:(exclude)CHANGELOG.md` followed by one `:(exclude)<glob>` per
-// configured diff_exclude glob, and — only in PLAIN mode — the strategy-aware
+// excludePathspecs is `:(exclude)CHANGELOG.md :(exclude).mint.toml` followed by one
+// `:(exclude)<glob>` per configured diff_exclude glob, and — only in PLAIN mode — the strategy-aware
 // `:(exclude)<version_file>` (see excludePathspecs), run cwd-relative like the other
 // engine git calls. GIT
 // performs every exclusion via the :(exclude) pathspecs; mint does no Go-side hunk
@@ -153,8 +150,8 @@ func forwardRange(lastTag string) string {
 // glob excludes it; that path-based (never commit-based) behaviour is git's and is NOT
 // special-cased.
 //
-// A normal EMPTY diff (e.g. the only change was CHANGELOG.md, now excluded) is
-// NOT an error — the empty string is returned for the degenerate path downstream.
+// A normal EMPTY diff (e.g. the only change was CHANGELOG.md or .mint.toml, now
+// excluded) is NOT an error — the empty string is returned for the degenerate path downstream.
 // A missing git binary is surfaced as a condition matching runner.ErrCommandNotFound
 // (via errors.Is); any other non-zero git exit is surfaced as a wrapped error so an
 // unexpected failure is never mistaken for an empty diff.
@@ -170,13 +167,13 @@ func (a *Assembler) AssembleDiff(ctx context.Context, lastTag string) (string, e
 // forward `{lastTag}..HEAD`. Everything else is IDENTICAL: the range is diffed via
 // `git diff --src-prefix=a/ --dst-prefix=b/ {range} -- . {excludePathspecs}` — the
 // same pinned prefixes and the SAME exclusion tiers: the built-in
-// :(exclude)CHANGELOG.md, the configured diff_exclude globs, and the strategy-aware
+// always-excludes, the configured diff_exclude globs, and the strategy-aware
 // version_file decision — so the regenerate diff reproduces the forward
 // path's source view.
 //
 // Exclusion is PATH-based (the :(exclude) pathspecs), NOT commit-based: a range that
 // carries mint's release-bookkeeping commit is diffed in full and the bookkeeping
-// PATHS (CHANGELOG.md + plain-mode version_file) are dropped by the pathspecs — the
+// PATHS (CHANGELOG.md + plain-mode version_file) and .mint.toml are dropped by the pathspecs — the
 // commit is never subtracted as a commit. The returned text is git's stdout verbatim;
 // an empty post-exclusion diff is NOT an error. A missing git binary matches
 // runner.ErrCommandNotFound via errors.Is; any other non-zero exit is wrapped.

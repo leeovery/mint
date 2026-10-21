@@ -55,7 +55,7 @@ func TestRelease_ReleaseDiffExclude_AddsToTheSharedListOnTheNotesDiffAndChangeMa
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude)*.lock", ":(exclude)specs/")
+	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)*.lock", ":(exclude)specs/")
 	prompt := stdinOf(t, f, "claude", leanClaudeArgs...)
 	if !strings.Contains(prompt, exportDiff) {
 		t.Errorf("notes call does not carry the src/export.go diff; got:\n%s", prompt)
@@ -84,7 +84,7 @@ func TestRelease_ReleaseDiffExclude_AppliesWithNoSharedList(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude)specs/")
+	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)specs/")
 }
 
 func TestRelease_ReleaseDiffExclude_OnlyExcludedChangesGiveTheMaintenanceBody(t *testing.T) {
@@ -103,7 +103,7 @@ func TestRelease_ReleaseDiffExclude_OnlyExcludedChangesGiveTheMaintenanceBody(t 
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)specs/") {
+	if !invokedWith(f, "git", "diff", "--src-prefix=a/", "--dst-prefix=b/", priorTag+"..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)specs/") {
 		t.Errorf("notes diff does not exclude specs/; got %v", commandLines(f.Invocations()))
 	}
 	for _, inv := range f.Invocations() {
@@ -140,7 +140,7 @@ func TestRelease_CommitDiffExclude_NeverReachesTheNotesDiffOrChangeMap(t *testin
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md")
+	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml")
 	prompt := stdinOf(t, f, "claude", leanClaudeArgs...)
 	for _, want := range []string{bothDiff, "src/export.go", "tmp/run.log"} {
 		if !strings.Contains(prompt, want) {

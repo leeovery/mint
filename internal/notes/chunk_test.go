@@ -597,7 +597,7 @@ func TestGenerator_GenerateFromRange_OverCap_ChunksOverThatRange(t *testing.T) {
 		t.Fatalf("git invocations = %d, want 3", len(invs))
 	}
 	assertArgvEqual(t, invs[0].Args, wantRangeArgs("v1.3.0..v1.4.0"))
-	assertArgvEqual(t, invs[1].Args, []string{"diff", "--name-status", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md"})
+	assertArgvEqual(t, invs[1].Args, []string{"diff", "--name-status", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"})
 }
 
 var _ notes.Transport = (*chunkTransport)(nil)

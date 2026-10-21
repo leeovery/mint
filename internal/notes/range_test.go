@@ -19,10 +19,9 @@ import (
 // the forward source view — the commit is never subtracted as a commit.
 
 // wantRangeArgs is the exact `git diff` argv AssembleRange must issue for a full git
-// range: `git diff --src-prefix=a/ --dst-prefix=b/ {range} -- . ':(exclude)CHANGELOG.md'`
-// — the range substituted verbatim (NOT a tag with `..HEAD` appended).
+// range, the range substituted verbatim (NOT a tag with `..HEAD` appended).
 func wantRangeArgs(rng string) []string {
-	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", rng, "--", ".", ":(exclude)CHANGELOG.md"}
+	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", rng, "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 }
 
 func TestAssembler_AssembleRange_DiffsArbitraryRange(t *testing.T) {
@@ -142,7 +141,7 @@ func TestAssembler_BuildChangeMapForRange_RidesSameExcludesOverRange(t *testing.
 
 	// The Change Map for an arbitrary range runs the SAME two git calls
 	// (--name-status, --numstat) over the range with the SAME post-exclusion set the
-	// diff uses (CHANGELOG.md + strategy version_file). The map is computed AFTER
+	// diff uses (the built-ins + strategy version_file). The map is computed AFTER
 	// exclusion, so an excluded path never appears.
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
@@ -164,8 +163,8 @@ func TestAssembler_BuildChangeMapForRange_RidesSameExcludesOverRange(t *testing.
 	if len(invs) != 2 {
 		t.Fatalf("recorded %d git calls, want 2 (name-status then numstat)", len(invs))
 	}
-	wantNameStatus := []string{"diff", "--name-status", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)release.txt"}
-	wantNumstat := []string{"diff", "--numstat", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)release.txt"}
+	wantNameStatus := []string{"diff", "--name-status", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)release.txt"}
+	wantNumstat := []string{"diff", "--numstat", "v1.3.0..v1.4.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)release.txt"}
 	assertArgvEqual(t, invs[0].Args, wantNameStatus)
 	assertArgvEqual(t, invs[1].Args, wantNumstat)
 }

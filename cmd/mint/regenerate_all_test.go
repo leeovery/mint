@@ -272,7 +272,7 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange(t *testi
 	if aiCalls != 3 {
 		t.Errorf("AI calls = %d, want two chunk calls and one merge", aiCalls)
 	}
-	if got := f.Invocations()[0].Args; !slices.Equal(got, []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md"}) {
+	if got := f.Invocations()[0].Args; !slices.Equal(got, []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", "v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}) {
 		t.Errorf("first git call = %v, want the version's own range diff", got)
 	}
 }
@@ -417,7 +417,7 @@ func seedFreshExportVersion(f *runner.FakeRunner) {
 // git calls end with the shared and [release] exclusions.
 func assertFreshGitCallsExclude(t *testing.T, f *runner.FakeRunner, diffRange string) {
 	t.Helper()
-	tail := []string{diffRange, "--", ".", ":(exclude)CHANGELOG.md", ":(exclude)*.lock", ":(exclude)specs/"}
+	tail := []string{diffRange, "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)*.lock", ":(exclude)specs/"}
 	want := [][]string{
 		append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/"}, tail...),
 		append([]string{"diff", "--name-status"}, tail...),
@@ -461,4 +461,33 @@ func TestNewRegenerateBodyProducer_Fresh_LeavesOutReleaseDiffExcludePaths(t *tes
 	}
 
 	assertFreshGitCallsExclude(t, f, "v1.0.0..v1.1.0")
+}
+
+func TestNewBatchBodyProducer_Fresh_LeavesOutMintConfig(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	seedFreshExportVersion(f)
+
+	cfg := config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}
+	produce := newBatchBodyProducer(f, cfg, t.TempDir(), publish.NewGitHubPublisher(f))
+	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", engine.NotesSinks{}); err != nil {
+		t.Fatalf("produce returned unexpected error: %v", err)
+	}
+
+	tail := []string{"v1.0.0..v1.1.0", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
+	want := [][]string{
+		append([]string{"diff", "--src-prefix=a/", "--dst-prefix=b/"}, tail...),
+		append([]string{"diff", "--name-status"}, tail...),
+		append([]string{"diff", "--numstat"}, tail...),
+	}
+	var got [][]string
+	for _, inv := range f.Invocations() {
+		if inv.Name == "git" {
+			got = append(got, inv.Args)
+		}
+	}
+	if !slices.EqualFunc(got, want, slices.Equal[[]string]) {
+		t.Errorf("fresh git calls = %v, want %v", got, want)
+	}
 }

@@ -1053,3 +1053,21 @@ func TestGenerator_GenerateWithContext_Empty_EqualsPlainGenerate(t *testing.T) {
 		t.Errorf("empty one-time context changed the prompt; a plain re-roll must equal Generate.\nGenerate:\n%s\nGenerateWithContext(\"\"):\n%s", plainTr.lastPrompt(t), emptyTr.lastPrompt(t))
 	}
 }
+
+func TestGenerator_Generate_StagedMintConfigChangeReachesTheCommitDiff(t *testing.T) {
+	t.Parallel()
+
+	configDiff := "diff --git a/.mint.toml b/.mint.toml\n@@ -0,0 +1 @@\n+[release]\n"
+	r := seedStagedDiff(configDiff)
+	transport := &recordingTransport{body: "chore: configure mint"}
+
+	gen := commit.NewGenerator(r, transport, t.TempDir(), commit.StagedOnly)
+	if _, err := gen.Generate(t.Context(), normalCfg()); err != nil {
+		t.Fatalf("Generate returned unexpected error: %v", err)
+	}
+
+	assertArgs(t, gitInvocation(t, r).Args, []string{"diff", "--cached", "--", "."})
+	if prompt := transport.lastPrompt(t); !strings.Contains(prompt, configDiff) {
+		t.Errorf("commit AI call does not carry the staged .mint.toml diff:\n%s", prompt)
+	}
+}

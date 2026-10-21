@@ -21,8 +21,7 @@ func TestIsDegenerate_AllExcludedDiff_True(t *testing.T) {
 	t.Parallel()
 
 	// The input is ALREADY post-exclusion (the output of AssembleDiff). When every
-	// changed file fell under exclusion — in Phase 2, the only exclusion is
-	// CHANGELOG.md, so "only CHANGELOG.md changed" — git emits an empty diff. The
+	// changed file fell under exclusion, git emits an empty diff. The
 	// detector therefore sees "" and treats all-excluded uniformly with empty: a
 	// re-tag with no source change and an all-excluded release both reduce to "".
 	allExcludedPostExclusion := ""

@@ -430,8 +430,8 @@ func TestLoad_AbsentDiffExclude_DefaultsToEmpty(t *testing.T) {
 	t.Parallel()
 
 	// diff_exclude is a shared TOP-LEVEL engine key (not under [release]) listing
-	// extra globs to exclude from the diff ON TOP OF the built-in CHANGELOG.md.
-	// Absent from the file it must default to empty — only CHANGELOG.md is excluded.
+	// extra globs to exclude from the diff ON TOP OF the built-in always-excludes.
+	// Absent from the file it must default to empty.
 	cfg, err := config.Load(t.TempDir())
 	if err != nil {
 		t.Fatalf("Load returned unexpected error: %v", err)

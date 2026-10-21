@@ -8,17 +8,16 @@ import (
 	"mint/internal/runner"
 )
 
-// wantArgs is the exact git argv AssembleDiff must issue for a given last tag:
-// `git diff --src-prefix=a/ --dst-prefix=b/ {lastTag}..HEAD -- . ':(exclude)CHANGELOG.md'`.
-// The prefixes are pinned so headers read "a/P b/P" whatever the operator's git
-// prefix config. CHANGELOG.md is the built-in non-configurable always-exclude, applied by git via the :(exclude)
-// pathspec — mint does no Go-side text stripping.
+// wantArgs is the exact git argv AssembleDiff must issue for a given last tag. The
+// prefixes are pinned so headers read "a/P b/P" whatever the operator's git prefix
+// config. CHANGELOG.md and .mint.toml are the built-in non-configurable always-excludes,
+// applied by git via the :(exclude) pathspecs — mint does no Go-side text stripping.
 func wantArgs(lastTag string) []string {
-	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md"}
+	return []string{"diff", "--src-prefix=a/", "--dst-prefix=b/", lastTag + "..HEAD", "--", ".", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
 }
 
 // wantArgsWithExcludes is wantArgs plus one :(exclude)<glob> entry per configured
-// diff_exclude glob, appended AFTER the built-in :(exclude)CHANGELOG.md in config
+// diff_exclude glob, appended AFTER the built-in always-excludes in config
 // order. Each glob is carried verbatim into the pathspec — git, not Go, matches it.
 func wantArgsWithExcludes(lastTag string, globs ...string) []string {
 	args := wantArgs(lastTag)
@@ -53,7 +52,7 @@ func assertGitDiffInvocation(t *testing.T, r *runner.FakeRunner, want []string) 
 }
 
 // wantArgsWithTail is wantArgs plus an arbitrary ordered tail of :(exclude) entries —
-// the general form for asserting CHANGELOG.md first, then any globs, then the strategy
+// the general form for asserting the built-ins first, then any globs, then the strategy
 // version_file entry, in the exact order excludePathspecs builds them.
 func wantArgsWithTail(lastTag string, tail ...string) []string {
 	return append(wantArgs(lastTag), tail...)
@@ -100,7 +99,7 @@ func TestAssembler_AssembleDiff_NoVersionFile_AddsNothingForRule(t *testing.T) {
 	t.Parallel()
 
 	// No version_file: the strategy adds nothing. With no globs either, the argv is
-	// EXACTLY the built-in :(exclude)CHANGELOG.md — the Phase-2 baseline reproduced.
+	// EXACTLY the built-in always-excludes.
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 
@@ -273,8 +272,7 @@ func TestAssembler_AssembleDiff_ForceAddedTrackedFileMatchingGlob_ExcludedByPath
 func TestAssembler_AssembleDiff_AbsentDiffExclude_ExcludesOnlyChangelog(t *testing.T) {
 	t.Parallel()
 
-	// With no configured globs (nil), AssembleDiff must reproduce EXACTLY the Phase-2
-	// behaviour: the only exclude is :(exclude)CHANGELOG.md, with no extra entries.
+	// With no configured globs (nil), the only excludes are the built-ins.
 	r := runner.NewFakeRunner()
 	r.Seed("git", runner.Result{Stdout: "diff --git a/api.go b/api.go\n"}, nil)
 

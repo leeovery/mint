@@ -60,7 +60,7 @@ type Transport interface {
 //
 // Commit owns its OWN L1 rather than reusing internal/notes because notes is
 // release-specific: range-based (AssembleRange only), release-tier excludes are
-// hardwired (CHANGELOG.md + version_file), and its exclude-pathspec assembly is
+// hardwired (the built-in always-excludes + version_file), and its exclude-pathspec assembly is
 // unexported. Commit therefore builds the would-be-staged source and its own pathspecs
 // (the shared plus [commit] diff_exclude lists, never [release]'s) here, while CONSUMING the genuinely shared pieces: notes.ErrDiffTooLarge
 // (the oversized sentinel Run routes on) and the ai.Transport (validate + one retry)
@@ -86,7 +86,7 @@ func NewGenerator(r runner.CommandRunner, transport Transport, root string, mode
 //
 //  1. sourceDiff — commit's L1: the would-be-committed diff for the resolved
 //     StagingMode, with the shared diff_exclude list plus cfg.Commit.DiffExclude
-//     mapped to :(exclude) pathspecs (no CHANGELOG.md
+//     mapped to :(exclude) pathspecs (no built-in
 //     / version_file tiers — those are release-specific). The SOURCE command differs per
 //     mode (StagedOnly: `git diff --cached`; All: the read-only tracked-vs-HEAD diff;
 //     AddAll: that diff plus untracked files rendered read-only as additions), but git
