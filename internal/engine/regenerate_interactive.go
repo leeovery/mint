@@ -97,10 +97,6 @@ func TargetUnset() OptionalRegenerateTarget {
 	return OptionalRegenerateTarget{}
 }
 
-// RegenerateRunRequest carries the single-version interactive run inputs: the
-// optional axis selections (a supplied flag skips its prompt), the resolved tag /
-// version key / project, whether the changelog is enabled (which target options are
-// offerable), and the injected body producer.
 type RegenerateRunRequest struct {
 	// Source is the flag-supplied source or unset (ask the source prompt).
 	Source OptionalRegenerateSource

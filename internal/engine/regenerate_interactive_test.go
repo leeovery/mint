@@ -48,8 +48,6 @@ func staticBody() func(context.Context, engine.RegenerateSource, engine.NotesSin
 	}
 }
 
-// runReq builds a RegenerateRunRequest with the canned tag/version/project, the
-// static body producer, changelog enabled, and the given axis options.
 func runReq(source engine.OptionalRegenerateSource, target engine.OptionalRegenerateTarget) engine.RegenerateRunRequest {
 	return engine.RegenerateRunRequest{
 		Source:           source,
