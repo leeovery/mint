@@ -49,3 +49,19 @@ func TestREADME_ReleaseSectionDescribesTheUnattendedSuggestions(t *testing.T) {
 		}
 	}
 }
+
+func TestREADME_ReleaseSectionDescribesTheDryRunSuggestions(t *testing.T) {
+	t.Parallel()
+
+	section := readmeSection(t, readREADME(t, readmePath(t)), "### `release`")
+	flat := strings.Join(strings.Fields(section), " ")
+	for _, want := range []string{
+		"A `--dry-run` asks nothing about the suggestions and writes nothing",
+		"at a terminal without `-y` it shows each one where its pause would be, as the pause would show it, with no choice offered",
+		"an unattended dry run (`-y`, or stdin not a terminal) prints them as an unattended release does, `[release].diff_exclude` line included",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("README release section does not say %q", want)
+		}
+	}
+}

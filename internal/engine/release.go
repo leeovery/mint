@@ -1039,8 +1039,9 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	return body, kind, generator, nil
 }
 
-// exclusionCheck is the release's exclusion check, pausing on its suggestions only on
-// an attended real run, and handing them to stage to print on an unattended one.
+// exclusionCheck is the release's exclusion check, pausing on its suggestions on an
+// attended real run, handing them to stage to print on an unattended one, and on an
+// attended dry run showing each where its pause would be, unanswered.
 func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage) *notes.ExclusionCheck {
 	check := notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage)
 	switch {
@@ -1048,8 +1049,9 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 		return check.WithPauses(exclusionPauses{p: deps.Presenter})
 	case !deps.attended():
 		return check.WithReport(stage.suggested)
+	default:
+		return check.WithReport(exclusionPauses{p: deps.Presenter}.preview)
 	}
-	return check
 }
 
 // exclusionPauses asks the operator about each suggestion at a gate, the spinner
@@ -1072,6 +1074,12 @@ func (e exclusionPauses) Pause(_ context.Context, s notes.Suggestion, m notes.Ma
 		return notes.AnswerKeep, nil
 	}
 	return notes.AnswerKeep, errUnexpectedChoice(choice)
+}
+
+func (e exclusionPauses) preview(s notes.Suggestion, m notes.Matches) {
+	e.p.SuspendSpinner()
+	e.p.PreviewGate(exclusionPauseGate(s, m))
+	e.p.ResumeSpinner()
 }
 
 func exclusionPauseGate(s notes.Suggestion, m notes.Matches) presenter.Gate {

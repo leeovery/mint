@@ -229,6 +229,12 @@ func (p *PlainPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
 	}
 }
 
+// PreviewGate prints the gate's question as Prompt would, the key hint replaced by
+// the dry-run marker.
+func (p *PlainPresenter) PreviewGate(gate Gate) {
+	p.writef("%s (%s)\n", gate.Question, previewMarker)
+}
+
 // NotesChecking prints the exclusion check's call as its own line.
 func (p *PlainPresenter) NotesChecking() {
 	p.writef("notes: checking for files that don't belong in the notes\n")

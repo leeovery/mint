@@ -89,12 +89,19 @@ func (r *suggestedRun) shipping() *suggestedRun {
 // release runs the release and fails unless .mint.toml is byte-for-byte as it was.
 func (r *suggestedRun) release(t *testing.T) error {
 	t.Helper()
+	return r.releaseWith(t, priorTagNormalAIOptions())
+}
+
+// releaseWith runs the release under opts and fails unless .mint.toml is byte-for-byte
+// as it was.
+func (r *suggestedRun) releaseWith(t *testing.T, opts engine.ReleaseOptions) error {
+	t.Helper()
 	path := filepath.Join(r.root, ".mint.toml")
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runErr := engine.Release(t.Context(), r.deps, priorTagNormalAIOptions())
+	runErr := engine.Release(t.Context(), r.deps, opts)
 	after, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf(".mint.toml after the run: %v", err)

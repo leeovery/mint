@@ -44,6 +44,7 @@ const (
 	KindNotesChecking
 	KindNotesChecked
 	KindExclusionSuggestions
+	KindPreviewGate
 )
 
 // String renders the kind for readable test failure output.
@@ -95,6 +96,8 @@ func (k EventKind) String() string {
 		return "NotesChecked"
 	case KindExclusionSuggestions:
 		return "ExclusionSuggestions"
+	case KindPreviewGate:
+		return "PreviewGate"
 	default:
 		return "Unknown"
 	}
@@ -124,6 +127,7 @@ type Event struct {
 	ShowMessage          presenter.Message
 	ShowVersion          presenter.Version
 	Prompt               presenter.Gate
+	PreviewGate          presenter.Gate
 	// AskLine is the engine-supplied prompt label the AskLine call carried (the
 	// scripted ANSWER is configured on the recorder, not stored here).
 	AskLine     string
@@ -219,6 +223,11 @@ func (r *RecordingPresenter) NotesMerging(m presenter.NotesMerge) {
 // NextMoves records the ways forward from a failure.
 func (r *RecordingPresenter) NextMoves(m presenter.NextMoves) {
 	r.Events = append(r.Events, Event{Kind: KindNextMoves, NextMoves: m})
+}
+
+// PreviewGate records the gate a dry run showed without asking.
+func (r *RecordingPresenter) PreviewGate(gate presenter.Gate) {
+	r.Events = append(r.Events, Event{Kind: KindPreviewGate, PreviewGate: gate})
 }
 
 // ExclusionSuggestions records the exclusion check's suggestions.

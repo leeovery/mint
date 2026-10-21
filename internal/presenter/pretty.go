@@ -612,6 +612,20 @@ func (p *PrettyPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
 	}
 }
 
+// PreviewGate opens as renderGate does, with the bold question, and puts the dim
+// dry-run marker where the choices would be.
+func (p *PrettyPresenter) PreviewGate(gate Gate) {
+	var b strings.Builder
+	if p.trailingNL < 2 {
+		b.WriteString("\n")
+	}
+	b.WriteString(p.strong.Render(gate.Question))
+	b.WriteString("\n")
+	b.WriteString(p.dim.Render(previewMarker))
+	b.WriteString("\n")
+	p.writef("%s", b.String())
+}
+
 // Unwound renders the auto-unwind line to OUT ONLY, MIRRORING the StageSucceeded
 // line shape exactly: two-space indent, the ↩ glyph styled through the renderer,
 // the literal label "unwound" padded to the stage column, then the engine-supplied

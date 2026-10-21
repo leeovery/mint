@@ -49,6 +49,9 @@ const gateFailLabel = "gate"
 // to the gate failure's.
 const inputFailLabel = "input"
 
+// previewMarker stands where a gate's choices would be when PreviewGate shows it.
+const previewMarker = "dry run: not asked"
+
 // gateNotTTYMessageASCII is the byte-pure ASCII message text for the plain
 // forbidden-combination failure: a semicolon form (NOT the em-dash) so the plain
 // byte-purity guard stays green. The pretty presenter renders the spec's em-dash
