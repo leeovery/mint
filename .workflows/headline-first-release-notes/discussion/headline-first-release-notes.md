@@ -60,6 +60,63 @@ A headline is not new ground — the format once had one, and lost it for length
 
 ---
 
+## Headline Shape
+
+### Context
+
+What the headline looks like in the notes, and how it squares with the format's one-line discipline and the removed TL;DR (Context → History). The line drawn at the outset: the headline is held to the bullets' altitude — one line, one sentence, plain language, the change and its user-facing effect — never a synthesis of everything in the release, because a narrative "what is this release about" is what grew into the essay that 886c6100 cut.
+
+### Options Considered
+
+Worked on mint's own 0.0.6 section, where `mint setup` is the first of four ✨ Added bullets.
+
+**A — headline line above the sections, the headlined change moved out of its category**
+
+```text
+`mint setup` — a new command that prints a version-matched guide an AI agent follows to configure mint for a project.
+
+✨ Added
+
+- Config-metadata source of truth — one drift-tested table of every config key, its level, default and description.
+- …
+```
+
+- Pros: says nothing twice; the top line is the one every reader reads.
+- Cons: a reader scanning ✨ Added across versions doesn't find the biggest addition in its list.
+
+**B — headline line above the sections, the change also kept in its category**
+
+```text
+`mint setup` — a new command that prints a version-matched guide an AI agent follows to configure mint for a project.
+
+✨ Added
+
+- `mint setup` — prints a version-matched configuration guide, usable from any directory.
+- …
+```
+
+- Pros: the sections stay a complete record.
+- Cons (as first argued): the same thing twice in five lines, against the prompt's "do not pad".
+
+**C — the headline as its own emoji section** (e.g. "⭐ Highlight" with one bullet)
+
+- Pros: keeps the format's visual grammar; a headed section is less likely to be read by the model as a preamble to drop.
+- Cons: adds a header line; position is doing the work in every shape.
+
+### Journey
+
+The session's first lean was A, on the premise that the headlined change is one bullet, so keeping it in its category repeats that bullet. The user pushed toward B with an argument that breaks the premise: a release is usually — not always — primarily one thing, and that thing is built from many pieces. The next mint release is the instance: since v0.0.11 the work is almost entirely token-aware diff sizing (`git log v0.0.11..HEAD --format='%s' | sed -E 's/^([a-z-]+)\(([^)/]+).*/\1 \2/' | sort | uniq -c | sort -rn | head -3` → `318 impl token-aware-diff-sizing`, `129 planning token-aware-diff-sizing`, `109 discussion token-aware-diff-sizing`) — splitting a diff too large for the model so the AI can still write one coherent set of notes — with minor bug fixes and documentation updates alongside. In the sections that feature is not one bullet but many: chunking, halving a call the model rejects, the exclusion check, the notes-file route, saved part notes. There is no single bullet to move out; the headline summarises a body of work the sections detail.
+
+So repetition is the design, not padding: the top line is the terse "sales piece" — what was done, short, addressing the feature, the bug or the large epic — and the sections are how the release got there, every piece listed as today. That is what moved the session off A: A only holds for a release whose main feature is a single change (0.0.6), and even there B costs one repeated line.
+
+### Decision
+
+*Provisional — what the sentence leads with, and its typography, still open.*
+
+A one-sentence headline above the first section, summarising the release's main body of work; beneath it the categorised sections exactly as today, listing every notable change, the main feature's pieces included. The headline and the sections overlap by design — summary, then detail — and the sections are never thinned to avoid it. The headline is held to one sentence at bullet altitude: terse, plain, no narrative through-line (the TL;DR failure).
+
+---
+
 ## Summary
 
 ### Key Insights
