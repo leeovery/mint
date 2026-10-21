@@ -311,7 +311,9 @@
             "token-aware-diff-sizing-4-15": "tick-84b049",
             "token-aware-diff-sizing-5-14": "tick-17f1a0",
             "token-aware-diff-sizing-5-15": "tick-266a9d",
-            "token-aware-diff-sizing-5-16": "tick-0e92cd"
+            "token-aware-diff-sizing-5-16": "tick-0e92cd",
+            "token-aware-diff-sizing-6-11": "tick-1da885",
+            "token-aware-diff-sizing-6-12": "tick-fedaa4"
           },
           "storage_paths": [
             ".tick/"
@@ -478,6 +480,12 @@
                 "2": "approved",
                 "3": "approved"
               }
+            },
+            "p6": {
+              "tasks": {
+                "1": "approved",
+                "2": "approved"
+              }
             }
           },
           "consolidated_phases": [
@@ -485,7 +493,8 @@
             2,
             3,
             4,
-            5
+            5,
+            6
           ],
           "completed_phases": [
             1,
@@ -493,71 +502,6 @@
             3,
             4,
             5
-          ],
-          "bank": [
-            {
-              "task": "token-aware-diff-sizing-6-7",
-              "source": "reviewer",
-              "summary": "Comments around the review gate still say the gate and its r/e failures happen before any mutation, though a pre_tag artifact commit can precede the gate",
-              "failure": "A maintainer trusting them drops the Unwind for a gate or r abort, and a declined or failed release leaves the pre_tag artifact commit on the user branch",
-              "detail": "release.go:579-580 (gate positioned BEFORE any mutation); release.go:1547 errEditorUnavailable doc; release.go:1554 errRegeneratorUnavailable doc; release.go:1671 regenerateBody doc; release.go:1639-1640 ChoiceRegen comment says closed input is surfaced, but it only aborts",
-              "files": [
-                "internal/engine/release.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-6-8",
-              "source": "reviewer",
-              "summary": "Regenerate holds its r merge inputs in a closure-local merged, while release now holds them in chunkNotesKeeper",
-              "failure": "If a regenerate-gate keep reads the keeper, an r the ladder turned chunked updates only the closure, so a later failed re-merge saves no part notes and names no file, with no test failing",
-              "detail": "regenerate_fresh.go:98-107 copies run.Merged into a local updated via WithMergeInputs; regenerate_interactive.go:267 and regenerate_batch.go:477 pass a RegenRun{Merged} snapshot; release routes the same state through chunkNotes.keepMerged (release.go:1161-1164)",
-              "files": [
-                "internal/engine/regenerate_fresh.go",
-                "internal/engine/regenerate_interactive.go",
-                "internal/engine/regenerate_batch.go",
-                "internal/engine/release.go",
-                "cmd/mint/regenerate_run.go",
-                "cmd/mint/regenerate_all.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-6-8",
-              "source": "reviewer",
-              "summary": "Release r keeps its merge inputs on the shared chunkNotesKeeper; regenerate r keeps them in a closure-local merged snapshot taken from RegenRun",
-              "failure": "If 6-10 wires regenerate keep through the keeper, a ladder-chunked r followed by an r whose re-merge fails saves nothing, and the operator loses that wave part notes",
-              "detail": "regenerate_fresh.go:97-115 merged := run.Merged updated via WithMergeInputs; regenerate_interactive.go:267 RegenRun{Merged: chunkNotes.merged}; regenerate_batch.go:477; compare release.go:1155-1167 via chunkNotes.keepMerged",
-              "files": [
-                "internal/engine/regenerate_fresh.go",
-                "internal/engine/regenerate_interactive.go",
-                "internal/engine/regenerate_batch.go",
-                "internal/engine/release.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-6-9",
-              "source": "reviewer",
-              "summary": "Three call sites repeat the WithProgress/WithChunkNotes/WithMergeInputs chain on a notes generator; route them through one helper",
-              "failure": "A site that leaves a step out compiles and runs, and silently drops its chunked failures or merge inputs; the release r lacked WithChunkNotes until 6-9 and no test caught it",
-              "detail": "release.go:1009 (selecting) and :1161 (regenerating) chain generator.WithProgress(X).WithChunkNotes(chunkNotes.saver()).WithMergeInputs(chunkNotes.keepMerged); regenerate_fresh.go:65 chains the same from NotesSinks built by chunkNotesKeeper.sinks (chunknotes.go:44)",
-              "files": [
-                "internal/engine/release.go",
-                "internal/engine/regenerate_fresh.go",
-                "internal/engine/chunknotes.go"
-              ]
-            },
-            {
-              "task": "token-aware-diff-sizing-6-10",
-              "source": "reviewer",
-              "summary": "Release and regenerate r regenerators are two separate implementations of one rule: re-merge held merge inputs, else regenerate from the size check while saving chunk notes and keeping merge inputs",
-              "failure": "A rule added to one verb r silently misses the other, as regenerate lacked WithChunkNotes and the keeper hand-off until 6-10; users notice when one verb loses finished chunk notes",
-              "detail": "perRunRegenerator (release.go:1154-1168) reads chunkNotes.merged directly; RegenerateFreshRegenerator (regenerate_fresh.go:98-122) keeps a closure-local merged and forwards it to run.MergeInputs; one helper taking the generator, a merged-inputs reader and the range-generation function would make the keeper the single holder",
-              "files": [
-                "internal/engine/release.go",
-                "internal/engine/regenerate_fresh.go",
-                "internal/engine/chunknotes.go",
-                "cmd/mint/regenerate_all.go"
-              ]
-            }
           ]
         }
       }
