@@ -1,4 +1,5 @@
-// Package config loads mint's optional .mint.toml from the repo root. Config is
+// Package config loads mint's optional .mint.toml from the repo root, and appends globs
+// to its [release] lists (AppendReleaseGlobs). Config is
 // fully optional: zero config yields sensible defaults everywhere, so Load never
 // requires a file to exist.
 //

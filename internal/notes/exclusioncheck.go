@@ -36,6 +36,7 @@ type ExclusionCheck struct {
 	narration CheckNarration
 	pauses    SuggestionPauses
 	report    func(Suggestion, Matches)
+	record    func(context.Context, Answers) error
 }
 
 // Suggestion is a glob the check's answer suggests leaving out of the notes, with the
@@ -60,6 +61,12 @@ type Matches struct {
 	DiffBytes int
 	// Kept is those of Paths the keep list, or a Keep answer earlier in the run, covers.
 	Kept []string
+}
+
+// Answers are a run's answers at its pauses, each list's globs in the order answered.
+type Answers struct {
+	Exclude []string
+	Keep    []string
 }
 
 // SuggestionPauses asks the operator about one suggestion and returns the answer.
@@ -91,6 +98,15 @@ func (c *ExclusionCheck) WithPauses(pauses SuggestionPauses) *ExclusionCheck {
 func (c *ExclusionCheck) WithReport(report func(Suggestion, Matches)) *ExclusionCheck {
 	d := *c
 	d.report = report
+	return &d
+}
+
+// WithRecord returns a copy of c that, once its last pause is answered, hands record
+// the run's answers, unless no pause was answered; c itself is unchanged. An error
+// record returns is Check's.
+func (c *ExclusionCheck) WithRecord(record func(context.Context, Answers) error) *ExclusionCheck {
+	d := *c
+	d.record = record
 	return &d
 }
 
@@ -172,14 +188,20 @@ func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, fi
 		}
 		decided.record(s.Glob, answer)
 	}
+	if c.record != nil && decided.answered() {
+		if err := c.record(ctx, Answers{Exclude: decided.excluded, Keep: decided.kept}); err != nil {
+			return nil, err
+		}
+	}
 	return decided.excluded, nil
 }
 
 // runAnswers is the keep list grown by this run's Keep answers, and the globs of its
-// Exclude answers.
+// Exclude answers and its Keep answers.
 type runAnswers struct {
 	keep     []string
 	excluded []string
+	kept     []string
 }
 
 func (a *runAnswers) record(glob string, answer Answer) {
@@ -188,6 +210,11 @@ func (a *runAnswers) record(glob string, answer Answer) {
 		return
 	}
 	a.keep = append(a.keep, glob)
+	a.kept = append(a.kept, glob)
+}
+
+func (a *runAnswers) answered() bool {
+	return len(a.excluded) > 0 || len(a.kept) > 0
 }
 
 // leavesUndecided reports whether glob matches a path of files neither the keep list

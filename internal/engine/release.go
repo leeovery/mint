@@ -1002,7 +1002,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	selecting := chunkNotes.sinks(stage).wire(generator)
 	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).
 		WithFallbackNotice(stage.fellBack).
-		WithExclusionCheck(exclusionCheck(deps, cfg, opts, transport, stage))
+		WithExclusionCheck(exclusionCheck(deps, root, cfg, opts, transport, stage))
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// diff the exclusions and the check's Exclude answers leave + resolved prompt/context
@@ -1040,17 +1040,27 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 }
 
 // exclusionCheck is the release's exclusion check, pausing on its suggestions on an
-// attended real run, handing them to stage to print on an unattended one, and on an
-// attended dry run showing each where its pause would be, unanswered.
-func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage) *notes.ExclusionCheck {
+// attended real run and recording the answers in root's .mint.toml, handing them to
+// stage to print on an unattended one, and on an attended dry run showing each where its
+// pause would be, unanswered.
+func exclusionCheck(deps ReleaseDeps, root string, cfg config.Config, opts ReleaseOptions, transport notes.Transport, stage *notesStage) *notes.ExclusionCheck {
 	check := notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage)
 	switch {
 	case deps.asksAtTerminal(opts):
-		return check.WithPauses(exclusionPauses{p: deps.Presenter})
+		return check.WithPauses(exclusionPauses{p: deps.Presenter}).WithRecord(recordAnswers(root))
 	case !deps.attended():
 		return check.WithReport(stage.suggested)
 	default:
 		return check.WithReport(exclusionPauses{p: deps.Presenter}.preview)
+	}
+}
+
+func recordAnswers(root string) func(context.Context, notes.Answers) error {
+	return func(_ context.Context, a notes.Answers) error {
+		if err := config.AppendReleaseGlobs(root, config.ReleaseGlobs{DiffExclude: a.Exclude, DiffKeep: a.Keep}); err != nil {
+			return fmt.Errorf("recording the exclusion answers: %w", err)
+		}
+		return nil
 	}
 }
 
