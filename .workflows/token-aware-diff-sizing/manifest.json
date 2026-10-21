@@ -353,7 +353,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 7,
-          "current_task": "token-aware-diff-sizing-7-8",
+          "current_task": "token-aware-diff-sizing-7-9",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -459,7 +459,8 @@
             "token-aware-diff-sizing-7-4",
             "token-aware-diff-sizing-7-5",
             "token-aware-diff-sizing-7-6",
-            "token-aware-diff-sizing-7-7"
+            "token-aware-diff-sizing-7-7",
+            "token-aware-diff-sizing-7-8"
           ],
           "staging": {
             "p1": {
@@ -548,6 +549,16 @@
               "files": [
                 "internal/presenter/pretty.go",
                 "internal/engine/release.go"
+              ]
+            },
+            {
+              "task": "token-aware-diff-sizing-7-8",
+              "source": "reviewer",
+              "summary": "The README pause paragraph says nothing of the count, the size, the kept-file names, or the skip earlier answers cause",
+              "failure": "An operator or agent reading the release section learns only that a pause shows the glob and reason, not that it names kept files an Exclude would also take out or why a later suggestion asked nothing; only a docs-versus-behaviour review against §18.2 notices, and no later task in phases 7-8 plans this text (8-2 adds only the recording sentence)",
+              "detail": "README.md:117 (the 7-7 pause paragraph) should add the count and decimal size of the matched files the notes still carry, any matched files on the keep list, and that a suggestion whose uncovered matches earlier answers in the run already decide gets no pause",
+              "files": [
+                "README.md"
               ]
             }
           ]
