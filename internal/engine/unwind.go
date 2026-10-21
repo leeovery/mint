@@ -180,8 +180,8 @@ func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, ma
 	if !made.TagCreated {
 		return false, true
 	}
-	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "tag", "-d", start.Tag); err != nil {
-		warnUnwindIncomplete(deps.Presenter, "delete the leftover tag "+start.Tag+" (`git tag -d "+start.Tag+"`)", err.Error())
+	if res, err := deps.Mutator.Mutate(ctx, nil, "git", "tag", "-d", start.Tag); err != nil {
+		warnUnwindIncomplete(deps.Presenter, "delete the leftover tag "+start.Tag+" (`git tag -d "+start.Tag+"`)", failedGitOutput(res.Stderr, err))
 		return true, false
 	}
 	return true, true
@@ -198,12 +198,12 @@ func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState,
 	if made.Commits <= 0 {
 		return false, true
 	}
-	if manual, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut}); err != nil {
+	if manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut}); err != nil {
 		// The manual reset drops the answers commit along with mint's other commits.
 		if restore != "" {
 			manual += ", then " + restore
 		}
-		warnUnwindIncomplete(deps.Presenter, manual, err.Error())
+		warnUnwindIncomplete(deps.Presenter, manual, output)
 		return true, false
 	}
 	return true, true
@@ -253,11 +253,7 @@ func unstageEdit(ctx context.Context, deps ReleaseDeps, start StartState, edit *
 	if err == nil {
 		return true
 	}
-	output := res.Stderr
-	if output == "" {
-		output = err.Error()
-	}
-	warnUnwindIncomplete(deps.Presenter, "unstage "+edit.path+" (`git -C "+cmdline.Quote(edit.root)+" reset -q "+start.HEAD+" -- "+cmdline.Quote(edit.path)+"`)", output)
+	warnUnwindIncomplete(deps.Presenter, "unstage "+edit.path+" (`git -C "+cmdline.Quote(edit.root)+" reset -q "+start.HEAD+" -- "+cmdline.Quote(edit.path)+"`)", failedGitOutput(res.Stderr, err))
 	return false
 }
 
@@ -286,37 +282,39 @@ type resetTarget struct {
 
 // resetTo returns HEAD, the index and the work tree to target.HEAD as
 // `git reset --hard` does, except that target.KeepOut keeps its content and staged
-// state. On failure it returns the manual step that finishes the reset.
+// state. On failure it returns the manual step that finishes the reset and the failing
+// git step's own output.
 //
 // With a path to keep, `git reset --hard` cannot be used, as it takes no pathspec: the
 // soft reset moves HEAD alone, then restore rewrites the index and work tree everywhere
 // but the excluded path, removing tracked paths the starting commit lacks.
-func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual string, err error) {
+func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual, output string, err error) {
 	sha := target.HEAD
 	if target.KeepOut == "" {
-		if _, err := m.Mutate(ctx, nil, "git", "reset", "--hard", sha); err != nil {
-			return "reset HEAD back to " + sha + " (`git reset --hard " + sha + "`)", err
+		if res, err := m.Mutate(ctx, nil, "git", "reset", "--hard", sha); err != nil {
+			return "reset HEAD back to " + sha + " (`git reset --hard " + sha + "`)", failedGitOutput(res.Stderr, err), err
 		}
-		return "", nil
+		return "", "", nil
 	}
 
 	pathspec := target.KeepOut.Pathspec()
 	restoreArgs := append([]string{"restore", "--source=" + sha, "--staged", "--worktree"}, pathspec...)
 	restoreLine := "`git restore --source=" + sha + " --staged --worktree " + pathspec[0] + " " + cmdline.Quote(pathspec[1]) + "`"
 	keeping := ", leaving " + string(target.KeepOut) + " as it is ("
-	if _, err := m.Mutate(ctx, nil, "git", "reset", "--soft", sha); err != nil {
-		return "reset HEAD back to " + sha + keeping + "`git reset --soft " + sha + "` then " + restoreLine + ")", err
+	if res, err := m.Mutate(ctx, nil, "git", "reset", "--soft", sha); err != nil {
+		return "reset HEAD back to " + sha + keeping + "`git reset --soft " + sha + "` then " + restoreLine + ")", failedGitOutput(res.Stderr, err), err
 	}
-	if _, err := m.Mutate(ctx, nil, "git", restoreArgs...); err != nil {
-		return "restore the index and work tree to " + sha + keeping + restoreLine + ")", err
+	if res, err := m.Mutate(ctx, nil, "git", restoreArgs...); err != nil {
+		return "restore the index and work tree to " + sha + keeping + restoreLine + ")", failedGitOutput(res.Stderr, err), err
 	}
-	return "", nil
+	return "", "", nil
 }
 
 // warnUnwindIncomplete emits the manual-cleanup notice when a recovery step failed
 // mid-unwind: the repo is NOT clean, so the user must finish the recovery by hand.
-// action names the exact manual step; the failing step's error rides the Warn's Output
-// verbatim, mirroring the engine's other captured-output warns (warnPublishFailed et al).
+// action names the exact manual step; the failing step's own output rides the Warn's
+// Output verbatim, mirroring the engine's other captured-output warns (warnPublishFailed
+// et al).
 func warnUnwindIncomplete(p presenter.Presenter, action, output string) {
 	p.Warn(presenter.Warning{
 		Label:   "unwind incomplete",

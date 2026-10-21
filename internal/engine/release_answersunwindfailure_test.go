@@ -248,7 +248,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 				Label: "unwind incomplete",
 				Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 					"`), then restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
-				Output: "exit status 1",
+				Output: resetStderr,
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
 			assertAnswersCommitReadFirst(t, a.f, tc.rev)
@@ -278,7 +278,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 		Label: "unwind incomplete",
 		Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 			"`), then restore the exclusion answers commit on top (`git cherry-pick ORIG_HEAD~1`)",
-		Output: "exit status 1",
+		Output: resetStderr,
 	}
 	assertUnwoundWithOneWarning(t, rec, err, want, "reset 3 commits and deleted tag "+minorTagV130+"; manual cleanup required")
 	assertAnswersCommitReadFirst(t, a.f, "HEAD~1")

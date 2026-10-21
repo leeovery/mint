@@ -1160,11 +1160,21 @@ func (e *answersRecordingError) Error() string { return e.step + ": " + e.err.Er
 
 func (e *answersRecordingError) Unwrap() error { return e.err }
 
-// gitOutput is the stderr git wrote for err, or err's text when it wrote none.
+// gitOutput is the stderr git wrote for err, carried by a *record.GitError, or err's
+// text when it wrote none.
 func gitOutput(err error) string {
 	var gitErr *record.GitError
-	if errors.As(err, &gitErr) && gitErr.Stderr != "" {
-		return gitErr.Stderr
+	if errors.As(err, &gitErr) {
+		return failedGitOutput(gitErr.Stderr, err)
+	}
+	return err.Error()
+}
+
+// failedGitOutput is what a failed git step shows beneath its warning or failure: the
+// stderr git wrote, verbatim, or err's text when it wrote none.
+func failedGitOutput(stderr string, err error) string {
+	if stderr != "" {
+		return stderr
 	}
 	return err.Error()
 }
