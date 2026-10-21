@@ -202,6 +202,10 @@ type Config struct {
 //
 // DiffExclude is the [release] list of glob pathspecs the release-notes diff excludes on
 // top of the shared top-level list — never in place of it. Commit's AI diff never reads it.
+//
+// DiffKeep is the [release] keep list: glob pathspecs, in diff_exclude's form, whose paths
+// the exclusion check never raises. It does nothing else — it adds nothing to the diff and
+// never overrides an exclusion, so a path both kept and excluded stays out of the notes.
 type Release struct {
 	TagPrefix      string
 	CommitPrefix   string
@@ -217,6 +221,7 @@ type Release struct {
 	AICommand      *string
 	Timeout        *time.Duration
 	DiffExclude    []string
+	DiffKeep       []string
 	Hooks          Hooks
 }
 
@@ -356,6 +361,7 @@ type releaseShape struct {
 	AICommand      *string    `toml:"ai_command"`
 	Timeout        *int       `toml:"timeout"`
 	DiffExclude    []string   `toml:"diff_exclude"`
+	DiffKeep       []string   `toml:"diff_keep"`
 	Hooks          hooksShape `toml:"hooks"`
 }
 
@@ -471,6 +477,7 @@ var typeErrorMessages = map[string]string{
 	"releaseShape.AICommand":   "release.ai_command must be a string",
 	"releaseShape.Timeout":     "release.timeout must be an integer (seconds)",
 	"releaseShape.DiffExclude": "release.diff_exclude must be an array of strings",
+	"releaseShape.DiffKeep":    "release.diff_keep must be an array of strings",
 	"commitShape.Context":      "commit.context must be a string",
 	"commitShape.Prompt":       "commit.prompt must be a string",
 	"commitShape.AICommand":    "commit.ai_command must be a string",
@@ -715,6 +722,7 @@ func resolveRelease(shape releaseShape) Release {
 		AICommand:      shape.AICommand,
 		Timeout:        resolveTimeout(shape.Timeout),
 		DiffExclude:    shape.DiffExclude,
+		DiffKeep:       shape.DiffKeep,
 		Hooks: Hooks{
 			Preflight:   shape.Hooks.Preflight,
 			PreTag:      shape.Hooks.PreTag,

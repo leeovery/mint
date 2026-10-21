@@ -247,6 +247,7 @@ The per-key reference tables below are the authoritative human config reference 
 | `ai_command` | shared | optional per-verb override of the AI command for `release` only; resolves `[release]` → shared → default |
 | `timeout` | shared, else `180` | optional per-verb override of the per-attempt AI deadline (seconds) for `release` only; resolves `[release]` → shared → default |
 | `diff_exclude` | `[]` | pathspec globs kept out of the release-notes diff only, added to the shared `diff_exclude` list; commit messages still read these paths (`.workflows/`, `.claude/`, `docs/`) |
+| `diff_keep` | `[]` | pathspec globs whose paths the exclusion check never raises; they add nothing to the release-notes diff and never override an exclusion, so a path both kept and excluded stays out of the notes |
 
 ### `[release.hooks]`
 

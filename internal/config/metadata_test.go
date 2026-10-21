@@ -11,7 +11,7 @@ import (
 // the internal config package's one ordered enumeration) into the shared configtest.RowKey
 // type. The census uses the unexported leafKey type, which config_test cannot name — but
 // leafKey's Level/Key fields are exported, so the projection reads them directly. This keeps
-// the 26-pair enumeration in exactly one place while the naming test below asserts in terms
+// the pair enumeration in exactly one place while the naming test below asserts in terms
 // of the RowKey the (level, key) lookups already use.
 func expectedRowKeys() []configtest.RowKey {
 	census := config.ExpectedLeafKeys()
@@ -22,10 +22,9 @@ func expectedRowKeys() []configtest.RowKey {
 	return out
 }
 
-// TestMetadataRows_OneRowPerLevelKeyPair pins the SoT to exactly the 26 (level, key)
-// pairs spanning every config key: 4 shared, 14 [release], 3 [release.hooks], 5
-// [commit]. The count 26 is a sanity check here (the drift test in 1-4 is the real
-// guard against schema divergence); the value of THIS test is naming every expected
+// TestMetadataRows_OneRowPerLevelKeyPair pins the SoT to exactly the census's (level, key)
+// pairs spanning every config key. The count is a sanity check here (the drift test is the
+// real guard against schema divergence); the value of THIS test is naming every expected
 // pair so a dropped or renamed key surfaces precisely.
 func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 	t.Parallel()
@@ -33,7 +32,7 @@ func TestMetadataRows_OneRowPerLevelKeyPair(t *testing.T) {
 	// Project the single shared census (config.ExpectedLeafKeys, defined in the internal
 	// config package's metadata_census_test.go) into the shared configtest.RowKey type.
 	// config_test cannot name the unexported leafKey, but it can read each pair's exported
-	// Level/Key fields — so the 26 expected pairs live in exactly ONE place. This test
+	// Level/Key fields — so the expected pairs live in exactly ONE place. This test
 	// still matches against MetadataRows() (the SoT side, indexed through the shared
 	// configtest seam), which stays untouched.
 	expected := expectedRowKeys()

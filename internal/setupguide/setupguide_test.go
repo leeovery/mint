@@ -951,3 +951,15 @@ func TestGuide_ConfigReferenceSharedDiffExcludeNamesBothBuiltInExclusions(t *tes
 	}
 	t.Fatal("config reference has no shared diff_exclude row")
 }
+
+func TestGuide_ConfigReferenceListsReleaseDiffKeep(t *testing.T) {
+	t.Parallel()
+
+	row, ok := configtest.MustByLevelKey(t)[configtest.RowKey{Level: config.LevelRelease, Key: "diff_keep"}]
+	if !ok {
+		t.Fatal("missing SoT row for ([release], diff_keep)")
+	}
+	if !containsRowLine(configReferenceBody(t), "diff_keep", "[release]", "[]", row.Description) {
+		t.Error("config reference has no [release] diff_keep row with the [] default")
+	}
+}
