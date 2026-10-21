@@ -332,7 +332,9 @@
             "token-aware-diff-sizing-11-3": "tick-0ebcd9",
             "token-aware-diff-sizing-12": "tick-04d3b2",
             "token-aware-diff-sizing-12-1": "tick-e45132",
-            "token-aware-diff-sizing-12-2": "tick-6dffa0"
+            "token-aware-diff-sizing-12-2": "tick-6dffa0",
+            "token-aware-diff-sizing-13": "tick-e47ad6",
+            "token-aware-diff-sizing-13-1": "tick-1156d4"
           },
           "storage_paths": [
             ".tick/"
@@ -757,9 +759,9 @@
           ],
           "staging": {
             "c1": {
-              "gate_mode": "gated",
+              "gate_mode": "auto",
               "tasks": {
-                "1": "pending"
+                "1": "approved"
               }
             }
           }
