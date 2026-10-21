@@ -27,7 +27,7 @@ import (
 	"mint/internal/notescache"
 	"mint/internal/presenter"
 	"mint/internal/publish"
-	"mint/internal/release"
+	releasing "mint/internal/release"
 	"mint/internal/runner"
 	"mint/internal/version"
 )
@@ -279,8 +279,8 @@ func resolveRegeneratePublisher(ctx context.Context, deps engine.ReleaseDeps, cf
 	return publisher, 0, true
 }
 
-// runRelease wires the production seams and runs the forward release pipeline for
-// a parsed `mint release` invocation, returning the process exit code.
+// runRelease is the thin shell of `mint release`: it builds the production seams
+// from the os globals and hands them to release.
 func runRelease(ctx context.Context, rest []string) int {
 	opts, err := parseReleaseFlags(rest)
 	if err != nil {
@@ -293,39 +293,39 @@ func runRelease(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
-	// The engine gets the stdin signal for the notes floor, which offers its choice
-	// only to an attended run; the Presenter interface exposes no accessor for it.
+	// The engine needs the stdin signal to tell an attended run, and the Presenter
+	// interface exposes no accessor for it.
 	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
 
 	// Construct the presenter ONCE at startup — the single production construction
 	// site. TTY/mode detection never happens downstream.
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
 
+	return release(ctx, p, runner.NewExecRunner(), opts, signals.StdinInteractive,
+		newNoteCache(), notescache.NewUserChunkNotes(os.UserCacheDir))
+}
+
+// release runs a parsed `mint release` invocation over the given seams, returning
+// the process exit code.
+func release(ctx context.Context, p presenter.Presenter, r runner.CommandRunner, opts releaseFlags, stdinInteractive bool, noteCache engine.NoteCache, chunkNotes engine.ChunkNotesSaver) int {
 	// One runner backs every external-command seam. The lock-resilient git Mutator is
 	// constructed ONCE over that runner and shared by the engine's mutation calls and
 	// the Releaser, so every git mutation (commit, tag, push, reset, tag-delete) retries
 	// a contended .git lock and clears a provably-stale one. Read-only git stays on r.
-	r := runner.NewExecRunner()
 	mut := git.NewMutator(r)
 	deps := engine.ReleaseDeps{
 		Presenter: p,
 		Runner:    r,
 		Mutator:   mut,
-		Releaser:  release.NewReleaser(mut),
+		Releaser:  releasing.NewReleaser(mut),
 		// The `e` review-gate choice hands the notes to the real $EDITOR resolution,
 		// launched interactively through the same presenter + runner. The launcher
 		// reports a missing editor and returns to the gate rather than aborting.
-		Editor: engine.NewEditorLauncher(p, r),
-		// The note cache lives at the USER level (os.UserCacheDir, e.g.
-		// ~/Library/Caches/mint or ~/.cache/mint), in a per-project sub-directory keyed by
-		// the repo path — so no project is polluted with an in-repo cache dir. A run
-		// generates the note, caches it, and a later run for the SAME diff offers to reuse
-		// it; the wall clock stamps the ~1h TTL. If the cache dir can't be resolved the
-		// cache is simply disabled (nil) — it is an optimization, never required.
-		NoteCache:        newNoteCache(),
-		ChunkNotes:       notescache.NewUserChunkNotes(os.UserCacheDir),
+		Editor:           engine.NewEditorLauncher(p, r),
+		NoteCache:        noteCache,
+		ChunkNotes:       chunkNotes,
 		Yes:              opts.Yes,
-		StdinInteractive: signals.StdinInteractive,
+		StdinInteractive: stdinInteractive,
 	}
 
 	if err := engine.Release(ctx, deps, opts.ReleaseOptions()); err != nil {
