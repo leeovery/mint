@@ -603,7 +603,8 @@
             8,
             9,
             10,
-            11
+            11,
+            12
           ],
           "completed_phases": [
             1,
@@ -616,22 +617,8 @@
             8,
             9,
             10,
-            11
-          ],
-          "bank": [
-            {
-              "task": "token-aware-diff-sizing-12-2",
-              "source": "reviewer",
-              "summary": "The forward release's tag/push failures and regenerate's stage/push failures still show the runner's exit text instead of git's stderr, the rule failedGitOutput now holds for the unwind",
-              "failure": "An operator whose mint release atomic push is rejected (protected branch, non-fast-forward, a declining pre-receive hook), or whose regenerate push fails, sees a ✗ line ending 'running \"git\": exited with code 1: exit status 1' with no Output beneath it; the remote's reason is lost, and a conflicting autostash pop likewise warns with no git output",
-              "detail": "These sites discard the Mutate Result: internal/release/release.go:107 (git tag -a) and :121 (git push --atomic); internal/engine/regenerate_write.go:348 (git add CHANGELOG.md) and :375 (git push origin HEAD); internal/engine/autostash.go:80 (git stash pop; warnPopConflict sets no Output). StageFailed picks up Output only from answersRecordingError or ai.GenerationError (failureOutput, internal/engine/release.go:2002-2016); resetAndAbort's StageFailed (regenerate_write.go:386) sets none. Remedy: carry stderr on the error as record.GitError does, since internal/release is a separate package, and route it through the same rule",
-              "files": [
-                "internal/release/release.go",
-                "internal/engine/regenerate_write.go",
-                "internal/engine/autostash.go",
-                "internal/engine/release.go"
-              ]
-            }
+            11,
+            12
           ]
         }
       }
