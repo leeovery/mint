@@ -551,6 +551,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	if answers.landed {
 		made.Commits++
 	}
+	made.answersEdit = answers.edit
+	var recordingErr *answersRecordingError
+	if errors.As(err, &recordingErr) {
+		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
+	}
 	if err != nil {
 		atFloor := reachesNotesFloor(err)
 		offersChoice := atFloor && deps.asksAtTerminal(opts)
@@ -1066,10 +1071,11 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 
 // answersCommit records the exclusion check's answers in root's .mint.toml and
 // commits that file alone for tag's release; landed reports whether the commit was
-// made.
+// made, and edit is the write when it is not.
 type answersCommit struct {
 	root, tag string
 	landed    bool
+	edit      *fileEdit
 }
 
 // releaseTable is the .mint.toml table the answers are written to.
@@ -1077,18 +1083,46 @@ const releaseTable = "[release]"
 
 func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Answers) error {
 	return func(ctx context.Context, answers notes.Answers) error {
-		if err := config.AppendReleaseGlobs(a.root, config.ReleaseGlobs{DiffExclude: answers.Exclude, DiffKeep: answers.Keep}); err != nil {
-			return fmt.Errorf("recording the exclusion answers: %w", err)
+		const writing = "recording the exclusion answers"
+		edit, err := beforeEdit(a.root, config.FileName)
+		if err != nil {
+			return &answersRecordingError{step: writing, err: err, output: err.Error()}
 		}
+		if err := config.AppendReleaseGlobs(a.root, config.ReleaseGlobs{DiffExclude: answers.Exclude, DiffKeep: answers.Keep}); err != nil {
+			return &answersRecordingError{step: writing, err: err, output: err.Error()}
+		}
+		a.edit = edit
 		if err := record.CommitFile(ctx, deps.Mutator, a.root, config.FileName, answersSubject(a.tag)); err != nil {
-			return fmt.Errorf("committing the exclusion answers: %w", err)
+			return &answersRecordingError{step: "committing the exclusion answers", err: err, output: gitOutput(err)}
 		}
 		a.landed = true
+		a.edit = nil
 		deps.Presenter.SuspendSpinner()
 		deps.Presenter.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", File: config.FileName, Table: releaseTable})
 		deps.Presenter.ResumeSpinner()
 		return nil
 	}
+}
+
+// answersRecordingError is the exclusion answers failing to be written or committed;
+// output is the failing tool's own message.
+type answersRecordingError struct {
+	step   string
+	err    error
+	output string
+}
+
+func (e *answersRecordingError) Error() string { return e.step + ": " + e.err.Error() }
+
+func (e *answersRecordingError) Unwrap() error { return e.err }
+
+// gitOutput is the stderr git wrote for err, or err's text when it wrote none.
+func gitOutput(err error) string {
+	var gitErr *record.GitError
+	if errors.As(err, &gitErr) && gitErr.Stderr != "" {
+		return gitErr.Stderr
+	}
+	return err.Error()
 }
 
 // exclusionPauses asks the operator about each suggestion at a gate, the spinner
@@ -1355,11 +1389,10 @@ func stageFailure(stage string, cause error) presenter.StageFailure {
 	return presenter.StageFailure{
 		Name:    stage,
 		Message: failureMessage(cause),
-		// notesFailureOutput is called for EVERY stage (pre_tag, notes, record, preflight,
-		// tag) — not special-cased to "notes" — because it returns "" for any non-carrier
-		// cause, so only a notes/AI generation-failure carrier populates Output; every other
-		// stage's failure leaves the ✗ line standing alone.
-		Output:     notesFailureOutput(cause),
+		// failureOutput is called for EVERY stage — not special-cased to "notes" — because
+		// it returns "" for any cause it reads no tool output from, leaving the ✗ line
+		// standing alone.
+		Output:     failureOutput(cause),
 		SavedNotes: notes.SavedChunkNotesPath(cause),
 	}
 }
@@ -1916,6 +1949,16 @@ func hookFailureOutput(cause error) string {
 	return ""
 }
 
+// failureOutput is the failing tool's own message for cause, shown beneath its ✗ line:
+// a failed answers recording's write error or git stderr, or claude's output.
+func failureOutput(cause error) string {
+	var recordingErr *answersRecordingError
+	if errors.As(cause, &recordingErr) {
+		return recordingErr.output
+	}
+	return notesFailureOutput(cause)
+}
+
 // notesFailureOutput extracts claude's captured output from a *ai.GenerationError
 // carrier and composes it for StageFailure.Output. It mirrors hookFailureOutput's
 // PATTERN — a typed-carrier extraction — but NOT its field choice: the hook helper reads
@@ -1948,6 +1991,7 @@ func surface(p presenter.Presenter, stage string, cause error) error {
 // resetAndAbort) funnels its Message through:
 //
 //   - a preflight *GateError carries an actionable, display-ready Message;
+//   - a failed answers recording names its step, its tool's message going beneath;
 //   - a notes/AI failure collapses to the CONCISE cause phrase notes.CauseText derives
 //     through the %w chain, so it resolves the same phrase whether the cause carries
 //     the forward abortError chain ("notes generation failed (%s): %w") or
@@ -1961,6 +2005,10 @@ func failureMessage(cause error) string {
 	var gate *preflight.GateError
 	if errors.As(cause, &gate) {
 		return gate.Message()
+	}
+	var recordingErr *answersRecordingError
+	if errors.As(cause, &recordingErr) {
+		return recordingErr.step
 	}
 	if phrase, known := notes.CauseText(cause); known {
 		return phrase

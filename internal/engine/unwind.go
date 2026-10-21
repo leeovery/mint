@@ -28,8 +28,13 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 
+	"mint/internal/fsutil"
 	"mint/internal/git"
 	"mint/internal/presenter"
 )
@@ -67,12 +72,17 @@ type MadeState struct {
 	// TagCreated reports whether mint created the annotated tag this run. When true the
 	// unwind deletes it (local only — pre-PONR never pushed it).
 	TagCreated bool
+	// answersEdit is the exclusion answers' write to .mint.toml when no commit holds
+	// it; the unwind reverts it.
+	answersEdit *fileEdit
 }
 
 // Unwind is the surgical pre-PONR recovery. Given the captured StartState and the
 // tracked MadeState it:
 //
 //   - deletes the exact tag (local) when made.TagCreated — `git tag -d {start.Tag}`;
+//   - reverts the exclusion answers' uncommitted write to .mint.toml, unstaging it and
+//     restoring its content, or removing a file the write created;
 //   - resets HEAD to the captured starting commit when made.Commits > 0 (see
 //     resetTo), dropping exactly the N commits mint made and their working-tree
 //     changes (changelog, version-file projection, hook artifacts) while start.KeepOut
@@ -80,11 +90,12 @@ type MadeState struct {
 //   - reports each undone item via the Presenter's Unwound(Unwind{Summary}), the
 //     engine authoring the COMPLETE summary including its "; repo clean" tail.
 //
-// With zero mutations (no tag, no commits) it is a no-op: it emits NO Unwound and
-// issues NO git command. Either way it returns abort(reason) so the engine owns the
-// non-zero exit; it emits NO StageFailed (a stage-failure caller surfaces that first).
+// With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
+// Unwound and issues NO git command. A reverted write alone emits no Unwound either.
+// Either way it returns abort(reason) so the engine owns the non-zero exit; it emits
+// NO StageFailed (a stage-failure caller surfaces that first).
 //
-// Both mutations flow through the lock-resilient Mutator and are best-effort — a "tag
+// Its git mutations flow through the lock-resilient Mutator and are best-effort — a "tag
 // not found" or a reset hiccup is not fatal, since the goal is that nothing mint made
 // this run survives the abort; the abort still carries the original reason. The
 // operation NEVER pushes or publishes: it is pre-PONR recovery only.
@@ -98,10 +109,13 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	ctx = context.WithoutCancel(ctx)
 
 	tagDeleted, tagOK := deleteTagIfMade(ctx, deps, start, made)
+	// Reverted before the reset, which then returns a tracked file to the starting
+	// commit whatever the write found there.
+	editOK := revertEditIfMade(ctx, deps, start, made.answersEdit)
 	commitsReset, resetOK := resetCommitsIfMade(ctx, deps, start, made)
 
 	if tagDeleted || commitsReset {
-		deps.Presenter.Unwound(unwindEvent(start.Tag, made, tagOK && resetOK))
+		deps.Presenter.Unwound(unwindEvent(start.Tag, made, tagOK && editOK && resetOK))
 	}
 	return abort(reason)
 }
@@ -118,7 +132,7 @@ func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, ma
 		return false, true
 	}
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "tag", "-d", start.Tag); err != nil {
-		warnUnwindIncomplete(deps.Presenter, "delete the leftover tag "+start.Tag+" (`git tag -d "+start.Tag+"`)", err)
+		warnUnwindIncomplete(deps.Presenter, "delete the leftover tag "+start.Tag+" (`git tag -d "+start.Tag+"`)", err.Error())
 		return true, false
 	}
 	return true, true
@@ -136,10 +150,78 @@ func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState,
 		return false, true
 	}
 	if manual, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut}); err != nil {
-		warnUnwindIncomplete(deps.Presenter, manual, err)
+		warnUnwindIncomplete(deps.Presenter, manual, err.Error())
 		return true, false
 	}
 	return true, true
+}
+
+// fileEdit is a write mint made to path under root, with what path held before it.
+type fileEdit struct {
+	root, path string
+	existed    bool
+	content    []byte
+	mode       fs.FileMode
+}
+
+// beforeEdit records path under root as it is now, ahead of a write to it.
+func beforeEdit(root, path string) (*fileEdit, error) {
+	edit := &fileEdit{root: root, path: path}
+	full := filepath.Join(root, path)
+	info, err := os.Stat(full)
+	if errors.Is(err, fs.ErrNotExist) {
+		return edit, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	content, err := os.ReadFile(full)
+	if err != nil {
+		return nil, err
+	}
+	edit.existed, edit.content, edit.mode = true, content, info.Mode().Perm()
+	return edit, nil
+}
+
+// revertEditIfMade returns edit's path to its index entry at the starting commit and
+// its content before the write, reporting whether both succeeded; each is attempted
+// whatever the other's outcome. A nil edit is a no-op.
+func revertEditIfMade(ctx context.Context, deps ReleaseDeps, start StartState, edit *fileEdit) bool {
+	if edit == nil {
+		return true
+	}
+	unstaged := unstageEdit(ctx, deps, start, edit)
+	restored := restoreEditContent(deps.Presenter, edit)
+	return unstaged && restored
+}
+
+func unstageEdit(ctx context.Context, deps ReleaseDeps, start StartState, edit *fileEdit) bool {
+	res, err := deps.Mutator.Mutate(ctx, nil, "git", "-C", edit.root, "reset", "-q", start.HEAD, "--", edit.path)
+	if err == nil {
+		return true
+	}
+	output := res.Stderr
+	if output == "" {
+		output = err.Error()
+	}
+	warnUnwindIncomplete(deps.Presenter, "unstage "+edit.path+" (`git -C "+edit.root+" reset -q "+start.HEAD+" -- "+edit.path+"`)", output)
+	return false
+}
+
+func restoreEditContent(p presenter.Presenter, edit *fileEdit) bool {
+	full := filepath.Join(edit.root, edit.path)
+	if !edit.existed {
+		if err := os.Remove(full); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			warnUnwindIncomplete(p, "remove "+full+", which mint created", err.Error())
+			return false
+		}
+		return true
+	}
+	if err := fsutil.WriteFile(full, edit.content, edit.mode); err != nil {
+		warnUnwindIncomplete(p, "undo mint's edit to "+full, err.Error())
+		return false
+	}
+	return true
 }
 
 // resetTarget is where a recovery reset returns the repo: HEAD at the starting commit,
@@ -178,16 +260,15 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual st
 	return "", nil
 }
 
-// warnUnwindIncomplete emits the manual-cleanup notice when a recovery mutation
-// (tag-delete or reset) failed mid-unwind: the repo is NOT clean, so the user must
-// finish the recovery by hand. action names the exact manual step (the git command to
-// run); the failing git error rides the Warn's Output verbatim, mirroring the engine's
-// other captured-output warns (warnPublishFailed et al).
-func warnUnwindIncomplete(p presenter.Presenter, action string, cause error) {
+// warnUnwindIncomplete emits the manual-cleanup notice when a recovery step failed
+// mid-unwind: the repo is NOT clean, so the user must finish the recovery by hand.
+// action names the exact manual step; the failing step's error rides the Warn's Output
+// verbatim, mirroring the engine's other captured-output warns (warnPublishFailed et al).
+func warnUnwindIncomplete(p presenter.Presenter, action, output string) {
 	p.Warn(presenter.Warning{
 		Label:   "unwind incomplete",
 		Message: "automatic recovery failed; manually " + action,
-		Output:  cause.Error(),
+		Output:  output,
 	})
 }
 

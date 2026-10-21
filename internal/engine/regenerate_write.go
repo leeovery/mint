@@ -395,7 +395,7 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 		// the steps the user must run, so the leftover CHANGELOG commit is not silently
 		// left in place.
 		if manual, err := resetTo(context.WithoutCancel(ctx), deps.Mutator, start); err != nil {
-			warnUnwindIncomplete(deps.Presenter, manual+" to drop the leftover changelog commit", err)
+			warnUnwindIncomplete(deps.Presenter, manual+" to drop the leftover changelog commit", err.Error())
 		}
 	}
 	return abort(cause)
