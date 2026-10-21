@@ -1,0 +1,9 @@
+# Under `on_notes_failure = "fallback"`, a "Generated release notes" line prints before the fallback warning
+
+When a release's AI notes fail and `[release].on_notes_failure = "fallback"` is set, mint ships the commit-subject list instead of the AI notes. Before the fallback warning, though, the notes stage prints its success line, as if the AI had written the notes: `Generated release notes` in styled output, or `notes: generated (Ns)` in plain output. The warning that follows then says the notes failed and that mint is falling back to the commit-subject list.
+
+So the output contradicts itself. A user, or an agent reading the transcript, sees "generated" and then "falling back", and has to read on to learn the release shipped commit subjects rather than AI-written notes. Under `-y` nobody reviews the notes, so the transcript is the only record of which body went out. A stray success line makes that record misleading at a glance. Where the run saved part notes there can also be a second warning, "the finished chunk notes could not be saved", so the success line sits above one or two warnings about the same failed stage.
+
+It happens on every fallback, whatever the cause (a failed call, a timeout, a missing AI tool, a release too big even in parts), attended or not, and on a `--dry-run` under fallback too. Without `fallback`, under the default `abort`, the stage shows a ✗ line instead and this doesn't arise.
+
+This came up in the docs review after the token-aware-diff-sizing feature. The success line comes from the notes stage's completion (`internal/engine/release.go`, around lines 580-589, through `internal/engine/notesstage.go`, around lines 283-286). It's pinned on purpose by `internal/engine/notes_fallback_warning_test.go` (around lines 53-67), so the current output is deliberate as built, and changing it is a call about wording rather than a plain defect.
