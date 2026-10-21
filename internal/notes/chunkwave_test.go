@@ -309,9 +309,7 @@ func countPrefix(events []string, prefix string) int {
 //
 // It ignores its context on purpose: it never returns a context error, so no
 // scheduler stall can time a call out (ai.Transport.attempt hands back a successful
-// RunWith result without re-checking the context). The cost is that the notes being
-// written no longer tell a per-call deadline from a shared one — the deadline
-// orderings the test checks are what do.
+// RunWith result without re-checking the context).
 type pacedAIRunner struct {
 	callTime time.Duration
 
