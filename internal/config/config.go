@@ -38,8 +38,8 @@ import (
 	"mint/internal/cmdline"
 )
 
-// configFileName is the fixed name mint looks for at the repo root.
-const configFileName = ".mint.toml"
+// FileName is the fixed name mint looks for at the repo root.
+const FileName = ".mint.toml"
 
 // Default values for the Phase 1 [release] keys. ReleaseBranch's default is the
 // empty string, a sentinel meaning "auto-derive from origin/HEAD" (resolved by the
@@ -380,14 +380,14 @@ type hooksShape struct {
 // present file overrides only the keys it specifies; absent keys keep their
 // defaults. Malformed TOML surfaces as an error.
 func Load(root string) (Config, error) {
-	path := filepath.Join(root, configFileName)
+	path := filepath.Join(root, FileName)
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return defaults(), nil
 		}
-		return Config{}, fmt.Errorf("reading %s: %w", configFileName, err)
+		return Config{}, fmt.Errorf("reading %s: %w", FileName, err)
 	}
 
 	// Pre-seed the decode target with default strings so keys absent from the file
@@ -416,7 +416,7 @@ func Load(root string) (Config, error) {
 		if errors.As(err, &decErr) {
 			return Config{}, translateTypeError(decErr, data)
 		}
-		return Config{}, fmt.Errorf("parsing %s: %w", configFileName, err)
+		return Config{}, fmt.Errorf("parsing %s: %w", FileName, err)
 	}
 
 	if err := validateHooks(shape.Release.Hooks); err != nil {
@@ -454,11 +454,11 @@ func translateStrict(strict *toml.StrictMissingError) error {
 		if len(key) == 0 {
 			continue
 		}
-		return fmt.Errorf("invalid %s: %s", configFileName, unknownKeyMessage(key))
+		return fmt.Errorf("invalid %s: %s", FileName, unknownKeyMessage(key))
 	}
 	// Defensive: a StrictMissingError with no usable key path. Fall back to the
 	// library's own multi-line description so nothing is silently swallowed.
-	return fmt.Errorf("invalid %s: %s", configFileName, strict.String())
+	return fmt.Errorf("invalid %s: %s", FileName, strict.String())
 }
 
 // typeErrorMessages maps a schema struct-field path (as it appears in the decoder's
@@ -508,13 +508,13 @@ func translateTypeError(decErr *toml.DecodeError, data []byte) error {
 	text := decErr.Error()
 	for field, msg := range typeErrorMessages {
 		if strings.Contains(text, field+" ") {
-			return fmt.Errorf("invalid %s: %s", configFileName, msg)
+			return fmt.Errorf("invalid %s: %s", FileName, msg)
 		}
 	}
 	if field, ok := nonIntegerKey(data); ok {
-		return fmt.Errorf("invalid %s: %s", configFileName, typeErrorMessages[field])
+		return fmt.Errorf("invalid %s: %s", FileName, typeErrorMessages[field])
 	}
-	return fmt.Errorf("invalid %s: %s", configFileName, decErr.String())
+	return fmt.Errorf("invalid %s: %s", FileName, decErr.String())
 }
 
 // nonIntegerKey reports the typeErrorMessages field of a topLevelIntegerKeys key that
@@ -783,7 +783,7 @@ func validateHooks(hooks hooksShape) error {
 		if !isHookShape(e.value) {
 			return fmt.Errorf(
 				"invalid %s: release.hooks.%s must be a string or an array of strings",
-				configFileName, e.key,
+				FileName, e.key,
 			)
 		}
 	}
@@ -824,7 +824,7 @@ func validateOnNotesFailure(value string) error {
 	}
 	return fmt.Errorf(
 		"invalid %s: on_notes_failure must be one of: %s",
-		configFileName, strings.Join(onNotesFailureValues, ", "),
+		FileName, strings.Join(onNotesFailureValues, ", "),
 	)
 }
 
@@ -832,7 +832,7 @@ func validateOnNotesFailure(value string) error {
 // never "no cap". An absent key (nil) passes and resolves to the default.
 func validateMaxPromptBytes(v *int) error {
 	if v != nil && *v <= 0 {
-		return fmt.Errorf("invalid %s: max_prompt_bytes must be a positive number of bytes", configFileName)
+		return fmt.Errorf("invalid %s: max_prompt_bytes must be a positive number of bytes", FileName)
 	}
 	return nil
 }
@@ -854,7 +854,7 @@ func validateAICommands(shape fileShape) error {
 			continue
 		}
 		if cause := aiCommandDefect(*level.value); cause != "" {
-			return fmt.Errorf("invalid %s: %s %s", configFileName, level.key, cause)
+			return fmt.Errorf("invalid %s: %s %s", FileName, level.key, cause)
 		}
 	}
 	return nil

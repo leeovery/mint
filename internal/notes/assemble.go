@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"slices"
 
+	"mint/internal/config"
+	"mint/internal/record"
 	"mint/internal/runner"
 )
 
@@ -25,7 +27,10 @@ import (
 // performed by GIT via the :(exclude) pathspecs — mint does no Go-side text stripping —
 // so a change set touching only these paths yields an empty post-exclusion diff
 // straight from git.
-var builtinExcludePathspecs = []string{":(exclude)CHANGELOG.md", ":(exclude).mint.toml"}
+var builtinExcludePathspecs = []string{
+	":(exclude)" + record.ChangelogFileName,
+	":(exclude)" + config.FileName,
+}
 
 // versionFileExcludePathspec is the STRATEGY-AWARE decision for the configured
 // version_file: whether it is excluded from the diff, and if so as which :(exclude)

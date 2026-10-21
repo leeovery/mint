@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"mint/internal/config"
 	"mint/internal/gitrepo"
 	"mint/internal/initgen"
 	"mint/internal/presenter"
@@ -79,12 +80,7 @@ type initTarget struct {
 	Mode os.FileMode
 }
 
-// configFileName / shimFileName are the two relative target names init drops at the
-// repo root.
-const (
-	configFileName = ".mint.toml"
-	shimFileName   = "release"
-)
+const shimFileName = "release"
 
 // configFileMode is the ordinary (non-executable) mode the `.mint.toml` template is
 // written with; the shim uses initgen.ShimMode instead.
@@ -115,7 +111,7 @@ func Init(ctx context.Context, deps InitDeps, opts InitOptions) error {
 	}
 
 	targets := []initTarget{
-		{Name: configFileName, Content: initgen.MintTOML(), Mode: configFileMode},
+		{Name: config.FileName, Content: initgen.MintTOML(), Mode: configFileMode},
 		{Name: shimFileName, Content: initgen.ReleaseShim(), Mode: initgen.ShimMode},
 	}
 	for _, t := range targets {
