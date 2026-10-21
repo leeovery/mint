@@ -60,16 +60,23 @@ func seedCacheEntry(t *testing.T, cacheBase, root, diff, version, body string) {
 // seedRealRunReuseGit scripts the REAL-run git timeline for a prior-tag run that
 // REUSES a cached note: the read gates, the single AssembleDiff degenerate-check diff
 // (the ONLY notes git call on the reuse path — no Change Map name-status/numstat, since
-// the AI is skipped), then the record/tag/push mutation tail. `claude` is deliberately
-// left UNSEEDED so any AI call would error — proving reuse skipped it.
+// the notes call is skipped), then the record/tag/push mutation tail. `claude` answers only the
+// exclusion check, so any notes call would error — proving reuse skipped it.
 func seedRealRunReuseGit(f *runner.FakeRunner, root, diff string) {
 	seedPriorTagReadGates(f, root, "main")
 	f.SeedSequence("git", ScriptedOut(diff)) // diff priorTag..HEAD (degenerate-check assemble)
+	seedClaudeAfterCheck(f)
 	seedRecordTagPush(f, root)
 }
 
-// claudeInvoked reports whether the scripted `claude` AI command was ever called —
-// the load-bearing reuse assertion (reuse must NOT invoke the AI).
+// notesCallMade reports whether `claude` was called for the notes — the load-bearing
+// reuse assertion (reuse must NOT invoke the AI for notes; the exclusion check runs
+// before reuse).
+func notesCallMade(f *runner.FakeRunner) bool {
+	return len(notesInvocations(f, "claude")) > 0
+}
+
+// claudeInvoked reports whether the scripted `claude` AI command was ever called.
 func claudeInvoked(f *runner.FakeRunner) bool {
 	for _, inv := range f.Invocations() {
 		if inv.Name == "claude" {
@@ -101,8 +108,8 @@ func TestRelease_RealRun_KeyMatch_ReusesCachedNote_NoAICall(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	// The AI was NEVER invoked — reuse skipped it.
-	if claudeInvoked(f) {
+	// No notes call was made — reuse skipped it.
+	if notesCallMade(f) {
 		t.Errorf("the AI was invoked on a key match; reuse must skip the AI call")
 	}
 	// The CACHED body — not a freshly generated one — flowed to the tag annotation.
@@ -295,7 +302,7 @@ func TestRelease_RealRun_ReuseIsAutomatic_NoFlag(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if claudeInvoked(f) {
+	if notesCallMade(f) {
 		t.Errorf("the AI was invoked; reuse must activate automatically with no flag")
 	}
 	if got := tagAnnotationBody(t, f, nextTag); got != cachedReuseBody {
@@ -329,6 +336,7 @@ func TestRelease_RealRun_ExcludedHookArtifact_StillReuses(t *testing.T) {
 	f.SeedSequence("git", ScriptedOut(" M dist/bundle.js\n")) // status --porcelain (dirty)
 	f.SeedSequence("git", ScriptedOut(""), ScriptedOut(""))   // add -A + commit (artifact)
 	f.SeedSequence("git", ScriptedOut(excludedDiff))          // AssembleDiff (post-exclusion, unchanged)
+	seedClaudeAfterCheck(f)
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -338,7 +346,7 @@ func TestRelease_RealRun_ExcludedHookArtifact_StillReuses(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	if claudeInvoked(f) {
+	if notesCallMade(f) {
 		t.Errorf("the AI was invoked despite an excluded-only hook artifact; the post-exclusion key should match and reuse")
 	}
 	if got := tagAnnotationBody(t, f, nextTag); got != cachedReuseBody {
@@ -477,7 +485,9 @@ func TestRelease_DryRun_KeyMatch_ReusesSilently(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	f.SeedSequence("git", ScriptedOut(priorTagDiff)) // degenerate-check diff — the only notes git call on reuse
-	// `claude` UNSEEDED: any AI call would error, proving reuse skipped it.
+	// `claude` answers only the exclusion check: any notes call would error, proving
+	// reuse skipped it.
+	seedClaudeAfterCheck(f)
 	rec := &presentertest.RecordingPresenter{}
 
 	opts := priorTagNormalAIOptions()
@@ -487,7 +497,7 @@ func TestRelease_DryRun_KeyMatch_ReusesSilently(t *testing.T) {
 		t.Fatalf("dry-run Release returned unexpected error: %v", err)
 	}
 
-	if claudeInvoked(f) {
+	if notesCallMade(f) {
 		t.Errorf("the AI was invoked on a dry-run key match; reuse must skip it")
 	}
 	if got := countKind(rec, presentertest.KindPrompt); got != 0 {

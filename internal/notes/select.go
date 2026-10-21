@@ -73,6 +73,7 @@ type Selector struct {
 	runner         runner.CommandRunner
 	root           string
 	fallbackNotice func(failure error)
+	check          *ExclusionCheck
 }
 
 // NewSelector builds a Selector over the composed providers. The same Assembler
@@ -88,6 +89,14 @@ func NewSelector(generator *Generator, assembler *Assembler, r runner.CommandRun
 func (s *Selector) WithFallbackNotice(notice func(failure error)) *Selector {
 	c := *s
 	c.fallbackNotice = notice
+	return &c
+}
+
+// WithExclusionCheck returns a copy of s whose AI path makes check's call first, before
+// cache reuse and the notes; s itself is unchanged.
+func (s *Selector) WithExclusionCheck(check *ExclusionCheck) *Selector {
+	c := *s
+	c.check = check
 	return &c
 }
 
@@ -113,7 +122,7 @@ type CacheInputs struct {
 
 // ReuseFunc is the real-run note-cache reuse hook (task 4-8) the selector consults
 // on the NORMAL-AI path AFTER the cache-key inputs (the post-diff_exclude diff and
-// the resolved prompt/context instructions) are known but BEFORE the AI is invoked.
+// the resolved prompt/context instructions) are known but BEFORE the notes call.
 // Given those inputs it returns a cached body to reuse INSTEAD of generating, with
 // reused=true; reused=false means no live cache match (regenerate via the AI). A
 // non-nil error aborts. The selector knows nothing of the cache, the version, or the
@@ -133,7 +142,8 @@ type ReuseFunc func(diff, instructions string) (body string, reused bool, err er
 //  2. DEGENERATE (prior tag, empty/whitespace post-exclusion diff) → StubBody,
 //     KindDegenerate, no AI. Wins over --no-ai.
 //  3. --no-ai → NoAIBody, KindNoAI, no AI, never aborts.
-//  4. NORMAL AI PATH → Generator over the already-assembled diff. On success →
+//  4. NORMAL AI PATH → the exclusion check when one is wired, then the reuse hook,
+//     then the Generator over the already-assembled diff. On success →
 //     body, KindNormalAI. On failure → ResolveFailure: an abort error propagates
 //     (no body, KindNormalAI), a fallback body returns as KindFallback.
 //
@@ -160,8 +170,8 @@ func (s *Selector) SelectBodyWithCacheInputs(ctx context.Context, state SelectSt
 // SelectBodyWithReuse runs the identical precedence as SelectBodyWithCacheInputs and,
 // on the NORMAL-AI path ONLY, consults the optional reuse hook AFTER the cache-key
 // inputs (the post-diff_exclude diff + resolved prompt/context instructions) are
-// resolved but BEFORE the AI is invoked. When the hook reports a live cache match the
-// cached body is returned as KindNormalAI and the AI is NEVER called; otherwise (a
+// resolved but BEFORE the notes call. When the hook reports a live cache match the
+// cached body is returned as KindNormalAI and no notes call is made; otherwise (a
 // miss, or a nil hook) the AI generates as before. Either way the returned CacheInputs
 // carry the resolved diff + instructions, so a reused body still surfaces a coherent
 // (Cacheable) key — the real run does not re-write the cache, so this is informational.
@@ -199,10 +209,16 @@ func (s *Selector) SelectBodyWithReuse(ctx context.Context, state SelectState, c
 		return "", KindNormalAI, CacheInputs{}, fmt.Errorf("resolving notes instructions for cache key: %w", err)
 	}
 
+	if s.check != nil {
+		if err := s.check.Check(ctx, diff); err != nil {
+			return "", KindNormalAI, CacheInputs{}, err
+		}
+	}
+
 	cacheInputs := CacheInputs{Cacheable: true, Diff: diff, Instructions: instructions}
 
-	// Real-run reuse: with a live cache match the cached body is reused and the AI is
-	// skipped entirely. The hook is consulted ONLY here (the one cacheable path) and
+	// Real-run reuse: with a live cache match the cached body is reused and no notes call
+	// is made. The hook is consulted ONLY here (the one cacheable path) and
 	// only when wired (the dry-run write path passes nil).
 	if reuse != nil {
 		body, reused, err := reuse(diff, instructions)

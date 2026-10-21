@@ -130,7 +130,7 @@ func TestRelease_PriorTag_NormalAI_EndToEnd(t *testing.T) {
 	}
 	// The claude transport was driven over the FakeRunner (no real process), receiving
 	// the assembled diff in its prompt on stdin.
-	if got := stdinOf(t, f, "claude", leanClaudeArgs...); got == "" {
+	if got := notesStdinOf(t, f, "claude", leanClaudeArgs...); got == "" {
 		t.Errorf("claude was not invoked with a prompt on stdin")
 	}
 
@@ -330,6 +330,8 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
 		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
 		presentertest.KindStageStarted,   // notes (blocking)
+		presentertest.KindNotesChecking,  // the exclusion check's call
+		presentertest.KindNotesChecked,
 		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
@@ -498,7 +500,7 @@ func TestRelease_PriorTag_RegenViaRealGenerator_EndToEnd(t *testing.T) {
 		ScriptedOut("20\t0\tauth/login.go\n"), // regen: numstat
 	)
 	// The claude transport returns the first AI body, then the regenerated body.
-	f.SeedSequence("claude",
+	seedClaudeAfterCheck(f,
 		ScriptedOut(aiBody),
 		ScriptedOut(regenBody),
 	)
@@ -517,7 +519,7 @@ func TestRelease_PriorTag_RegenViaRealGenerator_EndToEnd(t *testing.T) {
 	}
 
 	// The one-time context reached the regenerate prompt's instructions.
-	if got := stdinOf(t, f, "claude", leanClaudeArgs...); got == "" {
+	if got := notesStdinOf(t, f, "claude", leanClaudeArgs...); got == "" {
 		t.Errorf("claude was not invoked with a prompt on stdin")
 	}
 	// The REGENERATED body — not the first AI body — reached every sink.

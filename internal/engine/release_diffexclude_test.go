@@ -56,7 +56,7 @@ func TestRelease_ReleaseDiffExclude_AddsToTheSharedListOnTheNotesDiffAndChangeMa
 	}
 
 	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)*.lock", ":(exclude)specs/")
-	prompt := stdinOf(t, f, "claude", leanClaudeArgs...)
+	prompt := notesStdinOf(t, f, "claude", leanClaudeArgs...)
 	if !strings.Contains(prompt, exportDiff) {
 		t.Errorf("notes call does not carry the src/export.go diff; got:\n%s", prompt)
 	}
@@ -141,7 +141,7 @@ func TestRelease_CommitDiffExclude_NeverReachesTheNotesDiffOrChangeMap(t *testin
 	}
 
 	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml")
-	prompt := stdinOf(t, f, "claude", leanClaudeArgs...)
+	prompt := notesStdinOf(t, f, "claude", leanClaudeArgs...)
 	for _, want := range []string{bothDiff, "src/export.go", "tmp/run.log"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("notes call does not carry %q; got:\n%s", want, prompt)

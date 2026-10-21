@@ -130,6 +130,9 @@ type wordyPartsTransport struct {
 }
 
 func (wt *wordyPartsTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	wt.mu.Lock()
 	defer wt.mu.Unlock()
 	switch {
@@ -217,6 +220,9 @@ type coreOverflowingTransport struct {
 }
 
 func (ct *coreOverflowingTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
 	switch {

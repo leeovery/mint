@@ -60,6 +60,9 @@ func newWaveEndTransport() *waveEndTransport {
 }
 
 func (wt *waveEndTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	if isClassifyPrompt(prompt) {
 		if strings.Contains(prompt, modelRejectsSize) {
 			return "SIZE", nil

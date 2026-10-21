@@ -78,19 +78,12 @@ func (tc uncallableCase) seedRelease(t *testing.T, root string, f *runner.FakeRu
 		ScriptedOut("M\tapi/a.go\nM\tcore/b.go\n"),
 		ScriptedOut("156\t0\tapi/a.go\n156\t0\tcore/b.go\n"),
 	)
-	if len(tc.claude) > 0 {
-		f.SeedSequence("claude", tc.claude...)
-	}
+	seedClaudeAfterCheck(f, tc.claude...)
 }
 
+// aiCallCount counts the notes calls, leaving out the exclusion check's.
 func aiCallCount(f *runner.FakeRunner) int {
-	n := 0
-	for _, inv := range f.Invocations() {
-		if inv.Name == "claude" {
-			n++
-		}
-	}
-	return n
+	return len(notesInvocations(f, "claude"))
 }
 
 func TestRelease_NotesCallCannotBeMade_Abort_StopsBeforeTheTagNamingTheCause(t *testing.T) {
@@ -160,6 +153,9 @@ type fixedNotesTransport struct {
 }
 
 func (ft *fixedNotesTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	ft.mu.Lock()
 	defer ft.mu.Unlock()
 	ft.prompts = append(ft.prompts, prompt)

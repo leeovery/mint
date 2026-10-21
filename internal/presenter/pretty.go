@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"golang.org/x/term"
+
+	"mint/internal/bytesize"
 )
 
 // defaultLeaf is the fallback brand glyph. The engine supplies the leaf in the
@@ -170,6 +172,8 @@ type PrettyPresenter struct {
 	// the spinner on the SAME stage line. It is only meaningful while activeSpinner is
 	// non-nil.
 	activeSpinnerText string
+	// activeStageText is the undimmed text the running stage started its line with.
+	activeStageText string
 
 	// spinnerSuspended records that SuspendSpinner stopped the active spinner around
 	// the engine's $EDITOR hand-off and is awaiting a ResumeSpinner. It is the flag
@@ -374,7 +378,8 @@ func (p *PrettyPresenter) StageStarted(s StageStart) {
 		return
 	}
 	p.stopSpinner()
-	startText := p.dim.Render(stageStartText(s))
+	p.activeStageText = stageStartText(s)
+	startText := p.dim.Render(p.activeStageText)
 	p.activeSpinnerText = startText
 	p.activeSpinner = p.newSpinner(p.out, startText)
 	p.activeSpinner.Start()
@@ -511,10 +516,20 @@ func stageTrailing(s StageSuccess) string {
 	return s.Detail + " " + elapsed
 }
 
+// NotesChecking rewrites the running notes line for the exclusion check's call.
+func (p *PrettyPresenter) NotesChecking() {
+	p.setSpinnerText("Checking for files that don't belong in the notes…")
+}
+
+// NotesChecked restores the running notes line's own text.
+func (p *PrettyPresenter) NotesChecked() {
+	p.setSpinnerText(p.activeStageText)
+}
+
 // NotesProgress rewrites the running notes line with a chunked run's split and
 // parts done.
 func (p *PrettyPresenter) NotesProgress(n NotesProgress) {
-	p.setSpinnerText(fmt.Sprintf("Writing notes: %s release, in %d parts · %d of %d done", formatSize(n.PromptBytes), n.Parts, n.Done, n.Parts))
+	p.setSpinnerText(fmt.Sprintf("Writing notes: %s release, in %d parts · %d of %d done", bytesize.Format(n.PromptBytes), n.Parts, n.Done, n.Parts))
 }
 
 // NotesHalving rewrites the running notes line with a re-cut of a call too big for

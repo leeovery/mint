@@ -244,7 +244,9 @@ func plainRegenNotesLines(t *testing.T, root string, f *runner.FakeRunner, tr *s
 			lines = append(lines, strings.TrimSuffix(line, "\n"))
 		}
 	}
-	// The first attempt's notes stage is its start and its completion.
+	// The first attempt's notes stage is its start, the exclusion check's line and its
+	// completion.
+	lines = withoutPlainCheckLine(t, lines)
 	if len(lines) < 2 || lines[0] != "notes: running..." || !strings.HasPrefix(lines[1], "notes: generated (") {
 		t.Fatalf("notes lines =\n%s\nwant the first attempt's start and completion first", strings.Join(lines, "\n"))
 	}

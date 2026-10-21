@@ -34,6 +34,9 @@ type freshTransport struct {
 }
 
 func (ft *freshTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	ft.prompts = append(ft.prompts, prompt)
 	return ft.body, ft.err
 }
@@ -270,6 +273,9 @@ type splitTransport struct {
 }
 
 func (st *splitTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.prompts = append(st.prompts, prompt)

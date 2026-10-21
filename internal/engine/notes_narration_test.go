@@ -124,7 +124,7 @@ func TestRelease_OverCap_NarratesTheSplitEachPartTheMergeAndThePartCount(t *test
 	if len(stages) != 1 {
 		t.Fatalf("notes stages = %d, want one", len(stages))
 	}
-	assertChunkedNotesStage(t, stages[0], 20_000)
+	assertChunkedNotesStage(t, afterCheck(t, stages[0]), 20_000)
 }
 
 func TestRelease_OverCap_PlainMode_PrintsEachUpdateAsItsOwnLine(t *testing.T) {
@@ -152,6 +152,7 @@ func TestRelease_OverCap_PlainMode_PrintsEachUpdateAsItsOwnLine(t *testing.T) {
 			notesLines = append(notesLines, strings.TrimSuffix(line, "\n"))
 		}
 	}
+	notesLines = withoutPlainCheckLine(t, notesLines)
 	if len(notesLines) != 6 {
 		t.Fatalf("notes lines =\n%s\nwant the start, the split, two parts, the merge and the completion", strings.Join(notesLines, "\n"))
 	}
@@ -191,7 +192,7 @@ func TestRelease_UnderCap_NotesStageNarratesAsBuilt(t *testing.T) {
 	if len(stages) != 1 {
 		t.Fatalf("notes stages = %d, want one", len(stages))
 	}
-	assertSinglePassNotesStage(t, stages[0])
+	assertSinglePassNotesStage(t, afterCheck(t, stages[0]))
 }
 
 // overCapFreshBody produces a fresh version's notes over a two-file range diff whose
@@ -285,7 +286,7 @@ func TestRelease_OverCap_FailedChunkedRunFallsBack_NotesStageClaimsNoMerge(t *te
 				ScriptedOut("156\t0\tapi/a.go\n156\t0\tcore/b.go\n"),
 				ScriptedOut("subject one\nsubject two\n"), // log --format=%s (the fallback body)
 			)
-			f.SeedSequence("claude", tt.succeeded...)
+			seedClaudeAfterCheck(f, tt.succeeded...)
 			f.Seed("claude", failed.Result, failed.Err)
 			seedRecordTagPush(f, root)
 			f.Seed("gh", runner.Result{}, nil)

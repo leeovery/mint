@@ -34,6 +34,9 @@ type partOverflowTransport struct {
 }
 
 func (pt *partOverflowTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 	pt.calls++

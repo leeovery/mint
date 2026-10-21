@@ -25,12 +25,23 @@ type notesStage struct {
 	fallbackCause error
 }
 
-var _ notes.Progress = (*notesStage)(nil)
+var (
+	_ notes.Progress       = (*notesStage)(nil)
+	_ notes.CheckNarration = (*notesStage)(nil)
+)
 
 const notesStageText = "generating release notes…"
 
 func startNotesStage(p presenter.Presenter) *notesStage {
 	return &notesStage{p: p, succeeded: startBlockingStage(p, "notes", notesStageText)}
+}
+
+func (s *notesStage) Checking() {
+	s.p.NotesChecking()
+}
+
+func (s *notesStage) Checked() {
+	s.p.NotesChecked()
 }
 
 func (s *notesStage) PartsDone(promptBytes, parts, done int) {

@@ -38,6 +38,9 @@ type chunkedRegenTransport struct {
 }
 
 func (ct *chunkedRegenTransport) Generate(ctx context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	ct.mu.Lock()
 	ct.calls++
 	ct.mu.Unlock()

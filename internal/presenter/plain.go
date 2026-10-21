@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"mint/internal/bytesize"
 )
 
 // PlainPresenter is the token-efficient, agent-friendly Presenter: terse
@@ -219,9 +221,17 @@ func (p *PlainPresenter) NextMoves(m NextMoves) {
 	}
 }
 
+// NotesChecking prints the exclusion check's call as its own line.
+func (p *PlainPresenter) NotesChecking() {
+	p.writef("notes: checking for files that don't belong in the notes\n")
+}
+
+// NotesChecked prints nothing: the notes' own lines follow.
+func (p *PlainPresenter) NotesChecked() {}
+
 // NotesProgress prints a chunked notes run's split and parts done as its own line.
 func (p *PlainPresenter) NotesProgress(n NotesProgress) {
-	p.writef("notes: %s release, in %d parts, %d of %d done\n", formatSize(n.PromptBytes), n.Parts, n.Done, n.Parts)
+	p.writef("notes: %s release, in %d parts, %d of %d done\n", bytesize.Format(n.PromptBytes), n.Parts, n.Done, n.Parts)
 }
 
 // NotesHalving prints a re-cut of a call too big for the model as its own line.

@@ -41,6 +41,8 @@ const (
 	KindNotesMerging
 	KindNotesHalving
 	KindNextMoves
+	KindNotesChecking
+	KindNotesChecked
 )
 
 // String renders the kind for readable test failure output.
@@ -86,6 +88,10 @@ func (k EventKind) String() string {
 		return "NotesHalving"
 	case KindNextMoves:
 		return "NextMoves"
+	case KindNotesChecking:
+		return "NotesChecking"
+	case KindNotesChecked:
+		return "NotesChecked"
 	default:
 		return "Unknown"
 	}
@@ -179,6 +185,16 @@ func (r *RecordingPresenter) StageSucceeded(s presenter.StageSuccess) {
 // StageFailed records a stage's failure.
 func (r *RecordingPresenter) StageFailed(s presenter.StageFailure) {
 	r.Events = append(r.Events, Event{Kind: KindStageFailed, StageFailed: s})
+}
+
+// NotesChecking records the exclusion check's call starting.
+func (r *RecordingPresenter) NotesChecking() {
+	r.Events = append(r.Events, Event{Kind: KindNotesChecking})
+}
+
+// NotesChecked records the exclusion check's call ending.
+func (r *RecordingPresenter) NotesChecked() {
+	r.Events = append(r.Events, Event{Kind: KindNotesChecked})
 }
 
 // NotesProgress records a chunked notes run's progress.

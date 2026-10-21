@@ -28,7 +28,7 @@ func TestRelease_MintConfigIsLeftOutOfTheNotesDiffAndChangeMap(t *testing.T) {
 	}
 
 	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml")
-	prompt := stdinOf(t, f, "claude", leanClaudeArgs...)
+	prompt := notesStdinOf(t, f, "claude", leanClaudeArgs...)
 	if !strings.Contains(prompt, exportDiff) {
 		t.Errorf("notes call does not carry the src/export.go diff; got:\n%s", prompt)
 	}

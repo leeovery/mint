@@ -46,6 +46,9 @@ type regenOverflowTransport struct {
 }
 
 func (rt *regenOverflowTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	switch {
@@ -230,7 +233,7 @@ func TestRelease_RegenCallFailsWithOutput_ClassifyRunsTheReleaseCommandAndTimeou
 		Result: runner.Result{Stdout: regenOverflowOutput + "\n", ExitCode: 1},
 		Err:    errors.New("exit status 1"),
 	}
-	f.SeedSequence("tool-a", ScriptedOut(firstSinglePass), failed, failed, ScriptedOut("OTHER\n"))
+	f.SeedSequence("tool-a", ScriptedOut("none"), ScriptedOut(firstSinglePass), failed, failed, ScriptedOut("OTHER\n"))
 	rec := &presentertest.RecordingPresenter{
 		NextChoices: []presenter.Choice{presenter.ChoiceYes, presenter.ChoiceRegen},
 		NextLines:   []string{exportNudge},

@@ -41,7 +41,7 @@ func notesCallsUnder(t *testing.T, config string, notes ...runner.ScriptedCall) 
 			diffs = append(diffs, commandLine(inv))
 		}
 	}
-	return diffs, stdinOf(t, f, "claude", leanClaudeArgs...)
+	return diffs, notesStdinOf(t, f, "claude", leanClaudeArgs...)
 }
 
 func TestRelease_ReleaseDiffKeep_LeavesTheNotesDiffAndChangeMapUnchanged(t *testing.T) {
@@ -101,7 +101,7 @@ func TestRelease_ReleaseDiffKeep_NeverOverridesAnExclusion(t *testing.T) {
 			}
 
 			assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)docs/")
-			prompt := stdinOf(t, f, "claude", leanClaudeArgs...)
+			prompt := notesStdinOf(t, f, "claude", leanClaudeArgs...)
 			if strings.Contains(prompt, "docs/api/export.md") {
 				t.Errorf("notes call names the excluded, kept path docs/api/export.md; got:\n%s", prompt)
 			}

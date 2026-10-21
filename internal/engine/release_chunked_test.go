@@ -21,7 +21,7 @@ func seedOverCapNotes(f *runner.FakeRunner) {
 		ScriptedOut("M\tapi/a.go\nM\tcore/b.go\n"),
 		ScriptedOut("156\t0\tapi/a.go\n156\t0\tcore/b.go\n"),
 	)
-	f.SeedSequence("claude",
+	seedClaudeAfterCheck(f,
 		ScriptedOut("- api notes"),
 		ScriptedOut("- core notes"),
 		ScriptedOut(chunkedMergeBody),
@@ -44,12 +44,7 @@ func TestRelease_OverCap_ChunkedNotesShipByteIdenticalToEverySink(t *testing.T) 
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	var aiCalls []runner.Invocation
-	for _, inv := range f.Invocations() {
-		if inv.Name == "claude" {
-			aiCalls = append(aiCalls, inv)
-		}
-	}
+	aiCalls := notesInvocations(f, "claude")
 	if len(aiCalls) != 3 {
 		t.Fatalf("AI calls = %d, want two chunk calls and one merge", len(aiCalls))
 	}

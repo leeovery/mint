@@ -57,6 +57,9 @@ type mergeTransport struct {
 }
 
 func (mt *mergeTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.prompts = append(mt.prompts, prompt)

@@ -95,6 +95,9 @@ type sizeCheckTransport struct {
 }
 
 func (st *sizeCheckTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.prompts = append(st.prompts, prompt)

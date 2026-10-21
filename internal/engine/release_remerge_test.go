@@ -45,17 +45,11 @@ func seedSixPartAI(f *runner.FakeRunner, remerges ...string) {
 	for _, body := range remerges {
 		calls = append(calls, ScriptedOut(body))
 	}
-	f.SeedSequence("claude", calls...)
+	seedClaudeAfterCheck(f, calls...)
 }
 
 func claudeCalls(f *runner.FakeRunner) []runner.Invocation {
-	var calls []runner.Invocation
-	for _, inv := range f.Invocations() {
-		if inv.Name == "claude" {
-			calls = append(calls, inv)
-		}
-	}
-	return calls
+	return notesInvocations(f, "claude")
 }
 
 // withNudge is mergePrompt, which carries the default instructions, with nudge
@@ -214,6 +208,9 @@ type halvedToThreeTransport struct {
 var partFraming = regexp.MustCompile(`What follows is part (\d+) of (\d+)`)
 
 func (ht *halvedToThreeTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	ht.mu.Lock()
 	defer ht.mu.Unlock()
 	ht.prompts = append(ht.prompts, prompt)

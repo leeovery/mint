@@ -32,6 +32,9 @@ type firstPartOverflowTransport struct {
 }
 
 func (ft *firstPartOverflowTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	switch {
 	case isClassifyPrompt(prompt):
 		return "SIZE", nil

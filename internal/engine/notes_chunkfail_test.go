@@ -33,6 +33,9 @@ type failingCallTransport struct {
 }
 
 func (ft *failingCallTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	if isClassifyPrompt(prompt) {
 		return "OTHER", nil
 	}
@@ -274,7 +277,10 @@ type interruptingTransport struct {
 	calls    int
 }
 
-func (it *interruptingTransport) Generate(ctx context.Context, _ string) (string, error) {
+func (it *interruptingTransport) Generate(ctx context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	it.mu.Lock()
 	it.calls++
 	it.inFlight++

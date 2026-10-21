@@ -69,9 +69,9 @@ type Presenter interface {
 	// frames are written to out from the spinner's own goroutine until the stage
 	// completes. Between a blocking StageStarted and its StageSucceeded/StageFailed
 	// the engine should therefore emit only SuspendSpinner/ResumeSpinner, the notes
-	// stage's NotesProgress/NotesHalving/NotesMerging, and the completion event
-	// itself — any other narration (Warn, ShowPlan, …) would interleave with
-	// animation frames on the same stream and garble the display.
+	// stage's NotesChecking/NotesChecked/NotesProgress/NotesHalving/NotesMerging, and
+	// the completion event itself — any other narration (Warn, ShowPlan, …) would
+	// interleave with animation frames on the same stream and garble the display.
 	// Emit such events before the stage starts or after it completes (or wrap them
 	// in SuspendSpinner/ResumeSpinner).
 	StageStarted(s StageStart)
@@ -79,6 +79,12 @@ type Presenter interface {
 	StageSucceeded(s StageSuccess)
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
+	// NotesChecking narrates the exclusion check's call starting inside the blocking
+	// notes stage, and NotesChecked its end: pretty shows the check on the running
+	// notes line, then restores the line's own text; plain prints the check as its
+	// own line and nothing at its end.
+	NotesChecking()
+	NotesChecked()
 	// NotesProgress, NotesHalving and NotesMerging narrate a chunked notes run
 	// inside its blocking notes stage: pretty rewrites the running notes line in
 	// place, plain prints a line per event. They are the stream-discipline

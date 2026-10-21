@@ -33,6 +33,9 @@ type classifySkipTransport struct {
 }
 
 func (ct *classifySkipTransport) Generate(ctx context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	ct.mu.Lock()
 	ct.prompts = append(ct.prompts, prompt)
 	ct.mu.Unlock()
@@ -125,7 +128,7 @@ func TestRelease_NotesCallFails_ClassifiesOnlyWhenEitherStreamHoldsText(t *testi
 			f := runner.NewFakeRunner()
 			seedPriorTagReadGates(f, root, "main")
 			seedNormalAINotes(f)
-			f.SeedSequence("tool-a", tc.attempt, tc.attempt, ScriptedOut("OTHER\n"))
+			f.SeedSequence("tool-a", ScriptedOut("none"), tc.attempt, tc.attempt, ScriptedOut("OTHER\n"))
 			rec := &presentertest.RecordingPresenter{}
 			d := &deadlineRunner{FakeRunner: f}
 			deps := newDeps(rec, f)

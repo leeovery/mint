@@ -33,6 +33,9 @@ type gateAbortTransport struct {
 }
 
 func (gt *gateAbortTransport) Generate(ctx context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	gt.mu.Lock()
 	defer gt.mu.Unlock()
 	gt.calls++

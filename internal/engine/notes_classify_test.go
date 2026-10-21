@@ -30,12 +30,14 @@ type aiCall struct {
 }
 
 // deadlineRunner is the FakeRunner with every non-git RunWith call's program, stdin
-// and remaining per-attempt deadline recorded, since the FakeRunner drops the context.
+// and remaining per-attempt deadline recorded, since the FakeRunner drops the context:
+// the exclusion check's calls in checks, every other call in calls.
 type deadlineRunner struct {
 	*runner.FakeRunner
 
-	mu    sync.Mutex
-	calls []aiCall
+	mu     sync.Mutex
+	calls  []aiCall
+	checks []aiCall
 }
 
 func (d *deadlineRunner) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
@@ -50,8 +52,13 @@ func (d *deadlineRunner) RunWith(ctx context.Context, stdin io.Reader, name stri
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining = time.Until(deadline)
 	}
+	call := aiCall{name: name, stdin: string(in), remaining: remaining}
 	d.mu.Lock()
-	d.calls = append(d.calls, aiCall{name: name, stdin: string(in), remaining: remaining})
+	if isCheckPrompt(call.stdin) {
+		d.checks = append(d.checks, call)
+	} else {
+		d.calls = append(d.calls, call)
+	}
 	d.mu.Unlock()
 	return d.FakeRunner.RunWith(ctx, strings.NewReader(string(in)), name, args...)
 }
@@ -97,6 +104,7 @@ func TestRelease_NotesCallFails_ClassifyRunsTheReleaseCommandAndTimeout(t *testi
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
+	f.SeedSequence("tool-a", ScriptedOut("none")) // the exclusion check
 	seedToolAFailsThenClassified(f)
 	rec := &presentertest.RecordingPresenter{}
 	d := &deadlineRunner{FakeRunner: f}
@@ -138,6 +146,9 @@ type classifiedOtherTransport struct {
 }
 
 func (ct *classifiedOtherTransport) Generate(_ context.Context, prompt string) (string, error) {
+	if isCheckPrompt(prompt) {
+		return "none", nil
+	}
 	if isClassifyPrompt(prompt) {
 		ct.classify = append(ct.classify, prompt)
 		return "OTHER", nil

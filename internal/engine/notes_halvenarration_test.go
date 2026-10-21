@@ -81,7 +81,8 @@ func onlyNotesStage(t *testing.T, rec *presentertest.RecordingPresenter) []prese
 	return stages[0]
 }
 
-// plainNotesLines runs a release on the plain presenter and returns its notes lines.
+// plainNotesLines runs a release on the plain presenter and returns its notes lines,
+// the exclusion check's line left out.
 func plainNotesLines(t *testing.T, deps engine.ReleaseDeps) []string {
 	t.Helper()
 	out := &bytes.Buffer{}
@@ -96,7 +97,7 @@ func plainNotesLines(t *testing.T, deps engine.ReleaseDeps) []string {
 			lines = append(lines, strings.TrimSuffix(line, "\n"))
 		}
 	}
-	return lines
+	return withoutPlainCheckLine(t, lines)
 }
 
 func TestRelease_SinglePassClassifiedSize_NarratesTheRecutEachPartTheMergeAndThePartCount(t *testing.T) {
@@ -114,7 +115,7 @@ func TestRelease_SinglePassClassifiedSize_NarratesTheRecutEachPartTheMergeAndThe
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	assertHalvedSinglePassStage(t, onlyNotesStage(t, rec), tr)
+	assertHalvedSinglePassStage(t, releaseNotesStage(t, rec), tr)
 }
 
 func TestRelease_SinglePassClassifiedSize_PlainMode_PrintsTheRecutAndEachPartAsLines(t *testing.T) {
@@ -183,7 +184,7 @@ func TestRelease_ChunkClassifiedSize_NarratesThePartsRecutAndCountsOutOfTheGrown
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	stage := onlyNotesStage(t, rec)
+	stage := releaseNotesStage(t, rec)
 	recuts := coreRecuts(t, tr)
 	total := 2 + recuts - 1
 	halvedAt := -1

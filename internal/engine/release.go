@@ -168,7 +168,7 @@ type ReleaseDeps struct {
 	// run that generates AI notes writes the body, with a chunked run's merge inputs,
 	// keyed by a hash of (the post-diff_exclude diff + the computed version + the
 	// resolved prompt/context) with a TTL stamp. A later run recomputes the SAME key and
-	// Looks it up: a live (within-TTL) match reuses the exact bytes and SKIPS the AI, and
+	// Looks it up: a live (within-TTL) match reuses the exact bytes and SKIPS the notes calls, and
 	// `r` on reused chunked notes re-merges the cached part notes; a miss (or an expired
 	// entry) regenerates. When nil both the write and the reuse lookup are skipped (the
 	// run always generates); production wires a user-cache-dir notescache.Store.
@@ -994,15 +994,19 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 	// generate at Stage 4 precedes the version write at Stage 5, so the file is unchanged
 	// at notes time).
 	assembler := notes.NewAssembler(deps.Runner, notesExcludeConfig(cfg))
-	generator := notes.NewGenerator(assembler, aiTransport(deps, cfg), root)
+	transport := aiTransport(deps, cfg)
+	generator := notes.NewGenerator(assembler, transport, root)
 	selecting := chunkNotes.sinks(stage).wire(generator)
-	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).WithFallbackNotice(stage.fellBack)
+	selector := notes.NewSelector(selecting, assembler, deps.Runner, root).
+		WithFallbackNotice(stage.fellBack).
+		WithExclusionCheck(notes.NewExclusionCheck(transport, cfg.Release.DiffKeep, stage))
 
 	// SelectBodyWithReuse runs the precedence and surfaces, for the normal-AI path, the
 	// post-diff_exclude diff + resolved prompt/context the cache key hashes (assembled
-	// ONCE here). It consults the reuse hook BEFORE the AI — a live cache match skips the
-	// AI and reuses the cached body. The hook differs by mode: a real run PROMPTS
-	// (use/regenerate) on a match, a dry run reuses SILENTLY (a dry run asks for nothing).
+	// ONCE here). After the exclusion check, it consults the reuse hook BEFORE the notes
+	// calls — a live cache match skips them and reuses the cached body. The hook differs
+	// by mode: a real run PROMPTS (use/regenerate) on a match, a dry run reuses SILENTLY
+	// (a dry run asks for nothing).
 	// reuse records that the body came from the cache, so the write below skips a no-op
 	// re-write, and keeps a chunked entry's merge inputs for the gate's `r`.
 	reused := false
@@ -1047,7 +1051,7 @@ func resolveBody(ctx context.Context, deps ReleaseDeps, root string, cfg config.
 //     corrupt entry). The cache is purely an optimization, so a read failure must NEVER
 //     abort the release.
 //   - a live (within-TTL) match → hand the entry to reuse and return its body, so the
-//     selector SKIPS the AI. The two modes differ ONLY here: a real run PROMPTS first
+//     selector SKIPS the notes calls. The two modes differ ONLY here: a real run PROMPTS first
 //     (use/regenerate — the spinner is suspended around reuseConfirmGate, so "regenerate"
 //     re-runs the AI under a live spinner; under -y the gate auto-accepts "use"), while a
 //     dry run reuses SILENTLY (a dry run asks for nothing — it is a no-action preview).
