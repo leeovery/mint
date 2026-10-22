@@ -22,8 +22,8 @@ Changed also covers any smaller change to how something from the previous releas
 **Proposed Text**:
 - **🔧 Changed**: a rework or redesign of something the previous release already had, and any smaller change to how it works that is not a fix, such as a speed-up users notice or a changed default that is not breaking. A genuinely new capability that ships inside the rework is Added.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Landed in §4.1.
 
 ---
 
@@ -47,8 +47,8 @@ Where two bodies of work of equal weight each pass the test, the one sentence na
 **Proposed Text**:
 Where two bodies of work of equal weight each pass the test once the other is set aside, the one sentence names both.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: The session's pick between two readings; landed as a dated revision of the discussion's No Clear Headline decision, then in §3.2.
 
 ---
 
@@ -72,8 +72,8 @@ When unsure whether a change is one users meet, the change is listed in its sect
 **Proposed Text**:
 When unsure whether the release, or a part's slice, holds any change users meet, the change in doubt is listed in its section and neither line is written: a line left out costs what today's notes cost, while a false one drops a change users meet and tells every reader, in the release's only line, that nothing changed for them.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Record-determined by the rule's own reason; the same wording was repaired in the discussion's A Release With Nothing Users Meet decision (written this sitting) and in §5.1.
 
 ---
 
