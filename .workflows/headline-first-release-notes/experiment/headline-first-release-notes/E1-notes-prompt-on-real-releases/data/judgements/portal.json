@@ -1,0 +1,737 @@
+[
+  {
+    "release": "portal-v0.8.0",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "A redesigned picker with its own light/dark canvas, a new help screen on every page, and a cold-start loading screen that shows real progress.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": [
+        "inventory"
+      ]
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The preview is now a full-screen cyan \"peek mode\" frame with window and pane counters and a footer of key hints.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Session kill moved from `K` to `k` and rename from `R` to `r`.",
+        "why": "kill was already `k` and rename already `r` in v0.7.7; there were no uppercase K/R bindings (the diff's removed lines show the old \"r\"/\"k\" bindings)",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Tags are now case-sensitive and stored exactly as typed, so `Work` and `work` are different tags.",
+        "why": "NormaliseTag already preserved case in v0.7.7; internal/project is untouched and the claim comes only from a README addition",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "The session list now refreshes after a cold-start restore instead of showing an empty list.",
+        "why": "the stale snapshot exists only on the concurrent cold-boot route this release introduces; v0.7.7 ran bootstrap synchronously before the TUI",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Strong structure, with a correct headline, a real Breaking section and full coverage. However, two of its six Breaking bullets are false (the K→k/R→r move and tags becoming case-sensitive), so users are told to relearn keys that never changed."
+  },
+  {
+    "release": "portal-v0.8.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Startup warnings on a cold start show as an in-TUI notice after the picker loads instead of being printed to stderr.",
+        "outranks_by": "Navigation is arrows only — vim keys (`h/j/k/l`, `g/G`), `PgUp/PgDn/Home/End`, and uppercase bindings are removed; page with `Ctrl+↑`/`Ctrl+↓`.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Offline capture tool and `vhs` tapes for screenshotting each TUI screen from fixtures, without a tmux server.",
+        "why": "dev-only screenshot harness (cmd/capturetool, internal/capture)",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Upgraded to Bubble Tea v2, Lipgloss v2, and Bubbles v2.",
+        "why": "library dependency upgrade a user never meets directly",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "Cold-boot session list no longer shows a stale empty snapshot — it refreshes after restore completes.",
+        "why": "the stale snapshot exists only on the concurrent cold-boot route new in this release",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Terminal background is restored correctly on exit, even when the terminal echoes the canvas colour back as its original.",
+        "why": "the painted canvas and its OSC 11 set/restore are new in this release; nothing was restored in v0.7.7",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Leads with the reskin and covers the release, but there is no headline and the vim-key removal sits third in Changed, unmarked. It also carries two internal bullets, two in-release fixes and spec jargon (\"Modern Vivid\", \"Honest\")."
+  },
+  {
+    "release": "portal-v0.8.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "In-TUI fatal error frame when startup fails, and restore warnings now appear as a notice band after the picker loads instead of being flushed to stderr.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Offline `capturetool` visual-capture harness and `vhs` tapes for re-capturing reference screenshots of each screen.",
+        "why": "dev-only screenshot harness",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Upgraded to Bubble Tea v2, Lipgloss v2 and Bubbles v2.",
+        "why": "library dependency upgrade",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The README was refreshed with screenshots and a new Getting Started section.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Tags are now case-sensitive and stored exactly as typed.",
+        "why": "tags were already case-preserving and case-sensitive in v0.7.7; the claim comes only from a README edit",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "Cold-boot picker no longer shows a stale, empty session list — sessions are re-enumerated after restore completes.",
+        "why": "the stale list exists only on the concurrent cold-boot route new in this release",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Terminal background is restored on exit, including on terminals that ignore the OSC 111 reset, without re-sticking the canvas colour.",
+        "why": "the canvas and its background set/restore are new in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Leads with the reskin and states the arrows-only change first in Changed, but never marks it breaking and has no headline. It carries three internal bullets, a false tags claim, two in-release fixes and heavy jargon (OSC 11/111, \"mode-matched\", \"Honest\")."
+  },
+  {
+    "release": "portal-v0.8.0",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "A redesigned, colourful picker that paints its own light or dark canvas and opens straight onto an honest loading screen on a fresh boot.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Tags are now case-sensitive and stored exactly as typed, so `Work` and `work` become separate tags.",
+        "why": "tags were already case-sensitive in v0.7.7; only the README changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Key bindings changed: `k` now kills a session, `d` deletes a project, `x` is the only Sessions⟷Projects toggle, and the old `p` (Sessions) and `s` (Projects) page-switch keys are removed.",
+        "why": "`k` already killed and `d` already deleted in v0.7.7; only the x/p/s part changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "After a fresh-boot restore, the session list now refreshes so it shows the restored sessions rather than an empty snapshot.",
+        "why": "the stale snapshot exists only on the concurrent cold-boot route new in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A correct headline, a clean Breaking section for the keymap and good ordering with nothing internal. Marked down for the false tags claim and the 'k now kills' wording in Breaking, an in-release fix, and the \"honest loading screen\" jargon in the headline."
+  },
+  {
+    "release": "portal-v0.11.1",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Resume hooks now stay attached to a pane however tmux rearranges or renames it.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Hook command strings and shell paths containing quotes or spaces are quoted correctly when run.",
+        "outranks_by": "The stale-hook sweep no longer deletes hooks registered while it was running, and never deletes old-format keys it can't judge.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Concurrent hook changes are serialised through a `hooks.json.lock` file beside `hooks.json`, so simultaneous writers no longer overwrite each other.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The theme panel header stays aligned with the page when a notice band is showing.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "`hook set` now fails when its pane no longer exists instead of saving a hook under a degenerate key (one of the two root causes)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A correct headline, and the Breaking section states plainly that old-format hooks stop firing and how to re-register them, plus the hook rm exit change. Minor misfiles (the lock and the theme-panel fix under Changed), the sweep fix sits low in Fixed, and the gone-pane refusal is missing."
+  },
+  {
+    "release": "portal-v0.11.1",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`portal doctor` and `--fix` now say why a stale-hook check or prune was skipped (restore in progress, locked file, unreadable panes) instead of looking like it found nothing.",
+        "outranks_by": "Concurrent writers can no longer overwrite each other's hook changes — `hooks.json` is now protected by a `hooks.json.lock` file created beside it on first change.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Stale-hook cleanup now logs the command of every hook it removes at INFO level, so a reaped hook can be recovered from the log.",
+        "outranks_by": "Old-format `<session>:<window>.<pane>` hook keys are kept rather than guessed at — remove them by hand with `hook rm --pane-key`.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Homebrew formula updates run as their own release job, so a failure there can be retried without re-running the whole release.",
+        "outranks_by": "The filter footer now trims its key hints to fit narrow terminals instead of disappearing entirely.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Resume hooks now follow a pane's own durable token, so they keep firing after a session rename or any window/pane rearrangement.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Concurrent writers can no longer overwrite each other's hook changes — `hooks.json` is now protected by a `hooks.json.lock` file created beside it on first change.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Theme panel layout stays aligned with the page when a notice band is showing.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The filter footer now trims its key hints to fit narrow terminals instead of disappearing entirely.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Homebrew formula updates run as their own release job, so a failure there can be retried without re-running the whole release.",
+        "why": "release CI job split",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The internal `state migrate-rename` command and session-ID (`@portal-id`) based hook keys, now unnecessary since hooks follow the pane's token.",
+        "why": "hidden internal plumbing command",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Corrected contrast values in the `tokyo-night-day` theme.",
+        "why": "the theme files changed only in comments; no colour value changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [
+      {
+        "text": "`hook set` now fails when its pane no longer exists instead of saving a hook under a degenerate key (one of the two root causes)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "The first bullet names the fix, but files it under Added. Nothing tells users that their existing old-format hooks stop firing: the only trace is 'old-format keys are kept'. Several fixes are misfiled, a CI job and an internal command appear, and a comment-only theme edit becomes a false contrast fix."
+  },
+  {
+    "release": "portal-v0.11.1",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Resume hooks now stay attached to a pane however tmux rearranges or renames it.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Concurrent `hook set`/`hook rm`/cleanup runs no longer overwrite each other's changes in `hooks.json`.",
+        "outranks_by": "Hooks survive session renames and tmux renumbering, and are restored after a reboot together with their pane.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Hooks registered while a stale-hook sweep is running are no longer deleted by it.",
+        "outranks_by": "Hooks survive session renames and tmux renumbering, and are restored after a reboot together with their pane.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Sessions with a period in their name, or a name that prefixes another live session, are no longer mistaken for missing sessions, killed, or dropped from saved state.",
+        "outranks_by": "Hooks survive session renames and tmux renumbering, and are restored after a reboot together with their pane.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "The picker's notice band no longer collides with the theme panel — the panel lines up with the page beneath it when a message is showing.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "The `hook set` command asks the daemon to capture the new pane token right away.",
+        "why": "the pane token is new in this release; the nudge is part of the new design, not a fix to v0.11.0",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "`hook set` now fails when its pane no longer exists instead of saving a hook under a degenerate key (one of the two root causes)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A correct headline, and the Breaking section states plainly that old-format hooks stop firing and how to recover them. The main fix is correctly under Fixed but sits fourth, below its own sub-parts. There is also a misfiled theme-panel fix, and the gone-pane refusal is missing."
+  },
+  {
+    "release": "portal-v0.11.1",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`portal doctor` reports why a stale-hook check or prune couldn't run (restore in progress, unreadable `hooks.json`, locked file) instead of looking like it found nothing.",
+        "outranks_by": "Every per-session tmux command now uses an exact-match target, so a session whose name extends another's (or contains a period) is never confused with it.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Resume hooks now follow the pane itself — each hooked pane gets a durable token, so hooks survive pane moves and session renames.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`hooks.json` writes are now guarded by a lock file (`hooks.json.lock`) so concurrent writers can't overwrite each other.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Every per-session tmux command now uses an exact-match target, so a session whose name extends another's (or contains a period) is never confused with it.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Hooks no longer get orphaned when a session is renamed or panes are rearranged.",
+        "duplicates": "Resume hooks now follow the pane itself — each hooked pane gets a durable token, so hooks survive pane moves and session renames.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "The hidden `portal state migrate-rename` command — hooks no longer need re-keying on rename.",
+        "why": "hidden internal plumbing command",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Homebrew tap update runs as its own release job, so a tap failure no longer turns a published release red and can be retried alone.",
+        "why": "release CI job split",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Generated session names no longer start with `$` or `-` or contain periods and colons from the project name.",
+        "why": "periods and colons were already replaced with hyphens in v0.11.0; only the leading $/- drop is new",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [
+      {
+        "text": "`hook set` now fails when its pane no longer exists instead of saving a hook under a degenerate key (one of the two root causes)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "The first bullet names the fix, but it is filed under Added and restated in Fixed. The notes never say that old-format hooks stop firing; they only mention that cleanup keeps old keys. A CI job appears under Fixed, alongside a hidden internal command and a partly false naming claim."
+  },
+  {
+    "release": "portal-v0.9.0",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`portal spawn --detect` prints the detected host terminal without opening anything.",
+        "outranks_by": "Ghostty support for opening session windows natively on macOS.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "If a session disappears before opening, the batch aborts with a \"gone — nothing opened\" banner and the remaining marked sessions stay selected for retry.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "If some windows fail to open, the ones that opened are left in place and only the failed sessions stay marked for a retry.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Row actions that don't combine with a marked set (kill, rename, new session, page toggle) are disabled in multi-select mode.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Open several sessions at once in separate host-terminal windows, with the last one attaching in the current window.",
+        "duplicates": "Multi-select mode in the session picker — press `m` to mark sessions, Enter to open them all, Esc to cancel.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The first line names multi-select but not that each session opens in its own window; that point is split into a second, overlapping bullet. The new feature's designed failure handling is filed under Changed, and there is no headline."
+  },
+  {
+    "release": "portal-v0.9.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Multi-select disables kill, rename, new-session and page-toggle keys so they can't discard a marked set.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Opening several sessions is all-or-nothing up front — if any marked session has disappeared, nothing opens and the gone sessions are flagged and removed from the selection.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "If some windows fail to open, the ones that did open are left in place and unmarked, so pressing Enter again retries only the missing ones.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Narrow terminals now truncate the footer on one line with an ellipsis instead of wrapping.",
+        "why": "the existing footers already truncated with an ellipsis in v0.8.5; the diff only extracts the shared fitter (\"algorithm is unchanged\") for the new multi-select footer",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The first bullet states the whole picker flow, including separate windows, and the Added list is tight. However, there is no headline, three bullets describing the new feature's own behaviour sit under Changed, and the Fixed entry describes behaviour that was already true."
+  },
+  {
+    "release": "portal-v0.9.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Open several sessions at once, each in its own host-terminal window, from the picker or the command line.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`portal spawn --detect` prints the host terminal Portal detects, without opening anything.",
+        "outranks_by": "Ghostty on macOS is supported natively for opening windows.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "If a window fails to open, the ones that did open stay open and are unmarked, so pressing Enter again retries only the missing ones.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "If a selected session disappears before opening, nothing opens and a red banner names it — the remaining marked sessions stay selected.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Space preview keeps your marked sessions, dropping any killed in the meantime.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Row actions `k`, `r`, `n` and `x` are disabled while in multi-select mode.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline states the whole feature and both entry points, the Added list is accurate and complete, and nothing internal leaks. Marked down for four behaviours of the new feature filed under Changed, and for --detect sitting above Ghostty support."
+  },
+  {
+    "release": "portal-v0.9.0",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Open several sessions at once in separate host-terminal windows from the picker or the new `portal spawn` command.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 5,
+    "notes": "The headline states the whole feature and both entry points. Every bullet is correctly under Added, including the new feature's failure handling, in sensible order, with no internal or false items."
+  }
+]
