@@ -1,0 +1,12 @@
+{
+  "received": "2026-10-22",
+  "raw": "1b 2b 3a 4a 5a 6b",
+  "picks": {
+    "portal-v0.11.1": "B",
+    "tick-v0.3.0": "B",
+    "switchboard-v0.2.6": "A",
+    "agentic-workflows-v0.8.0": "A",
+    "agntc-v0.5.2": "A",
+    "mint-v0.0.2": "B"
+  }
+}

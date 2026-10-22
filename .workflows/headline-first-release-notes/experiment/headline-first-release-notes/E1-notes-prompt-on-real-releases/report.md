@@ -69,7 +69,7 @@ Run 2026-10-22 07:51–07:56 (run log `.workflows/.cache/…/run-holdout.log`): 
 
 ### Judging
 
-Blinded copies in `.workflows/.cache/…/blind/<release>/A–D.md`; the blind key and Lee's key stay in `.workflows/.cache/…/` (`blind-key.json`, `lee-key.json`) until all judgements and Lee's picks are in. Each judge's hand-back is pulled from its transcript by `.workflows/.cache/…/extract_judgement.py`, parsed as JSON and written to `data/judgements/<group>.json` (content unchanged, re-indented). Landed so far: dex-engine (12 objects), portal (12), tick/stitch-cli/agentic-skills (20), switchboard (12), agntc/mint (20).
+Blinded copies in `.workflows/.cache/…/blind/<release>/A–D.md`; the blind key and Lee's key stay in `.workflows/.cache/…/` (`blind-key.json`, `lee-key.json`) until all judgements and Lee's picks are in. Each judge's hand-back is pulled from its transcript by `.workflows/.cache/…/extract_judgement.py`, parsed as JSON and written to `data/judgements/<group>.json` (content unchanged, re-indented). Landed so far: dex-engine (12 objects), portal (12), tick/stitch-cli/agentic-skills (20), switchboard (12), agntc/mint (20). Lee's picks received (`data/lee-picks.json`: 1 B, 2 B, 3 A, 4 A, 5 A, 6 B), still blind.
 
 ## Deviations
 
