@@ -71,8 +71,8 @@ Source carrying the claim: `.workflows/headline-first-release-notes/discussion/h
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Measured falsehood whose conclusions all survive; corrected in place in the discussion's Release Title journey (the flag named as `mint release regenerate --source tag`, with the old name and fc1cfe13 noted), then §9 re-aligned.
 
 ---
 

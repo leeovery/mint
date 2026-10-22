@@ -230,7 +230,7 @@ Lifting the headline into the title is ruled out for four reasons:
 - Both regenerate paths re-publish with a title, so regenerating would retitle releases that are already out.
 - The gain is confined to the releases list, because the release page already shows the headline as the first line under the title.
 
-The bare-tag title also keeps `regenerate --reuse`'s rebuild of the provider release from the tag annotation body deterministic and free of parsing.
+The bare-tag title also keeps `mint release regenerate --source tag`'s rebuild of the provider release from the tag annotation body deterministic and free of parsing.
 
 ### 10. The Shipping Bar
 
