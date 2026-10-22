@@ -1,0 +1,1033 @@
+[
+  {
+    "release": "tick-v0.3.0",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Status commands (`start`, `done`, `cancel`, `reopen`) now print a `changed` table (TOON) or `changed` list (JSON) of every task that moved — scripts reading the old `id: old → new` lines or the JSON `id`/`from`/`to` and `transition`/`cascaded` objects must read the new shape instead.",
+        "outranks_by": "TOON output is restructured: `show` and `stats` now emit top-level `key: value` fields, descriptions are one quoted value, tags and refs are inline lists, and `dep tree` summary fields are top-level — update any parser of the old layout.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "`create` and `update` output a `changed` section listing any tasks whose status moved, such as a reopened or auto-completed parent.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Dropped values no longer silently disappear from TOON output; empty types in lists render as `\"\"`.",
+        "duplicates": "A TOON command whose output would carry an unencodable control character (such as a pasted ANSI escape) now fails with an error naming the task and field instead of printing a broken document — use `--json` or `show --field` to read the value.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "`ready` and `blocked` filters now include in-progress tasks as well as open ones.",
+        "why": "only the README wording changed; the ready/blocked query already matched open and in_progress tasks at v0.2.9 and no query code changes in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "A Breaking section flags the quoted-description and other TOON/JSON shape changes and coverage is complete, but there is no headline, it opens on the status-command table rather than the TOON rebuild, never says the output now parses as standard TOON, and repeats the false ready/blocked claim."
+  },
+  {
+    "release": "tick-v0.3.0",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`start`, `done`, `cancel` and `reopen` print one `changed` table (TOON) or list (JSON) with an `auto` flag marking cascaded tasks.",
+        "outranks_by": "TOON output is now valid, decodable TOON: single objects become named fields, tags/refs are inline lists, and descriptions are quoted single values.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "`create` and `update` output now includes a `changed` section listing tasks whose status moved (e.g. a done parent reopened).",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Pretty and JSON output no longer drop or misreport data for tasks hidden by cycles or missing blockers in `dep tree`.",
+        "duplicates": "`dep tree` always returns a populated document in TOON and JSON (empty graphs return zero counts), includes cycles and dangling blockers, and uses `trees` instead of `roots` in JSON.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`migrate` trims leading and trailing whitespace from imported titles and descriptions, and accepts `--from=beads`.",
+        "duplicates": "Flags now accept the attached form `--flag=value`, so values like `--` or `--json` can be passed literally.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "`--ready` and `--blocked` now include in-progress tasks.",
+        "why": "only the README wording changed; the ready/blocked query already matched open and in_progress tasks at v0.2.9 and no query code changes in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "Complete but long. The TOON rebuild is Changed 2, behind the status-command table. The quoted description and the JSON key renames are never marked as breaking, and the set adds the false ready/blocked claim and two restatements."
+  },
+  {
+    "release": "tick-v0.3.0",
+    "label": "C",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Status commands (`start`, `done`, `cancel`, `reopen`) now report every moved task in one `changed` table with an `auto` column, in TOON and JSON.",
+        "outranks_by": "TOON output now uses named `key: value` fields, inline lists, and a single quoted description, so documents decode cleanly.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`create` and `update` now include a `changed` section when they reopen or auto-complete parent tasks.",
+        "outranks_by": "TOON output now uses named `key: value` fields, inline lists, and a single quoted description, so documents decode cleanly.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "`migrate` now accepts `--from=value`.",
+        "duplicates": "Attached flag values with `--flag=value` — lets a value that is exactly `--` or spells a global flag be passed safely.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "`--ready` and `--blocked` now include in-progress tasks.",
+        "why": "only the README wording changed; the ready/blocked query already matched open and in_progress tasks at v0.2.9 and no query code changes in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "The TOON rebuild sits third in Changed, under two narrower output changes. No breaking change is flagged, although the description format and the JSON keys change. It repeats the false ready/blocked claim. The filing is otherwise sound."
+  },
+  {
+    "release": "tick-v0.3.0",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "`create` and `update` output includes a `changed` section listing tasks whose status moved, such as a done parent reopened or an old parent auto-completed.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Notes in `show` output carry their 1-based `index`, matching what `note remove` accepts.",
+        "duplicates": "TOON output shapes changed — … notes with an `index` column and descriptions as one quoted value, so scripts parsing the old layout must be updated.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "`list --ready` and `--blocked` now consider in-progress tasks as well as open ones.",
+        "why": "only the README wording changed; the ready/blocked query already matched open and in_progress tasks at v0.2.9 and no query code changes in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The best-ordered set: Breaking opens on the TOON reshape across every command and Fixed states the round-trip. It has no headline, though, and the lead presents the rebuild as a layout change rather than output that now parses as standard TOON. It also carries the false ready/blocked claim."
+  },
+  {
+    "release": "stitch-cli-v1.6.2",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "The generated commit-msg hook reads `ai.model` from your config at runtime, so model changes apply without reinstalling the hook.",
+        "duplicates": "Choose the Claude model for AI features with `stitch config set ai.model sonnet`, or override it per project via `ai.model` in `.stitch/config.json` — leaving it unset keeps the Claude CLI default.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Leads with the one user-facing change, describes it accurately, and leaves out the repo's release-script swap. The hook bullet only restates the new ai.model setting for one of its consumers."
+  },
+  {
+    "release": "stitch-cli-v1.6.2",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "The commit-msg hook now reads the configured AI model at runtime — changes to `ai.model` apply without reinstalling the hook.",
+        "duplicates": "Configurable AI model — set `stitch config set ai.model sonnet` globally, or `ai.model` in `.stitch/config.json` per project, to choose which Claude model powers AI features.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "The `release` script is now a thin wrapper that delegates to `mint release` — requires installing mint via `brew install leeovery/tools/mint`.",
+        "why": "the repo's own maintainer release script, not part of stitch as users install it; it tells stitch users to install a tool they never need",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The lead is right, but the set presents the repo's own release tooling to stitch users, with an install instruction they don't need, and splits the ai.model change into two bullets."
+  },
+  {
+    "release": "stitch-cli-v1.6.2",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "The commit-msg hook's AI regeneration now uses the configured `ai.model`, read at runtime so existing installed hooks pick up changes without reinstalling.",
+        "duplicates": "Choose the Claude model for AI features with `stitch config set ai.model sonnet`, or override it per project via `ai.model` in `.stitch/config.json` — leaving it unset keeps the Claude CLI default.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "The commit-msg hook's AI regeneration now uses the configured `ai.model`, read at runtime so existing installed hooks pick up changes without reinstalling.",
+        "why": "the model lookup is written into the hook script when it is generated; hooks installed by earlier versions lack it and must be reinstalled to honour ai.model",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The lead is right and the set leaves out the dev tooling. The second bullet restates the ai.model change, and its wording suggests that hooks installed before this release pick up the model without being reinstalled."
+  },
+  {
+    "release": "stitch-cli-v1.6.2",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "The commit-msg hook now honours the configured AI model at runtime — no reinstall needed after changing it.",
+        "duplicates": "Configurable AI model — set `stitch config set ai.model sonnet` globally, or `ai.model` in `.stitch/config.json` per project, to pin the model used for AI features.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "The `release` script is now a thin wrapper around `mint release` — requires `mint` to be installed (`brew install leeovery/tools/mint`).",
+        "why": "the repo's own maintainer release script, not part of stitch as users install it; it tells stitch users to install a tool they never need",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Same shape as B: the lead is right, but the dev-only release-script change reaches users with an install instruction, and the ai.model change is split in two."
+  },
+  {
+    "release": "stitch-cli-v1.6.6",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The commit-msg hook skips itself in CI (when `$CI` is set), so automated commits are never blocked.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The commit-msg hook warns on stderr and lets the commit through when no terminal is available — GUI clients and scripts no longer fail on a prompt.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Trunk build workflows commit tracking updates with `--no-verify` — project git hooks such as Husky no longer break CI builds.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Accurate and complete, with the POSIX-sh and ECR fixes under Fixed. There is no headline to tell the story that CI builds were failing, though, the set opens on one piece of the hook fix, and three of the fixes are filed under Changed."
+  },
+  {
+    "release": "stitch-cli-v1.6.6",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The commit-msg hook now runs under POSIX sh — it works with Husky and on Linux systems where `sh` is dash.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Trunk build workflows (Go, Laravel, Vue) commit tracking updates with `--no-verify` — project developer hooks no longer run in CI.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Four tight bullets cover both fixes, but there is no headline. The set leads with the POSIX-sh rewrite framed as a change, and files that rewrite and the --no-verify fix under Changed."
+  },
+  {
+    "release": "stitch-cli-v1.6.6",
+    "label": "C",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Commit-msg hook is now POSIX sh — it works under Husky and Linux `sh` (dash), which lack `[[ ]]`.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Commit-msg hook skips entirely in CI when `$CI` is set.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Commit-msg hook with no terminal to prompt on (GUI clients, scripts) warns on stderr and lets the commit through instead of failing.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Trunk build workflows for Go, Laravel and Vue commit tracking updates with `--no-verify` — project developer hooks no longer break CI builds.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Commit-msg hook no longer fails under Husky on systems where `sh` is dash.",
+        "duplicates": "Commit-msg hook is now POSIX sh — it works under Husky and Linux `sh` (dash), which lack `[[ ]]`.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Commit-msg hook only checks the subject line for merge, internal stitch and conventional-format matching, so multi-line messages are handled correctly.",
+        "why": "the old bash `=~ ^…` tests already anchored at the start of the message, i.e. the subject; the SUBJECT extraction only serves the new line-oriented case/grep, so multi-line handling did not change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "Seven bullets for one PR. Every hook and template fix except the ECR skip sits under Changed, the Husky/dash fix appears twice, and it invents a multi-line handling fix. There is no headline, and the opening bullet is a single piece."
+  },
+  {
+    "release": "stitch-cli-v1.6.6",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The commit-msg hook is skipped in CI (`$CI` set) — automated commits are no longer prompted or blocked.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Trunk build workflows now commit tracking updates with `--no-verify` — project git hooks such as Husky no longer run in CI.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Merge and internal stitch commit detection now checks only the subject line, not the whole commit message.",
+        "why": "the old bash `=~ ^Merge` / `^chore(stitch):` tests already anchored at the start of the message, i.e. the subject; no behaviour changed, only the matching mechanism",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The POSIX-sh, no-terminal and ECR fixes are correctly under Fixed. There is still no headline, though, the CI skip and --no-verify sit under Changed, and the last Fixed bullet presents an implementation detail as a fix."
+  },
+  {
+    "release": "agentic-skills-v0.2.0",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Laravel multi-tenancy test harness for stancl/tenancy v4 — one kept testing tenant, tenanted tests that never mention the tenant.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel packages skill now covers building packages with package-tools, a manager with drivers, a shipped fake and Testbench tests.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel services gain a full Saloon driver walkthrough, and value objects a moneyphp-based money reference.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel testing gains model factory and test-setup references.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "README refreshed with badges, plugin overview and install steps for all three plugins.",
+        "why": "repo README restyle with no skill change",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The release script now delegates to `mint release`.",
+        "why": "the repo's own release tooling",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Nuxt README lists the design-tokens and server-data skills, and the design-tokens skill now links to the Nuxt UI docs.",
+        "why": "mostly a README listing of skills that already shipped; only the link half touches a skill",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The tag-driven GitHub release workflow and the committed local Claude settings file, which is now git-ignored.",
+        "why": "repo CI and local tooling",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Laravel routing gains a `ConditionalRouteBinder` for routes that need a different model lookup.",
+        "why": "the binder already shipped in v0.1.4's route-binding.md reference; it only moved to its own file",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `Httpable` exception concern's status fallback never applied (`??` on a non-null code), and its reporting rule was inverted for console runs.",
+        "why": "the fallback half is right, but v0.1.4's Httpable had no report() rule at all; the inverted runningInConsole() rule is one the new skill warns about in other projects",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration of the `HasUuid` model concern to Laravel's `HasUuids` so the primary key stays an integer.",
+        "why": "the old trait worked and already left the integer key alone; a rework presented as a fix",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "There is no headline, and the lead names only the Go plugin. Pieces of the Laravel rewrite are filed as Added, four dev-only items are presented to users, and the Fixed section claims bugs the previous skills never had."
+  },
+  {
+    "release": "agentic-skills-v0.2.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Adds a Go plugin and rewrites the Laravel skills so they state their rules with reasons and keep situational techniques separate.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Laravel multi-tenancy skill now covers stancl/tenancy v4, with a tenancy-aware test harness and reference files for the test setup.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel packages skill now covers building a package with package-tools, a manager with drivers, a shipped fake and Testbench tests.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel services skill adds a full Saloon driver walkthrough with config, connector, requests and tests.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel testing skill adds model factory and test setup references.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel value objects skill adds a money reference built on moneyphp/money.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Laravel README updated for the new skill descriptions, and the repository README now lists the Go plugin alongside Laravel and Nuxt.",
+        "why": "README housekeeping with no skill change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Laravel routing skill ships a `ConditionalRouteBinder` for routes that need different model lookups.",
+        "why": "the binder already shipped in v0.1.4's route-binding.md reference; it only moved to its own file",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline names both bodies of work, the rewrite leads Changed, and the dev-only clutter is gone. Reworked Laravel references are still filed as Added, and the route binder is presented as new."
+  },
+  {
+    "release": "agentic-skills-v0.2.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "A new Go plugin brings eight opinionated Go skills, and the Laravel skills were rewritten around clearer rules and one pattern per job.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Laravel multi-tenancy guidance for stancl/tenancy v4, including a tenancy-aware test harness that reuses one testing tenant.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel package guidance for building a package with a manager, drivers, a shipped fake and Testbench tests.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel services guidance with a complete Saloon driver example covering config, connector, requests, null driver and tests.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel value-object guidance for money using moneyphp/money, with a factory and cast.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The release script now runs `mint release` and requires `mint` to be installed.",
+        "why": "the repo's own release tooling",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Nuxt gains 3 skills (18 in total), including a new server-data skill covering Drizzle ORM, Cloudflare D1 and NuxtHub.",
+        "why": "no Nuxt skill was added; nuxt-server-data and the others already shipped in v0.1.4 and only the README count and listing changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel jobs, listeners and state machines are thin wrappers that call one action and are named after it.",
+        "why": "true of jobs and listeners, but the rewritten state-machines skill has transition classes that set state, write fields, save and dispatch, not wrappers around one action",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The headline and lead are right, but the set invents three new Nuxt skills from a README count change. It also files reworked Laravel guidance as Added and includes the dev-only release script."
+  },
+  {
+    "release": "agentic-skills-v0.2.0",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Laravel multi-tenancy skill now covers stancl/tenancy v4, including tenant identification, bootstrappers, provisioning and a ready-made tenant test harness.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel services skill gains a full Saloon driver walkthrough, covering config, connector, requests, null driver and driver tests.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel packages skill now covers building a package with package-tools, a manager with drivers, a shipped fake and Testbench tests.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Laravel testing skill adds references for model factories and test setup.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Nuxt server-data skill is now listed in the Nuxt plugin README, alongside the design-tokens skill.",
+        "why": "README listing of skills that already shipped",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Root and per-plugin READMEs redesigned with badges, a \"How a Skill Loads\" section and updated skill tables.",
+        "why": "repo README restyle with no skill change",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `release` script now delegates to `mint release`.",
+        "why": "the repo's own release tooling",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "GitHub release workflow, which built releases from tag annotations.",
+        "why": "repo CI",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Committed Claude local settings file, which is now git-ignored.",
+        "why": "contributor-local tooling file",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Laravel routing skill adds a ConditionalRouteBinder reference for routes that need different model lookups.",
+        "why": "the binder already shipped in v0.1.4's route-binding.md reference; it only moved to its own file",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The detail is thorough and largely accurate, and the rewrite leads Changed. There is no headline, though, the lead names only the Go plugin, five dev-only bullets pad the list, and reworked Laravel references are filed as Added."
+  },
+  {
+    "release": "agentic-skills-v0.2.2",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Copy-in reference files for event sourcing: a state-guard trait, an `OperationAllowedFrom` attribute and an `IllegalTransition` exception.",
+        "outranks_by": "New `laravel-workflows` skill — long-running processes on Durable Workflow that only sequence, with each step an activity calling an action.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Plugin READMEs now list 22 Laravel skills, including a new \"Event Sourcing and Workflows\" group.",
+        "why": "README listing housekeeping",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The set is accurate, but it opens on only the event-sourcing half and puts that skill's reference files above the co-equal workflows skill. It adds a README bullet and never says the two skills are early, holding only the decisions made so far."
+  },
+  {
+    "release": "agentic-skills-v0.2.2",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Copy-in reference files for event sourcing: a guard trait, an `#[OperationAllowedFrom]` attribute and an `IllegalTransition` exception.",
+        "outranks_by": "New `laravel-workflows` skill — long-running processes on Durable Workflow that only sequence, with each step an activity calling an action.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Plugin skill counts in the READMEs go from 20 to 22 for Laravel, with a new \"Event Sourcing and Workflows\" section.",
+        "why": "README listing housekeeping",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Same as A: accurate, but the reference files are ranked above the co-equal workflows skill and the lead names only one of the two skills. It includes a README-count bullet and does not mention that the skills are early."
+  },
+  {
+    "release": "agentic-skills-v0.2.2",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Laravel plugin gains guidance for event-sourced models and long-running workflows.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Clean: the headline names both skills, they lead Added as co-equals, and the cross-links are summarised in two bullets. The one weakness is that the set never says the skills are early, holding only the decisions made so far."
+  },
+  {
+    "release": "agentic-skills-v0.2.2",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Laravel plugin now guides event-sourced models and long-running workflows.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline names both skills and the four bullets are accurate and ordered well. Like C, it does not say the skills are early, holding only the decisions made so far."
+  }
+]
