@@ -129,7 +129,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "headline-first-release-notes-1-7",
+          "task": "headline-first-release-notes-1-8",
           "task_map": {
             "headline-first-release-notes-1-1": "tick-be38ef",
             "headline-first-release-notes-1": "tick-3b11be",
@@ -137,7 +137,8 @@
             "headline-first-release-notes-1-3": "tick-f53b2c",
             "headline-first-release-notes-1-4": "tick-20879a",
             "headline-first-release-notes-1-5": "tick-5acd1f",
-            "headline-first-release-notes-1-6": "tick-386686"
+            "headline-first-release-notes-1-6": "tick-386686",
+            "headline-first-release-notes-1-7": "tick-bba283"
           },
           "storage_paths": [
             ".tick/"
