@@ -70,3 +70,5 @@ Run 2026-10-22 07:51–07:56 (run log `.workflows/.cache/…/run-holdout.log`): 
 ## Deviations
 
 - 2026-10-22 07:46 — Claude Code updated itself from 2.1.306 (recorded in the design) to 2.1.307 before the run started. Every call in this run uses 2.1.307, both arms alike; the model behind `--model sonnet` is unchanged (`claude-sonnet-5-5`).
+- 2026-10-22 07:58 — The six judges, dispatched together in one message as designed, ran as background agents (this session's agent tool launches them asynchronously; it offers no foreground switch). The session waits for all six before scoring, so the judging itself is unchanged.
+- 2026-10-22 07:57 — Lee's side-by-side read (`data/lee-read.md`) went out when the held-out run finished, as designed, in parallel with the judges.
