@@ -147,8 +147,8 @@ Name each call's framing among the call's own material, as §8 and tasks 2-1 and
 
 - [ ] Given the tuned wording, every notes call still carries only the resolved instructions, the Change Map, the call's own material (the diff for a single call; the framing that names its part and that part's slice for a chunk or piece call; the merge framing and every part's notes for the merge call) and the closing reminder: no commit history and no new input (§1.2, §5.2, §8)
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied as proposed under the auto finding gate; the 3-5 tick record updated and verified.
 
 ---
 
