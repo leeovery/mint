@@ -49,6 +49,20 @@ The false claims that came back between v0 and v1 on the same inputs point to sa
 
 Across v0–v2 the same three failures flip on and off with no wording change aimed at them: the grab-bag headline (v0 yes, v1 no, v2 yes), the second subject in tick's headline (yes, no, yes), retention as breaking (yes, no, yes). The truth failures flip too (dex test-only claim: no, yes, yes; portal comment-only claim: no, yes, no). One body per version cannot separate wording from sampling. Revisions taken into v3, aimed at making each call less of a coin flip: a countable test for a main body of work (the change most of the notes' bullets serve, or one that outweighs all the others put together; the largest of several separate changes is not one); "and" in a headline joins only two co-equal bodies, never two pieces of one; a doubt rule for 💥 Breaking (when unsure, it is not breaking); a test asserting a behaviour is evidence that the behaviour already existed, not a change. v3 runs two repeats on the tuning set so the choice of the version to freeze rests on more than one body per release.
 
+**Round v3** (2026-10-22 07:50; `new-v3`, two repeats; 10 calls, 0 failures; run log `run-tune-v3.log`).
+
+| Release | new-v3 r1 | new-v3 r2 |
+|---|---|---|
+| mint v0.0.6 | headline right; no internals | same |
+| dex-engine v0.2.9 | no headline (match); fallback under Fixed; test-only parked-reason claim present; 🐛 Fixed emitted before 🔧 Changed | no headline (match); fallback under Fixed; test-only claim absent; 🐛 Fixed before 🔧 Changed |
+| portal v0.12.0 | headline and 💥 Breaking right; comment-only claim absent | headline and 💥 Breaking right; comment-only claim present |
+| tick v0.3.2 | headline names the long-line fix plus `tick doctor` (a piece of the same fix); 64 KiB fix leads Fixed | same headline shape; section headers written as `## ✨ Added` (markdown heading marks) |
+| switchboard v0.1.2 | headline right; retention not flagged breaking; DST fix under Changed | same |
+
+Against v0–v2, v3 holds the two costliest calls on both repeats: no headline on the grab-bag, no false 💥 Breaking on the retention default. The truth failures still split one-and-one. New in v3: sections out of the fixed order on dex-engine (both repeats) and markdown heading marks once on tick — format slips the rubric counts.
+
+**Frozen for the held-out run: `new-v3`** — the last version run, and the one that read best on the calls that cost most (wrong or unwarranted headlines, false breaking flags). `prompts/new-v3.md` SHA-256 `c1f149842689ba5f6b7338579514258a0fa23416c04421253eacfaae62630a0f`; `prompts/new-v3-reminder.txt` SHA-256 `ee31f054f8f0612db4098702406d72bac19a7e8d5295e5b840b2b4e08fe0d2ce` (unchanged from v0). Frozen 2026-10-22 07:52, before any held-out call. `claude --version` at the end of tuning → `2.1.307 (Claude Code)`.
+
 ## Deviations
 
 - 2026-10-22 07:46 — Claude Code updated itself from 2.1.306 (recorded in the design) to 2.1.307 before the run started. Every call in this run uses 2.1.307, both arms alike; the model behind `--model sonnet` is unchanged (`claude-sonnet-5-5`).
