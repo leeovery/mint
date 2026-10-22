@@ -129,8 +129,11 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "headline-first-release-notes-1-1",
-          "task_map": {},
+          "task": "headline-first-release-notes-1-2",
+          "task_map": {
+            "headline-first-release-notes-1-1": "tick-be38ef",
+            "headline-first-release-notes-1": "tick-3b11be"
+          },
           "storage_paths": [
             ".tick/"
           ],
@@ -139,7 +142,27 @@
             "tasks": {
               "p1": "2026-10-22"
             }
-          }
+          },
+          "staging": {
+            "author-p1": {
+              "tasks": {
+                "headline-first-release-notes-1-1": "approved",
+                "headline-first-release-notes-1-2": "approved",
+                "headline-first-release-notes-1-3": "approved",
+                "headline-first-release-notes-1-4": "approved",
+                "headline-first-release-notes-1-5": "approved",
+                "headline-first-release-notes-1-6": "approved",
+                "headline-first-release-notes-1-7": "approved",
+                "headline-first-release-notes-1-8": "approved",
+                "headline-first-release-notes-1-9": "approved",
+                "headline-first-release-notes-1-10": "approved",
+                "headline-first-release-notes-1-11": "approved",
+                "headline-first-release-notes-1-12": "approved",
+                "headline-first-release-notes-1-13": "approved"
+              }
+            }
+          },
+          "external_id": "tick-32726a"
         }
       }
     }
