@@ -288,6 +288,46 @@ The AI picks the headline by what the release changes for its user, read from th
 
 ---
 
+## Prompt Overrides And Reminder
+
+### Context
+
+Two rules in today's prompts forbid anything above the first section (Context → Current state): the default prompt's "NO TL;DR, NO summary paragraph, NO preamble — start directly with the first section header", and the closing reminder appended after the diff on every notes call — "Now output ONLY the release notes themselves, exactly as they should be published: no preamble, no commentary, no explanation, no code fences, nothing before or after the notes." (`rg -n 'const OutputReminder' internal/notes/prompt.go` → line 83). The reminder is mint's text, not the operator's: it closes the single-pass prompt, every chunk and piece call, and the merge call (`rg -n 'OutputReminder' internal/notes/chunk.go internal/notes/prompt.go | grep -v '//'` → `chunk.go:543`, `chunk.go:567`, `prompt.go:83`, `prompt.go:101`), and it applies under a full `[release].prompt` override too — its own comment calls it "part of the compose, not the instructions". The chunk and merge framings are mint's text on every repo's calls in the same way (`rg -n 'in the format above' internal/notes/chunk.go | wc -l` → 3).
+
+Raised by the background review (review-001 F8): "a format change reaches only repos on the default prompt" holds for the default prompt, but any headline wording added to the reminder or the framings would reach override repos whose own format has no headline.
+
+E1's frozen prompt (`new-v3`) changed the reminder to name the headline — "Now output ONLY the release notes themselves, exactly as they should be published: the one-sentence headline if this release has one, then the sections. No preamble, …" (`.workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3-reminder.txt`). On an override repo whose house format is, say, one paragraph per release with no sections, that line would tell the model to put a headline above sections the format does not have.
+
+### Options Considered
+
+**A — the reminder names the headline** (E1's tested wording)
+- Pros: tested — on E1's held-out run, headline presence agreed between repeats on all 26 releases, with no unexpected or wrong-subject headline in 52 bodies.
+- Cons: mint's format leaks into every override repo's calls.
+
+**B — the reminder switches by prompt source** (the headline-naming line on the default prompt, a neutral line under an override)
+- Pros: keeps E1's tested wording where the default prompt runs.
+- Cons: one output rule split in two, kept in step by hand.
+
+**C — the reminder is format-neutral and points back at the instructions**: "Now output ONLY the release notes themselves, in the format above, exactly as they should be published: no preamble, …" — "the format above" is whichever instructions govern: the default prompt, headline included, or the operator's override.
+- Pros: one rule for every repo; the reminder keeps its single job — the body is the notes and nothing else — and the format stays with the instructions.
+- Cons: untested — E1 ran only A's wording.
+
+### Journey
+
+The session leaned C: the reminder exists to stop narration before the notes (observed in real `mint commit` runs), a job that is the same on every repo, while the headline is a property of one format. A pushes the default format into overrides; B solves that at the cost of two reminders to keep aligned. C's open risk is the one Headline Shape's Option C named — a model reading "no preamble" as licence to drop the headline. "In the format above" is the answer to it: on the default prompt the format the reminder points at opens with the headline. Whether that holds is a measurement, not a decision — it rides with the next run of the prompt. What would reopen the call: evidence that the model keeps a headline only when the last thing it reads names one. The user agreed.
+
+The same principle settles the rest of the reach question carried in from discovery. The default prompt is where the format lives, so the headline rules — and the rewording of its own no-preamble rule to allow exactly the one headline line and still forbid a summary paragraph or any other preamble — live there alone. `[release].context` appends to the default prompt, so those repos get the headline. A full `[release].prompt` override is the operator's format: it gets no headline unless the operator's prompt asks for one, and nothing mint adds to its calls asks for one.
+
+Sibling check: token-aware-diff-sizing — Chunk Wave Mechanics decides that chunk and merge calls carry the release's instructions, framing naming the call's part, and the closing reminder, each returning notes "in the release's notes format"; a neutral reminder pointing at "the format above" is consistent with it.
+
+### Decision
+
+Everything mint adds to every notes call — the closing reminder, the chunk and piece framings, the merge framing — stays format-neutral; every headline rule lives in the default prompt alone. The reminder becomes "output only the release notes, in the format above, exactly as they should be published", followed by today's no-preamble rules. The default prompt's "start directly with the first section header" gives way to the headline-or-first-section rule, still forbidding any summary paragraph or other preamble. Repos on the default prompt, with or without `[release].context`, get the headline; a full `[release].prompt` override owns its format and gets none unless it asks for one. What the part and merge calls do about a headline is the Chunked Path's call, made within this rule.
+
+Deciding factor: the reminder's job — the body is the notes, nothing else — is the same on every repo, and the headline belongs to one format; one neutral rule that points back at the governing format serves both. Accepted cost: the neutral wording is untested — whether the model keeps the headline under it is checked on the next run of the prompt. Confidence: high on the rule, medium on the wording until measured. (Resolves review-001 F8.)
+
+---
+
 ## Summary
 
 ### Key Insights
