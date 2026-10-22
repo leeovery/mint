@@ -22,8 +22,8 @@ A genuinely new capability is Added whatever it rides on, whether inside a rewor
 **Proposed Text**:
 - **🔧 Changed**: a rework or redesign of something the previous release already had, and any smaller change to how it works that is not a fix, such as a speed-up users notice or a changed default that is not breaking. A genuinely new capability is Added, whether it ships inside a rework or is added to something the previous release had, such as a new option on an existing command.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Landed in §4.1.
 
 ---
 

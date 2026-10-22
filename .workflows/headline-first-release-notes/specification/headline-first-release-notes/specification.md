@@ -142,7 +142,7 @@ This feature designs no route for a headline supplied by an operator or an outer
 Every change is placed by comparing it with the previous release, never with earlier states inside this release. The previous release is the baseline a reader upgrading from it shares.
 
 - **✨ Added**: something the previous release did not have. Its pieces are Added too, even where the diff shows them adjusted, capped or fixed along the way. A bug in something new in this release is never Fixed, and a tweak to it is never Changed.
-- **🔧 Changed**: a rework or redesign of something the previous release already had, and any smaller change to how it works that is not a fix, such as a speed-up users notice or a changed default that is not breaking. A genuinely new capability that ships inside the rework is Added.
+- **🔧 Changed**: a rework or redesign of something the previous release already had, and any smaller change to how it works that is not a fix, such as a speed-up users notice or a changed default that is not breaking. A genuinely new capability is Added, whether it ships inside a rework or is added to something the previous release had, such as a new option on an existing command.
 - **🐛 Fixed**: something that behaved wrongly in the previous release and now behaves correctly, however the diff or its comments frame it. Behaving wrongly covers wrong output or placement, a crash or error, dropped or lost data, and something not working. This includes a rework whose purpose is the fix, and something an earlier release lost that this one brings back.
 - **🗑️ Removed**: something the previous release had that is gone. A removal that breaks existing use goes under 💥 Breaking only (§4.2).
 - **⚠️ Deprecated** and **🔒 Security** keep their opportunistic rule (§2.2).
