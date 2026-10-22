@@ -51,7 +51,7 @@
               "parent": "ordering-within-sections"
             },
             "section-placement": {
-              "status": "pending",
+              "status": "decided",
               "parent": null
             },
             "user-facing-only": {

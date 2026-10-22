@@ -556,7 +556,7 @@ Within each section, changes are ordered by what they mean to the user — how m
 
 ### Context
 
-The Change Map is mint's diff-derived preamble ahead of the diff — where the release's changes landed, ordered novelty-first: new top-level directories lead, then the area rollup, then the largest files (`internal/notes/changemap.go`). The default prompt treats it as the ranking signal: "new structure (a whole new package or directory) is the strongest signal — weight it above raw size", and the merge framing on chunked releases says "rank by the Change Map above" (`rg -n 'rank by the Change Map above' internal/notes/chunk.go` → line 574). The design came from the mint-release-tool work, whose success criterion aimed the Change Map at the headline: "new-structure-as-headline, novelty over magnitude".
+The Change Map is mint's diff-derived preamble ahead of the diff — where the release's changes landed, ordered novelty-first: new top-level directories lead, then the area rollup, then the largest files (`internal/notes/changemap.go`). The default prompt treats it as the ranking signal: "new structure (a whole new package or directory) is the strongest signal — weight it above raw size", and the merge framing on chunked releases says "rank by the Change Map above" (`rg -n 'rank by the Change Map above' internal/notes/chunk.go` → line 573). The design came from the mint-release-tool work, whose success criterion aimed the Change Map at the headline: "new-structure-as-headline, novelty over magnitude".
 
 The audit (Context → Evidence): new-directory detection reads only a path's first segment, so a new package under an existing `internal/`, `src/` or `skills/` never registers; the novelty line fired in 6 of 31 releases and was wrong each time — twice on a pre-existing `design/` folder, on a docs site that then led the notes, on README demo assets, on a 6-line wrapper, and on the smaller of two co-equal bodies, which it promoted; the area rollup collapses to one or two top-level folders; the largest-file line is often a test, a deletion or a dev script. The prompt's own rule turned each new internal package into a feature bullet in mint v0.0.6. Picking The Headline already took the headline away from the signal.
 
@@ -573,6 +573,33 @@ Sibling check: mint-release-tool specification — Stage 4 names the Change Map 
 **Settled by derivation** — not discussed. Determined by the audit's account of the Change Map's signals (the novelty line wrong in each of its 6 firings, blind where code is nested), E1's measurement with the map demoted (inversions 30 → 16), User Facing Only (new internal packages are not features), and Prompt Overrides And Reminder (mint's shared text stays format-neutral).
 
 The Change Map stays in every notes call as it is built today — a where-the-changes-landed check the AI uses so nothing large is missed, never a measure of importance; every change is described from the diff. The default prompt's "new structure is the strongest signal" rule goes, replaced by that role. The merge framing drops "rank by the Change Map above"; ranking is the governing format's. The Change Map's detection is not changed. Deciding factor: the signal misled on every release where it fired and is silent where code is nested, and the fix that would make it fire more would point it at internals. Confidence: high. (Revises Picking The Headline's ranking role for the signal.)
+
+---
+
+## Section Placement
+
+### Context
+
+Today's sections run in Keep a Changelog's fixed order (✨ Added, 🔧 Changed, ⚠️ Deprecated, 🗑️ Removed, 🐛 Fixed, 🔒 Security), with no rule for what "Added" or "Fixed" is measured against. The audit (Context → Evidence) found section misfiling in ~15 of 31 releases — fixes under Added or Changed, redesigns of existing views under Added, regression fixes as new features; a main work that reshapes existing behaviour landing in 🔧 Changed below ✨ Added, so small new items outrank it (eight releases; twice the model broke the fixed order to compensate); the main work scattered over two to four sections and stated twice in five. Scope took in misfiling, reshaping work buried under the fixed order, and the main work scattered and stated twice.
+
+### Options Considered
+
+**Fixed order** — every release's sections in one order.
+
+**Order by weight** — the section holding the release's main work first.
+- Cons: the notes change shape from release to release, and the burial it answers is now answered by the headline.
+
+### Journey
+
+Headline Shape puts a one-sentence statement of the main work above the sections, so reshaping work under 🔧 Changed is no longer the only place the release's reason to exist appears; reordering the sections to lift it would buy a second answer to the same problem at the cost of an order readers can rely on across versions. Breaking Changes adds 💥 Breaking ahead of the six.
+
+E1's placement rules (`new-v3`) judge every change against the previous release, never against earlier states inside this one: something the previous release did not have is Added, its pieces included, even where the diff shows it adjusted, capped or fixed along the way — never a Fixed or Changed for something new; a rework of something the previous release had is Changed, with a genuinely new capability inside it Added; something that behaved wrongly in the previous release and now behaves correctly is Fixed, however the diff frames it, including a rework whose purpose is the fix and something an earlier release lost that this one restores. Measured: Changed→Fixed misfiling 23 → 14, duplicates 29 → 19, misfiled overall 84 → 78. The dominant misfiling is unmoved in both arms — a rework of existing behaviour filed under ✨ Added (36 today, 34 new) — and is wording, held to the Shipping Bar.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Headline Shape (the headline states the main work above the sections), Breaking Changes (💥 Breaking first), and E1's measurement of the previous-release rules (Changed→Fixed 23 → 14, duplicates 29 → 19).
+
+The sections keep one fixed order — 💥 Breaking, ✨ Added, 🔧 Changed, ⚠️ Deprecated, 🗑️ Removed, 🐛 Fixed, 🔒 Security — empty sections omitted. Every change is placed by comparison with the previous release: what it did not have is Added, pieces and in-release adjustments included; a rework of what it had is Changed, a new capability inside the rework Added; what behaved wrongly in it and now works is Fixed, whatever the diff calls it. Each change is listed once; only the headline restates the main work. Deciding factor: the headline already lifts the main work above any section, so a fixed order costs nothing the reader needs and keeps the notes the same shape release to release; the previous release is the only baseline a reader upgrading from it shares. Confidence: high on the rules; the rework-as-Added misfiling is wording.
 
 ---
 
