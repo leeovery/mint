@@ -633,23 +633,23 @@ Chunked Path decides that part calls write no headline and the merge alone write
 
 ### Options Considered
 
-**A — the first tuning runs check it, outside the bar**: held-out releases taken through the part calls and the merge.
+**A — the first tuning runs check it, holding shipping on a regression**: held-out releases taken through the part calls and the merge; a failure today's notes could not have holds shipping, an omission does not.
 
 **B — gating chunked counts in the bar**
-- Cons: today's prompt has no measured chunked counts, so "at least as good as today's" has no baseline on this path.
+- Cons: today's prompt has no measured chunked counts, so "at least as good as today's" has no baseline on this path for most counts.
 
 **C — leave it to the read by eye on real releases**
 - Cons: the largest releases, often unattended, go unchecked until after they ship.
 
 ### Journey
 
-Prompt Overrides And Reminder already set how untested shared wording is handled: whether the neutral reminder keeps the headline "is a measurement, not a decision — it rides with the next run of the prompt". The part instruction is the same kind of ground — mint's shared wording, decided as a rule, its effect on the model unmeasured — so it rides the same runs. B needs a baseline the record does not hold; C leaves the path where the headline matters most unchecked until it has shipped. How the harness takes a held-out release through parts is the builder's.
+Prompt Overrides And Reminder already set how untested shared wording is handled: whether the neutral reminder keeps the headline "is a measurement, not a decision — it rides with the next run of the prompt". The part instruction is the same kind of ground — mint's shared wording, decided as a rule, its effect on the model unmeasured — so it rides the same runs. B needs a baseline the record does not hold; C leaves the path where the headline matters most unchecked until it has shipped. Two of the failures have a baseline all the same: today's notes carry no headline, so a headline in a part's notes, or a merged headline naming something other than the release's main work, is a regression, and the Shipping Bar exists to rule out every regression, already allowing no wrong-subject headline. A merge that leaves a headline out costs what today's notes cost, the accepted cost of When in doubt, leave it out, and is tuned like the other weak spots. Holding shipping on that too would delay it over an outcome no worse than today; holding on neither would let a regression ship on the largest releases. How the harness takes a held-out release through parts is the builder's.
 
 ### Decision
 
-**Settled by derivation** — not discussed. Determined by Prompt Overrides And Reminder (untested shared wording is checked on the next run of the prompt, not gated) and No Clear Headline (the headline earns most on the biggest releases).
+**Settled by derivation** — not discussed. Determined by Prompt Overrides And Reminder (untested shared wording is checked on the next run of the prompt), the Shipping Bar (every regression ruled out, no wrong-subject headline) and No Clear Headline (the headline earns most on the biggest releases; an omission costs no more than today's notes).
 
-The first tuning runs under the Shipping Bar also take held-out releases through the part calls and the merge, and check that the part notes carry no headline and that the merge writes the headline the release calls for. The check sits outside the bar: today's prompt has no chunked counts to hold it to. Deciding factor: the part instruction is shared wording whose effect on the model is a measurement, as the neutral reminder's is, on the releases where a dropped or stacked headline costs most. Confidence: high on the check; how it is run is the builder's.
+The first tuning runs under the Shipping Bar also take held-out releases through the part calls and the merge, and check that the part notes carry no headline and that the merge writes the headline the release calls for. A headline in any part's notes, or a merged headline that names something other than the release's main work, holds shipping until the wording clears it: today's notes carry neither, so either is a regression. A merge that leaves out a headline the release calls for does not hold shipping; it is tuned like the other weak spots. Deciding factor: the part instruction is shared wording whose effect on the model is a measurement, as the neutral reminder's is, and on this path only the failures today's notes could not have are regressions. Confidence: high on the check; how it is run is the builder's.
 
 ---
 
@@ -716,7 +716,7 @@ Where every change in a release is one User Facing Only leaves out, the notes ar
 - Whether the format-neutral closing reminder keeps the headline in — the experiment ran only the wording that names it; measured in the tuning under the Shipping Bar (Prompt Overrides And Reminder).
 - False claims are the count furthest from the Shipping Bar (34 against a ceiling of 25), then missing items (13 against 9); where the tuning goes first (True To The Release).
 - Two-body releases tend to lose their headline or get half of one under the rules that keep grab-bag headlines out — recall to tune, the rule unchanged (No Clear Headline).
-- Whether part calls leave the headline out and the merge writes it — E1 ran no chunked release; checked in the first tuning runs, outside the bar (Checking The Chunked Path).
+- Whether part calls leave the headline out and the merge writes it — E1 ran no chunked release; checked in the first tuning runs, a part headline or a wrong merged headline holding shipping (Checking The Chunked Path).
 - An agent steering the notes, or supplying its one line, belongs to the roadmap's agent-authored release notes item; the review gate's one-time steer is the existing mechanism it would reuse (Room For A Supplied Headline).
 - The mint-release-tool specification (the by-eye criterion, the Change Map's ranking role, the six-section format) and token-aware-diff-sizing's merge ranking by the Change Map are superseded once this feature ships (Shipping Bar, Change Map Signals, Breaking Changes).
 
