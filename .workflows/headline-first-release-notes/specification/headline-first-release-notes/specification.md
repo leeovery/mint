@@ -22,7 +22,7 @@ Every rule answers to the notes themselves: good, readable, coherent, useful, ac
 - **How the Change Map is built.** Its git calls, detection and rendering stay as they are (§6.2).
 - **Bodies pass through verbatim.** mint never parses, reformats or adds to a notes body. The headline exists only where the AI writes it (§3.4).
 - **The provider release title** stays the bare tag (§9).
-- **The body selector's precedence and every body that skips the AI**: `--notes-file`, the first release, an empty diff, `--no-ai` and the fallback. None of them goes through the notes prompt (§3.4).
+- **The body selector's precedence and every body that skips the AI.** None of them goes through the notes prompt (§3.4).
 - **The transport and the chunked path's mechanics.** Validation, the single bad-content retry, timeouts, part sizing, halving and the saved part notes all stay as they are.
 - **`mint commit`.** Its prompt and closing reminder are separate from these and out of scope.
 
