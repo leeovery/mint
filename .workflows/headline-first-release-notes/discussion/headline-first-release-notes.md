@@ -521,6 +521,26 @@ The notes list only what a user of the software meets — what it does, its comm
 
 ---
 
+## Ordering Within Sections
+
+### Context
+
+Today the default prompt ranks bullets within each section by the Change Map, new structure weighted above raw size (Context → Current state). The audit found inversions within sections in about half its releases: rank followed commit or file granularity and how nameable an item is, not what it meant to users, and README prose was weighted as content (Context → Evidence) — portal v0.9.0's secondary CLI verb above the picker flow that is the feature's front door; tick v0.3.2's guard above the fix it guards.
+
+### Journey
+
+E1's rule (`new-v3`): put the change that matters most to a user first, then the rest in descending weight; weight is what the change means to the user — how much of the product it touches, how often users meet it, how much it changes their experience — not how many files, commits or lines it took, and not how easy it is to name; a change to what users do every day outranks one to a diagnostic or rarely used command; the pieces of the release's main work lead their sections. The everyday-over-diagnostic line came from tuning: on tick v0.3.2, four `tick doctor` bullets led 🔧 Changed above parse errors every command shows.
+
+Measured: inversions 30 → 16 on the held-out set, nearly halved, one short of E1's pre-registered bar; the residual is wording, held to the Shipping Bar. What the Change Map contributes to ordering is its child, Change Map Signals.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the audit's inversions and their causes, and E1's measurement of the weight rule (30 → 16).
+
+Within each section, changes are ordered by what they mean to the user — how much of the product a change touches, how often users meet it, how much it changes their experience — most first; a change to what users do every day outranks one to a diagnostic or rarely used command, and the pieces of the release's main work lead their sections. Lines, files, commits and how easy a change is to name are not weight. Deciding factor: the audit traced the inversions to granularity and nameability standing in for weight, and naming weight in the user's terms halved them. Confidence: high on the rule.
+
+---
+
 ## Summary
 
 ### Key Insights
