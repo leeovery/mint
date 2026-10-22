@@ -22,8 +22,8 @@ The rewritten default prompt ships when every count is at least as good as today
 **Proposed Text**:
 The rewritten default prompt ships when every count is at least as good as today's prompt's, each count on its own, and every failure §10.3 says holds shipping has been cleared.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Landed in §10.1.
 
 ---
 
@@ -49,8 +49,8 @@ Two alternatives also fit. Holding shipping on listed internal changes too is st
 §10.3, a new bullet after the chunked-path bullet:
 - **A release with nothing users meet** gets a body new-v3 never wrote (§10.2). The first runs also take at least one such release through a single call, and through the part calls and the merge with every part's slice holding nothing users meet, and check that the notes are §5.1's maintenance line. A headline on that release, or a single call or merge that returns an empty body and fails the run, holds shipping until the wording clears it: today's notes have neither. Notes that list the release's internal changes instead cost what today's notes cost, and are tuned like the known weak spots below.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: The session's call over the path's own rule; landed in the discussion's A Release With Nothing Users Meet decision (written this sitting), then as a new §10.3 bullet.
 
 ---
 
@@ -78,8 +78,8 @@ So the file holds the parts' sections, and any part's line saying it held nothin
 **Proposed Text**:
 So the file holds the parts' sections, and any part's line saying it held nothing for the notes, which the operator removes while tidying, as with the `**Notes missing:**` line. mint's guidance on releasing a saved file tells the operator to delete these lines as well as the marker.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: Landed in §8's saved-part-notes bullet; the surfaces are the builder's.
 
 ---
 
