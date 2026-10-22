@@ -174,6 +174,20 @@ A reader upgrading must meet what breaks before anything else, which is why the 
 
 **No new inputs.** The previous release's state is already in front of the AI, in the diff's removed and context lines. E1's judges called only 3 of the 47 accuracy residuals in the rewritten notes input-absent (`jq -c '.residuals["true to the release"]' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/data/scores.json` → `{"verdict":"needs more prompt work","input_absent":3,"instances":47}`). Three of their "the previous release already had it" calls were spot-checked against the inputs, and each fact sat in the diff's removed lines. So the fix is how the prompt gets the diff read, not what mint sends. The wording carries it, held to §10.
 
+### 6. Ordering and the Change Map
+
+#### 6.1 Ordering within sections
+
+Within each section, changes are ordered by what they mean to the user, most important first. Weight is how much of the product a change touches, how often users meet it, and how much it changes their experience. A change to something users do every day outranks a change to a diagnostic or rarely used command. The pieces of the release's main work lead their sections. Lines, files, commits, and how easy a change is to name are not weight. The audit traced today's inversions within sections to exactly those stand-ins (granularity and nameability), which is why the rule names weight in the user's terms.
+
+#### 6.2 The Change Map is coverage, not ranking
+
+- **It stays in every notes call, built as today.** That holds for single-pass, chunk, piece and merge calls alike, with no change to its git calls, detection or rendering.
+- **Its role** is a check on where the changes landed, which the AI uses so that nothing large is missed. It is never a measure of importance, for the headline (§3.3) and for ordering (§6.1) alike. Every change is described from the diff. The map is metadata, never content.
+- **The default prompt's ranking rule goes.** "New structure (a whole new package or directory) is the strongest signal — weight it above raw size" is replaced by the coverage role. The merge framing's "rank by the Change Map above" goes too (§7.1).
+- **mint's own descriptions follow the role.** Wherever mint's text calls the map a salience or priority signal, the description changes to coverage: the prompt's description of the map, and the doc comments on how it is built, composed and generated (`rg -n -i 'salience|prioriti' internal/notes --glob '!*_test.go' | wc -l` → 11).
+- **Detection is not fixed.** New-directory detection reads only a path's first segment (`grep -n "func leadingDir" -A 6 internal/notes/changemap.go` → returns `path[:i]` at the first `/`), so a new package under an existing `internal/`, `src/` or `skills/` never registers. The audit found the novelty line fired in 6 of 31 releases and pointed the wrong way each time. The largest-file line is often a test, a deletion or a dev script. Making detection find new packages at any depth would make it fire on exactly the internal packages §5.1 keeps out of the notes, and it would still flag novelty rather than what a release changes for its user.
+
 ---
 
 ## Working Notes
