@@ -370,6 +370,36 @@ Deciding factor: the rules are decided and moving the right way; the only shippi
 
 ---
 
+## Chunked Path
+
+### Context
+
+A release whose diff is too large for one call is written in parts and merged (Context → Current state): each chunk or piece call carries the release's instructions, the whole-release Change Map, framing naming its part, its slice and the closing reminder, and is told to write "in the format above"; the merge call reads every part's notes in part order and writes the release's notes "in the format above" (`internal/notes/chunk.go`). When the merge fails, mint saves the finished parts' notes — byte for byte, in chunk order, a blank line between parts, opening with a `**Notes missing:**` line when any slice has none (`grep -n "func joinChunkNotes" -B 2 internal/notes/chunknotes.go` → "keeps each part's notes byte for byte, with one blank line between one part's notes and the next") — for the operator to tidy and release with `--notes-file`, or to pick up with `e`.
+
+Raised by the background review (review-001 F7), and carried from discovery as an open question (whether chunk calls name a headline or leave it to the merge): once the format opens with a headline, every part call is told to write one. On a release written in four parts, part two might open "Release notes for diffs of any size…" and part three "Files that don't belong in the notes are flagged before they're written…" — each part crowning its own slice. The merge then reads four competing leads; and a failed merge's saved file holds four headlines stacked one after another, shipped as written if the operator misses them, since mint never edits a body.
+
+### Options Considered
+
+**A — parts write no headline; the merge alone writes it**
+- Pros: the merge is the only call that sees the whole release; the saved file never carries competing leads.
+
+**B — parts write headlines and the merge chooses among them**
+- Cons: the pick is made from leads written by calls that each saw one slice.
+
+### Journey
+
+Stitching and Salience (token-aware-diff-sizing) framed the chunk problem as "no chunk knows whether its slice is the headline or a footnote"; a headline is exactly the call a part cannot make. The session proposed A as the one defensible shape; the user agreed.
+
+The part instruction has to say it within Prompt Overrides And Reminder's rule that mint's shared text stays format-neutral: it asks the part to leave out anything that sums up the release as a whole, which the merge writes — on the default prompt that is the headline, and under an override whose format has no such line it asks nothing. The saved part-notes file then holds sections only. A release shipped from it carries a headline only if the operator writes one while tidying — the No Clear Headline bias (when in doubt, leave it out) on a path where no call saw the whole. A regenerate on chunked notes (`r` re-runs only the merge) and a merge re-run from saved part notes both go through the merge, so the headline and any one-time nudge ("lead with the auth work") stay with the call that writes it.
+
+Sibling check: token-aware-diff-sizing — The Saved Chunk-Notes File decides its contents are "each finished chunk's notes in chunk order, separated by a blank line, exactly as the chunk calls returned them", with the notes-missing marker on top; this decision changes what the part calls return, not the file's rule, which stands.
+
+### Decision
+
+Part calls write no headline; the merge call alone writes it, judging the whole release from every part's notes and the whole-release Change Map. The part instruction says, in format-neutral terms, to leave out anything that sums up the release as a whole — the merge writes that. The saved part-notes file therefore holds sections only; a release shipped from it carries a headline only if the operator adds one while tidying. Deciding factor: a part sees one slice and cannot know whether it is the release's main work or a footnote, and the merge is the only call that sees the whole. Confidence: high. (Resolves review-001 F7.)
+
+---
+
 ## Summary
 
 ### Key Insights
