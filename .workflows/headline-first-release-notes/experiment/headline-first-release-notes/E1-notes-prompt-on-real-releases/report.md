@@ -67,6 +67,10 @@ Against v0–v2, v3 holds the two costliest calls on both repeats: no headline o
 
 Run 2026-10-22 07:51–07:56 (run log `.workflows/.cache/…/run-holdout.log`): 52 units (26 releases × 2 arms), two repeats each, four at once — 104 calls, 0 failures, 0 retries. Bodies in `data/bodies/holdout/current/` and `data/bodies/holdout/new-v3/`, 52 each, with per-call metadata. Longest call 38 s. The two releases over the 1.5 MB cap ran as single calls in both arms without refusal: agentic-workflows v0.6.0 (composed prompt 1,932,945 bytes current / 1,939,515 new) and switchboard v0.1.0 (1,755,023 / 1,761,593). `claude --version` at the end of the phase → `2.1.307 (Claude Code)`.
 
+### Judging
+
+Blinded copies in `.workflows/.cache/…/blind/<release>/A–D.md`; the blind key and Lee's key stay in `.workflows/.cache/…/` (`blind-key.json`, `lee-key.json`) until all judgements and Lee's picks are in. Each judge's hand-back is pulled from its transcript by `.workflows/.cache/…/extract_judgement.py`, parsed as JSON and written to `data/judgements/<group>.json` (content unchanged, re-indented). Landed so far: dex-engine (12 objects), portal (12), tick/stitch-cli/agentic-skills (20), switchboard (12), agntc/mint (20).
+
 ## Deviations
 
 - 2026-10-22 07:46 — Claude Code updated itself from 2.1.306 (recorded in the design) to 2.1.307 before the run started. Every call in this run uses 2.1.307, both arms alike; the model behind `--model sonnet` is unchanged (`claude-sonnet-5-5`).
