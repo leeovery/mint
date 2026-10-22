@@ -69,8 +69,8 @@ Carry §10.2's model rule, which its corrigendum settled. The acceptance pass an
 
 - Every re-run check uses mint's shipped default `ai_command` (`config.DefaultAICommand`, `internal/config/config.go`), as E1 ran it, never a release repo's own, on E1's model, `claude-sonnet-5-5`. Where the command's `sonnet` alias resolves to another model when a run is made, the run names `claude-sonnet-5-5` in the alias's place and is otherwise the shipped command.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied as proposed; the user set the finding gate to auto at this finding.
 
 ---
 
