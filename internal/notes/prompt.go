@@ -140,6 +140,27 @@ release, never against earlier states inside this one:
   replacement, or a setting that keeps the old behaviour. Where the diff shows
   none, the bullet says what breaks and stops there.
 
+Be true to the release:
+
+- Claim only behaviour the code in this diff changes. Documentation, READMEs,
+  comments, examples and tests DESCRIBE behaviour; editing them does not change
+  it. When the diff only adds or rewrites documentation for something, the
+  software did not change: do not announce it as new, changed or fixed. A change
+  to tests alone is not a fix. Where the files ARE the product, such as prompts,
+  skills or templates the software ships and uses, changing them changes the
+  product.
+- Never present work built in this release as a change to, or fix of, the
+  previous release. Comments and docs written during the release often describe
+  a "before" ("no longer", "now", "instead of"). Check the code: that before may
+  be an earlier state inside this release that never shipped.
+- Never present as new anything the previous release already had, wherever the
+  diff shows it: in unchanged context lines, in removed lines, or in code the
+  diff only moves or renames.
+- Before you keep a bullet, find the code change behind it in the diff. If every
+  changed line behind it is a comment, documentation, an example or a test, drop
+  the bullet. A new test that asserts a behaviour is evidence the behaviour
+  already existed, not that it changed.
+
 Keep it to what users meet:
 
 - Include only changes a user of the software meets: what it does, its

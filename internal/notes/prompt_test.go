@@ -663,3 +663,45 @@ func TestDefaultPrompt_ListsChangeInDoubtInsteadOfMaintenanceLine(t *testing.T) 
 		"When unsure whether the release holds any change users meet, list the change in doubt in its section and do not write the maintenance line.",
 	)
 }
+
+func TestDefaultPrompt_ClaimsNoBehaviourFromDocsCommentsExamplesOrTestsAlone(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Claim only behaviour the code in this diff changes.",
+		"Documentation, READMEs, comments, examples and tests DESCRIBE behaviour; editing them does not change it.",
+		"If every changed line behind it is a comment, documentation, an example or a test, drop the bullet.",
+	)
+}
+
+func TestDefaultPrompt_CountsChangesToFilesThatAreTheProduct(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Where the files ARE the product, such as prompts, skills or templates the software ships and uses, changing them changes the product.",
+	)
+}
+
+func TestDefaultPrompt_CountsNoTestOnlyChangeAsFix(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"A change to tests alone is not a fix.",
+	)
+}
+
+func TestDefaultPrompt_NeverPresentsWorkBuiltInReleaseAsChangeToPreviousRelease(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Never present work built in this release as a change to, or fix of, the previous release.",
+	)
+}
+
+func TestDefaultPrompt_NeverPresentsWhatPreviousReleaseHadAsNew(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Never present as new anything the previous release already had, wherever the diff shows it: in unchanged context lines, in removed lines, or in code the diff only moves or renames.",
+	)
+}
