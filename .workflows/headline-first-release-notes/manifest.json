@@ -129,7 +129,7 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 3,
-          "task": "headline-first-release-notes-3-1",
+          "task": "headline-first-release-notes-3-2",
           "task_map": {
             "headline-first-release-notes-1-1": "tick-be38ef",
             "headline-first-release-notes-1": "tick-3b11be",
@@ -150,7 +150,9 @@
             "headline-first-release-notes-2-2": "tick-940765",
             "headline-first-release-notes-2-3": "tick-de80b3",
             "headline-first-release-notes-2-4": "tick-19c8dd",
-            "headline-first-release-notes-2-5": "tick-e4cf27"
+            "headline-first-release-notes-2-5": "tick-e4cf27",
+            "headline-first-release-notes-3-1": "tick-0fe6bb",
+            "headline-first-release-notes-3": "tick-678549"
           },
           "storage_paths": [
             ".tick/"
@@ -163,7 +165,22 @@
               "p3": "2026-10-22"
             }
           },
-          "staging": {},
+          "staging": {
+            "author-p3": {
+              "tasks": {
+                "headline-first-release-notes-3-1": "approved",
+                "headline-first-release-notes-3-2": "approved",
+                "headline-first-release-notes-3-3": "approved",
+                "headline-first-release-notes-3-4": "approved",
+                "headline-first-release-notes-3-5": "approved",
+                "headline-first-release-notes-3-6": "approved",
+                "headline-first-release-notes-3-7": "approved",
+                "headline-first-release-notes-3-8": "approved",
+                "headline-first-release-notes-3-9": "approved",
+                "headline-first-release-notes-3-10": "approved"
+              }
+            }
+          },
           "external_id": "tick-32726a"
         }
       }
