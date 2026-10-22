@@ -56,8 +56,8 @@ Hold the frozen framings to the instructions §7.1 and §8 give them, as task 3-
 - [ ] Given the frozen wording, every single-call, chunk, piece and merge prompt ends with exactly §7.1's reminder, and the reminder, the chunk and piece framings and the merge framing name neither a headline nor the maintenance line. On a full `[release].prompt` override, the instructions are its prompt file verbatim, and nothing mint adds asks for a headline (§7.1, §7.2, §8)
 - [ ] Given the frozen wording, when a release's notes are written in parts through an `ai_command` that records its stdin, every chunk and piece framing still names its part and asks for release notes for the changes in it, in the format above, to be merged with the other parts' notes. It asks the part to leave out anything that sums up the release as a whole, because the merge writes that, and asks a part whose slice holds nothing the notes would list to return one line saying so. The merge framing still asks for one set of release notes for the whole release, in the format above, combining related changes across parts into single bullets and dropping duplicates. It asks for the parts' nothing-to-list lines to be left out and, only where every part returned one, for what the governing format gives a release with nothing to list. It does not say to rank by the Change Map, and it gains no other instruction (§6.2, §7.1, §8, §10.2)
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied as proposed under the auto finding gate; planning.md's Phase 3 Acceptance and 3-8 row, and the 3-8 tick record, updated and verified.
 
 ---
 
