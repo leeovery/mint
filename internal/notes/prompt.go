@@ -74,6 +74,20 @@ The headline:
   or anything else joins them.
 - A headline names at most two bodies of work, in one sentence, even where a
   release has more than two co-equal bodies.
+- Leave the headline out where one bullet already states the whole release and
+  nothing else stands beside it: there the headline would only repeat that
+  bullet. Judge that by whether a single bullet states the whole release, not by
+  how many bullets there are.
+- Keep the headline where the main work is spread over several bullets and none
+  of them names the whole, even when the notes hold nothing else: it is the one
+  line that says what the release is. Keep it too for a main feature written as
+  a single bullet beside unrelated changes: there is a rest to set it apart from.
+- Write NO headline on a grab-bag of small unrelated changes, however large the
+  largest of them, and stitch no theme across such changes.
+- When in doubt, leave it out: write a headline only when one body of work, or
+  two co-equal bodies, clearly stands out, and otherwise start the notes with the
+  first section. A missing headline costs little; a wrong one misstates the
+  release in its most-read line.
 - The headline sums up the release's main body of work in ONE terse sentence, in
   plain language, at the same altitude as the bullets. It names that body of work
   and leads with what it gives the user: what they can now do, or no longer

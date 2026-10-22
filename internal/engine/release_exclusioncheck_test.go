@@ -398,9 +398,9 @@ func TestRelease_HalvedNotes_TheLowerTheCapHintNeverNamesTheCheckCall(t *testing
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
-	// The limit scales with the default prompt so halving still bottoms out under it
-	// as the prompt's wording changes.
-	tr := &overflowAboveTransport{limit: len(notes.DefaultPrompt) + 8_000}
+	// The limit sits above twice the default prompt so a halved call still has room
+	// for diff, and halving bottoms out under it as the prompt's wording changes.
+	tr := &overflowAboveTransport{limit: 2*len(notes.DefaultPrompt) + 8_000}
 	deps := newDeps(rec, f)
 	deps.Transport = tr
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -370,9 +372,16 @@ func TestGenerator_ClassifyPromptAgainstTheCap_SentOnlyWhenItFits(t *testing.T) 
 
 			st := &sequenceTransport{replies: []reply{{err: failure}, {body: "OTHER"}}}
 			r := seedNormalPathGit(t, "diff --git a/a.go b/a.go\n+x\n", "M\ta.go\n", "1\t0\ta.go\n")
-			gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), st, t.TempDir())
+			root := t.TempDir()
+			// A short prompt override keeps the notes call under a cap sized to the
+			// classify prompt, whatever the default prompt's length.
+			if err := os.WriteFile(filepath.Join(root, "prompt.md"), []byte("Write release notes."), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			gen := notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), st, root)
 			cfg := normalCfg()
 			cfg.MaxPromptBytes = tc.cap
+			cfg.Release.Prompt = "prompt.md"
 
 			_, err := gen.Generate(t.Context(), "v1.0.0", cfg)
 

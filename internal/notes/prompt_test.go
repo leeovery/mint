@@ -248,6 +248,48 @@ func TestDefaultPrompt_CapsHeadlineAtTwoBodiesInOneSentence(t *testing.T) {
 	)
 }
 
+func TestDefaultPrompt_LeavesHeadlineOutWhereOneBulletStatesWholeRelease(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Leave the headline out where one bullet already states the whole release and nothing else stands beside it: there the headline would only repeat that bullet.",
+		"Judge that by whether a single bullet states the whole release, not by how many bullets there are.",
+	)
+}
+
+func TestDefaultPrompt_KeepsHeadlineWhereMainWorkSpreadsOverSeveralBullets(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Keep the headline where the main work is spread over several bullets and none of them names the whole, even when the notes hold nothing else: it is the one line that says what the release is.",
+	)
+}
+
+func TestDefaultPrompt_KeepsHeadlineForSingleBulletFeatureBesideUnrelatedChanges(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Keep it too for a main feature written as a single bullet beside unrelated changes: there is a rest to set it apart from.",
+	)
+}
+
+func TestDefaultPrompt_WritesNoHeadlineOnGrabBag(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Write NO headline on a grab-bag of small unrelated changes, however large the largest of them, and stitch no theme across such changes.",
+	)
+}
+
+func TestDefaultPrompt_LeavesHeadlineOutWhenInDoubt(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"When in doubt, leave it out: write a headline only when one body of work, or two co-equal bodies, clearly stands out, and otherwise start the notes with the first section.",
+		"A missing headline costs little; a wrong one misstates the release in its most-read line.",
+	)
+}
+
 func TestDefaultPrompt_CarriesBulletRulesUnchanged(t *testing.T) {
 	t.Parallel()
 
