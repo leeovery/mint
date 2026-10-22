@@ -67,20 +67,19 @@
               "parent": null
             }
           },
-          "awaiting_experiments": [
-            "E1"
-          ]
+          "reconcile_needed": "experiment"
         }
       }
     },
     "experiment": {
       "items": {
         "headline-first-release-notes": {
-          "status": "in-progress",
+          "status": "completed",
           "experiments": {
             "E1": {
               "slug": "notes-prompt-on-real-releases",
-              "status": "running"
+              "status": "concluded",
+              "verdict": "Short of the bar: rewritten prompt passes breaking changes; lead and headline, order within sections, section placement, user-facing only, true to the release need more prompt work; guard rail broken (missing items) — not taken as tested"
             }
           }
         }
