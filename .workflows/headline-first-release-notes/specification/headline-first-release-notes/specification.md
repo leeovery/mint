@@ -81,6 +81,60 @@ The default prompt asks for this body and nothing else:
 
 Every change is listed once, in one section. The only restatement in the body is the headline's summary of the main work, which overlaps that work's pieces in the sections by design (§3.1).
 
+### 3. The Headline
+
+#### 3.1 Shape
+
+The headline is one sentence that sums up the release's main body of work. It is held to the bullets' altitude: terse, in plain language, naming the change and what it gives its user. It is never a synthesis of everything in the release, and never a narrative thread that ties the changes together. That narrative is what grew into the essay-length TL;DR the format carried until 886c6100 (2026-06-13) removed it for length. The headline wins the lead back without bringing the essay back.
+
+- **It leads with what the release gives its user.** That means what users can now do, or no longer suffer, in the terms they meet it, never in files, formats or internals. It does not describe the scope of the work: no scale or praise words ("major", "overhaul", "powerful"), and no inventory of the work's pieces. The sections carry the scale.
+- **It can name any kind of change.** The main body of work may be a feature, a rework, a fix or a large epic. The headline names it whatever section its pieces sit in.
+- **It is plain text.** No bold, no emoji, and no label such as "Highlights:" or "TL;DR:". Its position and the blank line beneath it set it apart (§2.1).
+- **It does not relieve the sections.** Every notable change is listed below the headline exactly as it would be without one, the pieces of the main work included. The prompt says so, so that the model does not thin the sections because the top line already summed them up. The headline and the sections overlap by design: summary, then detail. In the common release, one body of work built from many pieces plus some sideline changes, the main work takes several bullets, not one. So the headline cannot be a lifted bullet. Where the main work is a single bullet, the overlap costs one repeated line.
+
+A release whose main work is notes for diffs of any size, in this shape:
+
+```text
+Release notes for diffs of any size — a diff too big for the model is split into parts, and their notes are merged into one coherent set.
+
+✨ Added
+- Oversized diffs are chunked into parts that each fit `max_prompt_bytes`, with one merge call writing the release's notes.
+- A call the model rejects as too big is retried as smaller parts, and mint tells you the largest size that worked.
+- …
+
+🐛 Fixed
+- …
+```
+
+#### 3.2 When a release has one
+
+- **A main body of work gets a headline.** A main body of work is one feature, rework or fix that anyone asked "what is this release?" would name. The test, run against the notes' own bullets: most of the notable changes serve it, or it alone clearly outweighs all the other changes put together. The largest of several separate changes is not a main body of work.
+- **Two co-equal bodies are named together.** Where two bodies of work of equal weight each pass the test, the one sentence names both. That is at most two, still in one sentence, and still led by the benefit. "And" in a headline joins only two co-equal bodies, never two pieces of one body and never a main body plus a lesser piece. A release with more than two co-equal bodies is not designed for: the one-sentence limit stands, and the model handles the case as best it can.
+- **No headline where one bullet already states the whole release** and nothing else stands beside it. There the headline would only repeat that bullet. The test is whether a single bullet states the whole release, not how many bullets there are. Where the main work is spread over several bullets and none of them names the whole, the headline stays even when the notes hold nothing else, because it is the one line that says what the release is. A main feature written as a single bullet beside unrelated changes keeps its headline too, since there is a rest to set it apart from.
+- **No headline on a grab-bag.** A release of small unrelated changes has no main body of work, however large the largest of them, so there is nothing to sum up. Its notes start with the first section. A theme stitched across such changes is the narrative thread §3.1 rules out.
+- **When in doubt, leave it out.** The AI writes a headline only when one body of work (or two, as above) clearly stands out. Otherwise the notes start with the first section. A missing headline costs no more than today's notes do. A wrong one misstates the release in its most-read line, and on an unattended run (`mint release -y`, as agent sessions run it) nobody reads the notes before they ship. Accepted cost: some releases that deserved a headline go without one. On an attended run the review gate's existing correctives remain: `e` to edit, and `r` to regenerate with a one-time nudge such as "lead with the auth work".
+
+#### 3.3 How the headline is picked
+
+The AI picks the headline by what the release changes for its user, read from the diff. A new folder or a large file is not, of itself, the release's main thing, and the Change Map does not pick the headline (§6.2). The inputs are those of §1.2, with no commit history. There is a known limit: the session that built a feature knows its headline better than mint's diff-only view does. That is the ground of §3.5, and this feature does not close it.
+
+#### 3.4 Bodies that carry no headline
+
+The headline exists only where the notes prompt writes it. mint never writes or adds one. The body selector has seven kinds (`rg -n '// Kind[A-Za-z]+:' internal/notes/select.go` → 7 lines), and only the AI-written body goes through the notes prompt. The other six carry no headline:
+
+- the first release's fixed `Initial release.` body;
+- the maintenance stub, for an empty post-exclusion diff;
+- the commit-subject body under `--no-ai`;
+- the commit-subject body when the AI fails under `on_notes_failure = fallback`;
+- a `--notes-file` body, shipped as the operator wrote it;
+- the body the operator chooses at the notes floor after the AI fails on an attended run (the commit subjects, or notes written in the editor).
+
+Two more cases have their own sections. A full `[release].prompt` override owns its format and gets a headline only if it asks for one (§7.2). The saved part notes of a failed chunked run hold sections only (§8).
+
+#### 3.5 Room for a supplied headline
+
+This feature designs no route for a headline supplied by an operator or an outer agent. The headline, one plain sentence above the first section, is the slot any later route fills. The byte-identical rule is read as protecting what the AI or the operator wrote from mint's own edits and additions. mint never writes or edits a headline of its own. Nothing here rules out any of the three routes a later design could take: a steer handed to mint's AI, a finished `--notes-file` body, or a line the operator supplies, placed above the AI's body. Which route to take is the agent-authored release notes item's call. The review gate's `r` nudge already shows how a steer works: a one-time line appended to the resolved instructions, which flows into every AI call of that generation and is never written to config.
+
 ---
 
 ## Working Notes
