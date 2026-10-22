@@ -38,8 +38,8 @@ The specification constrains both the shipped default prompt and the tuning that
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Settled by derivation from the Shipping Bar's guard (the rules it carries are general) and E1's tuning constraint; landed in the discussion as the new subtopic Keeping The Wording General, Summary Current State updated. §10.2 already carries the same rule, so the specification needed no edit.
 
 ---
 
