@@ -476,7 +476,7 @@ Raised by the background review (review-001 F9), which named the edges such a ch
 
 The session leaned A. On the release page the headline already renders as the first line under the title, so B's gain is confined to the releases list, and there it buys an inconsistent list at the price of mint's rule of never reading into the notes. What would have moved it: the user valuing scanning releases by title over consistent titles. The user agreed: keep the bare tag.
 
-Sibling check: mint-release-tool specification — the provider release is a write-only projection of the full body, and `regenerate --reuse` recreates it from the tag annotation body "deterministic, parse-free"; a bare-tag title keeps both.
+Sibling check: mint-release-tool specification — the provider release is a write-only projection of the full body, and `mint release regenerate --source tag` (the flag that specification names `--reuse`, replaced by `--source` in fc1cfe13) recreates it from the tag annotation body "deterministic, parse-free"; a bare-tag title keeps both.
 
 ### Decision
 
