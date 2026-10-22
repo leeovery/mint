@@ -38,8 +38,8 @@ The specification makes the remedy in a breaking bullet conditional: "What to do
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Settled by derivation from True To The Release and the section's own asymmetry; landed as a dated revision of the discussion's Breaking Changes decision. §4.2 and §10.2 already carry the same rule, so the specification needed no edit.
 
 ---
 
