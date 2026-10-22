@@ -80,7 +80,7 @@
           "experiments": {
             "E1": {
               "slug": "notes-prompt-on-real-releases",
-              "status": "approved"
+              "status": "running"
             }
           }
         }
