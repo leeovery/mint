@@ -1,0 +1,666 @@
+[
+  {
+    "release": "switchboard-v0.1.0",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "The dashboard is rebuilt around views, charts and themes, so you can see where each account's usage is heading and where your sessions go.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": [
+        "inventory"
+      ]
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Any account can keep a `reserve`, not just the primary.",
+        "why": "v0.0.6 already let any account set `reserve` (0.1 by default on the primary, 0 on the others unless set); only the primary's default changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline names the redesign, though as an inventory. The reserve change gets its own Breaking section with the line that restores it, but its opening clause is garbled. The dashboard bullets are complete, well ordered and leave out dev tooling. One bullet falsely says any account can now keep a reserve."
+  },
+  {
+    "release": "switchboard-v0.1.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "The dashboard now shows where your Claude usage is heading, which sessions are on which account, and when each account will have room, in one redesigned screen.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": [
+        "inventory"
+      ]
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The router serves a window's usage history, which the charts draw from.",
+        "why": "an undocumented control-API endpoint (GET /history) that only the dashboard consumes; the charts themselves are covered elsewhere",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Any account can keep a reserve, not just the primary.",
+        "why": "v0.0.6 already let any account set `reserve`; only the primary's 0.1 default was removed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline names the redesign, as an inventory of the three views. The Breaking section flags the reserve default with the fix, though it wrongly implies other accounts once had a default reserve. Sessions and Runway each get a clear bullet. One false claim about reserves and one plumbing bullet."
+  },
+  {
+    "release": "switchboard-v0.1.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The dashboard remembers the view, featured window, chart style and theme between runs.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "When the router stops during a restart, a launcher no longer finds a dead listener on its port.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Pin a single running session from the dashboard, the same as `pin <account> --session` does.",
+        "duplicates": "Cards flip with `space` or `s` to show each account's sessions and recent events, and a session can be picked out and pinned to another account with a digit key.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "Live request stream from the router (`GET /stream`) and window history (`GET /history`) that power the dashboard's charts and animations.",
+        "why": "undocumented control-API endpoints that only the dashboard consumes",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Recorded demo clips and stills in the README, with `demo/` scripts to record them again.",
+        "why": "README demo assets and recording tooling (capturetool, vhs tapes)",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "README reframed around tracking, routing and analysing your Claude usage across accounts.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The dashboard coverage is thorough and well led, but there's no headline. The reserve default change sits in Changed as a neutral 'optional' tweak with nothing marking it as breaking. Three dev/docs bullets, a duplicated pin bullet and two misfiles add noise."
+  },
+  {
+    "release": "switchboard-v0.1.0",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "A restart waits a moment before refusing a config that fails to load, so an editor mid-save doesn't block it.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The router now counts each answer's streamed characters and closing token usage as it passes, and serves new history and live request-stream endpoints that feed the dashboard.",
+        "why": "router plumbing and undocumented control-API endpoints that only the dashboard consumes",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "README demo clips and screenshots, with scenario-driven recording tooling under `demo/`.",
+        "why": "README demo assets and recording tooling",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The reserve is now explained as a general per-account feature rather than a primary-only one.",
+        "why": "a documentation rewording, no behaviour change",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "README rewritten around tracking and analysing usage as well as routing.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "flagged",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The lead bullet states the redesign well, and the reserve change is worded plainly with the line that restores the old behaviour. But there's no headline, and four internal/docs bullets (endpoints, demo tooling, two README items) dilute an otherwise accurate, well-ordered set."
+  },
+  {
+    "release": "switchboard-v0.2.6",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "COMING UP on the Runway no longer numbers accounts when the account column is collapsed — the lane numbers are dropped from the list and its help text.",
+        "outranks_by": "Reading a session's recent lines is quicker — the ledger reads a day's file backwards from its end and stops once it passes the turn or span you need.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Daily digests of the request ledger — the router now builds a per-session digest, parts file and day head for each finished day in the background.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Faster Log and session pages — past days and session pages restore from stored digests and rows instead of re-reading every raw ledger line.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Log filters read back through past days smartly — days are re-read only as far as needed when you change a filter, and days that can't match are skipped.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The Log's find closes cleanly — it drops its cached day summaries and ignores late reads once closed.",
+        "why": "in-memory cache housekeeping with no visible effect: the find already re-read its summaries on each opening",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Session turns and totals are now priced when the page is built — costs reflect the prices of the day you view them.",
+        "why": "v0.2.5 already priced pages at the viewed day's prices (re-tallying a page as its day rolled on); only the stored form moved to tokens",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "The Log no longer shows stale or misplaced rows after a filter change — tables built through an older filter are refilled before they show.",
+        "why": "reading past days through the filter is new in this release (#140); v0.2.5 read days whole, so no filtered table could go stale",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "The sessions List opens fast, each session resting on a day's digest (#135)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "No headline, and it leads with the digest mechanism rather than speed. One performance project is scattered over three Added bullets, a Runway tweak above main work, a false pricing change, an internal find bullet and a fix for in-release filter code. The List is never named."
+  },
+  {
+    "release": "switchboard-v0.2.6",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Opening past days in the Log and session pages is faster, because finished days are now digested once and read back from saved results instead of re-reading every raw line.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Finished days are now digested in the background, so session pages and the Log's past days load from saved results and fall back to the raw lines when none stand.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The Log's find no longer applies a stale read of day summaries after it has been closed.",
+        "why": "in-memory cache housekeeping with no visible effect: the find already re-read its summaries on each opening",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "The Log's Events no longer show days that were only partly read through a request filter.",
+        "why": "partial, filtered day reads are new in this release (#140); v0.2.5's Log read past days whole",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "The sessions List opens fast, each session resting on a day's digest (#135)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "A clear benefit-first headline and a compact set: the performance work is stated once, with the Runway tweak last. One Added misfile, one internal find bullet, and an in-release Events fix. The List speed-up is missing."
+  },
+  {
+    "release": "switchboard-v0.2.6",
+    "label": "C",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Per-day digests of the request ledger — the router now digests each finished day in the background, storing session states so later reads resume from them instead of replaying every line.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Per-day heads and row files for the Log — past days load their sessions and rows from stored summaries, so the Log's find and scroll-back open faster.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Faster scroll-back for a session's turn — turns read only the days and row chunks that can hold their lines.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Reading a session's lines back from the end of a day's file no longer scans the whole file.",
+        "section": "Fixed",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The Log's find drops its day summaries when it closes and ignores reads that land afterwards.",
+        "why": "in-memory cache housekeeping with no visible effect: the find already re-read its summaries on each opening",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Session page and turn totals are now priced when the page is built, so costs follow the prices of the day shown.",
+        "why": "v0.2.5 already priced pages at the viewed day's prices (re-tallying a page as its day rolled on); only the stored form moved to tokens",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "The Log's Events only show days that have been read in full, so a card never reports a day held through a filter.",
+        "why": "partial, filtered day reads are new in this release (#140); v0.2.5's Events always had whole days",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "The sessions List opens fast, each session resting on a day's digest (#135)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "No headline, and it leads with mechanism. One performance project is spread over three Added bullets, six Changed and a Fixed, much of it in implementation terms. It also has a false pricing change, an internal find bullet and an in-release Events change, and the List is missing."
+  },
+  {
+    "release": "switchboard-v0.2.6",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Past days load faster in the Log and session pages, because finished days are now digested and their stored results are reused instead of re-read from the raw request lines.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Finished days of the request ledger are digested in the background — the Log's past days, its session find, and session pages and turns read from stored results and fall back to the raw lines when none stand.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Request ledger lines for a session are read back from the end of a day's file, so opening a session no longer reads the whole of a long day.",
+        "section": "Fixed",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "A session's page, its turns and its totals are priced when shown, so a page opened on a later day shows what its requests cost at that day's prices.",
+        "why": "v0.2.5 already priced pages at the viewed day's prices (re-tallying a page as its day rolled on); only the stored form moved to tokens",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Closing the Log's find now drops what it read, so reopening it reads the days' sessions afresh.",
+        "why": "the find already re-read its day summaries on every opening in v0.2.5, and the days' sessions it read are still held for the run",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "The Log's Events no longer show days that haven't yet been read in full under a narrowed Requests filter.",
+        "why": "partial, filtered day reads are new in this release (#140); v0.2.5's Log read past days whole",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "The sessions List opens fast, each session resting on a day's digest (#135)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "A good benefit-first headline and one Added bullet that covers the Log, the find, pages and turns. But two Changed bullets claim behaviour that was already true (pricing, the find), the Events bullet changes in-release code, the read-back speed-up is filed as a fix, and the List is missing."
+  },
+  {
+    "release": "switchboard-v0.1.5",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Tables no longer pad trailing empty cells.",
+        "outranks_by": "The Claude skill is updated to cover the new commands and JSON-by-default output.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Router \"rounds\" probe any account nothing has read in half an hour, and each account once in the 5 minutes before its weeks reset, so last-minute weekly use is read.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Optional `plan` per account, `week_starts` and `[prices]` settings to price plans and models yourself.",
+        "why": "the plan, week_starts and [prices] config keys shipped in v0.1.4 (config code unchanged here); only their README rows are new",
+        "input_present": false,
+        "missing_fact": "these config keys shipped in v0.1.4"
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Complete and mostly accurate on the data verbs. But there's no headline, it leads with `sessions` alone, and the piped-output switch to JSON is framed as an agent convenience, not as breaking. The plan/prices/week_starts keys are re-announced, and router rounds are filed as Added."
+  },
+  {
+    "release": "switchboard-v0.1.5",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Look back over your sessions, requests and days from the command line, with the router's own events alongside.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": [
+        "inventory"
+      ]
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The router reads accounts itself every half hour, and again just before each week resets, so usage stays current without a dashboard open.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Set an account's `plan` and a `[prices]` table in the config to price `history` and `sessions` against your own plans and model prices.",
+        "why": "the plan and [prices] config keys shipped in v0.1.4 ([prices] already priced history); only their README rows are new",
+        "input_present": false,
+        "missing_fact": "these config keys shipped in v0.1.4"
+      },
+      {
+        "text": "`week_starts` in the config sets the day calendar weeks start on for `history`.",
+        "why": "the week_starts key shipped in v0.1.4; only its README row is new",
+        "input_present": false,
+        "missing_fact": "week_starts shipped in v0.1.4"
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The headline names the look-back verbs, as an inventory, but not the agent/JSON half. The sections are thorough and ordered. The JSON-off-a-terminal switch is unflagged, the old config keys are re-announced in two bullets, and router rounds are filed as Added."
+  },
+  {
+    "release": "switchboard-v0.1.5",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Look back over your sessions, requests and days from the command line, with the router reading your accounts around the clock.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": [
+        "inventory"
+      ]
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The router probes accounts nothing has read in half an hour, and each account shortly before its weeks reset, so usage stays current without traffic.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Set `plan` on an account, `week_starts` at the top level, and `[prices]` overrides in the config to price accounts against their plans and change how history counts weeks.",
+        "why": "the plan, week_starts and [prices] config keys shipped in v0.1.4; only their README rows are new",
+        "input_present": false,
+        "missing_fact": "these config keys shipped in v0.1.4"
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "A week that ended on a quiet day now keeps its peak, since days with readings but no requests are summarised too.",
+        "why": "history's weekly peaks are new in this release (#93), so there was no shipped peak to fix",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "The headline names the look-back verbs (an inventory, with router rounds tacked on), and the sections are compact and well ordered. The JSON-off-a-terminal switch is unflagged, the old config keys are re-announced, router rounds are filed as Added, and the quiet-day peak is presented as a fix."
+  },
+  {
+    "release": "switchboard-v0.1.5",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "The router now reads accounts on its own rounds — any account unread for half an hour, and each one 5 minutes before its week resets — so usage stays current and a week's last use isn't missed.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "Set `plan` on an account, `week_starts` at the top level, and `[prices]` overrides in the config to price plans and models for history and sessions.",
+        "why": "the plan, week_starts and [prices] config keys shipped in v0.1.4; only their README rows are new",
+        "input_present": false,
+        "missing_fact": "these config keys shipped in v0.1.4"
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "unflagged",
+    "breaking_input_present": true,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Accurate and complete on the data verbs and their JSON form, but there's no headline and it leads with `sessions` alone. The piped JSON switch is unflagged, with only a note on how --json behaves. The old config keys are re-announced, and router rounds are filed as Added."
+  }
+]
