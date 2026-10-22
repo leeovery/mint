@@ -671,6 +671,36 @@ Tuning the default prompt's wording keeps it general: no prompt text names, quot
 
 ---
 
+## A Release With Nothing Users Meet
+
+### Context
+
+User Facing Only keeps out everything a user never meets: CI, tests, refactors, internal packages, contributor docs, repo housekeeping. The format allows nothing above the first section but the headline (Prompt Overrides And Reminder). That leaves no answer for a release, or a part of a chunked one, whose every change is of the kind left out, such as a release cut after test-only or tooling-only work. Without one, the model lists the internal changes anyway, writes a line the format forbids, or returns an empty body. The transport rejects an empty body as a failed call (`rg -n 'ai generation failed \(empty body\)' internal/ai/transport.go` → line 80), and on the chunked path that fails the part. Path-order packing can put a run of test files or docs in a part of its own.
+
+### Options Considered
+
+**A — one 🔧 Changed bullet saying the release is maintenance only**
+- Cons: misfiles by Section Placement's own rule. Changed is a rework of behaviour the previous release had, and nothing changed.
+
+**B — one plain line in the shape of mint's empty-diff stub, no headline and no sections**
+- Pros: matches the body mint already ships for a maintenance release (`rg -n 'const stubBody' internal/notes/degenerate.go` → `"Maintenance release — no notable source changes"`).
+- Cons: one named exception to the headline-or-first-section rule.
+
+**C — list the internal changes for this case only**
+- Cons: breaks User Facing Only, and counts against the Shipping Bar's internal items.
+
+### Journey
+
+A misfiles and C breaks a decided rule, and an empty body is a failure, not notes. B is the one shape left, and it reads as the maintenance body readers already see from mint when a diff is empty. No main body of work users meet means no headline (No Clear Headline). On the chunked path a part with nothing users meet returns the same line. The merge drops it beside other parts' sections and writes it only when every part returned it, so the release-level answer is the same however the diff was cut.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by User Facing Only (internal changes stay out), Section Placement (Changed is a rework of what the previous release had), No Clear Headline (no main body, no headline) and the transport's rejection of an empty body.
+
+Where every change in a release is one User Facing Only leaves out, the notes are one plain line saying the release is maintenance with no user-facing changes, in the shape of the empty-diff stub, with no headline and no sections. It is the one body without sections. A chunked release's part with nothing users meet returns the same line, and the merge writes it only when every part's notes are that line. Deciding factor: it is the only answer that breaks no decided rule and ships notes rather than a failed call. Confidence: high on the rule; the line's wording is the prompt's.
+
+---
+
 ## Summary
 
 ### Key Insights
@@ -692,5 +722,5 @@ Tuning the default prompt's wording keeps it general: no prompt text names, quot
 
 ### Current State
 
-- **Resolved:** the headline's shape, when it appears and how it is picked; part calls write none and the merge alone does; mint's shared wording stays format-neutral and override repos own their format; no route designed for a supplied headline, none foreclosed; the provider title stays the bare tag; 💥 Breaking first; user-facing only; ordering by user weight; the Change Map as coverage only; fixed section order with placement against the previous release; the accuracy rules with no new inputs; the shipping bar — every count at least as good as today's prompt on E1's held-out releases, each on its own, with the tuned wording kept general.
+- **Resolved:** the headline's shape, when it appears and how it is picked; part calls write none and the merge alone does; mint's shared wording stays format-neutral and override repos own their format; no route designed for a supplied headline, none foreclosed; the provider title stays the bare tag; 💥 Breaking first; user-facing only; ordering by user weight; the Change Map as coverage only; fixed section order with placement against the previous release; the accuracy rules with no new inputs; a release with nothing users meet gets one maintenance line; the shipping bar — every count at least as good as today's prompt on E1's held-out releases, each on its own, with the tuned wording kept general.
 - **Uncertain:** how far wording brings false claims and missing items under the bar, whether the neutral reminder holds the headline, and whether the chunked path leaves the headline to the merge — all settled by measurement, not by decision.
