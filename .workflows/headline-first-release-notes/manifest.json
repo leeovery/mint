@@ -127,7 +127,7 @@
           "task_list_gate_mode": "auto",
           "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
-          "review_cycle": 0,
+          "review_cycle": 1,
           "phase": 4,
           "task": null,
           "task_map": {
@@ -175,7 +175,8 @@
             }
           },
           "staging": {},
-          "external_id": "tick-32726a"
+          "external_id": "tick-32726a",
+          "review_baseline_words": 25297
         }
       }
     }
