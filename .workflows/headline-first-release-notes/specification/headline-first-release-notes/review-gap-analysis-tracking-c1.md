@@ -151,8 +151,8 @@ A failed check holds shipping when the failure is a regression, and not otherwis
 **Proposed Text**:
 - **The chunked path** is untested: E1 ran every release as one call. The first runs also take held-out releases through the part calls and the merge, and check that the part notes carry no headline and that the merge writes the headline §3.2 calls for. A headline in any part's notes, or a merged headline that names something other than the release's main work, holds shipping until the wording clears it: today's notes carry neither, so either is a regression. A merge that leaves out a headline §3.2 calls for costs what today's notes cost; it does not hold shipping and is tuned like the known weak spots below.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: The session's call over the Shipping Bar's principle; landed in the discussion by amending Checking The Chunked Path (written this sitting) and its Open Threads line, then in §10.3.
 
 ---
 
