@@ -14,8 +14,8 @@ The specification commits mint to rewording its user-facing guidance on releasin
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Settled by derivation from the Chunked Path revision (the operator removes these lines as with the marker) and mint's existing marker guidance; landed in that revision entry (written this sitting). §8 already carries the same sentence.
 
 ---
 
