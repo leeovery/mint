@@ -47,6 +47,40 @@ Once shipped, this feature replaces three earlier decisions for the default prom
 - from the mint-release-tool specification: the six-section default notes format, checking the notes criterion by eye with no formal rubric, and the Change Map as the ranking signal (with release-notes-quality's "rank importance from the Change Map");
 - from token-aware diff sizing: the merge call "ranking by the Change Map".
 
+### 2. The Notes Format
+
+#### 2.1 Shape
+
+The default prompt asks for this body and nothing else:
+
+```text
+{headline: one plain sentence, only where the release has one (§3)}
+
+💥 Breaking
+- {one-line bullet}
+
+✨ Added
+- {one-line bullet}
+
+🔧 Changed
+- …
+```
+
+- **The headline** is optional. Where there is one, it is the body's first line, followed by one blank line and then the first section (§3).
+- **The sections** always run in this fixed order: 💥 Breaking, ✨ Added, 🔧 Changed, ⚠️ Deprecated, 🗑️ Removed, 🐛 Fixed, 🔒 Security. A section with no items is left out. The order is the same in every release, whatever its main work. The headline already lifts the main work above every section, so reordering the sections would answer the same problem twice and cost readers an order they can rely on across versions. What belongs in each section is §4.
+- **Nothing else.** The headline is the only thing that may appear above the first section: no summary paragraph, no TL;DR, no label, no other preamble. The default prompt's "start directly with the first section header" gives way to this headline-or-first-section rule, which still forbids every other preamble. The notes carry no wrapper, markers or machine-parseable labels, and no commentary or sign-off.
+
+#### 2.2 Bullets (unchanged)
+
+- Each bullet is one line and one sentence: the change in plain language, with its user-facing effect after an em dash where that helps. No second sentence, no bold lead-in, no sub-bullets, no implementation detail, and no rationale for how it was built.
+- The shipped prompt's three altitude examples stay as they are.
+- One bullet per notable change, never one per file, hunk or commit. The combine rule stands as worded: "Combine closely-related changes into a single bullet." Closely related means the small tweaks of one change, such as three commits that fix one gate. It never means a feature's separate capabilities: each piece a user can use or meet on its own is a notable change and gets its own bullet. Version bumps and other bookkeeping churn are ignored. Most releases are a handful of bullets, and the notes are not padded.
+- Deprecated and Security stay opportunistic. An item goes in them only on an explicit marker in the diff (a `@deprecated` annotation, or an obvious auth, cryptography, input-validation or CVE-bump surface), and is never inferred.
+
+#### 2.3 Each change once
+
+Every change is listed once, in one section. The only restatement in the body is the headline's summary of the main work, which overlaps that work's pieces in the sections by design (§3.1).
+
 ---
 
 ## Working Notes
