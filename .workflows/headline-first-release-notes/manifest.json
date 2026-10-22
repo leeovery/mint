@@ -129,10 +129,11 @@
           "finding_gate_mode": "gated",
           "review_cycle": 0,
           "phase": 1,
-          "task": "headline-first-release-notes-1-2",
+          "task": "headline-first-release-notes-1-3",
           "task_map": {
             "headline-first-release-notes-1-1": "tick-be38ef",
-            "headline-first-release-notes-1": "tick-3b11be"
+            "headline-first-release-notes-1": "tick-3b11be",
+            "headline-first-release-notes-1-2": "tick-9b3451"
           },
           "storage_paths": [
             ".tick/"
