@@ -1,1 +1,95 @@
 # Plan: Headline First Release Notes
+
+## Phases
+
+### Phase 1: Headline-first notes on a single call
+status: draft
+
+**Goal**: A release whose notes fit one call is written by the rewritten default prompt. The body has an optional one-plain-sentence headline above sections in a fixed order led by 💥 Breaking. Each change is placed by comparing it with the previous release, limited to what users meet, and ordered within its section by weight to the user. The prompt describes the Change Map as a coverage check, never a ranking signal, and every notes call on every repo closes with the format-neutral reminder. The starting wording is E1's frozen candidate `new-v3`, changed where §10.2 lists its differences.
+
+**Why this order**: The default prompt is the feature. Phase 2's part and merge framings tell the model to write "in the format above", so they defer to this format, and Phase 3 tunes and measures this wording. The single-call path is where most releases are written and where E1 measured, so it sets the wording the later phases extend.
+
+**Acceptance**:
+- [ ] Given a repo on the default prompt (with or without `[release].context`), when `mint release --dry-run` writes the notes in one call through an `ai_command` that records its stdin, then the instructions ask for the §2.1 body:
+  - one plain-sentence headline only where the release has one, as the body's first line followed by one blank line;
+  - then the sections in the order 💥 Breaking, ✨ Added, 🔧 Changed, ⚠️ Deprecated, 🗑️ Removed, 🐛 Fixed, 🔒 Security, with empty sections left out, in the same order every release;
+  - nothing else above the first section (no summary paragraph, TL;DR, label or other preamble), no wrapper, markers, commentary or sign-off;
+  - each change listed once.
+
+  They no longer tell the model to start directly with the first section header (§2.1, §2.3).
+- [ ] The same recorded instructions carry the §3 headline rules:
+  - it is held to the bullets' altitude and leads with what the release gives its user, in user terms;
+  - no scale or praise words, no inventory of pieces, no narrative thread;
+  - plain text with no bold, emoji or label;
+  - it may name any kind of change;
+  - the sections stay complete beneath it;
+  - a headline only when a main body of work passes the test against the notes' own bullets, or two co-equal bodies each pass it with the other set aside, named in one sentence and never with a lesser second subject;
+  - none where a single bullet states the whole release, none on a grab-bag, and left out when in doubt;
+  - picked by what the release changes for its user, never by a new folder, a large file or the Change Map (§3.1–§3.3).
+- [ ] The same recorded instructions place every change against the previous release:
+  - Added covers new things, their adjusted pieces included;
+  - Changed is a rework or non-fix change to something already there;
+  - Fixed is wrong behaviour in the previous release now corrected, however the diff frames it, including a restored loss;
+  - Removed is something gone that doesn't break use.
+
+  A breaking change goes under 💥 Breaking only. The definition is narrow, and a change counts as not breaking when unsure. Each Breaking bullet says what breaks and, only where the diff shows it, what to do (§4.1, §4.2).
+- [ ] The same recorded instructions limit the notes to what users meet, in the user's terms, with the in/out lists and the "a user meets or notices it" test (shipped prompts, skills and templates count). They claim no behaviour from documentation, comments, examples or tests alone. They never present work built in this release as a change or fix. They never present as new anything the previous release had, whether the diff shows it in unchanged context lines, in removed lines, or in moved or renamed code. A release with nothing users meet gets one line in the shape of `Maintenance release — no notable source changes`, with no headline or sections. When unsure, the change in doubt is listed instead (§5.1, §5.2).
+- [ ] The same recorded instructions order each section by weight to the user, with the main work's pieces leading and lines, files, commits and how easy a change is to name not counting as weight. They describe the Change Map as a check on where the changes landed, never a measure of importance, with every change described from the diff. No "new structure is the strongest signal" ranking rule remains. The bullet rules, the three altitude examples, the combine rule's wording and the opportunistic Deprecated/Security rule are unchanged (§2.2, §6.1, §6.2).
+- [ ] Given repos on the default prompt, the default with `[release].context`, and a full `[release].prompt` override, when each writes single-call notes through a recording `ai_command`, then every prompt ends with exactly "Now output ONLY the release notes themselves, in the format above, exactly as they should be published: no preamble, no commentary, no explanation, no code fences, nothing before or after the notes." The override repo's instructions are its file verbatim, and nothing mint adds names or asks for a headline. The context repo carries every default rule with its context appended under the existing header (§7.1, §7.2).
+- [ ] Given the same range and exclusions, when the notes prompt is composed, then its Change Map is byte-identical to the one mint built before this phase. `rg -n -i 'salience|prioriti' internal/notes --glob '!*_test.go'` prints nothing, and no comment in `internal/notes/changemap.go` weights novelty above magnitude or calls a new directory the map's headline (§6.2).
+- [ ] Given an AI body that opens with a headline, when `mint release` ships it, then the tag annotation, the `CHANGELOG.md` section and the provider release body carry it byte for byte, and the provider release title is the bare tag. A forward release, a fresh regenerate and a tag regenerate each still publish with the bare tag as title. The first-release, empty-diff, `--no-ai`, fallback, `--notes-file` and notes-floor bodies ship exactly as before, with nothing added (§1.2, §3.4, §9).
+
+### Phase 2: The chunked path writes the headline at the merge
+status: draft
+
+**Goal**: A release too large for one call gets its headline from the merge alone. The chunk and piece framings ask each part, in format-neutral terms, to leave out anything that sums up the release as a whole, and to return one line saying its part holds nothing for the notes when its slice holds nothing the notes would list. The merge framing drops "rank by the Change Map above", leaves those lines out, and writes the governing format's nothing-to-list body when every part returned one. The saved part-notes guidance tells the operator to remove the new lines.
+
+**Why this order**: The part and merge framings tell the model to write "in the format above" and close with Phase 1's reminder. On the default prompt, what they leave to the merge is Phase 1's headline and what they fall back to is Phase 1's maintenance line. This phase carries the headline to the oversized releases the single-call path hands off. It also covers single calls the model rejects as too big.
+
+**Acceptance**:
+- [ ] Given a default-prompt release over `max_prompt_bytes`, when `mint release --dry-run` writes it in parts through an `ai_command` that records its stdin, then every chunk and piece call carries the instructions, the whole-release Change Map, its part framing, its slice and the §7.1 reminder, in that order. That includes the smaller calls made when a part the model rejects as too big is retried in smaller pieces. Each framing asks the part to leave out anything that sums up the release as a whole, because the merge writes that. It also asks a part whose slice holds nothing the notes would list to return one line saying so, and names no headline (§7.1, §8).
+- [ ] In the same run, the merge call's framing still asks for one set of notes for the whole release in the format above, combining related changes across parts into single bullets and dropping duplicates. It no longer says to rank by the Change Map. It tells the merge to leave the parts' nothing-to-list lines out and, where every part returned one, to write what the governing format gives a release with nothing to list. It names neither a headline nor the maintenance line (§6.2, §7.1, §8).
+- [ ] Given a full `[release].prompt` override repo whose release is written in parts, when its part and merge calls are recorded, then they carry the same format-neutral framings and reminder, and nothing mint adds asks for a headline (§7.2, §8).
+- [ ] Given a chunked run where one part returned its nothing-to-list line and the merge then fails, when mint saves the finished part notes, then the file holds each finished part's notes byte for byte in chunk order, that line included, with a blank line between parts and the `**Notes missing:**` marker exactly as before. The README's Saved part notes guidance tells the operator to delete these lines as well as the marker line before releasing the file (§8).
+- [ ] Given chunked notes at an attended review gate, when the operator presses `r` and gives a one-time nudge, then only the merge call re-runs, carrying the nudge. Regenerating notes from saved part notes also goes through the merge call (§8).
+
+### Phase 3: Tuning, then acceptance on the frozen wording
+status: draft
+
+**Goal**: Tune the wording on E1's releases, freeze it, and clear the shipping bar on the frozen wording alone. One acceptance pass shows every §10.1 count at least as good as today's prompt. Every failure §10.3 says holds shipping is checked on that same wording: the chunked-path checks and the checks on a release with nothing users meet, which a single-call pass cannot exercise, run again on releases cut as the first runs cut them. A check cleared only on wording that tuning later changed has not been cleared. A failure on the frozen wording reopens tuning, and the wording frozen after it gets its own acceptance pass and its own re-run checks. Outcomes §10.3 says cost what today's notes cost are tuned like the known weak spots and do not hold shipping. Tuning changes wording only, and the rules stay as specified.
+
+**Why this order**: The first tuning runs and the re-runs on the frozen wording both take releases through a single call, through the part calls and the merge, and through a release with nothing users meet, so Phases 1 and 2 must both exist. Shipping is decided on the wording as it ships, so acceptance follows the freeze. The bar decides whether the rewritten prompt ships, so this phase closes the feature.
+
+**Acceptance**:
+- [ ] Given the wording from Phases 1–2, when the first tuning runs take E1's held-out releases through a single call closed by the neutral reminder, then the runs check that the notes carry a headline where §3.2 calls for one. If the evidence shows the model keeps a headline only when the last thing it reads names one, §7.1's reminder decision is reopened rather than tuned around (§7.1, §10.3).
+- [ ] Given the wording from Phases 1–2, when the first tuning runs take held-out releases through the part calls and the merge, at least one of them cut so that one part's slice holds nothing users meet, then the runs check that:
+  - no part's notes carry a headline, and the merge writes the headline §3.2 calls for;
+  - the part whose slice holds nothing users meet returns its one line rather than an empty body;
+  - the merge leaves that line out beside the other parts' sections, and writes the maintenance line only when every part returned one.
+
+  Each release is kept with the parts it was cut into, so the checks on the frozen wording cut the same releases the same way (§8, §10.2, §10.3).
+- [ ] Given the wording from Phases 1–2, when the first tuning runs take at least one release with nothing users meet through a single call, and through the part calls and the merge with every part's slice holding nothing users meet, then the runs check that the notes are §5.1's maintenance line, with no headline, no parts' lines in its place, and no empty body that fails the run. That release is kept with its cut for the checks on the frozen wording (§5.1, §10.2, §10.3).
+- [ ] Given the frozen wording, when it is read, then no prompt text names, quotes or paraphrases a change from the 31 sampled releases, every example other than the three shipped altitude examples is invented, and every rule of §2–§6 is still carried (§10.2, §10.3).
+- [ ] Given the frozen wording (the rewritten default prompt closed by §7.1's reminder), when the acceptance pass runs it once over E1's 26 held-out releases with two repeats each (52 bodies), using E1's harness, inputs, AI command and model, rubric, judge grouping and scoring, then each count clears its own line with no netting:
+  - clean lead at least 21;
+  - wrong-subject headlines 0;
+  - inversions at most 30;
+  - misfiled at most 84;
+  - duplicates at most 29;
+  - internal items at most 77;
+  - false claims at most 25;
+  - in-release-as-change at most 22;
+  - breaking changes flagged at least 1 of 10;
+  - missing items at most 9;
+  - format slips at most 5.
+
+  The read by eye on real releases runs alongside, outside the bar (§10.1, §10.2, §10.4).
+- [ ] Given the frozen wording, when the chunked-path checks run again on it, on the releases the first runs took through the part calls and the merge, cut as the first runs cut them, then none of the failures §10.3 says hold shipping appears:
+  - no part's notes carry a headline;
+  - no merged headline names anything other than the release's main work;
+  - no part returns an empty body and fails the run;
+  - no merged notes carry a part's nothing-to-list line or the maintenance line while any part listed changes users meet (§8, §10.2, §10.3).
+- [ ] Given the frozen wording, when the release with nothing users meet runs again on it through a single call, and through the part calls and the merge cut as the first runs cut it, then its notes carry no headline, no single call or merge returns an empty body and fails the run, and the merged notes do not keep the parts' lines in place of the maintenance line (§5.1, §10.2, §10.3).
+- [ ] In every run on the frozen wording, the acceptance pass and the re-run checks included, no single call writes the maintenance line for a release with a change users meet (§10.3).
+- [ ] Given a failure on the frozen wording, whether a count that misses its line in the acceptance pass or a failure §10.3 says holds shipping in a re-run check, when it is found, then tuning reopens. The wording frozen after it gets its own acceptance pass and runs the chunked-path and nothing-users-meet checks again on the same cuts. The same frozen wording is never run again to clear a count, and a check passed only on wording that tuning later changed counts as not cleared (§10.2).
+- [ ] With the wording frozen, every mint gate passes, and mint's test suite still spawns no real AI command: the acceptance pass and the re-run checks run outside it (§10.2).
