@@ -25,6 +25,18 @@ Close read against the audit's account:
 
 Revisions taken into v1: a headline only for a body of work that clearly outweighs the rest put together, and a second subject only when it is of equal weight; the headline in the user's terms, not files or formats; 💥 Breaking narrowed to existing use that stops working or gives a different result to act on (a default that only keeps more or adds is not breaking); Fixed defined by behaviour that was wrong in the previous release, however the diff frames it; internal efficiency a user would not notice added to what is left out.
 
+**Round v1** (2026-10-22 07:48; `new-v1` only, one repeat; 5 calls, 0 failures; run log `run-tune-v1.log`).
+
+| Release | new-v1 |
+|---|---|
+| mint v0.0.6 | as v0: headline right, no internals |
+| dex-engine v0.2.9 | no headline (match); article fallback now under Fixed; the test-only "parked reason reports the cause" claim is back (v0 had dropped it) |
+| portal v0.12.0 | headline and 💥 Breaking right; the comment-only "`hook list` shows a single location" claim is back (v0 had dropped it); grouped-view groundwork now presented as a Fixed bullet |
+| tick v0.3.2 | headline names the long-line fix alone, still in store terms ("very long lines in the task store"); description cap and migrate's title rule under 💥 Breaking (arguable); four `tick doctor` bullets lead Changed above parse errors every command shows |
+| switchboard v0.1.2 | headline right; retention change back under Changed; DST fix now under Fixed; token redaction under Security |
+
+The false claims that came back between v0 and v1 on the same inputs point to sampling variance on the truth rule rather than a wording effect. Revisions taken into v2: a per-bullet check — find the code change behind each bullet and drop it when every changed line behind it is a comment, documentation or a test; ordering weight to include how often users meet a change (everyday commands above diagnostic or rarely used ones).
+
 ## Deviations
 
 - 2026-10-22 07:46 — Claude Code updated itself from 2.1.306 (recorded in the design) to 2.1.307 before the run started. Every call in this run uses 2.1.307, both arms alike; the model behind `--model sonnet` is unchanged (`claude-sonnet-5-5`).

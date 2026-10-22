@@ -1,0 +1,28 @@
+{
+  "repo": "/Users/leeovery/Code/tick",
+  "prev": "v0.3.1",
+  "tag": "v0.3.2",
+  "arm": "new",
+  "instructions_sha256": "fbc4f5c1671ab8baad4dd38f93eee088f2fddb20b59e488a082a858a0db400f4",
+  "reminder_sha256": "bb0d20a7522ce0d07705e5a6a678dfdc56599470b3fd178995933e107b3d4f63",
+  "exclude_globs": [
+    ".tick",
+    ".workflows",
+    ".claude",
+    ".agntc",
+    "CLAUDE.md",
+    "go.sum",
+    "analysis"
+  ],
+  "version_file": "",
+  "version_pattern_set": false,
+  "prompt_bytes": 181069,
+  "prompt_sha256": "d143673a059a31a8bcae640e0180c408e5e87f36f8aae7501710f5db9ad00ff3",
+  "input_sha256": "8ceacc599242c1d55beebe6043c1be32cf0b410e06ccd9bb177c10cd5705fe36",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:48:15Z",
+  "finished": "2026-10-22T06:48:23Z",
+  "seconds": 8.562437833,
+  "body_bytes": 1202
+}

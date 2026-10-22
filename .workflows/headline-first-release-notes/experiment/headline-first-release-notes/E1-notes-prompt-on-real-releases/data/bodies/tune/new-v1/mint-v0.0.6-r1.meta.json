@@ -1,0 +1,26 @@
+{
+  "repo": "/Users/leeovery/Code/mint",
+  "prev": "v0.0.5",
+  "tag": "v0.0.6",
+  "arm": "new",
+  "instructions_sha256": "fbc4f5c1671ab8baad4dd38f93eee088f2fddb20b59e488a082a858a0db400f4",
+  "reminder_sha256": "bb0d20a7522ce0d07705e5a6a678dfdc56599470b3fd178995933e107b3d4f63",
+  "exclude_globs": [
+    ".workflows",
+    ".tick",
+    ".claude",
+    ".agntc",
+    ".agents"
+  ],
+  "version_file": "",
+  "version_pattern_set": false,
+  "prompt_bytes": 197107,
+  "prompt_sha256": "80e5762be2681cdfbeb30b273c14181a61f087a8e1907a11e197aca5fa28ca1c",
+  "input_sha256": "8594fcd546f94a7411e45b7afc82bf7c6ad6df07810cceb035670d5f81792ec5",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:48:10Z",
+  "finished": "2026-10-22T06:48:18Z",
+  "seconds": 8.19293525,
+  "body_bytes": 637
+}
