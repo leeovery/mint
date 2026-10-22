@@ -1,0 +1,27 @@
+{
+  "repo": "/Users/leeovery/Code/stitch-cli",
+  "prev": "v1.6.5",
+  "tag": "v1.6.6",
+  "arm": "current",
+  "instructions_sha256": "e25d36b546116de49b6e870c99c092c9a0b56b16ca5df2a3e469a08f5fd73e88",
+  "reminder_sha256": "4c0f0580b4484133a7de59c77d60b3ec89629babd0adb880f79d4a30d05fd6e1",
+  "exclude_globs": [
+    ".tick",
+    ".claude",
+    ".github",
+    "docs",
+    "bugs",
+    "plans"
+  ],
+  "version_file": "bin/stitch",
+  "version_pattern_set": true,
+  "prompt_bytes": 27845,
+  "prompt_sha256": "82611747f106a6b9ac063d06cdb8bd803d1d98ad8629b2fcd640f974f2244103",
+  "input_sha256": "2f6d5688c4e80daae6d614fd1f34af0c728224336de9da547b85ee753872e250",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:56:02Z",
+  "finished": "2026-10-22T06:56:07Z",
+  "seconds": 4.519462167,
+  "body_bytes": 871
+}

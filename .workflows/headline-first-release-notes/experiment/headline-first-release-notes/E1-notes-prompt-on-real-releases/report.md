@@ -63,6 +63,10 @@ Against v0–v2, v3 holds the two costliest calls on both repeats: no headline o
 
 **Frozen for the held-out run: `new-v3`** — the last version run, and the one that read best on the calls that cost most (wrong or unwarranted headlines, false breaking flags). `prompts/new-v3.md` SHA-256 `c1f149842689ba5f6b7338579514258a0fa23416c04421253eacfaae62630a0f`; `prompts/new-v3-reminder.txt` SHA-256 `ee31f054f8f0612db4098702406d72bac19a7e8d5295e5b840b2b4e08fe0d2ce` (unchanged from v0). Frozen 2026-10-22 07:52, before any held-out call. `claude --version` at the end of tuning → `2.1.307 (Claude Code)`.
 
+### Held-out generation
+
+Run 2026-10-22 07:51–07:56 (run log `.workflows/.cache/…/run-holdout.log`): 52 units (26 releases × 2 arms), two repeats each, four at once — 104 calls, 0 failures, 0 retries. Bodies in `data/bodies/holdout/current/` and `data/bodies/holdout/new-v3/`, 52 each, with per-call metadata. Longest call 38 s. The two releases over the 1.5 MB cap ran as single calls in both arms without refusal: agentic-workflows v0.6.0 (composed prompt 1,932,945 bytes current / 1,939,515 new) and switchboard v0.1.0 (1,755,023 / 1,761,593). `claude --version` at the end of the phase → `2.1.307 (Claude Code)`.
+
 ## Deviations
 
 - 2026-10-22 07:46 — Claude Code updated itself from 2.1.306 (recorded in the design) to 2.1.307 before the run started. Every call in this run uses 2.1.307, both arms alike; the model behind `--model sonnet` is unchanged (`claude-sonnet-5-5`).

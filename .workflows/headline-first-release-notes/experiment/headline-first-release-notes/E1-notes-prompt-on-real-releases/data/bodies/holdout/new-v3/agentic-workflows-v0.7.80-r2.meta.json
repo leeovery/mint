@@ -1,0 +1,27 @@
+{
+  "repo": "/Users/leeovery/Code/agentic-workflows",
+  "prev": "v0.7.79",
+  "tag": "v0.7.80",
+  "arm": "new",
+  "instructions_sha256": "05adb1a0423a767529fd67768af43064a9dfc9a19113d2fc0112aeb24f99910f",
+  "reminder_sha256": "bb0d20a7522ce0d07705e5a6a678dfdc56599470b3fd178995933e107b3d4f63",
+  "exclude_globs": [
+    "skills/workflow-knowledge/scripts/knowledge.cjs",
+    "package-lock.json",
+    ".claude/",
+    ".tick/",
+    "ideas/",
+    "tests/"
+  ],
+  "version_file": "skills/workflow-start/SKILL.md",
+  "version_pattern_set": true,
+  "prompt_bytes": 65840,
+  "prompt_sha256": "4ea5b7f5cef1742fb597ff3fcf610e746c58b91f6e7372ea5104c1bd6400146f",
+  "input_sha256": "901ddb3b92095297f720c7bb65c4840c8a87f99d1d9bdfa3ce7d9f866593fc07",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:53:07Z",
+  "finished": "2026-10-22T06:53:11Z",
+  "seconds": 4.543947042,
+  "body_bytes": 757
+}

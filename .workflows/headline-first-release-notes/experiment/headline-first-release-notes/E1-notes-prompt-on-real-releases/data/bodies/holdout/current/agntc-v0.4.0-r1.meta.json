@@ -1,0 +1,25 @@
+{
+  "repo": "/Users/leeovery/Code/agntc",
+  "prev": "v0.3.3",
+  "tag": "v0.4.0",
+  "arm": "current",
+  "instructions_sha256": "e25d36b546116de49b6e870c99c092c9a0b56b16ca5df2a3e469a08f5fd73e88",
+  "reminder_sha256": "4c0f0580b4484133a7de59c77d60b3ec89629babd0adb880f79d4a30d05fd6e1",
+  "exclude_globs": [
+    ".workflows/**",
+    ".claude/**",
+    ".agntc/**",
+    ".tick/**"
+  ],
+  "version_file": "",
+  "version_pattern_set": false,
+  "prompt_bytes": 389521,
+  "prompt_sha256": "d796facc37f20d2d2c95433689151ebe8b324992090d43e2bf9cebfa594dec13",
+  "input_sha256": "0ff2cfb9ddd22477ef367ea5bef6ac8332cd50cd7f530c3e2ded243ae64269ba",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:55:16Z",
+  "finished": "2026-10-22T06:55:28Z",
+  "seconds": 11.900059584,
+  "body_bytes": 1250
+}

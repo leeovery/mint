@@ -1,0 +1,29 @@
+{
+  "repo": "/Users/leeovery/Code/portal",
+  "prev": "v0.8.5",
+  "tag": "v0.9.0",
+  "arm": "current",
+  "instructions_sha256": "e25d36b546116de49b6e870c99c092c9a0b56b16ca5df2a3e469a08f5fd73e88",
+  "reminder_sha256": "4c0f0580b4484133a7de59c77d60b3ec89629babd0adb880f79d4a30d05fd6e1",
+  "exclude_globs": [
+    ".workflows/**",
+    ".claude/**",
+    ".agntc/**",
+    ".tick/**",
+    "**/*_test.go",
+    "testdata/**",
+    "art/**",
+    "demo/**"
+  ],
+  "version_file": "",
+  "version_pattern_set": false,
+  "prompt_bytes": 294695,
+  "prompt_sha256": "fb92964ec182d879d5dea2984777d84567a6636a62e6fd2b20d53164f4aca1fb",
+  "input_sha256": "fc0c6db36e1cab691f71f6f7b1f325361e6864d025e8f7c2f06210bfa8dc7f25",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:54:18Z",
+  "finished": "2026-10-22T06:54:24Z",
+  "seconds": 5.963872542,
+  "body_bytes": 1366
+}

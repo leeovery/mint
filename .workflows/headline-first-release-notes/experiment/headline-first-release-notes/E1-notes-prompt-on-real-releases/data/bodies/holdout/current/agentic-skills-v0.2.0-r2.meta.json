@@ -1,0 +1,22 @@
+{
+  "repo": "/Users/leeovery/Code/agentic-skills",
+  "prev": "v0.1.4",
+  "tag": "v0.2.0",
+  "arm": "current",
+  "instructions_sha256": "e25d36b546116de49b6e870c99c092c9a0b56b16ca5df2a3e469a08f5fd73e88",
+  "reminder_sha256": "4c0f0580b4484133a7de59c77d60b3ec89629babd0adb880f79d4a30d05fd6e1",
+  "exclude_globs": [
+    "CLAUDE.md"
+  ],
+  "version_file": "",
+  "version_pattern_set": false,
+  "prompt_bytes": 976383,
+  "prompt_sha256": "0502b073f0eb571d64d927c68f0d1e631786dcfa30f90a5e2376565e569016f8",
+  "input_sha256": "1d4e4e8c1330bea0a7d801f966792bfb02c468310fa4f12626c48b1aea013844",
+  "ai_command": "claude -p --model sonnet --safe-mode --tools \"\" --strict-mcp-config --no-session-persistence --system-prompt \"Follow the instructions you are given and output only what they ask for.\"",
+  "timeout_seconds": 600,
+  "started": "2026-10-22T06:56:28Z",
+  "finished": "2026-10-22T06:56:54Z",
+  "seconds": 25.24839375,
+  "body_bytes": 2546
+}
