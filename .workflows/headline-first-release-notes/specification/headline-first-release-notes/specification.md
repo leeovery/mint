@@ -135,6 +135,28 @@ Two more cases have their own sections. A full `[release].prompt` override owns 
 
 This feature designs no route for a headline supplied by an operator or an outer agent. The headline, one plain sentence above the first section, is the slot any later route fills. The byte-identical rule is read as protecting what the AI or the operator wrote from mint's own edits and additions. mint never writes or edits a headline of its own. Nothing here rules out any of the three routes a later design could take: a steer handed to mint's AI, a finished `--notes-file` body, or a line the operator supplies, placed above the AI's body. Which route to take is the agent-authored release notes item's call. The review gate's `r` nudge already shows how a steer works: a one-time line appended to the resolved instructions, which flows into every AI call of that generation and is never written to config.
 
+### 4. Section Placement
+
+#### 4.1 Judged against the previous release
+
+Every change is placed by comparing it with the previous release, never with earlier states inside this release. The previous release is the baseline a reader upgrading from it shares.
+
+- **✨ Added**: something the previous release did not have. Its pieces are Added too, even where the diff shows them adjusted, capped or fixed along the way. A bug in something new in this release is never Fixed, and a tweak to it is never Changed.
+- **🔧 Changed**: a rework or redesign of something the previous release already had. A genuinely new capability that ships inside the rework is Added.
+- **🐛 Fixed**: something that behaved wrongly in the previous release and now behaves correctly, however the diff or its comments frame it. Behaving wrongly covers wrong output or placement, a crash or error, dropped or lost data, and something not working. This includes a rework whose purpose is the fix, and something an earlier release lost that this one brings back.
+- **🗑️ Removed**: something the previous release had that is gone. A removal that breaks existing use goes under 💥 Breaking only (§4.2).
+- **⚠️ Deprecated** and **🔒 Security** keep their opportunistic rule (§2.2).
+
+#### 4.2 💥 Breaking
+
+- **Only there.** A breaking change goes under 💥 Breaking only, and is not repeated in another section. The section comes first among the sections (§2.1), after the headline where there is one. Like every section, it is left out when empty.
+- **What qualifies.** Something users already do stops working, or gives a different result they must act on. Examples: a removed or renamed command, flag, option, setting or key binding; a default changed so that existing setups behave differently in a way that matters; a changed output or file format that scripts or tools read; data or configuration from the previous release no longer read.
+- **What does not.** A change that only adds, keeps more, allows more or improves is not breaking.
+- **When unsure, it is not breaking**, and it goes in its usual section. The section sits at the top of the notes, so a false alarm stands in the opening lines. This is the same asymmetry as the headline's (§3.2): a missed flag costs what today's notes already cost, while a false one misstates the release where every reader looks.
+- **What breaks, and what to do.** Each bullet says both in its one sentence.
+
+A reader upgrading must meet what breaks before anything else, which is why the section exists. The narrow definition keeps it from crying wolf at the top of the notes.
+
 ---
 
 ## Working Notes
