@@ -475,6 +475,32 @@ The provider release title stays the bare tag on forward release and on both reg
 
 ---
 
+## Breaking Changes
+
+### Context
+
+Today's format has no place for a breaking change: the default prompt's sections are Keep a Changelog's six (✨ Added, 🔧 Changed, ⚠️ Deprecated, 🗑️ Removed, 🐛 Fixed, 🔒 Security), so a change that stops existing use working lands in whichever of them fits, unflagged. The audit found breaking changes buried in 5 of 31 releases (Context → Evidence). On E1's five breaking held-out releases, today's prompt flagged 1 of 10 bodies.
+
+### Options Considered
+
+The rule E1 tested (`new-v3`): a 💥 Breaking section first among the sections; a change listed there only, not repeated; emitted only where the diff shows something users already do stops working or gives a different result they must act on — a removed or renamed command, flag, option, setting or key binding, a default changed so existing setups behave differently in a way that matters, a changed output or file format that scripts read, data or configuration from the previous release no longer read; a change that only adds, keeps more, allows more or improves is not breaking; when unsure, it is not; the one sentence says what breaks and what to do. No alternative was weighed: this is a settled call.
+
+### Journey
+
+E1 measured the rule: 8 of 10 breaking bodies flagged against today's 1 of 10 — the one class past its pre-registered bar. Portal v0.11.1, predicted hardest, was flagged on both repeats with the remedy named. The miss was switchboard v0.1.5 on both repeats — output piped off a terminal becoming JSON, worded as a convenience under 🔧 Changed, which the "allows more or improves" and doubt lines fit. The new section is also a new place to be wrong: nine Breaking→Changed misfilings, and false breaks asserting a previous state the diff contradicts (portal v0.8.0's kill binding, agentic-workflows v0.6.0's `--key` flag); mint v0.0.2's new notes opened on a false 💥 bullet, one of the two releases the user, reading blind, preferred today's notes on.
+
+That last cost is why the narrow definition and the doubt rule stay: the section sits at the top of the notes, so a false alarm stands in the opening lines, which is No Clear Headline's own asymmetry — a missed flag costs what today's notes already cost, a false one misstates the release where every reader looks. The misfilings and false breaks are wording, held to the Shipping Bar.
+
+Sibling check: mint-release-tool specification — its default notes format is Keep a Changelog's six sections in fixed order; this adds 💥 Breaking ahead of them for the rewritten default prompt, superseding that format when this feature ships.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the audit's buried breaking changes, E1's measurement of the rule (8 of 10 flagged against 1 of 10), and No Clear Headline's asymmetry (a false statement in the opening lines costs more than an omission).
+
+Breaking changes get a 💥 Breaking section, first among the sections (after the headline where there is one), and a breaking change is listed there only. It is for existing use that stops working or gives a different result users must act on; a change that only adds, keeps more, allows more or improves is not breaking, and when unsure a change is not breaking and goes in its usual section. Each bullet says in its one sentence what breaks and what to do. The section, like every section, is omitted when empty. Deciding factor: a reader upgrading must meet what breaks before anything else, and the narrow definition keeps the section from crying wolf at the top of the notes. Confidence: high on the rule; its misfilings are wording.
+
+---
+
 ## Summary
 
 ### Key Insights
