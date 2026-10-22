@@ -653,6 +653,24 @@ The first tuning runs under the Shipping Bar also take held-out releases through
 
 ---
 
+## Keeping The Wording General
+
+### Context
+
+The Shipping Bar tunes the rewritten prompt's wording during implementation on E1's releases and accepts it on E1's 26 held-out releases, the same releases a tuned prompt can fit. Its Journey names the guard: the bar "asks for no worse than today rather than a tuned threshold, and the rules it carries are general". The second half needs a line tuning can be held to. Wording drawn from the sampled releases themselves fits those releases by construction: it can pass every count and do no better on the other repos the default prompt ships to.
+
+### Journey
+
+E1 tuned its candidate under exactly such a line: no prompt text may name, quote or paraphrase any change from the 31 sampled releases; examples, where added, are invented; the three altitude examples carried over from the shipped prompt are exempt. Its frozen candidate, the Shipping Bar's starting wording, was written to that line. Carrying it into implementation's tuning is what "the rules it carries are general" asks of wording tuned and accepted on those releases. The altitude examples stay exempt: they are the shipped prompt's own, kept with the bullets exactly as today (Headline Shape), and both of E1's arms carried them.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the Shipping Bar (the rules it carries are general, its guard against a prompt fitted to the releases that accept it) and E1's tuning constraint, under which the starting wording was written.
+
+Tuning the default prompt's wording keeps it general: no prompt text names, quotes or paraphrases a change from the 31 sampled releases, and any example added is invented. The three altitude examples the shipped prompt carries are exempt and stay as they are. Deciding factor: wording drawn from the releases the prompt is tuned and accepted on fits them by construction, which would let the bar pass on wording that does no better elsewhere. Confidence: high.
+
+---
+
 ## Summary
 
 ### Key Insights
@@ -674,5 +692,5 @@ The first tuning runs under the Shipping Bar also take held-out releases through
 
 ### Current State
 
-- **Resolved:** the headline's shape, when it appears and how it is picked; part calls write none and the merge alone does; mint's shared wording stays format-neutral and override repos own their format; no route designed for a supplied headline, none foreclosed; the provider title stays the bare tag; 💥 Breaking first; user-facing only; ordering by user weight; the Change Map as coverage only; fixed section order with placement against the previous release; the accuracy rules with no new inputs; the shipping bar — every count at least as good as today's prompt on E1's held-out releases, each on its own.
+- **Resolved:** the headline's shape, when it appears and how it is picked; part calls write none and the merge alone does; mint's shared wording stays format-neutral and override repos own their format; no route designed for a supplied headline, none foreclosed; the provider title stays the bare tag; 💥 Breaking first; user-facing only; ordering by user weight; the Change Map as coverage only; fixed section order with placement against the previous release; the accuracy rules with no new inputs; the shipping bar — every count at least as good as today's prompt on E1's held-out releases, each on its own, with the tuned wording kept general.
 - **Uncertain:** how far wording brings false claims and missing items under the bar, whether the neutral reminder holds the headline, and whether the chunked path leaves the headline to the merge — all settled by measurement, not by decision.
