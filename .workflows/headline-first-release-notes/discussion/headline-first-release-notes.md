@@ -257,6 +257,13 @@ Three lines saying one thing. 0.0.7 (two bullets, both `mint setup`) is the same
 
 ### Decision
 
+#### 2026-10-22 — revised (bodies the notes prompt never writes)
+*Trigger: settled call — bodies that never pass through the notes prompt, not covered by the decisions below.*
+
+**Settled by derivation** — not discussed. Determined by the byte-identical bodies invariant (CLAUDE.md, Load-bearing invariants: notes pass through verbatim, nothing injected) and Prompt Overrides And Reminder (the headline rules live in the default prompt alone).
+
+The entries below stand. Added: a body that does not come from the notes prompt carries no headline, and mint never adds one — the commit-subject fallback (`--no-ai`, and a notes failure under `fallback`), the maintenance-release stub for an empty post-exclusion diff, the first release's fixed `Initial release.` body (`rg -n 'KindFirstRelease: no prior tag' internal/notes/select.go` → line 21), and a `--notes-file` body, which ships as the operator wrote it. The headline exists only where the AI writes it. Deciding factor: these bodies never see the headline rules, and mint writing a line into them would be the injection the invariant forbids. Confidence: high.
+
 #### 2026-10-22 — revised
 *Trigger: settled call — a grab-bag release, not covered by the decisions below.*
 
