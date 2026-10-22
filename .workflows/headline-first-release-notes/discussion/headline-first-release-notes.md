@@ -513,6 +513,15 @@ Sibling check: mint-release-tool specification — its default notes format is K
 
 ### Decision
 
+#### 2026-10-22 — revised
+*Trigger: True To The Release — a remedy is a claim about the software, and where the diff shows none, "what to do" can only be supplied from outside it: a false step in the opening lines of a breaking release.*
+
+**Settled by derivation** — not discussed. Determined by True To The Release (claim only what the diff shows) and this decision's own asymmetry (a false line at the top of the notes costs more than a missing one).
+
+The entry below stands, with one limit on its last rule: what to do comes only from what the diff shows, such as a new name, a replacement, or a setting that keeps the old behaviour. Where the diff shows none, the bullet says what breaks and stops there. Saying outright that nothing replaces the removed thing is not the answer: a diff-only view cannot show that something does not exist, so that claim can itself be false. Deciding factor: an invented remedy is a false claim in the opening lines, the place the section's narrow definition exists to keep accurate. Confidence: high.
+
+#### Initial
+
 **Settled by derivation** — not discussed. Determined by the audit's buried breaking changes, E1's measurement of the rule (8 of 10 flagged against 1 of 10), and No Clear Headline's asymmetry (a false statement in the opening lines costs more than an omission).
 
 Breaking changes get a 💥 Breaking section, first among the sections (after the headline where there is one), and a breaking change is listed there only. It is for existing use that stops working or gives a different result users must act on; a change that only adds, keeps more, allows more or improves is not breaking, and when unsure a change is not breaking and goes in its usual section. Each bullet says in its one sentence what breaks and what to do. The section, like every section, is omitted when empty. Deciding factor: a reader upgrading must meet what breaks before anything else, and the narrow definition keeps the section from crying wolf at the top of the notes. Confidence: high on the rule; its misfilings are wording.
