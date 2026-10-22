@@ -625,6 +625,34 @@ The accuracy rules stand as Scope decided them: no behaviour claimed from docume
 
 ---
 
+## Checking The Chunked Path
+
+### Context
+
+Chunked Path decides that part calls write no headline and the merge alone writes it, through a format-neutral instruction in the chunk and piece framings. The Shipping Bar measures the rewritten prompt on E1's held-out releases, and E1 ran every release as one call, the two over the 1.5 MB cap included, so nothing measured has exercised the part instruction or a merge writing the headline. The releases that chunk are the largest, where the headline earns most (No Clear Headline: omitting it "drops the headline on the releases where it helps most — the biggest ones"), and they are often released unattended with `mint release -y`, where nobody reads the notes before the tag, `CHANGELOG.md` and the provider release carry them. Two failures would ship unseen: a merge that drops the headline, or part calls that keep writing their own, which a failed merge's saved part-notes file stacks one after another.
+
+### Options Considered
+
+**A — the first tuning runs check it, outside the bar**: held-out releases taken through the part calls and the merge.
+
+**B — gating chunked counts in the bar**
+- Cons: today's prompt has no measured chunked counts, so "at least as good as today's" has no baseline on this path.
+
+**C — leave it to the read by eye on real releases**
+- Cons: the largest releases, often unattended, go unchecked until after they ship.
+
+### Journey
+
+Prompt Overrides And Reminder already set how untested shared wording is handled: whether the neutral reminder keeps the headline "is a measurement, not a decision — it rides with the next run of the prompt". The part instruction is the same kind of ground — mint's shared wording, decided as a rule, its effect on the model unmeasured — so it rides the same runs. B needs a baseline the record does not hold; C leaves the path where the headline matters most unchecked until it has shipped. How the harness takes a held-out release through parts is the builder's.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Prompt Overrides And Reminder (untested shared wording is checked on the next run of the prompt, not gated) and No Clear Headline (the headline earns most on the biggest releases).
+
+The first tuning runs under the Shipping Bar also take held-out releases through the part calls and the merge, and check that the part notes carry no headline and that the merge writes the headline the release calls for. The check sits outside the bar: today's prompt has no chunked counts to hold it to. Deciding factor: the part instruction is shared wording whose effect on the model is a measurement, as the neutral reminder's is, on the releases where a dropped or stacked headline costs most. Confidence: high on the check; how it is run is the builder's.
+
+---
+
 ## Summary
 
 ### Key Insights
@@ -640,10 +668,11 @@ The accuracy rules stand as Scope decided them: no behaviour claimed from docume
 - Whether the format-neutral closing reminder keeps the headline in — the experiment ran only the wording that names it; measured in the tuning under the Shipping Bar (Prompt Overrides And Reminder).
 - False claims are the count furthest from the Shipping Bar (34 against a ceiling of 25), then missing items (13 against 9); where the tuning goes first (True To The Release).
 - Two-body releases tend to lose their headline or get half of one under the rules that keep grab-bag headlines out — recall to tune, the rule unchanged (No Clear Headline).
+- Whether part calls leave the headline out and the merge writes it — E1 ran no chunked release; checked in the first tuning runs, outside the bar (Checking The Chunked Path).
 - An agent steering the notes, or supplying its one line, belongs to the roadmap's agent-authored release notes item; the review gate's one-time steer is the existing mechanism it would reuse (Room For A Supplied Headline).
 - The mint-release-tool specification (the by-eye criterion, the Change Map's ranking role, the six-section format) and token-aware-diff-sizing's merge ranking by the Change Map are superseded once this feature ships (Shipping Bar, Change Map Signals, Breaking Changes).
 
 ### Current State
 
 - **Resolved:** the headline's shape, when it appears and how it is picked; part calls write none and the merge alone does; mint's shared wording stays format-neutral and override repos own their format; no route designed for a supplied headline, none foreclosed; the provider title stays the bare tag; 💥 Breaking first; user-facing only; ordering by user weight; the Change Map as coverage only; fixed section order with placement against the previous release; the accuracy rules with no new inputs; the shipping bar — every count at least as good as today's prompt on E1's held-out releases, each on its own.
-- **Uncertain:** how far wording brings false claims and missing items under the bar, and whether the neutral reminder holds the headline — both settled by measurement, not by decision.
+- **Uncertain:** how far wording brings false claims and missing items under the bar, whether the neutral reminder holds the headline, and whether the chunked path leaves the headline to the merge — all settled by measurement, not by decision.
