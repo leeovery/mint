@@ -20,7 +20,7 @@ Every rule answers to the notes themselves: good, readable, coherent, useful, ac
 
 - **The AI's inputs.** Every notes call still carries the resolved instructions, the Change Map, the post-exclusion diff (or one part's slice of it) and the closing reminder. Nothing is added. Commit history stays out, and the diff stays the only source of truth for what changed. None of the failures this feature addresses needs mint to hand the AI more (§5.2).
 - **How the Change Map is built.** Its git calls, detection and rendering stay as they are (§6.2).
-- **Bodies pass through verbatim.** mint never parses, reformats or adds to a notes body. The headline exists only where the AI writes it (§3.4).
+- **Bodies pass through verbatim.** mint never parses, reformats or adds to a notes body, and never writes a headline (§3.4).
 - **The provider release title** stays the bare tag (§9).
 - **The body selector's precedence and every body that skips the AI.** None of them goes through the notes prompt (§3.4).
 - **The transport and the chunked path's mechanics.** Validation, the single bad-content retry, timeouts, part sizing, halving and the saved part notes all stay as they are.
@@ -68,7 +68,7 @@ The default prompt asks for this body and nothing else:
 
 - **The headline** is optional. Where there is one, it is the body's first line, followed by one blank line and then the first section (§3).
 - **The sections** always run in this fixed order: 💥 Breaking, ✨ Added, 🔧 Changed, ⚠️ Deprecated, 🗑️ Removed, 🐛 Fixed, 🔒 Security. A section with no items is left out. The order is the same in every release, whatever its main work. The headline already lifts the main work above every section, so reordering the sections would answer the same problem twice and cost readers an order they can rely on across versions. What belongs in each section is §4.
-- **Nothing else.** The headline is the only thing that may appear above the first section: no summary paragraph, no TL;DR, no label, no other preamble. The default prompt's "start directly with the first section header" gives way to this headline-or-first-section rule, which still forbids every other preamble. The notes carry no wrapper, markers or machine-parseable labels, and no commentary or sign-off.
+- **Nothing else.** The headline is the only thing that may appear above the first section: no summary paragraph, no TL;DR, no label, no other preamble. The default prompt's "start directly with the first section header" gives way to this headline-or-first-section rule, which still forbids every other preamble. The notes carry no wrapper, markers or machine-parseable labels, and no commentary or sign-off. The one body without sections is §5.1's maintenance line.
 
 #### 2.2 Bullets (unchanged)
 
@@ -109,7 +109,7 @@ Release notes for diffs of any size — a diff too big for the model is split in
 #### 3.2 When a release has one
 
 - **A main body of work gets a headline.** A main body of work is one feature, rework or fix that anyone asked "what is this release?" would name. The test, run against the notes' own bullets: most of the notable changes serve it, or it alone clearly outweighs all the other changes put together. The largest of several separate changes is not a main body of work.
-- **Two co-equal bodies are named together.** Where two bodies of work of equal weight each pass the test, the one sentence names both. That is at most two, still in one sentence, and still led by the benefit. "And" in a headline joins only two co-equal bodies, never two pieces of one body and never a main body plus a lesser piece. A release with more than two co-equal bodies is not designed for: the one-sentence limit stands, and the model handles the case as best it can.
+- **Two co-equal bodies are named together.** Where two bodies of work of equal weight each pass the test, the one sentence names both. That is at most two, still in one sentence, and still led by the benefit. A headline names a second subject only when it is a co-equal body of work: never two pieces of one body, and never a main body plus a lesser piece. A release with more than two co-equal bodies is not designed for: the one-sentence limit stands, and the model handles the case as best it can.
 - **No headline where one bullet already states the whole release** and nothing else stands beside it. There the headline would only repeat that bullet. The test is whether a single bullet states the whole release, not how many bullets there are. Where the main work is spread over several bullets and none of them names the whole, the headline stays even when the notes hold nothing else, because it is the one line that says what the release is. A main feature written as a single bullet beside unrelated changes keeps its headline too, since there is a rest to set it apart from.
 - **No headline on a grab-bag.** A release of small unrelated changes has no main body of work, however large the largest of them, so there is nothing to sum up. Its notes start with the first section. A theme stitched across such changes is the narrative thread §3.1 rules out.
 - **When in doubt, leave it out.** The AI writes a headline only when one body of work (or two, as above) clearly stands out. Otherwise the notes start with the first section. A missing headline costs no more than today's notes do. A wrong one misstates the release in its most-read line, and on an unattended run (`mint release -y`, as agent sessions run it) nobody reads the notes before they ship. Accepted cost: some releases that deserved a headline go without one. On an attended run the review gate's existing correctives remain: `e` to edit, and `r` to regenerate with a one-time nudge such as "lead with the auth work".
@@ -120,7 +120,7 @@ The AI picks the headline by what the release changes for its user, read from th
 
 #### 3.4 Bodies that carry no headline
 
-The headline exists only where the notes prompt writes it. mint never writes or adds one. The body selector has seven kinds (`rg -n '// Kind[A-Za-z]+:' internal/notes/select.go` → 7 lines), and only the AI-written body goes through the notes prompt. The other six carry no headline:
+mint never writes or adds a headline: the AI writes one only through the notes prompt. The body selector has seven kinds (`rg -n '// Kind[A-Za-z]+:' internal/notes/select.go` → 7 lines), and only the AI-written body goes through the notes prompt. mint and its AI add no headline to the other six. A body the operator writes, a `--notes-file` body or notes written in the editor, carries one only if the operator writes it:
 
 - the first release's fixed `Initial release.` body;
 - the maintenance stub, for an empty post-exclusion diff;
@@ -153,7 +153,7 @@ Every change is placed by comparing it with the previous release, never with ear
 - **What qualifies.** Something users already do stops working, or gives a different result they must act on. Examples: a removed or renamed command, flag, option, setting or key binding; a default changed so that existing setups behave differently in a way that matters; a changed output or file format that scripts or tools read; data or configuration from the previous release no longer read.
 - **What does not.** A change that only adds, keeps more, allows more or improves is not breaking.
 - **When unsure, it is not breaking**, and it goes in its usual section. The section sits at the top of the notes, so a false alarm stands in the opening lines. This is the same asymmetry as the headline's (§3.2): a missed flag costs what today's notes already cost, while a false one misstates the release where every reader looks.
-- **What breaks, and what to do.** Each bullet says both in its one sentence.
+- **What breaks, and what to do.** Each bullet says both in its one sentence. What to do comes only from what the diff shows, such as a new name, a replacement, or a setting that keeps the old behaviour. Where the diff shows none, the bullet says what breaks and stops there.
 
 A reader upgrading must meet what breaks before anything else, which is why the section exists. The narrow definition keeps it from crying wolf at the top of the notes.
 
@@ -165,6 +165,7 @@ A reader upgrading must meet what breaks before anything else, which is why the 
 - **Out:** how the software is built and maintained. That covers CI and release tooling, linting, build scripts, test suites and harnesses, internal packages, modules and refactors, internal flags and plumbing commands, data-migration numbering, contributor docs, and repo housekeeping such as restructuring the README. A new internal package is not a feature: the notes describe what it lets users do, or leave it out.
 - **The test is whether a user meets or notices the change**, not whether the code behind it is internal. A speed-up users notice belongs to them and is listed. Where the shipped files are the product (prompts, skills or templates the software ships and uses), changes to those files count.
 - **In the user's terms.** Every change is described as users see and use it, never in the code's names, the mechanism, or a design document's jargon.
+- **A release with nothing users meet.** Where every change in the release is one this section leaves out, the notes are one plain line saying the release is maintenance with no user-facing changes, in the shape of the empty-diff stub (`Maintenance release — no notable source changes`), with no headline and no sections. On the chunked path, a part whose slice holds nothing users meet returns the same line, and the merge writes it only when every part's notes are that line. The notes are never empty: the transport rejects an empty body as a failed call.
 
 #### 5.2 True to the release
 
@@ -261,7 +262,7 @@ Measured with `jq -c '.field_counts' .workflows/headline-first-release-notes/exp
 
 - **Starting wording.** E1's frozen candidate, `new-v3` ([prompt](../../experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md), SHA-256 `c1f149842689ba5f6b7338579514258a0fa23416c04421253eacfaae62630a0f`), is the starting point. Its rules are those of §2–§6 but for one, where what ships follows this specification: new-v3 looks for what the previous release already had only in unchanged context lines and in code the diff moves or renames, while §5.2 adds the diff's removed lines (`rg -n 'unchanged context lines|removed lines' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → line 98 only, no removed-lines hit). Its internal-efficiency leave-out line is a tuning point (§10.3). Two more parts of what ships are not new-v3's: the closing reminder is §7.1's format-neutral wording, not new-v3's headline-naming one, and the chunk, piece and merge framings follow §7.1 and §8. E1 never exercised the chunked path.
 - **Tuning** happens during implementation, on E1's releases. The wording stays general: no prompt text names, quotes or paraphrases a change from the 31 sampled releases, and any example added is invented (the three shipped altitude examples are exempt). That generality, together with a bar that asks for no worse than today rather than a tuned threshold, is the guard against wording fitted to the releases it is tested on.
-- **Acceptance** is one pass of the frozen candidate over the 26 held-out releases, two repeats each. It is run as E1 ran it: E1's harness, the same inputs, the same AI command and model, E1's rubric and judge grouping, and E1's scoring. It sits outside mint's test suite, which never spawns a real AI command.
+- **Acceptance** is one pass of the wording as it ships, frozen when tuning ends, over the 26 held-out releases, two repeats each: the rewritten default prompt, closed by §7.1's format-neutral reminder. It is otherwise run as E1 ran it: E1's harness, the same inputs, the same AI command and model, E1's rubric and judge grouping, and E1's scoring. It sits outside mint's test suite, which never spawns a real AI command.
 
 #### 10.3 Where the tuning goes
 
