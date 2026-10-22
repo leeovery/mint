@@ -231,6 +231,51 @@ Lifting the headline into the title is ruled out for four reasons:
 
 The bare-tag title also keeps `regenerate --reuse`'s rebuild of the provider release from the tag annotation body deterministic and free of parsing.
 
+### 10. The Shipping Bar
+
+#### 10.1 The bar
+
+The rewritten default prompt ships when every count is at least as good as today's prompt's, each count on its own. The counts are taken on E1's 26 held-out releases, two repeats each (52 bodies), judged blind with E1's rubric and judges, and scored as E1 scored them. Today's prompt was measured on the same inputs:
+
+| Count | Bar: today's prompt | E1's frozen candidate |
+|---|---|---|
+| Clean lead | at least 21 of 52 | 38 |
+| Wrong-subject headline | none | 0 |
+| Inversions | at most 30 | 16 |
+| Misfiled | at most 84 | 78 |
+| Duplicates | at most 29 | 19 |
+| Internal items | at most 77 | 28 |
+| False claims | at most 25 | 34 |
+| In-release-as-change | at most 22 | 13 |
+| Breaking changes flagged | at least 1 of 10 | 8 |
+| Missing items | at most 9 | 13 |
+| Format slips | at most 5 | 5 |
+
+Measured with `jq -c '.field_counts' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/data/secondary.json` → current `inversions 30, misfiled 84, duplicates 29, internal 77, false_claims 25, in_release_as_change 22, missing 9, format_slips 5`; new `16, 78, 19, 28, 34, 13, 13, 5`. Also `jq -c '[.lead.current.clean, .lead.new.clean, .breaking.current.flagged, .breaking.new.flagged]' …/data/secondary.json` → `[21,38,1,8]`, and `jq -c '.classes["lead and headline"].new_wrong_subject' …/data/scores.json` → `0`.
+
+- **No netting.** E1's own rule scored false claims and in-release-as-change as one class. That class sat level at 47 while false claims rose from 25 to 34. Here each count clears its own line.
+- **The headline's line.** Today's notes have no headline to compare against, so for the headline "at least as good" means no wrong-subject headline.
+- **Why this bar.** The rules are decided, and E1 shows them moving the notes the right way on nearly every count. The judges preferred the new notes on 21 of 26 releases, and the user, reading blind, on 4 of 6. The one shipping outcome that would be wrong is a regression. This bar rules out every regression while the remaining gap is wording. E1's pre-registered thresholds and their successor-experiment branch do not gate shipping. E1's measurement carries on as the acceptance check.
+
+#### 10.2 Tuning and acceptance
+
+- **Starting wording.** E1's frozen candidate, `new-v3` ([prompt](../../experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md), SHA-256 `c1f149842689ba5f6b7338579514258a0fa23416c04421253eacfaae62630a0f`), is the starting point. Its rules are those of §2–§6. Two parts of what ships are not new-v3's: the closing reminder is §7.1's format-neutral wording, not new-v3's headline-naming one, and the chunk, piece and merge framings follow §7.1 and §8. E1 never exercised the chunked path.
+- **Tuning** happens during implementation, on E1's releases. The wording stays general: no prompt text names, quotes or paraphrases a change from the 31 sampled releases, and any example added is invented (the three shipped altitude examples are exempt). That generality, together with a bar that asks for no worse than today rather than a tuned threshold, is the guard against wording fitted to the releases it is tested on.
+- **Acceptance** is one pass of the frozen candidate over the 26 held-out releases, two repeats each. It is run as E1 ran it: E1's harness, the same inputs, the same AI command and model, E1's rubric and judge grouping, and E1's scoring. It sits outside mint's test suite, which never spawns a real AI command.
+
+#### 10.3 Where the tuning goes
+
+- **False claims** are furthest from the bar (34 against at most 25), and then **missing items** (13 against at most 9). Both must come back to the bar while every other count holds. E1's candidate dropped a speed-up users notice under its "internal efficiency a user would not notice" line, which is why §5.1 draws the line at what users notice.
+- **The neutral reminder** (§7.1) is untested. The first runs check that the headline survives it.
+- **Known weak spots** are wording only, and the rules stay unchanged:
+  - two-body releases losing their headline, or getting half of one (§3.2);
+  - a rework of existing behaviour filed under ✨ Added (36 in today's notes, 34 in E1's candidate);
+  - 💥 Breaking misfilings, and false breaks that assert a previous state the diff contradicts.
+
+#### 10.4 Alongside the counts
+
+The read by eye on real releases stays alongside the counts, outside the bar. The counts weigh an error at the top of the notes the same as one at the bottom. Both releases where the user, reading blind, preferred today's notes carried the new prompt's errors in their opening lines.
+
 ---
 
 ## Working Notes
