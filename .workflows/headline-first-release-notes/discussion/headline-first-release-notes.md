@@ -603,6 +603,28 @@ The sections keep one fixed order — 💥 Breaking, ✨ Added, 🔧 Changed, �
 
 ---
 
+## True To The Release
+
+### Context
+
+The audit (Context → Evidence) found false or stale claims shipped in ~7 of 31 releases — behaviour invented from a README, comment or test edit, last release's features re-announced, already-true behaviour presented as new, a never-shipped bug presented as fixed — and work built in this release presented as a change or fix to the last in ~7. Scope decided the rules: no behaviour claimed from docs, comments or tests alone; work built in this release not presented as a change or fix to the last; nothing old presented as new. Its stated cause was that from the diff alone the AI cannot tell new behaviour from newly documented behaviour. E1 was asked, among other things, whether these failures need mint to hand the AI something it lacks.
+
+### Journey
+
+E1's rules (`new-v3`): claim only behaviour the code in this diff changes — documentation, READMEs, comments, examples and tests describe behaviour and editing them does not change it (where the files are the product, changing them changes it); do not present behaviour as new when the diff shows it already existed, in unchanged context lines or in code only moved or renamed; comments and docs written during the release describe a "before" that may be an earlier state inside the release; before keeping a bullet, find the code change behind it, and drop it when every changed line behind it is a comment, documentation or a test; a new test asserting a behaviour is evidence it already existed.
+
+Measured on the held-out set: in-release-as-change 22 → 13; false claims 25 → 34 — the class level at 47. The rise concentrates in four releases (portal v0.8.0 1 → 4, agntc v0.6.0 2 → 4, agentic-workflows v0.6.0 3 → 5, switchboard v0.1.0 0 → 2; exploratory, from the judgements against the blind key). Nearly every false claim in either arm is one of two kinds: behaviour presented as new or changed that the previous release already had, or a claim drawn from a README edit with no code behind it; several new-arm false claims sit in bullets worded with a before ("moved from", "now", "no longer"), the shape the "check the before" rule names.
+
+Whether mint must hand the AI more: the judges called 3 of 47 residuals input-absent (switchboard v0.1.5's config keys, README rows for code that shipped in v0.1.4), and the session spot-checked three "the previous release already had it" calls against the inputs — each fact sat in the diff's removed lines (portal v0.8.0's input removes the `k` kill binding it then claims was moved to `k`; agntc v0.6.0's removes a comment saying colour is stripped for `NO_COLOR`; switchboard v0.1.0's removes a README line giving every account a `reserve` setting). The previous release's state was in front of the AI; the prompt did not get it used. So new inputs would not answer the failure; whether wording can make one call read a diff of up to 1.9 MB that carefully is what the tuning under the Shipping Bar finds out.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Scope (the accuracy rules), E1's residual sorting (input-absent 3 of 47, spot-checked against the inputs), and the Shipping Bar (false claims at most 25 and in-release-as-change at most 22, each on its own).
+
+The accuracy rules stand as Scope decided them: no behaviour claimed from documentation, comments or tests alone; work built in this release never presented as a change or fix to the last; nothing the previous release already had presented as new. mint hands the AI nothing new for them — the previous release's state is already in the diff's removed and context lines — and the prompt's wording carries the fix, held to the Shipping Bar: E1's wording already brings in-release-as-change under it, and false claims, which rose, must come back to today's count or below. Deciding factor: the AI had what it needed in all but 3 of 47 cases, so the gap is how the prompt gets the diff read, not what mint sends. Confidence: high on the rules and the inputs; medium on how far wording gets false claims down — the riskiest count under the bar.
+
+---
+
 ## Summary
 
 ### Key Insights

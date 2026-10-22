@@ -59,7 +59,7 @@
               "parent": null
             },
             "true-to-the-release": {
-              "status": "pending",
+              "status": "decided",
               "parent": null
             },
             "breaking-changes": {
