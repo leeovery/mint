@@ -26,8 +26,8 @@ Two alternatives also fit:
 **Proposed Text**:
 - **A release with nothing users meet** gets a body new-v3 never wrote (§10.2). The first runs also take at least one such release through a single call, and through the part calls and the merge with every part's slice holding nothing users meet, and check that the notes are §5.1's maintenance line. A headline on that release, or a single call or merge that returns an empty body and fails the run, holds shipping until the wording clears it: today's notes have neither. Notes that list the release's internal changes instead cost what today's notes cost, and are tuned like the known weak spots below. A single call that writes the maintenance line for a release with a change users meet also holds shipping until the wording clears it, in any run including the acceptance pass, as it does in merged notes: today's notes never write that line, and the counts would weigh it only by the changes it drops.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: The session's call over the path's own rule; landed in the discussion's A Release With Nothing Users Meet decision (written this sitting), then in §10.3.
 
 ---
 
