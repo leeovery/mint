@@ -17,8 +17,8 @@ On a release written in parts, a part whose slice is only tests, docs or tooling
 
 **Proposed Text**:
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: Settled by derivation (a part cannot speak for the release; an empty body fails; shared wording stays format-neutral). Landed in the discussion as a dated revision of Chunked Path's decision, with A Release With Nothing Users Meet, the Chunked Path journey and the Summary repaired; the specification re-aligned in §3.4, §5.1, §7.1 and §8.
 
 ---
 
