@@ -285,6 +285,25 @@ func (st *splitTransport) Generate(_ context.Context, prompt string) (string, er
 	return st.mergeBody, nil
 }
 
+// partCap is a max_prompt_bytes under which each file of about fileBytes in a
+// multi-file diff goes in a call of its own, as the default prompt's length changes.
+func partCap(fileBytes int) int {
+	return len(notes.DefaultPrompt) + fileBytes + 1_200
+}
+
+func capToml(maxPromptBytes int) string {
+	return fmt.Sprintf("max_prompt_bytes = %d\n", maxPromptBytes)
+}
+
+var partCapBytes = partCap(10_000)
+
+var partCapToml = capToml(partCapBytes)
+
+// halvableFileBytes sizes a file so that a call carrying it, cut in half, still
+// leaves room for diff past the default prompt, as the default prompt's length
+// changes.
+var halvableFileBytes = len(notes.DefaultPrompt) + 10_000
+
 // twoFileDiff is a range diff of two files of about size bytes each.
 func twoFileDiff(size int) string {
 	var b strings.Builder
@@ -303,7 +322,7 @@ func TestRegenerateFreshBody_OverCap_ChunksAndMergesOverTheVersionsRange(t *test
 	tr := &splitTransport{mergeBody: "## merged fresh notes\n"}
 
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
+	cfg.MaxPromptBytes = partCapBytes
 	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
 	body, err := engine.RegenerateFreshBody(t.Context(), f, tr, t.TempDir(), cfg, res, engine.NotesSinks{})
 	if err != nil {

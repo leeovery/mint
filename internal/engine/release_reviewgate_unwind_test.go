@@ -145,7 +145,7 @@ func TestRelease_FailedChunkedRegen_UnwindsThePreTagCommit(t *testing.T) {
 	}{
 		{
 			name:      "re-merge on chunked notes fails",
-			config:    "max_prompt_bytes = 20000\n\n" + preTagHookConfig,
+			config:    partCapToml + "\n" + preTagHookConfig,
 			seedNotes: seedSixPartNotes,
 			classify:  "OTHER",
 			regen:     failsWith(&ai.GenerationError{Stdout: loginOutput, ExitCode: 1}),

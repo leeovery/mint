@@ -380,6 +380,42 @@ func TestDefaultPrompt_AsksBreakingBulletForWhatBreaksAndWhatTheDiffShowsToDo(t 
 	)
 }
 
+func TestDefaultPrompt_IncludesWhatUsersMeet(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Include only changes a user of the software meets: what it does, its commands, options, configuration, output, errors, performance and compatibility.",
+	)
+}
+
+func TestDefaultPrompt_LeavesOutHowSoftwareIsBuiltAndMaintained(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Leave out how the software is built and maintained: CI and release tooling, linting, build scripts, test suites and harnesses, "+
+			"internal packages, modules and refactors, internal flags and plumbing commands, data-migration numbering, "+
+			"contributor docs, and repo housekeeping such as restructuring the README.",
+		"A new internal package is not a feature: describe what it lets users do, or leave it out.",
+	)
+}
+
+func TestDefaultPrompt_TestsWhetherUserMeetsOrNoticesChange(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"The test is whether a user meets or notices the change, not whether the code behind it is internal: a speed-up users notice is listed.",
+		"Where the shipped files are the product, such as prompts, skills or templates the software ships and uses, changes to those files count.",
+	)
+}
+
+func TestDefaultPrompt_DescribesChangesInUsersTerms(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Describe every change as users see and use it, never in the code's names, the mechanism, or a design document's jargon.",
+	)
+}
+
 func TestDefaultPrompt_CarriesBulletRulesUnchanged(t *testing.T) {
 	t.Parallel()
 

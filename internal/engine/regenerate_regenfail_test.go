@@ -53,26 +53,21 @@ func failsNudgedMerge(prompt string) error {
 	return nil
 }
 
-// chunkedFresh is a fresh two-part chunked run over a 20,000-byte cap whose `r`
+// chunkedFresh is a fresh two-part chunked run over partCapBytes whose `r`
 // re-merge fails, its calls counted.
 func chunkedFresh() (*runner.FakeRunner, *countedTransport, config.Config) {
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
+	cfg.MaxPromptBytes = partCapBytes
 	return notesGit, &countedTransport{answer: twoPartTransport(failsNudgedMerge)}, cfg
 }
 
 // singlePassFresh scripts the git reads of a fresh single-pass run and of one `r` that re-diffs its range.
 func singlePassFresh() *runner.FakeRunner {
 	notesGit := runner.NewFakeRunner()
-	seedTwoFileGenerations(notesGit, ladderFileBytes, 2)
+	seedTwoFileGenerations(notesGit, halvableFileBytes, 2)
 	return notesGit
 }
-
-// ladderFileBytes sizes each of singlePassFresh's two files so that halving its
-// overflowing single-pass call cuts each file into two pieces, four parts in all,
-// as the default prompt's length changes.
-var ladderFileBytes = len(notes.DefaultPrompt) + 10_000
 
 // regenFailRun is `mint release regenerate v1.4.0 --source fresh --target both` at a
 // terminal without -y, its chunk notes saving under a user cache dir of its own.

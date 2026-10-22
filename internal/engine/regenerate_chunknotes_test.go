@@ -46,10 +46,10 @@ func (run *regenChunkNotes) savedPath(tag string) string {
 }
 
 // overCapFresh produces res's fresh notes over a two-file range diff that chunks into
-// two parts under a 20,000-byte cap, answered by transport.
+// two parts under partCapBytes, answered by transport.
 func overCapFresh(ctx context.Context, transport func(context.Context, string) (string, error), res version.Resolution, sinks engine.NotesSinks) (string, error) {
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
+	cfg.MaxPromptBytes = partCapBytes
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
 	return engine.RegenerateFreshBody(ctx, notesGit, transportFunc(transport), "", cfg, res, sinks)
 }

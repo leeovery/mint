@@ -135,7 +135,7 @@ func TestRelease_AnExcludeAnswer_LeavesItsFilesOutOfEveryCallOfAChunkedRun(t *te
 	t.Parallel()
 
 	rec := answeringGates([]presenter.Choice{presenter.ChoiceExclude}, nil)
-	f, _, err := answeredRelease(t, rec, "max_prompt_bytes = 20000\n",
+	f, _, err := answeredRelease(t, rec, partCapToml,
 		withAnswersCommit(
 			ScriptedOut(twoFileDiff(10_000)+designDocDiff),
 			ScriptedOut(twoFileDiff(10_000)),

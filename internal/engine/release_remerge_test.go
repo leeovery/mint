@@ -67,7 +67,7 @@ func TestRelease_RegenOnChunkedNotes_MakesOneMergeCallCarryingTheNudge(t *testin
 	t.Parallel()
 
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n")
+	writeConfig(t, root, partCapToml)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedSixPartNotes(f)
@@ -109,7 +109,7 @@ func TestRelease_RegenOnChunkedNotes_ReShowsTheReMergeAndShipsItByteIdentical(t 
 	t.Parallel()
 
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n")
+	writeConfig(t, root, partCapToml)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedSixPartNotes(f)
@@ -158,7 +158,7 @@ func TestRelease_SecondRegenOnChunkedNotes_ReMergesTheWavesNotesWithOnlyItsOwnNu
 	t.Parallel()
 
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n")
+	writeConfig(t, root, partCapToml)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedSixPartNotes(f)
@@ -240,7 +240,7 @@ func TestRelease_RegenOnHalvedSinglePassNotes_MakesOneMergeCallOverTheThreeParts
 	var diff strings.Builder
 	for _, path := range []string{"api/a.go", "core/b.go", "web/c.go"} {
 		diff.WriteString("diff --git a/" + path + " b/" + path + "\n@@ -1 +1,9 @@\n")
-		diff.WriteString(strings.Repeat("+"+strings.Repeat("x", 63)+"\n", 10_000/64))
+		diff.WriteString(strings.Repeat("+"+strings.Repeat("x", 63)+"\n", halvableFileBytes/64))
 	}
 	f.SeedSequence("git",
 		ScriptedOut(diff.String()),

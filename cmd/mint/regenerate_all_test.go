@@ -251,7 +251,7 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange(t *testi
 		runner.ScriptedCall{Result: runner.Result{Stdout: merged}},
 	)
 
-	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), publish.NewGitHubPublisher(f))
+	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: twoPartCapBytes}, t.TempDir(), publish.NewGitHubPublisher(f))
 	body, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", engine.NotesSinks{})
 	if err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
@@ -264,8 +264,8 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionIsChunkedOverItsRange(t *testi
 	for _, inv := range f.Invocations() {
 		if inv.Name == "claude" {
 			aiCalls++
-			if len(inv.Stdin) > 20_000 {
-				t.Errorf("an AI call is %d bytes, over the 20000-byte cap", len(inv.Stdin))
+			if len(inv.Stdin) > twoPartCapBytes {
+				t.Errorf("an AI call is %d bytes, over the %d-byte cap", len(inv.Stdin), twoPartCapBytes)
 			}
 		}
 	}
@@ -337,8 +337,8 @@ func (p *partsProgress) Merging(int)               { p.merged++ }
 func (p *partsProgress) Merged(int)                {}
 func (p *partsProgress) CallSucceeded(int)         {}
 
-// seedOverCapFreshVersion scripts a fresh version's two-file range diff, over a
-// 20,000-byte cap, and its two chunk calls and merge.
+// seedOverCapFreshVersion scripts a fresh version's two-file range diff, over
+// twoPartCapBytes, and its two chunk calls and merge.
 func seedOverCapFreshVersion(f *runner.FakeRunner) {
 	var diff strings.Builder
 	for _, path := range []string{"api/a.go", "core/b.go"} {
@@ -371,7 +371,7 @@ func TestNewBatchBodyProducer_Fresh_OverCapVersionReportsItsProgress(t *testing.
 	seedOverCapFreshVersion(f)
 	progress := &partsProgress{}
 
-	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), publish.NewGitHubPublisher(f))
+	produce := newBatchBodyProducer(f, config.Config{MaxPromptBytes: twoPartCapBytes}, t.TempDir(), publish.NewGitHubPublisher(f))
 	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}, "", engine.NotesSinks{Progress: progress}); err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestNewRegenerateBodyProducer_Fresh_OverCapVersionReportsItsProgress(t *tes
 	progress := &partsProgress{}
 
 	res := version.Resolution{Tag: "v1.1.0", PreviousTag: "v1.0.0"}
-	produce := newRegenerateBodyProducer(f, config.Config{MaxPromptBytes: 20_000}, t.TempDir(), res, publish.NewGitHubPublisher(f))
+	produce := newRegenerateBodyProducer(f, config.Config{MaxPromptBytes: twoPartCapBytes}, t.TempDir(), res, publish.NewGitHubPublisher(f))
 	if _, err := produce(t.Context(), engine.RegenerateSourceFresh, engine.NotesSinks{Progress: progress}); err != nil {
 		t.Fatalf("produce returned unexpected error: %v", err)
 	}

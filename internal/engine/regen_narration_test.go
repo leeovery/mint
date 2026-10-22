@@ -356,7 +356,7 @@ func TestRelease_RegenThatMakesOneCall_NarratesAsBuilt(t *testing.T) {
 		t.Parallel()
 
 		root := t.TempDir()
-		writeConfig(t, root, "max_prompt_bytes = 20000\n")
+		writeConfig(t, root, partCapToml)
 		f := runner.NewFakeRunner()
 		seedPriorTagReadGates(f, root, "main")
 		seedSixPartNotes(f)

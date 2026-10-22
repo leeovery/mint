@@ -139,8 +139,8 @@ func TestRelease_MergeClassifiedSize_Abort_TooLargeToMergeWithTheMergeOutputVerb
 // chunked run whose core/b.go part overflows the model.
 func produceCoreOverflow(ctx context.Context, tr notes.Transport, root string, res version.Resolution) (string, *runner.FakeRunner, error) {
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
-	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
+	cfg.MaxPromptBytes = partCap(halvableFileBytes)
+	notesGit := seedFreshGit(twoFileDiff(halvableFileBytes), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
 	body, err := engine.RegenerateFreshBody(ctx, notesGit, tr, root, cfg, res, engine.NotesSinks{})
 	return body, notesGit, err
 }

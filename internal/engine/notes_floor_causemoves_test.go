@@ -200,7 +200,7 @@ func TestRelease_NotesFloorCauseMoves_MergeTooLargeWithTheRepoOwnCommandTakesOnl
 			t.Parallel()
 
 			run := newChunkNotesRun(t, "abort", mergeTooLargeTransport(tc.partNotes))
-			writeConfig(t, run.root, "ai_command = \"llm -m gpt-4o\"\nmax_prompt_bytes = 20000\n\n"+abortConfig)
+			writeConfig(t, run.root, "ai_command = \"llm -m gpt-4o\"\n"+partCapToml+"\n"+abortConfig)
 			run.deps.Yes = true
 
 			err := run.release(t, t.Context())

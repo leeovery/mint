@@ -25,7 +25,7 @@ const (
 var fivePartPaths = []string{"a/1.go", "b/2.go", "c/3.go", "d/4.go", "e/5.go"}
 
 // seedFivePartFreshGit scripts a fresh range of five files that chunks into five parts
-// under a 20,000-byte cap.
+// under partCapBytes.
 func seedFivePartFreshGit() *runner.FakeRunner {
 	var diff, nameStatus, numstat strings.Builder
 	for _, path := range fivePartPaths {
@@ -39,7 +39,7 @@ func seedFivePartFreshGit() *runner.FakeRunner {
 
 func chunkingCfg() config.Config {
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
+	cfg.MaxPromptBytes = partCapBytes
 	return cfg
 }
 
@@ -283,7 +283,7 @@ func TestRegenerateRun_RegenOnHalvedSinglePassFreshNotes_MakesOneMergeCallOverTh
 	var diff strings.Builder
 	for _, path := range []string{"api/a.go", "core/b.go", "web/c.go"} {
 		diff.WriteString("diff --git a/" + path + " b/" + path + "\n@@ -1 +1,9 @@\n")
-		diff.WriteString(strings.Repeat("+"+strings.Repeat("x", 63)+"\n", 10_000/64))
+		diff.WriteString(strings.Repeat("+"+strings.Repeat("x", 63)+"\n", halvableFileBytes/64))
 	}
 	notesGit := seedFreshGit(diff.String(), "M\tapi/a.go\nM\tcore/b.go\nM\tweb/c.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n156\t0\tweb/c.go\n")
 	tr := &halvedToThreeTransport{}

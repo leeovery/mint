@@ -190,13 +190,13 @@ func (k *keptChunkNotes) Save(repoRoot, tag, notes string) (string, error) {
 }
 
 // newSixPartFallbackRun is a release under fallback whose pre_tag hook leaves an
-// artifact commit, over six files of about 10 KB under a 20,000-byte cap, one part a
+// artifact commit, over six files of about 10 KB under partCapBytes, one part a
 // file, whose part 3 fails for good; kept records what its chunk notes store saves.
 // The caller seeds what follows the commit-subject list.
 func newSixPartFallbackRun(t *testing.T) (*chunkNotesRun, *keptChunkNotes) {
 	t.Helper()
 	run := &chunkNotesRun{root: t.TempDir(), userCache: t.TempDir(), f: runner.NewFakeRunner(), rec: &presentertest.RecordingPresenter{}}
-	writeConfig(t, run.root, "max_prompt_bytes = 20000\n\n"+fallbackConfig+"\n[release.hooks]\npre_tag = \"build.sh\"\n")
+	writeConfig(t, run.root, partCapToml+"\n"+fallbackConfig+"\n[release.hooks]\npre_tag = \"build.sh\"\n")
 	run.f.Seed("sh", runner.Result{}, nil)
 	seedPriorTagReadGates(run.f, run.root, "main")
 	var nameStatus, numstat strings.Builder

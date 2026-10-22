@@ -17,11 +17,11 @@ const (
 	mergeTooLargePhrase = "part notes too large to merge"
 )
 
-// outsizedContext is operator text larger than a 20,000-byte cap on its own.
+// outsizedContext is operator text larger than partCapBytes on its own.
 var outsizedContext = strings.Repeat("Project context the operator wrote at length.\n", 600)
 
-// bigPartNotes is chunk notes large enough that two of them overflow a 20,000-byte
-// merge prompt.
+// bigPartNotes is chunk notes large enough that two of them overflow a merge prompt
+// under partCapBytes.
 var bigPartNotes = strings.Repeat("- a long note about this part\n", 400)
 
 // uncallableCase is a release over a two-file diff of about 10 KB a file whose notes
@@ -41,13 +41,13 @@ func uncallableCases() []uncallableCase {
 	return []uncallableCase{
 		{
 			name:    "context leaves no room for diff",
-			config:  "max_prompt_bytes = 20000\n\n[release]\ncontext = \"context.md\"\n",
+			config:  partCapToml + "\n[release]\ncontext = \"context.md\"\n",
 			context: outsizedContext,
 			phrase:  noRoomPhrase,
 		},
 		{
 			name:    "prompt override leaves no room for diff",
-			config:  "max_prompt_bytes = 20000\n\n[release]\nprompt = \"context.md\"\n",
+			config:  partCapToml + "\n[release]\nprompt = \"context.md\"\n",
 			context: outsizedContext,
 			phrase:  noRoomPhrase,
 		},
@@ -58,7 +58,7 @@ func uncallableCases() []uncallableCase {
 		},
 		{
 			name:      "merge prompt over the cap",
-			config:    "max_prompt_bytes = 20000\n\n[release]\n",
+			config:    partCapToml + "\n[release]\n",
 			claude:    []runner.ScriptedCall{ScriptedOut(bigPartNotes), ScriptedOut(bigPartNotes)},
 			wantCalls: 2,
 			phrase:    mergeTooLargePhrase,
@@ -181,9 +181,9 @@ type uncallableRegenerateCase struct {
 
 func uncallableRegenerateCases() []uncallableRegenerateCase {
 	return []uncallableRegenerateCase{
-		{name: "context leaves no room for diff", maxBytes: 20_000, context: outsizedContext, phrase: noRoomPhrase},
+		{name: "context leaves no room for diff", maxBytes: partCapBytes, context: outsizedContext, phrase: noRoomPhrase},
 		{name: "cap below mint's own instructions", maxBytes: 1_000, phrase: noRoomPhrase},
-		{name: "merge prompt over the cap", maxBytes: 20_000, notes: bigPartNotes, wantCalls: 2, phrase: mergeTooLargePhrase},
+		{name: "merge prompt over the cap", maxBytes: partCapBytes, notes: bigPartNotes, wantCalls: 2, phrase: mergeTooLargePhrase},
 	}
 }
 

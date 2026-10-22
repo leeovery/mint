@@ -17,7 +17,7 @@ func TestRegenerate_ChunkedFreshRunFails_SavesTheFinishedPartsNotesInTheGivenSto
 	t.Parallel()
 
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".mint.toml"), []byte("max_prompt_bytes = 20000\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".mint.toml"), []byte(twoPartCapToml), 0o644); err != nil {
 		t.Fatalf("writing .mint.toml: %v", err)
 	}
 	chunkNotesBase := t.TempDir()

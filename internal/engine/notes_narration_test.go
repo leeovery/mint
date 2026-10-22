@@ -108,7 +108,7 @@ func TestRelease_OverCap_NarratesTheSplitEachPartTheMergeAndThePartCount(t *test
 	t.Parallel()
 
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n")
+	writeConfig(t, root, partCapToml)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedOverCapNotes(f)
@@ -124,14 +124,14 @@ func TestRelease_OverCap_NarratesTheSplitEachPartTheMergeAndThePartCount(t *test
 	if len(stages) != 1 {
 		t.Fatalf("notes stages = %d, want one", len(stages))
 	}
-	assertChunkedNotesStage(t, afterCheck(t, stages[0]), 20_000)
+	assertChunkedNotesStage(t, afterCheck(t, stages[0]), partCapBytes)
 }
 
 func TestRelease_OverCap_PlainMode_PrintsEachUpdateAsItsOwnLine(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n")
+	writeConfig(t, root, partCapToml)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedOverCapNotes(f)
@@ -196,11 +196,11 @@ func TestRelease_UnderCap_NotesStageNarratesAsBuilt(t *testing.T) {
 }
 
 // overCapFreshBody produces a fresh version's notes over a two-file range diff whose
-// single-pass prompt is over a 20,000-byte cap.
+// single-pass prompt is over partCapBytes.
 func overCapFreshBody(ctx context.Context, res version.Resolution, sinks engine.NotesSinks) (string, error) {
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
+	cfg.MaxPromptBytes = partCapBytes
 	return engine.RegenerateFreshBody(ctx, notesGit, &splitTransport{mergeBody: "## merged\n"}, "", cfg, res, sinks)
 }
 
@@ -228,7 +228,7 @@ func TestRegenerateRun_FreshOverCap_NarratesLikeAChunkedRelease(t *testing.T) {
 	if len(stages) != 1 {
 		t.Fatalf("notes stages = %d, want one", len(stages))
 	}
-	assertChunkedNotesStage(t, stages[0], 20_000)
+	assertChunkedNotesStage(t, stages[0], partCapBytes)
 }
 
 func TestRegenerateAll_FreshOverCapVersions_EachNarrateLikeAChunkedRelease(t *testing.T) {
@@ -257,8 +257,8 @@ func TestRegenerateAll_FreshOverCapVersions_EachNarrateLikeAChunkedRelease(t *te
 	}
 	// The oldest version is its first release: its notes take no AI call.
 	assertSinglePassNotesStage(t, stages[0])
-	assertChunkedNotesStage(t, stages[1], 20_000)
-	assertChunkedNotesStage(t, stages[2], 20_000)
+	assertChunkedNotesStage(t, stages[1], partCapBytes)
+	assertChunkedNotesStage(t, stages[2], partCapBytes)
 }
 
 func TestRelease_OverCap_FailedChunkedRunFallsBack_NotesStageClaimsNoMerge(t *testing.T) {
@@ -277,7 +277,7 @@ func TestRelease_OverCap_FailedChunkedRunFallsBack_NotesStageClaimsNoMerge(t *te
 			t.Parallel()
 
 			root := t.TempDir()
-			writeConfig(t, root, "max_prompt_bytes = 20000\n\n[release]\non_notes_failure = \"fallback\"\n")
+			writeConfig(t, root, partCapToml+"\n[release]\non_notes_failure = \"fallback\"\n")
 			f := runner.NewFakeRunner()
 			seedPriorTagReadGates(f, root, "main")
 			f.SeedSequence("git",

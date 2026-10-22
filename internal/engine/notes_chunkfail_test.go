@@ -110,14 +110,14 @@ func (tc chunkFailureCase) transport() *failingCallTransport {
 	return &failingCallTransport{fails: tc.fails, failure: tc.failure}
 }
 
-// seedOverCapRelease scripts a release over a two-file diff of about 10 KB a file
-// under a 20,000-byte cap, which chunks into two parts.
+// seedOverCapRelease scripts a release over a two-file diff of halvableFileBytes a
+// file, which chunks into two parts.
 func seedOverCapRelease(t *testing.T, root string, f *runner.FakeRunner, onNotesFailure string) {
 	t.Helper()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n\n[release]\non_notes_failure = \""+onNotesFailure+"\"\n")
+	writeConfig(t, root, capToml(partCap(halvableFileBytes))+"\n[release]\non_notes_failure = \""+onNotesFailure+"\"\n")
 	seedPriorTagReadGates(f, root, "main")
 	f.SeedSequence("git",
-		ScriptedOut(twoFileDiff(10_000)),
+		ScriptedOut(twoFileDiff(halvableFileBytes)),
 		ScriptedOut("M\tapi/a.go\nM\tcore/b.go\n"),
 		ScriptedOut("156\t0\tapi/a.go\n156\t0\tcore/b.go\n"),
 	)
@@ -196,7 +196,7 @@ func TestRelease_ChunkedRunFails_Fallback_ShipsTheFallbackBodyNeverThePartNotes(
 func (tc chunkFailureCase) produceFresh(t *testing.T, ctx context.Context, res version.Resolution) (string, error) {
 	t.Helper()
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
+	cfg.MaxPromptBytes = partCapBytes
 	notesGit := seedFreshGit(twoFileDiff(10_000), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
 	return engine.RegenerateFreshBody(ctx, notesGit, tc.transport(), t.TempDir(), cfg, res, engine.NotesSinks{})
 }

@@ -21,16 +21,15 @@ import (
 )
 
 const (
-	fourPartMergeBody   = "✨ Added\n- Four parts, merged once   \n"
-	cachedRemergeBody   = "✨ Added\n- The export feature, re-merged from the cache   \n"
-	reuseQuestion       = "Cached notes found for this diff — use them?"
-	chunkedCacheCapToml = "max_prompt_bytes = 20000\n"
+	fourPartMergeBody = "✨ Added\n- Four parts, merged once   \n"
+	cachedRemergeBody = "✨ Added\n- The export feature, re-merged from the cache   \n"
+	reuseQuestion     = "Cached notes found for this diff — use them?"
 )
 
 var fourPartPaths = []string{"a/1.go", "b/2.go", "c/3.go", "d/4.go"}
 
 // fourPartDiff is a range diff of four files of about 10,000 bytes of fill each, which
-// chunks into four parts under a 20,000-byte cap.
+// chunks into four parts under partCapBytes.
 func fourPartDiff(fill string) string {
 	var b strings.Builder
 	for _, path := range fourPartPaths {
@@ -59,7 +58,7 @@ type chunkedCacheRepo struct {
 func newChunkedCacheRepo(t *testing.T) chunkedCacheRepo {
 	t.Helper()
 	repo := chunkedCacheRepo{root: t.TempDir(), cacheBase: t.TempDir()}
-	writeConfig(t, repo.root, chunkedCacheCapToml)
+	writeConfig(t, repo.root, partCapToml)
 	return repo
 }
 

@@ -57,10 +57,12 @@ func (ot *overflowTransport) chunksInOrder(t *testing.T) []string {
 	return chunksInPartOrder(t, &chunkTransport{prompts: ot.chunks})
 }
 
-// underCapScenario is files under the default cap, so their notes go in one call.
+// underCapScenario is files under the default cap, so their notes go in one call. A
+// one-line prompt override stands in for the default prompt, so the room a halved
+// call leaves for diff holds whatever the default prompt's length.
 func underCapScenario(t *testing.T, files []chunkFile) chunkScenario {
 	t.Helper()
-	s := chunkScenario{files: files, root: t.TempDir(), cfg: normalCfg()}
+	s := chunkScenario{files: files, root: t.TempDir(), cfg: normalCfg()}.withShortPrompt(t)
 	if size := len(s.singlePass(t)); size > s.cfg.MaxPromptBytes {
 		t.Fatalf("fixture: single-pass prompt is %d bytes, over the %d cap", size, s.cfg.MaxPromptBytes)
 	}

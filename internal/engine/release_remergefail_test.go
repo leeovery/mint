@@ -19,7 +19,7 @@ import (
 	"mint/internal/runner"
 )
 
-const sixPartCapToml = "max_prompt_bytes = 20000\n\n"
+var sixPartCapToml = partCapToml + "\n"
 
 // sixPartSaved is what the wave of a six-part run under gateAbortTransport left in
 // its parts' notes: each one, in chunk order, a blank line between.

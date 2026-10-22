@@ -177,7 +177,7 @@ func TestRegenerateAll_NotesFailure_EachCauseNamesItsPhrase(t *testing.T) {
 const partFiveOutput = "API Error: 529 overloaded"
 
 // sixPartGit is the diff, name-status and numstat of six files of about 10 KB, which
-// chunk into six parts, one a file, under a 20,000-byte cap.
+// chunk into six parts, one a file, under partCapBytes.
 func sixPartGit() (diff, nameStatus, numstat string) {
 	var ns, nu strings.Builder
 	for _, path := range sixPartPaths {
@@ -238,7 +238,7 @@ func TestRegenerateAll_WaveFailsForGoodAtPartThree_SkipNamesThePartWithItsOutput
 	tr := newPartThreeEndsTheWave()
 	produce := func(ctx context.Context, res version.Resolution, _ engine.NotesSinks) (string, error) {
 		cfg := freshCfg()
-		cfg.MaxPromptBytes = 20_000
+		cfg.MaxPromptBytes = partCapBytes
 		return engine.RegenerateFreshBody(ctx, seedFreshGit(sixPartGit()), tr, t.TempDir(), cfg, res, engine.NotesSinks{})
 	}
 

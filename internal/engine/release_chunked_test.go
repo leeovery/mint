@@ -32,7 +32,7 @@ func TestRelease_OverCap_ChunkedNotesShipByteIdenticalToEverySink(t *testing.T) 
 	t.Parallel()
 
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n")
+	writeConfig(t, root, partCapToml)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedOverCapNotes(f)
@@ -49,8 +49,8 @@ func TestRelease_OverCap_ChunkedNotesShipByteIdenticalToEverySink(t *testing.T) 
 		t.Fatalf("AI calls = %d, want two chunk calls and one merge", len(aiCalls))
 	}
 	for i, inv := range aiCalls {
-		if len(inv.Stdin) > 20_000 {
-			t.Errorf("AI call %d is %d bytes, over the 20000-byte cap", i, len(inv.Stdin))
+		if len(inv.Stdin) > partCapBytes {
+			t.Errorf("AI call %d is %d bytes, over the %d-byte cap", i, len(inv.Stdin), partCapBytes)
 		}
 	}
 	if merge := aiCalls[2].Stdin; !strings.Contains(merge, "- api notes") || !strings.Contains(merge, "- core notes") {
@@ -72,7 +72,7 @@ func TestRelease_OverCap_ChunkedNotesReachTheReviewGateAsAINotesWithNoPromptBefo
 	t.Parallel()
 
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n")
+	writeConfig(t, root, partCapToml)
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedOverCapNotes(f)

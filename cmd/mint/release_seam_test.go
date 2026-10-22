@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"mint/internal/notes"
 	"mint/internal/notescache"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -246,7 +248,13 @@ func TestRelease_NotesFailureAtATerminalWithoutYes_OffersTheFloorChoice(t *testi
 	}
 }
 
-// twoPartDiff is a two-file diff too large for one call under a 20000-byte cap.
+// twoPartCapBytes is a max_prompt_bytes under which each file of twoPartDiff goes in
+// a call of its own, as the default prompt's length changes.
+var twoPartCapBytes = len(notes.DefaultPrompt) + 11_200
+
+var twoPartCapToml = fmt.Sprintf("max_prompt_bytes = %d\n", twoPartCapBytes)
+
+// twoPartDiff is a two-file diff too large for one call under twoPartCapBytes.
 func twoPartDiff() string {
 	var b strings.Builder
 	for _, path := range []string{"api/a.go", "core/b.go"} {
@@ -260,7 +268,7 @@ func TestRelease_ChunkedRunFails_SavesTheFinishedPartsNotesInTheGivenStore(t *te
 	t.Parallel()
 
 	run := newReleaseSeamRun(t)
-	run.writeConfig(t, "max_prompt_bytes = 20000\n")
+	run.writeConfig(t, twoPartCapToml)
 	run.seedReadGates()
 	run.seedNotesDiff(twoPartDiff(), "M\tapi/a.go\nM\tcore/b.go\n", "156\t0\tapi/a.go\n156\t0\tcore/b.go\n")
 	// The check finds nothing; whichever part call arrives first returns its notes and
