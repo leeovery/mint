@@ -10,6 +10,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -155,14 +156,16 @@ func TestRelease_CapBelowTheClassifyPrompt_NoClassifyCallAndTheOriginalOutputSho
 	t.Parallel()
 
 	// Two 20 KB streams trim to about 4 KB each, so the classify prompt is about 9 KB:
-	// over a 6,000-byte cap that the single-pass notes call fits under.
+	// over a cap that the single-pass notes call fits under. The cap scales with the
+	// default prompt so the notes call still fits as the prompt's wording changes.
 	failure := &ai.GenerationError{
 		Stdout:   strings.Repeat("stdout line from the tool\n", 800),
 		Stderr:   strings.Repeat("stderr line from the tool\n", 800),
 		ExitCode: 1,
 	}
+	maxPromptBytes := len(notes.DefaultPrompt) + 1_500
 	root := t.TempDir()
-	writeConfig(t, root, "max_prompt_bytes = 6000\n")
+	writeConfig(t, root, fmt.Sprintf("max_prompt_bytes = %d\n", maxPromptBytes))
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
@@ -177,8 +180,8 @@ func TestRelease_CapBelowTheClassifyPrompt_NoClassifyCallAndTheOriginalOutputSho
 	if len(tr.prompts) != 1 || isChunkCallPrompt(tr.prompts[0]) {
 		t.Fatalf("AI calls = %d, want only the single-pass notes call", len(tr.prompts))
 	}
-	if len(tr.prompts[0]) > 6000 {
-		t.Fatalf("fixture: the single-pass prompt is %d bytes, over the 6,000-byte cap", len(tr.prompts[0]))
+	if len(tr.prompts[0]) > maxPromptBytes {
+		t.Fatalf("fixture: the single-pass prompt is %d bytes, over the %d-byte cap", len(tr.prompts[0]), maxPromptBytes)
 	}
 	sf := onlyStageFailureEvent(t, rec)
 	if sf.Name != "notes" || sf.Message != "AI call failed" || sf.Output != failure.Output() {

@@ -207,6 +207,47 @@ func TestDefaultPrompt_PicksHeadlineByWhatReleaseChangesForUser(t *testing.T) {
 	)
 }
 
+func TestDefaultPrompt_WritesHeadlineOnlyForMainBodyOfWork(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		`Write a headline only when the release has a MAIN BODY OF WORK: one feature, rework or fix that anyone asked "what is this release?" would name.`,
+		"Test it against your own bullets: either most of the notable changes serve it, or it alone clearly outweighs all the other changes put together.",
+	)
+}
+
+func TestDefaultPrompt_LargestOfSeveralChangesIsNoMainBody(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"The largest of several separate changes is NOT a main body of work.",
+	)
+}
+
+func TestDefaultPrompt_NamesTwoCoEqualBodiesOnlyWhereEachPassesAlone(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Two bodies of work of EQUAL weight are named together, in the one sentence and led by the benefit, only where EACH passes the test once the other is set aside.",
+	)
+}
+
+func TestDefaultPrompt_NamesSecondSubjectOnlyWhenCoEqualBody(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		`Name a second subject only when it is a co-equal body of work: never two pieces of one body, and never a main body plus a lesser piece, whether "and" or anything else joins them.`,
+	)
+}
+
+func TestDefaultPrompt_CapsHeadlineAtTwoBodiesInOneSentence(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"A headline names at most two bodies of work, in one sentence, even where a release has more than two co-equal bodies.",
+	)
+}
+
 func TestDefaultPrompt_CarriesBulletRulesUnchanged(t *testing.T) {
 	t.Parallel()
 
