@@ -197,7 +197,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 1,
-          "current_task": "headline-first-release-notes-1-3",
+          "current_task": "headline-first-release-notes-1-4",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -266,7 +266,8 @@
           ],
           "completed_tasks": [
             "headline-first-release-notes-1-1",
-            "headline-first-release-notes-1-2"
+            "headline-first-release-notes-1-2",
+            "headline-first-release-notes-1-3"
           ]
         }
       }
