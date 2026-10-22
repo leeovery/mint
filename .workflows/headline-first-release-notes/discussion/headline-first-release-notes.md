@@ -422,6 +422,39 @@ This feature designs no route for a supplied headline. The format's headline —
 
 ---
 
+## Release Title
+
+### Context
+
+A provider's releases page lists each release by its title, and mint titles every provider release with the bare tag — forward release and both regenerate paths pass the tag as the title (`rg -n 'CreateRelease\(ctx, tag, tag' internal/engine/release.go` → line 786; `rg -n 'DispatchRelease\(' internal/engine/regenerate_batch.go internal/engine/regenerate_write.go` → `res.Tag, res.Tag` at `regenerate_batch.go:361`, `req.Tag, req.Tag` at `regenerate_write.go:200`). With the notes opening on a headline, the obvious move is to lift it into the title: `v0.0.12 — Release notes for diffs of any size`.
+
+Raised by the background review (review-001 F9), which named the edges such a change meets:
+
+- **mint would read into the notes.** Nothing in mint parses the body (Context → Current state); a title taken from it would be the first place mint inspects what the AI wrote.
+- **Many bodies have no headline to lift**: the commit-subject fallback (`--no-ai` and a notes failure), the maintenance stub, the first release's fixed body (`rg -n 'KindFirstRelease: no prior tag' internal/notes/select.go` → line 21, `fixed "Initial release." body, no AI`), a `--notes-file` body, any repo on its own `[release].prompt`, and every release the doubt rule (No Clear Headline) leaves without one.
+- **Regenerate retitles.** Both regenerate paths re-publish the release with a title, so a change would retitle releases already out.
+
+### Options Considered
+
+**A — the title stays the bare tag**
+- Pros: one consistent title on every release; mint never reads the body.
+
+**B — the headline is lifted into the title where the body has one**
+- Pros: the releases list carries what each release was about.
+- Cons: titles depend on whether the AI chose to write a headline, so the list mixes summaries and bare numbers; mint reads into the body.
+
+### Journey
+
+The session leaned A. On the release page the headline already renders as the first line under the title, so B's gain is confined to the releases list, and there it buys an inconsistent list at the price of mint's rule of never reading into the notes. What would have moved it: the user valuing scanning releases by title over consistent titles. The user agreed: keep the bare tag.
+
+Sibling check: mint-release-tool specification — the provider release is a write-only projection of the full body, and `regenerate --reuse` recreates it from the tag annotation body "deterministic, parse-free"; a bare-tag title keeps both.
+
+### Decision
+
+The provider release title stays the bare tag on forward release and on both regenerate paths; the headline lives only in the body, where it is the first line under the title. Deciding factor: a headline-derived title would vary with whether the AI wrote a headline and would make mint read into a body it otherwise passes through untouched, for a gain confined to the releases list. Confidence: high. (Resolves review-001 F9.)
+
+---
+
 ## Summary
 
 ### Key Insights
