@@ -117,6 +117,25 @@
           }
         }
       }
+    },
+    "planning": {
+      "items": {
+        "headline-first-release-notes": {
+          "status": "in-progress",
+          "format": "tick",
+          "spec_commit": "f91bb344b89b965b8346adf3e8ebf97bcdfb2e89",
+          "task_list_gate_mode": "gated",
+          "author_gate_mode": "gated",
+          "finding_gate_mode": "gated",
+          "review_cycle": 0,
+          "phase": 1,
+          "task": null,
+          "task_map": {},
+          "storage_paths": [
+            ".tick/"
+          ]
+        }
+      }
     }
   },
   "imports": [
