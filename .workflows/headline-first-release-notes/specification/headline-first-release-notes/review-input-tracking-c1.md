@@ -21,8 +21,8 @@ Carry the discussion's reopen condition into the bullet that fixes the combine r
 **Proposed Text**:
 - One bullet per notable change, never one per file, hunk or commit. The combine rule stands as worded: "Combine closely-related changes into a single bullet." Closely related means the small tweaks of one change, such as three commits that fix one gate. It never means a feature's separate capabilities: each piece a user can use or meet on its own is a notable change and gets its own bullet. What would reopen the combine rule's wording: evidence on real releases of the model collapsing a large feature into one bullet. Version bumps and other bookkeeping churn are ignored. Most releases are a handful of bullets, and the notes are not padded.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Approved
+**Notes**: The discussion states the reopen condition (Headline Shape → Journey); landed in the combine rule's bullet.
 
 ---
 
@@ -59,8 +59,8 @@ Give the chunked path the same treatment the record gives the other untested sha
 **Proposed Text**:
 - **The chunked path** is untested: E1 ran every release as one call. The first runs also take held-out releases through the part calls and the merge, and check that the part notes carry no headline and that the merge writes the headline §3.2 calls for. Like the reminder's check, it sits outside the bar.
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Routed
+**Notes**: A call the discussion never made; landed in the discussion as the new subtopic Checking The Chunked Path (settled by derivation from Prompt Overrides And Reminder and No Clear Headline), Summary Open Threads and Current State updated; §10.3 re-aligned to it.
 
 ---
 

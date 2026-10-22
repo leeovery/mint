@@ -74,7 +74,7 @@ The default prompt asks for this body and nothing else:
 
 - Each bullet is one line and one sentence: the change in plain language, with its user-facing effect after an em dash where that helps. No second sentence, no bold lead-in, no sub-bullets, no implementation detail, and no rationale for how it was built.
 - The shipped prompt's three altitude examples stay as they are.
-- One bullet per notable change, never one per file, hunk or commit. The combine rule stands as worded: "Combine closely-related changes into a single bullet." Closely related means the small tweaks of one change, such as three commits that fix one gate. It never means a feature's separate capabilities: each piece a user can use or meet on its own is a notable change and gets its own bullet. Version bumps and other bookkeeping churn are ignored. Most releases are a handful of bullets, and the notes are not padded.
+- One bullet per notable change, never one per file, hunk or commit. The combine rule stands as worded: "Combine closely-related changes into a single bullet." Closely related means the small tweaks of one change, such as three commits that fix one gate. It never means a feature's separate capabilities: each piece a user can use or meet on its own is a notable change and gets its own bullet. What would reopen the combine rule's wording: evidence on real releases of the model collapsing a large feature into one bullet. Version bumps and other bookkeeping churn are ignored. Most releases are a handful of bullets, and the notes are not padded.
 - Deprecated and Security stay opportunistic. An item goes in them only on an explicit marker in the diff (a `@deprecated` annotation, or an obvious auth, cryptography, input-validation or CVE-bump surface), and is never inferred.
 
 #### 2.3 Each change once
@@ -267,6 +267,7 @@ Measured with `jq -c '.field_counts' .workflows/headline-first-release-notes/exp
 
 - **False claims** are furthest from the bar (34 against at most 25), and then **missing items** (13 against at most 9). Both must come back to the bar while every other count holds. E1's candidate dropped a speed-up users notice under its "internal efficiency a user would not notice" line, which is why §5.1 draws the line at what users notice.
 - **The neutral reminder** (§7.1) is untested. The first runs check that the headline survives it.
+- **The chunked path** is untested: E1 ran every release as one call. The first runs also take held-out releases through the part calls and the merge, and check that the part notes carry no headline and that the merge writes the headline §3.2 calls for. Like the reminder's check, it sits outside the bar.
 - **Known weak spots** are wording only, and the rules stay unchanged:
   - two-body releases losing their headline, or getting half of one (§3.2);
   - a rework of existing behaviour filed under ✨ Added (36 in today's notes, 34 in E1's candidate);
