@@ -501,6 +501,26 @@ Breaking changes get a 💥 Breaking section, first among the sections (after th
 
 ---
 
+## User Facing Only
+
+### Context
+
+Internal and dev-only changes reached users in ~19 of 31 audited releases — CI, lint, release tooling, internal packages, engine verbs, migration numbers, test harnesses, internal flags (Context → Evidence; mint v0.0.6's new internal packages each became a feature bullet). Scope took in both halves: keeping internal changes out, and phrasing in the user's terms rather than mechanism or spec jargon.
+
+### Journey
+
+E1's rules (`new-v3`): include only changes a user meets — what the software does, its commands, options, configuration, output, errors, performance and compatibility; leave out how it is built and maintained — CI and release tooling, linting, build scripts, test suites and harnesses, internal packages, modules and refactors, internal efficiency a user would not notice, internal flags and plumbing commands, data-migration numbering, contributor docs, repo housekeeping; a new internal package is not a feature; describe changes in the user's terms, not the code's names, the mechanism or a design document's jargon. Where the files are the product — prompts, skills, templates the software ships and uses — changing them changes what users meet.
+
+Measured: internal items 77 → 28 on the held-out set, a 64% cut. Its one regression on this ground sat in the missing-items guard: agentic-workflows v0.7.80's faster filtered store reads, missing from both new repeats — a speed-up the judges counted as one users meet, dropped under "internal efficiency changes a user would not notice". The line is therefore whether a user notices the change, not whether the code that made it is internal. The residual internal items are wording, held to the Shipping Bar.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by Scope (user-facing only, in the user's terms), the audit's ~19 of 31, and E1's measurement — internal items 77 → 28, with one noticed speed-up dropped as internal.
+
+The notes list only what a user of the software meets — what it does, its commands, options, configuration, output, errors, performance and compatibility; how it is built and maintained stays out. The test is whether a user meets or notices the change, not whether the code behind it is internal: a speed-up users notice is theirs, and where the shipped files are the product (prompts, skills, templates), changes to them count. Every change is described in the user's terms — what they see and do — never in the code's names, the mechanism or a design document's jargon. Deciding factor: the notes are for the people who use the software, and E1 showed the line drawn at the code's internals drops changes users do meet. Confidence: high.
+
+---
+
 ## Summary
 
 ### Key Insights
