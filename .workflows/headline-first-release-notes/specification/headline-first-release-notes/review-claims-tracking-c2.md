@@ -18,7 +18,7 @@ The specification tells whoever writes the shipped prompt that E1's frozen candi
 Nothing in the specification would flag what was left out, because it says only one rule needs changing.
 
 **Proposal**:
-Name all four places where the candidate falls short, each with its measurement, so the port carries every rule the specification decides. The measurement settles it: reading new-v3 finds no maintenance-line rule, an unqualified "what to do" for breaking bullets, and a second-subject bar that covers only "And". The removed-lines difference the specification already names holds as stated.
+Name every place the candidate falls short, each with its measurement, so the port carries every rule the specification decides. The measurement settles it. Revised at dispose in form only: the bullet states the rule (where new-v3 and §2–§6 differ, what ships follows the specification) and lists the measured differences beneath it, with no count beside the list (a count derived from the list drifts when the list changes), and each command written out in full so it re-runs by copy.
 
 **Evidence**:
 Claim (§10.2): "Its rules are those of §2–§6 but for one, where what ships follows this specification: new-v3 looks for what the previous release already had only in unchanged context lines and in code the diff moves or renames, while §5.2 adds the diff's removed lines"
@@ -31,13 +31,19 @@ Measurements, all against `.workflows/headline-first-release-notes/experiment/he
 - Spec-only: `rg -n -i 'but for one' .workflows/headline-first-release-notes/discussion/headline-first-release-notes.md .workflows/headline-first-release-notes/imports/release-notes-audit.md` → no output (exit 1). No source states how many rules the candidate lacks.
 
 **Current**:
-Its rules are those of §2–§6 but for one, where what ships follows this specification: new-v3 looks for what the previous release already had only in unchanged context lines and in code the diff moves or renames, while §5.2 adds the diff's removed lines (`rg -n 'unchanged context lines|removed lines' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → line 98 only, no removed-lines hit).
+- **Starting wording.** E1's frozen candidate, `new-v3` ([prompt](../../experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md), SHA-256 `c1f149842689ba5f6b7338579514258a0fa23416c04421253eacfaae62630a0f`), is the starting point. Its rules are those of §2–§6 but for one, where what ships follows this specification: new-v3 looks for what the previous release already had only in unchanged context lines and in code the diff moves or renames, while §5.2 adds the diff's removed lines (`rg -n 'unchanged context lines|removed lines' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → line 98 only, no removed-lines hit). Its internal-efficiency leave-out line is a tuning point (§10.3). Two more parts of what ships are not new-v3's: the closing reminder is §7.1's format-neutral wording, not new-v3's headline-naming one, and the chunk, piece and merge framings follow §7.1 and §8. E1 never exercised the chunked path.
 
 **Proposed Text**:
-Its rules are those of §2–§6 but for four, and in each what ships follows this specification: new-v3 looks for what the previous release already had only in unchanged context lines and in code the diff moves or renames, while §5.2 adds the diff's removed lines (`rg -n 'unchanged context lines|removed lines' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → line 98 only, no removed-lines hit); new-v3 has no rule for a release with nothing users meet, so §5.1's maintenance line is added (`rg -n -i 'maintenance|user-facing changes' …/prompts/new-v3.md` → no hits); new-v3 asks every breaking bullet to "Say what breaks and what to do" (`rg -n 'what to do' …/prompts/new-v3.md` → line 87), while §4.2 takes what to do only from what the diff shows and stops at what breaks where it shows none; and new-v3 bars a lesser second subject only where "And" joins it (`rg -n '"And" in a headline' …/prompts/new-v3.md` → line 44), while §3.2 bars any second subject that is not a co-equal body of work.
+- **Starting wording.** E1's frozen candidate, `new-v3` ([prompt](../../experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md), SHA-256 `c1f149842689ba5f6b7338579514258a0fa23416c04421253eacfaae62630a0f`), is the starting point. Where it and §2–§6 differ, what ships follows this specification. Its rules differ here:
+  - It looks for what the previous release already had only in unchanged context lines and in code the diff moves or renames; §5.2 adds the diff's removed lines (`rg -n 'unchanged context lines|removed lines' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → line 98 only, no removed-lines hit).
+  - It has no rule for a release with nothing users meet; §5.1's maintenance line is added (`rg -n -i 'maintenance|user-facing changes' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → no output).
+  - It asks every breaking bullet to "Say what breaks and what to do"; §4.2 takes what to do only from what the diff shows (`rg -n 'what to do' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → line 87).
+  - It bars a lesser second subject only where "And" joins it; §3.2 bars any second subject that is not a co-equal body of work (`rg -n '"And" in a headline' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/prompts/new-v3.md` → line 44).
 
-**Resolution**: Pending
-**Notes**:
+  Its internal-efficiency leave-out line is a tuning point (§10.3). Two more parts of what ships are not new-v3's: the closing reminder is §7.1's format-neutral wording, not new-v3's headline-naming one, and the chunk, piece and merge framings follow §7.1 and §8. E1 never exercised the chunked path.
+
+**Resolution**: Approved
+**Notes**: Revised at dispose in form only (rule plus measured list, no derived count, commands in full). Landed in §10.2.
 
 ---
 
