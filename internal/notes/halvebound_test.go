@@ -121,7 +121,9 @@ func TestGenerator_ChunkHalvingRoundBelowItsFixedPart_SendsNoCallAndFailsNamingI
 	t.Parallel()
 
 	files := []chunkFile{{"alpha/a.go", 75_000}, {"beta/b.go", 75_000}, {"gamma/c.go", 75_000}}
-	s := outsizedFixedPart(t, files, 200_000)
+	s := outsizedFixedPart(t, files, 0)
+	// Room for one whole file per call, so its halved target falls below the fixed part.
+	s.cfg.MaxPromptBytes = s.fixedPart(t) + 80_000
 	ht := &halvingTransport{overflows: isSlice(fileDiff("beta/b.go", 75_000)), mergeBody: "merged"}
 
 	_, err := s.generateWith(t, ht)

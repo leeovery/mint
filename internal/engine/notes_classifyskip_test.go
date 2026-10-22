@@ -10,7 +10,6 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/engine"
-	"mint/internal/notes"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -156,16 +155,17 @@ func TestRelease_CapBelowTheClassifyPrompt_NoClassifyCallAndTheOriginalOutputSho
 	t.Parallel()
 
 	// Two 20 KB streams trim to about 4 KB each, so the classify prompt is about 9 KB:
-	// over a cap that the single-pass notes call fits under. The cap scales with the
-	// default prompt so the notes call still fits as the prompt's wording changes.
+	// over a 6,000-byte cap that the single-pass notes call fits under. A short prompt
+	// override keeps the notes call under that cap whatever the default prompt's length.
 	failure := &ai.GenerationError{
 		Stdout:   strings.Repeat("stdout line from the tool\n", 800),
 		Stderr:   strings.Repeat("stderr line from the tool\n", 800),
 		ExitCode: 1,
 	}
-	maxPromptBytes := len(notes.DefaultPrompt) + 1_500
+	const maxPromptBytes = 6_000
 	root := t.TempDir()
-	writeConfig(t, root, fmt.Sprintf("max_prompt_bytes = %d\n", maxPromptBytes))
+	writeFile(t, root, "prompt.md", "Write release notes.")
+	writeConfig(t, root, fmt.Sprintf("max_prompt_bytes = %d\n\n[release]\nprompt = \"prompt.md\"\n", maxPromptBytes))
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)

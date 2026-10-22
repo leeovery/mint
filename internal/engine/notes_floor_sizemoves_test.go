@@ -2,12 +2,14 @@ package engine_test
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
 	"mint/internal/ai"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
@@ -27,9 +29,13 @@ func withSizeMoves(always ...string) []string {
 	return append(always, sizeMoves...)
 }
 
-// partContext is operator text that leaves a chunk call under a 20,000-byte cap room
+// partContext is operator text that leaves a chunk call under partContextCap room
 // for diff, but none at half that call's size.
 var partContext = strings.Repeat("Project context the operator wrote at length.\n", 260)
+
+// partContextCap scales with the default prompt so a chunk call carrying partContext
+// keeps that room as the prompt's wording changes.
+var partContextCap = len(notes.DefaultPrompt) + 13_400
 
 func TestRelease_NotesFloorSizeMoves_HalvingRunsOutAddsTheSizeMoves(t *testing.T) {
 	t.Parallel()
@@ -63,7 +69,7 @@ func TestRelease_NotesFloorSizeMoves_PartHalvingRoundWithNoRoomAddsTheSizeMoves(
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
 	writeFile(t, root, "context.md", partContext)
-	writeConfig(t, root, "max_prompt_bytes = 20000\n\n[release]\non_notes_failure = \"abort\"\ncontext = \"context.md\"\n")
+	writeConfig(t, root, fmt.Sprintf("max_prompt_bytes = %d\n\n[release]\non_notes_failure = \"abort\"\ncontext = \"context.md\"\n", partContextCap))
 	seedPriorTagReadGates(f, root, "main")
 	f.SeedSequence("git",
 		ScriptedOut(twoFileDiff(10_000)),
