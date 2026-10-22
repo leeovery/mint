@@ -128,8 +128,8 @@
           "author_gate_mode": "auto",
           "finding_gate_mode": "gated",
           "review_cycle": 0,
-          "phase": 3,
-          "task": "headline-first-release-notes-3-10",
+          "phase": 4,
+          "task": null,
           "task_map": {
             "headline-first-release-notes-1-1": "tick-be38ef",
             "headline-first-release-notes-1": "tick-3b11be",
@@ -174,22 +174,7 @@
               "p3": "2026-10-22"
             }
           },
-          "staging": {
-            "author-p3": {
-              "tasks": {
-                "headline-first-release-notes-3-1": "approved",
-                "headline-first-release-notes-3-2": "approved",
-                "headline-first-release-notes-3-3": "approved",
-                "headline-first-release-notes-3-4": "approved",
-                "headline-first-release-notes-3-5": "approved",
-                "headline-first-release-notes-3-6": "approved",
-                "headline-first-release-notes-3-7": "approved",
-                "headline-first-release-notes-3-8": "approved",
-                "headline-first-release-notes-3-9": "approved",
-                "headline-first-release-notes-3-10": "approved"
-              }
-            }
-          },
+          "staging": {},
           "external_id": "tick-32726a"
         }
       }
