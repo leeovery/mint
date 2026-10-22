@@ -271,12 +271,11 @@
 
 **Solution**: Run the chunked-path checks and the nothing-users-meet checks again on the frozen wording, on the releases the first runs used, cut as the first runs cut them, with the same AI command and the same judging. A failure reopens tuning, and the wording frozen after it gets its own acceptance pass and its own re-run checks on the same cuts.
 
-**Outcome**: Every failure §10.3 says holds shipping is checked on the frozen wording itself and found absent, or tuning has reopened.
+**Outcome**: Every failure §10.3 says holds shipping on the chunked path and on the release with nothing users meet is checked on the frozen wording itself and found absent, or tuning has reopened.
 
 **Acceptance Criteria**:
 - [ ] Given the frozen wording, when the releases the first runs took through the part calls and the merge run again, cut into the same parts: no part's notes carry a headline; no merged headline names anything other than the release's main work; no part returns an empty body and fails the run; and no merged notes carry a part's nothing-to-list line or the maintenance line while any part listed changes users meet (§8, §10.3)
 - [ ] Given the frozen wording, when the release with nothing users meet runs again through a single call, and through the part calls and the merge cut as the first runs cut it, its notes carry no headline, no single call, part or merge returns an empty body and fails the run, and the merged notes do not keep the parts' lines in place of the maintenance line (§5.1, §10.3)
-- [ ] In every run on the frozen wording, the acceptance pass and these re-run checks included, no single call writes the maintenance line for a release with a change users meet (§10.3)
 - [ ] Given a hold check cleared only on a tuning draft, when tuning later changed the wording, the check counts as not cleared until it passes on the frozen wording (§10.2)
 - [ ] Given a failure in any re-run check, tuning reopens. The wording frozen after it gets its own acceptance pass, and runs the chunked-path and nothing-users-meet checks again on the same cuts (§10.2)
 - [ ] Given an outcome on the frozen wording that §10.3 says costs what today's notes cost (a merge that leaves out a headline §3.2 calls for, or a part or a nothing-users-meet release that lists its internal changes), it does not hold shipping (§10.3)
@@ -292,7 +291,7 @@
 >
 > mint's cutter sizes each part with the instructions and the framing counted (`cutter.fixedPart`, `internal/notes/chunk.go`). The frozen wording's length can differ from the drafts the first runs ran on, so the same `max_prompt_bytes` can cut a release into different parts.
 >
-> The acceptance pass on the frozen wording is task 3-10.
+> The acceptance pass on the frozen wording is task 3-10. It checks that no single call among its 52 bodies writes the maintenance line for a release with a change users meet, the one single-call failure §10.3 says holds shipping in any run.
 
 **Spec Reference**: `.workflows/headline-first-release-notes/specification/headline-first-release-notes/specification.md` — §10.2 Tuning and acceptance (acceptance; the re-run checks); §10.3 Where the tuning goes (the chunked path; a release with nothing users meet); §10.1 The bar; §8 The Chunked Path; §5.1 Only what users meet (a release with nothing users meet); §10.4 Alongside the counts; Corrigenda (2026-10-22)
 

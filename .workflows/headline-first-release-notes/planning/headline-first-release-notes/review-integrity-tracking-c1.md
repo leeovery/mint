@@ -120,8 +120,8 @@ Remove the third criterion from 3-9 and narrow its Outcome to what its runs cove
 
 | headline-first-release-notes-3-9 | Hold checks re-run on the frozen wording | the same releases cut as the first runs cut them (§10.2), no part's notes carry a headline (§10.3), no merged headline names anything other than the release's main work (§10.3), no part returns an empty body and fails the run (§10.3), no merged notes carry a part's line or the maintenance line while any part listed changes users meet (§10.3), the nothing-users-meet release through a single call and through the part calls and merge gets no headline/no empty body/no parts' lines in place of the maintenance line (§10.3), a check passed only on wording that tuning later changed counts as not cleared (§10.2 and Corrigenda), a failure reopens tuning and the wording frozen after it gets its own acceptance pass and re-run checks on the same cuts (§10.2 and Corrigenda) |
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied as proposed under the auto finding gate; planning.md's 3-9 row and the 3-9 tick record updated and verified.
 
 ---
 
