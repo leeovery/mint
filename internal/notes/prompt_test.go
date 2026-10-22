@@ -705,3 +705,36 @@ func TestDefaultPrompt_NeverPresentsWhatPreviousReleaseHadAsNew(t *testing.T) {
 		"Never present as new anything the previous release already had, wherever the diff shows it: in unchanged context lines, in removed lines, or in code the diff only moves or renames.",
 	)
 }
+
+func TestDefaultPrompt_OrdersEachSectionByWhatChangesMeanToUser(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Within each section, order the changes by what they mean to the user, most important first.",
+	)
+}
+
+func TestDefaultPrompt_DefinesWeightInUsersTerms(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Weight is how much of the product a change touches, how often users meet it, and how much it changes their experience.",
+		"A change to something users do every day outranks a change to a diagnostic or rarely used command.",
+	)
+}
+
+func TestDefaultPrompt_LeadsSectionsWithPiecesOfMainWork(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"The pieces of the release's main work lead their sections.",
+	)
+}
+
+func TestDefaultPrompt_CountsNoLinesFilesCommitsOrNameabilityAsWeight(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Lines, files, commits, and how easy a change is to name, are not weight.",
+	)
+}

@@ -186,6 +186,16 @@ Keep it to what users meet:
 - When unsure whether the release holds any change users meet, list the change
   in doubt in its section and do not write the maintenance line.
 
+Order within each section:
+
+- Within each section, order the changes by what they mean to the user, most
+  important first.
+- Weight is how much of the product a change touches, how often users meet it,
+  and how much it changes their experience. A change to something users do
+  every day outranks a change to a diagnostic or rarely used command.
+- The pieces of the release's main work lead their sections.
+- Lines, files, commits, and how easy a change is to name, are not weight.
+
 Scope and salience:
 
 - ONE bullet per notable change — not per file, hunk, or commit. Combine
