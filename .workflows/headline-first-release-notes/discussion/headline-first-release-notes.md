@@ -305,6 +305,15 @@ Rejected path not reopened: feeding commit history to the AI (dropped in release
 
 ### Decision
 
+#### 2026-10-22 — revised
+*Trigger: settled call — Change Map Signals takes the Change Map out of ranking within the sections as well.*
+
+**Settled by derivation** — not discussed. Determined by the audit's account of the Change Map's signals and E1's measurement with the map demoted (Change Map Signals).
+
+The headline rule below stands: the AI picks the headline by what the release changes for its user, read from the diff; inputs unchanged, no commit history. Changed: the Change Map's new-structure signal no longer keeps a role in ranking within the sections — the Change Map is a where-the-changes-landed check so nothing large is missed, never a measure of importance, for the headline and the ordering alike (Change Map Signals; ordering by user weight, Ordering Within Sections).
+
+#### 2026-10-21
+
 The AI picks the headline by what the release changes for its user, read from the diff. The Change Map's new-structure signal keeps its role in ranking within the sections but does not pick the headline: a new folder is not, of itself, the release's main thing. Inputs are unchanged — diff and Change Map only, no commit history. Deciding factor: the structural signal cannot identify a release's main thing — it is near-blind where code is nested (it reads only a path's first segment) and flags novelty rather than user weight where it fires — while a headline turns any misread from a reordered list into a misstatement in the most-read line. Confidence: medium-high — the rule is clear; whether the prompt wording achieves it is judged by eye on real releases, this one first. (Resolves review-001 F5.)
 
 ---
@@ -538,6 +547,32 @@ Measured: inversions 30 → 16 on the held-out set, nearly halved, one short of 
 **Settled by derivation** — not discussed. Determined by the audit's inversions and their causes, and E1's measurement of the weight rule (30 → 16).
 
 Within each section, changes are ordered by what they mean to the user — how much of the product a change touches, how often users meet it, how much it changes their experience — most first; a change to what users do every day outranks one to a diagnostic or rarely used command, and the pieces of the release's main work lead their sections. Lines, files, commits and how easy a change is to name are not weight. Deciding factor: the audit traced the inversions to granularity and nameability standing in for weight, and naming weight in the user's terms halved them. Confidence: high on the rule.
+
+---
+
+## Change Map Signals
+
+*(Child of Ordering Within Sections.)*
+
+### Context
+
+The Change Map is mint's diff-derived preamble ahead of the diff — where the release's changes landed, ordered novelty-first: new top-level directories lead, then the area rollup, then the largest files (`internal/notes/changemap.go`). The default prompt treats it as the ranking signal: "new structure (a whole new package or directory) is the strongest signal — weight it above raw size", and the merge framing on chunked releases says "rank by the Change Map above" (`rg -n 'rank by the Change Map above' internal/notes/chunk.go` → line 574). The design came from the mint-release-tool work, whose success criterion aimed the Change Map at the headline: "new-structure-as-headline, novelty over magnitude".
+
+The audit (Context → Evidence): new-directory detection reads only a path's first segment, so a new package under an existing `internal/`, `src/` or `skills/` never registers; the novelty line fired in 6 of 31 releases and was wrong each time — twice on a pre-existing `design/` folder, on a docs site that then led the notes, on README demo assets, on a 6-line wrapper, and on the smaller of two co-equal bodies, which it promoted; the area rollup collapses to one or two top-level folders; the largest-file line is often a test, a deletion or a dev script. The prompt's own rule turned each new internal package into a feature bullet in mint v0.0.6. Picking The Headline already took the headline away from the signal.
+
+### Journey
+
+E1's prompt (`new-v3`) kept the Change Map in the input unchanged and told the AI what it is for: "The Change Map shows where the changes landed. Use it to make sure nothing large is missed, not as a measure of importance: a new folder may hold tooling, and the largest file is often a test or a deletion. DESCRIBE every change from the DIFF; the Change Map is metadata, never content." With the map demoted and ordering judged by user weight, inversions fell 30 → 16.
+
+Fixing the detection instead — finding new packages at any depth — would make the signal fire on exactly the new internal packages User Facing Only keeps out of the notes, and still flag novelty rather than what a release changes for its user. So the map stays as it is, as coverage. The merge framing's ranking instruction is mint's shared text on every repo's calls; under Prompt Overrides And Reminder it goes format-neutral, and ranking is left to the governing format.
+
+Sibling check: mint-release-tool specification — Stage 4 names the Change Map "new-structure-as-headline, novelty over magnitude" as the mechanism aimed at the headline criterion, and release-notes-quality decided "rank importance from the Change Map; describe changes from the diff"; token-aware-diff-sizing — Chunk Wave Mechanics has the merge "ranking by the Change Map". This decision supersedes the Change Map's ranking role in all three for the rewritten default prompt and the merge framing; the specifications' text shifts when this feature ships.
+
+### Decision
+
+**Settled by derivation** — not discussed. Determined by the audit's account of the Change Map's signals (the novelty line wrong in each of its 6 firings, blind where code is nested), E1's measurement with the map demoted (inversions 30 → 16), User Facing Only (new internal packages are not features), and Prompt Overrides And Reminder (mint's shared text stays format-neutral).
+
+The Change Map stays in every notes call as it is built today — a where-the-changes-landed check the AI uses so nothing large is missed, never a measure of importance; every change is described from the diff. The default prompt's "new structure is the strongest signal" rule goes, replaced by that role. The merge framing drops "rank by the Change Map above"; ranking is the governing format's. The Change Map's detection is not changed. Deciding factor: the signal misled on every release where it fired and is silent where code is nested, and the fix that would make it fire more would point it at internals. Confidence: high. (Revises Picking The Headline's ranking role for the signal.)
 
 ---
 

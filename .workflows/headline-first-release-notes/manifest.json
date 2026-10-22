@@ -39,7 +39,7 @@
               "parent": null
             },
             "ordering-within-sections": {
-              "status": "converging",
+              "status": "decided",
               "parent": null
             },
             "scope": {
@@ -47,7 +47,7 @@
               "parent": null
             },
             "change-map-signals": {
-              "status": "pending",
+              "status": "decided",
               "parent": "ordering-within-sections"
             },
             "section-placement": {
