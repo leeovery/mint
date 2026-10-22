@@ -37,6 +37,18 @@ Revisions taken into v1: a headline only for a body of work that clearly outweig
 
 The false claims that came back between v0 and v1 on the same inputs point to sampling variance on the truth rule rather than a wording effect. Revisions taken into v2: a per-bullet check — find the code change behind each bullet and drop it when every changed line behind it is a comment, documentation or a test; ordering weight to include how often users meet a change (everyday commands above diagnostic or rarely used ones).
 
+**Round v2** (2026-10-22 07:49; `new-v2` only, one repeat; 5 calls, 0 failures; run log `run-tune-v2.log`).
+
+| Release | new-v2 |
+|---|---|
+| mint v0.0.6 | headline right; one Added bullet for `mint setup` |
+| dex-engine v0.2.9 | headline back on the largest fix (unexpected); the test-only parked-reason claim still there; the fallback both under Changed and again as a Fixed bullet; a library name ("trafilatura") in a bullet |
+| portal v0.12.0 | headline and 💥 Breaking right; the comment-only claim gone again |
+| tick v0.3.2 | headline adds `tick doctor` as a second subject again; the 64 KiB fix leads Fixed; parse errors moved to Fixed |
+| switchboard v0.1.2 | headline right; the retention default back under 💥 Breaking |
+
+Across v0–v2 the same three failures flip on and off with no wording change aimed at them: the grab-bag headline (v0 yes, v1 no, v2 yes), the second subject in tick's headline (yes, no, yes), retention as breaking (yes, no, yes). The truth failures flip too (dex test-only claim: no, yes, yes; portal comment-only claim: no, yes, no). One body per version cannot separate wording from sampling. Revisions taken into v3, aimed at making each call less of a coin flip: a countable test for a main body of work (the change most of the notes' bullets serve, or one that outweighs all the others put together; the largest of several separate changes is not one); "and" in a headline joins only two co-equal bodies, never two pieces of one; a doubt rule for 💥 Breaking (when unsure, it is not breaking); a test asserting a behaviour is evidence that the behaviour already existed, not a change. v3 runs two repeats on the tuning set so the choice of the version to freeze rests on more than one body per release.
+
 ## Deviations
 
 - 2026-10-22 07:46 — Claude Code updated itself from 2.1.306 (recorded in the design) to 2.1.307 before the run started. Every call in this run uses 2.1.307, both arms alike; the model behind `--model sonnet` is unchanged (`claude-sonnet-5-5`).
