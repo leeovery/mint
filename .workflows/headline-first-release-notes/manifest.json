@@ -121,9 +121,9 @@
     "planning": {
       "items": {
         "headline-first-release-notes": {
-          "status": "in-progress",
+          "status": "completed",
           "format": "tick",
-          "spec_commit": "f91bb344b89b965b8346adf3e8ebf97bcdfb2e89",
+          "spec_commit": "84a3f44c8f35cf8750d1baef1c7e0bde0692b9a1",
           "task_list_gate_mode": "auto",
           "author_gate_mode": "auto",
           "finding_gate_mode": "auto",
