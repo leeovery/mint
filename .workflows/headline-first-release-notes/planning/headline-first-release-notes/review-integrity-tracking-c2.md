@@ -69,8 +69,8 @@ Nobody can know ahead how many rounds there will be. So the closing condition go
 
 - [ ] Given a count that misses its line, or a body among the 52 that holds shipping, tuning reopens. The wording frozen after it gets its own acceptance pass and its own re-run hold checks on the same cuts, and the same frozen wording is never run again to clear a count. The task does not close on a pass that falls short (§10.2)
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied as proposed under the auto finding gate; planning.md's Phase 3 Acceptance and the 3-9 and 3-10 tick records updated and verified.
 
 ---
 

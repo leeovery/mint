@@ -271,7 +271,7 @@
 
 **Solution**: Run the chunked-path checks and the nothing-users-meet checks again on the frozen wording, on the releases the first runs used, cut as the first runs cut them, with the same AI command and the same judging. A failure reopens tuning, and the wording frozen after it gets its own acceptance pass and its own re-run checks on the same cuts.
 
-**Outcome**: Every failure §10.3 says holds shipping on the chunked path and on the release with nothing users meet is checked on the frozen wording itself and found absent, or tuning has reopened.
+**Outcome**: Every failure §10.3 says holds shipping on the chunked path and on the release with nothing users meet is checked on the frozen wording itself and found absent. A failure reopens tuning, and the task stays open until a wording frozen after it, held to task 3-8's checks, clears every re-run check on the same cuts. That wording is the one the acceptance pass (task 3-10) runs on.
 
 **Acceptance Criteria**:
 - [ ] Given the frozen wording, when the releases the first runs took through the part calls and the merge run again, cut into the same parts: no part's notes carry a headline; no merged headline names anything other than the release's main work; no part returns an empty body and fails the run; and no merged notes carry a part's nothing-to-list line or the maintenance line while any part listed changes users meet (§8, §10.3)
@@ -303,7 +303,7 @@
 
 **Solution**: Run the frozen wording once over the 26 held-out releases, two repeats each, as E1 ran it: E1's harness, the same inputs, the same AI command and model, E1's rubric and judge grouping, and E1's scoring. Judge each release's two bodies blind beside E1's two stored current-prompt bodies for that release, four per release under shuffled labels as E1's `harness/blind.py` lays them out. Score only the frozen wording's 52 bodies against §10.1's fixed bar column. A count that misses its line reopens tuning.
 
-**Outcome**: One acceptance pass of the frozen wording shows every count at its line, or tuning has reopened for a new frozen wording and its own pass.
+**Outcome**: An acceptance pass on the frozen wording shows every count at its line, and no body among the 52 holds shipping. A pass that falls short reopens tuning, and the task stays open: the wording frozen after it is held to task 3-8's checks, runs task 3-9's hold checks again on the same cuts, and gets its own pass. The task closes only on a pass that clears, on a wording whose re-run hold checks have all cleared.
 
 **Acceptance Criteria**:
 - [ ] Given the frozen wording, the rewritten default prompt closed by §7.1's reminder, when the acceptance pass runs it once over E1's 26 held-out releases with two repeats each, it does so with E1's harness, the same inputs, and mint's shipped default `ai_command` on E1's model, `claude-sonnet-5-5`, and yields 52 bodies. Where the command's `sonnet` alias resolves to another model when the pass runs, the pass names `claude-sonnet-5-5` in the alias's place and is otherwise the shipped command (§10.2)
@@ -311,7 +311,7 @@
 - [ ] Given the judgements, only the frozen wording's bodies are scored, as E1 scored them, against §10.1's bar column, which stays fixed whatever the current-prompt bodies score in the new judging. Each count clears its own line: clean lead at least 21 of 52; wrong-subject headlines none; inversions at most 30; misfiled at most 84; duplicates at most 29; internal items at most 77; false claims at most 25; in-release-as-change at most 22; breaking changes flagged at least 1 of 10; missing items at most 9; format slips at most 5 (§10.1, §10.2)
 - [ ] Given the scores, false claims and in-release-as-change each clear their own line, never netted as one class. For the headline, at least as good means no wrong-subject headline. E1's pre-registered thresholds and its successor-experiment branch do not gate shipping (§10.1)
 - [ ] Given a body among the 52 that is the maintenance line, on a release with a change users meet, judged as E1 judged, it holds shipping until the wording clears it (§10.3)
-- [ ] Given a count that misses its line, tuning reopens. The wording frozen after it gets its own acceptance pass and its own re-run hold checks on the same cuts, and the same frozen wording is never run again to clear a count (§10.2)
+- [ ] Given a count that misses its line, or a body among the 52 that holds shipping, tuning reopens. The wording frozen after it gets its own acceptance pass and its own re-run hold checks on the same cuts, and the same frozen wording is never run again to clear a count. The task does not close on a pass that falls short (§10.2)
 - [ ] Given the acceptance pass, the read by eye on real releases runs alongside the counts and outside the bar, and the pass runs outside mint's test suite (§10.4, §10.2)
 
 **Do**:
