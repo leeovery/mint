@@ -1,0 +1,474 @@
+{
+  "seed": 20261021,
+  "new_version": "v3",
+  "key": {
+    "agentic-workflows-v0.6.0": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 2
+      }
+    },
+    "agentic-workflows-v0.8.0": {
+      "A": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 2
+      }
+    },
+    "agentic-workflows-v0.5.12": {
+      "A": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 2
+      }
+    },
+    "agentic-workflows-v0.8.3": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 2
+      }
+    },
+    "agentic-workflows-v0.8.12": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "agentic-workflows-v0.7.0": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "agentic-workflows-v0.7.80": {
+      "A": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "dex-engine-v0.2.2": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 1
+      }
+    },
+    "dex-engine-v0.2.0": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 2
+      }
+    },
+    "dex-engine-v0.1.13": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "portal-v0.8.0": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 1
+      }
+    },
+    "portal-v0.11.1": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "portal-v0.9.0": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 1
+      }
+    },
+    "switchboard-v0.1.0": {
+      "A": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 2
+      }
+    },
+    "switchboard-v0.2.6": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 2
+      }
+    },
+    "switchboard-v0.1.5": {
+      "A": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 2
+      }
+    },
+    "agntc-v0.6.0": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "agntc-v0.4.0": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 2
+      }
+    },
+    "agntc-v0.5.2": {
+      "A": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 2
+      }
+    },
+    "mint-v0.0.2": {
+      "A": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "mint-v0.0.3": {
+      "A": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 2
+      }
+    },
+    "tick-v0.3.0": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 1
+      }
+    },
+    "stitch-cli-v1.6.2": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "stitch-cli-v1.6.6": {
+      "A": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 1
+      }
+    },
+    "agentic-skills-v0.2.0": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 1
+      },
+      "D": {
+        "arm": "current",
+        "repeat": 1
+      }
+    },
+    "agentic-skills-v0.2.2": {
+      "A": {
+        "arm": "current",
+        "repeat": 2
+      },
+      "B": {
+        "arm": "current",
+        "repeat": 1
+      },
+      "C": {
+        "arm": "new",
+        "repeat": 2
+      },
+      "D": {
+        "arm": "new",
+        "repeat": 1
+      }
+    }
+  }
+}

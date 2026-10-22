@@ -71,6 +71,45 @@ Run 2026-10-22 07:51–07:56 (run log `.workflows/.cache/…/run-holdout.log`): 
 
 Blinded copies in `.workflows/.cache/…/blind/<release>/A–D.md`; the blind key and Lee's key stay in `.workflows/.cache/…/` (`blind-key.json`, `lee-key.json`) until all judgements and Lee's picks are in. Each judge's hand-back is pulled from its transcript by `.workflows/.cache/…/extract_judgement.py`, parsed as JSON and written to `data/judgements/<group>.json` (content unchanged, re-indented). Landed so far: dex-engine (12 objects), portal (12), tick/stitch-cli/agentic-skills (20), switchboard (12), agntc/mint (20). Lee's picks received (`data/lee-picks.json`: 1 B, 2 B, 3 A, 4 A, 5 A, 6 B), still blind.
 
+All six judgements landed (agentic-workflows: 28 objects): 104 objects, four labels per held-out release, every rubric field present. Keys moved into `data/blind-key.json` and `data/lee-key.json` after the last judgement and Lee's picks were in (2026-10-22).
+
+### Decision-rule scores (held-out, 52 bodies per arm)
+
+`python3 -I .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/harness/score.py` → `data/scores.json`:
+
+| Class | Current | New | Threshold for new | Pass |
+|---|---|---|---|---|
+| Lead and headline | clean lead 21/52 | clean lead 38/52; headline `match` 38/52; `wrong-subject` 0 | clean lead ≥ 45; `match` ≥ 42; `wrong-subject` ≤ 1 | no |
+| Order within sections | 30 inversions | 16 | ≤ 15 | no |
+| Section placement | 113 (misfiled 84 + duplicates 29) | 97 (78 + 19) | ≤ 45.2 | no |
+| User-facing only | 77 internal items | 28 | ≤ 23.1 | no |
+| True to the release | 47 (false claims 25 + in-release-as-change 22) | 47 (34 + 13) | ≤ 18.8 | no |
+| Breaking changes | flagged 1/10 | flagged 8/10 | ≥ 8 | **yes** |
+
+| Guard rail | Current | New | Holds |
+|---|---|---|---|
+| Missing items ≤ current × 1.10, rounded up (10) | 9 | 13 | **no** |
+| Format slips ≤ current | 5 | 5 | yes |
+| Judges prefer new in ≥ 19 of 26 releases | — | 21 of 26 | yes |
+
+Residual sorting for the failed classes (new-arm instances the judges called input-absent / all): lead and headline 0/28; order 0/16; placement 0/97; user-facing 0/28; true to the release 3/47 (the three absent calls: switchboard v0.1.5's config keys that shipped in v0.1.4). Every failed class therefore sorts to "needs more prompt work".
+
+Verdict line printed by `score.py`: "Short of the bar: rewritten prompt passes breaking changes; lead and headline, order within sections, section placement, user-facing only, true to the release need more prompt work; guard rail broken (missing items) — not taken as tested".
+
+### Secondary measures (not in the rule)
+
+`python3 -I .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/harness/secondary.py` → `data/secondary.json`:
+
+- Lead: current clean 21 / partial 30 / no 1; new clean 38 / partial 12 / no 2.
+- New-arm headline verdicts: match 38, incomplete 6, omitted 8, unexpected 0, wrong-subject 0. The 6 `incomplete` are three releases × both repeats — agentic-workflows v0.5.12, v0.8.3 and dex-engine v0.2.0, each naming one piece or one of two bodies. The 8 `omitted` are four releases × both repeats — dex-engine v0.2.2, mint v0.0.2, stitch-cli v1.6.6, tick v0.3.0. Headline shape slips in new bodies: 7 (judges' `shape_slips`, mostly `inventory`).
+- Headline presence agreed between the new arm's two repeats on all 26 releases.
+- False claims alone: current 25 (in 20 bodies), new 34 (in 23 bodies). In-release-as-change: current 22, new 13. Internal: 77 → 28. Inversions: 30 → 16. Duplicates: 29 → 19. Misfiled: 84 → 78.
+- Missing items: current 9, new 13. The extra four sit on agentic-workflows v0.7.80 (+2), v0.7.0 (+1) and dex-engine v0.2.2 (+1).
+- Mean overall score: current 2.85, new 3.62. Releases where the judges' mean favours new: 21 of 26; not: agentic-workflows v0.6.0, agntc v0.6.0, dex-engine v0.2.2, mint v0.0.2, switchboard v0.1.5.
+- Breaking (on the 5 breaking releases): current flagged 1 / unflagged 9; new flagged 8 / unflagged 2 (tick v0.3.0 ×2 — new arm wrote no 💥 Breaking section there).
+
+**Lee's blind read** (`data/lee-picks.json` against `data/lee-key.json`): new preferred on 4 of 6 — tick v0.3.0, switchboard v0.2.6, agentic-workflows v0.8.0, agntc v0.5.2; current preferred on portal v0.11.1 and mint v0.0.2. Agreement with the judges' release-level preference: 5 of 6 (they differ on portal v0.11.1, where the judges scored new 4/4 against current 2/2).
+
 ## Deviations
 
 - 2026-10-22 07:46 — Claude Code updated itself from 2.1.306 (recorded in the design) to 2.1.307 before the run started. Every call in this run uses 2.1.307, both arms alike; the model behind `--model sonnet` is unchanged (`claude-sonnet-5-5`).

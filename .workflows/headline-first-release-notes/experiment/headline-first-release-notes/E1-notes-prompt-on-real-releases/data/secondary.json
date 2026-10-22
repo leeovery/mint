@@ -1,0 +1,1066 @@
+{
+  "field_counts": {
+    "current": {
+      "inversions": 30,
+      "misfiled": 84,
+      "duplicates": 29,
+      "internal": 77,
+      "false_claims": 25,
+      "in_release_as_change": 22,
+      "missing": 9,
+      "format_slips": 5,
+      "bodies_with_any_false_claim": 20
+    },
+    "new": {
+      "inversions": 16,
+      "misfiled": 78,
+      "duplicates": 19,
+      "internal": 28,
+      "false_claims": 34,
+      "in_release_as_change": 13,
+      "missing": 13,
+      "format_slips": 5,
+      "bodies_with_any_false_claim": 23
+    }
+  },
+  "lead": {
+    "current": {
+      "clean": 21,
+      "partial": 30,
+      "no": 1
+    },
+    "new": {
+      "clean": 38,
+      "partial": 12,
+      "no": 2
+    }
+  },
+  "headline_verdict": {
+    "current": {
+      "omitted": 44,
+      "match": 8
+    },
+    "new": {
+      "match": 38,
+      "incomplete": 6,
+      "omitted": 8
+    }
+  },
+  "overall_mean": {
+    "current": 2.85,
+    "new": 3.62
+  },
+  "breaking": {
+    "current": {
+      "unflagged": 9,
+      "flagged": 1
+    },
+    "new": {
+      "flagged": 8,
+      "unflagged": 2
+    }
+  },
+  "per_release": {
+    "agentic-skills-v0.2.0": {
+      "overall": {
+        "current": [
+          3,
+          2
+        ],
+        "new": [
+          3,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          3
+        ],
+        "new": [
+          2,
+          1
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "agentic-skills-v0.2.2": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "agentic-workflows-v0.5.12": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "incomplete",
+        "incomplete"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "agentic-workflows-v0.6.0": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          3,
+          2
+        ]
+      },
+      "prefers_new": false,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          3
+        ],
+        "new": [
+          1,
+          4
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "agentic-workflows-v0.7.0": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          1,
+          0
+        ],
+        "new": [
+          1,
+          1
+        ]
+      }
+    },
+    "agentic-workflows-v0.7.80": {
+      "overall": {
+        "current": [
+          2,
+          3
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          0
+        ],
+        "new": [
+          1,
+          1
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          1,
+          1
+        ]
+      }
+    },
+    "agentic-workflows-v0.8.0": {
+      "overall": {
+        "current": [
+          3,
+          4
+        ],
+        "new": [
+          5,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          1
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "agentic-workflows-v0.8.12": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          3
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "agentic-workflows-v0.8.3": {
+      "overall": {
+        "current": [
+          2,
+          3
+        ],
+        "new": [
+          3,
+          3
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "incomplete",
+        "incomplete"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          1,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          1,
+          1
+        ]
+      }
+    },
+    "agntc-v0.4.0": {
+      "overall": {
+        "current": [
+          3,
+          2
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "agntc-v0.5.2": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          1,
+          1
+        ]
+      }
+    },
+    "agntc-v0.6.0": {
+      "overall": {
+        "current": [
+          4,
+          3
+        ],
+        "new": [
+          3,
+          4
+        ]
+      },
+      "prefers_new": false,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          3,
+          1
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "dex-engine-v0.1.13": {
+      "overall": {
+        "current": [
+          4,
+          4
+        ],
+        "new": [
+          4,
+          5
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "dex-engine-v0.2.0": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "incomplete",
+        "incomplete"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "dex-engine-v0.2.2": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          3,
+          3
+        ]
+      },
+      "prefers_new": false,
+      "new_headline": [
+        "omitted",
+        "omitted"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          1
+        ]
+      }
+    },
+    "mint-v0.0.2": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          3,
+          2
+        ]
+      },
+      "prefers_new": false,
+      "new_headline": [
+        "omitted",
+        "omitted"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "mint-v0.0.3": {
+      "overall": {
+        "current": [
+          2,
+          3
+        ],
+        "new": [
+          4,
+          3
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          2,
+          1
+        ],
+        "new": [
+          1,
+          2
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "portal-v0.11.1": {
+      "overall": {
+        "current": [
+          2,
+          2
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          1,
+          1
+        ]
+      }
+    },
+    "portal-v0.8.0": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          3
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          0
+        ],
+        "new": [
+          2,
+          2
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "portal-v0.9.0": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          5,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "stitch-cli-v1.6.2": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          3,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          1,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "stitch-cli-v1.6.6": {
+      "overall": {
+        "current": [
+          2,
+          3
+        ],
+        "new": [
+          3,
+          3
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "omitted",
+        "omitted"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          0
+        ],
+        "new": [
+          1,
+          0
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "switchboard-v0.1.0": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          4,
+          4
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          1,
+          1
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "switchboard-v0.1.5": {
+      "overall": {
+        "current": [
+          3,
+          3
+        ],
+        "new": [
+          3,
+          3
+        ]
+      },
+      "prefers_new": false,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          1,
+          2
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    },
+    "switchboard-v0.2.6": {
+      "overall": {
+        "current": [
+          2,
+          2
+        ],
+        "new": [
+          4,
+          3
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "match",
+        "match"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          0,
+          2
+        ]
+      },
+      "missing": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          1,
+          1
+        ]
+      }
+    },
+    "tick-v0.3.0": {
+      "overall": {
+        "current": [
+          2,
+          2
+        ],
+        "new": [
+          3,
+          3
+        ]
+      },
+      "prefers_new": true,
+      "new_headline": [
+        "omitted",
+        "omitted"
+      ],
+      "new_headline_present_agree": true,
+      "false_claims": {
+        "current": [
+          1,
+          1
+        ],
+        "new": [
+          1,
+          1
+        ]
+      },
+      "missing": {
+        "current": [
+          0,
+          0
+        ],
+        "new": [
+          0,
+          0
+        ]
+      }
+    }
+  },
+  "new_headline_presence_agreement": 26,
+  "lee": {
+    "picked_arm": {
+      "portal-v0.11.1": "current",
+      "tick-v0.3.0": "new",
+      "switchboard-v0.2.6": "new",
+      "agentic-workflows-v0.8.0": "new",
+      "agntc-v0.5.2": "new",
+      "mint-v0.0.2": "current"
+    },
+    "new_preferred": 4,
+    "agrees_with_judges": 5
+  }
+}

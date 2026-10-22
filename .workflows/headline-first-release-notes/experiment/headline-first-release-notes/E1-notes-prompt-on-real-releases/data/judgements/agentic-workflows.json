@@ -1,0 +1,1747 @@
+[
+  {
+    "release": "agentic-workflows-v0.6.0",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Engine-rendered gate menus for the implementation loop, with a fix-attempt escalation callout at three attempts.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Cross-cutting work units now have a specification-entry path.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Typecheck (`npm run typecheck`) and separate test gates for engine, CLI contracts, and migrations.",
+        "why": "contributor typecheck and test tooling",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "All skills now call the engine instead of the old manifest CLI, and per-skill `discovery.cjs` scripts became `gateway.cjs` adapters emitting DATA, DISPLAY, and MENU sections.",
+        "why": "script renames and output-section plumbing a user never meets",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migrations run through a Node orchestrator that supports new `.cjs` migrations alongside the frozen shell fleet (new migrations 047–049).",
+        "why": "migration machinery and numbering",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "README rewritten as a short pitch with install steps, with detail moved to `docs/`.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Off-topic concerns raised mid-session can be rerouted into the right topic's Triage queue, including closed or superseded topics.",
+        "why": "rerouting off-topic concerns into a topic's Triage queue already shipped in v0.5.13",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Knowledge-base decay is now progress-based rather than wall-clock.",
+        "why": "decay was already progress-based in v0.5.13; the claim comes from new docs",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Manifest writes are now locked and atomic, with safe stale-lock breaking and cleanup of orphaned temp files.",
+        "why": "the v0.5.13 manifest CLI already locked writes with stale-lock breaking",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed and 🔒 Security",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 3,
+    "notes": "Leads cleanly with the engine and covers the release thoroughly, but has no headline, several plumbing bullets, three claims of behaviour that already shipped, and Removed out of order."
+  },
+  {
+    "release": "agentic-workflows-v0.6.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Engine commands for discovery map edits, discovery sessions, discussion map subtopics, topic transitions, inbox archive/restore/delete, and analysis-cache stamping.",
+        "outranks_by": "Conversational knowledge-base setup with non-interactive `knowledge setup` forms …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Engine-rendered gate menus for the implementation loop (task gate, fix gate, blocked tasks, analysis cycle limit).",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Cross-cutting work units can now run specification end to end, including source validation and entry handoff.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Quick-fix scoping can be revisited: adjust the existing spec and plan, or restart from scratch.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "`workflow-manifest` skill and CLI, the `/workflow-migrate` flow, and per-skill `discovery.cjs` scripts.",
+        "duplicates": "All per-skill discovery scripts are now thin `gateway.cjs` adapters …, and the manifest CLI is folded into `engine manifest` with batched `set`.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "Engine commands for discovery map edits, discovery sessions, discussion map subtopics, topic transitions, inbox archive/restore/delete, and analysis-cache stamping.",
+        "why": "plumbing commands the skills call, not something a user runs",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migrations can now be written as Node `.cjs` modules alongside the frozen bash fleet, with new migrations for discussion maps, discovery item status, and nested `.workflows/.gitignore`.",
+        "why": "migration authoring machinery",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Typechecking (`npm run typecheck`) and a much larger `npm test` suite.",
+        "why": "contributor test tooling",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "All per-skill discovery scripts are now thin `gateway.cjs` adapters emitting DATA / DISPLAY / MENU sections, and the manifest CLI is folded into `engine manifest` with batched `set`.",
+        "why": "script and CLI plumbing a user never meets",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Task-verifier statuses are now lowercase (`complete | incomplete | issues_found`).",
+        "why": "internal agent-to-orchestrator status values",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "README rewritten as a concise pitch, pointing to the new docs.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed and 🔒 Security",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 3,
+    "notes": "Accurate and complete with a clean engine lead, but no headline, a heavy load of plumbing bullets in Added, three fixes filed as new features, and Removed out of order."
+  },
+  {
+    "release": "agentic-workflows-v0.6.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Workflow state, displays and menus are now computed by a deterministic engine instead of being re-derived by Claude each session.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Epic discovery-map edits are now `engine discovery-map` commands: add, edit, remove, rename, re-route, handle/unhandle and sequence.",
+        "outranks_by": "A full `docs/` set covers the workflow, engine, agents and knowledge base.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The `workflow-manifest` skill and its `manifest.cjs` CLI are removed — use `node .claude/skills/workflow-engine/scripts/engine.cjs manifest <command>` instead …",
+        "why": "the manifest skill was model-only (user-invocable: false); its CLI is agent plumbing",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `workflow-migrate` skill is no longer invoked and `migrate.sh` is replaced by a Node `migrate.cjs` run through `engine boot` …",
+        "why": "model-only migration machinery",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Transactional commands cover work-unit lifecycle: `workunit create`, `complete`, `cancel`, `reactivate`, `pivot`, `absorb` and `promote`.",
+        "why": "engine plumbing verbs listed as a feature",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Epic discovery-map edits are now `engine discovery-map` commands: add, edit, remove, rename, re-route, handle/unhandle and sequence.",
+        "why": "engine plumbing verbs",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Epic discovery sessions can be opened and closed with `engine discovery-session`.",
+        "why": "engine plumbing verb",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Implementation task bookkeeping gains `engine task` commands, with the fix-attempt threshold, cycle limit and approval gate menus rendered by the engine.",
+        "why": "engine plumbing verbs",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Inbox archive, restore and delete run as single committed transactions via `engine inbox`.",
+        "why": "engine plumbing verb",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "`knowledge setup` refuses any `--key` flag — supply the API key through `$OPENAI_API_KEY`, `knowledge setup --key-only`, or the interactive wizard.",
+        "why": "listed as breaking, but no `--key` flag existed in v0.5.13, so no existing use breaks",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Right headline and lead, but it adds a Breaking section of model-only plumbing plus a refusal of a flag that never existed, and Added is dominated by engine verb lists."
+  },
+  {
+    "release": "agentic-workflows-v0.6.0",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Workflow state, status displays and menus are now computed by a deterministic engine instead of being re-derived by Claude, so dashboards render identically every time and state changes are validated and committed atomically.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Knowledge base query results strip terminal control characters.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The `workflow-manifest` skill and its `init`, `init-phase`, `create-discovery-topic` and `project` commands are removed — use `engine workunit create` …",
+        "why": "model-only skill and its CLI commands; users never invoke them",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Discovery map items no longer carry a `status` field, and writing one is refused …",
+        "why": "internal manifest field",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`engine manifest set` now rejects any value that is invalid for a typed field, including numbers, booleans and `~` …",
+        "why": "engine plumbing command validation",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migrations run through a single Node orchestrator that supports both `.sh` and `.cjs` migrations.",
+        "why": "migration machinery",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The per-skill `discovery.cjs` scripts are replaced by `gateway.cjs` equivalents.",
+        "why": "internal script rename",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "`/workflow-migrate` is no longer a skill and migrations now run as part of `/workflow-start` — stop invoking it directly …",
+        "why": "workflow-migrate was never user-invocable and migrations already ran inside `/workflow-start` in v0.5.13",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Off-topic concerns raised in a discussion or research session are rerouted into the target topic's Triage section, including a pivot-to-epic option for single-topic work.",
+        "why": "rerouting into a topic's Triage queue already shipped in v0.5.13",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Marking a discovery topic as handled, and later unhandling it, is now supported.",
+        "why": "Mark handled already existed in v0.5.13; only the reactivate op was renamed unhandle",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The knowledge base indexes the promoted inbox seeds and epic discovery session logs.",
+        "why": "seeds and discovery session logs were already indexed in v0.5.13",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 2,
+    "notes": "Good headline and lead, but the invented Breaking section is plumbing or untrue, and Added presents three existing capabilities as new."
+  },
+  {
+    "release": "agentic-workflows-v0.8.0",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "New engine-rendered gates for the dismissed topics list, defer gate, spec confirmation, plan context, cross-cutting specs, complexity check, first-phase choice, findings sign-off and completed-work actions.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Roadmap horizons are quoted in `roadmap add` commands so names with spaces work.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "New engine-rendered gates for the dismissed topics list, defer gate, spec confirmation, …",
+        "duplicates": "Every menu now asks a glyphed question and has a key to press; hand-written menus in skill prose are gone in favour of engine-rendered ones.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Tmux label resume positions move into the conversation folder (migration 061) and are no longer pruned by age.",
+        "duplicates": "Per-conversation folder beside the workflows' config (`~/.config/workflows/conversations/`) holding labels, buttons and answer rows …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`npm run mod:types`, `typecheck:mod` and `test:mod` for working on the gate mods.",
+        "why": "contributor build and test scripts",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Step 0 of `/workflow-start` is renumbered to fit the new Claude Code setup step before the walkthrough.",
+        "why": "internal step numbering in skill prose",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Continue skills fetch their pick list through a new `select` call instead of the head-of-skill dump.",
+        "why": "gateway call plumbing",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "A menu fetched only for its data or display no longer gets drawn as a live gate.",
+        "why": "gates are only drawn by the button mod built in this release",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The walkthrough topic cards no longer carry a menu mid-conversation; it is fetched separately when needed.",
+        "why": "part of the same fetch-where-shown groundwork for this release's mod",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Leads cleanly with the buttons and covers the mod well, but has no headline, files the menu migration under Added and repeats it in Changed, and its Fixed bullets fix groundwork for this release's own mod."
+  },
+  {
+    "release": "agentic-workflows-v0.8.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Menus now appear as clickable buttons above the prompt in Claude Code's terminal app, instead of being printed into the transcript.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 5,
+    "notes": "Right headline, a user-facing account of the mod and its setup, the menu migration correctly under Changed, and Fixed bullets that are real fixes."
+  },
+  {
+    "release": "agentic-workflows-v0.8.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "`npm run mod:types`, `typecheck:mod` and `test:mod` for working on the mods.",
+        "why": "contributor build and test scripts",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Setup steps in `/workflow-start` are renumbered and the baseline and session-label prompts now carry their own step headings.",
+        "why": "internal step numbering and headings in skill prose",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "Menus no longer appear for views that were fetched only for their data, such as continue-skill start-up dumps, the discussion defer gate and the roadmap read.",
+        "why": "a menu only becomes a live gate through the button mod built in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Clean lead and a solid user-facing account, held back by the missing headline, two contributor/step-numbering bullets, and one fix of this release's own groundwork."
+  },
+  {
+    "release": "agentic-workflows-v0.8.0",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Menus now appear as clickable buttons above the prompt in Claude Code's terminal app, instead of being printed into the transcript.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "Menus that used to print into the transcript — the selection lists, dismissed topics, the inbox working set, planning, scoping, and specification confirmations — now show as pickable rows.",
+        "duplicates": "Every menu is now drawn by the engine and always asks a question; the last hand-written menus in the prompts are gone.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "A Dismissed Topics list in discovery that offers re-add actions, and an empty-state line when nothing is dismissed.",
+        "why": "the Dismissed Topics list with re-add already existed in v0.7.80; only its rendering moved to the engine",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "Menus that were fetched only for their data no longer show up as live gates.",
+        "why": "a menu only becomes a live gate through the button mod built in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Right headline and a clear user-facing account, with one existing list presented as new, an overlapping menu bullet, and one fix of this release's own groundwork."
+  },
+  {
+    "release": "agentic-workflows-v0.5.12",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "README getting-started rewritten around a two-step install and `/workflow-start`, with knowledge-base setup details folded away.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "README feature and phase descriptions condensed.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Internal planning and design documents (discovery map, knowledge base, incoming, spec groupings).",
+        "why": "repo housekeeping",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Accurate coverage of Deep Discovery, but it opens on the briefs with the deeper conversation at Changed 1, has no headline, and spends three bullets on README and planning-doc housekeeping."
+  },
+  {
+    "release": "agentic-workflows-v0.5.12",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": true,
+      "text": "Epic discovery now carries what it learned into research and discussion, so each topic starts with the thinking behind it instead of a blank page.",
+      "verdict": "incomplete",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "Research and discussion entry for epic topics now start from the topic's brief, falling back to its description when no brief exists.",
+        "duplicates": "Per-topic discovery briefs — … that its research or discussion reads in full when it starts.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "The README's getting-started section now centres on `/workflow-start`, and the feature descriptions are shorter.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Well written and complete; the headline names the hand-off to research and discussion but not the deeper discovery conversation, which sits at Changed 1."
+  },
+  {
+    "release": "agentic-workflows-v0.5.12",
+    "label": "C",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": true,
+      "text": "Epic discovery now carries what you worked out into each topic's research and discussion, instead of handing over a bare topic list.",
+      "verdict": "incomplete",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "Discovery session logs now live under `discovery/sessions/`.",
+        "duplicates": "A migration moves existing discovery session logs into `discovery/sessions/`.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Clean, user-facing and free of housekeeping; the headline covers the hand-off but not the deeper conversation, and the session-log move is stated twice."
+  },
+  {
+    "release": "agentic-workflows-v0.5.12",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "Discovery session logs moved to `discovery/sessions/session-NNN.md`.",
+        "duplicates": "Migration that moves existing discovery session logs into a `sessions/` folder.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "README rewritten around a two-step install and `/workflow-start` as the single entry point, with the knowledge-base setup tucked into a collapsible section and the feature descriptions condensed.",
+        "why": "README restructure with no product change",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Internal planning and design documents (discovery map phases, knowledge base plans, incoming, and spec-groupings plans).",
+        "why": "repo housekeeping",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Accurate but opens on the briefs with no headline, states the session-log move twice, and includes README and planning-doc housekeeping."
+  },
+  {
+    "release": "agentic-workflows-v0.8.3",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`commit --migrations` records everything a migration changed, including files it untracked, in one reviewed commit.",
+        "outranks_by": "A mistaken knowledge setting (unknown key or out-of-range tuning value) is ignored and named in search notes, `status` and start-up warnings instead of breaking anything.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The knowledge base no longer needs a build step — it ships as plain engine modules.",
+        "outranks_by": "Gates set aside by a question are now put back only after asking in conversation whether you're ready to move on.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "A mistaken knowledge setting (unknown key or out-of-range tuning value) is ignored and named in search notes, `status` and start-up warnings instead of breaking anything.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Starting a session no longer waits on embedding — boot brings keyword search in line with your files and hands vectors to the background fill.",
+        "duplicates": "Background vector fill — a start or phase completion saves keyword search immediately … so nothing waits on the embedding service.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `workflow-knowledge` skill and its bundled CLI, the esbuild build step, and `npm run build`.",
+        "duplicates": "`engine knowledge` is now the single door to the knowledge base … replacing the separate bundled CLI.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`commit --migrations` records everything a migration changed, including files it untracked, in one reviewed commit.",
+        "why": "engine plumbing verb",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The knowledge base no longer needs a build step — it ships as plain engine modules.",
+        "why": "contributor build step",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The migration summary is now rendered by the engine.",
+        "why": "rendering plumbing",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Agent and reference paths handed to agents are written as installed paths from the project root.",
+        "why": "prompt path plumbing",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migrations that remove tracked files from git are now committed correctly instead of being silently left behind.",
+        "why": "migration commit plumbing",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "A resumed specification whose sources are all extracted no longer reruns construction (the release's largest fix)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 3,
+    "notes": "Opens on the background fill but never frames the knowledge base's move into the engine, has no headline, and mixes engine plumbing and build-step bullets among the user-facing changes."
+  },
+  {
+    "release": "agentic-workflows-v0.8.3",
+    "label": "B",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": true,
+      "text": "Starting a session no longer waits on the knowledge base's embedding step, because vectors now fill in the background.",
+      "verdict": "incomplete",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`commit --migrations` records everything migrations changed in one reviewed commit, including removals.",
+        "outranks_by": "Discovery's topic proposal now shows a short description of each topic beside its summary.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration summaries render through a dedicated display.",
+        "outranks_by": "Knowledge query failures show the failed query's error output alongside how to diagnose it.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Knowledge query failures show the failed query's error output alongside how to diagnose it.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Mistaken knowledge config settings are ignored and named instead of stopping searches.",
+        "duplicates": "Knowledge problems are now reported rather than silent — an ignored config setting, … shows up in the next search note, `status`, and the start-of-session warnings.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `npm run build` step and the bundled `knowledge.cjs` CLI.",
+        "duplicates": "The knowledge base is now reached through `engine knowledge <verb>` — the separate `workflow-knowledge` skill and its bundled CLI are gone, and nothing needs building any more.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`commit --migrations` records everything migrations changed in one reviewed commit, including removals.",
+        "why": "engine plumbing verb",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration summaries render through a dedicated display.",
+        "why": "rendering plumbing",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Agent file paths are given as installed from the project root rather than relative to the instruction file.",
+        "why": "prompt path plumbing",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "The knowledge directory is untracked from git by a migration, so a stale tracked store no longer lingers.",
+        "why": "boot already untracked the knowledge store in v0.8.2; only the mechanism moved to a migration",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "A resumed specification whose sources are all extracted no longer reruns construction (the release's largest fix)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 3,
+    "notes": "The headline gives the user-facing payoff of the background fill but not the engine move. Plumbing bullets sit high in Added, the config change is stated twice, and one fix claims a lingering store that boot already handled."
+  },
+  {
+    "release": "agentic-workflows-v0.8.3",
+    "label": "C",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`engine knowledge fill` embeds any chunks still awaiting vectors, one fill at a time.",
+        "outranks_by": "Discovery's topic proposal now shows each topic with a short description of what it covers and why it surfaced.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration summaries at start-up now render through the engine.",
+        "outranks_by": "Questions asked at a gate now set it aside until you say you're ready to move on …",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Agent and reference paths in skill prose are written as installed (`.claude/...`) rather than relative to the file.",
+        "outranks_by": "Postponing or cancelling a topic is taken as said, and unrecorded discussion is written into the document before the transition.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [],
+    "duplicates": [
+      {
+        "text": "Start-up never waits on embedding — boot brings the keyword index in line and hands vectors to the background fill.",
+        "duplicates": "Vectors now fill in the background — an index or phase completion returns at once …",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The `workflow-knowledge` skill, its bundled `knowledge.cjs` CLI and the esbuild build step.",
+        "duplicates": "The knowledge base is now part of the engine — … replacing the separate `workflow-knowledge` skill and its bundled CLI, with nothing to build.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`engine knowledge fill` embeds any chunks still awaiting vectors, one fill at a time.",
+        "why": "engine plumbing verb",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "`engine commit --migrations` commits everything the workflows own, including removals a migration staged.",
+        "why": "engine plumbing verb",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration 062 clears empty `project_skills` and `linters` arrays from implementation topics that were never asked.",
+        "why": "migration bookkeeping and numbering",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration 063 retires the old knowledge store file and its `.worktreeinclude` line.",
+        "why": "migration bookkeeping and numbering",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration 064 untracks the knowledge directory from git, leaving the files on disk.",
+        "why": "migration bookkeeping and numbering",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Migration summaries at start-up now render through the engine.",
+        "why": "rendering plumbing",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Agent and reference paths in skill prose are written as installed (`.claude/...`) rather than relative to the file.",
+        "why": "prompt path plumbing",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "A resumed specification whose sources are all extracted no longer reruns construction (the release's largest fix); only the dependencies re-check is mentioned",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 2,
+    "notes": "The user-facing content is accurate, but there is no headline, and Added is padded with engine verbs and three numbered migration bullets that bury the real changes."
+  },
+  {
+    "release": "agentic-workflows-v0.8.3",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": true,
+      "text": "Starting a session no longer waits on the knowledge base embedding your documents.",
+      "verdict": "incomplete",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "Starting a session now commits migration changes that touch `.claude/settings.json`, `.worktreeinclude` and `.gitignore` together with the reviewed migration commit, instead of a separate commit.",
+        "outranks_by": "Questions at gates now set it aside until you say you're ready to move on, and postpone and cancel requests are taken as said …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "`engine knowledge setup` now keeps your tuning settings (such as `similarity_threshold`) when you change provider.",
+        "section": "Added",
+        "should_be": "Changed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "`npm run build` and the bundled knowledge CLI; the knowledge base now installs as committed source with nothing to build.",
+        "duplicates": "The knowledge CLI is gone — run `node .claude/skills/workflow-engine/scripts/engine.cjs knowledge <verb>` instead …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "Migration summaries now render through the engine, and `engine commit --migrations` commits every path the workflows own.",
+        "why": "rendering and engine commit plumbing",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Starting a session now commits migration changes that touch `.claude/settings.json`, `.worktreeinclude` and `.gitignore` together with the reviewed migration commit, instead of a separate commit.",
+        "why": "commit plumbing",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "A resumed specification whose sources are all extracted no longer reruns construction (the release's largest fix); only the dependencies write is mentioned",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [
+      {
+        "text": "💥 Breaking placed after ✨ Added rather than first",
+        "kind": "section-order"
+      },
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 3,
+    "notes": "The headline states only the start-up payoff, without the engine move or phase closes. Content is otherwise accurate and user-facing, but the sections are out of order and the CLI removal is stated twice."
+  },
+  {
+    "release": "agentic-workflows-v0.8.12",
+    "label": "A",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "A specification that takes in a discussion an earlier specification already covers now works the earlier one in beside it and supersedes it on completion — with a confirm shown only when the start does this.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Promoting a specification to a cross-cutting unit now moves its source discussions properly: the epic marks them promoted and decided, and the new unit keeps them as sources you can revisit.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "A specification that takes in a discussion an earlier specification already covers now works the earlier one in beside it …",
+        "duplicates": "Epic menu's specification start no longer skips incorporating an existing specification that shares a discussion.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Consult references and their sign-off checks on specifications.",
+        "duplicates": "Sibling-discussion corrections are now recorded as tensions on the receiving grouping … replacing consult references.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "The per-type `workflow-*-entry` skills and the per-type `workflow-continue-*` skills.",
+        "duplicates": "Every phase now starts in its own skill … / Feature, bugfix, quick-fix and cross-cutting continue menus are merged into one linear continue menu.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "Cancelled experiment series status — migrated to completed.",
+        "why": "legacy-state cleanup with a migration",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Plan `storage_paths` backfill checks, `--no-session-log` on workunit creation, and review's single/multi/all scope.",
+        "why": "legacy fields and an internal flag",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "Starting a topic whose name is already on the map now shows where it stands and how to get back to it, then returns to the menu instead of ending the session.",
+        "why": "the epic menu's name prompt and its collision check were built in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Covers the entry-layer work, but it opens on the epic menu's new-topic door, has no headline, and restates the main changes in Removed. Legacy cleanup is listed as removed features."
+  },
+  {
+    "release": "agentic-workflows-v0.8.12",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Starting a phase now takes fewer hops: each phase checks and starts itself, and the epic menu handles everything that has no topic yet.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "A specification that takes in a discussion an earlier specification already covers now records and incorporates that earlier specification on every route, and supersedes it on completion.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Promoting an epic specification to a cross-cutting unit now carries its source discussions as the unit's sources and marks them promoted in the epic, so they're no longer grouped, cancelled or postponed there.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "The old per-series cancelled status for experiments is gone; such series now read completed.",
+        "why": "legacy-state cleanup",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [
+      {
+        "text": "🗑️ Removed placed after 🐛 Fixed",
+        "kind": "section-order"
+      }
+    ],
+    "overall": 4,
+    "notes": "Good headline that frames the entry-layer change, with the continue merge and lighter start well covered. Two fixes sit in Added and Changed, and Removed is out of order."
+  },
+  {
+    "release": "agentic-workflows-v0.8.12",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Starting a phase now happens inside the phase itself, with fewer hand-offs and a lighter start menu.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "A specification that takes in a discussion an earlier specification already covers now incorporates that specification and supersedes it on completion, whichever way it was started.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Promoting a specification now moves its source discussions properly: the epic marks them promoted and the new unit keeps them as the specification's sources, so they can be revisited by name.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "The per-phase intake skills and the separate per-type continue skills are gone, along with the continue skills' pick-a-unit step.",
+        "duplicates": "Feature, bugfix, quick-fix and cross-cutting units now share one continue menu. / Each phase checks its own prerequisites … replacing the separate intake skills.",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Promoted discussions no longer stay marked completed in the epic, where they could be regrouped into a new specification.",
+        "duplicates": "Promoting a specification now moves its source discussions properly: the epic marks them promoted …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "Plans no longer backfill the `storage_paths` field mid-session.",
+        "why": "legacy-field cleanup",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Reactivating a cancelled experiment series from an older release now settles it as completed (a migration repairs these).",
+        "why": "legacy-state cleanup with a migration",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Right headline and lead, but the promotion fix is both misfiled and repeated, the skill removals restate Changed, and legacy cleanup appears as a removal and a fix."
+  },
+  {
+    "release": "agentic-workflows-v0.8.12",
+    "label": "D",
+    "lead": "partial",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Completed discussions promoted with a cross-cutting specification now move with it, are marked as promoted in the epic, and can be revisited by name from the new unit.",
+        "section": "Changed",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Consult references are retired, along with their manifest field and sign-off check; existing ones are converted to tension notes by migration.",
+        "duplicates": "Sibling discussions that change something a grouping depends on are now recorded as tension notes on that grouping, raised during specification construction.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "Obsolete handling for cancelled experiment series, logless work units, and `storage_paths` backfills is removed; migrations settle existing data.",
+        "why": "legacy-state cleanup",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Specifications now automatically absorb earlier specifications that cover the same discussions, and ask for confirmation before doing so.",
+        "why": "incorporating an earlier specification already existed in v0.8.11 (create/unify-with-incorporation handoffs)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [
+      {
+        "text": "Epic menu's \"already on the map\" refusal now names the right way back (reactivate, pull forward, resume or reopen) and returns to the menu rather than stopping.",
+        "why": "the epic menu's name prompt and refusal were built in this release",
+        "input_present": true,
+        "missing_fact": null
+      },
+      {
+        "text": "Reactivating a specification now points to the epic menu's `s/spec` for regrouping instead of a removed entry.",
+        "why": "the entry skill it no longer points to was removed in this release",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Changed carries the entry-layer story well, but there is no headline and it opens on the epic menu's new-topic door. It presents existing spec incorporation as new, and two of its fixes fix this release's own work."
+  },
+  {
+    "release": "agentic-workflows-v0.7.0",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Hold the product conversation and stage capabilities on a roadmap before committing any of it to delivery.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Re-bucketing or removing a roadmap item that has been pulled is refused, because redirecting in-flight work is a delivery decision; cancel it from the epic and the item returns to waiting.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [],
+    "in_release_as_change": [
+      {
+        "text": "Start menu shows the roadmap — horizon counts in the overview and an `r/roadmap` row to resume, browse, or pull; a harvested roadmap with no work in flight no longer shows an empty screen.",
+        "why": "\"no longer\" frames a roadmap state that did not exist before this release as a fix",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "New docs page for the product roadmap (docs/roadmap.md)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "The headline and Added give a clear user-facing account of the roadmap. A rule of the new feature is filed under Changed and the new docs page goes unmentioned."
+  },
+  {
+    "release": "agentic-workflows-v0.7.0",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Hold a product-level conversation and stage capabilities on a roadmap before committing any of them to delivery.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Re-bucketing or removing an item that has been pulled into delivery is refused, with the cancel path named.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "The discussion off-topic menu gains a roadmap park option.",
+        "duplicates": "Park a thought on the roadmap mid-work (\"that's a v2 thing\") from epic discovery, discussions and shaping …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`engine roadmap` commands for items, horizons, pulls, sessions and imports, plus `engine commit --roadmap`.",
+        "why": "engine plumbing verbs the skills call",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "New docs page for the product roadmap (docs/roadmap.md)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Right headline and a full account of the roadmap, with minor flaws: an engine-verb bullet, the discussion park stated twice, a new rule under Changed, and no docs page."
+  },
+  {
+    "release": "agentic-workflows-v0.7.0",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Re-bucketing or removing a roadmap item that is already pulled is refused, since that is a delivery decision for the epic.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "Discussion off-topic menu gains a roadmap park option.",
+        "duplicates": "Roadmap parking — say \"that's a v2 thing\" during discovery or a discussion and the idea lands on the roadmap …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "Roadmap management commands — `engine roadmap` verbs for items, horizons (rename, reorder, merge, split), sessions, imports, and `commit --roadmap`.",
+        "why": "engine plumbing verbs the skills call",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Leads with the roadmap and is the most complete set (docs page, menus, voice rules), but it has no headline, an engine-verb bullet, the discussion park stated twice, and a new rule under Changed."
+  },
+  {
+    "release": "agentic-workflows-v0.7.0",
+    "label": "D",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "omitted",
+      "input_present": true,
+      "shape_slips": []
+    },
+    "inversions": [
+      {
+        "text": "`engine roadmap` commands for items, horizons, pulls, sessions and imports, plus `engine commit --roadmap` and new `render` surfaces for the roadmap views and gates.",
+        "outranks_by": "Recognition at shaping — if new work matches a waiting roadmap item or a forgotten inbox capture, discovery offers the pull or read-in instead of creating a twin.",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "misfiled": [
+      {
+        "text": "Pulled items refuse re-bucketing or removal, since redirecting in-flight work is the work unit's decision, while summary edits and horizon relabeling stay open.",
+        "section": "Changed",
+        "should_be": "Added",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [
+      {
+        "text": "New `/workflow-roadmap` skill with genesis, open, and pull modes, plus an `r/roadmap` row on the start menu once a roadmap exists.",
+        "duplicates": "Product roadmap — a project-level layer above work units for product conversations …",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "internal": [
+      {
+        "text": "`engine roadmap` commands for items, horizons, pulls, sessions and imports, plus `engine commit --roadmap` and new `render` surfaces for the roadmap views and gates.",
+        "why": "engine plumbing verbs and render surfaces",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "New docs page for the product roadmap (docs/roadmap.md)",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Leads with the roadmap but has no headline. It restates the roadmap as a separate skill bullet and places engine plumbing above a user-facing feature."
+  },
+  {
+    "release": "agentic-workflows-v0.7.80",
+    "label": "A",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Embedding-provider rate limits no longer fail knowledge indexing and setup outright — the CLI now waits them out.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Rate-limited embedding requests wait the time the provider names and retry, up to five times and 60 seconds in total per command.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "An invalid `--boost` directive on `knowledge query` now reports a clear error instead of being handled inconsistently.",
+        "why": "v0.7.79 already printed the same clear error and exited; only the check moved before the search",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "Filtered store reads size to the store instead of pre-allocating a million rows, making knowledge indexing much faster",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Leads and headlines with the rate-limit work and keeps the dev-only eval harness out. Minor flaws: the wait is a reworked retry filed as Added, the --boost bullet overstates a refactor, and it misses the indexing speed-up."
+  },
+  {
+    "release": "agentic-workflows-v0.7.80",
+    "label": "B",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [
+      {
+        "text": "Rate-limited embedding requests now wait the time the provider names and retry — within a 60-second budget per command, so a throttled index no longer fails outright.",
+        "section": "Added",
+        "should_be": "Fixed",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Retrieval eval harness with judged cases over a frozen corpus from three real projects — keyword mode gates the test suite against a pinned baseline.",
+        "why": "contributor test harness under excluded tests/",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 3,
+    "notes": "Opens correctly on the rate-limit wait and covers every user-facing change, but presents the dev-only eval harness as a user feature and files the reworked retry as Added."
+  },
+  {
+    "release": "agentic-workflows-v0.7.80",
+    "label": "C",
+    "lead": "clean",
+    "lead_input_present": null,
+    "headline": {
+      "present": true,
+      "text": "Rate-limited embedding requests now wait and retry instead of failing the knowledge index straight away.",
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [],
+    "false_claims": [
+      {
+        "text": "An invalid `--boost` directive on `query` now reports its error cleanly.",
+        "why": "v0.7.79 already printed the same clear error and exited; only the check moved before the search",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [
+      {
+        "text": "Filtered store reads size to the store instead of pre-allocating a million rows, making knowledge indexing much faster",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "format_slips": [],
+    "overall": 4,
+    "notes": "Right headline and lead, correctly filed and free of the eval harness. It overstates the --boost refactor as a fix and omits the indexing speed-up."
+  },
+  {
+    "release": "agentic-workflows-v0.7.80",
+    "label": "D",
+    "lead": "no",
+    "lead_input_present": true,
+    "headline": {
+      "present": false,
+      "text": null,
+      "verdict": "match",
+      "input_present": null,
+      "shape_slips": []
+    },
+    "inversions": [],
+    "misfiled": [],
+    "duplicates": [],
+    "internal": [
+      {
+        "text": "Retrieval eval harness with judged cases over a frozen corpus — keyword-mode results are gated against a pinned baseline, so retrieval changes show their before and after.",
+        "why": "contributor test harness under excluded tests/",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "false_claims": [
+      {
+        "text": "Filtered store reads no longer rely on a fixed one-million result cap — removals and counts stay correct however large the store grows.",
+        "why": "the fix removed a costly million-row pre-allocation; counts were never wrong at any realistic store size",
+        "input_present": true,
+        "missing_fact": null
+      }
+    ],
+    "in_release_as_change": [],
+    "breaking": "n/a",
+    "breaking_input_present": null,
+    "missing": [],
+    "format_slips": [],
+    "overall": 2,
+    "notes": "Opens on the dev-only eval harness as the release's one new feature, so the rate-limit work reads as secondary. It also misstates the store-read fix as a correctness change."
+  }
+]
