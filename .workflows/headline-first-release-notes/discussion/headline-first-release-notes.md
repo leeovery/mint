@@ -329,6 +329,47 @@ Deciding factor: the reminder's job — the body is the notes, nothing else — 
 
 ---
 
+## Shipping Bar
+
+### Context
+
+What the rewritten default prompt has to clear before it ships. E1 (Context → Evidence) pre-registered a bar for taking a rewritten prompt "as tested" — a threshold per failure class plus three guard rails — and its frozen prompt fell short: it passed only Breaking Changes, and missing items broke a guard (`.workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/data/scores.json`). The rule's mechanical branch for every failed class is a successor experiment on that class. The user's intent for E1 was that it let the discussion make its decisions, shape the prompt, and move ahead.
+
+Today's prompt on E1's 26 held-out releases, two repeats each (current arm, `data/secondary.json` → `field_counts.current`; lead from `lead.current`; breaking from `breaking.current`): clean lead 21 of 52, inversions 30, misfiled 84, duplicates 29, internal items 77, false claims 25, in-release-as-change 22, missing items 9, format slips 5, breaking flagged 1 of 10. E1's frozen prompt on the same inputs: 38, 16, 78, 19, 28, 34, 13, 13, 5, 8 of 10 — better or level on every count but two, false claims and missing items.
+
+### Options Considered
+
+**1 — At least as good as today's notes on every count**, the wording tuned during implementation on the experiment's releases, with E1's judges as the acceptance check.
+
+**2 — E1's full bar**, which means a further experiment before this discussion closes.
+
+### Journey
+
+The session's position: discussion decides what the notes must do, not their sentences. On the returned subtopics E1's evidence shows the rules move the notes the right way on nearly every count, the judges preferring the new notes on 21 of 26 releases and the user, blind, on 4 of 6; what is short is wording. The one result that would make shipping wrong is a step back in accuracy, and option 1 rules it out. Option 2 spends a full judging round before the specification on wording that is refined on the same releases whichever phase does it. The verdict's successor-experiment branch is set aside for the rules; the measurement carries on as the acceptance check. The user chose 1.
+
+Each count stands on its own. E1 scored false claims and in-release-as-change as one class, which sat level at 47 while false claims rose 25 → 34; netting one against the other would let the rise ship. The headline has no counterpart in today's notes, so "at least as good" means it adds no wrong-subject headline — E1's frozen prompt wrote none in 52 bodies.
+
+Two observations carried with the bar, neither added to it. The user's two blind picks for today's notes (portal v0.11.1, mint v0.0.2) both carry the new prompt's errors in the opening lines, and the counts weigh an error at the top the same as one at the bottom — the original "by eye on real releases" stays alongside the counts. And a prompt tuned on the releases that accept it can fit them; the bar's guard against that is that it asks for no worse than today rather than a tuned threshold, and the rules it carries are general.
+
+Sibling check: mint-release-tool specification — Stage 4's success criterion holds the notes to "on a big release, the headline feature leads the notes", with "no formal rubric or harness — the user assesses output quality by eye on real releases … and tunes the prompt". This bar supersedes the verification half for the rewritten default prompt; it is still true of the code as shipped, and shifts when this feature ships.
+
+### Decision
+
+The rewritten default prompt ships when, on E1's 26 held-out releases — two repeats each, judged blind with E1's rubric and judges and scored as E1 scored them, against today's prompt on the same inputs — every count is at least as good as today's, each on its own:
+
+- clean lead at least 21 of 52; no wrong-subject headline;
+- inversions at most 30; misfiled at most 84; duplicates at most 29;
+- internal items at most 77;
+- false claims at most 25; in-release-as-change at most 22;
+- breaking changes flagged at least 1 of 10;
+- missing items at most 9; format slips at most 5.
+
+The wording is tuned during implementation on the experiment's releases; the acceptance run is a pass of the frozen candidate over the held-out set. E1's frozen prompt already clears every count but false claims and missing items, so those two are where the tuning goes, holding the rest.
+
+Deciding factor: the rules are decided and moving the right way; the only shipping outcome that would be wrong is a regression, and this bar rules every regression out while the remaining gap is wording. Confidence: high on the bar.
+
+---
+
 ## Summary
 
 ### Key Insights

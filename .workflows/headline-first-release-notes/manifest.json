@@ -65,6 +65,10 @@
             "breaking-changes": {
               "status": "pending",
               "parent": null
+            },
+            "shipping-bar": {
+              "status": "decided",
+              "parent": null
             }
           }
         }
