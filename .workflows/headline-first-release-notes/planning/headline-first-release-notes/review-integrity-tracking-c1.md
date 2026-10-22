@@ -56,8 +56,8 @@ Phrase these criteria as §10.3 does: the runs check for the maintenance line an
 - [ ] Given the wording from Phases 1–2 and at least one release whose every change is one §5.1 leaves out, when the first runs take it through a single call, the runs check that its notes are one plain line in the shape of `Maintenance release — no notable source changes`, with no headline and no sections (§5.1, §10.3)
 - [ ] Given the same release taken through the part calls and the merge, cut so that every part's slice holds nothing users meet, the runs check that every part returns its one line and that the merged notes are §5.1's maintenance line (§5.1, §8, §10.3)
 
-**Resolution**: Pending
-**Notes**:
+**Resolution**: Fixed
+**Notes**: Applied as proposed under the auto finding gate; tick records for 3-3 and 3-4 updated and verified.
 
 ---
 
