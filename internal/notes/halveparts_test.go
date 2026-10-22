@@ -242,7 +242,7 @@ func areaDiff(area int) string {
 // into one chunk.
 func capOneAreaPerChunk(t *testing.T, files []chunkFile) chunkScenario {
 	t.Helper()
-	s := chunkScenario{files: files, root: t.TempDir(), cfg: config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}}
+	s := chunkScenario{files: files, root: t.TempDir(), cfg: config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}}.withShortPrompt(t)
 	s.cfg.MaxPromptBytes = s.fixedPart(t) + 45_000
 	return s
 }

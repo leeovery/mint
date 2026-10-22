@@ -183,6 +183,15 @@ func (s chunkScenario) singlePass(t *testing.T) string {
 	return notes.ComposePrompt(s.instructions(t), s.changeMap(t), s.diff())
 }
 
+// withShortPrompt overrides the default prompt with a one-line prompt, so the room a
+// halved call leaves for diff holds whatever the default prompt's length.
+func (s chunkScenario) withShortPrompt(t *testing.T) chunkScenario {
+	t.Helper()
+	writeFile(t, s.root, "short-prompt.md", "Write release notes.")
+	s.cfg.Release.Prompt = "short-prompt.md"
+	return s
+}
+
 // fixedPart is the single-pass prompt's size without its diff.
 func (s chunkScenario) fixedPart(t *testing.T) int {
 	t.Helper()

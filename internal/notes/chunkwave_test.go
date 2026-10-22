@@ -136,6 +136,7 @@ func capOneFilePerChunk(t *testing.T, files []chunkFile) chunkScenario {
 	t.Helper()
 	s := chunkScenario{files: files, root: t.TempDir()}
 	s.cfg = config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}
+	s = s.withShortPrompt(t)
 	s.cfg.MaxPromptBytes = s.fixedPart(t) + 15_000
 	return s
 }

@@ -51,7 +51,9 @@ type pieceFile struct {
 }
 
 // piecesGeneration builds a generator over files whose cap sits pieceRoomOverFixed
-// above the single-pass prompt's fixed part.
+// above the single-pass prompt's fixed part. A one-line prompt override stands in for
+// the default prompt, so the room a halved call leaves for diff holds whatever the
+// default prompt's length.
 func piecesGeneration(t *testing.T, transport notes.Transport, files []pieceFile) (*notes.Generator, config.Config) {
 	t.Helper()
 	var diff, nameStatus, numstat strings.Builder
@@ -65,9 +67,15 @@ func piecesGeneration(t *testing.T, transport notes.Transport, files []pieceFile
 	if err != nil {
 		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
 	}
-	cfg := config.Config{MaxPromptBytes: len(notes.ComposePrompt(notes.DefaultPrompt, changeMap, "")) + pieceRoomOverFixed}
+	const prompt = "Write release notes."
+	root := t.TempDir()
+	writeFile(t, root, "short-prompt.md", prompt)
+	cfg := config.Config{
+		MaxPromptBytes: len(notes.ComposePrompt(prompt, changeMap, "")) + pieceRoomOverFixed,
+		Release:        config.Release{Prompt: "short-prompt.md"},
+	}
 	r := seedNormalPathGit(t, diff.String(), nameStatus.String(), numstat.String())
-	return notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, t.TempDir()), cfg
+	return notes.NewGenerator(notes.NewAssembler(r, "/repo", notes.ExcludeConfig{}), transport, root), cfg
 }
 
 // runPieces runs an over-cap Generate over files and returns the cap it ran under.

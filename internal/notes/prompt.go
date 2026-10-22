@@ -126,6 +126,19 @@ release, never against earlier states inside this one:
   fix, and something an earlier release lost that this one brings back.
 - Something the previous release had that is gone is Removed. A removal that
   breaks existing use goes under 💥 Breaking only.
+- A breaking change goes under 💥 Breaking only, never repeated in another
+  section. Put a change there ONLY where the diff shows that something users
+  already do stops working, or gives a different result they must act on: a
+  removed or renamed command, flag, option, setting or key binding; a default
+  changed so that existing setups behave differently in a way that matters; a
+  changed output or file format that scripts or tools read; data or
+  configuration from the previous release no longer read. A change that only
+  adds, keeps more, allows more or improves is not breaking. When unsure
+  whether a change is breaking, it is not: put it in its usual section.
+- Each 💥 Breaking bullet says, in its one sentence, what breaks and what to do.
+  Take what to do only from what the diff shows, such as a new name, a
+  replacement, or a setting that keeps the old behaviour. Where the diff shows
+  none, the bullet says what breaks and stops there.
 
 Scope and salience:
 

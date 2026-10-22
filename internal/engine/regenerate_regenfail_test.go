@@ -65,9 +65,14 @@ func chunkedFresh() (*runner.FakeRunner, *countedTransport, config.Config) {
 // singlePassFresh scripts the git reads of a fresh single-pass run and of one `r` that re-diffs its range.
 func singlePassFresh() *runner.FakeRunner {
 	notesGit := runner.NewFakeRunner()
-	seedTwoFileGenerations(notesGit, 10_000, 2)
+	seedTwoFileGenerations(notesGit, ladderFileBytes, 2)
 	return notesGit
 }
+
+// ladderFileBytes sizes each of singlePassFresh's two files so that halving its
+// overflowing single-pass call cuts each file into two pieces, four parts in all,
+// as the default prompt's length changes.
+var ladderFileBytes = len(notes.DefaultPrompt) + 10_000
 
 // regenFailRun is `mint release regenerate v1.4.0 --source fresh --target both` at a
 // terminal without -y, its chunk notes saving under a user cache dir of its own.
