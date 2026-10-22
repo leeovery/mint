@@ -218,6 +218,19 @@ A release whose diff is too large for one call is written in parts and then merg
 - **The saved part notes hold sections only.** When the merge fails, the file's rule stands as it is: each finished part's notes byte for byte, in chunk order, with a blank line between parts, and a `**Notes missing:**` line on top when any slice has none (`grep -n "func joinChunkNotes" -B 2 internal/notes/chunknotes.go` → "keeps each part's notes byte for byte, with one blank line between one part's notes and the next"). This feature changes what the part calls return, not the file's rule. A release shipped from the file, by `--notes-file` or picked up with `e`, carries a headline only if the operator writes one while tidying. That is the doubt rule (§3.2) on a path where no call saw the whole.
 - **Every regenerate goes through the merge.** On chunked notes, `r` re-runs only the merge. A merge re-run from saved part notes also goes through the merge. So the headline, and any one-time nudge such as "lead with the auth work", stay with the call that writes the headline.
 
+### 9. The Provider Release Title
+
+The provider release title stays the bare tag on the forward release and on both regenerate paths (`rg -n 'CreateRelease\(ctx, tag, tag' internal/engine/release.go` → line 786; `rg -n 'DispatchRelease\(' internal/engine/regenerate_batch.go internal/engine/regenerate_write.go` → `res.Tag, res.Tag` at `regenerate_batch.go:361`, `req.Tag, req.Tag` at `regenerate_write.go:200`). The headline lives only in the body, where it renders as the first line under the title.
+
+Lifting the headline into the title is ruled out for four reasons:
+
+- Titles would vary with whether the AI wrote a headline. The bodies of §3.4, override repos and every release the doubt rule leaves without one have no headline, so the releases list would mix summaries with bare numbers.
+- mint would have to read into a body it otherwise passes through untouched.
+- Both regenerate paths re-publish with a title, so regenerating would retitle releases that are already out.
+- The gain is confined to the releases list, because the release page already shows the headline as the first line under the title.
+
+The bare-tag title also keeps `regenerate --reuse`'s rebuild of the provider release from the tag annotation body deterministic and free of parsing.
+
 ---
 
 ## Working Notes
