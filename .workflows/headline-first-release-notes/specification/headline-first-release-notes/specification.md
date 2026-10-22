@@ -270,7 +270,7 @@ Measured with `jq -c '.field_counts' .workflows/headline-first-release-notes/exp
 
   Its internal-efficiency leave-out line is a tuning point (§10.3). Two more parts of what ships are not new-v3's: the closing reminder is §7.1's format-neutral wording, not new-v3's headline-naming one, and the chunk, piece and merge framings follow §7.1 and §8. E1 never exercised the chunked path.
 - **Tuning** happens during implementation, on E1's releases. The wording stays general: no prompt text names, quotes or paraphrases a change from the 31 sampled releases, and any example added is invented (the three shipped altitude examples are exempt). That generality, together with a bar that asks for no worse than today rather than a tuned threshold, is the guard against wording fitted to the releases it is tested on.
-- **Acceptance** is one pass of the wording as it ships, frozen when tuning ends, over the 26 held-out releases, two repeats each: the rewritten default prompt, closed by §7.1's format-neutral reminder. It is otherwise run as E1 ran it: E1's harness, the same inputs, the same AI command and model, E1's rubric and judge grouping, and E1's scoring. It sits outside mint's test suite, which never spawns a real AI command.
+- **Acceptance** is one pass of the wording as it ships, frozen when tuning ends, over the 26 held-out releases, two repeats each: the rewritten default prompt, closed by §7.1's format-neutral reminder. It is otherwise run as E1 ran it: E1's harness, the same inputs, the same AI command and model, E1's rubric and judge grouping, and E1's scoring. It sits outside mint's test suite, which never spawns a real AI command. The failures §10.3 says hold shipping are checked on the same frozen wording. The chunked-path checks and the checks on a release with nothing users meet, which a single-call pass cannot exercise, run again on it, on releases cut as the first runs cut them. A check cleared only on wording that tuning later changed has not been cleared, since §10.3 holds shipping until the wording clears it. A failure on the frozen wording reopens tuning, and the acceptance pass runs again on the wording frozen after it.
 
 #### 10.3 Where the tuning goes
 
@@ -290,3 +290,7 @@ The read by eye on real releases stays alongside the counts, outside the bar. Th
 ---
 
 ## Working Notes
+
+## Corrigenda
+
+> **Corrigendum 2026-10-22** (from `planning/headline-first-release-notes`): the specification left open whether the failures §10.3 says hold shipping, set in the first runs on the chunked path and on a release with nothing users meet, must be cleared on the frozen wording or whether clearing them on an earlier tuning draft is enough — corrected: §10.2's acceptance runs those checks again on the frozen wording, and a failure there reopens tuning and a fresh acceptance pass — settled by: derivation from §10.1 (the prompt ships once every §10.3 failure "has been cleared"), §10.3 (each "holds shipping until the wording clears it") and §10.2 (what ships is "the wording as it ships, frozen when tuning ends"); a check passed on wording tuning later changed says nothing of the wording that ships.
