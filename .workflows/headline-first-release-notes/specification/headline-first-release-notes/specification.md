@@ -209,6 +209,15 @@ All of it stays format-neutral. Every headline rule, and every rule in §2–§6
 - **The default prompt, with or without `[release].context`.** These repos get the headline and every rule in §2–§6. `[release].context` is appended under its labelled header and leaves the default's rules intact.
 - **A full `[release].prompt` override.** This is the operator's format. It gets no headline unless the operator's prompt asks for one, and nothing mint adds to its calls asks for one. The only change that reaches these calls is the shared wording in §7.1.
 
+### 8. The Chunked Path
+
+A release whose diff is too large for one call is written in parts and then merged. Each chunk or piece call carries the release's instructions, the whole-release Change Map, a framing that names its part, its slice of the diff, and the closing reminder. The merge call reads every part's notes in part order and writes the release's notes.
+
+- **Part calls write no headline. The merge alone writes it**, judging the whole release from every part's notes and the whole-release Change Map. A part sees one slice. It cannot know whether that slice is the release's main work or a footnote, and the merge is the only call that sees the whole.
+- **The part instruction is format-neutral (§7.1).** The chunk and piece framings ask the part to leave out anything that sums up the release as a whole, because the merge writes that. On the default prompt this means the headline. Under an override whose format has no such line, it asks nothing.
+- **The saved part notes hold sections only.** When the merge fails, the file's rule stands as it is: each finished part's notes byte for byte, in chunk order, with a blank line between parts, and a `**Notes missing:**` line on top when any slice has none (`grep -n "func joinChunkNotes" -B 2 internal/notes/chunknotes.go` → "keeps each part's notes byte for byte, with one blank line between one part's notes and the next"). This feature changes what the part calls return, not the file's rule. A release shipped from the file, by `--notes-file` or picked up with `e`, carries a headline only if the operator writes one while tidying. That is the doubt rule (§3.2) on a path where no call saw the whole.
+- **Every regenerate goes through the merge.** On chunked notes, `r` re-runs only the merge. A merge re-run from saved part notes also goes through the merge. So the headline, and any one-time nudge such as "lead with the auth work", stay with the call that writes the headline.
+
 ---
 
 ## Working Notes
