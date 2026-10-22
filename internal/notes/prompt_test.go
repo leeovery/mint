@@ -157,6 +157,56 @@ func TestDefaultPrompt_ListsEveryChangeOnce(t *testing.T) {
 	)
 }
 
+func TestDefaultPrompt_HoldsHeadlineToBulletsAltitude(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"The headline sums up the release's main body of work in ONE terse sentence, in plain language, at the same altitude as the bullets.",
+		"It names that body of work and leads with what it gives the user: what they can now do, or no longer suffer, in the terms they meet it — never in files, formats or internals.",
+		"It is NOT a synthesis of everything in the release, and NOT a narrative thread that ties the changes together.",
+	)
+}
+
+func TestDefaultPrompt_BarsScaleWordsAndInventoryFromHeadline(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		`Lead with the benefit, not the size of the work: no "major", "overhaul", "powerful" or other scale or praise words, and no inventory of the work's pieces. The sections carry the scale.`,
+	)
+}
+
+func TestDefaultPrompt_LetsHeadlineNameAnyKindOfChange(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"The main body of work may be a feature, a rework, a fix or a large epic. Name it whatever section its pieces sit in.",
+	)
+}
+
+func TestDefaultPrompt_KeepsHeadlinePlainText(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		`Plain text: no bold, no emoji, and no label such as "Highlights:" or "TL;DR:".`,
+	)
+}
+
+func TestDefaultPrompt_KeepsSectionsCompleteBelowHeadline(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"The headline does not relieve the sections: list every notable change below it exactly as you would without one, the pieces of the main work included.",
+	)
+}
+
+func TestDefaultPrompt_PicksHeadlineByWhatReleaseChangesForUser(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Pick the headline by what the release changes for its user, read from the diff. A new folder or a large file is not, of itself, the release's main thing, and the Change Map does not pick the headline.",
+	)
+}
+
 func TestDefaultPrompt_CarriesBulletRulesUnchanged(t *testing.T) {
 	t.Parallel()
 

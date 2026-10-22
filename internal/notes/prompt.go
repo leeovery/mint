@@ -59,6 +59,26 @@ Examples of the right altitude (what to aim for):
     - Failures no longer print twice when stdout and stderr share a terminal.
     - Pin the AI model with ` + "`ai_command = \"claude -p --model sonnet\"`" + `.
 
+The headline:
+
+- The headline sums up the release's main body of work in ONE terse sentence, in
+  plain language, at the same altitude as the bullets. It names that body of work
+  and leads with what it gives the user: what they can now do, or no longer
+  suffer, in the terms they meet it — never in files, formats or internals.
+- It is NOT a synthesis of everything in the release, and NOT a narrative thread
+  that ties the changes together.
+- Lead with the benefit, not the size of the work: no "major", "overhaul",
+  "powerful" or other scale or praise words, and no inventory of the work's
+  pieces. The sections carry the scale.
+- The main body of work may be a feature, a rework, a fix or a large epic. Name it
+  whatever section its pieces sit in.
+- Plain text: no bold, no emoji, and no label such as "Highlights:" or "TL;DR:".
+- The headline does not relieve the sections: list every notable change below it
+  exactly as you would without one, the pieces of the main work included.
+- Pick the headline by what the release changes for its user, read from the diff.
+  A new folder or a large file is not, of itself, the release's main thing, and
+  the Change Map does not pick the headline.
+
 Scope and salience:
 
 - ONE bullet per notable change — not per file, hunk, or commit. Combine

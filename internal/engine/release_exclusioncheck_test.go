@@ -12,6 +12,7 @@ import (
 
 	"mint/internal/ai"
 	"mint/internal/engine"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
@@ -397,7 +398,9 @@ func TestRelease_HalvedNotes_TheLowerTheCapHintNeverNamesTheCheckCall(t *testing
 	seedRecordTagPush(f, root)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
-	tr := &overflowAboveTransport{limit: 10_000}
+	// The limit scales with the default prompt so halving still bottoms out under it
+	// as the prompt's wording changes.
+	tr := &overflowAboveTransport{limit: len(notes.DefaultPrompt) + 8_000}
 	deps := newDeps(rec, f)
 	deps.Transport = tr
 
