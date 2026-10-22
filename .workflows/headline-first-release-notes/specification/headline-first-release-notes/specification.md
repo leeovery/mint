@@ -157,6 +157,23 @@ Every change is placed by comparing it with the previous release, never with ear
 
 A reader upgrading must meet what breaks before anything else, which is why the section exists. The narrow definition keeps it from crying wolf at the top of the notes.
 
+### 5. What the Notes Claim
+
+#### 5.1 Only what users meet
+
+- **In:** what a user of the software meets. That is what the software does, its commands, options, configuration, output, errors, performance and compatibility.
+- **Out:** how the software is built and maintained. That covers CI and release tooling, linting, build scripts, test suites and harnesses, internal packages, modules and refactors, internal flags and plumbing commands, data-migration numbering, contributor docs, and repo housekeeping such as restructuring the README. A new internal package is not a feature: the notes describe what it lets users do, or leave it out.
+- **The test is whether a user meets or notices the change**, not whether the code behind it is internal. A speed-up users notice belongs to them and is listed. Where the shipped files are the product (prompts, skills or templates the software ships and uses), changes to those files count.
+- **In the user's terms.** Every change is described as users see and use it, never in the code's names, the mechanism, or a design document's jargon.
+
+#### 5.2 True to the release
+
+- **No behaviour is claimed from documentation, READMEs, comments, examples or tests alone.** These files describe behaviour, and editing them does not change it. The exception is files that are the product (§5.1), where a change does change it. A change to tests alone is not a fix.
+- **Work built in this release is never presented as a change to, or fix of, the previous release.** §4.1 places it.
+- **Nothing the previous release already had is presented as new.** That holds whether the diff shows it in unchanged context lines, in removed lines, or in code the diff only moves or renames.
+
+**No new inputs.** The previous release's state is already in front of the AI, in the diff's removed and context lines. E1's judges called only 3 of the 47 accuracy residuals in the rewritten notes input-absent (`jq -c '.residuals["true to the release"]' .workflows/headline-first-release-notes/experiment/headline-first-release-notes/E1-notes-prompt-on-real-releases/data/scores.json` → `{"verdict":"needs more prompt work","input_absent":3,"instances":47}`). Three of their "the previous release already had it" calls were spot-checked against the inputs, and each fact sat in the diff's removed lines. So the fix is how the prompt gets the diff read, not what mint sends. The wording carries it, held to §10.
+
 ---
 
 ## Working Notes
