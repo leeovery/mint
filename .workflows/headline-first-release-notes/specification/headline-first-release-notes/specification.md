@@ -188,6 +188,27 @@ Within each section, changes are ordered by what they mean to the user, most imp
 - **mint's own descriptions follow the role.** Wherever mint's text calls the map a salience or priority signal, the description changes to coverage: the prompt's description of the map, and the doc comments on how it is built, composed and generated (`rg -n -i 'salience|prioriti' internal/notes --glob '!*_test.go' | wc -l` → 11).
 - **Detection is not fixed.** New-directory detection reads only a path's first segment (`grep -n "func leadingDir" -A 6 internal/notes/changemap.go` → returns `path[:i]` at the first `/`), so a new package under an existing `internal/`, `src/` or `skills/` never registers. The audit found the novelty line fired in 6 of 31 releases and pointed the wrong way each time. The largest-file line is often a test, a deletion or a dev script. Making detection find new packages at any depth would make it fire on exactly the internal packages §5.1 keeps out of the notes, and it would still flag novelty rather than what a release changes for its user.
 
+### 7. Shared Wording and Prompt Overrides
+
+#### 7.1 mint's shared wording stays format-neutral
+
+Some text is mint's own, and goes on every repo's notes calls whatever the instructions are, including under a full `[release].prompt` override:
+
+- **The closing reminder.** It closes the single-pass prompt, every chunk and piece call, and the merge call (`rg -n 'OutputReminder' internal/notes/chunk.go internal/notes/prompt.go | grep -v '//'` → `chunk.go:543`, `chunk.go:567`, `prompt.go:83`, `prompt.go:101`).
+- **The chunk and piece framings, and the merge framing.** Each tells the model to write "in the format above" (`rg -n 'in the format above' internal/notes/chunk.go | wc -l` → 3).
+
+All of it stays format-neutral. Every headline rule, and every rule in §2–§6, lives in the default prompt alone.
+
+- **The reminder** becomes: "Now output ONLY the release notes themselves, in the format above, exactly as they should be published: no preamble, no commentary, no explanation, no code fences, nothing before or after the notes." Its job is the same on every repo: the body is the notes and nothing else. It is the hardening against models narrating before the notes, which has been observed in real `mint commit` runs. "The format above" means whichever instructions govern. On the default prompt, that is a format that opens with the headline.
+- **The wording is not E1's.** E1's reminder named the headline ("the one-sentence headline if this release has one, then the sections"). On an override repo, that line would tell the model to put a headline above sections its format may not have. Whether the model keeps the headline under the neutral wording is measured under §10. What would reopen this: evidence that the model keeps a headline only when the last thing it reads names one.
+- **The merge framing** drops "rank by the Change Map above" (§6.2), so ranking belongs to the governing format. Its other instructions stay: combine related changes across parts into single bullets, and drop duplicates.
+- **The chunk and piece framings** gain one format-neutral instruction (§8).
+
+#### 7.2 What reaches which repo
+
+- **The default prompt, with or without `[release].context`.** These repos get the headline and every rule in §2–§6. `[release].context` is appended under its labelled header and leaves the default's rules intact.
+- **A full `[release].prompt` override.** This is the operator's format. It gets no headline unless the operator's prompt asks for one, and nothing mint adds to its calls asks for one. The only change that reaches these calls is the shared wording in §7.1.
+
 ---
 
 ## Working Notes
