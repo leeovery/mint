@@ -16,9 +16,18 @@ import (
 	"mint/internal/version"
 )
 
-// sixAreaSizes sizes the files of a diff that chunks into six parts under a
-// 20,000-byte cap, the second sized so its halving re-cuts it into three parts.
-var sixAreaSizes = []int{10_000, 13_000, 10_000, 10_000, 10_000, 10_000}
+// The six-area geometry scales with the default prompt so its cut holds as the
+// prompt's wording changes. sixAreaSizes sizes the files of a diff that chunks into
+// six parts under sixAreaCap, one area to a part, the second sized so that half its
+// failed call re-cuts it into three parts.
+var (
+	// sixAreaFixed bounds a chunk call's bytes besides its diff.
+	sixAreaFixed  = len(notes.DefaultPrompt) + 2_300
+	sixAreaSecond = 3*sixAreaFixed + 1_000
+	sixAreaOther  = sixAreaSecond * 3 / 4
+	sixAreaSizes  = []int{sixAreaOther, sixAreaSecond, sixAreaOther, sixAreaOther, sixAreaOther, sixAreaOther}
+	sixAreaCap    = sixAreaFixed + sixAreaSecond + 500
+)
 
 func areaPath(n int) string { return fmt.Sprintf("area%d/f.go", n) }
 
@@ -106,7 +115,7 @@ func (wt *waveEndTransport) assertFifthRenumbered(t *testing.T) {
 
 func seedSixAreaRelease(t *testing.T, root string, f *runner.FakeRunner, onNotesFailure string) {
 	t.Helper()
-	writeConfig(t, root, "max_prompt_bytes = 20000\n\n[release]\non_notes_failure = \""+onNotesFailure+"\"\n")
+	writeConfig(t, root, fmt.Sprintf("max_prompt_bytes = %d\n\n[release]\non_notes_failure = %q\n", sixAreaCap, onNotesFailure))
 	seedPriorTagReadGates(f, root, "main")
 	diff, nameStatus, numstat := sixAreaGit()
 	f.SeedSequence("git", ScriptedOut(diff), ScriptedOut(nameStatus), ScriptedOut(numstat))
@@ -164,7 +173,7 @@ func TestRelease_WaveEnds_Fallback_ShipsTheCommitSubjectList(t *testing.T) {
 
 func produceSixAreaWave(ctx context.Context, tr notes.Transport, root string, res version.Resolution) (string, error) {
 	cfg := freshCfg()
-	cfg.MaxPromptBytes = 20_000
+	cfg.MaxPromptBytes = sixAreaCap
 	notesGit := seedFreshGit(sixAreaGit())
 	return engine.RegenerateFreshBody(ctx, notesGit, tr, root, cfg, res, engine.NotesSinks{})
 }

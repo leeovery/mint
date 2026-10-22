@@ -47,8 +47,9 @@ func assertOrder(t *testing.T, s string, markers ...string) {
 func defaultPromptRules() []struct{ name, want string } {
 	return []struct{ name, want string }{
 		{"one line one sentence per bullet", "ONE line and ONE sentence"},
-		{"changelogs are for humans", "FOR HUMANS"},
+		{"notes are for the people who use the software", "FOR THE PEOPLE WHO USE THE SOFTWARE"},
 		{"no tl;dr", "NO TL;DR"},
+		{"breaking section emoji header", "💥 Breaking"},
 		{"added section emoji header", "✨ Added"},
 		{"changed section emoji header", "🔧 Changed"},
 		{"deprecated section emoji header", "⚠️ Deprecated"},
@@ -87,6 +88,99 @@ func TestDefaultPrompt_RequestsNoMachineParseableWrapper(t *testing.T) {
 	if !strings.Contains(notes.DefaultPrompt, "Return the notes directly") {
 		t.Errorf("default prompt does not request notes returned directly (no machine wrapper):\n%s", notes.DefaultPrompt)
 	}
+}
+
+// normalizeSpace collapses every run of whitespace to one space, so a rule is
+// matched as words regardless of where the prompt wraps its lines.
+func normalizeSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// assertPromptSays fails unless the default prompt carries each phrase, compared
+// word for word with whitespace normalised.
+func assertPromptSays(t *testing.T, phrases ...string) {
+	t.Helper()
+
+	prompt := normalizeSpace(notes.DefaultPrompt)
+	for _, phrase := range phrases {
+		if !strings.Contains(prompt, normalizeSpace(phrase)) {
+			t.Errorf("default prompt missing %q:\n%s", phrase, notes.DefaultPrompt)
+		}
+	}
+}
+
+func TestDefaultPrompt_AsksForOptionalHeadlineAsFirstLine(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"HEADLINE (optional): one plain sentence, only where the release has one, as the first line of the notes, followed by one blank line and then the first section.",
+		"Where the release has no headline, the notes open with the first section.",
+	)
+}
+
+func TestDefaultPrompt_ListsSevenSectionsInFixedOrder(t *testing.T) {
+	t.Parallel()
+
+	assertOrder(t, notes.DefaultPrompt,
+		"\n    💥 Breaking    — ",
+		"\n    ✨ Added       — ",
+		"\n    🔧 Changed     — ",
+		"\n    ⚠️ Deprecated  — ",
+		"\n    🗑️ Removed     — ",
+		"\n    🐛 Fixed       — ",
+		"\n    🔒 Security    — ",
+	)
+	assertPromptSays(t,
+		"in this order. Omit empty sections entirely — emit only a section that has at least one item.",
+		"Keep this order in every release, whatever its main work.",
+	)
+}
+
+func TestDefaultPrompt_AllowsNothingAboveFirstSectionButHeadline(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Nothing goes above the first section but the headline: NO summary paragraph, NO TL;DR, NO label, and NO other preamble.",
+		"Do NOT wrap them in any machine-parseable labels, headings, or markers beyond the format above.",
+		"no preamble and no meta-commentary. Do not explain what you are doing, do not restate these instructions, do not add a sign-off.",
+	)
+	if strings.Contains(normalizeSpace(notes.DefaultPrompt), "start directly with the first section header") {
+		t.Errorf("default prompt still asks to start directly with the first section header:\n%s", notes.DefaultPrompt)
+	}
+}
+
+func TestDefaultPrompt_ListsEveryChangeOnce(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"List every change once, in one section. The headline's summary of the release's main work is the only restatement in the notes.",
+	)
+}
+
+func TestDefaultPrompt_CarriesBulletRulesUnchanged(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		`Each bullet is ONE line and ONE sentence: name the change in plain language, and
+where it helps add the user-facing effect after an em dash. That single line is
+the whole bullet — NO second sentence, NO bold lead-in label, NO sub-bullets, NO
+implementation detail, and NO rationale for how it was built. Aim for a line a
+user understands at a glance, not a fragment they have to decode.
+
+Examples of the right altitude (what to aim for):
+
+    - Single-keypress review gates — press y/n/e/r to decide, no Enter needed.
+    - Failures no longer print twice when stdout and stderr share a terminal.
+    - Pin the AI model with `+"`ai_command = \"claude -p --model sonnet\"`"+`.`,
+		`ONE bullet per notable change — not per file, hunk, or commit. Combine
+closely-related changes into a single bullet. Ignore version-number bumps and
+other trivial bookkeeping churn. Most releases are a handful of bullets; do not
+pad.`,
+		`Deprecated and Security are opportunistic — emit an item ONLY on an explicit
+textual marker in the diff (a @deprecated annotation for Deprecated; an obvious
+auth / cryptography / input-validation / CVE-bump surface for Security). Do NOT
+infer them speculatively. These sections are empty in most releases.`,
+	)
 }
 
 func TestComposePrompt_OrdersInstructionsThenChangeMapThenDiff(t *testing.T) {
@@ -172,7 +266,7 @@ func TestResolveInstructions_ContextString_InjectedNotReplacing(t *testing.T) {
 		t.Errorf("instructions missing injected context string:\n%s", got)
 	}
 	// Default rules must still be present — inject, never replace.
-	if !strings.Contains(got, "Keep a Changelog") || !strings.Contains(got, "✨ Added") {
+	if !strings.Contains(got, "💥 Breaking") || !strings.Contains(got, "✨ Added") {
 		t.Errorf("default prompt rules absent after context inject:\n%s", got)
 	}
 }

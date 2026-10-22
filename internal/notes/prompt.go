@@ -12,29 +12,40 @@ import (
 )
 
 // DefaultPrompt is the instructions mint ships when no [release].prompt override is
-// configured. It encodes the default notes format — Keep a Changelog's taxonomy and
-// principles rendered in mint's emoji skin — plus the salience and discipline rules
-// the spec pins (Stage 4: Default notes format / Prompt control / Output format).
-// It is the "instructions" half of the composed AI input; ComposePrompt appends the
-// Change Map preamble and the diff after it. Wording is deliberately ship-and-refine
-// (tuned over real releases); every rule below is required and individually
-// assertable in the tests.
+// configured. A notes-format rule belongs here, never in the text mint adds to every
+// notes call: a full override replaces this prompt, but that text reaches its calls
+// too. It is the "instructions" half of the composed AI input; ComposePrompt appends
+// the Change Map preamble and the diff after it.
 const DefaultPrompt = `You are writing the release notes for a software release. You are given a
-Change Map (a diff-derived salience summary) followed by the actual code diff.
-Read the WHOLE diff and produce concise, human-facing release notes in the exact
-format described below. Changelogs are FOR HUMANS: a reader should grasp what
-changed and why it matters to them, without reading the diff.
+Change Map (a diff-derived salience summary) followed by the actual code diff
+between the previous release and this one. Read the WHOLE diff and produce
+concise release notes in the exact format described below. Release notes are
+FOR THE PEOPLE WHO USE THE SOFTWARE: a reader should grasp what changed for them
+and why it matters, without reading the diff.
 
-Format — categorized sections using the Keep a Changelog taxonomy, each with an
-emoji header, in this order. Omit empty sections entirely — emit only a section
-that has at least one item:
+Format — an optional headline, then categorized sections:
 
-    ✨ Added       — new features and capabilities
-    🔧 Changed     — changes to existing behaviour
+1. HEADLINE (optional): one plain sentence, only where the release has one, as
+   the first line of the notes, followed by one blank line and then the first
+   section. Where the release has no headline, the notes open with the first
+   section.
+2. SECTIONS, each with an emoji header, in this order. Omit empty sections
+   entirely — emit only a section that has at least one item. Keep this order in
+   every release, whatever its main work.
+
+    💥 Breaking    — changes that stop existing use working, or change it in a way users must act on
+    ✨ Added       — capabilities the previous release did not have
+    🔧 Changed     — changes to behaviour the previous release already had
     ⚠️ Deprecated  — features marked for future removal
-    🗑️ Removed     — removed features
-    🐛 Fixed       — bug fixes
+    🗑️ Removed     — features the previous release had that are gone
+    🐛 Fixed       — things that were broken in the previous release and now work
     🔒 Security    — security-relevant changes
+
+Nothing goes above the first section but the headline: NO summary paragraph,
+NO TL;DR, NO label, and NO other preamble.
+
+List every change once, in one section. The headline's summary of the release's
+main work is the only restatement in the notes.
 
 Each bullet is ONE line and ONE sentence: name the change in plain language, and
 where it helps add the user-facing effect after an em dash. That single line is
@@ -54,8 +65,6 @@ Scope and salience:
   closely-related changes into a single bullet. Ignore version-number bumps and
   other trivial bookkeeping churn. Most releases are a handful of bullets; do not
   pad.
-- NO TL;DR, NO summary paragraph, NO preamble — start directly with the first
-  section header.
 - Rank importance using the Change Map: new structure (a whole new package or
   directory) is the strongest signal — weight it above raw size. But DESCRIBE
   every change from the DIFF; the Change Map is salience metadata, never content.
@@ -67,10 +76,11 @@ infer them speculatively. These sections are empty in most releases.
 
 Output discipline:
 
-- Return the notes directly in this format. Do NOT wrap them in any
-  machine-parseable labels, headings, or markers beyond the format above.
-- Strict: no preamble and no meta-commentary. Do not explain what you are doing, do
-  not restate these instructions, do not add a sign-off. Output only the notes.`
+- Return the notes directly in this format: the headline line if the release has
+  one, then the sections. Do NOT wrap them in any machine-parseable labels,
+  headings, or markers beyond the format above.
+- Strict: nothing else — no preamble and no meta-commentary. Do not explain what
+  you are doing, do not restate these instructions, do not add a sign-off.`
 
 // OutputReminder is the closing line ComposePrompt appends AFTER the diff. It
 // restates the output contract at the very END of the prompt because recency wins:
