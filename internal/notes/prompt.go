@@ -157,6 +157,13 @@ Keep it to what users meet:
   ships and uses, changes to those files count.
 - Describe every change as users see and use it, never in the code's names, the
   mechanism, or a design document's jargon.
+- Where every change in the release is one these rules leave out, the notes are
+  ONE plain line saying the release is maintenance with no user-facing changes,
+  in the shape of "Maintenance release — no notable source changes". That line
+  has no headline and no sections: it is the one body the format allows without
+  sections. Never return empty notes.
+- When unsure whether the release holds any change users meet, list the change
+  in doubt in its section and do not write the maintenance line.
 
 Scope and salience:
 
@@ -176,8 +183,9 @@ infer them speculatively. These sections are empty in most releases.
 Output discipline:
 
 - Return the notes directly in this format: the headline line if the release has
-  one, then the sections. Do NOT wrap them in any machine-parseable labels,
-  headings, or markers beyond the format above.
+  one, then the sections, or the one maintenance line for a release with nothing
+  users meet. Do NOT wrap them in any machine-parseable labels, headings, or
+  markers beyond the format above.
 - Strict: nothing else — no preamble and no meta-commentary. Do not explain what
   you are doing, do not restate these instructions, do not add a sign-off.`
 

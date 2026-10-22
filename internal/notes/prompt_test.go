@@ -637,3 +637,29 @@ func TestResolveInstructions_PromptFileMissing_ReturnsError(t *testing.T) {
 		t.Fatal("ResolveInstructions returned nil error for a missing prompt file, want non-nil")
 	}
 }
+
+func TestDefaultPrompt_AsksForMaintenanceLineWhenNothingUsersMeet(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"Where every change in the release is one these rules leave out, the notes are ONE plain line saying the release is maintenance with no user-facing changes, in the shape of \"Maintenance release — no notable source changes\".",
+		"Never return empty notes.",
+	)
+}
+
+func TestDefaultPrompt_GivesMaintenanceLineNoHeadlineAndNoSections(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"That line has no headline and no sections: it is the one body the format allows without sections.",
+		"the headline line if the release has one, then the sections, or the one maintenance line for a release with nothing users meet.",
+	)
+}
+
+func TestDefaultPrompt_ListsChangeInDoubtInsteadOfMaintenanceLine(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"When unsure whether the release holds any change users meet, list the change in doubt in its section and do not write the maintenance line.",
+	)
+}
