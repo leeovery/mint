@@ -545,17 +545,23 @@ func composeChunkPrompt(instructions, changeMap, framing, slice string) string {
 
 const chunkFramingOpening = "This release's diff is too large to read in one pass, so it has been split into parts. "
 
+// chunkFramingSummaryRule names no headline: the framings reach a full
+// [release].prompt override's calls too, so it stays format-neutral.
+const chunkFramingSummaryRule = " Leave out anything that sums up the release as a whole, since the merge writes that from every part's notes."
+
 func (p chunkPart) framing(part, parts int) string {
 	if p.file == "" {
 		return fmt.Sprintf(chunkFramingOpening+
 			"What follows is part %d of %d. The Change Map above covers the whole release; the diff below covers only this part. "+
-			"Write release notes for the changes in this part, in the format above. They will be merged with the other parts' notes.",
+			"Write release notes for the changes in this part, in the format above. They will be merged with the other parts' notes."+
+			chunkFramingSummaryRule,
 			part, parts)
 	}
 	return fmt.Sprintf(chunkFramingOpening+
 		"What follows is part %d of %d: piece %d of %d of the diff for %s, a file too large to read in one part, so its diff has been cut into pieces. "+
 		"The Change Map above covers the whole release; the diff below covers only this piece of that file. "+
-		"Write release notes for the changes in this piece, in the format above. They will be merged with the other parts' notes.",
+		"Write release notes for the changes in this piece, in the format above. They will be merged with the other parts' notes."+
+		chunkFramingSummaryRule,
 		part, parts, p.piece, p.pieces, p.file)
 }
 
