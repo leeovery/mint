@@ -108,8 +108,6 @@ func TestGenerator_ChunkHalvedThreeTimes_FourthSizeFailsTheSliceNamingItsPart(t 
 	}
 }
 
-// outsizedFixedPart is a scenario whose operator context gives every call a fixed
-// part of about 120,000 bytes.
 func outsizedFixedPart(t *testing.T, files []chunkFile, maxPromptBytes int) chunkScenario {
 	t.Helper()
 	root := t.TempDir()

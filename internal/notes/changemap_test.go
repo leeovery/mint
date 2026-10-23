@@ -93,10 +93,6 @@ func assertGitArgv(t *testing.T, got runner.Invocation, want []string) {
 func TestAssembler_BuildChangeMap_NewPackageHeadlinesAboveLargerExistingArea(t *testing.T) {
 	t.Parallel()
 
-	// Structural novelty is PRIMARY: a brand-new auth/ package (every path added)
-	// is the strongest headline signal and must lead the map — ABOVE a larger-
-	// magnitude change in an existing area (api/, only modified, 400 churned lines
-	// vs auth/'s 30). Novelty over magnitude in both ordering and emphasis.
 	nameStatus := strings.Join([]string{
 		"A\tauth/login.go",
 		"A\tauth/session.go",
@@ -119,7 +115,6 @@ func TestAssembler_BuildChangeMap_NewPackageHeadlinesAboveLargerExistingArea(t *
 	if novIdx < 0 {
 		t.Fatalf("change map does not headline the new auth/ package:\n%s", got)
 	}
-	// The novelty headline for auth/ must appear before the api/ magnitude line.
 	apiIdx := strings.Index(got, "api/")
 	if apiIdx < 0 {
 		t.Fatalf("change map does not mention the api/ magnitude area:\n%s", got)
@@ -166,10 +161,6 @@ func TestAssembler_BuildChangeMap_ReportsRenamedAndRemovedPaths(t *testing.T) {
 func TestAssembler_BuildChangeMap_RanksPerAreaChurnAsSupportingMagnitude(t *testing.T) {
 	t.Parallel()
 
-	// Magnitude is SECONDARY supporting context: per-file churn rolls up to
-	// directory/area granularity, ranked by total churn descending. A flat per-file
-	// list is mush — rollup is the salience-preserving form. Here api/ (410) must
-	// rank above util/ (12), which ranks above cmd/ (3).
 	nameStatus := strings.Join([]string{
 		"M\tapi/a.go",
 		"M\tapi/b.go",
@@ -265,10 +256,6 @@ func TestAssembler_BuildChangeMap_CallsOutNewTopLevelEntries(t *testing.T) {
 func TestAssembler_BuildChangeMap_AllInOneExistingArea_RollsUpNoFalseHeadline(t *testing.T) {
 	t.Parallel()
 
-	// When EVERY change is a modification within ONE existing area (no A/D/R, the
-	// area is merely touched), there must be NO false novelty headline — only the
-	// magnitude rollup for that area. The novelty heuristic (a dir is novel only when
-	// all its paths are added) must NOT fire here.
 	nameStatus := strings.Join([]string{
 		"M\tapi/a.go",
 		"M\tapi/b.go",
