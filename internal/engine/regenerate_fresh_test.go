@@ -288,7 +288,7 @@ func (st *splitTransport) Generate(_ context.Context, prompt string) (string, er
 // partCap is a max_prompt_bytes under which each file of about fileBytes in a
 // multi-file diff goes in a call of its own, as the default prompt's length changes.
 func partCap(fileBytes int) int {
-	return len(notes.DefaultPrompt) + fileBytes + 1_200
+	return len(notes.DefaultPrompt) + fileBytes + 1_500
 }
 
 func capToml(maxPromptBytes int) string {

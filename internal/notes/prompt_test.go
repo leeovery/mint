@@ -663,6 +663,14 @@ func TestDefaultPrompt_ListsChangeInDoubtInsteadOfMaintenanceLine(t *testing.T) 
 	)
 }
 
+func TestDefaultPrompt_ListsChangeInDoubtInsteadOfPartsNothingLine(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"When you write the notes for one part of a release and are unsure whether that part's diff holds any change users meet, list the change in doubt in its section, and write neither the line saying the part holds nothing for the notes nor the maintenance line.",
+	)
+}
+
 func TestDefaultPrompt_ClaimsNoBehaviourFromDocsCommentsExamplesOrTestsAlone(t *testing.T) {
 	t.Parallel()
 

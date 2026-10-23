@@ -185,6 +185,10 @@ Keep it to what users meet:
   sections. Never return empty notes.
 - When unsure whether the release holds any change users meet, list the change
   in doubt in its section and do not write the maintenance line.
+- When you write the notes for one part of a release and are unsure whether
+  that part's diff holds any change users meet, list the change in doubt in its
+  section, and write neither the line saying the part holds nothing for the
+  notes nor the maintenance line.
 
 Order within each section:
 

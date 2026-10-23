@@ -1,12 +1,18 @@
 package notes_test
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
+	"sync"
 	"testing"
 
+	"mint/internal/ai"
 	"mint/internal/config"
 	"mint/internal/notes"
+	"mint/internal/runner"
 )
 
 // The part framings are spelled out, not read from the package: the exact wording is
@@ -14,13 +20,14 @@ import (
 const (
 	framingOpening   = "This release's diff is too large to read in one pass, so it has been split into parts. "
 	framingSummaryTo = "Leave out anything that sums up the release as a whole, since the merge writes that from every part's notes."
+	framingNothing   = "If this part holds nothing the notes would list, return one line saying this part holds nothing for the notes, in place of an empty reply. That line speaks of this part alone, never of the release."
 )
 
 func wantChunkFraming(part, parts int) string {
 	return fmt.Sprintf(framingOpening+
 		"What follows is part %d of %d. The Change Map above covers the whole release; the diff below covers only this part. "+
 		"Write release notes for the changes in this part, in the format above. They will be merged with the other parts' notes. "+
-		framingSummaryTo, part, parts)
+		framingSummaryTo+" "+framingNothing, part, parts)
 }
 
 func wantPieceFraming(part, parts, piece, pieces int, file string) string {
@@ -28,7 +35,7 @@ func wantPieceFraming(part, parts, piece, pieces int, file string) string {
 		"What follows is part %d of %d: piece %d of %d of the diff for %s, a file too large to read in one part, so its diff has been cut into pieces. "+
 		"The Change Map above covers the whole release; the diff below covers only this piece of that file. "+
 		"Write release notes for the changes in this piece, in the format above. They will be merged with the other parts' notes. "+
-		framingSummaryTo, part, parts, piece, pieces, file)
+		framingSummaryTo+" "+framingNothing, part, parts, piece, pieces, file)
 }
 
 // wantFraming is the framing a chunk or piece call must carry, read from the part,
@@ -44,7 +51,8 @@ func wantFraming(t *testing.T, prompt string) string {
 
 // assertPartCall fails unless prompt is the release's instructions, the
 // whole-release Change Map, the framing naming its part, its slice and the closing
-// reminder, in that order and nothing else, with no headline in what mint adds.
+// reminder, in that order and nothing else, with no headline, maintenance line,
+// users-meet test or doubt rule in what mint adds.
 func assertPartCall(t *testing.T, label, prompt, instructions, changeMap string) {
 	t.Helper()
 	framing := framingOf(prompt)
@@ -62,8 +70,11 @@ func assertPartCall(t *testing.T, label, prompt, instructions, changeMap string)
 	if !ok {
 		t.Fatalf("%s does not open with the release's instructions verbatim", label)
 	}
-	if strings.Contains(strings.ToLower(strings.Replace(added, sliceOf(prompt), "", 1)), "headline") {
-		t.Errorf("%s: what mint adds around the instructions names a headline", label)
+	addedText := strings.ToLower(strings.Replace(added, sliceOf(prompt), "", 1))
+	for _, defaultOnly := range []string{"headline", "maintenance", "users meet", "unsure", "in doubt"} {
+		if strings.Contains(addedText, defaultOnly) {
+			t.Errorf("%s: what mint adds around the instructions carries %q, which belongs to the default prompt alone", label, defaultOnly)
+		}
 	}
 }
 
@@ -234,5 +245,74 @@ func TestGenerator_PieceClassifiedSize_EveryRecutPieceCarriesTheSummaryFraming(t
 			t.Errorf("re-cut call %d is not a piece", i+1)
 		}
 		assertPartCall(t, fmt.Sprintf("re-cut piece %d", i+1), p, run.instructions, run.changeMap)
+	}
+}
+
+// emptyPartRunner stands in for the AI command behind a real ai.Transport: the chunk
+// call for emptyPart answers with an empty body, every other chunk call with notes,
+// and any other call with the merge's body. It is safe for concurrent calls.
+type emptyPartRunner struct {
+	emptyPart int
+
+	mu         sync.Mutex
+	emptyCalls int
+	merges     int
+}
+
+func (r *emptyPartRunner) RunWith(_ context.Context, stdin io.Reader, _ string, _ ...string) (runner.Result, error) {
+	b, err := io.ReadAll(stdin)
+	if err != nil {
+		return runner.Result{}, err
+	}
+	prompt := string(b)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch {
+	case isChunkPrompt(prompt) && partNumber(prompt) == r.emptyPart:
+		r.emptyCalls++
+		return runner.Result{}, nil
+	case isChunkPrompt(prompt):
+		return runner.Result{Stdout: chunkNotesFor(firstPath(sliceOf(prompt)))}, nil
+	default:
+		r.merges++
+		return runner.Result{Stdout: "merged"}, nil
+	}
+}
+
+func (r *emptyPartRunner) Run(context.Context, string, ...string) (runner.Result, error) {
+	return runner.Result{}, errors.New("unexpected Run")
+}
+
+func (r *emptyPartRunner) RunInteractive(context.Context, string, ...string) error {
+	return errors.New("unexpected RunInteractive")
+}
+
+func (r *emptyPartRunner) RunInDir(context.Context, string, []string, string, ...string) (runner.Result, error) {
+	return runner.Result{}, errors.New("unexpected RunInDir")
+}
+
+func TestGenerator_OverCap_PartReturnsEmptyBody_FailsThePartAndTheRun(t *testing.T) {
+	t.Parallel()
+
+	aiRunner := &emptyPartRunner{emptyPart: 2}
+	timeout := waitLimit
+	transport := ai.NewTransport(aiRunner, ai.Config{AICommand: "claude -p", Timeout: &timeout})
+	s := capOneFilePerChunk(t, tenKBFiles(3))
+
+	err := awaitFailure(t, s.startGenerate(t, transport))
+
+	if !errors.Is(err, ai.ErrGenerationFailed) {
+		t.Errorf("error = %v, want the empty body's generation failure", err)
+	}
+	if want := "generating notes for part 2 of 3"; !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want it to name the failed part (%q)", err, want)
+	}
+	aiRunner.mu.Lock()
+	defer aiRunner.mu.Unlock()
+	if aiRunner.emptyCalls != 2 {
+		t.Errorf("part 2 attempts = %d, want the call and the transport's one retry", aiRunner.emptyCalls)
+	}
+	if aiRunner.merges != 0 {
+		t.Errorf("merge calls = %d, want none once a part has failed", aiRunner.merges)
 	}
 }
