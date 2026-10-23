@@ -1,0 +1,18 @@
+# Consolidation Tasks: Headline First Release Notes (Phase 2)
+
+## Task 1: Corrections
+placement: phase 2
+severity: corrections
+
+**Problem**: The README's Saved part notes paragraph tells the operator to release `Maintenance release — no notable source changes` where every saved part's notes are the nothing-to-list line, and its pin compares the README with its own copy of that line. The line mint ships for a release with nothing users meet comes from `stubBody` (`internal/notes/degenerate.go:13`), which the default prompt splices in (`internal/notes/prompt.go:183`) and which Phase 3 may retune. A retune leaves the README sending operators to ship the old wording while the pin stays green, and the only sign is two differently worded maintenance entries in the CHANGELOG. The guidance is `README.md:318`; the pin's copy is the second `want` string at `internal/config/readme_saved_part_notes_test.go:43`. `stubBody`'s doc calls it "tunable in one place", and `notes.StubBody()` (`internal/notes/degenerate.go:45-46`) already exports it.
+**Solution**: `internal/config/readme_saved_part_notes_test.go:43`: build the second `want` string of `TestREADME_SavedPartNotesReleasing_EveryPartNothingToListReleasesTheMaintenanceLine` from `notes.StubBody()` in place of the literal between the backticks, as `internal/config/readme_ai_command_test.go:46` builds its pin from `config.DefaultAICommand`; `config_test` is an external package, so importing `mint/internal/notes` creates no cycle. README.md stays as written, and the test passes today. The older copy at README.md:129 predates this phase and stays out of this pass, which sweeps the phase's own surface.
+**Outcome**: The README's guidance on releasing an all-nothing-to-list saved file is pinned to the line mint ships: the pin holds no copy of the maintenance line, retuning `stubBody` fails it until `README.md:318` follows, and README.md and every other test stay as they are.
+**Acceptance Criteria**:
+- [ ] With README.md as it stands, `go test ./internal/config/ -run TestREADME_SavedPartNotesReleasing` passes, both tests green
+- [ ] With `stubBody` changed to other wording and README.md left as is, `TestREADME_SavedPartNotesReleasing_EveryPartNothingToListReleasesTheMaintenanceLine` fails, its message quoting the expected sentence with the new wording; with `README.md:318` updated to the same wording it passes again (checked by a temporary edit, reverted)
+- [ ] `rg -n 'no notable source changes' internal/config` prints nothing
+- [ ] README.md is byte-unchanged (`git diff --stat README.md` prints nothing), and the full test suite stays green with no test's assertions loosened or removed
+**Do**:
+- In `internal/config/readme_saved_part_notes_test.go`, build the second `want` string of `TestREADME_SavedPartNotesReleasing_EveryPartNothingToListReleasesTheMaintenanceLine` as ``"release the maintenance line, `" + notes.StubBody() + "`, in their place rather than an empty file, which `--notes-file` refuses"``, and add `mint/internal/notes` to the file's imports, the shape `internal/config/readme_ai_command_test.go:46` uses for `config.DefaultAICommand`
+- The complete set of README pins on this line is the one converted: `rg -n 'no notable source changes' internal/config` → 1 hit, `readme_saved_part_notes_test.go:43`. Across the tree, `rg -n 'no notable source changes' --glob '!.workflows/**' --glob '!.tick/**'` → 14 hits: the constant itself, README.md:129 and :318, this pin, and 10 assertions on the bytes mint writes in `internal/engine` and `internal/notes` tests; those 10 and README.md:129 fall outside this task
+- Leave README.md, the first `want` string, and `TestREADME_SavedPartNotesReleasing_DeletesThePartsNothingToListLinesWithTheMarker` as written
