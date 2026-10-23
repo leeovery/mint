@@ -191,13 +191,13 @@
         "headline-first-release-notes": {
           "status": "in-progress",
           "task_gate_mode": "auto",
-          "fix_gate_mode": "gated",
+          "fix_gate_mode": "auto",
           "analysis_gate_mode": "gated",
           "consolidation_gate_mode": "gated",
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 1,
-          "current_task": "headline-first-release-notes-1-11",
+          "current_task": "headline-first-release-notes-1-12",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -262,6 +262,16 @@
                 "internal/engine/notes_fallback_warning_test.go",
                 "internal/engine/notes_floor_sizemoves_test.go"
               ]
+            },
+            {
+              "task": "headline-first-release-notes-1-11",
+              "source": "reviewer",
+              "summary": "Older change-map test comments and test names still describe the map as a ranking signal",
+              "failure": "A reader of the change-map tests is told novelty is the strongest headline signal, novelty over magnitude in ordering and emphasis, and that the rollup is salience-preserving: the opposite of changemap.go doc and DefaultPrompt now; the source-scan guard skips _test.go so nothing flags it, and a maintainer following the tests could reintroduce ranking",
+              "detail": "internal/notes/changemap_test.go:93 (name NewPackageHeadlinesAboveLargerExistingArea), 96-99, 120, 122, 128; 169-172; 265 (name AllInOneExistingArea_RollsUpNoFalseHeadline), 268-271, 291. Spec wording criterion excludes tests (--glob !*_test.go), so outside task 1-11",
+              "files": [
+                "internal/notes/changemap_test.go"
+              ]
             }
           ],
           "completed_tasks": [
@@ -274,7 +284,8 @@
             "headline-first-release-notes-1-7",
             "headline-first-release-notes-1-8",
             "headline-first-release-notes-1-9",
-            "headline-first-release-notes-1-10"
+            "headline-first-release-notes-1-10",
+            "headline-first-release-notes-1-11"
           ]
         }
       }
