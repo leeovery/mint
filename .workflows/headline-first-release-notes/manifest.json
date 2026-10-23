@@ -196,7 +196,7 @@
           "fix_gate_mode": "auto",
           "analysis_gate_mode": "gated",
           "consolidation_gate_mode": "auto",
-          "fix_attempts": 0,
+          "fix_attempts": 1,
           "analysis_cycle_total": 0,
           "current_phase": 3,
           "current_task": "headline-first-release-notes-3-2",
