@@ -2,6 +2,9 @@ package notes_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -405,5 +408,109 @@ func TestAssembler_BuildChangeMap_CommandNotFound_SurfacesDistinguishableError(t
 	}
 	if got != "" {
 		t.Errorf("change map = %q, want empty on failure", got)
+	}
+}
+
+// mixedReleaseNameStatus and mixedReleaseNumstat are one release touching every
+// part of the map: a new package nested under an existing internal/ (internal/foo/
+// wholly added beside a modified internal/bar/), a new top-level package, a rename,
+// a removal and a new root file.
+const (
+	mixedReleaseNameStatus = "A\tinternal/foo/foo.go\nA\tinternal/foo/foo_test.go\nM\tinternal/bar/bar.go\nA\tauth/login.go\nR096\tlegacy/old.go\tcore/new.go\nD\tlegacy/gone.go\nA\tNOTES.md\n"
+	mixedReleaseNumstat    = "120\t0\tinternal/foo/foo.go\n80\t0\tinternal/foo/foo_test.go\n5\t2\tinternal/bar/bar.go\n30\t0\tauth/login.go\n1\t1\tlegacy/old.go\tcore/new.go\n0\t40\tlegacy/gone.go\n12\t0\tNOTES.md\n"
+)
+
+func TestAssembler_BuildChangeMap_RendersByteForByteAsBuilt(t *testing.T) {
+	t.Parallel()
+
+	r := seedChangeMapGit(t, mixedReleaseNameStatus, mixedReleaseNumstat)
+
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
+	got, err := a.BuildChangeMap(t.Context(), "v1.0.0", config.DefaultMaxPromptBytes)
+	if err != nil {
+		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
+	}
+
+	want := "Structural novelty:\n" +
+		"  New package/dir: auth/\n" +
+		"  Renamed: legacy/old.go -> core/new.go\n" +
+		"  Removed: legacy/gone.go\n" +
+		"Churn by area (largest first):\n" +
+		"  internal/: 207 lines\n" +
+		"  legacy/: 40 lines\n" +
+		"  auth/: 30 lines\n" +
+		"  NOTES.md: 12 lines\n" +
+		"  core/: 2 lines\n" +
+		"Notable files:\n" +
+		"  New top-level: NOTES.md\n" +
+		"  Largest file: internal/foo/foo.go (120 lines)"
+	if got != want {
+		t.Errorf("change map =\n%q\nwant\n%q", got, want)
+	}
+	assertChangeMapInvocations(t, r, "v1.0.0")
+}
+
+func TestAssembler_BuildChangeMap_NewPackageUnderExistingDirFlagsNoNovelty(t *testing.T) {
+	t.Parallel()
+
+	// Detection reads only a path's first segment, on purpose: every file under
+	// internal/foo/ added while another file under internal/ is modified leaves
+	// internal/ an existing area, so no new package or directory is flagged.
+	nameStatus := "A\tinternal/foo/foo.go\nA\tinternal/foo/foo_test.go\nM\tinternal/bar/bar.go\n"
+	numstat := "120\t0\tinternal/foo/foo.go\n80\t0\tinternal/foo/foo_test.go\n5\t2\tinternal/bar/bar.go\n"
+	r := seedChangeMapGit(t, nameStatus, numstat)
+
+	a := notes.NewAssembler(r, "/repo", notes.ExcludeConfig{})
+	got, err := a.BuildChangeMap(t.Context(), "v1.0.0", config.DefaultMaxPromptBytes)
+	if err != nil {
+		t.Fatalf("BuildChangeMap returned unexpected error: %v", err)
+	}
+
+	if strings.Contains(got, "New package/dir") || strings.Contains(got, "Structural novelty") {
+		t.Errorf("a new package under existing internal/ was flagged as novelty:\n%s", got)
+	}
+	assertChangeMapInvocations(t, r, "v1.0.0")
+}
+
+// TestNotesSource_DescribesChangeMapAsCoverageNotRanking pins mint's own wording:
+// no non-test source in this package calls the map a salience or priority signal,
+// and no changemap.go comment weights novelty above magnitude or calls a new
+// directory the map's headline.
+func TestNotesSource_DescribesChangeMapAsCoverageNotRanking(t *testing.T) {
+	t.Parallel()
+
+	sources, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("listing package sources: %v", err)
+	}
+	ranking := regexp.MustCompile(`(?i)salience|prioriti`)
+	novelty := regexp.MustCompile(`(?i)weighted above|headline`)
+	scanned, scannedChangeMap := 0, false
+	for _, name := range sources {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		scanned++
+		if name == "changemap.go" {
+			scannedChangeMap = true
+		}
+		body, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		for i, line := range strings.Split(string(body), "\n") {
+			if ranking.MatchString(line) {
+				t.Errorf("%s:%d calls the map a salience or priority signal: %s", name, i+1, line)
+			}
+			if name == "changemap.go" && novelty.MatchString(line) {
+				t.Errorf("%s:%d weights novelty or calls it a headline: %s", name, i+1, line)
+			}
+		}
+	}
+	if scanned == 0 {
+		t.Fatal("no non-test sources found to scan — the guard would be a false positive")
+	}
+	if !scannedChangeMap {
+		t.Fatal("changemap.go not found — the novelty guard would check nothing")
 	}
 }

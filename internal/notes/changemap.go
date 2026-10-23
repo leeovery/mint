@@ -8,11 +8,12 @@ import (
 	"strings"
 )
 
-// BuildChangeMap assembles the diff-derived salience preamble for lastTag..HEAD —
-// the Change Map. It is the fix for the "glosses over the big feature" failure: a
-// salience problem, not a missing-data problem. The map is compact METADATA that
-// precedes the diff in the prompt to tell the AI what to prioritize; it is NOT a
-// restatement of the diff.
+// BuildChangeMap assembles the diff-derived coverage preamble for lastTag..HEAD —
+// the Change Map. The map is compact METADATA that precedes the diff in the prompt
+// to show the AI where the release's changes landed, so that nothing large is
+// missed; it is never a measure of importance (a new folder may hold tooling, the
+// largest file is often a test or a deletion), and it is NOT a restatement of the
+// diff — every change is described from the diff itself.
 //
 // Two cheap git calls feed it, run at the repo root like the diff and AFTER the SAME
 // exclusion set the diff uses (the shared excludePathspecs, on BOTH), so excluded
@@ -23,12 +24,12 @@ import (
 //   - `git diff --numstat {lastTag}..HEAD -- . {excludePathspecs}` —
 //     {added}\t{removed}\t{path} per file, the MAGNITUDE signal.
 //
-// The rendered map orders salience NOVELTY-FIRST (weighted above magnitude): new
-// packages/directories and renamed/removed paths lead, then the per-area churn
-// rollup as supporting context, then individually-notable files (new top-level
-// entries and the single largest file). A map that would take more than a tenth of
-// maxPromptBytes condenses its removal and rename runs by folder, largest first,
-// until it is within that share or no run left would shrink it.
+// The rendered map lists structural novelty first: new packages/directories and
+// renamed/removed paths, then the per-area churn rollup, then individually-notable
+// files (new top-level entries and the single largest file). A map that would take
+// more than a tenth of maxPromptBytes condenses its removal and rename runs by
+// folder, largest first, until it is within that share or no run left would shrink
+// it.
 //
 // A missing git binary is surfaced as a condition matching runner.ErrCommandNotFound
 // (via errors.Is); any other non-zero git exit is wrapped so an unexpected failure
@@ -195,10 +196,10 @@ func composeChangeMap(novelty []foldLine, magnitude, notable string) string {
 	return strings.Join(sections, "\n")
 }
 
-// noveltyLines is the PRIMARY section's content: structural novelty weighted above
-// magnitude. New packages/directories headline first (the strongest language-agnostic
-// signal), then renamed and removed paths reported as structural changes. A rename
-// runs under the folder it moved into, matching the rest of the map.
+// noveltyLines is the first section's content: structural novelty. New
+// packages/directories are listed first, then renamed and removed paths reported as
+// structural changes. A rename runs under the folder it moved into, matching the
+// rest of the map.
 func noveltyLines(changes []pathChange) []foldLine {
 	var lines []foldLine
 
@@ -235,9 +236,12 @@ func renderNovelty(lines []foldLine) string {
 // their LEADING directory segment; a directory is NEW/novel when it has at least one
 // path under it AND every changed path under it has status Added (none Modified,
 // Deleted, or Renamed) — i.e. nothing pre-existing in that area was touched. So a
-// brand-new auth/ package (all files added) headlines, while an existing area that
-// is merely modified produces no false novelty headline. Top-level files (no
-// directory segment) are NOT directories and are handled as notable entries instead.
+// brand-new auth/ package (all files added) is listed, while an existing area that
+// is merely modified produces no false novelty line. Only the leading segment is
+// read, on purpose: a new package under an existing internal/ or src/ never
+// registers, since finding packages at any depth would flag internal packages the
+// notes leave out. Top-level files (no directory segment) are NOT directories and
+// are handled as notable entries instead.
 // Result is sorted for deterministic output.
 func newDirectories(changes []pathChange) []string {
 	allAdded := make(map[string]bool)
@@ -264,11 +268,11 @@ func newDirectories(changes []pathChange) []string {
 	return dirs
 }
 
-// renderMagnitude is the SECONDARY section: per-file churn rolled up to area
+// renderMagnitude is the second section: per-file churn rolled up to area
 // (leading-directory) granularity and ranked by total churn descending — the
-// salience-preserving form, since a flat per-file list is itself mush on big
-// releases. Top-level files roll up under their own filename as their "area".
-// Ties break alphabetically for deterministic output.
+// readable form, since a flat per-file list is itself mush on big releases.
+// Top-level files roll up under their own filename as their "area". Ties break
+// alphabetically for deterministic output.
 func renderMagnitude(churn []fileChurn) string {
 	totals := make(map[string]int)
 	for _, fc := range churn {

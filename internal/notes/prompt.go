@@ -17,9 +17,9 @@ import (
 // too. It is the "instructions" half of the composed AI input; ComposePrompt appends
 // the Change Map preamble and the diff after it.
 const DefaultPrompt = `You are writing the release notes for a software release. You are given a
-Change Map (a diff-derived salience summary) followed by the actual code diff
-between the previous release and this one. Read the WHOLE diff and produce
-concise release notes in the exact format described below. Release notes are
+Change Map (a summary of where the release's changes landed) followed by the
+actual code diff between the previous release and this one. Read the WHOLE diff
+and produce concise release notes in the exact format described below. Release notes are
 FOR THE PEOPLE WHO USE THE SOFTWARE: a reader should grasp what changed for them
 and why it matters, without reading the diff.
 
@@ -196,15 +196,17 @@ Order within each section:
 - The pieces of the release's main work lead their sections.
 - Lines, files, commits, and how easy a change is to name, are not weight.
 
-Scope and salience:
+The Change Map shows where the changes landed. Use it to make sure nothing large
+is missed, not as a measure of importance: a new folder may hold tooling, and the
+largest file is often a test or a deletion. DESCRIBE every change from the DIFF;
+the Change Map is metadata, never content.
+
+Scope:
 
 - ONE bullet per notable change — not per file, hunk, or commit. Combine
   closely-related changes into a single bullet. Ignore version-number bumps and
   other trivial bookkeeping churn. Most releases are a handful of bullets; do not
   pad.
-- Rank importance using the Change Map: new structure (a whole new package or
-  directory) is the strongest signal — weight it above raw size. But DESCRIBE
-  every change from the DIFF; the Change Map is salience metadata, never content.
 
 Deprecated and Security are opportunistic — emit an item ONLY on an explicit
 textual marker in the diff (a @deprecated annotation for Deprecated; an obvious
@@ -237,10 +239,11 @@ const OutputReminder = "Now output ONLY the release notes themselves, exactly as
 //
 // instructions is the resolved prompt (the default prompt, the default plus an
 // injected [release].context, or a full [release].prompt override — see
-// ResolveInstructions). changeMap is the diff-derived salience preamble from
-// BuildChangeMap. diff is the post-exclusion diff from AssembleDiff. The function
-// is PURE: it only orders and joins, performing no IO and no transport — it
-// produces the AI INPUT, never parses the AI output.
+// ResolveInstructions). changeMap is the coverage preamble from BuildChangeMap —
+// where the release's changes landed, never a measure of importance. diff is the
+// post-exclusion diff from AssembleDiff. The function is PURE: it only orders and
+// joins, performing no IO and no transport — it produces the AI INPUT, never
+// parses the AI output.
 //
 // The parts are separated by a blank line so the AI sees clearly delimited
 // blocks; no labels or machine-parseable wrappers are added (the AI returns the

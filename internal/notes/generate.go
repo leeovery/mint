@@ -95,7 +95,7 @@ func (g *Generator) WithProgress(progress Progress) *Generator {
 // the engine pieces in EXACTLY this order:
 //
 //  1. AssembleDiff — the post-exclusion diff.
-//  2. BuildChangeMap — the salience preamble.
+//  2. BuildChangeMap — the coverage preamble.
 //  3. ResolveInstructions + ComposePrompt — the single-pass AI input (instructions +
 //     Change Map + diff + closing reminder, nothing else; no commit messages).
 //  4. The size check — a single-pass prompt within max_prompt_bytes goes to

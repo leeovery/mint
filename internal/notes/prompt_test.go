@@ -61,7 +61,6 @@ func defaultPromptRules() []struct{ name, want string } {
 		{"ignore version-number bumps", "version-number bumps"},
 		{"no preamble", "no preamble"},
 		{"no meta-commentary", "no meta-commentary"},
-		{"rank with the change map", "Rank importance"},
 		{"describe from the diff", "from the DIFF"},
 		{"deprecated/security only on explicit marker", "textual marker"},
 	}
@@ -737,4 +736,30 @@ func TestDefaultPrompt_CountsNoLinesFilesCommitsOrNameabilityAsWeight(t *testing
 	assertPromptSays(t,
 		"Lines, files, commits, and how easy a change is to name, are not weight.",
 	)
+}
+
+func TestDefaultPrompt_DescribesChangeMapAsCoverageCheck(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"You are given a Change Map (a summary of where the release's changes landed) followed by the actual code diff",
+		"The Change Map shows where the changes landed. Use it to make sure nothing large is missed, not as a measure of importance: a new folder may hold tooling, and the largest file is often a test or a deletion.",
+		"DESCRIBE every change from the DIFF; the Change Map is metadata, never content.",
+	)
+}
+
+func TestDefaultPrompt_CarriesNoChangeMapRankingRule(t *testing.T) {
+	t.Parallel()
+
+	prompt := normalizeSpace(notes.DefaultPrompt)
+	for _, gone := range []string{
+		"Rank importance using the Change Map",
+		"new structure (a whole new package or directory) is the strongest signal",
+		"weight it above raw size",
+		"salience",
+	} {
+		if strings.Contains(strings.ToLower(prompt), strings.ToLower(gone)) {
+			t.Errorf("default prompt still carries %q:\n%s", gone, notes.DefaultPrompt)
+		}
+	}
 }
