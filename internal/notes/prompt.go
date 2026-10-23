@@ -180,7 +180,7 @@ Keep it to what users meet:
   mechanism, or a design document's jargon.
 - Where every change in the release is one these rules leave out, the notes are
   ONE plain line saying the release is maintenance with no user-facing changes,
-  in the shape of "Maintenance release — no notable source changes". That line
+  in the shape of "` + stubBody + `". That line
   has no headline and no sections: it is the one body the format allows without
   sections. Never return empty notes.
 - When unsure whether the release holds any change users meet, list the change
