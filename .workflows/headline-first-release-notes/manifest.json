@@ -161,7 +161,8 @@
             "headline-first-release-notes-3-7": "tick-d70da6",
             "headline-first-release-notes-3-8": "tick-d188dd",
             "headline-first-release-notes-3-9": "tick-ac0612",
-            "headline-first-release-notes-3-10": "tick-6e2d84"
+            "headline-first-release-notes-3-10": "tick-6e2d84",
+            "headline-first-release-notes-1-14": "tick-5d6922"
           },
           "storage_paths": [
             ".tick/"
@@ -193,7 +194,7 @@
           "task_gate_mode": "auto",
           "fix_gate_mode": "auto",
           "analysis_gate_mode": "gated",
-          "consolidation_gate_mode": "gated",
+          "consolidation_gate_mode": "auto",
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 1,
@@ -228,52 +229,6 @@
               "command": "golangci-lint run"
             }
           ],
-          "bank": [
-            {
-              "task": "headline-first-release-notes-1-1",
-              "source": "executor",
-              "summary": "Chunked-path engine fixtures size their diffs against a fixed max_prompt_bytes = 20000 and not against the default prompt length",
-              "failure": "Each later prompt task (1-2 to 1-12) lengthens DefaultPrompt, shrinking diff room in these fixtures so part/piece counts shift: unrelated engine tests fail with fixture messages, or a test keeps passing while no longer exercising the chunking/halving it was written for, unreported",
-              "detail": "Absolute caps next to chunked/halving geometry: internal/engine/notes_chunkfail_test.go:117, internal/engine/release_chunked_test.go:35 and :75, internal/engine/release_chunkedcache_test.go:27, internal/engine/notes_narration_test.go:111 :134 :280, internal/engine/regen_narration_test.go:359, internal/engine/notes_fallback_warning_test.go:199, internal/engine/notes_floor_sizemoves_test.go:66; internal/engine/notes_waveend_test.go:19-30 now shows the prompt-relative pattern",
-              "files": [
-                "internal/engine/notes_chunkfail_test.go",
-                "internal/engine/release_chunked_test.go",
-                "internal/engine/release_chunkedcache_test.go",
-                "internal/engine/notes_narration_test.go",
-                "internal/engine/regen_narration_test.go",
-                "internal/engine/notes_fallback_warning_test.go",
-                "internal/engine/notes_floor_sizemoves_test.go"
-              ]
-            },
-            {
-              "task": "headline-first-release-notes-1-1",
-              "source": "reviewer",
-              "summary": "Engine fixtures with absolute byte limits break as DefaultPrompt grows; executor list misses two files and first breakage comes at the next prompt task",
-              "failure": "Next task lengthening DefaultPrompt fails unrelated engine tests: ~+500 bytes breaks TestRelease_HalvedNotes_TheLowerTheCapHintNeverNamesTheCheckCall (task 1-2 headline rules ~1 KB cross it); ~+2 KB breaks TestRelease_CapBelowTheClassifyPrompt_NoClassifyCallAndTheOriginalOutputShows; ~+6 KB fails 40+ engine tests (measured by padding in a scratch copy). Each prompt-wording executor then patches fixtures piecemeal, risking weakened geometry or ad-hoc offsets",
-              "detail": "Two sites missing from executor list: internal/engine/release_exclusioncheck_test.go:400 overflowAboveTransport{limit: 10_000}; internal/engine/notes_classifyskip_test.go:165 max_prompt_bytes = 6000 (cannot hold a ~9 KB prompt). Fixes: size limits from len(notes.DefaultPrompt) as internal/engine/notes_waveend_test.go:19-30 does, or (preferred for fixtures not about the default prompt) write a short fixed [release].prompt override so chunking/halving geometry no longer depends on prompt wording",
-              "files": [
-                "internal/engine/release_exclusioncheck_test.go",
-                "internal/engine/notes_classifyskip_test.go",
-                "internal/engine/notes_chunkfail_test.go",
-                "internal/engine/release_chunked_test.go",
-                "internal/engine/release_chunkedcache_test.go",
-                "internal/engine/notes_narration_test.go",
-                "internal/engine/regen_narration_test.go",
-                "internal/engine/notes_fallback_warning_test.go",
-                "internal/engine/notes_floor_sizemoves_test.go"
-              ]
-            },
-            {
-              "task": "headline-first-release-notes-1-11",
-              "source": "reviewer",
-              "summary": "Older change-map test comments and test names still describe the map as a ranking signal",
-              "failure": "A reader of the change-map tests is told novelty is the strongest headline signal, novelty over magnitude in ordering and emphasis, and that the rollup is salience-preserving: the opposite of changemap.go doc and DefaultPrompt now; the source-scan guard skips _test.go so nothing flags it, and a maintainer following the tests could reintroduce ranking",
-              "detail": "internal/notes/changemap_test.go:93 (name NewPackageHeadlinesAboveLargerExistingArea), 96-99, 120, 122, 128; 169-172; 265 (name AllInOneExistingArea_RollsUpNoFalseHeadline), 268-271, 291. Spec wording criterion excludes tests (--glob !*_test.go), so outside task 1-11",
-              "files": [
-                "internal/notes/changemap_test.go"
-              ]
-            }
-          ],
           "completed_tasks": [
             "headline-first-release-notes-1-1",
             "headline-first-release-notes-1-2",
@@ -288,6 +243,16 @@
             "headline-first-release-notes-1-11",
             "headline-first-release-notes-1-12",
             "headline-first-release-notes-1-13"
+          ],
+          "staging": {
+            "p1": {
+              "tasks": {
+                "1": "approved"
+              }
+            }
+          },
+          "consolidated_phases": [
+            1
           ]
         }
       }
