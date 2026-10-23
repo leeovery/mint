@@ -573,9 +573,13 @@ func composeMergePrompt(instructions, changeMap string, partNotes []string) stri
 	return strings.Join(append(sections, OutputReminder), "\n\n")
 }
 
+// mergeFraming carries no ranking rule and names no headline: both belong to the
+// governing format, and the Change Map above is coverage, never a measure of
+// importance. It reaches a full [release].prompt override's merge too, so it stays
+// format-neutral.
 func mergeFraming(parts int) string {
 	return fmt.Sprintf("This release's diff was too large to read in one pass, so it was read in %d parts and release notes were written for each part. "+
 		"Those notes follow, in part order. From them, write one set of release notes for the whole release, in the format above: "+
-		"combine related changes across parts into single bullets, drop duplicates, and rank by the Change Map above.",
+		"combine related changes across parts into single bullets and drop duplicates.",
 		parts)
 }

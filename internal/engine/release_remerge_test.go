@@ -100,6 +100,7 @@ func TestRelease_RegenOnChunkedNotes_MakesOneMergeCallCarryingTheNudge(t *testin
 		t.Errorf("the re-merge call carries diff")
 	}
 	assertPartsInOrder(t, remerge, len(sixPartPaths))
+	assertMergeFraming(t, remerge, len(sixPartPaths))
 	if got := gitDiffCalls(f); got != 1 {
 		t.Errorf("git diff assemblies = %d, want the first generation's only", got)
 	}
@@ -273,6 +274,22 @@ func TestRelease_RegenOnHalvedSinglePassNotes_MakesOneMergeCallOverTheThreeParts
 	assertPartsInOrder(t, tr.merges[1], 3)
 	if got := tagAnnotationBody(t, f, nextTag); got != halvedRemergeBody {
 		t.Errorf("tag annotation body = %q, want the re-merge output %q", got, halvedRemergeBody)
+	}
+}
+
+// assertMergeFraming fails unless mergePrompt carries the merge framing over n
+// parts, spelled out because the exact wording is the contract: one set of notes in
+// the format above, with no ranking rule and no headline of mint's own.
+func assertMergeFraming(t *testing.T, mergePrompt string, n int) {
+	t.Helper()
+	framing := fmt.Sprintf("This release's diff was too large to read in one pass, so it was read in %d parts and release notes were written for each part. "+
+		"Those notes follow, in part order. From them, write one set of release notes for the whole release, in the format above: "+
+		"combine related changes across parts into single bullets and drop duplicates.", n)
+	if !strings.Contains(mergePrompt, "\n\n"+framing+"\n\n") {
+		t.Errorf("the merge prompt does not carry the merge framing %q", framing)
+	}
+	if strings.Contains(mergePrompt, "rank by the Change Map") {
+		t.Errorf("the merge prompt asks to rank by the Change Map")
 	}
 }
 

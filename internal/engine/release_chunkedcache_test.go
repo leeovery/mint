@@ -162,6 +162,7 @@ func TestRelease_RegenOnNotesReusedFromAChunkedDryRun_MakesOneMergeCallOverTheDr
 		t.Errorf("re-merge prompt = %q, want the dry run's merge prompt with the nudge in its instructions %q", live.prompts[0], want)
 	}
 	assertPartsInOrder(t, live.prompts[0], len(fourPartPaths))
+	assertMergeFraming(t, live.prompts[0], len(fourPartPaths))
 	if got := tagAnnotationBody(t, f, nextTag); got != cachedRemergeBody {
 		t.Errorf("tag annotation body = %q, want the re-merge output %q", got, cachedRemergeBody)
 	}

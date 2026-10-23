@@ -166,6 +166,7 @@ func TestRegenerateRun_RegenOnChunkedFreshNotes_MakesOneMergeCallCarryingTheNudg
 		t.Errorf("the re-merge call carries diff")
 	}
 	assertPartsInOrder(t, remerge, len(fivePartPaths))
+	assertMergeFraming(t, remerge, len(fivePartPaths))
 	if got := len(notesGit.Invocations()); got != 3 {
 		t.Errorf("notes git calls = %d, want the first generation's diff and Change Map only", got)
 	}

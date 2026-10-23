@@ -158,10 +158,16 @@ func TestGenerator_OverCap_MergePromptExactlyAtCap_SendsTheMerge(t *testing.T) {
 	if len(merges) != 1 {
 		t.Fatalf("probe merge calls = %d, want one", len(merges))
 	}
-	// The merge prompt grows byte for byte with the notes of each of the two parts.
+	// The merge prompt grows byte for byte with the notes of each of the two parts, so
+	// an odd slack is evened by raising the cap a byte: the slices still pack one file
+	// per chunk, whatever the merge framing's length.
 	slack := s.cfg.MaxPromptBytes - len(merges[0])
-	if slack <= 0 || slack%2 != 0 {
-		t.Fatalf("fixture: probe merge prompt leaves %d bytes under the cap, want a positive even slack", slack)
+	if slack%2 != 0 {
+		s.cfg.MaxPromptBytes++
+		slack++
+	}
+	if slack <= 0 {
+		t.Fatalf("fixture: probe merge prompt leaves %d bytes under the cap, want a positive slack", slack)
 	}
 
 	st, body, err := s.generateWithNotesOf(t, probeSize+slack/2)
