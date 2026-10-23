@@ -585,6 +585,13 @@ func composeMergePrompt(instructions, changeMap string, partNotes []string) stri
 func mergeFraming(parts int) string {
 	return fmt.Sprintf("This release's diff was too large to read in one pass, so it was read in %d parts and release notes were written for each part. "+
 		"Those notes follow, in part order. From them, write one set of release notes for the whole release, in the format above: "+
-		"combine related changes across parts into single bullets and drop duplicates.",
+		"combine related changes across parts into single bullets and drop duplicates. "+
+		mergeFramingNothingRule,
 		parts)
 }
+
+// mergeFramingNothingRule gives no nothing-to-list body of its own, not even as a
+// fallback for a full override whose format has none: that body is the governing
+// format's, and a merge that returns nothing fails the call as any empty body does.
+const mergeFramingNothingRule = "Leave out every line in which a part said it holds nothing for the notes. " +
+	"Only where every part returned such a line, write what the format above gives a release with nothing to list; never do so while any part listed a change."
