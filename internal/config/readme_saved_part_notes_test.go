@@ -3,6 +3,8 @@ package config_test
 import (
 	"strings"
 	"testing"
+
+	"mint/internal/notes"
 )
 
 // savedPartNotesReleasing is the README's Saved part notes paragraph on releasing a
@@ -40,7 +42,7 @@ func TestREADME_SavedPartNotesReleasing_EveryPartNothingToListReleasesTheMainten
 	got := savedPartNotesReleasing(t)
 	for _, want := range []string{
 		"Where every part's notes are that line, the release holds nothing users meet",
-		"release the maintenance line, `Maintenance release — no notable source changes`, in their place rather than an empty file, which `--notes-file` refuses",
+		"release the maintenance line, `" + notes.StubBody() + "`, in their place rather than an empty file, which `--notes-file` refuses",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("README's saved-notes releasing paragraph does not say %q; got:\n%s", want, got)
