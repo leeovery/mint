@@ -303,7 +303,9 @@ func TestGenerator_Wave_SizeWithNoHalvingLeft_ClassifiesNoCallStillInFlight(t *t
 	for i := range files {
 		files[i] = chunkFile{path: fmt.Sprintf("area%d/file.go", i+1), size: 200_000}
 	}
-	s := chunkScenario{files: files, root: t.TempDir()}
+	s := chunkScenario{files: files, root: t.TempDir()}.withShortPrompt(t)
+	// A one-line prompt keeps the fixed part small beside each halved slice, so every
+	// re-cut yields three parts whatever the default prompt's length.
 	s.cfg.MaxPromptBytes = s.fixedPart(t) + 205_000
 	release := make(chan struct{})
 	ht := &halvingTransport{overflows: opensWith(pieceHeader("area3/file.go") + "@@"), mergeBody: "merged"}

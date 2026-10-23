@@ -105,6 +105,20 @@ func TestComposePrompt_JoinsWithExactlyOneBlankLine(t *testing.T) {
 	}
 }
 
+func TestComposePrompt_ClosesWithCommitsOwnReminder(t *testing.T) {
+	t.Parallel()
+
+	// Commit's reminder is its own, separate from the release-notes one: spelled out
+	// here so a change to either wording cannot reach the commit prompt unnoticed.
+	const want = "Now output ONLY the commit message itself, exactly as it should appear in git history: no preamble, no commentary, no explanation, no code fences, nothing before or after the message."
+	if commit.OutputReminder != want {
+		t.Errorf("commit OutputReminder = %q, want %q", commit.OutputReminder, want)
+	}
+	if got := commit.ComposePrompt("INSTRUCTIONS", "DIFF"); got != "INSTRUCTIONS\n\nDIFF\n\n"+want {
+		t.Errorf("commit prompt = %q, want instructions, diff and commit's own reminder", got)
+	}
+}
+
 // defaultPromptRules enumerates the rules the default commit prompt MUST carry,
 // each as a distinct substring the prompt is required to contain. Each entry pins
 // one spec requirement so a regression that drops a rule fails a named subtest.

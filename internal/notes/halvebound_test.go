@@ -79,7 +79,9 @@ func TestGenerator_ChunkHalvedThreeTimes_FourthSizeFailsTheSliceNamingItsPart(t 
 	for i := range files {
 		files[i] = chunkFile{path: fmt.Sprintf("area%d/file.go", i+1), size: 200_000}
 	}
-	s := chunkScenario{files: files, root: t.TempDir(), cfg: config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}}
+	s := chunkScenario{files: files, root: t.TempDir(), cfg: config.Config{MaxPromptBytes: config.DefaultMaxPromptBytes}}.withShortPrompt(t)
+	// A one-line prompt keeps the fixed part small beside each halved slice, so every
+	// re-cut yields three parts whatever the default prompt's length.
 	s.cfg.MaxPromptBytes = s.fixedPart(t) + 205_000
 	// Part 3 overflows, then the first piece of each re-cut of it.
 	ht := &halvingTransport{overflows: opensWith(pieceHeader("area3/file.go") + "@@"), mergeBody: "merged"}

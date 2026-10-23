@@ -229,8 +229,10 @@ Output discipline:
 // the same shape, so it gets the same hardening). It applies under a full
 // [release].prompt override too: whatever the instructions, the transport's
 // contract is "the body IS the notes", so the reminder is part of the compose,
-// not the instructions.
-const OutputReminder = "Now output ONLY the release notes themselves, exactly as they should be published: no preamble, no commentary, no explanation, no code fences, nothing before or after the notes."
+// not the instructions. So it stays format-neutral: "the format above" defers to
+// whichever instructions govern, and it names no rule of the default format, the
+// headline included.
+const OutputReminder = "Now output ONLY the release notes themselves, in the format above, exactly as they should be published: no preamble, no commentary, no explanation, no code fences, nothing before or after the notes."
 
 // ComposePrompt assembles the final AI input from its parts, in EXACTLY this
 // order and nothing else:
