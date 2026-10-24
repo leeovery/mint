@@ -19,7 +19,7 @@ import (
 // the contract.
 const (
 	framingOpening   = "This release's diff is too large to read in one pass, so it has been split into parts. "
-	framingSummaryTo = "Leave out anything that sums up the release as a whole, since the merge writes that from every part's notes."
+	framingSummaryTo = "Leave out anything that sums up the release, or this part, as a whole, since the merge writes that from every part's notes."
 	framingNothing   = "If this part holds nothing the notes would list, return one line saying this part holds nothing for the notes, in place of an empty reply. That line speaks of this part alone, never of the release."
 )
 

@@ -105,6 +105,14 @@ The headline:
 - Pick the headline by what the release changes for its user, read from the diff.
   A new folder or a large file is not, of itself, the release's main thing, and
   the Change Map does not pick the headline.
+- When you write the notes for one part of a release, write no headline, not
+  even one for that part: the release's headline is written once, from every
+  part's notes.
+- When you write the release's notes from the notes of its parts, judge its main
+  body of work by the merged bullets, with the Change Map beside them. A change
+  whose diff spans several parts can appear in several parts' notes: it counts
+  once, as it is listed once, and is no weightier for the repeats. The main work
+  may sit in one part's notes alone.
 
 Which section a change belongs in — judge every change against the PREVIOUS
 release, never against earlier states inside this one:
@@ -160,6 +168,10 @@ Be true to the release:
   changed line behind it is a comment, documentation, an example or a test, drop
   the bullet. A new test that asserts a behaviour is evidence the behaviour
   already existed, not that it changed.
+- When you write the notes for one part of a release, list only the changes that
+  part's diff makes. The Change Map shows where the rest of the release landed,
+  and the other parts cover it: a test in that part's diff is no evidence of a
+  change made elsewhere.
 
 Keep it to what users meet:
 

@@ -206,6 +206,32 @@ func TestDefaultPrompt_PicksHeadlineByWhatReleaseChangesForUser(t *testing.T) {
 	)
 }
 
+func TestDefaultPrompt_WritesNoHeadlineInOnePartsNotes(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"When you write the notes for one part of a release, write no headline, not even one for that part: the release's headline is written once, from every part's notes.",
+	)
+}
+
+func TestDefaultPrompt_JudgesMainWorkAcrossEveryPartsNotes(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"When you write the release's notes from the notes of its parts, judge its main body of work by the merged bullets, with the Change Map beside them.",
+		"A change whose diff spans several parts can appear in several parts' notes: it counts once, as it is listed once, and is no weightier for the repeats. The main work may sit in one part's notes alone.",
+	)
+}
+
+func TestDefaultPrompt_ListsOnlyWhatOnePartsDiffMakes(t *testing.T) {
+	t.Parallel()
+
+	assertPromptSays(t,
+		"When you write the notes for one part of a release, list only the changes that part's diff makes.",
+		"The Change Map shows where the rest of the release landed, and the other parts cover it: a test in that part's diff is no evidence of a change made elsewhere.",
+	)
+}
+
 func TestDefaultPrompt_WritesHeadlineOnlyForMainBodyOfWork(t *testing.T) {
 	t.Parallel()
 

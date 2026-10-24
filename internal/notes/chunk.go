@@ -548,7 +548,7 @@ const chunkFramingOpening = "This release's diff is too large to read in one pas
 // The framing rules name no headline and no maintenance line: the framings reach a
 // full [release].prompt override's calls too, so they stay format-neutral.
 const (
-	chunkFramingSummaryRule = " Leave out anything that sums up the release as a whole, since the merge writes that from every part's notes."
+	chunkFramingSummaryRule = " Leave out anything that sums up the release, or this part, as a whole, since the merge writes that from every part's notes."
 	// chunkFramingNothingRule keeps a part with nothing to list from returning an
 	// empty body, which the transport fails as a call.
 	chunkFramingNothingRule = " If this part holds nothing the notes would list, return one line saying this part holds nothing for the notes, in place of an empty reply. That line speaks of this part alone, never of the release."
