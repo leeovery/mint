@@ -23,6 +23,7 @@ Mint replaces the release script every project grows. `mint release` bumps the v
 Release scripts accrete: bump the version file, regenerate the changelog, remember the tag prefix, push the tag *and* the branch, create the GitHub release, don't forget the build hook. Every project grows its own slightly broken copy. Mint folds all of it into one binary and one optional config file.
 
 - **Notes from the code that changed.** The AI reads the release's diff, not its commit subjects, so the notes say what changed for the people who use it. You accept, edit or regenerate them before anything ships.
+- **Notes that say what the release is.** When a release has a main piece of work, the notes open with one plain sentence naming it. Then each change is listed once, under fixed sections led by 💥 Breaking, with the changes users meet most at the top.
 - **Releases of any size.** A release too big for one AI call is written in parts and merged into one set of notes. If the model turns a call down as too big, mint retries it in smaller parts and tells you the size that worked.
 - **Notes about the product, not how it was made.** Before writing, mint asks the AI which changed files don't belong in release notes: specs, design docs, test fixtures. You answer once per suggestion, and mint remembers the answer in `.mint.toml`.
 - **A failed AI call never strands a release.** At a terminal you choose: ship the commit subjects, write the notes yourself, or abort. Unattended, mint stops and says what to do next. Notes from the parts that finished are saved, ready to release with `--notes-file`.
@@ -126,7 +127,7 @@ mint release [-p | -m | -M | --set-version X.Y.Z] [options]
 
 At the notes review gate: **`y`** accept (Enter also accepts), **`n`** abort, **`e`** edit in your editor, **`r`** regenerate, with an optional line of extra context for the AI. At a terminal each is a single keypress; with `--plain` or piped output, type the key and press Enter. Ctrl-C aborts. Notes the AI didn't write (`--notes-file`, `--no-ai`, the commit-subject list) get `y`, `n` and `e`, since there's no AI output for `r` to redo.
 
-Under `--no-ai` the notes are the commit subjects since the last tag (`git log --format=%s`), less mint's own answers commits. Without `--notes-file`, a first release ships `Initial release.` and a release whose diff is empty once exclusions are taken out ships `Maintenance release — no notable source changes`, with or without the AI.
+Under `--no-ai` the notes are the commit subjects since the last tag (`git log --format=%s`), less mint's own answers commits. Without `--notes-file`, a first release ships `Initial release.` and a release whose diff is empty once exclusions are taken out ships `Maintenance release — no notable source changes`, with or without the AI. When the diff holds only changes users don't meet, the AI writes that same line.
 
 ```bash
 mint release                        # patch release, interactive
@@ -232,9 +233,29 @@ Prints mint's own version. `mint --version` does the same.
 
 ## Release Notes in Depth
 
+### What the notes look like
+
+```markdown
+Review gates answer to a single keypress, with no Enter to press.
+
+✨ Added
+- Single-keypress review gates — press y/n/e/r to decide, no Enter needed.
+
+🐛 Fixed
+- Failures no longer print twice when stdout and stderr share a terminal.
+```
+
+The notes open with a headline only when the release has a main piece of work: one feature, rework or fix that most of its changes serve, or that clearly outweighs the rest. Two pieces of equal weight are named together. A release of small unrelated changes gets no headline, and neither does one whose single bullet already says it all. The headline is a plain sentence about what the work gives users, with no label, emoji or praise words.
+
+The sections follow in a fixed order, and empty ones are left out: 💥 Breaking, ✨ Added, 🔧 Changed, ⚠️ Deprecated, 🗑️ Removed, 🐛 Fixed, 🔒 Security. Each change gets one line, once, in plain language, and each section lists the changes users meet most first. A change is placed against the previous release: something new is Added even if it was fixed on the way, and Fixed means it was broken in the release before. 💥 Breaking holds only changes that stop something users already do from working, or make them act; each says what breaks and, where the diff shows it, what to do instead.
+
+The notes cover only what users meet. CI, tests, internal refactors, and docs that only describe existing behaviour are left out. A release with nothing users meet ships the one line `Maintenance release — no notable source changes`.
+
+The headline is part of the notes: it goes into the changelog, the tag and the GitHub release as written, and the GitHub release's title stays the tag. The format belongs to mint's default prompt. `[release].context` adds to it, and `[release].prompt` replaces it, so your own prompt's format governs every call, the parts and the merge of a big release included.
+
 ### Big releases
 
-When the notes prompt (mint's instructions, the Change Map summarising every changed file, the diff and a closing reminder) fits in `max_prompt_bytes` (default 1,500,000 bytes), mint makes one call. Over it, mint skips that call and writes the notes in parts. The diff's files are packed, in path order, into calls that each fit the cap, and a file too big for one part is cut into pieces of its own. Every part's call carries the release's instructions (the default prompt with `[release].context`, or your `[release].prompt`), the whole release's Change Map, and which part it is. One merge call then turns the parts' notes into the release's notes. There's no setting for this and nothing to answer, and `release regenerate` from a fresh source does the same, per version.
+When the notes prompt (mint's instructions, the Change Map summarising every changed file, the diff and a closing reminder) fits in `max_prompt_bytes` (default 1,500,000 bytes), mint makes one call. Over it, mint skips that call and writes the notes in parts. The diff's files are packed, in path order, into calls that each fit the cap, and a file too big for one part is cut into pieces of its own. Every part's call carries the release's instructions (the default prompt with `[release].context`, or your `[release].prompt`), the whole release's Change Map, and which part it is. One merge call then turns the parts' notes into the release's notes. The parts write no headline: the merge writes it once, from every part's notes. There's no setting for this and nothing to answer, and `release regenerate` from a fresh source does the same, per version.
 
 The merged notes ship byte for byte and reach the review gate as AI notes. `r` there re-runs only the merge, over the part notes already written, with the line of context you give it: a change a part's notes missed isn't read again.
 
