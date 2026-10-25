@@ -17,7 +17,8 @@ const (
 	mergeTooLargePhrase = "part notes too large to merge"
 )
 
-// outsizedContext is operator text larger than partCapBytes on its own.
+// outsizedContext is operator text long enough that, with mint's own text around
+// it, no diff fits under partCapBytes.
 var outsizedContext = strings.Repeat("Project context the operator wrote at length.\n", 600)
 
 // bigPartNotes is chunk notes large enough that two of them overflow a merge prompt
