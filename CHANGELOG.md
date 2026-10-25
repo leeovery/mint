@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-10-25
+
+Release notes now open with a one-sentence headline naming the release's main piece of work, followed by fixed sections led by 💥 Breaking.
+
+✨ Added
+- Release notes open with a plain one-sentence headline when the release has a main piece of work — omitted for releases of small unrelated changes.
+- 💥 Breaking section in the notes for changes that stop existing use working, saying what breaks and what to do instead.
+
+🔧 Changed
+- Notes list each change once, in fixed section order, with the changes users meet most at the top of each section.
+- Notes cover only what users meet — CI, tests, internal refactors and docs-only edits are left out, and a release with nothing user-facing ships the maintenance line.
+- Changes are placed against the previous release — something new stays Added even if it was fixed along the way, and Fixed means it was broken before.
+- Big releases write the headline once, in the merge step, from every part's notes rather than per part.
+- A part with nothing for the notes now returns a single line saying so instead of an empty reply, and the merge ignores those lines.
+
 ## [0.1.0] - 2026-10-21
 
 ✨ Added
