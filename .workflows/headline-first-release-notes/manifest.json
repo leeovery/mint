@@ -1,7 +1,7 @@
 {
   "name": "headline-first-release-notes",
   "work_type": "feature",
-  "status": "in-progress",
+  "status": "completed",
   "created": "2026-10-21",
   "description": "Release notes portray what a release actually did: they open by naming its main work, order changes by their weight to the user, and state only true, user-facing changes in the right section",
   "phases": {
@@ -290,5 +290,6 @@
       "imported_at": "2026-10-21T21:32:33Z",
       "origin": "discussion/headline-first-release-notes"
     }
-  ]
+  ],
+  "completed_at": "2026-10-25"
 }
