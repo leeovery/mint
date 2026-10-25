@@ -199,7 +199,7 @@
           "fix_attempts": 0,
           "analysis_cycle_total": 0,
           "current_phase": 3,
-          "current_task": "headline-first-release-notes-3-5",
+          "current_task": "headline-first-release-notes-3-6",
           "project_skills": [
             ".claude/skills/golang-how-to",
             ".claude/skills/golang-cli",
@@ -254,7 +254,8 @@
             "headline-first-release-notes-3-1",
             "headline-first-release-notes-3-2",
             "headline-first-release-notes-3-3",
-            "headline-first-release-notes-3-4"
+            "headline-first-release-notes-3-4",
+            "headline-first-release-notes-3-5"
           ],
           "staging": {
             "p1": {
