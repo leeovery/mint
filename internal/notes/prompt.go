@@ -31,7 +31,8 @@ Format — an optional headline, then categorized sections:
    section.
 2. SECTIONS, each with an emoji header, in this order. Omit empty sections
    entirely — emit only a section that has at least one item. Keep this order in
-   every release, whatever its main work.
+   every release, whatever its main work. Removed comes before Fixed, and Added
+   before Changed, even where the later section holds the release's main work.
 
     💥 Breaking    — changes that stop existing use working, or change it in a way users must act on
     ✨ Added       — capabilities the previous release did not have
@@ -45,7 +46,10 @@ Nothing goes above the first section but the headline: NO summary paragraph,
 NO TL;DR, NO label, and NO other preamble.
 
 List every change once, in one section. The headline's summary of the release's
-main work is the only restatement in the notes.
+main work is the only restatement in the notes. A change and what it brings with
+it are one change: a removal and the replacement that takes its place, a fix and
+the feature that makes it, a new mechanism and the behaviour users see from it
+each get one bullet, in the section where it matters most to the user.
 
 Each bullet is ONE line and ONE sentence: name the change in plain language, and
 where it helps add the user-facing effect after an em dash. That single line is
@@ -150,6 +154,12 @@ release, never against earlier states inside this one:
 
 Be true to the release:
 
+- Find the changes in the code first. Go through the diff's code and note what
+  each change does; only then read its documentation, READMEs, examples,
+  comments and tests, and only for the words to describe changes you already
+  found in the code. Behaviour you find only there is not a change of this
+  release: leave it out. A new guide or docs page users read is itself a
+  change users meet; what it describes is not.
 - Claim only behaviour the code in this diff changes. Documentation, READMEs,
   comments, examples and tests DESCRIBE behaviour; editing them does not change
   it. When the diff only adds or rewrites documentation for something, the
@@ -164,6 +174,33 @@ Be true to the release:
 - Never present as new anything the previous release already had, wherever the
   diff shows it: in unchanged context lines, in removed lines, or in code the
   diff only moves or renames.
+- Read the diff as the two releases side by side: its removed lines and its
+  unchanged context lines are the previous release, its added lines are this
+  one. Before you write that something is new, now possible or no longer
+  happens, look for it in the removed and context lines. The previous release
+  may already do it under another name, in another file, through another
+  mechanism, or for fewer cases. Where it did, only what differs for the user
+  is the change.
+- A bullet that states a before, with words such as "now", "no longer",
+  "instead of", "moved from", "not just" or "any", makes a claim about the
+  previous release: check it against the removed lines. Where they show the
+  previous release already behaved the new way, or never had the old one, drop
+  the before and state only what this release adds, or drop the bullet.
+- A README, docs page, sample output or settings table that changes in this
+  release is no evidence that what it describes changed: docs are often
+  brought up to date with what an earlier release already shipped. A command,
+  option or setting is new only where the diff adds the code that defines it,
+  where it is declared, parsed or registered, not only code that uses it: a
+  setting is new where the diff adds it to the code that reads the
+  configuration, not where code only uses its value. A behaviour changed only
+  where the diff changes the code that decides it. Where that code is not in
+  the diff, the previous release already had it: leave the bullet out.
+- Docs that now say one thing where they used to say another, in the diff's
+  removed and added lines, were corrected: they were wrong about the previous
+  release, and the software did not change unless the code that decides it
+  changes too.
+- Text that leaves one file and reappears in another, split out, merged or
+  renamed, is moved, not added: the previous release already had it.
 - Before you keep a bullet, find the code change behind it in the diff. If every
   changed line behind it is a comment, documentation, an example or a test, drop
   the bullet. A new test that asserts a behaviour is evidence the behaviour
@@ -228,6 +265,12 @@ Deprecated and Security are opportunistic — emit an item ONLY on an explicit
 textual marker in the diff (a @deprecated annotation for Deprecated; an obvious
 auth / cryptography / input-validation / CVE-bump surface for Security). Do NOT
 infer them speculatively. These sections are empty in most releases.
+
+Last check, before you return the notes: for each bullet that says something is
+new, now works differently or no longer happens, find the added code lines that
+make it so. Where you find only README, docs, sample, comment or test lines, or
+the removed lines show the previous release already did it, drop the bullet or
+the claim it makes about the previous release.
 
 Output discipline:
 

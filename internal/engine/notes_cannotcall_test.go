@@ -21,8 +21,11 @@ const (
 var outsizedContext = strings.Repeat("Project context the operator wrote at length.\n", 600)
 
 // bigPartNotes is chunk notes large enough that two of them overflow a merge prompt
-// under partCapBytes.
-var bigPartNotes = strings.Repeat("- a long note about this part\n", 400)
+// under partCapBytes or the over-cap release's cap, as the default prompt's length
+// changes.
+var bigPartNotes = strings.Repeat(partNoteLine, partCap(halvableFileBytes)/len(partNoteLine))
+
+const partNoteLine = "- a long note about this part\n"
 
 // uncallableCase is a release over a two-file diff of about 10 KB a file whose notes
 // cannot be written within its cap.

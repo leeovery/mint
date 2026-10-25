@@ -14,17 +14,18 @@ func TestRelease_ExclusionCheck_CondensesItsListPastATenthOfTheConfiguredCap(t *
 	t.Parallel()
 
 	var diff string
-	for i := range 80 {
-		diff += fileDiffOfSize(t, fmt.Sprintf("vendor/pkg/file%02d.go", i), 80)
+	for i := range 120 {
+		diff += fileDiffOfSize(t, fmt.Sprintf("vendor/pkg/file%03d.go", i), 80)
 	}
-	// The 80-line list takes more than a tenth of a 20,000-byte cap.
-	f, _ := checkedRelease(t, "max_prompt_bytes = 20000\n", diff, "", "", "none")
+	// The 120-line list takes more than a tenth of a 30,000-byte cap, which the notes
+	// call still fits under.
+	f, _ := checkedRelease(t, "max_prompt_bytes = 30000\n", diff, "", "", "none")
 
 	checks := checkInvocations(f, "claude")
 	if len(checks) != 1 {
 		t.Fatalf("check calls = %d, want one", len(checks))
 	}
-	want := []string{"- vendor/: 80 files, 6.4 KB"}
+	want := []string{"- vendor/: 120 files, 9.6 KB"}
 	if got := checkList(checks[0].Stdin); !slices.Equal(got, want) {
 		t.Errorf("check list = %q, want %q", got, want)
 	}
