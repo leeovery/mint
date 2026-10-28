@@ -451,3 +451,43 @@ func hasArg(args []string, token string) bool {
 	}
 	return false
 }
+
+// TestRelease_PreTagHook_EmptyValueBehavesAsAbsent proves an explicitly empty
+// pre_tag ("" or []) is treated as no hook at all: nothing runs, no pre_tag stage
+// is narrated, and no artifact-commit porcelain probe is made.
+func TestRelease_PreTagHook_EmptyValueBehavesAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ name, value string }{
+		{name: "empty string", value: `""`},
+		{name: "empty array", value: `[]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			writeConfig(t, root, "[release.hooks]\npre_tag = "+tc.value+"\n")
+			f := runner.NewFakeRunner()
+			seedHappyGit(f, root, "main", "v0.0.1")
+			f.Seed("gh", runner.Result{}, nil)
+			rec := &presentertest.RecordingPresenter{}
+
+			if err := engine.Release(t.Context(), newDeps(rec, f), patchOptions()); err != nil {
+				t.Fatalf("Release returned unexpected error: %v", err)
+			}
+
+			if shInvoked(f) {
+				t.Errorf("an empty pre_tag ran `sh`; got %v", commandLines(f.Invocations()))
+			}
+			if _, ok := stageStarted(rec, "pre_tag"); ok {
+				t.Errorf("an empty pre_tag narrated a StageStarted; kinds = %v", rec.Kinds())
+			}
+			if _, ok := stageSucceeded(rec, "pre_tag"); ok {
+				t.Errorf("an empty pre_tag narrated a StageSucceeded; kinds = %v", rec.Kinds())
+			}
+			if at := firstIndexWithPrefix(f, "git -C "+root+" status --porcelain"); at != -1 {
+				t.Errorf("an empty pre_tag made the artifact-commit porcelain probe at %d; got %v", at, commandLines(f.Invocations()))
+			}
+		})
+	}
+}

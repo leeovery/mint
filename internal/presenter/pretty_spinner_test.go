@@ -335,9 +335,35 @@ func TestPrettyPresenterWarnStopsActiveSpinnerCacheReusePath(t *testing.T) {
 	}
 }
 
+// TestPrettyPresenterWarnStopsActiveSpinnerPostReleasePath covers case (c): a failed
+// post_release hook is warned in place of its blocking stage's StageSucceeded (the
+// engine emits StageStarted{Blocking}, then on the failure the warn-only Warn).
+// The Warn itself must stop the spinner, and the transcript carries the ⚠ line and
+// the hook's output with no ✓ line for the stage.
+func TestPrettyPresenterWarnStopsActiveSpinnerPostReleasePath(t *testing.T) {
+	out := &bytes.Buffer{}
+	tr := &spyTracker{}
+	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithSpinnerFactory(tr.factory())
+
+	p.StageStarted(presenter.StageStart{Name: "post_release", Blocking: true, Text: "running post_release hook…"})
+	p.Warn(presenter.Warning{Label: "post_release", Message: "post_release hook failed; tag is already published", Output: "notarize: rejected"})
+
+	if len(tr.created) != 1 || !tr.created[0].stopped {
+		t.Errorf("the post_release spinner must be stopped by the Warn itself; created = %d", len(tr.created))
+	}
+	if tr.active != 0 {
+		t.Errorf("a spinner was left active after the post_release Warn: active = %d, want 0", tr.active)
+	}
+	want := "⚠ post_release  post_release hook failed; tag is already published\n" +
+		"notarize: rejected\n"
+	if got := out.String(); got != want {
+		t.Errorf("post_release failure transcript = %q, want %q", got, want)
+	}
+}
+
 // TestPrettyPresenterWarnWithNoActiveSpinnerCreatesNone proves the general fix is a
-// safe no-op when no spinner is live: a standalone Warn (the common post_release /
-// push case, fired outside any blocking stage) neither creates nor touches a spinner.
+// safe no-op when no spinner is live: a standalone Warn (the common publish / push
+// case, fired outside any blocking stage) neither creates nor touches a spinner.
 func TestPrettyPresenterWarnWithNoActiveSpinnerCreatesNone(t *testing.T) {
 	_, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
 		p.Warn(presenter.Warning{Label: "post_release", Message: "hook exited 1"})

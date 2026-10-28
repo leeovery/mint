@@ -131,15 +131,16 @@ func emitGateSucceeded(p presenter.Presenter, name, detail, sentence string) {
 }
 
 // emitBlockingStageStarted narrates the START of a BLOCKING stage — a long/slow
-// step (notes generation, the pre_tag build hook, the atomic push) — by emitting a
-// StageStarted with Blocking:true so the pretty spinner animates, and starts the
-// engine-side elapsed timer. It returns a completion closure that, when the stage
-// succeeds, emits the matching StageSucceeded carrying the engine-MEASURED Elapsed
-// (the engine times the stage; the presenter never does) and Blocking:true so the
-// success event mirrors the start. A FAILED stage simply does not call the closure
-// — its StageFailed narrates the stage instead — so a non-success path emits no
-// StageSucceeded. The wall-clock measurement uses the standard time package: this is
-// production code timing the real product, not the deterministic workflow harness.
+// step (notes generation, the pre_tag and post_release hooks, the atomic push) — by
+// emitting a StageStarted with Blocking:true so the pretty spinner animates, and
+// starts the engine-side elapsed timer. It returns a completion closure that, when
+// the stage succeeds, emits the matching StageSucceeded carrying the engine-MEASURED
+// Elapsed (the engine times the stage; the presenter never does) and Blocking:true
+// so the success event mirrors the start. A FAILED stage simply does not call the
+// closure — its StageFailed (for post_release, its warn-only Warn) narrates the
+// stage instead — so a non-success path emits no StageSucceeded. The wall-clock
+// measurement uses the standard time package: this is production code timing the
+// real product, not the deterministic workflow harness.
 // text is the OPTIONAL activity phrase the pretty spinner animates while the
 // stage runs ("generating release notes…") — the state-what-is-happening rule;
 // empty falls back to the stage name. sentence is the pretty past-tense completion

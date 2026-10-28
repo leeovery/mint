@@ -123,8 +123,9 @@ func TestRelease_DryRun_NoPreTagArtifactCommit(t *testing.T) {
 }
 
 // TestRelease_DryRun_SkipsPostReleaseHookAndReports proves that under --dry-run a
-// CONFIGURED post_release hook is NOT invoked and the skip is reported via a Warn
-// ("skipping post_release hook", label "dry-run").
+// CONFIGURED post_release hook is NOT invoked, the skip is reported via a Warn
+// ("skipping post_release hook", label "dry-run"), and no post_release stage is
+// narrated.
 func TestRelease_DryRun_SkipsPostReleaseHookAndReports(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +148,12 @@ func TestRelease_DryRun_SkipsPostReleaseHookAndReports(t *testing.T) {
 	warn := warnWithMessage(t, rec, "skipping post_release hook")
 	if warn.Warn.Label != "dry-run" {
 		t.Errorf("Warn.Label = %q, want %q", warn.Warn.Label, "dry-run")
+	}
+	if _, ok := stageStarted(rec, "post_release"); ok {
+		t.Errorf("a skipped post_release hook narrated a StageStarted; kinds = %v", rec.Kinds())
+	}
+	if _, ok := stageSucceeded(rec, "post_release"); ok {
+		t.Errorf("a skipped post_release hook narrated a StageSucceeded; kinds = %v", rec.Kinds())
 	}
 }
 
@@ -203,5 +210,41 @@ func TestRelease_DryRun_AbsentHooks_NoSkipReport(t *testing.T) {
 		if ev.Kind == presentertest.KindWarn && ev.Warn.Label == "dry-run" {
 			t.Errorf("an absent hook emitted a dry-run skip Warn: %q", ev.Warn.Message)
 		}
+	}
+}
+
+// TestRelease_DryRun_EmptyHooks_NoSkipReport proves an explicitly empty hook ("" or
+// []) at every point is treated as absent under --dry-run: no `sh` runs and no
+// "skipping … hook" Warn is emitted, since there was nothing to skip.
+func TestRelease_DryRun_EmptyHooks_NoSkipReport(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ name, value string }{
+		{name: "empty string", value: `""`},
+		{name: "empty array", value: `[]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			writeConfig(t, root, "[release.hooks]\npreflight = "+tc.value+"\npre_tag = "+tc.value+"\npost_release = "+tc.value+"\n")
+			f := runner.NewFakeRunner()
+			seedHappyGit(f, root, "main", "v0.0.1")
+			f.Seed("gh", runner.Result{}, nil)
+			rec := &presentertest.RecordingPresenter{}
+
+			if err := engine.Release(t.Context(), newDeps(rec, f), dryRunPatchOptions()); err != nil {
+				t.Fatalf("Release returned unexpected error: %v", err)
+			}
+
+			if shInvoked(f) {
+				t.Errorf("an empty hook ran `sh` under --dry-run; got %v", commandLines(f.Invocations()))
+			}
+			for _, ev := range rec.Events {
+				if ev.Kind == presentertest.KindWarn && ev.Warn.Label == "dry-run" {
+					t.Errorf("an empty hook emitted a dry-run skip Warn: %q", ev.Warn.Message)
+				}
+			}
+		})
 	}
 }
