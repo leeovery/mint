@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-10-28
+
+🔧 Changed
+- The post_release hook now shows a live spinner while it runs — long post-release builds, notarization or uploads no longer look stalled, and a failure prints a warning in place of the spinner.
+
+🐛 Fixed
+- Empty hook values (`""`, `[]`, or only empty strings) are now treated as an unconfigured hook — no run, no "skipped" report in dry-run, and no stray artifact-commit check for pre_tag.
+
 ## [0.1.1] - 2026-10-25
 
 Release notes now open with a one-sentence headline naming the release's main piece of work, followed by fixed sections led by 💥 Breaking.
