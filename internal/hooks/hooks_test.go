@@ -251,6 +251,36 @@ func TestRunner_EmptyOrAbsentValue_IsNoOp(t *testing.T) {
 	}
 }
 
+func TestHasEntries_TrueOnlyWhenACommandWouldRun(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		value any
+		want  bool
+	}{
+		{name: "nil", value: nil, want: false},
+		{name: "empty string", value: "", want: false},
+		{name: "empty []string", value: []string{}, want: false},
+		{name: "empty []any", value: []any{}, want: false},
+		{name: "[]string of empty strings", value: []string{"", ""}, want: false},
+		{name: "[]any of empty strings", value: []any{"", ""}, want: false},
+		{name: "string", value: "make build", want: true},
+		{name: "[]string", value: []string{"", "make build"}, want: true},
+		{name: "[]any", value: []any{"make build"}, want: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := hooks.HasEntries(tc.value); got != tc.want {
+				t.Errorf("HasEntries(%#v) = %v, want %v", tc.value, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHookEnv_RenderProducesAllVars(t *testing.T) {
 	t.Parallel()
 

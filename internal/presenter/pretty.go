@@ -680,19 +680,20 @@ func (p *PrettyPresenter) Unwound(u Unwind) {
 func (p *PrettyPresenter) Warn(w Warning) {
 	// A Warn may fire WHILE a blocking stage's spinner is still live — the
 	// batch-skip path (a notes-production failure reported via reportSkip with no
-	// StageSucceeded) and the real-run cache reuse/miss/unreadable notices (reported
-	// from inside the live notes stage). Stop the active spinner FIRST so no frame
+	// StageSucceeded), the real-run cache reuse/miss/unreadable notices (reported
+	// from inside the live notes stage), and a failed post_release hook (warned in
+	// place of its stage's StageSucceeded). Stop the active spinner FIRST so no frame
 	// animates over the ⚠ notice (or the end summary that follows a skip). This is the
 	// SINGLE general fix that covers every current and future Warn site rather than
 	// patching each engine call site. The stop is a no-op when no spinner is running,
-	// so a standalone Warn — the common post_release/push case — is unaffected. It
+	// so a standalone Warn — the common publish/push case — is unaffected. It
 	// stops the live spinner ONLY and leaves any pending suspend untouched (it does not
 	// route through stopSpinner): a Warn inside a SuspendSpinner/ResumeSpinner bracket
 	// — the notes stage's failed exclusion check — keeps the suspend pending, so the
 	// bracket's ResumeSpinner restores the stage line; only a stage start or completion
 	// clears it. In the cache-reuse path the stage then continues and its eventual
 	// StageSucceeded/StageFailed prints the ✓/✗ line in the cleared place; in the skip
-	// path the stage ends here, so no resume is wanted.
+	// and post_release paths the stage ends here, so no resume is wanted.
 	if p.activeSpinner != nil {
 		p.activeSpinner.Stop()
 		p.activeSpinner = nil

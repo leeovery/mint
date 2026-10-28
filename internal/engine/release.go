@@ -476,12 +476,11 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 
 	// Stage 2 — project preflight hook. After mint's built-in gates pass and BEFORE
 	// any mutation (and before startingHEAD is even captured), the project's optional
-	// preflight hook runs for project-specific gates/validation. An absent hook
-	// (cfg.Release.Hooks.Preflight == nil) is a no-op — the runner returns nil for a
-	// nil/empty value. A non-zero exit (for an array, the first non-zero entry) aborts
-	// the whole release cleanly: it is surfaced as a "preflight" StageFailed. Because
-	// this precedes all mutation there is nothing to unwind — a plain surface, not the
-	// auto-unwind path.
+	// preflight hook runs for project-specific gates/validation. An absent or empty
+	// hook (nil, "", []) is a no-op. A non-zero exit (for an array, the first non-zero
+	// entry) aborts the whole release cleanly: it is surfaced as a "preflight"
+	// StageFailed. Because this precedes all mutation there is nothing to unwind — a
+	// plain surface, not the auto-unwind path.
 	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun); err != nil {
 		return surface(p, "preflight", err)
 	}
@@ -515,12 +514,12 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	// left dirty as its OWN `chore(release): pre-tag artifacts for {tag}` commit, kept
 	// distinct from the bookkeeping commit. This runs AFTER startingHEAD so the
 	// artifact commit is covered by the auto-unwind, and BEFORE notes so they generate
-	// at the post-hook HEAD. An absent hook is a no-op (no prep, no artifact commit); a
-	// non-zero exit aborts cleanly before any notes/tag/push — routed through the
-	// surgical unwind so mint's OWN artifact commit (when one landed before the hook
-	// step failed) is reset back to startingHEAD. The committed signal is folded into
-	// made.Commits the moment the artifact commit lands, so it is tracked even if a
-	// LATER stage fails.
+	// at the post-hook HEAD. An absent or empty hook is a no-op (no prep, no artifact
+	// commit); a non-zero exit aborts cleanly before any notes/tag/push — routed
+	// through the surgical unwind so mint's OWN artifact commit (when one landed before
+	// the hook step failed) is reset back to startingHEAD. The committed signal is
+	// folded into made.Commits the moment the artifact commit lands, so it is tracked
+	// even if a LATER stage fails.
 	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun, keepOut)
 	if artifactCommitted {
 		made.Commits++
@@ -794,8 +793,9 @@ func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	}
 
 	// Stage 7 — post_release hook. Post-PONR follow-ups (notifications, tap
-	// repository_dispatch). It runs UNCONDITIONALLY: reaching here means the push
-	// already crossed the PONR, so the tag is public whether publish=true or
+	// repository_dispatch, a signed build's notarization and upload), narrated as a
+	// blocking stage like pre_tag. It runs UNCONDITIONALLY: reaching here means the
+	// push already crossed the PONR, so the tag is public whether publish=true or
 	// publish=false, and post-release follow-ups apply either way. Like the publish
 	// failure above, a non-zero exit is WARN-ONLY — it does NOT abort or unwind; the
 	// run still reaches RunFinished and returns nil. This is the ONLY hook point whose
@@ -1502,20 +1502,19 @@ func reportHookSkipped(p presenter.Presenter, point string) {
 // (NewVersion = the bare version being released, PreviousVersion = the bare prior
 // latest, VersionTag = the full prefixed tag), the bump kind, and the dryRun mode,
 // then runs the configured [release.hooks].preflight value from the repo root. An
-// absent value (nil) is a no-op — the runner returns nil. A non-zero exit (the first
-// non-zero entry for an array) returns a non-nil error the caller surfaces and aborts
-// on.
+// absent or empty value (nil, "", []) is a silent no-op: no run, no report. A
+// non-zero exit (the first non-zero entry for an array) returns a non-nil error the
+// caller surfaces and aborts on.
 //
-// DRY-RUN: when dryRun is active AND the hook is configured (non-nil), the hook is
-// NOT invoked — no `sh -c …` reaches the runner; instead the skip is REPORTED via the
-// presenter and nil is returned. An ABSENT hook stays a silent no-op (no run, no
-// report). The env is still assembled with MINT_DRY_RUN=1 for consistency even though
-// the skipped hook never consumes it.
+// DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT
+// invoked — no `sh -c …` reaches the runner; instead the skip is REPORTED via the
+// presenter and nil is returned.
 func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
+	if !hooks.HasEntries(cfg.Release.Hooks.Preflight) {
+		return nil
+	}
 	if dryRun {
-		if cfg.Release.Hooks.Preflight != nil {
-			reportHookSkipped(deps.Presenter, "preflight")
-		}
+		reportHookSkipped(deps.Presenter, "preflight")
 		return nil
 	}
 	env := buildHookEnv(current, next, tag, bump, dryRun)
@@ -1525,9 +1524,10 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 // runPreTagHook runs the project's optional Stage-3 pre_tag hook and then applies
 // the artifact-commit interplay rule. The hook (build/generate artifacts) runs
 // through the shared hooks runner with the same MINT_* env as the preflight hook. An
-// absent value (nil) is a no-op — the runner returns nil, no artifact commit is
-// considered, and committed is false. A non-zero exit (the first non-zero entry for an
-// array) returns a non-nil error the caller routes through the surgical unwind.
+// absent or empty value (nil, "", []) is a no-op — nothing runs, no artifact commit
+// is considered, and committed is false. A non-zero exit (the first non-zero entry
+// for an array) returns a non-nil error the caller routes through the surgical
+// unwind.
 //
 // On hook SUCCESS, mint commits whatever the hook left dirty as its OWN commit
 // (subject `chore(release): pre-tag artifacts for {tag}` — a FIXED chore prefix, NOT
@@ -1538,19 +1538,19 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 // it into MadeState for the surgical unwind (CommitDirtyTree returns committed=true
 // ONLY after a successful commit, so committed is never true alongside a non-nil
 // error). A commit failure is surfaced for the caller to unwind. The interplay rule
-// applies ONLY after a hook actually ran: an absent hook skips the artifact-commit
-// probe entirely, so the existing no-hook spine is untouched.
+// applies ONLY after a hook actually ran: an absent or empty hook skips the
+// artifact-commit probe entirely, so the existing no-hook spine is untouched.
 //
 // DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT invoked
 // and — crucially — the artifact-commit step is SKIPPED TOO: because the hook never
 // ran, the tree was not dirtied by mint, so NO porcelain probe and NO
 // `chore(release): pre-tag artifacts for {tag}` commit must be produced (committed is
 // false). The skip is reported via the presenter and the function returns immediately.
-// An ABSENT hook stays a silent no-op (no run, no report, no probe).
+// An absent or empty hook stays a silent no-op (no run, no report, no probe).
 //
 // keepOut is left out of the artifact commit: its changes neither trigger nor ride in it.
 func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool, keepOut git.Exclusion) (bool, error) {
-	if cfg.Release.Hooks.PreTag == nil {
+	if !hooks.HasEntries(cfg.Release.Hooks.PreTag) {
 		return false, nil
 	}
 
@@ -1589,24 +1589,36 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 
 // runPostReleaseHook runs the project's optional Stage-7 post_release hook through
 // the shared hooks runner with the same MINT_* env as the other points (reusing
-// buildHookEnv). An absent value (nil) is a no-op — the runner returns nil. A
-// non-zero exit (the first non-zero entry for an array — the stop-on-first-failure
-// SEQUENCING is identical to the other points) returns a non-nil error. UNLIKE
-// preflight/pre_tag, the CONSEQUENCE here is warn-only: the caller does NOT abort or
-// unwind, because by Stage 7 the push has crossed the PONR and the tag is public.
+// buildHookEnv). An absent or empty value (nil, "", []) is a silent no-op: no run,
+// no report, no stage narration. A non-zero exit (the first non-zero entry for an
+// array — the stop-on-first-failure SEQUENCING is identical to the other points)
+// returns a non-nil error. UNLIKE preflight/pre_tag, the CONSEQUENCE here is
+// warn-only: the caller does NOT abort or unwind, because by Stage 7 the push has
+// crossed the PONR and the tag is public.
 //
 // DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT invoked;
 // the skip is REPORTED via the presenter and nil is returned (the caller's warn-only
-// branch is irrelevant — there is no failure). An ABSENT hook stays a silent no-op.
+// branch is irrelevant — there is no failure).
 func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
-	if dryRun {
-		if cfg.Release.Hooks.PostRelease != nil {
-			reportHookSkipped(deps.Presenter, "post_release")
-		}
+	if !hooks.HasEntries(cfg.Release.Hooks.PostRelease) {
 		return nil
 	}
+	if dryRun {
+		reportHookSkipped(deps.Presenter, "post_release")
+		return nil
+	}
+
+	// Stage 7 is BLOCKING, as pre_tag is: a post-release build, notarization or
+	// upload can run for minutes, so the spinner must show it is alive. A failure
+	// skips the success line; the caller's Warn stops the spinner and prints the ⚠
+	// line with the hook's output in its place.
+	done := emitBlockingStageStarted(deps.Presenter, "post_release", "running post_release hook…", "Ran the post_release hook")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
-	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env)
+	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env); err != nil {
+		return err
+	}
+	done("hook completed")
+	return nil
 }
 
 // pretagArtifactSubject builds the FIXED subject for the pre_tag artifact commit. It

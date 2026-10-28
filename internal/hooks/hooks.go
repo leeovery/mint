@@ -64,6 +64,13 @@ func (r *Runner) Run(ctx context.Context, value any, repoRoot string, env HookEn
 	return nil
 }
 
+// HasEntries reports whether value names at least one command Run would execute.
+// An absent or empty value (nil, "", an empty slice, or a slice of only empty
+// strings) has none, so a caller treats it exactly as an unconfigured hook.
+func HasEntries(value any) bool {
+	return len(normalise(value)) > 0
+}
+
 // normalise coerces a parsed hook value into an ordered list of command strings:
 //   - a string            -> one entry (empty string -> zero entries)
 //   - a []string          -> entries in declared order

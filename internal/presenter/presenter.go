@@ -69,11 +69,13 @@ type Presenter interface {
 	// frames are written to out from the spinner's own goroutine until the stage
 	// completes. Between a blocking StageStarted and its StageSucceeded/StageFailed
 	// the engine should therefore emit only SuspendSpinner/ResumeSpinner, the notes
-	// stage's NotesChecking/NotesChecked/NotesProgress/NotesHalving/NotesMerging, and
-	// the completion event itself — any other narration (Warn, ShowPlan, …) would
-	// interleave with animation frames on the same stream and garble the display.
-	// Emit such events before the stage starts or after it completes (or wrap them
-	// in SuspendSpinner/ResumeSpinner).
+	// stage's NotesChecking/NotesChecked/NotesProgress/NotesHalving/NotesMerging,
+	// Warn, and the completion event itself. Warn is safe because pretty's Warn stops
+	// the live spinner before it prints, so a Warn may also END a blocking stage in
+	// place of its completion (the notes batch skip, a failed post_release hook). Any
+	// other narration (ShowPlan, …) would interleave with animation frames on the
+	// same stream and garble the display: emit it before the stage starts or after it
+	// completes (or wrap it in SuspendSpinner/ResumeSpinner).
 	StageStarted(s StageStart)
 	// StageSucceeded renders a stage's successful completion.
 	StageSucceeded(s StageSuccess)
