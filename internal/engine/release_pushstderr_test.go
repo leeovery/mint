@@ -34,3 +34,28 @@ func TestRelease_ARejectedPushShowsGitsStderrVerbatimBeneathItsFailure(t *testin
 		t.Errorf("failure = %q with output %q, want %q with git's stderr %q verbatim", failure.Message, failure.Output, want, rejected)
 	}
 }
+
+// TestRelease_AFailedBookkeepingCommitShowsGitsStderrVerbatimBeneathItsFailure pins
+// that a commit git refuses, here for want of a signing key, shows git's stderr
+// verbatim in StageFailure.Output, as the push and the tag do.
+func TestRelease_AFailedBookkeepingCommitShowsGitsStderrVerbatimBeneathItsFailure(t *testing.T) {
+	t.Parallel()
+
+	const unsigned = "error: gpg failed to sign the data\nfatal: failed to write commit object\n"
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	seedHappyGitThroughGate(f, root, "main", "v0.0.1")
+	f.SeedSequence("git",
+		ScriptedOut(""),      // -C root add CHANGELOG.md
+		gitFailing(unsigned), // -C root commit -m
+		ScriptedOut(""),      // unwind: reset --hard startingSHA
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	assertAbortNonZero(t, err)
+	if failure := onlyStageFailureEvent(t, rec); failure.Output != unsigned {
+		t.Errorf("failure = %q with output %q, want git's stderr %q verbatim", failure.Message, failure.Output, unsigned)
+	}
+}
