@@ -45,8 +45,6 @@ type part struct {
 	hidden bool
 	// passed is a stage a dry run went past without running it, hollow for good.
 	passed bool
-	// aside is a warning about a node it leaves as it was, drawn by it.
-	aside bool
 	// shown is a stage running or a question printed as it was when it showed, where
 	// there is no region to hold it.
 	shown    bool
@@ -91,6 +89,12 @@ func (pt *part) still() rail.Item {
 	n := *pt.node
 	n.Time, n.Progress = "", nil
 	return n
+}
+
+// hangsUnder is whether the part hangs under the node above it: a body, or a node
+// of no stage's that has finished, a warning.
+func (pt *part) hangsUnder() bool {
+	return pt.kind == bodyPart || pt.kind == nodePart && pt.key == "" && pt.finished()
 }
 
 // running is whether the part is a node running.
@@ -144,9 +148,9 @@ func (pt *part) final() bool {
 // runModel is the run as the rail draws it: the items settled, printed once and never
 // changed, and the parts of the live region under them.
 //
-// The region starts at the part the last event touched, the node a question's loop
-// is about, or the first part not yet finished, whichever is highest: everything
-// above it settles. So a node stays live while the run is still at it (the exclusion
+// The region starts at the part the last event touched, the node an open question's
+// loop asks about, or the first part not yet finished, whichever is highest:
+// everything above it settles. So a node stays live while the run is still at it (the exclusion
 // check gathering its answers, the notes waiting for the review's), and settles once
 // the run moves on.
 type runModel struct {
@@ -159,9 +163,12 @@ type runModel struct {
 	gone map[string]bool
 	// held is the running node the exclusion check holds back while it runs.
 	held *part
-	// loop is the stage a question answered e or r asks about until it is answered
-	// otherwise: what runs meanwhile, as the edit does, is the question's, not a node.
-	loop            string
+	// looping is a question's loop open: from an e or r answer until the next answer
+	// to any gate. asked is the stage that question asks about.
+	looping bool
+	asked   string
+	// planned are the plan's stage keys.
+	planned         map[string]bool
 	pointOfNoReturn string
 	// endName is the name of the end station the plan waits on, "" for a run with no
 	// start station.
@@ -174,7 +181,7 @@ type runModel struct {
 	closed           bool
 }
 
-func newRunModel() *runModel { return &runModel{gone: map[string]bool{}} }
+func newRunModel() *runModel { return &runModel{gone: map[string]bool{}, planned: map[string]bool{}} }
 
 // drawing is the run as the rail draws it now.
 func (m *runModel) drawing(now time.Time) rail.Run {
@@ -223,6 +230,7 @@ func (m *runModel) plan(p Plan) {
 	m.pointOfNoReturn = p.PointOfNoReturn
 	at := m.insertionPoint()
 	for _, s := range p.Stages {
+		m.planned[s.Key] = true
 		if pt := m.find(s.Key); pt != nil {
 			pt.node.Name, pt.plan = s.Name, s.Detail
 			at = slices.Index(m.parts, pt) + 1
@@ -258,10 +266,31 @@ func (m *runModel) stage(key, name string) *part {
 	return pt
 }
 
-// looping is whether an event for the stage keyed key happens inside a question's
-// loop, the question's own doing rather than a stage of the run's.
-func (m *runModel) looping(key string) bool {
-	return m.loop != "" && key != m.loop
+// activity is whether a stage keyed key is an open question's own doing, as the
+// review's edit is, rather than a stage of the run's: a key that names no stage
+// planned and no node drawn, inside the question's loop. Its start and its success
+// draw nothing; its failure is drawn.
+func (m *runModel) activity(key string) bool {
+	return m.looping && !m.planned[key] && m.find(key) == nil && !m.gone[key]
+}
+
+// reach marks, in a dry run, the planned stages still to come above pt, a planned
+// stage that has started, passed, so they settle above it in plan order. The one
+// right above it is left to come: a stage may run inside the one started, as the
+// exclusion check runs inside the notes, which start first.
+func (m *runModel) reach(pt *part) {
+	if !m.dryRun || !m.planned[pt.key] {
+		return
+	}
+	var above []*part
+	for _, q := range m.parts[:slices.Index(m.parts, pt)] {
+		if q.kind == nodePart && !q.hidden && q.node.State == rail.ToCome && m.planned[q.key] {
+			above = append(above, q)
+		}
+	}
+	for _, q := range above[:max(len(above)-1, 0)] {
+		q.passed = true
+	}
 }
 
 // add puts n at the run's edge, touched.
@@ -272,25 +301,20 @@ func (m *runModel) add(n rail.Node) *part {
 	return pt
 }
 
-// aside puts n, a warning about the node pt that leaves it as it was, by it,
-// touched: under it and what hangs under it, or above it where it is still to come,
-// where a question about it asks.
+// aside puts n, a warning about the node pt that leaves it as it was, under it and
+// what hangs under it, touched.
 func (m *runModel) aside(pt *part, n rail.Node) *part {
-	w := &part{node: &n, aside: true}
-	at := m.under(pt)
-	if pt.node.State == rail.ToCome {
-		at = slices.Index(m.parts, pt)
-	}
-	m.insert(w, at)
+	w := &part{node: &n}
+	m.insert(w, m.under(pt))
 	m.touched = w
 	return w
 }
 
 // under is where a part goes under the node pt: past the body shown off it and the
-// warnings drawn about it.
+// nodes of no stage's drawn since, its warnings.
 func (m *runModel) under(pt *part) int {
 	at := slices.Index(m.parts, pt) + 1
-	for at < len(m.parts) && (m.parts[at].kind == bodyPart || m.parts[at].aside) {
+	for at < len(m.parts) && m.parts[at].hangsUnder() {
 		at++
 	}
 	return at
@@ -423,15 +447,19 @@ func (m *runModel) pass() {
 }
 
 // settleFinished settles every part above the region's start: the part last
-// touched, the node a question's loop is about, or the first part not finished,
-// whichever is highest. Once the run is closed, nothing is live, so all of it
-// settles.
+// touched, the node an open question's loop asks about, or the first part not
+// finished, whichever is highest. Once the run is closed, nothing is live, so all of
+// it settles.
 func (m *runModel) settleFinished() {
 	n := len(m.parts)
 	if !m.closed {
+		var asked *part
+		if m.looping {
+			asked = m.find(m.asked)
+		}
 		for _, i := range []int{
 			slices.Index(m.parts, m.touched),
-			slices.Index(m.parts, m.find(m.loop)),
+			slices.Index(m.parts, asked),
 			slices.IndexFunc(m.parts, func(pt *part) bool { return !pt.finished() }),
 		} {
 			if i >= 0 {
@@ -472,6 +500,11 @@ func (m *runModel) log() {
 	}
 }
 
+// settleAbove settles every part above q, so q heads the region.
+func (m *runModel) settleAbove(q *part) {
+	m.settle(slices.Index(m.parts, q))
+}
+
 // settle settles the first n parts.
 func (m *runModel) settle(n int) {
 	for _, pt := range m.parts[:n] {
@@ -480,9 +513,15 @@ func (m *runModel) settle(n int) {
 	m.parts = slices.Delete(m.parts, 0, n)
 }
 
-// settlePart settles pt as it is now, which the caller takes out of the region.
+// settlePart settles pt as it is now, which the caller takes out of the region: a
+// node still running as it shows still, its line printed and its finish a node of
+// its own.
 func (m *runModel) settlePart(pt *part) {
-	m.settleItem(pt.live(time.Time{}))
+	if pt.running() {
+		m.settleItem(pt.still())
+	} else {
+		m.settleItem(pt.live(time.Time{}))
+	}
 	if pt.key != "" {
 		m.gone[pt.key] = true
 	}
@@ -510,7 +549,7 @@ func (m *runModel) finish(end rail.End, dryRun bool) {
 	if moves := append(m.moves, m.suggested...); len(moves) > 0 {
 		m.settleItem(rail.Next{Moves: moves})
 	}
-	m.moves, m.suggested, m.loop = nil, nil, ""
+	m.moves, m.suggested, m.looping = nil, nil, false
 	m.open, m.closed, m.touched, m.held = false, true, nil, nil
 }
 

@@ -32,15 +32,17 @@ func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
 	if c, err, done := p.unasked(g); done {
 		return c, err
 	}
-	if f, ok := rawKeyFile(p.in); ok && singleKeyGate(g) {
-		q := p.ask(g, false)
+	f, keys := rawKeyFile(p.in)
+	keys = keys && singleKeyGate(g)
+	q := p.ask(g, !keys)
+	if keys {
 		c, err := readKeypress(f, g)
 		if !errors.Is(err, errNoRawMode) {
 			return c, p.answered(g, q, c, err)
 		}
-		p.withdraw(q)
+		p.retype(q)
 	}
-	return p.typedChoice(g)
+	return p.typedChoice(g, q)
 }
 
 // unasked answers g without asking, under -y, or fails loud without an interactive
@@ -60,10 +62,9 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 	return "", nil, false
 }
 
-// typedChoice reads g's answer as a typed line, asking again after a line that names
-// none of its keys.
-func (p *RailPresenter) typedChoice(g Gate) (Choice, error) {
-	q := p.ask(g, true)
+// typedChoice reads g's answer to the open question q as a typed line, asking again
+// after a line that names none of its keys.
+func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 	for {
 		line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
 		if err != nil {
@@ -119,14 +120,36 @@ func (p *RailPresenter) ask(g Gate, typing bool) *part {
 }
 
 // open puts q on the rail about the stage keyed stage, and draws it with the spinner
-// stopped, as nothing may write while it waits; for a typed line, the cursor goes
-// where the terminal is to echo it.
+// stopped, as nothing may write while it waits.
 func (p *RailPresenter) open(q *part, stage string) *part {
 	p.run.ask(q, stage)
 	p.asking = true
+	p.present(q)
+	return q
+}
+
+// present draws the open question q, the cursor where it reads a typed line for the
+// terminal to echo it there. An echo needs room below the question, so for one
+// everything above the question settles first and the question heads the region:
+// once the echo has moved the cursor, the writer goes back up no more than the rail
+// line over the question, its row and the rows the echo took, and only an echo
+// taller than the terminal scrolls the question off it.
+func (p *RailPresenter) present(q *part) {
+	if q.question.Typing && p.echo && p.fits {
+		p.run.settleAbove(q)
+	}
 	p.redraw()
 	p.place(q)
-	return q
+}
+
+// retype turns the open question q, asked for a keypress the terminal wouldn't go
+// into raw mode for, into one reading a typed line: the same question, not asked
+// again, so where it has printed it doesn't print twice.
+func (p *RailPresenter) retype(q *part) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	q.question.Typing = true
+	p.present(q)
 }
 
 // reask draws the question q again after a typed line that answered nothing, for
@@ -137,13 +160,6 @@ func (p *RailPresenter) reask(q *part) {
 	q.shown = false
 	p.redraw()
 	p.place(q)
-}
-
-// withdraw takes q off the rail unanswered.
-func (p *RailPresenter) withdraw(q *part) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.dismiss(q)
 }
 
 // answered takes q off the rail and, unless err ended the read, settles c as g's
@@ -199,20 +215,18 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 // line under the check's node; any other's as the tail of the node it asked about,
 // what hung above it gone, or, that node settled above, on a row of its own; a gate
 // asked before the run's stages as a row naming what was chosen. An edit or a
-// regenerate settles nothing: where a body is shown, it opens the question's loop, the
-// body is shown again, in place, and the question comes back.
+// regenerate settles nothing: it opens the question's loop, until the next answer to
+// any gate, the body is shown again, in place, and the question comes back.
 func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
+	p.run.looping = false
 	if x := g.Suggestion; x != nil {
 		p.run.hang(g.Stage, rail.Hang{Kind: rail.Note, Text: x.Glob + " " + pauseAnswer(g, c, auto) + " · " + x.Reason})
 		return
 	}
 	if c == ChoiceEdit || c == ChoiceRegen {
-		if p.run.partOf(bodyPart) != nil {
-			p.run.loop = g.Stage
-		}
+		p.run.looping, p.run.asked = true, g.Stage
 		return
 	}
-	p.run.loop = ""
 	if body := p.run.partOf(bodyPart); body != nil {
 		p.run.remove(body)
 	}
@@ -304,7 +318,7 @@ func (p *RailPresenter) failNotInteractive(label string) {
 // row under the region, and the echo starts there.
 func (p *RailPresenter) place(q *part) {
 	p.typedAt = 0
-	if q == nil || !q.question.Typing || !p.layout.RegionFits() {
+	if q == nil || !q.question.Typing || !p.fits {
 		return
 	}
 	if row, col, ok := p.layout.Cursor(p.drawing()); ok && p.region.Place(row, col) {

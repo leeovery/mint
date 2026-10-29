@@ -452,7 +452,7 @@ func noEditRow(t *testing.T, screen []string) {
 func TestRailGate_OnAShortTerminalAnOpenQuestionStaysLive(t *testing.T) {
 	t.Parallel()
 	in := answers("y\n")
-	r := newRailTerm(t, 80, 10, in)
+	r := newRailTerm(t, 80, 12, in)
 	messageWritten(r, "feat: retry deliveries\n\nDeliveries that fail retry for up to an hour.")
 	const question = " ?  Commit this message?   y accept   n abort   e edit   r regenerate"
 	in.asked = func(int) {
@@ -472,7 +472,9 @@ func TestRailGate_OnAShortTerminalAnOpenQuestionStaysLive(t *testing.T) {
 // TestRailGate_ALineTheInputClosedOnMovesTheCursorNoFurther pins that a typed line
 // cut short by the input closing, as `abc` then Ctrl-D, is echoed with no Enter
 // after it: the redraw goes back up as far as the echo took the cursor, and no
-// further, for AskLine's line and a question's typed answer alike.
+// further, for AskLine's line and a question's typed answer alike. What is above a
+// question read as an echoed line settles first, so the typed answer is recorded on
+// a row of its own.
 func TestRailGate_ALineTheInputClosedOnMovesTheCursorNoFurther(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -495,7 +497,7 @@ func TestRailGate_ALineTheInputClosedOnMovesTheCursorNoFurther(t *testing.T) {
 				_, err := r.Prompt(commitGate())
 				return err
 			},
-			want: append(append(commitHead[:4:4], " ●  message       written · accepted"), commitAhead...),
+			want: append(append(commitHead[:4:4], " ●  message       written", " │", " │    feat: retry deliveries", " │", " ●  review        accepted"), commitAhead...),
 		},
 	}
 	for _, tt := range tests {
@@ -521,35 +523,178 @@ func TestRailGate_ALineTheInputClosedOnMovesTheCursorNoFurther(t *testing.T) {
 	}
 }
 
-// TestRailGate_ATypedLineTheRegionCannotHoldEchoesUnderIt pins that where the
-// question is past the rows the region keeps, the cursor isn't placed on it, and
-// the echo is counted from the start of the row under the region, where it is.
-func TestRailGate_ATypedLineTheRegionCannotHoldEchoesUnderIt(t *testing.T) {
+// TestRailGate_ATypedLinesEchoNeverTakesTheWriterPastTheScreen pins the bound on a
+// typed line's echo: everything above the question settles before the line is
+// read, so the question heads the region and an echo that wraps below it, however
+// near the terminal's foot, scrolls away nothing the writer goes back over. With no
+// region, on a terminal too short for one, the echo stays where it was typed.
+func TestRailGate_ATypedLinesEchoNeverTakesTheWriterPastTheScreen(t *testing.T) {
 	t.Parallel()
-	in := newBlockingInput()
-	r := newRailTerm(t, 80, 24, in)
-	r.size.set(80, 3)
-	r.WithEcho(true)
-	commitRun(r)
-	r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "writing…"})
+	tests := []struct {
+		name       string
+		rows, body int
+		typed      string
+		echoErased bool
+	}{
+		{name: "near the region's foot", rows: 14, body: 8, typed: strings.Repeat("x", 150), echoErased: true},
+		{name: "wrapping three times, on a terminal too short for a region", rows: 10, body: 3, typed: strings.Repeat("x", 250)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := newBlockingInput()
+			r := newRailTerm(t, 80, tt.rows, in)
+			r.WithEcho(true)
+			body := lines(tt.body, "line ")
+			messageWritten(r, strings.Join(body, "\n"))
+			got := make(chan error)
+			go func() {
+				_, err := r.AskLine("Add one-time context:")
+				got <- err
+			}()
+			<-in.reading
+			if _, err := r.term.Write([]byte(tt.typed + "\n")); err != nil {
+				t.Fatal(err)
+			}
+			in.lines <- tt.typed + "\n"
+			if err := <-got; err != nil {
+				t.Fatal(err)
+			}
+			screen := r.screen(t)
+			for _, want := range []string{" ●  message       written", " │    " + body[0], " │    " + body[len(body)-1]} {
+				if n := count(screen, want); n != 1 {
+					t.Errorf("%q is on the terminal %d times, want once:\n%s", want, n, strings.Join(screen, "\n"))
+				}
+			}
+			echoed := slices.ContainsFunc(screen, func(s string) bool { return strings.Contains(s, "xxxx") })
+			if echoed == tt.echoErased {
+				t.Errorf("the echo is on the terminal: %v, want %v:\n%s", echoed, !tt.echoErased, strings.Join(screen, "\n"))
+			}
+		})
+	}
+}
+
+// count is how many of rows are row.
+func count(rows []string, row string) int {
+	n := 0
+	for _, r := range rows {
+		if r == row {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRailGate_ACommitRegenerateThatFallsToTheEditorDrawsEveryStageAfterIt pins that
+// a question's loop swallows only its own activity: commit's r, its AI call failing,
+// goes to the editor without asking again, and the message, stage, commit and push
+// that follow, each a stage planned, all draw.
+func TestRailGate_ACommitRegenerateThatFallsToTheEditorDrawsEveryStageAfterIt(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 30, answers("r\n", "\n"))
+	r.RunStarted(presenter.RunInfo{
+		Header: presenter.Header{Command: "commit", Where: pigeonWhere, Version: mintVersion},
+		Start:  presenter.Station{Name: "main", Detail: "7c1e0b4"},
+	})
+	r.ShowPlan(presenter.Plan{Quiet: true, Stages: []presenter.PlanStage{
+		{Key: "diff", Name: "diff", Detail: "every change"},
+		{Key: "message", Name: "message", Detail: "written by the AI"},
+		{Key: "stage", Name: "stage", Detail: "git add -A"},
+		{Key: "commit", Name: "commit", Detail: "on main"},
+		{Key: "push", Name: "push", Detail: "to its upstream"},
+	}})
+	r.StageSucceeded(presenter.Settled("diff", "4 files · +86 −12"))
+	r.StageSucceeded(presenter.Settled("message", "written"))
 	r.ShowMessage(presenter.Message{Body: "feat: retry deliveries"})
-	got := make(chan error)
-	go func() {
-		_, err := r.AskLine("Add one-time context:")
-		got <- err
-	}()
-	<-in.reading
-	typed := strings.Repeat("x", 60)
-	if _, err := r.term.Write([]byte(typed + "\n")); err != nil {
+	if c, err := r.Prompt(commitGate()); err != nil || c != presenter.ChoiceRegen {
+		t.Fatalf("Prompt = %q, %v, want r", c, err)
+	}
+	if _, err := r.AskLine("Add one-time context for regeneration (optional):"); err != nil {
 		t.Fatal(err)
 	}
-	in.lines <- typed + "\n"
-	if err := <-got; err != nil {
-		t.Fatal(err)
+	r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "regenerating commit message…"})
+	r.Warn(presenter.Warning{Key: "message", Label: "ai", Message: "could not generate a message, opening editor", Output: "claude: timed out"})
+	r.SuspendSpinner()
+	r.ResumeSpinner()
+	r.StageSucceeded(presenter.Settled("message", "written in your editor"))
+	r.StageSucceeded(presenter.Settled("stage", "staged"))
+	r.StageSucceeded(presenter.Settled("commit", "a3f9c21"))
+	r.StageStarted(presenter.StageStart{Name: "push", Key: "push", Blocking: true, Text: "pushing…"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "push", Key: "push", Blocking: true, Elapsed: secs(1.2), Detail: "main → origin"})
+	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeCommitted, End: presenter.Station{Name: "main", Detail: "a3f9c21 · pushed"}, Elapsed: secs(30)})
+	screen := r.screen(t)
+	for _, want := range []string{
+		" !  message       could not generate a message, opening editor",
+		" ●  message       written in your editor",
+		" ●  stage         staged",
+		" ●  commit        a3f9c21",
+		row(" ●  push          main → origin", "1.2s"),
+	} {
+		if !slices.Contains(screen, want) {
+			t.Errorf("the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), want)
+		}
+	}
+}
+
+// TestRailGate_AReAskTheInputClosedOnEndsTheLoop_WhatFollowsIsInEventOrder pins that
+// a question's loop ends with the gate that ends unanswered: the unwind and the
+// autostash's warning after it draw at the run's edge, in the order they came.
+func TestRailGate_AReAskTheInputClosedOnEndsTheLoop_WhatFollowsIsInEventOrder(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 30, answers("e\n"))
+	notesUnderReview(r, "first draft")
+	if c, err := r.Prompt(reviewGate()); err != nil || c != presenter.ChoiceEdit {
+		t.Fatalf("Prompt = %q, %v, want e", c, err)
+	}
+	editStage(r, nil)
+	r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "second draft"})
+	if _, err := r.Prompt(reviewGate()); !errors.Is(err, presenter.ErrInputClosed) {
+		t.Fatalf("Prompt = %v, want ErrInputClosed", err)
+	}
+	r.Unwound(presenter.Unwind{Undone: "reset 1 commit"})
+	r.Warn(presenter.Warning{Label: "autostash", Message: "could not restore stashed changes cleanly"})
+	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "back where it started · nothing pushed"}, Elapsed: secs(20)})
+	screen := r.screen(t)
+	noEditRow(t, screen)
+	order := []string{
+		" ●  notes         written by the AI",
+		" │    second draft",
+		" ↩  unwind        reset 1 commit",
+		" !  autostash     could not restore stashed changes cleanly",
+		row(" ◇  v1.3.2        back where it started · nothing pushed", "20.0s"),
+	}
+	at := -1
+	for _, want := range order {
+		i := slices.Index(screen, want)
+		if i <= at {
+			t.Fatalf("the terminal shows\n%s\nwant, in this order\n%s", strings.Join(screen, "\n"), strings.Join(order, "\n"))
+		}
+		at = i
+	}
+}
+
+// TestRailGate_UnderSixtyColumnsAnEditDrawsNoNode pins that the review's loop opens
+// whether or not its body is still live: with no region, the body printed, the
+// edit's stage still draws no node.
+func TestRailGate_UnderSixtyColumnsAnEditDrawsNoNode(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 50, 40, answers("e\n", "y\n"))
+	notesUnderReview(r, "first draft")
+	for range 2 {
+		c, err := r.Prompt(reviewGate())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c == presenter.ChoiceYes {
+			break
+		}
+		editStage(r, nil)
+		r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "second draft"})
 	}
 	screen := r.screen(t)
-	if !slices.Equal(screen[:4], commitHead) || slices.ContainsFunc(screen, func(s string) bool { return strings.Contains(s, typed) }) {
-		t.Errorf("the terminal shows\n%s\nwant the lines settled above the region as they were, and the echo erased", strings.Join(screen, "\n"))
+	noEditRow(t, screen)
+	if !slices.Contains(screen, " │    second draft") {
+		t.Errorf("the edited notes aren't on the terminal:\n%s", strings.Join(screen, "\n"))
 	}
 }
 

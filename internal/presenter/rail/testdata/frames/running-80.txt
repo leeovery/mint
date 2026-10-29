@@ -9,7 +9,7 @@
  ●  check         files that don't belong in the notes                      6.2s
  │                docs/specs/** excluded · design documents
  │                written to .mint.toml's [release] table and committed
- ⠹  notes         part 3 of 4  ━━━━━━━━━━━━━━━━━━──────                      38s
+ ⠹  notes         3 of 4 parts done  ━━━━━━━━━━━━━━━━━━──────                38s
  ┆
  ○  record        CHANGELOG.md · package.json
  ┆

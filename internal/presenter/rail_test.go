@@ -226,7 +226,7 @@ func TestRail_NotesInPartsDrawABarTheReCutAndTheMergeItsLabel(t *testing.T) {
 		{
 			name: "parts done",
 			say:  func(p presenter.Presenter) { p.NotesProgress(presenter.NotesProgress{Parts: 4, Done: 1}) },
-			want: " ⠋  notes         part 1 of 4  ━━━━━━──────────────────",
+			want: " ⠋  notes         1 of 4 parts done  ━━━━━━──────────────────",
 		},
 		{
 			name: "a part re-cut",
@@ -515,5 +515,57 @@ func TestRail_ADryRunSettlesTheStagesItPassedBy(t *testing.T) {
 		if !slices.Contains(screen, want) {
 			t.Errorf("the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), want)
 		}
+	}
+}
+
+// TestRail_ATerminalTooShortForARegionPrintsAsItHappens pins that a terminal under
+// 12 rows, its height known, gets no region, as a narrow one gets none: the cached
+// notes question, asked under the notes still running, is on it while it waits,
+// and nothing is ever redrawn.
+func TestRail_ATerminalTooShortForARegionPrintsAsItHappens(t *testing.T) {
+	t.Parallel()
+	in := answers("y\n")
+	r := newRailTerm(t, 80, 11, in)
+	r.RunStarted(releaseStarted(false))
+	r.ShowPlan(releasePlan())
+	r.StageStarted(notesStarted())
+	if r.ticks.running() {
+		t.Error("a spinner ticks with no region to draw it in")
+	}
+	const question = " ?  Cached notes found for this diff — use them?   y use cached   r regenerate"
+	in.asked = func(int) {
+		if screen := r.screen(t); !slices.Contains(screen, question) {
+			t.Errorf("while the question waits the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), question)
+		}
+	}
+	r.SuspendSpinner()
+	if _, err := r.Prompt(cacheGate()); err != nil {
+		t.Fatal(err)
+	}
+	if all := r.writes.written(); strings.Contains(all, "\x1b[") {
+		t.Errorf("wrote %q, want no move back up and no erase: nothing redrawn", all)
+	}
+}
+
+// TestRail_UnderSixtyColumnsADryRunPrintsTheStagesItPassedInPlanOrder pins that a
+// planned stage starting marks those above it a dry run went past, so they print
+// above it, but the one right above it, which runs inside it: the exclusion check,
+// inside the notes.
+func TestRail_UnderSixtyColumnsADryRunPrintsTheStagesItPassedInPlanOrder(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 50, 40, answers())
+	dryRun(r, r.clock)
+	screen := r.screen(t)
+	order := []string{" ○  pre_tag", " ⠋  notes", " ⠋  check", " ●  check", " ●  notes"}
+	at := -1
+	for _, want := range order {
+		i := slices.Index(screen, want)
+		if i <= at {
+			t.Fatalf("the terminal shows\n%s\nwant, in this order\n%s", strings.Join(screen, "\n"), strings.Join(order, "\n"))
+		}
+		at = i
+	}
+	if slices.Contains(screen, " ○  check") {
+		t.Errorf("the check, which ran, is drawn as passed by:\n%s", strings.Join(screen, "\n"))
 	}
 }

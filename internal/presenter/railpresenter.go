@@ -71,8 +71,10 @@ type RailPresenter struct {
 	region *liveRegion
 	run    *runModel
 	layout rail.Layout
-	// cols is the terminal's columns at the last redraw.
+	// cols is the terminal's columns at the last redraw, and fits whether it had
+	// room for a region.
 	cols    int
+	fits    bool
 	ticking *ticker
 	// suspended is the editor holding the terminal, asking a question waiting.
 	suspended, asking bool
@@ -170,15 +172,16 @@ func (p *RailPresenter) ShowPlan(plan Plan) {
 }
 
 // StageStarted sets the stage running: the spinner in its mark's place, what it is
-// doing in its detail and, for one that takes time, its time so far. A stage a
-// question's loop runs, as the edit, is the question's and draws nothing.
+// doing in its detail and, for one that takes time, its time so far. An open
+// question's own activity, as the review's edit, draws nothing.
 func (p *RailPresenter) StageStarted(s StageStart) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.run.looping(s.Key) {
+	if p.run.activity(s.Key) {
 		return
 	}
 	pt := p.run.stage(s.Key, s.Name)
+	p.run.reach(pt)
 	pt.doing = firstOf(s.Text, pt.plan, s.Name)
 	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, pt.doing, "", nil
 	pt.started, pt.timed = p.now(), s.Blocking
@@ -186,12 +189,12 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 }
 
 // StageSucceeded settles the stage done: its detail, its time where it takes time,
-// and the subject of any commit it made hung under it. A stage a question's loop
-// ran draws nothing.
+// and the subject of any commit it made hung under it. An open question's own
+// activity draws nothing.
 func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.run.looping(s.Key) {
+	if p.run.activity(s.Key) {
 		return
 	}
 	pt := p.run.stage(s.Key, s.Name)
@@ -208,12 +211,11 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 
 // StageFailed marks the stage failed with its message, the command's output verbatim
 // under it behind a gutter of its own and any saved part notes' path on a line of
-// its own, and writes the one-line summary to err. A failure ends any question's
-// loop: it is drawn as the run's own.
+// its own, and writes the one-line summary to err. A failure is always drawn, an
+// open question's own activity's too.
 func (p *RailPresenter) StageFailed(s StageFailure) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.run.loop = ""
 	n := p.run.stage(s.Key, s.Name).node
 	n.State, n.Detail, n.Time, n.Progress = rail.Failed, s.Message, "", nil
 	if s.Elapsed > 0 {
@@ -261,7 +263,7 @@ func (p *RailPresenter) NotesChecked(c NotesCheck) {
 // NotesProgress draws the running notes' bar: the parts done of the parts.
 func (p *RailPresenter) NotesProgress(n NotesProgress) {
 	p.progress(func(bar *rail.Progress) {
-		*bar = rail.Progress{Label: fmt.Sprintf("part %d of %d", n.Done, n.Parts), Done: n.Done, Total: n.Parts}
+		*bar = rail.Progress{Label: fmt.Sprintf("%d of %d parts done", n.Done, n.Parts), Done: n.Done, Total: n.Parts}
 	})
 }
 
@@ -355,20 +357,14 @@ func (p *RailPresenter) Warn(w Warning) {
 
 // warned is the node a warning about the stage keyed key draws as: the stage's own
 // where it is running or still to come, which the warning ends; else a node of its
-// own, labelled, by the stage's node where that is done, which it leaves as it was,
-// and at the run's edge where it has settled or there is none. A warning inside a
-// question's loop, as an editor that won't launch, is about the node the question
-// asks about.
+// own, labelled, under the stage's node where that is done, which it leaves as it
+// was, and at the run's edge where it has settled or there is none.
 func (p *RailPresenter) warned(key, label string) *rail.Node {
-	loop := p.run.looping(key)
-	if loop {
-		key = p.run.loop
-	}
 	pt := p.run.find(key)
 	switch {
-	case pt != nil && (loop || pt.node.State == rail.Done):
+	case pt != nil && pt.node.State == rail.Done:
 		return p.run.aside(pt, rail.Node{Name: label}).node
-	case pt == nil && (loop || p.run.gone[key]):
+	case pt == nil && p.run.gone[key]:
 		return p.run.add(rail.Node{Name: label}).node
 	}
 	return p.run.stage(key, label).node
@@ -476,16 +472,23 @@ func (p *RailPresenter) Close() {
 	p.redraw()
 }
 
+// minRegionRows is the fewest rows a terminal must have, where it gives its height,
+// to hold a live region: a shorter one can't keep a question, the run's edge and the
+// echo of a typed answer on screen at once.
+const minRegionRows = 12
+
 // redraw draws the run: what has settled since the last redraw, then the live
-// region, at the terminal's size now. With no room for a region at all, the run
-// prints as it happens instead. It starts or stops the spinner to match.
+// region, at the terminal's size now. With no room for a region, a terminal too
+// narrow or too short, the run prints as it happens instead. It starts or stops the
+// spinner to match.
 func (p *RailPresenter) redraw() {
 	cols, rows := p.size()
 	p.cols, p.layout = cols, rail.NewLayout(cols, p.level)
+	p.fits = p.layout.RegionFits() && (rows <= 0 || rows >= minRegionRows)
 	p.run.pass()
 	var run rail.Run
 	var region []string
-	if p.layout.RegionFits() {
+	if p.fits {
 		p.run.settleFinished()
 		run, region = p.fit(rows)
 	} else {
@@ -521,7 +524,7 @@ type ticker struct {
 // syncTicker runs the spinner's ticker while a stage runs in a region drawn, the
 // run open and nothing else holding the terminal, and stops it otherwise.
 func (p *RailPresenter) syncTicker() {
-	want := p.layout.RegionFits() && !p.run.closed && !p.suspended && !p.asking && p.run.running() != nil
+	want := p.fits && !p.run.closed && !p.suspended && !p.asking && p.run.running() != nil
 	switch {
 	case want && p.ticking == nil:
 		ticks, stop := p.tick(spinnerFrame)

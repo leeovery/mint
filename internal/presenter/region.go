@@ -28,11 +28,17 @@ func cursorForward(n int) string { return fmt.Sprintf("\x1b[%dC", n) }
 // screen and never clears the screen. The region is written with a newline after
 // each line, so the cursor rests at the start of the row under it; up is how many
 // rows the cursor sits below the region's first, the count a redraw moves up by.
+//
+// It never moves up more rows than the terminal has above the cursor's row, its
+// height less one: where an echo scrolled the region's head away, up counts rows
+// that are gone, and it goes back up only as far as the screen's top.
 type liveRegion struct {
 	out io.Writer
 	// shown is whether a region is on the terminal to be redrawn.
 	shown bool
 	up    int
+	// rows is the terminal's height at the last draw, 0 where it gave none.
+	rows int
 }
 
 func newLiveRegion(out io.Writer) *liveRegion { return &liveRegion{out: out} }
@@ -45,6 +51,7 @@ func newLiveRegion(out io.Writer) *liveRegion { return &liveRegion{out: out} }
 // past that are dropped from its foot. An empty region leaves nothing under the
 // settled lines.
 func (r *liveRegion) Draw(settled, region []string, rows int) {
+	r.rows = rows
 	region = region[:min(len(region), regionRows(rows))]
 	var b strings.Builder
 	r.back(&b)
@@ -104,15 +111,15 @@ func (r *liveRegion) Moved(rows int) {
 	}
 }
 
-// back writes the way back to the region's first row and the erase below it, where a
-// region is shown.
+// back writes the way back to the region's first row, or the screen's top where
+// that scrolled away, and the erase below it, where a region is shown.
 func (r *liveRegion) back(b *strings.Builder) {
 	if !r.shown {
 		return
 	}
 	b.WriteString(toLineStart)
-	if r.up > 0 {
-		b.WriteString(cursorUp(r.up))
+	if n := min(r.up, regionRows(r.rows)); n > 0 {
+		b.WriteString(cursorUp(n))
 	}
 	b.WriteString(eraseBelow)
 }

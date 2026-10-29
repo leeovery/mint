@@ -86,6 +86,14 @@ func TestTheLiveRegionWritesExactlyTheseEscapes(t *testing.T) {
 				{name: "placed at no row it has", call: func(r *presenter.LiveRegion) { r.Place(1, 0) }, want: ""},
 			},
 		},
+		{
+			name: "an echo that scrolled the region's head away is gone back over only to the screen's top",
+			steps: []regionStep{
+				{call: func(r *presenter.LiveRegion) { r.Draw(nil, []string{"? a", "b"}, 5) }, want: "? a\nb\n"},
+				{name: "the echo moves it past the screen", call: func(r *presenter.LiveRegion) { r.Moved(10) }, want: ""},
+				{name: "redrawn from the screen's top", call: func(r *presenter.LiveRegion) { r.Draw(nil, []string{"c"}, 5) }, want: "\r\x1b[4A\x1b[Jc\n"},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,6 +137,18 @@ func TestTheRegionKeepsToTheTerminalsHeightLessOneRow(t *testing.T) {
 				t.Errorf("redrew %q, want the move up %d rows, %q", out.String(), tt.want, want)
 			}
 		})
+	}
+}
+
+func TestTheCursorIsPlacedOnlyOnARowOfTheRegion(t *testing.T) {
+	t.Parallel()
+	r := presenter.NewLiveRegion(&bytes.Buffer{})
+	r.Draw(nil, []string{"a", "? b"}, 24)
+	if r.Place(2, 0) {
+		t.Error("Place reported the cursor placed on a row the region hasn't")
+	}
+	if !r.Place(1, 4) {
+		t.Error("Place reported the cursor not placed on the region's own row")
 	}
 }
 

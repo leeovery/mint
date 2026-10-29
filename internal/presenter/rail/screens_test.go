@@ -58,7 +58,7 @@ func ahead() []rail.Live {
 func running() rail.Run {
 	notes := rail.Node{
 		State: rail.Running, Name: "notes", Time: "38s", Frame: 2,
-		Progress: &rail.Progress{Label: "part 3 of 4", Done: 3, Total: 4},
+		Progress: &rail.Progress{Label: "3 of 4 parts done", Done: 3, Total: 4},
 	}
 	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes}, ahead()...)}
 }
