@@ -248,7 +248,7 @@ func (q Question) draw(l Layout) []line {
 }
 
 // lay is the question, then its choices three spaces apart, a choice never split
-// from its action, then what is typed with a cell for the cursor after it.
+// from its action, then, for a question typing, a cell for the cursor.
 func (q Question) lay(first, rest int) [][]span {
 	f := newFlow(first, rest)
 	for _, w := range words(glyphsOf([]span{s(q.Text, bold)})) {
@@ -260,11 +260,7 @@ func (q Question) lay(first, rest int) [][]span {
 	}
 	if q.Typing {
 		cursor := glyphsOf([]span{s(" ", plain)})
-		sep := cursor
-		for _, u := range append(words(glyphsOf([]span{s(q.Typed, plain)})), cursor) {
-			f.put(u, sep)
-			sep = nil
-		}
+		f.put(cursor, cursor)
 	}
 	return f.done()
 }

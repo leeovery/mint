@@ -73,20 +73,6 @@ func (l Layout) Draw(r Run) []string {
 	return append(l.Settled(r, 0), l.Region(r)...)
 }
 
-// Cursor is where the cursor goes in r's region for a question reading a typed line:
-// its row, counted from the region's first as 0, and its column, from 0, on the cell
-// after what is typed. ok is false where no question in the region is typing.
-func (l Layout) Cursor(r Run) (row, col int, ok bool) {
-	for i, group := range l.forRun(r).drawn(lastSettled(r), region(r)) {
-		if q, is := r.Region[i].(Question); is && q.Typing {
-			last := group[len(group)-1]
-			return row + len(group) - 1, last.width() - 1, true
-		}
-		row += len(group)
-	}
-	return 0, 0, false
-}
-
 func lastSettled(r Run) Item {
 	if n := len(r.Settled); n > 0 {
 		return r.Settled[n-1]

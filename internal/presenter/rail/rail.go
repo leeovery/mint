@@ -143,14 +143,13 @@ type Hang struct {
 
 // Question is a question node: Text bold after its Name (where it has one, as the
 // exclusion check's glob), then each choice's key bold in the accent with its
-// action. A dry run's preview has no Choices. A question Typing reads a line: what
-// is Typed so far follows, and Layout.Cursor says where the cursor goes after it.
+// action. A dry run's preview has no Choices. A question Typing reads a line, typed
+// on a cell for the cursor after it.
 type Question struct {
 	Name    string
 	Text    string
 	Choices []Choice
 	Typing  bool
-	Typed   string
 }
 
 // Choice is a key that answers a question and what it does.

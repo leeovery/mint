@@ -85,7 +85,7 @@ func TestEveryFieldIsDrawnAsOneRowEach(t *testing.T) {
 		}},
 		rail.Node{State: rail.Running, Name: "notes", Detail: hostile, Time: "1s"},
 		rail.Node{State: rail.Running, Name: "notes", Progress: &rail.Progress{Label: hostile, Done: 1, Total: 2}},
-		rail.Question{Name: hostile, Text: hostile, Choices: []rail.Choice{{Key: "\x1b[2J", Action: hostile}}, Typing: true, Typed: hostile},
+		rail.Question{Name: hostile, Text: hostile, Choices: []rail.Choice{{Key: "\x1b[2J", Action: hostile}}, Typing: true},
 		rail.Body{Text: hostile},
 		rail.End{Name: hostile, Detail: hostile, Time: hostile},
 		rail.Next{Moves: []rail.Move{{Lead: hostile, Command: "a\x1b[2Kb\tc\nd"}}},
@@ -259,54 +259,6 @@ func TestTheVersionLineIsTheWordmarkAndTheVersion(t *testing.T) {
 		t.Errorf("with no colour the version draws %q", got)
 	}
 	heldToRows(t, 60, drawAll(60, rail.Version{Value: strings.Repeat("9", 80)}))
-}
-
-func TestTheCursorSitsAfterWhatIsTyped(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name  string
-		width int
-		typed string
-	}{
-		{name: "nothing typed yet", width: 100},
-		{name: "a word typed", width: 100, typed: "github"},
-		{name: "a line typed past the width", width: 60, typed: strings.Repeat("context for the notes ", 4)},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			r := rail.Run{
-				Settled: []rail.Item{releaseHeader(), rail.Station{Kind: rail.Start, Name: "v1.4.0", Detail: "github → github"}},
-				Region: []rail.Live{
-					rail.Question{Text: "Source?", Choices: []rail.Choice{{Key: "g", Action: "github"}}, Typing: true, Typed: tt.typed},
-					rail.Node{State: rail.ToCome, Name: "notes"},
-					rail.Station{Kind: rail.Pending, Name: "v1.4.0"},
-				},
-			}
-			l := rail.NewLayout(tt.width, rail.NoColour)
-			region := l.Region(r)
-			heldToRows(t, tt.width, rail.NewLayout(tt.width, rail.TrueColour).Region(r))
-			row, col, ok := l.Cursor(r)
-			if !ok || row >= len(region) || col >= tt.width {
-				t.Fatalf("the cursor is at row %d, column %d (%t), want it in the region's %d rows, inside the width", row, col, ok, len(region))
-			}
-			cells := []rune(region[row])
-			if len(cells) != col+1 || cells[col] != ' ' {
-				t.Errorf("the cursor's row %q, want it to end at column %d on the cell after what's typed", region[row], col)
-			}
-			// region[0] is the rail under the start station; the question starts on 1.
-			var question strings.Builder
-			for _, ln := range region[1 : row+1] {
-				question.WriteString(string([]rune(ln)[len(" ?  "):]))
-			}
-			if want := "Source?   g github " + tt.typed + " "; question.String() != want {
-				t.Errorf("the question reads %q, want %q, the cursor's cell last", question.String(), want)
-			}
-		})
-	}
-	if _, _, ok := rail.NewLayout(100, rail.NoColour).Cursor(review()); ok {
-		t.Error("a region with no question typing has a cursor, want none")
-	}
 }
 
 func TestADryRunsRailIntoItsEndIsDimAfterTheStagesItSkipped(t *testing.T) {
