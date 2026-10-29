@@ -429,9 +429,11 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual, o
 // warnUnwindIncomplete emits the manual-cleanup notice when a recovery step failed
 // mid-unwind: the repo is NOT clean, so the user must finish the recovery by hand.
 // action names the exact manual step; the failing step's own output rides the Warn's
-// Output verbatim.
+// Output verbatim. It is a Failed warning on the unwind's node.
 func warnUnwindIncomplete(p presenter.Presenter, action, output string) {
 	p.Warn(presenter.Warning{
+		Key:     stageUnwind,
+		Failed:  true,
 		Label:   "unwind incomplete",
 		Message: "automatic recovery failed; manually " + action,
 		Output:  output,
@@ -452,7 +454,7 @@ type unwindOutcome struct {
 // byte-pure, and none leads with a "Reverted:"-style prefix — the presenter prefixes
 // the line with "unwound", so a prefix here would double-label.
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
-	event := presenter.Unwind{Undone: undone(tag, made), Repo: repoState(outcome.clean)}
+	event := presenter.Unwind{Undone: undone(tag, made), Repo: repoState(outcome.clean), Key: stageUnwind}
 	if outcome.answersKept {
 		event.Kept = "kept the answers commit on the starting commit"
 	}

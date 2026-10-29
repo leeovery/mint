@@ -138,9 +138,9 @@ func (p *PlainPresenter) RunStarted(info RunInfo) {
 // narration (the event-payload principle). It is the plain equivalent of the
 // pretty spinner. Being synthesised, it stays byte-pure ASCII — an ASCII ellipsis
 // ("..."), not the U+2026 glyph the pretty spinner uses (the spec's "wording
-// refinable" latitude; the byte-purity guard is fixed).
+// refinable" latitude; the byte-purity guard is fixed). A Quiet start renders nothing.
 func (p *PlainPresenter) StageStarted(s StageStart) {
-	if !s.Blocking {
+	if !s.Blocking || s.Quiet {
 		return
 	}
 	p.writef("%s: running...\n", s.Name)
@@ -239,8 +239,11 @@ func (p *PlainPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 }
 
 // PreviewGate prints the gate's question as Prompt would, the key hint replaced by
-// the dry-run marker.
+// the dry-run marker. A Quiet gate's preview renders nothing.
 func (p *PlainPresenter) PreviewGate(gate Gate) {
+	if gate.Quiet {
+		return
+	}
 	p.writef("%s (%s)\n", gate.Question, previewMarker)
 }
 

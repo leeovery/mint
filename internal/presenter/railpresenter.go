@@ -91,6 +91,12 @@ func WithRailErr(err io.Writer) RailOption { return func(p *RailPresenter) { p.e
 // without it.
 func WithRailInput(in io.Reader) RailOption { return func(p *RailPresenter) { p.in = in } }
 
+// WithRailGating sets the -y decision and whether stdin can answer a question, an
+// interactive stdin without -y without it.
+func WithRailGating(yes, stdinInteractive bool) RailOption {
+	return func(p *RailPresenter) { p.yes, p.stdinInteractive = yes, stdinInteractive }
+}
+
 // WithRailProfile sets the colour the run is drawn in, NO_COLOR, COLORTERM and TERM's
 // without it.
 func WithRailProfile(profile termenv.Profile) RailOption {
@@ -168,8 +174,9 @@ func (p *RailPresenter) ShowPlan(plan Plan) {
 }
 
 // StageStarted sets the stage running: the spinner in its mark's place, what it is
-// doing in its detail and, for one that takes time, its time so far. An open
-// question's own activity, as the review's edit, draws nothing.
+// doing in its detail and, for one that takes time, its time so far, which a stage
+// started again while it runs (an `r` that turns into a run in parts) keeps counting.
+// An open question's own activity, as the review's edit, draws nothing.
 func (p *RailPresenter) StageStarted(s StageStart) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -178,9 +185,12 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 	}
 	pt := p.run.stage(s.Key, s.Name)
 	p.run.reach(pt)
+	if pt.node.State != rail.Running {
+		pt.started = p.now()
+	}
 	pt.doing = firstOf(s.Text, pt.plan, s.Name)
 	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, pt.doing, "", nil
-	pt.started, pt.timed = p.now(), s.Blocking
+	pt.timed = s.Blocking
 	p.redraw()
 }
 
@@ -194,6 +204,7 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 		return
 	}
 	pt := p.run.stage(s.Key, s.Name)
+	p.run.ended(s.Key, true)
 	n := pt.node
 	n.State, n.Detail, n.Time, n.Progress = rail.Done, firstOf(s.Detail, pt.plan), "", nil
 	if s.Blocking {
@@ -213,6 +224,7 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	n := p.run.stage(s.Key, s.Name).node
+	p.run.ended(s.Key, false)
 	n.State, n.Detail, n.Time, n.Progress = rail.Failed, s.Message, "", nil
 	if s.Elapsed > 0 {
 		n.Time = stageTime(s.Elapsed)
@@ -316,7 +328,7 @@ func (p *RailPresenter) ExclusionSuggestions(s ExclusionSuggestions) {
 	for _, x := range s.Suggestions {
 		p.run.flag(s.Stage, rail.Node{State: rail.Warning, Name: x.Glob, Detail: flaggedNotAsked + about(x)})
 		p.run.suggested = append(p.run.suggested, rail.Move{
-			Lead:    fmt.Sprintf("Leave %s out of the notes, under %s:", x.Glob, s.Table),
+			Lead:    fmt.Sprintf("Leave %s out of the notes, under %s in %s:", x.Glob, s.Table, s.File),
 			Command: x.Line,
 		})
 	}
@@ -338,12 +350,21 @@ func (p *RailPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 	p.redraw()
 }
 
-// Warn draws a warning as a node, and writes its summary to err.
+// Warn draws a warning as a node, a Failed one as its key's failed node, and writes
+// its summary to err.
 func (p *RailPresenter) Warn(w Warning) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	n := p.warned(w.Key, w.Label)
-	n.State, n.Detail, n.Progress = rail.Warning, w.Message, nil
+	var n *rail.Node
+	if w.Failed {
+		n = p.run.stage(w.Key, w.Key).node
+		n.State = rail.Failed
+	} else {
+		n = p.warned(w.Key, w.Label)
+		n.State = rail.Warning
+	}
+	p.run.ended(w.Key, false)
+	n.Detail, n.Progress = w.Message, nil
 	if w.Output != "" {
 		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Output, Text: w.Output})
 	}
@@ -366,17 +387,24 @@ func (p *RailPresenter) warned(key, label string) *rail.Node {
 	return p.run.stage(key, label).node
 }
 
-// Unwound draws the unwind's node: what it undid, and what it kept under it. Where
-// it left the repo is a claim about the tree the rail doesn't make; a step left to
-// do by hand reaches the end station's detail.
+// Unwound draws the unwind's node: what it undid, and what it kept under it. An
+// unwind that couldn't finish is already drawn, as the failed nodes of its steps
+// keyed as it is, so it only hangs what it kept under the last. Where it left the
+// repo is a claim about the tree the rail doesn't make; a step left to do by hand
+// reaches the end station's detail.
 func (p *RailPresenter) Unwound(u Unwind) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	n := rail.Node{State: rail.Unwind, Name: unwindName, Detail: u.Undone}
+	var kept []rail.Hang
 	if u.Kept != "" {
-		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: u.Kept})
+		kept = append(kept, rail.Hang{Kind: rail.Note, Text: u.Kept})
 	}
-	p.run.add(n)
+	if failed := p.run.find(u.Key); failed != nil && failed.node.State == rail.Failed {
+		failed.node.Lines = append(failed.node.Lines, kept...)
+		p.run.touched = failed
+	} else {
+		p.run.add(rail.Node{State: rail.Unwind, Name: unwindName, Detail: u.Undone, Lines: kept})
+	}
 	p.redraw()
 }
 
@@ -436,8 +464,9 @@ func (p *RailPresenter) ResumeSpinner() {
 }
 
 // RunFinished closes the run at its end station, with its time and any URL under
-// it, then next. What it never reached leaves the drawing with the live region,
-// but for a dry run's stages to come.
+// it; next follows once the drawing ends, under whatever arrives after the close.
+// What it never reached leaves the drawing with the live region, but for a dry run's
+// stages to come.
 func (p *RailPresenter) RunFinished(r RunResult) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -456,8 +485,8 @@ func landed(o Outcome) bool {
 }
 
 // Close ends the presenter's drawing: a run still open, one no RunFinished closed,
-// settles as a run that never landed, and the spinner stops for good. Whatever
-// presents after it settles straight away.
+// settles as a run that never landed, next settles last, and the spinner stops for
+// good. Whatever presents after it settles straight away.
 func (p *RailPresenter) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -465,6 +494,7 @@ func (p *RailPresenter) Close() {
 		p.run.finish(rail.End{}, false)
 	}
 	p.run.closed = true
+	p.run.settleNext()
 	p.redraw()
 }
 

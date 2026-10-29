@@ -514,7 +514,7 @@ func TestRelease_Rail_ARejectedPushIsThePushNodeTimedAndTheRunGoesBackToItsStart
 		t.Errorf("failure Elapsed = %v, want at least the push's %v", failure.Elapsed, stageDelay)
 	}
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
-	if want := (presenter.Unwind{Undone: "reset 1 commit and deleted tag v0.0.1", Repo: "repo clean"}); unwound != want {
+	if want := (presenter.Unwind{Undone: "reset 1 commit and deleted tag v0.0.1", Repo: "repo clean", Key: "unwind"}); unwound != want {
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
 	fin := closingEvent(t, rec)
@@ -535,7 +535,7 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 	_ = a.release(t.Context())
 
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
-	want := presenter.Unwind{Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit", Repo: "repo clean"}
+	want := presenter.Unwind{Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit", Repo: "repo clean", Key: "unwind"}
 	if unwound != want {
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
@@ -623,10 +623,39 @@ func TestRelease_Rail_TheCheckAndAFailedNotesStageAreTimedOnTheirOwnNodes(t *tes
 	if moves[0].Moves[0] != want {
 		t.Errorf("first move = %+v, want the command apart from its lead %+v", moves[0].Moves[0], want)
 	}
+	fallback := presenter.NextMove{
+		Lead:     "Ship that list whenever the AI fails, under [release] in .mint.toml:",
+		Command:  `on_notes_failure = "fallback"`,
+		Sentence: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
+	}
 	for _, move := range moves[0].Moves[1:] {
-		if move.Command != "" {
-			t.Errorf("move %+v carries a command; only the notes-file move names one", move)
+		if move.Command != "" && move != fallback {
+			t.Errorf("move %+v carries a command; only the notes-file move and %+v name one", move, fallback)
 		}
+	}
+	if !slices.Contains(moves[0].Moves, fallback) {
+		t.Errorf("moves = %+v, want the fallback's config line apart from its lead, plain's sentence its own: %+v", moves[0].Moves, fallback)
+	}
+}
+
+func TestRelease_Rail_ADryRunPreviewsItsReviewQuietlyOnceTheNotesAreShown(t *testing.T) {
+	t.Parallel()
+
+	opts := priorTagNormalAIOptions()
+	opts.DryRun = true
+	rec, _ := runDryRunNormalAI(t, t.TempDir(), t.TempDir(), priorTagDiff, aiBody, opts)
+
+	at := indexOfKind(rec, presentertest.KindPreviewGate)
+	if at == -1 {
+		t.Fatalf("no review previewed; kinds = %v", rec.Kinds())
+	}
+	review := presenter.ReleaseReviewGate()
+	review.Stage, review.Quiet = "notes", true
+	if got := rec.Events[at].PreviewGate; !reflect.DeepEqual(got, review) {
+		t.Errorf("previewed = %+v, want the review a real run asks, Quiet %+v", got, review)
+	}
+	if shown := indexOfKind(rec, presentertest.KindShowNotes); shown == -1 || shown > at {
+		t.Errorf("the review previewed at %d before the notes shown at %d; kinds = %v", at, shown, rec.Kinds())
 	}
 }
 

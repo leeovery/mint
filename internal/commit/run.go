@@ -309,7 +309,7 @@ func (d Deps) editorUnavailable() bool {
 // committed, with or without a warning, or, stopped short, declined or failed, its
 // end saying what the run left behind.
 func Run(ctx context.Context, deps Deps) error {
-	deps.run = runclose.Begin(deps.Presenter)
+	deps.run = runclose.Begin(deps.Presenter, time.Now)
 	err := mintCommit(ctx, deps)
 	deps.run.Close(errors.Is(err, errGateAborted) || errors.Is(err, errEditorNoOp))
 	return err

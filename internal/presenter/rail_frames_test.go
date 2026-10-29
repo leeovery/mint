@@ -43,6 +43,7 @@ func TestRailFrames(t *testing.T) {
 	failed := newRailTerm(t, 100, 40, answers())
 	failed.WithYes(true)
 	failedRelease(failed, failed.clock)
+	failed.Close()
 	drawn["failed-100"] = failed.frame(t)
 
 	narrow(t, drawn)

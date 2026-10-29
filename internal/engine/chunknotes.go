@@ -84,7 +84,7 @@ func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error, comman
 // reviewGate runs the review gate with regen as its `r`, then reports what an abort
 // kept, a saved file named with command.
 func (k *chunkNotesKeeper) reviewGate(ctx context.Context, deps ReleaseDeps, regen reviewRegen, gate presenter.Gate, body, versionKey, command string) (string, error) {
-	body, err := reviewGate(ctx, deps.Presenter, deps.Editor, regen, gate, body, versionKey)
+	body, err := reviewGate(ctx, deps, regen, gate, body, versionKey)
 	if err != nil {
 		k.reportKept(deps.Presenter, err, command)
 	}

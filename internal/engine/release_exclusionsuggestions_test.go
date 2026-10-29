@@ -140,8 +140,8 @@ func onlySuggestions(t *testing.T, rec *presentertest.RecordingPresenter) (int, 
 
 func assertSuggested(t *testing.T, got presenter.ExclusionSuggestions, want ...presenter.ExclusionSuggestion) {
 	t.Helper()
-	if got.Stage != "notes" || got.Table != "[release]" {
-		t.Errorf("suggestions stage %q table %q, want notes under [release]", got.Stage, got.Table)
+	if got.Stage != "notes" || got.Table != "[release]" || got.File != ".mint.toml" {
+		t.Errorf("suggestions stage %q table %q file %q, want notes under [release] in .mint.toml", got.Stage, got.Table, got.File)
 	}
 	if !reflect.DeepEqual(got.Suggestions, want) {
 		t.Errorf("suggestions =\n %+v\nwant\n %+v", got.Suggestions, want)

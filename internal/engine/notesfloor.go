@@ -47,9 +47,18 @@ func (d ReleaseDeps) notesFloorMoves(failure error, cfg config.Config, savedNote
 		{Lead: "re-run with --no-ai to release with the commit-subject list"},
 	}
 	if !d.attended() {
-		moves = append(moves, presenter.NextMove{Lead: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`})
+		moves = append(moves, fallbackMove)
 	}
 	return presenter.NextMoves{Stage: "notes", Moves: append(moves, causeMoves(failure, cfg)...)}
+}
+
+// fallbackMove sets on_notes_failure to ship the commit-subject list, the move before
+// it, rather than stop: its config line ends the rail's lead, where plain's sentence
+// has it mid-way.
+var fallbackMove = presenter.NextMove{
+	Lead:     "Ship that list whenever the AI fails, under " + releaseTable + " in " + config.FileName + ":",
+	Command:  `on_notes_failure = "fallback"`,
+	Sentence: `set on_notes_failure = "fallback" under ` + releaseTable + ` to ship the commit-subject list rather than stop`,
 }
 
 // regenerateNotesFloorMoves are the ways to put notes on version, already out, after an

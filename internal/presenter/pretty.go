@@ -373,8 +373,9 @@ func (p *PrettyPresenter) RunStarted(info RunInfo) {
 //   - Non-blocking: render NOTHING — no spinner, no static line. This REPLACES the
 //     Phase-1 placeholder static-dim-line: a short stage shows only its ✓ completion
 //     line, consistent with plain and the spec's worked example.
+//   - Quiet: render NOTHING, as for a short stage.
 func (p *PrettyPresenter) StageStarted(s StageStart) {
-	if !s.Blocking {
+	if !s.Blocking || s.Quiet {
 		return
 	}
 	p.stopSpinner()
@@ -625,8 +626,11 @@ func (p *PrettyPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 }
 
 // PreviewGate opens as renderGate does, with the bold question, and puts the dim
-// dry-run marker where the choices would be.
+// dry-run marker where the choices would be. A Quiet gate's preview renders nothing.
 func (p *PrettyPresenter) PreviewGate(gate Gate) {
+	if gate.Quiet {
+		return
+	}
 	var b strings.Builder
 	if p.trailingNL < 2 {
 		b.WriteString("\n")

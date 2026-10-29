@@ -316,7 +316,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// while it runs, and a StageSucceeded carrying the engine-measured Elapsed once the
 	// body resolves; a per-version skip (production failure) closes the stage with no
 	// StageSucceeded — the skip Warn narrates it instead.
-	stage := startNotesStage(p)
+	stage := startNotesStage(p, deps.clock())
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, res.Tag)
 	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, chunkNotes.sinks(stage))
 	if err != nil {

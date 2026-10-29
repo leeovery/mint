@@ -63,9 +63,23 @@ func New(mode Mode, out, err io.Writer) Presenter {
 //     back to the cap, so a width-less terminal still renders the fixed-cap rule.
 //   - PLAIN: width is irrelevant (plain has no decorative rules and does no width
 //     math), so it is not probed.
-func NewForStartup(plainFlag, yes bool, stdout, stderr, stdin *os.File) Presenter {
-	signals := DetectStartupSignals(plainFlag, stdout, stdin)
-	errStream := errWriterFor(stdout, stderr)
+//
+// A verb moved onto the Rail passes WithRail, and its pretty output is the
+// RailPresenter's; the caller then ends the drawing with Close once the run is over.
+func NewForStartup(plainFlag, yes bool, stdout, stderr, stdin *os.File, opts ...StartupOption) Presenter {
+	return newForSignals(DetectStartupSignals(plainFlag, stdout, stdin), yes, stdout, errWriterFor(stdout, stderr), stdin, opts...)
+}
+
+// newForSignals is NewForStartup's presenter for the signals it resolved, with the
+// failure summaries going to errStream.
+func newForSignals(signals StartupSignals, yes bool, stdout *os.File, errStream io.Writer, stdin *os.File, opts ...StartupOption) Presenter {
+	var startup startupOptions
+	for _, opt := range opts {
+		opt(&startup)
+	}
+	if signals.Mode == ModePretty && startup.rail {
+		return NewRailPresenter(stdout, WithRailErr(errStream), WithRailInput(stdin), WithRailGating(yes, signals.StdinInteractive))
+	}
 	if signals.Mode == ModePretty {
 		p := NewPrettyPresenter(stdout, WithErr(errStream), WithInput(stdin))
 		p.termWidth = detectTermWidth(stdout)
@@ -77,6 +91,27 @@ func NewForStartup(plainFlag, yes bool, stdout, stderr, stdin *os.File) Presente
 	p.yes = yes
 	p.stdinInteractive = signals.StdinInteractive
 	return p
+}
+
+// StartupOption configures what NewForStartup builds.
+type StartupOption func(*startupOptions)
+
+type startupOptions struct {
+	rail bool
+}
+
+// WithRail draws pretty output as the Rail. It is the switch for the verbs moved
+// onto the Rail so far, until every verb is and today's pretty goes.
+func WithRail() StartupOption {
+	return func(o *startupOptions) { o.rail = true }
+}
+
+// Close ends p's drawing where it has one to end, the Rail's live region; any other
+// presenter has nothing to end.
+func Close(p Presenter) {
+	if c, ok := p.(interface{ Close() }); ok {
+		c.Close()
+	}
 }
 
 // errWriterFor resolves the failure-summary stream. The err stream exists SOLELY

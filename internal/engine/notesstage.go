@@ -41,20 +41,20 @@ var (
 
 const notesStageText = "generating release notes…"
 
-func startNotesStage(p presenter.Presenter) *notesStage {
-	return &notesStage{p: p, stage: startBlockingStage(p, stageNotes, notesStageText)}
+func startNotesStage(p presenter.Presenter, now func() time.Time) *notesStage {
+	return &notesStage{p: p, stage: startBlockingStage(p, now, stageNotes, notesStageText)}
 }
 
 // Checking narrates the exclusion check's call starting and times it, so Checked can
 // narrate its end with the call's elapsed; the pauses after it are not timed.
 func (s *notesStage) Checking() {
-	s.checking = time.Now()
+	s.checking = s.stage.now()
 	s.p.NotesChecking(presenter.NotesCheck{Key: stageCheck})
 }
 
 func (s *notesStage) Checked() {
 	s.checkSettled = true
-	s.p.NotesChecked(presenter.NotesCheck{Key: stageCheck, Elapsed: time.Since(s.checking)})
+	s.p.NotesChecked(presenter.NotesCheck{Key: stageCheck, Elapsed: s.stage.now().Sub(s.checking)})
 }
 
 // AllKept settles the check's node quietly: the keep list covers every changed path.
@@ -138,7 +138,7 @@ func (s *notesStage) showSuggestions(releaseExclude []string) {
 	for i := range shown {
 		shown[i].Line = diffExcludeLine(releaseExclude, shown[i].Glob)
 	}
-	s.p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: releaseTable, Suggestions: shown})
+	s.p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: releaseTable, File: config.FileName, Suggestions: shown})
 }
 
 // diffExcludeLine is the diff_exclude key holding entries with glob appended.
@@ -187,19 +187,20 @@ func suggestedCap(halved bool, mergedParts, largestCall int) int {
 	return largestCall
 }
 
-// regenStage is the notes.Progress of the `r` generations at a run's review gate. An r
-// that makes one call narrates nothing; one that becomes a chunked run opens its own
-// notes line at its first update and narrates as the run's notes stage does. An r's
-// succeeded calls fold into the run's notes stage, so the cap suggested after an r is
-// the largest succeeded call of the whole run.
+// regenStage is the notes.Progress of the `r` generations at a run's review gate. Each
+// r runs the notes stage again: Quiet while it makes one call, or one merge call over
+// the part notes it re-merges, for which plain has never had a line; one that becomes a
+// chunked run opens its own notes line at its first update and narrates as the run's
+// notes stage does. An r's succeeded calls fold into the run's notes stage, so the cap
+// suggested after an r is the largest succeeded call of the whole run.
 type regenStage struct {
 	run    *notesStage
 	halved bool
 	parts  int
 	// hint is handed the cap to suggest once an r's notes are shown, 0 for none.
 	hint func(lowerCap int)
-	// began is when the r now generating started.
-	began time.Time
+	// quiet is the r now generating, as the Quiet notes stage it starts as.
+	quiet *blockingStage
 	// stage is the notes line the r now generating opened, nil while it has none.
 	stage *blockingStage
 }
@@ -223,19 +224,29 @@ func (r *regenStage) narrating(regenerator Regenerator) Regenerator {
 		return nil
 	}
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
-		r.began, r.stage = time.Now(), nil
+		r.quiet, r.stage = startQuietStage(r.run.p, r.run.stage.now, stageNotes, notesStageText), nil
 		body, err := regenerator.Regenerate(ctx, oneTimeContext)
-		if err == nil && r.stage != nil {
-			r.stage.succeeded(mergedCompletion(r.parts))
+		if err == nil {
+			r.done()
 		}
 		return body, err
 	})
 }
 
+// done narrates the r's notes written: on the notes line it opened, or Quiet where it
+// opened none.
+func (r *regenStage) done() {
+	if r.stage != nil {
+		r.stage.succeeded(mergedCompletion(r.parts))
+		return
+	}
+	r.quiet.succeeded(notesCompletion(r.parts))
+}
+
 // chunked opens the r's notes line, timed from the r's start, unless it is open.
 func (r *regenStage) chunked() {
 	if r.stage == nil {
-		r.stage = startBlockingStageSince(r.run.p, stageNotes, notesStageText, r.began)
+		r.stage = startBlockingStageSince(r.run.p, r.quiet.now, stageNotes, notesStageText, r.quiet.started)
 	}
 }
 
@@ -317,11 +328,16 @@ func hintLowerCap(p presenter.Presenter, bytes int) {
 
 // done narrates the stage's success. Call it only once the generation has returned.
 func (s *notesStage) done() {
-	if s.parts == 0 {
-		s.stage.succeeded(presenter.StageSuccess{Detail: "generated", Sentence: "Generated release notes"})
-		return
+	s.stage.succeeded(notesCompletion(s.parts))
+}
+
+// notesCompletion is the success of a notes stage whose body was written in one call,
+// or, by a merge, from parts.
+func notesCompletion(parts int) presenter.StageSuccess {
+	if parts == 0 {
+		return presenter.StageSuccess{Detail: "generated", Sentence: "Generated release notes"}
 	}
-	s.stage.succeeded(mergedCompletion(s.parts))
+	return mergedCompletion(parts)
 }
 
 // mergedCompletion is the success of a notes stage whose merge wrote the body from

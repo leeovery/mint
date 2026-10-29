@@ -23,6 +23,8 @@ const (
 	stagePostRelease = "post_release"
 	// stageReview is a regenerate's notes review, a node of its own there.
 	stageReview = "review"
+	// stageUnwind is the unwind's node, which no plan lays out.
+	stageUnwind = "unwind"
 )
 
 // releasePlan is what a release's stages are laid out from, all known once preflight

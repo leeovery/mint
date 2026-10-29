@@ -109,7 +109,9 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 			err := a.release(t.Context())
 
 			want := presenter.Warning{
-				Label: "unwind incomplete",
+				Label:  "unwind incomplete",
+				Key:    "unwind",
+				Failed: true,
 				Message: "automatic recovery failed; manually commit the exclusion answers mint wrote to .mint.toml (`git -C " + a.root +
 					" add .mint.toml` then `git -C " + a.root + " commit -m '" + answersSubject(minorTagV130) + "'`)",
 				Output: tc.stderr,
@@ -193,6 +195,8 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 			path := filepath.Join(a.root, config.FileName)
 			want := presenter.Warning{
 				Label:   "unwind incomplete",
+				Key:     "unwind",
+				Failed:  true,
 				Message: "automatic recovery failed; manually restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
 				Output:  "reading " + config.FileName + ": read " + path + ": is a directory",
 			}
@@ -245,7 +249,9 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 			err := a.release(t.Context())
 
 			want := presenter.Warning{
-				Label: "unwind incomplete",
+				Label:  "unwind incomplete",
+				Key:    "unwind",
+				Failed: true,
 				Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 					"`), then restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
 				Output: resetStderr,
@@ -275,7 +281,9 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 	err := a.release(t.Context())
 
 	want := presenter.Warning{
-		Label: "unwind incomplete",
+		Label:  "unwind incomplete",
+		Key:    "unwind",
+		Failed: true,
 		Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 			"`), then restore the exclusion answers commit on top (`git cherry-pick ORIG_HEAD~1`)",
 		Output: resetStderr,

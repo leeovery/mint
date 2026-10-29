@@ -35,6 +35,23 @@ func TestPlainPresenterNextMoves_PrintsEachMoveOnItsOwnLine(t *testing.T) {
 	assertBytePureASCIIStreams(t, "plain next moves", out, errBuf)
 }
 
+func TestPlainPresenterNextMoves_AMoveWithASentenceOfItsOwnPrintsThatSentence(t *testing.T) {
+	t.Parallel()
+
+	move := presenter.NextMove{
+		Lead:     "Ship that list whenever the AI fails, under [release] in .mint.toml:",
+		Command:  `on_notes_failure = "fallback"`,
+		Sentence: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
+	}
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.NextMoves(presenter.NextMoves{Stage: "notes", Moves: []presenter.NextMove{move}})
+	})
+
+	if want := "notes: NEXT - " + move.Sentence + "\n"; out.String() != want {
+		t.Errorf("NextMoves out = %q, want the move's own sentence %q", out.String(), want)
+	}
+}
+
 func TestPrettyPresenterNextMoves_ListsTheMovesUnderAHeading(t *testing.T) {
 	t.Parallel()
 

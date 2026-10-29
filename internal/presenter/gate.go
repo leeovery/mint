@@ -132,6 +132,11 @@ type Gate struct {
 	// other gate: what the Question asks about, kept whole so the rail need not read
 	// it out of the Question. Its Line is empty.
 	Suggestion *ExclusionSuggestion
+	// Quiet marks a gate a dry run previews only to fill in the run's structure (the
+	// review it stops short of): plain's log, pinned byte for byte from before the rail,
+	// has no line for that preview, so plain and today's pretty write nothing for it.
+	// It is never set on a gate asked.
+	Quiet bool
 }
 
 // Has reports whether c is a member of the gate's DECLARED choice set. It reads

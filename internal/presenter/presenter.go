@@ -115,7 +115,7 @@ type Presenter interface {
 	ExclusionAnswersRecorded(a ExclusionAnswers)
 	// PreviewGate renders the question gate would ask, without its choices, for a dry
 	// run that shows where a real run would stop to ask. It reads no input and sets no
-	// failure state.
+	// failure state. A Quiet gate's preview only fills in the run's structure.
 	PreviewGate(gate Gate)
 	// Warn renders a structured, label-prefixed warning. It is INDEPENDENT of
 	// StageFailed/Unwound: it does not set failure state and does not suppress the
@@ -542,6 +542,11 @@ type StageStart struct {
 	// success/failure column layout, and plain mode ignores it (its terse
 	// "{name}: running..." start line stays byte-stable for pipes).
 	Text string
+	// Quiet marks a start that only shows a stage running again where plain's log,
+	// pinned byte for byte from before the rail, has no line for it (an `r` at the
+	// review writing the notes again in one call), so plain and today's pretty write
+	// nothing.
+	Quiet bool
 }
 
 // StageSuccess carries the StageSucceeded payload. Elapsed is measured by the
@@ -669,11 +674,18 @@ type NextMoves struct {
 type NextMove struct {
 	Lead    string
 	Command string
+	// Sentence is the move as plain's and today's pretty's one sentence where that is
+	// not Lead then Command (a config line the sentence has mid-way), empty where it
+	// is. The rail never reads it.
+	Sentence string
 }
 
-// Text is the move as one sentence, Lead then Command: plain's and today's pretty's
-// line.
+// Text is the move as one sentence, plain's and today's pretty's line: its Sentence,
+// or Lead then Command.
 func (m NextMove) Text() string {
+	if m.Sentence != "" {
+		return m.Sentence
+	}
 	if m.Command == "" {
 		return m.Lead
 	}
@@ -681,10 +693,12 @@ func (m NextMove) Text() string {
 }
 
 // ExclusionSuggestions carries the ExclusionSuggestions payload: stage's suggestions,
-// each rendered verbatim in order, their Lines set under Table.
+// each rendered verbatim in order, their Lines set under Table of File. Plain and
+// today's pretty never name File.
 type ExclusionSuggestions struct {
 	Stage       string
 	Table       string
+	File        string
 	Suggestions []ExclusionSuggestion
 }
 
@@ -754,6 +768,10 @@ type Warning struct {
 	// post_release hook or publish, a failed commit push), empty for a warning that
 	// ends no stage. Plain and today's pretty ignore it.
 	Key string
+	// Failed marks a warning about a step that failed once the run could no longer
+	// stop on it, a recovery step of the unwind: the rail draws it as a failed node
+	// of its own, named for its Key. Plain and today's pretty ignore it.
+	Failed bool
 	// Output is optional captured underlying-command output (e.g. git's stderr
 	// from a failed-but-non-fatal push) rendered VERBATIM beneath the warn line —
 	// the warn-flavoured counterpart of StageFailure.Output, for failures the
@@ -786,6 +804,11 @@ type Unwind struct {
 	// Repo is where the repo ended up: "repo clean", or "manual cleanup required"
 	// when a recovery step failed.
 	Repo string
+	// Key is the key of the unwind's node, the one the Failed warnings of its recovery
+	// steps that failed carry: the rail draws an unwind that couldn't finish as those
+	// failed nodes, not as a node claiming what it undid. Plain and today's pretty
+	// ignore it.
+	Key string
 }
 
 // Text is the unwind as one line, its non-empty parts joined with "; ".

@@ -241,7 +241,7 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 		// (the test seam), mirroring the forward path's perRunRegenerator precedence.
 		return reviewFresh(ctx, deps, req)
 	case regenerateSourceSupplied, regenerateSourceFloor:
-		return reviewGate(ctx, p, deps.Editor, reviewRegen{}, reviewing(presenter.NotesReviewGateNoRegen()), req.Body, req.VersionKey)
+		return reviewGate(ctx, deps, reviewRegen{}, reviewing(presenter.NotesReviewGateNoRegen()), req.Body, req.VersionKey)
 	default:
 		// Deterministic source (tag annotation or provider release): the simple
 		// two-choice confirm — there are no freshly-generated notes to edit/regenerate.
@@ -254,7 +254,7 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 func reviewFresh(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRequest) (string, error) {
 	regenerator := regenerateRegenerator(deps, req.Regenerator)
 	if req.regens == nil || req.chunkNotes == nil {
-		return reviewGate(ctx, deps.Presenter, deps.Editor, reviewRegen{regenerator: regenerator}, reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey)
+		return reviewGate(ctx, deps, reviewRegen{regenerator: regenerator}, reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey)
 	}
 	regen := req.regens.review(regenerator, req.chunkNotes)
 	return req.chunkNotes.reviewGate(ctx, deps, regen, reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey, "mint release regenerate "+req.VersionKey)
@@ -387,7 +387,7 @@ func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject 
 // reset always applies. Keeping the push form, PONR narration, and reset wiring here
 // means the two regenerate paths can no longer drift on push form or recovery.
 func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) error {
-	push := emitBlockingStageStarted(deps.Presenter, stagePush, "pushing to origin…", "Pushed to origin")
+	push := emitBlockingStageStarted(deps.Presenter, deps.clock(), stagePush, "pushing to origin…", "Pushed to origin")
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
 		return resetAndAbort(ctx, deps, start, true, stagePush, &stageError{stage: push, err: fmt.Errorf("pushing regenerated changelog: %w", err)})
 	}

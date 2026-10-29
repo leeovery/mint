@@ -17,6 +17,17 @@ var quietPlan = presenter.Plan{
 	Quiet:           true,
 }
 
+// quietStart is the notes stage running again for an `r` that writes them in one
+// call, which plain has never had a line for.
+var quietStart = presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "generating release notes…", Quiet: true}
+
+// quietReview is the review a dry run previews only for the rail.
+func quietReview() presenter.Gate {
+	g := presenter.ReleaseReviewGate()
+	g.Stage, g.Quiet = "notes", true
+	return g
+}
+
 // TestQuietEvents_WriteNothingInPlainOrTodaysPretty pins Quiet: an event that only
 // fills in the run's structure has no line in plain's log, pinned byte for byte
 // from before the rail, nor in today's pretty.
@@ -37,6 +48,16 @@ func TestQuietEvents_WriteNothingInPlainOrTodaysPretty(t *testing.T) {
 			name:   "a settled stage",
 			plain:  func(p *presenter.PlainPresenter) { p.StageSucceeded(presenter.Settled("diff", "3 files staged")) },
 			pretty: func(p *presenter.PrettyPresenter) { p.StageSucceeded(presenter.Settled("diff", "3 files staged")) },
+		},
+		{
+			name:   "a quiet blocking start",
+			plain:  func(p *presenter.PlainPresenter) { p.StageStarted(quietStart) },
+			pretty: func(p *presenter.PrettyPresenter) { p.StageStarted(quietStart) },
+		},
+		{
+			name:   "a quiet gate's preview",
+			plain:  func(p *presenter.PlainPresenter) { p.PreviewGate(quietReview()) },
+			pretty: func(p *presenter.PrettyPresenter) { p.PreviewGate(quietReview()) },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

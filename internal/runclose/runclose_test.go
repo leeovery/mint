@@ -3,6 +3,7 @@ package runclose_test
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -76,7 +77,7 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *test
 			t.Parallel()
 
 			rec := &presentertest.RecordingPresenter{}
-			run := runclose.Begin(rec)
+			run := runclose.Begin(rec, time.Now)
 			run.Start(opened)
 			tc.stop(run)
 			run.Close(tc.declined)
@@ -104,7 +105,7 @@ func TestClose_ARunThatLandedClosesWithItsEndingWhateverItLeftOnTheWay(t *testin
 		End:     presenter.Station{Name: "main", Detail: "a3f9c21"},
 	}
 	rec := &presentertest.RecordingPresenter{}
-	run := runclose.Begin(rec)
+	run := runclose.Begin(rec, time.Now)
 	run.Start(opened)
 	run.Left("changes staged, not committed")
 	run.Land(landed)
@@ -117,11 +118,30 @@ func TestClose_ARunThatLandedClosesWithItsEndingWhateverItLeftOnTheWay(t *testin
 	}
 }
 
+func TestClose_TimesTheRunByTheClockItBeganWith(t *testing.T) {
+	t.Parallel()
+
+	reads := []time.Time{time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC), time.Date(2026, 10, 29, 12, 1, 14, 0, time.UTC)}
+	clock := func() time.Time {
+		now := reads[0]
+		reads = reads[1:]
+		return now
+	}
+	rec := &presentertest.RecordingPresenter{}
+	run := runclose.Begin(rec, clock)
+	run.Start(opened)
+	run.Close(false)
+
+	if got := closing(t, rec).Elapsed; got != 74*time.Second {
+		t.Errorf("Elapsed = %v, want the 1m 14s between the clock's reads at Begin and Close", got)
+	}
+}
+
 func TestClose_ARunThatNeverOpenedClosesSilently(t *testing.T) {
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{}
-	run := runclose.Begin(rec)
+	run := runclose.Begin(rec, time.Now)
 	run.Close(false)
 
 	if len(rec.Events) != 0 {
@@ -133,7 +153,7 @@ func TestRunDeferred_RunsTheDeferredWorkLastFirstAndOnlyOnce(t *testing.T) {
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{}
-	run := runclose.Begin(rec)
+	run := runclose.Begin(rec, time.Now)
 	var order []string
 	run.Defer(func() { order = append(order, "first registered"); rec.Warn(presenter.Warning{Label: "first"}) })
 	run.Defer(func() { order = append(order, "last registered") })
@@ -161,7 +181,7 @@ func TestRunDeferred_StillRunsWhenTheRunPanicsBeforeItsClose(t *testing.T) {
 	ran := false
 	func() {
 		defer func() { _ = recover() }()
-		run := runclose.Begin(rec)
+		run := runclose.Begin(rec, time.Now)
 		defer run.RunDeferred()
 		run.Start(opened)
 		run.Defer(func() { ran = true })

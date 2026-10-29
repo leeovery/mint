@@ -268,7 +268,7 @@ func (q Question) lay(first, rest int) [][]span {
 // ruleLabel is the point of no return's own words, the rail's to draw.
 const ruleLabel = "━━ point of no return "
 
-func (r Rule) reached() bool { return r.Crossed }
+func (r Rule) reached() bool { return r.Reached || r.Crossed }
 
 func (r Rule) draw(l Layout) []line {
 	mark := s("┿", dim)

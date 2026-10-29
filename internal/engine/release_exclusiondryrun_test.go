@@ -30,10 +30,12 @@ func newAttendedDryRun(t *testing.T, config string) (*suggestedRun, *int) {
 	return run, &shownAtNotes
 }
 
+// previewedGates are where rec holds the previews plain shows, the pauses': the Quiet
+// preview of the review a dry run stops short of is not one.
 func previewedGates(rec *presentertest.RecordingPresenter) []int {
 	var at []int
 	for i, ev := range rec.Events {
-		if ev.Kind == presentertest.KindPreviewGate {
+		if ev.Kind == presentertest.KindPreviewGate && !ev.PreviewGate.Quiet {
 			at = append(at, i)
 		}
 	}

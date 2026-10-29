@@ -23,5 +23,5 @@
      mint release -m --no-ai
    Ship that list whenever the AI fails, under [release] in .mint.toml:
      on_notes_failure = "fallback"
-   Leave docs/specs/** out of the notes, under [release]:
+   Leave docs/specs/** out of the notes, under [release] in .mint.toml:
      diff_exclude = ["docs/specs/**"]

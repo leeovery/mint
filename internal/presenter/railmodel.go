@@ -53,11 +53,13 @@ type part struct {
 	// shown is a part printed as it was when it showed while it stays live: a stage
 	// running where there is no region to hold it, a question printed to read a
 	// typed line at.
-	shown    bool
-	crossed  bool
-	station  rail.Station
-	text     string
-	question rail.Question
+	shown bool
+	// reached, crossed and ended are the point of no return's: its stage under way,
+	// done, and over, done or not.
+	reached, crossed, ended bool
+	station                 rail.Station
+	text                    string
+	question                rail.Question
 	// about is the node an exclusion pause hangs its subject under while it asks.
 	about *part
 }
@@ -67,7 +69,7 @@ type part struct {
 func (pt *part) live(now time.Time) rail.Live {
 	switch pt.kind {
 	case rulePart:
-		return rail.Rule{Crossed: pt.crossed}
+		return rail.Rule{Reached: pt.reached, Crossed: pt.crossed}
 	case endPart:
 		return pt.station
 	case bodyPart:
@@ -109,14 +111,14 @@ func (pt *part) running() bool {
 }
 
 // finished is whether nothing more will change the part: a node past running or
-// passed by, a crossed rule, a previewed question. A body and a question go when the
+// passed by, a rule whose stage is over, a previewed question. A body and a question go when the
 // question is answered, the end station when the run ends.
 func (pt *part) finished() bool {
 	switch pt.kind {
 	case nodePart:
 		return !pt.hidden && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
 	case rulePart:
-		return pt.crossed
+		return pt.ended
 	case previewPart:
 		return true
 	case bodyPart:
@@ -126,10 +128,11 @@ func (pt *part) finished() bool {
 }
 
 // settleable is whether the part can settle before the run moves past it, when the
-// region is too tall for it or there is no region: anything finished, and a body. A
-// question open stays on the terminal's last rows until it is answered.
+// region is too tall for it or there is no region: anything finished, a body, and a
+// point of no return the run has reached, so it stays above its stage. A question
+// open stays on the terminal's last rows until it is answered.
 func (pt *part) settleable() bool {
-	return pt.finished() || pt.kind == bodyPart
+	return pt.finished() || pt.kind == bodyPart || pt.kind == rulePart && pt.reached
 }
 
 // toCome is whether the part is still ahead of the run.
@@ -138,7 +141,7 @@ func (pt *part) toCome() bool {
 	case nodePart:
 		return pt.hidden || pt.node.State == rail.ToCome
 	case rulePart:
-		return !pt.crossed
+		return !pt.reached
 	}
 	return pt.kind == endPart
 }
@@ -192,9 +195,13 @@ type runModel struct {
 	// moves are the ways forward from a failure, and suggested the exclusion
 	// check's suggestions, next's items in that order.
 	moves, suggested []rail.Move
-	dryRun           bool
-	open             bool
-	closed           bool
+	// next is next's items once the run has closed, kept to settle when the drawing
+	// ends or another run starts, so what arrives after the close (the autostash's
+	// warning) still draws under the end station and next stays last.
+	next   []rail.Move
+	dryRun bool
+	open   bool
+	closed bool
 }
 
 func newRunModel() *runModel { return &runModel{gone: map[string]bool{}, planned: map[string]bool{}} }
@@ -226,6 +233,7 @@ func (m *runModel) start(info RunInfo) {
 	if m.open {
 		m.finish(rail.End{}, false)
 	}
+	m.settleNext()
 	m.settleItem(rail.Header{Command: info.Header.Command, Where: info.Header.Where, Version: info.Header.Version})
 	m.endName = ""
 	if info.Start.Name != "" {
@@ -275,11 +283,28 @@ func (m *runModel) stage(key, name string) *part {
 		pt = m.add(rail.Node{Name: name})
 		pt.key = key
 	}
-	if key != "" && key == m.pointOfNoReturn {
-		m.crossRule()
+	if r := m.rule(key); r != nil {
+		r.reached = true
 	}
 	m.touched = pt
 	return pt
+}
+
+// ended marks the stage keyed key over, done where crossed says so: where it is the
+// point of no return's stage, the run has crossed that point once the stage is done,
+// not as it starts, nor should it fail.
+func (m *runModel) ended(key string, crossed bool) {
+	if r := m.rule(key); r != nil {
+		r.reached, r.ended, r.crossed = true, true, r.crossed || crossed
+	}
+}
+
+// rule is the point of no return where key is its stage, nil otherwise.
+func (m *runModel) rule(key string) *part {
+	if key == "" || key != m.pointOfNoReturn {
+		return nil
+	}
+	return m.partOf(rulePart)
 }
 
 // activity is whether a stage keyed key is an open question's own doing, as the
@@ -408,12 +433,6 @@ func (m *runModel) remove(pt *part) {
 	m.parts = slices.DeleteFunc(m.parts, func(p *part) bool { return p == pt })
 	if m.touched == pt {
 		m.touched = nil
-	}
-}
-
-func (m *runModel) crossRule() {
-	if r := m.partOf(rulePart); r != nil {
-		r.crossed = true
 	}
 }
 
@@ -579,25 +598,32 @@ func (m *runModel) settleItem(it rail.Item) {
 	m.settled = append(m.settled, it)
 }
 
-// finish closes the run at end, an End with no name drawing none, with next under it
-// where the run left any moves. What the run never reached leaves the drawing, but
-// for a dry run's stages to come, which stay hollow above its end.
+// finish closes the run at end, an End with no name drawing none, keeping any moves
+// the run left for next, which settleNext puts under it. What the run never reached
+// leaves the drawing, but for a dry run's stages to come, which stay hollow above
+// its end.
 func (m *runModel) finish(end rail.End, dryRun bool) {
 	m.drop(dryRun)
 	m.settle(len(m.parts))
 	if end.Name != "" {
 		m.settleItem(end)
 	}
-	if moves := append(m.moves, m.suggested...); len(moves) > 0 {
-		m.settleItem(rail.Next{Moves: moves})
-	}
+	m.next = append(m.next, append(m.moves, m.suggested...)...)
 	m.moves, m.suggested, m.looping, m.bodyOut, m.lastBody = nil, nil, false, false, ""
 	m.open, m.closed, m.touched, m.held = false, true, nil, nil
 }
 
+// settleNext settles next, with the moves kept since the run closed, if any.
+func (m *runModel) settleNext() {
+	if len(m.next) > 0 {
+		m.settleItem(rail.Next{Moves: m.next})
+		m.next = nil
+	}
+}
+
 // drop takes what the run never reached out of the region: the end station waiting,
 // a question, and, but for a dry run's, the stages to come and a point of no return
-// not crossed. A stage still running never finished, so it goes too.
+// not reached. A stage still running never finished, so it goes too.
 func (m *runModel) drop(dryRun bool) {
 	m.parts = slices.DeleteFunc(m.parts, func(pt *part) bool {
 		switch {

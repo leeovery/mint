@@ -194,7 +194,7 @@ func failedRelease(p presenter.Presenter, clock *fakeClock) {
 	}})
 	s := specsSuggestion()
 	s.Line = `diff_exclude = ["docs/specs/**"]`
-	p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: "[release]", Suggestions: []presenter.ExclusionSuggestion{s}})
+	p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: "[release]", File: ".mint.toml", Suggestions: []presenter.ExclusionSuggestion{s}})
 	p.Unwound(presenter.Unwind{Undone: "pre-tag artifacts commit removed", Repo: "repo clean"})
 	p.RunFinished(presenter.RunResult{
 		Project: "pigeon", Version: "1.4.0", Outcome: presenter.OutcomeUnwound,

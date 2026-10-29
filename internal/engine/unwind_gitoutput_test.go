@@ -21,7 +21,7 @@ const (
 
 // unwindIncomplete is the manual-cleanup warning naming action, with output beneath it.
 func unwindIncomplete(action, output string) presenter.Warning {
-	return presenter.Warning{Label: "unwind incomplete", Message: "automatic recovery failed; manually " + action, Output: output}
+	return presenter.Warning{Label: "unwind incomplete", Message: "automatic recovery failed; manually " + action, Output: output, Key: "unwind", Failed: true}
 }
 
 // onlyWarning fails the test unless rec holds exactly the one warning want.

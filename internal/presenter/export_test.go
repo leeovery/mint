@@ -1,6 +1,9 @@
 package presenter
 
-import "io"
+import (
+	"io"
+	"os"
+)
 
 // The chainable With* setters below are TEST-ONLY shims for the gating, spinner,
 // and width fields. Production threads these signals in exactly one place — the
@@ -93,6 +96,12 @@ func (p *RailPresenter) WithEcho(echo bool) *RailPresenter {
 	defer p.mu.Unlock()
 	p.echo = echo
 	return p
+}
+
+// NewForSignals is NewForStartup's presenter for signals already resolved, for tests
+// that can't give it a terminal.
+func NewForSignals(signals StartupSignals, yes bool, stdout *os.File, errStream io.Writer, stdin *os.File, opts ...StartupOption) Presenter {
+	return newForSignals(signals, yes, stdout, errStream, stdin, opts...)
 }
 
 // LiveRegion is the live region writer, for its tests.

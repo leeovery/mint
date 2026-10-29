@@ -225,7 +225,7 @@ func TestRelease_NotesFailureWithStdinNotATerminal_StopsWithTheNextMoves(t *test
 		t.Errorf("a non-TTY run was offered the floor's choice: %+v", gates)
 	}
 	moves := nextMoves(run.rec)
-	if len(moves) != 1 || !slices.Contains(moves[0].Moves, presenter.NextMove{Lead: releaseSeamFallbackMove}) {
+	if len(moves) != 1 || !slices.ContainsFunc(moves[0].Moves, func(m presenter.NextMove) bool { return m.Text() == releaseSeamFallbackMove }) {
 		t.Errorf("NextMoves = %+v, want one carrying %q", moves, releaseSeamFallbackMove)
 	}
 }

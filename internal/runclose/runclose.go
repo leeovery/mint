@@ -30,7 +30,9 @@ const nothingChanged = "nothing changed"
 // Run is one run's close. A nil Run does nothing, so a code path shared with a run
 // that closes elsewhere (a --all backfill's versions) can hold none.
 type Run struct {
-	p       presenter.Presenter
+	p presenter.Presenter
+	// now is the clock the run is timed by.
+	now     func() time.Time
 	began   time.Time
 	info    *presenter.RunInfo
 	landed  *presenter.RunResult
@@ -40,9 +42,9 @@ type Run struct {
 	deferred []func()
 }
 
-// Begin starts timing a run whose events go to p.
-func Begin(p presenter.Presenter) *Run {
-	return &Run{p: p, began: time.Now()}
+// Begin starts timing, by now, a run whose events go to p.
+func Begin(p presenter.Presenter, now func() time.Time) *Run {
+	return &Run{p: p, now: now, began: now()}
 }
 
 // Start opens the run with RunStarted.
@@ -117,7 +119,7 @@ func (r *Run) Close(declined bool) {
 	if r.landed != nil {
 		res = *r.landed
 	}
-	res.Elapsed = time.Since(r.began)
+	res.Elapsed = r.now().Sub(r.began)
 	r.p.RunFinished(res)
 }
 

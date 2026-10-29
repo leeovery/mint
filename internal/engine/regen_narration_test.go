@@ -127,21 +127,32 @@ func (rt *regenOverflowTransport) halvedChunks() int {
 	return len(rt.chunks)
 }
 
-// assertRegenNarratesAsBuilt fails unless the r's notes are shown with no notes line
-// of their own: the first attempt's notes stage is the run's only one, and no chunked
-// run's update follows it.
+// assertRegenNarratesAsBuilt fails unless the r writing its notes in one call runs the
+// notes stage again with no line plain shows: after the first notes shown, one Quiet
+// blocking start and one Quiet blocking success of the notes stage, and no chunked
+// run's update.
 func assertRegenNarratesAsBuilt(t *testing.T, rec *presentertest.RecordingPresenter) {
 	t.Helper()
-	if stages := notesStages(t, rec); len(stages) != 1 {
-		t.Fatalf("notes stages = %d, want the first attempt's alone", len(stages))
-	}
 	firstShown := slices.IndexFunc(rec.Events, func(ev presentertest.Event) bool { return ev.Kind == presentertest.KindShowNotes })
+	var starts, successes int
 	for _, ev := range rec.Events[firstShown:] {
 		switch {
-		case ev.Kind == presentertest.KindNotesProgress, ev.Kind == presentertest.KindNotesHalving, ev.Kind == presentertest.KindNotesMerging,
-			ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Name == "notes":
-			t.Errorf("after the first notes shown, got %v, want the r to narrate nothing of its own", ev.Kind)
+		case ev.Kind == presentertest.KindNotesProgress, ev.Kind == presentertest.KindNotesHalving, ev.Kind == presentertest.KindNotesMerging:
+			t.Errorf("after the first notes shown, got %v, want the r to narrate no chunked run", ev.Kind)
+		case ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Key == "notes":
+			starts++
+			if s := ev.StageStarted; !s.Quiet || !s.Blocking {
+				t.Errorf("the r's notes start = %+v, want a Quiet blocking start", s)
+			}
+		case ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == "notes":
+			successes++
+			if s := ev.StageSucceeded; !s.Quiet || !s.Blocking {
+				t.Errorf("the r's notes success = %+v, want a Quiet blocking success", s)
+			}
 		}
+	}
+	if starts != 1 || successes != 1 {
+		t.Errorf("the r's notes starts = %d, successes = %d, want one of each", starts, successes)
 	}
 	if got := len(shownBodies(rec)); got != 2 {
 		t.Errorf("notes shown = %d, want the first attempt's and the r's", got)

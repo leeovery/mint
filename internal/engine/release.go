@@ -217,9 +217,19 @@ type ReleaseDeps struct {
 	// under. Both come from the cmd layer, so the engine reads no environment for them.
 	MintVersion string
 	Home        string
+	// Clock is what the run and its stages are timed by, the wall clock when nil.
+	Clock func() time.Time
 	// run closes the run Release or RegenerateRun opened; nil outside them (a --all
 	// backfill's versions, a test driving Unwind alone).
 	run *runclose.Run
+}
+
+// clock is what the run and its stages are timed by: Clock, or the wall clock.
+func (d ReleaseDeps) clock() func() time.Time {
+	if d.Clock != nil {
+		return d.Clock
+	}
+	return time.Now
 }
 
 // header is the run's header line for command over root.
@@ -396,7 +406,7 @@ type ReleaseOptions struct {
 // dry run, or, stopped short, unwound, declined or failed, its end saying what the
 // run left behind.
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
-	deps.run = runclose.Begin(deps.Presenter)
+	deps.run = runclose.Begin(deps.Presenter, deps.clock())
 	// Deferred, so the work the run deferred (the autostash pop) runs after the close
 	// and still runs when the run panics, which closes nothing.
 	defer deps.run.RunDeferred()
@@ -633,7 +643,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// Stage 4 is BLOCKING: generating notes can call the AI. Narrate it with a
 	// blocking StageStarted (spinner), a chunked run's progress while it runs, and a
 	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
-	stage := startNotesStage(p)
+	stage := startNotesStage(p, deps.clock())
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
 	answers := &answersCommit{root: root, tag: tag}
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
@@ -685,10 +695,14 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 
 	// DRY-RUN BOUNDARY: a dry run takes no action, so it asks for nothing — it stops
 	// HERE, before the review gate, having shown the full preview (version, plan, notes),
+	// previews the review where a real run asks it (Quiet: plain has no line for it),
 	// and prints the "no changes made" close-out instead of prompting, recording,
 	// tagging, pushing, or publishing. The working tree is byte-for-byte unchanged
 	// (hooks were skipped-and-reported above; the notes were generated read-only).
 	if opts.DryRun {
+		review := gateForKind(kind)
+		review.Quiet = true
+		p.PreviewGate(review)
 		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
 	}
 
@@ -866,7 +880,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// with a blocking StageStarted (spinner) and a StageSucceeded carrying the
 	// engine-measured Elapsed once the push crosses the PONR. On failure a timed
 	// StageFailed narrates the stage instead, so no StageSucceeded fires.
-	push := emitBlockingStageStarted(p, stagePush, "pushing branch and tag to origin…", "Pushed branch + "+tag+" atomically")
+	push := emitBlockingStageStarted(p, deps.clock(), stagePush, "pushing branch and tag to origin…", "Pushed branch + "+tag+" atomically")
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
 		// Pre-PONR failure: route through the surgical unwind. A push REJECTION means the
 		// local tag WAS created (TagAndPush wraps it in release.ErrPushRejected), so the
@@ -1746,7 +1760,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// carrying the engine-measured Elapsed once both the hook and its artifact commit
 	// land. The events fire ONLY here — when a hook is configured and actually runs —
 	// so a hookless run (returned above) narrates no pre_tag stage.
-	stage := emitBlockingStageStarted(deps.Presenter, stagePreTag, "running pre_tag hook…", "Ran the pre_tag hook")
+	stage := emitBlockingStageStarted(deps.Presenter, deps.clock(), stagePreTag, "running pre_tag hook…", "Ran the pre_tag hook")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, &stageError{stage: stage, err: err}
@@ -1810,7 +1824,7 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 	// upload can run for minutes, so the spinner must show it is alive. A failure
 	// skips the success line; the caller's Warn stops the spinner and prints the ⚠
 	// line with the hook's output in its place.
-	stage := emitBlockingStageStarted(deps.Presenter, stagePostRelease, "running post_release hook…", "Ran the post_release hook")
+	stage := emitBlockingStageStarted(deps.Presenter, deps.clock(), stagePostRelease, "running post_release hook…", "Ran the post_release hook")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env); err != nil {
 		return err
@@ -1992,7 +2006,8 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //     the user may regenerate again or settle on y/n/e.
 //
 // The gate never unwinds or emits an Unwound; any reset is the caller's.
-func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen reviewRegen, gate presenter.Gate, body, versionKey string) (string, error) {
+func reviewGate(ctx context.Context, deps ReleaseDeps, regen reviewRegen, gate presenter.Gate, body, versionKey string) (string, error) {
+	p := deps.Presenter
 	for {
 		choice, err := ReviewDecision(p, gate)
 		if err != nil {
@@ -2017,8 +2032,8 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// StageSucceeded fires once the edit completes (or returns to the gate) to stop
 			// it, while a genuine edit failure surfaces a StageFailed (which stops it) and
 			// emits no StageSucceeded.
-			editDone := emitBlockingStageStarted(p, "edit", "applying edited notes…", "Applied edited notes")
-			edited, eerr := editBody(ctx, editor, body)
+			editDone := emitBlockingStageStarted(p, deps.clock(), "edit", "applying edited notes…", "Applied edited notes")
+			edited, eerr := editBody(ctx, deps.Editor, body)
 			switch {
 			case errors.Is(eerr, ErrEditorReturnToGate):
 				// No editor could be launched: the launcher already reported the problem
@@ -2041,7 +2056,7 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// Regenerate (only reachable on the four-choice gate): regenerate with a
 			// one-time context line, replace the body, re-show, and loop. Any failure
 			// (closed input, nil seam, regenerate error) is surfaced and aborts.
-			regenerated, rerr := regenerateBody(ctx, p, regen, versionKey)
+			regenerated, rerr := regenerateBody(ctx, deps, regen, versionKey)
 			if rerr != nil {
 				return "", rerr
 			}
@@ -2087,7 +2102,8 @@ func gateForKind(kind notes.Kind) presenter.Gate {
 //
 // On success the regenerated body is re-shown (so the user reviews it), regen.shown
 // runs, and the body is returned; the caller replaces the body and loops the gate.
-func regenerateBody(ctx context.Context, p presenter.Presenter, regen reviewRegen, versionKey string) (string, error) {
+func regenerateBody(ctx context.Context, deps ReleaseDeps, regen reviewRegen, versionKey string) (string, error) {
+	p := deps.Presenter
 	line, err := p.AskLine(regenContextPrompt)
 	if err != nil {
 		// A closed/non-interactive input on the one-time-context read is fail-loud: the
@@ -2102,11 +2118,12 @@ func regenerateBody(ctx context.Context, p presenter.Presenter, regen reviewRege
 		return "", regenFailed(p, errRegeneratorUnavailable, 0)
 	}
 
-	began := time.Now()
+	now := deps.clock()
+	began := now()
 	regenerated, rerr := regen.regenerator.Regenerate(ctx, line)
 	if rerr != nil {
 		// A regenerate failure is fail-loud: surface and abort.
-		return "", regenFailed(p, regen.keepFailed(rerr), time.Since(began))
+		return "", regenFailed(p, regen.keepFailed(rerr), now().Sub(began))
 	}
 
 	// Re-show the regenerated notes so the user reviews them before the gate re-prompts.

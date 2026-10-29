@@ -166,7 +166,7 @@ type RegenerateRunRequest struct {
 // regenerated, or, stopped short, declined or failed, its end saying what the run
 // left behind.
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
-	deps.run = runclose.Begin(deps.Presenter)
+	deps.run = runclose.Begin(deps.Presenter, deps.clock())
 	err := regenerateRun(ctx, deps, publisher, root, req)
 	deps.run.Close(declined(err))
 	return err
@@ -244,7 +244,7 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	// it with a blocking StageStarted (spinner), a chunked run's progress while it
 	// runs, and a StageSucceeded carrying the engine-measured Elapsed once the body
 	// resolves; a failure surfaces a StageFailed and emits no StageSucceeded.
-	stage := startNotesStage(p)
+	stage := startNotesStage(p, deps.clock())
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, req.Tag)
 	body, err := produceRegenerateBody(ctx, req, source, chunkNotes.sinks(stage))
 	gateSource := source
