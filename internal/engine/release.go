@@ -2298,6 +2298,10 @@ func failureOutput(cause error) string {
 	if errors.As(cause, &gitErr) {
 		return gitErr.Stderr
 	}
+	var cliErr *publish.CLIError
+	if errors.As(cause, &cliErr) {
+		return cliErr.Stderr
+	}
 	return notesFailureOutput(cause)
 }
 
