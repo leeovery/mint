@@ -373,7 +373,8 @@ func (p *RailPresenter) Warn(w Warning) {
 	defer p.mu.Unlock()
 	var n *rail.Node
 	if w.Failed {
-		n = p.run.stage(w.Key, w.Key).node
+		pt := p.run.stage(w.Key, w.Key)
+		n, pt.waits = pt.node, true
 		n.State = rail.Failed
 	} else {
 		n = p.warned(w.Key, w.Label)
@@ -405,15 +406,21 @@ func (p *RailPresenter) warned(key, label string) *rail.Node {
 
 // Unwound draws the unwind's node: what it undid, and what it kept under it. An
 // unwind that couldn't finish is already drawn, as the failed nodes of its steps
-// keyed as it is, so it hangs what it undid first under the last, above the output of
-// the step that failed, and what it kept last. Where it left the repo is a claim about
-// the tree the rail doesn't make; a step left to do by hand reaches next.
+// keyed as it is, which wait for it, unsettled, however the run is drawn: it hangs
+// what it undid first under the last, above the output of the step that failed, and
+// what it kept last, and lets them settle. Where it left the repo is a claim about the
+// tree the rail doesn't make; a step left to do by hand reaches next.
 func (p *RailPresenter) Unwound(u Unwind) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var kept []rail.Hang
 	if u.Kept != "" {
 		kept = append(kept, rail.Hang{Kind: rail.Note, Text: u.Kept})
+	}
+	for _, pt := range p.run.parts {
+		if pt.key == u.Key {
+			pt.waits = false
+		}
 	}
 	if failed := p.run.find(u.Key); failed != nil && failed.node.State == rail.Failed {
 		if u.Undone != "" {

@@ -788,7 +788,8 @@ type Warning struct {
 	Key string
 	// Failed marks a warning about a step that failed once the run could no longer
 	// stop on it, a recovery step of the unwind: the rail draws it as a failed node
-	// of its own, named for its Key. Plain and today's pretty ignore it.
+	// of its own, named for its Key, which waits unsettled for the Unwound keyed as it
+	// is, or the run's close. Plain and today's pretty ignore it.
 	Failed bool
 	// Skipped marks a warning that a stage of the plan did not run, a dry run's hook:
 	// the rail draws nothing for it and leaves Key's node to come, its plan detail.

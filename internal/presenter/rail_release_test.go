@@ -1,6 +1,7 @@
 package presenter_test
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -118,13 +119,12 @@ func TestRail_MovesAndSuggestionsArrivingAfterTheCloseJoinNext(t *testing.T) {
 	}
 }
 
-func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *testing.T) {
-	t.Parallel()
-	r := newRailTerm(t, 80, 24, answers())
+// unfinishedUnwind is a commit run whose push is rejected and whose unwind's reset
+// fails, having undone the commit.
+func unfinishedUnwind(r *railTerm) {
 	commitRun(r)
 	r.StageSucceeded(presenter.StageSuccess{Name: "commit", Key: "commit", Detail: "a3f9c21"})
 	r.StageFailed(presenter.StageFailure{Name: "tag", Key: "push", Message: "push rejected"})
-
 	r.Warn(presenter.Warning{
 		Label: "unwind incomplete", Key: "unwind", Failed: true,
 		Message: "automatic recovery failed; manually reset HEAD back to 7c1e0b4",
@@ -132,6 +132,12 @@ func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *te
 	})
 	r.Unwound(presenter.Unwind{Undone: "reset 1 commit", Kept: "kept the answers commit on the starting commit", Repo: "manual cleanup required", Key: "unwind"})
 	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "main", Detail: "manual cleanup required · nothing pushed"}, Elapsed: secs(4.9)})
+}
+
+func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 24, answers())
+	unfinishedUnwind(r)
 
 	screen := r.screen(t)
 	want := []string{
@@ -150,6 +156,34 @@ func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *te
 	}
 	if got, want := r.err.String(), "✗ tag  push rejected\n⚠ unwind incomplete  automatic recovery failed; manually reset HEAD back to 7c1e0b4\n"; got != want {
 		t.Errorf("err = %q, want the failure's and the warning's summaries %q", got, want)
+	}
+}
+
+// TestRail_WithNoRegionAnUnwindThatCouldNotFinishStillHangsWhatItUndidUnderItsFailedNode
+// pins that the failed unwind waits for the Unwound however the run is drawn: on a
+// terminal too narrow or too short for a region, printing as it happens, what the
+// unwind undid still hangs under the failed node, above the step's output, and no ↩
+// node of its own is drawn.
+func TestRail_WithNoRegionAnUnwindThatCouldNotFinishStillHangsWhatItUndidUnderItsFailedNode(t *testing.T) {
+	t.Parallel()
+	for _, size := range []struct{ cols, rows int }{{50, 24}, {80, 8}} {
+		t.Run(fmt.Sprintf("%dx%d", size.cols, size.rows), func(t *testing.T) {
+			t.Parallel()
+			r := newRailTerm(t, size.cols, size.rows, answers())
+			unfinishedUnwind(r)
+
+			screen := r.screen(t)
+			at := func(text string) int {
+				return slices.IndexFunc(screen, func(line string) bool { return strings.Contains(line, text) })
+			}
+			failed, undone, output, kept := at("✗  unwind"), at("reset 1 commit"), at("fatal: could not write the index"), at("kept the answers commit")
+			if failed == -1 || failed >= undone || undone >= output || output >= kept {
+				t.Errorf("the terminal shows\n%s\nwant the failed unwind, then what it undid, the step's output and what it kept, in that order", strings.Join(screen, "\n"))
+			}
+			if slices.ContainsFunc(screen, func(line string) bool { return strings.Contains(line, "↩") }) {
+				t.Errorf("an unwind that couldn't finish drew a ↩ node of its own:\n%s", strings.Join(screen, "\n"))
+			}
+		})
 	}
 }
 

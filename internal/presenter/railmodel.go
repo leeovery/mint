@@ -48,6 +48,10 @@ type part struct {
 	// awaiting is a node done but for the result it waits to state: the exclusion
 	// check, while the pauses or report on what it flagged run.
 	awaiting bool
+	// waits is a node finished, so final, but kept from settling until what goes
+	// under it comes: a failed recovery step of the unwind, until the Unwound keyed as
+	// it is hangs what the unwind undid under the last, or the run closes.
+	waits bool
 	// inside is a planned stage that runs inside the next one, which starts first.
 	inside bool
 	// out is a body shown once one before it, for the same question, has settled: it
@@ -132,11 +136,16 @@ func (pt *part) finished() bool {
 }
 
 // settleable is whether the part can settle before the run moves past it, when the
-// region is too tall for it or there is no region: anything finished, a body, and a
-// point of no return the run has reached, so it stays above its stage. A question
-// open stays on the terminal's last rows until it is answered.
+// region is too tall for it or there is no region: anything finished that waits on
+// nothing, a body, and a point of no return the run has reached, so it stays above
+// its stage. A question open stays on the terminal's last rows until it is answered.
 func (pt *part) settleable() bool {
-	return pt.finished() || pt.kind == bodyPart || pt.kind == rulePart && pt.reached
+	return pt.settles() || pt.kind == bodyPart || pt.kind == rulePart && pt.reached
+}
+
+// settles is whether the part is finished and waits on nothing more under it.
+func (pt *part) settles() bool {
+	return pt.finished() && !pt.waits
 }
 
 // toCome is whether the part is still ahead of the run.
@@ -519,7 +528,7 @@ func (m *runModel) pass() {
 
 // settleFinished settles every part above the region's start: the part last
 // touched, the node an open question's loop asks about, or the first part not
-// finished, whichever is highest. Once the run is closed, nothing is live, so all of
+// finished or still waiting, whichever is highest. Once the run is closed, nothing is live, so all of
 // it settles.
 func (m *runModel) settleFinished() {
 	n := len(m.parts)
@@ -531,7 +540,7 @@ func (m *runModel) settleFinished() {
 		for _, i := range []int{
 			slices.Index(m.parts, m.touched),
 			slices.Index(m.parts, asked),
-			slices.IndexFunc(m.parts, func(pt *part) bool { return !pt.finished() }),
+			slices.IndexFunc(m.parts, func(pt *part) bool { return !pt.settles() }),
 		} {
 			if i >= 0 {
 				n = min(n, i)
