@@ -35,7 +35,7 @@ import (
 	"mint/internal/version"
 )
 
-var updatePlain = flag.Bool("update-plain", false, "write the plain transcripts of the regenerate runs again")
+var updatePlain = flag.Bool("update-plain", false, "write the plain transcripts of the regenerate and init runs again")
 
 const (
 	regenRailTag   = "v1.4.0"
@@ -471,23 +471,7 @@ func TestRegenerate_PlainTranscripts(t *testing.T) {
 			if aborted := err != nil; aborted != r.aborted {
 				t.Errorf("the run returned %v, want aborted %v", err, r.aborted)
 			}
-			path := filepath.Join("testdata", "plain", name+".txt")
-			if *updatePlain {
-				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, []byte(transcript), 0o644); err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
-			want, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatalf("%v: write the transcripts with -update-plain", err)
-			}
-			if transcript != string(want) {
-				t.Errorf("plain printed\n%s\nwant, as before the rail\n%s", transcript, want)
-			}
+			heldPlain(t, name, transcript)
 		})
 	}
 }

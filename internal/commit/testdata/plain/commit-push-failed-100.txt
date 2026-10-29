@@ -1,0 +1,23 @@
+mint: committing pigeon
+commit message: running...
+commit message: generated (0.7s)
+--- commit message ---
+feat(webhooks): retry failed deliveries with backoff
+
+Deliveries that fail are retried with exponential backoff for up to an
+hour before they are marked dead.
+
+--- end commit message ---
+Commit this message? [y/n/e/r]
+push: WARN - commit is in place; re-run the push to retry
+--- output ---
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'https://github.com/acme/pigeon'
+hint: Updates were rejected because the remote contains work that you do not
+hint: have locally. Integrate the remote changes (e.g., 'git pull ...')
+hint: before pushing again.
+
+--- end output ---
+done: pigeon committed
+--- stderr ---
+push: WARN - commit is in place; re-run the push to retry

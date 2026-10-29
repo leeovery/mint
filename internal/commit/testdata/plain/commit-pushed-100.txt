@@ -1,0 +1,13 @@
+mint: committing pigeon
+commit message: running...
+commit message: generated (0.7s)
+--- commit message ---
+feat(webhooks): retry failed deliveries with backoff
+
+Deliveries that fail are retried with exponential backoff for up to an
+hour before they are marked dead.
+
+--- end commit message ---
+Commit this message? [y/n/e/r]
+done: pigeon committed
+--- stderr ---

@@ -1,0 +1,9 @@
+mint: committing pigeon
+commit message: running...
+ai: WARN - could not generate a message, opening editor
+--- output ---
+Claude AI usage limit reached|1761742800
+--- end output ---
+done: pigeon committed
+--- stderr ---
+ai: WARN - could not generate a message, opening editor

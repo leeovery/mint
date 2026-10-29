@@ -260,6 +260,8 @@ type Deps struct {
 	// under. Both come from the cmd layer, so commit reads no environment for them.
 	MintVersion string
 	Home        string
+	// Clock is what the run and its stages are timed by, the wall clock when nil.
+	Clock func() time.Time
 	// run closes the run Run opened, and branch is the branch HEAD stood at when it
 	// opened, the branch the commit lands on.
 	run    *runclose.Run
@@ -278,6 +280,14 @@ type Deps struct {
 //     message and no contradictory preceding note.
 func (d Deps) editorUnavailable() bool {
 	return d.Yes || !d.StdinInteractive
+}
+
+// clock is what the run and its stages are timed by: Clock, or the wall clock.
+func (d Deps) clock() func() time.Time {
+	if d.Clock != nil {
+		return d.Clock
+	}
+	return time.Now
 }
 
 // Run executes the `mint commit` thread, orchestrating the pieces in EXACTLY this
@@ -309,7 +319,7 @@ func (d Deps) editorUnavailable() bool {
 // committed, with or without a warning, or, stopped short, declined or failed, its
 // end saying what the run left behind.
 func Run(ctx context.Context, deps Deps) error {
-	deps.run = runclose.Begin(deps.Presenter, time.Now)
+	deps.run = runclose.Begin(deps.Presenter, deps.clock())
 	err := mintCommit(ctx, deps)
 	deps.run.Close(errors.Is(err, errGateAborted) || errors.Is(err, errEditorNoOp))
 	return err
@@ -372,7 +382,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	// timed completion closure, the two editor-fallback routes via a spinner-stopping
 	// Warn (attended) or the fallback guard's StageFailed (unattended), and a genuine
 	// failure via surface's StageFailed.
-	generated := startGenerateStage(p, "generating commit message…", "Generated commit message")
+	generated := startGenerateStage(deps, "generating commit message…", "Generated commit message")
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
 		// A composed prompt over max_prompt_bytes is a generate-SKIP, NOT a failure:
@@ -696,7 +706,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// the spinner-stopping AI-failure Warn and an over-cap prompt via the oversized
 			// Warn (`r` is interactive-only, so both paths are always attended), any other
 			// failure via surface's StageFailed.
-			regenerating := startGenerateStage(p, "regenerating commit message…", "Regenerated commit message")
+			regenerating := startGenerateStage(deps, "regenerating commit message…", "Regenerated commit message")
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {
 				// A regeneration FAILURE after the transport's one retry (an AI transport
@@ -804,15 +814,17 @@ func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, 
 // elapsed, closes the stage instead.
 // text is the activity phrase the pretty spinner animates ("generating commit
 // message…" / "regenerating commit message…").
-func startGenerateStage(p presenter.Presenter, text, sentence string) generateStage {
-	p.StageStarted(presenter.StageStart{Name: generateStageName, Key: stageMessage, Blocking: true, Text: text})
-	return generateStage{p: p, sentence: sentence, started: time.Now()}
+func startGenerateStage(deps Deps, text, sentence string) generateStage {
+	deps.Presenter.StageStarted(presenter.StageStart{Name: generateStageName, Key: stageMessage, Blocking: true, Text: text})
+	now := deps.clock()
+	return generateStage{p: deps.Presenter, sentence: sentence, now: now, started: now()}
 }
 
-// generateStage is the blocking "message" stage under way.
+// generateStage is the blocking "message" stage under way, timed by now.
 type generateStage struct {
 	p        presenter.Presenter
 	sentence string
+	now      func() time.Time
 	started  time.Time
 }
 
@@ -828,7 +840,7 @@ func (s generateStage) done(detail string) {
 }
 
 func (s generateStage) elapsed() time.Duration {
-	return time.Since(s.started)
+	return s.now().Sub(s.started)
 }
 
 // isAITransportFailure reports whether err is one of the THREE L2 transport-failure
