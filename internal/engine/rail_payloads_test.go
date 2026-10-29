@@ -658,7 +658,25 @@ func assertFloorMovesLeadTheRail(t *testing.T, moves []presenter.NextMove, comma
 	}
 }
 
-func TestRelease_TheFloorsCommandsCarryTheRunsOwnVersionFlags(t *testing.T) {
+// readGatesUnder scripts the prior-tag read gates as a run under opts reads them: the
+// stash first under a real run's --autostash, no clean-tree check under a dry run's,
+// and no on-branch probe under --any-branch.
+func readGatesUnder(f *runner.FakeRunner, root string, opts engine.ReleaseOptions) {
+	f.SeedSequence("git", ScriptedOut(root), ScriptedOut("origin/main"), ScriptedOut(priorTag+"\n"), ScriptedHead())
+	if opts.AutoStash && !opts.DryRun {
+		f.SeedSequence("git", stashSaved()) // stash push --include-untracked
+	}
+	f.SeedSequence("git", ScriptedOut("")) // fetch --tags
+	if !opts.AutoStash || !opts.DryRun {
+		f.SeedSequence("git", ScriptedOut("")) // status --porcelain
+	}
+	if !opts.AnyBranch {
+		f.SeedSequence("git", ScriptedOut("main")) // rev-parse --abbrev-ref HEAD
+	}
+	f.SeedSequence("git", ScriptedNonZero(), ScriptedOut("0\t1"), ScriptedOut(""), ScriptedOut(startingSHA))
+}
+
+func TestRelease_TheFloorsCommandsCarryTheRunsOwnFlags(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -670,20 +688,33 @@ func TestRelease_TheFloorsCommandsCarryTheRunsOwnVersionFlags(t *testing.T) {
 		{name: "a minor bump", opts: func(o *engine.ReleaseOptions) { o.Bump = version.BumpMinor }, command: "mint release -m"},
 		{name: "a major bump", opts: func(o *engine.ReleaseOptions) { o.Bump = version.BumpMajor }, command: "mint release -M"},
 		{name: "a set version, as typed", opts: func(o *engine.ReleaseOptions) { o.SetVersion = "v2.0.0" }, command: "mint release --set-version v2.0.0"},
+		{name: "--any-branch", opts: func(o *engine.ReleaseOptions) { o.AnyBranch = true }, command: "mint release --any-branch"},
+		{name: "--autostash", opts: func(o *engine.ReleaseOptions) { o.AutoStash = true }, command: "mint release --autostash"},
+		{name: "a dry run", opts: func(o *engine.ReleaseOptions) { o.DryRun = true }, command: "mint release --dry-run"},
+		{
+			name: "all of them",
+			opts: func(o *engine.ReleaseOptions) {
+				o.Bump, o.AnyBranch, o.AutoStash, o.DryRun = version.BumpMinor, true, true, true
+			},
+			command: "mint release -m --any-branch --autostash --dry-run",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			opts := priorTagNormalAIOptions()
+			tc.opts(&opts)
 			root := t.TempDir()
 			f := runner.NewFakeRunner()
-			seedPriorTagReadGates(f, root, "main")
+			readGatesUnder(f, root, opts)
 			seedNormalAINotes(f)
+			if opts.AutoStash && !opts.DryRun {
+				f.SeedSequence("git", ScriptedOut("")) // stash pop
+			}
 			rec := &presentertest.RecordingPresenter{}
 			deps := railDeps(rec, f, root)
 			deps.Transport = slowTransport{}
 			deps.Yes = true
-			opts := priorTagNormalAIOptions()
-			tc.opts(&opts)
 
 			_ = engine.Release(t.Context(), deps, opts)
 

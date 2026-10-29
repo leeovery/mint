@@ -76,14 +76,30 @@ func regenerateNotesFloorMoves(failure error, cfg config.Config, version, savedN
 }
 
 // rerun is a verb run again, as a next move names it: command carries the run's own
-// version flags, so pasting it releases the version the run was cutting.
+// flags, so pasting it with only the move's change applied runs what the run was
+// running, the same version, branch, stash and dry run.
 type rerun struct {
 	verb, command string
 }
 
-// releaseRerun is mint release run again with opts' version flags.
+// releaseRerun is mint release run again with the run's own flags: those of opts that
+// shape what it releases and from where. -y and --plain are how the run was attended
+// and printed, which the reader pasting the move decides afresh.
 func releaseRerun(opts ReleaseOptions) rerun {
-	return rerun{verb: "release", command: "mint release" + versionFlags(opts)}
+	command := "mint release" + versionFlags(opts)
+	for _, flag := range []struct {
+		set  bool
+		name string
+	}{
+		{opts.AnyBranch, " --any-branch"},
+		{opts.AutoStash, " --autostash"},
+		{opts.DryRun, " --dry-run"},
+	} {
+		if flag.set {
+			command += flag.name
+		}
+	}
+	return rerun{verb: "release", command: command}
 }
 
 // regenerateRerun is the regenerate of tag run again.
