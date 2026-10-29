@@ -34,31 +34,33 @@ A node's row is the mark, two spaces, the stage name bold in a 14-column name co
 - **The cached-notes question, and regenerate's `Source?` and `Target?`,** are `?` nodes the same way. Source and Target read a typed line, with the cursor on the node.
 - **A dry run's preview** of a question shows the `?` node with its question and no keys.
 
-**Failure and the unwind.** A failed stage is a `✗` node with its message. The command's own output follows verbatim behind the node's rail, now red, and a dim `│ ` gutter of its own, so it never reads as mint's words. A saved part-notes path gets a line of its own. A warning is a `!` node. The unwind is a `↩` node naming what it undid, and the rail then returns to the start station: `◇ v1.3.2  back where it started · repo clean · nothing pushed`, with the run's time on the right. An unwind that couldn't finish is a `✗ unwind` node with the manual step. Past the point of no return nothing unwinds: a failure there is a `!` node, the end station still reads `◆ v1.4.0  released`, and the run exits 1 as today. A run that stops before it changes anything ends at `◇ <start>  nothing changed`.
+**Failure and the unwind.** A failed stage is a `✗` node with its message. The command's own output follows verbatim behind the node's rail, now red, and a dim `│ ` gutter of its own, so it never reads as mint's words. A saved part-notes path gets a line of its own. A warning is a `!` node. The unwind is a `↩` node naming what it undid, and the rail then returns to the start station: `◇ v1.3.2  back where it started · repo clean · nothing pushed`, with the run's time on the right. An unwind that couldn't finish is a `✗ unwind` node with the manual step. Past the point of no return nothing unwinds: a failure there is a `!` node, the end station still reads `◆ v1.4.0  released`, and the exit code is today's (a failed publish or `post_release` warns and exits 0). A run that stops before it changes anything ends at `◇ <start>  nothing changed`.
 
 **Next.** Remedies don't interrupt the rail. A row says what happened; what the reader can do about it prints after the end station under a bold accent `next`. Each item is a lead line, then its command or config line indented five, in the accent, alone on its line: never cut, never wrapped, never in a box, so a triple-click copies it clean. The notes failure's next moves come first, then the exclusion check's suggestions, each with the `diff_exclude` line that acts on it.
 
-**The close.** The end station is the close: `◆ v1.4.0  released` and the run's time, with the release's URL on the line below in the accent. Commit lands at `◆ main  a3f9c21 · in sync with origin`, and regenerate `--all` at `◆ done  6 of 7 versions regenerated · 1 skipped`. A dry run ends at `◇ v1.4.0  dry run · nothing changed`, the stages it skipped left hollow above it.
+**The close.** The end station is the close: `◆ v1.4.0  released` and the run's time, with the release's URL on the line below in the accent. Commit lands at `◆ main  a3f9c21 · pushed`, and regenerate `--all` at `◆ done  6 of 7 versions regenerated · 1 skipped`. A dry run ends at `◇ v1.4.0  dry run · nothing changed`, the stages it skipped left hollow above it.
 
 **Colour.** Statuses use the terminal's own colours, so the theme decides how they look. The one brand colour is the accent, mint `#5FD7AF`: in truecolor where `COLORTERM` says so, as xterm-256 colour 79 (the same colour exactly) where `TERM` says 256, and the theme's cyan otherwise. Names are bold, metadata and times dim, rules dim. `NO_COLOR` turns colour off. Meaning never rests on colour alone: every state has its own mark. The 🌿 leaves the output, its place taken by the `mint` wordmark; `commit_prefix`'s 🌿 in the release commit's subject is that commit's text and stays.
 
 **Width.** Settled lines wrap a long detail inside the detail column; the live region cuts instead. Below 70 columns the times drop and a detail goes on the line under its name.
 
 **Per command:**
-- **release:** start station `◇ v1.3.2  main @ <sha>`. Nodes: version (`minor → v1.4.0`), preflight, `pre_tag` with its artifacts commit hanging under it, check, notes, record, the point of no return, push, publish, `post_release`. End station `◆ v1.4.0  released`, URL under it.
+- **release:** start station `◇ v1.3.2  main @ <sha>`. Nodes: version (`v1.4.0 (minor bump)`, today's wording), preflight, `pre_tag` with its artifacts commit's subject hanging under it, check, notes, record, the point of no return, push, publish, `post_release`. End station `◆ v1.4.0  released`, URL under it.
 - **release regenerate `<version>`:** start station `◇ v1.4.0  <source> → <target>`. Nodes: the notes (from the AI, the tag, the release or the file), the review, then `CHANGELOG.md` (rewritten, committed, pushed) and the GitHub release, as the target has them. End station `◆ v1.4.0  regenerated`.
 - **release regenerate `--all`:** start station `◇ 7 versions  fresh notes → GitHub releases, then CHANGELOG.md`. A node per version, oldest first; a skipped version is a `!` node with its cause, and its retry command goes under next. Then the `CHANGELOG.md` node (rebuilt, committed, pushed once) and the end station. Today's one block per version, each with its own header, goes.
-- **commit:** start station `◇ main  7c1e0b4`. Nodes: the diff (`4 files · +86 −12`, and what `-a`/`-A` will stage), the message hanging off the rail, `? Commit this message?`, stage, commit, push. End station `◆ main  a3f9c21`, with `· in sync with origin` after a push. A failed `-p` push is a `!` node with git's stderr verbatim; the end station still names the commit, and the run exits 1 as today.
+- **commit:** start station `◇ main  7c1e0b4`. Nodes: the diff (`4 files · +86 −12`, and what `-a`/`-A` will stage), the message hanging off the rail, `? Commit this message?`, stage, commit, push. End station `◆ main  a3f9c21`, with `· pushed` after a push (`-p` pushes to the upstream, which may not be origin). A failed `-p` push is a `!` node with git's stderr verbatim; the end station still names the commit, and the run exits 1 as today.
 - **init:** no stations; a `●` row per file created and a dim `○` row per file left alone, its reason dim.
 - **version:** ` mint v0.1.2` with `mint` in the accent. Plain stays the bare value.
 
 **The Presenter seam.** `Presenter` stays the one output surface and keeps its events. Its payloads carry what the rail draws, so the presenter still renders only what it's handed:
-- **`RunStarted`** carries the start station: where the run begins and its detail.
+- **`RunStarted`** carries the header (the command words, where, mint's version) and the start station: where the run begins and its detail. One read-only git call before it gives the branch and the short HEAD.
 - **`ShowPlan`** carries the run's stages in order, each with a key, its name and what it will do, and marks the point of no return. The verb/target bullet list goes.
-- **Stage events** carry their stage's key, so the presenter fills the right node.
-- **`Unwound`** carries what was undone and where the repo ended up as separate fields, not one sentence.
-- **`NextMoves`** items become a lead plus command lines, as agntc's remedies are. Plain flattens them back to today's sentences byte for byte.
-- **`RunFinished`** carries the end station.
+- **Stage events** carry their stage's key, so the presenter fills the right node. A failed stage carries its time.
+- **Questions** carry the key of the node they ask about; the exclusion pause carries its suggestion whole.
+- **`Unwound`** carries what was undone, what was kept and where the repo ended up as separate fields, not one sentence.
+- **`NextMoves`** items become a lead plus a command line, as agntc's remedies are. A move whose flag or config sits mid-sentence stays a lead alone, its wording as today's. Plain flattens them back to today's sentences byte for byte.
+- **`RunFinished`** closes every run that `RunStarted` opened, exactly once: how it ended, the end station and the run's time. Plain still writes its line only for today's successful endings.
+- **`Quiet`** marks an event that only fills in the run's structure (release's early plan, a node no event settled before): plain's log, pinned byte for byte from before the rail, writes nothing for it.
 - **The `Leaf` fields go,** with the 🌿.
 
 **Testing:**
