@@ -1,7 +1,9 @@
 package rail
 
 import (
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/rivo/uniseg"
 )
@@ -12,7 +14,64 @@ type span struct {
 	style style
 }
 
-func s(text string, st style) span { return span{text: text, style: st} }
+// s is text drawn in st on one row. Every piece of text enters a line through it, so
+// none can move the cursor or change the pen (see oneRow).
+func s(text string, st style) span { return span{text: oneRow(text), style: st} }
+
+// sgr is a well-formed SGR sequence: the text's own colour, which the rail draws its
+// own over.
+var sgr = regexp.MustCompile(`\x1b\[[0-9;:]*m`)
+
+var lineBreaks = strings.NewReplacer("\r\n", " ", "\n", " ")
+
+// oneRow is text as one row draws it: each line break a space, then shown.
+func oneRow(text string) string { return shown(lineBreaks.Replace(text)) }
+
+// tabStop is the columns from one tab stop to the next.
+const tabStop = 8
+
+// shown is a line of text as the rail draws it: its SGR removed, each tab expanded
+// to the next stop counted from the line's start, and every other control character,
+// a lone escape included, drawn as its control picture. It is the one exception to
+// "no character changed", and it changes only how the text looks on the terminal:
+// what ships, and plain, keep the text byte for byte.
+func shown(text string) string {
+	text = sgr.ReplaceAllString(text, "")
+	var b strings.Builder
+	col, state := 0, -1
+	for rest := text; rest != ""; {
+		var cluster string
+		var width int
+		cluster, rest, width, state = uniseg.FirstGraphemeClusterInString(rest, state)
+		if pic, ok := picture(cluster, col); ok {
+			cluster, width = pic, cells(pic)
+		}
+		b.WriteString(cluster)
+		col += width
+	}
+	return b.String()
+}
+
+// picture is what stands in for a cluster the terminal would act on rather than
+// draw: spaces to the next tab stop for a tab, U+FFFD for a byte that isn't UTF-8,
+// the control picture for C0 and DEL, and for C1, which is ESC and a letter in 8
+// bits, ␛ and that letter.
+func picture(cluster string, col int) (string, bool) {
+	r, size := utf8.DecodeRuneInString(cluster)
+	switch {
+	case r == '\t':
+		return strings.Repeat(" ", tabStop-col%tabStop), true
+	case r == utf8.RuneError && size <= 1:
+		return "�", true
+	case r < 0x20:
+		return string(0x2400 + r), true
+	case r == 0x7f:
+		return "␡", true
+	case r >= 0x80 && r <= 0x9f:
+		return "␛" + string(r-0x40), true
+	}
+	return "", false
+}
 
 // line is one terminal row, its spans left to right from the first column.
 type line []span
@@ -51,8 +110,8 @@ func (ln line) to(col int) line {
 }
 
 // right is ln with right after it, ending on column width.
-func (ln line) right(right span, width int) line {
-	return append(ln.to(width-cells(right.text)), right)
+func (ln line) right(right []span, width int) line {
+	return append(ln.to(width-line(right).width()), right...)
 }
 
 // glyph is one grapheme cluster, the unit a terminal draws in a cell or two.
@@ -91,7 +150,7 @@ func spansOf(gs []glyph) []span {
 			out[n-1].text += g.text
 			continue
 		}
-		out = append(out, s(g.text, g.style))
+		out = append(out, span{text: g.text, style: g.style})
 	}
 	return out
 }
@@ -191,7 +250,8 @@ func split(gs []glyph, width int) int {
 }
 
 // wrap is text in lines first wide, then rest, broken after a space or inside a
-// word no line holds, and no character changed: joined, the lines are the text.
+// word no line holds, and no character changed: joined, the lines are the text as
+// shown.
 func wrap(text []span, first, rest int) [][]span {
 	f := newFlow(first, rest)
 	for _, w := range words(glyphsOf(text)) {
@@ -220,9 +280,10 @@ func cut(text []span, width int) []span {
 	return append(spansOf(gs[:n]), s(ellipsis, last))
 }
 
-// cutStart is text cut from the left to width cells, an ellipsis first.
+// cutStart is text, already shown, cut from the left to width cells, an ellipsis
+// first.
 func cutStart(text string, width int) string {
-	gs := glyphsOf([]span{s(text, plain)})
+	gs := glyphsOf([]span{{text: text}})
 	if widthOf(gs) <= width {
 		return text
 	}
@@ -239,7 +300,15 @@ func cutStart(text string, width int) string {
 }
 
 // textLines are text's lines: a newline ends a line, so one at the very end opens
-// none after it.
+// none after it, and a carriage return just before one goes with it.
 func textLines(text string) []string {
-	return strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	parts := strings.Split(text, "\n")
+	lines, open := parts[:len(parts)-1], parts[len(parts)-1]
+	for i := range lines {
+		lines[i] = strings.TrimSuffix(lines[i], "\r")
+	}
+	if open != "" || len(lines) == 0 {
+		lines = append(lines, open)
+	}
+	return lines
 }

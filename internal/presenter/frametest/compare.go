@@ -12,18 +12,22 @@ type Difference struct {
 	Frame, Drawn Cell
 }
 
-// Compare lists the cells drawn differs from frame in. A row shorter than the
-// other is filled with blank, unpainted cells, as a terminal shows what wasn't
+// Compare lists the cells drawn differs from frame in. A drawn row shorter than the
+// frame's is filled with blank, unpainted cells, as a terminal shows what wasn't
 // written; a blank's foreground, bold and faint aren't compared, as nothing shows
-// them. The grids must have as many rows.
+// them. The grids must have as many rows, and no drawn row may be wider than the
+// frame's, blanks included, as it could take a row more on the terminal.
 func Compare(frame, drawn Grid) ([]Difference, error) {
 	if len(drawn) != len(frame) {
 		return nil, fmt.Errorf("drawn %d rows, where the frame has %d", len(drawn), len(frame))
 	}
 	var diffs []Difference
 	for r := range frame {
-		for c := range max(len(frame[r]), len(drawn[r])) {
-			want, got := at(frame[r], c), at(drawn[r], c)
+		if len(drawn[r]) > len(frame[r]) {
+			return nil, fmt.Errorf("row %d drawn %d columns, where the frame has %d", r+1, len(drawn[r]), len(frame[r]))
+		}
+		for c := range frame[r] {
+			want, got := frame[r][c], at(drawn[r], c)
 			if !alike(want, got) {
 				diffs = append(diffs, Difference{Row: r + 1, Col: c + 1, Frame: want, Drawn: got})
 			}

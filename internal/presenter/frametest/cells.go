@@ -67,10 +67,11 @@ func (g Grid) Text() []string {
 
 // Parse reads a frame's ANSI into its cells as a terminal draws them, each glyph in
 // the pen its SGR left set, carried from cell to cell and across lines until reset.
-// A newline ends a row, and the frame's last may end in one or not. Anything it
-// can't read as a terminal would, an escape that isn't SGR, an SGR attribute it
-// doesn't know, a control character or a glyph that takes no cell, is an error
-// rather than a guess.
+// A newline ends a row, so one at the frame's end opens an empty last row. A glyph
+// that takes no cell joins the cell before it. Anything it can't read as a terminal
+// would, an escape that isn't SGR, an SGR attribute it doesn't know, a control
+// character or a glyph with no cell before it to join, is an error rather than a
+// guess.
 func Parse(frame string) (Grid, error) {
 	if !utf8.ValidString(frame) {
 		return nil, errors.New("not UTF-8")
@@ -98,18 +99,17 @@ func Parse(frame string) (Grid, error) {
 			return nil, fmt.Errorf("row %d, column %d: %w", len(g), len(g[len(g)-1])+1, err)
 		}
 	}
-	if len(g[len(g)-1]) == 0 {
-		g = g[:len(g)-1]
-	}
 	return g, nil
 }
 
 func place(row *[]Cell, cluster string, width int, pen Pen) error {
 	r, _ := utf8.DecodeRuneInString(cluster)
 	switch {
-	case r < ' ' || r == 0x7f:
+	case r < ' ' || r == 0x7f || r >= 0x80 && r <= 0x9f:
 		return fmt.Errorf("control character %q", r)
-	case width < 1 || width > 2:
+	case width == 0:
+		return join(*row, cluster)
+	case width > 2:
 		return fmt.Errorf("%q takes %d cells", cluster, width)
 	}
 	*row = append(*row, Cell{Glyph: cluster, Pen: pen})
@@ -117,6 +117,18 @@ func place(row *[]Cell, cluster string, width int, pen Pen) error {
 		*row = append(*row, Cell{Pen: pen})
 	}
 	return nil
+}
+
+// join adds a cluster that takes no cell to the glyph of the cell before it, the
+// first of a wide glyph's two.
+func join(row []Cell, cluster string) error {
+	for i := len(row) - 1; i >= 0; i-- {
+		if row[i].Glyph != "" {
+			row[i].Glyph += cluster
+			return nil
+		}
+	}
+	return fmt.Errorf("%q takes no cell, and no cell before it takes it", cluster)
 }
 
 // apply sets the pen as the SGR sequence s starts with says, and returns the

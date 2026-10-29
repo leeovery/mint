@@ -2,26 +2,37 @@
 // through a node per stage, to the station it lands at. It is pure: a model of the
 // drawing in, styled terminal lines out, at a width and a colour level. It knows
 // nothing of the presenter's events; every word it draws but its own frame (the
-// point of no return, next) comes in the model.
+// point of no return, next, the wordmark) comes in the model.
 //
 // A Run is two lists of items: the settled ones, which never change once printed,
-// and the live region below them, the live node down to the end station, which is
-// redrawn in place. The rail between items is drawn from the items themselves.
+// and the live region below them, the live node down to the end station waiting,
+// which is redrawn in place. Every line the region draws is one terminal row: text
+// from the model is wrapped or cut to the width, and drawn so that nothing in it can
+// move the cursor or change the pen (see shown). The rail between items is drawn
+// from the items themselves; a run with no station, as init's, has none.
 package rail
 
 // Run is a run's drawing: its Settled items, then its Region.
 type Run struct {
 	Settled []Item
-	Region  []Item
+	Region  []Live
 }
 
 // Item is one piece of the drawing: a Header, a Station, a Node, a Question, the
-// Rule, a Body or Next.
+// Rule, a Body, an End, Next or a Version.
 type Item interface {
 	draw(l Layout) []line
-	// reached is whether the run has come this far: the rail into an item not yet
-	// reached is dim.
+	// reached is whether the run has come this far: the rail into an item, or out
+	// of one, not yet reached is dim.
 	reached() bool
+}
+
+// Live is an item the live region may hold: anything but the header, the end a run
+// landed at, next and the version, which are only ever settled. The end's URL and
+// next's commands are never cut, so they may be wider than a row.
+type Live interface {
+	Item
+	live()
 }
 
 // Header is the run's opening line: "mint ─ {Command}", and on the right
@@ -32,7 +43,12 @@ type Header struct {
 	Version string
 }
 
-// StationKind is where a station sits on the run.
+// Version is the version line: "mint v{Value}".
+type Version struct {
+	Value string
+}
+
+// StationKind is which station a Station is.
 type StationKind int
 
 const (
@@ -40,17 +56,20 @@ const (
 	Start StationKind = iota
 	// Pending is the end station waiting, dim, at the foot of the plan.
 	Pending
-	// Landed is the end station of a run that landed: ◆.
-	Landed
-	// Stopped is the end station of a run that didn't: back at the start, nothing
-	// changed, or a dry run.
-	Stopped
 )
 
-// Station is a point the rail starts from or ends at. Time is the run's, on the
-// end station; URL, under the end station, is never cut or wrapped.
+// Station is the station a run starts at, or the end station waiting for it.
 type Station struct {
 	Kind   StationKind
+	Name   string
+	Detail string
+}
+
+// End is the station a run ended at: ◆ where it Landed, ◇ where it didn't (back at
+// the start, nothing changed, a dry run). Time is the run's; URL, under it, is never
+// cut or wrapped.
+type End struct {
+	Landed bool
 	Name   string
 	Detail string
 	Time   string
@@ -75,12 +94,16 @@ const (
 	Warning
 	// Unwind is the unwind, naming what it undid.
 	Unwind
+	// LeftAlone is a file init left as it was: the whole row dim, as one to come is,
+	// but the run is past it.
+	LeftAlone
 )
 
 // Node is a stage on the rail: its mark, Name, Detail, then Tail (the answer, dim,
-// after " · "), with Time dim on the right. A Running node shows Frame, the spinner's
-// frame, as its mark and its Detail dim, or Progress where it is set. Lines hang
-// off the node under it.
+// after " · "), with Time dim on the right. A Detail's first line is the detail and
+// any after it hang under the node. A Running node shows Frame, the spinner's frame,
+// as its mark and its Detail dim, or Progress where it is set. Lines hang off the
+// node under it.
 type Node struct {
 	State    State
 	Name     string
@@ -120,11 +143,14 @@ type Hang struct {
 
 // Question is a question node: Text bold after its Name (where it has one, as the
 // exclusion check's glob), then each choice's key bold in the accent with its
-// action. A dry run's preview has no Choices.
+// action. A dry run's preview has no Choices. A question Typing reads a line: what
+// is Typed so far follows, and Layout.Cursor says where the cursor goes after it.
 type Question struct {
 	Name    string
 	Text    string
 	Choices []Choice
+	Typing  bool
+	Typed   string
 }
 
 // Choice is a key that answers a question and what it does.
@@ -140,7 +166,7 @@ type Rule struct {
 }
 
 // Body is a body shown for review (release notes, a commit message), four in behind
-// the rail, verbatim but for the wrap.
+// the rail, as it ships but for the wrap.
 type Body struct {
 	Text string
 }
@@ -157,3 +183,9 @@ type Move struct {
 	Lead    string
 	Command string
 }
+
+func (Station) live()  {}
+func (Node) live()     {}
+func (Question) live() {}
+func (Rule) live()     {}
+func (Body) live()     {}

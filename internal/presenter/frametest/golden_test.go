@@ -27,8 +27,8 @@ func TestAFrameWrittenIsKeptAsItsANSIAndItsTextAndHeldToWhatDrewIt(t *testing.T)
 		t.Errorf("the frames written are %v, want %v, the stale one deleted", files, want)
 	}
 	want := map[string]string{
-		"done-100.ansi": " \x1b[36m●\x1b[39m  \x1b[1mpush\x1b[22m  ✨\n\n next",
-		"done-100.txt":  " ●  push  ✨\n\n next\n",
+		"done-100.ansi": drawn["done-100"],
+		"done-100.txt":  " ●  push  ✨\n\n next\n\n",
 	}
 	for name, content := range want {
 		got, err := os.ReadFile(filepath.Join(dir, name))

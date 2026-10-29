@@ -39,7 +39,7 @@ func TestATimeEndsOnTheLayoutsLastColumn(t *testing.T) {
 		rail.Node{Name: "push", Detail: "main + v1.4.0 → origin, atomic", Time: "1.9s"},
 		rail.Node{State: rail.Running, Name: "notes", Detail: "writing…", Time: "38s"},
 		rail.Node{State: rail.Failed, Name: "notes", Detail: "it failed", Time: "41s"},
-		rail.Station{Kind: rail.Landed, Name: "v1.4.0", Detail: "released", Time: "1m 14s"},
+		rail.End{Landed: true, Name: "v1.4.0", Detail: "released", Time: "1m 14s"},
 	}
 	for _, width := range []int{70, 80, 100} {
 		for _, it := range items {
@@ -55,7 +55,7 @@ func timeOf(it rail.Item) string {
 	switch v := it.(type) {
 	case rail.Node:
 		return v.Time
-	case rail.Station:
+	case rail.End:
 		return v.Time
 	}
 	return ""
@@ -254,11 +254,7 @@ func TestTheRegionsHeightIsItsLineCount(t *testing.T) {
 		for name, r := range map[string]rail.Run{"running": running(), "review": review(), "long": longRegion()} {
 			l := rail.NewLayout(width, rail.TrueColour)
 			region := l.Region(r)
-			for _, ln := range region {
-				if got := cellsOf(t, ln); got > width {
-					t.Errorf("%s at %d: the region's line %q is %d cells, so it takes more than one row", name, width, ln, got)
-				}
-			}
+			heldToRows(t, width, region)
 			if all, settled := l.Draw(r), l.Settled(r, 0); len(all) != len(settled)+len(region) {
 				t.Errorf("%s at %d: the drawing is %d lines, want the settled %d and the region's %d", name, width, len(all), len(settled), len(region))
 			}
@@ -269,7 +265,7 @@ func TestTheRegionsHeightIsItsLineCount(t *testing.T) {
 func longRegion() rail.Run {
 	return rail.Run{
 		Settled: []rail.Item{releaseHeader(), releaseStart()},
-		Region: []rail.Item{
+		Region: []rail.Live{
 			rail.Node{Name: "check", Detail: long, Time: "6.2s", Lines: []rail.Hang{{Kind: rail.Note, Text: long}}},
 			rail.Body{Text: long + "\n\n" + notesBody},
 			rail.Question{Name: "docs/specs/**", Text: "Exclude it from the notes? " + long, Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
@@ -333,7 +329,14 @@ func TestTheHeadersRightSideGivesWay(t *testing.T) {
 // draw is it alone, drawn at width with no colour.
 func draw(t *testing.T, width int, it rail.Item) []string {
 	t.Helper()
-	return rail.NewLayout(width, rail.NoColour).Draw(rail.Run{Settled: []rail.Item{it}})
+	return drawIn(width, rail.NoColour, it)
+}
+
+// drawIn is items drawn at width and level, settled in a run whose end station
+// waits in the region undrawn: a run with a station, so the rail shows.
+func drawIn(width int, level rail.Level, items ...rail.Item) []string {
+	r := rail.Run{Settled: items, Region: []rail.Live{rail.Station{Kind: rail.Pending}}}
+	return rail.NewLayout(width, level).Settled(r, 0)
 }
 
 // cellsOf is how many cells line takes on a terminal.

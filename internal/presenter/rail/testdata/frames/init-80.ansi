@@ -1,0 +1,6 @@
+ [1;38;2;95;215;175mmint[22;39m [2m─[22m init                                              [2m~/Code/pigeon · v0.1.2[22m
+
+ [38;2;95;215;175m●[39m  [1m.mint.toml[22m    created
+ [2m○[22m  [2mrelease[22m       [2malready there · --force overwrites it[22m
+ [38;2;95;215;175m●[39m  [1m.github/workflows/release.yml[22m
+                  created

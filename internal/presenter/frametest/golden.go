@@ -99,8 +99,8 @@ func kept(t *testing.T, dir string) []string {
 	return names
 }
 
-// write keeps each frame drawn in dir as its ANSI, with no newline after its last
-// row, and its text, and deletes the frames nothing draws.
+// write keeps each frame drawn in dir as its ANSI, as drawn, and its text, a line a
+// row, and deletes the frames nothing draws.
 func write(t *testing.T, dir string, drawn map[string]string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -119,7 +119,7 @@ func write(t *testing.T, dir string, drawn map[string]string) {
 			t.Fatalf("parsing what draws %s: %v", name, err)
 		}
 		text := strings.Join(g.Text(), "\n") + "\n"
-		if err := os.WriteFile(filepath.Join(dir, name+ansiExt), []byte(strings.TrimSuffix(frame, "\n")), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name+ansiExt), []byte(frame), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(dir, name+textExt), []byte(text), 0o644); err != nil {

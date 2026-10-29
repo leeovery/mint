@@ -44,8 +44,8 @@ func prepared() []rail.Item {
 }
 
 // ahead is the release's plan from the record on, the end station waiting.
-func ahead() []rail.Item {
-	return []rail.Item{
+func ahead() []rail.Live {
+	return []rail.Live{
 		rail.Node{State: rail.ToCome, Name: "record", Detail: "CHANGELOG.md · package.json"},
 		rail.Rule{},
 		rail.Node{State: rail.ToCome, Name: "push", Detail: "main + v1.4.0 → origin, atomic"},
@@ -60,15 +60,17 @@ func running() rail.Run {
 		State: rail.Running, Name: "notes", Time: "38s", Frame: 2,
 		Progress: &rail.Progress{Label: "part 3 of 4", Done: 3, Total: 4},
 	}
-	return rail.Run{Settled: prepared(), Region: append([]rail.Item{notes}, ahead()...)}
+	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes}, ahead()...)}
 }
 
+// review is the release at its review: the notes node the question asks about sits
+// in the region with the body, as it settles with its answer.
 func review() rail.Run {
-	settled := append(prepared(), rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"})
+	notes := rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"}
 	question := rail.Question{Text: "Release with these notes?", Choices: []rail.Choice{
 		{Key: "y", Action: "release"}, {Key: "n", Action: "abort"}, {Key: "e", Action: "edit"}, {Key: "r", Action: "regenerate"},
 	}}
-	return rail.Run{Settled: settled, Region: append([]rail.Item{rail.Body{Text: notesBody}, question}, ahead()...)}
+	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes, rail.Body{Text: notesBody}, question}, ahead()...)}
 }
 
 func done() rail.Run {
@@ -79,7 +81,7 @@ func done() rail.Run {
 		rail.Node{Name: "push", Detail: "main + v1.4.0 → origin, atomic", Time: "1.9s"},
 		rail.Node{Name: "publish", Detail: "GitHub release", Time: "1.3s"},
 		rail.Node{Name: "post_release", Detail: "./scripts/notify.sh", Time: "0.8s"},
-		rail.Station{Kind: rail.Landed, Name: "v1.4.0", Detail: "released", Time: "1m 14s", URL: "https://github.com/acme/pigeon/releases/tag/v1.4.0"},
+		rail.End{Landed: true, Name: "v1.4.0", Detail: "released", Time: "1m 14s", URL: "https://github.com/acme/pigeon/releases/tag/v1.4.0"},
 	)}
 }
 
@@ -100,7 +102,7 @@ func failed() rail.Run {
 			{Kind: rail.Path, Text: savedPath},
 		}},
 		rail.Node{State: rail.Unwind, Name: "unwind", Detail: "pre-tag artifacts commit removed"},
-		rail.Station{Kind: rail.Stopped, Name: "v1.3.2", Detail: "back where it started · nothing pushed", Time: "47s"},
+		rail.End{Name: "v1.3.2", Detail: "back where it started · nothing pushed", Time: "47s"},
 		rail.Next{Moves: []rail.Move{
 			{Lead: "Tidy the saved part notes, then release with them:", Command: "mint release -m --notes-file " + savedPath},
 			{Lead: "Release with the commit-subject list:", Command: "mint release -m --no-ai"},
@@ -119,7 +121,7 @@ func commit() rail.Run {
 		rail.Node{Name: "stage", Detail: "4 files"},
 		rail.Node{Name: "commit", Detail: "a3f9c21"},
 		rail.Node{Name: "push", Detail: "main → origin", Time: "1.2s"},
-		rail.Station{Kind: rail.Landed, Name: "main", Detail: "a3f9c21 · pushed", Time: "4.8s"},
+		rail.End{Landed: true, Name: "main", Detail: "a3f9c21 · pushed", Time: "4.8s"},
 	}}
 }
 
@@ -136,10 +138,35 @@ func regenerated() rail.Run {
 	}
 	items = append(items,
 		rail.Node{Name: "CHANGELOG.md", Detail: "rebuilt, 7 entries · committed and pushed", Time: "2.4s"},
-		rail.Station{Kind: rail.Landed, Name: "done", Detail: "6 of 7 versions regenerated · 1 skipped", Time: "1m 07s"},
+		rail.End{Landed: true, Name: "done", Detail: "6 of 7 versions regenerated · 1 skipped", Time: "1m 07s"},
 		rail.Next{Moves: []rail.Move{
 			{Lead: "v1.2.0 kept its old notes. To try it again:", Command: "mint release regenerate v1.2.0 --target both"},
 		}},
 	)
 	return rail.Run{Settled: items}
+}
+
+// dryRun is a release's dry run: the review it would stop at, previewed with no
+// keys, and the stages it skipped left hollow above its end.
+func dryRun() rail.Run {
+	return rail.Run{Settled: append(prepared(),
+		rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"},
+		rail.Question{Text: "Release with these notes?"},
+		rail.Node{State: rail.ToCome, Name: "record", Detail: "CHANGELOG.md · package.json"},
+		rail.Rule{},
+		rail.Node{State: rail.ToCome, Name: "push", Detail: "main + v1.4.0 → origin, atomic"},
+		rail.Node{State: rail.ToCome, Name: "publish", Detail: "GitHub release"},
+		rail.Node{State: rail.ToCome, Name: "post_release", Detail: "./scripts/notify.sh"},
+		rail.End{Name: "v1.4.0", Detail: "dry run · nothing changed", Time: "1m 01s"},
+	)}
+}
+
+// initialised is init: no stations, so no rail, a row per file.
+func initialised() rail.Run {
+	return rail.Run{Settled: []rail.Item{
+		rail.Header{Command: "init", Where: "~/Code/pigeon", Version: "0.1.2"},
+		rail.Node{Name: ".mint.toml", Detail: "created"},
+		rail.Node{State: rail.LeftAlone, Name: "release", Detail: "already there · --force overwrites it"},
+		rail.Node{Name: ".github/workflows/release.yml", Detail: "created"},
+	}}
 }

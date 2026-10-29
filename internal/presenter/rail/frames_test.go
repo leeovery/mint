@@ -21,6 +21,8 @@ func TestFrames(t *testing.T) {
 		"failed":  failed,
 		"commit":  commit,
 		"regen":   regenerated,
+		"dry-run": dryRun,
+		"init":    initialised,
 	}
 	drawn := map[string]string{}
 	for name, screen := range screens {

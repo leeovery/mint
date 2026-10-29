@@ -31,10 +31,10 @@ func TestEachStateDrawsItsOwnMarkWithNoColour(t *testing.T) {
 		{name: "the end station waiting", item: rail.Station{Kind: rail.Pending, Name: "v1.4.0"}, want: []string{" ◇  v1.4.0"}},
 		{
 			name: "the end station landed",
-			item: rail.Station{Kind: rail.Landed, Name: "v1.4.0", Detail: "released", URL: "https://github.com/acme/pigeon/releases/tag/v1.4.0"},
+			item: rail.End{Landed: true, Name: "v1.4.0", Detail: "released", URL: "https://github.com/acme/pigeon/releases/tag/v1.4.0"},
 			want: []string{" ◆  v1.4.0        released", "                  https://github.com/acme/pigeon/releases/tag/v1.4.0"},
 		},
-		{name: "the end station stopped", item: rail.Station{Kind: rail.Stopped, Name: "v1.4.0", Detail: "dry run · nothing changed"}, want: []string{" ◇  v1.4.0        dry run · nothing changed"}},
+		{name: "the end station stopped", item: rail.End{Name: "v1.4.0", Detail: "dry run · nothing changed"}, want: []string{" ◇  v1.4.0        dry run · nothing changed"}},
 		{
 			name: "a question",
 			item: rail.Question{Text: "Commit this message?", Choices: []rail.Choice{{Key: "y", Action: "commit"}, {Key: "n", Action: "abort"}}},
@@ -122,7 +122,7 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 		},
 		{
 			name:  "the point of no return crossed, solid",
-			items: []rail.Item{done, rail.Rule{Crossed: true}, done, rail.Station{Kind: rail.Landed, Name: "v1.4.0"}},
+			items: []rail.Item{done, rail.Rule{Crossed: true}, done, rail.End{Landed: true, Name: "v1.4.0"}},
 			want:  []string{" ●  record        CHANGELOG.md", " │", " ┿━━ point of no return " + strings.Repeat("━", 76), " ●  record        CHANGELOG.md", " │", " ◆  v1.4.0"},
 		},
 		{
@@ -132,14 +132,14 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 		},
 		{
 			name:  "a blank over next",
-			items: []rail.Item{rail.Station{Kind: rail.Stopped, Name: "v1.3.2"}, rail.Next{Moves: []rail.Move{{Lead: "Try again."}}}},
+			items: []rail.Item{rail.End{Name: "v1.3.2"}, rail.Next{Moves: []rail.Move{{Lead: "Try again."}}}},
 			want:  []string{" ◇  v1.3.2", "", " next", "   Try again."},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := rail.NewLayout(100, rail.NoColour).Draw(rail.Run{Settled: tt.items})
+			got := drawIn(100, rail.NoColour, tt.items...)
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("drawn\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(tt.want, "\n"))
 			}

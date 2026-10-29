@@ -126,7 +126,7 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 		},
 		{
 			name: "the end station landed: its mark in the accent, its time dim, its URL in the accent",
-			item: rail.Station{Kind: rail.Landed, Name: "v1.4.0", Detail: "released", Time: "1m 14s", URL: "https://x.test/v1.4.0"},
+			item: rail.End{Landed: true, Name: "v1.4.0", Detail: "released", Time: "1m 14s", URL: "https://x.test/v1.4.0"},
 			want: func(a string) []string {
 				return []string{
 					" " + acc(a, "◆") + "  " + bld("v1.4.0") + pad(8) + "released" + pad(68) + dm("1m 14s"),
@@ -156,12 +156,12 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			for level, a := range accents {
-				got := rail.NewLayout(100, level).Draw(rail.Run{Settled: []rail.Item{tt.item}})
+				got := drawIn(100, level, tt.item)
 				if want := tt.want(a); !slices.Equal(got, want) {
 					t.Errorf("at level %d drawn\n%q\nwant\n%q", level, got, want)
 				}
 			}
-			for _, ln := range rail.NewLayout(100, rail.NoColour).Draw(rail.Run{Settled: []rail.Item{tt.item}}) {
+			for _, ln := range drawIn(100, rail.NoColour, tt.item) {
 				if strings.Contains(ln, "\x1b") {
 					t.Errorf("with no colour drawn %q, want no escape", ln)
 				}
@@ -172,15 +172,24 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 
 func TestTheDottedRailAndTheSolidRailInEscapes(t *testing.T) {
 	t.Parallel()
-	items := []rail.Item{rail.Node{State: rail.Running, Name: "notes"}, rail.Node{State: rail.ToCome, Name: "push"}, rail.Station{Kind: rail.Landed, Name: "v1"}}
+	items := []rail.Item{
+		rail.Node{Name: "record"},
+		rail.Rule{Crossed: true},
+		rail.Node{State: rail.Running, Name: "notes"},
+		rail.Node{State: rail.ToCome, Name: "push"},
+		rail.Station{Kind: rail.Pending, Name: "v1"},
+	}
 	for level, a := range accents {
-		got := rail.NewLayout(100, level).Draw(rail.Run{Settled: items})
+		got := drawIn(100, level, items...)
 		want := []string{
+			" " + acc(a, "●") + "  " + bld("record"),
+			" " + acc(a, "│"),
+			" " + acc(a, "┿") + dm("━━ point of no return "+rule(76)),
 			" " + acc(a, "⠋") + "  " + bld("notes"),
 			" " + dm("┆"),
 			" " + dm("○") + "  " + dm("push"),
-			" " + acc(a, "│"),
-			" " + acc(a, "◆") + "  " + bld("v1"),
+			" " + dm("┆"),
+			" " + dm("◇") + "  " + dm("v1"),
 		}
 		if !slices.Equal(got, want) {
 			t.Errorf("at level %d drawn\n%q\nwant\n%q", level, got, want)

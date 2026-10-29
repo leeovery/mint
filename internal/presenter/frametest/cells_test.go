@@ -70,9 +70,14 @@ func TestParseReadsSGRAsATerminalDoes(t *testing.T) {
 			want:  frametest.Grid{{{Glyph: "✨", Pen: none}, {Pen: none}, {Glyph: "A", Pen: none}}},
 		},
 		{
-			name:  "a last newline, ending the last row",
+			name:  "a last newline, opening an empty last row",
 			frame: "A\n\nB\n",
-			want:  frametest.Grid{inked("A", none), nil, inked("B", none)},
+			want:  frametest.Grid{inked("A", none), nil, inked("B", none), nil},
+		},
+		{
+			name:  "a glyph that takes no cell, joining the one before",
+			frame: "A\u200bB✨\u0301",
+			want:  frametest.Grid{{{Glyph: "A\u200b", Pen: none}, {Glyph: "B", Pen: none}, {Glyph: "✨\u0301", Pen: none}, {Pen: none}}},
 		},
 	}
 	for _, tt := range tests {
@@ -106,7 +111,8 @@ func TestParseRefusesWhatItWouldReadOtherwiseThanATerminal(t *testing.T) {
 		{name: "an escape never ended", frame: "A\x1b[1", want: "never ends"},
 		{name: "a tab", frame: "A\tB", want: `row 1, column 2: control character '\t'`},
 		{name: "a carriage return", frame: "A\r\nB", want: `control character '\r'`},
-		{name: "a mark that takes no cell", frame: "́", want: "takes 0 cells"},
+		{name: "a C1 control", frame: "A\u009b31mB", want: `control character '\u009b'`},
+		{name: "a mark that takes no cell, with none before it", frame: "\u200b", want: "takes no cell, and no cell before it takes it"},
 		{name: "bytes that aren't UTF-8", frame: "A\xff", want: "not UTF-8"},
 	}
 	for _, tt := range tests {
@@ -151,10 +157,6 @@ func TestCompareHoldsEachCellToItsFrame(t *testing.T) {
 		{name: "a background painted", change: func(g frametest.Grid) frametest.Grid { g[0][3].BG = cyan; return g }, want: [][2]int{{1, 4}}},
 		{name: "a blank's foreground and weight", change: func(g frametest.Grid) frametest.Grid { g[0][2].FG = mint; g[0][2].Bold = true; return g }},
 		{name: "a row cut short of a glyph", change: func(g frametest.Grid) frametest.Grid { g[0] = g[0][:3]; return g }, want: [][2]int{{1, 4}}},
-		{name: "a row longer by blanks only", change: func(g frametest.Grid) frametest.Grid {
-			g[0] = append(g[0], frametest.Cell{Glyph: " ", Pen: none})
-			return g
-		}},
 		{name: "a wide glyph made narrow", change: func(g frametest.Grid) frametest.Grid { g[1] = g[1][:2]; g[1][1].Glyph = "*"; return g }, want: [][2]int{{2, 2}, {2, 3}}},
 	}
 	for _, tt := range tests {
@@ -176,11 +178,40 @@ func TestCompareHoldsEachCellToItsFrame(t *testing.T) {
 	}
 }
 
-func TestCompareRefusesAGridOfOtherRows(t *testing.T) {
+func TestCompareRefusesAGridOfAnotherSize(t *testing.T) {
 	t.Parallel()
 	frame := frametest.Grid{inked("ab", none), inked("cd", none)}
-	if _, err := frametest.Compare(frame, frame[:1]); err == nil || err.Error() != "drawn 1 rows, where the frame has 2" {
-		t.Errorf("Compare error = %v, want the rows counted", err)
+	tests := []struct {
+		name  string
+		drawn frametest.Grid
+		want  string
+	}{
+		{name: "a row fewer", drawn: frame[:1], want: "drawn 1 rows, where the frame has 2"},
+		{name: "an empty row more", drawn: append(clone(frame), nil), want: "drawn 3 rows, where the frame has 2"},
+		{name: "a row wider by a blank", drawn: frametest.Grid{inked("ab ", none), frame[1]}, want: "row 1 drawn 3 columns, where the frame has 2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := frametest.Compare(frame, tt.drawn); err == nil || err.Error() != tt.want {
+				t.Errorf("Compare error = %v, want %s", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestATrailingNewlineIsARowOfItsOwn(t *testing.T) {
+	t.Parallel()
+	frame, err := frametest.Parse("A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	drawn, err := frametest.Parse("A\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := frametest.Compare(frame, drawn); err == nil {
+		t.Error("a frame drawn with a blank line more compares alike, want the rows counted")
 	}
 }
 
