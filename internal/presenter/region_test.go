@@ -77,21 +77,28 @@ func TestTheLiveRegionWritesExactlyTheseEscapes(t *testing.T) {
 			},
 		},
 		{
-			name: "the cursor placed on a row for a typed line, and the echo counted on the way back",
+			name: "the cursor placed on a row for a typed line, then the region given up to the echo",
 			steps: []regionStep{
-				{call: draw(nil, []string{"a", "? b", "c"}), want: "a\n? b\nc\n"},
-				{name: "placed", call: func(r *presenter.LiveRegion) { r.Place(1, 4) }, want: "\r\x1b[2A\x1b[4C"},
-				{name: "the echo moves it", call: func(r *presenter.LiveRegion) { r.Moved(1) }, want: ""},
-				{name: "redrawn from its first row", call: draw(nil, []string{"d"}), want: "\r\x1b[2A\x1b[Jd\n"},
-				{name: "placed at no row it has", call: func(r *presenter.LiveRegion) { r.Place(1, 0) }, want: ""},
+				{call: draw(nil, []string{"? a", "b", "c"}), want: "? a\nb\nc\n"},
+				{name: "placed at no row it has", call: func(r *presenter.LiveRegion) { r.Place(3, 0) }, want: ""},
+				{name: "placed", call: func(r *presenter.LiveRegion) { r.Place(0, 4) }, want: "\r\x1b[3A\x1b[4C"},
+				{name: "the line ended in its Enter", call: func(r *presenter.LiveRegion) { r.Released(true) }, want: "\r\x1b[J"},
+				{name: "drawn afresh, nothing to go back over", call: draw(nil, []string{"d"}), want: "d\n"},
 			},
 		},
 		{
-			name: "an echo that scrolled the region's head away is gone back over only to the screen's top",
+			name: "a line the input closed on before its Enter is ended first",
 			steps: []regionStep{
-				{call: func(r *presenter.LiveRegion) { r.Draw(nil, []string{"? a", "b"}, 5) }, want: "? a\nb\n"},
-				{name: "the echo moves it past the screen", call: func(r *presenter.LiveRegion) { r.Moved(10) }, want: ""},
-				{name: "redrawn from the screen's top", call: func(r *presenter.LiveRegion) { r.Draw(nil, []string{"c"}, 5) }, want: "\r\x1b[4A\x1b[Jc\n"},
+				{call: draw(nil, []string{"? a"}), want: "? a\n"},
+				{name: "placed", call: func(r *presenter.LiveRegion) { r.Place(0, 4) }, want: "\r\x1b[1A\x1b[4C"},
+				{name: "released", call: func(r *presenter.LiveRegion) { r.Released(false) }, want: "\n\r\x1b[J"},
+			},
+		},
+		{
+			name: "a terminal made shorter is gone back over only to the screen's top",
+			steps: []regionStep{
+				{call: func(r *presenter.LiveRegion) { r.Draw(nil, lines(10, "line "), 24) }, want: strings.Join(lines(10, "line "), "\n") + "\n"},
+				{name: "redrawn 5 rows tall", call: func(r *presenter.LiveRegion) { r.Draw(nil, []string{"c"}, 5) }, want: "\r\x1b[4A\x1b[Jc\n"},
 			},
 		},
 	}
@@ -140,18 +147,6 @@ func TestTheRegionKeepsToTheTerminalsHeightLessOneRow(t *testing.T) {
 	}
 }
 
-func TestTheCursorIsPlacedOnlyOnARowOfTheRegion(t *testing.T) {
-	t.Parallel()
-	r := presenter.NewLiveRegion(&bytes.Buffer{})
-	r.Draw(nil, []string{"a", "? b"}, 24)
-	if r.Place(2, 0) {
-		t.Error("Place reported the cursor placed on a row the region hasn't")
-	}
-	if !r.Place(1, 4) {
-		t.Error("Place reported the cursor not placed on the region's own row")
-	}
-}
-
 func TestRedrawsLeaveTheScreenAsTheLastDrawHasIt(t *testing.T) {
 	t.Parallel()
 	term := frametest.NewTerminal(20, 6)
@@ -164,12 +159,12 @@ func TestRedrawsLeaveTheScreenAsTheLastDrawHasIt(t *testing.T) {
 	if _, err := term.Write([]byte("typed\n")); err != nil {
 		t.Fatal(err)
 	}
-	r.Moved(1)
+	r.Released(true)
 	r.Draw([]string{"answered"}, []string{"plan 1"}, 6)
 	if err := term.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := term.Grid().Text(), []string{"header", "done 1", "answered", "plan 1"}; !slices.Equal(got, want) {
+	if got, want := term.Grid().Text(), []string{"header", "done 1", "? question typed", "answered", "plan 1"}; !slices.Equal(got, want) {
 		t.Errorf("the screen reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }

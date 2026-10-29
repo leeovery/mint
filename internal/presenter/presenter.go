@@ -384,6 +384,9 @@ type PlanStage struct {
 	Key    string
 	Name   string
 	Detail string
+	// Inside marks a stage that runs inside the next planned stage, which starts
+	// first: the exclusion check, inside the notes. Plain ignores it.
+	Inside bool
 }
 
 // Notes is the ShowNotes payload: the generated release notes the engine is

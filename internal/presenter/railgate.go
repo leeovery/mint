@@ -4,8 +4,6 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/rivo/uniseg"
-
 	"mint/internal/presenter/rail"
 )
 
@@ -16,9 +14,6 @@ const (
 	// reviewName names the row that records an answer about a node already settled
 	// above the question, as a body too tall for the region leaves it.
 	reviewName = "review"
-	// unknownCols is the columns a terminal that gives none is taken as, for the rows
-	// a typed answer's echo takes.
-	unknownCols = 80
 )
 
 // Prompt asks g as a question node on the rail and returns its answer. Under -y
@@ -67,10 +62,10 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 	for {
 		line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
+		p.released(q, ended)
 		if err != nil {
 			return "", p.answered(g, q, "", err)
 		}
-		p.echoed(line, ended)
 		if c, ok := parseChoice(line, g); ok {
 			return c, p.answered(g, q, c, nil)
 		}
@@ -80,8 +75,9 @@ func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 
 // AskLine asks prompt as a question node reading a typed line, the cursor on it, and
 // returns the line verbatim. What is typed is the terminal's echo, so nothing redraws
-// while the line is read. Without an interactive stdin it fails loud, rendered, with
-// ErrNotInteractive, -y or not; input closed returns ErrInputClosed, not rendered.
+// while the line is read, and the question and the line stay as typed. Without an
+// interactive stdin it fails loud, rendered, with ErrNotInteractive, -y or not;
+// input closed returns ErrInputClosed, not rendered.
 func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	p.mu.Lock()
 	if !p.stdinInteractive {
@@ -92,9 +88,7 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	q := p.open(&part{kind: questionPart, question: rail.Question{Text: prompt, Typing: true}}, "")
 	p.mu.Unlock()
 	line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
-	if err == nil {
-		p.echoed(line, ended)
-	}
+	p.released(q, ended)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.dismiss(q)
@@ -129,17 +123,48 @@ func (p *RailPresenter) open(q *part, stage string) *part {
 }
 
 // present draws the open question q, the cursor where it reads a typed line for the
-// terminal to echo it there. An echo needs room below the question, so for one
-// everything above the question settles first and the question heads the region:
-// once the echo has moved the cursor, the writer goes back up no more than the rail
-// line over the question, its row and the rows the echo took, and only an echo
-// taller than the terminal scrolls the question off it.
+// terminal to echo it there. The question and the line typed stay on the terminal as
+// typed, the region starting afresh under them once it is read (released), so for
+// an echo everything above the question settles first and the question heads the
+// region. Where something still running above it can't settle, the line is read
+// under the settled lines instead.
 func (p *RailPresenter) present(q *part) {
-	if q.question.Typing && p.echo && p.fits {
-		p.run.settleAbove(q)
+	rows := p.measure()
+	if q.question.Typing && p.echo && p.fits && !p.run.settleAbove(q) {
+		p.readBelow(q, rows)
+		return
 	}
 	p.redraw()
 	p.place(q)
+}
+
+// readBelow takes the region off the terminal and prints the question q under the
+// settled lines, its line to be typed on the row under it; the region comes back
+// below the line once it is read, its stages running still live.
+func (p *RailPresenter) readBelow(q *part, rows int) {
+	p.region.Erase()
+	p.run.settleItem(q.question)
+	q.shown = true
+	run := p.drawing()
+	p.region.Draw(p.layout.Settled(run, p.run.printed), nil, rows)
+	p.run.printed = len(run.Settled)
+	p.syncTicker()
+}
+
+// released ends the read of a typed line the terminal echoed, ended where it ended in
+// a newline: the question and the line stay where they were typed, the question kept
+// as printed, and the region starts afresh under them.
+func (p *RailPresenter) released(q *part, ended bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.echo {
+		return
+	}
+	p.region.Released(ended)
+	if !q.shown {
+		p.run.record(q.question)
+		q.shown = true
+	}
 }
 
 // retype turns the open question q, asked for a keypress the terminal wouldn't go
@@ -152,14 +177,13 @@ func (p *RailPresenter) retype(q *part) {
 	p.present(q)
 }
 
-// reask draws the question q again after a typed line that answered nothing, for
-// another to be typed: where there is no region, it prints again.
+// reask asks the question q again after a typed line that answered nothing, for
+// another to be typed under it.
 func (p *RailPresenter) reask(q *part) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	q.shown = false
-	p.redraw()
-	p.place(q)
+	p.present(q)
 }
 
 // answered takes q off the rail and, unless err ended the read, settles c as g's
@@ -213,10 +237,11 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 
 // answer settles c as g's answer, auto where -y took it: the exclusion pause's as a
 // line under the check's node; any other's as the tail of the node it asked about,
-// what hung above it gone, or, that node settled above, on a row of its own; a gate
-// asked before the run's stages as a row naming what was chosen. An edit or a
-// regenerate settles nothing: it opens the question's loop, until the next answer to
-// any gate, the body is shown again, in place, and the question comes back.
+// what hung above it gone, or, that node settled above or a body of the question
+// settled, on a row of its own under the last body; a gate asked before the run's
+// stages as a row naming what was chosen. An edit or a regenerate settles nothing:
+// it opens the question's loop, until the next answer to any gate, the body is
+// shown again, in place, and the question comes back.
 func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 	p.run.looping = false
 	if x := g.Suggestion; x != nil {
@@ -227,12 +252,14 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 		p.run.looping, p.run.asked = true, g.Stage
 		return
 	}
-	if body := p.run.partOf(bodyPart); body != nil {
+	out := p.run.bodyOut
+	p.run.bodyOut = false
+	if body := p.run.partOf(bodyPart); body != nil && !body.out {
 		p.run.remove(body)
 	}
 	tail := answerTail(g, c, auto)
 	switch asked := p.run.find(g.Stage); {
-	case asked != nil:
+	case asked != nil && (!out || asked.node.State == rail.ToCome):
 		if asked.node.State == rail.ToCome {
 			asked.node.State, asked.node.Detail = rail.Done, firstOf(g.Detail, asked.plan)
 		}
@@ -240,7 +267,7 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 		p.run.touched = asked
 	case g.Stage == "":
 		p.run.add(rail.Node{Name: g.Subject, Detail: chosen(g, c), Tail: autoTail(auto)})
-	case p.run.gone[g.Stage]:
+	case out || p.run.gone[g.Stage]:
 		p.run.add(rail.Node{Name: reviewName, Detail: tail})
 	default:
 		n := p.run.stage(g.Stage, g.Stage).node
@@ -313,67 +340,13 @@ func (p *RailPresenter) failNotInteractive(label string) {
 	p.redraw()
 }
 
-// place puts the cursor where the open question q reads its typed line, for the
-// terminal to echo it there. Where it can't, the cursor stays at the start of the
-// row under the region, and the echo starts there.
+// place puts the cursor where the open question q reads its typed line, at the
+// question's end, for the terminal to echo it there.
 func (p *RailPresenter) place(q *part) {
-	p.typedAt = 0
 	if q == nil || !q.question.Typing || !p.fits {
 		return
 	}
-	if row, col, ok := p.layout.Cursor(p.drawing()); ok && p.region.Place(row, col) {
-		p.typedAt = col
+	if row, col, ok := p.layout.Cursor(p.drawing()); ok {
+		p.region.Place(row, col)
 	}
-}
-
-// echoed records the rows the terminal moved the cursor down echoing line, typed at
-// the question, and the Enter after it where the line ended in one.
-func (p *RailPresenter) echoed(line string, ended bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if !p.echo {
-		return
-	}
-	cols := p.cols
-	if cols <= 0 {
-		cols = unknownCols
-	}
-	p.region.Moved(echoRows(line, p.typedAt, cols, ended))
-}
-
-// tabStop is the columns apart a terminal's tab stops are.
-const tabStop = 8
-
-// echoRows is how many rows down a terminal cols wide leaves the cursor echoing line
-// from column at, as it draws it: a tab to the next tab stop, a control character
-// as ^X, a cluster that won't fit on the row on the next, and the Enter after it,
-// where the line ended in one, a row down.
-func echoRows(line string, at, cols int, ended bool) int {
-	col, rows := at, 0
-	g := uniseg.NewGraphemes(line)
-	for g.Next() {
-		cluster := g.Str()
-		if cluster == "\t" {
-			col = min((col/tabStop+1)*tabStop, cols-1)
-			continue
-		}
-		w := echoWidth(cluster)
-		if col+w > cols {
-			rows, col = rows+1, 0
-		}
-		col += w
-	}
-	if ended {
-		rows++
-	}
-	return rows
-}
-
-// echoWidth is the columns a terminal's echo of cluster takes: a control character
-// two, as ^X.
-func echoWidth(cluster string) int {
-	if len(cluster) == 1 && (cluster[0] < ' ' || cluster[0] == 0x7f) {
-		return 2
-	}
-	return uniseg.StringWidth(cluster)
 }

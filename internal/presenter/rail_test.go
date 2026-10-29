@@ -569,3 +569,24 @@ func TestRail_UnderSixtyColumnsADryRunPrintsTheStagesItPassedInPlanOrder(t *test
 		t.Errorf("the check, which ran, is drawn as passed by:\n%s", strings.Join(screen, "\n"))
 	}
 }
+
+// TestRail_UnderSixtyColumnsADryRunWithNoCheckPrintsItsSkippedHookFirst pins that
+// the stage a starting one leaves to come above it is only one planned to run
+// inside it: a dry run with no exclusion check, its notes from a file or with no
+// AI, prints its skipped pre_tag above the notes running.
+func TestRail_UnderSixtyColumnsADryRunWithNoCheckPrintsItsSkippedHookFirst(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 50, 40, answers())
+	plan := releasePlan()
+	plan.Stages = slices.DeleteFunc(plan.Stages, func(s presenter.PlanStage) bool { return s.Inside })
+	r.RunStarted(releaseStarted(true))
+	r.StageSucceeded(presenter.StageSuccess{Name: "version", Key: "version", Detail: "v1.4.0 (minor bump)"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "preflight", Key: "preflight", Detail: preflightDetail})
+	r.ShowPlan(plan)
+	r.Warn(presenter.Warning{Label: "dry-run", Message: "skipping pre_tag hook"})
+	r.StageStarted(notesStarted())
+	screen := r.screen(t)
+	if hook, notes := slices.Index(screen, " ○  pre_tag"), slices.Index(screen, " ⠋  notes"); hook < 0 || notes < hook {
+		t.Errorf("the terminal shows\n%s\nwant the skipped pre_tag above the notes running", strings.Join(screen, "\n"))
+	}
+}

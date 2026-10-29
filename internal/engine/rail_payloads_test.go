@@ -233,7 +233,7 @@ func TestRelease_Rail_ThePlanLaysOutEveryStageWithThePushAsThePointOfNoReturn(t 
 	want := []presenter.PlanStage{
 		{Key: "version", Name: "version", Detail: "v1.2.4 (patch bump)"},
 		{Key: "preflight", Name: "preflight", Detail: "tree clean, on main, v1.2.4 free, origin in sync"},
-		{Key: "check", Name: "check", Detail: "files that don't belong in the notes"},
+		{Key: "check", Name: "check", Detail: "files that don't belong in the notes", Inside: true},
 		{Key: "notes", Name: "notes", Detail: "written by the AI"},
 		{Key: "record", Name: "record", Detail: "CHANGELOG.md"},
 		{Key: "push", Name: "push", Detail: "main + v1.2.4 → origin, atomic"},

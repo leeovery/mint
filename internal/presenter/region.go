@@ -30,8 +30,9 @@ func cursorForward(n int) string { return fmt.Sprintf("\x1b[%dC", n) }
 // rows the cursor sits below the region's first, the count a redraw moves up by.
 //
 // It never moves up more rows than the terminal has above the cursor's row, its
-// height less one: where an echo scrolled the region's head away, up counts rows
-// that are gone, and it goes back up only as far as the screen's top.
+// height less one, so a terminal made shorter since the last draw takes it back only
+// as far as the screen's top. A typed line's echo it never counts: the terminal
+// draws it however the line was edited, and the writer gives the region up to it.
 type liveRegion struct {
 	out io.Writer
 	// shown is whether a region is on the terminal to be redrawn.
@@ -85,11 +86,10 @@ func (r *liveRegion) Erase() {
 
 // Place puts the cursor at column col of the region's row, both counted from 0,
 // for a question that reads a typed line: the terminal echoes what is typed there.
-// It does nothing where the region has no such row, and reports whether it moved
-// the cursor.
-func (r *liveRegion) Place(row, col int) bool {
+// It does nothing where the region has no such row.
+func (r *liveRegion) Place(row, col int) {
 	if !r.shown || row < 0 || row >= r.up {
-		return false
+		return
 	}
 	var b strings.Builder
 	b.WriteString(toLineStart)
@@ -99,16 +99,21 @@ func (r *liveRegion) Place(row, col int) bool {
 	}
 	r.up = row
 	r.write(b.String())
-	return true
 }
 
-// Moved records that the terminal moved the cursor rows further down the region by
-// itself, as echoing a typed line and its Enter does, so the next redraw goes back
-// up past them.
-func (r *liveRegion) Moved(rows int) {
-	if r.shown {
-		r.up += rows
+// Released gives the region up to a typed line the terminal echoed: the question,
+// the line and its Enter stay where they were typed, the answer's record. From the
+// start of the row under them, a newline first where the read ended without one,
+// everything below is erased and the region starts afresh, nothing to go back over.
+func (r *liveRegion) Released(ended bool) {
+	var b strings.Builder
+	if !ended {
+		b.WriteString("\n")
 	}
+	b.WriteString(toLineStart)
+	b.WriteString(eraseBelow)
+	r.shown, r.up = false, 0
+	r.write(b.String())
 }
 
 // back writes the way back to the region's first row, or the screen's top where

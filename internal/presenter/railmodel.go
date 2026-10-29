@@ -45,6 +45,11 @@ type part struct {
 	hidden bool
 	// passed is a stage a dry run went past without running it, hollow for good.
 	passed bool
+	// inside is a planned stage that runs inside the next one, which starts first.
+	inside bool
+	// out is a body shown once one before it, for the same question, has settled: it
+	// settles too, as it is shown.
+	out bool
 	// shown is a stage running or a question printed as it was when it showed, where
 	// there is no region to hold it.
 	shown    bool
@@ -113,6 +118,8 @@ func (pt *part) finished() bool {
 		return pt.crossed
 	case previewPart:
 		return true
+	case bodyPart:
+		return pt.out
 	}
 	return false
 }
@@ -168,7 +175,12 @@ type runModel struct {
 	looping bool
 	asked   string
 	// planned are the plan's stage keys.
-	planned         map[string]bool
+	planned map[string]bool
+	// bodyOut is a body of the question under review settled, too tall for the region
+	// or ahead of a typed read: every later one settles as it is shown, and the answer
+	// records on a row under the last, so the scrollback ends with the body that
+	// ships.
+	bodyOut         bool
 	pointOfNoReturn string
 	// endName is the name of the end station the plan waits on, "" for a run with no
 	// start station.
@@ -232,7 +244,7 @@ func (m *runModel) plan(p Plan) {
 	for _, s := range p.Stages {
 		m.planned[s.Key] = true
 		if pt := m.find(s.Key); pt != nil {
-			pt.node.Name, pt.plan = s.Name, s.Detail
+			pt.node.Name, pt.plan, pt.inside = s.Name, s.Detail, s.Inside
 			at = slices.Index(m.parts, pt) + 1
 			continue
 		}
@@ -243,7 +255,7 @@ func (m *runModel) plan(p Plan) {
 			m.insert(&part{kind: rulePart}, at)
 			at++
 		}
-		m.insert(&part{key: s.Key, plan: s.Detail, node: &rail.Node{State: rail.ToCome, Name: s.Name, Detail: s.Detail}}, at)
+		m.insert(&part{key: s.Key, plan: s.Detail, inside: s.Inside, node: &rail.Node{State: rail.ToCome, Name: s.Name, Detail: s.Detail}}, at)
 		at++
 	}
 	if m.endName != "" && m.partOf(endPart) == nil {
@@ -275,22 +287,32 @@ func (m *runModel) activity(key string) bool {
 }
 
 // reach marks, in a dry run, the planned stages still to come above pt, a planned
-// stage that has started, passed, so they settle above it in plan order. The one
-// right above it is left to come: a stage may run inside the one started, as the
-// exclusion check runs inside the notes, which start first.
+// stage that has started, passed, so they settle above it in plan order: all but one
+// that runs inside it, as the exclusion check runs inside the notes, which start
+// first.
 func (m *runModel) reach(pt *part) {
 	if !m.dryRun || !m.planned[pt.key] {
 		return
 	}
-	var above []*part
-	for _, q := range m.parts[:slices.Index(m.parts, pt)] {
-		if q.kind == nodePart && !q.hidden && q.node.State == rail.ToCome && m.planned[q.key] {
-			above = append(above, q)
+	at := slices.Index(m.parts, pt)
+	for i, q := range m.parts[:at] {
+		if q.kind != nodePart || q.hidden || q.node.State != rail.ToCome || !m.planned[q.key] {
+			continue
+		}
+		if !q.inside || m.nextPlanned(i) != pt {
+			q.passed = true
 		}
 	}
-	for _, q := range above[:max(len(above)-1, 0)] {
-		q.passed = true
+}
+
+// nextPlanned is the first planned stage's node below index i, nil for none.
+func (m *runModel) nextPlanned(i int) *part {
+	for _, pt := range m.parts[i+1:] {
+		if pt.kind == nodePart && m.planned[pt.key] {
+			return pt
+		}
 	}
+	return nil
 }
 
 // add puts n at the run's edge, touched.
@@ -405,6 +427,10 @@ func (m *runModel) hang(key string, h rail.Hang) {
 
 // show shows text for review under the run's edge, in place of any body shown.
 func (m *runModel) show(text string) {
+	if m.bodyOut {
+		m.insert(&part{kind: bodyPart, text: text, out: true}, m.insertionPoint())
+		return
+	}
 	if b := m.partOf(bodyPart); b != nil {
 		b.text = text
 		return
@@ -500,9 +526,24 @@ func (m *runModel) log() {
 	}
 }
 
-// settleAbove settles every part above q, so q heads the region.
-func (m *runModel) settleAbove(q *part) {
-	m.settle(slices.Index(m.parts, q))
+// settleAbove settles every part above q, so q heads the region, where every one of
+// them can settle early, finished or a body, and reports whether it did. A part
+// still running above q, or still to come, keeps it from heading the region; then
+// nothing settles.
+func (m *runModel) settleAbove(q *part) bool {
+	at := slices.Index(m.parts, q)
+	if at < 0 || slices.ContainsFunc(m.parts[:at], func(pt *part) bool { return !pt.settleable() }) {
+		return false
+	}
+	m.settle(at)
+	return true
+}
+
+// record keeps it, already on the terminal, as printed: the question a typed line was
+// read at, which stays where it was typed.
+func (m *runModel) record(it rail.Item) {
+	m.settleItem(it)
+	m.printed = len(m.settled)
 }
 
 // settle settles the first n parts.
@@ -513,15 +554,10 @@ func (m *runModel) settle(n int) {
 	m.parts = slices.Delete(m.parts, 0, n)
 }
 
-// settlePart settles pt as it is now, which the caller takes out of the region: a
-// node still running as it shows still, its line printed and its finish a node of
-// its own.
+// settlePart settles pt as it is now, which the caller takes out of the region.
 func (m *runModel) settlePart(pt *part) {
-	if pt.running() {
-		m.settleItem(pt.still())
-	} else {
-		m.settleItem(pt.live(time.Time{}))
-	}
+	m.settleItem(pt.live(time.Time{}))
+	m.bodyOut = m.bodyOut || pt.kind == bodyPart
 	if pt.key != "" {
 		m.gone[pt.key] = true
 	}
@@ -549,7 +585,7 @@ func (m *runModel) finish(end rail.End, dryRun bool) {
 	if moves := append(m.moves, m.suggested...); len(moves) > 0 {
 		m.settleItem(rail.Next{Moves: moves})
 	}
-	m.moves, m.suggested, m.looping = nil, nil, false
+	m.moves, m.suggested, m.looping, m.bodyOut = nil, nil, false, false
 	m.open, m.closed, m.touched, m.held = false, true, nil, nil
 }
 

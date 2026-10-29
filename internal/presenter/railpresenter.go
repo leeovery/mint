@@ -71,15 +71,11 @@ type RailPresenter struct {
 	region *liveRegion
 	run    *runModel
 	layout rail.Layout
-	// cols is the terminal's columns at the last redraw, and fits whether it had
-	// room for a region.
-	cols    int
+	// fits is whether the terminal had room for a region when last measured.
 	fits    bool
 	ticking *ticker
 	// suspended is the editor holding the terminal, asking a question waiting.
 	suspended, asking bool
-	// typedAt is the column a typed answer's echo starts at.
-	typedAt int
 }
 
 // Compile-time proof the rail presenter satisfies the seam it renders.
@@ -473,8 +469,8 @@ func (p *RailPresenter) Close() {
 }
 
 // minRegionRows is the fewest rows a terminal must have, where it gives its height,
-// to hold a live region: a shorter one can't keep a question, the run's edge and the
-// echo of a typed answer on screen at once.
+// to hold a live region: a shorter one can't keep the run's edge and a question
+// under it on screen while the question waits.
 const minRegionRows = 12
 
 // redraw draws the run: what has settled since the last redraw, then the live
@@ -482,9 +478,7 @@ const minRegionRows = 12
 // narrow or too short, the run prints as it happens instead. It starts or stops the
 // spinner to match.
 func (p *RailPresenter) redraw() {
-	cols, rows := p.size()
-	p.cols, p.layout = cols, rail.NewLayout(cols, p.level)
-	p.fits = p.layout.RegionFits() && (rows <= 0 || rows >= minRegionRows)
+	rows := p.measure()
 	p.run.pass()
 	var run rail.Run
 	var region []string
@@ -498,6 +492,15 @@ func (p *RailPresenter) redraw() {
 	p.region.Draw(p.layout.Settled(run, p.run.printed), region, rows)
 	p.run.printed = len(run.Settled)
 	p.syncTicker()
+}
+
+// measure reads the terminal's size and lays the run out for it, settling whether it
+// has room for a region, and returns its rows.
+func (p *RailPresenter) measure() int {
+	cols, rows := p.size()
+	p.layout = rail.NewLayout(cols, p.level)
+	p.fits = p.layout.RegionFits() && (rows <= 0 || rows >= minRegionRows)
+	return rows
 }
 
 // fit is the run and its region, a region too tall for the terminal giving way: the

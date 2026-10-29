@@ -51,7 +51,7 @@ func releasePlan() presenter.Plan {
 		{Key: "version", Name: "version", Detail: "v1.4.0 (minor bump)"},
 		{Key: "preflight", Name: "preflight", Detail: preflightDetail},
 		{Key: "pre_tag", Name: "pre_tag", Detail: "npm ci && npm run build"},
-		{Key: "check", Name: "check", Detail: "files that don't belong in the notes"},
+		{Key: "check", Name: "check", Detail: "files that don't belong in the notes", Inside: true},
 		{Key: "notes", Name: "notes", Detail: "written by the AI"},
 		{Key: "record", Name: "record", Detail: "CHANGELOG.md · package.json"},
 		{Key: "push", Name: "push", Detail: "main + v1.4.0 → origin, atomic"},
