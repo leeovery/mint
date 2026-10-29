@@ -915,7 +915,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		// in the footer); a downgrade leaves publisher nil so releaseURL stays empty too.
 		url, err := publisher.CreateRelease(ctx, tag, tag, body)
 		if err != nil {
-			warnPublishFailed(p, err)
+			warnPublishFailed(p, err, versionKey)
 			outcome = presenter.OutcomeReleasedWithWarning
 		} else {
 			releaseURL = url
@@ -1288,19 +1288,23 @@ func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
 }
 
 // recommit records the answers again on whatever HEAD is now. On failure it returns
-// the manual step that finishes the re-commit, given restore as the step that brings
+// the manual steps that finish the re-commit, given restore as the steps that bring
 // back the answers commit itself, and the failing tool's own message.
-func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore string) (manual, output string, err error) {
+func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore []manualStep) (manual []manualStep, output string, err error) {
 	if err := a.write(); err != nil {
 		return restore, err.Error(), err
 	}
 	if err := a.commit(ctx, m); err != nil {
 		root := cmdline.Quote(a.root)
-		manual = "commit the exclusion answers mint wrote to " + config.FileName +
-			" (`git -C " + root + " add " + config.FileName + "` then `git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)) + "`)"
-		return manual, gitOutput(err), err
+		return []manualStep{{
+			does: "commit the exclusion answers mint wrote to " + config.FileName,
+			commands: []string{
+				"git -C " + root + " add " + config.FileName,
+				"git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)),
+			},
+		}}, gitOutput(err), err
 	}
-	return "", "", nil
+	return nil, "", nil
 }
 
 // answersRecordingError is the exclusion answers failing to be written or committed;
@@ -2203,15 +2207,22 @@ func downgradeReason(cause error) string {
 
 // warnPublishFailed emits the post-PONR warn-only event: by the time it runs the
 // push has already crossed the point of no return, so the tag is public and mint
-// must NOT unwind. It warns and points at the heal path; the run still finishes
-// successfully.
-func warnPublishFailed(p presenter.Presenter, cause error) {
+// must NOT unwind. It warns and points at the heal path, the regenerate that publishes
+// version's release from its tag; the run still finishes successfully. Plain's line
+// names the heal; the rail's row says what happened, and the heal's full command
+// reaches it as a Quiet next move.
+func warnPublishFailed(p presenter.Presenter, cause error, version string) {
 	p.Warn(presenter.Warning{
 		Key:     stagePublish,
 		Label:   "publish failed",
 		Message: "tag is already published; heal with regenerate --source tag",
+		Row:     "provider release failed · the tag is already pushed",
 		Output:  cause.Error(),
 	})
+	p.NextMoves(presenter.NextMoves{Stage: stagePublish, Quiet: true, Moves: []presenter.NextMove{{
+		Lead:    "Publish the release from the tag's notes:",
+		Command: "mint release regenerate " + cmdline.Quote(version) + " --source tag --target release",
+	}}})
 }
 
 // warnPostReleaseFailed emits the post-PONR warn-only event for a failed

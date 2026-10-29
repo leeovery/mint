@@ -371,7 +371,7 @@ func (p *RailPresenter) Warn(w Warning) {
 		n.State = rail.Warning
 	}
 	p.run.ended(w.Key, false)
-	n.Detail, n.Progress = w.Message, nil
+	n.Detail, n.Progress = firstOf(w.Row, w.Message), nil
 	if w.Output != "" {
 		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Output, Text: w.Output})
 	}

@@ -111,6 +111,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 			want := presenter.Warning{
 				Label:  "unwind incomplete",
 				Key:    "unwind",
+				Row:    "automatic recovery failed",
 				Failed: true,
 				Message: "automatic recovery failed; manually commit the exclusion answers mint wrote to .mint.toml (`git -C " + a.root +
 					" add .mint.toml` then `git -C " + a.root + " commit -m '" + answersSubject(minorTagV130) + "'`)",
@@ -196,6 +197,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 			want := presenter.Warning{
 				Label:   "unwind incomplete",
 				Key:     "unwind",
+				Row:     "automatic recovery failed",
 				Failed:  true,
 				Message: "automatic recovery failed; manually restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
 				Output:  "reading " + config.FileName + ": read " + path + ": is a directory",
@@ -251,6 +253,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 			want := presenter.Warning{
 				Label:  "unwind incomplete",
 				Key:    "unwind",
+				Row:    "automatic recovery failed",
 				Failed: true,
 				Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 					"`), then restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
@@ -283,11 +286,16 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 	want := presenter.Warning{
 		Label:  "unwind incomplete",
 		Key:    "unwind",
+		Row:    "automatic recovery failed",
 		Failed: true,
 		Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 			"`), then restore the exclusion answers commit on top (`git cherry-pick ORIG_HEAD~1`)",
 		Output: resetStderr,
 	}
 	assertUnwoundWithOneWarning(t, rec, err, want, "reset 3 commits and deleted tag "+minorTagV130+"; manual cleanup required")
+	assertManualSteps(t, rec,
+		presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
+		presenter.NextMove{Lead: "Restore the exclusion answers commit on top:", Command: "git cherry-pick ORIG_HEAD~1"},
+	)
 	assertAnswersCommitReadFirst(t, a.f, "HEAD~1")
 }

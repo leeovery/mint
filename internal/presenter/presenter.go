@@ -673,10 +673,13 @@ type StageFailure struct {
 }
 
 // NextMoves carries the NextMoves payload: the engine-authored ways forward from
-// stage's failure, in order.
+// stage's failure, in order. Quiet marks moves plain's line already names (a failed
+// unwind's manual steps, a failed publish's heal): plain and today's pretty write
+// nothing for them.
 type NextMoves struct {
 	Stage string
 	Moves []NextMove
+	Quiet bool
 }
 
 // NextMove is one way forward: a Lead saying what to do and, when the move ends in
@@ -787,6 +790,10 @@ type Warning struct {
 	// the rail draws nothing for it and leaves Key's node to come, its plan detail.
 	// Plain and today's pretty ignore it.
 	Skipped bool
+	// Row is the warning's row where it reads differently from Message, plain's
+	// pinned line, which also names the remedy the engine sends the rail as Quiet
+	// next moves; empty where they read the same. Plain and today's pretty ignore it.
+	Row string
 	// Output is optional captured underlying-command output (e.g. git's stderr
 	// from a failed-but-non-fatal push) rendered VERBATIM beneath the warn line —
 	// the warn-flavoured counterpart of StageFailure.Output, for failures the

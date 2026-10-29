@@ -21,6 +21,13 @@ var quietPlan = presenter.Plan{
 // call, which plain has never had a line for.
 var quietStart = presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "generating release notes…", Quiet: true}
 
+// quietMoves are a failed unwind's manual step, which plain's warning line names.
+var quietMoves = presenter.NextMoves{
+	Stage: "unwind",
+	Quiet: true,
+	Moves: []presenter.NextMove{{Lead: "Reset HEAD back to 4f9c2e1:", Command: "git reset --hard 4f9c2e1"}},
+}
+
 // quietReview is the review a dry run previews only for the rail.
 func quietReview() presenter.Gate {
 	g := presenter.ReleaseReviewGate()
@@ -58,6 +65,11 @@ func TestQuietEvents_WriteNothingInPlainOrTodaysPretty(t *testing.T) {
 			name:   "a quiet gate's preview",
 			plain:  func(p *presenter.PlainPresenter) { p.PreviewGate(quietReview()) },
 			pretty: func(p *presenter.PrettyPresenter) { p.PreviewGate(quietReview()) },
+		},
+		{
+			name:   "quiet next moves",
+			plain:  func(p *presenter.PlainPresenter) { p.NextMoves(quietMoves) },
+			pretty: func(p *presenter.PrettyPresenter) { p.NextMoves(quietMoves) },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

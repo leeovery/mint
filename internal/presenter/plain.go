@@ -218,8 +218,11 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 }
 
 // NextMoves prints each move as its own "{stage}: NEXT - {move}" line, the move's
-// lead and command flattened back into one sentence.
+// lead and command flattened back into one sentence. Quiet moves print nothing.
 func (p *PlainPresenter) NextMoves(m NextMoves) {
+	if m.Quiet {
+		return
+	}
 	for _, move := range m.Moves {
 		p.writef("%s: NEXT - %s\n", m.Stage, move.Text())
 	}

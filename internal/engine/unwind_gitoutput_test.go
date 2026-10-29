@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"mint/internal/engine"
@@ -21,7 +22,7 @@ const (
 
 // unwindIncomplete is the manual-cleanup warning naming action, with output beneath it.
 func unwindIncomplete(action, output string) presenter.Warning {
-	return presenter.Warning{Label: "unwind incomplete", Message: "automatic recovery failed; manually " + action, Output: output, Key: "unwind", Failed: true}
+	return presenter.Warning{Label: "unwind incomplete", Message: "automatic recovery failed; manually " + action, Output: output, Key: "unwind", Failed: true, Row: "automatic recovery failed"}
 }
 
 // onlyWarning fails the test unless rec holds exactly the one warning want.
@@ -35,6 +36,16 @@ func onlyWarning(t *testing.T, rec *presentertest.RecordingPresenter, want prese
 	}
 	if len(warns) != 1 || warns[0] != want {
 		t.Errorf("warnings = %#v, want only %#v", warns, want)
+	}
+}
+
+// assertManualSteps fails unless rec's only next moves are moves, the unwind's manual
+// steps, Quiet: plain's warning line already names them.
+func assertManualSteps(t *testing.T, rec *presentertest.RecordingPresenter, moves ...presenter.NextMove) {
+	t.Helper()
+	want := []presenter.NextMoves{{Stage: "unwind", Quiet: true, Moves: moves}}
+	if got := nextMovesEvents(rec); !reflect.DeepEqual(got, want) {
+		t.Errorf("next moves = %+v, want %+v", got, want)
 	}
 }
 
@@ -68,12 +79,15 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 		soft    = "`git reset --soft " + startingSHA + "`"
 		restore = "`git restore --source=" + startingSHA + " --staged --worktree -- ':(top,literal,exclude)NEXT_RELEASE.md'`"
 		keeping = ", leaving NEXT_RELEASE.md as it is ("
+		// restoreCmd is restore as the command alone on next's line.
+		restoreCmd = "git restore --source=" + startingSHA + " --staged --worktree -- ':(top,literal,exclude)NEXT_RELEASE.md'"
 	)
 	steps := []struct {
 		name    string
 		keepOut git.Exclusion
 		calls   func(failed runner.ScriptedCall) []runner.ScriptedCall
 		action  string
+		move    presenter.NextMove
 		summary string
 	}{
 		{
@@ -82,6 +96,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				return []runner.ScriptedCall{ScriptedOut(""), failed}
 			},
 			action:  hard,
+			move:    presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
 			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
 		},
 		{
@@ -90,6 +105,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				return []runner.ScriptedCall{failed, ScriptedOut("")}
 			},
 			action:  tag,
+			move:    presenter.NextMove{Lead: "Delete the leftover tag v0.0.1:", Command: "git tag -d v0.0.1"},
 			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
 		},
 		{
@@ -98,7 +114,11 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			calls: func(failed runner.ScriptedCall) []runner.ScriptedCall {
 				return []runner.ScriptedCall{ScriptedOut(""), failed}
 			},
-			action:  "reset HEAD back to " + startingSHA + keeping + soft + " then " + restore + ")",
+			action: "reset HEAD back to " + startingSHA + keeping + soft + " then " + restore + ")",
+			move: presenter.NextMove{
+				Lead:    "Reset HEAD back to " + startingSHA + ", leaving NEXT_RELEASE.md as it is:",
+				Command: "git reset --soft " + startingSHA + " && " + restoreCmd,
+			},
 			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
 		},
 		{
@@ -107,7 +127,11 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			calls: func(failed runner.ScriptedCall) []runner.ScriptedCall {
 				return []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), failed}
 			},
-			action:  "restore the index and work tree to " + startingSHA + keeping + restore + ")",
+			action: "restore the index and work tree to " + startingSHA + keeping + restore + ")",
+			move: presenter.NextMove{
+				Lead:    "Restore the index and work tree to " + startingSHA + ", leaving NEXT_RELEASE.md as it is:",
+				Command: restoreCmd,
+			},
 			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
 		},
 	}
@@ -135,6 +159,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 
 				assertAbortNonZero(t, err)
 				onlyWarning(t, rec, unwindIncomplete(step.action, failure.output))
+				assertManualSteps(t, rec, step.move)
 				if got := unwoundText(t, rec); got != step.summary {
 					t.Errorf("Unwound.Text() = %q, want %q", got, step.summary)
 				}

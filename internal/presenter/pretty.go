@@ -596,9 +596,9 @@ func (p *PrettyPresenter) StageFailed(s StageFailure) {
 }
 
 // NextMoves lists the moves, each flattened to one sentence, beneath a "next moves:"
-// heading.
+// heading. Quiet moves print nothing.
 func (p *PrettyPresenter) NextMoves(m NextMoves) {
-	if len(m.Moves) == 0 {
+	if m.Quiet || len(m.Moves) == 0 {
 		return
 	}
 	p.writef("%snext moves:\n", stageIndent)

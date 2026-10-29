@@ -284,6 +284,7 @@ func TestRelease_AnswersCommitFailing_WhenUnstagingTheWriteFails_WarnsTheManualS
 	want := presenter.Warning{
 		Label:   "unwind incomplete",
 		Key:     "unwind",
+		Row:     "automatic recovery failed",
 		Failed:  true,
 		Message: "automatic recovery failed; manually unstage .mint.toml (`git -C " + run.root + " reset -q " + startingSHA + " -- .mint.toml`)",
 		Output:  unstageStderr,
@@ -319,6 +320,7 @@ func TestRelease_AnswersCommitFailing_WhenUnstagingFailsInARootWithASpace_WarnsT
 	want := presenter.Warning{
 		Label:   "unwind incomplete",
 		Key:     "unwind",
+		Row:     "automatic recovery failed",
 		Failed:  true,
 		Message: "automatic recovery failed; manually unstage .mint.toml (`git -C '" + root + "' reset -q " + startingSHA + " -- .mint.toml`)",
 		Output:  unstageStderr,
@@ -349,6 +351,7 @@ func TestRelease_AnswersCommitFailingWithNoPreTagHook_WhenUnstagingFails_StillRe
 	want := presenter.Warning{
 		Label:   "unwind incomplete",
 		Key:     "unwind",
+		Row:     "automatic recovery failed",
 		Failed:  true,
 		Message: "automatic recovery failed; manually unstage .mint.toml (`git -C " + run.root + " reset -q " + startingSHA + " -- .mint.toml`)",
 		Output:  unstageStderr,

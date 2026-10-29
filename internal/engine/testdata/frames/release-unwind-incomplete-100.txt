@@ -11,8 +11,11 @@
  │
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  ✗  push          pushing tag "v1.3.0" atomically: push rejected: push rejected                 0.7s
- ✗  unwind        automatic recovery failed; manually reset HEAD back to startsha (`git reset
- │                --hard startsha`)
+ ✗  unwind        automatic recovery failed
  │                │ fatal: Could not reset index file to revision 'startsha'.
  │
  ◇  v1.2.3        manual cleanup required · nothing pushed                                      4.9s
+
+ next
+   Reset HEAD back to startsha:
+     git reset --hard startsha
