@@ -287,7 +287,7 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, resolve PublisherResol
 		chunkNotes.warnUnsaved(p)
 		if !offersChoice {
 			if reachesNotesFloor(err) {
-				p.NextMoves(regenerateNotesFloorMoves(err, req.Config, req.VersionKey, failure.SavedNotes))
+				p.NextMoves(regenerateNotesFloorMoves(err, req.Config, req.VersionKey, target, failure.SavedNotes))
 			}
 			return abort(err)
 		}

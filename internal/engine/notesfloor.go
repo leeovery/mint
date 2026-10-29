@@ -68,10 +68,10 @@ var fallbackMove = presenter.NextMove{
 }
 
 // regenerateNotesFloorMoves are the ways to put notes on version, already out, after an
-// unattended regenerate stopped at the floor on failure, then the moves that clear
-// failure's cause. Neither --no-ai nor on_notes_failure exists for a regenerate.
-func regenerateNotesFloorMoves(failure error, cfg config.Config, version, savedNotes string) presenter.NextMoves {
-	moves := []presenter.NextMove{notesFileMove(regenerateRerun(version), savedNotes)}
+// unattended regenerate to target stopped at the floor on failure, then the moves that
+// clear failure's cause. Neither --no-ai nor on_notes_failure exists for a regenerate.
+func regenerateNotesFloorMoves(failure error, cfg config.Config, version string, target RegenerateTarget, savedNotes string) presenter.NextMoves {
+	moves := []presenter.NextMove{notesFileMove(regenerateRerun(version, target), savedNotes)}
 	return presenter.NextMoves{Stage: "notes", Moves: append(moves, causeMoves(failure, cfg)...)}
 }
 
@@ -102,9 +102,11 @@ func releaseRerun(opts ReleaseOptions) rerun {
 	return rerun{verb: "release", command: command}
 }
 
-// regenerateRerun is the regenerate of tag run again.
-func regenerateRerun(tag string) rerun {
-	return rerun{verb: "regenerate", command: "mint release regenerate " + tag}
+// regenerateRerun is the regenerate of tag to target run again for a --notes-file
+// move, which takes the place of the run's source: --notes-file stands in for
+// --source, and is refused beside it.
+func regenerateRerun(tag string, target RegenerateTarget) rerun {
+	return rerun{verb: "regenerate", command: regenerateMoveCommand(tag, RegenerateSourceFresh, target)}
 }
 
 // versionFlags are the flags that pick opts' version, each with its leading space:

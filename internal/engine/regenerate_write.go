@@ -273,7 +273,7 @@ func reviewFresh(ctx context.Context, deps ReleaseDeps, req RegenerateWriteReque
 		return reviewGate(ctx, deps, reviewRegen{regenerator: regenerator}, req.reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey)
 	}
 	regen := req.regens.review(regenerator, req.chunkNotes)
-	return req.chunkNotes.reviewGate(ctx, deps, regen, req.reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey, regenerateRerun(req.VersionKey))
+	return req.chunkNotes.reviewGate(ctx, deps, regen, req.reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey, regenerateRerun(req.VersionKey, req.Target))
 }
 
 // regenerateRegenerator selects the Regenerator the fresh regenerate gate's `r` choice

@@ -190,7 +190,7 @@ func diffExcludeLine(entries []string, glob string) string {
 // it only once the stage has ended.
 func (s *notesStage) warnFallback(again rerun, version string) {
 	s.warnFallbackReleasing(func(saved string) string {
-		return "once this release is out, put them on it with " + notesFileCommand(regenerateRerun(version).command, saved) +
+		return "once this release is out, put them on it with " + notesFileCommand("mint release regenerate "+version, saved) +
 			", or if the run ends before the push, release them with " + notesFileCommand(again.command, saved)
 	})
 }

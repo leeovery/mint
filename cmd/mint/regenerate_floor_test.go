@@ -108,8 +108,8 @@ func TestRegenerate_UnattendedFreshFailure_FitsTheNextMovesToTheLoadedConfig(t *
 	want := []presenter.NextMove{
 		{
 			Lead:     "Write the notes to a file, then regenerate with it:",
-			Command:  "mint release regenerate 1.4.0 --notes-file <file>",
-			Sentence: "write the notes to a file and release with mint release regenerate 1.4.0 --notes-file <file>",
+			Command:  "mint release regenerate 1.4.0 --target release --notes-file <file>",
+			Sentence: "write the notes to a file and release with mint release regenerate 1.4.0 --target release --notes-file <file>",
 		},
 		{
 			Lead:     `If ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`,

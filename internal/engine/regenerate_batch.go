@@ -411,13 +411,13 @@ func (s skippedVersion) cause() string {
 }
 
 // savedNotesPointer names the chunk notes failure saved and the regenerate of version
-// that puts them on it, or "" when failure saved none.
-func savedNotesPointer(failure error, version string) string {
+// to target that puts them on it, or "" when failure saved none.
+func savedNotesPointer(failure error, version string, target RegenerateTarget) string {
 	saved := notes.SavedChunkNotesPath(failure)
 	if saved == "" {
 		return ""
 	}
-	return "part notes saved to " + saved + " — tidy them and put them on it with " + notesFileCommand("mint release regenerate "+version, saved)
+	return "part notes saved to " + saved + " — tidy them and put them on it with " + notesFileCommand(regenerateRerun(version, target).command, saved)
 }
 
 // processOneVersion runs the per-version batch step for one resolved version: it opens
@@ -490,7 +490,7 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 			return RegeneratedVersion{}, nil, failVersion(p, node, stageNotes, err)
 		}
 		reason, output := notesSkipCause(err)
-		skip := skippedVersion{Tag: res.Tag, Reason: reason, SavedNotes: savedNotesPointer(err, versionKey), saved: notes.SavedChunkNotesPath(err)}
+		skip := skippedVersion{Tag: res.Tag, Reason: reason, SavedNotes: savedNotesPointer(err, versionKey, req.Target), saved: notes.SavedChunkNotesPath(err)}
 		processed, recorded, skipErr := reportSkip(p, req, node, skip, output)
 		chunkNotes.warnUnsaved(p)
 		return processed, recorded, skipErr
@@ -674,7 +674,7 @@ func reportSkip(p presenter.Presenter, req BatchRegenerateRequest, node *blockin
 func (s skippedVersion) move(source RegenerateSource, target RegenerateTarget) presenter.NextMove {
 	switch {
 	case s.saved != "":
-		return notesFileMove(rerun{verb: "regenerate", command: regenerateMoveCommand(s.Tag, RegenerateSourceFresh, target)}, s.saved)
+		return notesFileMove(regenerateRerun(s.Tag, target), s.saved)
 	case s.bodiless:
 		return presenter.NextMove{Lead: s.Tag + " kept its old notes. To write them fresh:", Command: regenerateMoveCommand(s.Tag, RegenerateSourceFresh, target)}
 	}

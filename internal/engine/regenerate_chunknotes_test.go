@@ -181,7 +181,7 @@ func TestRegenerateRun_FreshChunkedRunFails_SavesTheFinishedNotesUnderTheVersion
 // savedSkipCause is version's skip cause, its cause phrase phrase, when its chunk
 // notes were saved at path.
 func savedSkipCause(phrase, version, path string) string {
-	return phrase + "; part notes saved to " + path + " — tidy them and put them on it with mint release regenerate " + version + " --notes-file " + path
+	return phrase + "; part notes saved to " + path + " — tidy them and put them on it with mint release regenerate " + version + " --target release --notes-file " + path
 }
 
 func TestRegenerateAll_FreshChunkedRunsFail_EachSkipNamesItsOwnSavedFileAndCommand(t *testing.T) {
