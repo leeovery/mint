@@ -274,16 +274,21 @@ func TestUnwind_KeepOut_ResetStepFails_WarnsTheManualStepsLeft(t *testing.T) {
 		name  string
 		calls []runner.ScriptedCall
 		want  string
+		// unwound names the reset once HEAD moved back: the restore after the soft reset
+		// is what failed.
+		unwound string
 	}{
 		{
-			name:  "the soft reset fails",
-			calls: []runner.ScriptedCall{scriptedMutateFailure()},
-			want:  "automatic recovery failed; manually reset HEAD back to " + startingSHA + ", leaving NEXT_RELEASE.md as it is (" + soft + " then " + restore + ")",
+			name:    "the soft reset fails",
+			calls:   []runner.ScriptedCall{scriptedMutateFailure()},
+			want:    "automatic recovery failed; manually reset HEAD back to " + startingSHA + ", leaving NEXT_RELEASE.md as it is (" + soft + " then " + restore + ")",
+			unwound: "manual cleanup required",
 		},
 		{
-			name:  "the restore fails",
-			calls: []runner.ScriptedCall{ScriptedOut(""), scriptedMutateFailure()},
-			want:  "automatic recovery failed; manually restore the index and work tree to " + startingSHA + ", leaving NEXT_RELEASE.md as it is (" + restore + ")",
+			name:    "the restore fails",
+			calls:   []runner.ScriptedCall{ScriptedOut(""), scriptedMutateFailure()},
+			want:    "automatic recovery failed; manually restore the index and work tree to " + startingSHA + ", leaving NEXT_RELEASE.md as it is (" + restore + ")",
+			unwound: "reset 1 commit; manual cleanup required",
 		},
 	}
 
@@ -303,8 +308,8 @@ func TestUnwind_KeepOut_ResetStepFails_WarnsTheManualStepsLeft(t *testing.T) {
 			if got := recoveryWarn(t, rec).Warn.Message; got != tt.want {
 				t.Errorf("recovery Warn message = %q, want %q", got, tt.want)
 			}
-			if got, want := unwoundText(t, rec), "manual cleanup required"; got != want {
-				t.Errorf("Unwound.Text() = %q, want %q", got, want)
+			if got := unwoundText(t, rec); got != tt.unwound {
+				t.Errorf("Unwound.Text() = %q, want %q", got, tt.unwound)
 			}
 		})
 	}

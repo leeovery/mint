@@ -89,7 +89,8 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 		action  string
 		move    presenter.NextMove
 		// summary is the Unwound line, naming only the steps that succeeded: the tag
-		// delete when the reset fails after it, the reset when the delete fails.
+		// delete when the reset fails after it, the reset when the delete fails, and
+		// both when the reset moved HEAD back and only the restore after it failed.
 		summary string
 	}{
 		{
@@ -134,7 +135,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				Lead:    "Restore the index and work tree to " + startingSHA + ", leaving NEXT_RELEASE.md as it is:",
 				Command: restoreCmd,
 			},
-			summary: "deleted tag v0.0.1; manual cleanup required",
+			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
 		},
 	}
 	failures := []struct {

@@ -157,13 +157,13 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	// Reverted before the reset, which then returns a tracked file to the starting
 	// commit whatever the write found there.
 	editOK := revertEditIfMade(ctx, deps, start, made.answersEdit)
-	commitsReset, resetOK := resetCommitsIfMade(ctx, deps, start, made, restore)
+	commitsReset, headMoved, resetOK := resetCommitsIfMade(ctx, deps, start, made, restore)
 	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK, restore)
 
 	if tagDeleted || commitsReset {
 		clean := tagOK && editOK && resetOK && keptOK
 		event := unwindEvent(start.Tag, made, unwindOutcome{
-			reset:       commitsReset && resetOK,
+			reset:       headMoved,
 			deleted:     tagDeleted && tagOK,
 			answersKept: kept,
 			clean:       clean,
@@ -309,22 +309,23 @@ func deleteTagIfMade(ctx context.Context, deps ReleaseDeps, start StartState, ma
 }
 
 // resetCommitsIfMade resets HEAD to the captured starting commit when mint made any
-// commits this run, returning whether a reset was issued AND whether it succeeded. It
-// uses the captured sha (not HEAD~N) so the tree returns to the EXACT starting state,
-// discarding mint's release commits and their working-tree changes, all but
-// start.KeepOut's. A non-zero exit is no longer discarded: it is surfaced as a
+// commits this run, returning whether a reset was issued, whether HEAD moved back, and
+// whether the whole reset succeeded. It uses the captured sha (not HEAD~N) so the tree
+// returns to the EXACT starting state, discarding mint's release commits and their
+// working-tree changes, all but start.KeepOut's. A non-zero exit is no longer discarded: it is surfaced as a
 // manual-cleanup Warn naming the steps left so the user is not told the repo is clean
 // when mint's commit(s) still live — the recovery DID NOT complete.
-func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, restore []manualStep) (issued, ok bool) {
+func resetCommitsIfMade(ctx context.Context, deps ReleaseDeps, start StartState, made MadeState, restore []manualStep) (issued, headMoved, ok bool) {
 	if made.Commits <= 0 {
-		return false, true
+		return false, false, true
 	}
-	if manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut}); err != nil {
+	headMoved, manual, output, err := resetTo(ctx, deps.Mutator, resetTarget{HEAD: start.HEAD, KeepOut: start.KeepOut})
+	if err != nil {
 		// The manual reset drops the answers commit along with mint's other commits.
 		warnUnwindIncomplete(deps.Presenter, output, append([]manualStep{manual}, restore...)...)
-		return true, false
+		return true, headMoved, false
 	}
-	return true, true
+	return true, true, true
 }
 
 // fileEdit is a write mint made to path under root, with what path held before it.
@@ -403,19 +404,20 @@ type resetTarget struct {
 
 // resetTo returns HEAD, the index and the work tree to target.HEAD as
 // `git reset --hard` does, except that target.KeepOut keeps its content and staged
-// state. On failure it returns the manual step that finishes the reset and the failing
-// git step's own output.
+// state, reporting whether HEAD moved back. On failure it returns the manual step that
+// finishes the reset and the failing git step's own output; HEAD has moved back where
+// the soft reset went through and only the restore after it failed.
 //
 // With a path to keep, `git reset --hard` cannot be used, as it takes no pathspec: the
 // soft reset moves HEAD alone, then restore rewrites the index and work tree everywhere
 // but the excluded path, removing tracked paths the starting commit lacks.
-func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual manualStep, output string, err error) {
+func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (headMoved bool, manual manualStep, output string, err error) {
 	sha := target.HEAD
 	if target.KeepOut == "" {
 		if res, err := m.Mutate(ctx, nil, "git", "reset", "--hard", sha); err != nil {
-			return manualStep{does: "reset HEAD back to " + sha, commands: []string{"git reset --hard " + sha}}, failedGitOutput(res.Stderr, err), err
+			return false, manualStep{does: "reset HEAD back to " + sha, commands: []string{"git reset --hard " + sha}}, failedGitOutput(res.Stderr, err), err
 		}
-		return manualStep{}, "", nil
+		return true, manualStep{}, "", nil
 	}
 
 	pathspec := target.KeepOut.Pathspec()
@@ -424,13 +426,13 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual ma
 	keeping := ", leaving " + string(target.KeepOut) + " as it is"
 	if res, err := m.Mutate(ctx, nil, "git", "reset", "--soft", sha); err != nil {
 		step := manualStep{does: "reset HEAD back to " + sha + keeping, commands: []string{"git reset --soft " + sha, restoreLine}}
-		return step, failedGitOutput(res.Stderr, err), err
+		return false, step, failedGitOutput(res.Stderr, err), err
 	}
 	if res, err := m.Mutate(ctx, nil, "git", restoreArgs...); err != nil {
 		step := manualStep{does: "restore the index and work tree to " + sha + keeping, commands: []string{restoreLine}}
-		return step, failedGitOutput(res.Stderr, err), err
+		return true, step, failedGitOutput(res.Stderr, err), err
 	}
-	return manualStep{}, "", nil
+	return true, manualStep{}, "", nil
 }
 
 // unwindOutcome is how an unwind ended: whether its reset and its tag delete each

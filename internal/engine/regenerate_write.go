@@ -424,7 +424,7 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 		// A failed reset is no longer swallowed: it surfaces a manual-cleanup Warn naming
 		// the steps the user must run, so the leftover CHANGELOG commit is not silently
 		// left in place.
-		if manual, output, err := resetTo(context.WithoutCancel(ctx), deps.Mutator, start); err != nil {
+		if _, manual, output, err := resetTo(context.WithoutCancel(ctx), deps.Mutator, start); err != nil {
 			manual.why = "to drop the leftover changelog commit"
 			warnUnwindIncomplete(deps.Presenter, output, manual)
 			deps.run.Left(manualCleanup + " · " + nothingPushed)
