@@ -2,8 +2,11 @@ package engine
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"mint/internal/notescache"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/runner"
@@ -83,6 +86,37 @@ func TestHealMove_WritesTheReleaseFromTheNotesThePushedChangelogHolds(t *testing
 	}
 	if saved != body {
 		t.Errorf("saved notes = %q, want the body the changelog holds, %q", saved, body)
+	}
+}
+
+// TestHealMove_AFloorBodyIsSavedBesideTheTagsPartNotesNeverOverThem pins that a floor
+// heal keeps the part notes an earlier failed run saved for the tag: both files
+// survive, each with its own notes, and the move points at the heal's.
+func TestHealMove_AFloorBodyIsSavedBesideTheTagsPartNotesNeverOverThem(t *testing.T) {
+	t.Parallel()
+
+	const (
+		partNotes = "## part 1 of 2\n- Retries.\n"
+		body      = "Webhooks retry on their own now.\n"
+	)
+	store := notescache.NewChunkNotes(t.TempDir())
+	parts, err := store.Save("/repo", "v1.4.0", partNotes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := RegenerateWriteRequest{Source: regenerateSourceFloor, Target: RegenerateTargetBoth, Tag: "v1.4.0"}
+
+	move := healMove(ReleaseDeps{ChunkNotes: store}, "/repo", req, body, "GitHub release")
+
+	healed := filepath.Join(filepath.Dir(parts), "v1.4.0.heal.md")
+	if want := "mint release regenerate v1.4.0 --target release --notes-file " + healed; move.Command != want {
+		t.Errorf("heal command = %q, want %q", move.Command, want)
+	}
+	for path, want := range map[string]string{parts: partNotes, healed: body} {
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != want {
+			t.Errorf("%s = %q, %v, want %q", path, got, err, want)
+		}
 	}
 }
 

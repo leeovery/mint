@@ -517,8 +517,8 @@ func warnRegenerateProviderSkipped(p presenter.Presenter, key string) {
 // failed past the changelog's push, from the notes body the pushed changelog holds:
 // the run's own source, fresh, tag or release, read again; the notes file a supplied
 // body came from; or, for a body taken at the notes floor, which nothing can read
-// again, that body saved where chunk notes go, or, where it can't be saved, a file
-// the reader writes it to.
+// again, that body saved beside the tag's chunk notes, never over them, or, where it
+// can't be saved, a file the reader writes it to.
 func healMove(deps ReleaseDeps, root string, req RegenerateWriteRequest, body, release string) presenter.NextMove {
 	lead := "Re-heal the " + release + ":"
 	again := regenerateRerun(req.Tag, RegenerateTargetRelease)
@@ -534,13 +534,18 @@ func healMove(deps ReleaseDeps, root string, req RegenerateWriteRequest, body, r
 	return presenter.NextMove{Lead: lead, Command: regenerateMoveCommand(req.Tag, req.Source, RegenerateTargetRelease)}
 }
 
-// saveHealNotes saves body, tag's notes, where chunk notes go, returning the path, or
-// "" where there is nowhere to save it or the save failed.
+// healNotesSuffix names the file a heal's notes are saved to apart from the tag's
+// chunk notes, which an earlier failed run may have saved and a move pointed at.
+const healNotesSuffix = ".heal"
+
+// saveHealNotes saves body, tag's notes, beside the tag's chunk notes under a name of
+// its own, returning the path, or "" where there is nowhere to save it or the save
+// failed.
 func saveHealNotes(deps ReleaseDeps, root, tag, body string) string {
 	if deps.ChunkNotes == nil {
 		return ""
 	}
-	saved, err := deps.ChunkNotes.Save(root, tag, body)
+	saved, err := deps.ChunkNotes.Save(root, tag+healNotesSuffix, body)
 	if err != nil {
 		return ""
 	}
