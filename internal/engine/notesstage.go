@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"time"
@@ -53,12 +54,16 @@ func (s *notesStage) Checking() {
 }
 
 // Checked narrates the check's call ending, its result stated where the answer flagged
-// nothing; whatever it flagged states its own result on the rows that follow.
-func (s *notesStage) Checked(clear bool) {
+// nothing; whatever it flagged states its own result on the rows that follow, and an
+// unusable call's warning, next, ends the check in place of a success.
+func (s *notesStage) Checked(outcome notes.CheckOutcome) {
 	s.checkSettled = true
 	check := presenter.NotesCheck{Key: stageCheck, Elapsed: s.stage.now().Sub(s.checking)}
-	if clear {
+	switch outcome {
+	case notes.CheckClear:
 		check.Detail = "nothing to leave out"
+	case notes.CheckUnusable:
+		check.Failed = true
 	}
 	s.p.NotesChecked(check)
 }
@@ -240,13 +245,20 @@ func (r *regenStage) narrating(regenerator Regenerator) Regenerator {
 }
 
 // done narrates the r's notes written: on the notes line it opened, or Quiet where it
-// opened none.
+// opened none, as the one call that wrote them or the merge of the saved part notes
+// it re-merged.
 func (r *regenStage) done() {
-	if r.stage != nil {
+	switch {
+	case r.stage != nil:
 		r.stage.succeeded(mergedCompletion(r.parts))
-		return
+	case r.parts > 0:
+		r.quiet.succeeded(presenter.StageSuccess{
+			Detail:   fmt.Sprintf("merged from %d parts", r.parts),
+			Sentence: fmt.Sprintf("Notes merged again (%d parts)", r.parts),
+		})
+	default:
+		r.quiet.succeeded(notesCompletion(0))
 	}
-	r.quiet.succeeded(notesCompletion(r.parts))
 }
 
 // chunked opens the r's notes line, timed from the r's start, unless it is open.
@@ -335,6 +347,30 @@ func hintLowerCap(p presenter.Presenter, bytes int) {
 // done narrates the stage's success. Call it only once the generation has returned.
 func (s *notesStage) done() {
 	s.stage.succeeded(notesCompletion(s.parts))
+}
+
+// doneFrom narrates the stage's success where its body came from the source kind
+// names: the rail's row names a source nothing generated, notesFile's name for a
+// supplied body; plain keeps the detail it has always had.
+func (s *notesStage) doneFrom(kind notes.Kind, notesFile string) {
+	success := notesCompletion(s.parts)
+	success.Row = notesSource(kind, notesFile)
+	s.stage.succeeded(success)
+}
+
+// notesSource names where a body nothing generated came from, "" for one the AI wrote.
+func notesSource(kind notes.Kind, notesFile string) string {
+	switch kind {
+	case notes.KindSupplied:
+		return "read from " + filepath.Base(notesFile)
+	case notes.KindNoAI, notes.KindFallback:
+		return "the commit-subject list"
+	case notes.KindFirstRelease:
+		return "the first release's default"
+	case notes.KindDegenerate:
+		return "the stub for a release with no source changes"
+	}
+	return ""
 }
 
 // notesCompletion is the success of a notes stage whose body was written in one call,

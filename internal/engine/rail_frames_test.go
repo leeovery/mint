@@ -19,6 +19,7 @@ import (
 
 	"github.com/muesli/termenv"
 
+	"mint/internal/ai"
 	"mint/internal/engine"
 	"mint/internal/git"
 	"mint/internal/presenter"
@@ -214,6 +215,18 @@ var railRuns = map[string]railRun{
 		w.recorded()
 		w.pushed()
 		w.published(ScriptedOut(railURL + "\n"))
+		return w.release(t, nil)
+	}},
+	// A release whose pre_tag hook committed artifacts and whose review is answered r,
+	// the r's call failing: the notes asked about stay as answered, the r's own node
+	// fails with the call's output, and the artifacts commit unwinds.
+	"release-regen-failed-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\nr\n"+exportNudge+"\n", false)
+		w.deps.Transport = &gateAbortTransport{nudge: exportNudge, classify: "OTHER", regen: failsWith(&ai.GenerationError{Stdout: loginOutput, ExitCode: 1})}
+		w.readGates(false)
+		seedPreTagArtifactCommit(w.f)
+		singlePassNotesAndRegen(w.f)
+		w.f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startsha
 		return w.release(t, nil)
 	}},
 	// A release whose push is rejected, before the point of no return, unwinding.

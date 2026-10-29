@@ -682,7 +682,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		}
 	} else {
 		stage.settleUncheckedCheck(route.checks)
-		stage.done()
+		stage.doneFrom(kind, opts.NotesFile)
 		chunkNotes.warnUnsaved(p)
 		if opts.DryRun {
 			stage.warnDryRunFallback()

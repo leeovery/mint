@@ -371,9 +371,10 @@ func editStage(r *railTerm, warn *presenter.Warning) {
 }
 
 // TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions pins the review's loop as the
-// engine runs it: what an e or an r runs, the edit's stage around the editor and the
-// regenerate's one-time context, draws no node; the body is shown again in place,
-// the question comes back under it, and the accept settles the notes with its tail.
+// engine runs it: what an e runs, the edit's stage around the editor, draws no node;
+// the body is shown again in place, the question comes back under it, and the accept
+// settles the notes with its tail. An r runs a stage of the run's again, its own node
+// (TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow).
 func TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions(t *testing.T) {
 	t.Parallel()
 	const question = " ?  Release with these notes?   y release   n abort   e edit   r regenerate"
@@ -390,12 +391,6 @@ func TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions(t *testing.T) {
 	}{
 		{name: "an edit", answers: []string{"e\n", "y\n"}, body: "second draft", loop: func(r *railTerm) {
 			editStage(r, nil)
-			r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "second draft"})
-		}},
-		{name: "a regenerate", answers: []string{"r\n", "shorter\n", "y\n"}, body: "second draft", loop: func(r *railTerm) {
-			if _, err := r.AskLine("Add one-time context for regeneration (optional):"); err != nil {
-				t.Fatal(err)
-			}
 			r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "second draft"})
 		}},
 		{name: "an edit with no editor to launch", answers: []string{"e\n", "y\n"}, body: "first draft", warned: true, loop: func(r *railTerm) {
@@ -669,29 +664,35 @@ func TestRailGate_ATypedLineUnderAStageStillRunningIsReadUnderTheSettledLines(t 
 	}
 }
 
-// TestRailGate_OnceABodyHasSettledEveryLaterOneSettlesAsShown pins that the
-// scrollback ends with the body that ships: a body that settled ahead of a typed
-// read keeps every later body for the question settled as it is shown, and the
-// answer records on a row under the last, for the release's r and the commit's.
-func TestRailGate_OnceABodyHasSettledEveryLaterOneSettlesAsShown(t *testing.T) {
+// TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow pins that a
+// finished node is final: an r settles the node it asked about with its answer, the
+// body under review gone with it, the one-time context reads under it, and the stage
+// runs again as a node of its own below, which the next answer settles, for the
+// release's r and the commit's.
+func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *testing.T) {
 	t.Parallel()
 	const context = "shorter please"
 	tests := []struct {
 		name string
-		// ask is the run to its review with its first body shown, the question it asks
-		// and the regenerate its r runs.
+		// start is the run to its review with its first body shown, gate the question
+		// it asks and regenerate the stage its r runs again.
 		start      func(r *railTerm)
 		gate       presenter.Gate
 		regenerate func(r *railTerm)
-		first      string
+		// asked is the asked node as the r settles it, again the node it runs again.
+		asked, again string
 	}{
 		{
 			name:  "the release's notes",
 			start: func(r *railTerm) { notesUnderReview(r, "first draft") },
 			gate:  reviewGate(),
 			regenerate: func(r *railTerm) {
+				r.StageStarted(presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "generating release notes…", Quiet: true})
+				r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(3), Detail: "generated", Quiet: true})
 				r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "second draft"})
 			},
+			asked: " ●  notes         written by the AI · regenerate",
+			again: row(" ●  notes         generated · accepted", "3.0s"),
 		},
 		{
 			name:  "the commit's message",
@@ -702,6 +703,8 @@ func TestRailGate_OnceABodyHasSettledEveryLaterOneSettlesAsShown(t *testing.T) {
 				r.StageSucceeded(presenter.StageSuccess{Name: "commit message", Key: "message", Blocking: true, Elapsed: secs(3), Detail: "regenerated"})
 				r.ShowMessage(presenter.Message{Body: "second draft"})
 			},
+			asked: " ●  message       written · regenerate",
+			again: row(" ●  message       regenerated · accepted", "3.0s"),
 		},
 	}
 	for _, tt := range tests {
@@ -731,10 +734,9 @@ func TestRailGate_OnceABodyHasSettledEveryLaterOneSettlesAsShown(t *testing.T) {
 			}
 			screen := r.screen(t)
 			order := []string{
-				" │    first draft",
+				tt.asked,
 				" ?  Add one-time context for regeneration (optional): " + context,
-				" │    second draft",
-				" ●  review        accepted",
+				tt.again,
 			}
 			at := -1
 			for _, want := range order {
@@ -743,6 +745,9 @@ func TestRailGate_OnceABodyHasSettledEveryLaterOneSettlesAsShown(t *testing.T) {
 					t.Fatalf("the terminal shows\n%s\nwant, in this order\n%s", strings.Join(screen, "\n"), strings.Join(order, "\n"))
 				}
 				at = i
+			}
+			if slices.ContainsFunc(screen, func(s string) bool { return strings.Contains(s, "draft") || strings.HasPrefix(s, " ●  review") }) {
+				t.Errorf("the terminal shows\n%s\nwant no body left once answered, and no answer on a row of its own", strings.Join(screen, "\n"))
 			}
 		})
 	}
@@ -862,47 +867,34 @@ func TestRailGate_UnderSixtyColumnsAnEditDrawsNoNode(t *testing.T) {
 }
 
 // TestRailGate_ABodyShownAgainUnchangedSettlesOnce pins that once a body of the
-// question has settled, the same body shown again, after an e whose editor won't
-// launch, isn't settled a second time.
+// question has settled, too tall for the region, the same body shown again, after an
+// e whose editor won't launch, isn't settled a second time, and the answer records on
+// a row under it.
 func TestRailGate_ABodyShownAgainUnchangedSettlesOnce(t *testing.T) {
 	t.Parallel()
-	const context = "shorter please"
-	in := answers("r\n", context+"\n", "e\n", "y\n")
-	r := newRailTerm(t, 80, 30, in)
-	messageWritten(r, "first draft")
-	in.asked = func(n int) {
-		if n == 2 {
-			if _, err := r.term.Write([]byte(context + "\n")); err != nil {
-				t.Fatal(err)
-			}
-		}
+	in := answers("e\n", "y\n")
+	r := newRailTerm(t, 80, 14, in)
+	lines := []string{"feat: retry deliveries", ""}
+	for i := range 16 {
+		lines = append(lines, fmt.Sprintf("- delivery change %d", i+1))
 	}
-	if c, err := r.Prompt(commitGate()); err != nil || c != presenter.ChoiceRegen {
-		t.Fatalf("Prompt = %q, %v, want r", c, err)
-	}
-	r.WithEcho(true)
-	if _, err := r.AskLine("Add one-time context for regeneration (optional):"); err != nil {
-		t.Fatal(err)
-	}
-	r.WithEcho(false)
-	r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "regenerating commit message…"})
-	r.StageSucceeded(presenter.StageSuccess{Name: "commit message", Key: "message", Blocking: true, Elapsed: secs(3), Detail: "regenerated"})
-	r.ShowMessage(presenter.Message{Body: "second draft"})
+	tall := strings.Join(lines, "\n")
+	messageWritten(r, tall)
 	if c, err := r.Prompt(commitGate()); err != nil || c != presenter.ChoiceEdit {
 		t.Fatalf("Prompt = %q, %v, want e", c, err)
 	}
 	r.SuspendSpinner()
 	r.ResumeSpinner()
 	r.Warn(presenter.Warning{Key: "message", Label: "editor", Message: "could not launch editor, keeping the message"})
-	r.ShowMessage(presenter.Message{Body: "second draft"})
+	r.ShowMessage(presenter.Message{Body: tall})
 	if _, err := r.Prompt(commitGate()); err != nil {
 		t.Fatal(err)
 	}
 	screen := r.screen(t)
-	if n := count(screen, " │    second draft"); n != 1 {
-		t.Errorf("the second draft is on the terminal %d times, want once:\n%s", n, strings.Join(screen, "\n"))
+	if n := count(screen, " │    feat: retry deliveries"); n != 1 {
+		t.Errorf("the message is on the terminal %d times, want once:\n%s", n, strings.Join(screen, "\n"))
 	}
-	if body, answer := slices.Index(screen, " │    second draft"), slices.Index(screen, " ●  review        accepted"); answer < body {
+	if body, answer := slices.Index(screen, " │    feat: retry deliveries"), slices.Index(screen, " ●  review        accepted"); answer < body {
 		t.Errorf("the terminal shows\n%s\nwant the answer on a row under the body", strings.Join(screen, "\n"))
 	}
 }

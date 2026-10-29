@@ -942,6 +942,55 @@ func TestRegenerateRun_Rail_AnUnchangedChangelogSettlesThePushAsSkipped(t *testi
 	assertEveryPlannedStageSettled(t, rec)
 }
 
+func TestRelease_Rail_NotesNothingGeneratedNameTheirSourceOnTheRowAndKeepPlainsDetail(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		seed func(*runner.FakeRunner)
+		opts func(*engine.ReleaseOptions)
+		row  string
+	}{
+		{
+			name: "an empty diff's stub",
+			seed: func(f *runner.FakeRunner) { f.SeedSequence("git", ScriptedOut("")) }, // diff v1.2.3..HEAD
+			opts: func(*engine.ReleaseOptions) {},
+			row:  "the stub for a release with no source changes",
+		},
+		{
+			name: "--no-ai",
+			seed: func(f *runner.FakeRunner) {
+				f.SeedSequence("git",
+					ScriptedOut(priorTagDiff),   // diff v1.2.3..HEAD
+					ScriptedOut(commitSubjects), // log --format=%s v1.2.3..HEAD
+				)
+			},
+			opts: func(o *engine.ReleaseOptions) { o.NoAI = true },
+			row:  "the commit-subject list",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			f := runner.NewFakeRunner()
+			seedPriorTagReadGates(f, root, "main")
+			tc.seed(f)
+			seedRecordTagPush(f, root)
+			f.Seed("gh", runner.Result{}, nil)
+			rec := &presentertest.RecordingPresenter{}
+			opts := priorTagNormalAIOptions()
+			tc.opts(&opts)
+
+			releaseOrFail(t, newDeps(rec, f), opts)
+
+			if got := stageSuccess(t, rec, "notes"); got.Detail != "generated" || got.Row != tc.row {
+				t.Errorf("notes success = %+v, want plain's %q and the rail's row %q", got, "generated", tc.row)
+			}
+		})
+	}
+}
+
 func TestRelease_Rail_ABodyTakenAtTheNotesFloorSettlesTheNotesAgainSayingWhereItCameFrom(t *testing.T) {
 	t.Parallel()
 

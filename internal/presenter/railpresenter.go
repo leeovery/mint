@@ -259,12 +259,16 @@ func (p *RailPresenter) NotesChecking(c NotesCheck) {
 
 // NotesChecked settles the exclusion check done in its time, stating its result where
 // the engine gives one and its plan where the rows after it will, and runs the stage
-// it held back again.
+// it held back again. A Failed check keeps its node, timed, for the warning that
+// follows to end.
 func (p *RailPresenter) NotesChecked(c NotesCheck) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	pt := p.run.stage(c.Key, c.Key)
-	pt.node.State, pt.node.Detail, pt.node.Time = rail.Done, firstOf(c.Detail, pt.plan), stageTime(c.Elapsed)
+	pt.timed, pt.node.Time = false, stageTime(c.Elapsed)
+	if !c.Failed {
+		pt.node.State, pt.node.Detail = rail.Done, firstOf(c.Detail, pt.plan)
+	}
 	if h := p.run.held; h != nil {
 		h.node.State, h.node.Detail = rail.Running, h.doing
 		p.run.held = nil

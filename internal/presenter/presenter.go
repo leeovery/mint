@@ -645,11 +645,14 @@ type NotesMerge struct {
 // check's plan stage, and Elapsed, on NotesChecked alone, is the engine-measured
 // time of the check's call. Detail, on NotesChecked alone, is the check's result
 // for its settled row, empty where the rows after it state the result (what it
-// flagged, or its failure); plain and today's pretty ignore it.
+// flagged, or its failure). Failed, on NotesChecked alone, marks a call that failed or
+// whose answer was unusable: the warning that follows ends the check's node in place
+// of a success. Plain and today's pretty ignore both.
 type NotesCheck struct {
 	Key     string
 	Elapsed time.Duration
 	Detail  string
+	Failed  bool
 }
 
 // StageFailure carries the StageFailed payload. Output is the underlying

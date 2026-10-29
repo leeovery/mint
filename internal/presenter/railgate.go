@@ -245,16 +245,18 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 // line under the check's node; any other's as the tail of the node it asked about,
 // what hung above it gone, or, that node settled above or a body of the question
 // settled, on a row of its own under the last body; a gate asked before the run's
-// stages as a row naming what was chosen. An edit or a regenerate settles nothing:
-// it opens the question's loop, until the next answer to any gate, the body is
-// shown again, in place, and the question comes back.
+// stages as a row naming what was chosen. A regenerate settles as any answer does:
+// its stage runs again as a node of its own below, which the body and the question
+// come back under. An edit settles nothing: it opens the question's loop, until the
+// next answer to any gate, the body is shown again, in place, and the question comes
+// back.
 func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 	p.run.looping = false
 	if x := g.Suggestion; x != nil {
 		p.run.hang(g.Stage, rail.Hang{Kind: rail.Note, Text: x.Glob + " " + pauseAnswer(g, c, auto) + " · " + x.Reason})
 		return
 	}
-	if c == ChoiceEdit || c == ChoiceRegen {
+	if c == ChoiceEdit {
 		p.run.looping, p.run.asked = true, g.Stage
 		return
 	}

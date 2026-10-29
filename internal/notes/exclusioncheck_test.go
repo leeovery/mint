@@ -62,12 +62,12 @@ type checkNarration struct{ events []string }
 
 func (n *checkNarration) Checking() { n.events = append(n.events, "checking") }
 func (n *checkNarration) AllKept()  { n.events = append(n.events, "all kept") }
-func (n *checkNarration) Checked(clear bool) {
-	if clear {
-		n.events = append(n.events, "checked: clear")
-		return
-	}
-	n.events = append(n.events, "checked")
+func (n *checkNarration) Checked(outcome notes.CheckOutcome) {
+	n.events = append(n.events, map[notes.CheckOutcome]string{
+		notes.CheckAnswered: "checked",
+		notes.CheckClear:    "checked: clear",
+		notes.CheckUnusable: "checked: unusable",
+	}[outcome])
 }
 func (n *checkNarration) CheckFailed(output string) {
 	n.events = append(n.events, "failed: "+output)
@@ -252,7 +252,7 @@ func TestExclusionCheck_AFailedCallLetsTheReleaseCarryOn_NarratingTheFailure(t *
 			if excluded != nil {
 				t.Errorf("excluded = %q, want nothing", excluded)
 			}
-			if want := []string{"checking", "checked", "failed: " + tt.wantOutput}; !slices.Equal(narration.events, want) {
+			if want := []string{"checking", "checked: unusable", "failed: " + tt.wantOutput}; !slices.Equal(narration.events, want) {
 				t.Errorf("narration = %q, want %q", narration.events, want)
 			}
 		})
@@ -286,7 +286,7 @@ func TestExclusionCheck_AnAnswerYieldingNoUsableSuggestion_IsAFailedCheckCarryin
 			if excluded != nil {
 				t.Errorf("excluded = %q, want nothing", excluded)
 			}
-			if want := []string{"checking", "checked", "failed: " + strings.TrimSuffix(tt.answer, "\n")}; !slices.Equal(narration.events, want) {
+			if want := []string{"checking", "checked: unusable", "failed: " + strings.TrimSuffix(tt.answer, "\n")}; !slices.Equal(narration.events, want) {
 				t.Errorf("narration = %q, want %q", narration.events, want)
 			}
 			if len(pauses.paused) != 0 {
@@ -315,7 +315,7 @@ func TestExclusionCheck_AReportingCheckWhoseAnswerIsUnreadable_ReportsNothingAnd
 	if len(reported) != 0 {
 		t.Errorf("reported %v, want nothing", reported)
 	}
-	if want := []string{"checking", "checked", "failed: vendor/: vendored code"}; !slices.Equal(narration.events, want) {
+	if want := []string{"checking", "checked: unusable", "failed: vendor/: vendored code"}; !slices.Equal(narration.events, want) {
 		t.Errorf("narration = %q, want %q", narration.events, want)
 	}
 }

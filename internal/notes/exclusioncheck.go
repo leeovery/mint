@@ -12,25 +12,39 @@ import (
 	"mint/internal/bytesize"
 )
 
-// CheckNarration is told when the exclusion check's call starts and when it ends, clear
-// when the answer flagged nothing, when the keep list covers every changed path so
-// there is nothing to call about, and when the check failed: after the call ends when
-// the call failed or its answer was unreadable, and with no call at all when the call
-// would not fit under the cap. output is the AI's captured output, or its unreadable
-// answer, verbatim but for trailing whitespace, and empty when there is none.
+// CheckNarration is told when the exclusion check's call starts and when it ends, with
+// how it ended, when the keep list covers every changed path so there is nothing to
+// call about, and when the check failed: after the call ends when the call failed or
+// its answer was unreadable, and with no call at all when the call would not fit under
+// the cap. output is the AI's captured output, or its unreadable answer, verbatim but
+// for trailing whitespace, and empty when there is none.
 type CheckNarration interface {
 	Checking()
-	Checked(clear bool)
+	Checked(outcome CheckOutcome)
 	AllKept()
 	CheckFailed(output string)
 }
 
+// CheckOutcome is how the check's call ended.
+type CheckOutcome int
+
+const (
+	// CheckAnswered is a call whose answer suggested paths to leave out, or one
+	// cancelled.
+	CheckAnswered CheckOutcome = iota
+	// CheckClear is a call answered "none": nothing to leave out.
+	CheckClear
+	// CheckUnusable is a call that failed or whose answer yielded no usable suggestion,
+	// its failure narrated next.
+	CheckUnusable
+)
+
 type noCheckNarration struct{}
 
-func (noCheckNarration) Checking()          {}
-func (noCheckNarration) Checked(bool)       {}
-func (noCheckNarration) AllKept()           {}
-func (noCheckNarration) CheckFailed(string) {}
+func (noCheckNarration) Checking()            {}
+func (noCheckNarration) Checked(CheckOutcome) {}
+func (noCheckNarration) AllKept()             {}
+func (noCheckNarration) CheckFailed(string)   {}
 
 // ExclusionCheck asks the AI which of a release's changed paths look out of place in
 // its notes. Its call carries no diff, only the changed paths the notes diff carries
@@ -139,21 +153,18 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 	}
 	c.narration.Checking()
 	answer, err := c.transport.Generate(ctx, prompt)
-	clear := err == nil && strings.EqualFold(strings.TrimSpace(answer), "none")
-	c.narration.Checked(clear)
-	if errors.Is(err, context.Canceled) {
+	outcome, suggestions := checkOutcome(answer, err, paths)
+	c.narration.Checked(outcome)
+	switch {
+	case errors.Is(err, context.Canceled):
 		return nil, err
-	}
-	if err != nil {
+	case err != nil:
 		c.narration.CheckFailed(failureOutput(err))
 		return nil, nil
-	}
-	if clear {
-		return nil, nil
-	}
-	suggestions := usableSuggestions(answer, paths)
-	if len(suggestions) == 0 {
+	case outcome == CheckUnusable:
 		c.narration.CheckFailed(strings.TrimRightFunc(answer, unicode.IsSpace))
+		return nil, nil
+	case outcome == CheckClear:
 		return nil, nil
 	}
 	switch {
@@ -163,6 +174,23 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 		c.reportAll(suggestions, files)
 	}
 	return nil, nil
+}
+
+// checkOutcome is how the check's call over paths ended, answer or err, with the
+// usable suggestions of an answer that has any.
+func checkOutcome(answer string, err error, paths []checkedPath) (CheckOutcome, []Suggestion) {
+	switch {
+	case errors.Is(err, context.Canceled):
+		return CheckAnswered, nil
+	case err != nil:
+		return CheckUnusable, nil
+	case strings.EqualFold(strings.TrimSpace(answer), "none"):
+		return CheckClear, nil
+	}
+	if suggestions := usableSuggestions(answer, paths); len(suggestions) > 0 {
+		return CheckAnswered, suggestions
+	}
+	return CheckUnusable, nil
 }
 
 func failureOutput(err error) string {

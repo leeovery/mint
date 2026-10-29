@@ -146,16 +146,6 @@ func (pt *part) toCome() bool {
 	return pt.kind == endPart
 }
 
-// final is whether a node's state is for good: a failure, a warning or the unwind. A
-// later event for its stage draws a node of its own under it.
-func (pt *part) final() bool {
-	switch pt.node.State {
-	case rail.Failed, rail.Warning, rail.Unwind:
-		return true
-	}
-	return false
-}
-
 // runModel is the run as the rail draws it: the items settled, printed once and never
 // changed, and the parts of the live region under them.
 //
@@ -178,8 +168,8 @@ type runModel struct {
 	// to any gate. asked is the stage that question asks about.
 	looping bool
 	asked   string
-	// planned are the plan's stage keys.
-	planned map[string]bool
+	// planned are the plan's stage keys, each with the name it gave the stage.
+	planned map[string]string
 	// bodyOut is a body of the question under review settled, too tall for the region
 	// or ahead of a typed read: every later one settles as it is shown, and the answer
 	// records on a row under the last, so the scrollback ends with the body that
@@ -204,7 +194,7 @@ type runModel struct {
 	closed bool
 }
 
-func newRunModel() *runModel { return &runModel{gone: map[string]bool{}, planned: map[string]bool{}} }
+func newRunModel() *runModel { return &runModel{gone: map[string]bool{}, planned: map[string]string{}} }
 
 // drawing is the run as the rail draws it now.
 func (m *runModel) drawing(now time.Time) rail.Run {
@@ -254,7 +244,7 @@ func (m *runModel) plan(p Plan) {
 	m.pointOfNoReturn = p.PointOfNoReturn
 	at := m.insertionPoint()
 	for _, s := range p.Stages {
-		m.planned[s.Key] = true
+		m.planned[s.Key] = s.Name
 		if pt := m.find(s.Key); pt != nil {
 			pt.node.Name, pt.plan, pt.inside = s.Name, s.Detail, s.Inside
 			at = slices.Index(m.parts, pt) + 1
@@ -276,10 +266,16 @@ func (m *runModel) plan(p Plan) {
 }
 
 // stage is the node an event for the stage keyed key fills, touched: its live node,
-// unless that is gone or final, else a new node named name.
+// unless that is gone or finished, else a new node named as the plan named the stage,
+// or name where the plan has none. A finished node is final, settled or still in the
+// region alike: a stage that runs again after it finished, as the notes do for the
+// review's r, draws a node of its own below it.
 func (m *runModel) stage(key, name string) *part {
 	pt := m.find(key)
-	if pt == nil || pt.final() {
+	if pt == nil || pt.finished() {
+		if planned, ok := m.planned[key]; ok {
+			name = planned
+		}
 		pt = m.add(rail.Node{Name: name})
 		pt.key = key
 	}
@@ -307,12 +303,18 @@ func (m *runModel) rule(key string) *part {
 	return m.partOf(rulePart)
 }
 
+// isPlanned is whether the plan laid out the stage keyed key.
+func (m *runModel) isPlanned(key string) bool {
+	_, ok := m.planned[key]
+	return ok
+}
+
 // activity is whether a stage keyed key is an open question's own doing, as the
 // review's edit is, rather than a stage of the run's: a key that names no stage
 // planned and no node drawn, inside the question's loop. Its start and its success
 // draw nothing; its failure is drawn.
 func (m *runModel) activity(key string) bool {
-	return m.looping && !m.planned[key] && m.find(key) == nil && !m.gone[key]
+	return m.looping && !m.isPlanned(key) && m.find(key) == nil && !m.gone[key]
 }
 
 // reach marks, in a dry run, the planned stages still to come above pt, a planned
@@ -320,12 +322,12 @@ func (m *runModel) activity(key string) bool {
 // that runs inside it, as the exclusion check runs inside the notes, which start
 // first.
 func (m *runModel) reach(pt *part) {
-	if !m.dryRun || !m.planned[pt.key] {
+	if !m.dryRun || !m.isPlanned(pt.key) {
 		return
 	}
 	at := slices.Index(m.parts, pt)
 	for i, q := range m.parts[:at] {
-		if q.kind != nodePart || q.hidden || q.node.State != rail.ToCome || !m.planned[q.key] {
+		if q.kind != nodePart || q.hidden || q.node.State != rail.ToCome || !m.isPlanned(q.key) {
 			continue
 		}
 		if !q.inside || m.nextPlanned(i) != pt {
@@ -337,7 +339,7 @@ func (m *runModel) reach(pt *part) {
 // nextPlanned is the first planned stage's node below index i, nil for none.
 func (m *runModel) nextPlanned(i int) *part {
 	for _, pt := range m.parts[i+1:] {
-		if pt.kind == nodePart && m.planned[pt.key] {
+		if pt.kind == nodePart && m.isPlanned(pt.key) {
 			return pt
 		}
 	}
@@ -610,7 +612,7 @@ func (m *runModel) finish(end rail.End, dryRun bool) {
 	}
 	m.next = append(m.next, append(m.moves, m.suggested...)...)
 	m.moves, m.suggested, m.looping, m.bodyOut, m.lastBody = nil, nil, false, false, ""
-	m.open, m.closed, m.touched, m.held = false, true, nil, nil
+	m.open, m.closed, m.touched, m.held, m.planned = false, true, nil, nil, map[string]string{}
 }
 
 // settleNext settles next, with the moves kept since the run closed, if any.
