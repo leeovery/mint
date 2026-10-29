@@ -415,14 +415,15 @@ func (p *RailPresenter) Warn(w Warning) {
 // warned is the node a warning about the stage keyed key draws as: the stage's own
 // where it is running, ongoing or still to come, which the warning ends; else a node
 // of its own, labelled, under the stage's node where that is done, which it leaves as
-// it was, and at the run's edge where it has settled or there is none.
+// it was, and at the run's edge where it has settled or there is none, named for that
+// node where it settled going on past a step (a --all version).
 func (p *RailPresenter) warned(key, label string) *part {
 	pt := p.run.find(key)
 	switch {
 	case pt != nil && pt.node.State == rail.Done && !pt.ongoing:
 		return p.run.aside(pt, rail.Node{Name: label})
 	case pt == nil && p.run.gone[key]:
-		return p.run.add(rail.Node{Name: label})
+		return p.run.add(rail.Node{Name: firstOf(p.run.wentOn[key], label)})
 	}
 	return p.run.stage(key, label)
 }

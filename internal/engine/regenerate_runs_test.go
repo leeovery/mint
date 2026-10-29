@@ -333,6 +333,19 @@ var regenRuns = map[string]regenRun{
 		w.gh()
 		return w.all(t, 3, engine.RegenerateTargetRelease, versionNotes())
 	}},
+	// --all at a terminal with no provider to write releases to, v1.1.0's notes
+	// written again at its review's r, the rest answered y.
+	"regenerate-all-downgraded-regenerated-100": {answers: "y\nr\n\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {
+		w.deps.Regenerator = railRegenerator(railRegenNotes)
+		w.publisher = nil
+		return w.all(t, 3, engine.RegenerateTargetRelease, versionNotes())
+	}},
+	// --all at a terminal with no provider to write releases to, v1.1.0's notes too
+	// tall for the terminal, each answered y.
+	"regenerate-all-downgraded-tall-100": {answers: "y\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {
+		w.publisher = nil
+		return w.all(t, 3, engine.RegenerateTargetRelease, tallNotes("v1.1.0"))
+	}},
 	// --all at a terminal: each version's notes reviewed, answered y.
 	"regenerate-all-attended-100": {answers: "y\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {
 		w.gh()

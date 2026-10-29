@@ -1,0 +1,21 @@
+ mint ─ release regenerate --all                                              ~/Code/pigeon · v0.1.2
+
+ ◇  3 versions    fresh notes → provider releases
+ │
+ !  v1.0.0        provider could not be resolved; the release surface was not written · accepted
+ ●  v1.1.0        notes generated · regenerate
+ │
+ │    What changed in v1.1.0, in a line.
+ │
+ ●  v1.1.0        notes generated
+ │
+ │    Webhooks now retry failed deliveries for up to an hour.
+ │
+ │    ## ✨ Added
+ │    - Backoff retries for failed webhook deliveries.
+ │
+ ●  v1.1.0        accepted
+ !  v1.1.0        provider could not be resolved; the release surface was not written
+ !  v1.2.0        provider could not be resolved; the release surface was not written · accepted
+ │
+ ◆  done          3 of 3 versions regenerated                                                   9.1s
