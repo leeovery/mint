@@ -166,18 +166,38 @@ type RegenerateRunRequest struct {
 // The run opens with its header ahead of the questions, draws its start station once
 // both are answered, and closes with one RunFinished, emitted here: regenerated, or,
 // stopped short, declined, failed or unwound, its end saying what the run left behind.
+//
+// publisher is the provider driver already resolved; RegenerateRunResolving resolves
+// it inside the run.
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
+	return RegenerateRunResolving(ctx, deps, root, req, func(context.Context) (publish.Publisher, error) {
+		return publisher, nil
+	})
+}
+
+// PublisherResolver resolves the provider driver that writes a run's release: nil, with
+// no error, for a run that goes on downgraded, having warned why.
+type PublisherResolver func(ctx context.Context) (publish.Publisher, error)
+
+// RegenerateRunResolving is RegenerateRun resolving its publisher with resolve once the
+// run has opened, ahead of its questions, so a downgrade's warning, or the failure
+// that stops the run, is drawn inside it.
+func RegenerateRunResolving(ctx context.Context, deps ReleaseDeps, root string, req RegenerateRunRequest, resolve PublisherResolver) error {
 	deps.run = runclose.Begin(deps.Presenter, deps.clock())
-	err := regenerateRun(ctx, deps, publisher, root, req)
+	err := regenerateRun(ctx, deps, resolve, root, req)
 	deps.run.Close(declined(err))
 	return err
 }
 
-// regenerateRun is RegenerateRun's run; RegenerateRun closes it.
-func regenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
+// regenerateRun is RegenerateRunResolving's run; RegenerateRunResolving closes it.
+func regenerateRun(ctx context.Context, deps ReleaseDeps, resolve PublisherResolver, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
 	header := deps.header(regenerateCommand, root)
 	deps.run.Open(presenter.RunInfo{Project: req.Project, Header: header})
+	publisher, err := resolve(ctx)
+	if err != nil {
+		return err
+	}
 
 	sourceOpt := req.Source
 	if req.Supplied != nil {

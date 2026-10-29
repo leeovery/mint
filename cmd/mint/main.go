@@ -215,8 +215,8 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 
 // runRegenerateSingle executes one single-version interactive regenerate run: it
 // resolves the <version> argument to its canonical tag + fresh diff base (task 5-3),
-// resolves the publishing driver, then runs the interactive default flow (task 5-10) —
-// asking source/target as needed, preflighting the RESOLVED target's gate subset,
+// then runs the interactive default flow (task 5-10) — resolving the publishing driver
+// once the run has opened, asking source/target as needed, preflighting the RESOLVED target's gate subset,
 // showing the plan, and confirming before the write. releaseBranch threads to the
 // engine for the preflight on-branch / remote-sync gates, which run AFTER the
 // interactive target resolves (a bare `regenerate <ver>` does not know its surface(s)
@@ -236,16 +236,6 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 		return exitCode(err)
 	}
 
-	// Resolve the publishing driver through the SHARED engine helper, which handles an
-	// unresolvable provider exactly as the forward engine.Release path does — warn-and-
-	// downgrade (a nil publisher proceeds, the provider write is skipped downstream) or a
-	// clean abort. This REPLACES the former `publisher, _ := …` discard that passed a nil
-	// interface down and crashed DispatchRelease on a non-github / no-remote origin.
-	publisher, code, proceed := resolveRegeneratePublisher(ctx, deps, cfg)
-	if !proceed {
-		return code
-	}
-
 	runReq := regenerateRunFlags(req)
 	runReq.Supplied = supplied
 	runReq.Tag = res.Tag
@@ -255,34 +245,28 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 	runReq.ReleaseBranch = releaseBranch
 	runReq.ChangelogEnabled = cfg.Release.Changelog
 	runReq.Config = cfg
-	runReq.ProduceBody = newRegenerateBodyProducer(r, cfg, root, res, publisher)
+	// The publishing driver resolves inside the run, through the SHARED engine helper,
+	// which handles an unresolvable provider exactly as the forward engine.Release path
+	// does — warn-and-downgrade (a nil publisher proceeds, the provider write is skipped
+	// downstream) or a clean abort. The body producer reads the driver it resolved.
+	var publisher publish.Publisher
+	resolve := func(ctx context.Context) (publish.Publisher, error) {
+		var err error
+		publisher, err = engine.ResolvePublisher(ctx, deps, cfg)
+		return publisher, err
+	}
+	runReq.ProduceBody = func(ctx context.Context, source engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
+		return newRegenerateBodyProducer(r, cfg, root, res, publisher)(ctx, source, sinks)
+	}
 	// The fresh notes-review gate's `r` choice consults this per-run regenerator,
 	// bound to the resolved range — the regenerate analogue of the forward path's
 	// per-run regenerator. Without it the rendered `r` would abort.
 	runReq.ProduceRegenerator = newRegenerateRegeneratorProducer(r, cfg, root, res)
 
-	if err := engine.RegenerateRun(ctx, deps, publisher, root, runReq); err != nil {
+	if err := engine.RegenerateRunResolving(ctx, deps, root, runReq, resolve); err != nil {
 		return exitCode(err)
 	}
 	return 0
-}
-
-// resolveRegeneratePublisher resolves the publishing driver for a regenerate run via the
-// SHARED engine.ResolvePublisher, which mirrors the forward engine.Release Stage-6
-// handling: a RESOLVED provider yields the driver; an UNRESOLVED provider (a non-github /
-// no-remote origin) WARNS and downgrades to a nil publisher; any other resolution error
-// is a surfaced abort. It collapses that into the cmd layer's three needs: the publisher
-// to thread (nil on a downgrade — the engine write nil-guards it), the exit code, and
-// whether to proceed. It returns proceed=true with a nil publisher on a clean downgrade,
-// and proceed=false with the abort's exit code on a real failure. Both regenerate dispatch
-// paths (single-version and --all) share it so neither can drift back to discarding the
-// resolver error.
-func resolveRegeneratePublisher(ctx context.Context, deps engine.ReleaseDeps, cfg config.Config) (publish.Publisher, int, bool) {
-	publisher, err := engine.ResolvePublisher(ctx, deps, cfg)
-	if err != nil {
-		return nil, exitCode(err), false
-	}
-	return publisher, 0, true
 }
 
 // runRelease is the thin shell of `mint release`: it builds the production seams
