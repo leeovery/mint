@@ -615,6 +615,16 @@ func (m *runModel) finish(end rail.End, dryRun bool) {
 	m.open, m.closed, m.touched, m.held, m.planned = false, true, nil, nil, map[string]string{}
 }
 
+// keep keeps move for next in list, the run's moves or its suggestions, while the run
+// is open, each list in its place at the close; once the run has closed, in next
+// itself after what it holds, so nothing that arrives after the close is lost.
+func (m *runModel) keep(list *[]rail.Move, move rail.Move) {
+	if m.closed {
+		list = &m.next
+	}
+	*list = append(*list, move)
+}
+
 // settleNext settles next, with the moves kept since the run closed, if any.
 func (m *runModel) settleNext() {
 	if len(m.next) > 0 {

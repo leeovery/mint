@@ -12,6 +12,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -189,6 +190,31 @@ type railRegenerator string
 
 func (r railRegenerator) Regenerate(context.Context, string) (string, error) { return string(r), nil }
 
+// railAI answers the exclusion check with check, a failed notes call's classification
+// with OTHER, and every notes call with railNotes, or with failure where it is set.
+func railAI(check string, failure error) transportFunc {
+	return func(_ context.Context, prompt string) (string, error) {
+		switch {
+		case isCheckPrompt(prompt):
+			return check, nil
+		case isClassifyPrompt(prompt):
+			return "OTHER", nil
+		case failure != nil:
+			return "", failure
+		}
+		return railNotes, nil
+	}
+}
+
+// designNotes scripts git's notes diff and Change Map with the design document the
+// check flags still in them.
+func (w *railWorld) designNotes(calls ...runner.ScriptedCall) {
+	w.f.SeedSequence("git", slices.Concat([]runner.ScriptedCall{ScriptedOut(exportGoDiff + designDocDiff)}, calls, []runner.ScriptedCall{
+		ScriptedOut("M\tsrc/export.go\nA\tdocs/design/export.md\n"),       // diff --name-status
+		ScriptedOut("1\t1\tsrc/export.go\n1\t0\tdocs/design/export.md\n"), // diff --numstat
+	})...)
+}
+
 // railRun is one golden run: the run it draws, and whether it ends in an abort.
 type railRun struct {
 	run     func(t *testing.T) (string, error)
@@ -227,6 +253,66 @@ var railRuns = map[string]railRun{
 		seedPreTagArtifactCommit(w.f)
 		singlePassNotesAndRegen(w.f)
 		w.f.SeedSequence("git", ScriptedOut("")) // unwind: reset --hard startsha
+		return w.release(t, nil)
+	}},
+	// A release whose pre_tag hook committed artifacts, its AI notes failing at a
+	// terminal: the floor's choice answered c, the commit subjects reviewed and shipped.
+	"release-floor-subjects-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\nc\ny\n", false)
+		w.deps.Transport = railAI("none", &ai.GenerationError{Stdout: loginOutput, ExitCode: 1})
+		w.readGates(false)
+		seedPreTagArtifactCommit(w.f)
+		seedNormalAINotes(w.f)
+		w.f.SeedSequence("git", ScriptedOut(commitSubjects)) // log --format=%s v1.2.3..HEAD
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
+		return w.release(t, nil)
+	}},
+	// The same failure under -y: the check's suggestion flagged, not asked, and the run
+	// stopping at the floor with its next moves, the suggestion's last.
+	"release-floor-unattended-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		w.deps.Transport = railAI(designDocAnswer, &ai.GenerationError{Stdout: loginOutput, ExitCode: 1})
+		w.readGates(false)
+		w.designNotes()
+		return w.release(t, nil)
+	}},
+	// A release of notes the operator wrote, --notes-file, kept outside the repo: no
+	// check, no AI.
+	"release-notes-file-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ny\n", false)
+		notesFile := filepath.Join(w.deps.Home, "NEXT_RELEASE.md")
+		if err := os.WriteFile(notesFile, []byte(railNotes), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		w.readGates(false)
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
+		return w.release(t, func(o *engine.ReleaseOptions) { o.NotesFile, o.NotesFileSet = notesFile, true })
+	}},
+	// The exclusion check's pause answered keep, the answer committed.
+	"release-kept-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\nk\ny\n", false)
+		w.deps.Transport = railAI(designDocAnswer, nil)
+		w.readGates(false)
+		w.designNotes(answersCommitCalls...)
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
+		return w.release(t, nil)
+	}},
+	// An exclusion check whose answer names nothing it can use: the check's own node
+	// warns, and the release carries on.
+	"release-check-failed-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		w.deps.Transport = railAI("I couldn't tell which of these belong.", nil)
+		w.readGates(false)
+		seedNormalAINotes(w.f)
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
 		return w.release(t, nil)
 	}},
 	// A release whose push is rejected, before the point of no return, unwinding.

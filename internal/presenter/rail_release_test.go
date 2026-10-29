@@ -91,7 +91,34 @@ func TestRail_AWarningAfterTheCloseDrawsUnderTheEndStationWithNextLast(t *testin
 	)...)
 }
 
-func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithItsManualStep(t *testing.T) {
+func TestRail_MovesAndSuggestionsArrivingAfterTheCloseJoinNext(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 24, answers())
+	commitRun(r)
+	r.NextMoves(presenter.NextMoves{Stage: "message", Moves: []presenter.NextMove{{Lead: "write the message yourself:", Command: "mint commit --no-ai"}}})
+	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "main", Detail: "nothing changed"}, Elapsed: secs(1.2)})
+	r.NextMoves(presenter.NextMoves{Stage: "autostash", Moves: []presenter.NextMove{{Lead: "Put your work back:", Command: "git stash pop"}}})
+	s := specsSuggestion()
+	s.Line = `diff_exclude = ["docs/specs/**"]`
+	r.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "message", Table: "[release]", File: ".mint.toml", Suggestions: []presenter.ExclusionSuggestion{s}})
+	r.Close()
+
+	want := []string{
+		" next",
+		"   write the message yourself:",
+		"     mint commit --no-ai",
+		"   Put your work back:",
+		"     git stash pop",
+		"   Leave docs/specs/** out of the notes, under [release] in .mint.toml:",
+		`     diff_exclude = ["docs/specs/**"]`,
+	}
+	screen := r.screen(t)
+	if got := screen[max(len(screen)-len(want), 0):]; !slices.Equal(got, want) {
+		t.Errorf("the run ends\n%s\nwant next to hold every move, in the order it came\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 24, answers())
 	commitRun(r)
@@ -110,6 +137,7 @@ func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithItsManualStep(t *
 	want := []string{
 		" ✗  unwind        automatic recovery failed; manually reset HEAD back to 7c1e0b4",
 		" │                │ fatal: could not write the index",
+		" │                reset 1 commit",
 		" │                kept the answers commit on the starting commit",
 		" │",
 		row(" ◇  main          manual cleanup required · nothing pushed", "4.9s"),
@@ -118,7 +146,7 @@ func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithItsManualStep(t *
 		t.Errorf("the run ends\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 	if slices.ContainsFunc(screen, func(line string) bool { return strings.Contains(line, "↩") }) {
-		t.Errorf("an unwind that couldn't finish drew a ↩ claiming what it undid:\n%s", strings.Join(screen, "\n"))
+		t.Errorf("an unwind that couldn't finish drew a ↩ node of its own:\n%s", strings.Join(screen, "\n"))
 	}
 	if got, want := r.err.String(), "✗ tag  push rejected\n⚠ unwind incomplete  automatic recovery failed; manually reset HEAD back to 7c1e0b4\n"; got != want {
 		t.Errorf("err = %q, want the failure's and the warning's summaries %q", got, want)
