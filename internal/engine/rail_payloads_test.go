@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"mint/internal/presenter/presentertest"
 	"mint/internal/release"
 	"mint/internal/runner"
+	"mint/internal/version"
 )
 
 // railDeps are newDeps run from a repo directly under the home directory, by a
@@ -619,22 +621,77 @@ func TestRelease_Rail_TheCheckAndAFailedNotesStageAreTimedOnTheirOwnNodes(t *tes
 	if len(moves) != 1 {
 		t.Fatalf("NextMoves = %+v, want one", moves)
 	}
-	want := presenter.NextMove{Lead: "write the notes to a file and release with", Command: "mint release --notes-file <file>"}
-	if moves[0].Moves[0] != want {
-		t.Errorf("first move = %+v, want the command apart from its lead %+v", moves[0].Moves[0], want)
+	assertFloorMovesLeadTheRail(t, moves[0].Moves, "mint release")
+}
+
+// assertFloorMovesLeadTheRail fails unless moves open on the floor's three ways out,
+// each a capitalised lead ending in a colon and the command or config line apart from
+// it, command the release run again; plain's sentence its own. Every move after them
+// clears the cause: a capitalised lead alone, plain's lowercase sentence under it.
+func assertFloorMovesLeadTheRail(t *testing.T, moves []presenter.NextMove, command string) {
+	t.Helper()
+	want := []presenter.NextMove{
+		{
+			Lead:     "Write the notes to a file, then release with it:",
+			Command:  command + " --notes-file <file>",
+			Sentence: "write the notes to a file and release with mint release --notes-file <file>",
+		},
+		{
+			Lead:     "Release with the commit-subject list:",
+			Command:  command + " --no-ai",
+			Sentence: "re-run with --no-ai to release with the commit-subject list",
+		},
+		{
+			Lead:     "Ship that list whenever the AI fails, under [release] in .mint.toml:",
+			Command:  `on_notes_failure = "fallback"`,
+			Sentence: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
+		},
 	}
-	fallback := presenter.NextMove{
-		Lead:     "Ship that list whenever the AI fails, under [release] in .mint.toml:",
-		Command:  `on_notes_failure = "fallback"`,
-		Sentence: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
+	if len(moves) < len(want) || !slices.Equal(moves[:len(want)], want) {
+		t.Fatalf("moves = %+v, want them opening on %+v", moves, want)
 	}
-	for _, move := range moves[0].Moves[1:] {
-		if move.Command != "" && move != fallback {
-			t.Errorf("move %+v carries a command; only the notes-file move and %+v name one", move, fallback)
+	for _, move := range moves[len(want):] {
+		if move.Command != "" || move.Lead != strings.ToUpper(move.Sentence[:1])+move.Sentence[1:] {
+			t.Errorf("cause move = %+v, want a capitalised lead alone over plain's sentence", move)
 		}
 	}
-	if !slices.Contains(moves[0].Moves, fallback) {
-		t.Errorf("moves = %+v, want the fallback's config line apart from its lead, plain's sentence its own: %+v", moves[0].Moves, fallback)
+}
+
+func TestRelease_Rail_TheFloorsCommandsCarryTheRunsOwnVersionFlags(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		opts    func(*engine.ReleaseOptions)
+		command string
+	}{
+		{name: "a patch bump, the default, carries none", opts: func(*engine.ReleaseOptions) {}, command: "mint release"},
+		{name: "a minor bump", opts: func(o *engine.ReleaseOptions) { o.Bump = version.BumpMinor }, command: "mint release -m"},
+		{name: "a major bump", opts: func(o *engine.ReleaseOptions) { o.Bump = version.BumpMajor }, command: "mint release -M"},
+		{name: "a set version, as typed", opts: func(o *engine.ReleaseOptions) { o.SetVersion = "v2.0.0" }, command: "mint release --set-version v2.0.0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			f := runner.NewFakeRunner()
+			seedPriorTagReadGates(f, root, "main")
+			seedNormalAINotes(f)
+			rec := &presentertest.RecordingPresenter{}
+			deps := railDeps(rec, f, root)
+			deps.Transport = slowTransport{}
+			deps.Yes = true
+			opts := priorTagNormalAIOptions()
+			tc.opts(&opts)
+
+			_ = engine.Release(t.Context(), deps, opts)
+
+			moves := nextMovesEvents(rec)
+			if len(moves) != 1 {
+				t.Fatalf("NextMoves = %+v, want one; kinds = %v", moves, rec.Kinds())
+			}
+			assertFloorMovesLeadTheRail(t, moves[0].Moves, tc.command)
+		})
 	}
 }
 
@@ -882,4 +939,58 @@ func TestRegenerateRun_Rail_AnUnchangedChangelogSettlesThePushAsSkipped(t *testi
 	}
 	assertKeysInPlan(t, rec, rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan)
 	assertEveryPlannedStageSettled(t, rec)
+}
+
+func TestRelease_Rail_ABodyTakenAtTheNotesFloorSettlesTheNotesAgainSayingWhereItCameFrom(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		choice presenter.Choice
+		seed   func(*runner.FakeRunner, *engine.ReleaseDeps)
+		detail string
+	}{
+		{
+			name:   "the commit subjects",
+			choice: presenter.ChoiceCommitSubjects,
+			seed: func(f *runner.FakeRunner, _ *engine.ReleaseDeps) {
+				f.SeedSequence("git", ScriptedOut(commitSubjects)) // log --format=%s v1.2.3..HEAD
+			},
+			detail: "the commit-subject list",
+		},
+		{
+			name:   "written in the editor",
+			choice: presenter.ChoiceEdit,
+			seed: func(_ *runner.FakeRunner, deps *engine.ReleaseDeps) {
+				deps.Editor = &fakeEditor{edited: editedBody}
+			},
+			detail: "written in your editor",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			f, rec, deps := singlePassFailingRun(t, root, &ai.GenerationError{Stdout: loginOutput, ExitCode: 1})
+			tc.seed(f, &deps)
+			seedRecordTagPush(f, root)
+			f.Seed("gh", runner.Result{}, nil)
+			rec.NextChoices = []presenter.Choice{presenter.ChoiceYes, tc.choice, presenter.ChoiceYes}
+
+			if err := engine.Release(t.Context(), deps, priorTagNormalAIOptions()); err != nil {
+				t.Fatalf("Release returned unexpected error: %v", err)
+			}
+
+			failed, shown := indexOfKind(rec, presentertest.KindStageFailed), indexOfKind(rec, presentertest.KindShowNotes)
+			settled := slices.IndexFunc(rec.Events, func(ev presentertest.Event) bool {
+				return ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == "notes"
+			})
+			if settled < failed || settled > shown {
+				t.Fatalf("notes settled at %d, want between the failure at %d and the notes shown at %d; kinds = %v", settled, failed, shown, rec.Kinds())
+			}
+			if got, want := rec.Events[settled].StageSucceeded, presenter.Settled("notes", tc.detail); got != want {
+				t.Errorf("notes settled = %+v, want %+v", got, want)
+			}
+		})
+	}
 }

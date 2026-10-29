@@ -668,7 +668,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		chunkNotes.warnUnsaved(p)
 		if !offersChoice {
 			if atFloor {
-				p.NextMoves(deps.notesFloorMoves(err, cfg, failure.SavedNotes))
+				p.NextMoves(deps.notesFloorMoves(err, cfg, releaseRerun(opts), failure.SavedNotes))
 				stage.showSuggestions(cfg.Release.DiffExclude)
 			}
 			return Unwind(ctx, deps, start, made, err)
@@ -711,7 +711,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// why ReleaseReviewGate's wording says "release", not "accept".
 	regens := stage.regens(func(lowerCap int) { hintLowerCap(p, lowerCap) })
 	regen := regens.review(perRunRegenerator(deps, generator, chunkNotes, regens, current.String(cfg.Release.TagPrefix), cfg), chunkNotes)
-	body, err = chunkNotes.reviewGate(ctx, deps, regen, gateForKind(kind), body, versionKey, "mint release")
+	body, err = chunkNotes.reviewGate(ctx, deps, regen, gateForKind(kind), body, versionKey, releaseRerun(opts))
 	if err != nil {
 		// Unwind, not surfaceAndUnwind: reviewGate has already surfaced whatever
 		// needed a StageFailed.
@@ -1667,9 +1667,10 @@ const dryRunLabel = "dry-run"
 // reportHookSkipped emits the dry-run hook-skip notice for a CONFIGURED point that
 // was not invoked because dry-run is active. The message is "skipping {point} hook"
 // (point = preflight / pre_tag / post_release), kept identical across the three call
-// sites so the convention is consistent. It rides the Warn seam (see dryRunLabel).
+// sites so the convention is consistent. It rides the Warn seam (see dryRunLabel),
+// keyed to the hook's own node so the rail draws the skip in the hook's place.
 func reportHookSkipped(p presenter.Presenter, point string) {
-	p.Warn(presenter.Warning{Label: dryRunLabel, Message: "skipping " + point + " hook"})
+	p.Warn(presenter.Warning{Label: dryRunLabel, Key: point, Message: "skipping " + point + " hook"})
 }
 
 // hookRuns reports whether a hook point configured with value runs on this run: it

@@ -106,8 +106,15 @@ func TestRegenerate_UnattendedFreshFailure_FitsTheNextMovesToTheLoadedConfig(t *
 		}
 	}
 	want := []presenter.NextMove{
-		{Lead: "write the notes to a file and release with", Command: "mint release regenerate 1.4.0 --notes-file <file>"},
-		{Lead: `if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`},
+		{
+			Lead:     "Write the notes to a file, then regenerate with it:",
+			Command:  "mint release regenerate 1.4.0 --notes-file <file>",
+			Sentence: "write the notes to a file and release with mint release regenerate 1.4.0 --notes-file <file>",
+		},
+		{
+			Lead:     `If ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`,
+			Sentence: `if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`,
+		},
 	}
 	if len(moves) != 1 || !slices.Equal(moves[0].Moves, want) {
 		t.Errorf("NextMoves = %+v, want one carrying %q", moves, want)

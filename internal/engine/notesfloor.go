@@ -9,6 +9,7 @@ import (
 	"mint/internal/config"
 	"mint/internal/notes"
 	"mint/internal/presenter"
+	"mint/internal/version"
 )
 
 // errFloorAborted is the cause for an abort at the notes floor's choice.
@@ -40,11 +41,16 @@ func reachesNotesFloor(failure error) bool {
 // notesFloorMoves are the ways a release that stopped at the floor on failure can
 // still go out, then the moves that clear failure's cause. The fallback move shows
 // only unattended: at a terminal without -y the real run offers the choice instead of
-// stopping. savedNotes is the path the failed run saved its chunk notes to, or "".
-func (d ReleaseDeps) notesFloorMoves(failure error, cfg config.Config, savedNotes string) presenter.NextMoves {
+// stopping. again is the release run again; savedNotes is the path the failed run
+// saved its chunk notes to, or "".
+func (d ReleaseDeps) notesFloorMoves(failure error, cfg config.Config, again rerun, savedNotes string) presenter.NextMoves {
 	moves := []presenter.NextMove{
-		notesFileMove("mint release", savedNotes),
-		{Lead: "re-run with --no-ai to release with the commit-subject list"},
+		notesFileMove(again, savedNotes),
+		{
+			Lead:     "Release with the commit-subject list:",
+			Command:  again.railCommand() + " --no-ai",
+			Sentence: "re-run with --no-ai to release with the commit-subject list",
+		},
 	}
 	if !d.attended() {
 		moves = append(moves, fallbackMove)
@@ -65,20 +71,60 @@ var fallbackMove = presenter.NextMove{
 // unattended regenerate stopped at the floor on failure, then the moves that clear
 // failure's cause. Neither --no-ai nor on_notes_failure exists for a regenerate.
 func regenerateNotesFloorMoves(failure error, cfg config.Config, version, savedNotes string) presenter.NextMoves {
-	moves := []presenter.NextMove{notesFileMove("mint release regenerate "+version, savedNotes)}
+	moves := []presenter.NextMove{notesFileMove(regenerateRerun(version), savedNotes)}
 	return presenter.NextMoves{Stage: "notes", Moves: append(moves, causeMoves(failure, cfg)...)}
 }
 
-// notesFileMove is the --notes-file route through command: the chunk notes saved at
+// rerun is a verb run again, as a next move names it. Plain's sentence names command
+// as it always has; the rail's command adds flags, the run's own version flags, so
+// pasting it releases the version the run was cutting.
+type rerun struct {
+	verb, command, flags string
+}
+
+// releaseRerun is mint release run again with opts' version flags.
+func releaseRerun(opts ReleaseOptions) rerun {
+	return rerun{verb: "release", command: "mint release", flags: versionFlags(opts)}
+}
+
+// regenerateRerun is the regenerate of tag run again.
+func regenerateRerun(tag string) rerun {
+	return rerun{verb: "regenerate", command: "mint release regenerate " + tag}
+}
+
+func (r rerun) railCommand() string {
+	return r.command + r.flags
+}
+
+// versionFlags are the flags that pick opts' version, each with its leading space:
+// none for the default patch bump.
+func versionFlags(opts ReleaseOptions) string {
+	switch {
+	case opts.SetVersion != "":
+		return " --set-version " + cmdline.Quote(opts.SetVersion)
+	case opts.Bump == version.BumpMinor:
+		return " -m"
+	case opts.Bump == version.BumpMajor:
+		return " -M"
+	}
+	return ""
+}
+
+// notesFileMove is the --notes-file route through again: the chunk notes saved at
 // savedNotes, once tidied, or with none saved, notes written from scratch. Its
 // command ends the move, so it stands apart from the lead.
-func notesFileMove(command, savedNotes string) presenter.NextMove {
+func notesFileMove(again rerun, savedNotes string) presenter.NextMove {
 	if savedNotes == "" {
-		return presenter.NextMove{Lead: "write the notes to a file and release with", Command: command + " --notes-file <file>"}
+		return presenter.NextMove{
+			Lead:     "Write the notes to a file, then " + again.verb + " with it:",
+			Command:  again.railCommand() + " --notes-file <file>",
+			Sentence: "write the notes to a file and release with " + again.command + " --notes-file <file>",
+		}
 	}
 	return presenter.NextMove{
-		Lead:    "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with",
-		Command: notesFileCommand(command, savedNotes),
+		Lead:     "Tidy the saved part notes, then " + again.verb + " with them:",
+		Command:  notesFileCommand(again.railCommand(), savedNotes),
+		Sentence: "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with " + notesFileCommand(again.command, savedNotes),
 	}
 }
 
@@ -92,7 +138,8 @@ func notesFileCommand(base, path string) string {
 const leanCommandMove = `if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`
 
 // causeMoves are the moves that clear failure's cause, each a lead alone: none ends
-// in a command. A merge too large gets none: a
+// in a command. The rail's lead opens on a capital, as every rail lead does; plain's
+// sentence keeps the lowercase it has always had. A merge too large gets none: a
 // lower cap cuts the release into more parts and does not shrink what the merge holds.
 // An OTHER failure leaves the AI's own output to name its cause, adding the lean
 // command only where the release runs a command of the repo's own, whose overhead
@@ -101,7 +148,7 @@ func causeMoves(failure error, cfg config.Config) []presenter.NextMove {
 	leads := causeLeads(failure, cfg)
 	moves := make([]presenter.NextMove, len(leads))
 	for i, lead := range leads {
-		moves[i] = presenter.NextMove{Lead: lead}
+		moves[i] = presenter.NextMove{Lead: strings.ToUpper(lead[:1]) + lead[1:], Sentence: lead}
 	}
 	return moves
 }
@@ -168,7 +215,8 @@ func notesFloorGate(question string) presenter.Gate {
 // when the editor wrote nothing or could not be launched. subjects builds the
 // commit-subject list; savedNotes is what the editor opens on: the chunk notes this
 // run saved, or "". A way out with no body is an abort, its cause returned for the
-// caller to unwind or abort on.
+// caller to unwind or abort on. A body taken settles the notes stage again, Quiet,
+// saying where its notes came from, as a node of its own under the one that failed.
 func notesFloor(ctx context.Context, deps ReleaseDeps, gate presenter.Gate, subjects func(context.Context) (string, error), savedNotes string) (string, error) {
 	for {
 		choice, err := deps.Presenter.Prompt(gate)
@@ -182,6 +230,7 @@ func notesFloor(ctx context.Context, deps ReleaseDeps, gate presenter.Gate, subj
 				surfaceStageFailure(deps.Presenter, "notes", err)
 				return "", err
 			}
+			deps.Presenter.StageSucceeded(presenter.Settled(stageNotes, "the commit-subject list"))
 			return body, nil
 		case presenter.ChoiceEdit:
 			body, err := editBody(ctx, deps.Editor, savedNotes)
@@ -196,6 +245,7 @@ func notesFloor(ctx context.Context, deps ReleaseDeps, gate presenter.Gate, subj
 				// ship an empty tag message, changelog entry and provider release.
 				continue
 			}
+			deps.Presenter.StageSucceeded(presenter.Settled(stageNotes, "written in your editor"))
 			return body, nil
 		case presenter.ChoiceAbort:
 			return "", errFloorAborted

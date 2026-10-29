@@ -244,9 +244,10 @@ var railRuns = map[string]railRun{
 		)
 		return w.release(t, nil)
 	}},
-	// A dry run: the notes written, the review previewed, nothing changed.
+	// A dry run: its hooks skipped, the notes written, the review previewed, nothing
+	// changed.
 	"release-dry-run-100": {run: func(t *testing.T) (string, error) {
-		w := newRailWorld(t, "", "", false)
+		w := newRailWorld(t, "[release.hooks]\npreflight = \"make lint\"\npre_tag = \"npm ci && npm run build\"\npost_release = \"./scripts/notify.sh\"\n", "", false)
 		w.readGates(false)
 		w.notes()
 		return w.release(t, func(o *engine.ReleaseOptions) { o.DryRun = true })

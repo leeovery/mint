@@ -3,7 +3,9 @@
  ◇  v1.2.3        main @ 4f9c2e1
  │
  ●  version       v1.3.0 (minor bump)
+ !  dry-run       skipping preflight hook
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
+ !  pre_tag       skipping pre_tag hook
  ●  check         files that don't belong in the notes                                          0.7s
  ●  notes         generated                                                                     2.1s
  │
@@ -22,5 +24,6 @@
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  ○  push          main + v1.3.0 → origin, atomic
  ○  publish       provider release
- ┆
+ !  post_release  skipping post_release hook
+ │
  ◇  v1.3.0        dry run · nothing changed                                                     3.5s

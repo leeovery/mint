@@ -73,20 +73,20 @@ func (k *chunkNotesKeeper) keepRegen(failure error) error {
 }
 
 // reportKept warns where the chunk notes of a review-gate abort, cause, could not be
-// saved, and names a saved file with command, the run that releases it.
-func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error, command string) {
+// saved, and names a saved file with again, the run that releases it.
+func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error, again rerun) {
 	k.warnUnsaved(p)
 	if saved := notes.SavedChunkNotesPath(cause); saved != "" {
-		p.NextMoves(presenter.NextMoves{Stage: "regenerate", Moves: []presenter.NextMove{notesFileMove(command, saved)}})
+		p.NextMoves(presenter.NextMoves{Stage: "regenerate", Moves: []presenter.NextMove{notesFileMove(again, saved)}})
 	}
 }
 
 // reviewGate runs the review gate with regen as its `r`, then reports what an abort
-// kept, a saved file named with command.
-func (k *chunkNotesKeeper) reviewGate(ctx context.Context, deps ReleaseDeps, regen reviewRegen, gate presenter.Gate, body, versionKey, command string) (string, error) {
+// kept, a saved file named with again.
+func (k *chunkNotesKeeper) reviewGate(ctx context.Context, deps ReleaseDeps, regen reviewRegen, gate presenter.Gate, body, versionKey string, again rerun) (string, error) {
 	body, err := reviewGate(ctx, deps, regen, gate, body, versionKey)
 	if err != nil {
-		k.reportKept(deps.Presenter, err, command)
+		k.reportKept(deps.Presenter, err, again)
 	}
 	return body, err
 }
