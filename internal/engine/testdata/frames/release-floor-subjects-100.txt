@@ -4,7 +4,7 @@
  │
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
- ●  pre_tag       hook completed                                                                0.7s
+ ●  pre_tag       build.sh                                                                      0.7s
  │                committed as chore(release): pre-tag artifacts for v1.3.0
  ●  check         nothing to leave out                                                          0.7s
  ✗  notes         AI call failed · use the commit subjects                                      2.1s

@@ -1785,7 +1785,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	if err != nil {
 		return committed, &stageError{stage: stage, err: err}
 	}
-	success := presenter.StageSuccess{Detail: "hook completed", Sentence: stage.sentence}
+	success := hookCompletion(cfg.Release.Hooks.PreTag, stage)
 	if committed {
 		success.Commit = subject
 	}
@@ -1844,8 +1844,14 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env); err != nil {
 		return err
 	}
-	stage.done("hook completed")
+	stage.succeeded(hookCompletion(cfg.Release.Hooks.PostRelease, stage))
 	return nil
+}
+
+// hookCompletion is the success of the hook value runs as stage: the rail's row names
+// its commands, as the plan did; plain keeps the detail it has always had.
+func hookCompletion(value config.HookValue, stage *blockingStage) presenter.StageSuccess {
+	return presenter.StageSuccess{Detail: "hook completed", Row: hookDetail(value), Sentence: stage.sentence}
 }
 
 // pretagArtifactSubject builds the FIXED subject for the pre_tag artifact commit. It
