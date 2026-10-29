@@ -80,7 +80,7 @@ func TestTheLiveRegionWritesExactlyTheseEscapes(t *testing.T) {
 			name: "a question for a typed line printed last, the region off, then the region drawn afresh under the line",
 			steps: []regionStep{
 				{call: draw(nil, []string{"a", "b"}), want: "a\nb\n"},
-				{name: "asked", call: func(r *presenter.LiveRegion) { r.Ask([]string{"s", "? q "}) }, want: "\r\x1b[2A\x1b[Js\n? q "},
+				{name: "asked", call: func(r *presenter.LiveRegion) { r.Ask([]string{"s", "? q "}, 24) }, want: "\r\x1b[2A\x1b[Js\n? q "},
 				{name: "the line ended in its Enter", call: func(r *presenter.LiveRegion) { r.Released(true) }, want: ""},
 				{name: "drawn afresh, nothing to go back over", call: draw(nil, []string{"c"}), want: "c\n"},
 			},
@@ -88,7 +88,7 @@ func TestTheLiveRegionWritesExactlyTheseEscapes(t *testing.T) {
 		{
 			name: "a line the input closed on before its Enter is ended",
 			steps: []regionStep{
-				{call: func(r *presenter.LiveRegion) { r.Ask([]string{"? q "}) }, want: "? q "},
+				{call: func(r *presenter.LiveRegion) { r.Ask([]string{"? q "}, 24) }, want: "? q "},
 				{name: "released", call: func(r *presenter.LiveRegion) { r.Released(false) }, want: "\n"},
 			},
 		},
@@ -97,6 +97,13 @@ func TestTheLiveRegionWritesExactlyTheseEscapes(t *testing.T) {
 			steps: []regionStep{
 				{call: func(r *presenter.LiveRegion) { r.Draw(nil, lines(10, "line "), 24) }, want: strings.Join(lines(10, "line "), "\n") + "\n"},
 				{name: "redrawn 5 rows tall", call: func(r *presenter.LiveRegion) { r.Draw(nil, []string{"c"}, 5) }, want: "\r\x1b[4A\x1b[Jc\n"},
+			},
+		},
+		{
+			name: "a terminal made shorter before a typed question is gone back over only to the screen's top",
+			steps: []regionStep{
+				{call: func(r *presenter.LiveRegion) { r.Draw(nil, lines(10, "line "), 24) }, want: strings.Join(lines(10, "line "), "\n") + "\n"},
+				{name: "asked 5 rows tall", call: func(r *presenter.LiveRegion) { r.Ask([]string{"? q "}, 5) }, want: "\r\x1b[4A\x1b[J? q "},
 			},
 		},
 	}
@@ -153,7 +160,7 @@ func TestRedrawsLeaveTheScreenAsTheLastDrawHasIt(t *testing.T) {
 	r.Draw([]string{"done 1"}, lines(5, "next "), 6)
 	r.Erase()
 	r.Draw(nil, []string{"? question", "plan 1"}, 6)
-	r.Ask([]string{"? question "})
+	r.Ask([]string{"? question "}, 6)
 	if _, err := term.Write([]byte("typed\n")); err != nil {
 		t.Fatal(err)
 	}

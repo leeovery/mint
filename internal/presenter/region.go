@@ -87,7 +87,9 @@ func (r *liveRegion) Erase() {
 // Ask takes the region off the terminal and prints lines under those settled, the
 // last with no newline after it: a question read as a typed line, the cursor at its
 // end and nothing drawn below it, so the terminal's echo lands only on blank rows.
-func (r *liveRegion) Ask(lines []string) {
+// rows is the terminal's height, as Draw takes it.
+func (r *liveRegion) Ask(lines []string, rows int) {
+	r.rows = rows
 	var b strings.Builder
 	r.back(&b)
 	b.WriteString(strings.Join(lines, "\n"))

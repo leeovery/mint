@@ -155,7 +155,7 @@ func (p *RailPresenter) readAt(q *part, rows int) {
 	// A question reading a typed line ends on a blank cell for its cursor, which the
 	// echo takes.
 	lines[len(lines)-1] = strings.TrimSuffix(lines[len(lines)-1], " ")
-	p.region.Ask(lines)
+	p.region.Ask(lines, rows)
 	p.run.printed = len(run.Settled)
 	p.syncTicker()
 }
