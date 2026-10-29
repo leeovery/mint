@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"mint/internal/engine"
+	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/publish"
 	"mint/internal/runner"
@@ -14,8 +15,8 @@ import (
 // This file pins the batch `--all` preflight gate (task 10-1, review remediation): the
 // batch path must preflight the RESOLVED target subset the SAME way the single-version
 // interactive path does. A bare `mint release regenerate --all` resolves its target
-// INTERACTIVELY (at the cmd-layer resolveBatchAxes) AFTER the cmd layer can preflight, so
-// the engine entry point RegenerateAllValidated runs the resolved gate set itself —
+// INTERACTIVELY (at RegenerateAllRun's axis prompts) AFTER the cmd layer can preflight, so
+// RegenerateAllValidated runs the resolved gate set itself —
 // otherwise an interactively-chosen changelog/both commits+pushes with no clean-tree /
 // branch / remote-sync gate, and an interactively-chosen release/both dispatches provider
 // writes with no gh-auth gate (the bypass the single-version fix closed, mirrored here).
@@ -300,5 +301,14 @@ func TestRegenerateAllValidated_NoVersions_LeavesTheChangelogAlone(t *testing.T)
 		if inv.Name == "git" && (slices.Contains(inv.Args, "commit") || slices.Contains(inv.Args, "push")) {
 			t.Errorf("git %v ran for an empty version set; want no commit or push", inv.Args)
 		}
+	}
+	// The run says it had nothing to regenerate, from its station to its close.
+	starts := rec.Events[indexOfKind(rec, presentertest.KindRunStarted)].RunStarted
+	if starts.Start.Name != "no versions" {
+		t.Errorf("start station = %+v, want no versions", starts.Start)
+	}
+	last := rec.Events[len(rec.Events)-1]
+	if want := (presenter.Station{Name: "done", Detail: "nothing to regenerate"}); last.Kind != presentertest.KindRunFinished || last.RunFinished.End != want {
+		t.Errorf("close = %v %+v, want %+v", last.Kind, last.RunFinished, want)
 	}
 }

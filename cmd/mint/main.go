@@ -177,11 +177,10 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 	}
 
 	// Resolve the release branch (read-only, the same way the forward path does) for the
-	// preflight on-branch / remote-sync gates. Both dispatch paths consume it: the batch
-	// path preflights here up front (its axes are resolved inside runRegenerateAll); the
-	// single-version path threads it into RegenerateRun, which preflights the RESOLVED
-	// target AFTER the interactive source/target prompts — the only point at which a bare
-	// `regenerate <ver>` (no --target) knows which surface(s) it writes.
+	// preflight on-branch / remote-sync gates. Both dispatch paths thread it into their
+	// run (RegenerateAllRun, RegenerateRunResolving), which preflights the RESOLVED
+	// target AFTER the interactive source/target prompts — the only point at which a
+	// bare invocation (no --target) knows which surface(s) it writes.
 	releaseBranch, err := gitrepo.ResolveReleaseBranch(ctx, r, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)

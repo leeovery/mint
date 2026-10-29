@@ -66,10 +66,10 @@ type BatchRegenerateRequest struct {
 	Target RegenerateTarget
 	// ReleaseBranch is the resolved release branch the preflight on-branch and
 	// remote-sync gates check, threaded from the cmd layer's read-only branch
-	// resolution. It backs the batch preflight that runs at the RegenerateAllValidated
-	// entry point AFTER the target resolves at the cmd-layer axis prompts — the cmd
-	// layer cannot run that gate set itself because it dispatches before the interactive
-	// batch target is known, exactly as the single-version RegenerateRunRequest.ReleaseBranch.
+	// resolution. It backs the batch preflight that runs inside the run AFTER the target
+	// resolves at its axis prompts — the cmd layer cannot run that gate set itself
+	// because it dispatches before the interactive batch target is known, exactly as the
+	// single-version RegenerateRunRequest.ReleaseBranch.
 	ReleaseBranch string
 	// ProduceBody yields one version's notes body for the resolved source. It is
 	// injected so the loop stays testable without a real AI transport / tag / release
@@ -103,8 +103,9 @@ type RegeneratedVersion struct {
 	Body string
 }
 
-// RegenerateAllValidated is the batch `--all` ENTRY POINT: it runs the static
-// CONFIG-level check UP FRONT — before any version is touched — then runs the
+// RegenerateAllValidated runs a --all backfill whose source and target are already
+// resolved, as RegenerateAllRun runs one once its questions are answered: it runs the
+// static CONFIG-level check UP FRONT — before any version is touched — then runs the
 // per-version loop, and finally (for a changelog/both target) performs the END-of-batch
 // whole-file CHANGELOG rebuild + single commit + push. A config-level fact (a
 // changelog/both target with the changelog DISABLED in config) is NOT a per-version
@@ -192,8 +193,8 @@ func regenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	}
 	// Preflight the RESOLVED batch target BEFORE any version is processed, any provider
 	// write, or any changelog commit/push. A bare `--all` resolves its target
-	// INTERACTIVELY at the cmd-layer axis prompts (resolveBatchAxes) AFTER the cmd layer
-	// could run preflight, so the gate set is derived from the resolved req.Target HERE —
+	// INTERACTIVELY at RegenerateAllRun's axis prompts, AFTER the cmd layer could run
+	// preflight, so the gate set is derived from the resolved req.Target HERE —
 	// mirroring the single-version RegenerateRun: an interactive changelog/both runs the
 	// clean-tree + on-branch + remote-sync bucket before committing+pushing, and an
 	// interactive release/both runs gh-auth before the first provider dispatch. The batch
@@ -243,8 +244,12 @@ func batchStart(req BatchRegenerateRequest, release string) presenter.Station {
 }
 
 // batchDoneDetail is what a --all backfill of total versions that regenerated some
-// did: how many of them, then how many it skipped, where it skipped any.
+// did: how many of them, then how many it skipped, where it skipped any; or, with no
+// version to regenerate, that it had none.
 func batchDoneDetail(total, regenerated int) string {
+	if total == 0 {
+		return "nothing to regenerate"
+	}
 	detail := fmt.Sprintf("%d of %s regenerated", regenerated, countOf(total, "version"))
 	if skipped := total - regenerated; skipped > 0 {
 		detail += fmt.Sprintf(" · %d skipped", skipped)
@@ -252,9 +257,12 @@ func batchDoneDetail(total, regenerated int) string {
 	return detail
 }
 
-// countOf is n things, the noun plural but for one.
+// countOf is n things, the noun plural but for one, and none as no things.
 func countOf(n int, noun string) string {
-	if n == 1 {
+	switch n {
+	case 0:
+		return "no " + noun + "s"
+	case 1:
 		return "1 " + noun
 	}
 	return fmt.Sprintf("%d %ss", n, noun)
