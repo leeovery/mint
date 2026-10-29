@@ -23,28 +23,9 @@ func driveAnsweredNotesStage(p presenter.Presenter) {
 	p.StageSucceeded(presenter.StageSuccess{
 		Name:     "notes",
 		Detail:   "generated",
-		Sentence: "Generated release notes",
 		Elapsed:  4200 * time.Millisecond,
 		Blocking: true,
 	})
-}
-
-func TestPrettyPresenter_ExclusionAnswersRecorded_PrintsOneLineBeforeTheNotesLineResumes(t *testing.T) {
-	t.Parallel()
-
-	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { driveAnsweredNotesStage(p) })
-
-	want := "✓ Answers written to .mint.toml's [release] table and committed\n" +
-		"✓ Generated release notes (4.2s)\n"
-	if got := out.String(); got != want {
-		t.Errorf("output =\n%q\nwant\n%q", got, want)
-	}
-	if len(tr.created) != 2 {
-		t.Fatalf("spinners created = %d, want the notes line and its resumption", len(tr.created))
-	}
-	if !tr.created[0].stopped || !tr.created[1].started {
-		t.Errorf("the notes line did not stop for the answers line and resume after it")
-	}
 }
 
 func TestPlainPresenter_ExclusionAnswersRecorded_PrintsItsOwnLine(t *testing.T) {
@@ -87,17 +68,6 @@ func TestRecordingPresenter_ExclusionAnswersRecorded_RecordsItsPayload(t *testin
 }
 
 var ignoredReleaseTableAnswers = presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]", Ignored: true}
-
-func TestPrettyPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNotCommitted(t *testing.T) {
-	t.Parallel()
-
-	out, _ := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { p.ExclusionAnswersRecorded(ignoredReleaseTableAnswers) })
-
-	want := "✓ Answers written to .mint.toml's [release] table and not committed, as git ignores .mint.toml\n"
-	if got := out.String(); got != want {
-		t.Errorf("output =\n%q\nwant\n%q", got, want)
-	}
-}
 
 func TestPlainPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNotCommitted(t *testing.T) {
 	t.Parallel()

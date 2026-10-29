@@ -13,7 +13,6 @@ import (
 var opened = presenter.RunInfo{
 	Project: "acme",
 	Version: "1.4.0",
-	Leaf:    "🌱",
 	Start:   presenter.Station{Name: "v1.3.2", Detail: "main @ 4f9c2e1"},
 }
 
@@ -102,7 +101,7 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *test
 			}
 			got.Elapsed = 0
 			want := tc.want
-			want.Project, want.Version, want.Leaf = "acme", "1.4.0", "🌱"
+			want.Project, want.Version = "acme", "1.4.0"
 			if got != want {
 				t.Errorf("RunFinished = %+v, want %+v", got, want)
 			}

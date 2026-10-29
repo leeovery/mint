@@ -1,11 +1,8 @@
 package presenter_test
 
 import (
-	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/muesli/termenv"
 
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -96,9 +93,9 @@ func TestPlainPresenterInitResultWritesToStdoutOnly(t *testing.T) {
 
 // TestPlainPresenterInitResultEmitsNoANSIGlyphOrAnimationBytes guards the
 // byte-purity contract for the plain init lines: the synthesised parts ("{target}: ",
-// "created", "skipped (", ")") are byte-pure ASCII — the pretty "·" middot and the
-// "✓" glyph are PRETTY-only and must never appear in plain output. Targets and the
-// reason here are ASCII so the whole run is asserted byte-pure.
+// "created", "skipped (", ")") are byte-pure ASCII — no glyph ever appears in plain
+// output. Targets and the reason here are ASCII so the whole run is asserted
+// byte-pure.
 func TestPlainPresenterInitResultEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.InitResult(presenter.InitOutcome{Action: presenter.InitCreated, Target: ".mint.toml"})
@@ -106,102 +103,6 @@ func TestPlainPresenterInitResultEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) 
 	})
 
 	assertBytePureASCII(t, out, "plain init output")
-}
-
-// TestPrettyPresenterInitCreatedRendersCreatedLine is the core pretty created
-// acceptance: a created outcome renders "✓ created {target}" — two-space indent,
-// the green ✓ (success style), then the action word "created", then the target. The
-// word order is {glyph} {action-word} {target}, which differs from plain's
-// {target}: {action-word}. Asserted under the no-colour profile so the layout/glyph
-// is exact.
-func TestPrettyPresenterInitCreatedRendersCreatedLine(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitCreated, Target: ".mint.toml"})
-	})
-
-	want := "✓ created .mint.toml\n"
-	if got := out.String(); got != want {
-		t.Errorf("InitResult created = %q, want %q", got, want)
-	}
-}
-
-// TestPrettyPresenterInitSkippedRendersMiddotNoticeWithReason is the core pretty
-// skipped acceptance: a skipped outcome renders "· skipped {target} ({reason})" —
-// two-space indent, the NEUTRAL middot "·" (U+00B7, NOT ✓/✗/⚠/↩ since a skip is
-// neither success nor failure), then "skipped", the target, then " ({reason})" with
-// the reason rendered VERBATIM.
-func TestPrettyPresenterInitSkippedRendersMiddotNoticeWithReason(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitSkipped, Target: "release", Reason: "exists, use --force"})
-	})
-
-	want := "· skipped release (exists, use --force)\n"
-	if got := out.String(); got != want {
-		t.Errorf("InitResult skipped = %q, want %q", got, want)
-	}
-}
-
-// TestPrettyPresenterInitResultLayoutSurvivesColourDowngrade forces the no-colour
-// profile and asserts the exact init layout for both outcomes — the glyph, indent,
-// and middot survive a colour downgrade as bare text with no SGR codes leaking.
-func TestPrettyPresenterInitResultLayoutSurvivesColourDowngrade(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitCreated, Target: ".mint.toml"})
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitSkipped, Target: "release", Reason: "exists, use --force"})
-	})
-
-	if bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("downgraded init output leaked an SGR code:\n%q", out.String())
-	}
-	want := "✓ created .mint.toml\n" +
-		"· skipped release (exists, use --force)\n"
-	if got := out.String(); got != want {
-		t.Errorf("downgraded init output = %q, want %q", got, want)
-	}
-}
-
-// TestPrettyPresenterInitCreatedColourOnEmitsANSI forces a colour-capable profile
-// and asserts the created line carries ANSI SGR escapes (the green ✓ styling) while
-// the layout text — the flush-left glyph, the action word, and the target —
-// survives.
-func TestPrettyPresenterInitCreatedColourOnEmitsANSI(t *testing.T) {
-	out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitCreated, Target: ".mint.toml"})
-	})
-
-	got := out.String()
-	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("colour-on init created line contains no ESC (0x1b) — expected green SGR codes:\n%q", got)
-	}
-	// Strip the colour codes and assert the COMPLETE deterministic line — the
-	// flush-left glyph + action word + target survives the styling, asserted exactly
-	// rather than by bare inner fragments.
-	if stripped, want := stripANSI(got), "✓ created .mint.toml\n"; stripped != want {
-		t.Errorf("colour-on init created line (ANSI stripped) = %q, want %q", stripped, want)
-	}
-	if !strings.HasPrefix(got, "\x1b[") {
-		t.Errorf("styled glyph must lead the line flush-left (no indent):\n%q", got)
-	}
-}
-
-// TestPrettyPresenterInitSkippedColourOnEmitsANSI forces a colour-capable profile
-// and asserts the skipped line carries ANSI SGR escapes (the dim middot styling)
-// while the middot, action word, target, and verbatim reason survive.
-func TestPrettyPresenterInitSkippedColourOnEmitsANSI(t *testing.T) {
-	out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitSkipped, Target: "release", Reason: "exists, use --force"})
-	})
-
-	got := out.String()
-	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("colour-on init skipped line contains no ESC (0x1b) — expected dim SGR codes:\n%q", got)
-	}
-	// Strip the colour codes and assert the COMPLETE deterministic line — the whole
-	// indent + middot + action word + target + verbatim reason survives the styling,
-	// asserted exactly rather than by bare inner fragments.
-	if stripped, want := stripANSI(got), "· skipped release (exists, use --force)\n"; stripped != want {
-		t.Errorf("colour-on init skipped line (ANSI stripped) = %q, want %q", stripped, want)
-	}
 }
 
 // TestPlainPresenterInitAllCreatedRunRendersOnlyCreatedLines covers the all-created
@@ -259,26 +160,10 @@ func TestPlainPresenterInitMixedRunRendersInEmitOrder(t *testing.T) {
 	}
 }
 
-// TestPrettyPresenterInitMixedRunRendersInEmitOrder covers the mixed edge in pretty:
-// a created line then a skipped notice, in emit order, under the no-colour profile so
-// the exact layout is asserted.
-func TestPrettyPresenterInitMixedRunRendersInEmitOrder(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitCreated, Target: ".mint.toml"})
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitSkipped, Target: "release", Reason: "exists, use --force"})
-	})
-
-	want := "✓ created .mint.toml\n" +
-		"· skipped release (exists, use --force)\n"
-	if got := out.String(); got != want {
-		t.Errorf("mixed run = %q, want %q", got, want)
-	}
-}
-
 // TestInitForceOverwriteNarratesAsCreated proves a --force overwrite is narrated as
 // a created line: the ENGINE supplies InitCreated for an overwrite (the presenter
 // does not special-case --force, has no knowledge of it, and renders the created
-// vocabulary). Asserted in both modes from the same payload.
+// vocabulary).
 func TestInitForceOverwriteNarratesAsCreated(t *testing.T) {
 	// The engine resolved a --force overwrite to a created action; the payload carries
 	// no --force marker — the presenter renders the created vocabulary unconditionally.
@@ -289,13 +174,6 @@ func TestInitForceOverwriteNarratesAsCreated(t *testing.T) {
 	})
 	if got, want := plainOut.String(), ".mint.toml: created\n"; got != want {
 		t.Errorf("plain --force overwrite = %q, want %q", got, want)
-	}
-
-	prettyOut := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.InitResult(overwrite)
-	})
-	if got, want := prettyOut.String(), "✓ created .mint.toml\n"; got != want {
-		t.Errorf("pretty --force overwrite = %q, want %q", got, want)
 	}
 }
 
@@ -321,29 +199,6 @@ func TestPlainPresenterInitRunEmitsNoReleaseFooterOrGate(t *testing.T) {
 		t.Errorf("init run emitted a release-style brand footer:\n%q", got)
 	}
 	for _, marker := range []string{"Use these notes?", "[y/n"} {
-		if strings.Contains(got, marker) {
-			t.Errorf("init run emitted gate marker %q:\n%q", marker, got)
-		}
-	}
-}
-
-// TestPrettyPresenterInitRunEmitsNoReleaseFooterOrGate is the pretty counterpart:
-// an init run (InitResult only) ends on the last outcome line with no "🌿 released"
-// brand footer and no hotkey-bar gate.
-func TestPrettyPresenterInitRunEmitsNoReleaseFooterOrGate(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitCreated, Target: ".mint.toml"})
-		p.InitResult(presenter.InitOutcome{Action: presenter.InitSkipped, Target: "release", Reason: "exists, use --force"})
-	})
-
-	got := out.String()
-	if !strings.HasSuffix(got, "· skipped release (exists, use --force)\n") {
-		t.Errorf("init run does not end on the last outcome line:\n%q", got)
-	}
-	if strings.Contains(got, "released") {
-		t.Errorf("init run emitted a release-style \"released\" brand footer:\n%q", got)
-	}
-	for _, marker := range []string{"›", "y accept", "n abort"} {
 		if strings.Contains(got, marker) {
 			t.Errorf("init run emitted gate marker %q:\n%q", marker, got)
 		}

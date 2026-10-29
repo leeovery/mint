@@ -84,20 +84,6 @@ func TestSubcommandAndFlagAreByteIdentical(t *testing.T) {
 	}
 }
 
-// TestEmitVersionPassesEmptyLeaf proves the version path supplies an EMPTY Leaf in
-// the payload — the pretty presenter defaults it to 🌿 (leafOrDefault), so version
-// needs no git/repo to derive a brand leaf. The presenter package owns the dressed
-// "{leaf} mint v{value}" rendering; here we only assert the cmd hands it an empty
-// leaf (no git-derived value).
-func TestEmitVersionPassesEmptyLeaf(t *testing.T) {
-	rec := &presentertest.RecordingPresenter{}
-	emitVersion(rec)
-
-	if leaf := rec.Events[0].ShowVersion.Leaf; leaf != "" {
-		t.Errorf("ShowVersion.Leaf = %q, want empty (no git-derived leaf for version)", leaf)
-	}
-}
-
 // TestHasVersionFlagRecognisesGlobalFlag proves the global --version flag is
 // detected regardless of position, while the verb / unrelated args are not
 // mistaken for it.

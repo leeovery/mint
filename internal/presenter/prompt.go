@@ -27,11 +27,11 @@ var ErrInputClosed = errors.New("prompt: input closed before a choice was entere
 // interactive gate can be neither answered nor safely blocked on. It is exported
 // precisely so the engine/main can map THIS path to a
 // non-zero exit via errors.Is; the presenter itself sets no exit code. The
-// failure is ALSO surfaced through the presenter as a rendered failure (styled in
-// pretty, terse in plain) and the one-line summary goes to stderr — this sentinel
+// failure is ALSO surfaced through the presenter as a rendered failure (a ✗ node on
+// the Rail, terse in plain) and the one-line summary goes to stderr — this sentinel
 // is the machine-readable companion to that human-facing rendering. The message
 // is the spec's ASCII form (a semicolon, never the em-dash) so the engine-facing
-// string stays byte-pure; the pretty rendering uses the em-dash form separately.
+// string stays byte-pure; the Rail's rendering uses the em-dash form separately.
 var ErrNotInteractive = errors.New("stdin is not a TTY; pass -y to run unattended")
 
 // parseChoice is the SHARED, mode-agnostic parse for one line of gate input. It is
@@ -66,10 +66,8 @@ func parseChoice(line string, g Gate) (Choice, bool) {
 	return "", false
 }
 
-// readChoice is the SHARED read-and-loop core both presenters drive from Prompt.
-// Factoring it as a free function (taking the persistent buffered reader and a
-// mode-specific render closure) keeps the parse/loop identical across modes —
-// only the render differs.
+// readChoice is plain's read-and-loop core for Prompt, taking the persistent
+// buffered reader and the closure that renders the prompt.
 //
 // Each pass: render the prompt, read ONE line, and parse it. On a recognised line
 // (including the empty-Enter default) the choice is returned. On an unrecognised
@@ -133,9 +131,8 @@ func readTypedLine(reader *bufio.Reader) (line string, ended bool, err error) {
 
 // plainKeyHint builds the slash-joined key hint (e.g. "y/n/e/r") from the gate's
 // DECLARED keys in render order. It reads g.Keys() so a two-choice gate renders
-// "y/n" — the hint is never a hardcoded y/n/e/r literal. Both the plain terse
-// prompt and the minimal pretty prompt use it this phase (the full pretty vertical
-// menu is task 3-4).
+// "y/n" — the hint is never a hardcoded y/n/e/r literal. Plain's terse prompt
+// uses it.
 func plainKeyHint(g Gate) string {
 	keys := g.Keys()
 	parts := make([]string, len(keys))

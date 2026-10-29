@@ -47,26 +47,6 @@ func TestPlainPresenterExclusionSuggestions_PrintsEachSuggestionWithItsLineOnOne
 	assertBytePureASCIIStreams(t, "plain exclusion suggestions", out, errBuf)
 }
 
-func TestPrettyPresenterExclusionSuggestions_ListsEachSuggestionAndItsLineUnderAHeading(t *testing.T) {
-	t.Parallel()
-
-	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii))
-	p.ExclusionSuggestions(twoExclusionSuggestions())
-
-	want := "files that may not belong in the notes:\n" +
-		"  - docs/design/ (design documents; 2 files, 15 KB; on the keep list: docs/design/api.md)\n" +
-		`    to exclude it, set under [release]: diff_exclude = ["specs/", "docs/design/"]` + "\n" +
-		"  - tmp/ (scratch files; 1 file, 176 B)\n" +
-		`    to exclude it, set under [release]: diff_exclude = ["specs/", "tmp/"]` + "\n"
-	if got := out.String(); got != want {
-		t.Errorf("ExclusionSuggestions out\n got: %q\nwant: %q", got, want)
-	}
-	if errBuf.Len() != 0 {
-		t.Errorf("stderr = %q, want nothing", errBuf.String())
-	}
-}
-
 func TestExclusionSuggestions_NoSuggestionsPrintNothing(t *testing.T) {
 	t.Parallel()
 
@@ -75,9 +55,11 @@ func TestExclusionSuggestions_NoSuggestionsPrintNothing(t *testing.T) {
 	if plain.Len() != 0 {
 		t.Errorf("plain ExclusionSuggestions = %q, want nothing", plain.String())
 	}
-	pretty := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) { p.ExclusionSuggestions(empty) })
-	if pretty.Len() != 0 {
-		t.Errorf("pretty ExclusionSuggestions = %q, want nothing", pretty.String())
+	rail, railOut, _ := railGate(termenv.Ascii, nil, gateOpts{})
+	rail.ExclusionSuggestions(empty)
+	rail.Close()
+	if railOut.Len() != 0 {
+		t.Errorf("rail ExclusionSuggestions = %q, want nothing", railOut.String())
 	}
 }
 

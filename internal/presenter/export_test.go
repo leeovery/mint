@@ -5,8 +5,8 @@ import (
 	"os"
 )
 
-// The chainable With* setters below are TEST-ONLY shims for the gating, spinner,
-// and width fields. Production threads these signals in exactly one place — the
+// The chainable With* setters below are TEST-ONLY shims for the gating and echo
+// fields. Production threads these signals in exactly one place — the
 // converged startup seam NewForStartup, which sets the fields directly — so the
 // production API carries a single construction idiom (constructors + functional
 // Options). Tests, which drive each axis independently, chain these onto a
@@ -28,45 +28,8 @@ func (p *PlainPresenter) WithInteractiveStdin(interactive bool) *PlainPresenter 
 	return p
 }
 
-// WithYes sets the -y/--yes gating decision on the pretty presenter and returns it
-// for chaining. See PrettyPresenter.yes.
-func (p *PrettyPresenter) WithYes(yes bool) *PrettyPresenter {
-	p.yes = yes
-	return p
-}
-
-// WithInteractiveStdin sets the stdin-interactive gating signal on the pretty
-// presenter and returns it for chaining; pass false to arm the
-// forbidden-combination fail path. See PrettyPresenter.stdinInteractive.
-func (p *PrettyPresenter) WithInteractiveStdin(interactive bool) *PrettyPresenter {
-	p.stdinInteractive = interactive
-	return p
-}
-
-// WithSpinnerFactory overrides the stage-progress spinner factory and returns the
-// presenter for chaining — the spy seam that keeps the spinner lifecycle
-// deterministic in tests (no timed goroutine, no frame output). Production never
-// overrides the factory; the constructor defaults it to the real briandowns
-// wrapper. See PrettyPresenter.newSpinner.
-func (p *PrettyPresenter) WithSpinnerFactory(factory func(out io.Writer, text string) StageSpinner) *PrettyPresenter {
-	p.newSpinner = factory
-	return p
-}
-
-// WithTermWidth sets the detected terminal width feeding the decorative notes
-// rules and returns the presenter for chaining — the width-axis seam for
-// narrow/wide/tiny/undetectable cases. Production sets the field in NewForStartup
-// from detectTermWidth(stdout). See PrettyPresenter.termWidth.
-func (p *PrettyPresenter) WithTermWidth(w int) *PrettyPresenter {
-	p.termWidth = w
-	return p
-}
-
-// DeclineChoiceForTest exposes declineChoice (the Escape→"no" mapping) for tests.
-func DeclineChoiceForTest(g Gate) (Choice, bool) { return declineChoice(g) }
-
-// SingleKeyGate exposes singleKeyGate, the test for whether a pretty gate can be
-// answered with one keypress, to the external gate tests.
+// SingleKeyGate exposes singleKeyGate, the test for whether a gate on the Rail can
+// be answered with one keypress, to the external gate tests.
 func SingleKeyGate(g Gate) bool { return singleKeyGate(g) }
 
 // KeyChoice exposes keyChoice, what one read of keys answers a gate with, to the
@@ -100,8 +63,8 @@ func (p *RailPresenter) WithEcho(echo bool) *RailPresenter {
 
 // NewForSignals is NewForStartup's presenter for signals already resolved, for tests
 // that can't give it a terminal.
-func NewForSignals(signals StartupSignals, yes bool, stdout *os.File, errStream io.Writer, stdin *os.File, opts ...StartupOption) Presenter {
-	return newForSignals(signals, yes, stdout, errStream, stdin, opts...)
+func NewForSignals(signals StartupSignals, yes bool, stdout *os.File, errStream io.Writer, stdin *os.File) Presenter {
+	return newForSignals(signals, yes, stdout, errStream, stdin)
 }
 
 // LiveRegion is the live region writer, for its tests.

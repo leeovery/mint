@@ -6,54 +6,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/muesli/termenv"
-
 	"mint/internal/presenter"
 )
 
 // This file pins COMPOSITION: it drives the spec's full worked-example event
-// sequence end-to-end through each presenter and asserts the complete composed
+// sequence end-to-end through the plain presenter and asserts the complete composed
 // transcript. Every individual event's rendering is unit-tested in isolation
-// elsewhere (plain_test.go / pretty_*.go); these two golden tests pin how those
-// per-event renderings ASSEMBLE — inter-block spacing, the notes block sitting
-// between the plan and the gate, the gate echo/menu placement, and the trailing
-// footer landing after the last stage.
+// elsewhere (plain_test.go); this golden pins how those per-event renderings
+// ASSEMBLE — the notes block sitting between the plan and the gate, the gate echo
+// placement, and the trailing footer landing after the last stage. The Rail's whole
+// runs are pinned by its golden frames (rail_frames_test.go).
 //
-// CRITICAL reconciliation with the spec: the spec's two worked-example transcript
-// blocks (specification/cli-presentation/specification.md) are illustrative
-// SNAPSHOTS. The presenters legitimately differ from the snapshot in ways prior
-// tasks established, and these goldens reflect the IMPLEMENTATION's real output:
-//
-//   - Inter-block blank lines: PLAIN emits NO decorative blank lines — each method
-//     writes only its own line(s), so the plain golden is tightly packed. PRETTY
-//     carries the v2 blank-line rhythm, each blank OWNED by one render site:
-//     RunStarted emits a TRAILING blank line after the brand line, the gutter panel
-//     (ShowNotes/ShowMessage) and the gate bar each open with a LEADING blank line,
-//     and the RunFinished footer opens with a LEADING blank line. That rhythm is
-//     exactly the composition being pinned.
-//   - Plain blocking-start lines: the plain presenter emits "{name}: running..." on
-//     a blocking StageStarted. This sequence drives ONLY StageSucceeded for the
-//     blocking prep/notes stages (NOT StageStarted), matching the spec plain
-//     snapshot's shown lines (which omit the transient start lines) and keeping the
-//     SAME event sequence drivable across both modes — in pretty those blocking
-//     StageStarted events would feed the spinner, so omitting them keeps the two
-//     goldens aligned on one canonical sequence. The pretty golden drives the
-//     blocking StageStarted events (so the spinner lifecycle is exercised) but uses
-//     the spy/no-op spinner factory so NO live ⠋ frame is written.
-//   - Notes body: in PLAIN, rendered VERBATIM / flush (writeNotesBody) between the
-//     sliceable delimiters. In PRETTY, ShowNotes is a flush-left GUTTER PANEL: a
-//     dim "│ {title}" line, a bare "│" spacer, then every body line behind the
-//     "│ " gutter (empty body lines render as a bare "│") — the titled/closing
-//     rules of the original design are gone. The body CONTENT is intact behind the
-//     gutter; only plain's bytes stay verbatim.
-//   - Pretty colour: forced to termenv.Ascii so the golden is byte-stable layout
-//     with no ANSI — the composition test is about LAYOUT, not colour (colour is
-//     separately tested). stripANSI is therefore unnecessary here.
+// CRITICAL reconciliation with the spec: the spec's worked-example transcript
+// (specification/cli-presentation/specification.md) is an illustrative SNAPSHOT.
+// Plain emits NO decorative blank lines — each method writes only its own line(s),
+// so the golden is tightly packed — and the sequence drives ONLY StageSucceeded for
+// the blocking prep/notes stages (NOT StageStarted), matching the snapshot's shown
+// lines, which omit the transient "{name}: running..." start lines. The notes body
+// is rendered VERBATIM / flush (writeNotesBody) between the sliceable delimiters.
 
-// The engine-supplied details that produce the spec's wording. Centralised so the
-// two goldens (and any composition-mutation experiment) drive ONE canonical
-// sequence; the per-mode rendering differences come from the presenters, not from
-// divergent inputs.
+// The engine-supplied details that produce the spec's wording.
 const (
 	transcriptProject = "acme"
 	transcriptVersion = "1.4.0"
@@ -70,8 +42,8 @@ const (
 // reusing it keeps this composition golden's body driven by the SAME bytes the
 // byte-identity tests assert, so the body can never drift between the two.
 
-// transcriptPlan is the engine-supplied plan steps, verbatim. The plain one-liner
-// and the pretty bulleted block both render from this SAME slice.
+// transcriptPlan is the engine-supplied plan steps, verbatim, which the plain
+// one-liner renders.
 func transcriptPlan() presenter.Plan {
 	return presenter.Plan{Steps: []presenter.PlanStep{
 		{Verb: "commit", Target: "CHANGELOG.md + bin/acme"},
@@ -82,26 +54,15 @@ func transcriptPlan() presenter.Plan {
 }
 
 // driveWorkedExample drives the FULL spec worked-example event sequence through a
-// presenter, capturing the composed narration. Both goldens drive the SAME ordered
-// sequence so the assertion is purely about how each mode COMPOSES it. driveBlocking
-// controls whether the two blocking stages (prep, notes) emit a StageStarted before
-// their StageSucceeded: the pretty run drives them (feeding the spy spinner), the
-// plain run does not (matching the spec plain snapshot, whose start lines are
-// omitted). The gate is driven via Prompt(NotesReviewGate()) at the notes-review
-// point — under -y it renders the auto-accept echo; interactively it renders the
-// menu and reads one line.
-func driveWorkedExample(p presenter.Presenter, driveBlocking bool) {
+// presenter, capturing the composed narration. The gate is driven via
+// Prompt(NotesReviewGate()) at the notes-review point — under -y it renders the
+// auto-accept echo.
+func driveWorkedExample(p presenter.Presenter) {
 	p.RunStarted(presenter.RunInfo{Action: transcriptAction, Project: transcriptProject, Version: transcriptVersion})
 	p.StageSucceeded(presenter.StageSuccess{Name: "version", Detail: transcriptVersionDetail})
 	p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: transcriptPreflightDetail})
 	p.ShowPlan(transcriptPlan())
-	if driveBlocking {
-		p.StageStarted(presenter.StageStart{Name: "prep", Blocking: true, Text: "running pre_tag hook…"})
-	}
 	p.StageSucceeded(presenter.StageSuccess{Name: "prep", Detail: transcriptPrepDetail, Elapsed: 2300 * time.Millisecond, Blocking: true})
-	if driveBlocking {
-		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
-	}
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: transcriptNotesDetail, Elapsed: 1100 * time.Millisecond, Blocking: true})
 	p.ShowNotes(presenter.Notes{Version: transcriptVersion, Body: notesBody})
 	_, _ = p.Prompt(presenter.NotesReviewGate())
@@ -122,7 +83,7 @@ func TestPlainGoldenWorkedExampleTranscript(t *testing.T) {
 	errBuf := &bytes.Buffer{}
 	p := presenter.NewPlainPresenterWithInput(out, errBuf, strings.NewReader("")).WithYes(true)
 
-	driveWorkedExample(p, false)
+	driveWorkedExample(p)
 
 	want := "mint: releasing acme v1.4.0\n" +
 		"version: v1.3.2 → v1.4.0 (minor)\n" +
@@ -145,67 +106,5 @@ func TestPlainGoldenWorkedExampleTranscript(t *testing.T) {
 	// The -y skip reads no input and writes nothing to err on a clean run.
 	if errBuf.Len() != 0 {
 		t.Errorf("plain -y run wrote to err, want nothing:\n%q", errBuf.String())
-	}
-}
-
-// TestPrettyGoldenWorkedExampleTranscript drives the full pretty worked-example
-// sequence with a SPY/no-op spinner (so no live ⠋ frame is written) and a fixed
-// Ascii profile (so no ANSI — the golden is stable layout), and a scripted reader
-// ("y\n") so the gate renders the hotkey bar and reads y INTERACTIVELY. It
-// asserts the complete composed transcript: brand line, stages, plan, the notes
-// gutter panel, the blank-line-preceded gate bar (no trailing newline, so the
-// record line follows directly after "› "), record/tag/push/publish stages, then
-// the bottom brand footer. The expected string is reasoned from each event's known
-// pretty rendering, NOT captured-and-compared-to-itself.
-func TestPrettyGoldenWorkedExampleTranscript(t *testing.T) {
-	out := &bytes.Buffer{}
-	tr := &spyTracker{}
-	p := presenter.NewPrettyPresenter(
-		out,
-		presenter.WithProfile(termenv.Ascii),
-		presenter.WithInput(strings.NewReader("y\n")),
-	).WithSpinnerFactory(tr.factory())
-
-	driveWorkedExample(p, true)
-
-	want := "🌿 mint › releasing acme v1.4.0\n" +
-		"\n" +
-		"✓ version    v1.3.2 → v1.4.0 (minor)\n" +
-		"✓ preflight  clean · on main · tag free · in sync with origin\n" +
-		"\n" +
-		"Plan\n" +
-		"  • commit   CHANGELOG.md + bin/acme\n" +
-		"  • tag      v1.4.0 (annotated)\n" +
-		"  • push     --atomic → origin\n" +
-		"  • publish  GitHub release\n" +
-		"✓ prep       pre_tag: npm ci && npm run build (2.3s)\n" +
-		"✓ notes      generated (1.1s)\n" +
-		"\n" +
-		"│ release notes · v1.4.0\n" +
-		"│\n" +
-		"│ Faster cold starts and a calmer log.\n" +
-		"│\n" +
-		"│ ✨ Features\n" +
-		"│ - Parallel warm-up halves boot time\n" +
-		"│ 🐛 Fixes\n" +
-		"│ - Stop double-flush on SIGTERM\n" +
-		"\n" +
-		"Use these notes?\n[y] accept  [n] abort  [e] edit  [r] regenerate\n› " +
-		"✓ record     CHANGELOG.md + bin/acme\n" +
-		"✓ tag/push   v1.4.0 pushed (atomic)\n" +
-		"✓ publish    github release created\n" +
-		"\n" +
-		"🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0\n"
-
-	if got := out.String(); got != want {
-		t.Errorf("pretty worked-example transcript mismatch.\n--- got ---\n%s\n--- want ---\n%s", got, want)
-	}
-	// The spy spinner factory built exactly the two blocking-stage spinners and left
-	// none running — proving no live animation frame contaminated the composed golden.
-	if len(tr.created) != 2 {
-		t.Errorf("expected two spy spinners (prep, notes), got %d", len(tr.created))
-	}
-	if tr.active != 0 {
-		t.Errorf("a spy spinner was left active, want 0: active=%d", tr.active)
 	}
 }

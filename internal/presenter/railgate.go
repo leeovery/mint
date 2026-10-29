@@ -21,9 +21,8 @@ const (
 // Prompt asks g as a question node on the rail and returns its answer. Under -y
 // nothing is asked: the default is taken and the node it settles records it, the
 // auto-accept echo. Without an interactive stdin it fails loud, rendered, with
-// ErrNotInteractive. Otherwise a single keypress answers, as today's presenter reads
-// it, where the input is a terminal and every key one character, and a typed line
-// answers where not. Input closed before an answer returns ErrInputClosed, not
+// ErrNotInteractive. Otherwise a single keypress answers where the input is a
+// terminal and every key one character, and a typed line answers where not. Input closed before an answer returns ErrInputClosed, not
 // rendered.
 func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
 	if c, err, done := p.unasked(g); done {

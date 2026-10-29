@@ -13,9 +13,9 @@ import (
 // plainPresenterSources are the non-test sources whose imports the UI-library
 // guard scans. The guard protects the *plain* presenter's defining property —
 // token-efficiency via zero UI dependencies — so it scans only that presenter's
-// own source, not the whole package. The pretty presenter (pretty.go)
-// legitimately imports lipgloss, so it is deliberately excluded; mixing it in
-// would assert a package-wide property the spec never makes.
+// own source, not the whole package. The Rail legitimately imports termenv for its
+// colour, so it is deliberately excluded; mixing it in would assert a package-wide
+// property the spec never makes.
 func plainPresenterSources(t *testing.T) []string {
 	t.Helper()
 
@@ -211,6 +211,24 @@ func TestPlainPresenterBlockingStageEmitsNoAnimationBytes(t *testing.T) {
 	}
 	if strings.ContainsRune(got, 0x1b) {
 		t.Errorf("plain emitted an ESC (0x1b) — no animation ANSI allowed:\n%q", got)
+	}
+}
+
+// TestPlainSuspendResumeAreNoOps proves the plain presenter's hooks produce no
+// output and do not error — plain never animates, so suspend/resume are pure
+// no-ops.
+func TestPlainSuspendResumeAreNoOps(t *testing.T) {
+	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
+	p := presenter.NewPlainPresenter(out, errBuf)
+
+	p.SuspendSpinner()
+	p.ResumeSpinner()
+
+	if got := out.String(); got != "" {
+		t.Errorf("plain SuspendSpinner/ResumeSpinner wrote to out: %q", got)
+	}
+	if got := errBuf.String(); got != "" {
+		t.Errorf("plain SuspendSpinner/ResumeSpinner wrote to err: %q", got)
 	}
 }
 
@@ -1035,8 +1053,8 @@ func TestPlainPresenterShowNotesMultiLineBlankLinesPreserved(t *testing.T) {
 // plain presenter's own source and asserts none of its imports name a UI or
 // animation library. Parsing the source (rather than go list -deps) keeps the
 // check hermetic and CI-safe while still failing loudly if plain.go ever reaches
-// for lipgloss or a spinner. It scans only plain.go — the pretty presenter is
-// expected to import lipgloss, so a package-wide scan would be wrong.
+// for lipgloss or a spinner. It scans only plain.go — the Rail is expected to import
+// termenv, so a package-wide scan would be wrong.
 func TestPlainPresenterImportsNoUILibrary(t *testing.T) {
 	// Substring matching: a UI-library marker (e.g. "lipgloss") may appear
 	// anywhere within an import path, so a path fragment is enough to ban it.

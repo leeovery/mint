@@ -1,6 +1,6 @@
 // Package presenter defines the event/step-oriented seam between mint's engine
 // and its terminal output. The engine emits semantic lifecycle events; an
-// implementation (pretty or plain) decides how they look.
+// implementation (the Rail on a terminal, or plain) decides how they look.
 package presenter
 
 import (
@@ -10,19 +10,17 @@ import (
 	"time"
 )
 
-// writeNotesBody writes a release-notes body to w BYTE-FOR-BYTE VERBATIM, the
-// single shared point that guarantees the body region is identical across the
-// plain and pretty presenters (both call this with the UNCHANGED Notes.Body). It
-// is the mechanical heart of the non-negotiable byte-identity invariant: only the
-// surrounding delimiters differ between modes, never the body.
+// writeNotesBody writes a body (release notes, a commit message, captured command
+// output) to w BYTE-FOR-BYTE VERBATIM, the single point plain writes every body
+// through, with the UNCHANGED payload. It is the mechanical heart of the
+// non-negotiable byte-identity invariant: plain adds only the surrounding
+// delimiters, never a byte to the body.
 //
 // It applies NO transformation — no stripping, no emoji handling, no re-wrapping,
-// no truncation, and crucially NO indentation. The pretty worked example shows
-// the body indented two spaces under the rule; that indentation is ILLUSTRATIVE
-// and is deliberately NOT applied here, because adding indent bytes would break
-// byte-identity, which the spec calls non-negotiable ("what previews is what
-// ships"). The decorative rules are framing and are rendered by each presenter
-// separately; the body is written flush and unchanged by this one helper.
+// no truncation, and crucially NO indentation, because adding indent bytes would
+// break byte-identity, which the spec calls non-negotiable ("what previews is what
+// ships"). The Rail shows a body behind its gutter, for display only; what ships is
+// still the body byte for byte.
 //
 // An empty body writes nothing — the caller's opener is then immediately
 // followed by its closer, with no spurious blank line or invented content. A
@@ -42,8 +40,8 @@ func writeNotesBody(w io.Writer, body string) {
 
 // Presenter is the dependency-inversion seam for all of mint's output. The
 // engine calls these methods at lifecycle points and nothing else — it never
-// touches colour, spinners, or TTY state, which live entirely behind the
-// interface.
+// touches colour, spinners, the cursor or TTY state, which live entirely behind
+// the interface.
 //
 // The contract follows the event-payload principle: the engine supplies, in
 // each event's payload, every datum the rendering consumes. A Presenter renders
@@ -65,37 +63,30 @@ type Presenter interface {
 	// once per version under regenerate --all (oldest→newest), whose blocks plain
 	// renders LINEARLY in emit order. Ordering is engine-owned.
 	RunStarted(info RunInfo)
-	// StageStarted renders the beginning of a stage (a spinner in pretty; a
-	// terse start line in plain for blocking stages only).
+	// StageStarted renders the beginning of a stage (the Rail's running node, its
+	// spinner in the mark's place; a terse start line in plain for blocking stages
+	// only).
 	//
-	// Stream-discipline note for blocking stages: in pretty mode the spinner's
-	// frames are written to out from the spinner's own goroutine until the stage
-	// completes. Between a blocking StageStarted and its StageSucceeded/StageFailed
-	// the engine should therefore emit only SuspendSpinner/ResumeSpinner, the notes
-	// stage's NotesChecking/NotesChecked/NotesProgress/NotesHalving/NotesMerging,
-	// Warn, and the completion event itself. Warn is safe because pretty's Warn stops
-	// the live spinner before it prints, so a Warn may also END a blocking stage in
-	// place of its completion (the notes batch skip, a failed post_release hook). Any
-	// other narration (ShowPlan, …) would interleave with animation frames on the
-	// same stream and garble the display: emit it before the stage starts or after it
-	// completes (or wrap it in SuspendSpinner/ResumeSpinner).
+	// The Rail draws everything from the live node down in a region it redraws in
+	// place, and settled lines above it never change; every event redraws it, so any
+	// event may arrive while a stage runs. A Warn may END a blocking stage in place of
+	// its completion (the notes batch skip, a failed post_release hook). Around the
+	// engine's own $EDITOR hand-off it calls SuspendSpinner/ResumeSpinner.
 	StageStarted(s StageStart)
 	// StageSucceeded renders a stage's successful completion.
 	StageSucceeded(s StageSuccess)
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
 	// NotesChecking narrates the exclusion check's call starting inside the blocking
-	// notes stage, and NotesChecked its end, with the call's elapsed: pretty shows the
-	// check on the running notes line, then restores the line's own text; plain
+	// notes stage, and NotesChecked its end, with the call's elapsed: the Rail runs
+	// the check as its own node and settles it with what the call found; plain
 	// prints the check as its own line and nothing at its end.
 	NotesChecking(c NotesCheck)
 	NotesChecked(c NotesCheck)
 	// NotesProgress, NotesHalving and NotesMerging narrate a chunked notes run
-	// inside its blocking notes stage: pretty rewrites the running notes line in
-	// place, plain prints a line per event. They are the stream-discipline
-	// exception — events the presenter renders without breaking the running line.
-	// With no notes line running, pretty renders nothing. Each may be called from
-	// any goroutine, but never concurrently with another Presenter call.
+	// inside its blocking notes stage: the Rail draws them as the running notes
+	// node's bar, plain prints a line per event. Each may be called from any
+	// goroutine, but never concurrently with another Presenter call.
 	NotesProgress(n NotesProgress)
 	// NotesHalving narrates a call too big for the model being re-cut into smaller
 	// parts.
@@ -124,9 +115,9 @@ type Presenter interface {
 	Warn(w Warning)
 	// Unwound renders the auto-unwind event — a FIRST-CLASS event distinct from
 	// StageFailed — narrating what the engine undid after a failure or an abort. It
-	// has its own glyph (↩ in pretty) and renders the engine-supplied parts joined
-	// into one line (the presenter does NOT synthesise the "repo clean" tail — that
-	// is the engine's Repo part). Unlike StageFailed/Warn, Unwound is
+	// has its own mark (↩ on the Rail) and renders the engine-supplied parts (the
+	// presenter does NOT synthesise the "repo clean" tail — that is the engine's Repo
+	// part). Unlike StageFailed/Warn, Unwound is
 	// narration → out ONLY: per the per-event stream table the auto-unwind line is
 	// not duplicated to err. Like StageFailed it marks the run as terminal so the
 	// success end-of-run line is suppressed; the presenter never sets an exit code.
@@ -152,8 +143,8 @@ type Presenter interface {
 	// is the one verb whose output is a VALUE, not narration, so its plain output is
 	// a RAW VALUE (not the key:value narration every other plain line uses) — the
 	// bare value plus a single trailing newline and nothing else — so `$(mint
-	// version)` consumes it cleanly. Pretty MAY dress it ("{leaf} mint v{value}")
-	// since styling is additive only in pretty; the bare value is the floor.
+	// version)` consumes it cleanly. The Rail dresses it (" mint v{value}") since
+	// styling is additive only in pretty; the bare value is the floor.
 	//
 	// Narration → out ONLY; the value never goes to err. version has NO interactive
 	// gate (it never calls Prompt) and NO release-style brand footer / "done:" line
@@ -177,19 +168,19 @@ type Presenter interface {
 	//   - The ENGINE owns the e/r re-entry loop end to end: on e/r it does the
 	//     edit/regenerate work, re-calls ShowNotes with the refreshed body, then
 	//     re-calls Prompt — looping until the choice is y or n, which exits the loop.
-	//   - Rendering is LINEAR (print-style, append-only): each re-entry pass re-prints
-	//     the notes block + gate BELOW the previous output; it scrolls. There is NO
-	//     screen-clearing, NO alt-screen, and NO cursor-home overwrite — mint is not a
-	//     Bubble Tea / full-screen TUI. (lipgloss SGR colour codes in pretty are not
-	//     screen control and are fine; the ban is specifically on clear/alt-screen/home
-	//     sequences.) The pretty spinner stop/resume around the $EDITOR hand-off is a
-	//     separate, engine-driven concern (Phase 4), not part of this render contract.
+	//   - There is NO screen-clearing, NO alt-screen, and NO cursor-home overwrite —
+	//     mint is not a Bubble Tea / full-screen TUI. Plain is linear: each re-entry
+	//     pass re-prints the notes block + gate BELOW the previous output. The Rail
+	//     redraws only its live region, the question and what it asks about, in place;
+	//     lines above it never change. The SuspendSpinner/ResumeSpinner around the
+	//     $EDITOR hand-off is a separate, engine-driven concern, not part of this
+	//     render contract.
 	//
-	// Both implementations are FULLY BEHAVIOURAL and share one line-read core
-	// (readChoice/parseChoice): empty Enter selects the gate's Default,
-	// case-insensitive input maps to a declared key, unrecognised input re-prompts,
-	// and only the render closure differs per mode (terse one-liner in plain, the
-	// vertical menu in pretty).
+	// Both implementations are FULLY BEHAVIOURAL and share one parse (parseChoice):
+	// empty Enter selects the gate's Default, case-insensitive input maps to a
+	// declared key, and unrecognised input re-prompts. Plain reads a line; the Rail
+	// reads a single keypress where the terminal allows and every key is one
+	// character, and a line otherwise.
 	//
 	// The -y skip happens INSIDE this method: a presenter constructed with the -y
 	// decision neither renders the menu nor reads stdin — it emits the rendered
@@ -226,31 +217,27 @@ type Presenter interface {
 	AskLine(prompt string) (string, error)
 	// SuspendSpinner and ResumeSpinner are ENGINE-CALLABLE control hooks the engine
 	// invokes AROUND its OWN $EDITOR hand-off (the presenter never detects or invokes
-	// the editor — per the Phase-3 render-only Prompt contract the engine owns the
-	// e/r re-entry loop and the $EDITOR hand-off). $EDITOR takes over the terminal, so
-	// the engine calls SuspendSpinner to stop the pretty spinner's animation before
-	// handing off — releasing the terminal so the editor session is animation-free —
-	// and ResumeSpinner to restart it on the SAME stage line afterwards.
+	// the editor — per the render-only Prompt contract the engine owns the e/r
+	// re-entry loop and the $EDITOR hand-off). $EDITOR takes over the terminal, so
+	// the engine calls SuspendSpinner before handing off: the Rail erases its live
+	// region and stops its spinner, so the editor session is animation-free. On
+	// ResumeSpinner it draws the region again.
 	//
-	// Both are SAFE NO-OPS when no spinner is active, and both are no-ops in plain
-	// (which never animates). They are a plain stop-then-start — no alt-screen, no
-	// screen-clear — consistent with the linear print-style narration, and they
-	// preserve the one-spinner-at-a-time invariant: after any number of suspend/resume
-	// cycles there is still at most one spinner. A stage that completes
-	// (StageSucceeded/StageFailed) while suspended clears the suspended state, so a
-	// later ResumeSpinner does not resurrect a spinner for an already-completed stage.
+	// Both are SAFE NO-OPS when nothing is drawn live, and both are no-ops in plain
+	// (which never animates). Neither uses the alternate screen or clears the
+	// screen.
 	//
 	// These hooks suspend/resume the presenter's OWN animation only; the presenter
 	// imports no os/exec and spawns no subprocess (guarded by a test).
 	SuspendSpinner()
-	// ResumeSpinner restarts the spinner suspended by SuspendSpinner on the same
-	// stage line (see SuspendSpinner). It is a no-op when nothing was suspended and in
-	// plain mode.
+	// ResumeSpinner draws again what SuspendSpinner erased (see SuspendSpinner). It is
+	// a no-op when nothing was suspended and in plain mode.
 	ResumeSpinner()
 	// InitResult renders one init outcome — a created or skipped target — in the
-	// shared cross-verb vocabulary (pretty: "✓ created {target}" / "· skipped
-	// {target} ({reason})"; plain: "{target}: created" / "{target}: skipped
-	// ({reason})"). It is narration → out ONLY; it never writes to err.
+	// shared cross-verb vocabulary (the Rail: a ● row per file created, a dim ○ row
+	// per file left alone with its reason; plain: "{target}: created" /
+	// "{target}: skipped ({reason})"). It is narration → out ONLY; it never writes to
+	// err.
 	//
 	// Per the event-payload principle the ENGINE resolves created-vs-skipped and,
 	// for a skip, supplies the --force reason text; the presenter NEVER decides the
@@ -346,15 +333,11 @@ type PlanStep struct {
 	Target string
 }
 
-// Plan is the ShowPlan payload: an ordered list of structured PlanStep values.
-// Per the event-payload principle, BOTH render modes format from this SAME
-// []Steps — there is NO separate pre-formatted or terse field. Pretty renders a
-// bulleted block; plain joins the steps into a "plan: …; …" one-liner. The
-// worked-example abbreviations are illustrative wording the engine supplies in
-// the step targets, not a distinct terse payload.
-//
-// An empty plan (no steps) is legal: plain renders exactly "plan:" with no
-// dangling separator; pretty omits the entire block (no orphan header).
+// Plan is the ShowPlan payload. Steps are plain's: it joins them into a
+// "plan: …; …" one-liner. The worked-example abbreviations are illustrative wording
+// the engine supplies in the step targets, not a distinct terse payload. An empty
+// plan (no steps) is legal: plain renders exactly "plan:" with no dangling
+// separator.
 //
 // Stages and PointOfNoReturn are the rail's plan: the run's stages in order, each
 // the node a stage event's Key fills. A run may show both kinds: release shows its
@@ -370,8 +353,8 @@ type Plan struct {
 	// empty for a run with none.
 	PointOfNoReturn string
 	// Quiet marks a plan that only lays out the run's structure: plain's log, pinned
-	// byte for byte from before the rail, has no line for it, so plain and today's
-	// pretty write nothing.
+	// byte for byte from before the rail, has no line for it, so plain writes
+	// nothing.
 	Quiet bool
 }
 
@@ -391,13 +374,13 @@ type PlanStage struct {
 // presenting for review. Version labels the surrounding delimiters; Body is the
 // notes content itself.
 //
-// THE NON-NEGOTIABLE INVARIANT: Body is written BYTE-FOR-BYTE VERBATIM in BOTH
-// render modes — no stripping, no emoji removal, no case-folding, no re-wrapping,
-// no truncation, and NO indentation added. Only the surrounding delimiters
-// differ between plain and pretty; the body region is provably identical across
-// modes (both presenters write Body through the same shared writeNotesBody
-// helper). Transforming the body would contradict the engine's "use the body
-// whole" rule and break the "what previews is what ships" invariant. Emoji
+// THE NON-NEGOTIABLE INVARIANT: Body is shipped BYTE-FOR-BYTE VERBATIM — no
+// stripping, no emoji removal, no case-folding, no re-wrapping, no truncation, and
+// NO indentation added. Plain writes it flush between its delimiters through the
+// shared writeNotesBody helper; the Rail shows it behind its gutter, wrapped to the
+// width and with control characters made visible, for display only. Transforming
+// the body would contradict the engine's "use the body whole" rule and break the
+// "what previews is what ships" invariant. Emoji
 // section headers (✨ Features, 🐛 Fixes) therefore survive verbatim in plain
 // mode too — the plain byte-purity guard applies to synthesised stage narration,
 // not to this engine-supplied body.
@@ -425,16 +408,16 @@ type Notes struct {
 // inside per-mode delimiters — the general-purpose sibling of Notes for content
 // that is not release notes (e.g. a generated commit message shown for review).
 //
-// Title labels the surrounding delimiters and is engine-supplied, rendered
-// VERBATIM (plain "--- {title} ---" … "--- end {title} ---"; pretty a titled
-// rule). The presenter synthesises only the delimiter framing, never the title
+// Title labels plain's surrounding delimiters and is engine-supplied, rendered
+// VERBATIM (plain "--- {title} ---" … "--- end {title} ---"); the Rail draws no
+// title. The presenter synthesises only the delimiter framing, never the title
 // text. For the plain delimiters to stay byte-pure the engine supplies ASCII
 // titles (the same convention as the gate Subject/AcceptEcho values).
 //
-// Body carries the SAME non-negotiable invariant as Notes.Body: it is written
-// BYTE-FOR-BYTE VERBATIM in BOTH render modes through the shared writeNotesBody
-// helper — no stripping, no re-wrapping, no truncation, no indentation — so the
-// body region is provably identical across modes and only the delimiters differ.
+// Body carries the SAME non-negotiable invariant as Notes.Body: plain writes it
+// BYTE-FOR-BYTE VERBATIM through the shared writeNotesBody helper — no stripping,
+// no re-wrapping, no truncation, no indentation — and the Rail's view of it is
+// display only.
 // The same edge rules apply: an empty Body renders the delimiters with nothing
 // between them, and a Body line that looks like a delimiter is written verbatim
 // (delimiters are POSITIONAL, never content-matched).
@@ -449,25 +432,17 @@ type Message struct {
 	Body string
 }
 
-// Version is the ShowVersion payload: the engine-resolved version value plus the
-// engine-supplied brand leaf, for the one payload verb (version's output is a
-// value, not narration).
+// Version is the ShowVersion payload: the engine-resolved version value, for the
+// one payload verb (version's output is a value, not narration).
 //
 // Value is the resolved version (e.g. "1.4.0"), the load-bearing datum. Plain
 // writes it as the BARE value (no "v" prefix, no glyph) so `$(mint version)`
-// consumes it cleanly; pretty dresses it as "v{Value}" inside the brand line — the
-// "v" prefix is a PRETTY-only decoration, never part of the plain value.
-//
-// Leaf mirrors RunInfo.Leaf / RunResult.Leaf: the engine-supplied brand glyph,
-// defaulting to 🌿 when empty. Plain IGNORES it (the bare value carries no brand);
-// pretty renders it as the brand leaf, consistent with the other brand lines.
+// consumes it cleanly; the Rail dresses it as " mint v{Value}" — the "v" prefix is
+// a PRETTY-only decoration, never part of the plain value.
 type Version struct {
-	// Value is the resolved version, rendered verbatim. Plain writes it bare; pretty
-	// prefixes a decorative "v".
+	// Value is the resolved version, rendered verbatim. Plain writes it bare; the
+	// Rail prefixes a decorative "v".
 	Value string
-	// Leaf is the engine-supplied brand glyph for the pretty brand line, defaulting
-	// to 🌿 when empty. Plain never reads it.
-	Leaf string
 }
 
 // RunInfo carries the start-of-run payload. Action is the engine-supplied verb
@@ -475,19 +450,12 @@ type Version struct {
 // verb-shaped from the payload rather than hardcoding any literal in the
 // presenter.
 //
-// Leaf is the engine-supplied brand glyph for the brand lines. It ties to the
-// engine's commit_prefix brand, so — per the event-payload principle — the
-// presenter renders the supplied leaf rather than re-deriving or hardcoding one.
-// An empty Leaf defaults to 🌿 at render time, keeping existing callers (and
-// their leaf-less struct literals) working unchanged.
-//
 // Header and Start carry the rail's opening: its header line and the station the
-// run starts from. Plain and today's pretty read neither.
+// run starts from. Plain reads neither.
 type RunInfo struct {
 	Project string
 	Version string
 	Action  string
-	Leaf    string
 	// DryRun marks the run as a --dry-run preview. When set, the start-of-run line
 	// carries a "dry run" marker so the whole transcript is framed as a preview from
 	// the first line — a dry run takes no action and (for release) shows no gates, so
@@ -497,13 +465,13 @@ type RunInfo struct {
 	Start  Station
 	// Toward is the name of the station the run sets out for, which the plan's end
 	// waits at, where that is neither v{Version} nor the start's name: a --all
-	// backfill's "done". Plain and today's pretty ignore it.
+	// backfill's "done". Plain ignores it.
 	Toward string
 	// Quiet marks a start that only opens the rail's drawing where plain's log, pinned
 	// byte for byte from before the rail, has no line for it: a regenerate's header
 	// ahead of its questions, and its start station once they are answered, both
 	// before plain's start line, which a regenerate --all prints per version. Plain
-	// and today's pretty write nothing.
+	// writes nothing.
 	Quiet bool
 }
 
@@ -530,7 +498,7 @@ type Station struct {
 // StageStart carries the StageStarted payload. Blocking is engine knowledge —
 // it is set when the engine is about to invoke a long/slow command (e.g. claude
 // or a build hook). Plain uses the flag to decide whether to emit a start line;
-// pretty always shows progress. The presenter never infers Blocking from the
+// the Rail always shows progress. The presenter never infers Blocking from the
 // stage Name: there is no hardcoded list of long stages here.
 type StageStart struct {
 	// Name is the engine-supplied stage label rendered verbatim.
@@ -545,20 +513,18 @@ type StageStart struct {
 	Blocking bool
 	// Text is the OPTIONAL engine-supplied activity phrase shown WHILE the stage
 	// runs ("generating commit message…"), per the state-what-is-happening CLI
-	// guideline — the pretty spinner animates it. Empty falls back to Name. The
-	// completion line still uses Name (+Detail), so Text never affects the
-	// success/failure column layout, and plain mode ignores it (its terse
+	// guideline — the Rail shows it dim beside the spinner. Empty falls back to the
+	// plan stage's detail, then Name. Plain ignores it (its terse
 	// "{name}: running..." start line stays byte-stable for pipes).
 	Text string
 	// Quiet marks a start that only shows a stage running again where plain's log,
 	// pinned byte for byte from before the rail, has no line for it (an `r` at the
-	// review writing the notes again in one call), so plain and today's pretty write
-	// nothing.
+	// review writing the notes again in one call), so plain writes nothing.
 	Quiet bool
 }
 
 // StageSuccess carries the StageSucceeded payload. Elapsed is measured by the
-// engine — the presenter does not time stages. Pretty renders ({elapsed}) on
+// engine — the presenter does not time stages. Both modes show it on
 // long/blocking stages only, which is why Blocking travels with the success
 // event too: it mirrors the StageStart.Blocking flag for the same stage.
 //
@@ -578,23 +544,22 @@ type StageSuccess struct {
 	// Key names the plan stage this event settles (see StageStart.Key).
 	Key string
 	// Commit is the subject of the commit the stage made ("chore(release): pre-tag
-	// artifacts for v1.4.0"), empty when it made none. Plain and today's pretty
-	// ignore it.
+	// artifacts for v1.4.0"), empty when it made none. Plain ignores it.
 	Commit string
 	// Note is a line the rail hangs dim under the settled row, verbatim, for what the
 	// stage passed over (a dry run's skipped preflight hook), empty for none. Plain
-	// and today's pretty ignore it.
+	// ignores it.
 	Note string
 	// Quiet marks a success that only settles a stage of the run's structure: plain's
 	// log, pinned byte for byte from before the rail, has no line for it, so plain
-	// and today's pretty write nothing.
+	// writes nothing.
 	Quiet bool
 	// Detail is the engine-supplied completion detail. The empty string is legal
 	// (semantic 3) and means "render the detail-less form".
 	Detail string
 	// Row is the settled row's detail where it reads differently from Detail, plain's
 	// pinned wording (the push naming its branch), empty where they read the same.
-	// Plain and today's pretty ignore it.
+	// Plain ignores it.
 	Row string
 	// Elapsed is the engine-measured stage duration. It is only meaningful when
 	// Blocking is true (semantic 1); zero is a valid duration there (semantic 2),
@@ -607,17 +572,8 @@ type StageSuccess struct {
 	// a regenerate --all version's notes, which its review and its release follow, and
 	// a changelog's push, which its node's own success follows. The rail draws the node
 	// done, Row or Detail its detail, and keeps it open for its stage's later events.
-	// Plain and today's pretty ignore it.
+	// Plain ignores it.
 	Ongoing bool
-	// Sentence is the OPTIONAL human-readable completion line the PRETTY presenter
-	// renders in place of the "{name}  {detail}" column form — a full past-tense
-	// sentence ("Generated release notes", "Pushed branch + v1.4.0 atomically"). It
-	// reads as narration rather than a stage codeword. Pretty appends ({elapsed})
-	// to it for a blocking stage exactly as it would the column form. PLAIN ignores
-	// it entirely and keeps the terse "{name}: {detail}" line (its pipe/log
-	// contract); an empty Sentence makes pretty fall back to the column form too, so
-	// the field is purely additive.
-	Sentence string
 }
 
 // Settled is the Quiet success that settles the plan stage key with detail.
@@ -661,7 +617,7 @@ type NotesMerge struct {
 // its settled row: nothing to leave out, or how many it flagged, and whether they go
 // unasked; empty for a call cancelled. Failed, on NotesChecked alone, marks a call
 // that failed or whose answer was unusable: the warning that follows ends the check's
-// node in place of a success. Plain and today's pretty ignore both.
+// node in place of a success. Plain ignores both.
 type NotesCheck struct {
 	Key     string
 	Elapsed time.Duration
@@ -685,14 +641,13 @@ type StageFailure struct {
 	// other, but leaves a later RunFinished's success line standing.
 	Recoverable bool
 	// Elapsed is the engine-measured time a blocking stage ran before it failed,
-	// zero for a short stage. Plain and today's pretty ignore it.
+	// zero for a short stage. Plain ignores it.
 	Elapsed time.Duration
 }
 
 // NextMoves carries the NextMoves payload: the engine-authored ways forward from
 // stage's failure, in order. Quiet marks moves plain's line already names (a failed
-// unwind's manual steps, a failed publish's heal): plain and today's pretty write
-// nothing for them.
+// unwind's manual steps, a failed publish's heal): plain writes nothing for them.
 type NextMoves struct {
 	Stage string
 	Moves []NextMove
@@ -705,14 +660,14 @@ type NextMoves struct {
 type NextMove struct {
 	Lead    string
 	Command string
-	// Sentence is the move as plain's and today's pretty's one sentence where that is
-	// not Lead then Command (a config line the sentence has mid-way), empty where it
+	// Sentence is the move as plain's one sentence where that is not Lead then
+	// Command (a config line the sentence has mid-way), empty where it
 	// is. The rail never reads it.
 	Sentence string
 }
 
-// Text is the move as one sentence, plain's and today's pretty's line: its Sentence,
-// or Lead then Command.
+// Text is the move as one sentence, plain's line: its Sentence, or Lead then
+// Command.
 func (m NextMove) Text() string {
 	if m.Sentence != "" {
 		return m.Sentence
@@ -724,8 +679,8 @@ func (m NextMove) Text() string {
 }
 
 // ExclusionSuggestions carries the ExclusionSuggestions payload: stage's suggestions,
-// each rendered verbatim in order, their Lines set under Table of File. Plain and
-// today's pretty never name File.
+// each rendered verbatim in order, their Lines set under Table of File. Plain never
+// names File.
 type ExclusionSuggestions struct {
 	Stage       string
 	Table       string
@@ -736,7 +691,7 @@ type ExclusionSuggestions struct {
 // ExclusionAnswers carries the ExclusionAnswersRecorded payload: stage's answers went
 // into Table of File, committed unless Ignored reports that git ignores File. Exclude
 // and Keep are the globs answered each way, in the order answered; Key names the
-// check's plan stage. Plain and today's pretty read neither the globs nor Key.
+// check's plan stage. Plain reads neither the globs nor Key.
 type ExclusionAnswers struct {
 	Stage   string
 	Key     string
@@ -774,8 +729,8 @@ func savedNotesText(path string) string {
 // Warning carries the Warn payload: a structured, engine-supplied Label and
 // Message kept as SEPARATE fields. The presenter NEVER parses a label out of a
 // single combined string — both fields arrive independently and both renderings
-// are label-prefixed from them ("{label}: WARN - {message}" in plain, "⚠ {label}
-// {message}" in pretty).
+// are label-prefixed from them ("{label}: WARN - {message}" in plain, a ! node
+// named {label} on the Rail).
 //
 // A Warn is INDEPENDENT of the stage transitions: it does not set failure state
 // and does not suppress the success end-of-run line — a warn can occur on an
@@ -797,24 +752,23 @@ type Warning struct {
 	Message string
 	// Key names the plan stage the warning ends in place of its success (a failed
 	// post_release hook or publish, a failed commit push), empty for a warning that
-	// ends no stage. Plain and today's pretty ignore it.
+	// ends no stage. Plain ignores it.
 	Key string
 	// Failed marks a warning about a step that failed once the run could no longer
 	// stop on it, a recovery step of the unwind: the rail draws it as a failed node
 	// of its own, named for its Key, which waits unsettled for the Unwound keyed as it
-	// is, or the run's close. Plain and today's pretty ignore it.
+	// is, or the run's close. Plain ignores it.
 	Failed bool
 	// Skipped marks a warning that a stage of the plan did not run, a dry run's hook:
 	// the rail draws nothing for it and leaves Key's node to come, its plan detail.
-	// Plain and today's pretty ignore it.
+	// Plain ignores it.
 	Skipped bool
 	// Elapsed is the engine-measured time Key's stage ran before the warning ended it
-	// (a regenerate --all version skipped), zero for none. Plain and today's pretty
-	// ignore it.
+	// (a regenerate --all version skipped), zero for none. Plain ignores it.
 	Elapsed time.Duration
 	// Row is the warning's row where it reads differently from Message, plain's
 	// pinned line, which also names the remedy the engine sends the rail as Quiet
-	// next moves; empty where they read the same. Plain and today's pretty ignore it.
+	// next moves; empty where they read the same. Plain ignores it.
 	Row string
 	// Output is optional captured underlying-command output (e.g. git's stderr
 	// from a failed-but-non-fatal push) rendered VERBATIM beneath the warn line —
@@ -822,8 +776,8 @@ type Warning struct {
 	// engine deliberately keeps non-terminal. It is narration → out ONLY and is
 	// NEVER duplicated to err: the stream contract's "one-line summary to stderr"
 	// applies to the warn line alone. Rendering mirrors StageFailed's captured
-	// body exactly — plain wraps it in the sliceable "--- output ---" delimiters,
-	// pretty writes it flush and unstyled — via the shared verbatim helper. The
+	// body exactly — plain wraps it in the sliceable "--- output ---" delimiters
+	// via the shared verbatim helper, the Rail hangs it behind its gutter. The
 	// empty string (the common case) renders NO block; rendering it through Warn
 	// does not set failure state.
 	Output string
@@ -831,9 +785,8 @@ type Warning struct {
 
 // Unwind carries the Unwound payload: what the engine's unwind undid after a failed
 // or aborted run, what it kept, and where it left the repo, each engine-authored and
-// kept apart so the rail can set them on rows of their own. Plain and today's pretty
-// join the non-empty parts with "; " into today's one line (Text) and synthesise no
-// part of it.
+// kept apart so the rail can set them on rows of their own. Plain joins the
+// non-empty parts with "; " into its one line (Text) and synthesises no part of it.
 //
 // Unwound is a first-class event (not a StageFailed). It is the abort path's
 // terminal narration: gate-n produces an Unwound with no prior StageFailed, while
@@ -850,12 +803,11 @@ type Unwind struct {
 	Repo string
 	// Key is the key of the unwind's node, the one the Failed warnings of its recovery
 	// steps that failed carry: the rail draws an unwind that couldn't finish as those
-	// failed nodes, not as a node claiming what it undid. Plain and today's pretty
-	// ignore it.
+	// failed nodes, not as a node claiming what it undid. Plain ignores it.
 	Key string
 	// Quiet marks an unwind plain's log, pinned byte for byte from before the rail, has
-	// no line for: a regenerate's reset of its changelog commit. Plain and today's
-	// pretty write nothing.
+	// no line for: a regenerate's reset of its changelog commit. Plain writes
+	// nothing.
 	Quiet bool
 }
 
@@ -874,10 +826,10 @@ func (u Unwind) Text() string {
 // closes with one RunFinished carrying its Outcome; a regenerate --all backfill's
 // line, OutcomeAllRegenerated, goes Ahead of its close, as its version loop finishes
 // (see RunResult.Ahead). A loop a decline or a cancel ends early sends none Ahead.
-// Plain and today's pretty write today's success lines for the outcomes that had one —
-// released (with or without a warning), dry run, committed (with or without a
-// warning), and --all regenerated — and nothing for the rest, which end on lines of
-// their own (a failure, an unwind) or, before the rail, on none.
+// Plain writes its success lines for the outcomes that have one — released (with or
+// without a warning), dry run, committed (with or without a warning), and --all
+// regenerated — and nothing for the rest, which end on lines of their own (a
+// failure, an unwind) or on none. The Rail closes every outcome at its end station.
 //
 // iota makes the zero value OutcomeReleased, so a RunResult literal that sets no
 // Outcome closes as a release.
@@ -885,8 +837,7 @@ type Outcome int
 
 const (
 	// OutcomeReleased is a release that went out: "done: {project} v{X} {url}"
-	// (plain) / "{leaf} released {project} v{X} · {url}" (pretty), the URL omitted
-	// when empty.
+	// (plain), the URL omitted when empty.
 	OutcomeReleased Outcome = iota
 	// OutcomeReleasedWithWarning is a release that went out with a failure past the
 	// point of no return (a publish or post_release hook failure), warned and never
@@ -896,18 +847,16 @@ const (
 	// made". A dry run mutated nothing, so it never claims it released anything.
 	OutcomeDryRun
 	// OutcomeCommitted is a commit that landed, pushed or not: "done: {project}
-	// committed" (plain) / "{leaf} committed {project}" (pretty), version-less and
+	// committed" (plain), version-less and
 	// URL-less.
 	OutcomeCommitted
 	// OutcomeCommittedWithWarning is a commit that landed and whose -p push failed,
 	// warned and never unwound. It closes with the commit line.
 	OutcomeCommittedWithWarning
-	// OutcomeRegenerated is a single version regenerated. It has no line in plain or
-	// today's pretty.
+	// OutcomeRegenerated is a single version regenerated. It has no line in plain.
 	OutcomeRegenerated
 	// OutcomeAllRegenerated is a --all backfill's close: "done: {project} {Summary}"
-	// (plain) / "{leaf} regenerated {project} {Summary}" (pretty), URL-less, the
-	// engine-computed Summary rendered verbatim.
+	// (plain), URL-less, the engine-computed Summary rendered verbatim.
 	OutcomeAllRegenerated
 	// OutcomeDeclined is a run stopped by a question answered no, with nothing to
 	// unwind. Its End detail says what it left (see End).
@@ -927,16 +876,11 @@ const (
 // RunResult carries the end-of-run payload. URL is optional — outcomes that do not
 // publish a release leave it empty.
 //
-// Leaf mirrors RunInfo.Leaf: the engine-supplied brand glyph for the closing
-// brand line, defaulting to 🌿 when empty. It travels on the result so the
-// end-of-run line renders the brand from the payload rather than hardcoding it.
-//
-// End and Elapsed carry the rail's close; plain and today's pretty read neither.
+// End and Elapsed carry the rail's close; plain reads neither.
 type RunResult struct {
 	Project string
 	Version string
 	URL     string
-	Leaf    string
 	// Outcome is how the run ended, selecting which closing line RunFinished renders.
 	Outcome Outcome
 	// Summary is the engine-supplied closing detail of a --all backfill, rendered
@@ -959,6 +903,6 @@ type RunResult struct {
 	// past it, so the rail draws nothing for it, and the run's close follows, Quiet.
 	Ahead bool
 	// Quiet marks a close plain's log has no line for, its line written Ahead. Plain
-	// and today's pretty write nothing.
+	// writes nothing.
 	Quiet bool
 }

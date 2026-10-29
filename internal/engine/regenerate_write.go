@@ -406,7 +406,6 @@ func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject 
 // push is a step of the CHANGELOG.md node it runs on, its failure timed as the node.
 func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget, node *blockingStage) error {
 	push := startStep(deps.Presenter, deps.clock(), stepOf{name: stagePush, key: node.step.key, ongoing: true}, "pushing to origin…", deps.clock()())
-	push.sentence = "Pushed to origin"
 	if res, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
 		cause := fmt.Errorf("pushing regenerated changelog: %w", record.NewGitError(res.Stderr, err))
 		failure := push.failure(cause)

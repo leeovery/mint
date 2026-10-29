@@ -74,8 +74,8 @@ func runInit(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
-	// Init's pretty output is the Rail, whose drawing ends once the run is over.
-	p := presenter.NewForStartup(opts.Plain, true, os.Stdout, os.Stderr, os.Stdin, presenter.WithRail())
+	// Pretty output is the Rail, whose drawing ends once the run is over.
+	p := presenter.NewForStartup(opts.Plain, true, os.Stdout, os.Stderr, os.Stdin)
 	defer presenter.Close(p)
 	r := runner.NewExecRunner()
 	deps := engine.InitDeps{Presenter: p, Runner: r, MintVersion: buildinfo.Stamped(), Home: homeDir()}

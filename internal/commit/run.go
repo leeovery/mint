@@ -69,7 +69,7 @@ const (
 )
 
 // generateStageName is the blocking stage wrapping the AI generate/regenerate call
-// — the run's one slow step, so it carries the pretty spinner (plain prints the
+// — the run's one slow step, so it carries the Rail's spinner (plain prints the
 // terse start line). Both the first generation and the gate's `r` regeneration use
 // the SAME stage name: they are the same kind of wait.
 const generateStageName = "commit message"
@@ -380,13 +380,13 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		return runEditorFallback(ctx, deps, root, "")
 	}
 
-	// The AI call is the run's one SLOW step, so it gets a blocking stage: the pretty
-	// presenter spins on "message" for its duration (plain prints the terse start
-	// line). EVERY exit from the generate step closes the stage: success via the
-	// timed completion closure, the two editor-fallback routes via a spinner-stopping
-	// Warn (attended) or the fallback guard's StageFailed (unattended), and a genuine
-	// failure via surface's StageFailed.
-	generated := startGenerateStage(deps, "generating commit message…", "Generated commit message")
+	// The AI call is the run's one SLOW step, so it gets a blocking stage: the Rail
+	// spins on "message" for its duration (plain prints the terse start line). EVERY
+	// exit from the generate step closes the stage: success via the timed completion
+	// closure, the two editor-fallback routes via a spinner-stopping Warn (attended)
+	// or the fallback guard's StageFailed (unattended), and a genuine failure via
+	// surface's StageFailed.
+	generated := startGenerateStage(deps, "generating commit message…")
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
 		// A composed prompt over max_prompt_bytes is a generate-SKIP, NOT a failure:
@@ -705,12 +705,12 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// be "" → a plain re-roll). The transport's one retry is consumed inside
 			// regenerateMessage; commit does not re-run it.
 			// The regeneration is the same slow AI wait as the first generation, so it
-			// carries the SAME blocking "message" stage (spinner in pretty). Every exit
+			// carries the SAME blocking "message" stage (the Rail's spinner). Every exit
 			// closes it: success via the timed completion closure, a transport failure via
 			// the spinner-stopping AI-failure Warn and an over-cap prompt via the oversized
 			// Warn (`r` is interactive-only, so both paths are always attended), any other
 			// failure via surface's StageFailed.
-			regenerating := startGenerateStage(deps, "regenerating commit message…", "Regenerated commit message")
+			regenerating := startGenerateStage(deps, "regenerating commit message…")
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {
 				// A regeneration FAILURE after the transport's one retry (an AI transport
@@ -810,26 +810,24 @@ func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, 
 }
 
 // startGenerateStage narrates the start of the blocking "message" stage (the AI
-// call — the run's one slow step; the pretty spinner animates it) and starts the
-// elapsed timer, mirroring the engine's emitBlockingStageStarted idiom. The
-// returned stage's done emits the matching StageSucceeded carrying the caller's
-// detail word ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure
-// paths never call it — their spinner-stopping Warn or StageFailed, timed by
-// elapsed, closes the stage instead.
-// text is the activity phrase the pretty spinner animates ("generating commit
-// message…" / "regenerating commit message…").
-func startGenerateStage(deps Deps, text, sentence string) generateStage {
+// call — the run's one slow step; the Rail's spinner animates it) and starts the
+// elapsed timer, mirroring the engine's startBlockingStage idiom. The returned
+// stage's done emits the matching StageSucceeded carrying the caller's detail word
+// ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure paths never
+// call it — their Warn or StageFailed, timed by elapsed, closes the stage instead.
+// text is the activity phrase shown while it runs ("generating commit message…" /
+// "regenerating commit message…").
+func startGenerateStage(deps Deps, text string) generateStage {
 	deps.Presenter.StageStarted(presenter.StageStart{Name: generateStageName, Key: stageMessage, Blocking: true, Text: text})
 	now := deps.clock()
-	return generateStage{p: deps.Presenter, sentence: sentence, now: now, started: now()}
+	return generateStage{p: deps.Presenter, now: now, started: now()}
 }
 
 // generateStage is the blocking "message" stage under way, timed by now.
 type generateStage struct {
-	p        presenter.Presenter
-	sentence string
-	now      func() time.Time
-	started  time.Time
+	p       presenter.Presenter
+	now     func() time.Time
+	started time.Time
 }
 
 func (s generateStage) done(detail string) {
@@ -837,7 +835,6 @@ func (s generateStage) done(detail string) {
 		Name:     generateStageName,
 		Key:      stageMessage,
 		Detail:   detail,
-		Sentence: s.sentence,
 		Elapsed:  s.elapsed(),
 		Blocking: true,
 	})

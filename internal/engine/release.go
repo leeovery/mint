@@ -481,8 +481,8 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 
 	// RunStarted OPENS the run: the brand header renders first, with every stage line
 	// beneath it (the spec worked example, the presenter golden transcript). Its payload
-	// depends ONLY on Stage-1 facts — the project name, the resolved version, the action
-	// verb, and the commit_prefix leaf — none of which depend on the notes body, the
+	// depends ONLY on Stage-1 facts — the project name, the resolved version and the
+	// action verb — none of which depend on the notes body, the
 	// pre_tag hook, or preflight, so it leads the version/preflight/pre_tag/notes stage
 	// events that follow. (ShowPlan/ShowNotes still fire after the notes body resolves.)
 	// Its start station is where the release starts from: the previous tag, and the
@@ -492,7 +492,6 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		Project: projectName(root),
 		Version: versionKey,
 		Action:  releaseAction,
-		Leaf:    cfg.Release.CommitPrefix,
 		DryRun:  opts.DryRun,
 		Header:  deps.header(releaseCommand, root),
 		Start:   releaseStart(current, cfg.Release.TagPrefix, head),
@@ -505,8 +504,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// the gate runs before preflight and any mutation, so a "no" aborts cleanly with
 	// nothing to unwind. -y auto-accepts (inside the presenter).
 	if opts.DryRun {
-		detail, sentence := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
-		emitGateSucceeded(p, "version", detail, sentence)
+		emitGateSucceeded(p, "version", versionPreview(current, next, cfg.Release.TagPrefix, bumpKind))
 	} else {
 		choice, derr := ReviewDecision(p, versionConfirmGate(current, next, cfg.Release.TagPrefix, bumpKind))
 		if derr != nil {
@@ -574,12 +572,12 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// the project preflight hook have passed (Stage 2 complete), a dry run's skip of
 	// the hook its note.
 	checked := preflightDetail(releaseBranch, tag, opts.AnyBranch)
-	p.StageSucceeded(presenter.StageSuccess{Name: stagePreflight, Key: stagePreflight, Detail: checked, Sentence: "Preflight passed: " + checked, Note: hookSkipped})
+	p.StageSucceeded(presenter.StageSuccess{Name: stagePreflight, Key: stagePreflight, Detail: checked, Note: hookSkipped})
 
 	// With preflight passed every stage the release will go through is known: lay them
 	// out now, ahead of the first slow one, in a Quiet plan. The steps plain prints
 	// still follow the notes, where its line has always been.
-	versionDetail, _ := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
+	versionDetail := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
 	route := releaseNotesRoute(selectState(current, cfg, opts, supplied), opts.NotesBody != "")
 	branch := pushedBranch(releaseBranch, head, opts.AnyBranch)
 	p.ShowPlan(releasePlan{
@@ -785,10 +783,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// bookkeeping commit carried) rather than a bare stage codeword, so the user can
 	// follow the run without knowing mint's stage taxonomy.
 	recorded := presenter.StageSuccess{
-		Name:     stageRecord,
-		Key:      stageRecord,
-		Detail:   recordDetail(writeResult.Changed, versionChanged, bookkeepingCommitted),
-		Sentence: recordSentence(writeResult.Changed, versionChanged, bookkeepingCommitted),
+		Name:   stageRecord,
+		Key:    stageRecord,
+		Detail: recordDetail(writeResult.Changed, versionChanged, bookkeepingCommitted),
 	}
 	if bookkeepingCommitted {
 		recorded.Commit = record.BookkeepingSubject(cfg.Release.CommitPrefix, tag)
@@ -888,7 +885,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// with a blocking StageStarted (spinner) and a StageSucceeded carrying the
 	// engine-measured Elapsed once the push crosses the PONR. On failure a timed
 	// StageFailed narrates the stage instead, so no StageSucceeded fires.
-	push := emitBlockingStageStarted(p, deps.clock(), stagePush, "pushing branch and tag to origin…", "Pushed branch + "+tag+" atomically")
+	push := startBlockingStage(p, deps.clock(), stagePush, "pushing branch and tag to origin…")
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
 		// Pre-PONR failure: route through the surgical unwind. A push REJECTION means the
 		// local tag WAS created (TagAndPush wraps it in release.ErrPushRejected), so the
@@ -899,9 +896,8 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		return failAndUnwind(ctx, deps, pushFailure(err, push.elapsed()), start, made, err)
 	}
 	push.succeeded(presenter.StageSuccess{
-		Detail:   "branch + " + tag + " pushed atomically",
-		Row:      branch + " + " + tag + " pushed atomically",
-		Sentence: push.sentence,
+		Detail: "branch + " + tag + " pushed atomically",
+		Row:    branch + " + " + tag + " pushed atomically",
 	})
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
@@ -925,7 +921,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		} else {
 			releaseURL = url
 			// Post-PONR success narration: the release exists on the provider now.
-			emitGateSucceeded(p, stagePublish, "release published", "Published the release")
+			emitGateSucceeded(p, stagePublish, "release published")
 		}
 	}
 
@@ -947,7 +943,6 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		Project: projectName(root),
 		Version: versionKey,
 		URL:     releaseURL,
-		Leaf:    cfg.Release.CommitPrefix,
 		Outcome: outcome,
 		End:     presenter.Station{Name: tag, Detail: "released"},
 	})
@@ -977,7 +972,7 @@ func versionConfirmGate(current, next version.SemVer, prefix string, bumpKind ve
 	if current.String("") == "0.0.0" {
 		question = fmt.Sprintf("Release %s (first release)?", nextDisplay)
 	}
-	settled, _ := versionPreview(current, next, prefix, bumpKind)
+	settled := versionPreview(current, next, prefix, bumpKind)
 	return presenter.Gate{
 		Stage:      stageVersion,
 		Detail:     settled,
@@ -992,22 +987,17 @@ func versionConfirmGate(current, next version.SemVer, prefix string, bumpKind ve
 	}
 }
 
-// versionPreview builds the dry-run "version" stage line's (detail, sentence): the
-// read-only counterpart to versionConfirmGate, stating the version a real run would
-// cut without asking for consent (a dry run prompts for nothing). detail is the terse
-// plain value ("v1.4.0 (minor bump)"); sentence is the pretty narration
-// ("Would release v1.4.0 (minor bump from v1.2.0)"). A first release (current 0.0.0)
-// reads "(first release)" with no from-version, mirroring the gate's first-release
-// wording.
-func versionPreview(current, next version.SemVer, prefix string, bumpKind version.Bump) (detail, sentence string) {
+// versionPreview builds the dry-run "version" stage line's detail ("v1.4.0 (minor
+// bump)"): the read-only counterpart to versionConfirmGate, stating the version a
+// real run would cut without asking for consent (a dry run prompts for nothing). A
+// first release (current 0.0.0) reads "(first release)", mirroring the gate's
+// first-release wording.
+func versionPreview(current, next version.SemVer, prefix string, bumpKind version.Bump) string {
 	nextDisplay := next.String(prefix)
 	if current.String("") == "0.0.0" {
-		return fmt.Sprintf("%s (first release)", nextDisplay),
-			fmt.Sprintf("Would release %s (first release)", nextDisplay)
+		return fmt.Sprintf("%s (first release)", nextDisplay)
 	}
-	bump := hookBump(bumpKind)
-	return fmt.Sprintf("%s (%s bump)", nextDisplay, bump),
-		fmt.Sprintf("Would release %s (%s bump from %s)", nextDisplay, bump, current.String(prefix))
+	return fmt.Sprintf("%s (%s bump)", nextDisplay, hookBump(bumpKind))
 }
 
 // resolveNextVersion picks this run's next version and its bump KIND from one of two
@@ -1780,7 +1770,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// carrying the engine-measured Elapsed once both the hook and its artifact commit
 	// land. The events fire ONLY here — when a hook is configured and actually runs —
 	// so a hookless run (returned above) narrates no pre_tag stage.
-	stage := emitBlockingStageStarted(deps.Presenter, deps.clock(), stagePreTag, "running pre_tag hook…", "Ran the pre_tag hook")
+	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePreTag, "running pre_tag hook…")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, &stageError{stage: stage, err: err}
@@ -1790,7 +1780,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	if err != nil {
 		return committed, &stageError{stage: stage, err: err}
 	}
-	success := hookCompletion(cfg.Release.Hooks.PreTag, stage)
+	success := hookCompletion(cfg.Release.Hooks.PreTag)
 	if committed {
 		success.Commit = subject
 	}
@@ -1844,19 +1834,19 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 	// upload can run for minutes, so the spinner must show it is alive. A failure
 	// skips the success line; the caller's Warn stops the spinner and prints the ⚠
 	// line with the hook's output in its place.
-	stage := emitBlockingStageStarted(deps.Presenter, deps.clock(), stagePostRelease, "running post_release hook…", "Ran the post_release hook")
+	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePostRelease, "running post_release hook…")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env); err != nil {
 		return err
 	}
-	stage.succeeded(hookCompletion(cfg.Release.Hooks.PostRelease, stage))
+	stage.succeeded(hookCompletion(cfg.Release.Hooks.PostRelease))
 	return nil
 }
 
-// hookCompletion is the success of the hook value runs as stage: the rail's row names
+// hookCompletion is the success of the stage hook value runs as: the rail's row names
 // its commands, as the plan did; plain keeps the detail it has always had.
-func hookCompletion(value config.HookValue, stage *blockingStage) presenter.StageSuccess {
-	return presenter.StageSuccess{Detail: "hook completed", Row: hookDetail(value), Sentence: stage.sentence}
+func hookCompletion(value config.HookValue) presenter.StageSuccess {
+	return presenter.StageSuccess{Detail: "hook completed", Row: hookDetail(value)}
 }
 
 // pretagArtifactSubject builds the FIXED subject for the pre_tag artifact commit. It
@@ -1912,22 +1902,6 @@ func recordDetail(changelogChanged, versionChanged, committed bool) string {
 		parts = append(parts, "version file")
 	}
 	return strings.Join(parts, " + ") + " committed"
-}
-
-// recordSentence is the pretty past-tense narration for the record gate: it names
-// what the bookkeeping commit carried, or says plainly nothing needed recording.
-func recordSentence(changelogChanged, versionChanged, committed bool) string {
-	if !committed {
-		return "Nothing to record"
-	}
-	var parts []string
-	if changelogChanged {
-		parts = append(parts, "CHANGELOG.md")
-	}
-	if versionChanged {
-		parts = append(parts, "version file")
-	}
-	return "Committed " + strings.Join(parts, " + ")
 }
 
 // hookBump maps the engine's version.Bump onto the hooks package's Bump so the
@@ -1986,7 +1960,6 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 	deps.run.Land(presenter.RunResult{
 		Project: projectName(root),
 		Version: versionKey,
-		Leaf:    cfg.Release.CommitPrefix,
 		Outcome: presenter.OutcomeDryRun,
 		End:     presenter.Station{Name: tag, Detail: "dry run · nothing changed"},
 	})
@@ -2058,7 +2031,7 @@ func reviewGate(ctx context.Context, deps ReleaseDeps, regen reviewRegen, gate p
 			// StageSucceeded fires once the edit completes (or returns to the gate) to stop
 			// it, while a genuine edit failure surfaces a StageFailed (which stops it) and
 			// emits no StageSucceeded.
-			editDone := emitBlockingStageStarted(p, deps.clock(), "edit", "applying edited notes…", "Applied edited notes")
+			editDone := startBlockingStage(p, deps.clock(), "edit", "applying edited notes…")
 			edited, eerr := editBody(ctx, deps.Editor, body)
 			switch {
 			case errors.Is(eerr, ErrEditorReturnToGate):

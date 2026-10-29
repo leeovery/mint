@@ -147,7 +147,7 @@ func (r *Run) Close(declined bool) {
 }
 
 func (r *Run) stopped(declined bool) presenter.RunResult {
-	res := presenter.RunResult{Project: r.info.Project, Version: r.info.Version, Leaf: r.info.Leaf}
+	res := presenter.RunResult{Project: r.info.Project, Version: r.info.Version}
 	switch {
 	case r.unwound:
 		res.Outcome = presenter.OutcomeUnwound

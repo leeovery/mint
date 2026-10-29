@@ -319,7 +319,7 @@ func TestRelease_PostReleaseHook_NarratesAsBlockingStage(t *testing.T) {
 		t.Errorf("post_release StageSucceeded.Elapsed = %v, want a non-negative engine-measured duration", done.Elapsed)
 	}
 	done.Elapsed = 0
-	want := presenter.StageSuccess{Name: "post_release", Key: "post_release", Detail: "hook completed", Row: "notify.sh", Sentence: "Ran the post_release hook", Blocking: true}
+	want := presenter.StageSuccess{Name: "post_release", Key: "post_release", Detail: "hook completed", Row: "notify.sh", Blocking: true}
 	if done != want {
 		t.Errorf("post_release StageSucceeded = %+v, want %+v", done, want)
 	}

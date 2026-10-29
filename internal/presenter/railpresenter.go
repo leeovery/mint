@@ -52,8 +52,8 @@ func newTicker(d time.Duration) (<-chan time.Time, func()) {
 type RailPresenter struct {
 	mu  sync.Mutex
 	out io.Writer
-	// err gets the one-line failure and warning summaries, as today's presenters'
-	// do, for a stream split from out; nil writes none.
+	// err gets the one-line failure and warning summaries, as plain's does, for a
+	// stream split from out; nil writes none.
 	err io.Writer
 	in  io.Reader
 	// reader is the one buffered reader over in that every line read shares.
@@ -410,6 +410,15 @@ func (p *RailPresenter) Warn(w Warning) {
 	}
 	p.errf("⚠ %s\n", warnText(w))
 	p.redraw()
+}
+
+// warnText is a warning's summary after the ⚠: the label, then a two-space gap and
+// the message when there is one, so an empty message leaves no trailing space.
+func warnText(w Warning) string {
+	if w.Message == "" {
+		return w.Label
+	}
+	return w.Label + "  " + w.Message
 }
 
 // warned is the node a warning about the stage keyed key draws as: the stage's own

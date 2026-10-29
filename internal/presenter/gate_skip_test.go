@@ -1,7 +1,6 @@
 package presenter_test
 
 import (
-	"bytes"
 	"errors"
 	"io"
 	"strings"
@@ -139,125 +138,39 @@ func TestPlainPromptUnderYesEchoIsBytePureASCII(t *testing.T) {
 	assertBytePureASCII(t, out, "plain -y echo")
 }
 
-// TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine proves the pretty presenter,
-// under -y, emits the concise accept line "✓ notes  accepted (-y)\n" to out,
-// returns the gate's declared default, and reads NOTHING from the input reader.
-func TestPrettyPromptSkipsGateUnderYesEchoesAcceptLine(t *testing.T) {
-	gate := presenter.NotesReviewGate()
-	reader := &failingReader{t: t}
-	p, out, _ := prettyGate(termenv.Ascii, reader, gateOpts{yes: true})
+// TestRailPromptUnderYesTakesTheDefaultAskingNothing proves the Rail, under -y,
+// returns each gate's declared default without reading the input, draws none of its
+// keys, writes nothing to err, and records the auto-accept on the rail.
+func TestRailPromptUnderYesTakesTheDefaultAskingNothing(t *testing.T) {
+	for _, gate := range []presenter.Gate{presenter.NotesReviewGate(), presenter.ReuseConfirmGate()} {
+		t.Run(gate.Question+" "+string(gate.Keys()[len(gate.Keys())-1]), func(t *testing.T) {
+			reader := &failingReader{t: t}
+			p, out, errBuf := railGate(termenv.Ascii, reader, gateOpts{yes: true})
+			defer p.Close()
 
-	choice, err := p.Prompt(gate)
-	if err != nil {
-		t.Fatalf("pretty Prompt under -y returned error: %v", err)
-	}
-	if choice != gate.Default {
-		t.Errorf("pretty Prompt under -y = %q, want gate default %q", choice, gate.Default)
-	}
-	if got := out.String(); got != "✓ notes  accepted (-y)\n" {
-		t.Errorf("pretty -y accept line = %q, want %q", got, "✓ notes  accepted (-y)\n")
-	}
-	if reader.tripped {
-		t.Error("pretty Prompt under -y read the input reader; it must not")
-	}
-}
-
-// TestPrettyPromptUnderYesDrawsNoMenu proves the pretty hotkey bar is NOT drawn
-// under -y: no "› " cursor and no key/action pairs reach out.
-func TestPrettyPromptUnderYesDrawsNoMenu(t *testing.T) {
-	gate := presenter.NotesReviewGate()
-	p, out, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
-
-	if _, err := p.Prompt(gate); err != nil {
-		t.Fatalf("pretty Prompt under -y returned error: %v", err)
-	}
-	got := out.String()
-	if strings.Contains(got, "› ") {
-		t.Errorf("pretty -y drew the bar cursor; the gate must be skipped:\n%q", got)
-	}
-	for _, opt := range []string{"y accept", "n abort", "e edit", "r regenerate"} {
-		if strings.Contains(got, opt) {
-			t.Errorf("pretty -y drew bar pair %q; the gate must be skipped:\n%q", opt, got)
-		}
-	}
-}
-
-// TestPrettyPromptUnderYesEchoesStdoutOnly proves the pretty auto-accept line is
-// narration (stdout) only — the err stream is EMPTY after a -y Prompt.
-func TestPrettyPromptUnderYesEchoesStdoutOnly(t *testing.T) {
-	gate := presenter.NotesReviewGate()
-	p, _, errBuf := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
-
-	if _, err := p.Prompt(gate); err != nil {
-		t.Fatalf("pretty Prompt under -y returned error: %v", err)
-	}
-	if errBuf.Len() != 0 {
-		t.Errorf("pretty -y accept line wrote to stderr %q; it is narration → stdout only", errBuf.String())
-	}
-}
-
-// TestPrettyReuseConfirmAutoAcceptedUnderYes proves the two-choice reuse confirm is
-// auto-accepted under -y exactly like the notes gate: returns ChoiceYes, draws no
-// menu, and emits the SAME "✓ notes  accepted (-y)" accept line (subject "notes").
-func TestPrettyReuseConfirmAutoAcceptedUnderYes(t *testing.T) {
-	gate := presenter.ReuseConfirmGate()
-	reader := &failingReader{t: t}
-	p, out, _ := prettyGate(termenv.Ascii, reader, gateOpts{yes: true})
-
-	choice, err := p.Prompt(gate)
-	if err != nil {
-		t.Fatalf("pretty reuse Prompt under -y returned error: %v", err)
-	}
-	if choice != presenter.ChoiceYes {
-		t.Errorf("pretty reuse Prompt under -y = %q, want %q", choice, presenter.ChoiceYes)
-	}
-	if got := out.String(); got != "✓ notes  accepted (-y)\n" {
-		t.Errorf("pretty reuse -y accept line = %q, want %q", got, "✓ notes  accepted (-y)\n")
-	}
-	if strings.Contains(out.String(), "› ") {
-		t.Errorf("pretty reuse -y drew the bar; it must be skipped:\n%q", out.String())
-	}
-}
-
-// TestPrettyPromptInteractivePathUnchangedWhenNotYes is the regression guard: with
-// yes=false the pretty Prompt still renders the hotkey bar and reads input,
-// returning the scripted choice — the interactive path is UNCHANGED.
-func TestPrettyPromptInteractivePathUnchangedWhenNotYes(t *testing.T) {
-	gate := presenter.NotesReviewGate()
-	p, out, _ := prettyGate(termenv.Ascii, strings.NewReader("y\n"), gateOpts{})
-
-	choice, err := p.Prompt(gate)
-	if err != nil {
-		t.Fatalf("pretty Prompt (yes=false) returned error: %v", err)
-	}
-	if choice != presenter.ChoiceYes {
-		t.Errorf("pretty Prompt (yes=false) = %q, want %q", choice, presenter.ChoiceYes)
-	}
-	if !strings.Contains(out.String(), notesBar) {
-		t.Errorf("pretty Prompt (yes=false) did not render the hotkey bar:\n%q", out.String())
-	}
-	if strings.Contains(out.String(), "accepted (-y)") {
-		t.Errorf("pretty Prompt (yes=false) wrongly emitted the -y accept line:\n%q", out.String())
-	}
-}
-
-// TestPrettyYesAcceptLineColourOnStylesGlyph proves the pretty accept line under a
-// colour-capable profile styles the ✓ glyph (ANSI present) while the "notes
-// accepted (-y)" structure survives as contiguous substrings.
-func TestPrettyYesAcceptLineColourOnStylesGlyph(t *testing.T) {
-	gate := presenter.NotesReviewGate()
-	p, out, _ := prettyGate(termenv.TrueColor, strings.NewReader(""), gateOpts{yes: true})
-
-	if _, err := p.Prompt(gate); err != nil {
-		t.Fatalf("pretty Prompt under -y returned error: %v", err)
-	}
-	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("colour-on -y accept line emitted no ESC (0x1b) — expected styled ✓:\n%q", out.String())
-	}
-	for _, want := range []string{"✓", "notes", "accepted (-y)"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("colour-on -y accept line missing %q:\n%q", want, out.String())
-		}
+			choice, err := p.Prompt(gate)
+			if err != nil {
+				t.Fatalf("rail Prompt under -y returned error: %v", err)
+			}
+			if choice != gate.Default {
+				t.Errorf("rail Prompt under -y = %q, want gate default %q", choice, gate.Default)
+			}
+			if reader.tripped {
+				t.Error("rail Prompt under -y read the input reader; it must not")
+			}
+			if errBuf.Len() != 0 {
+				t.Errorf("rail -y wrote to stderr %q; the auto-accept is narration → stdout only", errBuf.String())
+			}
+			got := out.String()
+			if !strings.Contains(got, "accepted (-y)") {
+				t.Errorf("rail -y drew no auto-accept:\n%q", got)
+			}
+			for _, c := range gate.Choices {
+				if key := string(c.Key) + " " + c.Action; strings.Contains(got, key) {
+					t.Errorf("rail -y drew the key %q; the gate must be skipped:\n%q", key, got)
+				}
+			}
+		})
 	}
 }
 
@@ -276,8 +189,8 @@ func TestGateSubjectSetByConstructors(t *testing.T) {
 // TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded proves the presenter renders
 // BOTH halves of the -y echo from the gate payload — gate.Subject AND gate.AcceptEcho
 // — not hardcoded "notes"/"accepted". A gate carrying subject "source" and echo word
-// "github" yields "source: github (-y)" (plain) / "✓ source  github (-y)" (pretty),
-// so a renderer hardcoding either word would fail.
+// "github" yields "source: github (-y)" (plain), and the Rail records the answer on a
+// node named for the subject, so a renderer hardcoding either word would fail.
 func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 	gate := presenter.Gate{
 		Question:   "Source?",
@@ -298,12 +211,13 @@ func TestPromptEchoesGateSubjectAndAcceptEchoNotHardcoded(t *testing.T) {
 		t.Errorf("plain subject echo = %q, want %q", got, "source: github (-y)\n")
 	}
 
-	pretty, prettyOut, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
-	if _, err := pretty.Prompt(gate); err != nil {
-		t.Fatalf("pretty Prompt under -y returned error: %v", err)
+	rail, railOut, _ := railGate(termenv.Ascii, strings.NewReader(""), gateOpts{yes: true})
+	defer rail.Close()
+	if _, err := rail.Prompt(gate); err != nil {
+		t.Fatalf("rail Prompt under -y returned error: %v", err)
 	}
-	if got := prettyOut.String(); got != "✓ source  github (-y)\n" {
-		t.Errorf("pretty subject accept line = %q, want %q", got, "✓ source  github (-y)\n")
+	if got := railOut.String(); !strings.Contains(got, "source") || !strings.Contains(got, "github · accepted (-y)") {
+		t.Errorf("rail subject accept = %q, want a source node reading %q", got, "github · accepted (-y)")
 	}
 }
 

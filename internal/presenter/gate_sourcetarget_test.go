@@ -97,7 +97,7 @@ func TestSourceGateUnrecognisedInputRePromptsThenAccepts(t *testing.T) {
 
 // TestPlainSourceTargetRenderTerseKeyValueLines proves plain renders the source and
 // target prompts as terse key:value-style prompt lines with the option-key hint —
-// NOT the pretty vertical menu. The hint is built from the declared option keys.
+// NOT a menu. The hint is built from the declared option keys.
 func TestPlainSourceTargetRenderTerseKeyValueLines(t *testing.T) {
 	src, srcOut, _ := plainGate(strings.NewReader("github\n"), gateOpts{})
 	if _, err := src.Prompt(presenter.SourceGate(sourceOptions(), presenter.Choice("github"))); err != nil {
@@ -114,22 +114,22 @@ func TestPlainSourceTargetRenderTerseKeyValueLines(t *testing.T) {
 	if got := tgtOut.String(); got != "Target? [stable/beta]\n" {
 		t.Errorf("plain target prompt = %q, want terse key:value line %q", got, "Target? [stable/beta]\n")
 	}
-	// No pretty vertical-menu artefacts in plain (no four-space option indent, no ›).
+	// No menu artefacts in plain (no four-space option indent, no ›).
 	for _, buf := range []*bytes.Buffer{srcOut, tgtOut} {
 		if strings.Contains(buf.String(), "›") {
-			t.Errorf("plain prompt drew the pretty cursor marker:\n%q", buf.String())
+			t.Errorf("plain prompt drew a cursor marker:\n%q", buf.String())
 		}
 		if strings.Contains(buf.String(), "    github") || strings.Contains(buf.String(), "    stable") {
-			t.Errorf("plain prompt drew an indented option line (pretty menu) in plain:\n%q", buf.String())
+			t.Errorf("plain prompt drew an indented option line (a menu) in plain:\n%q", buf.String())
 		}
 	}
 }
 
-// TestYesEchoesChosenSourcePlainAndPretty proves the -y echo shows the CHOSEN value
-// (not "accepted") for the source gate: plain "source: github (-y)" and pretty
-// "✓ source  github (-y)"; the gate's declared default is returned WITHOUT reading
-// stdin (the failingReader fails the test on any Read).
-func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
+// TestYesEchoesChosenSourcePlainAndRail proves the -y echo shows the CHOSEN value
+// (not "accepted") for the source gate: plain "source: github (-y)" and the Rail's
+// source node "github · accepted (-y)"; the gate's declared default is returned
+// WITHOUT reading stdin (the failingReader fails the test on any Read).
+func TestYesEchoesChosenSourcePlainAndRail(t *testing.T) {
 	gate := presenter.SourceGate(sourceOptions(), presenter.Choice("github"))
 
 	plainReader := &failingReader{t: t}
@@ -145,17 +145,18 @@ func TestYesEchoesChosenSourcePlainAndPretty(t *testing.T) {
 		t.Errorf("plain source -y echo = %q, want %q", got, "source: github (-y)\n")
 	}
 
-	prettyReader := &failingReader{t: t}
-	pretty, prettyOut, _ := prettyGate(termenv.Ascii, prettyReader, gateOpts{yes: true})
-	pchoice, perr := pretty.Prompt(gate)
-	if perr != nil {
-		t.Fatalf("pretty source Prompt under -y returned error: %v", perr)
+	railReader := &failingReader{t: t}
+	rail, railOut, _ := railGate(termenv.Ascii, railReader, gateOpts{yes: true})
+	defer rail.Close()
+	rchoice, rerr := rail.Prompt(gate)
+	if rerr != nil {
+		t.Fatalf("rail source Prompt under -y returned error: %v", rerr)
 	}
-	if pchoice != presenter.Choice("github") {
-		t.Errorf("pretty source Prompt under -y = %q, want declared default %q", pchoice, "github")
+	if rchoice != presenter.Choice("github") {
+		t.Errorf("rail source Prompt under -y = %q, want declared default %q", rchoice, "github")
 	}
-	if got := prettyOut.String(); got != "✓ source  github (-y)\n" {
-		t.Errorf("pretty source -y accept line = %q, want %q", got, "✓ source  github (-y)\n")
+	if got := railOut.String(); !strings.Contains(got, "github · accepted (-y)") {
+		t.Errorf("rail source -y = %q, want the source node reading %q", got, "github · accepted (-y)")
 	}
 }
 
@@ -283,7 +284,7 @@ func TestNotesReuseEchoUnchangedAfterGeneralisation(t *testing.T) {
 }
 
 // TestWordKeyGatesTakeTheLineRead proves a gate whose keys are words is never offered
-// the pretty single-keypress read, where no one key could name a choice and only the
+// the Rail's single-keypress read, where no one key could name a choice and only the
 // default could be taken; a gate of one-letter keys still is.
 func TestWordKeyGatesTakeTheLineRead(t *testing.T) {
 	source := presenter.SourceGate([]presenter.GateChoice{

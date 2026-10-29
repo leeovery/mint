@@ -36,24 +36,22 @@ var (
 	plainSignals  = presenter.StartupSignals{Mode: presenter.ModePlain, StdinInteractive: true}
 )
 
-func TestNewForStartup_WithRailDrawsPrettyAsTheRailAndLeavesPlainAndTodaysPrettyAlone(t *testing.T) {
+func TestNewForStartup_DrawsPrettyAsTheRailAndLeavesPlainAlone(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name    string
 		signals presenter.StartupSignals
-		opts    []presenter.StartupOption
 		want    string
 	}{
-		{name: "pretty on the rail", signals: prettySignals, opts: []presenter.StartupOption{presenter.WithRail()}, want: " mint ─ release"},
-		{name: "today's pretty", signals: prettySignals, want: "🌿 mint"},
-		{name: "plain, rail asked for", signals: plainSignals, opts: []presenter.StartupOption{presenter.WithRail()}, want: "mint: releasing pigeon v1.4.0\n"},
+		{name: "pretty", signals: prettySignals, want: " mint ─ release"},
+		{name: "plain", signals: plainSignals, want: "mint: releasing pigeon v1.4.0\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			out := startupFile(t, "out")
 
-			p := presenter.NewForSignals(tc.signals, false, out, &bytes.Buffer{}, startupFile(t, "in"), tc.opts...)
+			p := presenter.NewForSignals(tc.signals, false, out, &bytes.Buffer{}, startupFile(t, "in"))
 			p.RunStarted(releaseStarted(false))
 			presenter.Close(p)
 
@@ -70,7 +68,7 @@ func TestNewForStartup_TheRailTakesTheGatingSignals(t *testing.T) {
 	t.Run("-y takes the default, unasked", func(t *testing.T) {
 		t.Parallel()
 		out := startupFile(t, "out")
-		p := presenter.NewForSignals(prettySignals, true, out, &bytes.Buffer{}, startupFile(t, "in"), presenter.WithRail())
+		p := presenter.NewForSignals(prettySignals, true, out, &bytes.Buffer{}, startupFile(t, "in"))
 		p.RunStarted(releaseStarted(false))
 		p.ShowPlan(releasePlan())
 
@@ -88,7 +86,7 @@ func TestNewForStartup_TheRailTakesTheGatingSignals(t *testing.T) {
 	t.Run("stdin no terminal fails loud, its summary on the err stream", func(t *testing.T) {
 		t.Parallel()
 		errStream := &bytes.Buffer{}
-		p := presenter.NewForSignals(presenter.StartupSignals{Mode: presenter.ModePretty}, false, startupFile(t, "out"), errStream, startupFile(t, "in"), presenter.WithRail())
+		p := presenter.NewForSignals(presenter.StartupSignals{Mode: presenter.ModePretty}, false, startupFile(t, "out"), errStream, startupFile(t, "in"))
 
 		_, err := p.Prompt(versionGate())
 		presenter.Close(p)
@@ -102,7 +100,7 @@ func TestNewForStartup_TheRailTakesTheGatingSignals(t *testing.T) {
 	})
 }
 
-func TestClose_EndsTheRailsDrawingAndLeavesOtherPresentersAlone(t *testing.T) {
+func TestClose_EndsTheRailsDrawingAndWritesNothingWhereNothingIsDrawn(t *testing.T) {
 	t.Parallel()
 
 	r := newRailTerm(t, 80, 24, answers())

@@ -45,17 +45,22 @@ func TestPlainPresenterPreviewGate_PrintsTheQuestionWithoutItsChoicesAndReadsNoI
 	assertBytePureASCIIStreams(t, "plain gate preview", out, errBuf)
 }
 
-func TestPrettyPresenterPreviewGate_ShowsTheQuestionAsItsGateWouldWithoutTheChoicesAndReadsNoInput(t *testing.T) {
+func TestRailPresenterPreviewGate_ShowsTheQuestionWithoutTheChoicesAndReadsNoInput(t *testing.T) {
 	t.Parallel()
 
-	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
 	in := strings.NewReader("e\n")
-	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii), presenter.WithInput(in))
+	p, out, errBuf := railGate(termenv.Ascii, in, gateOpts{})
+	defer p.Close()
 	p.PreviewGate(previewedGate())
 
-	want := "\nExclude docs/design/ from the notes? (design documents; 2 files, 15 KB)\ndry run: not asked\n"
-	if got := out.String(); got != want {
-		t.Errorf("PreviewGate out\n got: %q\nwant: %q", got, want)
+	got := out.String()
+	if !strings.Contains(got, "Exclude docs/design/ from the notes?") {
+		t.Errorf("PreviewGate drew no question:\n%q", got)
+	}
+	for _, key := range []string{"e exclude", "k keep"} {
+		if strings.Contains(got, key) {
+			t.Errorf("PreviewGate drew the key %q; a preview asks nothing:\n%q", key, got)
+		}
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("stderr = %q, want nothing", errBuf.String())

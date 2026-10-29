@@ -140,9 +140,9 @@ func runRegenerate(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
-	// Regenerate's pretty output is the Rail, as release's is, whose drawing ends once
-	// the run is over, however it ends.
-	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin, presenter.WithRail())
+	// Pretty output is the Rail, whose drawing ends once the run is over, however it
+	// ends.
+	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin)
 	defer presenter.Close(p)
 	req.StdinInteractive = presenter.DetectStartupSignals(req.Plain, os.Stdout, os.Stdin).StdinInteractive
 	return regenerate(ctx, p, runner.NewExecRunner(), req, notescache.NewUserChunkNotes(os.UserCacheDir))
@@ -287,9 +287,9 @@ func runRelease(ctx context.Context, rest []string) int {
 	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
 
 	// Construct the presenter ONCE at startup — the single production construction
-	// site. TTY/mode detection never happens downstream. Release's pretty output is
-	// the Rail, whose drawing ends once the run is over, however it ends.
-	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin, presenter.WithRail())
+	// site. TTY/mode detection never happens downstream. Pretty output is the Rail,
+	// whose drawing ends once the run is over, however it ends.
+	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
 	defer presenter.Close(p)
 
 	return release(ctx, p, runner.NewExecRunner(), opts, signals.StdinInteractive,
@@ -351,9 +351,9 @@ func runCommit(ctx context.Context, rest []string) int {
 	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
 
 	// Construct the presenter ONCE at startup — the single production construction
-	// site. TTY/mode detection never happens downstream. Commit's pretty output is the
-	// Rail, whose drawing ends once the run is over, however it ends.
-	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin, presenter.WithRail())
+	// site. TTY/mode detection never happens downstream. Pretty output is the Rail,
+	// whose drawing ends once the run is over, however it ends.
+	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
 	defer presenter.Close(p)
 
 	// One runner backs the read-side staged-diff seam; the lock-resilient git Mutator

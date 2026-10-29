@@ -1,7 +1,6 @@
 package presenter_test
 
 import (
-	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -14,8 +13,8 @@ import (
 // The forbidden-combination rule: when -y is absent and stdin is NOT a TTY, an
 // interactive gate cannot be answered, so Prompt must FAIL LOUD rather than block
 // on a stdin read that never returns. The failure surfaces THROUGH the presenter
-// (styled in pretty, terse in plain — render mode comes from stdout, independent
-// of the stdin problem) and the one-line summary ALSO goes to stderr; Prompt
+// (a ✗ node on the Rail, terse in plain — render mode comes from stdout,
+// independent of the stdin problem) and the one-line summary ALSO goes to stderr; Prompt
 // returns the ErrNotInteractive sentinel and the presenter sets no exit code.
 
 // TestPlainForbiddenComboFailsWithoutReadingStdin proves the plain presenter, with
@@ -69,51 +68,6 @@ func TestPlainForbiddenComboFailureIsBytePureASCII(t *testing.T) {
 	assertBytePureASCIIStreams(t, "plain forbidden-combo failure", out, errBuf)
 }
 
-// TestPrettyForbiddenComboStyledFailureToOut proves the pretty presenter renders
-// the styled "✗ gate  not a TTY — pass -y to run unattended" line to out under a
-// colour-capable profile: ESC present (the ✗ glyph is styled) and the message in
-// the spec's em-dash form, mirroring StageFailed's "✗ {label}  {message}" shape.
-func TestPrettyForbiddenComboStyledFailureToOut(t *testing.T) {
-	gate := presenter.NotesReviewGate()
-	reader := &failingReader{t: t}
-	p, out, _ := prettyGate(termenv.TrueColor, reader, gateOpts{nonInteractiveStdin: true})
-
-	if _, err := p.Prompt(gate); err == nil {
-		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
-	}
-	got := out.String()
-	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("colour-on forbidden-combo failure emitted no ESC (0x1b) — expected styled ✗:\n%q", got)
-	}
-	for _, want := range []string{"✗", "gate", "not a TTY — pass -y to run unattended"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("colour-on forbidden-combo failure missing %q:\n%q", want, got)
-		}
-	}
-	if reader.tripped {
-		t.Error("pretty Prompt forbidden-combo read the input reader; it must NOT read stdin on this path")
-	}
-}
-
-// TestPrettyForbiddenComboFailureShape locks the unstyled structure of the pretty
-// failure line under the Ascii profile (no ANSI): the exact
-// "✗ gate       not a TTY — pass -y to run unattended\n" line, padStage-aligned
-// like the established StageFailed rendering.
-func TestPrettyForbiddenComboFailureShape(t *testing.T) {
-	gate := presenter.NotesReviewGate()
-	p, out, _ := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
-
-	if _, err := p.Prompt(gate); err == nil {
-		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
-	}
-	// padStage("gate") right-pads "gate" (4) to stageColumn (11) = 7 trailing
-	// spaces, exactly like every other StageFailed line.
-	want := "✗ gate       not a TTY — pass -y to run unattended\n"
-	if got := out.String(); got != want {
-		t.Errorf("pretty forbidden-combo out = %q, want %q", got, want)
-	}
-}
-
 // TestForbiddenComboSummaryToStderrBothModes proves the one-line failure summary
 // ALSO reaches stderr in BOTH modes per the stream contract.
 func TestForbiddenComboSummaryToStderrBothModes(t *testing.T) {
@@ -127,28 +81,30 @@ func TestForbiddenComboSummaryToStderrBothModes(t *testing.T) {
 		t.Errorf("plain forbidden-combo stderr = %q, want the one-line FAILED summary", got)
 	}
 
-	pretty, _, prettyErr := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
-	if _, err := pretty.Prompt(gate); err == nil {
-		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
+	rail, _, railErr := railGate(termenv.Ascii, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
+	defer rail.Close()
+	if _, err := rail.Prompt(gate); err == nil {
+		t.Fatalf("rail Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
 	}
-	if got := prettyErr.String(); got != "✗ gate  not a TTY — pass -y to run unattended\n" {
-		t.Errorf("pretty forbidden-combo stderr = %q, want the unstyled one-line ✗ summary", got)
+	if got := railErr.String(); got != "✗ gate  not a TTY — pass -y to run unattended\n" {
+		t.Errorf("rail forbidden-combo stderr = %q, want the unstyled one-line ✗ summary", got)
 	}
 }
 
 // TestForbiddenComboRenderModeIndependentOfStdin proves the axes are orthogonal:
-// the render mode is selected from stdout (a colour-capable pretty presenter)
-// independently of the non-TTY STDIN that triggers the failure, so the failure
-// renders STYLED (ESC present) even though stdin is the non-interactive side.
+// the render mode is selected from stdout (a colour-capable Rail) independently of
+// the non-TTY STDIN that triggers the failure, so the failure is drawn on the Rail,
+// in colour, even though stdin is the non-interactive side.
 func TestForbiddenComboRenderModeIndependentOfStdin(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	p, out, _ := prettyGate(termenv.TrueColor, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
+	p, out, _ := railGate(termenv.TrueColor, strings.NewReader(""), gateOpts{nonInteractiveStdin: true})
+	defer p.Close()
 
 	if _, err := p.Prompt(gate); err == nil {
-		t.Fatalf("pretty Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
+		t.Fatalf("rail Prompt (non-TTY stdin, no -y) returned nil error; want fail-loud")
 	}
-	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("pretty render mode (from stdout) did not style the failure despite non-TTY stdin:\n%q", out.String())
+	if !strings.Contains(out.String(), "\x1b[") || !strings.Contains(out.String(), "not a TTY — pass -y to run unattended") {
+		t.Errorf("the Rail (from stdout) did not draw the failure in colour despite non-TTY stdin:\n%q", out.String())
 	}
 }
 
@@ -189,25 +145,25 @@ func TestYesBypassesForbiddenComboBothModes(t *testing.T) {
 		t.Errorf("plain -y echo = %q, want the auto-accept echo, NOT a failure", got)
 	}
 
-	prettyReader := &failingReader{t: t}
-	pretty, prettyOut, _ := prettyGate(termenv.Ascii, prettyReader, gateOpts{yes: true, nonInteractiveStdin: true})
-	pchoice, perr := pretty.Prompt(gate)
-	if perr != nil {
-		t.Fatalf("pretty Prompt (-y, non-TTY stdin) returned error: %v", perr)
+	railReader := &failingReader{t: t}
+	rail, railOut, _ := railGate(termenv.Ascii, railReader, gateOpts{yes: true, nonInteractiveStdin: true})
+	defer rail.Close()
+	rchoice, rerr := rail.Prompt(gate)
+	if rerr != nil {
+		t.Fatalf("rail Prompt (-y, non-TTY stdin) returned error: %v", rerr)
 	}
-	if pchoice != gate.Default {
-		t.Errorf("pretty Prompt (-y, non-TTY stdin) = %q, want gate default %q", pchoice, gate.Default)
+	if rchoice != gate.Default {
+		t.Errorf("rail Prompt (-y, non-TTY stdin) = %q, want gate default %q", rchoice, gate.Default)
 	}
-	if got := prettyOut.String(); got != "✓ notes  accepted (-y)\n" {
-		t.Errorf("pretty -y accept line = %q, want the auto-accept line, NOT a failure", got)
+	if got := railOut.String(); !strings.Contains(got, "accepted (-y)") || strings.Contains(got, "not a TTY") {
+		t.Errorf("rail -y output = %q, want the auto-accept, NOT a failure", got)
 	}
 }
 
 // TestInteractiveStdinKeepsInteractivePathBothModes proves precedence branch 3:
 // with -y absent and stdinInteractive=true the interactive line-read path is
-// UNCHANGED — the scripted "y\n" returns ChoiceYes and the gate is drawn (the
-// plain menu / the pretty hotkey bar) — so the new fail branch only fires on the
-// genuine forbidden combination.
+// UNCHANGED — the scripted "y\n" returns ChoiceYes and the gate is drawn — so the
+// new fail branch only fires on the genuine forbidden combination.
 func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
@@ -223,16 +179,17 @@ func TestInteractiveStdinKeepsInteractivePathBothModes(t *testing.T) {
 		t.Errorf("plain Prompt (interactive stdin) did not render the menu:\n%q", plainOut.String())
 	}
 
-	pretty, prettyOut, _ := prettyGate(termenv.Ascii, strings.NewReader("y\n"), gateOpts{})
-	pchoice, perr := pretty.Prompt(gate)
-	if perr != nil {
-		t.Fatalf("pretty Prompt (interactive stdin) returned error: %v", perr)
+	rail, railOut, _ := railGate(termenv.Ascii, strings.NewReader("y\n"), gateOpts{})
+	defer rail.Close()
+	rchoice, rerr := rail.Prompt(gate)
+	if rerr != nil {
+		t.Fatalf("rail Prompt (interactive stdin) returned error: %v", rerr)
 	}
-	if pchoice != presenter.ChoiceYes {
-		t.Errorf("pretty Prompt (interactive stdin) = %q, want %q", pchoice, presenter.ChoiceYes)
+	if rchoice != presenter.ChoiceYes {
+		t.Errorf("rail Prompt (interactive stdin) = %q, want %q", rchoice, presenter.ChoiceYes)
 	}
-	if !strings.Contains(prettyOut.String(), notesBar) {
-		t.Errorf("pretty Prompt (interactive stdin) did not render the hotkey bar:\n%q", prettyOut.String())
+	if !strings.Contains(railOut.String(), "Use these notes?") {
+		t.Errorf("rail Prompt (interactive stdin) did not draw the question:\n%q", railOut.String())
 	}
 }
 

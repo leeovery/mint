@@ -206,14 +206,11 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		}
 	}
 
-	// RunStarted carries the engine-set Action and Leaf (from commit_prefix). It now
-	// OPENS the run, ahead of every stage event.
+	// RunStarted carries the engine-set Action. It now OPENS the run, ahead of every
+	// stage event.
 	start, _ := rec.At(indexOfKind(rec, presentertest.KindRunStarted))
 	if start.RunStarted.Action != "releasing" {
 		t.Errorf("RunStarted.Action = %q, want %q", start.RunStarted.Action, "releasing")
-	}
-	if start.RunStarted.Leaf != "🌿" {
-		t.Errorf("RunStarted.Leaf = %q, want commit_prefix %q", start.RunStarted.Leaf, "🌿")
 	}
 	if start.RunStarted.Version != "0.0.1" {
 		t.Errorf("RunStarted.Version = %q, want %q", start.RunStarted.Version, "0.0.1")

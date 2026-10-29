@@ -16,7 +16,7 @@ const (
 	// banner. It is the zero value so an unset Mode safely defaults to the
 	// agent-friendly, side-effect-free rendering.
 	ModePlain Mode = iota
-	// ModePretty renders styled output — brand line, colour, spinners.
+	// ModePretty renders styled output: the Rail, drawn in colour with a live region.
 	ModePretty
 )
 
@@ -40,8 +40,8 @@ func (m Mode) String() string {
 // No environment sniffing: this function deliberately reads no LANG, LC_*, TERM,
 // CI, or NO_COLOR variable. A flag is an explicit instruction; the ban is on
 // guessing render mode from the environment. The only TTY signal is the caller's
-// resolved isTTY (produced by IsTerminal), and NO_COLOR is out of scope — passing
-// --plain is its explicit equivalent.
+// resolved isTTY (produced by IsTerminal). NO_COLOR turns the Rail's colour off; it
+// never selects plain.
 func SelectMode(plainFlag bool, isTTY bool) Mode {
 	if plainFlag {
 		return ModePlain
@@ -57,8 +57,8 @@ func SelectMode(plainFlag bool, isTTY bool) Mode {
 // os.Stdout.Stat().Mode()&os.ModeCharDevice != 0. This is the sole TTY signal
 // feeding mode selection; it consults no environment variable. In particular it
 // does NOT special-case TERM (so a colour-incapable but real TTY such as
-// TERM=dumb is still a terminal here — colour downgrade is lipgloss's job, not
-// the mode selector's).
+// TERM=dumb is still a terminal here — colour downgrade is the Rail's colour
+// level's job, not the mode selector's).
 func IsTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }

@@ -1,7 +1,6 @@
 package presenter_test
 
 import (
-	"slices"
 	"testing"
 	"time"
 
@@ -19,52 +18,9 @@ func driveChunkedNotesStage(p presenter.Presenter) {
 	p.StageSucceeded(presenter.StageSuccess{
 		Name:     "notes",
 		Detail:   "generated in 6 parts, merged",
-		Sentence: "Notes written (6 parts, merged)",
 		Elapsed:  64200 * time.Millisecond,
 		Blocking: true,
 	})
-}
-
-func TestPrettyPresenter_ChunkedNotesStage_UpdatesTheOneNotesLine(t *testing.T) {
-	t.Parallel()
-
-	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { driveChunkedNotesStage(p) })
-
-	if len(tr.created) != 1 {
-		t.Fatalf("spinners created = %d, want the one notes line", len(tr.created))
-	}
-	want := []string{
-		"Writing notes: 3.1 MB release, in 6 parts · 0 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 1 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 3 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 4 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 5 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 6 of 6 done",
-		"Writing notes: merging 6 parts",
-	}
-	if got := tr.created[0].texts; !slices.Equal(got, want) {
-		t.Errorf("notes line texts =\n%q\nwant\n%q", got, want)
-	}
-	if got, want := out.String(), "✓ Notes written (6 parts, merged) (64.2s)\n"; got != want {
-		t.Errorf("output = %q, want only the completion line %q", got, want)
-	}
-}
-
-func TestPrettyPresenter_NotesProgressAfterTheStageEnds_StartsNoSpinner(t *testing.T) {
-	t.Parallel()
-
-	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
-		p.NotesProgress(presenter.NotesProgress{PromptBytes: 3_100_000, Parts: 6, Done: 1})
-		p.NotesMerging(presenter.NotesMerge{Parts: 6})
-	})
-
-	if len(tr.created) != 0 {
-		t.Errorf("spinners created = %d, want none with no notes line running", len(tr.created))
-	}
-	if out.Len() != 0 {
-		t.Errorf("output = %q, want nothing", out.String())
-	}
 }
 
 func TestPlainPresenter_ChunkedNotesStage_PrintsALinePerUpdate(t *testing.T) {
@@ -91,7 +47,7 @@ func TestPlainPresenter_ChunkedNotesStage_PrintsALinePerUpdate(t *testing.T) {
 	assertBytePureASCIIStreams(t, "plain chunked notes narration", out, errBuf)
 }
 
-func TestPresenters_NotesProgress_WriteSizesInDecimalUnits(t *testing.T) {
+func TestPlainPresenter_NotesProgress_WriteSizesInDecimalUnits(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -120,15 +76,6 @@ func TestPresenters_NotesProgress_WriteSizesInDecimalUnits(t *testing.T) {
 			if got, want := out.String(), "notes: "+tt.want+" release, in 2 parts, 1 of 2 done\n"; got != want {
 				t.Errorf("plain line = %q, want %q", got, want)
 			}
-
-			_, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
-				p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
-				p.NotesProgress(progress)
-			})
-			want := []string{"Writing notes: " + tt.want + " release, in 2 parts · 1 of 2 done"}
-			if got := tr.created[0].texts; !slices.Equal(got, want) {
-				t.Errorf("pretty line = %q, want %q", got, want)
-			}
 		})
 	}
 }
@@ -145,7 +92,6 @@ func driveHalvedSinglePassStage(p presenter.Presenter) {
 	p.StageSucceeded(presenter.StageSuccess{
 		Name:     "notes",
 		Detail:   "generated in 3 parts, merged",
-		Sentence: "Notes written (3 parts, merged)",
 		Elapsed:  12300 * time.Millisecond,
 		Blocking: true,
 	})
@@ -166,78 +112,9 @@ func driveHalvedPartStage(p presenter.Presenter) {
 	p.StageSucceeded(presenter.StageSuccess{
 		Name:     "notes",
 		Detail:   "generated in 8 parts, merged",
-		Sentence: "Notes written (8 parts, merged)",
 		Elapsed:  64200 * time.Millisecond,
 		Blocking: true,
 	})
-}
-
-func TestPrettyPresenter_SinglePassHalved_NamesTheRecutThenCountsItsParts(t *testing.T) {
-	t.Parallel()
-
-	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { driveHalvedSinglePassStage(p) })
-
-	if len(tr.created) != 1 {
-		t.Fatalf("spinners created = %d, want the one notes line", len(tr.created))
-	}
-	want := []string{
-		"Writing notes: too big for the model in one call, retrying in 3 parts",
-		"Writing notes: 1.2 MB release, in 3 parts · 1 of 3 done",
-		"Writing notes: 1.2 MB release, in 3 parts · 2 of 3 done",
-		"Writing notes: 1.2 MB release, in 3 parts · 3 of 3 done",
-		"Writing notes: merging 3 parts",
-	}
-	if got := tr.created[0].texts; !slices.Equal(got, want) {
-		t.Errorf("notes line texts =\n%q\nwant\n%q", got, want)
-	}
-	if got, want := out.String(), "✓ Notes written (3 parts, merged) (12.3s)\n"; got != want {
-		t.Errorf("output = %q, want only the completion line %q", got, want)
-	}
-}
-
-func TestPrettyPresenter_PartHalved_NamesThePartThenCountsOutOfTheGrownTotal(t *testing.T) {
-	t.Parallel()
-
-	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { driveHalvedPartStage(p) })
-
-	if len(tr.created) != 1 {
-		t.Fatalf("spinners created = %d, want the one notes line", len(tr.created))
-	}
-	want := []string{
-		"Writing notes: 3.1 MB release, in 6 parts · 0 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 1 of 6 done",
-		"Writing notes: 3.1 MB release, in 6 parts · 2 of 6 done",
-		"Writing notes: part 4 was too big for the model, retrying it as 3 smaller parts",
-		"Writing notes: 3.1 MB release, in 8 parts · 3 of 8 done",
-		"Writing notes: 3.1 MB release, in 8 parts · 4 of 8 done",
-		"Writing notes: 3.1 MB release, in 8 parts · 5 of 8 done",
-		"Writing notes: 3.1 MB release, in 8 parts · 6 of 8 done",
-		"Writing notes: 3.1 MB release, in 8 parts · 7 of 8 done",
-		"Writing notes: 3.1 MB release, in 8 parts · 8 of 8 done",
-		"Writing notes: merging 8 parts",
-	}
-	if got := tr.created[0].texts; !slices.Equal(got, want) {
-		t.Errorf("notes line texts =\n%q\nwant\n%q", got, want)
-	}
-	if got, want := out.String(), "✓ Notes written (8 parts, merged) (64.2s)\n"; got != want {
-		t.Errorf("output = %q, want only the completion line %q", got, want)
-	}
-}
-
-func TestPrettyPresenter_NotesHalvingWithNoNotesLine_StartsNoSpinner(t *testing.T) {
-	t.Parallel()
-
-	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
-		p.NotesHalving(presenter.NotesHalving{Parts: 3})
-		p.NotesHalving(presenter.NotesHalving{Part: 4, Parts: 3})
-	})
-
-	if len(tr.created) != 0 {
-		t.Errorf("spinners created = %d, want none with no notes line running", len(tr.created))
-	}
-	if out.Len() != 0 {
-		t.Errorf("output = %q, want nothing", out.String())
-	}
 }
 
 func TestPlainPresenter_SinglePassHalved_PrintsTheRecutAndEachFinishedPartAsLines(t *testing.T) {

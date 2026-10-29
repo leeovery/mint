@@ -159,63 +159,38 @@ func TestPlainPromptThenAskLineConsumeConsecutiveLines(t *testing.T) {
 	}
 }
 
-// TestPrettyAskLineRendersPromptMarkerAndReturnsLine proves the pretty free-text
-// ask renders the gate-question vocabulary — "{prompt} › " flush-left with no
-// trailing newline — and returns the typed line. Under the Ascii profile the dim
-// marker downgrades to bare text, so the framing is asserted byte-exactly.
-func TestPrettyAskLineRendersPromptMarkerAndReturnsLine(t *testing.T) {
-	p, out, errBuf := prettyGate(termenv.Ascii, strings.NewReader("free text answer\n"), gateOpts{})
+// TestRailAskLineAsksAndReturnsTheTypedLine proves the Rail's free-text ask shows
+// its prompt and returns the typed line verbatim, writing nothing to err.
+func TestRailAskLineAsksAndReturnsTheTypedLine(t *testing.T) {
+	p, out, errBuf := railGate(termenv.Ascii, strings.NewReader("  free text answer \n"), gateOpts{})
+	defer p.Close()
 
 	got, err := p.AskLine("context")
 	if err != nil {
-		t.Fatalf("pretty AskLine returned error: %v", err)
+		t.Fatalf("rail AskLine returned error: %v", err)
 	}
-	if got != "free text answer" {
-		t.Errorf("pretty AskLine = %q, want %q", got, "free text answer")
+	if got != "  free text answer " {
+		t.Errorf("rail AskLine = %q, want %q", got, "  free text answer ")
 	}
-	if out.String() != "context › " {
-		t.Errorf("pretty AskLine prompt = %q, want %q", out.String(), "context › ")
+	if !strings.Contains(out.String(), "context") {
+		t.Errorf("rail AskLine drew no prompt:\n%q", out.String())
 	}
 	if errBuf.Len() != 0 {
-		t.Errorf("pretty AskLine wrote to err: %q; the prompt is narration -> out only", errBuf.String())
+		t.Errorf("rail AskLine wrote to err: %q; the prompt is narration -> out only", errBuf.String())
 	}
 }
 
-// TestPrettyAskLineNonInteractiveStdinFailsLoud proves the pretty fail path
-// mirrors the gate's forbidden-combination rendering with the "input" label: the
-// styled ✗ line to out, the unstyled one-line summary to err, ErrNotInteractive
-// returned, and no read of the input stream.
-func TestPrettyAskLineNonInteractiveStdinFailsLoud(t *testing.T) {
-	reader := &failingReader{t: t}
-	p, out, errBuf := prettyGate(termenv.Ascii, reader, gateOpts{nonInteractiveStdin: true})
-
-	_, err := p.AskLine("context")
-	if !errors.Is(err, presenter.ErrNotInteractive) {
-		t.Fatalf("pretty AskLine non-interactive = %v, want ErrNotInteractive", err)
-	}
-	wantOut := "✗ input      not a TTY — pass -y to run unattended\n"
-	if out.String() != wantOut {
-		t.Errorf("pretty AskLine fail line (out) = %q, want %q", out.String(), wantOut)
-	}
-	wantErr := "✗ input  not a TTY — pass -y to run unattended\n"
-	if errBuf.String() != wantErr {
-		t.Errorf("pretty AskLine fail line (err) = %q, want %q", errBuf.String(), wantErr)
-	}
-	if reader.tripped {
-		t.Error("pretty AskLine read the input reader on the fail path; it must not")
-	}
-}
-
-// TestPrettyAskLineEOFWithNoLineFailsWithErrInputClosed proves the pretty seam
-// shares plain's EOF contract: ErrInputClosed, unrendered.
-func TestPrettyAskLineEOFWithNoLineFailsWithErrInputClosed(t *testing.T) {
-	p, _, errBuf := prettyGate(termenv.Ascii, strings.NewReader(""), gateOpts{})
+// TestRailAskLineEOFWithNoLineFailsWithErrInputClosed proves the Rail shares plain's
+// EOF contract: ErrInputClosed, unrendered.
+func TestRailAskLineEOFWithNoLineFailsWithErrInputClosed(t *testing.T) {
+	p, _, errBuf := railGate(termenv.Ascii, strings.NewReader(""), gateOpts{})
+	defer p.Close()
 
 	_, err := p.AskLine("context")
 	if !errors.Is(err, presenter.ErrInputClosed) {
-		t.Fatalf("pretty AskLine on EOF = %v, want ErrInputClosed", err)
+		t.Fatalf("rail AskLine on EOF = %v, want ErrInputClosed", err)
 	}
 	if errBuf.Len() != 0 {
-		t.Errorf("pretty AskLine on EOF wrote to err: %q; ErrInputClosed is unrendered", errBuf.String())
+		t.Errorf("rail AskLine on EOF wrote to err: %q; ErrInputClosed is unrendered", errBuf.String())
 	}
 }

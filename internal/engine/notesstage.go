@@ -282,10 +282,7 @@ func (r *regenStage) done() {
 	case r.stage != nil:
 		r.stage.succeeded(r.run.stepped(mergedCompletion(r.parts)))
 	case r.parts > 0:
-		r.quiet.succeeded(r.run.stepped(presenter.StageSuccess{
-			Detail:   fmt.Sprintf("merged from %d parts", r.parts),
-			Sentence: fmt.Sprintf("Notes merged again (%d parts)", r.parts),
-		}))
+		r.quiet.succeeded(r.run.stepped(presenter.StageSuccess{Detail: fmt.Sprintf("merged from %d parts", r.parts)}))
 	default:
 		r.quiet.succeeded(r.run.stepped(notesCompletion(0)))
 	}
@@ -417,7 +414,7 @@ func notesSource(kind notes.Kind, notesFile string) string {
 // or, by a merge, from parts.
 func notesCompletion(parts int) presenter.StageSuccess {
 	if parts == 0 {
-		return presenter.StageSuccess{Detail: "generated", Sentence: "Generated release notes"}
+		return presenter.StageSuccess{Detail: "generated"}
 	}
 	return mergedCompletion(parts)
 }
@@ -425,8 +422,5 @@ func notesCompletion(parts int) presenter.StageSuccess {
 // mergedCompletion is the success of a notes stage whose merge wrote the body from
 // parts.
 func mergedCompletion(parts int) presenter.StageSuccess {
-	return presenter.StageSuccess{
-		Detail:   fmt.Sprintf("generated in %d parts, merged", parts),
-		Sentence: fmt.Sprintf("Notes written (%d parts, merged)", parts),
-	}
+	return presenter.StageSuccess{Detail: fmt.Sprintf("generated in %d parts, merged", parts)}
 }
