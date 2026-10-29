@@ -8,8 +8,7 @@
  ┆
  ○  pre_tag       npm ci && npm run build
  ●  check         1 flagged, not asked                                                          6.2s
- │                design documents · 6 files, 48 kB
- ?  docs/specs/** Exclude it from the notes?
+ ?  Exclude docs/specs/** from the notes? (design documents; 6 files, 48 kB)
  ●  notes         written in 4 parts and merged                                                52.3s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.

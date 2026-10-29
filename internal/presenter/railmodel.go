@@ -103,10 +103,11 @@ func (pt *part) still() rail.Item {
 	return n
 }
 
-// hangsUnder is whether the part hangs under the node above it: a body, or a node
-// of no stage's that has finished, a warning.
+// hangsUnder is whether the part hangs under the node above it: a body, a dry run's
+// preview, so each preview after it goes below it, or a node of no stage's that has
+// finished, a warning.
 func (pt *part) hangsUnder() bool {
-	return pt.kind == bodyPart || pt.kind == nodePart && pt.key == "" && pt.finished()
+	return pt.kind == bodyPart || pt.kind == previewPart || pt.kind == nodePart && pt.key == "" && pt.finished()
 }
 
 // running is whether the part is a node running.

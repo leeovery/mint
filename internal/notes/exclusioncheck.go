@@ -27,9 +27,9 @@ type CheckNarration interface {
 
 // CheckResult is what the check's call found: how it ended and, for a call whose
 // answer suggested paths to leave out, how many of those the run goes on to ask about
-// or report, and whether it asks. A suggestion matching only paths the keep list or a
-// suggestion before it covers is never asked about, whatever the answers before it,
-// so it is not counted.
+// or report, and whether it asks. With pauses wired, a suggestion matching only paths
+// the keep list or a suggestion before it covers is never asked about, whatever the
+// answers before it, so it is not counted; a report counts every usable suggestion.
 type CheckResult struct {
 	Outcome CheckOutcome
 	Flagged int

@@ -219,9 +219,10 @@ func (p *RailPresenter) dismiss(q *part) {
 }
 
 // question is g as a question part of kind: a preview has no keys. Where the
-// exclusion check's node is drawn, the pause's glob is its name and what the AI said
-// of it hangs above it under that node, which a preview leaves there; with the node
-// settled, the pause asks in the gate's own words, which say it all.
+// exclusion check's node is drawn, a pause asked takes its glob as its name, and what
+// the AI said of it hangs above it under that node until it is answered. With the
+// node settled, and in a dry run's previews, which stay, one under another, the pause
+// asks in the gate's own words, which say it all, so each carries its own reason.
 func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
@@ -230,14 +231,11 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 		}
 	}
 	x, check := g.Suggestion, p.run.find(g.Stage)
-	if x == nil || check == nil {
+	if x == nil || check == nil || kind != questionPart {
 		return q
 	}
 	check.node.Lines = append(slices.Clone(check.node.Lines), rail.Hang{Kind: rail.Note, Text: about(*x)})
-	q.question.Name, q.question.Text = x.Glob, pauseQuestion
-	if kind == questionPart {
-		q.about = check
-	}
+	q.question.Name, q.question.Text, q.about = x.Glob, pauseQuestion, check
 	return q
 }
 

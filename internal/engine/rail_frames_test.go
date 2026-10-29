@@ -372,6 +372,15 @@ var railRuns = map[string]railRun{
 		w.notes()
 		return w.release(t, func(o *engine.ReleaseOptions) { o.DryRun = true })
 	}},
+	// An attended dry run whose check flags three globs: each previewed where its pause
+	// would be, in the answer's order, in its own words with its own reason.
+	"release-dry-run-previews-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", false)
+		w.deps.Transport = railAI("docs/design/: design documents\ndocs/: documentation\nsrc/: source code\n", nil)
+		w.readGates(false)
+		w.designNotes()
+		return w.release(t, func(o *engine.ReleaseOptions) { o.DryRun = true })
+	}},
 	// A publish failing past the point of no return: it warns, and the run still lands.
 	"release-publish-warned-100": {run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, "", "", true)
