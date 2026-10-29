@@ -303,7 +303,7 @@ func TestUnwind_KeepOut_ResetStepFails_WarnsTheManualStepsLeft(t *testing.T) {
 			if got := recoveryWarn(t, rec).Warn.Message; got != tt.want {
 				t.Errorf("recovery Warn message = %q, want %q", got, tt.want)
 			}
-			if got, want := unwoundText(t, rec), "reset 1 commit; manual cleanup required"; got != want {
+			if got, want := unwoundText(t, rec), "manual cleanup required"; got != want {
 				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
 		})

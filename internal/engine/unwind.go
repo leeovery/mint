@@ -162,7 +162,12 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 
 	if tagDeleted || commitsReset {
 		clean := tagOK && editOK && resetOK && keptOK
-		event := unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: clean})
+		event := unwindEvent(start.Tag, made, unwindOutcome{
+			reset:       commitsReset && resetOK,
+			deleted:     tagDeleted && tagOK,
+			answersKept: kept,
+			clean:       clean,
+		})
 		deps.Presenter.Unwound(event)
 		// HEAD is back on the starting commit once the reset ran, or, with only a tag to
 		// delete, when nothing but mint could have moved it.
@@ -428,42 +433,41 @@ func resetTo(ctx context.Context, m *git.Mutator, target resetTarget) (manual ma
 	return manualStep{}, "", nil
 }
 
-// unwindOutcome is how an unwind ended: whether the exclusion answers were
-// re-committed, and whether EVERY recovery mutation succeeded.
+// unwindOutcome is how an unwind ended: whether its reset and its tag delete each
+// succeeded, whether the exclusion answers were re-committed, and whether EVERY
+// recovery mutation succeeded.
 type unwindOutcome struct {
-	answersKept bool
-	clean       bool
+	reset, deleted bool
+	answersKept    bool
+	clean          bool
 }
 
-// unwindEvent builds the Unwound payload: what the unwind ATTEMPTED to undo, the kept
-// answers commit when it was re-committed, and where it left the repo. Only a clean
-// outcome reads "repo clean", so the narration never calls the repo clean after a
-// failed step. Each part is ASCII, so the plain presenter's joined line stays
-// byte-pure, and none leads with a "Reverted:"-style prefix — the presenter prefixes
-// the line with "unwound", so a prefix here would double-label.
+// unwindEvent builds the Unwound payload: what the unwind undid, the kept answers
+// commit when it was re-committed, and where it left the repo. Only a clean outcome
+// reads "repo clean", so the narration never calls the repo clean after a failed step.
+// Each part is ASCII, so the plain presenter's joined line stays byte-pure, and none
+// leads with a "Reverted:"-style prefix — the presenter prefixes the line with
+// "unwound", so a prefix here would double-label.
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
-	event := presenter.Unwind{Undone: undone(tag, made), Repo: repoState(outcome.clean), Key: stageUnwind}
+	event := presenter.Unwind{Undone: undone(tag, made.Commits, outcome), Repo: repoState(outcome.clean), Key: stageUnwind}
 	if outcome.answersKept {
 		event.Kept = "kept the answers commit on the starting commit"
 	}
 	return event
 }
 
-// undone names what the unwind undid: the count of commits reset and the deleted tag.
-// It is only ever called when something was undone (a commit reset and/or a tag
-// deleted), so the zero/zero case is unreachable here; the operation no-ops before
-// reaching it.
-func undone(tag string, made MadeState) string {
-	reset := made.Commits > 0
-	deleted := made.TagCreated
+// undone names what the unwind undid: the commits reset and the tag deleted, each only
+// where its step succeeded, so a step that failed is never claimed; "" where none did.
+func undone(tag string, commits int, outcome unwindOutcome) string {
 	switch {
-	case reset && deleted:
-		return fmt.Sprintf("reset %s and deleted tag %s", commitsPhrase(made.Commits), tag)
-	case reset:
-		return "reset " + commitsPhrase(made.Commits)
-	default:
+	case outcome.reset && outcome.deleted:
+		return fmt.Sprintf("reset %s and deleted tag %s", commitsPhrase(commits), tag)
+	case outcome.reset:
+		return "reset " + commitsPhrase(commits)
+	case outcome.deleted:
 		return "deleted tag " + tag
 	}
+	return ""
 }
 
 // repoState is where the unwind left the repo: "repo clean" when all recovery

@@ -14,8 +14,8 @@
  │                │  ! [rejected]        main -> main (fetch first)
  │                │ error: failed to push some refs to 'https://github.com/acme/pigeon'
  ✗  unwind        automatic recovery failed
+ │                deleted tag v1.3.0
  │                │ fatal: Could not reset index file to revision 'startsha'.
- │                reset 1 commit and deleted tag v1.3.0
  │
  ◇  v1.2.3        manual cleanup required · nothing pushed                                      4.9s
 

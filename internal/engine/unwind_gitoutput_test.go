@@ -65,7 +65,7 @@ func TestUnwind_ResetLockedPastTheRetries_ShowsGitsLockStderrBeneathTheWarning(t
 	if got := countCmd(f, "git", "reset", "--hard", startingSHA); got != 3 {
 		t.Errorf("reset attempts = %d, want 3 (the Mutator's whole budget)", got)
 	}
-	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; manual cleanup required"; got != want {
+	if got, want := unwoundText(t, rec), "deleted tag v0.0.1; manual cleanup required"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -88,6 +88,8 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 		calls   func(failed runner.ScriptedCall) []runner.ScriptedCall
 		action  string
 		move    presenter.NextMove
+		// summary is the Unwound line, naming only the steps that succeeded: the tag
+		// delete when the reset fails after it, the reset when the delete fails.
 		summary string
 	}{
 		{
@@ -97,7 +99,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			},
 			action:  hard,
 			move:    presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
-			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+			summary: "deleted tag v0.0.1; manual cleanup required",
 		},
 		{
 			name: "the tag delete",
@@ -106,7 +108,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			},
 			action:  tag,
 			move:    presenter.NextMove{Lead: "Delete the leftover tag v0.0.1:", Command: "git tag -d v0.0.1"},
-			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+			summary: "reset 2 commits; manual cleanup required",
 		},
 		{
 			name:    "the keep-out soft reset",
@@ -119,7 +121,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				Lead:    "Reset HEAD back to " + startingSHA + ", leaving NEXT_RELEASE.md as it is:",
 				Command: "git reset --soft " + startingSHA + " && " + restoreCmd,
 			},
-			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+			summary: "deleted tag v0.0.1; manual cleanup required",
 		},
 		{
 			name:    "the keep-out restore",
@@ -132,7 +134,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				Lead:    "Restore the index and work tree to " + startingSHA + ", leaving NEXT_RELEASE.md as it is:",
 				Command: restoreCmd,
 			},
-			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+			summary: "deleted tag v0.0.1; manual cleanup required",
 		},
 	}
 	failures := []struct {

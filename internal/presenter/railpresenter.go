@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -400,9 +401,9 @@ func (p *RailPresenter) warned(key, label string) *rail.Node {
 
 // Unwound draws the unwind's node: what it undid, and what it kept under it. An
 // unwind that couldn't finish is already drawn, as the failed nodes of its steps
-// keyed as it is, so it hangs what it undid and what it kept under the last. Where it
-// left the repo is a claim about the tree the rail doesn't make; a step left to do by
-// hand reaches next.
+// keyed as it is, so it hangs what it undid first under the last, above the output of
+// the step that failed, and what it kept last. Where it left the repo is a claim about
+// the tree the rail doesn't make; a step left to do by hand reaches next.
 func (p *RailPresenter) Unwound(u Unwind) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -412,7 +413,7 @@ func (p *RailPresenter) Unwound(u Unwind) {
 	}
 	if failed := p.run.find(u.Key); failed != nil && failed.node.State == rail.Failed {
 		if u.Undone != "" {
-			failed.node.Lines = append(failed.node.Lines, rail.Hang{Kind: rail.Note, Text: u.Undone})
+			failed.node.Lines = slices.Insert(slices.Clone(failed.node.Lines), 0, rail.Hang{Kind: rail.Note, Text: u.Undone})
 		}
 		failed.node.Lines = append(failed.node.Lines, kept...)
 		p.run.touched = failed

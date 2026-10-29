@@ -136,8 +136,8 @@ func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *te
 	screen := r.screen(t)
 	want := []string{
 		" ✗  unwind        automatic recovery failed; manually reset HEAD back to 7c1e0b4",
-		" │                │ fatal: could not write the index",
 		" │                reset 1 commit",
+		" │                │ fatal: could not write the index",
 		" │                kept the answers commit on the starting commit",
 		" │",
 		row(" ◇  main          manual cleanup required · nothing pushed", "4.9s"),

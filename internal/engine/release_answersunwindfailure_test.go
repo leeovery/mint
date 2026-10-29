@@ -225,14 +225,14 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 		{
 			name:    "the answers commit at the tip",
 			rev:     "HEAD",
-			summary: "reset 2 commits; manual cleanup required",
+			summary: "manual cleanup required",
 		},
 		{
 			name:        "the answers commit below the bookkeeping commit",
 			tail:        pushRejectedAfterTheTag(),
 			beforeReset: []runner.ScriptedCall{ScriptedOut("")}, // tag -d v1.3.0
 			rev:         "HEAD~1",
-			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; manual cleanup required",
+			summary:     "deleted tag " + minorTagV130 + "; manual cleanup required",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -292,7 +292,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 			"`), then restore the exclusion answers commit on top (`git cherry-pick ORIG_HEAD~1`)",
 		Output: resetStderr,
 	}
-	assertUnwoundWithOneWarning(t, rec, err, want, "reset 3 commits and deleted tag "+minorTagV130+"; manual cleanup required")
+	assertUnwoundWithOneWarning(t, rec, err, want, "deleted tag "+minorTagV130+"; manual cleanup required")
 	assertManualSteps(t, rec,
 		presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
 		presenter.NextMove{Lead: "Restore the exclusion answers commit on top:", Command: "git cherry-pick ORIG_HEAD~1"},
