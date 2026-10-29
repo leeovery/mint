@@ -21,6 +21,7 @@ import (
 	"mint/internal/ai"
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
+	"mint/internal/record"
 )
 
 // recordedSurfaceAndUnwind drives surfaceAndUnwind with a zero MadeState (nothing made →
@@ -157,24 +158,33 @@ func TestNotesSurfacing_NonCarrierCausesYieldEmptyOutput(t *testing.T) {
 	}
 }
 
-// TestResetAndAbort_NoOutputForGitFailure proves the third StageFailure builder
-// (resetAndAbort, regenerate's changelog record/push path) is UNCHANGED: a git push
-// failure surfaces the concise/cause.Error() fallback Message with an EMPTY Output (the
-// AI carrier never reaches it; notesFailureOutput would return "" there anyway).
-func TestResetAndAbort_NoOutputForGitFailure(t *testing.T) {
+// TestResetAndAbort_ShowsTheFailingGitStepsStderr proves the third StageFailure
+// builder (resetAndAbort, regenerate's changelog record/push path) carries the failing
+// git step's stderr verbatim in Output beneath the cause.Error() fallback Message, and
+// no Output for a failure that carries none.
+func TestResetAndAbort_ShowsTheFailingGitStepsStderr(t *testing.T) {
 	t.Parallel()
 
-	rec := &presentertest.RecordingPresenter{}
-	cause := fmt.Errorf("pushing regenerated changelog: %w", errors.New("git push failed: exit status 128"))
+	const stderr = "error: gpg failed to sign the data\n"
+	for _, tc := range []struct {
+		name   string
+		cause  error
+		output string
+	}{
+		{name: "a git step with stderr", cause: fmt.Errorf("committing: %w", record.NewGitError(stderr, errors.New("exit status 128"))), output: stderr},
+		{name: "a failure with none", cause: fmt.Errorf("pushing regenerated changelog: %w", errors.New("git push failed: exit status 128"))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	// committed=false so no reset mutation runs — the Mutator is never touched.
-	_ = resetAndAbort(t.Context(), ReleaseDeps{Presenter: rec}, resetTarget{HEAD: "startsha"}, false, "push", cause)
+			rec := &presentertest.RecordingPresenter{}
+			// committed=false so no reset mutation runs — the Mutator is never touched.
+			_ = resetAndAbort(t.Context(), ReleaseDeps{Presenter: rec}, resetTarget{HEAD: "startsha"}, false, "push", tc.cause)
 
-	sf := onlyStageFailure(t, rec)
-	if sf.Output != "" {
-		t.Errorf("resetAndAbort StageFailure.Output = %q, want \"\" (git failure carries no claude output)", sf.Output)
-	}
-	if sf.Message != cause.Error() {
-		t.Errorf("resetAndAbort StageFailure.Message = %q, want the cause.Error() fallback %q", sf.Message, cause.Error())
+			sf := onlyStageFailure(t, rec)
+			if sf.Output != tc.output || sf.Message != tc.cause.Error() {
+				t.Errorf("resetAndAbort StageFailure = %q with output %q, want %q with %q", sf.Message, sf.Output, tc.cause.Error(), tc.output)
+			}
+		})
 	}
 }

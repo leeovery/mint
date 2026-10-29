@@ -361,8 +361,8 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 // idiom here means the two regenerate paths can no longer drift on the stage/commit half
 // (the mirror of pushChangelogCommit owning the push/recovery half).
 func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject string, keepOut git.Exclusion) error {
-	if _, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
-		return fmt.Errorf("staging %s: %w", record.ChangelogFileName, err)
+	if res, err := m.Mutate(ctx, nil, "git", "-C", root, "add", record.ChangelogFileName); err != nil {
+		return fmt.Errorf("staging %s: %w", record.ChangelogFileName, record.NewGitError(res.Stderr, err))
 	}
 	committed, err := record.CommitStaged(ctx, m, root, subject, keepOut)
 	if err != nil {
@@ -388,8 +388,9 @@ func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject 
 // means the two regenerate paths can no longer drift on push form or recovery.
 func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) error {
 	push := emitBlockingStageStarted(deps.Presenter, deps.clock(), stagePush, "pushing to origin…", "Pushed to origin")
-	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
-		return resetAndAbort(ctx, deps, start, true, stagePush, &stageError{stage: push, err: fmt.Errorf("pushing regenerated changelog: %w", err)})
+	if res, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
+		cause := fmt.Errorf("pushing regenerated changelog: %w", record.NewGitError(res.Stderr, err))
+		return resetAndAbort(ctx, deps, start, true, stagePush, &stageError{stage: push, err: cause})
 	}
 	push.done("pushed to origin")
 	return nil
@@ -400,10 +401,10 @@ func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarge
 // tag, best-effort), tells the run's close where that left the repo, and returns the
 // abort. With no commit made the reset is skipped, and a CHANGELOG.md rewritten but
 // not committed is what the run leaves; a write that failed before that leaves the
-// close claiming nothing. The ✗ line carries the failure's message alone, no captured
-// output.
+// close claiming nothing. The ✗ line carries the failure's message, the failing git
+// step's stderr verbatim beneath it.
 func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, committed bool, stage string, cause error) error {
-	failure := presenter.StageFailure{Name: stage, Key: stage, Message: failureMessage(cause)}
+	failure := presenter.StageFailure{Name: stage, Key: stage, Message: failureMessage(cause), Output: failureOutput(cause)}
 	var timed *stageError
 	if errors.As(cause, &timed) {
 		failure.Elapsed = timed.stage.elapsed()
