@@ -12,8 +12,9 @@ const (
 	// pauseQuestion is the exclusion pause's question once its glob has moved into
 	// the question's name.
 	pauseQuestion = "Exclude it from the notes?"
-	// reviewName names the row that records an answer about a node already settled
-	// above the question, as a body too tall for the region leaves it.
+	// reviewName names the row that records a review's answer about a node already
+	// settled above the question, as a body too tall for the region leaves it, but
+	// for a node that goes on past the question, which the row names.
 	reviewName = "review"
 )
 
@@ -68,6 +69,7 @@ func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 			return "", p.answered(g, q, "", err)
 		}
 		if c, ok := parseChoice(line, g); ok {
+			q.typed = line
 			return c, p.answered(g, q, c, nil)
 		}
 		p.reask(q)
@@ -265,6 +267,7 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	switch body := p.run.partOf(bodyPart); {
 	case c == ChoiceRegen && g.Review:
 		p.run.keepBody(body, out, last)
+		p.run.rerun(g.Stage)
 	case body != nil && !body.out:
 		p.run.remove(body)
 	}
@@ -277,16 +280,31 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 		}
 		asked.node.Tail = tail
 		p.run.touched = asked
-	case g.Stage == "" && q != nil && q.read:
+	case g.Stage == "" && q != nil && q.read && strings.TrimSpace(q.typed) != "":
 	case g.Stage == "":
 		p.run.add(rail.Node{Name: g.Subject, Detail: chosen(g, c), Tail: autoTail(auto)})
 	case out || p.run.gone[g.Stage]:
-		detail, tail := settled(g, c, "", tail)
-		p.run.add(rail.Node{Name: reviewName, Detail: detail, Tail: tail})
+		p.run.add(recordRow(g, c, q, tail))
 	default:
 		n := p.run.stage(g.Stage, g.Stage).node
 		n.Detail, n.Tail = g.Detail, tail
 	}
+}
+
+// recordRow is the row recording c, g's answer to the question q, nil where -y took
+// it, tail being how the answer reads after a node, where what it asked about has
+// settled: named for that node where it goes on past the question, else the review.
+// A gate with no Detail of its own records the answer as the row's detail.
+func recordRow(g Gate, c Choice, q *part, tail string) rail.Node {
+	name := reviewName
+	if q != nil && q.record != "" {
+		name = q.record
+	}
+	if g.Detail == "" {
+		return rail.Node{Name: name, Detail: tail}
+	}
+	detail, tail := settled(g, c, "", tail)
+	return rail.Node{Name: name, Detail: detail, Tail: tail}
 }
 
 // settled is the detail and the tail a node waiting for g's answer settles to once c

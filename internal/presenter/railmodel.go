@@ -59,11 +59,18 @@ type part struct {
 	// typed line at.
 	shown bool
 	// read is a question printed for a line typed at it, which stays, with the line,
-	// as its answer's record.
-	read bool
-	// ongoing is a node done with a step its stage goes on past, kept open for the
-	// stage's later events: not finished, so it neither settles nor makes way for a
-	// node of its own.
+	// as its answer's record; typed is the line typed at it.
+	read  bool
+	typed string
+	// record names the row that records the question's answer once what it asked
+	// about has settled: the node's own name where that node goes on past the
+	// question (a --all version), "" for the review's row.
+	record string
+	// ongoing is a node done with a step its stage goes on past (a --all version
+	// past its notes), which, while it stays in the region, takes the stage's later
+	// events in place. It is finished for every settling rule: whatever settles it
+	// settles it as it stands, and what the stage does after draws as a node of its
+	// own.
 	ongoing bool
 	// reached, crossed and ended are the point of no return's: its stage under way,
 	// done, and over, done or not.
@@ -122,14 +129,14 @@ func (pt *part) running() bool {
 	return pt.kind == nodePart && !pt.hidden && pt.node.State == rail.Running
 }
 
-// finished is whether nothing more will change the part: a node past running or
-// passed by, and not ongoing, a rule whose stage is over, a previewed question. A
-// body and a question go when the question is answered, the end station when the run
-// ends.
+// finished is whether the part may settle as it stands: a node past running or
+// passed by, an ongoing one included, a rule whose stage is over, a previewed
+// question. A body and a question go when the question is answered, the end station
+// when the run ends.
 func (pt *part) finished() bool {
 	switch pt.kind {
 	case nodePart:
-		return !pt.hidden && !pt.ongoing && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
+		return !pt.hidden && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
 	case rulePart:
 		return pt.ended
 	case previewPart:
@@ -179,7 +186,9 @@ type runModel struct {
 	parts   []*part
 	touched *part
 	// gone are the stage keys whose nodes settled: an event for one draws a new node.
-	gone map[string]bool
+	// wentOn names those that settled ongoing, for the record of a question about one.
+	gone   map[string]bool
+	wentOn map[string]string
 	// held is the running node the exclusion check holds back while it runs.
 	held *part
 	// looping is a question's loop open: from a review's e until the next answer
@@ -213,7 +222,9 @@ type runModel struct {
 	closed bool
 }
 
-func newRunModel() *runModel { return &runModel{gone: map[string]bool{}, planned: map[string]string{}} }
+func newRunModel() *runModel {
+	return &runModel{gone: map[string]bool{}, wentOn: map[string]string{}, planned: map[string]string{}}
+}
 
 // drawing is the run as the rail draws it now.
 func (m *runModel) drawing(now time.Time) rail.Run {
@@ -293,10 +304,11 @@ func (m *runModel) plan(p Plan) {
 // unless that is gone or finished, else a new node named as the plan named the stage,
 // or name where the plan has none. A finished node is final, settled or still in the
 // region alike: a stage that runs again after it finished, as the notes do for the
-// review's r, draws a node of its own below it.
+// review's r, draws a node of its own below it. An ongoing node still in the region
+// takes its stage's later events in place.
 func (m *runModel) stage(key, name string) *part {
 	pt := m.find(key)
-	if pt == nil || pt.finished() {
+	if pt == nil || pt.finished() && !pt.ongoing {
 		if planned, ok := m.planned[key]; ok {
 			name = planned
 		}
@@ -490,6 +502,15 @@ func (m *runModel) show(text string) {
 	m.insert(&part{kind: bodyPart, text: text}, m.insertionPoint())
 }
 
+// rerun makes the node of the stage keyed key final where it goes on past the
+// question a regenerate answered: the stage runs again, so what it does next draws
+// as a node of its own, and the node settles as it stands, the answer its tail.
+func (m *runModel) rerun(key string) {
+	if pt := m.find(key); pt != nil {
+		pt.ongoing = false
+	}
+}
+
 // keepBody keeps the body a review's regenerate was answered over: body, shown live,
 // settles where it is, and from there, as when a body settled before, out says, every
 // body shown settles as it is shown, last being the last of those.
@@ -516,6 +537,12 @@ func (m *runModel) ask(q *part, stage string) {
 		m.insert(q, m.under(asked))
 	default:
 		m.insert(q, m.insertionPoint())
+	}
+	switch {
+	case asked != nil && asked.ongoing:
+		q.record = asked.node.Name
+	case asked == nil:
+		q.record = m.wentOn[stage]
 	}
 }
 
@@ -619,11 +646,17 @@ func (m *runModel) settlePart(pt *part) {
 	} else {
 		m.settleItem(pt.live(time.Time{}))
 	}
-	if pt.kind == bodyPart {
+	// A body shown once one before it settled is out already: it settles as it shows,
+	// or, kept by a regenerate, after its question's answer, which bodyOut must not
+	// outlive.
+	if pt.kind == bodyPart && !pt.out {
 		m.bodyOut, m.lastBody = true, pt.text
 	}
 	if pt.key != "" {
 		m.gone[pt.key] = true
+	}
+	if pt.ongoing {
+		m.wentOn[pt.key] = pt.node.Name
 	}
 	if m.touched == pt {
 		m.touched = nil

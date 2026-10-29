@@ -198,8 +198,25 @@ func versionNotes(empty ...string) func(context.Context, engine.RegenerateSource
 	}
 }
 
+// tallNotes are versionNotes but for tag's, too tall for the terminal to hold.
+func tallNotes(tag string) func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error) {
+	short := versionNotes()
+	return func(ctx context.Context, source engine.RegenerateSource, res version.Resolution, pre string, sinks engine.NotesSinks) (string, error) {
+		if res.Tag != tag {
+			return short(ctx, source, res, pre, sinks)
+		}
+		var b strings.Builder
+		b.WriteString("Deliveries are batched per endpoint now.\n\n## ✨ Added\n")
+		for i := 1; i <= railRows; i++ {
+			fmt.Fprintf(&b, "- Batched delivery change %d.\n", i)
+		}
+		return b.String(), nil
+	}
+}
+
 // all runs --all over the first n of pigeon's releases from fresh notes to target,
-// their notes written by notes.
+// their notes written by notes, and written again at a review's r by the run's
+// Regenerator, where it has one.
 func (w *regenWorld) all(t *testing.T, n int, target engine.RegenerateTarget, notes func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error)) error {
 	t.Helper()
 	return engine.RegenerateAllRun(t.Context(), w.deps, w.root, engine.RegenerateAllRunRequest{
@@ -217,6 +234,9 @@ func (w *regenWorld) all(t *testing.T, n int, target engine.RegenerateTarget, no
 				Target:        target,
 				ReleaseBranch: "main",
 				ProduceBody:   notes,
+				ProduceRegenerator: func(engine.RegenerateSource, version.Resolution, engine.RegenRun) engine.Regenerator {
+					return w.deps.Regenerator
+				},
 			}, w.publisher, nil
 		},
 	})
@@ -260,6 +280,12 @@ var regenRuns = map[string]regenRun{
 		w.f.SeedSequence("git", ScriptedOut(tagAnnotation)) // for-each-ref contents:body
 		return w.regenerate(t, w.single(engine.SourceUnset(), engine.TargetUnset()))
 	}},
+	// No source or target given: both asked, Enter typed at each for its default, then
+	// the notes accepted.
+	"regenerate-asked-defaults-100": {answers: "\n\ny\n", echo: true, run: func(t *testing.T, w *regenWorld) error {
+		w.gh()
+		return w.regenerate(t, w.single(engine.SourceUnset(), engine.TargetUnset()))
+	}},
 	// The changelog commit's push rejected under -y: the commit is reset.
 	"regenerate-push-rejected-100": {yes: true, aborted: true, run: func(t *testing.T, w *regenWorld) error {
 		w.preflight()
@@ -287,6 +313,18 @@ var regenRuns = map[string]regenRun{
 			gitFailing(ghBadGateway),
 		)
 		return w.all(t, 4, engine.RegenerateTargetRelease, versionNotes())
+	}},
+	// --all at a terminal, v1.1.0's notes written again at its review's r, the rest
+	// answered y.
+	"regenerate-all-regenerated-100": {answers: "y\nr\n\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {
+		w.deps.Regenerator = railRegenerator(railRegenNotes)
+		w.gh()
+		return w.all(t, 3, engine.RegenerateTargetRelease, versionNotes())
+	}},
+	// --all at a terminal, v1.1.0's notes too tall for the terminal, each answered y.
+	"regenerate-all-tall-100": {answers: "y\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {
+		w.gh()
+		return w.all(t, 3, engine.RegenerateTargetRelease, tallNotes("v1.1.0"))
 	}},
 	// --all at a terminal: each version's notes reviewed, answered y.
 	"regenerate-all-attended-100": {answers: "y\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {

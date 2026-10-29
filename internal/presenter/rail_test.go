@@ -361,6 +361,28 @@ func TestRail_RegenerateAllIsOneRunWithANodePerVersion(t *testing.T) {
 	)
 }
 
+// TestRail_UnderSixtyColumnsAVersionSettlesAsItStandsAndGoesOnBelow pins that an
+// ongoing node is finished for every settling rule: with no region to hold it, a
+// --all version prints as it stands once its notes are done, and its release draws
+// as a node of its own below.
+func TestRail_UnderSixtyColumnsAVersionSettlesAsItStandsAndGoesOnBelow(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 50, 24, answers())
+	header := presenter.Header{Command: "release regenerate --all", Where: pigeonWhere}
+	r.RunStarted(presenter.RunInfo{Header: header, Quiet: true, Toward: "done", Start: presenter.Station{Name: "1 version", Detail: "fresh notes"}})
+	r.ShowPlan(presenter.Plan{Quiet: true, Stages: []presenter.PlanStage{{Key: "v1.0.0", Name: "v1.0.0", Detail: "GitHub release"}}})
+	r.StageStarted(presenter.StageStart{Name: "v1.0.0", Key: "v1.0.0", Blocking: true, Quiet: true, Text: "generating…"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "v1.0.0", Detail: "generated", Row: "notes generated", Blocking: true, Ongoing: true})
+	r.StageStarted(presenter.StageStart{Name: "publish", Key: "v1.0.0", Blocking: true, Quiet: true, Text: "writing…"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "v1.0.0", Key: "v1.0.0", Detail: "GitHub release", Blocking: true, Quiet: true, Elapsed: 2 * time.Second})
+	screen := r.screen(t)
+	settled := slices.Index(screen, " │  notes generated")
+	released := slices.Index(screen, " │  GitHub release")
+	if settled < 0 || released <= settled || screen[released-1] != " ●  v1.0.0" {
+		t.Errorf("the terminal shows\n%s\nwant the version as its notes left it, then its release on a node below", strings.Join(screen, "\n"))
+	}
+}
+
 func TestRail_ARegenerateAllVersionRunsOnPastItsNotesOnOneNode(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 24, answers())

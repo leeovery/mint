@@ -9,7 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/muesli/termenv"
+
 	"mint/internal/presenter"
+	"mint/internal/presenter/frametest"
 )
 
 // unread is input a test expects never to be read.
@@ -792,6 +795,39 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 				at = i
 			}
 		})
+	}
+}
+
+// TestRailGate_TheReviewsRecordRowDrawsItsAnswerAsADetail pins the record row's
+// style: the answer a review records on a row of its own, after an r, is the row's
+// detail, inked as a done node's detail is, not a dim tail.
+func TestRailGate_TheReviewsRecordRowDrawsItsAnswerAsADetail(t *testing.T) {
+	t.Parallel()
+	r := newRailTermIn(t, termenv.TrueColor, 80, 30, answers("r\n", "y\n"))
+	notesUnderReview(r, "first draft")
+	if _, err := r.Prompt(reviewGate()); err != nil {
+		t.Fatal(err)
+	}
+	r.StageStarted(presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "generating release notes…", Quiet: true})
+	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(3), Detail: "generated", Quiet: true})
+	r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "second draft"})
+	if _, err := r.Prompt(reviewGate()); err != nil {
+		t.Fatal(err)
+	}
+
+	g, err := frametest.Parse(r.frame(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := g.Text()
+	recorded := slices.IndexFunc(text, func(s string) bool { return strings.HasPrefix(s, " ●  review        accepted") })
+	again := slices.IndexFunc(text, func(s string) bool { return strings.HasPrefix(s, " ●  notes         generated") })
+	if recorded < 0 || again < 0 {
+		t.Fatalf("the terminal shows\n%s\nwant the notes again and the review's record row", strings.Join(text, "\n"))
+	}
+	const detailAt = 18
+	if got, want := g[recorded][detailAt], g[again][detailAt]; got.Pen != want.Pen {
+		t.Errorf("the record row's answer is inked %v, want a done node's detail, %v", got.Pen, want.Pen)
 	}
 }
 
