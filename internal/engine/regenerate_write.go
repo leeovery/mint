@@ -136,9 +136,6 @@ type RegenerateWriteRequest struct {
 	// it nil. A wired deps.Regenerator OVERRIDES it (the test-injection seam), mirroring
 	// the forward path's precedence.
 	Regenerator Regenerator
-	// NotesFile is the --notes-file path as given, empty without the flag: a supplied
-	// body's heal names it.
-	NotesFile string
 	// KeepOut is the path the changelog commit leaves out, any staged edits to it
 	// still staged afterwards.
 	KeepOut git.Exclusion
@@ -221,7 +218,7 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 			if pushed {
 				// Post-PONR: the changelog is already public, so never unwind — warn and
 				// point at the heal path, exactly as the forward path's post-push failure.
-				warnRegenerateProviderFailed(p, err, healMove(deps, root, req, body, releaseName(publisher)))
+				warnRegenerateProviderFailed(p, err, healMove(deps, root, req.Tag, body, releaseName(publisher)))
 				return nil
 			}
 			// Release-only: nothing was pushed, so this is a plain pre-PONR failure. The
@@ -513,25 +510,16 @@ func warnRegenerateProviderSkipped(p presenter.Presenter, key string) {
 	})
 }
 
-// healMove is the way to write the release again, named release, after its write
-// failed past the changelog's push, from the notes body the pushed changelog holds:
-// the run's own source, fresh, tag or release, read again; the notes file a supplied
-// body came from; or, for a body taken at the notes floor, which nothing can read
-// again, that body saved beside the tag's chunk notes, never over them, or, where it
-// can't be saved, a file the reader writes it to.
-func healMove(deps ReleaseDeps, root string, req RegenerateWriteRequest, body, release string) presenter.NextMove {
-	lead := "Re-heal the " + release + ":"
-	again := regenerateRerun(req.Tag, RegenerateTargetRelease)
-	switch req.Source {
-	case regenerateSourceSupplied:
-		return presenter.NextMove{Lead: lead, Command: notesFileCommand(again.command, req.NotesFile)}
-	case regenerateSourceFloor:
-		if saved := saveHealNotes(deps, root, req.Tag, body); saved != "" {
-			return presenter.NextMove{Lead: "Re-heal the " + release + " from its notes, saved to " + saved + ":", Command: notesFileCommand(again.command, saved)}
-		}
-		return presenter.NextMove{Lead: "Write the notes " + record.ChangelogFileName + " now holds to a file, then re-heal the " + release + " with it:", Command: again.command + " --notes-file <file>"}
+// healMove is the way to write tag's release, named release, after its write failed
+// past the changelog's push, with body, the notes the pushed changelog holds, whatever
+// their source: body saved beside the tag's chunk notes, never over them, and passed
+// with --notes-file, or, where it can't be saved, a lead telling the reader to.
+func healMove(deps ReleaseDeps, root, tag, body, release string) presenter.NextMove {
+	again := regenerateRerun(tag, RegenerateTargetRelease)
+	if saved := saveHealNotes(deps, root, tag, body); saved != "" {
+		return presenter.NextMove{Lead: "Re-heal the " + release + " from the notes just pushed, saved to " + saved + ":", Command: notesFileCommand(again.command, saved)}
 	}
-	return presenter.NextMove{Lead: lead, Command: regenerateMoveCommand(req.Tag, req.Source, RegenerateTargetRelease)}
+	return presenter.NextMove{Lead: "Save the notes " + record.ChangelogFileName + " now holds for " + tag + " to a file, then re-heal the " + release + " with it (`" + again.command + " --notes-file <file>`)"}
 }
 
 // healNotesSuffix names the file a heal's notes are saved to apart from the tag's

@@ -1,98 +1,184 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"mint/internal/git"
 	"mint/internal/notescache"
 	"mint/internal/presenter"
+	"mint/internal/presenter/presentertest"
 	"mint/internal/publish"
 	"mint/internal/runner"
 )
 
-// savingChunkNotes saves to path, or fails with err.
-type savingChunkNotes struct {
-	path  string
-	err   error
-	saved *string
+// savingChunkNotes fails every save with err.
+type savingChunkNotes struct{ err error }
+
+func (s savingChunkNotes) Save(string, string, string) (string, error) {
+	return "", s.err
 }
 
-func (s savingChunkNotes) Save(_, _, notes string) (string, error) {
-	if s.err != nil {
-		return "", s.err
-	}
-	*s.saved = notes
-	return s.path, nil
+// failingPublisher fails the release probe, the dispatch's first call, with err.
+type failingPublisher struct{ err error }
+
+func (f failingPublisher) ReleaseExists(context.Context, string) (bool, error) {
+	return false, f.err
 }
 
-// TestHealMove_WritesTheReleaseFromTheNotesThePushedChangelogHolds pins the heal a
-// post-push publish failure names: the run's own source given explicitly, read
-// again; a supplied body's notes file; a floor body saved where chunk notes go; and,
-// where it can't be saved, a file the reader writes.
-func TestHealMove_WritesTheReleaseFromTheNotesThePushedChangelogHolds(t *testing.T) {
+func (failingPublisher) ReadReleaseBody(context.Context, string) (string, bool, error) {
+	return "", false, nil
+}
+
+func (failingPublisher) CreateRelease(context.Context, string, string, string) (string, error) {
+	return "", nil
+}
+
+func (failingPublisher) UpdateRelease(context.Context, string, string, string) (string, error) {
+	return "", nil
+}
+
+// fixedRegenerator writes the notes again as body.
+type fixedRegenerator struct{ body string }
+
+func (r fixedRegenerator) Regenerate(context.Context, string) (string, error) {
+	return r.body, nil
+}
+
+// fixedEditor saves the notes as body.
+type fixedEditor struct{ body string }
+
+func (e fixedEditor) Edit(context.Context, string) (string, error) {
+	return e.body, nil
+}
+
+// TestRegenerateWrite_AHealWritesTheReleaseFromTheNotesJustPushed pins the heal a
+// failed release write past the changelog's push names, one rule whatever the source:
+// the notes the changelog was pushed with, as reviewed, saved to the tag's heal file
+// and passed with --notes-file. Reading the source again would not give them: fresh
+// notes the `r` wrote again, supplied notes edited at the gate, and notes taken at the
+// notes floor are each the reviewed body alone.
+func TestRegenerateWrite_AHealWritesTheReleaseFromTheNotesJustPushed(t *testing.T) {
 	t.Parallel()
 
-	const body = "Initial release.\n"
-	var saved string
+	const (
+		read     = "Initial release.\n"
+		reviewed = "Webhooks retry on their own now.\n"
+	)
 	for _, tc := range []struct {
-		name   string
-		source RegenerateSource
-		notes  ChunkNotesSaver
-		want   presenter.NextMove
+		name    string
+		source  RegenerateSource
+		choices []presenter.Choice
+		deps    ReleaseDeps
+		pushed  string
 	}{
 		{
-			name:   "fresh notes, written fresh again",
-			source: RegenerateSourceFresh,
-			want:   presenter.NextMove{Lead: "Re-heal the GitHub release:", Command: "mint release regenerate v1.4.0 --source fresh --target release"},
+			name:    "fresh notes the r wrote again",
+			source:  RegenerateSourceFresh,
+			choices: []presenter.Choice{presenter.ChoiceRegen, presenter.ChoiceYes},
+			deps:    ReleaseDeps{Regenerator: fixedRegenerator{body: reviewed}},
+			pushed:  reviewed,
 		},
 		{
-			name:   "the tag's notes, read again",
-			source: RegenerateSourceTag,
-			want:   presenter.NextMove{Lead: "Re-heal the GitHub release:", Command: "mint release regenerate v1.4.0 --source tag --target release"},
+			name:    "supplied notes edited at the gate",
+			source:  regenerateSourceSupplied,
+			choices: []presenter.Choice{presenter.ChoiceEdit, presenter.ChoiceYes},
+			deps:    ReleaseDeps{Editor: fixedEditor{body: reviewed}},
+			pushed:  reviewed,
 		},
 		{
-			name:   "a supplied body, from its file",
-			source: regenerateSourceSupplied,
-			want:   presenter.NextMove{Lead: "Re-heal the GitHub release:", Command: "mint release regenerate v1.4.0 --target release --notes-file 'my notes.md'"},
+			name:    "notes taken at the floor",
+			source:  regenerateSourceFloor,
+			choices: []presenter.Choice{presenter.ChoiceYes},
+			pushed:  read,
 		},
 		{
-			name:   "a floor body, saved",
-			source: regenerateSourceFloor,
-			notes:  savingChunkNotes{path: "/cache/v1.4.0.md", saved: &saved},
-			want: presenter.NextMove{
-				Lead:    "Re-heal the GitHub release from its notes, saved to /cache/v1.4.0.md:",
-				Command: "mint release regenerate v1.4.0 --target release --notes-file /cache/v1.4.0.md",
-			},
-		},
-		{
-			name:   "a floor body that can't be saved",
-			source: regenerateSourceFloor,
-			notes:  savingChunkNotes{err: errors.New("no space left on device")},
-			want: presenter.NextMove{
-				Lead:    "Write the notes CHANGELOG.md now holds to a file, then re-heal the GitHub release with it:",
-				Command: "mint release regenerate v1.4.0 --target release --notes-file <file>",
-			},
+			name:    "the tag's notes, confirmed",
+			source:  RegenerateSourceTag,
+			choices: []presenter.Choice{presenter.ChoiceYes},
+			pushed:  read,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			req := RegenerateWriteRequest{Source: tc.source, Target: RegenerateTargetBoth, Tag: "v1.4.0", NotesFile: "my notes.md"}
-			got := healMove(ReleaseDeps{ChunkNotes: tc.notes}, "/repo", req, body, "GitHub release")
-			if got != tc.want {
-				t.Errorf("heal = %+v, want %+v", got, tc.want)
+			t.Parallel()
+			root, cache := t.TempDir(), t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "CHANGELOG.md"), []byte("# Changelog\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			f := runner.NewFakeRunner()
+			f.SeedSequence("git",
+				runner.ScriptedCall{Result: runner.Result{Stdout: "startHEAD"}},  // rev-parse HEAD
+				runner.ScriptedCall{Result: runner.Result{Stdout: "2024-02-15"}}, // the tag's date
+				runner.ScriptedCall{}, // add
+				runner.ScriptedCall{}, // commit
+				runner.ScriptedCall{}, // push: the changelog is public
+			)
+			rec := &presentertest.RecordingPresenter{NextChoices: tc.choices, NextLines: []string{""}}
+			deps := tc.deps
+			deps.Presenter, deps.Runner, deps.Mutator = rec, f, git.NewMutator(f)
+			deps.ChunkNotes = notescache.NewChunkNotes(cache)
+			req := RegenerateWriteRequest{Source: tc.source, Target: RegenerateTargetBoth, Tag: "v1.4.0", VersionKey: "1.4.0", Body: read}
+
+			if err := RegenerateWrite(t.Context(), deps, failingPublisher{err: errors.New("HTTP 502")}, root, req); err != nil {
+				t.Fatalf("RegenerateWrite = %v, want nil: a release write past the push only warns", err)
+			}
+
+			heal := healMoves(t, rec)
+			saved := strings.TrimPrefix(heal.Command, "mint release regenerate v1.4.0 --target release --notes-file ")
+			want := presenter.NextMove{Lead: "Re-heal the provider release from the notes just pushed, saved to " + saved + ":", Command: heal.Command}
+			if filepath.Base(saved) != "v1.4.0.heal.md" || heal != want {
+				t.Errorf("heal = %+v, want the release written from the tag's heal file", heal)
+			}
+			if got, err := os.ReadFile(saved); err != nil || string(got) != tc.pushed {
+				t.Errorf("heal notes at %s = %q, %v, want the notes pushed, %q", saved, got, err, tc.pushed)
 			}
 		})
 	}
-	if saved != body {
-		t.Errorf("saved notes = %q, want the body the changelog holds, %q", saved, body)
+}
+
+// TestHealMove_WithNowhereToSaveTheNotesTheLeadSaysHowToHeal pins the heal where the
+// pushed notes can't be saved: a lead alone, naming the notes the changelog holds and
+// the command that writes the release from a file of them.
+func TestHealMove_WithNowhereToSaveTheNotesTheLeadSaysHowToHeal(t *testing.T) {
+	t.Parallel()
+
+	want := presenter.NextMove{Lead: "Save the notes CHANGELOG.md now holds for v1.4.0 to a file, then re-heal the GitHub release with it (`mint release regenerate v1.4.0 --target release --notes-file <file>`)"}
+	for _, tc := range []struct {
+		name  string
+		notes ChunkNotesSaver
+	}{
+		{name: "no chunk notes store"},
+		{name: "the save fails", notes: savingChunkNotes{err: errors.New("no space left on device")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := healMove(ReleaseDeps{ChunkNotes: tc.notes}, "/repo", "v1.4.0", "Initial release.\n", "GitHub release"); got != want {
+				t.Errorf("heal = %+v, want %+v", got, want)
+			}
+		})
 	}
 }
 
-// TestHealMove_AFloorBodyIsSavedBesideTheTagsPartNotesNeverOverThem pins that a floor
-// heal keeps the part notes an earlier failed run saved for the tag: both files
-// survive, each with its own notes, and the move points at the heal's.
-func TestHealMove_AFloorBodyIsSavedBesideTheTagsPartNotesNeverOverThem(t *testing.T) {
+// healMoves is the one move the post-push release warning recorded.
+func healMoves(t *testing.T, rec *presentertest.RecordingPresenter) presenter.NextMove {
+	t.Helper()
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindNextMoves && ev.NextMoves.Stage == stagePublish && len(ev.NextMoves.Moves) == 1 {
+			return ev.NextMoves.Moves[0]
+		}
+	}
+	t.Fatalf("no publish heal recorded; kinds = %v", rec.Kinds())
+	return presenter.NextMove{}
+}
+
+// TestHealMove_TheNotesAreSavedBesideTheTagsPartNotesNeverOverThem pins that a heal
+// keeps the part notes an earlier failed run saved for the tag: both files survive,
+// each with its own notes, and the move points at the heal's.
+func TestHealMove_TheNotesAreSavedBesideTheTagsPartNotesNeverOverThem(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -104,9 +190,7 @@ func TestHealMove_AFloorBodyIsSavedBesideTheTagsPartNotesNeverOverThem(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := RegenerateWriteRequest{Source: regenerateSourceFloor, Target: RegenerateTargetBoth, Tag: "v1.4.0"}
-
-	move := healMove(ReleaseDeps{ChunkNotes: store}, "/repo", req, body, "GitHub release")
+	move := healMove(ReleaseDeps{ChunkNotes: store}, "/repo", "v1.4.0", body, "GitHub release")
 
 	healed := filepath.Join(filepath.Dir(parts), "v1.4.0.heal.md")
 	if want := "mint release regenerate v1.4.0 --target release --notes-file " + healed; move.Command != want {
