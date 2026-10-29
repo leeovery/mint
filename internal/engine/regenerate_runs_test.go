@@ -326,6 +326,13 @@ var regenRuns = map[string]regenRun{
 		w.gh()
 		return w.all(t, 3, engine.RegenerateTargetRelease, tallNotes("v1.1.0"))
 	}},
+	// --all at a terminal, v1.1.0's review answered r, the call writing its notes again
+	// failing.
+	"regenerate-all-regen-failed-100": {answers: "y\nr\n\n", aborted: true, run: func(t *testing.T, w *regenWorld) error {
+		w.deps.Regenerator = &fakeRegenerator{err: fmt.Errorf("regenerating notes: %w", &ai.GenerationError{})}
+		w.gh()
+		return w.all(t, 3, engine.RegenerateTargetRelease, versionNotes())
+	}},
 	// --all at a terminal: each version's notes reviewed, answered y.
 	"regenerate-all-attended-100": {answers: "y\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {
 		w.gh()

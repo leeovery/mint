@@ -255,7 +255,7 @@ func (s *notesStage) regens(hint func(lowerCap int)) *regenStage {
 // review is the review gate's `r` over regenerator, narrated as one of these r's,
 // with k saving the part notes of one that fails.
 func (r *regenStage) review(regenerator Regenerator, k *chunkNotesKeeper) reviewRegen {
-	return reviewRegen{regenerator: r.narrating(regenerator), shown: r.shown, keep: k.keepRegen}
+	return reviewRegen{regenerator: r.narrating(regenerator), shown: r.shown, keep: k.keepRegen, key: r.run.stage.step.key}
 }
 
 // narrating wraps regenerator so the notes line an r opens closes once its notes are

@@ -30,6 +30,7 @@ package engine
 // pop-after ordering (4-4) layers on top of this wiring.
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -135,6 +136,10 @@ type reviewRegen struct {
 	regenerator Regenerator
 	shown       func()
 	keep        func(error) error
+	// key is the stage key the notes run under, which a failed `r`'s line fills: the
+	// notes stage's or a --all version's tag, "" for the notes stage's where the review
+	// narrates no stage of its own.
+	key string
 }
 
 func (r reviewRegen) keepFailed(cause error) error {
@@ -2136,7 +2141,7 @@ func regenerateBody(ctx context.Context, deps ReleaseDeps, regen reviewRegen, ve
 	if regen.regenerator == nil {
 		// `r` was offered (KindNormalAI) but no Regenerator was wired — a
 		// misconfiguration. Surface a clean failure and abort rather than panicking.
-		return "", regenFailed(p, errRegeneratorUnavailable, 0)
+		return "", regenFailed(p, regen.key, errRegeneratorUnavailable, 0)
 	}
 
 	now := deps.clock()
@@ -2144,7 +2149,7 @@ func regenerateBody(ctx context.Context, deps ReleaseDeps, regen reviewRegen, ve
 	regenerated, rerr := regen.regenerator.Regenerate(ctx, line)
 	if rerr != nil {
 		// A regenerate failure is fail-loud: surface and abort.
-		return "", regenFailed(p, regen.keepFailed(rerr), now().Sub(began))
+		return "", regenFailed(p, regen.key, regen.keepFailed(rerr), now().Sub(began))
 	}
 
 	// Re-show the regenerated notes so the user reviews them before the gate re-prompts.
@@ -2157,10 +2162,10 @@ func regenerateBody(ctx context.Context, deps ReleaseDeps, regen reviewRegen, ve
 
 // regenFailed surfaces an `r` that failed after elapsed and aborts. Its line keeps
 // the "regenerate" label, but it is the notes being written again, so it carries the
-// notes stage's key.
-func regenFailed(p presenter.Presenter, cause error, elapsed time.Duration) error {
+// key they run under: key, or the notes stage's where that is "".
+func regenFailed(p presenter.Presenter, key string, cause error, elapsed time.Duration) error {
 	failure := stageFailure(regenerateLabel, cause)
-	failure.Key, failure.Elapsed = stageNotes, elapsed
+	failure.Key, failure.Elapsed = cmp.Or(key, stageNotes), elapsed
 	p.StageFailed(failure)
 	return abort(cause)
 }
