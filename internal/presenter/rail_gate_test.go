@@ -269,14 +269,14 @@ func TestRailGate_TheExclusionPauseAsksAboutItsGlobAndAnswersHangUnderTheCheck(t
 	t.Parallel()
 	in := answers("y\n", "k\n")
 	r := newRailTerm(t, 100, 30, in)
-	preparedRelease(r, r.clock)
+	preparedRelease(r, r.clock, "1 flagged")
 	in.asked = func(n int) {
 		if n == 1 {
 			return
 		}
 		got := r.screen(t)[8:11]
 		want := []string{
-			pane(" ●  check         files that don't belong in the notes                                          6.2s"),
+			pane(" ●  check         1 flagged                                                                     6.2s"),
 			" │                design documents · 6 files, 48 kB",
 			" ?  docs/specs/** Exclude it from the notes?   e exclude   k keep",
 		}
@@ -292,58 +292,36 @@ func TestRailGate_TheExclusionPauseAsksAboutItsGlobAndAnswersHangUnderTheCheck(t
 	}
 }
 
-// TestRailGate_TheExclusionCheckStatesWhatItsPausesCameToOnItsRow pins that the
-// check's node waits on the result its pauses come to, then states it on the node it
-// drew: one answer as the row, no longer hung beneath it, several as a count with the
-// answers hung beneath.
-func TestRailGate_TheExclusionCheckStatesWhatItsPausesCameToOnItsRow(t *testing.T) {
+// TestRailGate_OnAShortTerminalEveryPauseIsOnScreenWhileItWaits pins that the
+// answers hung under the check never push the open pause off a short terminal: what
+// can settle settles, the check's node with it, and each pause waits on the screen.
+func TestRailGate_OnAShortTerminalEveryPauseIsOnScreenWhileItWaits(t *testing.T) {
 	t.Parallel()
-	vendor := presenter.ExclusionSuggestion{Glob: "vendor/", Reason: "vendored code", Matches: "3 files, 12 kB"}
-	vendorGate := pauseGate()
-	vendorGate.Suggestion, vendorGate.Subject = &vendor, vendor.Glob
-	tests := []struct {
-		name   string
-		typed  []string
-		gates  []presenter.Gate
-		result string
-		want   []string
-	}{
-		{
-			name: "one answer", typed: []string{"k\n"}, gates: []presenter.Gate{pauseGate()},
-			result: "docs/specs/** kept · design documents",
-			want: []string{
-				pane(" ●  check         docs/specs/** kept · design documents                                         6.2s"),
-			},
-		},
-		{
-			name: "several answers", typed: []string{"e\n", "k\n"}, gates: []presenter.Gate{pauseGate(), vendorGate},
-			result: "1 left out · 1 kept",
-			want: []string{
-				pane(" ●  check         1 left out · 1 kept                                                           6.2s"),
-				" │                docs/specs/** excluded · design documents",
-				" │                vendor/ kept · vendored code",
-			},
-		},
+	const pauses = 14
+	typed := []string{"y\n"}
+	for range pauses {
+		typed = append(typed, "e\n")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			r := newRailTerm(t, 100, 30, answers(append([]string{"y\n"}, tt.typed...)...))
-			preparedRelease(r, r.clock)
-			for _, g := range tt.gates {
-				if _, err := r.Prompt(g); err != nil {
-					t.Fatal(err)
-				}
-			}
-			checkResolved(r, tt.result)
-			screen := r.screen(t)
-			if got := screen[8 : 8+len(tt.want)]; strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
-				t.Errorf("the check reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(tt.want, "\n"))
-			}
-			if next := screen[8+len(tt.want)]; !strings.Contains(next, "  notes  ") {
-				t.Errorf("under the check the rail reads %q, want the notes running", next)
-			}
-		})
+	in := answers(typed...)
+	r := newRailTerm(t, 100, 14, in)
+	var asking string
+	in.asked = func(n int) {
+		if n == 1 {
+			return
+		}
+		if screen := r.term.Screen(); !slices.ContainsFunc(screen, func(line string) bool { return strings.Contains(line, asking) }) {
+			t.Errorf("while %s is asked the screen shows\n%s\nwant it on screen", asking, strings.Join(screen, "\n"))
+		}
+	}
+	preparedRelease(r, r.clock, fmt.Sprintf("%d flagged", pauses))
+	for i := range pauses {
+		x := presenter.ExclusionSuggestion{Glob: fmt.Sprintf("gen/part%02d/", i), Reason: "generated", Matches: "1 file, 1 kB"}
+		g := pauseGate()
+		g.Suggestion, g.Subject, g.Question = &x, x.Glob, "Exclude "+x.Glob+" from the notes? (generated; 1 file, 1 kB)"
+		asking = x.Glob
+		if _, err := r.Prompt(g); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

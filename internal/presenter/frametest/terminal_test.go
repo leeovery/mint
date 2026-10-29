@@ -88,6 +88,14 @@ func TestTheCursorIsWhereTheWritesLeftIt(t *testing.T) {
 	}
 }
 
+func TestTheScreenIsTheRowsShownWithoutTheScrollback(t *testing.T) {
+	t.Parallel()
+	term := written(t, 20, 3, "one\ntwo\nthree\nfour")
+	if got, want := term.Screen(), []string{"two", "three", "four"}; !slices.Equal(got, want) {
+		t.Errorf("Screen() = %q, want %q", got, want)
+	}
+}
+
 func TestTheTerminalRefusesWhatALiveRegionMustNeverWrite(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

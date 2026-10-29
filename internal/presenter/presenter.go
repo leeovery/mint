@@ -643,12 +643,11 @@ type NotesMerge struct {
 
 // NotesCheck carries the NotesChecking and NotesChecked payloads: Key names the
 // check's plan stage, and Elapsed, on NotesChecked alone, is the engine-measured
-// time of the check's call. Detail, on NotesChecked alone, is the check's result
-// for its settled row, empty where the call flagged something: a Quiet StageSucceeded
-// keyed for the check states what that came to once its pauses or its report are
-// done, unless the run ends first. Failed, on NotesChecked alone, marks a call that failed or
-// whose answer was unusable: the warning that follows ends the check's node in place
-// of a success. Plain and today's pretty ignore both.
+// time of the check's call. Detail, on NotesChecked alone, is what the call found for
+// its settled row: nothing to leave out, or how many it flagged, and whether they go
+// unasked; empty for a call cancelled. Failed, on NotesChecked alone, marks a call
+// that failed or whose answer was unusable: the warning that follows ends the check's
+// node in place of a success. Plain and today's pretty ignore both.
 type NotesCheck struct {
 	Key     string
 	Elapsed time.Duration

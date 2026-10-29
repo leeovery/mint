@@ -13,32 +13,27 @@ import (
 )
 
 // CheckNarration is told when the exclusion check's call starts and when it ends, with
-// how it ended, what an answered call came to once its pauses or its report are done,
-// when the keep list covers every changed path so there is nothing to call about, and
-// when the check failed: after the call ends when the call failed or its answer was
-// unreadable, and with no call at all when the call would not fit under the cap.
-// output is the AI's captured output, or its unreadable answer, verbatim but for
-// trailing whitespace, and empty when there is none.
+// what it found, when the keep list covers every changed path so there is nothing to
+// call about, and when the check failed: after the call ends when the call failed or
+// its answer was unreadable, and with no call at all when the call would not fit under
+// the cap. output is the AI's captured output, or its unreadable answer, verbatim but
+// for trailing whitespace, and empty when there is none.
 type CheckNarration interface {
 	Checking()
-	Checked(outcome CheckOutcome)
-	Resolved(result CheckResult)
+	Checked(result CheckResult)
 	AllKept()
 	CheckFailed(output string)
 }
 
-// CheckResult is what an answered check came to: the suggestions its pauses asked
-// about with their answers, in the order asked, or, reported rather than asked, how
-// many it flagged.
+// CheckResult is what the check's call found: how it ended and, for a call whose
+// answer suggested paths to leave out, how many of those the run goes on to ask about
+// or report, and whether it asks. A suggestion matching only paths the keep list or a
+// suggestion before it covers is never asked about, whatever the answers before it,
+// so it is not counted.
 type CheckResult struct {
-	Answered []AnsweredSuggestion
-	Flagged  int
-}
-
-// AnsweredSuggestion is a suggestion a pause asked about, and its answer.
-type AnsweredSuggestion struct {
-	Suggestion
-	Answer Answer
+	Outcome CheckOutcome
+	Flagged int
+	Asked   bool
 }
 
 // CheckOutcome is how the check's call ended.
@@ -57,11 +52,10 @@ const (
 
 type noCheckNarration struct{}
 
-func (noCheckNarration) Checking()            {}
-func (noCheckNarration) Checked(CheckOutcome) {}
-func (noCheckNarration) Resolved(CheckResult) {}
-func (noCheckNarration) AllKept()             {}
-func (noCheckNarration) CheckFailed(string)   {}
+func (noCheckNarration) Checking()           {}
+func (noCheckNarration) Checked(CheckResult) {}
+func (noCheckNarration) AllKept()            {}
+func (noCheckNarration) CheckFailed(string)  {}
 
 // ExclusionCheck asks the AI which of a release's changed paths look out of place in
 // its notes. Its call carries no diff, only the changed paths the notes diff carries
@@ -153,7 +147,7 @@ func (c *ExclusionCheck) WithRecord(record func(context.Context, Answers) error)
 // or its answer neither "none" nor yielding one usable suggestion, is narrated and
 // leaves the release to carry on, so only a cancel is returned. With pauses wired, each
 // suggestion matching a path the list covers is paused on in the answer's order, unless
-// earlier answers already decide every such path it matches; a pause's error, or a
+// the suggestions before it already cover every such path it matches; a pause's error, or a
 // cancel while it waits, is returned and ends the pauses. It returns the globs answered
 // Exclude, in the order answered; a report excludes nothing.
 func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes int) ([]string, error) {
@@ -171,7 +165,10 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 	c.narration.Checking()
 	answer, err := c.transport.Generate(ctx, prompt)
 	outcome, suggestions := checkOutcome(answer, err, paths)
-	c.narration.Checked(outcome)
+	if c.pauses != nil {
+		suggestions = c.undecided(suggestions, files)
+	}
+	c.narration.Checked(CheckResult{Outcome: outcome, Flagged: len(suggestions), Asked: c.pauses != nil})
 	switch {
 	case errors.Is(err, context.Canceled):
 		return nil, err
@@ -223,16 +220,28 @@ func (c *ExclusionCheck) reportAll(suggestions []Suggestion, files []checkedPath
 	for _, s := range suggestions {
 		c.report(s, unanswered.matches(s.Glob, files))
 	}
-	c.narration.Resolved(CheckResult{Flagged: len(suggestions)})
 }
 
+// undecided is those of suggestions the pauses ask about, in order: each matching a
+// path of files neither the keep list nor a suggestion before it covers. Whatever a
+// pause answers, the paths its glob matches are decided from then on, so which are
+// asked is known before the first is.
+func (c *ExclusionCheck) undecided(suggestions []Suggestion, files []checkedPath) []Suggestion {
+	decided := slices.Clip(c.keep)
+	var asked []Suggestion
+	for _, s := range suggestions {
+		if slices.ContainsFunc(files, func(p checkedPath) bool { return pathspecMatches(s.Glob, p.path) && !coveredBy(decided, p.path) }) {
+			asked = append(asked, s)
+		}
+		decided = append(decided, s.Glob)
+	}
+	return asked
+}
+
+// pause asks about each of suggestions, those undecided, in order.
 func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) ([]string, error) {
 	decided := runAnswers{keep: slices.Clip(c.keep)}
-	var answered []AnsweredSuggestion
 	for _, s := range suggestions {
-		if !decided.leavesUndecided(s.Glob, files) {
-			continue
-		}
 		answer, err := c.pauses.Pause(ctx, s, decided.matches(s.Glob, files))
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
@@ -241,14 +250,12 @@ func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, fi
 			return nil, err
 		}
 		decided.record(s.Glob, answer)
-		answered = append(answered, AnsweredSuggestion{Suggestion: s, Answer: answer})
 	}
 	if c.record != nil && decided.answered() {
 		if err := c.record(ctx, Answers{Exclude: decided.excluded, Keep: decided.kept}); err != nil {
 			return nil, err
 		}
 	}
-	c.narration.Resolved(CheckResult{Answered: answered})
 	return decided.excluded, nil
 }
 
@@ -271,14 +278,6 @@ func (a *runAnswers) record(glob string, answer Answer) {
 
 func (a *runAnswers) answered() bool {
 	return len(a.excluded) > 0 || len(a.kept) > 0
-}
-
-// leavesUndecided reports whether glob matches a path of files neither the keep list
-// nor an earlier answer covers.
-func (a *runAnswers) leavesUndecided(glob string, files []checkedPath) bool {
-	return slices.ContainsFunc(files, func(p checkedPath) bool {
-		return pathspecMatches(glob, p.path) && !coveredBy(a.excluded, p.path) && !coveredBy(a.keep, p.path)
-	})
 }
 
 func (a *runAnswers) matches(glob string, files []checkedPath) Matches {

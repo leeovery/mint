@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"mint/internal/config"
@@ -21,9 +20,8 @@ import (
 type notesStage struct {
 	p     presenter.Presenter
 	stage *blockingStage
-	// checking is when the exclusion check's call started, and checked how long it took.
+	// checking is when the exclusion check's call started.
 	checking time.Time
-	checked  time.Duration
 	// checkSettled reports that the check's node was filled: its call ended, it
 	// failed, or the keep list left it nothing to call about.
 	checkSettled bool
@@ -55,66 +53,32 @@ func (s *notesStage) Checking() {
 	s.p.NotesChecking(presenter.NotesCheck{Key: stageCheck})
 }
 
-// Checked narrates the check's call ending, its result stated where the answer flagged
-// nothing; whatever it flagged has its result stated by Resolved once its pauses or
-// its report are done, and an unusable call's warning, next, ends the check in place
-// of a success.
-func (s *notesStage) Checked(outcome notes.CheckOutcome) {
+// Checked narrates the check's call ending with what it found: nothing to leave out,
+// or how many suggestions the run goes on to ask about or, not asked, report, each
+// pause's answer hanging under it as it comes. An unusable call's warning, next, ends
+// the check in place of a success; a cancelled one states nothing.
+func (s *notesStage) Checked(result notes.CheckResult) {
 	s.checkSettled = true
-	s.checked = s.stage.now().Sub(s.checking)
-	check := presenter.NotesCheck{Key: stageCheck, Elapsed: s.checked}
-	switch outcome {
-	case notes.CheckClear:
+	check := presenter.NotesCheck{Key: stageCheck, Elapsed: s.stage.now().Sub(s.checking)}
+	switch {
+	case result.Outcome == notes.CheckClear:
 		check.Detail = "nothing to leave out"
-	case notes.CheckUnusable:
+	case result.Outcome == notes.CheckUnusable:
 		check.Failed = true
+	case result.Flagged > 0:
+		check.Detail = flaggedDetail(result)
 	}
 	s.p.NotesChecked(check)
 }
 
-// Resolved states what the check's suggestions came to on its row, in the call's time,
-// Quiet: plain has already said it, a line per answer or per suggestion reported.
-func (s *notesStage) Resolved(result notes.CheckResult) {
-	success := presenter.Settled(stageCheck, checkResultText(result))
-	success.Blocking, success.Elapsed = true, s.checked
-	s.p.StageSucceeded(success)
-}
-
-// checkResultText is what the check's suggestions came to: the one answer, as it hangs
-// under the check while the pauses run; for several, how many were left out and how
-// many kept; for those reported, how many were flagged.
-func checkResultText(result notes.CheckResult) string {
-	switch len(result.Answered) {
-	case 0:
-		if result.Flagged > 0 {
-			return fmt.Sprintf("%d flagged, not asked", result.Flagged)
-		}
-		return "nothing to leave out"
-	case 1:
-		a := result.Answered[0]
-		return a.Glob + " " + answerWord(a.Answer) + " · " + a.Reason
+// flaggedDetail is how many suggestions the check flagged, and whether they go
+// unasked.
+func flaggedDetail(result notes.CheckResult) string {
+	detail := fmt.Sprintf("%d flagged", result.Flagged)
+	if !result.Asked {
+		detail += ", not asked"
 	}
-	excluded := 0
-	for _, a := range result.Answered {
-		if a.Answer == notes.AnswerExclude {
-			excluded++
-		}
-	}
-	var counts []string
-	if excluded > 0 {
-		counts = append(counts, fmt.Sprintf("%d left out", excluded))
-	}
-	if kept := len(result.Answered) - excluded; kept > 0 {
-		counts = append(counts, fmt.Sprintf("%d kept", kept))
-	}
-	return strings.Join(counts, " · ")
-}
-
-func answerWord(answer notes.Answer) string {
-	if answer == notes.AnswerExclude {
-		return "excluded"
-	}
-	return "kept"
+	return detail
 }
 
 // AllKept settles the check's node quietly: the keep list covers every changed path.

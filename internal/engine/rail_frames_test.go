@@ -86,6 +86,12 @@ type railWorld struct {
 // answers, a line each, under -y where yes says so.
 func newRailWorld(t *testing.T, config, answers string, yes bool) *railWorld {
 	t.Helper()
+	return newRailWorldSized(t, railCols, railRows, config, answers, yes)
+}
+
+// newRailWorldSized is newRailWorld on a terminal cols wide and rows tall.
+func newRailWorldSized(t *testing.T, cols, rows int, config, answers string, yes bool) *railWorld {
+	t.Helper()
 	home := t.TempDir()
 	root := filepath.Join(home, "Code", "pigeon")
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -94,12 +100,12 @@ func newRailWorld(t *testing.T, config, answers string, yes bool) *railWorld {
 	if config != "" {
 		writeConfig(t, root, config)
 	}
-	w := &railWorld{root: root, f: runner.NewFakeRunner(), term: frametest.NewTerminal(railCols, railRows)}
+	w := &railWorld{root: root, f: runner.NewFakeRunner(), term: frametest.NewTerminal(cols, rows)}
 	w.p = presenter.NewRailPresenter(w.term,
 		presenter.WithRailInput(strings.NewReader(answers)),
 		presenter.WithRailGating(yes, true),
 		presenter.WithRailProfile(termenv.Ascii),
-		presenter.WithRailSize(func() (int, int) { return railCols, railRows }),
+		presenter.WithRailSize(func() (int, int) { return cols, rows }),
 		presenter.WithRailTicker(stillTicker),
 		presenter.WithRailClock(func() time.Time { return railEpoch }),
 	)

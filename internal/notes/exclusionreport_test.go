@@ -60,23 +60,6 @@ func TestExclusionCheck_Reporting_ReportsEachUsableSuggestionWithItsMatchesAndEx
 	}
 }
 
-func TestExclusionCheck_Reporting_ResolvesWithHowManySuggestionsItReported(t *testing.T) {
-	t.Parallel()
-
-	narration := &checkNarration{}
-	var reports int
-	check := notes.NewExclusionCheck(&recordingTransport{body: "docs/design/: design\nvendor/: matches nothing\ntest/fixtures/: test data\n"}, nil, narration).
-		WithReport(func(notes.Suggestion, notes.Matches) { reports++ })
-
-	if _, err := check.Check(t.Context(), sourceDiff+designDiff+fixturesDiff, config.DefaultMaxPromptBytes); err != nil {
-		t.Fatalf("Check returned unexpected error: %v", err)
-	}
-
-	if want := []notes.CheckResult{{Flagged: 2}}; reports != 2 || !reflect.DeepEqual(narration.results, want) {
-		t.Errorf("reported %d and resolved %+v, want 2 reported and %+v", reports, narration.results, want)
-	}
-}
-
 func TestExclusionCheck_Reporting_AnswerNone_ReportsNothing(t *testing.T) {
 	t.Parallel()
 

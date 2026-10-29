@@ -95,8 +95,9 @@ func notesStarted() presenter.StageStart {
 }
 
 // preparedRelease drives a release to its notes: the version asked, preflight, the
-// plan, the pre_tag hook and its commit, and the exclusion check, done in 6.2s.
-func preparedRelease(p presenter.Presenter, clock *fakeClock) {
+// plan, the pre_tag hook and its commit, and the exclusion check, done in 6.2s,
+// having found checked.
+func preparedRelease(p presenter.Presenter, clock *fakeClock, checked string) {
 	p.RunStarted(releaseStarted(false))
 	_, _ = p.Prompt(versionGate())
 	p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Key: "preflight", Detail: preflightDetail})
@@ -110,11 +111,11 @@ func preparedRelease(p presenter.Presenter, clock *fakeClock) {
 	p.StageStarted(notesStarted())
 	p.NotesChecking(presenter.NotesCheck{Key: "check"})
 	clock.Advance(secs(6.2))
-	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
+	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: checked})
 }
 
-// paused answers the exclusion pause e, its spinner suspended around it as the
-// engine's is, records the answers, and states the check's result.
+// paused answers the exclusion pause, its spinner suspended around it as the
+// engine's is, and records the answers.
 func paused(p presenter.Presenter) {
 	p.SuspendSpinner()
 	_, _ = p.Prompt(pauseGate())
@@ -122,21 +123,13 @@ func paused(p presenter.Presenter) {
 	p.SuspendSpinner()
 	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Exclude: []string{"docs/specs/**"}})
 	p.ResumeSpinner()
-	checkResolved(p, "docs/specs/** excluded · design documents")
-}
-
-// checkResolved states the exclusion check's result on its row, Quiet, in the time
-// of its call, as the engine does once the pauses or report on what it flagged are
-// done.
-func checkResolved(p presenter.Presenter, result string) {
-	p.StageSucceeded(presenter.StageSuccess{Name: "check", Key: "check", Detail: result, Quiet: true, Blocking: true, Elapsed: secs(6.2)})
 }
 
 // tour is a release through the exclusion pause and the review to its end station,
 // its answers e at the pause and y at each other question. running is called with
 // the notes written in parts, three of four done, 38.56s after they started.
 func tour(p presenter.Presenter, clock *fakeClock, running func()) {
-	preparedRelease(p, clock)
+	preparedRelease(p, clock, "1 flagged")
 	paused(p)
 	for done := range 4 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
@@ -156,7 +149,7 @@ func tour(p presenter.Presenter, clock *fakeClock, running func()) {
 // pause answered, the cached notes taken, asked while the notes stage runs with the
 // spinner suspended around the question as the engine's is, and the review.
 func cachedRelease(p presenter.Presenter, clock *fakeClock) {
-	preparedRelease(p, clock)
+	preparedRelease(p, clock, "1 flagged")
 	paused(p)
 	p.SuspendSpinner()
 	_, _ = p.Prompt(cacheGate())
@@ -186,8 +179,7 @@ func shipped(p presenter.Presenter) {
 // usage limit, and unwinding the pre_tag commit, a suggestion of the check's not
 // asked about.
 func failedRelease(p presenter.Presenter, clock *fakeClock) {
-	preparedRelease(p, clock)
-	checkResolved(p, "1 flagged, not asked")
+	preparedRelease(p, clock, "1 flagged, not asked")
 	for done := range 3 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
@@ -222,11 +214,10 @@ func dryRun(p presenter.Presenter, clock *fakeClock) {
 	p.StageStarted(notesStarted())
 	p.NotesChecking(presenter.NotesCheck{Key: "check"})
 	clock.Advance(secs(6.2))
-	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
+	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: "1 flagged, not asked"})
 	p.SuspendSpinner()
 	p.PreviewGate(pauseGate())
 	p.ResumeSpinner()
-	checkResolved(p, "1 flagged, not asked")
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
 	p.RunFinished(presenter.RunResult{
