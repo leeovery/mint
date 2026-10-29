@@ -573,6 +573,10 @@ type StageSuccess struct {
 	// artifacts for v1.4.0"), empty when it made none. Plain and today's pretty
 	// ignore it.
 	Commit string
+	// Note is a line the rail hangs dim under the settled row, verbatim, for what the
+	// stage passed over (a dry run's skipped preflight hook), empty for none. Plain
+	// and today's pretty ignore it.
+	Note string
 	// Quiet marks a success that only settles a stage of the run's structure: plain's
 	// log, pinned byte for byte from before the rail, has no line for it, so plain
 	// and today's pretty write nothing.
@@ -772,6 +776,10 @@ type Warning struct {
 	// stop on it, a recovery step of the unwind: the rail draws it as a failed node
 	// of its own, named for its Key. Plain and today's pretty ignore it.
 	Failed bool
+	// Skipped marks a warning that a stage of the plan did not run, a dry run's hook:
+	// the rail draws nothing for it and leaves Key's node to come, its plan detail.
+	// Plain and today's pretty ignore it.
+	Skipped bool
 	// Output is optional captured underlying-command output (e.g. git's stderr
 	// from a failed-but-non-fatal push) rendered VERBATIM beneath the warn line —
 	// the warn-flavoured counterpart of StageFailure.Output, for failures the

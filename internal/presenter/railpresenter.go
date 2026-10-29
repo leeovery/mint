@@ -195,8 +195,8 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 }
 
 // StageSucceeded settles the stage done: its detail, its time where it takes time,
-// and the subject of any commit it made hung under it. An open question's own
-// activity draws nothing.
+// and the subject of any commit it made and its note hung under it. An open
+// question's own activity draws nothing.
 func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -212,6 +212,9 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	}
 	if s.Commit != "" {
 		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: committedAs + s.Commit})
+	}
+	if s.Note != "" {
+		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: s.Note})
 	}
 	p.redraw()
 }
@@ -351,8 +354,11 @@ func (p *RailPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 }
 
 // Warn draws a warning as a node, a Failed one as its key's failed node, and writes
-// its summary to err.
+// its summary to err. A Skipped one draws nothing: its stage stays to come.
 func (p *RailPresenter) Warn(w Warning) {
+	if w.Skipped {
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var n *rail.Node

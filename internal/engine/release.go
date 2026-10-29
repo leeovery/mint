@@ -560,14 +560,16 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// entry) aborts the whole release cleanly: it is surfaced as a "preflight"
 	// StageFailed. Because this precedes all mutation there is nothing to unwind — a
 	// plain surface, not the auto-unwind path.
-	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun); err != nil {
+	hookSkipped, err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun)
+	if err != nil {
 		return surface(p, "preflight", err)
 	}
 	// Stage 2 narration: the preflight gates are read-only (no spinner), so emit a
 	// completion line only — no StageStarted. Fired once both the built-in gates and
-	// the project preflight hook have passed (Stage 2 complete).
+	// the project preflight hook have passed (Stage 2 complete), a dry run's skip of
+	// the hook its note.
 	checked := preflightDetail(releaseBranch, tag, opts.AnyBranch)
-	emitGateSucceeded(p, stagePreflight, checked, "Preflight passed: "+checked)
+	p.StageSucceeded(presenter.StageSuccess{Name: stagePreflight, Key: stagePreflight, Detail: checked, Sentence: "Preflight passed: " + checked, Note: hookSkipped})
 
 	// With preflight passed every stage the release will go through is known: lay them
 	// out now, ahead of the first slow one, in a Quiet plan. The steps plain prints
@@ -1668,9 +1670,12 @@ const dryRunLabel = "dry-run"
 // was not invoked because dry-run is active. The message is "skipping {point} hook"
 // (point = preflight / pre_tag / post_release), kept identical across the three call
 // sites so the convention is consistent. It rides the Warn seam (see dryRunLabel),
-// keyed to the hook's own node so the rail draws the skip in the hook's place.
-func reportHookSkipped(p presenter.Presenter, point string) {
-	p.Warn(presenter.Warning{Label: dryRunLabel, Key: point, Message: "skipping " + point + " hook"})
+// Skipped and keyed to the hook's own node, which the rail leaves to come. It returns
+// the message, for a skip whose hook has no node of its own to carry it another way.
+func reportHookSkipped(p presenter.Presenter, point string) string {
+	message := "skipping " + point + " hook"
+	p.Warn(presenter.Warning{Label: dryRunLabel, Key: point, Skipped: true, Message: message})
+	return message
 }
 
 // hookRuns reports whether a hook point configured with value runs on this run: it
@@ -1690,19 +1695,19 @@ func hookRuns(value config.HookValue, dryRun bool) bool {
 //
 // DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT
 // invoked — no `sh -c …` reaches the runner; instead the skip is REPORTED via the
-// presenter and nil is returned. Once the hook runs the run's close says only that
-// nothing was pushed: what the hook did is unknown to mint.
-func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
+// presenter and its message returned, for the preflight row to hang: the hook has no
+// node of its own. Once the hook runs the run's close says only that nothing was
+// pushed: what the hook did is unknown to mint.
+func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) (skipped string, err error) {
 	if !hooks.HasEntries(cfg.Release.Hooks.Preflight) {
-		return nil
+		return "", nil
 	}
 	if dryRun {
-		reportHookSkipped(deps.Presenter, "preflight")
-		return nil
+		return reportHookSkipped(deps.Presenter, "preflight"), nil
 	}
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	deps.run.Left(nothingPushed)
-	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
+	return "", hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
 }
 
 // runPreTagHook runs the project's optional Stage-3 pre_tag hook and then applies
