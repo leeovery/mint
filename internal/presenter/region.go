@@ -9,15 +9,14 @@ import (
 // unknownRows is the height a terminal that gives none is taken as.
 const unknownRows = 24
 
-// The escapes the live region moves with: back to the line's start, up n rows,
-// forward n columns, and erase from the cursor to the end of the screen.
+// The escapes the live region moves with: back to the line's start, up n rows, and
+// erase from the cursor to the end of the screen.
 const (
 	toLineStart = "\r"
 	eraseBelow  = "\x1b[J"
 )
 
-func cursorUp(n int) string      { return fmt.Sprintf("\x1b[%dA", n) }
-func cursorForward(n int) string { return fmt.Sprintf("\x1b[%dC", n) }
+func cursorUp(n int) string { return fmt.Sprintf("\x1b[%dA", n) }
 
 // liveRegion owns the terminal below the last settled line: the lines settled above
 // it, which never change once printed, and the region under them, which it redraws in
@@ -32,7 +31,8 @@ func cursorForward(n int) string { return fmt.Sprintf("\x1b[%dC", n) }
 // It never moves up more rows than the terminal has above the cursor's row, its
 // height less one, so a terminal made shorter since the last draw takes it back only
 // as far as the screen's top. A typed line's echo it never counts: the terminal
-// draws it however the line was edited, and the writer gives the region up to it.
+// draws it however the line was edited, so the line is read at a question printed
+// last, nothing drawn below it, and nothing goes back over it.
 type liveRegion struct {
 	out io.Writer
 	// shown is whether a region is on the terminal to be redrawn.
@@ -84,36 +84,24 @@ func (r *liveRegion) Erase() {
 	r.write(b.String())
 }
 
-// Place puts the cursor at column col of the region's row, both counted from 0,
-// for a question that reads a typed line: the terminal echoes what is typed there.
-// It does nothing where the region has no such row.
-func (r *liveRegion) Place(row, col int) {
-	if !r.shown || row < 0 || row >= r.up {
-		return
-	}
+// Ask takes the region off the terminal and prints lines under those settled, the
+// last with no newline after it: a question read as a typed line, the cursor at its
+// end and nothing drawn below it, so the terminal's echo lands only on blank rows.
+func (r *liveRegion) Ask(lines []string) {
 	var b strings.Builder
-	b.WriteString(toLineStart)
-	b.WriteString(cursorUp(r.up - row))
-	if col > 0 {
-		b.WriteString(cursorForward(col))
-	}
-	r.up = row
+	r.back(&b)
+	b.WriteString(strings.Join(lines, "\n"))
+	r.shown, r.up = false, 0
 	r.write(b.String())
 }
 
-// Released gives the region up to a typed line the terminal echoed: the question,
-// the line and its Enter stay where they were typed, the answer's record. From the
-// start of the row under them, a newline first where the read ended without one,
-// everything below is erased and the region starts afresh, nothing to go back over.
+// Released ends a typed read at the question Ask printed, the question and the line
+// staying as typed: a line the input closed on before an Enter gets the newline it
+// lacks, so what is drawn next starts on a row of its own.
 func (r *liveRegion) Released(ended bool) {
-	var b strings.Builder
 	if !ended {
-		b.WriteString("\n")
+		r.write("\n")
 	}
-	b.WriteString(toLineStart)
-	b.WriteString(eraseBelow)
-	r.shown, r.up = false, 0
-	r.write(b.String())
 }
 
 // back writes the way back to the region's first row, or the screen's top where

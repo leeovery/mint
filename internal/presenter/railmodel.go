@@ -50,8 +50,9 @@ type part struct {
 	// out is a body shown once one before it, for the same question, has settled: it
 	// settles too, as it is shown.
 	out bool
-	// shown is a stage running or a question printed as it was when it showed, where
-	// there is no region to hold it.
+	// shown is a part printed as it was when it showed while it stays live: a stage
+	// running where there is no region to hold it, a question printed to read a
+	// typed line at.
 	shown    bool
 	crossed  bool
 	station  rail.Station
@@ -180,7 +181,10 @@ type runModel struct {
 	// or ahead of a typed read: every later one settles as it is shown, and the answer
 	// records on a row under the last, so the scrollback ends with the body that
 	// ships.
-	bodyOut         bool
+	bodyOut bool
+	// lastBody is the text of the last body settled or shown so, under bodyOut: shown
+	// again unchanged, it isn't settled twice.
+	lastBody        string
 	pointOfNoReturn string
 	// endName is the name of the end station the plan waits on, "" for a run with no
 	// start station.
@@ -428,7 +432,10 @@ func (m *runModel) hang(key string, h rail.Hang) {
 // show shows text for review under the run's edge, in place of any body shown.
 func (m *runModel) show(text string) {
 	if m.bodyOut {
-		m.insert(&part{kind: bodyPart, text: text, out: true}, m.insertionPoint())
+		if text != m.lastBody {
+			m.insert(&part{kind: bodyPart, text: text, out: true}, m.insertionPoint())
+			m.lastBody = text
+		}
 		return
 	}
 	if b := m.partOf(bodyPart); b != nil {
@@ -526,24 +533,15 @@ func (m *runModel) log() {
 	}
 }
 
-// settleAbove settles every part above q, so q heads the region, where every one of
-// them can settle early, finished or a body, and reports whether it did. A part
-// still running above q, or still to come, keeps it from heading the region; then
-// nothing settles.
-func (m *runModel) settleAbove(q *part) bool {
+// settleAbove settles what can settle early above q, finished parts and bodies, down
+// to the first part that can't: a stage still running stays live.
+func (m *runModel) settleAbove(q *part) {
 	at := slices.Index(m.parts, q)
-	if at < 0 || slices.ContainsFunc(m.parts[:at], func(pt *part) bool { return !pt.settleable() }) {
-		return false
+	n := 0
+	for n < at && m.parts[n].settleable() {
+		n++
 	}
-	m.settle(at)
-	return true
-}
-
-// record keeps it, already on the terminal, as printed: the question a typed line was
-// read at, which stays where it was typed.
-func (m *runModel) record(it rail.Item) {
-	m.settleItem(it)
-	m.printed = len(m.settled)
+	m.settle(n)
 }
 
 // settle settles the first n parts.
@@ -554,10 +552,18 @@ func (m *runModel) settle(n int) {
 	m.parts = slices.Delete(m.parts, 0, n)
 }
 
-// settlePart settles pt as it is now, which the caller takes out of the region.
+// settlePart settles pt as it is now, which the caller takes out of the region: a
+// stage still running as it shows still, no spinner frame nor time read from a
+// clock it has none of.
 func (m *runModel) settlePart(pt *part) {
-	m.settleItem(pt.live(time.Time{}))
-	m.bodyOut = m.bodyOut || pt.kind == bodyPart
+	if pt.running() {
+		m.settleItem(pt.still())
+	} else {
+		m.settleItem(pt.live(time.Time{}))
+	}
+	if pt.kind == bodyPart {
+		m.bodyOut, m.lastBody = true, pt.text
+	}
 	if pt.key != "" {
 		m.gone[pt.key] = true
 	}
@@ -585,7 +591,7 @@ func (m *runModel) finish(end rail.End, dryRun bool) {
 	if moves := append(m.moves, m.suggested...); len(moves) > 0 {
 		m.settleItem(rail.Next{Moves: moves})
 	}
-	m.moves, m.suggested, m.looping, m.bodyOut = nil, nil, false, false
+	m.moves, m.suggested, m.looping, m.bodyOut, m.lastBody = nil, nil, false, false, ""
 	m.open, m.closed, m.touched, m.held = false, true, nil, nil
 }
 

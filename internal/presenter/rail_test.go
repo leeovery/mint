@@ -590,3 +590,33 @@ func TestRail_UnderSixtyColumnsADryRunWithNoCheckPrintsItsSkippedHookFirst(t *te
 		t.Errorf("the terminal shows\n%s\nwant the skipped pre_tag above the notes running", strings.Join(screen, "\n"))
 	}
 }
+
+// TestRail_AStageStartedOnceTheRunIsOverSettlesStill pins that a stage started once
+// the run is over, with nothing live left to hold it, settles at once as it shows:
+// its spinner's first frame and no time.
+func TestRail_AStageStartedOnceTheRunIsOverSettlesStill(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		end  func(r *railTerm)
+	}{
+		{name: "the run finished", end: func(r *railTerm) {
+			r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "main", Detail: "nothing changed"}})
+		}},
+		{name: "the presenter closed", end: func(r *railTerm) { r.Close() }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRailTerm(t, 80, 24, answers())
+			commitRun(r)
+			tt.end(r)
+			r.clock.Advance(secs(2))
+			r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "writing…"})
+			want := []string{" ⠋  commit message", " ┆                writing…"}
+			if screen := r.screen(t); !slices.Equal(screen[max(len(screen)-len(want), 0):], want) {
+				t.Errorf("the terminal shows\n%s\nwant last\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
+			}
+		})
+	}
+}

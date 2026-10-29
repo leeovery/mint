@@ -3,6 +3,7 @@ package presenter
 import (
 	"errors"
 	"slices"
+	"strings"
 
 	"mint/internal/presenter/rail"
 )
@@ -62,7 +63,7 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 	for {
 		line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
-		p.released(q, ended)
+		p.released(ended)
 		if err != nil {
 			return "", p.answered(g, q, "", err)
 		}
@@ -88,7 +89,7 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	q := p.open(&part{kind: questionPart, question: rail.Question{Text: prompt, Typing: true}}, "")
 	p.mu.Unlock()
 	line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
-	p.released(q, ended)
+	p.released(ended)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.dismiss(q)
@@ -122,59 +123,64 @@ func (p *RailPresenter) open(q *part, stage string) *part {
 	return q
 }
 
-// present draws the open question q, the cursor where it reads a typed line for the
-// terminal to echo it there. The question and the line typed stay on the terminal as
-// typed, the region starting afresh under them once it is read (released), so for
-// an echo everything above the question settles first and the question heads the
-// region. Where something still running above it can't settle, the line is read
-// under the settled lines instead.
+// present draws the open question q: on the rail, or, for a typed line the terminal
+// echoes, printed last to be read at its end.
 func (p *RailPresenter) present(q *part) {
 	rows := p.measure()
-	if q.question.Typing && p.echo && p.fits && !p.run.settleAbove(q) {
-		p.readBelow(q, rows)
+	if q.question.Typing && p.echo {
+		p.readAt(q, rows)
 		return
 	}
-	p.redraw()
-	p.place(q)
+	p.draw(rows)
 }
 
-// readBelow takes the region off the terminal and prints the question q under the
-// settled lines, its line to be typed on the row under it; the region comes back
-// below the line once it is read, its stages running still live.
-func (p *RailPresenter) readBelow(q *part, rows int) {
-	p.region.Erase()
-	p.run.settleItem(q.question)
+// readAt prints q to read a typed line at, the one way every line the terminal
+// echoes is read: what can settle above the question settles, the region comes off
+// the terminal, and the question prints under the settled lines with no newline,
+// the cursor at its end. Nothing is drawn below it while the line is typed, so the
+// echo lands only on blank rows, however long the line or however it was edited;
+// it stays as typed, the answer's record, and the region is drawn afresh under it
+// once the line is read, nothing gone back over. A stage still running above the
+// question comes back live with the region.
+func (p *RailPresenter) readAt(q *part, rows int) {
 	q.shown = true
+	if p.fits {
+		p.run.settleAbove(q)
+	} else {
+		p.run.log()
+	}
+	p.run.settleItem(q.question)
 	run := p.drawing()
-	p.region.Draw(p.layout.Settled(run, p.run.printed), nil, rows)
+	lines := p.layout.Settled(run, p.run.printed)
+	// A question reading a typed line ends on a blank cell for its cursor, which the
+	// echo takes.
+	lines[len(lines)-1] = strings.TrimSuffix(lines[len(lines)-1], " ")
+	p.region.Ask(lines)
 	p.run.printed = len(run.Settled)
 	p.syncTicker()
 }
 
 // released ends the read of a typed line the terminal echoed, ended where it ended in
-// a newline: the question and the line stay where they were typed, the question kept
-// as printed, and the region starts afresh under them.
-func (p *RailPresenter) released(q *part, ended bool) {
+// a newline.
+func (p *RailPresenter) released(ended bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if !p.echo {
-		return
-	}
-	p.region.Released(ended)
-	if !q.shown {
-		p.run.record(q.question)
-		q.shown = true
+	if p.echo {
+		p.region.Released(ended)
 	}
 }
 
 // retype turns the open question q, asked for a keypress the terminal wouldn't go
 // into raw mode for, into one reading a typed line: the same question, not asked
-// again, so where it has printed it doesn't print twice.
+// again. Where it has printed already, with no region to hold it, it doesn't print
+// twice, and the line is typed on the row under it.
 func (p *RailPresenter) retype(q *part) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	q.question.Typing = true
-	p.present(q)
+	if !q.shown {
+		p.present(q)
+	}
 }
 
 // reask asks the question q again after a typed line that answered nothing, for
@@ -253,7 +259,7 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 		return
 	}
 	out := p.run.bodyOut
-	p.run.bodyOut = false
+	p.run.bodyOut, p.run.lastBody = false, ""
 	if body := p.run.partOf(bodyPart); body != nil && !body.out {
 		p.run.remove(body)
 	}
@@ -338,15 +344,4 @@ func (p *RailPresenter) failNotInteractive(label string) {
 	p.run.add(rail.Node{State: rail.Failed, Name: label, Detail: gateNotTTYMessagePretty})
 	p.errf("✗ %s  %s\n", label, gateNotTTYMessagePretty)
 	p.redraw()
-}
-
-// place puts the cursor where the open question q reads its typed line, at the
-// question's end, for the terminal to echo it there.
-func (p *RailPresenter) place(q *part) {
-	if q == nil || !q.question.Typing || !p.fits {
-		return
-	}
-	if row, col, ok := p.layout.Cursor(p.drawing()); ok {
-		p.region.Place(row, col)
-	}
 }

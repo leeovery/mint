@@ -473,12 +473,14 @@ func (p *RailPresenter) Close() {
 // under it on screen while the question waits.
 const minRegionRows = 12
 
-// redraw draws the run: what has settled since the last redraw, then the live
-// region, at the terminal's size now. With no room for a region, a terminal too
-// narrow or too short, the run prints as it happens instead. It starts or stops the
-// spinner to match.
-func (p *RailPresenter) redraw() {
-	rows := p.measure()
+// redraw draws the run at the terminal's size now.
+func (p *RailPresenter) redraw() { p.draw(p.measure()) }
+
+// draw draws the run, the terminal rows tall as last measured: what has settled
+// since the last draw, then the live region. With no room for a region, a terminal
+// too narrow or too short, the run prints as it happens instead. It starts or stops
+// the spinner to match.
+func (p *RailPresenter) draw(rows int) {
 	p.run.pass()
 	var run rail.Run
 	var region []string

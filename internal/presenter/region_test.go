@@ -77,21 +77,19 @@ func TestTheLiveRegionWritesExactlyTheseEscapes(t *testing.T) {
 			},
 		},
 		{
-			name: "the cursor placed on a row for a typed line, then the region given up to the echo",
+			name: "a question for a typed line printed last, the region off, then the region drawn afresh under the line",
 			steps: []regionStep{
-				{call: draw(nil, []string{"? a", "b", "c"}), want: "? a\nb\nc\n"},
-				{name: "placed at no row it has", call: func(r *presenter.LiveRegion) { r.Place(3, 0) }, want: ""},
-				{name: "placed", call: func(r *presenter.LiveRegion) { r.Place(0, 4) }, want: "\r\x1b[3A\x1b[4C"},
-				{name: "the line ended in its Enter", call: func(r *presenter.LiveRegion) { r.Released(true) }, want: "\r\x1b[J"},
-				{name: "drawn afresh, nothing to go back over", call: draw(nil, []string{"d"}), want: "d\n"},
+				{call: draw(nil, []string{"a", "b"}), want: "a\nb\n"},
+				{name: "asked", call: func(r *presenter.LiveRegion) { r.Ask([]string{"s", "? q "}) }, want: "\r\x1b[2A\x1b[Js\n? q "},
+				{name: "the line ended in its Enter", call: func(r *presenter.LiveRegion) { r.Released(true) }, want: ""},
+				{name: "drawn afresh, nothing to go back over", call: draw(nil, []string{"c"}), want: "c\n"},
 			},
 		},
 		{
-			name: "a line the input closed on before its Enter is ended first",
+			name: "a line the input closed on before its Enter is ended",
 			steps: []regionStep{
-				{call: draw(nil, []string{"? a"}), want: "? a\n"},
-				{name: "placed", call: func(r *presenter.LiveRegion) { r.Place(0, 4) }, want: "\r\x1b[1A\x1b[4C"},
-				{name: "released", call: func(r *presenter.LiveRegion) { r.Released(false) }, want: "\n\r\x1b[J"},
+				{call: func(r *presenter.LiveRegion) { r.Ask([]string{"? q "}) }, want: "? q "},
+				{name: "released", call: func(r *presenter.LiveRegion) { r.Released(false) }, want: "\n"},
 			},
 		},
 		{
@@ -155,7 +153,7 @@ func TestRedrawsLeaveTheScreenAsTheLastDrawHasIt(t *testing.T) {
 	r.Draw([]string{"done 1"}, lines(5, "next "), 6)
 	r.Erase()
 	r.Draw(nil, []string{"? question", "plan 1"}, 6)
-	r.Place(0, 11)
+	r.Ask([]string{"? question "})
 	if _, err := term.Write([]byte("typed\n")); err != nil {
 		t.Fatal(err)
 	}

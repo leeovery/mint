@@ -2,6 +2,7 @@ package presenter_test
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"slices"
@@ -484,78 +485,131 @@ func TestRailGate_OnAShortTerminalAnOpenQuestionStaysLive(t *testing.T) {
 // cursorUp matches a move of the cursor up.
 var cursorUp = regexp.MustCompile(`\x1b\[\d*A`)
 
-// TestRailGate_ATypedLineStaysAsTyped_TheRegionStartsAfreshUnderIt pins that a typed
-// line's echo is never counted: the question and the line stay on the terminal as
-// the terminal drew them, the answer's record, and once the line is read nothing
-// moves up: the region starts afresh under it, after a newline where the input
-// closed before an Enter. However the line wraps or was edited, nothing above it
-// is touched.
-func TestRailGate_ATypedLineStaysAsTyped_TheRegionStartsAfreshUnderIt(t *testing.T) {
+// TestRailGate_ATypedLineIsReadAtTheQuestionPrintedLast pins the bound on every
+// typed line the terminal echoes: the question is the last thing on the terminal,
+// the cursor at its end and nothing drawn below it, so the echo, however it wraps,
+// lands only on blank rows. The question and the line stay as typed, each row of
+// them holding nothing else, and the region is drawn afresh under them, nothing
+// moved up, with a stage still running above the question live again in it.
+func TestRailGate_ATypedLineIsReadAtTheQuestionPrintedLast(t *testing.T) {
 	t.Parallel()
-	askLine := func(r *railTerm) error {
-		_, err := r.AskLine("Add one-time context:")
-		return err
+	// question takes 26 columns, leaving 54 on its row.
+	const question = " ?  Add one-time context: "
+	x := func(n int) string { return strings.Repeat("x", n) }
+	reviewed := func(r *railTerm) { messageWritten(r, "feat: retry deliveries") }
+	running := func(r *railTerm) {
+		commitRun(r)
+		r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "writing…"})
 	}
 	tests := []struct {
-		name       string
-		rows, body int
-		typed      string
+		name   string
+		before func(r *railTerm)
+		typed  string
 		// closed is the input closing after the line, with no Enter typed.
 		closed bool
-		ask    func(r *railTerm) error
-		// record is how the question and the line read once typed, joined row to row.
-		record string
+		// rows are the question's row on: the question and the line as typed, then the
+		// region's first row.
+		rows []string
 	}{
-		{name: "a line and its Enter", rows: 24, body: 1, typed: "the export is the headline", ask: askLine,
-			record: " ?  Add one-time context: the export is the headline"},
-		{name: "a line the input closed on", rows: 24, body: 1, typed: "abc", closed: true, ask: askLine,
-			record: " ?  Add one-time context: abc"},
-		{name: "a typed answer", rows: 24, body: 1, typed: "y", ask: func(r *railTerm) error {
-			_, err := r.Prompt(commitGate())
-			return err
-		}, record: " ?  Commit this message?   y accept   n abort   e edit   r regenerate y"},
-		{name: "a long line near the region's foot", rows: 14, body: 8, typed: strings.Repeat("x", 150), ask: askLine,
-			record: " ?  Add one-time context: " + strings.Repeat("x", 150)},
-		{name: "a line wrapping three times, on a terminal too short for a region", rows: 10, body: 3, typed: strings.Repeat("x", 250), ask: askLine,
-			record: " ?  Add one-time context:" + strings.Repeat("x", 250)},
+		{name: "a line and its Enter", before: reviewed, typed: "the export", rows: []string{question + "the export", " ┆"}},
+		{name: "a line the input closed on", before: reviewed, typed: "abc", closed: true, rows: []string{question + "abc", " ┆"}},
+		{name: "a wrap that leaves one character", before: reviewed, typed: x(55), rows: []string{question + x(54), "x", " ┆"}},
+		{name: "a wrap at exactly the width", before: reviewed, typed: x(54), rows: []string{question + x(54), " ┆"}},
+		{name: "two rows filled exactly", before: reviewed, typed: x(134), rows: []string{question + x(54), x(80), " ┆"}},
+		{name: "under a stage still running", before: running, typed: x(55), rows: []string{question + x(54), "x", row(" ⠋  message       writing…", "0s")}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			in := newBlockingInput()
-			r := newRailTerm(t, 80, tt.rows, in)
-			r.WithEcho(true)
-			body := lines(tt.body, "line ")
-			messageWritten(r, strings.Join(body, "\n"))
-			done := make(chan error)
-			go func() { done <- tt.ask(r) }()
-			<-in.reading
-			echo := tt.typed
+			line := tt.typed
 			if !tt.closed {
-				echo += "\n"
+				line += "\n"
 			}
-			if _, err := r.term.Write([]byte(echo)); err != nil {
-				t.Fatal(err)
+			in := answers(line)
+			r := newRailTerm(t, 80, 30, in)
+			r.WithEcho(true)
+			tt.before(r)
+			var before int
+			in.asked = func(int) {
+				if screen := r.screen(t); screen[len(screen)-1] != strings.TrimRight(question, " ") {
+					t.Errorf("while the line is typed the terminal shows\n%s\nwant the question last", strings.Join(screen, "\n"))
+				}
+				if _, err := r.term.Write([]byte(line)); err != nil {
+					t.Fatal(err)
+				}
+				before = len(r.writes.written())
 			}
-			before := len(r.writes.written())
-			in.lines <- echo
-			if tt.closed {
-				close(in.lines)
-			}
-			if err := <-done; err != nil {
+			if _, err := r.AskLine("Add one-time context:"); err != nil {
 				t.Fatal(err)
 			}
 			if after := r.writes.written()[before:]; cursorUp.MatchString(after) {
 				t.Errorf("once the line was read the writer wrote %q, want nothing moved up", after)
 			}
 			screen := r.screen(t)
-			for _, want := range []string{" ●  message       written", " │    " + body[0], " │    " + body[len(body)-1]} {
-				if n := count(screen, want); n != 1 {
-					t.Errorf("%q is on the terminal %d times, want once:\n%s", want, n, strings.Join(screen, "\n"))
+			at := slices.IndexFunc(screen, func(s string) bool { return strings.HasPrefix(s, question) })
+			if at < 0 || !slices.Equal(screen[at:min(at+len(tt.rows), len(screen))], tt.rows) {
+				t.Errorf("the terminal shows\n%s\nwant from the question on\n%s", strings.Join(screen, "\n"), strings.Join(tt.rows, "\n"))
+			}
+		})
+	}
+}
+
+// TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine pins that a
+// re-ask reads its line the same way: the question printed again under the line
+// that answered nothing, last on the terminal.
+func TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine(t *testing.T) {
+	t.Parallel()
+	const question = " ?  Source?   fresh re-diff + AI   tag tag annotation body "
+	in := answers("nope\n", "tag\n")
+	r := newRailTerm(t, 80, 24, in)
+	r.WithEcho(true)
+	r.RunStarted(presenter.RunInfo{Header: presenter.Header{Command: "release regenerate", Where: pigeonWhere}, Start: presenter.Station{Name: "v1.4.0"}})
+	in.asked = func(n int) {
+		if screen := r.screen(t); screen[len(screen)-1] != strings.TrimRight(question, " ") {
+			t.Errorf("asked %d, the terminal shows\n%s\nwant the question last", n, strings.Join(screen, "\n"))
+		}
+		if _, err := r.term.Write([]byte([]string{"nope\n", "tag\n"}[n-1])); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g := presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}}, "fresh")
+	if c, err := r.Prompt(g); err != nil || c != "tag" {
+		t.Fatalf("Prompt = %q, %v, want tag", c, err)
+	}
+	screen := r.screen(t)
+	want := []string{question + "nope", question + "tag", " ●  source        tag annotation body"}
+	if at := slices.Index(screen, want[0]); at < 0 || !slices.Equal(screen[at:min(at+len(want), len(screen))], want) {
+		t.Errorf("the terminal shows\n%s\nwant\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestRailGate_WithNoRegionATypedLineWritesNoEscape pins that on a terminal with no
+// region, too narrow or too short, a typed line's end writes only the newline a line
+// with no Enter needs: no move, no erase.
+func TestRailGate_WithNoRegionATypedLineWritesNoEscape(t *testing.T) {
+	t.Parallel()
+	for _, size := range []struct{ cols, rows int }{{50, 40}, {80, 11}} {
+		t.Run(fmt.Sprintf("%dx%d", size.cols, size.rows), func(t *testing.T) {
+			t.Parallel()
+			in := answers("abc")
+			r := newRailTerm(t, size.cols, size.rows, in)
+			r.WithEcho(true)
+			messageWritten(r, "feat: retry deliveries")
+			in.asked = func(int) {
+				if _, err := r.term.Write([]byte("abc")); err != nil {
+					t.Fatal(err)
 				}
 			}
-			if !strings.Contains(strings.Join(screen, ""), tt.record) {
-				t.Errorf("the terminal shows\n%s\nwant the question and the line as typed, %q", strings.Join(screen, "\n"), tt.record)
+			if _, err := r.AskLine("Add context:"); err != nil {
+				t.Fatal(err)
+			}
+			r.StageSucceeded(presenter.Settled("commit", "a3f9c21"))
+			if all := r.writes.written(); strings.Contains(all, "\x1b[") || strings.Contains(all, "\r") {
+				t.Errorf("wrote %q, want no escape and no carriage return", all)
+			}
+			screen := r.screen(t)
+			if at := slices.Index(screen, " ?  Add context: abc"); at < 0 || at+1 >= len(screen) || !strings.HasPrefix(screen[at+1], " ●  commit") {
+				t.Errorf("the terminal shows\n%s\nwant the line as typed, then the commit on a row of its own", strings.Join(screen, "\n"))
 			}
 		})
 	}
@@ -606,7 +660,8 @@ func TestRailGate_ATypedLineUnderAStageStillRunningIsReadUnderTheSettledLines(t 
 	r.NotesProgress(presenter.NotesProgress{Parts: 4, Done: 1})
 	screen := r.screen(t)
 	running := slices.IndexFunc(screen, func(s string) bool { return strings.HasPrefix(s, " ⠋  notes") })
-	if running < 0 || !strings.Contains(screen[running], "1 of 4 parts done") || running < slices.Index(screen, question+" y") {
+	answered := slices.Index(screen, question+" y")
+	if running < 0 || answered < 0 || running < answered || !strings.Contains(screen[running], "1 of 4 parts done") {
 		t.Errorf("the terminal shows\n%s\nwant the notes running, with their bar, under the question as answered", strings.Join(screen, "\n"))
 	}
 	if n := len(slices.DeleteFunc(slices.Clone(screen), func(s string) bool { return !strings.Contains(s, "  notes   ") })); n != 1 {
@@ -803,5 +858,51 @@ func TestRailGate_UnderSixtyColumnsAnEditDrawsNoNode(t *testing.T) {
 	noEditRow(t, screen)
 	if !slices.Contains(screen, " │    second draft") {
 		t.Errorf("the edited notes aren't on the terminal:\n%s", strings.Join(screen, "\n"))
+	}
+}
+
+// TestRailGate_ABodyShownAgainUnchangedSettlesOnce pins that once a body of the
+// question has settled, the same body shown again, after an e whose editor won't
+// launch, isn't settled a second time.
+func TestRailGate_ABodyShownAgainUnchangedSettlesOnce(t *testing.T) {
+	t.Parallel()
+	const context = "shorter please"
+	in := answers("r\n", context+"\n", "e\n", "y\n")
+	r := newRailTerm(t, 80, 30, in)
+	messageWritten(r, "first draft")
+	in.asked = func(n int) {
+		if n == 2 {
+			if _, err := r.term.Write([]byte(context + "\n")); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if c, err := r.Prompt(commitGate()); err != nil || c != presenter.ChoiceRegen {
+		t.Fatalf("Prompt = %q, %v, want r", c, err)
+	}
+	r.WithEcho(true)
+	if _, err := r.AskLine("Add one-time context for regeneration (optional):"); err != nil {
+		t.Fatal(err)
+	}
+	r.WithEcho(false)
+	r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "regenerating commit message…"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "commit message", Key: "message", Blocking: true, Elapsed: secs(3), Detail: "regenerated"})
+	r.ShowMessage(presenter.Message{Body: "second draft"})
+	if c, err := r.Prompt(commitGate()); err != nil || c != presenter.ChoiceEdit {
+		t.Fatalf("Prompt = %q, %v, want e", c, err)
+	}
+	r.SuspendSpinner()
+	r.ResumeSpinner()
+	r.Warn(presenter.Warning{Key: "message", Label: "editor", Message: "could not launch editor, keeping the message"})
+	r.ShowMessage(presenter.Message{Body: "second draft"})
+	if _, err := r.Prompt(commitGate()); err != nil {
+		t.Fatal(err)
+	}
+	screen := r.screen(t)
+	if n := count(screen, " │    second draft"); n != 1 {
+		t.Errorf("the second draft is on the terminal %d times, want once:\n%s", n, strings.Join(screen, "\n"))
+	}
+	if body, answer := slices.Index(screen, " │    second draft"), slices.Index(screen, " ●  review        accepted"); answer < body {
+		t.Errorf("the terminal shows\n%s\nwant the answer on a row under the body", strings.Join(screen, "\n"))
 	}
 }
