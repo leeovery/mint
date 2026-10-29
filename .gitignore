@@ -6,3 +6,6 @@
 # build artifacts
 /mint
 dist/
+
+# demo recordings: the world, frames and art demo/record.sh makes
+/demo/out/
