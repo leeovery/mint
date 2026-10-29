@@ -48,7 +48,7 @@ func (d ReleaseDeps) notesFloorMoves(failure error, cfg config.Config, again rer
 		notesFileMove(again, savedNotes),
 		{
 			Lead:     "Release with the commit-subject list:",
-			Command:  again.railCommand() + " --no-ai",
+			Command:  again.command + " --no-ai",
 			Sentence: "re-run with --no-ai to release with the commit-subject list",
 		},
 	}
@@ -75,25 +75,20 @@ func regenerateNotesFloorMoves(failure error, cfg config.Config, version, savedN
 	return presenter.NextMoves{Stage: "notes", Moves: append(moves, causeMoves(failure, cfg)...)}
 }
 
-// rerun is a verb run again, as a next move names it. Plain's sentence names command
-// as it always has; the rail's command adds flags, the run's own version flags, so
-// pasting it releases the version the run was cutting.
+// rerun is a verb run again, as a next move names it: command carries the run's own
+// version flags, so pasting it releases the version the run was cutting.
 type rerun struct {
-	verb, command, flags string
+	verb, command string
 }
 
 // releaseRerun is mint release run again with opts' version flags.
 func releaseRerun(opts ReleaseOptions) rerun {
-	return rerun{verb: "release", command: "mint release", flags: versionFlags(opts)}
+	return rerun{verb: "release", command: "mint release" + versionFlags(opts)}
 }
 
 // regenerateRerun is the regenerate of tag run again.
 func regenerateRerun(tag string) rerun {
 	return rerun{verb: "regenerate", command: "mint release regenerate " + tag}
-}
-
-func (r rerun) railCommand() string {
-	return r.command + r.flags
 }
 
 // versionFlags are the flags that pick opts' version, each with its leading space:
@@ -117,14 +112,15 @@ func notesFileMove(again rerun, savedNotes string) presenter.NextMove {
 	if savedNotes == "" {
 		return presenter.NextMove{
 			Lead:     "Write the notes to a file, then " + again.verb + " with it:",
-			Command:  again.railCommand() + " --notes-file <file>",
+			Command:  again.command + " --notes-file <file>",
 			Sentence: "write the notes to a file and release with " + again.command + " --notes-file <file>",
 		}
 	}
+	command := notesFileCommand(again.command, savedNotes)
 	return presenter.NextMove{
 		Lead:     "Tidy the saved part notes, then " + again.verb + " with them:",
-		Command:  notesFileCommand(again.railCommand(), savedNotes),
-		Sentence: "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with " + notesFileCommand(again.command, savedNotes),
+		Command:  command,
+		Sentence: "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with " + command,
 	}
 }
 

@@ -626,15 +626,16 @@ func TestRelease_Rail_TheCheckAndAFailedNotesStageAreTimedOnTheirOwnNodes(t *tes
 
 // assertFloorMovesLeadTheRail fails unless moves open on the floor's three ways out,
 // each a capitalised lead ending in a colon and the command or config line apart from
-// it, command the release run again; plain's sentence its own. Every move after them
-// clears the cause: a capitalised lead alone, plain's lowercase sentence under it.
+// it, command the release run again; plain's sentence its own, naming the same command
+// where it names one. Every move after them clears the cause: a capitalised lead
+// alone, plain's lowercase sentence under it.
 func assertFloorMovesLeadTheRail(t *testing.T, moves []presenter.NextMove, command string) {
 	t.Helper()
 	want := []presenter.NextMove{
 		{
 			Lead:     "Write the notes to a file, then release with it:",
 			Command:  command + " --notes-file <file>",
-			Sentence: "write the notes to a file and release with mint release --notes-file <file>",
+			Sentence: "write the notes to a file and release with " + command + " --notes-file <file>",
 		},
 		{
 			Lead:     "Release with the commit-subject list:",
@@ -657,7 +658,7 @@ func assertFloorMovesLeadTheRail(t *testing.T, moves []presenter.NextMove, comma
 	}
 }
 
-func TestRelease_Rail_TheFloorsCommandsCarryTheRunsOwnVersionFlags(t *testing.T) {
+func TestRelease_TheFloorsCommandsCarryTheRunsOwnVersionFlags(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
