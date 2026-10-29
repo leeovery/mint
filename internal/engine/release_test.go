@@ -705,7 +705,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	if got, want := unwoundText(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
-	assertClosesUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_GhAuthFails_ResetsCommit proves a post-Record, pre-tag failure (the
@@ -752,7 +752,7 @@ func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
 	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
-	assertClosesUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_AbortPathMatchesPrePushFailurePath proves the spec invariant that a
@@ -925,16 +925,16 @@ func assertStageFailedThenUnwound(t *testing.T, rec *presentertest.RecordingPres
 }
 
 // assertClosesUnwound fails the test unless the run's Unwound is followed by its one
-// closing RunFinished, the last event, ending unwound — an unwound run closes as
-// unwound, never on a success outcome.
-func assertClosesUnwound(t *testing.T, rec *presentertest.RecordingPresenter) {
+// closing RunFinished, the last event, ending unwound with detail — an unwound run
+// closes as unwound, never on a success outcome, saying where it left HEAD.
+func assertClosesUnwound(t *testing.T, rec *presentertest.RecordingPresenter, detail string) {
 	t.Helper()
 	unwoundAt := indexOfKind(rec, presentertest.KindUnwound)
 	if unwoundAt == -1 {
 		t.Fatalf("no Unwound event recorded; kinds = %v", rec.Kinds())
 	}
-	if fin := closingEvent(t, rec); fin.Outcome != presenter.OutcomeUnwound {
-		t.Errorf("closing outcome = %v, want OutcomeUnwound; kinds = %v", fin.Outcome, rec.Kinds())
+	if fin := closingEvent(t, rec); fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != detail {
+		t.Errorf("close = %v %q, want OutcomeUnwound %q; kinds = %v", fin.Outcome, fin.End.Detail, detail, rec.Kinds())
 	}
 }
 

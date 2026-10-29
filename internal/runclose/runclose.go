@@ -10,10 +10,11 @@
 // can still fail after that close. A loop a decline or a cancel ends early closes
 // nothing. So it holds no Run.
 //
-// A stopped run's end detail claims only what mint knows from its own actions. It is
-// "nothing changed" only while nothing that could write has run; from then on the
-// orchestrator records, with Left or Unwound, what the run left, or a detail that
-// makes no claim about the tree.
+// A stopped run's end detail states only mint's own actions (what it committed, reset,
+// wrote, staged, created or kept, and that it pushed nothing) and where HEAD stands,
+// never how clean the tree is or what a hook did. It is "nothing changed" only while
+// no hook and no write of mint's has run; from then on the orchestrator records, with
+// Left or Unwound, what mint did.
 package runclose
 
 import (

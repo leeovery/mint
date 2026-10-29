@@ -866,10 +866,12 @@ type RunResult struct {
 	// End is the station the run landed at, its detail whole as the rail shows it and
 	// derived from what the run did: "v1.4.0" / "released", "main" / "a3f9c21 ·
 	// pushed", or the start station's name with what a run that stopped short left.
-	// That detail claims only what mint knows from its own actions: "nothing changed"
-	// only while nothing that could write has run; after that what mint left ("changes
-	// staged, not committed", "back where it started · repo clean · nothing pushed") or
-	// no claim about the tree ("nothing committed · nothing pushed").
+	// That detail states only mint's own actions and where HEAD stands, never how clean
+	// the tree is or what a hook did: "nothing changed" only while no hook and no write
+	// of mint's has run; after that what mint did ("changes staged, not committed",
+	// "back where it started · nothing pushed", "nothing committed · nothing pushed"),
+	// or, once a hook has run and mint has nothing of its own to name, "nothing
+	// pushed".
 	End Station
 	// Elapsed is the engine-measured time of the whole run.
 	Elapsed time.Duration

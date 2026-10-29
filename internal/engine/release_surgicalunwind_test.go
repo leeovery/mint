@@ -86,7 +86,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
-	assertClosesUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete proves a pre-push
@@ -124,7 +124,7 @@ func TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete(t *testing.
 	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
-	assertClosesUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag proves a push REJECTION
@@ -161,7 +161,7 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 	if got, want := unwoundText(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
-	assertClosesUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary proves the spec
@@ -291,7 +291,7 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
-	assertClosesUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_PublishFailsAfterPush_NeverUnwinds_Surgical proves the post-PONR

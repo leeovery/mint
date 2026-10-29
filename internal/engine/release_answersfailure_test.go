@@ -292,7 +292,7 @@ func TestRelease_AnswersCommitFailing_WhenUnstagingTheWriteFails_WarnsTheManualS
 	if got, want := unwoundText(t, run.rec), "reset 1 commit; manual cleanup required"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
-	assertCloses(t, run.rec, presenter.OutcomeUnwound, "manual cleanup required · nothing pushed")
+	assertCloses(t, run.rec, presenter.OutcomeUnwound, "back where it started · manual cleanup required · nothing pushed")
 }
 
 func TestRelease_AnswersCommitFailing_WhenUnstagingFailsInARootWithASpace_WarnsTheStepWithTheRootQuoted(t *testing.T) {

@@ -93,6 +93,15 @@ type MadeState struct {
 	// created are the files the record stage created that neither a commit nor the
 	// index holds, which a reset leaves untracked.
 	created []string
+	// hookRan reports that a preflight or pre_tag hook ran: what it did to the tree or
+	// HEAD is unknown to mint, so the close claims nothing a hook could have undone.
+	hookRan bool
+	// wrote reports that mint began a write of its own: the exclusion answers or the
+	// record stage.
+	wrote bool
+	// preTagStaged reports that mint staged what the pre_tag hook left and the commit
+	// of it failed, leaving it staged.
+	preTagStaged bool
 }
 
 // recordWrite tracks a file the record stage wrote, when it changed, and created, when
@@ -120,8 +129,9 @@ func (m *MadeState) recordWrite(file string, changed, created bool) {
 //     holds their commit and the reset succeeded;
 //   - reports each undone item, the kept answers commit and where the repo ended up
 //     via the Presenter's Unwound, the engine authoring every part, and tells the
-//     run's close where it left the repo, so the run closes back at its start station
-//     saying so; with nothing to unwind it tells the close what the run left behind.
+//     run's close what mint did and where HEAD stands (unwoundTo), so the run closes
+//     back at its start station saying so; with nothing to unwind it tells the close
+//     what the run left behind (leftBehind).
 //
 // With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
 // Unwound and issues NO git command. A reverted write alone emits no Unwound either.
@@ -154,16 +164,20 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 		clean := tagOK && editOK && resetOK && keptOK
 		event := unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: clean})
 		deps.Presenter.Unwound(event)
-		deps.run.Unwound(unwoundTo(event, clean, made))
-	} else if left := leftBehind(editOK, made); left != "" {
-		deps.run.Left(left)
+		// HEAD is back on the starting commit once the reset ran, or, with only a tag to
+		// delete, when nothing but mint could have moved it.
+		atStart := resetOK && (commitsReset || !made.hookRan)
+		deps.run.Unwound(unwoundTo(event, clean, atStart, made))
+	} else {
+		deps.run.Left(leftBehind(editOK, made))
 	}
 	return abort(reason)
 }
 
-// The parts of the detail a release that stopped short closes at. Each claims only
-// what mint did: what it committed, reset, wrote, staged or created, and that it
-// pushed nothing.
+// The parts of the detail a release that stopped short closes at. They state only
+// mint's own actions (what it committed, reset, wrote, staged, created or kept, and
+// that it pushed nothing) and where HEAD stands. They never describe how clean the
+// tree is, which the Unwound line reports, or what a hook did, which mint cannot see.
 const (
 	backWhereItStarted = "back where it started"
 	manualCleanup      = "manual cleanup required"
@@ -173,30 +187,27 @@ const (
 	notCommitted       = " written, not committed"
 	leftUntracked      = " left untracked"
 	preTagStaged       = "pre_tag's changes staged, not committed"
-	// noClaim is a stopped release's detail once something that could write has run
-	// (a hook, mint's own write) and left nothing mint can name: it claims nothing
-	// about the tree.
+	// noClaim is the detail of a run stopped once mint began a write of its own, no
+	// hook having run, with nothing of it left to name. Once a hook has run even
+	// "nothing committed" is beyond what mint knows, so the detail is nothingPushed.
 	noClaim = nothingCommitted + " · " + nothingPushed
 )
 
 // unwoundTo is where an unwind left the repo, as the run's close states it: on the
-// kept answers commit when it re-committed them, back where it started when it is,
-// then the repo's state, unless a file the record stage created was left untracked,
-// which the close names in place of a clean repo, and the answers an ignored
+// kept answers commit when it re-committed them, else back where it started when
+// atStart says HEAD is, then that recovery needs a hand when it does, the files the
+// record stage created and the reset left untracked, and the answers an ignored
 // .mint.toml keeps. An unwind runs only before the push, so it always pushed nothing.
-func unwoundTo(event presenter.Unwind, clean bool, made MadeState) string {
+func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) string {
 	var parts []string
-	if event.Kept != "" {
-		parts = append(parts, event.Kept)
-	}
 	switch {
-	case !clean:
-		parts = append(parts, event.Repo)
-	case len(made.created) == 0:
-		if event.Kept == "" {
-			parts = append(parts, backWhereItStarted)
-		}
-		parts = append(parts, event.Repo)
+	case event.Kept != "":
+		parts = append(parts, event.Kept)
+	case atStart:
+		parts = append(parts, backWhereItStarted)
+	}
+	if !clean {
+		parts = append(parts, manualCleanup)
 	}
 	if len(made.created) > 0 {
 		parts = append(parts, strings.Join(made.created, " + ")+leftUntracked)
@@ -208,13 +219,18 @@ func unwoundTo(event presenter.Unwind, clean bool, made MadeState) string {
 }
 
 // leftBehind is what a release that stopped short with nothing to unwind left
-// behind, "" when it has nothing of its own to name: a failed revert of the answers'
-// write, the files the record stage wrote and no commit holds, and the answers an
-// ignored .mint.toml keeps, then that it pushed nothing.
+// behind: a failed revert of the answers' write, pre_tag's changes left staged, the
+// files the record stage wrote and no commit holds, and the answers an ignored
+// .mint.toml keeps, then that it pushed nothing. With none of those it is
+// nothingPushed once a hook has run, noClaim once mint began a write, and "" (the
+// close's "nothing changed") when neither has.
 func leftBehind(editOK bool, made MadeState) string {
 	var parts []string
 	if !editOK {
 		parts = append(parts, manualCleanup)
+	}
+	if made.preTagStaged {
+		parts = append(parts, preTagStaged)
 	}
 	if len(made.written) > 0 {
 		parts = append(parts, strings.Join(made.written, " + ")+notCommitted)
@@ -222,10 +238,16 @@ func leftBehind(editOK bool, made MadeState) string {
 	if made.answersLeft {
 		parts = append(parts, answersLeftInPlace)
 	}
-	if len(parts) == 0 {
+	switch {
+	case len(parts) > 0:
+		return strings.Join(append(parts, nothingPushed), " · ")
+	case made.hookRan:
+		return nothingPushed
+	case made.wrote:
+		return noClaim
+	default:
 		return ""
 	}
-	return strings.Join(append(parts, nothingPushed), " · ")
 }
 
 // recommitAnswersIfKept commits the exclusion answers again on the commit the reset

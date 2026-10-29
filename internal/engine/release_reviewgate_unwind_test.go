@@ -108,7 +108,7 @@ func assertUnwoundToStart(t *testing.T, rec *presentertest.RecordingPresenter, f
 	}
 	assertNoTag(t, f)
 	assertNoMutation(t, f)
-	assertClosesUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 func TestRelease_FailedSinglePassRegen_ShowsTheCallsOutputAndUnwindsThePreTagCommit(t *testing.T) {

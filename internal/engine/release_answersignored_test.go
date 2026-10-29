@@ -197,7 +197,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit; repo clean",
 			outcome: presenter.OutcomeUnwound,
-			end:     "back where it started · repo clean · the exclusion answers kept in .mint.toml · nothing pushed",
+			end:     "back where it started · the exclusion answers kept in .mint.toml · nothing pushed",
 		},
 		{
 			name:    "the bookkeeping commit failing",
@@ -207,7 +207,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit; repo clean",
 			outcome: presenter.OutcomeUnwound,
-			end:     "back where it started · repo clean · the exclusion answers kept in .mint.toml · nothing pushed",
+			end:     "back where it started · the exclusion answers kept in .mint.toml · nothing pushed",
 		},
 		{
 			name:    "a decline with the file the write created",

@@ -206,7 +206,7 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 				return nil
 			}
 			// Release-only: nothing was pushed, so this is a plain pre-PONR failure. The
-			// provider write ran, so the close claims nothing.
+			// provider write ran, so the close names only what mint did.
 			deps.run.Left(noClaim)
 			return surface(p, stagePublish, err)
 		}
@@ -433,9 +433,9 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 	return abort(cause)
 }
 
-// changelogCommitReset is what a regenerate whose changelog commit was reset left:
-// the repo as it started.
-const changelogCommitReset = "changelog commit reset · repo clean"
+// changelogCommitReset is what a regenerate whose changelog commit was reset did: the
+// commit is gone and HEAD is back on the starting commit.
+const changelogCommitReset = "changelog commit reset · " + backWhereItStarted
 
 // readHistoricalDate recovers the version's ORIGINAL release date from the tag
 // metadata via `git for-each-ref --format=%(creatordate:short) refs/tags/<tag>`

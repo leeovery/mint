@@ -591,7 +591,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// commit count is bumped as the step that made it runs, and TagCreated is set when
 	// the annotated tag is created. The surgical unwind drives off this state — it
 	// resets exactly made.Commits and deletes the tag iff made.TagCreated.
-	made := MadeState{}
+	made := MadeState{hookRan: hookRuns(cfg.Release.Hooks.Preflight, opts.DryRun)}
 
 	// Stage 3 — project prep. The optional pre_tag hook builds/generates artifacts
 	// (e.g. a knowledge bundle) and may dirty the tree; mint then commits whatever it
@@ -604,11 +604,14 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// the hook step failed) is reset back to startingHEAD. The committed signal is
 	// folded into made.Commits the moment the artifact commit lands, so it is tracked
 	// even if a LATER stage fails.
+	made.hookRan = made.hookRan || hookRuns(cfg.Release.Hooks.PreTag, opts.DryRun)
 	artifactCommitted, err := runPreTagHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun, keepOut)
 	if artifactCommitted {
 		made.Commits++
 	}
 	if err != nil {
+		var uncommitted *record.UncommittedError
+		made.preTagStaged = errors.As(err, &uncommitted)
 		return surfaceAndUnwind(ctx, deps, "pre_tag", start, made, err)
 	}
 
@@ -641,6 +644,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	}
 	made.answersEdit = answers.edit
 	made.answersLeft = answers.leftInPlace
+	made.wrote = answers.wrote
 	var recordingErr *answersRecordingError
 	if errors.As(err, &recordingErr) {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
@@ -709,10 +713,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// partial dirty changelog behind. The projection is filesystem-only (no git), so it
 	// adds no git calls; its change is staged by CommitBookkeeping below. An empty
 	// version_file is tag-only and no-ops (versionChanged false).
-	//
-	// The record writes from here, so a run that stops claims nothing about the tree
-	// beyond what made names.
-	deps.run.Left(noClaim)
+	made.wrote = true
 	projection, err := record.ProjectVersionFile(root, cfg.Release.VersionFile, cfg.Release.VersionPattern, versionKey)
 	if err != nil {
 		// Post-mutation, pre-PONR: route through the surgical unwind so any pre_tag
@@ -1193,13 +1194,14 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 }
 
 // answersCommit records the exclusion check's answers in root's .mint.toml and
-// commits that file alone for tag's release, unless git ignores it; landed reports
-// whether the commit was made, leftInPlace that git ignores the file so the write
+// commits that file alone for tag's release, unless git ignores it; wrote reports
+// that the write began, landed whether the commit was made, leftInPlace that git ignores the file so the write
 // stays whatever the run does, position is how many of mint's commits it brought the
 // run to, and edit is the write until a commit holds it or git is found to ignore it.
 type answersCommit struct {
 	root, tag   string
 	globs       config.ReleaseGlobs
+	wrote       bool
 	landed      bool
 	leftInPlace bool
 	position    int
@@ -1217,9 +1219,7 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
 		}
 		a.globs = config.ReleaseGlobs{DiffExclude: answers.Exclude, DiffKeep: answers.Keep}
-		// The write may leave .mint.toml changed, so the close claims no more than the
-		// unwind can name.
-		deps.run.Left(noClaim)
+		a.wrote = true
 		if err := a.write(); err != nil {
 			return &answersRecordingError{step: writing, err: err, output: err.Error()}
 		}
@@ -1658,6 +1658,12 @@ func reportHookSkipped(p presenter.Presenter, point string) {
 	p.Warn(presenter.Warning{Label: dryRunLabel, Message: "skipping " + point + " hook"})
 }
 
+// hookRuns reports whether a hook point configured with value runs on this run: it
+// has entries and the run is not a dry run, which skips every hook.
+func hookRuns(value config.HookValue, dryRun bool) bool {
+	return hooks.HasEntries(value) && !dryRun
+}
+
 // runPreflightHook runs the project's optional preflight hook through the shared
 // hooks runner. It assembles the MINT_* env from the run's computed versions
 // (NewVersion = the bare version being released, PreviousVersion = the bare prior
@@ -1669,8 +1675,8 @@ func reportHookSkipped(p presenter.Presenter, point string) {
 //
 // DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT
 // invoked — no `sh -c …` reaches the runner; instead the skip is REPORTED via the
-// presenter and nil is returned. Once the hook runs the run's close claims nothing
-// about the tree: what the hook wrote is unknown to mint.
+// presenter and nil is returned. Once the hook runs the run's close says only that
+// nothing was pushed: what the hook did is unknown to mint.
 func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
 	if !hooks.HasEntries(cfg.Release.Hooks.Preflight) {
 		return nil
@@ -1680,7 +1686,7 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 		return nil
 	}
 	env := buildHookEnv(current, next, tag, bump, dryRun)
-	deps.run.Left(noClaim)
+	deps.run.Left(nothingPushed)
 	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
 }
 
@@ -1713,9 +1719,8 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 //
 // keepOut is left out of the artifact commit: its changes neither trigger nor ride in it.
 //
-// Once the hook runs the run's close claims nothing about the tree, the hook's writes
-// being unknown to mint, unless the artifact commit fails with the changes staged,
-// which it then names.
+// A failed artifact commit after its stage is a *record.UncommittedError in the chain:
+// the hook's changes are left staged.
 func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool, keepOut git.Exclusion) (bool, error) {
 	if !hooks.HasEntries(cfg.Release.Hooks.PreTag) {
 		return false, nil
@@ -1743,17 +1748,12 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// so a hookless run (returned above) narrates no pre_tag stage.
 	stage := emitBlockingStageStarted(deps.Presenter, stagePreTag, "running pre_tag hook…", "Ran the pre_tag hook")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
-	deps.run.Left(noClaim)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, &stageError{stage: stage, err: err}
 	}
 	subject := pretagArtifactSubject(tag)
 	committed, err := record.CommitDirtyTree(ctx, deps.Mutator, root, subject, keepOut)
 	if err != nil {
-		var uncommitted *record.UncommittedError
-		if errors.As(err, &uncommitted) {
-			deps.run.Left(preTagStaged + " · " + nothingPushed)
-		}
 		return committed, &stageError{stage: stage, err: err}
 	}
 	success := presenter.StageSuccess{Detail: "hook completed", Sentence: stage.sentence}

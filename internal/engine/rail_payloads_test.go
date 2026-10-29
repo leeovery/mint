@@ -518,7 +518,7 @@ func TestRelease_Rail_ARejectedPushIsThePushNodeTimedAndTheRunGoesBackToItsStart
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
 	fin := closingEvent(t, rec)
-	if want := (presenter.Station{Name: "first release", Detail: "back where it started · repo clean · nothing pushed"}); fin.Outcome != presenter.OutcomeUnwound || fin.End != want {
+	if want := (presenter.Station{Name: "first release", Detail: "back where it started · nothing pushed"}); fin.Outcome != presenter.OutcomeUnwound || fin.End != want {
 		t.Errorf("close = %v %+v, want OutcomeUnwound %+v", fin.Outcome, fin.End, want)
 	}
 }
@@ -543,7 +543,7 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 		t.Errorf("Text() = %q, want plain's sentence %q", unwound.Text(), keptSummary)
 	}
 	fin := closingEvent(t, rec)
-	if want := "kept the answers commit on the starting commit · repo clean · nothing pushed"; fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != want {
+	if want := "kept the answers commit on the starting commit · nothing pushed"; fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != want {
 		t.Errorf("close = %v %q, want OutcomeUnwound %q: the kept answers named, not back where it started", fin.Outcome, fin.End.Detail, want)
 	}
 }
@@ -750,8 +750,20 @@ func TestRegenerateRun_Rail_AFailedProviderWriteClosesClaimingNothing(t *testing
 // its git calls from the write's clean start on scripted by tail.
 func regenerateChangelogRun(t *testing.T, stale string, tail ...runner.ScriptedCall) (*presentertest.RecordingPresenter, error) {
 	t.Helper()
+	return regenerateChangelogIn(t, staleChangelogDir(t, stale), tail...)
+}
+
+// staleChangelogDir is a repo whose CHANGELOG.md holds the section reading stale.
+func staleChangelogDir(t *testing.T, stale string) string {
+	t.Helper()
 	dir := t.TempDir()
 	seedChangelog(t, dir, kacPreamble+"\n## ["+regenRunVersionKey+"] - 2024-02-15\n\n"+stale)
+	return dir
+}
+
+// regenerateChangelogIn is regenerateChangelogRun over the repo at dir.
+func regenerateChangelogIn(t *testing.T, dir string, tail ...runner.ScriptedCall) (*presentertest.RecordingPresenter, error) {
+	t.Helper()
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		ScriptedOut(""),                    // status --porcelain (clean)
@@ -787,7 +799,7 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		{
 			name: "a rejected push resets the commit",
 			tail: []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
-			end:  "changelog commit reset · repo clean · nothing pushed",
+			end:  "changelog commit reset · back where it started · nothing pushed",
 		},
 		{
 			name: "a rejected push whose reset fails needs cleaning up",
@@ -807,6 +819,20 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 				t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
 			}
 		})
+	}
+}
+
+func TestRegenerateRun_Rail_AChangelogWriteThatFailsClosesClaimingNothingCommitted(t *testing.T) {
+	t.Parallel()
+
+	dir := staleChangelogDir(t, "Stale body.\n")
+	makeReadOnly(t, dir)
+
+	rec, err := regenerateChangelogIn(t, dir)
+
+	assertAbortNonZero(t, err)
+	if fin := closingEvent(t, rec); fin.Outcome != presenter.OutcomeFailed || fin.End.Detail != "nothing committed · nothing pushed" {
+		t.Errorf("close = %v %+v, want OutcomeFailed with nothing committed and nothing pushed", fin.Outcome, fin.End)
 	}
 }
 
