@@ -636,10 +636,10 @@ func TestRailGate_ACommitRegenerateThatFallsToTheEditorDrawsEveryStageAfterIt(t 
 	}
 }
 
-// TestRailGate_AReAskTheInputClosedOnEndsTheLoop_WhatFollowsIsInEventOrder pins that
-// a question's loop ends with the gate that ends unanswered: the unwind and the
-// autostash's warning after it draw at the run's edge, in the order they came.
-func TestRailGate_AReAskTheInputClosedOnEndsTheLoop_WhatFollowsIsInEventOrder(t *testing.T) {
+// TestRailGate_AReAskTheInputClosedOn_WhatFollowsIsInEventOrder pins that
+// when the input closes at a re-ask, what follows still draws in event order:
+// the unwind and the autostash's warning after it land at the run's edge, placed by key.
+func TestRailGate_AReAskTheInputClosedOn_WhatFollowsIsInEventOrder(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 30, answers("e\n"))
 	notesUnderReview(r, "first draft")
