@@ -140,7 +140,10 @@ func runRegenerate(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
-	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin)
+	// Regenerate's pretty output is the Rail, as release's is, whose drawing ends once
+	// the run is over, however it ends.
+	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin, presenter.WithRail())
+	defer presenter.Close(p)
 	req.StdinInteractive = presenter.DetectStartupSignals(req.Plain, os.Stdout, os.Stdin).StdinInteractive
 	return regenerate(ctx, p, runner.NewExecRunner(), req, notescache.NewUserChunkNotes(os.UserCacheDir))
 }

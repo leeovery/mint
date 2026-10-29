@@ -124,7 +124,7 @@ func TestRegenerateAll_SavedPathWithASpaceIsQuotedInTheSkipsCommandOnly(t *testi
 	cause := "AI call failed (part 2 of 2); part notes saved to " + path +
 		" — tidy them and put them on it with mint release regenerate 1.1.0 --notes-file '" + path + "'"
 	wantWarns := []presenter.Warning{{Label: "skipped v1.1.0", Message: cause, Output: usageLimitOutput}}
-	if got := warnings(run.rec); !slices.Equal(got, wantWarns) {
+	if got := plainWarnings(run.rec); !slices.Equal(got, wantWarns) {
 		t.Errorf("warnings = %+v, want %+v", got, wantWarns)
 	}
 	want := "2 regenerated, 1 skipped: v1.1.0 (" + cause + ")"

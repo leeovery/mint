@@ -179,29 +179,43 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 	tests := []struct {
 		name    string
 		keepOut git.Exclusion
-		failed  runner.ScriptedCall
-		action  string
-		output  string
+		// recovery are the reset's git steps, the last of them failing.
+		recovery []runner.ScriptedCall
+		action   string
+		output   string
+		// undone is what the rail's unwind names undone: the reset, once HEAD moved.
+		undone string
 	}{
 		{
-			name:   "the hard reset with stderr",
-			failed: gitFailing(recoveryStderr),
-			action: "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
-			output: recoveryStderr,
+			name:     "the hard reset with stderr",
+			recovery: []runner.ScriptedCall{gitFailing(recoveryStderr)},
+			action:   "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
+			output:   recoveryStderr,
 		},
 		{
-			name:   "the hard reset without stderr",
-			failed: scriptedMutateFailure(),
-			action: "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
-			output: noStderrOutput,
+			name:     "the hard reset without stderr",
+			recovery: []runner.ScriptedCall{scriptedMutateFailure()},
+			action:   "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
+			output:   noStderrOutput,
 		},
 		{
-			name:    "the keep-out soft reset with stderr",
-			keepOut: "notes.md",
-			failed:  gitFailing(recoveryStderr),
+			name:     "the keep-out soft reset with stderr",
+			keepOut:  "notes.md",
+			recovery: []runner.ScriptedCall{gitFailing(recoveryStderr)},
 			action: "reset HEAD back to startHEAD, leaving notes.md as it is " +
 				"(`git reset --soft startHEAD` then `git restore --source=startHEAD --staged --worktree -- ':(top,literal,exclude)notes.md'`)" + leftover,
 			output: recoveryStderr,
+		},
+		{
+			// HEAD has left the commit, so only its changes are left to drop.
+			name:     "the keep-out restore after the soft reset went through",
+			keepOut:  "notes.md",
+			recovery: []runner.ScriptedCall{ScriptedOut(""), gitFailing(recoveryStderr)},
+			action: "restore the index and work tree to startHEAD, leaving notes.md as it is " +
+				"(`git restore --source=startHEAD --staged --worktree -- ':(top,literal,exclude)notes.md'`)" +
+				" to drop the changelog commit's leftover changes",
+			output: recoveryStderr,
+			undone: "reset the changelog commit",
 		},
 	}
 
@@ -218,7 +232,7 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 			} else {
 				f.SeedSequence("git", keepOutCommit("", stagedChangelog)...)
 			}
-			f.SeedSequence("git", pushRejected, tt.failed)
+			f.SeedSequence("git", append([]runner.ScriptedCall{pushRejected}, tt.recovery...)...)
 			rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 			req := freshWriteReq(engine.RegenerateTargetChangelog)
@@ -227,6 +241,9 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 
 			assertAbortNonZero(t, err)
 			onlyWarning(t, rec, unwindIncomplete(tt.action, tt.output))
+			if got := unwoundText(t, rec); got != tt.undone {
+				t.Errorf("Unwound = %q, want %q", got, tt.undone)
+			}
 		})
 	}
 }

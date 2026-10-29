@@ -48,7 +48,7 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 	defer p.mu.Unlock()
 	switch {
 	case p.yes:
-		p.answer(g, g.Default, true)
+		p.answer(g, g.Default, true, nil)
 		p.redraw()
 		return g.Default, nil, true
 	case !p.stdinInteractive:
@@ -143,7 +143,7 @@ func (p *RailPresenter) present(q *part) {
 // once the line is read, nothing gone back over. A stage still running above the
 // question comes back live with the region.
 func (p *RailPresenter) readAt(q *part, rows int) {
-	q.shown = true
+	q.shown, q.read = true, true
 	if p.fits {
 		p.run.settleAbove(q)
 	} else {
@@ -199,7 +199,7 @@ func (p *RailPresenter) answered(g Gate, q *part, c Choice, err error) error {
 	defer p.mu.Unlock()
 	p.dismiss(q)
 	if err == nil {
-		p.answer(g, c, false)
+		p.answer(g, c, false, q)
 	}
 	p.redraw()
 	return err
@@ -239,17 +239,18 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	return q
 }
 
-// answer settles c as g's answer, auto where -y took it: the exclusion pause's as a
-// line under the check's node; any other's as the tail of the node it asked about,
-// what hung above it gone, or, that node settled above or a body of the question
-// settled, on a row of its own under the last body; a gate asked before the run's
-// stages as a row naming what was chosen. A review's regenerate settles as any answer
+// answer settles c as g's answer to the question q, nil where -y took it: the
+// exclusion pause's as a line under the check's node; any other's as the tail of the
+// node it asked about, what hung above it gone, or, that node settled above or a body
+// of the question settled, on a row of its own under the last body; a gate asked
+// before the run's stages as a row naming what was chosen, unless the question and
+// the line typed at it stay as its record. A review's regenerate settles as any answer
 // does, but its body stays, settled under the node it settles, so the draft is in
 // view while what to change is typed: its stage runs again as a node of its own
 // below, under which the body and the question come back. A review's edit settles
 // nothing: it opens the question's loop, until the next answer to any gate, the body
 // is shown again, in place, and the question comes back.
-func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
+func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	p.run.looping = false
 	if x := g.Suggestion; x != nil {
 		p.run.hang(g.Stage, rail.Hang{Kind: rail.Note, Text: x.Glob + " " + pauseAnswer(g, c, auto) + " · " + x.Reason})
@@ -271,18 +272,40 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 	switch asked := p.run.find(g.Stage); {
 	case asked != nil && (!out || asked.node.State == rail.ToCome):
 		if asked.node.State == rail.ToCome {
-			asked.node.State, asked.node.Detail = rail.Done, firstOf(g.Detail, asked.plan)
+			asked.node.State = rail.Done
+			asked.node.Detail, tail = settled(g, c, asked.plan, tail)
 		}
 		asked.node.Tail = tail
 		p.run.touched = asked
+	case g.Stage == "" && q != nil && q.read:
 	case g.Stage == "":
 		p.run.add(rail.Node{Name: g.Subject, Detail: chosen(g, c), Tail: autoTail(auto)})
 	case out || p.run.gone[g.Stage]:
-		p.run.add(rail.Node{Name: reviewName, Detail: tail})
+		detail, tail := settled(g, c, "", tail)
+		p.run.add(rail.Node{Name: reviewName, Detail: detail, Tail: tail})
 	default:
 		n := p.run.stage(g.Stage, g.Stage).node
 		n.Detail, n.Tail = g.Detail, tail
 	}
+}
+
+// settled is the detail and the tail a node waiting for g's answer settles to once c
+// answers it, tail being how that answer reads after it: plan, the node's plan
+// detail, for a gate with no Detail of its own; else the gate's Detail where its
+// default answered, which is what that detail says, or what c chose, the tail alone
+// where it only restates that, as a review's "accepted (-y)" does its "accepted".
+func settled(g Gate, c Choice, plan, tail string) (string, string) {
+	if g.Detail == "" {
+		return plan, tail
+	}
+	detail := g.Detail
+	if c != g.Default {
+		detail = chosen(g, c)
+	}
+	if strings.HasPrefix(tail, detail) {
+		return tail, ""
+	}
+	return detail, tail
 }
 
 // autoAccepted is the tail of every answer -y took, the auto-accept echo.

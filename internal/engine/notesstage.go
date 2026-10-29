@@ -43,7 +43,22 @@ var (
 const notesStageText = "generating release notes…"
 
 func startNotesStage(p presenter.Presenter, now func() time.Time) *notesStage {
-	return &notesStage{p: p, stage: startBlockingStage(p, now, stageNotes, notesStageText)}
+	return startNotesStep(p, now, stepOf{name: stageNotes, key: stageNotes})
+}
+
+// startNotesStep is startNotesStage for notes that are step: a regenerate --all
+// version's, on that version's node.
+func startNotesStep(p presenter.Presenter, now func() time.Time, step stepOf) *notesStage {
+	return &notesStage{p: p, stage: startStep(p, now, step, notesStageText, now())}
+}
+
+// stepped is success as the notes stage's own: on a node that goes on past the notes,
+// its row names them, as the node's name is another's.
+func (s *notesStage) stepped(success presenter.StageSuccess) presenter.StageSuccess {
+	if s.stage.step.ongoing {
+		success.Row = stageNotes + " " + success.Detail
+	}
+	return success
 }
 
 // Checking narrates the exclusion check's call starting and times it, so Checked can
@@ -250,7 +265,7 @@ func (r *regenStage) narrating(regenerator Regenerator) Regenerator {
 		return nil
 	}
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
-		r.quiet, r.stage = startQuietStage(r.run.p, r.run.stage.now, stageNotes, notesStageText), nil
+		r.quiet, r.stage = startQuietStep(r.run.p, r.run.stage.now, r.run.stage.step, notesStageText), nil
 		body, err := regenerator.Regenerate(ctx, oneTimeContext)
 		if err == nil {
 			r.done()
@@ -265,21 +280,21 @@ func (r *regenStage) narrating(regenerator Regenerator) Regenerator {
 func (r *regenStage) done() {
 	switch {
 	case r.stage != nil:
-		r.stage.succeeded(mergedCompletion(r.parts))
+		r.stage.succeeded(r.run.stepped(mergedCompletion(r.parts)))
 	case r.parts > 0:
-		r.quiet.succeeded(presenter.StageSuccess{
+		r.quiet.succeeded(r.run.stepped(presenter.StageSuccess{
 			Detail:   fmt.Sprintf("merged from %d parts", r.parts),
 			Sentence: fmt.Sprintf("Notes merged again (%d parts)", r.parts),
-		})
+		}))
 	default:
-		r.quiet.succeeded(notesCompletion(0))
+		r.quiet.succeeded(r.run.stepped(notesCompletion(0)))
 	}
 }
 
 // chunked opens the r's notes line, timed from the r's start, unless it is open.
 func (r *regenStage) chunked() {
 	if r.stage == nil {
-		r.stage = startBlockingStageSince(r.run.p, r.quiet.now, stageNotes, notesStageText, r.quiet.started)
+		r.stage = startStep(r.run.p, r.quiet.now, r.run.stage.step, notesStageText, r.quiet.started)
 	}
 }
 
@@ -359,9 +374,19 @@ func hintLowerCap(p presenter.Presenter, bytes int) {
 	})
 }
 
-// done narrates the stage's success. Call it only once the generation has returned.
-func (s *notesStage) done() {
-	s.stage.succeeded(notesCompletion(s.parts))
+// read narrates the stage's success, the notes read from where row says, or, row
+// empty, written: the rail's row, after the notes' own name on a node that is
+// another's; plain keeps the detail it has always had. Call it only once the
+// generation has returned.
+func (s *notesStage) read(row string) {
+	success := s.stepped(notesCompletion(s.parts))
+	if row != "" {
+		success.Row = row
+		if s.stage.step.ongoing {
+			success.Row = stageNotes + " " + row
+		}
+	}
+	s.stage.succeeded(success)
 }
 
 // doneFrom narrates the stage's success where its body came from the source kind

@@ -1,0 +1,12 @@
+ mint ─ release regenerate                                                    ~/Code/pigeon · v0.1.2
+
+ ◇  v1.4.0        fresh → CHANGELOG.md
+ │
+ ●  notes         generated                                                                     0.7s
+ ●  review        accepted (-y)
+ ✗  CHANGELOG.md  pushing regenerated changelog: exit status 1                                  2.1s
+ │                │  ! [rejected]        main -> main (fetch first)
+ │                │ error: failed to push some refs to 'https://github.com/acme/pigeon'
+ ↩  unwind        reset the changelog commit
+ │
+ ◇  v1.4.0        back where it started · nothing pushed                                        4.9s

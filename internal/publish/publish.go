@@ -87,6 +87,12 @@ func NewGitHubPublisher(r runner.CommandRunner) *GitHubPublisher {
 	return &GitHubPublisher{runner: r}
 }
 
+// ReleaseName is what the driver's releases are called where mint names one: "GitHub
+// release".
+func (*GitHubPublisher) ReleaseName() string {
+	return "GitHub release"
+}
+
 // CreateRelease publishes a new GitHub release for tag via
 // `gh release create {tag} --title {title} --notes-file - --verify-tag`.
 //

@@ -8,6 +8,18 @@ import (
 	"mint/internal/runner"
 )
 
+func TestGitHubPublisher_ReleaseName_IsAGitHubRelease(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	if got := publish.NewGitHubPublisher(r).ReleaseName(); got != "GitHub release" {
+		t.Errorf("ReleaseName() = %q, want %q", got, "GitHub release")
+	}
+	if calls := r.Invocations(); len(calls) != 0 {
+		t.Errorf("ReleaseName ran %v, want no command", calls)
+	}
+}
+
 func TestGitHubPublisher_CreateRelease_InvokesGhReleaseCreate(t *testing.T) {
 	t.Parallel()
 

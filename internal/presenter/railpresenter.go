@@ -60,9 +60,11 @@ type RailPresenter struct {
 	reader           *bufio.Reader
 	yes              bool
 	stdinInteractive bool
-	// echo is whether in is a terminal, which echoes a typed line where the cursor is.
-	echo  bool
-	level rail.Level
+	// echo is whether in is a terminal, which echoes a typed line where the cursor is,
+	// as echoes judges it.
+	echo   bool
+	echoes func(in io.Reader) bool
+	level  rail.Level
 	// size is the terminal's columns and rows, 0 where it gives none, read at each
 	// redraw.
 	size func() (cols, rows int)
@@ -113,6 +115,13 @@ func WithRailSize(size func() (cols, rows int)) RailOption {
 // WithRailTicker sets the spinner's clock, a ticker of real time without it.
 func WithRailTicker(tick Ticker) RailOption { return func(p *RailPresenter) { p.tick = tick } }
 
+// WithRailEcho sets whether the input echoes a typed line where the cursor is, as a
+// terminal does, in place of asking the input whether it is a terminal: so a test
+// reading scripted answers can draw a typed line as a terminal shows it.
+func WithRailEcho(echo bool) RailOption {
+	return func(p *RailPresenter) { p.echoes = func(io.Reader) bool { return echo } }
+}
+
 // WithRailClock sets the time a running stage's time is read from, the wall clock
 // without it.
 func WithRailClock(now func() time.Time) RailOption {
@@ -131,12 +140,18 @@ func NewRailPresenter(out io.Writer, opts ...RailOption) *RailPresenter {
 		now:              time.Now,
 		region:           newLiveRegion(out),
 		run:              newRunModel(),
+		echoes:           isTerminal,
 	}
 	for _, opt := range opts {
 		opt(p)
 	}
-	_, p.echo = rawKeyFile(p.in)
+	p.echo = p.echoes(p.in)
 	return p
+}
+
+func isTerminal(in io.Reader) bool {
+	_, ok := rawKeyFile(in)
+	return ok
 }
 
 // terminalSize reads out's size where out is a terminal, and 0 by 0 otherwise.
@@ -176,8 +191,9 @@ func (p *RailPresenter) ShowPlan(plan Plan) {
 
 // StageStarted sets the stage running: the spinner in its mark's place, what it is
 // doing in its detail and, for one that takes time, its time so far, which a stage
-// started again while it runs (an `r` that turns into a run in parts) keeps counting.
-// An open question's own activity, as the review's edit, draws nothing.
+// started again while it runs (an `r` that turns into a run in parts) or while it is
+// ongoing (a --all version past its notes) keeps counting. An open question's own
+// activity, as the review's edit, draws nothing.
 func (p *RailPresenter) StageStarted(s StageStart) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -186,9 +202,10 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 	}
 	pt := p.run.stage(s.Key, s.Name)
 	p.run.reach(pt)
-	if pt.node.State != rail.Running {
+	if pt.node.State != rail.Running && !pt.ongoing {
 		pt.started = p.now()
 	}
+	pt.ongoing = false
 	pt.doing = firstOf(s.Text, pt.plan, s.Name)
 	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, pt.doing, "", nil
 	pt.timed = s.Blocking
@@ -196,8 +213,9 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 }
 
 // StageSucceeded settles the stage done: its detail, its time where it takes time,
-// and the subject of any commit it made and its note hung under it. An open
-// question's own activity draws nothing.
+// and the subject of any commit it made and its note hung under it. An Ongoing
+// success draws the node done with no time and keeps it open for what its stage does
+// next. An open question's own activity draws nothing.
 func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -205,10 +223,13 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 		return
 	}
 	pt := p.run.stage(s.Key, s.Name)
-	p.run.ended(s.Key, true)
+	pt.ongoing = s.Ongoing
+	if !s.Ongoing {
+		p.run.ended(s.Key, true)
+	}
 	n := pt.node
 	n.State, n.Detail, n.Time, n.Progress = rail.Done, firstOf(s.Row, s.Detail, pt.plan), "", nil
-	if s.Blocking {
+	if s.Blocking && !s.Ongoing {
 		n.Time = stageTime(s.Elapsed)
 	}
 	if s.Commit != "" {
@@ -227,7 +248,9 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 func (p *RailPresenter) StageFailed(s StageFailure) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	n := p.run.stage(s.Key, s.Name).node
+	pt := p.run.stage(s.Key, s.Name)
+	n := pt.node
+	pt.ongoing = false
 	p.run.ended(s.Key, false)
 	n.State, n.Detail, n.Time, n.Progress = rail.Failed, s.Message, "", nil
 	if s.Elapsed > 0 {
@@ -359,25 +382,29 @@ func (p *RailPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 	p.redraw()
 }
 
-// Warn draws a warning as a node, a Failed one as its key's failed node, and writes
-// its summary to err. A Skipped one draws nothing: its stage stays to come.
+// Warn draws a warning as a node, timed where it ended a stage that ran, a Failed one
+// as its key's failed node, and writes its summary to err. A Skipped one draws
+// nothing: its stage stays to come.
 func (p *RailPresenter) Warn(w Warning) {
 	if w.Skipped {
 		return
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	var n *rail.Node
+	var pt *part
 	if w.Failed {
-		pt := p.run.stage(w.Key, w.Key)
-		n, pt.waits = pt.node, true
-		n.State = rail.Failed
+		pt = p.run.stage(w.Key, w.Key)
+		pt.waits, pt.node.State = true, rail.Failed
 	} else {
-		n = p.warned(w.Key, w.Label)
-		n.State = rail.Warning
+		pt = p.warned(w.Key, w.Label)
+		pt.node.State = rail.Warning
 	}
 	p.run.ended(w.Key, false)
-	n.Detail, n.Progress = firstOf(w.Row, w.Message), nil
+	n := pt.node
+	pt.ongoing, n.Detail, n.Progress = false, firstOf(w.Row, w.Message), nil
+	if w.Elapsed > 0 {
+		n.Time = stageTime(w.Elapsed)
+	}
 	if w.Output != "" {
 		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Output, Text: w.Output})
 	}
@@ -386,18 +413,18 @@ func (p *RailPresenter) Warn(w Warning) {
 }
 
 // warned is the node a warning about the stage keyed key draws as: the stage's own
-// where it is running or still to come, which the warning ends; else a node of its
-// own, labelled, under the stage's node where that is done, which it leaves as it
-// was, and at the run's edge where it has settled or there is none.
-func (p *RailPresenter) warned(key, label string) *rail.Node {
+// where it is running, ongoing or still to come, which the warning ends; else a node
+// of its own, labelled, under the stage's node where that is done, which it leaves as
+// it was, and at the run's edge where it has settled or there is none.
+func (p *RailPresenter) warned(key, label string) *part {
 	pt := p.run.find(key)
 	switch {
-	case pt != nil && pt.node.State == rail.Done:
-		return p.run.aside(pt, rail.Node{Name: label}).node
+	case pt != nil && pt.node.State == rail.Done && !pt.ongoing:
+		return p.run.aside(pt, rail.Node{Name: label})
 	case pt == nil && p.run.gone[key]:
-		return p.run.add(rail.Node{Name: label}).node
+		return p.run.add(rail.Node{Name: label})
 	}
-	return p.run.stage(key, label).node
+	return p.run.stage(key, label)
 }
 
 // Unwound draws the unwind's node: what it undid, and what it kept under it. An
@@ -488,8 +515,11 @@ func (p *RailPresenter) ResumeSpinner() {
 // RunFinished closes the run at its end station, with its time and any URL under
 // it; next follows once the drawing ends, under whatever arrives after the close.
 // What it never reached leaves the drawing with the live region, but for a dry run's
-// stages to come.
+// stages to come. A line sent Ahead of the close draws nothing: the run goes on.
 func (p *RailPresenter) RunFinished(r RunResult) {
+	if r.Ahead {
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	end := rail.End{Landed: landed(r.Outcome), Name: r.End.Name, Detail: r.End.Detail, Time: stageTime(r.Elapsed), URL: r.URL}

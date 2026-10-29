@@ -72,6 +72,20 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *test
 			stop: func(r *runclose.Run) { r.Left("changes staged, not committed") },
 			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "changes staged, not committed"}},
 		},
+		{
+			name: "what a run wrote comes first, the latest written standing",
+			stop: func(r *runclose.Run) {
+				r.Wrote("1 GitHub release written")
+				r.Left("nothing committed · nothing pushed")
+				r.Wrote("2 GitHub releases written")
+			},
+			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "2 GitHub releases written · nothing committed · nothing pushed"}},
+		},
+		{
+			name: "what a run wrote alone is all it says",
+			stop: func(r *runclose.Run) { r.Wrote("1 GitHub release written") },
+			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "1 GitHub release written"}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -134,6 +148,38 @@ func TestClose_TimesTheRunByTheClockItBeganWith(t *testing.T) {
 
 	if got := closing(t, rec).Elapsed; got != 74*time.Second {
 		t.Errorf("Elapsed = %v, want the 1m 14s between the clock's reads at Begin and Close", got)
+	}
+}
+
+func TestOpen_OpensWithTheHeaderAloneAndStartDrawsTheStationLater(t *testing.T) {
+	t.Parallel()
+
+	header := presenter.Header{Command: "release regenerate", Where: "~/Code/pigeon"}
+	rec := &presentertest.RecordingPresenter{}
+	run := runclose.Begin(rec, time.Now)
+	run.Open(presenter.RunInfo{Project: "acme", Header: header, Start: opened.Start})
+
+	if got, want := rec.Events[0].RunStarted, (presenter.RunInfo{Project: "acme", Header: header, Quiet: true}); len(rec.Events) != 1 || got != want {
+		t.Fatalf("opening = %+v, want the one Quiet start %+v, carrying the header alone", rec.Events, want)
+	}
+	run.Start(opened)
+	run.Close(false)
+
+	if got := closing(t, rec).End; got != (presenter.Station{Name: "v1.3.2", Detail: "nothing changed"}) {
+		t.Errorf("close = %+v, want at the station Start drew", got)
+	}
+}
+
+func TestOpen_ARunThatClosesBeforeItsStationClosesWithNone(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	run := runclose.Begin(rec, time.Now)
+	run.Open(presenter.RunInfo{Project: "acme", Header: presenter.Header{Command: "release regenerate"}})
+	run.Close(true)
+
+	if got := closing(t, rec); got.Outcome != presenter.OutcomeDeclined || got.End.Name != "" {
+		t.Errorf("close = %+v, want declined with no end station", got)
 	}
 }
 
@@ -204,6 +250,8 @@ func TestRun_ANilRunDoesNothing(t *testing.T) {
 	run.Land(presenter.RunResult{})
 	run.Unwound("back where it started")
 	run.Left("changes staged, not committed")
+	run.Open(opened)
+	run.Wrote("1 GitHub release written")
 	run.RunDeferred()
 	run.Close(true)
 }

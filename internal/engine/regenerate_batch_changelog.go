@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"time"
 
+	"mint/internal/presenter"
 	"mint/internal/record"
 	"mint/internal/version"
 )
@@ -53,29 +54,42 @@ const batchRebuildSubject = "docs(changelog): regenerate release notes"
 // bodies produced this batch (a subset — skipped versions are absent).
 func rebuildBatchChangelog(ctx context.Context, deps ReleaseDeps, root string, req BatchRegenerateRequest, collected []RegeneratedVersion) error {
 	p := deps.Presenter
+	node := startChangelogNode(deps, "rebuilding "+record.ChangelogFileName+"…")
 
 	// Capture the clean starting HEAD before any mutation so a pre-push failure resets
 	// to exactly here — the same clean-start capture the single-version 5-9 path uses.
 	startingHEAD, err := resolveHEAD(ctx, deps.Runner)
 	if err != nil {
-		return surface(p, "record", err)
+		return surface(p, stageRecord, err)
 	}
 
 	sections, err := batchChangelogSections(ctx, deps, req, collected)
 	if err != nil {
-		return surface(p, "record", err)
+		return surface(p, stageRecord, err)
 	}
 
+	// The rebuild may leave CHANGELOG.md changed, so the close claims no more than the
+	// recovery can name.
+	deps.run.Left(noClaim)
 	result, err := record.RebuildChangelog(root, sections)
 	if err != nil {
-		return surface(p, "record", err)
+		return surface(p, stageRecord, err)
+	}
+	rebuilt := fmt.Sprintf("rebuilt, %d entries", len(sections))
+	if len(sections) == 1 {
+		rebuilt = "rebuilt, 1 entry"
 	}
 	if !result.Changed {
 		// Byte-identical rebuild → no commit. mint never makes an empty commit.
+		node.succeeded(presenter.StageSuccess{Detail: rebuilt + " · unchanged, nothing to push"})
 		return nil
 	}
 
-	return commitAndPushRebuild(ctx, deps, root, startingHEAD)
+	if err := commitAndPushRebuild(ctx, deps, root, startingHEAD, node); err != nil {
+		return err
+	}
+	node.succeeded(presenter.StageSuccess{Detail: rebuilt + " · committed and pushed", Commit: batchRebuildSubject})
+	return nil
 }
 
 // batchChangelogSections builds the rebuild's section list NEWEST → ON → TOP (the order
@@ -142,15 +156,18 @@ func regeneratedByTag(collected []RegeneratedVersion) map[string]string {
 }
 
 // commitAndPushRebuild stages, commits (the `--all` subject), and plain-pushes the
-// rebuilt CHANGELOG.md in ONE commit at the end of the batch, resetting the local commit
-// back to startingHEAD on any pre-push failure — the same recovery the single-version
-// 5-9 path uses, run once for the whole batch. The push is the point of no return.
-func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string) error {
+// rebuilt CHANGELOG.md in ONE commit at the end of the batch, on the CHANGELOG.md
+// node, resetting the local commit back to startingHEAD on any pre-push failure — the
+// same recovery the single-version 5-9 path uses, run once for the whole batch. A
+// failed commit leaves the rebuilt file as it is. The push is the point of no return.
+func commitAndPushRebuild(ctx context.Context, deps ReleaseDeps, root, startingHEAD string, node *blockingStage) error {
+	start := resetTarget{HEAD: startingHEAD}
 	if err := stageAndCommitChangelog(ctx, deps.Mutator, root, batchRebuildSubject, ""); err != nil {
-		return resetAndAbort(ctx, deps, resetTarget{HEAD: startingHEAD}, false, "record", fmt.Errorf("batch rebuild: %w", err))
+		cause := fmt.Errorf("batch rebuild: %w", &uncommittedChangelog{err: err})
+		return resetAndAbort(ctx, deps, start, false, stageFailure(stageRecord, cause), cause)
 	}
 	// The rebuild commit landed: push it (the end-of-batch point of no return) via the
 	// SHARED regenerate push tail — the same plain-push form, blocking "push" narration,
 	// and reset-on-abort recovery the single-version path uses, run once for the batch.
-	return pushChangelogCommit(ctx, deps, resetTarget{HEAD: startingHEAD})
+	return pushChangelogCommit(ctx, deps, start, node)
 }

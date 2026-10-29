@@ -584,7 +584,9 @@ func TestRailGate_ATypedLineIsReadAtTheQuestionPrintedLast(t *testing.T) {
 
 // TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine pins that a
 // re-ask reads its line the same way: the question printed again under the line
-// that answered nothing, last on the terminal.
+// that answered nothing, last on the terminal. A question asked before the run's
+// stages has no node to settle, so the question and the line typed at it are its
+// answer's record, and no row repeats it.
 func TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine(t *testing.T) {
 	t.Parallel()
 	const question = " ?  Source?   fresh re-diff + AI   tag tag annotation body "
@@ -605,8 +607,8 @@ func TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine(t *te
 		t.Fatalf("Prompt = %q, %v, want tag", c, err)
 	}
 	screen := r.screen(t)
-	want := []string{question + "nope", question + "tag", " ●  source        tag annotation body"}
-	if at := slices.Index(screen, want[0]); at < 0 || !slices.Equal(screen[at:min(at+len(want), len(screen))], want) {
+	want := []string{question + "nope", question + "tag"}
+	if at := slices.Index(screen, want[0]); at < 0 || !slices.Equal(screen[at:], want) {
 		t.Errorf("the terminal shows\n%s\nwant\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
 	}
 }

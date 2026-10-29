@@ -35,6 +35,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/git"
+	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
 	"mint/internal/record"
@@ -162,9 +163,9 @@ type RegenerateRunRequest struct {
 // the notes floor's choice, offered only to an attended run, does not answer; a notes
 // generation failure that stops an unattended run prints its next moves first.
 //
-// A run that opened with RunStarted closes with one RunFinished, emitted here:
-// regenerated, or, stopped short, declined or failed, its end saying what the run
-// left behind.
+// The run opens with its header ahead of the questions, draws its start station once
+// both are answered, and closes with one RunFinished, emitted here: regenerated, or,
+// stopped short, declined, failed or unwound, its end saying what the run left behind.
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	deps.run = runclose.Begin(deps.Presenter, deps.clock())
 	err := regenerateRun(ctx, deps, publisher, root, req)
@@ -175,6 +176,8 @@ func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 // regenerateRun is RegenerateRun's run; RegenerateRun closes it.
 func regenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	p := deps.Presenter
+	header := deps.header(regenerateCommand, root)
+	deps.run.Open(presenter.RunInfo{Project: req.Project, Header: header})
 
 	sourceOpt := req.Source
 	if req.Supplied != nil {
@@ -188,6 +191,20 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	if err != nil {
 		return err
 	}
+
+	// The start station, now the questions are answered; plain's start line follows
+	// the preflight, where it has always been.
+	release := releaseName(publisher)
+	info := presenter.RunInfo{
+		Project: req.Project,
+		Version: req.VersionKey,
+		Action:  regenerateAction,
+		Header:  header,
+		Start:   presenter.Station{Name: req.Tag, Detail: sourceLabel(source) + " → " + targetLabel(target, release)},
+	}
+	station := info
+	station.Quiet = true
+	deps.run.Start(station)
 
 	// The provider-release source reads the EXISTING release through the Publisher seam,
 	// so it is impossible without a resolved provider. A downgraded run (non-github /
@@ -222,20 +239,12 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		return err
 	}
 
-	// RunStarted OPENS the run, with the plan summary beneath it — both BEFORE the notes
-	// stage, mirroring the batch processOneVersion ordering (RunStarted → plan → notes
-	// stage). RunInfo here depends ONLY on the resolved axes + req facts (project, version
-	// key, action), none of which depend on the produced body, so the header leads the
-	// blocking notes stage that follows. (The spec order still holds: source/target were
-	// asked above, the plan shows here, the confirm fires inside RegenerateWrite.)
-	deps.run.Start(presenter.RunInfo{
-		Project: req.Project,
-		Version: req.VersionKey,
-		Action:  regenerateAction,
-		Header:  deps.header(regenerateCommand, root),
-		Start:   presenter.Station{Name: req.Tag, Detail: sourceLabel(source) + " → " + targetLabel(target)},
-	})
-	p.ShowPlan(regeneratePlan(source, target, req.Tag, providerRelease(req.Config)))
+	// Plain's start line, with the plan beneath it — both BEFORE the notes stage,
+	// mirroring the batch processOneVersion ordering (start line → plan → notes stage).
+	// (The spec order still holds: source/target were asked above, the plan shows here,
+	// the confirm fires inside RegenerateWrite.)
+	p.RunStarted(info)
+	p.ShowPlan(regeneratePlan(source, target, req.Tag, release))
 
 	// Produce the body for the resolved source BEFORE the confirm — the notes-review
 	// gate (fresh) reviews this body. A production failure aborts before the confirm,
@@ -267,7 +276,7 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		}
 		gateSource = regenerateSourceFloor
 	} else {
-		stage.done()
+		stage.read(readFrom(source, release, req.NotesFile))
 	}
 
 	regens := stage.regens(func(lowerCap int) { hintLowerCap(p, lowerCap) })
@@ -421,35 +430,61 @@ func targetFromChoice(c presenter.Choice) RegenerateTarget {
 	}
 }
 
-// regeneratePlan builds the plan summary shown before the confirm: the source, the
-// target surface(s), and the tag, with the stages that write them. Create-vs-update is
-// resolved later per version (5-7), so the plan names the surfaces rather than the
-// dispatch decision. provider names the release the provider surface is. The push of
-// the changelog is the point of no return; a release-only target pushes nothing and
-// unwinds nothing, so it has none.
-func regeneratePlan(source RegenerateSource, target RegenerateTarget, tag, provider string) presenter.Plan {
-	steps := []presenter.PlanStep{
-		{Verb: "source", Target: sourceLabel(source)},
-	}
+// regeneratePlan builds the plan shown before the confirm: plain's steps, the source,
+// the target surface(s) and the tag, and the rail's stages that write them. Create-vs-
+// update is resolved later per version (5-7), so the plan names the surfaces rather
+// than the dispatch decision. release names the release the provider surface is. The
+// changelog is one node from its rewrite to its push, so the plan marks no point of
+// no return inside it.
+func regeneratePlan(source RegenerateSource, target RegenerateTarget, tag, release string) presenter.Plan {
 	stages := []presenter.PlanStage{
 		{Key: stageNotes, Name: stageNotes, Detail: sourceDetail(source)},
 		{Key: stageReview, Name: stageReview, Detail: "the notes before they are written"},
 	}
-	plan := presenter.Plan{}
+	if target.writesChangelog() {
+		stages = append(stages, presenter.PlanStage{Key: stageRecord, Name: record.ChangelogFileName, Detail: "rewritten, committed and pushed"})
+	}
+	if target.writesProvider() {
+		stages = append(stages, presenter.PlanStage{Key: stagePublish, Name: "release", Detail: release})
+	}
+	return presenter.Plan{Steps: regenerateSteps(source, target, tag), Stages: stages}
+}
+
+// regenerateSteps are plain's plan of a regenerate of tag: the source, then each
+// surface it writes.
+func regenerateSteps(source RegenerateSource, target RegenerateTarget, tag string) []presenter.PlanStep {
+	steps := []presenter.PlanStep{{Verb: "source", Target: sourceLabel(source)}}
 	if target.writesChangelog() {
 		steps = append(steps, presenter.PlanStep{Verb: "changelog", Target: tag})
-		stages = append(stages,
-			presenter.PlanStage{Key: stageRecord, Name: record.ChangelogFileName, Detail: "rewritten and committed"},
-			presenter.PlanStage{Key: stagePush, Name: stagePush, Detail: "HEAD → origin"},
-		)
-		plan.PointOfNoReturn = stagePush
 	}
 	if target.writesProvider() {
 		steps = append(steps, presenter.PlanStep{Verb: "release", Target: tag})
-		stages = append(stages, presenter.PlanStage{Key: stagePublish, Name: "release", Detail: provider})
 	}
-	plan.Steps, plan.Stages = steps, stages
-	return plan
+	return steps
+}
+
+// releaseName names the release publisher writes: its driver's own name for it, as
+// GitHub's gives, else a provider release, as a run with no driver resolved writes
+// none.
+func releaseName(publisher publish.Publisher) string {
+	if named, ok := publisher.(interface{ ReleaseName() string }); ok {
+		return named.ReleaseName()
+	}
+	return aProviderRelease
+}
+
+// readFrom is where a regenerate from source read its notes, release naming the
+// provider's, and notesFile a supplied body's: "" for fresh notes, which are written.
+func readFrom(source RegenerateSource, release, notesFile string) string {
+	switch source {
+	case RegenerateSourceTag:
+		return "read from the tag annotation"
+	case RegenerateSourceRelease:
+		return "read from the " + release
+	case regenerateSourceSupplied:
+		return notesSource(notes.KindSupplied, notesFile)
+	}
+	return ""
 }
 
 // sourceDetail is what the notes stage of a regenerate from source does.
@@ -466,16 +501,40 @@ func sourceDetail(source RegenerateSource) string {
 	}
 }
 
-// targetLabel renders the target surface(s) for the start station, in the target
-// prompt's words.
-func targetLabel(target RegenerateTarget) string {
+// targetLabel renders the target surface(s) for the start station, release naming
+// the provider's.
+func targetLabel(target RegenerateTarget, release string) string {
 	switch target {
 	case RegenerateTargetChangelog:
 		return record.ChangelogFileName
 	case RegenerateTargetBoth:
-		return record.ChangelogFileName + " + provider release"
+		return record.ChangelogFileName + " + " + release
 	default:
-		return "provider release"
+		return release
+	}
+}
+
+// regenerateMoveCommand is mint release regenerate of tag from source to target, as a
+// next move names it: the run's own source and target, the source left out where it
+// is the default, fresh notes. -y and --plain are how the run was attended and
+// printed, which the reader pasting the move decides afresh.
+func regenerateMoveCommand(tag string, source RegenerateSource, target RegenerateTarget) string {
+	command := "mint release regenerate " + tag
+	if source == RegenerateSourceTag || source == RegenerateSourceRelease {
+		command += " --source " + sourceLabel(source)
+	}
+	return command + " --target " + string(targetChoice(target))
+}
+
+// targetChoice is the target prompt's key, and --target's value, for target.
+func targetChoice(target RegenerateTarget) presenter.Choice {
+	switch target {
+	case RegenerateTargetChangelog:
+		return choiceTargetChangelog
+	case RegenerateTargetBoth:
+		return choiceTargetBoth
+	default:
+		return choiceTargetRelease
 	}
 }
 

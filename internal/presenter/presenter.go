@@ -58,12 +58,12 @@ func writeNotesBody(w io.Writer, body string) {
 // churning callers — proof the payload structs extend by adding fields. Prompt
 // is the gate seam: its Gate model lives in gate.go.
 type Presenter interface {
-	// RunStarted renders the start-of-run brand/header line. Under regenerate's
-	// per-version narration (especially --all, oldest→newest) the engine emits ONE
-	// block per version, each opening with its own RunStarted; the presenter renders
-	// the blocks LINEARLY in emit order and adds NO per-version ordering of its own.
-	// Block ordering is engine-owned — the presenter renders whatever sequence it is
-	// handed.
+	// RunStarted renders the start-of-run brand/header line. A run opens once: a
+	// RunStarted while one is open fills in only the start station it lacks, so a
+	// regenerate can draw its header ahead of its questions and its station once they
+	// are answered, and plain's start line can still come later, as it always has, and
+	// once per version under regenerate --all (oldest→newest), whose blocks plain
+	// renders LINEARLY in emit order. Ordering is engine-owned.
 	RunStarted(info RunInfo)
 	// StageStarted renders the beginning of a stage (a spinner in pretty; a
 	// terse start line in plain for blocking stages only).
@@ -265,13 +265,11 @@ type Presenter interface {
 	// RunFinished or Prompt on an init run.
 	InitResult(r InitOutcome)
 	// RunFinished closes the run and renders the end-of-run success line for the
-	// outcomes that have one (see Outcome). A release, a single-version regenerate and
-	// a commit end every run they opened with RunStarted with exactly one. A
-	// regenerate --all backfill is the exception: it opens a block per version with a
-	// RunStarted of its own and closes the batch once, with one RunFinished, when its
-	// version loop finishes, even with every version skipped. That close comes before
-	// the changelog rebuild, which can still fail after it; a loop a decline or a
-	// cancel ends early closes nothing.
+	// outcomes that have one (see Outcome). Every run RunStarted opened closes with
+	// exactly one, however it ends. A regenerate --all backfill also sends plain's
+	// closing line Ahead, as its version loop finishes, even with every version
+	// skipped, before the changelog rebuild that can still fail after it; that one
+	// closes nothing, and its close, Quiet, follows the rebuild.
 	RunFinished(r RunResult)
 }
 
@@ -497,6 +495,16 @@ type RunInfo struct {
 	DryRun bool
 	Header Header
 	Start  Station
+	// Toward is the name of the station the run sets out for, which the plan's end
+	// waits at, where that is neither v{Version} nor the start's name: a --all
+	// backfill's "done". Plain and today's pretty ignore it.
+	Toward string
+	// Quiet marks a start that only opens the rail's drawing where plain's log, pinned
+	// byte for byte from before the rail, has no line for it: a regenerate's header
+	// ahead of its questions, and its start station once they are answered, both
+	// before plain's start line, which a regenerate --all prints per version. Plain
+	// and today's pretty write nothing.
+	Quiet bool
 }
 
 // Header is the data of the rail's header line: " mint ─ {Command}" on the left,
@@ -595,6 +603,12 @@ type StageSuccess struct {
 	// Blocking mirrors StageStart.Blocking for the same stage and gates whether a
 	// renderer shows ({elapsed}).
 	Blocking bool
+	// Ongoing marks the success of a step its stage goes on past, plain's line for it:
+	// a regenerate --all version's notes, which its review and its release follow, and
+	// a changelog's push, which its node's own success follows. The rail draws the node
+	// done, Row or Detail its detail, and keeps it open for its stage's later events.
+	// Plain and today's pretty ignore it.
+	Ongoing bool
 	// Sentence is the OPTIONAL human-readable completion line the PRETTY presenter
 	// renders in place of the "{name}  {detail}" column form — a full past-tense
 	// sentence ("Generated release notes", "Pushed branch + v1.4.0 atomically"). It
@@ -794,6 +808,10 @@ type Warning struct {
 	// the rail draws nothing for it and leaves Key's node to come, its plan detail.
 	// Plain and today's pretty ignore it.
 	Skipped bool
+	// Elapsed is the engine-measured time Key's stage ran before the warning ended it
+	// (a regenerate --all version skipped), zero for none. Plain and today's pretty
+	// ignore it.
+	Elapsed time.Duration
 	// Row is the warning's row where it reads differently from Message, plain's
 	// pinned line, which also names the remedy the engine sends the rail as Quiet
 	// next moves; empty where they read the same. Plain and today's pretty ignore it.
@@ -835,6 +853,10 @@ type Unwind struct {
 	// failed nodes, not as a node claiming what it undid. Plain and today's pretty
 	// ignore it.
 	Key string
+	// Quiet marks an unwind plain's log, pinned byte for byte from before the rail, has
+	// no line for: a regenerate's reset of its changelog commit. Plain and today's
+	// pretty write nothing.
+	Quiet bool
 }
 
 // Text is the unwind as one line, its non-empty parts joined with "; ".
@@ -848,13 +870,10 @@ func (u Unwind) Text() string {
 	return strings.Join(parts, "; ")
 }
 
-// Outcome is how a run ended, the discriminator RunFinished renders by. A release, a
-// single-version regenerate and a commit close every run they opened with one
-// RunFinished carrying its Outcome; a regenerate --all backfill opens a block per
-// version and closes the batch once, as OutcomeAllRegenerated, when its version loop
-// finishes, even with every version skipped, and before the changelog rebuild, which
-// can still fail after the close. A loop a decline or a cancel ends early closes
-// nothing.
+// Outcome is how a run ended, the discriminator RunFinished renders by. Every run
+// closes with one RunFinished carrying its Outcome; a regenerate --all backfill's
+// line, OutcomeAllRegenerated, goes Ahead of its close, as its version loop finishes
+// (see RunResult.Ahead). A loop a decline or a cancel ends early sends none Ahead.
 // Plain and today's pretty write today's success lines for the outcomes that had one —
 // released (with or without a warning), dry run, committed (with or without a
 // warning), and --all regenerated — and nothing for the rest, which end on lines of
@@ -932,4 +951,11 @@ type RunResult struct {
 	End Station
 	// Elapsed is the engine-measured time of the whole run.
 	Elapsed time.Duration
+	// Ahead marks plain's closing line of a regenerate --all backfill, which plain
+	// writes as the version loop ends, ahead of the changelog rebuild: the run goes on
+	// past it, so the rail draws nothing for it, and the run's close follows, Quiet.
+	Ahead bool
+	// Quiet marks a close plain's log has no line for, its line written Ahead. Plain
+	// and today's pretty write nothing.
+	Quiet bool
 }

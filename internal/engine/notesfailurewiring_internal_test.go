@@ -179,7 +179,7 @@ func TestResetAndAbort_ShowsTheFailingGitStepsStderr(t *testing.T) {
 
 			rec := &presentertest.RecordingPresenter{}
 			// committed=false so no reset mutation runs — the Mutator is never touched.
-			_ = resetAndAbort(t.Context(), ReleaseDeps{Presenter: rec}, resetTarget{HEAD: "startsha"}, false, "push", tc.cause)
+			_ = resetAndAbort(t.Context(), ReleaseDeps{Presenter: rec}, resetTarget{HEAD: "startsha"}, false, stageFailure("push", tc.cause), tc.cause)
 
 			sf := onlyStageFailure(t, rec)
 			if sf.Output != tc.output || sf.Message != tc.cause.Error() {

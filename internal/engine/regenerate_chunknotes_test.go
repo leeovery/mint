@@ -210,7 +210,7 @@ func TestRegenerateAll_FreshChunkedRunsFail_EachSkipNamesItsOwnSavedFileAndComma
 		{Label: "skipped v1.1.0", Message: cause1, Output: usageLimitOutput},
 		{Label: "skipped v1.3.0", Message: cause3, Output: usageLimitOutput},
 	}
-	if got := warnings(run.rec); !slices.Equal(got, wantWarns) {
+	if got := plainWarnings(run.rec); !slices.Equal(got, wantWarns) {
 		t.Errorf("warnings = %+v, want %+v", got, wantWarns)
 	}
 }
@@ -242,7 +242,7 @@ func TestRegenerate_NoChunkNotesToKeep_SavesNoFile(t *testing.T) {
 			if sf := onlyStageFailureEvent(t, run.rec); sf.SavedNotes != "" {
 				t.Errorf("StageFailure.SavedNotes = %q, want none named", sf.SavedNotes)
 			}
-			if got := warnings(run.rec); len(got) != 0 {
+			if got := plainWarnings(run.rec); len(got) != 0 {
 				t.Errorf("warnings = %+v, want none", got)
 			}
 		})
@@ -254,7 +254,7 @@ func TestRegenerate_NoChunkNotesToKeep_SavesNoFile(t *testing.T) {
 			run.regenerateAll(t, tc.produce, "v1.2.0")
 
 			assertNoSavedChunkNotes(t, run.base())
-			got := warnings(run.rec)
+			got := plainWarnings(run.rec)
 			if len(got) != 1 || !slices.ContainsFunc(tc.phrases, func(phrase string) bool { return got[0] == skipWarning("v1.2.0", phrase) }) {
 				t.Errorf("warnings = %+v, want only v1.2.0's skip reading one of %q", got, tc.phrases)
 			}
@@ -296,7 +296,7 @@ func TestRegenerateAll_ChunkNotesCannotBeWritten_WarnsAfterTheSkipAndTheBatchCar
 	run.regenerateAll(t, overCapFailing(failsSecondPart), "v1.1.0")
 
 	want := []presenter.Warning{skipWarning("v1.1.0", "AI call failed (part 2 of 2)"), unsavedChunkNotesWarning(errChunkNotesWrite.Error())}
-	if got := warnings(run.rec); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+	if got := plainWarnings(run.rec); len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("warnings = %+v, want %+v", got, want)
 	}
 	if got := dispatchedTags(run.pub); len(got) != 2 || got[0] != "v1.2.0" || got[1] != "v1.3.0" {

@@ -44,13 +44,14 @@ func reuseBatchReq(versions []version.Resolution, yes bool) engine.BatchRegenera
 	return batchReq(engine.RegenerateSourceTag, versions, yes)
 }
 
-// finishEvent returns the single RunFinished the recorder captured, failing if none
-// (or more than one) fired — a batch closes with exactly one end summary.
+// finishEvent returns the single RunFinished plain renders the recorder captured,
+// failing if none (or more than one) fired — a batch closes with exactly one end
+// summary. The rail's Quiet close of a --all run is not plain's.
 func finishEvent(t *testing.T, rec *presentertest.RecordingPresenter) presenter.RunResult {
 	t.Helper()
 	var results []presenter.RunResult
 	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindRunFinished {
+		if ev.Kind == presentertest.KindRunFinished && !ev.RunFinished.Quiet {
 			results = append(results, ev.RunFinished)
 		}
 	}
@@ -259,10 +260,21 @@ func TestRegenerateAllValidated_ConfigErrorAbortsUpFront(t *testing.T) {
 	if len(runStartedVersions(rec)) != 0 {
 		t.Errorf("a config-level error opened %d narration blocks; the batch must abort before any version", len(runStartedVersions(rec)))
 	}
+	assertClosedFailed(t, rec, "a config-level abort")
+}
+
+// assertClosedFailed checks what, a batch that ended short, closed its run once, as
+// failed, with no end summary: plain's success line never prints.
+func assertClosedFailed(t *testing.T, rec *presentertest.RecordingPresenter, what string) {
+	t.Helper()
+	var closes []presenter.RunResult
 	for _, ev := range rec.Events {
 		if ev.Kind == presentertest.KindRunFinished {
-			t.Errorf("a config-level abort still emitted an end summary; an aborted batch emits no success line")
+			closes = append(closes, ev.RunFinished)
 		}
+	}
+	if len(closes) != 1 || closes[0].Outcome != presenter.OutcomeFailed || closes[0].Summary != "" {
+		t.Errorf("%s closed with %+v, want one failed close and no end summary", what, closes)
 	}
 }
 
@@ -291,8 +303,14 @@ func TestRegenerateAllValidated_ValidConfigRunsBatch(t *testing.T) {
 	if len(pub.dispatched) != 3 {
 		t.Errorf("dispatched %d, want 3 (the batch runs when config is valid)", len(pub.dispatched))
 	}
-	if fin := finishEvent(t, rec); fin.Summary != "3 regenerated" {
-		t.Errorf("RunFinished.Summary = %q, want %q", fin.Summary, "3 regenerated")
+	if fin := finishEvent(t, rec); fin.Summary != "3 regenerated" || !fin.Ahead {
+		t.Errorf("plain's close = %+v, want %q, gone Ahead of the run's", fin, "3 regenerated")
+	}
+	// The backfill is one run, closed once, last, at done.
+	last := rec.Events[len(rec.Events)-1]
+	want := presenter.Station{Name: "done", Detail: "3 of 3 versions regenerated"}
+	if last.Kind != presentertest.KindRunFinished || !last.RunFinished.Quiet || last.RunFinished.End != want {
+		t.Errorf("last event = %v %+v, want the run's Quiet close at %+v", last.Kind, last.RunFinished, want)
 	}
 }
 
@@ -332,8 +350,8 @@ func assertCancelEndedBatch(t *testing.T, rec *presentertest.RecordingPresenter,
 		if ev.Kind == presentertest.KindWarn && strings.HasPrefix(ev.Warn.Label, "skipped ") {
 			t.Errorf("a cancel was reported as a skip: warn %q %q", ev.Warn.Label, ev.Warn.Message)
 		}
-		if ev.Kind == presentertest.KindRunFinished {
-			t.Errorf("a cancelled batch emitted a RunFinished %+v; a cancel ends the batch with no end summary", ev.RunFinished)
+		if ev.Kind == presentertest.KindRunFinished && ev.RunFinished.Outcome == presenter.OutcomeAllRegenerated {
+			t.Errorf("a cancelled batch emitted an end summary %+v; a cancel ends the batch with none", ev.RunFinished)
 		}
 	}
 	if got := stageFailedName(t, rec); got != "notes" {
@@ -413,7 +431,7 @@ func TestRegenerateAll_NotesFailureStillSkipsWithWarn(t *testing.T) {
 	var skipWarns []presenter.Warning
 	for _, ev := range rec.Events {
 		if ev.Kind == presentertest.KindWarn && strings.HasPrefix(ev.Warn.Label, "skipped ") {
-			skipWarns = append(skipWarns, ev.Warn)
+			skipWarns = append(skipWarns, presenter.Warning{Label: ev.Warn.Label, Message: ev.Warn.Message, Output: ev.Warn.Output})
 		}
 	}
 	want := []presenter.Warning{{Label: "skipped " + batchV2Tag, Message: "AI returned empty notes"}}

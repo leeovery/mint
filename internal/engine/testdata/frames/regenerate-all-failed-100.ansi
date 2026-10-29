@@ -1,0 +1,9 @@
+ mint ─ release regenerate --all                                              ~/Code/pigeon · v0.1.2
+
+ ◇  4 versions    fresh notes → GitHub releases
+ │
+ ●  v1.0.0        GitHub release · the first release's default                                  2.1s
+ ●  v1.1.0        GitHub release                                                                2.1s
+ ✗  v1.2.0        updating GitHub release for tag "v1.2.0": exit status 1                       2.1s
+ │
+ ◇  4 versions    2 GitHub releases written · nothing committed · nothing pushed                9.1s

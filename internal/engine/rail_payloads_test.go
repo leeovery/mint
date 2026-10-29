@@ -49,6 +49,51 @@ func runInfo(t *testing.T, rec *presentertest.RecordingPresenter) presenter.RunI
 	return rec.Events[indexOfKind(rec, presentertest.KindRunStarted)].RunStarted
 }
 
+// regenerateStarts returns a regenerate's three starts: the Quiet opening that carries
+// its header ahead of the questions, the Quiet start station once they are answered,
+// and plain's start line after the preflight.
+func regenerateStarts(t *testing.T, rec *presentertest.RecordingPresenter) []presenter.RunInfo {
+	t.Helper()
+	var starts []presenter.RunInfo
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindRunStarted {
+			starts = append(starts, ev.RunStarted)
+		}
+	}
+	if len(starts) != 3 {
+		t.Fatalf("RunStarted events = %+v, want three; kinds = %v", starts, rec.Kinds())
+	}
+	return starts
+}
+
+// stageSuccesses returns every StageSucceeded keyed key, in order.
+func stageSuccesses(rec *presentertest.RecordingPresenter, key string) []presenter.StageSuccess {
+	var found []presenter.StageSuccess
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == key {
+			found = append(found, ev.StageSucceeded)
+		}
+	}
+	return found
+}
+
+// countStarts counts the StageStarted events named name.
+func countStarts(rec *presentertest.RecordingPresenter, name string) int {
+	n := 0
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Name == name {
+			n++
+		}
+	}
+	return n
+}
+
+// sameSuccess reports whether got is want but for its engine-measured Elapsed.
+func sameSuccess(got, want presenter.StageSuccess) bool {
+	got.Elapsed = want.Elapsed
+	return got == want
+}
+
 // quietPlan returns the run's one quiet plan: its stages for the rail.
 func quietPlan(t *testing.T, rec *presentertest.RecordingPresenter) presenter.Plan {
 	t.Helper()
@@ -803,30 +848,38 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
 
-	info := runInfo(t, rec)
-	if want := (presenter.Station{Name: regenRunTag, Detail: "fresh → CHANGELOG.md + provider release"}); info.Start != want {
-		t.Errorf("Start = %+v, want %+v", info.Start, want)
+	header := presenter.Header{Command: "release regenerate", Where: "~/" + filepath.Base(dir), Version: "0.1.2"}
+	start := presenter.Station{Name: regenRunTag, Detail: "fresh → CHANGELOG.md + provider release"}
+	starts := regenerateStarts(t, rec)
+	if opened := starts[0]; !opened.Quiet || opened.Header != header || opened.Start != (presenter.Station{}) {
+		t.Errorf("opening = %+v, want a Quiet start carrying the header %+v alone", opened, header)
 	}
-	if want := (presenter.Header{Command: "release regenerate", Where: "~/" + filepath.Base(dir), Version: "0.1.2"}); info.Header != want {
-		t.Errorf("Header = %+v, want %+v", info.Header, want)
+	if stationed := starts[1]; !stationed.Quiet || stationed.Start != start {
+		t.Errorf("station = %+v, want a Quiet start carrying %+v", stationed, start)
+	}
+	if plain := starts[2]; plain.Quiet || plain.Version != regenRunVersionKey {
+		t.Errorf("plain's start = %+v, want plain's line for %s", plain, regenRunVersionKey)
 	}
 	plan := rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan
 	wantStages := []presenter.PlanStage{
 		{Key: "notes", Name: "notes", Detail: "written by the AI"},
 		{Key: "review", Name: "review", Detail: "the notes before they are written"},
-		{Key: "record", Name: "CHANGELOG.md", Detail: "rewritten and committed"},
-		{Key: "push", Name: "push", Detail: "HEAD → origin"},
+		{Key: "record", Name: "CHANGELOG.md", Detail: "rewritten, committed and pushed"},
 		{Key: "publish", Name: "release", Detail: "provider release"},
 	}
-	if !slices.Equal(plan.Stages, wantStages) || plan.PointOfNoReturn != "push" {
-		t.Errorf("plan = %+v / %q, want %+v / push", plan.Stages, plan.PointOfNoReturn, wantStages)
+	if !slices.Equal(plan.Stages, wantStages) || plan.PointOfNoReturn != "" {
+		t.Errorf("plan = %+v / %q, want %+v and no point of no return", plan.Stages, plan.PointOfNoReturn, wantStages)
 	}
 	assertKeysInPlan(t, rec, plan)
-	if got := stageSuccess(t, rec, "record"); got.Commit != "docs(changelog): regenerate notes for "+regenRunTag || !got.Quiet {
-		t.Errorf("record success = %+v, want a quiet settle carrying the changelog commit's subject", got)
+	record := stageSuccesses(rec, "record")
+	if len(record) != 2 || record[0].Name != "push" || !record[0].Ongoing || record[0].Quiet {
+		t.Fatalf("record successes = %+v, want plain's push as an Ongoing step of the node, then the node's own", record)
 	}
-	if got := stageSuccess(t, rec, "publish"); got.Detail != "written" || !got.Quiet {
-		t.Errorf("publish success = %+v, want a quiet settle", got)
+	if want := (presenter.StageSuccess{Name: "record", Key: "record", Quiet: true, Detail: "rewritten · committed and pushed", Commit: "docs(changelog): regenerate notes for " + regenRunTag, Blocking: true}); !sameSuccess(record[1], want) {
+		t.Errorf("CHANGELOG.md success = %+v, want %+v", record[1], want)
+	}
+	if got := stageSuccess(t, rec, "publish"); got.Detail != "provider release written" || !got.Quiet {
+		t.Errorf("publish success = %+v, want a quiet settle naming the release written", got)
 	}
 	if gates := promptGates(rec); len(gates) != 1 || gates[0].Stage != "review" {
 		t.Errorf("questions = %+v, want the one review question on the review node", gates)
@@ -908,6 +961,8 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		name string
 		tail []runner.ScriptedCall
 		end  string
+		// unwound is a run whose reset ran, which closes as unwound.
+		unwound bool
 	}{
 		{
 			name: "a commit that fails leaves the rewrite",
@@ -915,14 +970,16 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 			end:  "CHANGELOG.md written, not committed · nothing pushed",
 		},
 		{
-			name: "a rejected push resets the commit",
-			tail: []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
-			end:  "changelog commit reset · back where it started · nothing pushed",
+			name:    "a rejected push resets the commit",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
+			end:     "back where it started · nothing pushed",
+			unwound: true,
 		},
 		{
-			name: "a rejected push whose reset fails needs cleaning up",
-			tail: []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure()},
-			end:  "manual cleanup required · nothing pushed",
+			name:    "a rejected push whose reset fails needs cleaning up",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure()},
+			end:     "manual cleanup required · nothing pushed",
+			unwound: true,
 		},
 	}
 	for _, tt := range tests {
@@ -933,8 +990,12 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 
 			assertAbortNonZero(t, err)
 			fin := closingEvent(t, rec)
-			if want := (presenter.Station{Name: regenRunTag, Detail: tt.end}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
-				t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+			outcome := presenter.OutcomeFailed
+			if tt.unwound {
+				outcome = presenter.OutcomeUnwound
+			}
+			if want := (presenter.Station{Name: regenRunTag, Detail: tt.end}); fin.Outcome != outcome || fin.End != want {
+				t.Errorf("close = %v %+v, want %v %+v", fin.Outcome, fin.End, outcome, want)
 			}
 		})
 	}
@@ -963,11 +1024,11 @@ func TestRegenerateRun_Rail_AnUnchangedChangelogSettlesThePushAsSkipped(t *testi
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
 
-	if got := stageSuccess(t, rec, "record"); got.Detail != "unchanged" || !got.Quiet {
-		t.Errorf("record success = %+v, want a quiet unchanged settle", got)
+	if got := stageSuccess(t, rec, "record"); got.Detail != "unchanged · nothing to push" || !got.Quiet {
+		t.Errorf("record success = %+v, want a quiet settle saying it is unchanged, so nothing is pushed", got)
 	}
-	if got := stageSuccess(t, rec, "push"); got.Detail != "skipped: nothing to push" || !got.Quiet {
-		t.Errorf("push success = %+v, want a quiet settle saying why it was skipped", got)
+	if n := countStarts(rec, "push"); n != 0 {
+		t.Errorf("push starts = %d, want none: nothing was committed to push", n)
 	}
 	assertKeysInPlan(t, rec, rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan)
 	assertEveryPlannedStageSettled(t, rec)

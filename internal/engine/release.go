@@ -219,8 +219,8 @@ type ReleaseDeps struct {
 	Home        string
 	// Clock is what the run and its stages are timed by, the wall clock when nil.
 	Clock func() time.Time
-	// run closes the run Release or RegenerateRun opened; nil outside them (a --all
-	// backfill's versions, a test driving Unwind alone).
+	// run closes the run Release, RegenerateRun or RegenerateAllRun opened; nil
+	// outside them (a test driving RegenerateAll or Unwind alone).
 	run *runclose.Run
 }
 

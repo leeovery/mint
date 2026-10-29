@@ -161,15 +161,29 @@ func startBlockingStage(p presenter.Presenter, now func() time.Time, name, text 
 // startBlockingStageSince is startBlockingStage for a stage whose wait began at
 // started, before the stage was narrated.
 func startBlockingStageSince(p presenter.Presenter, now func() time.Time, name, text string, started time.Time) *blockingStage {
-	p.StageStarted(presenter.StageStart{Name: name, Key: name, Blocking: true, Text: text})
-	return &blockingStage{p: p, now: now, name: name, started: started}
+	return startStep(p, now, stepOf{name: name, key: name}, text, started)
 }
 
-// startQuietStage is startBlockingStage for a stage plain has no lines for: its start
+// stepOf is what a blocking stage is a step of: name is its label, plain's text, and
+// key the plan stage its events fill, its name but where it runs on another stage's
+// node. ongoing marks a step the node goes on past, whose success is Ongoing: a
+// regenerate --all version's notes, a changelog's push.
+type stepOf struct {
+	name, key string
+	ongoing   bool
+}
+
+// startStep is startBlockingStageSince for a stage that is step.
+func startStep(p presenter.Presenter, now func() time.Time, step stepOf, text string, started time.Time) *blockingStage {
+	p.StageStarted(presenter.StageStart{Name: step.name, Key: step.key, Blocking: true, Text: text})
+	return &blockingStage{p: p, now: now, step: step, started: started}
+}
+
+// startQuietStep is startStep, from now, for a step plain has no lines for: its start
 // and its success are Quiet.
-func startQuietStage(p presenter.Presenter, now func() time.Time, name, text string) *blockingStage {
-	p.StageStarted(presenter.StageStart{Name: name, Key: name, Blocking: true, Text: text, Quiet: true})
-	return &blockingStage{p: p, now: now, name: name, started: now(), quiet: true}
+func startQuietStep(p presenter.Presenter, now func() time.Time, step stepOf, text string) *blockingStage {
+	p.StageStarted(presenter.StageStart{Name: step.name, Key: step.key, Blocking: true, Text: text, Quiet: true})
+	return &blockingStage{p: p, now: now, step: step, started: now(), quiet: true}
 }
 
 // blockingStage is a blocking stage under way, timed by now from when its wait
@@ -177,7 +191,7 @@ func startQuietStage(p presenter.Presenter, now func() time.Time, name, text str
 type blockingStage struct {
 	p        presenter.Presenter
 	now      func() time.Time
-	name     string
+	step     stepOf
 	sentence string
 	started  time.Time
 	quiet    bool
@@ -188,9 +202,10 @@ func (s *blockingStage) done(detail string) {
 	s.succeeded(presenter.StageSuccess{Detail: detail, Sentence: s.sentence})
 }
 
-// succeeded narrates the stage's success, filling in its name, key and elapsed.
+// succeeded narrates the stage's success, filling in its name, key, elapsed and
+// whether its node goes on past it.
 func (s *blockingStage) succeeded(success presenter.StageSuccess) {
-	success.Name, success.Key, success.Quiet = s.name, s.name, s.quiet
+	success.Name, success.Key, success.Quiet, success.Ongoing = s.step.name, s.step.key, s.quiet, s.step.ongoing
 	success.Elapsed, success.Blocking = s.elapsed(), true
 	s.p.StageSucceeded(success)
 }
@@ -202,7 +217,7 @@ func (s *blockingStage) elapsed() time.Duration {
 
 // failure is the StageFailed payload for the stage failing on cause, timed.
 func (s *blockingStage) failure(cause error) presenter.StageFailure {
-	failure := stageFailure(s.name, cause)
-	failure.Elapsed = s.elapsed()
+	failure := stageFailure(s.step.name, cause)
+	failure.Key, failure.Elapsed = s.step.key, s.elapsed()
 	return failure
 }

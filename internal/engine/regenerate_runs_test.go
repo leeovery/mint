@@ -12,6 +12,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,11 +20,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/muesli/termenv"
+
 	"mint/internal/ai"
 	"mint/internal/config"
 	"mint/internal/engine"
 	"mint/internal/git"
 	"mint/internal/presenter"
+	"mint/internal/presenter/frametest"
 	"mint/internal/publish"
 	"mint/internal/record"
 	"mint/internal/release"
@@ -198,21 +202,24 @@ func versionNotes(empty ...string) func(context.Context, engine.RegenerateSource
 // their notes written by notes.
 func (w *regenWorld) all(t *testing.T, n int, target engine.RegenerateTarget, notes func(context.Context, engine.RegenerateSource, version.Resolution, string, engine.NotesSinks) (string, error)) error {
 	t.Helper()
-	p := w.deps.Presenter
-	source, resolved, err := engine.ResolveRegenerateAxes(p, engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(target), true)
-	if err != nil {
-		return err
-	}
-	return engine.RegenerateAllValidated(t.Context(), w.deps, w.publisher, w.root, engine.BatchRegenerateRequest{
-		Source:        source,
-		Versions:      resolutions(n),
-		Project:       "pigeon",
-		TagPrefix:     "v",
-		Yes:           w.deps.Yes,
-		Target:        resolved,
-		ReleaseBranch: "main",
-		ProduceBody:   notes,
-	}, true)
+	return engine.RegenerateAllRun(t.Context(), w.deps, w.root, engine.RegenerateAllRunRequest{
+		Source:           engine.SourceOf(engine.RegenerateSourceFresh),
+		Target:           engine.TargetOf(target),
+		ChangelogEnabled: true,
+		Project:          "pigeon",
+		Prepare: func(_ context.Context, source engine.RegenerateSource, target engine.RegenerateTarget) (engine.BatchRegenerateRequest, publish.Publisher, error) {
+			return engine.BatchRegenerateRequest{
+				Source:        source,
+				Versions:      resolutions(n),
+				Project:       "pigeon",
+				TagPrefix:     "v",
+				Yes:           w.deps.Yes,
+				Target:        target,
+				ReleaseBranch: "main",
+				ProduceBody:   notes,
+			}, w.publisher, nil
+		},
+	})
 }
 
 // rebuilt scripts the --all changelog rebuild of the first n releases, those in
@@ -286,6 +293,67 @@ var regenRuns = map[string]regenRun{
 		w.gh()
 		return w.all(t, 3, engine.RegenerateTargetRelease, versionNotes())
 	}},
+}
+
+// railRegenerate runs r on the rail, on a terminal set up as the release frames' is,
+// then ends the drawing as the cmd layer does, and returns the run's error and
+// everything on the terminal. A run whose terminal echoes has its answers typed at
+// it: the terminal shows each line as it is read.
+func railRegenerate(t *testing.T, r regenRun) (string, error) {
+	t.Helper()
+	term := frametest.NewTerminal(railCols, railRows)
+	var in io.Reader = strings.NewReader(r.answers)
+	if r.echo {
+		in = &typedInput{lines: strings.SplitAfter(r.answers, "\n"), term: term}
+	}
+	p := presenter.NewRailPresenter(term,
+		presenter.WithRailInput(in),
+		presenter.WithRailEcho(r.echo),
+		presenter.WithRailGating(r.yes, true),
+		presenter.WithRailProfile(termenv.Ascii),
+		presenter.WithRailSize(func() (int, int) { return railCols, railRows }),
+		presenter.WithRailTicker(stillTicker),
+		presenter.WithRailClock(func() time.Time { return railEpoch }),
+	)
+	err := r.run(t, newRegenWorld(t, p, r.yes))
+	p.Close()
+	if terr := term.Err(); terr != nil {
+		t.Fatalf("the terminal was written what it can't apply: %v", terr)
+	}
+	return term.ANSI(), err
+}
+
+// typedInput is what is typed at a terminal in cooked mode: each read is one line,
+// which the terminal echoes where its cursor stands.
+type typedInput struct {
+	lines []string
+	term  io.Writer
+}
+
+func (in *typedInput) Read(p []byte) (int, error) {
+	if len(in.lines) == 0 || in.lines[0] == "" {
+		return 0, io.EOF
+	}
+	line := in.lines[0]
+	in.lines = in.lines[1:]
+	if _, err := io.WriteString(in.term, strings.ReplaceAll(line, "\n", "\r\n")); err != nil {
+		return 0, err
+	}
+	return copy(p, line), nil
+}
+
+// regenerateFrames draws every regenerate run on the rail, by name.
+func regenerateFrames(t *testing.T) map[string]string {
+	t.Helper()
+	drawn := map[string]string{}
+	for name, r := range regenRuns {
+		screen, err := railRegenerate(t, r)
+		if aborted := err != nil; aborted != r.aborted {
+			t.Errorf("%s: the run returned %v, want aborted %v", name, err, r.aborted)
+		}
+		drawn[name] = screen
+	}
+	return drawn
 }
 
 // plainRegenerate runs r in plain, and returns its stdout, then its stderr under a

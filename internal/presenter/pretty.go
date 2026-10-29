@@ -344,8 +344,11 @@ func leafOrDefault(leaf string) string {
 // verb-shaped from the payload rather than hardcoding "🌿" or "releasing". A
 // version-LESS run (commit has no version to announce) omits the " v{X}" segment
 // entirely rather than dangling a bare "v" — the same no-dangling-segment rule the
-// footer follows.
+// footer follows. A Quiet start renders nothing.
 func (p *PrettyPresenter) RunStarted(info RunInfo) {
+	if info.Quiet {
+		return
+	}
 	leaf := leafOrDefault(info.Leaf)
 	// A dry run carries a trailing marker so the whole transcript reads as a preview
 	// from line one: "… releasing acme v1.4.0  · dry run". The marker is dimmed — it
@@ -654,8 +657,11 @@ func (p *PrettyPresenter) PreviewGate(gate Gate) {
 // bottom brand line — covering BOTH the failure path (StageFailed → Unwound) and
 // the abort path (gate-n: Unwound with no prior StageFailed). The ↩ glyph is styled
 // dim; the layout (indent, glyph, column padding) survives a colour downgrade as
-// bare text.
+// bare text. A Quiet unwind renders nothing.
 func (p *PrettyPresenter) Unwound(u Unwind) {
+	if u.Quiet {
+		return
+	}
 	p.terminalFailure = true
 	glyph := p.unwound.Render("↩")
 	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage("unwound"), u.Text())
@@ -1106,9 +1112,9 @@ func (p *PrettyPresenter) InitResult(r InitOutcome) {
 //     the version set).
 //   - OutcomeCommitted and OutcomeCommittedWithWarning: version-less and URL-less —
 //     "{leaf} committed {project}".
-//   - Every other outcome renders NOTHING.
+//   - Every other outcome renders NOTHING, as does a Quiet close.
 func (p *PrettyPresenter) RunFinished(r RunResult) {
-	if p.terminalFailure {
+	if p.terminalFailure || r.Quiet {
 		return
 	}
 	switch r.Outcome {

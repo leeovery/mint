@@ -19,6 +19,6 @@ Show
 Type "mint release regenerate --all --target both -y"
 Enter
 Wait
-# The line only a batch with its one skip prints.
-Wait+Screen /6 regenerated, 1 skipped: v1\.2\.0/
+# The end only a batch with its one skip lands at.
+Wait+Screen /done +6 of 7 versions regenerated · 1 skipped/
 Sleep 600ms

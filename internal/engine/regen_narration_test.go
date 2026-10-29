@@ -139,12 +139,12 @@ func assertRegenNarratesAsBuilt(t *testing.T, rec *presentertest.RecordingPresen
 		switch {
 		case ev.Kind == presentertest.KindNotesProgress, ev.Kind == presentertest.KindNotesHalving, ev.Kind == presentertest.KindNotesMerging:
 			t.Errorf("after the first notes shown, got %v, want the r to narrate no chunked run", ev.Kind)
-		case ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Key == "notes":
+		case ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Name == "notes":
 			starts++
 			if s := ev.StageStarted; !s.Quiet || !s.Blocking {
 				t.Errorf("the r's notes start = %+v, want a Quiet blocking start", s)
 			}
-		case ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == "notes":
+		case ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Name == "notes":
 			successes++
 			if s := ev.StageSucceeded; !s.Quiet || !s.Blocking {
 				t.Errorf("the r's notes success = %+v, want a Quiet blocking success", s)

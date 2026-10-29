@@ -58,6 +58,13 @@ type part struct {
 	// running where there is no region to hold it, a question printed to read a
 	// typed line at.
 	shown bool
+	// read is a question printed for a line typed at it, which stays, with the line,
+	// as its answer's record.
+	read bool
+	// ongoing is a node done with a step its stage goes on past, kept open for the
+	// stage's later events: not finished, so it neither settles nor makes way for a
+	// node of its own.
+	ongoing bool
 	// reached, crossed and ended are the point of no return's: its stage under way,
 	// done, and over, done or not.
 	reached, crossed, ended bool
@@ -116,12 +123,13 @@ func (pt *part) running() bool {
 }
 
 // finished is whether nothing more will change the part: a node past running or
-// passed by, a rule whose stage is over, a previewed question. A body and a question go when the
-// question is answered, the end station when the run ends.
+// passed by, and not ongoing, a rule whose stage is over, a previewed question. A
+// body and a question go when the question is answered, the end station when the run
+// ends.
 func (pt *part) finished() bool {
 	switch pt.kind {
 	case nodePart:
-		return !pt.hidden && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
+		return !pt.hidden && !pt.ongoing && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
 	case rulePart:
 		return pt.ended
 	case previewPart:
@@ -190,8 +198,9 @@ type runModel struct {
 	lastBody        string
 	pointOfNoReturn string
 	// endName is the name of the end station the plan waits on, "" for a run with no
-	// start station.
-	endName string
+	// start station, and stationed whether the run has drawn its start station.
+	endName   string
+	stationed bool
 	// moves are the ways forward from a failure, and suggested the exclusion
 	// check's suggestions, next's items in that order.
 	moves, suggested []rail.Move
@@ -227,24 +236,29 @@ func lives(parts []*part, now time.Time) []rail.Live {
 	return region
 }
 
-// start opens a run under info's header at its start station, closing any run open:
-// a regenerate --all opens one per version.
+// start opens a run under info's header, at its start station where it has one. A
+// run opens once: a start while one is open (the station of a regenerate whose header
+// came ahead of its questions, plain's start line after it, one per version under
+// --all) draws only the start station the run lacks, below what came before it.
 func (m *runModel) start(info RunInfo) {
-	if m.open {
-		m.finish(rail.End{}, false)
+	if !m.open {
+		m.settleNext()
+		m.settleItem(rail.Header{Command: info.Header.Command, Where: info.Header.Where, Version: info.Header.Version})
+		m.endName, m.stationed = "", false
+		m.dryRun = info.DryRun
+		m.open, m.closed, m.touched = true, false, nil
 	}
-	m.settleNext()
-	m.settleItem(rail.Header{Command: info.Header.Command, Where: info.Header.Where, Version: info.Header.Version})
-	m.endName = ""
-	if info.Start.Name != "" {
-		m.settleItem(rail.Station{Kind: rail.Start, Name: info.Start.Name, Detail: info.Start.Detail})
-		m.endName = info.Start.Name
-		if info.Version != "" {
-			m.endName = "v" + info.Version
-		}
+	if m.stationed || info.Start.Name == "" {
+		return
 	}
-	m.dryRun = info.DryRun
-	m.open, m.closed, m.touched = true, false, nil
+	m.settle(len(m.parts))
+	m.settleItem(rail.Station{Kind: rail.Start, Name: info.Start.Name, Detail: info.Start.Detail})
+	m.stationed = true
+	end := info.Start.Name
+	if info.Version != "" {
+		end = "v" + info.Version
+	}
+	m.endName = firstOf(info.Toward, end)
 }
 
 // plan lays the plan's stages out as nodes to come, below the stages already drawn,

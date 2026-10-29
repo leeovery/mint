@@ -1,7 +1,8 @@
 package engine_test
 
-// This file holds the golden runs of a release on the rail: the real orchestrator,
-// its git, AI and gh scripted on a FakeRunner, drawing through a RailPresenter onto a
+// This file holds the golden runs of a release on the rail, and the check holding them
+// and the regenerate runs (regenerate_runs_test.go) to their frames: the real
+// orchestrator, its git, AI and gh scripted on a FakeRunner, drawing through a RailPresenter onto a
 // virtual terminal 100 columns wide with colour off. Each run's whole screen once it
 // is over, scrollback included, is held to its frame in testdata/frames cell for
 // cell. The engine is timed by a clock that steps at each read, and the presenter's
@@ -10,6 +11,7 @@ package engine_test
 
 import (
 	"context"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -424,7 +426,9 @@ func gitRejected(stderr string) runner.ScriptedCall {
 	return gitFailing(stderr)
 }
 
-func TestRelease_RailFrames(t *testing.T) {
+// TestRail_Frames holds the release runs and the regenerate runs to their frames in
+// one check, as -update clears the frames no run draws.
+func TestRail_Frames(t *testing.T) {
 	t.Parallel()
 
 	drawn := map[string]string{}
@@ -435,6 +439,7 @@ func TestRelease_RailFrames(t *testing.T) {
 		}
 		drawn[name] = screen
 	}
+	maps.Copy(drawn, regenerateFrames(t))
 
 	frametest.Check(t, "testdata/frames", drawn)
 }

@@ -28,6 +28,28 @@ var quietMoves = presenter.NextMoves{
 	Moves: []presenter.NextMove{{Lead: "Reset HEAD back to 4f9c2e1:", Command: "git reset --hard 4f9c2e1"}},
 }
 
+// quietStation is a regenerate's start station, drawn once its questions are answered:
+// plain's start line comes later.
+var quietStation = presenter.RunInfo{
+	Project: "pigeon",
+	Version: "1.4.0",
+	Header:  presenter.Header{Command: "release regenerate", Where: "~/Code/pigeon"},
+	Start:   presenter.Station{Name: "v1.4.0", Detail: "fresh → GitHub release"},
+	Quiet:   true,
+}
+
+// quietUnwind is a regenerate's reset of its changelog commit, which plain has no
+// line for.
+var quietUnwind = presenter.Unwind{Key: "unwind", Undone: "reset the changelog commit", Quiet: true}
+
+// quietClose is a regenerate --all's close, which plain's end summary went ahead of.
+var quietClose = presenter.RunResult{
+	Project: "pigeon",
+	Outcome: presenter.OutcomeAllRegenerated,
+	End:     presenter.Station{Name: "done", Detail: "6 of 7 versions regenerated · 1 skipped"},
+	Quiet:   true,
+}
+
 // quietReview is the review a dry run previews only for the rail.
 func quietReview() presenter.Gate {
 	g := presenter.ReleaseReviewGate()
@@ -70,6 +92,21 @@ func TestQuietEvents_WriteNothingInPlainOrTodaysPretty(t *testing.T) {
 			name:   "quiet next moves",
 			plain:  func(p *presenter.PlainPresenter) { p.NextMoves(quietMoves) },
 			pretty: func(p *presenter.PrettyPresenter) { p.NextMoves(quietMoves) },
+		},
+		{
+			name:   "a quiet start",
+			plain:  func(p *presenter.PlainPresenter) { p.RunStarted(quietStation) },
+			pretty: func(p *presenter.PrettyPresenter) { p.RunStarted(quietStation) },
+		},
+		{
+			name:   "a quiet unwind",
+			plain:  func(p *presenter.PlainPresenter) { p.Unwound(quietUnwind) },
+			pretty: func(p *presenter.PrettyPresenter) { p.Unwound(quietUnwind) },
+		},
+		{
+			name:   "a quiet close",
+			plain:  func(p *presenter.PlainPresenter) { p.RunFinished(quietClose) },
+			pretty: func(p *presenter.PrettyPresenter) { p.RunFinished(quietClose) },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

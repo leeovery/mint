@@ -114,8 +114,12 @@ func (p *PlainPresenter) errf(format string, args ...any) {
 // "releasing", "regenerating", … — never a hardcoded literal. The bare payload
 // version is rendered with a "v" prefix; a version-LESS run (commit has no version
 // to announce) omits the segment entirely rather than dangling a bare "v" — the
-// same no-dangling-segment rule the success/footer lines follow.
+// same no-dangling-segment rule the success/footer lines follow. A Quiet start
+// renders nothing.
 func (p *PlainPresenter) RunStarted(info RunInfo) {
+	if info.Quiet {
+		return
+	}
 	// A dry run carries a trailing " (dry run)" marker so a live-tail/pipe consumer
 	// sees the preview framing from the first line, mirroring the pretty marker.
 	marker := ""
@@ -285,8 +289,12 @@ func (p *PlainPresenter) NotesMerging(m NotesMerge) {
 // path (StageFailed → Unwound) and the abort path (gate-n: Unwound with no prior
 // StageFailed). The synthesised "unwound: " prefix is byte-pure ASCII; the summary
 // is engine content rendered verbatim (the byte-purity guard scans the synthesised
-// prefix, not the engine summary).
+// prefix, not the engine summary). A Quiet unwind renders nothing and sets nothing:
+// the failure before it has already marked the run.
 func (p *PlainPresenter) Unwound(u Unwind) {
+	if u.Quiet {
+		return
+	}
 	p.terminalFailure = true
 	p.writef("unwound: %s\n", u.Text())
 }
@@ -533,9 +541,10 @@ func (p *PlainPresenter) InitResult(r InitOutcome) {
 //     Summary rendered VERBATIM; the presenter never computes the version set.
 //   - OutcomeCommitted and OutcomeCommittedWithWarning: version-less and URL-less —
 //     "done: {project} committed".
-//   - Every other outcome renders NOTHING.
+//   - Every other outcome renders NOTHING, as does a Quiet close, whose line went
+//     Ahead.
 func (p *PlainPresenter) RunFinished(r RunResult) {
-	if p.terminalFailure {
+	if p.terminalFailure || r.Quiet {
 		return
 	}
 	switch r.Outcome {
