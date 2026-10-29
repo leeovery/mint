@@ -218,26 +218,68 @@ func TestRun_Rail_AFailedPreflightIsTheDiffNode(t *testing.T) {
 	}
 }
 
-func TestRun_Rail_ACommitFailingAfterStagingClosesSayingTheChangesAreStaged(t *testing.T) {
+func TestRun_Rail_AFailedAcceptClosesClaimingOnlyWhatItStaged(t *testing.T) {
 	t.Parallel()
 
-	r := runner.NewFakeRunner()
-	r.SeedSequence("git",
-		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --name-only (non-empty index)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff HEAD -- .
-		runner.ScriptedCall{}, // git ls-files --others (no untracked)
-		runner.ScriptedCall{}, // git add -A
-		runner.ScriptedCall{Result: runner.Result{Stderr: "error: gpg failed to sign the data\n"}, Err: errExitOne}, // git commit -F -
-	)
-	rec, _, err := railCommit(t, r, presenter.ChoiceYes, func(d *commit.Deps) { d.Staging = commit.AddAll })
-	if err == nil {
-		t.Fatal("Run returned nil, want the commit failure's exit")
+	const diff = "diff --git a/x b/x\n+work"
+	failed := runner.ScriptedCall{Result: runner.Result{Stderr: "error: gpg failed to sign the data\n"}, Err: errExitOne}
+	tests := []struct {
+		name    string
+		staging commit.StagingMode
+		git     []runner.ScriptedCall
+		detail  string
+	}{
+		{
+			name:    "a staging that fails",
+			staging: commit.AddAll,
+			git: []runner.ScriptedCall{
+				{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+				{Result: runner.Result{Stdout: diff}},  // git diff HEAD -- .
+				{},                                     // git ls-files --others (no untracked)
+				failed,                                 // git add -A
+			},
+			detail: "nothing committed",
+		},
+		{
+			name:    "a commit failing after its staging",
+			staging: commit.AddAll,
+			git: []runner.ScriptedCall{
+				{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+				{Result: runner.Result{Stdout: diff}},  // git diff HEAD -- .
+				{},                                     // git ls-files --others (no untracked)
+				{},                                     // git add -A
+				failed,                                 // git commit -F -
+			},
+			detail: "changes staged, not committed",
+		},
+		{
+			name:    "a commit of the staged changes failing, its hooks run",
+			staging: commit.StagedOnly,
+			git: []runner.ScriptedCall{
+				{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+				{Result: runner.Result{Stdout: diff}},  // git diff --cached
+				failed,                                 // git commit -F -
+			},
+			detail: "nothing committed",
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	fin := closingResult(t, rec)
-	if want := (presenter.Station{Name: "main", Detail: "changes staged, not committed"}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
-		t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+			r := runner.NewFakeRunner()
+			r.SeedSequence("git", scriptedHead()) // git rev-parse HEAD --abbrev-ref HEAD (the start station)
+			r.SeedSequence("git", tt.git...)
+			rec, _, err := railCommit(t, r, presenter.ChoiceYes, func(d *commit.Deps) { d.Staging = tt.staging })
+			if err == nil {
+				t.Fatal("Run returned nil, want the failure's exit")
+			}
+
+			fin := closingResult(t, rec)
+			if want := (presenter.Station{Name: "main", Detail: tt.detail}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
+				t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+			}
+		})
 	}
 }
 

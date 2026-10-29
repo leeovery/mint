@@ -205,7 +205,9 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 				warnRegenerateProviderFailed(p, err)
 				return nil
 			}
-			// Release-only: nothing was pushed, so this is a plain pre-PONR failure.
+			// Release-only: nothing was pushed, so this is a plain pre-PONR failure. The
+			// provider write ran, so the close claims nothing.
+			deps.run.Left(noClaim)
 			return surface(p, stagePublish, err)
 		}
 		p.StageSucceeded(presenter.Settled(stagePublish, "written"))
@@ -312,6 +314,9 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return false, surface(p, "record", err)
 	}
 
+	// The write may leave CHANGELOG.md changed, so the close claims no more than the
+	// recovery below can name.
+	deps.run.Left(noClaim)
 	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body, req.KeepOut)
 	if err != nil {
 		// A failed write/stage/commit makes no commit, but a partial commit could have
@@ -394,8 +399,9 @@ func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarge
 // resets the local CHANGELOG commit back to start when a commit landed (resetTo — no
 // tag, best-effort), tells the run's close where that left the repo, and returns the
 // abort. With no commit made the reset is skipped, and a CHANGELOG.md rewritten but
-// not committed is what the run leaves. The ✗ line carries the failure's message
-// alone, no captured output.
+// not committed is what the run leaves; a write that failed before that leaves the
+// close claiming nothing. The ✗ line carries the failure's message alone, no captured
+// output.
 func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, committed bool, stage string, cause error) error {
 	failure := presenter.StageFailure{Name: stage, Key: stage, Message: failureMessage(cause)}
 	var timed *stageError
@@ -405,7 +411,7 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 	deps.Presenter.StageFailed(failure)
 	var uncommitted *uncommittedChangelog
 	if errors.As(cause, &uncommitted) {
-		deps.run.Left(record.ChangelogFileName + notCommitted)
+		deps.run.Left(record.ChangelogFileName + notCommitted + " · " + nothingPushed)
 	}
 	if committed {
 		// The reset is RECOVERY that must run even when the abort was the parent context's
@@ -485,8 +491,10 @@ func warnRegenerateProviderFailed(p presenter.Presenter, cause error) {
 	})
 }
 
-// reviewing is gate asked at a regenerate's review stage.
+// reviewing is gate asked at a regenerate's review stage, which no stage event
+// settles, so the gate carries what its answer settles the node to.
 func reviewing(gate presenter.Gate) presenter.Gate {
 	gate.Stage = stageReview
+	gate.Detail = "accepted"
 	return gate
 }

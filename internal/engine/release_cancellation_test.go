@@ -60,7 +60,7 @@ func TestRelease_CancelledBeforePush_Surgical_Resets(t *testing.T) {
 		t.Errorf("cancellation deleted a tag though none was created")
 	}
 	assertStageFailedThenUnwound(t, rec)
-	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)

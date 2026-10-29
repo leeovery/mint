@@ -15,11 +15,11 @@ func TestProjectVersionFile_NoVersionFile_NoProjection(t *testing.T) {
 	// or created in dir).
 	dir := t.TempDir()
 
-	changed, err := record.ProjectVersionFile(dir, "", "", "1.4.0")
+	projection, err := record.ProjectVersionFile(dir, "", "", "1.4.0")
 	if err != nil {
 		t.Fatalf("ProjectVersionFile returned unexpected error: %v", err)
 	}
-	if changed {
+	if projection.Changed {
 		t.Errorf("changed = true, want false (no version_file means no projection)")
 	}
 }
@@ -32,11 +32,11 @@ func TestProjectVersionFile_PlainMode_RoutesByAbsentPattern(t *testing.T) {
 	// content proves the plain path ran (canonical "1.4.0\n").
 	dir := t.TempDir()
 
-	changed, err := record.ProjectVersionFile(dir, "release.txt", "", "1.4.0")
+	projection, err := record.ProjectVersionFile(dir, "release.txt", "", "1.4.0")
 	if err != nil {
 		t.Fatalf("ProjectVersionFile returned unexpected error: %v", err)
 	}
-	if !changed {
+	if !projection.Changed {
 		t.Errorf("changed = false, want true (plain mode created the version file)")
 	}
 
@@ -56,11 +56,11 @@ func TestProjectVersionFile_EmbeddedMode_RoutesByPresentPattern(t *testing.T) {
 	source := "package main\n\nconst RELEASE_VERSION=\"1.3.9\"\n"
 	seedVersionFile(t, dir, "version.go", source)
 
-	changed, err := record.ProjectVersionFile(dir, "version.go", embeddedPattern, "1.4.0")
+	projection, err := record.ProjectVersionFile(dir, "version.go", embeddedPattern, "1.4.0")
 	if err != nil {
 		t.Fatalf("ProjectVersionFile returned unexpected error: %v", err)
 	}
-	if !changed {
+	if !projection.Changed {
 		t.Errorf("changed = false, want true (embedded mode rewrote the slot)")
 	}
 
@@ -79,11 +79,11 @@ func TestProjectVersionFile_EmbeddedMismatch_PropagatesFailLoud(t *testing.T) {
 	dir := t.TempDir()
 	seedVersionFile(t, dir, "version.go", "package main\n\nconst OTHER=\"1.3.9\"\n")
 
-	changed, err := record.ProjectVersionFile(dir, "version.go", embeddedPattern, "1.4.0")
+	projection, err := record.ProjectVersionFile(dir, "version.go", embeddedPattern, "1.4.0")
 	if !errors.Is(err, record.ErrVersionPatternNoMatch) {
 		t.Fatalf("error = %v, want it to wrap ErrVersionPatternNoMatch", err)
 	}
-	if changed {
+	if projection.Changed {
 		t.Errorf("changed = true, want false (fail-loud mismatch makes no change)")
 	}
 }

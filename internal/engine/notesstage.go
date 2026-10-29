@@ -62,11 +62,13 @@ func (s *notesStage) AllKept() {
 	s.skipCheck("every changed path is on the keep list")
 }
 
-// settleUncheckedCheck settles the check's node quietly, saying why, when the release
-// planned it and the run has notes without it, so no planned node is left hollow.
-func (s *notesStage) settleUncheckedCheck(planned bool, why string) {
+// settleUncheckedCheck settles the check's node quietly when the release planned it
+// and its notes resolved without it, so no planned node is left hollow. Every way out
+// of a check that ran settles it, and the keep list covering every path settles it
+// too, so what is left is a diff with no source changes, which the check never sees.
+func (s *notesStage) settleUncheckedCheck(planned bool) {
 	if planned && !s.checkSettled {
-		s.skipCheck(why)
+		s.skipCheck("no source changes to check")
 	}
 }
 

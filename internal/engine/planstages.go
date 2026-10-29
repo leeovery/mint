@@ -42,11 +42,11 @@ type releasePlan struct {
 // out a hook stage with no hook configured, the check on a path that runs none, and
 // publish when the release publishes nothing. The point of no return is the push.
 //
-// Every stage laid out here ends filled on a real run: one the run skips after all —
-// the check over a diff with no source changes, under a keep list covering every
-// changed path, or after the notes failed before it — is settled quietly saying why,
-// and a publish the provider's resolution downgrades is a warning on its node. A dry
-// run leaves the stages it skips unfilled.
+// Every stage laid out here ends filled on a real run that reaches its end: a check
+// the run skips after all — over a diff with no source changes, or under a keep list
+// covering every changed path — is settled quietly saying why, and a publish the
+// provider's resolution downgrades is a warning on its node. A dry run fills the
+// stages it runs, the check among them, and leaves hollow only those it does not run.
 func (r releasePlan) stages() presenter.Plan {
 	rel := r.cfg.Release
 	stages := []presenter.PlanStage{

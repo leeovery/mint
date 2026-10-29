@@ -188,6 +188,53 @@ func TestCommitBookkeeping_StageFails_SurfacesError(t *testing.T) {
 	}
 }
 
+// TestCommits_AFailureOnceStaged_IsAnUncommittedError proves a commit that fails once
+// its stage ran says so with an *UncommittedError, its message the failure's own, and
+// that a failure before the stage never does: what is staged is what a caller names.
+func TestCommits_AFailureOnceStaged_IsAnUncommittedError(t *testing.T) {
+	t.Parallel()
+
+	failing := runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("exit status 1")}
+	dirty := runner.ScriptedCall{Result: runner.Result{Stdout: " M file\n"}}
+	dirtyTree := func(r *runner.FakeRunner) error {
+		_, err := record.CommitDirtyTree(t.Context(), mutator(r), "/repo", "subject", "")
+		return err
+	}
+	bookkeeping := func(r *runner.FakeRunner) error {
+		return record.CommitBookkeeping(t.Context(), mutator(r), "/repo", "🌿", "v0.0.1", "", true, false, "")
+	}
+	tests := []struct {
+		name   string
+		calls  []runner.ScriptedCall
+		commit func(*runner.FakeRunner) error
+		want   string
+		staged bool
+	}{
+		{name: "the artifact commit failing once staged", calls: []runner.ScriptedCall{dirty, {}, failing}, commit: dirtyTree, want: `committing dirty tree "subject": exit status 1`, staged: true},
+		{name: "the artifact stage failing", calls: []runner.ScriptedCall{dirty, failing}, commit: dirtyTree, want: "staging dirty tree in /repo: exit status 1"},
+		{name: "the bookkeeping commit failing once staged", calls: []runner.ScriptedCall{{}, failing}, commit: bookkeeping, want: `committing release bookkeeping "🌿 Release v0.0.1": exit status 1`, staged: true},
+		{name: "the bookkeeping stage failing", calls: []runner.ScriptedCall{failing}, commit: bookkeeping, want: "staging [CHANGELOG.md]: exit status 1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := runner.NewFakeRunner()
+			r.SeedSequence("git", tt.calls...)
+
+			err := tt.commit(r)
+
+			var uncommitted *record.UncommittedError
+			if got := errors.As(err, &uncommitted); got != tt.staged {
+				t.Errorf("an UncommittedError = %v, want %v: %v", got, tt.staged, err)
+			}
+			if err == nil || err.Error() != tt.want {
+				t.Errorf("err = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestCommitDirtyTree_DirtyTree_StagesAllAndCommits(t *testing.T) {
 	t.Parallel()
 

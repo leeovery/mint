@@ -48,7 +48,7 @@ func TestUnwind_TwoCommitsAndTag_ResetsBothAndDeletesTag(t *testing.T) {
 	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
-	if got, want := unwoundSummary(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -79,7 +79,7 @@ func TestUnwind_OneBookkeepingCommitAndTag_ResetsToStart(t *testing.T) {
 	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
-	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -109,7 +109,7 @@ func TestUnwind_CommitsButTagNotCreated_DeletesNoTag(t *testing.T) {
 	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
-	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -139,7 +139,7 @@ func TestUnwind_TagOnlyNoCommits_DeletesTagOnly(t *testing.T) {
 	if invokedWith(f, "git", "reset", "--hard", startingSHA) {
 		t.Errorf("unwind reset despite zero commits made; got %v", commandLines(f.Invocations()))
 	}
-	if got, want := unwoundSummary(t, rec), "deleted tag v0.0.1; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -221,7 +221,7 @@ func TestUnwind_ReportsEachUndoneItem(t *testing.T) {
 		t.Fatalf("Unwind returned nil error, want an abort")
 	}
 
-	summary := unwoundSummary(t, rec)
+	summary := unwoundText(t, rec)
 	if got, want := summary, "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
@@ -280,7 +280,7 @@ func TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T) {
 		t.Errorf("recovery Warn does not name the manual reset target %q; got Message %q", startingSHA, warn.Warn.Message)
 	}
 
-	summary := unwoundSummary(t, rec)
+	summary := unwoundText(t, rec)
 	if strings.Contains(summary, "repo clean") {
 		t.Errorf("Unwound.Text() falsely claims clean after a failed reset: %q", summary)
 	}
@@ -311,7 +311,7 @@ func TestUnwind_TagDeleteFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T
 		t.Errorf("recovery Warn does not name the tag to delete manually; got Message %q", warn.Warn.Message)
 	}
 
-	summary := unwoundSummary(t, rec)
+	summary := unwoundText(t, rec)
 	if strings.Contains(summary, "repo clean") {
 		t.Errorf("Unwound.Text() falsely claims clean after a failed tag delete: %q", summary)
 	}
@@ -339,7 +339,7 @@ func TestUnwind_AllRecoverySucceeds_NoWarnAndReportsClean(t *testing.T) {
 	if recorded(rec, presentertest.KindWarn) {
 		t.Errorf("a fully-successful unwind emitted a recovery Warn; none expected")
 	}
-	if got, want := unwoundSummary(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }

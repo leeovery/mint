@@ -266,8 +266,10 @@ type Presenter interface {
 	// outcomes that have one (see Outcome). A release, a single-version regenerate and
 	// a commit end every run they opened with RunStarted with exactly one. A
 	// regenerate --all backfill is the exception: it opens a block per version with a
-	// RunStarted of its own and closes the batch once, with one RunFinished, only when
-	// the batch succeeds.
+	// RunStarted of its own and closes the batch once, with one RunFinished, when its
+	// version loop finishes, even with every version skipped. That close comes before
+	// the changelog rebuild, which can still fail after it; a loop a decline or a
+	// cancel ends early closes nothing.
 	RunFinished(r RunResult)
 }
 
@@ -792,7 +794,10 @@ func (u Unwind) Text() string {
 // Outcome is how a run ended, the discriminator RunFinished renders by. A release, a
 // single-version regenerate and a commit close every run they opened with one
 // RunFinished carrying its Outcome; a regenerate --all backfill opens a block per
-// version and closes the batch once, as OutcomeAllRegenerated, only when it succeeds.
+// version and closes the batch once, as OutcomeAllRegenerated, when its version loop
+// finishes, even with every version skipped, and before the changelog rebuild, which
+// can still fail after the close. A loop a decline or a cancel ends early closes
+// nothing.
 // Plain and today's pretty write today's success lines for the outcomes that had one —
 // released (with or without a warning), dry run, committed (with or without a
 // warning), and --all regenerated — and nothing for the rest, which end on lines of
@@ -829,14 +834,14 @@ const (
 	// engine-computed Summary rendered verbatim.
 	OutcomeAllRegenerated
 	// OutcomeDeclined is a run stopped by a question answered no, with nothing to
-	// unwind. Its End detail says what it left, "nothing changed" when nothing.
+	// unwind. Its End detail says what it left (see End).
 	OutcomeDeclined
 	// OutcomeUnwound is a run whose unwind undid what it had made; the Unwound line
 	// says what, and its End detail where that left the repo.
 	OutcomeUnwound
 	// OutcomeFailed is a run that failed with nothing to unwind, input closing at a
-	// question included; its ✗ line says why, and its End detail what it left,
-	// "nothing changed" when nothing.
+	// question included; its ✗ line says why, and its End detail what it left (see
+	// End).
 	OutcomeFailed
 )
 
@@ -860,9 +865,11 @@ type RunResult struct {
 	Summary string
 	// End is the station the run landed at, its detail whole as the rail shows it and
 	// derived from what the run did: "v1.4.0" / "released", "main" / "a3f9c21 ·
-	// pushed", or the start station's name with what a run that stopped short left —
-	// "nothing changed", "changes staged, not committed", "back where it started ·
-	// repo clean · nothing pushed".
+	// pushed", or the start station's name with what a run that stopped short left.
+	// That detail claims only what mint knows from its own actions: "nothing changed"
+	// only while nothing that could write has run; after that what mint left ("changes
+	// staged, not committed", "back where it started · repo clean · nothing pushed") or
+	// no claim about the tree ("nothing committed · nothing pushed").
 	End Station
 	// Elapsed is the engine-measured time of the whole run.
 	Elapsed time.Duration

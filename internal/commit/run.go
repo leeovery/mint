@@ -947,6 +947,9 @@ func createCommit(ctx context.Context, deps Deps, body string) (runner.Result, e
 //     failed push → a non-zero exit with the commit left in place.
 func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 	p := deps.Presenter
+	// From here git writes (the staging, the commit and its hooks), so a run that
+	// stops claims only what it knows it left.
+	deps.run.Left(nothingCommitted)
 	if res, err := stageForMode(ctx, deps); err != nil {
 		// git's captured stderr travels verbatim as the failure Output — the same
 		// pass-through convention the push warn uses — so a hook rejection or git's own
@@ -955,7 +958,7 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 	}
 	if deps.Staging != StagedOnly {
 		p.StageSucceeded(presenter.Settled(stageStage, "staged"))
-		deps.run.Left("changes staged, not committed")
+		deps.run.Left(stagedNotCommitted)
 	}
 	if res, err := createCommit(ctx, deps, body); err != nil {
 		return surfaceOutput(p, "commit", err, res.Stderr)
@@ -988,6 +991,13 @@ func commitLanding(sha string, pushed bool) string {
 }
 
 const pushedLanding = "pushed"
+
+// What a commit that stopped once its accept tail began left: nothing it can name, or
+// the changes its staging staged.
+const (
+	nothingCommitted   = "nothing committed"
+	stagedNotCommitted = "changes staged, not committed"
+)
 
 // pushAfterCommit is commit's SINGLE shared auto-push step, called by BOTH accept
 // paths after a successful commit (the gate-accept path here; the editor save-as-accept

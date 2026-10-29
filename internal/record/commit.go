@@ -24,7 +24,8 @@ import (
 //
 // A non-zero `git status` or `git add` exit short-circuits before the next step (so
 // a failed probe or stage can never produce a commit) and the error is surfaced for
-// the orchestrator to abort/unwind on.
+// the orchestrator to abort/unwind on. A failure once the stage ran is an
+// *UncommittedError: what it staged stays staged.
 //
 // A keepOut path is left out of the probe, the stage and the commit: its changes
 // neither trigger the commit nor ride in it, and any of them already staged stay
@@ -46,7 +47,7 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 	}
 	committed, err := CommitStaged(ctx, m, dir, subject, keepOut)
 	if err != nil {
-		return false, fmt.Errorf("committing dirty tree %q: %w", subject, err)
+		return false, &UncommittedError{err: fmt.Errorf("committing dirty tree %q: %w", subject, err)}
 	}
 	return committed, nil
 }
@@ -69,7 +70,8 @@ func CommitDirtyTree(ctx context.Context, m *git.Mutator, dir, subject string, k
 // nothing to stage, so CommitBookkeeping is a no-op and creates NO commit — mint
 // never makes an empty commit. A non-zero `git add` exit short-circuits before the
 // commit so a failed stage can never produce a commit; the error is surfaced for
-// the orchestrator to unwind.
+// the orchestrator to unwind. A failure once the stage ran is an *UncommittedError:
+// what it staged stays staged.
 //
 // This bookkeeping commit is kept DISTINCT from the pre_tag hook-artifact commit
 // (CommitDirtyTree), which precedes it with its own chore subject.
@@ -93,13 +95,22 @@ func CommitBookkeeping(ctx context.Context, m *git.Mutator, dir, commitPrefix, t
 	subject := BookkeepingSubject(commitPrefix, tag)
 	committed, err := CommitStaged(ctx, m, dir, subject, keepOut)
 	if err != nil {
-		return fmt.Errorf("committing release bookkeeping %q: %w", subject, err)
+		return &UncommittedError{err: fmt.Errorf("committing release bookkeeping %q: %w", subject, err)}
 	}
 	if !committed {
-		return fmt.Errorf("committing release bookkeeping %q: %w", subject, ErrNothingStaged)
+		return &UncommittedError{err: fmt.Errorf("committing release bookkeeping %q: %w", subject, ErrNothingStaged)}
 	}
 	return nil
 }
+
+// UncommittedError is a commit that failed once its changes were staged, which it
+// leaves staged. Its message is the failure's own.
+type UncommittedError struct{ err error }
+
+func (e *UncommittedError) Error() string { return e.err.Error() }
+
+// Unwrap exposes the commit's failure so errors.Is and errors.As match it.
+func (e *UncommittedError) Unwrap() error { return e.err }
 
 // CommitFile stages path in dir by name and commits it with subject. The commit takes
 // the whole index, so it carries path alone only when nothing else is staged. A failed

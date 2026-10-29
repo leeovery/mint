@@ -191,7 +191,7 @@ func TestRelease_AnswersCommitFailingAfterTheArtifactCommit_UnwindsToTheStartAnd
 	if got := readConfigBytes(t, run.root); got != before {
 		t.Errorf(".mint.toml =\n%s\nwant it as before the answers\n%s", got, before)
 	}
-	if got, want := unwoundSummary(t, run.rec), "reset 1 commit; repo clean"; got != want {
+	if got, want := unwoundText(t, run.rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -289,9 +289,10 @@ func TestRelease_AnswersCommitFailing_WhenUnstagingTheWriteFails_WarnsTheManualS
 	if len(warns) != 1 || warns[0] != want {
 		t.Errorf("warnings = %+v, want only %+v", warns, want)
 	}
-	if got, want := unwoundSummary(t, run.rec), "reset 1 commit; manual cleanup required"; got != want {
+	if got, want := unwoundText(t, run.rec), "reset 1 commit; manual cleanup required"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
+	assertCloses(t, run.rec, presenter.OutcomeUnwound, "manual cleanup required · nothing pushed")
 }
 
 func TestRelease_AnswersCommitFailing_WhenUnstagingFailsInARootWithASpace_WarnsTheStepWithTheRootQuoted(t *testing.T) {
@@ -349,4 +350,7 @@ func TestRelease_AnswersCommitFailingWithNoPreTagHook_WhenUnstagingFails_StillRe
 	if len(warns) != 1 || warns[0] != want {
 		t.Errorf("warnings = %+v, want only %+v", warns, want)
 	}
+	// Nothing was committed to reset, so the run fails, the revert it could not finish
+	// named in its close.
+	assertCloses(t, run.rec, presenter.OutcomeFailed, "manual cleanup required · nothing pushed")
 }

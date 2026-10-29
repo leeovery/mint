@@ -702,7 +702,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	}
 	// A StageFailed precedes the Unwound (a failed stage, then the unwind narration).
 	assertStageFailedThenUnwound(t, rec)
-	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)
@@ -749,7 +749,7 @@ func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
 	if failure := onlyStageFailureEvent(t, rec); failure.Name != "preflight" || failure.Key != "publish" {
 		t.Errorf("failure Name/Key = %q/%q, want the preflight label on the publish node", failure.Name, failure.Key)
 	}
-	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
+	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)
@@ -870,9 +870,9 @@ func seedHappyGitThroughTag(f *runner.FakeRunner, root, releaseBranch, tag strin
 	)
 }
 
-// unwoundSummary returns the sentence of the first recorded Unwound event, failing
+// unwoundText returns the sentence of the first recorded Unwound event, failing
 // the test if none fired.
-func unwoundSummary(t *testing.T, rec *presentertest.RecordingPresenter) string {
+func unwoundText(t *testing.T, rec *presentertest.RecordingPresenter) string {
 	t.Helper()
 	for _, ev := range rec.Events {
 		if ev.Kind == presentertest.KindUnwound {

@@ -214,7 +214,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			reviews: []presenter.Choice{presenter.ChoiceNo},
 			want:    createdAnswers,
 			outcome: presenter.OutcomeDeclined,
-			end:     "the exclusion answers kept in .mint.toml",
+			end:     "the exclusion answers kept in .mint.toml · nothing pushed",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -245,7 +245,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			if !invokedWith(a.f, "git", "reset", "--hard", startingSHA) {
 				t.Errorf("the run was not reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
-			if got := unwoundSummary(t, rec); got != tc.summary {
+			if got := unwoundText(t, rec); got != tc.summary {
 				t.Errorf("Unwound.Text() = %q, want %q", got, tc.summary)
 			}
 		})

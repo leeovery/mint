@@ -48,8 +48,8 @@ func TestWriteChangelog_AbsentFile_CreatesWithPreambleThenFirstSection(t *testin
 	if err != nil {
 		t.Fatalf("WriteChangelog returned unexpected error: %v", err)
 	}
-	if !res.Changed {
-		t.Errorf("Changed = false, want true (file was created)")
+	if !res.Changed || !res.Created {
+		t.Errorf("result = %+v, want changed and created (file was created)", res)
 	}
 
 	want := kacPreamble + "\n## [0.0.1] - 2026-06-10\n\nInitial release.\n"
@@ -76,8 +76,8 @@ func TestWriteChangelog_ExistingFile_PrependsBelowPreambleNewestOnTop(t *testing
 	if err != nil {
 		t.Fatalf("WriteChangelog returned unexpected error: %v", err)
 	}
-	if !res.Changed {
-		t.Errorf("Changed = false, want true (a new section was prepended)")
+	if !res.Changed || res.Created {
+		t.Errorf("result = %+v, want changed, not created (a new section was prepended)", res)
 	}
 
 	want := kacPreamble +
@@ -113,8 +113,8 @@ func TestWriteChangelog_PreambleOnlyFile_AppendsFirstSection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WriteChangelog returned unexpected error: %v", err)
 	}
-	if !res.Changed {
-		t.Errorf("Changed = false, want true (first section appended)")
+	if !res.Changed || res.Created {
+		t.Errorf("result = %+v, want changed, not created (first section appended)", res)
 	}
 
 	want := kacPreamble + "\n## [0.0.1] - 2026-06-10\n\nInitial release.\n"

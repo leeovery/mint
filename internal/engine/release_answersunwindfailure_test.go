@@ -42,7 +42,7 @@ func assertUnwoundWithOneWarning(t *testing.T, rec *presentertest.RecordingPrese
 	if warns := unwindWarnings(rec); len(warns) != 1 || warns[0] != want {
 		t.Errorf("warnings = %+v, want only %+v", warns, want)
 	}
-	if got := unwoundSummary(t, rec); got != summary {
+	if got := unwoundText(t, rec); got != summary {
 		t.Errorf("Unwound.Text() = %q, want %q", got, summary)
 	}
 	if n := countKind(rec, presentertest.KindUnwound); n != 1 {

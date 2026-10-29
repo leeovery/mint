@@ -5,8 +5,15 @@
 //
 // A release, a single-version regenerate and a commit are each one such run. A
 // regenerate --all backfill is not: it opens a block per version with a RunStarted of
-// its own and closes the batch once, with one RunFinished, only when it succeeds, so
-// it holds no Run.
+// its own and closes the batch once, with one RunFinished, when its version loop
+// finishes, even with every version skipped, and before the changelog rebuild, which
+// can still fail after that close. A loop a decline or a cancel ends early closes
+// nothing. So it holds no Run.
+//
+// A stopped run's end detail claims only what mint knows from its own actions. It is
+// "nothing changed" only while nothing that could write has run; from then on the
+// orchestrator records, with Left or Unwound, what the run left, or a detail that
+// makes no claim about the tree.
 package runclose
 
 import (
@@ -65,7 +72,8 @@ func (r *Run) Unwound(detail string) {
 }
 
 // Left records what a run that stops short without an unwind leaves behind, the
-// detail its close states in place of "nothing changed".
+// detail its close states in place of "nothing changed", replacing any recorded
+// before.
 func (r *Run) Left(detail string) {
 	if r == nil {
 		return
@@ -98,7 +106,8 @@ func (r *Run) RunDeferred() {
 // Close emits the run's one RunFinished, timed from Begin, unless the run never
 // opened. A run that landed closes with its ending. One that stopped short closes at
 // its start station: unwound when its unwind ran, else declined when declined says
-// so, else failed, with what it left there, or nothing changed.
+// so, else failed, with the detail Left or Unwound recorded, or "nothing changed"
+// when none was.
 func (r *Run) Close(declined bool) {
 	if r == nil || r.info == nil {
 		return

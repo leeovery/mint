@@ -110,19 +110,21 @@ func assertKeysInPlan(t *testing.T, rec *presentertest.RecordingPresenter, plan 
 	}
 }
 
-// assertEveryPlannedStageSettled fails unless every stage the run's plan laid out
-// ended filled: settled, checked, failed or warned on, or, laid out already settled,
-// answered at its question before the plan.
+// assertEveryPlannedStageSettled fails unless every stage of the run's plan, the one
+// carrying its stage keys, ended filled: settled, checked, failed or warned on, or
+// answered at a question carrying the detail it settles to.
 func assertEveryPlannedStageSettled(t *testing.T, rec *presentertest.RecordingPresenter) {
 	t.Helper()
 	filled := map[string]bool{}
-	planned := false
+	var plan presenter.Plan
 	for _, ev := range rec.Events {
 		switch ev.Kind {
 		case presentertest.KindShowPlan:
-			planned = planned || ev.ShowPlan.Quiet
+			if len(ev.ShowPlan.Stages) > 0 {
+				plan = ev.ShowPlan
+			}
 		case presentertest.KindPrompt:
-			filled[ev.Prompt.Stage] = filled[ev.Prompt.Stage] || !planned
+			filled[ev.Prompt.Stage] = filled[ev.Prompt.Stage] || ev.Prompt.Detail != ""
 		case presentertest.KindNotesChecked:
 			filled[ev.NotesCheck.Key] = true
 		case presentertest.KindStageSucceeded:
@@ -133,7 +135,10 @@ func assertEveryPlannedStageSettled(t *testing.T, rec *presentertest.RecordingPr
 			filled[ev.Warn.Key] = true
 		}
 	}
-	for _, s := range quietPlan(t, rec).Stages {
+	if len(plan.Stages) == 0 {
+		t.Fatalf("no plan laid out stages; kinds = %v", rec.Kinds())
+	}
+	for _, s := range plan.Stages {
 		if !filled[s.Key] {
 			t.Errorf("planned stage %q never ended filled; kinds = %v", s.Key, rec.Kinds())
 		}
@@ -714,6 +719,33 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 	}
 }
 
+func TestRegenerateRun_Rail_AFailedProviderWriteClosesClaimingNothing(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(""),                    // status --porcelain (clean)
+		ScriptedOut(regenRunReleaseBranch), // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedOut(""),                    // fetch --tags
+		ScriptedOut("0\t1"),                // rev-list left-right count (ahead only)
+	)
+	f.Seed("gh", runner.Result{}, nil)
+	pub := newFakePublisher()
+	pub.seedExists(regenRunTag, false, errors.New("gh: HTTP 502"))
+	rec := &presentertest.RecordingPresenter{}
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease))
+	req.ReleaseBranch = regenRunReleaseBranch
+
+	err := engine.RegenerateRun(t.Context(), railDeps(rec, f, dir), pub, dir, req)
+
+	assertAbortNonZero(t, err)
+	fin := closingEvent(t, rec)
+	if want := (presenter.Station{Name: regenRunTag, Detail: "nothing committed · nothing pushed"}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
+		t.Errorf("close = %v %+v, want OutcomeFailed %+v: the provider write ran, so it claims nothing", fin.Outcome, fin.End, want)
+	}
+}
+
 // regenerateChangelogRun runs a changelog-only regenerate of a section reading stale,
 // its git calls from the write's clean start on scripted by tail.
 func regenerateChangelogRun(t *testing.T, stale string, tail ...runner.ScriptedCall) (*presentertest.RecordingPresenter, error) {
@@ -750,7 +782,7 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		{
 			name: "a commit that fails leaves the rewrite",
 			tail: []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}, // add, commit
-			end:  "CHANGELOG.md written, not committed",
+			end:  "CHANGELOG.md written, not committed · nothing pushed",
 		},
 		{
 			name: "a rejected push resets the commit",
@@ -794,4 +826,5 @@ func TestRegenerateRun_Rail_AnUnchangedChangelogSettlesThePushAsSkipped(t *testi
 		t.Errorf("push success = %+v, want a quiet settle saying why it was skipped", got)
 	}
 	assertKeysInPlan(t, rec, rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan)
+	assertEveryPlannedStageSettled(t, rec)
 }

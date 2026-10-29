@@ -149,7 +149,7 @@ func assertAnswersKept(t *testing.T, rec *presentertest.RecordingPresenter, a *a
 	if deleted := countCmd(a.f, "git", "tag", "-d", minorTagV130); tags != deleted {
 		t.Errorf("tags made = %d, deleted = %d, want no %s left", tags, deleted, minorTagV130)
 	}
-	if got := unwoundSummary(t, rec); got != summary {
+	if got := unwoundText(t, rec); got != summary {
 		t.Errorf("Unwound.Text() = %q, want %q", got, summary)
 	}
 	if n := countKind(rec, presentertest.KindUnwound); n != 1 {
