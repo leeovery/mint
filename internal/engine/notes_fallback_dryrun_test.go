@@ -15,7 +15,7 @@ func dryRunSavedFallbackWarning(phrase, output, path string) presenter.Warning {
 	return presenter.Warning{
 		Label: "notes",
 		Message: phrase + "; falling back to the commit-subject list; part notes saved to " + path +
-			" — release them with mint release --notes-file " + path,
+			" — release them with mint release --dry-run --notes-file " + path,
 		Output: output,
 	}
 }

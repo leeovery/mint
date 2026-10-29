@@ -206,20 +206,22 @@ func diffExcludeLine(entries []string, glob string) string {
 	return config.ListLine("diff_exclude", append(slices.Clip(entries), glob))
 }
 
-// warnFallback names both commands for saved chunk notes: when it prints, whether this
-// release will go out is not yet known. Call it only once the stage has ended.
-func (s *notesStage) warnFallback(version string) {
+// warnFallback names both commands for saved chunk notes, the release again being the
+// run's own: when it prints, whether this release will go out is not yet known. Call
+// it only once the stage has ended.
+func (s *notesStage) warnFallback(again rerun, version string) {
 	s.warnFallbackReleasing(func(saved string) string {
-		return "once this release is out, put them on it with " + notesFileCommand("mint release regenerate "+version, saved) +
-			", or if the run ends before the push, release them with " + notesFileCommand("mint release", saved)
+		return "once this release is out, put them on it with " + notesFileCommand(regenerateRerun(version).command, saved) +
+			", or if the run ends before the push, release them with " + notesFileCommand(again.command, saved)
 	})
 }
 
-// warnDryRunFallback names only the --notes-file release for saved chunk notes: a dry
-// run never puts the version out. Call it only once the stage has ended.
-func (s *notesStage) warnDryRunFallback() {
+// warnDryRunFallback names only the --notes-file release for saved chunk notes, the
+// run's own again: a dry run never puts the version out. Call it only once the stage
+// has ended.
+func (s *notesStage) warnDryRunFallback(again rerun) {
 	s.warnFallbackReleasing(func(saved string) string {
-		return "release them with " + notesFileCommand("mint release", saved)
+		return "release them with " + notesFileCommand(again.command, saved)
 	})
 }
 

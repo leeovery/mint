@@ -106,7 +106,7 @@ func TestRelease_DryRunFallback_SavedPathWithASpaceIsQuotedInTheCommandOnly(t *t
 	assertOnlyWarning(t, run.rec, presenter.Warning{
 		Label: "notes",
 		Message: "AI call failed (part 2 of 2); falling back to the commit-subject list; part notes saved to " + path +
-			" — release them with mint release --notes-file '" + path + "'",
+			" — release them with mint release --dry-run --notes-file '" + path + "'",
 		Output: usageLimitOutput,
 	})
 }

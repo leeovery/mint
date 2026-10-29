@@ -685,9 +685,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		stage.doneFrom(kind, opts.NotesFile)
 		chunkNotes.warnUnsaved(p)
 		if opts.DryRun {
-			stage.warnDryRunFallback()
+			stage.warnDryRunFallback(releaseRerun(opts))
 		} else {
-			stage.warnFallback(versionKey)
+			stage.warnFallback(releaseRerun(opts), versionKey)
 		}
 	}
 
