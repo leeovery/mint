@@ -560,7 +560,7 @@ func warnRegenerateProviderFailed(p presenter.Presenter, cause error, heal prese
 		Label:   "publish failed",
 		Message: pushed + "; re-heal the provider release with --target release",
 		Row:     pushed,
-		Output:  cause.Error(),
+		Output:  publishFailureOutput(cause),
 	})
 	p.NextMoves(presenter.NextMoves{Stage: stagePublish, Quiet: true, Moves: []presenter.NextMove{heal}})
 }

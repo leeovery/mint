@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"mint/internal/presenter"
+	"mint/internal/publish"
+	"mint/internal/runner"
 )
 
 // savingChunkNotes saves to path, or fails with err.
@@ -81,5 +83,30 @@ func TestHealMove_WritesTheReleaseFromTheNotesThePushedChangelogHolds(t *testing
 	}
 	if saved != body {
 		t.Errorf("saved notes = %q, want the body the changelog holds, %q", saved, body)
+	}
+}
+
+// TestPublishFailureOutput_IsGhsStderrElseTheFailuresText pins what a post-push
+// publish warning shows beneath its line: gh's stderr verbatim, or, where gh wrote
+// nothing, the failure's own text.
+func TestPublishFailureOutput_IsGhsStderrElseTheFailuresText(t *testing.T) {
+	t.Parallel()
+
+	const stderr = "HTTP 502: Bad Gateway (https://api.github.com/repos/acme/pigeon/releases)\n"
+	for _, tc := range []struct {
+		name, stderr, want string
+	}{
+		{name: "gh wrote its diagnostics", stderr: stderr, want: stderr},
+		{name: "gh wrote nothing", want: `creating GitHub release for tag "v1.4.0": exit status 1`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			f := runner.NewFakeRunner()
+			f.Seed("gh", runner.Result{Stderr: tc.stderr, ExitCode: 1}, errors.New("exit status 1"))
+			_, err := publish.NewGitHubPublisher(f).CreateRelease(t.Context(), "v1.4.0", "v1.4.0", "notes")
+			if got := publishFailureOutput(err); got != tc.want {
+				t.Errorf("output = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

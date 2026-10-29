@@ -12,7 +12,7 @@
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  ●  push          main + v1.3.0 pushed atomically                                               0.7s
  !  publish       provider release failed · the tag is already pushed
- │                │ creating GitHub release for tag "v1.3.0": exit status 1
+ │                │ HTTP 502: Bad Gateway (https://api.github.com/repos/acme/pigeon/releases)
  │
  ◆  v1.3.0        released                                                                      4.9s
 

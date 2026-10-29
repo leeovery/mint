@@ -2223,12 +2223,23 @@ func warnPublishFailed(p presenter.Presenter, cause error, version string) {
 		Label:   "publish failed",
 		Message: "tag is already published; heal with regenerate --source tag",
 		Row:     "provider release failed · the tag is already pushed",
-		Output:  cause.Error(),
+		Output:  publishFailureOutput(cause),
 	})
 	p.NextMoves(presenter.NextMoves{Stage: stagePublish, Quiet: true, Moves: []presenter.NextMove{{
 		Lead:    "Publish the release from the tag's notes:",
 		Command: "mint release regenerate " + cmdline.Quote(version) + " --source tag --target release",
 	}}})
+}
+
+// publishFailureOutput is what a failed publish shows beneath its warning: what the
+// driver's CLI wrote to stderr, verbatim, or, where it wrote nothing, the failure's
+// own text.
+func publishFailureOutput(cause error) string {
+	var cliErr *publish.CLIError
+	if errors.As(cause, &cliErr) && cliErr.Stderr != "" {
+		return cliErr.Stderr
+	}
+	return cause.Error()
 }
 
 // warnPostReleaseFailed emits the post-PONR warn-only event for a failed
