@@ -16,7 +16,7 @@ Source "demo/look.tape"
 Set Height 1692
 
 Hide
-Type "demo/world.sh release && source demo/out/world/profile.sh" Enter
+Type 'demo/world.sh release && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh"' Enter
 Wait
 Show
 
@@ -34,4 +34,6 @@ Wait+Screen /Release with these notes/
 Sleep 3500ms
 Type "y"
 Wait
+# The line only a release that lands prints.
+Wait+Screen /released pigeon v1\.4\.0/
 Sleep 4s

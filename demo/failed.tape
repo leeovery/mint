@@ -9,15 +9,17 @@
 
 Output "demo/out/failed/"
 Source "demo/look.tape"
-# 30 rows: room for what it shows.
-Set Height 1174
+# 26 rows: room for what it shows.
+Set Height 1026
 
 Hide
-Type "demo/world.sh release && source demo/out/world/profile.sh && export DEMO_AI_FAIL_PART=3" Enter
+Type 'demo/world.sh release && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh" && export DEMO_AI_FAIL_PART=3' Enter
 Wait
 Show
 
 Type "mint release -m -y"
 Enter
 Wait
+# The line only this run's unwind prints.
+Wait+Screen /unwound +reset 1 commit; repo clean/
 Sleep 600ms

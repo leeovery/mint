@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
-# The world the tapes record in, built under demo/out/world/: a home folder
-# with pigeon in it at ~/Code/pigeon, the bare repo it pushes to, the shims
-# mint calls, and a shell setup the tapes source. Nothing reaches the network,
-# the AI, GitHub, or the real home folder or git config.
+# The world the tapes record in, built under /tmp/mint-demo (DEMO_WORLD moves
+# it): a home folder with pigeon in it at ~/Code/pigeon, the bare repo it
+# pushes to, the shims mint calls, and a shell setup the tapes source, the
+# world's profile.sh. Nothing reaches the network, the AI, GitHub, or the real
+# home folder or git config.
 #
 # pigeon is a webhook delivery service released with mint from v1.0.0 to
 # v1.3.2. Its origin is a local bare repo that git reaches as
 # https://github.com/acme/pigeon through a url.insteadOf in a gitconfig of the
-# world's own (GIT_CONFIG_GLOBAL). Every commit and tag is dated, and so is
-# every commit mint makes in the world (GIT_AUTHOR_DATE, GIT_COMMITTER_DATE in
-# the profile), so the hashes are the same in every recording.
+# world's own (GIT_CONFIG_GLOBAL). Every commit and tag the world is built
+# with is dated, so its hashes are the same in every recording, and so are
+# the commits mint makes (GIT_AUTHOR_DATE, GIT_COMMITTER_DATE in the profile),
+# all but a release's bookkeeping commit, whose CHANGELOG.md entry mint dates
+# by the clock, so its hash changes from day to day. No frame shows it.
 #
 # Shims on the world's PATH:
 #   mint    built from this checkout, carrying the release the art shows
 #   claude  the world's ai_command: canned replies chosen by what the prompt
 #           asks, after a pause so the spinners show (see ai() below)
 #   gh      signed in; the release calls answer as GitHub would, from
-#           releases kept under demo/out/world/github/
+#           releases kept in the world's github/
 #   git     the real git, waiting a moment on a push, as the network would,
 #           and naming origin by its GitHub URL (see shims() below)
 #   npm    the pre_tag hook's `npm ci && npm run build`: writes dist/
@@ -32,7 +35,13 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/.." && pwd)"
-world="$here/out/world"
+# The world sits at a short path outside the checkout, so every path mint
+# prints, its saved part notes' among them, reads the same on any machine and
+# from any checkout. DEMO_WORLD moves it, so that two checkouts can record at
+# once. It is named by its physical path, as git names the repo's root (macOS
+# keeps /tmp at /private/tmp), so HOME is a prefix of every path mint prints.
+mkdir -p "${DEMO_WORLD:-/tmp/mint-demo}"
+world="$(cd -P "${DEMO_WORLD:-/tmp/mint-demo}" && pwd)"
 bin="$world/bin"
 home="$world/home"
 repo="$home/Code/pigeon"
@@ -44,6 +53,11 @@ mint_version=0.1.2
 # When every commit mint makes in the world is dated.
 now="2026-10-21T14:30:00Z"
 
+# What the shell running this or the tapes carries of the user's own git and
+# config never reaches the world.
+leaks="GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE XDG_CONFIG_HOME"
+# shellcheck disable=SC2086 # the names, one word each
+unset $leaks
 export GIT_CONFIG_GLOBAL="$world/gitconfig"
 export GIT_CONFIG_NOSYSTEM=1
 export TZ=UTC
@@ -59,14 +73,13 @@ shims() {
 	# mint reads the remote's URL to find the provider, and `git remote get-url`
 	# expands insteadOf, which would show it the bare repo's file:// path, so
 	# that one read answers with the URL as configured.
+	# mint runs every push as `git push …`, with no option before it.
 	cat >"$bin/git" <<EOF
 #!/usr/bin/env bash
 if [ "\$*" = "remote get-url origin" ]; then
 	exec "$git" config --get remote.origin.url
 fi
-for arg in "\$@"; do
-	case "\$arg" in push) sleep 1.2; break ;; esac
-done
+[ "\${1:-}" = push ] && sleep 1.2
 exec "$git" "\$@"
 EOF
 
@@ -150,9 +163,12 @@ EOF
 #                       regenerate --all skips it
 #
 # The replies are the files canned() writes. With DEMO_AI_FAIL_PART=3, part 3
-# fails as a spent usage limit does, at once, before the other parts finish,
-# and the classify call reads it as OTHER, not SIZE, so the release stops on
-# its notes rather than cutting the part again.
+# fails as a spent usage limit does, and the classify call reads it as OTHER,
+# not SIZE, so the release stops on its notes rather than cutting the part
+# again. Its two attempts and the classify call take about a second, less
+# than any other part's reply, so it fails while parts 1, 2 and 4 are still in
+# flight: mint lets them finish, and saves their notes, but sends no part 5,
+# whatever the timing.
 ai() {
 	printf '#!/usr/bin/env bash\ncanned="%s"\n' "$world/ai"
 	cat <<'EOF'
@@ -241,7 +257,7 @@ canned() {
 	lines "$ai/part-4.md" "✨ Added" "- Failed webhook deliveries retry with backoff for up to an hour."
 	lines "$ai/check.txt" "docs/specs/**: design documents"
 	lines "$ai/commit.txt" \
-		"feat(webhooks): retry failed deliveries with backoff" \
+		"feat: retry failed deliveries with backoff" \
 		"" \
 		"Deliveries that fail now retry on an exponential schedule for up to an" \
 		"hour before they're marked dead, so a short outage at the receiving end" \
@@ -287,7 +303,7 @@ export GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_DATE="$now" GIT_COMMITTER_DATE="$now"
 export TZ=UTC
 export COLORTERM=truecolor
-unset NO_COLOR FORCE_COLOR DEMO_AI_FAIL_PART
+unset $leaks NO_COLOR FORCE_COLOR DEMO_AI_FAIL_PART
 PS1='\[\e[34m\]❯\[\e[0m\] '
 cd "$repo"
 clear
@@ -306,10 +322,21 @@ commit() {
 # build's artifacts commit, the version and the notes recorded, the tag
 # carrying the notes, and the lot pushed, with a GitHub release of the notes.
 release() {
+	artifacts "$1" "$2"
+	record "$@"
+}
+
+# The pre_tag build's artifacts for version $1, committed at $2.
+artifacts() {
+	MINT_NEW_VERSION="$1" "$bin/npm" run build >/dev/null
+	commit "$2" "chore(release): pre-tag artifacts for v$1"
+}
+
+# The rest of release(): the version and the notes recorded, tagged, pushed and
+# published.
+record() {
 	local version="$1" date="$2" notes
 	notes="$(cat "${3:-$world/shipped/v$version.md}")"
-	MINT_NEW_VERSION="$version" "$bin/npm" run build >/dev/null
-	commit "$date" "chore(release): pre-tag artifacts for v$version"
 	sed "s/\"version\": \".*\"/\"version\": \"$version\"/" package.json >package.json.new
 	mv package.json.new package.json
 	changelog "$version" "${date%%T*}" "$notes"
@@ -319,7 +346,7 @@ release() {
 $notes" "v$version"
 	git push -q origin main "v$version"
 	mkdir -p "$github"
-	printf '%s\n' "$notes" >"$github/v$version.md"
+	printf '%s' "$notes" >"$github/v$version.md"
 }
 
 changelog() {
@@ -937,21 +964,33 @@ retry_commit() {
 	commit "2026-10-20T15:30:00Z" "$(head -n1 "$world/ai/commit.txt")"
 }
 
-# v1.4.0 released as the tour releases it: docs/specs/** answered Exclude at
-# the exclusion check's pause, then the release.
+# v1.4.0 released as the tour releases it: the pre_tag artifacts, then
+# docs/specs/** answered Exclude at the exclusion check's pause, its line
+# placed where mint's config.AppendReleaseGlobs places it, after the
+# [release] table's last key, then the release.
 v1_4_0() {
+	local date="2026-10-21T14:30:00Z"
+	artifacts 1.4.0 "$date"
 	awk '{ print } /^version_pattern/ { print "diff_exclude = [\"docs/specs/**\"]" }' .mint.toml >.mint.toml.new
 	mv .mint.toml.new .mint.toml
-	commit "2026-10-21T14:30:00Z" "chore(release): release-notes path answers for v1.4.0"
-	release 1.4.0 "2026-10-21T14:30:00Z" "$world/ai/v1.4.0.md"
+	commit "$date" "chore(release): release-notes path answers for v1.4.0"
+	record 1.4.0 "$date" "$world/ai/v1.4.0.md"
 }
 
+# A world built afresh. mint is built with the user's own HOME, where Go keeps
+# its caches; the history is made with the world's, so the user's git ignore
+# and attributes files can't change what is committed.
 fresh() {
+	[ ! -e "$world" ] || [ -z "$(ls -A "$world")" ] || [ -f "$world/profile.sh" ] || {
+		echo "$world isn't a demo world; set DEMO_WORLD elsewhere" >&2
+		exit 1
+	}
 	rm -rf "$world"
 	gitconfig
 	canned
 	shims
 	profile
+	export HOME="$home"
 }
 
 case "${1:-}" in

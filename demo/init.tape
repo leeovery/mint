@@ -10,11 +10,13 @@ Source "demo/look.tape"
 Set Height 286
 
 Hide
-Type "demo/world.sh init && source demo/out/world/profile.sh" Enter
+Type 'demo/world.sh init && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh"' Enter
 Wait
 Show
 
 Type "mint init"
 Enter
 Wait
+# The line only an init that writes the release shim prints.
+Wait+Screen /created release/
 Sleep 600ms

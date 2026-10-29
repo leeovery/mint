@@ -1,5 +1,5 @@
 # The look every tape shares, sourced first: agntc's, which is Switchboard's,
-# at 100 × 28. mint lays its output out at most 100 columns wide, so at 100 it
+# in Lee's Ghostty theme, at 100 × 28. mint lays its output out at most 100 columns wide, so at 100 it
 # reaches the right edge as it would in any wider terminal. A still sets a
 # height of its own after it, for what it shows: 37 px a row, and 64 more.
 #
@@ -18,7 +18,9 @@ Set Padding 16
 Set CursorBlink false
 Set Framerate 30
 Set TypingSpeed 45ms
-Set Theme { "name": "nord", "background": "#2E3440", "foreground": "#D8DEE9", "cursor": "#2E3440", "selection": "#434C5E", "black": "#3B4252", "red": "#BF616A", "green": "#A3BE8C", "yellow": "#EBCB8B", "blue": "#81A1C1", "magenta": "#B48EAD", "cyan": "#88C0D0", "white": "#E5E9F0", "brightBlack": "#4C566A", "brightRed": "#BF616A", "brightGreen": "#A3BE8C", "brightYellow": "#EBCB8B", "brightBlue": "#81A1C1", "brightMagenta": "#B48EAD", "brightCyan": "#8FBCBB", "brightWhite": "#ECEFF4" }
+# Lee's Ghostty theme, Nordfox, from Ghostty's own themes/Nordfox. The cursor
+# takes the background, as agntc's does, so the stills show no block.
+Set Theme { "name": "Nordfox", "background": "#2e3440", "foreground": "#cdcecf", "cursor": "#2e3440", "selection": "#3e4a5b", "black": "#3b4252", "red": "#bf616a", "green": "#a3be8c", "yellow": "#ebcb8b", "blue": "#81a1c1", "magenta": "#b48ead", "cyan": "#88c0d0", "white": "#e5e9f0", "brightBlack": "#53648d", "brightRed": "#d06f79", "brightGreen": "#b1d196", "brightYellow": "#f0d399", "brightBlue": "#8cafd2", "brightMagenta": "#c895bf", "brightCyan": "#93ccdc", "brightWhite": "#e7ecf4" }
 # The world's prompt, as Wait looks for it on the cursor's line.
 Set WaitPattern /❯/
 Set WaitTimeout 1m

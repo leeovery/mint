@@ -12,11 +12,13 @@ Source "demo/look.tape"
 Set Height 1248
 
 Hide
-Type "demo/world.sh release && source demo/out/world/profile.sh" Enter
+Type 'demo/world.sh release && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh"' Enter
 Wait
 Show
 
 Type "mint release -m --dry-run"
 Enter
 Wait
+# The line only a dry run that reaches its end prints.
+Wait+Screen /pigeon v1\.4\.0 — no changes made/
 Sleep 600ms

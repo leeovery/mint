@@ -11,7 +11,7 @@ Source "demo/look.tape"
 Set Height 804
 
 Hide
-Type "demo/world.sh commit && source demo/out/world/profile.sh" Enter
+Type 'demo/world.sh commit && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh"' Enter
 Wait
 Show
 
@@ -21,4 +21,6 @@ Wait+Screen /Commit this message/
 Sleep 600ms
 Type "y"
 Wait
+# The line only a commit that lands prints.
+Wait+Screen /committed pigeon/
 Sleep 600ms

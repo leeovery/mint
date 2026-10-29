@@ -26,12 +26,22 @@ demo/record.sh tour commit   # the tapes named
 | `init` | `init.webp`, a still: `mint init` in an empty repo |
 
 The art goes to `demo/out/art/`. `look.tape` holds the settings every tape sources; each tape
-sets the height its run needs.
+sets the height its run needs. Each tape ends on a `Wait+Screen` for a line only its run's real
+flow prints, so a shim answering wrongly, or mint failing early, fails the recording rather than
+leaving a still that looks right. Those lines are mint's own words: a change to the output
+changes them too.
 
 ## The world
 
-`demo/world.sh` builds it under `demo/out/world/`, and each tape builds it afresh, out of sight,
-before it shows anything, so a tape records the same thing every time. `pigeon`, a webhook
+`demo/world.sh` builds it under `/tmp/mint-demo`, outside the checkout, and each tape builds it
+afresh, out of sight, before it shows anything, so a tape records the same thing every time. The
+fixed path keeps every path mint prints, such as where it saved a failed run's part notes, the
+same on every machine and from every checkout, and free of the recorder's own home folder. The
+art is recorded there. `DEMO_WORLD=<dir>` moves the world, so that two checkouts can record at
+once, but the paths in its frames then name that directory: record the art at the default.
+`world.sh` refuses a `DEMO_WORLD` that holds anything but a world, since it empties it first.
+
+`pigeon`, a webhook
 delivery service, lives at `~/Code/pigeon`, released with mint from v1.0.0 to v1.3.2. Its
 `.mint.toml` names the AI command, a `pre_tag` hook (`npm ci && npm run build`, which writes
 `dist/`), a `post_release` hook, `package.json` as the version file, and a `max_prompt_bytes`
@@ -47,10 +57,27 @@ low enough that the notes of v1.4.0 are written in 4 parts. Each variant is a mo
   has a `CHANGELOG.md` to rewrite. `regenerate` records in it.
 - **`init`**: an empty repo at `~/Code/pigeon`. `init` records in it.
 
-Every commit and tag is dated, and the profile the tapes source dates every commit mint makes, so
-the hashes are the same in every recording. The shell runs in `TZ=UTC` with `HOME` the world's
-home, so paths read `~/Code/pigeon`. The remote is reached through a `url.insteadOf` in the
-world's own gitconfig, which the shell names in `GIT_CONFIG_GLOBAL`, with `GIT_CONFIG_NOSYSTEM=1`.
+Every commit and tag the world is built with is dated, so their hashes are the same in every
+recording, and the profile the tapes source dates the commits mint makes too. All but one: mint
+dates a release's `CHANGELOG.md` entry by the clock, so the bookkeeping commit's hash changes from
+day to day. No frame shows it.
+
+The shell runs in `TZ=UTC` with `HOME` the world's home, `/private/tmp/mint-demo/home`: the world
+is named by its physical path, as git names the repo's root (macOS keeps `/tmp` at
+`/private/tmp`), so the repo sits at `~/Code/pigeon` under `HOME`, and mint prints the paths it
+names in full, such as `/private/tmp/mint-demo/home/Library/Caches/mint/chunk-notes/…`. The
+user's own git and config variables (`GIT_AUTHOR_*`, `GIT_COMMITTER_*`, `GIT_DIR`,
+`GIT_WORK_TREE`, `GIT_INDEX_FILE`, `XDG_CONFIG_HOME`) are unset, and the history is built with
+the world's `HOME`, so the user's git ignore and attributes files can't change it. The remote is
+reached through a `url.insteadOf` in the world's own gitconfig, which the shell names in
+`GIT_CONFIG_GLOBAL`, with `GIT_CONFIG_NOSYSTEM=1`.
+
+**The part count.** v1.4.0's notes come in 4 parts because `max_prompt_bytes` (in `mint_toml`
+in `world.sh`, 20800) leaves only so much room for diff beside mint's notes prompt, its Change
+Map and its framing. A change to mint's prompt, or to pigeon's history, shifts the room and so the
+count, without a word. To recalibrate, record `tour` and read its `Notes written (N parts,
+merged)`: raise `max_prompt_bytes` for fewer parts, lower it for more, a few hundred bytes at a
+time. The exclusion check's pause must still come, and `failed` needs at least 3 parts.
 
 The shims on the world's `PATH`:
 
@@ -63,16 +90,17 @@ The shims on the world's `PATH`:
   makes part 3 fail with a usage-limit message, for `failed`. Single-pass notes are chosen by the
   file each version added; v1.2.0's come back empty, so `regenerate --all` skips it.
 - **`gh`**: signed in; `release create`, `edit` and `view` answer as GitHub would, from releases
-  kept under `demo/out/world/github/`, with `https://github.com/acme/pigeon/releases/tag/<tag>`
+  kept in the world's `github/`, with `https://github.com/acme/pigeon/releases/tag/<tag>`
   where a URL is due.
-- **`git`**: the real git, waiting a moment before a push, as the network would, so the spinner
+- **`git`**: the real git, waiting a moment on a `git push`, as the network would, so the spinner
   shows. `git remote get-url origin` answers with the URL as configured: git expands `insteadOf`
   there, which would show mint the bare repo's path and no GitHub to publish to.
 - **`npm`**: the `pre_tag` hook's install and build, which takes a moment and writes `dist/`.
 
 ## The look
 
-agntc's, which is Switchboard's: JetBrains Mono, the nord theme, 100 columns at 28px, frames twice
+agntc's, which is Switchboard's, in Lee's Ghostty theme: JetBrains Mono, Nordfox (Ghostty's own
+values, from its `themes/Nordfox`), 100 columns at 28px, frames twice
 the width the README shows them at, so a high-density screen draws them sharp. A cell is
 16 × 37 px, so a frame is 1600 px wide and, with its 40 px margin, the tour is 1680: twice 840.
 The shell reports `COLORTERM=truecolor`, as Ghostty and iTerm do.

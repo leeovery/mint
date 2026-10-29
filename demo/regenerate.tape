@@ -12,11 +12,13 @@ Source "demo/look.tape"
 Set Height 2099
 
 Hide
-Type "demo/world.sh regenerate && source demo/out/world/profile.sh" Enter
+Type 'demo/world.sh regenerate && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh"' Enter
 Wait
 Show
 
 Type "mint release regenerate --all --target both -y"
 Enter
 Wait
+# The line only a batch with its one skip prints.
+Wait+Screen /6 regenerated, 1 skipped: v1\.2\.0/
 Sleep 600ms
