@@ -4,7 +4,7 @@
  │
  ●  version       v1.3.0 (minor bump) · accepted (-y)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
- ●  check         files that don't belong in the notes                                          0.7s
+ ●  check         nothing to leave out                                                          0.7s
  ●  notes         generated · accepted (-y)                                                     2.1s
  ●  record        CHANGELOG.md committed
  │                committed as 🌿 Release v1.3.0

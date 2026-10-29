@@ -12,15 +12,15 @@ import (
 	"mint/internal/bytesize"
 )
 
-// CheckNarration is told when the exclusion check's call starts and when it ends, when
-// the keep list covers every changed path so there is nothing to call about, and when
-// the check failed: after the call ends when the call failed or its answer was
-// unreadable, and with no call at all when the call would not fit under the cap.
-// output is the AI's captured output, or its unreadable answer, verbatim but for
-// trailing whitespace, and empty when there is none.
+// CheckNarration is told when the exclusion check's call starts and when it ends, clear
+// when the answer flagged nothing, when the keep list covers every changed path so
+// there is nothing to call about, and when the check failed: after the call ends when
+// the call failed or its answer was unreadable, and with no call at all when the call
+// would not fit under the cap. output is the AI's captured output, or its unreadable
+// answer, verbatim but for trailing whitespace, and empty when there is none.
 type CheckNarration interface {
 	Checking()
-	Checked()
+	Checked(clear bool)
 	AllKept()
 	CheckFailed(output string)
 }
@@ -28,7 +28,7 @@ type CheckNarration interface {
 type noCheckNarration struct{}
 
 func (noCheckNarration) Checking()          {}
-func (noCheckNarration) Checked()           {}
+func (noCheckNarration) Checked(bool)       {}
 func (noCheckNarration) AllKept()           {}
 func (noCheckNarration) CheckFailed(string) {}
 
@@ -139,7 +139,8 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 	}
 	c.narration.Checking()
 	answer, err := c.transport.Generate(ctx, prompt)
-	c.narration.Checked()
+	clear := err == nil && strings.EqualFold(strings.TrimSpace(answer), "none")
+	c.narration.Checked(clear)
 	if errors.Is(err, context.Canceled) {
 		return nil, err
 	}
@@ -147,7 +148,7 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 		c.narration.CheckFailed(failureOutput(err))
 		return nil, nil
 	}
-	if strings.EqualFold(strings.TrimSpace(answer), "none") {
+	if clear {
 		return nil, nil
 	}
 	suggestions := usableSuggestions(answer, paths)

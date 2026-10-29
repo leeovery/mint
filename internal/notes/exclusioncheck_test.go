@@ -61,8 +61,14 @@ func sized(t *testing.T, section func(body string) string, bytes int) string {
 type checkNarration struct{ events []string }
 
 func (n *checkNarration) Checking() { n.events = append(n.events, "checking") }
-func (n *checkNarration) Checked()  { n.events = append(n.events, "checked") }
 func (n *checkNarration) AllKept()  { n.events = append(n.events, "all kept") }
+func (n *checkNarration) Checked(clear bool) {
+	if clear {
+		n.events = append(n.events, "checked: clear")
+		return
+	}
+	n.events = append(n.events, "checked")
+}
 func (n *checkNarration) CheckFailed(output string) {
 	n.events = append(n.events, "failed: "+output)
 }
@@ -210,7 +216,7 @@ func TestExclusionCheck_NarratesTheCallStartingAndEnding(t *testing.T) {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
-	if want := []string{"checking", "call", "checked"}; !slices.Equal(narration.events, want) {
+	if want := []string{"checking", "call", "checked: clear"}; !slices.Equal(narration.events, want) {
 		t.Errorf("narration = %v, want %v", narration.events, want)
 	}
 }
@@ -325,7 +331,7 @@ func TestExclusionCheck_AnswerNone_IsNoFailure(t *testing.T) {
 			if _, err := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).Check(t.Context(), sourceDiff, config.DefaultMaxPromptBytes); err != nil {
 				t.Fatalf("Check returned unexpected error: %v", err)
 			}
-			if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
+			if want := []string{"checking", "checked: clear"}; !slices.Equal(narration.events, want) {
 				t.Errorf("narration = %q, want %q", narration.events, want)
 			}
 		})

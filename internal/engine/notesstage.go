@@ -52,9 +52,15 @@ func (s *notesStage) Checking() {
 	s.p.NotesChecking(presenter.NotesCheck{Key: stageCheck})
 }
 
-func (s *notesStage) Checked() {
+// Checked narrates the check's call ending, its result stated where the answer flagged
+// nothing; whatever it flagged states its own result on the rows that follow.
+func (s *notesStage) Checked(clear bool) {
 	s.checkSettled = true
-	s.p.NotesChecked(presenter.NotesCheck{Key: stageCheck, Elapsed: s.stage.now().Sub(s.checking)})
+	check := presenter.NotesCheck{Key: stageCheck, Elapsed: s.stage.now().Sub(s.checking)}
+	if clear {
+		check.Detail = "nothing to leave out"
+	}
+	s.p.NotesChecked(check)
 }
 
 // AllKept settles the check's node quietly: the keep list covers every changed path.

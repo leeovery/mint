@@ -639,10 +639,13 @@ type NotesMerge struct {
 
 // NotesCheck carries the NotesChecking and NotesChecked payloads: Key names the
 // check's plan stage, and Elapsed, on NotesChecked alone, is the engine-measured
-// time of the check's call.
+// time of the check's call. Detail, on NotesChecked alone, is the check's result
+// for its settled row, empty where the rows after it state the result (what it
+// flagged, or its failure); plain and today's pretty ignore it.
 type NotesCheck struct {
 	Key     string
 	Elapsed time.Duration
+	Detail  string
 }
 
 // StageFailure carries the StageFailed payload. Output is the underlying

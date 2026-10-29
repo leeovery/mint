@@ -7,7 +7,7 @@
  │                skipping preflight hook
  ┆
  ○  pre_tag       npm ci && npm run build
- ●  check         files that don't belong in the notes                                          0.7s
+ ●  check         nothing to leave out                                                          0.7s
  ●  notes         generated                                                                     2.1s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
