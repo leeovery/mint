@@ -170,10 +170,14 @@ func (p *RailPresenter) ShowPlan(plan Plan) {
 }
 
 // StageStarted sets the stage running: the spinner in its mark's place, what it is
-// doing in its detail and, for one that takes time, its time so far.
+// doing in its detail and, for one that takes time, its time so far. A stage a
+// question's loop runs, as the edit, is the question's and draws nothing.
 func (p *RailPresenter) StageStarted(s StageStart) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.run.looping(s.Key) {
+		return
+	}
 	pt := p.run.stage(s.Key, s.Name)
 	pt.doing = firstOf(s.Text, pt.plan, s.Name)
 	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, pt.doing, "", nil
@@ -182,10 +186,14 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 }
 
 // StageSucceeded settles the stage done: its detail, its time where it takes time,
-// and the subject of any commit it made hung under it.
+// and the subject of any commit it made hung under it. A stage a question's loop
+// ran draws nothing.
 func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.run.looping(s.Key) {
+		return
+	}
 	pt := p.run.stage(s.Key, s.Name)
 	n := pt.node
 	n.State, n.Detail, n.Time, n.Progress = rail.Done, firstOf(s.Detail, pt.plan), "", nil
@@ -200,10 +208,12 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 
 // StageFailed marks the stage failed with its message, the command's output verbatim
 // under it behind a gutter of its own and any saved part notes' path on a line of
-// its own, and writes the one-line summary to err.
+// its own, and writes the one-line summary to err. A failure ends any question's
+// loop: it is drawn as the run's own.
 func (p *RailPresenter) StageFailed(s StageFailure) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.run.loop = ""
 	n := p.run.stage(s.Key, s.Name).node
 	n.State, n.Detail, n.Time, n.Progress = rail.Failed, s.Message, "", nil
 	if s.Elapsed > 0 {
@@ -251,7 +261,7 @@ func (p *RailPresenter) NotesChecked(c NotesCheck) {
 // NotesProgress draws the running notes' bar: the parts done of the parts.
 func (p *RailPresenter) NotesProgress(n NotesProgress) {
 	p.progress(func(bar *rail.Progress) {
-		*bar = rail.Progress{Label: fmt.Sprintf("%d of %d parts", n.Done, n.Parts), Done: n.Done, Total: n.Parts}
+		*bar = rail.Progress{Label: fmt.Sprintf("part %d of %d", n.Done, n.Parts), Done: n.Done, Total: n.Parts}
 	})
 }
 
@@ -330,12 +340,11 @@ func (p *RailPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 	p.redraw()
 }
 
-// Warn draws a warning as a node: the stage it ends, where it names one, or one of
-// its own, labelled; and writes its summary to err.
+// Warn draws a warning as a node, and writes its summary to err.
 func (p *RailPresenter) Warn(w Warning) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	n := p.run.stage(w.Key, w.Label).node
+	n := p.warned(w.Key, w.Label)
 	n.State, n.Detail, n.Progress = rail.Warning, w.Message, nil
 	if w.Output != "" {
 		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Output, Text: w.Output})
@@ -344,16 +353,36 @@ func (p *RailPresenter) Warn(w Warning) {
 	p.redraw()
 }
 
-// Unwound draws the unwind's node: what it undid, then what it kept and where it
-// left the repo under it.
+// warned is the node a warning about the stage keyed key draws as: the stage's own
+// where it is running or still to come, which the warning ends; else a node of its
+// own, labelled, by the stage's node where that is done, which it leaves as it was,
+// and at the run's edge where it has settled or there is none. A warning inside a
+// question's loop, as an editor that won't launch, is about the node the question
+// asks about.
+func (p *RailPresenter) warned(key, label string) *rail.Node {
+	loop := p.run.looping(key)
+	if loop {
+		key = p.run.loop
+	}
+	pt := p.run.find(key)
+	switch {
+	case pt != nil && (loop || pt.node.State == rail.Done):
+		return p.run.aside(pt, rail.Node{Name: label}).node
+	case pt == nil && (loop || p.run.gone[key]):
+		return p.run.add(rail.Node{Name: label}).node
+	}
+	return p.run.stage(key, label).node
+}
+
+// Unwound draws the unwind's node: what it undid, and what it kept under it. Where
+// it left the repo is a claim about the tree the rail doesn't make; a step left to
+// do by hand reaches the end station's detail.
 func (p *RailPresenter) Unwound(u Unwind) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	n := rail.Node{State: rail.Unwind, Name: unwindName, Detail: u.Undone}
-	for _, line := range []string{u.Kept, u.Repo} {
-		if line != "" {
-			n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: line})
-		}
+	if u.Kept != "" {
+		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: u.Kept})
 	}
 	p.run.add(n)
 	p.redraw()
@@ -448,21 +477,19 @@ func (p *RailPresenter) Close() {
 }
 
 // redraw draws the run: what has settled since the last redraw, then the live
-// region, at the terminal's size now. A region too tall for the terminal settles
-// from its top, what can settle early, until it fits. With no room for a region at
-// all, whatever is finished settles at once, and an open question too, so it can be
-// seen. It starts or stops the spinner to match.
+// region, at the terminal's size now. With no room for a region at all, the run
+// prints as it happens instead. It starts or stops the spinner to match.
 func (p *RailPresenter) redraw() {
 	cols, rows := p.size()
 	p.cols, p.layout = cols, rail.NewLayout(cols, p.level)
-	fits := p.layout.RegionFits()
-	p.run.settleFinished(fits)
+	p.run.pass()
 	var run rail.Run
 	var region []string
-	if fits {
+	if p.layout.RegionFits() {
+		p.run.settleFinished()
 		run, region = p.fit(rows)
 	} else {
-		p.run.settleAsked()
+		p.run.log()
 		run = p.drawing()
 	}
 	p.region.Draw(p.layout.Settled(run, p.run.printed), region, rows)
@@ -470,12 +497,15 @@ func (p *RailPresenter) redraw() {
 	p.syncTicker()
 }
 
+// fit is the run and its region, a region too tall for the terminal giving way: the
+// plan still to come at its foot first, which Draw cuts, then its top, settling what
+// can settle early, until what the run has reached fits.
 func (p *RailPresenter) fit(rows int) (rail.Run, []string) {
 	for {
 		run := p.drawing()
-		region := p.layout.Region(run)
-		if len(region) <= regionRows(rows) || !p.run.settleFirst() {
-			return run, region
+		reached := p.layout.Region(p.run.reached(p.now()))
+		if len(reached) <= regionRows(rows) || !p.run.settleFirst() {
+			return run, p.layout.Region(run)
 		}
 	}
 }

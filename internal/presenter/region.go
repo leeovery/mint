@@ -78,10 +78,11 @@ func (r *liveRegion) Erase() {
 
 // Place puts the cursor at column col of the region's row, both counted from 0,
 // for a question that reads a typed line: the terminal echoes what is typed there.
-// It does nothing where the region has no such row.
-func (r *liveRegion) Place(row, col int) {
+// It does nothing where the region has no such row, and reports whether it moved
+// the cursor.
+func (r *liveRegion) Place(row, col int) bool {
 	if !r.shown || row < 0 || row >= r.up {
-		return
+		return false
 	}
 	var b strings.Builder
 	b.WriteString(toLineStart)
@@ -91,6 +92,7 @@ func (r *liveRegion) Place(row, col int) {
 	}
 	r.up = row
 	r.write(b.String())
+	return true
 }
 
 // Moved records that the terminal moved the cursor rows further down the region by

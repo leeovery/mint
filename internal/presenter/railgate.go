@@ -3,7 +3,6 @@ package presenter
 import (
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/rivo/uniseg"
 
@@ -66,15 +65,15 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 func (p *RailPresenter) typedChoice(g Gate) (Choice, error) {
 	q := p.ask(g, true)
 	for {
-		line, err := readLine(bufferedReader(p.in, &p.reader))
+		line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
 		if err != nil {
 			return "", p.answered(g, q, "", err)
 		}
-		p.echoed(line)
+		p.echoed(line, ended)
 		if c, ok := parseChoice(line, g); ok {
 			return c, p.answered(g, q, c, nil)
 		}
-		p.reask()
+		p.reask(q)
 	}
 }
 
@@ -91,9 +90,9 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	}
 	q := p.open(&part{kind: questionPart, question: rail.Question{Text: prompt, Typing: true}}, "")
 	p.mu.Unlock()
-	line, err := readLine(bufferedReader(p.in, &p.reader))
+	line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
 	if err == nil {
-		p.echoed(line)
+		p.echoed(line, ended)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -130,13 +129,14 @@ func (p *RailPresenter) open(q *part, stage string) *part {
 	return q
 }
 
-// reask draws the question again after a typed line that answered nothing, for
-// another to be typed.
-func (p *RailPresenter) reask() {
+// reask draws the question q again after a typed line that answered nothing, for
+// another to be typed: where there is no region, it prints again.
+func (p *RailPresenter) reask(q *part) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	q.shown = false
 	p.redraw()
-	p.place(p.run.partOf(questionPart))
+	p.place(q)
 }
 
 // withdraw takes q off the rail unanswered.
@@ -172,9 +172,10 @@ func (p *RailPresenter) dismiss(q *part) {
 	}
 }
 
-// question is g as a question part of kind: a preview has no keys. The exclusion
-// pause's glob is its name, what the AI said of it hung above it under the check's
-// node, where that is drawn; a preview leaves it there.
+// question is g as a question part of kind: a preview has no keys. Where the
+// exclusion check's node is drawn, the pause's glob is its name and what the AI said
+// of it hangs above it under that node, which a preview leaves there; with the node
+// settled, the pause asks in the gate's own words, which say it all.
 func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
@@ -182,31 +183,36 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 			q.question.Choices = append(q.question.Choices, rail.Choice{Key: string(c.Key), Action: c.Action})
 		}
 	}
-	if x := g.Suggestion; x != nil {
-		if check := p.run.find(g.Stage); check != nil {
-			check.node.Lines = append(slices.Clone(check.node.Lines), rail.Hang{Kind: rail.Note, Text: about(*x)})
-			q.question.Name, q.question.Text = x.Glob, pauseQuestion
-			if kind == questionPart {
-				q.about = check
-			}
-		}
+	x, check := g.Suggestion, p.run.find(g.Stage)
+	if x == nil || check == nil {
+		return q
+	}
+	check.node.Lines = append(slices.Clone(check.node.Lines), rail.Hang{Kind: rail.Note, Text: about(*x)})
+	q.question.Name, q.question.Text = x.Glob, pauseQuestion
+	if kind == questionPart {
+		q.about = check
 	}
 	return q
 }
 
 // answer settles c as g's answer, auto where -y took it: the exclusion pause's as a
 // line under the check's node; any other's as the tail of the node it asked about,
-// what hung above it gone, or, that node settled above, on a row of its own. An edit
-// or a regenerate settles nothing: its body is shown again, in place, and the
-// question comes back.
+// what hung above it gone, or, that node settled above, on a row of its own; a gate
+// asked before the run's stages as a row naming what was chosen. An edit or a
+// regenerate settles nothing: where a body is shown, it opens the question's loop, the
+// body is shown again, in place, and the question comes back.
 func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 	if x := g.Suggestion; x != nil {
 		p.run.hang(g.Stage, rail.Hang{Kind: rail.Note, Text: x.Glob + " " + pauseAnswer(g, c, auto) + " · " + x.Reason})
 		return
 	}
 	if c == ChoiceEdit || c == ChoiceRegen {
+		if p.run.partOf(bodyPart) != nil {
+			p.run.loop = g.Stage
+		}
 		return
 	}
+	p.run.loop = ""
 	if body := p.run.partOf(bodyPart); body != nil {
 		p.run.remove(body)
 	}
@@ -219,7 +225,7 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 		asked.node.Tail = tail
 		p.run.touched = asked
 	case g.Stage == "":
-		p.run.add(rail.Node{Name: g.Subject, Detail: tail})
+		p.run.add(rail.Node{Name: g.Subject, Detail: chosen(g, c), Tail: autoTail(auto)})
 	case p.run.gone[g.Stage]:
 		p.run.add(rail.Node{Name: reviewName, Detail: tail})
 	default:
@@ -228,40 +234,50 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 	}
 }
 
-// answerTail is how an answer reads after the node it settles: the gate's own word
-// for its default (none for a gate whose node's detail already says what was
-// accepted, the version's), the action of any other key; under -y, marked (-y), the
-// auto-accept echo.
+// autoAccepted is the tail of every answer -y took, the auto-accept echo.
+const autoAccepted = "accepted (-y)"
+
+// answerTail is how an answer reads after the node it settles: under -y, the
+// auto-accept echo; else the gate's own word for its default (none for a gate whose
+// node's detail already says what was accepted, the version's) and the action of any
+// other key.
 func answerTail(g Gate, c Choice, auto bool) string {
-	tail := action(g, c)
 	switch {
+	case auto:
+		return autoAccepted
 	case c == g.Default && g.Detail != "":
-		tail = ""
-	case c == g.Default:
-		tail = g.AcceptEcho
+		return ""
 	}
-	return autoMarked(tail, auto)
+	return chosen(g, c)
+}
+
+func autoTail(auto bool) string {
+	if auto {
+		return autoAccepted
+	}
+	return ""
+}
+
+// chosen is what answering g with c chose: the gate's own word for its default, the
+// action of any other key.
+func chosen(g Gate, c Choice) string {
+	if c == g.Default {
+		return g.AcceptEcho
+	}
+	return action(g, c)
 }
 
 // pauseAnswer is what became of the exclusion pause's glob: kept, the gate's own
-// word for its default, or excluded.
+// word for its default, or excluded, marked (-y) where -y took it.
 func pauseAnswer(g Gate, c Choice, auto bool) string {
-	word := action(g, c)
-	switch c {
-	case g.Default:
-		word = g.AcceptEcho
-	case ChoiceExclude:
+	word := chosen(g, c)
+	if c == ChoiceExclude {
 		word = "excluded"
 	}
-	return autoMarked(word, auto)
-}
-
-// autoMarked is answer marked (-y) where -y gave it.
-func autoMarked(answer string, auto bool) string {
-	if !auto {
-		return answer
+	if auto {
+		word += " (-y)"
 	}
-	return strings.TrimSpace(answer + " (-y)")
+	return word
 }
 
 // action is the action g's key c names.
@@ -284,21 +300,21 @@ func (p *RailPresenter) failNotInteractive(label string) {
 }
 
 // place puts the cursor where the open question q reads its typed line, for the
-// terminal to echo it there.
+// terminal to echo it there. Where it can't, the cursor stays at the start of the
+// row under the region, and the echo starts there.
 func (p *RailPresenter) place(q *part) {
 	p.typedAt = 0
 	if q == nil || !q.question.Typing || !p.layout.RegionFits() {
 		return
 	}
-	if row, col, ok := p.layout.Cursor(p.drawing()); ok {
-		p.region.Place(row, col)
+	if row, col, ok := p.layout.Cursor(p.drawing()); ok && p.region.Place(row, col) {
 		p.typedAt = col
 	}
 }
 
 // echoed records the rows the terminal moved the cursor down echoing line, typed at
-// the question, and the Enter after it.
-func (p *RailPresenter) echoed(line string) {
+// the question, and the Enter after it where the line ended in one.
+func (p *RailPresenter) echoed(line string, ended bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.echo {
@@ -308,9 +324,42 @@ func (p *RailPresenter) echoed(line string) {
 	if cols <= 0 {
 		cols = unknownCols
 	}
-	rows := 1
-	if w := uniseg.StringWidth(line); w > 0 {
-		rows += (p.typedAt + w - 1) / cols
+	p.region.Moved(echoRows(line, p.typedAt, cols, ended))
+}
+
+// tabStop is the columns apart a terminal's tab stops are.
+const tabStop = 8
+
+// echoRows is how many rows down a terminal cols wide leaves the cursor echoing line
+// from column at, as it draws it: a tab to the next tab stop, a control character
+// as ^X, a cluster that won't fit on the row on the next, and the Enter after it,
+// where the line ended in one, a row down.
+func echoRows(line string, at, cols int, ended bool) int {
+	col, rows := at, 0
+	g := uniseg.NewGraphemes(line)
+	for g.Next() {
+		cluster := g.Str()
+		if cluster == "\t" {
+			col = min((col/tabStop+1)*tabStop, cols-1)
+			continue
+		}
+		w := echoWidth(cluster)
+		if col+w > cols {
+			rows, col = rows+1, 0
+		}
+		col += w
 	}
-	p.region.Moved(rows)
+	if ended {
+		rows++
+	}
+	return rows
+}
+
+// echoWidth is the columns a terminal's echo of cluster takes: a control character
+// two, as ^X.
+func echoWidth(cluster string) int {
+	if len(cluster) == 1 && (cluster[0] < ' ' || cluster[0] == 0x7f) {
+		return 2
+	}
+	return uniseg.StringWidth(cluster)
 }

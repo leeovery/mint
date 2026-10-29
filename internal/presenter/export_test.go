@@ -70,6 +70,10 @@ func SingleKeyGate(g Gate) bool { return singleKeyGate(g) }
 // keypress tests.
 func KeyChoice(keys []byte, g Gate) (Choice, bool, error) { return keyChoice(keys, g) }
 
+// EchoRows exposes echoRows, the rows a terminal's echo of a typed line moves the
+// cursor down, to its table.
+func EchoRows(line string, at, cols int, ended bool) int { return echoRows(line, at, cols, ended) }
+
 // WithYes sets the -y gating decision on the rail presenter and returns it for
 // chaining. See RailPresenter.yes.
 func (p *RailPresenter) WithYes(yes bool) *RailPresenter {

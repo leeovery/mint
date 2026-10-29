@@ -1,6 +1,7 @@
 package presenter_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -176,6 +177,8 @@ func TestRail_AStageThatGoesOnAfterAWarningDrawsANodeUnderIt(t *testing.T) {
 	}
 }
 
+// TestRail_TheUnwindNamesWhatItUndidThenWhatItKept pins that where the unwind left
+// the repo is not drawn: a claim about the tree the rail doesn't make.
 func TestRail_TheUnwindNamesWhatItUndidThenWhatItKept(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 24, answers())
@@ -185,7 +188,7 @@ func TestRail_TheUnwindNamesWhatItUndidThenWhatItKept(t *testing.T) {
 	want := []string{
 		" ↩  unwind        reset 2 commits",
 		" │                kept the answers commit on the starting commit",
-		" │                repo clean",
+		" ┆",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("the unwind reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -223,7 +226,7 @@ func TestRail_NotesInPartsDrawABarTheReCutAndTheMergeItsLabel(t *testing.T) {
 		{
 			name: "parts done",
 			say:  func(p presenter.Presenter) { p.NotesProgress(presenter.NotesProgress{Parts: 4, Done: 1}) },
-			want: " ⠋  notes         1 of 4 parts  ━━━━━━──────────────────",
+			want: " ⠋  notes         part 1 of 4  ━━━━━━──────────────────",
 		},
 		{
 			name: "a part re-cut",
@@ -337,7 +340,7 @@ func TestRail_TheWidthIsReadAgainAtEachRedraw(t *testing.T) {
 	}
 }
 
-func TestRail_UnderSixtyColumnsThereIsNoRegion_LinesOnlySettle(t *testing.T) {
+func TestRail_UnderSixtyColumnsThereIsNoRegion_NothingIsRedrawn(t *testing.T) {
 	t.Parallel()
 	in := answers("y\n")
 	r := newRailTerm(t, 50, 24, in)
@@ -347,7 +350,7 @@ func TestRail_UnderSixtyColumnsThereIsNoRegion_LinesOnlySettle(t *testing.T) {
 	r.ShowMessage(presenter.Message{Body: "feat: retry deliveries"})
 	in.asked = func(int) {
 		if got := r.screen(t); got[len(got)-1] != " ?  Commit this message?   y accept   n abort" {
-			t.Errorf("while asked the terminal ends %q, want the question settled where it can be seen", got[len(got)-1])
+			t.Errorf("while asked the terminal ends %q, want the question printed where it can be seen", got[len(got)-1])
 		}
 	}
 	g := presenter.ReuseConfirmGate()
@@ -389,5 +392,128 @@ func TestRail_TheColourIsTheProfiles(t *testing.T) {
 				t.Errorf("the wordmark's m is %v, want it in %s", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestRail_UnderSixtyColumnsAQuestionPrintsTheMomentItIsAsked pins that with no
+// region nothing waits to be shown: a question asked under a stage still running,
+// or under a stage a dry run passed by, is on the terminal while it waits.
+func TestRail_UnderSixtyColumnsAQuestionPrintsTheMomentItIsAsked(t *testing.T) {
+	t.Parallel()
+	checked := func(r *railTerm) {
+		r.RunStarted(releaseStarted(false))
+		r.ShowPlan(releasePlan())
+		r.StageStarted(notesStarted())
+		r.NotesChecking(presenter.NotesCheck{Key: "check"})
+		r.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
+	}
+	tests := []struct {
+		name string
+		// ask asks the question, calling look while it waits.
+		ask  func(r *railTerm, look func())
+		want string
+	}{
+		{name: "the cached notes, asked while the notes run", want: " ?  Cached notes found for this diff — use them?", ask: func(r *railTerm, _ func()) {
+			r.RunStarted(releaseStarted(false))
+			r.ShowPlan(releasePlan())
+			r.StageStarted(notesStarted())
+			r.SuspendSpinner()
+			_, _ = r.Prompt(cacheGate())
+		}},
+		{name: "the exclusion pause, the notes running again under the check", want: " ?  Exclude docs/specs/** from the notes? (design", ask: func(r *railTerm, _ func()) {
+			checked(r)
+			_, _ = r.Prompt(pauseGate())
+		}},
+		{name: "a dry run's preview, under a stage it passed by", want: " ?  Exclude docs/specs/** from the notes? (design", ask: func(r *railTerm, look func()) {
+			r.RunStarted(releaseStarted(true))
+			r.ShowPlan(releasePlan())
+			r.Warn(presenter.Warning{Label: "dry-run", Message: "skipping pre_tag hook"})
+			r.StageStarted(notesStarted())
+			r.NotesChecking(presenter.NotesCheck{Key: "check"})
+			r.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
+			r.PreviewGate(pauseGate())
+			look()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := answers("y\n")
+			r := newRailTerm(t, 50, 40, in)
+			looked := false
+			look := func() {
+				looked = true
+				if screen := r.screen(t); !slices.Contains(screen, tt.want) {
+					t.Errorf("while the question waits the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), tt.want)
+				}
+			}
+			in.asked = func(int) { look() }
+			tt.ask(r, look)
+			if !looked {
+				t.Fatal("the question was never up to look at")
+			}
+		})
+	}
+}
+
+// TestRail_UnderSixtyColumnsAStagePrintsStillAsItStartsThenAgainAsItSettles pins
+// that with no region a running stage's line prints the moment it starts, at the
+// spinner's first frame with no time and no ticker, and its settled line once it is
+// done.
+func TestRail_UnderSixtyColumnsAStagePrintsStillAsItStartsThenAgainAsItSettles(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 50, 24, answers())
+	commitRun(r)
+	r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true, Text: "writing…"})
+	started := []string{" ⠋  message", " ┆  writing…"}
+	if got := r.screen(t); !slices.Equal(got[len(got)-2:], started) {
+		t.Errorf("once started the terminal ends\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(started, "\n"))
+	}
+	if r.ticks.running() {
+		t.Error("a spinner ticks with no region to draw it in")
+	}
+	r.clock.Advance(secs(2.1))
+	r.StageSucceeded(presenter.StageSuccess{Name: "commit message", Key: "message", Blocking: true, Elapsed: secs(2.1), Detail: "written"})
+	want := append(started, " ●  message", " │  written")
+	if got := r.screen(t); !slices.Equal(got[len(got)-4:], want) {
+		t.Errorf("once done the terminal ends\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestRail_AWarningAboutAStageDoneDrawsUnderItAndLeavesItAsItWas pins that a warning
+// never changes a node done: it draws as a node of its own under it.
+func TestRail_AWarningAboutAStageDoneDrawsUnderItAndLeavesItAsItWas(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 24, answers())
+	commitRun(r)
+	r.StageStarted(presenter.StageStart{Name: "commit message", Key: "message", Blocking: true})
+	r.StageSucceeded(presenter.StageSuccess{Name: "commit message", Key: "message", Blocking: true, Elapsed: secs(2.1), Detail: "written"})
+	r.Warn(presenter.Warning{Key: "message", Label: "editor", Message: "could not launch editor, keeping the message"})
+	got := r.screen(t)[4:6]
+	want := []string{row(" ●  message       written", "2.1s"), " !  editor        could not launch editor, keeping the message"}
+	if !slices.Equal(got, want) {
+		t.Errorf("the message rows read\n%s\nwant the node done as it was and the warning under it\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestRail_ADryRunSettlesTheStagesItPassedBy pins that a stage a dry run went past
+// is as final as one done: hollow at the region's head, it settles as the run moves
+// on, so notes taller than the terminal settle under it rather than being cut.
+func TestRail_ADryRunSettlesTheStagesItPassedBy(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 100, 14, answers())
+	r.RunStarted(releaseStarted(true))
+	r.ShowPlan(releasePlan())
+	r.Warn(presenter.Warning{Label: "dry-run", Message: "skipping pre_tag hook"})
+	r.StageStarted(notesStarted())
+	r.NotesChecking(presenter.NotesCheck{Key: "check"})
+	r.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
+	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
+	r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
+	screen := r.screen(t)
+	for _, want := range []string{" ○  pre_tag       npm ci && npm run build", " │    - Signing secrets with a trailing newline are accepted again."} {
+		if !slices.Contains(screen, want) {
+			t.Errorf("the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), want)
+		}
 	}
 }

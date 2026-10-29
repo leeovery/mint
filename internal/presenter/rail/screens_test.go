@@ -89,20 +89,20 @@ func failed() rail.Run {
 	return rail.Run{Settled: []rail.Item{
 		releaseHeader(),
 		releaseStart(),
-		rail.Node{Name: "version", Detail: "v1.4.0 (minor bump)"},
+		rail.Node{Name: "version", Detail: "v1.4.0 (minor bump)", Tail: "accepted (-y)"},
 		rail.Node{Name: "preflight", Detail: "tree clean · on main · v1.4.0 free · in sync with origin"},
 		rail.Node{Name: "pre_tag", Detail: "npm ci && npm run build", Time: "4.1s", Lines: []rail.Hang{
 			{Kind: rail.Note, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
 		}},
 		rail.Node{Name: "check", Detail: "files that don't belong in the notes", Time: "6.2s"},
 		rail.Node{State: rail.Warning, Name: "docs/specs/**", Detail: "flagged, not asked: design documents · 6 files, 48 kB"},
-		rail.Node{State: rail.Failed, Name: "notes", Detail: "the AI call for part 3 of 4 failed", Time: "41s", Lines: []rail.Hang{
+		rail.Node{State: rail.Failed, Name: "notes", Detail: "the AI call for part 3 of 4 failed", Time: "41.0s", Lines: []rail.Hang{
 			{Kind: rail.Output, Text: "Claude usage limit reached. Your limit will reset at 4pm (Europe/London).\n"},
 			{Kind: rail.Note, Text: "part notes saved to"},
 			{Kind: rail.Path, Text: savedPath},
 		}},
 		rail.Node{State: rail.Unwind, Name: "unwind", Detail: "pre-tag artifacts commit removed"},
-		rail.End{Name: "v1.3.2", Detail: "back where it started · nothing pushed", Time: "47s"},
+		rail.End{Name: "v1.3.2", Detail: "back where it started · nothing pushed", Time: "47.0s"},
 		rail.Next{Moves: []rail.Move{
 			{Lead: "Tidy the saved part notes, then release with them:", Command: "mint release -m --notes-file " + savedPath},
 			{Lead: "Release with the commit-subject list:", Command: "mint release -m --no-ai"},

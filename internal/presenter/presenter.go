@@ -48,7 +48,9 @@ func writeNotesBody(w io.Writer, body string) {
 // The contract follows the event-payload principle: the engine supplies, in
 // each event's payload, every datum the rendering consumes. A Presenter renders
 // what it is handed and never re-derives engine knowledge — it holds no
-// hardcoded stage-name lists and times no stages.
+// hardcoded stage-name lists. The engine measures every elapsed time that
+// settles; the one clock a presenter runs is a running stage's, ticking for
+// display only and never settled.
 //
 // This started as the minimal event set for the walking skeleton (start-of-run,
 // the three per-stage transitions, end-of-run); the fuller vocabulary (Warn,

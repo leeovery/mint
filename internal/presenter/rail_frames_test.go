@@ -45,5 +45,23 @@ func TestRailFrames(t *testing.T) {
 	failedRelease(failed, failed.clock)
 	drawn["failed-100"] = failed.frame(t)
 
+	narrow(t, drawn)
+
 	frametest.Check(t, "testdata/frames", drawn)
+}
+
+// narrow draws the cached-notes release 50 columns wide, where there is no region
+// and the run prints as it happens: the whole run, and the screen as each of its
+// questions waits, the pause and the cached notes asked under the notes still
+// running, then the review.
+func narrow(t *testing.T, drawn map[string]string) {
+	in := answers("y\n", "e\n", "y\n", "y\n")
+	r := newRailTerm(t, 50, 40, in)
+	in.asked = func(n int) {
+		if name, ok := map[int]string{2: "narrow-pause-50", 3: "narrow-cache-50", 4: "narrow-review-50"}[n]; ok {
+			drawn[name] = r.frame(t)
+		}
+	}
+	cachedRelease(r, r.clock)
+	drawn["narrow-50"] = r.frame(t)
 }

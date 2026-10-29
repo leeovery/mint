@@ -4,7 +4,7 @@
  │  main @ 7c1e0b4
  │
  ●  version
- │  v1.4.0 (minor bump)
+ │  v1.4.0 (minor bump) · accepted (-y)
  ●  preflight
  │  tree clean · on main · v1.4.0 free · in sync with origin
  ●  pre_tag

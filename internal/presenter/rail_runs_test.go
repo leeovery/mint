@@ -80,6 +80,16 @@ func reviewGate() presenter.Gate {
 	return g
 }
 
+// cacheGate is the cached-notes question a release asks while its notes stage runs,
+// a dry run before it having written notes for the same diff.
+func cacheGate() presenter.Gate {
+	return presenter.Gate{
+		Question: "Cached notes found for this diff — use them?", Subject: "notes", AcceptEcho: "reused",
+		Choices: []presenter.GateChoice{{Key: presenter.ChoiceYes, Action: "use cached"}, {Key: presenter.ChoiceRegen, Action: "regenerate"}},
+		Default: presenter.ChoiceYes, Stage: "notes",
+	}
+}
+
 func notesStarted() presenter.StageStart {
 	return presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "writing the notes…"}
 }
@@ -103,17 +113,23 @@ func preparedRelease(p presenter.Presenter, clock *fakeClock) {
 	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
 }
 
-// tour is a release through the exclusion pause and the review to its end station,
-// its answers e at the pause and y at each other question. running is called with
-// the notes written in parts, three of four done, 38.56s after they started.
-func tour(p presenter.Presenter, clock *fakeClock, running func()) {
-	preparedRelease(p, clock)
+// paused answers the exclusion pause, its spinner suspended around it as the
+// engine's is, and records the answers.
+func paused(p presenter.Presenter) {
 	p.SuspendSpinner()
 	_, _ = p.Prompt(pauseGate())
 	p.ResumeSpinner()
 	p.SuspendSpinner()
 	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Exclude: []string{"docs/specs/**"}})
 	p.ResumeSpinner()
+}
+
+// tour is a release through the exclusion pause and the review to its end station,
+// its answers e at the pause and y at each other question. running is called with
+// the notes written in parts, three of four done, 38.56s after they started.
+func tour(p presenter.Presenter, clock *fakeClock, running func()) {
+	preparedRelease(p, clock)
+	paused(p)
 	for done := range 4 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
@@ -125,6 +141,27 @@ func tour(p presenter.Presenter, clock *fakeClock, running func()) {
 	p.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{{Verb: "commit", Target: "bookkeeping"}, {Verb: "tag", Target: "v1.4.0"}}})
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
 	_, _ = p.Prompt(reviewGate())
+	shipped(p)
+}
+
+// cachedRelease is a release whose notes a dry run before it wrote: the exclusion
+// pause answered, the cached notes taken, asked while the notes stage runs with the
+// spinner suspended around the question as the engine's is, and the review.
+func cachedRelease(p presenter.Presenter, clock *fakeClock) {
+	preparedRelease(p, clock)
+	paused(p)
+	p.SuspendSpinner()
+	_, _ = p.Prompt(cacheGate())
+	p.ResumeSpinner()
+	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(6.6), Detail: "the dry run's, from the cache"})
+	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
+	_, _ = p.Prompt(reviewGate())
+	shipped(p)
+}
+
+// shipped is a release from its notes accepted to its end station: recorded,
+// pushed, published and its post_release hook run.
+func shipped(p presenter.Presenter) {
 	p.StageSucceeded(presenter.StageSuccess{Name: "record", Key: "record", Detail: "CHANGELOG.md · package.json → 🌿 Release v1.4.0"})
 	p.StageStarted(presenter.StageStart{Name: "push", Key: "push", Blocking: true, Text: "pushing to origin…"})
 	p.StageSucceeded(presenter.StageSuccess{Name: "push", Key: "push", Blocking: true, Elapsed: secs(1.9), Detail: "main + v1.4.0 → origin, atomic"})

@@ -1,0 +1,27 @@
+ mint ─ release                       ~/Code/pigeo
+n · v0.1.2
+
+ ◇  v1.3.2
+ │  main @ 7c1e0b4
+ │
+ ?  Release v1.3.2 → v1.4.0 (minor)?   y yes   n n
+o
+ ●  version
+ │  v1.4.0 (minor bump)
+ ●  preflight
+ │  tree clean · on main · v1.4.0 free · in sync w
+ith origin
+ ⠋  pre_tag
+ ┆  running the pre_tag hook…
+ ●  pre_tag
+ │  npm ci && npm run build
+ │  committed as chore(release): pre-tag artifacts
+ ⠋  notes
+ ┆  writing the notes…
+ ⠋  check
+ ┆  files that don't belong in the notes
+ ●  check
+ │  files that don't belong in the notes
+ ?  Exclude docs/specs/** from the notes? (design
+ ┆  documents; 6 files, 48 kB)   e exclude   k kee
+p

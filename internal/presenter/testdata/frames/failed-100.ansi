@@ -2,7 +2,7 @@
 
  ◇  v1.3.2        main @ 7c1e0b4
  │
- ●  version       v1.4.0 (minor bump) · (-y)
+ ●  version       v1.4.0 (minor bump) · accepted (-y)
  ●  preflight     tree clean · on main · v1.4.0 free · in sync with origin
  ●  pre_tag       npm ci && npm run build                                                       4.1s
  │                committed as chore(release): pre-tag artifacts
@@ -13,7 +13,6 @@
  │                part notes saved to
  │                ~/Library/Caches/mint/chunk-notes/Users-lee-Code-pigeon/v1.4.0.md
  ↩  unwind        pre-tag artifacts commit removed
- │                repo clean
  │
  ◇  v1.3.2        back where it started · nothing pushed                                       47.0s
 
