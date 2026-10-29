@@ -196,8 +196,9 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 }
 
 // StageSucceeded settles the stage done: its detail, its time where it takes time,
-// and the subject of any commit it made and its note hung under it. An open
-// question's own activity draws nothing.
+// and the subject of any commit it made and its note hung under it. A line hung
+// under it that its detail now states goes: the exclusion check's one answer, hung
+// while it was asked, becomes its row. An open question's own activity draws nothing.
 func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -205,9 +206,11 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 		return
 	}
 	pt := p.run.stage(s.Key, s.Name)
+	pt.awaiting = false
 	p.run.ended(s.Key, true)
 	n := pt.node
 	n.State, n.Detail, n.Time, n.Progress = rail.Done, firstOf(s.Row, s.Detail, pt.plan), "", nil
+	n.Lines = slices.DeleteFunc(n.Lines, func(h rail.Hang) bool { return h.Kind == rail.Note && h.Text == n.Detail })
 	if s.Blocking {
 		n.Time = stageTime(s.Elapsed)
 	}
@@ -259,9 +262,9 @@ func (p *RailPresenter) NotesChecking(c NotesCheck) {
 }
 
 // NotesChecked settles the exclusion check done in its time, stating its result where
-// the engine gives one and its plan where the rows after it will, and runs the stage
-// it held back again. A Failed check keeps its node, timed, for the warning that
-// follows to end.
+// the engine gives one, and runs the stage it held back again. One whose call flagged
+// something shows its plan, awaiting the result its pauses or report come to. A Failed
+// check keeps its node, timed, for the warning that follows to end.
 func (p *RailPresenter) NotesChecked(c NotesCheck) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -269,6 +272,7 @@ func (p *RailPresenter) NotesChecked(c NotesCheck) {
 	pt.timed, pt.node.Time = false, stageTime(c.Elapsed)
 	if !c.Failed {
 		pt.node.State, pt.node.Detail = rail.Done, firstOf(c.Detail, pt.plan)
+		pt.awaiting = c.Detail == ""
 	}
 	if h := p.run.held; h != nil {
 		h.node.State, h.node.Detail = rail.Running, h.doing

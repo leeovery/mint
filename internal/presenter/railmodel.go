@@ -45,6 +45,9 @@ type part struct {
 	hidden bool
 	// passed is a stage a dry run went past without running it, hollow for good.
 	passed bool
+	// awaiting is a node done but for the result it waits to state: the exclusion
+	// check, while the pauses or report on what it flagged run.
+	awaiting bool
 	// inside is a planned stage that runs inside the next one, which starts first.
 	inside bool
 	// out is a body shown once one before it, for the same question, has settled: it
@@ -111,12 +114,13 @@ func (pt *part) running() bool {
 }
 
 // finished is whether nothing more will change the part: a node past running or
-// passed by, a rule whose stage is over, a previewed question. A body and a question go when the
-// question is answered, the end station when the run ends.
+// passed by and awaiting nothing, a rule whose stage is over, a previewed question. A
+// body and a question go when the question is answered, the end station when the run
+// ends.
 func (pt *part) finished() bool {
 	switch pt.kind {
 	case nodePart:
-		return !pt.hidden && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
+		return !pt.hidden && !pt.awaiting && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
 	case rulePart:
 		return pt.ended
 	case previewPart:

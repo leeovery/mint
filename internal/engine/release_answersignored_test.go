@@ -168,10 +168,7 @@ func TestRelease_IgnoredConfig_NarratesTheAnswersWrittenAndNotCommitted(t *testi
 	if kinds[recorded-1] != presentertest.KindSuspendSpinner || kinds[recorded+1] != presentertest.KindResumeSpinner {
 		t.Errorf("the answers line is not shown with the notes line suspended; events = %v", kinds[recorded-1:recorded+2])
 	}
-	notesDone := indexOfKindFrom(rec, presentertest.KindStageSucceeded, recorded)
-	if notesDone == -1 || rec.Events[notesDone].StageSucceeded.Name != "notes" {
-		t.Errorf("the notes stage does not complete after the answers line; events = %v", kinds)
-	}
+	assertResolvedThenNotesDone(t, rec, recorded, "docs/design/ excluded · design documents")
 }
 
 func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *testing.T) {

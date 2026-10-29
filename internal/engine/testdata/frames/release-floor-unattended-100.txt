@@ -4,7 +4,7 @@
  │
  ●  version       v1.3.0 (minor bump) · accepted (-y)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
- ●  check         files that don't belong in the notes                                          0.7s
+ ●  check         1 flagged, not asked                                                          0.7s
  !  docs/design/  flagged, not asked: design documents · 1 file, 176 B
  ✗  notes         AI call failed                                                                2.1s
  │                │ Not logged in · Please run /login

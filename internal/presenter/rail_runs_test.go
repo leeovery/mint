@@ -113,8 +113,8 @@ func preparedRelease(p presenter.Presenter, clock *fakeClock) {
 	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
 }
 
-// paused answers the exclusion pause, its spinner suspended around it as the
-// engine's is, and records the answers.
+// paused answers the exclusion pause e, its spinner suspended around it as the
+// engine's is, records the answers, and states the check's result.
 func paused(p presenter.Presenter) {
 	p.SuspendSpinner()
 	_, _ = p.Prompt(pauseGate())
@@ -122,6 +122,14 @@ func paused(p presenter.Presenter) {
 	p.SuspendSpinner()
 	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Exclude: []string{"docs/specs/**"}})
 	p.ResumeSpinner()
+	checkResolved(p, "docs/specs/** excluded · design documents")
+}
+
+// checkResolved states the exclusion check's result on its row, Quiet, in the time
+// of its call, as the engine does once the pauses or report on what it flagged are
+// done.
+func checkResolved(p presenter.Presenter, result string) {
+	p.StageSucceeded(presenter.StageSuccess{Name: "check", Key: "check", Detail: result, Quiet: true, Blocking: true, Elapsed: secs(6.2)})
 }
 
 // tour is a release through the exclusion pause and the review to its end station,
@@ -179,6 +187,7 @@ func shipped(p presenter.Presenter) {
 // asked about.
 func failedRelease(p presenter.Presenter, clock *fakeClock) {
 	preparedRelease(p, clock)
+	checkResolved(p, "1 flagged, not asked")
 	for done := range 3 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
@@ -217,6 +226,7 @@ func dryRun(p presenter.Presenter, clock *fakeClock) {
 	p.SuspendSpinner()
 	p.PreviewGate(pauseGate())
 	p.ResumeSpinner()
+	checkResolved(p, "1 flagged, not asked")
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
 	p.RunFinished(presenter.RunResult{

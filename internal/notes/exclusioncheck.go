@@ -13,16 +13,32 @@ import (
 )
 
 // CheckNarration is told when the exclusion check's call starts and when it ends, with
-// how it ended, when the keep list covers every changed path so there is nothing to
-// call about, and when the check failed: after the call ends when the call failed or
-// its answer was unreadable, and with no call at all when the call would not fit under
-// the cap. output is the AI's captured output, or its unreadable answer, verbatim but
-// for trailing whitespace, and empty when there is none.
+// how it ended, what an answered call came to once its pauses or its report are done,
+// when the keep list covers every changed path so there is nothing to call about, and
+// when the check failed: after the call ends when the call failed or its answer was
+// unreadable, and with no call at all when the call would not fit under the cap.
+// output is the AI's captured output, or its unreadable answer, verbatim but for
+// trailing whitespace, and empty when there is none.
 type CheckNarration interface {
 	Checking()
 	Checked(outcome CheckOutcome)
+	Resolved(result CheckResult)
 	AllKept()
 	CheckFailed(output string)
+}
+
+// CheckResult is what an answered check came to: the suggestions its pauses asked
+// about with their answers, in the order asked, or, reported rather than asked, how
+// many it flagged.
+type CheckResult struct {
+	Answered []AnsweredSuggestion
+	Flagged  int
+}
+
+// AnsweredSuggestion is a suggestion a pause asked about, and its answer.
+type AnsweredSuggestion struct {
+	Suggestion
+	Answer Answer
 }
 
 // CheckOutcome is how the check's call ended.
@@ -43,6 +59,7 @@ type noCheckNarration struct{}
 
 func (noCheckNarration) Checking()            {}
 func (noCheckNarration) Checked(CheckOutcome) {}
+func (noCheckNarration) Resolved(CheckResult) {}
 func (noCheckNarration) AllKept()             {}
 func (noCheckNarration) CheckFailed(string)   {}
 
@@ -206,10 +223,12 @@ func (c *ExclusionCheck) reportAll(suggestions []Suggestion, files []checkedPath
 	for _, s := range suggestions {
 		c.report(s, unanswered.matches(s.Glob, files))
 	}
+	c.narration.Resolved(CheckResult{Flagged: len(suggestions)})
 }
 
 func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, files []checkedPath) ([]string, error) {
 	decided := runAnswers{keep: slices.Clip(c.keep)}
+	var answered []AnsweredSuggestion
 	for _, s := range suggestions {
 		if !decided.leavesUndecided(s.Glob, files) {
 			continue
@@ -222,12 +241,14 @@ func (c *ExclusionCheck) pause(ctx context.Context, suggestions []Suggestion, fi
 			return nil, err
 		}
 		decided.record(s.Glob, answer)
+		answered = append(answered, AnsweredSuggestion{Suggestion: s, Answer: answer})
 	}
 	if c.record != nil && decided.answered() {
 		if err := c.record(ctx, Answers{Exclude: decided.excluded, Keep: decided.kept}); err != nil {
 			return nil, err
 		}
 	}
+	c.narration.Resolved(CheckResult{Answered: answered})
 	return decided.excluded, nil
 }
 

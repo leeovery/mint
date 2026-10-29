@@ -58,7 +58,12 @@ func sized(t *testing.T, section func(body string) string, bytes int) string {
 	return section("+" + strings.Repeat("x", pad) + "\n")
 }
 
-type checkNarration struct{ events []string }
+// checkNarration records each event it is told as a line, and each result Resolved
+// is handed.
+type checkNarration struct {
+	events  []string
+	results []notes.CheckResult
+}
 
 func (n *checkNarration) Checking() { n.events = append(n.events, "checking") }
 func (n *checkNarration) AllKept()  { n.events = append(n.events, "all kept") }
@@ -68,6 +73,10 @@ func (n *checkNarration) Checked(outcome notes.CheckOutcome) {
 		notes.CheckClear:    "checked: clear",
 		notes.CheckUnusable: "checked: unusable",
 	}[outcome])
+}
+func (n *checkNarration) Resolved(result notes.CheckResult) {
+	n.events = append(n.events, "resolved")
+	n.results = append(n.results, result)
 }
 func (n *checkNarration) CheckFailed(output string) {
 	n.events = append(n.events, "failed: "+output)
@@ -349,7 +358,7 @@ func TestExclusionCheck_AnAnswerWithOneUsableSuggestion_IsNoFailure(t *testing.T
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
-	if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
+	if want := []string{"checking", "checked", "resolved"}; !slices.Equal(narration.events, want) {
 		t.Errorf("narration = %q, want %q", narration.events, want)
 	}
 }

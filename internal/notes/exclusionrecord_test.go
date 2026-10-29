@@ -3,6 +3,7 @@ package notes_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -71,6 +72,71 @@ func TestExclusionCheck_AFailedRecordIsReturned(t *testing.T) {
 
 	if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); !errors.Is(err, failure) {
 		t.Errorf("Check error = %v, want the record's failure", err)
+	}
+}
+
+func TestExclusionCheck_ResolvesWithEachAnswerInTheOrderAsked_OnceTheAnswersAreRecorded(t *testing.T) {
+	t.Parallel()
+
+	narration := &checkNarration{}
+	pauses := &recordedPauses{answers: []notes.Answer{notes.AnswerExclude, notes.AnswerKeep}}
+	record := func(context.Context, notes.Answers) error {
+		narration.events = append(narration.events, "recorded")
+		return nil
+	}
+	// docs/ is never asked about: the docs/design/ answer before it decides every path it matches.
+	check := notes.NewExclusionCheck(&recordingTransport{body: "docs/design/: design\ndocs/: docs\ntest/fixtures/: test data\n"}, nil, narration).
+		WithPauses(pauses).
+		WithRecord(record)
+
+	if _, err := check.Check(t.Context(), sourceDiff+designDiff+fixturesDiff, config.DefaultMaxPromptBytes); err != nil {
+		t.Fatalf("Check returned unexpected error: %v", err)
+	}
+
+	want := []notes.CheckResult{{Answered: []notes.AnsweredSuggestion{
+		{Suggestion: notes.Suggestion{Glob: "docs/design/", Reason: "design"}, Answer: notes.AnswerExclude},
+		{Suggestion: notes.Suggestion{Glob: "test/fixtures/", Reason: "test data"}, Answer: notes.AnswerKeep},
+	}}}
+	if !reflect.DeepEqual(narration.results, want) {
+		t.Errorf("resolved %+v, want %+v", narration.results, want)
+	}
+	if wantEvents := []string{"checking", "checked", "recorded", "resolved"}; !slices.Equal(narration.events, wantEvents) {
+		t.Errorf("narration = %q, want %q", narration.events, wantEvents)
+	}
+}
+
+func TestExclusionCheck_PausesThatEndInAnError_ResolveNothing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		pauses *recordedPauses
+		record func(context.Context, notes.Answers) error
+	}{
+		{name: "a failed pause", pauses: &recordedPauses{err: errors.New("input closed")}},
+		{
+			name:   "a failed record",
+			pauses: &recordedPauses{answer: notes.AnswerExclude},
+			record: (&recordedAnswers{err: errors.New("disk full")}).record,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			narration := &checkNarration{}
+			check := notes.NewExclusionCheck(&recordingTransport{body: "docs/design/: design\n"}, nil, narration).WithPauses(tt.pauses)
+			if tt.record != nil {
+				check = check.WithRecord(tt.record)
+			}
+
+			if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); err == nil {
+				t.Fatal("Check returned nil, want the error")
+			}
+			if len(narration.results) != 0 {
+				t.Errorf("resolved %+v, want nothing", narration.results)
+			}
+		})
 	}
 }
 

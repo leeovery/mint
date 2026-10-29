@@ -292,6 +292,61 @@ func TestRailGate_TheExclusionPauseAsksAboutItsGlobAndAnswersHangUnderTheCheck(t
 	}
 }
 
+// TestRailGate_TheExclusionCheckStatesWhatItsPausesCameToOnItsRow pins that the
+// check's node waits on the result its pauses come to, then states it on the node it
+// drew: one answer as the row, no longer hung beneath it, several as a count with the
+// answers hung beneath.
+func TestRailGate_TheExclusionCheckStatesWhatItsPausesCameToOnItsRow(t *testing.T) {
+	t.Parallel()
+	vendor := presenter.ExclusionSuggestion{Glob: "vendor/", Reason: "vendored code", Matches: "3 files, 12 kB"}
+	vendorGate := pauseGate()
+	vendorGate.Suggestion, vendorGate.Subject = &vendor, vendor.Glob
+	tests := []struct {
+		name   string
+		typed  []string
+		gates  []presenter.Gate
+		result string
+		want   []string
+	}{
+		{
+			name: "one answer", typed: []string{"k\n"}, gates: []presenter.Gate{pauseGate()},
+			result: "docs/specs/** kept · design documents",
+			want: []string{
+				pane(" ●  check         docs/specs/** kept · design documents                                         6.2s"),
+			},
+		},
+		{
+			name: "several answers", typed: []string{"e\n", "k\n"}, gates: []presenter.Gate{pauseGate(), vendorGate},
+			result: "1 left out · 1 kept",
+			want: []string{
+				pane(" ●  check         1 left out · 1 kept                                                           6.2s"),
+				" │                docs/specs/** excluded · design documents",
+				" │                vendor/ kept · vendored code",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRailTerm(t, 100, 30, answers(append([]string{"y\n"}, tt.typed...)...))
+			preparedRelease(r, r.clock)
+			for _, g := range tt.gates {
+				if _, err := r.Prompt(g); err != nil {
+					t.Fatal(err)
+				}
+			}
+			checkResolved(r, tt.result)
+			screen := r.screen(t)
+			if got := screen[8 : 8+len(tt.want)]; strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
+				t.Errorf("the check reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(tt.want, "\n"))
+			}
+			if next := screen[8+len(tt.want)]; !strings.Contains(next, "  notes  ") {
+				t.Errorf("under the check the rail reads %q, want the notes running", next)
+			}
+		})
+	}
+}
+
 func TestRailGate_ATypedAnswerNamingNoKeyIsAskedAgain(t *testing.T) {
 	t.Parallel()
 	in := answers("nope\n", "tag\n")

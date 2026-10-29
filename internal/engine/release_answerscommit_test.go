@@ -150,10 +150,7 @@ func TestRelease_RecordedAnswers_NarrateOneLineAfterTheLastPauseBeforeTheNotesLi
 	if kinds[recorded-1] != presentertest.KindSuspendSpinner || kinds[recorded+1] != presentertest.KindResumeSpinner {
 		t.Errorf("the answers line is not shown with the notes line suspended; events = %v", kinds[recorded-1:recorded+2])
 	}
-	notesDone := indexOfKindFrom(rec, presentertest.KindStageSucceeded, recorded)
-	if notesDone == -1 || rec.Events[notesDone].StageSucceeded.Name != "notes" {
-		t.Errorf("the notes stage does not complete after the answers line; events = %v", kinds)
-	}
+	assertResolvedThenNotesDone(t, rec, recorded, "1 left out · 1 kept")
 }
 
 func TestRelease_NoPause_NarratesNoAnswersLineAndMakesNoAnswersCommit(t *testing.T) {
@@ -277,6 +274,26 @@ func nextReleaseIn(t *testing.T, root, diff, nameStatus, numstat string) (*runne
 		t.Fatalf("the next release returned unexpected error: %v", err)
 	}
 	return f, rec
+}
+
+// assertResolvedThenNotesDone fails unless, after the event at from, the check's row
+// states result, Quiet, and the notes stage completes next.
+func assertResolvedThenNotesDone(t *testing.T, rec *presentertest.RecordingPresenter, from int, result string) {
+	t.Helper()
+	resolved := indexOfKindFrom(rec, presentertest.KindStageSucceeded, from)
+	want := presenter.StageSuccess{Name: "check", Key: "check", Detail: result, Quiet: true, Blocking: true}
+	if resolved == -1 {
+		t.Fatalf("the check's result is not stated; events = %v", rec.Kinds())
+	}
+	got := rec.Events[resolved].StageSucceeded
+	got.Elapsed = 0
+	if got != want {
+		t.Errorf("the check's result = %+v, want %+v", got, want)
+	}
+	notesDone := indexOfKindFrom(rec, presentertest.KindStageSucceeded, resolved+1)
+	if notesDone == -1 || rec.Events[notesDone].StageSucceeded.Name != "notes" {
+		t.Errorf("the notes stage does not complete after the check's result; events = %v", rec.Kinds())
+	}
 }
 
 func indexOfPauseFrom(rec *presentertest.RecordingPresenter, from int) int {

@@ -4,8 +4,7 @@
  │
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
- ●  check         files that don't belong in the notes                                          0.7s
- │                docs/design/ kept · design documents
+ ●  check         docs/design/ kept · design documents                                          0.7s
  │                written to .mint.toml's [release] table and committed
  ●  notes         generated · accepted                                                          2.1s
  ●  record        CHANGELOG.md committed

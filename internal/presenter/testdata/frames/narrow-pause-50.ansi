@@ -20,8 +20,6 @@ ith origin
  ┆  writing the notes…
  ⠋  check
  ┆  files that don't belong in the notes
- ●  check
- │  files that don't belong in the notes
  ?  Exclude docs/specs/** from the notes? (design
  ┆  documents; 6 files, 48 kB)   e exclude   k kee
 p
