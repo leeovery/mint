@@ -721,12 +721,16 @@ func TestRailGate_ATypedLineUnderAStageStillRunningIsReadUnderTheSettledLines(t 
 
 // TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow pins that a
 // finished node is final: an r settles the node it asked about with its answer, the
-// body under review gone with it, the one-time context reads under it, and the stage
-// runs again as a node of its own below, which the next answer settles, for the
-// release's r and the commit's.
+// body under review staying under it, in view as the one-time context is typed under
+// it, and the stage runs again as a node of its own below, its body settling as it
+// is shown and the next answer recorded on a row under it, for the release's r and
+// the commit's.
 func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *testing.T) {
 	t.Parallel()
-	const context = "shorter please"
+	const (
+		context    = "shorter please"
+		firstDraft = " │    first draft"
+	)
 	tests := []struct {
 		name string
 		// start is the run to its review with its first body shown, gate the question
@@ -747,7 +751,7 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 				r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "second draft"})
 			},
 			asked: " ●  notes         written by the AI · regenerate",
-			again: row(" ●  notes         generated · accepted", "3.0s"),
+			again: row(" ●  notes         generated", "3.0s"),
 		},
 		{
 			name:  "the commit's message",
@@ -759,7 +763,7 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 				r.ShowMessage(presenter.Message{Body: "second draft"})
 			},
 			asked: " ●  message       written · regenerate",
-			again: row(" ●  message       regenerated · accepted", "3.0s"),
+			again: row(" ●  message       regenerated", "3.0s"),
 		},
 	}
 	for _, tt := range tests {
@@ -770,6 +774,9 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 			tt.start(r)
 			in.asked = func(n int) {
 				if n == 2 {
+					if !slices.Contains(r.screen(t), firstDraft) {
+						t.Errorf("as the context is asked the terminal shows\n%s\nwant the draft %q in view", strings.Join(r.screen(t), "\n"), firstDraft)
+					}
 					if _, err := r.term.Write([]byte(context + "\n")); err != nil {
 						t.Fatal(err)
 					}
@@ -790,8 +797,11 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 			screen := r.screen(t)
 			order := []string{
 				tt.asked,
+				firstDraft,
 				" ?  Add one-time context for regeneration (optional): " + context,
 				tt.again,
+				" │    second draft",
+				" ●  review        accepted",
 			}
 			at := -1
 			for _, want := range order {
@@ -800,9 +810,6 @@ func TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow(t *tes
 					t.Fatalf("the terminal shows\n%s\nwant, in this order\n%s", strings.Join(screen, "\n"), strings.Join(order, "\n"))
 				}
 				at = i
-			}
-			if slices.ContainsFunc(screen, func(s string) bool { return strings.Contains(s, "draft") || strings.HasPrefix(s, " ●  review") }) {
-				t.Errorf("the terminal shows\n%s\nwant no body left once answered, and no answer on a row of its own", strings.Join(screen, "\n"))
 			}
 		})
 	}

@@ -168,7 +168,7 @@ type runModel struct {
 	gone map[string]bool
 	// held is the running node the exclusion check holds back while it runs.
 	held *part
-	// looping is a question's loop open: from an e or r answer until the next answer
+	// looping is a question's loop open: from a review's e until the next answer
 	// to any gate. asked is the stage that question asks about.
 	looping bool
 	asked   string
@@ -468,6 +468,19 @@ func (m *runModel) show(text string) {
 		return
 	}
 	m.insert(&part{kind: bodyPart, text: text}, m.insertionPoint())
+}
+
+// keepBody keeps the body a review's regenerate was answered over: body, shown live,
+// settles where it is, and from there, as when a body settled before, out says, every
+// body shown settles as it is shown, last being the last of those.
+func (m *runModel) keepBody(body *part, out bool, last string) {
+	switch {
+	case body != nil && !body.out:
+		body.out = true
+		m.bodyOut, m.lastBody = true, body.text
+	case out:
+		m.bodyOut, m.lastBody = true, last
+	}
 }
 
 // ask puts the question q about the stage keyed stage on the rail: in place of its

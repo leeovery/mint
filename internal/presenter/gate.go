@@ -137,6 +137,11 @@ type Gate struct {
 	// has no line for that preview, so plain and today's pretty write nothing for it.
 	// It is never set on a gate asked.
 	Quiet bool
+	// Review marks the review of a body shown, whose e edits that body and asks the
+	// gate again: the rail draws that e as the question's loop, not as an answer. Any
+	// other gate's e, the notes floor's, is an answer like the rest. Plain and today's
+	// pretty ignore it.
+	Review bool
 }
 
 // Has reports whether c is a member of the gate's DECLARED choice set. It reads
@@ -184,6 +189,7 @@ func NotesReviewGate() Gate {
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
 		Default: ChoiceYes,
+		Review:  true,
 	}
 }
 
@@ -213,6 +219,7 @@ func ReleaseReviewGate() Gate {
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
 		Default: ChoiceYes,
+		Review:  true,
 	}
 }
 

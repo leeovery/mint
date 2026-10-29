@@ -755,6 +755,7 @@ func commitReviewGate() presenter.Gate {
 			{Key: presenter.ChoiceRegen, Action: "regenerate"},
 		},
 		Default: presenter.ChoiceYes,
+		Review:  true,
 	}
 }
 

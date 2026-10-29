@@ -269,6 +269,21 @@ var railRuns = map[string]railRun{
 		w.published(ScriptedOut(railURL + "\n"))
 		return w.release(t, nil)
 	}},
+	// The same failure answered e at the floor: a final choice, so it settles the failed
+	// notes with its tail as c does, and the notes written in the editor are reviewed
+	// and shipped.
+	"release-floor-editor-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\ne\ny\n", false)
+		w.deps.Transport = railAI("none", &ai.GenerationError{Stdout: loginOutput, ExitCode: 1})
+		w.deps.Editor = &fakeEditor{edited: railNotes}
+		w.readGates(false)
+		seedPreTagArtifactCommit(w.f)
+		seedNormalAINotes(w.f)
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
+		return w.release(t, nil)
+	}},
 	// The same failure under -y: the check's suggestion flagged, not asked, and the run
 	// stopping at the floor with its next moves, the suggestion's last.
 	"release-floor-unattended-100": {aborted: true, run: func(t *testing.T) (string, error) {

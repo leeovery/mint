@@ -246,24 +246,28 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 // line under the check's node; any other's as the tail of the node it asked about,
 // what hung above it gone, or, that node settled above or a body of the question
 // settled, on a row of its own under the last body; a gate asked before the run's
-// stages as a row naming what was chosen. A regenerate settles as any answer does:
-// its stage runs again as a node of its own below, which the body and the question
-// come back under. An edit settles nothing: it opens the question's loop, until the
-// next answer to any gate, the body is shown again, in place, and the question comes
-// back.
+// stages as a row naming what was chosen. A review's regenerate settles as any answer
+// does, but its body stays, settled under the node it settles, so the draft is in
+// view while what to change is typed: its stage runs again as a node of its own
+// below, under which the body and the question come back. A review's edit settles
+// nothing: it opens the question's loop, until the next answer to any gate, the body
+// is shown again, in place, and the question comes back.
 func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
 	p.run.looping = false
 	if x := g.Suggestion; x != nil {
 		p.run.hang(g.Stage, rail.Hang{Kind: rail.Note, Text: x.Glob + " " + pauseAnswer(g, c, auto) + " · " + x.Reason})
 		return
 	}
-	if c == ChoiceEdit {
+	if c == ChoiceEdit && g.Review {
 		p.run.looping, p.run.asked = true, g.Stage
 		return
 	}
-	out := p.run.bodyOut
+	out, last := p.run.bodyOut, p.run.lastBody
 	p.run.bodyOut, p.run.lastBody = false, ""
-	if body := p.run.partOf(bodyPart); body != nil && !body.out {
+	switch body := p.run.partOf(bodyPart); {
+	case c == ChoiceRegen && g.Review:
+		p.run.keepBody(body, out, last)
+	case body != nil && !body.out:
 		p.run.remove(body)
 	}
 	tail := answerTail(g, c, auto)

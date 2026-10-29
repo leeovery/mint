@@ -96,6 +96,7 @@ func FirstReleaseReviewGate() presenter.Gate {
 			{Key: presenter.ChoiceEdit, Action: "edit in $EDITOR"},
 		},
 		Default: presenter.ChoiceYes,
+		Review:  true,
 	}
 }
 
