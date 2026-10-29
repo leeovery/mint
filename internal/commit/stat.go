@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // diffStat is what a commit carries: the files it changes and the lines it adds and
@@ -82,14 +83,27 @@ func countUntracked(root, listing string) diffStat {
 }
 
 // countAddition counts one untracked file at path as an addition, ok false where it
-// can't be read. A nested repo, which ls-files lists with a trailing slash and `git add
-// -A` stages as a gitlink, is one file with no lines.
+// can't be read. What git stores as a single line is one: a nested repo, which
+// ls-files lists with a trailing slash and `git add -A` stages as a gitlink, its
+// commit; and a symlink, its target's path, which is never followed, so a link to a
+// FIFO, a terminal or a file outside the repo is never opened. Only a regular file is
+// read; anything else is left out.
 func countAddition(path string, nestedRepo bool) (diffStat, bool) {
+	oneLine := diffStat{files: 1, added: 1}
 	if nestedRepo {
-		return diffStat{files: 1}, true
+		return oneLine, true
 	}
-	f, err := os.Open(path)
-	if err != nil {
+	info, err := os.Lstat(path)
+	switch {
+	case err != nil:
+		return diffStat{}, false
+	case info.Mode()&os.ModeSymlink != 0:
+		return oneLine, true
+	case !info.Mode().IsRegular():
+		return diffStat{}, false
+	}
+	f, ok := openRegular(path, info)
+	if !ok {
 		return diffStat{}, false
 	}
 	defer func() { _ = f.Close() }()
@@ -101,6 +115,22 @@ func countAddition(path string, nestedRepo bool) (diffStat, bool) {
 		return diffStat{files: 1}, true
 	}
 	return diffStat{files: 1, added: lines}, true
+}
+
+// openRegular opens path, the regular file info describes, for reading. It opens
+// without blocking and keeps the file only if it is still that one, so a FIFO or a
+// link put in its place since the Lstat can't hang the run.
+func openRegular(path string, info os.FileInfo) (*os.File, bool) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, false
+	}
+	opened, err := f.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		_ = f.Close()
+		return nil, false
+	}
+	return f, true
 }
 
 // binarySniff is how much of a file git reads to judge it binary, and a NUL in it
