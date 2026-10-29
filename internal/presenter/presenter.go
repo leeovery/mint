@@ -584,6 +584,10 @@ type StageSuccess struct {
 	// Detail is the engine-supplied completion detail. The empty string is legal
 	// (semantic 3) and means "render the detail-less form".
 	Detail string
+	// Row is the settled row's detail where it reads differently from Detail, plain's
+	// pinned wording (the push naming its branch), empty where they read the same.
+	// Plain and today's pretty ignore it.
+	Row string
 	// Elapsed is the engine-measured stage duration. It is only meaningful when
 	// Blocking is true (semantic 1); zero is a valid duration there (semantic 2),
 	// not a "no elapsed" sentinel.

@@ -206,7 +206,7 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 	pt := p.run.stage(s.Key, s.Name)
 	p.run.ended(s.Key, true)
 	n := pt.node
-	n.State, n.Detail, n.Time, n.Progress = rail.Done, firstOf(s.Detail, pt.plan), "", nil
+	n.State, n.Detail, n.Time, n.Progress = rail.Done, firstOf(s.Row, s.Detail, pt.plan), "", nil
 	if s.Blocking {
 		n.Time = stageTime(s.Elapsed)
 	}

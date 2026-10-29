@@ -576,10 +576,11 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// still follow the notes, where its line has always been.
 	versionDetail, _ := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
 	route := releaseNotesRoute(selectState(current, cfg, opts, supplied), opts.NotesBody != "")
+	branch := pushedBranch(releaseBranch, head, opts.AnyBranch)
 	p.ShowPlan(releasePlan{
 		cfg:       cfg,
 		tag:       tag,
-		branch:    pushedBranch(releaseBranch, head, opts.AnyBranch),
+		branch:    branch,
 		version:   versionDetail,
 		preflight: checked,
 		notes:     route,
@@ -892,7 +893,11 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		made.TagCreated = errors.Is(err, release.ErrPushRejected)
 		return failAndUnwind(ctx, deps, pushFailure(err, push.elapsed()), start, made, err)
 	}
-	push.done("branch + " + tag + " pushed atomically")
+	push.succeeded(presenter.StageSuccess{
+		Detail:   "branch + " + tag + " pushed atomically",
+		Row:      branch + " + " + tag + " pushed atomically",
+		Sentence: push.sentence,
+	})
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
 	// already public); the run does not unwind and exits successfully. The release is

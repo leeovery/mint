@@ -10,7 +10,7 @@
  │                committed as 🌿 Release v1.3.0
  │
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- ●  push          branch + v1.3.0 pushed atomically                                             0.7s
+ ●  push          main + v1.3.0 pushed atomically                                               0.7s
  !  publish       tag is already published; heal with regenerate --source tag
  │                │ creating GitHub release for tag "v1.3.0": exit status 1
  │

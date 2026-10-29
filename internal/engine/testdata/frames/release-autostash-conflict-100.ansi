@@ -10,7 +10,7 @@
  │                committed as 🌿 Release v1.3.0
  │
  ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- ●  push          branch + v1.3.0 pushed atomically                                             0.7s
+ ●  push          main + v1.3.0 pushed atomically                                               0.7s
  ●  publish       release published
  │
  ◆  v1.3.0        released                                                                      4.9s
