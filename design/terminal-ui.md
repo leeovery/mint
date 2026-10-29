@@ -42,7 +42,7 @@ A node's row is the mark, two spaces, the stage name bold in a 14-column name co
 
 **Colour.** Statuses use the terminal's own colours, so the theme decides how they look. The one brand colour is the accent, mint `#5FD7AF`: in truecolor where `COLORTERM` says so, as xterm-256 colour 79 (the same colour exactly) where `TERM` says 256, and the theme's cyan otherwise. Names are bold, metadata and times dim, rules dim. `NO_COLOR` turns colour off. Meaning never rests on colour alone: every state has its own mark. The 🌿 leaves the output, its place taken by the `mint` wordmark; `commit_prefix`'s 🌿 in the release commit's subject is that commit's text and stays.
 
-**Width.** Settled lines wrap a long detail inside the detail column; the live region cuts instead. Below 70 columns the times drop and a detail goes on the line under its name.
+**Width.** Every line mint writes fits the width: hanging text and long details wrap inside the detail column with the rail on each line, a live node's own line is cut, and a next command or the release URL, which must stay whole to copy, prints only once the run has ended. Below 70 columns the times drop and a detail goes on the line under its name. Text mint shows verbatim (a body, command output, a detail) is drawn so it can't move the cursor: a tab goes to the next 8-column stop, a carriage return before a line break is dropped, a colour code is removed, and any other control character shows as its Unicode picture (`␍`, `␛`). This is display only: what ships, and plain, stay byte for byte.
 
 **Per command:**
 - **release:** start station `◇ v1.3.2  main @ <sha>`. Nodes: version (`v1.4.0 (minor bump)`, today's wording), preflight, `pre_tag` with its artifacts commit's subject hanging under it, check, notes, record, the point of no return, push, publish, `post_release`. End station `◆ v1.4.0  released`, URL under it.
@@ -67,7 +67,7 @@ A node's row is the mark, two spaces, the stage name bold in a 14-column name co
 - **The renderer** is pure functions from rows, nodes and stations to lines, tested at widths 60, 80 and 100 with colour off, plus exact escape codes for each element with colour on.
 - **The live region** is tested by its exact writes: the cursor-up count, the erase, the redraw, and the erase and redraw around the editor.
 - **Golden runs** render whole runs at width 100 with colour off and compare against expected text: a release through its review, a release that fails and unwinds, a dry run, a commit with a push, and regenerate `--all` with a skip.
-- **Golden frames,** as Switchboard's: each golden run is also kept as `testdata/frames/<name>.txt` and `.ansi`, rendered in process from fixed payloads, so times and hashes never drift. A test parses the ANSI into cells and compares glyph, foreground, background and bold, listing the first 20 cells that differ. An escape it doesn't know fails the test rather than being guessed. `go test ./internal/presenter -run Frames -update` writes them again. Switchboard's `internal/capture/reference_test.go`, `cells_test.go` and `frames.go` are the model.
+- **Golden frames,** as Switchboard's: each golden run is also kept as `testdata/frames/<name>.txt` and `.ansi`, rendered in process from fixed payloads, so times and hashes never drift. A test parses the ANSI into cells and compares glyph, foreground, background and bold, listing the first 20 cells that differ. An escape it doesn't know fails the test rather than being guessed. `go test <package> -run Frames -update` writes a package's frames again (`./internal/presenter/rail` for the drawing's own, `./internal/presenter` for whole runs). Switchboard's `internal/capture/reference_test.go`, `cells_test.go` and `frames.go` are the model.
 - **Plain** keeps its goldens unchanged, and they must pass untouched.
 
 **Pictures.** VHS records the README's art the way agntc's `demo/` does, which is itself Switchboard's: real commands typed into a real terminal, against a world built for them. The same recordings are how a build slice checks its own work: record the verb's tapes, look at the frames, and fix what reads wrong before review.
@@ -97,6 +97,8 @@ A node's row is the mark, two spaces, the stage name bold in a 14-column name co
 ## Known limits
 
 - **A terminal narrowed mid-run** below a live line's width wraps that line once before the next redraw reads the new width, and leaves one stray line above the region.
+- **A terminal narrower than 60 columns** gets no live region: the rail draws at 60 and its lines only settle, with nothing redrawn.
+- **Emoji joined into one glyph** (a family, a flag) count as two cells, as the Unicode width tables say; a terminal that draws them wider overflows a body full of them.
 
 ## Build
 
