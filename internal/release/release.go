@@ -102,11 +102,12 @@ func (rel *Releaser) TagAndPush(ctx context.Context, tag, commitPrefix, body str
 // byte-identical on every notes route; the one terminating newline composeTagMessage
 // guarantees keeps a signed tag's signature on its own line. A non-zero exit (including a missing git binary, which matches
 // ErrCommandNotFound) surfaces as-is; it is deliberately NOT wrapped in
-// ErrPushRejected because no push has happened yet.
+// ErrPushRejected because no push has happened yet. git's stderr rides the error as a
+// *record.GitError, for the failure to show verbatim.
 func (rel *Releaser) createAnnotatedTag(ctx context.Context, tag, commitPrefix, body string) error {
 	message := composeTagMessage(tag, commitPrefix, body)
-	if _, err := rel.mutator.Mutate(ctx, []byte(message), "git", "tag", "-a", "--cleanup=verbatim", tag, "-F", "-"); err != nil {
-		return fmt.Errorf("creating annotated tag %q: %w", tag, err)
+	if res, err := rel.mutator.Mutate(ctx, []byte(message), "git", "tag", "-a", "--cleanup=verbatim", tag, "-F", "-"); err != nil {
+		return fmt.Errorf("creating annotated tag %q: %w", tag, record.NewGitError(res.Stderr, err))
 	}
 	return nil
 }
@@ -116,16 +117,17 @@ func (rel *Releaser) createAnnotatedTag(ctx context.Context, tag, commitPrefix, 
 // (ErrCommandNotFound) surfaces as an infrastructure failure and is left
 // unwrapped by ErrPushRejected; a ran-and-exited-non-zero push (the remote
 // rejected it) is wrapped in ErrPushRejected so the caller can distinguish it from
-// a pre-tag failure and stop without publishing.
+// a pre-tag failure and stop without publishing, git's stderr, the remote's reason,
+// riding it as a *record.GitError.
 func (rel *Releaser) atomicPush(ctx context.Context, tag string) error {
-	_, err := rel.mutator.Mutate(ctx, nil, "git", "push", "--atomic", "origin", "HEAD", tag)
+	res, err := rel.mutator.Mutate(ctx, nil, "git", "push", "--atomic", "origin", "HEAD", tag)
 	if err == nil {
 		return nil
 	}
 	if errors.Is(err, runner.ErrCommandNotFound) {
 		return fmt.Errorf("pushing tag %q atomically: %w", tag, err)
 	}
-	return fmt.Errorf("pushing tag %q atomically: %w: %w", tag, ErrPushRejected, err)
+	return fmt.Errorf("pushing tag %q atomically: %w: %w", tag, ErrPushRejected, record.NewGitError(res.Stderr, err))
 }
 
 // composeTagMessage builds the annotation message: subject

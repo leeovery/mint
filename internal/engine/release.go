@@ -2278,7 +2278,8 @@ func hookFailureOutput(cause error) string {
 
 // failureOutput is the failing tool's own message for cause, shown beneath its ✗ line:
 // a failed answers recording's write error or git stderr, a failed preflight or
-// pre_tag hook entry's stderr, or claude's output.
+// pre_tag hook entry's stderr, the stderr of any other git step that failed (the
+// push, the tag, a commit), or claude's output.
 func failureOutput(cause error) string {
 	var recordingErr *answersRecordingError
 	if errors.As(cause, &recordingErr) {
@@ -2286,6 +2287,10 @@ func failureOutput(cause error) string {
 	}
 	if output := hookFailureOutput(cause); output != "" {
 		return output
+	}
+	var gitErr *record.GitError
+	if errors.As(cause, &gitErr) {
+		return gitErr.Stderr
 	}
 	return notesFailureOutput(cause)
 }

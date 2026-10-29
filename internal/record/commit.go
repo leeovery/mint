@@ -146,6 +146,11 @@ type GitError struct {
 	err    error
 }
 
+// NewGitError is the git step that failed with err, having written stderr.
+func NewGitError(stderr string, err error) *GitError {
+	return &GitError{Stderr: stderr, err: err}
+}
+
 func (e *GitError) Error() string { return e.err.Error() }
 
 // Unwrap exposes the runner error so errors.Is matches it.

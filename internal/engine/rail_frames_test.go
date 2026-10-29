@@ -302,11 +302,10 @@ var railRuns = map[string]railRun{
 	}},
 }
 
-// gitRejected is a push git rejected, writing stderr.
+// gitRejected is a push git rejected, as production's runner reports it: a non-zero
+// exit writing stderr, which the releaser wraps in release.ErrPushRejected.
 func gitRejected(stderr string) runner.ScriptedCall {
-	call := pushRejected()
-	call.Result.Stderr = stderr
-	return call
+	return gitFailing(stderr)
 }
 
 func TestRelease_RailFrames(t *testing.T) {
