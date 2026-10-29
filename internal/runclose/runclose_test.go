@@ -35,7 +35,7 @@ func closing(t *testing.T, rec *presentertest.RecordingPresenter) presenter.RunR
 	return results[0]
 }
 
-func TestClose_ARunThatStoppedShortClosesAtItsStartStation(t *testing.T) {
+func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -45,31 +45,31 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStation(t *testing.T) {
 		want     presenter.RunResult
 	}{
 		{
-			name: "a clean unwind is back where it started",
-			stop: func(r *runclose.Run) { r.Unwound(true) },
+			name: "an unwind closes with where it left the repo",
+			stop: func(r *runclose.Run) { r.Unwound("back where it started · repo clean · nothing pushed") },
 			want: presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "back where it started · repo clean · nothing pushed"}},
 		},
 		{
-			name: "an unwind that left steps undone needs manual cleanup",
-			stop: func(r *runclose.Run) { r.Unwound(false) },
-			want: presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "manual cleanup required · nothing pushed"}},
-		},
-		{
 			name:     "an unwind outranks the decline that led to it",
-			stop:     func(r *runclose.Run) { r.Unwound(true) },
+			stop:     func(r *runclose.Run) { r.Unwound("manual cleanup required · nothing pushed") },
 			declined: true,
-			want:     presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "back where it started · repo clean · nothing pushed"}},
+			want:     presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "manual cleanup required · nothing pushed"}},
 		},
 		{
-			name:     "a decline changed nothing",
+			name:     "a decline that left nothing changed nothing",
 			stop:     func(*runclose.Run) {},
 			declined: true,
 			want:     presenter.RunResult{Outcome: presenter.OutcomeDeclined, End: presenter.Station{Name: "v1.3.2", Detail: "nothing changed"}},
 		},
 		{
-			name: "a failure with nothing made changed nothing",
+			name: "a failure that left nothing changed nothing",
 			stop: func(*runclose.Run) {},
 			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "nothing changed"}},
+		},
+		{
+			name: "a failure that left something says what",
+			stop: func(r *runclose.Run) { r.Left("changes staged, not committed") },
+			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "changes staged, not committed"}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,7 +95,7 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStation(t *testing.T) {
 	}
 }
 
-func TestClose_ARunThatLandedClosesWithItsEndingWhateverFollowed(t *testing.T) {
+func TestClose_ARunThatLandedClosesWithItsEndingWhateverItLeftOnTheWay(t *testing.T) {
 	t.Parallel()
 
 	landed := presenter.RunResult{
@@ -106,6 +106,7 @@ func TestClose_ARunThatLandedClosesWithItsEndingWhateverFollowed(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	run := runclose.Begin(rec)
 	run.Start(opened)
+	run.Left("changes staged, not committed")
 	run.Land(landed)
 	run.Close(false)
 
@@ -116,24 +117,19 @@ func TestClose_ARunThatLandedClosesWithItsEndingWhateverFollowed(t *testing.T) {
 	}
 }
 
-func TestClose_ARunThatNeverOpenedClosesSilentlyButRunsItsDeferredWork(t *testing.T) {
+func TestClose_ARunThatNeverOpenedClosesSilently(t *testing.T) {
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{}
-	ran := false
 	run := runclose.Begin(rec)
-	run.Defer(func() { ran = true })
 	run.Close(false)
 
 	if len(rec.Events) != 0 {
 		t.Errorf("events = %v, want none for a run that never opened", rec.Kinds())
 	}
-	if !ran {
-		t.Error("deferred work did not run")
-	}
 }
 
-func TestClose_DeferredWorkFollowsTheRunFinishedLastFirst(t *testing.T) {
+func TestRunDeferred_RunsTheDeferredWorkLastFirstAndOnlyOnce(t *testing.T) {
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{}
@@ -143,13 +139,40 @@ func TestClose_DeferredWorkFollowsTheRunFinishedLastFirst(t *testing.T) {
 	run.Defer(func() { order = append(order, "last registered") })
 	run.Start(opened)
 	run.Close(false)
+	run.RunDeferred()
+	run.RunDeferred()
 
 	if want := []string{"last registered", "first registered"}; !slices.Equal(order, want) {
-		t.Errorf("deferred order = %q, want %q", order, want)
+		t.Errorf("deferred order = %q, want %q, each once", order, want)
 	}
 	want := []presentertest.EventKind{presentertest.KindRunStarted, presentertest.KindRunFinished, presentertest.KindWarn}
 	if got := rec.Kinds(); !slices.Equal(got, want) {
 		t.Errorf("kinds = %v, want %v (the deferred narration after the close)", got, want)
+	}
+}
+
+// TestRunDeferred_StillRunsWhenTheRunPanicsBeforeItsClose pins the reason an
+// orchestrator defers RunDeferred: a panic that never reaches Close still runs the
+// deferred work, and closes nothing.
+func TestRunDeferred_StillRunsWhenTheRunPanicsBeforeItsClose(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	ran := false
+	func() {
+		defer func() { _ = recover() }()
+		run := runclose.Begin(rec)
+		defer run.RunDeferred()
+		run.Start(opened)
+		run.Defer(func() { ran = true })
+		panic("the run panics")
+	}()
+
+	if !ran {
+		t.Error("deferred work did not run on the panic")
+	}
+	if want := []presentertest.EventKind{presentertest.KindRunStarted}; !slices.Equal(rec.Kinds(), want) {
+		t.Errorf("kinds = %v, want %v (no close on a panic)", rec.Kinds(), want)
 	}
 }
 
@@ -159,6 +182,8 @@ func TestRun_ANilRunDoesNothing(t *testing.T) {
 	var run *runclose.Run
 	run.Start(opened)
 	run.Land(presenter.RunResult{})
-	run.Unwound(true)
+	run.Unwound("back where it started")
+	run.Left("changes staged, not committed")
+	run.RunDeferred()
 	run.Close(true)
 }

@@ -83,7 +83,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 		t.Errorf("gate-n deleted a tag though none was created")
 	}
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
 	assertClosesUnwound(t, rec)
@@ -122,7 +122,7 @@ func TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete(t *testing.
 	}
 	assertStageFailedThenUnwound(t, rec)
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)
 }
@@ -159,7 +159,7 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 	}
 	assertStageFailedThenUnwound(t, rec)
 	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)
 }
@@ -240,7 +240,7 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 		t.Errorf("gate-n and pre-push failure produced DIFFERENT Unwound summaries:\n gate=%q\n push=%q", gateSummary, pushSummary)
 	}
 	if want := "reset 1 commit; repo clean"; gateSummary != want {
-		t.Errorf("shared Unwound.Summary = %q, want %q", gateSummary, want)
+		t.Errorf("shared Unwound.Text() = %q, want %q", gateSummary, want)
 	}
 }
 
@@ -288,7 +288,7 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 	// A StageFailed (the notes failure) precedes the Unwound.
 	assertStageFailedThenUnwound(t, rec)
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
 	assertClosesUnwound(t, rec)

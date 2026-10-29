@@ -21,8 +21,11 @@ type notesStage struct {
 	stage *blockingStage
 	// checking is when the exclusion check's call started.
 	checking time.Time
-	parts    int
-	halved   bool
+	// checkSettled reports that the check's node was filled: its call ended, it
+	// failed, or the keep list left it nothing to call about.
+	checkSettled bool
+	parts        int
+	halved       bool
 	// largestCall is the biggest prompt of the run's succeeded calls carrying diff.
 	largestCall int
 	// fallbackCause is the failure the commit-subject list ships in place of, or nil.
@@ -50,7 +53,26 @@ func (s *notesStage) Checking() {
 }
 
 func (s *notesStage) Checked() {
+	s.checkSettled = true
 	s.p.NotesChecked(presenter.NotesCheck{Key: stageCheck, Elapsed: time.Since(s.checking)})
+}
+
+// AllKept settles the check's node quietly: the keep list covers every changed path.
+func (s *notesStage) AllKept() {
+	s.skipCheck("every changed path is on the keep list")
+}
+
+// settleUncheckedCheck settles the check's node quietly, saying why, when the release
+// planned it and the run has notes without it, so no planned node is left hollow.
+func (s *notesStage) settleUncheckedCheck(planned bool, why string) {
+	if planned && !s.checkSettled {
+		s.skipCheck(why)
+	}
+}
+
+func (s *notesStage) skipCheck(why string) {
+	s.checkSettled = true
+	s.p.StageSucceeded(presenter.Settled(stageCheck, "skipped: "+why))
 }
 
 // failure is the StageFailed payload for the notes stage failing on cause, timed.
@@ -59,6 +81,7 @@ func (s *notesStage) failure(cause error) presenter.StageFailure {
 }
 
 func (s *notesStage) CheckFailed(output string) {
+	s.checkSettled = true
 	s.p.SuspendSpinner()
 	s.p.Warn(presenter.Warning{
 		Key:     stageCheck,

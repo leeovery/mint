@@ -55,7 +55,7 @@ func TestUnwind_ResetLockedPastTheRetries_ShowsGitsLockStderrBeneathTheWarning(t
 		t.Errorf("reset attempts = %d, want 3 (the Mutator's whole budget)", got)
 	}
 	if got, want := unwoundSummary(t, rec), "reset 2 commits and deleted tag v0.0.1; manual cleanup required"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				assertAbortNonZero(t, err)
 				onlyWarning(t, rec, unwindIncomplete(step.action, failure.output))
 				if got := unwoundSummary(t, rec); got != step.summary {
-					t.Errorf("Unwound.Summary = %q, want %q", got, step.summary)
+					t.Errorf("Unwound.Text() = %q, want %q", got, step.summary)
 				}
 			})
 		}

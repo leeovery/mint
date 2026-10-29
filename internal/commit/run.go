@@ -306,8 +306,8 @@ func (d Deps) editorUnavailable() bool {
 // (an *engine-style abort is owned by the cmd layer's exit mapping).
 //
 // A run that opened with RunStarted closes with one RunFinished, emitted here:
-// committed, with or without a warning, or, stopped short, declined or failed with
-// nothing changed.
+// committed, with or without a warning, or, stopped short, declined or failed, its
+// end saying what the run left behind.
 func Run(ctx context.Context, deps Deps) error {
 	deps.run = runclose.Begin(deps.Presenter)
 	err := mintCommit(ctx, deps)
@@ -337,7 +337,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		Project: projectName(root),
 		Action:  commitAction,
 		Header:  presenter.Header{Command: commitCommand, Where: fsutil.HomeRelative(root, deps.Home), Version: deps.MintVersion},
-		Start:   presenter.Station{Name: head.Branch, Detail: head.ShortSHA},
+		Start:   presenter.Station{Name: head.Branch, Detail: head.Commit()},
 	})
 	p.ShowPlan(commitPlan(deps))
 
@@ -955,6 +955,7 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 	}
 	if deps.Staging != StagedOnly {
 		p.StageSucceeded(presenter.Settled(stageStage, "staged"))
+		deps.run.Left("changes staged, not committed")
 	}
 	if res, err := createCommit(ctx, deps, body); err != nil {
 		return surfaceOutput(p, "commit", err, res.Stderr)
@@ -974,19 +975,19 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 	return pushErr
 }
 
-// commitLanding is the end station's detail: the new commit's short sha, and that
-// the branch is in sync with origin when a push went through.
+// commitLanding is the end station's detail: the new commit's short sha, and that it
+// was pushed when a push went through.
 func commitLanding(sha string, pushed bool) string {
 	if !pushed {
 		return sha
 	}
 	if sha == "" {
-		return inSyncWithOrigin
+		return pushedLanding
 	}
-	return sha + " · " + inSyncWithOrigin
+	return sha + " · " + pushedLanding
 }
 
-const inSyncWithOrigin = "in sync with origin"
+const pushedLanding = "pushed"
 
 // pushAfterCommit is commit's SINGLE shared auto-push step, called by BOTH accept
 // paths after a successful commit (the gate-accept path here; the editor save-as-accept

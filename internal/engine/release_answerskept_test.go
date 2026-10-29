@@ -150,7 +150,7 @@ func assertAnswersKept(t *testing.T, rec *presentertest.RecordingPresenter, a *a
 		t.Errorf("tags made = %d, deleted = %d, want no %s left", tags, deleted, minorTagV130)
 	}
 	if got := unwoundSummary(t, rec); got != summary {
-		t.Errorf("Unwound.Summary = %q, want %q", got, summary)
+		t.Errorf("Unwound.Text() = %q, want %q", got, summary)
 	}
 	if n := countKind(rec, presentertest.KindUnwound); n != 1 {
 		t.Errorf("Unwound events = %d, want one", n)

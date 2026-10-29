@@ -262,9 +262,12 @@ type Presenter interface {
 	// does not special-case init for the footer; rather the engine simply never calls
 	// RunFinished or Prompt on an init run.
 	InitResult(r InitOutcome)
-	// RunFinished closes the run: every run that opened with RunStarted ends with
-	// exactly one, and it renders the end-of-run success line for the outcomes that
-	// have one (see Outcome).
+	// RunFinished closes the run and renders the end-of-run success line for the
+	// outcomes that have one (see Outcome). A release, a single-version regenerate and
+	// a commit end every run they opened with RunStarted with exactly one. A
+	// regenerate --all backfill is the exception: it opens a block per version with a
+	// RunStarted of its own and closes the batch once, with one RunFinished, only when
+	// the batch succeeds.
 	RunFinished(r RunResult)
 }
 
@@ -786,9 +789,11 @@ func (u Unwind) Text() string {
 	return strings.Join(parts, "; ")
 }
 
-// Outcome is how a run ended, the discriminator RunFinished renders by. Every run
-// that opened with RunStarted closes with one RunFinished carrying its Outcome. Plain
-// and today's pretty write today's success lines for the outcomes that had one —
+// Outcome is how a run ended, the discriminator RunFinished renders by. A release, a
+// single-version regenerate and a commit close every run they opened with one
+// RunFinished carrying its Outcome; a regenerate --all backfill opens a block per
+// version and closes the batch once, as OutcomeAllRegenerated, only when it succeeds.
+// Plain and today's pretty write today's success lines for the outcomes that had one —
 // released (with or without a warning), dry run, committed (with or without a
 // warning), and --all regenerated — and nothing for the rest, which end on lines of
 // their own (a failure, an unwind) or, before the rail, on none.
@@ -823,13 +828,15 @@ const (
 	// (plain) / "{leaf} regenerated {project} {Summary}" (pretty), URL-less, the
 	// engine-computed Summary rendered verbatim.
 	OutcomeAllRegenerated
-	// OutcomeDeclined is a run stopped at a question, declined or abandoned, with
-	// nothing made.
+	// OutcomeDeclined is a run stopped by a question answered no, with nothing to
+	// unwind. Its End detail says what it left, "nothing changed" when nothing.
 	OutcomeDeclined
 	// OutcomeUnwound is a run whose unwind undid what it had made; the Unwound line
-	// says what.
+	// says what, and its End detail where that left the repo.
 	OutcomeUnwound
-	// OutcomeFailed is a run that failed with nothing changed; its ✗ line says why.
+	// OutcomeFailed is a run that failed with nothing to unwind, input closing at a
+	// question included; its ✗ line says why, and its End detail what it left,
+	// "nothing changed" when nothing.
 	OutcomeFailed
 )
 
@@ -851,10 +858,11 @@ type RunResult struct {
 	// Summary is the engine-supplied closing detail of a --all backfill, rendered
 	// verbatim: the regenerated count and each skipped version.
 	Summary string
-	// End is the station the run landed at, its detail whole as the rail shows it:
-	// "v1.4.0" / "released", "main" / "a3f9c21 · in sync with origin", or the start
-	// station's name with "nothing changed" or "back where it started · repo clean ·
-	// nothing pushed".
+	// End is the station the run landed at, its detail whole as the rail shows it and
+	// derived from what the run did: "v1.4.0" / "released", "main" / "a3f9c21 ·
+	// pushed", or the start station's name with what a run that stopped short left —
+	// "nothing changed", "changes staged, not committed", "back where it started ·
+	// repo clean · nothing pushed".
 	End Station
 	// Elapsed is the engine-measured time of the whole run.
 	Elapsed time.Duration

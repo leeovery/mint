@@ -125,7 +125,7 @@ func TestUnwindTextRecomposesTheEngineSuppliedParts(t *testing.T) {
 }
 
 // TestUnwoundPayloadRoundTripsThroughRecorder proves the recorder captures the
-// full Unwind payload so an engine-driven test can round-trip the unwind summary
+// full Unwind payload so an engine-driven test can round-trip the unwind's parts
 // independent of any rendering.
 func TestUnwoundPayloadRoundTripsThroughRecorder(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}

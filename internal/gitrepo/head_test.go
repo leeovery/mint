@@ -37,6 +37,53 @@ func TestResolveHead_AHeadGitCannotReadIsTheZeroHead(t *testing.T) {
 	}
 }
 
+func TestResolveHead_AnUnbornBranchIsNamedByASecondRead(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 128, Stdout: "HEAD\n", Stderr: "fatal: ambiguous argument 'HEAD'\n"}, Err: errors.New("exit status 128")},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "main\n"}},
+	)
+
+	got := gitrepo.ResolveHead(t.Context(), r)
+
+	if want := (gitrepo.Head{Branch: "main"}); got != want {
+		t.Errorf("Head = %+v, want %+v", got, want)
+	}
+	invs := r.Invocations()
+	if len(invs) != 2 || !slices.Equal(invs[1].Args, []string{"symbolic-ref", "--short", "-q", "HEAD"}) {
+		t.Errorf("invocations = %+v, want the failed read then git symbolic-ref --short -q HEAD", invs)
+	}
+}
+
+func TestHead_CommitNamesTheShortShaOrThatThereAreNoCommitsYet(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		head   gitrepo.Head
+		unborn bool
+		commit string
+	}{
+		{name: "a branch with commits", head: gitrepo.Head{Branch: "main", ShortSHA: "4f9c2e1"}, commit: "4f9c2e1"},
+		{name: "a detached HEAD", head: gitrepo.Head{Branch: "HEAD", ShortSHA: "4f9c2e1"}, commit: "4f9c2e1"},
+		{name: "a branch with no commits yet", head: gitrepo.Head{Branch: "main"}, unborn: true, commit: "no commits yet"},
+		{name: "a HEAD git cannot read", head: gitrepo.Head{}, commit: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tc.head.Unborn(); got != tc.unborn {
+				t.Errorf("Unborn() = %v, want %v", got, tc.unborn)
+			}
+			if got := tc.head.Commit(); got != tc.commit {
+				t.Errorf("Commit() = %q, want %q", got, tc.commit)
+			}
+		})
+	}
+}
+
 func TestResolveShortHEAD_IsTheSameLengthAsResolveHeads(t *testing.T) {
 	t.Parallel()
 

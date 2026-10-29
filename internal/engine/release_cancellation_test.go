@@ -61,7 +61,7 @@ func TestRelease_CancelledBeforePush_Surgical_Resets(t *testing.T) {
 	}
 	assertStageFailedThenUnwound(t, rec)
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)
 }

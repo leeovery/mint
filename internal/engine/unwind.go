@@ -39,6 +39,7 @@ import (
 	"strings"
 
 	"mint/internal/cmdline"
+	"mint/internal/config"
 	"mint/internal/fsutil"
 	"mint/internal/git"
 	"mint/internal/presenter"
@@ -83,6 +84,12 @@ type MadeState struct {
 	// keptAnswers is the exclusion answers' commit, counted in Commits; the unwind
 	// re-commits it on the starting commit after its reset.
 	keptAnswers *answersCommit
+	// answersLeft reports that the answers went to a .mint.toml git ignores, a write
+	// the unwind leaves in place.
+	answersLeft bool
+	// written are the files the record stage wrote and no commit yet holds; with no
+	// commit to reset they stay as written.
+	written []string
 }
 
 // Unwind is the surgical pre-PONR recovery. Given the captured StartState and the
@@ -99,7 +106,8 @@ type MadeState struct {
 //     holds their commit and the reset succeeded;
 //   - reports each undone item, the kept answers commit and where the repo ended up
 //     via the Presenter's Unwound, the engine authoring every part, and tells the
-//     run's close it unwound, so the run closes back at its start station.
+//     run's close where it left the repo, so the run closes back at its start station
+//     saying so; with nothing to unwind it tells the close what the run left behind.
 //
 // With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
 // Unwound and issues NO git command. A reverted write alone emits no Unwound either.
@@ -130,10 +138,58 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 
 	if tagDeleted || commitsReset {
 		clean := tagOK && editOK && resetOK && keptOK
-		deps.Presenter.Unwound(unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: clean}))
-		deps.run.Unwound(clean)
+		event := unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: clean})
+		deps.Presenter.Unwound(event)
+		deps.run.Unwound(unwoundTo(event, clean, made.answersLeft))
+	} else {
+		deps.run.Left(leftBehind(editOK, made))
 	}
 	return abort(reason)
+}
+
+// The parts of the detail a release that stopped short closes at.
+const (
+	backWhereItStarted = "back where it started"
+	manualCleanup      = "manual cleanup required"
+	nothingPushed      = "nothing pushed"
+	answersLeftInPlace = "the exclusion answers kept in " + config.FileName
+	notCommitted       = " written, not committed"
+)
+
+// unwoundTo is where an unwind left the repo, as the run's close states it: back
+// where it started, or on the kept answers commit, then the repo's state and the
+// answers an ignored .mint.toml keeps. An unwind runs only before the push, so it
+// always pushed nothing.
+func unwoundTo(event presenter.Unwind, clean, answersLeft bool) string {
+	var parts []string
+	switch {
+	case event.Kept != "":
+		parts = append(parts, event.Kept)
+	case clean:
+		parts = append(parts, backWhereItStarted)
+	}
+	parts = append(parts, event.Repo)
+	if answersLeft {
+		parts = append(parts, answersLeftInPlace)
+	}
+	return strings.Join(append(parts, nothingPushed), " · ")
+}
+
+// leftBehind is what a release that stopped short with nothing to unwind left
+// behind, "" for nothing: a failed revert of the answers' write, the files the record
+// stage wrote and no commit holds, and the answers an ignored .mint.toml keeps.
+func leftBehind(editOK bool, made MadeState) string {
+	var parts []string
+	if !editOK {
+		parts = append(parts, manualCleanup)
+	}
+	if len(made.written) > 0 {
+		parts = append(parts, strings.Join(made.written, " + ")+notCommitted)
+	}
+	if made.answersLeft {
+		parts = append(parts, answersLeftInPlace)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // recommitAnswersIfKept commits the exclusion answers again on the commit the reset
@@ -369,7 +425,7 @@ func repoState(clean bool) string {
 	if clean {
 		return "repo clean"
 	}
-	return "manual cleanup required"
+	return manualCleanup
 }
 
 // commitsPhrase renders the reset-commit count with correct singular/plural grammar:

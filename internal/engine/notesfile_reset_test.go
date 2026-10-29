@@ -78,7 +78,7 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 
 			assertResetKeptNotesFile(t, f, startingSHA, tt.file)
 			if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-				t.Errorf("Unwound.Summary = %q, want %q", got, want)
+				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
 			assertNoMutation(t, f)
 			assertFileUnchanged(t, path, suppliedBody)
@@ -121,7 +121,7 @@ func TestRelease_NotesFileInRepo_PushRejected_UnwindLeavesTheNotesFile(t *testin
 			assertGitArgs(t, f, 2, []string{"tag", "-d", "v0.0.1"})
 			assertResetKeptNotesFile(t, f, startingSHA, tt.file)
 			if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
-				t.Errorf("Unwound.Summary = %q, want %q", got, want)
+				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
 			assertFileUnchanged(t, path, suppliedBody)
 		})
@@ -153,7 +153,7 @@ func TestRelease_NotesFileInRepo_CancelledAfterACommit_UnwindLeavesTheNotesFile(
 			}
 			assertResetKeptNotesFile(t, f, startingSHA, tt.file)
 			if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-				t.Errorf("Unwound.Summary = %q, want %q", got, want)
+				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
 			assertFileUnchanged(t, path, suppliedBody)
 		})
@@ -243,7 +243,7 @@ func TestUnwind_KeepOut_ResetsAroundTheKeptPath(t *testing.T) {
 	assertAbortNonZero(t, err)
 	assertResetKeptNotesFile(t, f, startingSHA, "NEXT_RELEASE.md")
 	if got, want := unwoundSummary(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 
@@ -304,7 +304,7 @@ func TestUnwind_KeepOut_ResetStepFails_WarnsTheManualStepsLeft(t *testing.T) {
 				t.Errorf("recovery Warn message = %q, want %q", got, tt.want)
 			}
 			if got, want := unwoundSummary(t, rec), "reset 1 commit; manual cleanup required"; got != want {
-				t.Errorf("Unwound.Summary = %q, want %q", got, want)
+				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
 		})
 	}

@@ -6,6 +6,7 @@ package commit_test
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -125,7 +126,7 @@ func TestRun_Rail_TheQuietPlanAndItsSettlesFillEveryNode(t *testing.T) {
 	}
 }
 
-func TestRun_Rail_StagingAndAPushAddTheirNodesAndAPushLandsInSync(t *testing.T) {
+func TestRun_Rail_StagingAndAPushAddTheirNodesAndAPushLandsPushed(t *testing.T) {
 	t.Parallel()
 
 	r := seedAddAllModeThenStageAndCommit("diff --git a/x b/x\n+work")
@@ -158,8 +159,8 @@ func TestRun_Rail_StagingAndAPushAddTheirNodesAndAPushLandsInSync(t *testing.T) 
 	if len(got) < len(wantTail) || !slices.Equal(got[len(got)-len(wantTail):], wantTail) {
 		t.Errorf("settles = %+v, want them to end %+v", got, wantTail)
 	}
-	if fin := closingResult(t, rec); fin.End != (presenter.Station{Name: "main", Detail: endHeadSHA + " · in sync with origin"}) {
-		t.Errorf("End = %+v, want the new commit in sync with origin", fin.End)
+	if fin := closingResult(t, rec); fin.End != (presenter.Station{Name: "main", Detail: endHeadSHA + " · pushed"}) {
+		t.Errorf("End = %+v, want the new commit, pushed", fin.End)
 	}
 }
 
@@ -214,5 +215,75 @@ func TestRun_Rail_AFailedPreflightIsTheDiffNode(t *testing.T) {
 	}
 	if fin := closingResult(t, rec); fin.Outcome != presenter.OutcomeFailed || fin.End != (presenter.Station{Name: "main", Detail: "nothing changed"}) {
 		t.Errorf("close = %v %+v, want OutcomeFailed back at main with nothing changed", fin.Outcome, fin.End)
+	}
+}
+
+func TestRun_Rail_ACommitFailingAfterStagingClosesSayingTheChangesAreStaged(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff HEAD -- .
+		runner.ScriptedCall{}, // git ls-files --others (no untracked)
+		runner.ScriptedCall{}, // git add -A
+		runner.ScriptedCall{Result: runner.Result{Stderr: "error: gpg failed to sign the data\n"}, Err: errExitOne}, // git commit -F -
+	)
+	rec, _, err := railCommit(t, r, presenter.ChoiceYes, func(d *commit.Deps) { d.Staging = commit.AddAll })
+	if err == nil {
+		t.Fatal("Run returned nil, want the commit failure's exit")
+	}
+
+	fin := closingResult(t, rec)
+	if want := (presenter.Station{Name: "main", Detail: "changes staged, not committed"}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
+		t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+	}
+}
+
+func TestRun_Rail_InputClosingAtTheQuestionClosesAsAFailureNotADecline(t *testing.T) {
+	t.Parallel()
+
+	rec, _, err := railCommit(t, seedDiffThenCommit("diff --git a/x b/x\n+work"), presenter.ChoiceYes, func(d *commit.Deps) {
+		d.Presenter.(*presentertest.RecordingPresenter).PromptResult = func(presenter.Gate) (presenter.Choice, error) {
+			return "", presenter.ErrInputClosed
+		}
+	})
+	if !errors.Is(err, presenter.ErrInputClosed) {
+		t.Fatalf("Run returned %v, want ErrInputClosed in the chain", err)
+	}
+
+	fin := closingResult(t, rec)
+	if want := (presenter.Station{Name: "main", Detail: "nothing changed"}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
+		t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+	}
+}
+
+func TestRun_Rail_ABranchWithNoCommitsYetStartsAndLandsOnTheBranch(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 128, Stdout: "HEAD\n"}, Err: errors.New("exit status 128")}, // git rev-parse HEAD --abbrev-ref HEAD
+		runner.ScriptedCall{Result: runner.Result{Stdout: "main\n"}},                                                    // git symbolic-ref --short -q HEAD
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                                       // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}},                                 // git diff --cached
+		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
+	)
+	rec, _, err := railCommit(t, r, presenter.ChoiceYes, noFlags)
+	if err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	if start, want := railEvent(t, rec, presentertest.KindRunStarted).RunStarted.Start, (presenter.Station{Name: "main", Detail: "no commits yet"}); start != want {
+		t.Errorf("Start = %+v, want %+v", start, want)
+	}
+	plan := railEvent(t, rec, presentertest.KindShowPlan).ShowPlan
+	if got := plan.Stages[len(plan.Stages)-1]; got != (presenter.PlanStage{Key: "commit", Name: "commit", Detail: "on main"}) {
+		t.Errorf("commit stage = %+v, want it on main", got)
+	}
+	if end, want := closingResult(t, rec).End, (presenter.Station{Name: "main", Detail: endHeadSHA}); end != want {
+		t.Errorf("End = %+v, want %+v", end, want)
 	}
 }

@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -388,6 +389,66 @@ func popConflictWarnRecorded(rec *presentertest.RecordingPresenter) bool {
 		}
 	}
 	return false
+}
+
+// panickingHookRunner is the FakeRunner with a hook seam that panics: every `sh` run
+// in a directory — how hooks run — panics instead of returning.
+type panickingHookRunner struct {
+	*runner.FakeRunner
+}
+
+func (r panickingHookRunner) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (runner.Result, error) {
+	if name == "sh" {
+		panic("hook seam panicked")
+	}
+	return r.FakeRunner.RunInDir(ctx, dir, env, name, args...)
+}
+
+// TestRelease_Autostash_APanicMidRunStillPopsTheStash proves the stash a run saved is
+// popped even when the run panics, and that the panic closes no run: the WIP is
+// restored on the way out, and nothing claims the run ended.
+func TestRelease_Autostash_APanicMidRunStillPopsTheStash(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, preTagHookConfig)
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
+		stashSaved(),               // stash push --include-untracked (WIP saved)
+		ScriptedOut(""),            // fetch --tags
+		ScriptedOut(""),            // status --porcelain (clean — WIP stashed)
+		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1 (absent)
+		ScriptedOut("0\t1"),        // rev-list left-right count
+		ScriptedOut(""),            // ls-remote --tags
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
+		stashPopped(),              // stash pop, on the way out of the panic
+	)
+	rec := &presentertest.RecordingPresenter{}
+	deps := newDeps(rec, f)
+	deps.Runner = panickingHookRunner{f}
+
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("Release did not panic through the hook seam")
+			}
+		}()
+		_ = engine.Release(t.Context(), deps, autostashOptions())
+	}()
+
+	if !invokedWith(f, "git", "stash", "pop") {
+		t.Errorf("a panic mid-run did not pop the stash; got %v", commandLines(f.Invocations()))
+	}
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindRunFinished {
+			t.Errorf("a panic closed the run: %+v", ev.RunFinished)
+		}
+	}
 }
 
 // seedAutostashHappyGit scripts the full happy git timeline for an --autostash run:

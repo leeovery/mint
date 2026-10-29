@@ -323,6 +323,7 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		// No net change → no commit → nothing to push. Reaching here with a no-op write
 		// is not a failure; the surface is simply byte-for-byte unchanged.
 		p.StageSucceeded(presenter.Settled(stageRecord, "unchanged"))
+		p.StageSucceeded(presenter.Settled(stagePush, "skipped: nothing to push"))
 		return false, nil
 	}
 	p.StageSucceeded(presenter.StageSuccess{
@@ -391,8 +392,10 @@ func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarge
 
 // resetAndAbort handles a pre-PONR changelog failure: it surfaces the failed stage,
 // resets the local CHANGELOG commit back to start when a commit landed (resetTo — no
-// tag, best-effort), and returns the abort. With no commit made the reset is skipped.
-// The ✗ line carries the failure's message alone, no captured output.
+// tag, best-effort), tells the run's close where that left the repo, and returns the
+// abort. With no commit made the reset is skipped, and a CHANGELOG.md rewritten but
+// not committed is what the run leaves. The ✗ line carries the failure's message
+// alone, no captured output.
 func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, committed bool, stage string, cause error) error {
 	failure := presenter.StageFailure{Name: stage, Key: stage, Message: failureMessage(cause)}
 	var timed *stageError
@@ -400,6 +403,10 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 		failure.Elapsed = timed.stage.elapsed()
 	}
 	deps.Presenter.StageFailed(failure)
+	var uncommitted *uncommittedChangelog
+	if errors.As(cause, &uncommitted) {
+		deps.run.Left(record.ChangelogFileName + notCommitted)
+	}
 	if committed {
 		// The reset is RECOVERY that must run even when the abort was the parent context's
 		// own cancellation (a SIGINT/SIGTERM pre-PONR abort). Detaching with
@@ -412,10 +419,17 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 		// left in place.
 		if manual, output, err := resetTo(context.WithoutCancel(ctx), deps.Mutator, start); err != nil {
 			warnUnwindIncomplete(deps.Presenter, manual+" to drop the leftover changelog commit", output)
+			deps.run.Left(manualCleanup + " · " + nothingPushed)
+		} else {
+			deps.run.Left(changelogCommitReset + " · " + nothingPushed)
 		}
 	}
 	return abort(cause)
 }
+
+// changelogCommitReset is what a regenerate whose changelog commit was reset left:
+// the repo as it started.
+const changelogCommitReset = "changelog commit reset · repo clean"
 
 // readHistoricalDate recovers the version's ORIGINAL release date from the tag
 // metadata via `git for-each-ref --format=%(creatordate:short) refs/tags/<tag>`

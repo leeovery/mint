@@ -328,7 +328,7 @@ func TestRelease_NotesFloorEdit_FailedEditorAbortsAndUnwindsThePreTagCommit(t *t
 		t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 

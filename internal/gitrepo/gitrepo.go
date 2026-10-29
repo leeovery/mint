@@ -88,26 +88,51 @@ func deriveFromOriginHead(ctx context.Context, r runner.CommandRunner) (string, 
 }
 
 // Head is where HEAD stands: the branch checked out ("HEAD" when detached) and the
-// commit's short sha.
+// commit's short sha, empty on a branch with no commits yet.
 type Head struct {
 	Branch   string
 	ShortSHA string
+}
+
+// Unborn reports that HEAD is on a branch with no commits yet.
+func (h Head) Unborn() bool {
+	return h.Branch != "" && h.ShortSHA == ""
+}
+
+// Commit is HEAD's commit as a run's start station names it: the short sha, or that
+// the branch has no commits yet.
+func (h Head) Commit() string {
+	if h.Unborn() {
+		return "no commits yet"
+	}
+	return h.ShortSHA
 }
 
 // shortSHALength is how many hex digits of HEAD's sha Head carries.
 const shortSHALength = 7
 
 // ResolveHead reads where HEAD stands with one read, `git rev-parse HEAD
-// --abbrev-ref HEAD`, which prints the commit's sha and then the branch. It is
-// display data only, so a HEAD git cannot read (a repository with no commit yet)
-// is the zero Head rather than an error.
+// --abbrev-ref HEAD`, which prints the commit's sha and then the branch. Only when
+// that fails, as it does on a branch with no commits yet, does a second read, `git
+// symbolic-ref --short -q HEAD`, name the branch alone. It is display data only, so a
+// HEAD git cannot read at all is the zero Head rather than an error.
 func ResolveHead(ctx context.Context, r runner.CommandRunner) Head {
 	res, err := r.Run(ctx, "git", "rev-parse", "HEAD", "--abbrev-ref", "HEAD")
 	if err != nil {
-		return Head{}
+		return Head{Branch: unbornBranch(ctx, r)}
 	}
 	sha, branch, _ := strings.Cut(strings.TrimSpace(res.Stdout), "\n")
 	return Head{Branch: strings.TrimSpace(branch), ShortSHA: shortSHA(strings.TrimSpace(sha))}
+}
+
+// unbornBranch is the branch HEAD names when it has no commit to read, "" when git
+// cannot say.
+func unbornBranch(ctx context.Context, r runner.CommandRunner) string {
+	res, err := r.Run(ctx, "git", "symbolic-ref", "--short", "-q", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(res.Stdout)
 }
 
 // ResolveShortHEAD reads HEAD's short sha with `git rev-parse --short HEAD`, cut to

@@ -529,6 +529,11 @@ func TestRelease_PromptError_AbortsNonZero(t *testing.T) {
 
 			// No mutation may have happened: nothing tagged, pushed, or published.
 			assertNoMutation(t, f)
+			// No question was answered, so the run closes failed, not declined.
+			fin := closingEvent(t, rec)
+			if want := (presenter.Station{Name: "first release", Detail: "nothing changed"}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
+				t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+			}
 		})
 	}
 }
@@ -665,7 +670,7 @@ func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
 // (post-Record, pre-PONR) routes through the surgical unwind AFTER a StageFailed: the
 // tracked MadeState (one bookkeeping commit, tag created via release.ErrPushRejected)
 // drives a `git reset --hard {startingSHA}` and a `git tag -d {tag}` — no HEAD probe.
-// The Unwound Summary (engine-authored) names the reset commit AND the deleted tag AND
+// The Unwound sentence (engine-authored) names the reset commit AND the deleted tag AND
 // the repo-clean tail, a StageFailed precedes the Unwound, the run returns a non-zero
 // *AbortError, and no success end-of-run line follows.
 func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
@@ -698,7 +703,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	// A StageFailed precedes the Unwound (a failed stage, then the unwind narration).
 	assertStageFailedThenUnwound(t, rec)
 	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)
 }
@@ -707,7 +712,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 // conditional gh-auth gate fails after the bookkeeping commit but before the tag)
 // routes through the surgical unwind AFTER a StageFailed: the tracked MadeState (one
 // bookkeeping commit, no tag) drives a `git reset --hard {startingSHA}` with NO HEAD
-// probe and NO `git tag -d` (no tag was created). The Summary names the reset commit
+// probe and NO `git tag -d` (no tag was created). The Unwound sentence names the reset commit
 // and the repo-clean tail, a StageFailed precedes the Unwound, and no success line
 // follows.
 func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
@@ -739,8 +744,13 @@ func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
 		t.Errorf("rev-parse HEAD count = %d, want 1 (the pre-gate capture only)", got)
 	}
 	assertStageFailedThenUnwound(t, rec)
+	// Plain still labels it preflight, but preflight has settled: it fails on the
+	// publish node it gates.
+	if failure := onlyStageFailureEvent(t, rec); failure.Name != "preflight" || failure.Key != "publish" {
+		t.Errorf("failure Name/Key = %q/%q, want the preflight label on the publish node", failure.Name, failure.Key)
+	}
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertClosesUnwound(t, rec)
 }

@@ -185,6 +185,9 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 		tail    []runner.ScriptedCall
 		want    string
 		summary string
+		// outcome and end are how the run closes: the answers' write it keeps named.
+		outcome presenter.Outcome
+		end     string
 	}{
 		{
 			name:    "a decline after the artifact commit",
@@ -193,6 +196,8 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			reviews: []presenter.Choice{presenter.ChoiceNo},
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit; repo clean",
+			outcome: presenter.OutcomeUnwound,
+			end:     "back where it started · repo clean · the exclusion answers kept in .mint.toml · nothing pushed",
 		},
 		{
 			name:    "the bookkeeping commit failing",
@@ -201,11 +206,15 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			tail:    []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)},
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit; repo clean",
+			outcome: presenter.OutcomeUnwound,
+			end:     "back where it started · repo clean · the exclusion answers kept in .mint.toml · nothing pushed",
 		},
 		{
 			name:    "a decline with the file the write created",
 			reviews: []presenter.Choice{presenter.ChoiceNo},
 			want:    createdAnswers,
+			outcome: presenter.OutcomeDeclined,
+			end:     "the exclusion answers kept in .mint.toml",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -224,6 +233,9 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			}
 			a.assertNotCommitted(t)
 			a.assertAnswersWritten(t, tc.want)
+			if fin := closingEvent(t, rec); fin.Outcome != tc.outcome || fin.End.Detail != tc.end {
+				t.Errorf("close = %v %q, want %v %q", fin.Outcome, fin.End.Detail, tc.outcome, tc.end)
+			}
 			if tc.summary == "" {
 				if n := countKind(rec, presentertest.KindUnwound); n != 0 {
 					t.Errorf("Unwound events = %d, want none for a run that made no commit", n)
@@ -234,7 +246,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 				t.Errorf("the run was not reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
 			if got := unwoundSummary(t, rec); got != tc.summary {
-				t.Errorf("Unwound.Summary = %q, want %q", got, tc.summary)
+				t.Errorf("Unwound.Text() = %q, want %q", got, tc.summary)
 			}
 		})
 	}

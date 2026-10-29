@@ -453,13 +453,14 @@ func TestPrettyPresenterBottomBrandOmitsEmptyURLSeparator(t *testing.T) {
 	}
 }
 
-// TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose drives a
-// single-version regenerate: the per-version block reuses the EXISTING events
-// exactly as release does (RunStarted("regenerating") → a stage → ShowNotes →
-// Prompt), then RunFinished{Outcome:OutcomeAllRegenerated, Summary:"v1.4.0"} renders the
-// URL-less, verb-shaped closing summary "{leaf} regenerated {project} {Summary}".
-// The close must carry NO URL and NO dangling " · " separator.
-func TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *testing.T) {
+// TestPrettyPresenterRegenerateAllBlockThenURLlessBatchClose drives one version block
+// of a --all backfill: the block reuses the EXISTING events exactly as release does
+// (RunStarted("regenerating") → a stage → ShowNotes → Prompt), then the batch's
+// RunFinished{Outcome:OutcomeAllRegenerated, Summary:"v1.4.0"} renders the URL-less,
+// verb-shaped closing summary "{leaf} regenerated {project} {Summary}". The close must
+// carry NO URL and NO dangling " · " separator. (A single-version regenerate closes as
+// OutcomeRegenerated, which renders no line.)
+func TestPrettyPresenterRegenerateAllBlockThenURLlessBatchClose(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
 		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})

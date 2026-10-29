@@ -71,13 +71,17 @@ const (
 const firstRelease = "first release"
 
 // releaseStart is the station a release starts from: the previous tag, or the first
-// release, at the branch and commit HEAD stands at; with HEAD unread, at no detail.
+// release, at the branch and commit HEAD stands at, or on a branch with no commits
+// yet; with HEAD unread, at no detail.
 func releaseStart(current version.SemVer, prefix string, head gitrepo.Head) presenter.Station {
 	station := presenter.Station{Name: current.String(prefix)}
 	if current == (version.SemVer{}) {
 		station.Name = firstRelease
 	}
-	if head != (gitrepo.Head{}) {
+	switch {
+	case head.Unborn():
+		station.Detail = head.Branch + " · " + head.Commit()
+	case head != (gitrepo.Head{}):
 		station.Detail = head.Branch + " @ " + head.ShortSHA
 	}
 	return station
@@ -389,19 +393,23 @@ type ReleaseOptions struct {
 //
 // Every run that opened with RunStarted closes with one RunFinished, emitted here
 // from whatever ending the run reached: released, with or without a warning, or a
-// dry run, or, stopped short, unwound, declined or failed with nothing changed.
+// dry run, or, stopped short, unwound, declined or failed, its end saying what the
+// run left behind.
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
 	deps.run = runclose.Begin(deps.Presenter)
+	// Deferred, so the work the run deferred (the autostash pop) runs after the close
+	// and still runs when the run panics, which closes nothing.
+	defer deps.run.RunDeferred()
 	err := cutRelease(ctx, deps, opts)
 	deps.run.Close(declined(err))
 	return err
 }
 
-// declined reports whether err ends the run at a question answered no, abandoned, or
-// closed on, rather than on a failure.
+// declined reports whether err ends the run at a question answered no. Input that
+// closed at a question is no answer, so it ends the run as a failure.
 func declined(err error) bool {
 	return errors.Is(err, errReleaseDeclined) || errors.Is(err, errGateAborted) ||
-		errors.Is(err, errFloorAborted) || errors.Is(err, presenter.ErrInputClosed)
+		errors.Is(err, errFloorAborted)
 }
 
 // cutRelease is Release's run, from reading the notes file to the end of its
@@ -555,13 +563,14 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// out now, ahead of the first slow one, in a Quiet plan. The steps plain prints
 	// still follow the notes, where its line has always been.
 	versionDetail, _ := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
+	route := releaseNotesRoute(selectState(current, cfg, opts, supplied), opts.NotesBody != "")
 	p.ShowPlan(releasePlan{
 		cfg:       cfg,
 		tag:       tag,
 		branch:    pushedBranch(releaseBranch, head, opts.AnyBranch),
 		version:   versionDetail,
 		preflight: checked,
-		notes:     releaseNotesRoute(selectState(current, cfg, opts, supplied), opts.NotesBody != ""),
+		notes:     route,
 	}.stages())
 
 	// Capture the clean starting state NOW: preflight has just confirmed the tree is
@@ -631,6 +640,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		made.keptAnswers = answers
 	}
 	made.answersEdit = answers.edit
+	made.answersLeft = answers.leftInPlace
 	var recordingErr *answersRecordingError
 	if errors.As(err, &recordingErr) {
 		return surfaceAndUnwind(ctx, deps, "notes", start, made, err)
@@ -653,7 +663,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		if err != nil {
 			return Unwind(ctx, deps, start, made, err)
 		}
+		stage.settleUncheckedCheck(route.checks, "the notes failed before it ran")
 	} else {
+		stage.settleUncheckedCheck(route.checks, "no source changes to check")
 		stage.done()
 		chunkNotes.warnUnsaved(p)
 		if opts.DryRun {
@@ -707,6 +719,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		// along with the artifact commit. No tag exists yet (made.TagCreated false).
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
 	}
+	if versionChanged {
+		made.written = append(made.written, cfg.Release.VersionFile)
+	}
 
 	// When changelog=false WriteChangelog no-ops (Changed:false). When the version file
 	// also nets no change, CommitBookkeeping makes NO commit — the tag then points at
@@ -718,6 +733,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		// (and a half-written changelog discarded by the reset) is rolled back to the clean
 		// start — the abort path is identical to the pre-push failure path. No tag yet.
 		return surfaceAndUnwind(ctx, deps, "record", start, made, err)
+	}
+	if writeResult.Changed {
+		made.written = append(made.written, record.ChangelogFileName)
 	}
 
 	// ONE folded bookkeeping commit stages the changelog and the version file together —
@@ -733,6 +751,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	}
 	if bookkeepingCommitted {
 		made.Commits++
+		made.written = nil
 	}
 	// Stage 5 narration: the ✓ line names WHAT was just recorded (the artifacts the
 	// bookkeeping commit carried) rather than a bare stage codeword, so the user can
@@ -773,8 +792,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// push still happen, so the pushed tag is never stranded (publishing was simply
 	// never attempted). mint NEVER silently assumes GitHub for an unresolved provider.
 	// This is DISTINCT from publish=false: an explicit opt-out is a SILENT tag + push
-	// (this whole block is skipped), not a warned downgrade. Any OTHER resolution error
-	// remains a pre-PONR "preflight" abort routed through the surgical unwind.
+	// (this whole block is skipped), not a warned downgrade. Any OTHER resolution error,
+	// like a failed gh gate, is a pre-PONR abort labelled "preflight" on the publish node
+	// it gates, routed through the surgical unwind.
 	var publisher publish.Publisher
 	if cfg.Release.Publish {
 		resolved, err := resolvePublisher(ctx, deps, cfg)
@@ -782,7 +802,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		case errors.Is(err, publish.ErrProviderUnresolved):
 			warnPublishDowngraded(p, err, "downgrading to tag + push only")
 		case err != nil:
-			return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
+			return failAndUnwind(ctx, deps, publishGateFailure(err), start, made, err)
 		default:
 			publisher = resolved
 		}
@@ -793,7 +813,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 			if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
 				// The bookkeeping commit may have moved HEAD; the surgical unwind resets exactly
 				// the commits in made. No tag yet (made.TagCreated false).
-				return surfaceAndUnwind(ctx, deps, "preflight", start, made, err)
+				return failAndUnwind(ctx, deps, publishGateFailure(err), start, made, err)
 			}
 		}
 	}
@@ -1169,14 +1189,16 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 
 // answersCommit records the exclusion check's answers in root's .mint.toml and
 // commits that file alone for tag's release, unless git ignores it; landed reports
-// whether the commit was made, position is how many of mint's commits it brought the
+// whether the commit was made, leftInPlace that git ignores the file so the write
+// stays whatever the run does, position is how many of mint's commits it brought the
 // run to, and edit is the write until a commit holds it or git is found to ignore it.
 type answersCommit struct {
-	root, tag string
-	globs     config.ReleaseGlobs
-	landed    bool
-	position  int
-	edit      *fileEdit
+	root, tag   string
+	globs       config.ReleaseGlobs
+	landed      bool
+	leftInPlace bool
+	position    int
+	edit        *fileEdit
 }
 
 // releaseTable is the .mint.toml table the answers are written to.
@@ -1207,6 +1229,7 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 			}
 			a.landed = true
 		}
+		a.leftInPlace = ignored
 		a.edit = nil
 		narrateAnswers(deps.Presenter, answers, ignored)
 		return nil
@@ -1551,6 +1574,15 @@ func failAndUnwind(ctx context.Context, deps ReleaseDeps, failure presenter.Stag
 func pushFailure(cause error, elapsed time.Duration) presenter.StageFailure {
 	failure := stageFailure("tag", cause)
 	failure.Key, failure.Elapsed = stagePush, elapsed
+	return failure
+}
+
+// publishGateFailure is the StageFailed payload for the provider's resolution or its
+// auth gate failing on cause: labelled "preflight", as plain shows it, and keyed to
+// the publish stage it gates, since preflight has settled by then.
+func publishGateFailure(cause error) presenter.StageFailure {
+	failure := stageFailure(stagePreflight, cause)
+	failure.Key = stagePublish
 	return failure
 }
 

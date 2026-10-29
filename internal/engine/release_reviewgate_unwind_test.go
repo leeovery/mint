@@ -104,7 +104,7 @@ func assertUnwoundToStart(t *testing.T, rec *presentertest.RecordingPresenter, f
 		t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertNoTag(t, f)
 	assertNoMutation(t, f)

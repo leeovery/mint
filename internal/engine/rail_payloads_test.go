@@ -110,6 +110,36 @@ func assertKeysInPlan(t *testing.T, rec *presentertest.RecordingPresenter, plan 
 	}
 }
 
+// assertEveryPlannedStageSettled fails unless every stage the run's plan laid out
+// ended filled: settled, checked, failed or warned on, or, laid out already settled,
+// answered at its question before the plan.
+func assertEveryPlannedStageSettled(t *testing.T, rec *presentertest.RecordingPresenter) {
+	t.Helper()
+	filled := map[string]bool{}
+	planned := false
+	for _, ev := range rec.Events {
+		switch ev.Kind {
+		case presentertest.KindShowPlan:
+			planned = planned || ev.ShowPlan.Quiet
+		case presentertest.KindPrompt:
+			filled[ev.Prompt.Stage] = filled[ev.Prompt.Stage] || !planned
+		case presentertest.KindNotesChecked:
+			filled[ev.NotesCheck.Key] = true
+		case presentertest.KindStageSucceeded:
+			filled[ev.StageSucceeded.Key] = true
+		case presentertest.KindStageFailed:
+			filled[ev.StageFailed.Key] = true
+		case presentertest.KindWarn:
+			filled[ev.Warn.Key] = true
+		}
+	}
+	for _, s := range quietPlan(t, rec).Stages {
+		if !filled[s.Key] {
+			t.Errorf("planned stage %q never ended filled; kinds = %v", s.Key, rec.Kinds())
+		}
+	}
+}
+
 // priorTagRelease runs a prior-tag release of v1.2.4 through the AI notes, the
 // review and a publish, under railDeps.
 func priorTagRelease(t *testing.T, rec *presentertest.RecordingPresenter) (string, error) {
@@ -139,6 +169,28 @@ func TestRelease_Rail_TheHeaderAndStartStationNameWhereTheRunBegins(t *testing.T
 	}
 	if want := (presenter.Station{Name: priorTag, Detail: "main @ 4f9c2e1"}); info.Start != want {
 		t.Errorf("Start = %+v, want %+v (the previous tag, then the branch @ HEAD's short sha)", info.Start, want)
+	}
+}
+
+func TestRelease_Rail_ABranchWithNoCommitsYetStartsSayingSo(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list (no tags)
+		runner.ScriptedCall{Result: runner.Result{ExitCode: 128, Stdout: "HEAD\n"}, Err: errors.New("exit status 128")}, // rev-parse HEAD --abbrev-ref HEAD
+		ScriptedOut("main\n"),    // symbolic-ref --short -q HEAD
+		gitFailing("fatal: bad"), // fetch --tags
+	)
+	rec := &presentertest.RecordingPresenter{}
+
+	_ = engine.Release(t.Context(), newDeps(rec, f), patchOptions())
+
+	if want := (presenter.Station{Name: "first release", Detail: "main · no commits yet"}); runInfo(t, rec).Start != want {
+		t.Errorf("Start = %+v, want %+v", runInfo(t, rec).Start, want)
 	}
 }
 
@@ -195,6 +247,7 @@ func TestRelease_Rail_ThePlanLaysOutEveryStageWithThePushAsThePointOfNoReturn(t 
 		t.Errorf("the plan (at %d) came before preflight settled (at %d); it is known once preflight passes", at, settled)
 	}
 	assertKeysInPlan(t, rec, plan)
+	assertEveryPlannedStageSettled(t, rec)
 }
 
 // stopAtTheNotes answers the version question yes and every later question no.
@@ -484,6 +537,10 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 	if unwound.Text() != keptSummary {
 		t.Errorf("Text() = %q, want plain's sentence %q", unwound.Text(), keptSummary)
 	}
+	fin := closingEvent(t, rec)
+	if want := "kept the answers commit on the starting commit · repo clean · nothing pushed"; fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != want {
+		t.Errorf("close = %v %q, want OutcomeUnwound %q: the kept answers named, not back where it started", fin.Outcome, fin.End.Detail, want)
+	}
 }
 
 func TestRelease_Rail_AWarningPastThePointOfNoReturnStillLandsAtTheTag(t *testing.T) {
@@ -655,4 +712,86 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 	if want := (presenter.Station{Name: regenRunTag, Detail: "regenerated"}); fin.Outcome != presenter.OutcomeRegenerated || fin.End != want {
 		t.Errorf("close = %v %+v, want OutcomeRegenerated %+v", fin.Outcome, fin.End, want)
 	}
+}
+
+// regenerateChangelogRun runs a changelog-only regenerate of a section reading stale,
+// its git calls from the write's clean start on scripted by tail.
+func regenerateChangelogRun(t *testing.T, stale string, tail ...runner.ScriptedCall) (*presentertest.RecordingPresenter, error) {
+	t.Helper()
+	dir := t.TempDir()
+	seedChangelog(t, dir, kacPreamble+"\n## ["+regenRunVersionKey+"] - 2024-02-15\n\n"+stale)
+	f := runner.NewFakeRunner()
+	f.SeedSequence("git",
+		ScriptedOut(""),                    // status --porcelain (clean)
+		ScriptedOut(regenRunReleaseBranch), // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedOut(""),                    // fetch --tags
+		ScriptedOut("0\t1"),                // rev-list left-right count (ahead only)
+		ScriptedOut("startHEAD"),           // rev-parse HEAD (capture clean start)
+		ScriptedOut("2024-02-15"),          // for-each-ref creatordate:short (historical date)
+	)
+	f.SeedSequence("git", tail...)
+	rec := &presentertest.RecordingPresenter{}
+	req := runReq(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetChangelog))
+	req.ReleaseBranch = regenRunReleaseBranch
+
+	err := engine.RegenerateRun(t.Context(), railDeps(rec, f, dir), nil, dir, req)
+	return rec, err
+}
+
+func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T) {
+	t.Parallel()
+
+	rejected := runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("remote rejected")}
+	tests := []struct {
+		name string
+		tail []runner.ScriptedCall
+		end  string
+	}{
+		{
+			name: "a commit that fails leaves the rewrite",
+			tail: []runner.ScriptedCall{ScriptedOut(""), gitFailing(commitStderr)}, // add, commit
+			end:  "CHANGELOG.md written, not committed",
+		},
+		{
+			name: "a rejected push resets the commit",
+			tail: []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
+			end:  "changelog commit reset · repo clean · nothing pushed",
+		},
+		{
+			name: "a rejected push whose reset fails needs cleaning up",
+			tail: []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure()},
+			end:  "manual cleanup required · nothing pushed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rec, err := regenerateChangelogRun(t, "Stale body.\n", tt.tail...)
+
+			assertAbortNonZero(t, err)
+			fin := closingEvent(t, rec)
+			if want := (presenter.Station{Name: regenRunTag, Detail: tt.end}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
+				t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+			}
+		})
+	}
+}
+
+func TestRegenerateRun_Rail_AnUnchangedChangelogSettlesThePushAsSkipped(t *testing.T) {
+	t.Parallel()
+
+	// The section as the writer lays it out: the body, then a blank line.
+	rec, err := regenerateChangelogRun(t, regenRunFreshBody+"\n")
+	if err != nil {
+		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
+	}
+
+	if got := stageSuccess(t, rec, "record"); got.Detail != "unchanged" || !got.Quiet {
+		t.Errorf("record success = %+v, want a quiet unchanged settle", got)
+	}
+	if got := stageSuccess(t, rec, "push"); got.Detail != "skipped: nothing to push" || !got.Quiet {
+		t.Errorf("push success = %+v, want a quiet settle saying why it was skipped", got)
+	}
+	assertKeysInPlan(t, rec, rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan)
 }

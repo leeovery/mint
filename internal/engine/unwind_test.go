@@ -49,7 +49,7 @@ func TestUnwind_TwoCommitsAndTag_ResetsBothAndDeletesTag(t *testing.T) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundSummary(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 
@@ -80,7 +80,7 @@ func TestUnwind_OneBookkeepingCommitAndTag_ResetsToStart(t *testing.T) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestUnwind_CommitsButTagNotCreated_DeletesNoTag(t *testing.T) {
 		t.Errorf("unwind did not reset to the captured starting sha; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestUnwind_TagOnlyNoCommits_DeletesTagOnly(t *testing.T) {
 		t.Errorf("unwind reset despite zero commits made; got %v", commandLines(f.Invocations()))
 	}
 	if got, want := unwoundSummary(t, rec), "deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 
@@ -200,7 +200,7 @@ func TestUnwind_ResetsToExactCapturedSha(t *testing.T) {
 	}
 }
 
-// TestUnwind_ReportsEachUndoneItem proves the engine-authored Unwound Summary names
+// TestUnwind_ReportsEachUndoneItem proves the engine-authored Unwound sentence names
 // each undone item — the reset commit count AND the deleted tag — and carries the
 // "repo clean" tail, rendered verbatim by the presenter with no "Reverted:"-style
 // prefix (the presenter prefixes the line with "unwound" itself).
@@ -223,11 +223,11 @@ func TestUnwind_ReportsEachUndoneItem(t *testing.T) {
 
 	summary := unwoundSummary(t, rec)
 	if got, want := summary, "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	// The summary must not lead with a label the presenter already prefixes.
 	if len(summary) >= len("Reverted") && summary[:len("Reverted")] == "Reverted" {
-		t.Errorf("Unwound.Summary leads with a redundant prefix: %q", summary)
+		t.Errorf("Unwound.Text() leads with a redundant prefix: %q", summary)
 	}
 }
 
@@ -282,7 +282,7 @@ func TestUnwind_ResetFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T) {
 
 	summary := unwoundSummary(t, rec)
 	if strings.Contains(summary, "repo clean") {
-		t.Errorf("Unwound.Summary falsely claims clean after a failed reset: %q", summary)
+		t.Errorf("Unwound.Text() falsely claims clean after a failed reset: %q", summary)
 	}
 }
 
@@ -313,7 +313,7 @@ func TestUnwind_TagDeleteFails_WarnsManualCleanupAndSummaryNotClean(t *testing.T
 
 	summary := unwoundSummary(t, rec)
 	if strings.Contains(summary, "repo clean") {
-		t.Errorf("Unwound.Summary falsely claims clean after a failed tag delete: %q", summary)
+		t.Errorf("Unwound.Text() falsely claims clean after a failed tag delete: %q", summary)
 	}
 }
 
@@ -340,7 +340,7 @@ func TestUnwind_AllRecoverySucceeds_NoWarnAndReportsClean(t *testing.T) {
 		t.Errorf("a fully-successful unwind emitted a recovery Warn; none expected")
 	}
 	if got, want := unwoundSummary(t, rec), "reset 2 commits and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 

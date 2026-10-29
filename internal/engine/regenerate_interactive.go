@@ -163,7 +163,8 @@ type RegenerateRunRequest struct {
 // generation failure that stops an unattended run prints its next moves first.
 //
 // A run that opened with RunStarted closes with one RunFinished, emitted here:
-// regenerated, or, stopped short, declined or failed with nothing changed.
+// regenerated, or, stopped short, declined or failed, its end saying what the run
+// left behind.
 func RegenerateRun(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req RegenerateRunRequest) error {
 	deps.run = runclose.Begin(deps.Presenter)
 	err := regenerateRun(ctx, deps, publisher, root, req)

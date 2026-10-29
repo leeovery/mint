@@ -41,6 +41,12 @@ type releasePlan struct {
 // stages lays out the release's stages, those already settled included, leaving
 // out a hook stage with no hook configured, the check on a path that runs none, and
 // publish when the release publishes nothing. The point of no return is the push.
+//
+// Every stage laid out here ends filled on a real run: one the run skips after all —
+// the check over a diff with no source changes, under a keep list covering every
+// changed path, or after the notes failed before it — is settled quietly saying why,
+// and a publish the provider's resolution downgrades is a warning on its node. A dry
+// run leaves the stages it skips unfilled.
 func (r releasePlan) stages() presenter.Plan {
 	rel := r.cfg.Release
 	stages := []presenter.PlanStage{
@@ -69,7 +75,8 @@ func (r releasePlan) stages() presenter.Plan {
 
 // notesRoute is the notes path a release will take, as far as it is known before the
 // notes stage: its plan detail, and whether the exclusion check runs on it. A diff
-// that turns out empty, or a keep list covering every path, still skips the check.
+// that turns out empty, or a keep list covering every path, still skips the check,
+// whose node is then settled saying so.
 type notesRoute struct {
 	detail string
 	checks bool

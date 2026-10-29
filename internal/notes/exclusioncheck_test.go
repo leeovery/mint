@@ -62,6 +62,7 @@ type checkNarration struct{ events []string }
 
 func (n *checkNarration) Checking() { n.events = append(n.events, "checking") }
 func (n *checkNarration) Checked()  { n.events = append(n.events, "checked") }
+func (n *checkNarration) AllKept()  { n.events = append(n.events, "all kept") }
 func (n *checkNarration) CheckFailed(output string) {
 	n.events = append(n.events, "failed: "+output)
 }
@@ -173,7 +174,7 @@ func TestExclusionCheck_LeavesOutPathsTheKeepListCovers(t *testing.T) {
 	}
 }
 
-func TestExclusionCheck_KeepListCoversEveryPath_MakesNoCallAndNarratesNothing(t *testing.T) {
+func TestExclusionCheck_KeepListCoversEveryPath_MakesNoCallAndNarratesOnlyThat(t *testing.T) {
 	t.Parallel()
 
 	narration := &checkNarration{}
@@ -191,8 +192,8 @@ func TestExclusionCheck_KeepListCoversEveryPath_MakesNoCallAndNarratesNothing(t 
 	if calls != 0 {
 		t.Errorf("check calls = %d, want none", calls)
 	}
-	if len(narration.events) != 0 {
-		t.Errorf("narration = %v, want none", narration.events)
+	if want := []string{"all kept"}; !slices.Equal(narration.events, want) {
+		t.Errorf("narration = %v, want %v", narration.events, want)
 	}
 }
 

@@ -192,7 +192,7 @@ func TestRelease_AnswersCommitFailingAfterTheArtifactCommit_UnwindsToTheStartAnd
 		t.Errorf(".mint.toml =\n%s\nwant it as before the answers\n%s", got, before)
 	}
 	if got, want := unwoundSummary(t, run.rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 
@@ -290,7 +290,7 @@ func TestRelease_AnswersCommitFailing_WhenUnstagingTheWriteFails_WarnsTheManualS
 		t.Errorf("warnings = %+v, want only %+v", warns, want)
 	}
 	if got, want := unwoundSummary(t, run.rec), "reset 1 commit; manual cleanup required"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
 

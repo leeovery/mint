@@ -637,13 +637,14 @@ func TestPlainPresenterRunFinishedOmitsTrailingSpaceWhenURLEmpty(t *testing.T) {
 	}
 }
 
-// TestPlainPresenterRegenerateSingleVersionRendersBlockThenURLlessClose drives a
-// single-version regenerate: the per-version block reuses the EXISTING events
-// exactly as release does (RunStarted("regenerating") → a stage → ShowNotes →
-// Prompt), then RunFinished{Outcome:OutcomeAllRegenerated, Summary:"v1.4.0"} renders the
-// URL-less closing summary "done: {project} {Summary}". The block events are
-// asserted to flow through unchanged and the close to carry NO URL.
-func TestPlainPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *testing.T) {
+// TestPlainPresenterRegenerateAllBlockThenURLlessBatchClose drives one version block
+// of a --all backfill: the block reuses the EXISTING events exactly as release does
+// (RunStarted("regenerating") → a stage → ShowNotes → Prompt), then the batch's
+// RunFinished{Outcome:OutcomeAllRegenerated, Summary:"v1.4.0"} renders the URL-less
+// closing summary "done: {project} {Summary}". The block events are asserted to flow
+// through unchanged and the close to carry NO URL. (A single-version regenerate closes
+// as OutcomeRegenerated, which renders no line.)
+func TestPlainPresenterRegenerateAllBlockThenURLlessBatchClose(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
 		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
