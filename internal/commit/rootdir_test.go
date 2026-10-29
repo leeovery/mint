@@ -71,15 +71,14 @@ func TestRun_AddAll_ReadsAnchoredAtRepoRoot(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},           // tracked probe (empty)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\x00"}}, // untracked probe (non-empty → proceed)
-		scriptedCount("new.go"),                                                                // untracked file's count
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                 // tracked probe (empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\x00"}},                       // untracked probe (non-empty → proceed)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                 // L1 tracked diff (empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\x00"}},                       // L1 untracked enumeration (-z)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/new.go b/new.go\n+x"}}, // addition diff
-		runner.ScriptedCall{},                                                                  // git add -A
-		runner.ScriptedCall{},                                                                  // git commit -F -
-		scriptedShortHead(),                                                                    // git rev-parse --short HEAD (the end station)
+		runner.ScriptedCall{}, // git add -A
+		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	deps := newCommitDeps(rec, r, scriptedTransport("feat: anchored add-all"), root)
 	deps.Staging = commit.AddAll
@@ -88,7 +87,6 @@ func TestRun_AddAll_ReadsAnchoredAtRepoRoot(t *testing.T) {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}
 
-	// Two probes + the untracked file's count + the tracked diff + the enumeration + one
-	// addition diff = six reads.
-	assertReadsAnchoredAt(t, r, root, 6)
+	// Two probes + the tracked diff + the enumeration + one addition diff = five reads.
+	assertReadsAnchoredAt(t, r, root, 5)
 }

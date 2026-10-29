@@ -180,8 +180,8 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 			name:      "addall untracked only",
 			mode:      AddAll,
 			wantEmpty: false,
-			// tracked probe empty, untracked probe NON-empty, then its count.
-			probeOut: []string{"", untrackedName, "1\t0\tnew.go\n"},
+			// tracked probe empty, untracked probe NON-empty.
+			probeOut: []string{"", untrackedName},
 			// L1: tracked diff empty, untracked enumeration has one file, then its addition
 			// diff.
 			l1Out: []string{"", untrackedName, untrackedAddition},
@@ -195,13 +195,13 @@ func TestEmptinessVerdictAgreesWithL1Source_PerMode(t *testing.T) {
 			// Emptiness verdict via the preflight path.
 			rp := runner.NewFakeRunner()
 			rp.SeedSequence("git", scriptedResults(tc.probeOut)...)
-			stat, err := readDiffStat(ctx, rp, "", tc.mode)
+			_, found, err := readDiffStat(ctx, rp, "", tc.mode)
 			if err != nil {
 				t.Fatalf("readDiffStat returned error: %v", err)
 			}
-			empty := stat.files == 0
+			empty := !found
 			if empty != tc.wantEmpty {
-				t.Errorf("readDiffStat counted %+v, want empty %v", stat, tc.wantEmpty)
+				t.Errorf("readDiffStat found %v, want empty %v", found, tc.wantEmpty)
 			}
 
 			// L1 source via the generate path (same shared descriptor).

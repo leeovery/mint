@@ -1,7 +1,11 @@
 package commit
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -18,11 +22,15 @@ func (s diffStat) plus(o diffStat) diffStat {
 
 // String is the count as the diff's row reads it: "4 files · +86 −12".
 func (s diffStat) String() string {
-	noun := "files"
+	return fmt.Sprintf("%s · +%d −%d", s.filesText(), s.added, s.removed)
+}
+
+// filesText is how many files the count holds: "4 files", "1 file".
+func (s diffStat) filesText() string {
 	if s.files == 1 {
-		noun = "file"
+		return "1 file"
 	}
-	return fmt.Sprintf("%d %s · +%d −%d", s.files, noun, s.added, s.removed)
+	return fmt.Sprintf("%d files", s.files)
 }
 
 // parseNumstat counts `git diff --numstat` output: a line per file, its lines added,
@@ -53,6 +61,80 @@ func count(fields []string, i int) int {
 		return 0
 	}
 	return n
+}
+
+// countUntracked counts the untracked files listing names, NUL-terminated paths
+// relative to root, as `git add -A` would stage each: as the additions git's numstat
+// counts, read from the disk once rather than by a git call per file. The count is
+// display only, so it never fails: a path it can't read, as one gone since it was
+// listed, is left out.
+func countUntracked(root, listing string) diffStat {
+	var s diffStat
+	for _, path := range strings.Split(listing, "\x00") {
+		if path == "" {
+			continue
+		}
+		if counted, ok := countAddition(filepath.Join(root, path), strings.HasSuffix(path, "/")); ok {
+			s = s.plus(counted)
+		}
+	}
+	return s
+}
+
+// countAddition counts one untracked file at path as an addition, ok false where it
+// can't be read. A nested repo, which ls-files lists with a trailing slash and `git add
+// -A` stages as a gitlink, is one file with no lines.
+func countAddition(path string, nestedRepo bool) (diffStat, bool) {
+	if nestedRepo {
+		return diffStat{files: 1}, true
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return diffStat{}, false
+	}
+	defer func() { _ = f.Close() }()
+	lines, binary, err := countLines(f)
+	if err != nil {
+		return diffStat{}, false
+	}
+	if binary {
+		return diffStat{files: 1}, true
+	}
+	return diffStat{files: 1, added: lines}, true
+}
+
+// binarySniff is how much of a file git reads to judge it binary, and a NUL in it
+// makes it so: git's own heuristic, which counts no lines for a binary file.
+const binarySniff = 8000
+
+// countLines counts the lines r holds as git's numstat does: each newline, and an
+// unterminated last line as one more. binary reports a NUL within its first
+// binarySniff bytes, and then no lines are counted.
+func countLines(r io.Reader) (lines int, binary bool, err error) {
+	buf := make([]byte, 64*1024)
+	read, last := 0, byte('\n')
+	for {
+		n, rerr := r.Read(buf)
+		chunk := buf[:n]
+		if read < binarySniff && bytes.IndexByte(chunk[:min(n, binarySniff-read)], 0) >= 0 {
+			return 0, true, nil
+		}
+		lines += bytes.Count(chunk, []byte{'\n'})
+		if n > 0 {
+			last = chunk[n-1]
+		}
+		read += n
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return 0, false, rerr
+		}
+	}
+	if last != '\n' {
+		lines++
+	}
+	return lines, false, nil
 }
 
 // diffDetail is the diff's row: what the commit carries, then what it covers under

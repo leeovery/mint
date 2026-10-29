@@ -262,10 +262,11 @@ type Deps struct {
 	Home        string
 	// Clock is what the run and its stages are timed by, the wall clock when nil.
 	Clock func() time.Time
-	// run closes the run Run opened, and branch is the branch HEAD stood at when it
-	// opened, the branch the commit lands on.
+	// run closes the run Run opened, branch is the branch HEAD stood at when it opened,
+	// the branch the commit lands on, and stat the preflight's count of what it carries.
 	run    *runclose.Run
 	branch string
+	stat   diffStat
 }
 
 // editorUnavailable is the SINGLE "will the interactive editor refuse to open?" predicate.
@@ -367,6 +368,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
+	deps.stat = stat
 	p.StageSucceeded(presenter.Settled(stageDiff, diffDetail(stat, deps.Staging)))
 
 	// --no-ai degradation path: skip L3 generate AND the Continue? gate (the gate is
@@ -972,7 +974,7 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 		return surfaceOutput(p, "stage", err, res.Stderr)
 	}
 	if deps.Staging != StagedOnly {
-		p.StageSucceeded(presenter.Settled(stageStage, "staged"))
+		p.StageSucceeded(presenter.Settled(stageStage, deps.stat.filesText()))
 		deps.run.Left(stagedNotCommitted)
 	}
 	if res, err := createCommit(ctx, deps, body); err != nil {
@@ -1110,4 +1112,4 @@ const (
 	pushFailRow = "not pushed; the commit is in place"
 )
 
-var pushAgain = presenter.NextMove{Lead: "Push the commit:", Command: "git push"}
+var pushAgain = presenter.NextMove{Lead: "Push it once the cause above is fixed:", Command: "git push"}

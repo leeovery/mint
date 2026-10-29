@@ -146,7 +146,6 @@ func TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // preflight tracked probe (UNFILTERED): no tracked change
 		runner.ScriptedCall{Result: runner.Result{Stdout: "vendor.min.js\x00"}}, // preflight untracked probe (UNFILTERED): untracked file present
-		scriptedCount("vendor.min.js"),                                          // preflight count of the untracked file
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // L1 tracked diff (filtered): empty
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // L1 untracked enumeration (filtered): all excluded → empty
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},          // git var GIT_EDITOR
@@ -169,7 +168,6 @@ func TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	}
 	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--numstat", "--", "."})
 	assertArgs(t, gits[1].Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."})
-	assertArgs(t, gits[2].Args, []string{"diff", "--no-index", "--numstat", "--", "/dev/null", "vendor.min.js"})
 
 	if transport.calls() != 0 {
 		t.Errorf("transport called %d times; an all-excluded -A diff must skip the AI", transport.calls())

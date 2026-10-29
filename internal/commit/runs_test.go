@@ -176,19 +176,32 @@ func (w *commitWorld) trackedDiff() {
 	)
 }
 
-// everything scripts every change -A stages: the tracked changes, then the untracked
-// files, counted, then read for the AI, each rendered as an addition.
-func (w *commitWorld) everything() {
+// everything scripts every change -A stages: the tracked changes, then the two
+// untracked files, 18 and 12 lines on disk, counted from there, then read for the AI,
+// each rendered as an addition.
+func (w *commitWorld) everything(t *testing.T) {
+	t.Helper()
+	writeLines(t, filepath.Join(w.deps.Root, "src", "backoff.go"), 18)
+	writeLines(t, filepath.Join(w.deps.Root, "src", "backoff_test.go"), 12)
 	w.f.SeedSequence("git",
-		out(runTrackedNumstat),                   // diff HEAD --numstat -- .
-		out(runUntracked),                        // ls-files --others --exclude-standard -z -- .
-		addition("18\t0\tsrc/backoff.go\n"),      // diff --no-index --numstat -- /dev/null src/backoff.go
-		addition("12\t0\tsrc/backoff_test.go\n"), // diff --no-index --numstat -- /dev/null src/backoff_test.go
-		out(runTrackedDiff),                      // diff HEAD -- .
-		out(runUntracked),                        // ls-files --others --exclude-standard -z -- .
-		addition(runBackoffDiff),                 // diff --no-index -- /dev/null src/backoff.go
-		addition(runBackoffDiff),                 // diff --no-index -- /dev/null src/backoff_test.go
+		out(runTrackedNumstat),   // diff HEAD --numstat -- .
+		out(runUntracked),        // ls-files --others --exclude-standard -z -- .
+		out(runTrackedDiff),      // diff HEAD -- .
+		out(runUntracked),        // ls-files --others --exclude-standard -z -- .
+		addition(runBackoffDiff), // diff --no-index -- /dev/null src/backoff.go
+		addition(runBackoffDiff), // diff --no-index -- /dev/null src/backoff_test.go
 	)
+}
+
+// writeLines writes a file of n lines at path.
+func writeLines(t *testing.T, path string, n int) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Repeat("line\n", n)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // editor scripts git naming the editor, which saves saved.
@@ -234,7 +247,7 @@ var commitRuns = map[string]commitRun{
 	// commit -Ap: the message accepted, then everything staged, committed and pushed.
 	"commit-pushed-100": {answers: "y\n", run: func(t *testing.T, w *commitWorld) error {
 		w.started()
-		w.everything()
+		w.everything(t)
 		w.messages(aiAnswer{body: runMessage})
 		w.f.SeedSequence("git", out("")) // add -A
 		w.committed()
@@ -282,7 +295,7 @@ var commitRuns = map[string]commitRun{
 	// commit -Ap with the message declined: nothing staged, nothing committed.
 	"commit-declined-100": {answers: "n\n", aborted: true, run: func(t *testing.T, w *commitWorld) error {
 		w.started()
-		w.everything()
+		w.everything(t)
 		w.messages(aiAnswer{body: runMessage})
 		return w.commit(t, addAllPush)
 	}},

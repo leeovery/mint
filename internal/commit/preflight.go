@@ -3,7 +3,9 @@ package commit
 // This file is commit's EMPTY-STAGING PREFLIGHT cluster — the staging-mode-aware
 // "something to commit?" check that runs BEFORE generate so the run fails loud on a
 // genuinely empty tree before any AI call. The same read-only probes count what the
-// commit would carry, the files and the lines added and removed, for the diff's row.
+// commit would carry, the files and the lines added and removed, for the diff's row:
+// git counts the tracked changes, and the untracked files -A lists are read from the
+// disk (stat.go).
 //
 // The preflight answers ONE question: would `git commit` (for the resolved
 // StagingMode) create a commit? That is a property of the working tree and index
@@ -84,66 +86,52 @@ var (
 // cwd-relative: from a subdirectory an unanchored probe would miss staging outside the
 // subtree and wrongly fail loud while the whole-index `git commit` had plenty to commit.
 func checkSomethingToCommit(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) (diffStat, error) {
-	stat, err := readDiffStat(ctx, r, root, mode)
+	stat, found, err := readDiffStat(ctx, r, root, mode)
 	if err != nil {
 		return diffStat{}, err
 	}
-	if stat.files > 0 {
+	if found {
 		return stat, nil
 	}
 	return diffStat{}, emptyStagingError(ctx, r, root, mode)
 }
 
-// readDiffStat counts what the resolved StagingMode would commit, READ-ONLY, summing
-// each source the SHARED sourcesForMode descriptor lists for the mode (the SAME one
-// generate's sourceDiff consumes), so the dispatch is defined once; the would-be-staged
-// set is EMPTY iff it counts no file. NO probe carries diff_exclude — the preflight
-// measures the FULL would-be-staged set (not the AI's post-exclusion view), so a
-// changeset whose only files are diff_exclude'd is still counted here and proceeds:
+// readDiffStat counts what the resolved StagingMode would commit, READ-ONLY, from one
+// probe per source the SHARED sourcesForMode descriptor lists for the mode (the SAME one
+// generate's sourceDiff consumes), so the dispatch is defined once; found is whether any
+// probe named something, the would-be-staged set being EMPTY iff none did. NO probe
+// carries diff_exclude — the preflight measures the FULL would-be-staged set (not the
+// AI's post-exclusion view), so a changeset whose only files are diff_exclude'd is still
+// found here and proceeds:
 //
 //   - StagedOnly: `git diff --cached --numstat -- .` (the staged index — the staged
 //     source command, no exclusion).
 //   - All (-a): `git diff HEAD --numstat -- .` (tracked mods + deletions — the tracked
 //     source command, no exclusion).
-//   - AddAll (-A): that, plus each file `git ls-files --others --exclude-standard -z --
-//     .` lists, counted as the addition `git add -A` would stage (tracked changes AND
-//     untracked files — both source commands, no exclusion).
+//   - AddAll (-A): that, plus `git ls-files --others --exclude-standard -z -- .`, whose
+//     files are counted from the disk (countUntracked), not by a git call each (tracked
+//     changes AND untracked files — both source commands, no exclusion).
 //
-// A genuine git failure is wrapped and surfaced so it is never mistaken for an empty set.
-func readDiffStat(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) (diffStat, error) {
+// The verdict rests on what git listed alone: the count is display only, so a file it
+// can't read leaves the count, never the verdict. A genuine git failure is wrapped and
+// surfaced so it is never mistaken for an empty set.
+func readDiffStat(ctx context.Context, r runner.CommandRunner, root string, mode StagingMode) (diffStat, bool, error) {
 	var stat diffStat
+	found := false
 	for _, spec := range sourcesForMode(mode) {
 		args := probeArgs(spec)
 		res, err := r.RunInDir(ctx, root, nil, "git", args...)
 		if err != nil {
-			return diffStat{}, fmt.Errorf("checking %v: %w", args, err)
+			return diffStat{}, false, fmt.Errorf("checking %v: %w", args, err)
 		}
-		counted := parseNumstat(res.Stdout)
+		found = found || !blank(res.Stdout)
 		if spec.kind == untrackedListSource {
-			if counted, err = untrackedStat(ctx, r, root, res.Stdout); err != nil {
-				return diffStat{}, err
-			}
+			stat = stat.plus(countUntracked(root, res.Stdout))
+		} else {
+			stat = stat.plus(parseNumstat(res.Stdout))
 		}
-		stat = stat.plus(counted)
 	}
-	return stat, nil
-}
-
-// untrackedStat counts each untracked file listing names, NUL-terminated, as the
-// addition `git diff --no-index --numstat -- /dev/null <file>` counts, read-only.
-func untrackedStat(ctx context.Context, r runner.CommandRunner, root, listing string) (diffStat, error) {
-	var stat diffStat
-	for _, file := range strings.Split(listing, "\x00") {
-		if file == "" {
-			continue
-		}
-		numstat, err := untrackedAddition(ctx, r, root, file, "--numstat")
-		if err != nil {
-			return diffStat{}, err
-		}
-		stat = stat.plus(parseNumstat(numstat))
-	}
-	return stat, nil
+	return stat, found, nil
 }
 
 // probeArgs builds the counting probe argv for ONE source spec, derived from the SAME
@@ -225,20 +213,22 @@ func emptyStagingError(ctx context.Context, r runner.CommandRunner, root string,
 	}
 }
 
-// gitOutputEmpty runs a READ-ONLY git command from the repo root and reports whether
-// its trimmed stdout is empty. It is the shared probe of the emptiness checks: a genuine
+// gitOutputEmpty runs a READ-ONLY git command from the repo root — the clean-tree
+// check's `git status --porcelain` — and reports whether its stdout is blank: a genuine
 // git failure is wrapped and surfaced (never mistaken for an empty result). Anchoring at
-// root keeps the cwd-relative `-- .` probes whole-tree from any invocation directory.
-// The trim strips NUL alongside whitespace because the untracked probe is a `-z`
-// enumeration (NUL-terminated entries) — output consisting only of separators must
-// count as empty, whatever mix of probe formats this shared helper serves.
+// root keeps it whole-tree from any invocation directory.
 func gitOutputEmpty(ctx context.Context, r runner.CommandRunner, root string, args ...string) (bool, error) {
 	res, err := r.RunInDir(ctx, root, nil, "git", args...)
 	if err != nil {
 		return false, fmt.Errorf("checking %v: %w", args, err)
 	}
-	trimmed := strings.TrimFunc(res.Stdout, func(c rune) bool {
+	return blank(res.Stdout), nil
+}
+
+// blank is whether a probe's stdout holds nothing but separators: whitespace, and the
+// NUL that terminates each entry of the untracked probe's `-z` enumeration.
+func blank(stdout string) bool {
+	return strings.TrimFunc(stdout, func(c rune) bool {
 		return c == 0 || unicode.IsSpace(c)
-	})
-	return trimmed == "", nil
+	}) == ""
 }

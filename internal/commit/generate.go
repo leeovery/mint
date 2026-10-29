@@ -171,7 +171,7 @@ func checkPromptSize(prompt string, maxBytes int) error {
 // sourceDiff is commit's Layer-1 SOURCE selector: it returns the would-be-committed
 // diff for the resolved StagingMode by rendering and concatenating each source the SHARED
 // sourcesForMode descriptor lists for the mode — the SAME descriptor the preflight
-// emptiness path (wouldStageNothing) consumes, so the dispatch (and the AddAll
+// counting path (readDiffStat) consumes, so the dispatch (and the AddAll
 // tracked-then-untracked composition) is defined exactly once. Each source applies the
 // SAME diffExclude :(exclude) pathspecs (the shared plus [commit] lists); the post-exclusion result flows into the
 // shared compose + size-guard + L2 pipeline unchanged.
@@ -226,9 +226,9 @@ func (g *Generator) renderSource(ctx context.Context, spec sourceSpec, diffExclu
 // diffSourceText runs a diffSource — a `git diff …` whose stdout IS the post-exclusion
 // diff — built from the shared base prefix (stagedBaseArgs / trackedBaseArgs) plus the
 // diffExclude :(exclude) pathspecs via the single shared sourceArgs composer. The
-// SAME base feeds the matching preflight probe (which adds `--name-only` and NO exclusion
+// SAME base feeds the matching preflight probe (which adds `--numstat` and NO exclusion
 // tail — the preflight is diff_exclude-blind; see preflight.go), so the L1 diff and the
-// emptiness probe share the source COMMAND and differ only in the tail: the L1 diff
+// counting probe share the source COMMAND and differ only in the tail: the L1 diff
 // applies diff_exclude, the probe does not.
 //
 // Selecting the base prefix is the per-mode source SELECTION (sourcesForMode); the verb,
@@ -258,7 +258,7 @@ func (g *Generator) diffSourceText(ctx context.Context, base, diffExclude []stri
 //
 // The technique avoids `git add` (and `git add --intent-to-add`, which MUTATES the index)
 // entirely: the enumeration is the shared ls-files prefix the preflight probe reuses
-// VERBATIM, and untrackedAddition renders each path as `git diff --no-index --
+// VERBATIM, and untrackedAdditionDiff renders each path as `git diff --no-index --
 // /dev/null <file>`, a pure read-only comparison of the file against an empty input.
 // The prefix carries `-z`, so git emits one RAW NUL-terminated path per entry — without
 // it, core.quotePath C-quotes unusual names (non-ASCII, quotes, backslashes) and the
@@ -278,7 +278,7 @@ func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []
 		if file == "" {
 			continue
 		}
-		addition, err := untrackedAddition(ctx, g.runner, g.root, file)
+		addition, err := g.untrackedAdditionDiff(ctx, file)
 		if err != nil {
 			return "", err
 		}
@@ -287,25 +287,23 @@ func (g *Generator) untrackedAdditions(ctx context.Context, base, diffExclude []
 	return b.String(), nil
 }
 
-// untrackedAddition renders a single untracked file as an added-file diff via
-// `git diff --no-index [flags] -- /dev/null <file>` — a pure read-only comparison
-// against an empty input that NEVER touches the index; the preflight passes
-// `--numstat` to count it. It runs from the repo root (like every L1 read), so the
-// root-relative paths the root-anchored ls-files enumeration emits resolve correctly
-// regardless of mint's invocation directory.
+// untrackedAdditionDiff renders a single untracked file as an added-file diff via
+// `git diff --no-index -- /dev/null <file>` — a pure read-only comparison against an
+// empty input that NEVER touches the index. It runs from the repo root (like every L1
+// read), so the root-relative paths the root-anchored ls-files enumeration emits
+// resolve correctly regardless of mint's invocation directory.
 //
 // `git diff --no-index` exits 1 (diffNoIndexFilesDiffer) in TWO cases: (a) the inputs
-// DIFFER — the NORMAL outcome here, with the addition on STDOUT; and (b) a GENUINE
+// DIFFER — the NORMAL outcome here, with the addition diff on STDOUT; and (b) a GENUINE
 // error like "could not access '<file>'", which ALSO exits 1 but with EMPTY stdout and a
 // message on STDERR. The exit code alone cannot tell them apart, so the discriminator is
-// STDOUT-NON-EMPTY: a real addition always has content. An exit-1 with non-empty
-// stdout is the success/differ case and the addition is returned; an exit-1 with empty
-// stdout (and populated stderr) is surfaced as a wrapped error so the untracked file is
-// never silently dropped from the would-be-staged diff. Any OTHER non-zero exit is
-// likewise a genuine failure and is surfaced wrapped.
-func untrackedAddition(ctx context.Context, r runner.CommandRunner, root, file string, flags ...string) (string, error) {
-	args := slices.Concat([]string{"diff", "--no-index"}, flags, []string{"--", "/dev/null", file})
-	res, err := r.RunInDir(ctx, root, nil, "git", args...)
+// STDOUT-NON-EMPTY: a real addition diff always has content. An exit-1 with non-empty
+// stdout is the success/differ case and the diff is returned; an exit-1 with empty stdout
+// (and populated stderr) is surfaced as a wrapped error so the untracked file is never
+// silently dropped from the would-be-staged diff. Any OTHER non-zero exit is likewise a
+// genuine failure and is surfaced wrapped.
+func (g *Generator) untrackedAdditionDiff(ctx context.Context, file string) (string, error) {
+	res, err := g.runner.RunInDir(ctx, g.root, nil, "git", "diff", "--no-index", "--", "/dev/null", file)
 	if err != nil {
 		// The differ family (exit 1) is success ONLY when stdout carries a real diff. An
 		// exit-1 with empty stdout is a genuine --no-index error (e.g. could not access

@@ -61,12 +61,6 @@ func scriptedShortHead() runner.ScriptedCall {
 	return runner.ScriptedCall{Result: runner.Result{Stdout: endHeadSHA + "\n"}}
 }
 
-// scriptedCount is the preflight's count of an untracked file -A would stage, `git
-// diff --no-index --numstat -- /dev/null <file>`: one line added.
-func scriptedCount(file string) runner.ScriptedCall {
-	return runner.ScriptedCall{Result: runner.Result{Stdout: "1\t0\t" + file + "\n"}}
-}
-
 const (
 	// startHeadSHA is the full sha scriptedHead reports; the start station shows its
 	// first seven characters.

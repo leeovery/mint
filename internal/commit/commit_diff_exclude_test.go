@@ -89,12 +89,11 @@ func TestRun_CommitDiffExclude_AddAllKeepsTheUntrackedExclusionOutOfTheAIDiffBut
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "1\t0\tsrc/export.go\n"}}, // preflight tracked probe (unfiltered): non-empty
 		runner.ScriptedCall{Result: runner.Result{Stdout: "tmp/new.log\x00"}},       // preflight untracked probe (unfiltered): tmp/new.log
-		scriptedCount("tmp/new.log"),                                         // preflight count of tmp/new.log
-		runner.ScriptedCall{Result: runner.Result{Stdout: commitExportDiff}}, // L1 tracked diff (filtered)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},               // L1 untracked enumeration (filtered): tmp/new.log excluded
-		runner.ScriptedCall{},                                                // git add -A
-		runner.ScriptedCall{},                                                // git commit -F -
-		scriptedShortHead(),                                                  // git rev-parse --short HEAD (the end station)
+		runner.ScriptedCall{Result: runner.Result{Stdout: commitExportDiff}},        // L1 tracked diff (filtered)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                      // L1 untracked enumeration (filtered): tmp/new.log excluded
+		runner.ScriptedCall{}, // git add -A
+		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	transport := scriptedTransport(message)
 	deps := newCommitDeps(rec, r, transport, root)
@@ -105,15 +104,14 @@ func TestRun_CommitDiffExclude_AddAllKeepsTheUntrackedExclusionOutOfTheAIDiffBut
 	}
 
 	gits := gitInvocationsOf(r.Invocations())
-	if len(gits) != 7 {
-		t.Fatalf("git invocations = %v, want the probes and the untracked file's count, tracked diff, untracked enumeration, add, commit", gits)
+	if len(gits) != 6 {
+		t.Fatalf("git invocations = %v, want the two probes, tracked diff, untracked enumeration, add, commit", gits)
 	}
 	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--numstat", "--", "."})
 	assertArgs(t, gits[1].Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."})
-	assertArgs(t, gits[2].Args, []string{"diff", "--no-index", "--numstat", "--", "/dev/null", "tmp/new.log"})
-	assertArgs(t, gits[3].Args, []string{"diff", "HEAD", "--", ".", ":(exclude)tmp/"})
-	assertArgs(t, gits[4].Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)tmp/"})
-	if args := gits[5].Args; args[len(args)-1] != "-A" || !slices.Contains(args, "add") {
+	assertArgs(t, gits[2].Args, []string{"diff", "HEAD", "--", ".", ":(exclude)tmp/"})
+	assertArgs(t, gits[3].Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude)tmp/"})
+	if args := gits[4].Args; args[len(args)-1] != "-A" || !slices.Contains(args, "add") {
 		t.Errorf("staging call = %v, want `git add -A`", args)
 	}
 

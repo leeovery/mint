@@ -157,7 +157,7 @@ func TestRun_Rail_StagingAndAPushAddTheirNodesAndAPushLandsPushed(t *testing.T) 
 	}
 	got := settles(rec)
 	wantTail := []presenter.StageSuccess{
-		presenter.Settled("stage", "staged"),
+		presenter.Settled("stage", "1 file"),
 		presenter.Settled("commit", endHeadSHA),
 		{Name: "push", Key: "push", Detail: "pushed to upstream/main", Blocking: true, Quiet: true},
 	}
@@ -366,18 +366,6 @@ func TestRun_Rail_TheDiffNodeCountsWhatTheCommitWillCarry(t *testing.T) {
 			want: "2 files · +4 −1 · tracked changes, staged when you accept",
 		},
 		{
-			name:    "everything, an untracked file counted as -A stages it, excluded from the AI or not",
-			staging: commit.AddAll,
-			reads: []runner.ScriptedCall{
-				scriptedStdout("2\t0\tREADME.md\n"), // diff HEAD --numstat
-				scriptedStdout("new.go\x00"),        // ls-files --others
-				scriptedStdout("7\t0\tnew.go\n"),    // diff --no-index --numstat -- /dev/null new.go
-				scriptedStdout(diff),                // diff HEAD
-				scriptedStdout(""),                  // ls-files --others, the AI's view
-			},
-			want: "2 files · +9 −0 · everything, staged when you accept",
-		},
-		{
 			name:    "a single file",
 			staging: commit.StagedOnly,
 			reads: []runner.ScriptedCall{
@@ -464,7 +452,7 @@ func TestRun_Rail_AFailedPushSaysWhatHappenedAndSendsItsRemedyToNext(t *testing.
 		t.Errorf("warning = %+v, want %+v", warn, want)
 	}
 	moves := railEvent(t, rec, presentertest.KindNextMoves).NextMoves
-	if wantMoves := []presenter.NextMove{{Lead: "Push the commit:", Command: "git push"}}; !moves.Quiet || moves.Stage != "push" || !slices.Equal(moves.Moves, wantMoves) {
+	if wantMoves := []presenter.NextMove{{Lead: "Push it once the cause above is fixed:", Command: "git push"}}; !moves.Quiet || moves.Stage != "push" || !slices.Equal(moves.Moves, wantMoves) {
 		t.Errorf("next moves = %+v, want the remedy plain's sentence names, Quiet, %+v", moves, wantMoves)
 	}
 }

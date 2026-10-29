@@ -15,5 +15,5 @@
  ◆  main          a3f9c21                                                                       3.5s
 
  next
-   Push the commit:
+   Push it once the cause above is fixed:
      git push
