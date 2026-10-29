@@ -1,0 +1,32 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.3.2        main @ 7c1e0b4
+ │
+ ●  version       v1.4.0 (minor bump)
+ ●  preflight     tree clean · on main · v1.4.0 free · in sync with origin
+ !  dry-run       skipping pre_tag hook
+ ┆
+ ○  pre_tag       npm ci && npm run build
+ ●  check         files that don't belong in the notes                                          6.2s
+ │                design documents · 6 files, 48 kB
+ ?  docs/specs/** Exclude it from the notes?
+ ●  notes         written in 4 parts and merged                                                52.3s
+ │
+ │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
+ │
+ │    ✨ Added
+ │    - Failed webhook deliveries retry with backoff for up to an hour.
+ │    - `pigeon replay <id>` resends any delivery from the last 30 days.
+ │
+ │    🐛 Fixed
+ │    - The dashboard no longer shows a delivery twice after a reconnect.
+ │    - Signing secrets with a trailing newline are accepted again.
+ ┆
+ ○  record        CHANGELOG.md · package.json
+ ┆
+ ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ○  push          main + v1.4.0 → origin, atomic
+ ○  publish       GitHub release
+ ○  post_release  ./scripts/notify.sh
+ ┆
+ ◇  v1.4.0        dry run · nothing changed                                                   1m 01s

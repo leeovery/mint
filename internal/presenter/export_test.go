@@ -65,3 +65,35 @@ func DeclineChoiceForTest(g Gate) (Choice, bool) { return declineChoice(g) }
 // SingleKeyGate exposes singleKeyGate, the test for whether a pretty gate can be
 // answered with one keypress, to the external gate tests.
 func SingleKeyGate(g Gate) bool { return singleKeyGate(g) }
+
+// KeyChoice exposes keyChoice, what one read of keys answers a gate with, to the
+// keypress tests.
+func KeyChoice(keys []byte, g Gate) (Choice, bool, error) { return keyChoice(keys, g) }
+
+// WithYes sets the -y gating decision on the rail presenter and returns it for
+// chaining. See RailPresenter.yes.
+func (p *RailPresenter) WithYes(yes bool) *RailPresenter {
+	p.yes = yes
+	return p
+}
+
+// WithInteractiveStdin sets the stdin-interactive gating signal on the rail
+// presenter and returns it for chaining; false arms the forbidden combination.
+func (p *RailPresenter) WithInteractiveStdin(interactive bool) *RailPresenter {
+	p.stdinInteractive = interactive
+	return p
+}
+
+// WithEcho sets whether the rail presenter's input echoes a typed line on the
+// terminal, as a terminal's does, and returns it for chaining: the scripted readers
+// tests answer with echo nothing unless a test says so. See RailPresenter.echo.
+func (p *RailPresenter) WithEcho(echo bool) *RailPresenter {
+	p.echo = echo
+	return p
+}
+
+// LiveRegion is the live region writer, for its tests.
+type LiveRegion = liveRegion
+
+// NewLiveRegion is a live region writing to out.
+func NewLiveRegion(out io.Writer) *LiveRegion { return newLiveRegion(out) }

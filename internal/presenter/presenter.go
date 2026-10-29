@@ -714,8 +714,11 @@ type ExclusionSuggestion struct {
 	Line    string
 }
 
+// savedNotesLead leads the path of a failed chunked run's saved part notes.
+const savedNotesLead = "part notes saved to"
+
 func savedNotesText(path string) string {
-	return "part notes saved to " + path
+	return savedNotesLead + " " + path
 }
 
 // Warning carries the Warn payload: a structured, engine-supplied Label and
