@@ -20,10 +20,12 @@ import (
 func seedEditNoEditorThenAccept(diff string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                              // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},                                               // git diff --cached (L1)
 		runner.ScriptedCall{Result: runner.Result{Stderr: "terminal is dumb", ExitCode: 128}, Err: errExitOne}, // git var GIT_EDITOR fails → ErrNoEditor
 		runner.ScriptedCall{}, // git commit -F - (the subsequent y accepts the unedited message)
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return f
 }
@@ -37,10 +39,12 @@ func seedEditNoEditorThenAccept(diff string) *runner.FakeRunner {
 func seedEditMissingBinaryThenAccept(diff, editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},          // git diff --cached (L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}}, // git var GIT_EDITOR resolves
 		runner.ScriptedCall{}, // git commit -F - (the subsequent y accepts the unedited message)
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return f
 }
@@ -82,13 +86,16 @@ func TestRun_EditNotLaunchable_WarnsAndReRenders(t *testing.T) {
 	// directly, then the re-render.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
-		presentertest.KindShowMessage, // first render
-		presentertest.KindPrompt,      // first gate → e
-		presentertest.KindWarn,        // editor could not launch
-		presentertest.KindShowMessage, // re-render with the UNEDITED body
-		presentertest.KindPrompt,      // re-rendered gate → y
+		presentertest.KindShowMessage,    // first render
+		presentertest.KindPrompt,         // first gate → e
+		presentertest.KindWarn,           // editor could not launch
+		presentertest.KindShowMessage,    // re-render with the UNEDITED body
+		presentertest.KindPrompt,         // re-rendered gate → y
+		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
 	got := rec.Kinds()
@@ -129,11 +136,12 @@ func TestRun_EditNotLaunchable_PreservesUneditedMessageVerbatim(t *testing.T) {
 	}
 
 	// The re-rendered ShowMessage carries the UNEDITED generated body. The sequence on a
-	// resolution-failure not-launchable signal is RunStarted, ShowMessage, Prompt, Warn,
-	// ShowMessage (the re-render), so the re-rendered ShowMessage is event[4].
-	second, ok := rec.At(6)
+	// resolution-failure not-launchable signal is RunStarted, the quiet plan and diff
+	// settle, the message stage's start and success, ShowMessage, Prompt, Warn, then
+	// ShowMessage (the re-render), so the re-rendered ShowMessage is event[8].
+	second, ok := rec.At(8)
 	if !ok || second.Kind != presentertest.KindShowMessage {
-		t.Fatalf("event[4] = %+v, want the re-rendered ShowMessage", second)
+		t.Fatalf("event[8] = %+v, want the re-rendered ShowMessage", second)
 	}
 	if second.ShowMessage.Body != generated {
 		t.Errorf("re-rendered ShowMessage body = %q, want the unedited generated message %q", second.ShowMessage.Body, generated)

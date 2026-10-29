@@ -12,8 +12,8 @@ import (
 // first: the check's call, then the notes, then the completion line.
 func driveCheckedNotesStage(p presenter.Presenter) {
 	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
-	p.NotesChecking()
-	p.NotesChecked()
+	p.NotesChecking(presenter.NotesCheck{})
+	p.NotesChecked(presenter.NotesCheck{})
 	p.StageSucceeded(presenter.StageSuccess{
 		Name:     "notes",
 		Detail:   "generated",
@@ -48,8 +48,8 @@ func TestPrettyPresenter_ExclusionCheckThenChunkedNotes_NarratesTheNotesAsWithou
 
 	_, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
 		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
-		p.NotesChecking()
-		p.NotesChecked()
+		p.NotesChecking(presenter.NotesCheck{})
+		p.NotesChecked(presenter.NotesCheck{})
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 3_100_000, Parts: 6, Done: 0})
 	})
 
@@ -83,8 +83,8 @@ func TestPrettyPresenter_FailedExclusionCheck_KeepsTheNotesLineRunning(t *testin
 		{
 			name: "after the check's call",
 			drive: func(p *presenter.PrettyPresenter) {
-				p.NotesChecking()
-				p.NotesChecked()
+				p.NotesChecking(presenter.NotesCheck{})
+				p.NotesChecked(presenter.NotesCheck{})
 				failedCheck(p)
 			},
 		},
@@ -122,8 +122,8 @@ func TestPrettyPresenter_ExclusionCheckWithNoNotesLine_StartsNoSpinner(t *testin
 	t.Parallel()
 
 	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) {
-		p.NotesChecking()
-		p.NotesChecked()
+		p.NotesChecking(presenter.NotesCheck{})
+		p.NotesChecked(presenter.NotesCheck{})
 	})
 
 	if len(tr.created) != 0 {

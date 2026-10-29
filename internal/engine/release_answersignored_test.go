@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -156,8 +157,8 @@ func TestRelease_IgnoredConfig_NarratesTheAnswersWrittenAndNotCommitted(t *testi
 		t.Fatalf("answers lines = %d, want one; events = %v", n, rec.Kinds())
 	}
 	recorded := indexOfKind(rec, presentertest.KindExclusionAnswersRecorded)
-	want := presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]", Ignored: true}
-	if got := rec.Events[recorded].ExclusionAnswers; got != want {
+	want := presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Ignored: true, Exclude: []string{"docs/design/"}}
+	if got := rec.Events[recorded].ExclusionAnswers; !reflect.DeepEqual(got, want) {
 		t.Errorf("answers payload = %+v, want %+v", got, want)
 	}
 	kinds := rec.Kinds()

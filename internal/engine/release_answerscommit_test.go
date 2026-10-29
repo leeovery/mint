@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -135,8 +136,9 @@ func TestRelease_RecordedAnswers_NarrateOneLineAfterTheLastPauseBeforeTheNotesLi
 	if recorded == -1 {
 		t.Fatalf("no answers line; events = %v", rec.Kinds())
 	}
-	if got := rec.Events[recorded].ExclusionAnswers; got != (presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]"}) {
-		t.Errorf("answers payload = %+v", got)
+	want := presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Exclude: []string{"docs/design/"}, Keep: []string{"test/fixtures/"}}
+	if got := rec.Events[recorded].ExclusionAnswers; !reflect.DeepEqual(got, want) {
+		t.Errorf("answers payload = %+v, want %+v", got, want)
 	}
 	if n := countKind(rec, presentertest.KindExclusionAnswersRecorded); n != 1 {
 		t.Errorf("answers lines = %d, want one", n)

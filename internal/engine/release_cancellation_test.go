@@ -63,7 +63,7 @@ func TestRelease_CancelledBeforePush_Surgical_Resets(t *testing.T) {
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec)
 }
 
 // TestRelease_CancelledBeforePush_Autostash_UnwindsThenPops proves the cancellation

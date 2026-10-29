@@ -80,6 +80,7 @@ func TestRelease_Autostash_StashesBeforeGate_DirtyTreePasses(t *testing.T) {
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),              // tag --list (no tags)
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		stashSaved(),                 // stash push --include-untracked (BEFORE the gate)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain (clean — WIP was stashed)
@@ -230,6 +231,7 @@ func TestRelease_Autostash_NoWIP_IsNoOp(t *testing.T) {
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),              // tag --list
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		stashNothing(),               // stash push --include-untracked (NOTHING to stash)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain (already clean)
@@ -273,6 +275,7 @@ func TestRelease_NoAutostash_DirtyTreeStillAborts(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(dirtyStatus),   // status --porcelain (DIRTY — gate fails)
 	)
@@ -395,6 +398,7 @@ func seedAutostashHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		stashSaved(),                         // stash push --include-untracked (WIP saved)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean — WIP stashed)
@@ -419,6 +423,7 @@ func seedAutostashThroughTag(f *runner.FakeRunner, root, releaseBranch, tag stri
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		stashSaved(),                         // stash push --include-untracked (WIP saved)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean — WIP stashed)

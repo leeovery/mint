@@ -66,9 +66,14 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 		return false, nil
 	}
 
-	subject := fmt.Sprintf("docs(changelog): regenerate notes for %s", tag)
-	if err := stageAndCommitChangelog(ctx, m, root, subject, keepOut); err != nil {
+	if err := stageAndCommitChangelog(ctx, m, root, regenerateChangelogSubject(tag), keepOut); err != nil {
 		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
 	}
 	return true, nil
+}
+
+// regenerateChangelogSubject is the subject of the commit a single-version regenerate
+// makes of tag's rewritten CHANGELOG.md section.
+func regenerateChangelogSubject(tag string) string {
+	return fmt.Sprintf("docs(changelog): regenerate notes for %s", tag)
 }

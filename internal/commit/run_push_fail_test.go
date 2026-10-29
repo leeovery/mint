@@ -41,9 +41,11 @@ const networkPushStderr = "fatal: unable to access 'https://github.com/owner/rep
 func seedDiffThenCommitThenFailedPush(diff, pushStderr string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached
 		runner.ScriptedCall{}, // git commit -F - (succeeds)
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 		runner.ScriptedCall{ // git push FAILS with git's stderr (non-fast-forward / no-upstream / network)
 			Result: runner.Result{Stderr: pushStderr},
 			Err:    errExitOne,
@@ -326,9 +328,11 @@ func TestRun_PushFailure_EditorAcceptSameGenericWarn(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F - (succeeds)
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 		runner.ScriptedCall{ // git push FAILS with git's rejection stderr
 			Result: runner.Result{Stderr: rejectedPushStderr},
 			Err:    errExitOne,

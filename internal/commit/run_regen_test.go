@@ -23,6 +23,7 @@ import (
 func seedRegenThenAccept(diff string, regenerations int) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	calls := []runner.ScriptedCall{
+		scriptedHead(),                         // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		{Result: runner.Result{Stdout: diff}},  // git diff --cached (initial L1)
 	}
@@ -30,6 +31,7 @@ func seedRegenThenAccept(diff string, regenerations int) *runner.FakeRunner {
 		calls = append(calls, runner.ScriptedCall{Result: runner.Result{Stdout: diff}}) // git diff --cached (regeneration L1)
 	}
 	calls = append(calls, runner.ScriptedCall{}) // git commit -F -
+	calls = append(calls, scriptedShortHead())   // git rev-parse --short HEAD (the end station)
 	r.SeedSequence("git", calls...)
 	return r
 }
@@ -110,6 +112,8 @@ func TestRun_RegenPromptsForContextLineViaAskLine(t *testing.T) {
 	// regenerate stage, ShowMessage (regenerated), Prompt (y).
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
@@ -119,6 +123,7 @@ func TestRun_RegenPromptsForContextLineViaAskLine(t *testing.T) {
 		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
+		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
 	got := rec.Kinds()

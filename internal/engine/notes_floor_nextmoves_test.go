@@ -22,6 +22,15 @@ func tidySavedNotesMove(path string) string {
 	return "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release --notes-file " + path
 }
 
+// moveTexts is each move as plain prints it, lead and command joined.
+func moveTexts(moves []presenter.NextMove) []string {
+	texts := make([]string, len(moves))
+	for i, move := range moves {
+		texts[i] = move.Text()
+	}
+	return texts
+}
+
 func nextMovesEvents(rec *presentertest.RecordingPresenter) []presenter.NextMoves {
 	var moves []presenter.NextMoves
 	for _, ev := range rec.Events {
@@ -45,18 +54,25 @@ func assertStopsWithNextMoves(t *testing.T, rec *presentertest.RecordingPresente
 	if len(got) != 1 {
 		t.Fatalf("NextMoves events = %+v, want one; kinds = %v", got, rec.Kinds())
 	}
-	if got[0].Stage != "notes" || !slices.Equal(got[0].Moves, want) {
-		t.Errorf("NextMoves = %q %q, want notes %q", got[0].Stage, got[0].Moves, want)
+	if got[0].Stage != "notes" || !slices.Equal(moveTexts(got[0].Moves), want) {
+		t.Errorf("NextMoves = %q %q, want notes %q", got[0].Stage, moveTexts(got[0].Moves), want)
 	}
 	failedAt := indexOfKind(rec, presentertest.KindStageFailed)
 	movesAt := indexOfKind(rec, presentertest.KindNextMoves)
 	if failedAt == -1 || failedAt >= movesAt {
 		t.Errorf("want the next moves after the ✗ line; kinds = %v", rec.Kinds())
 	}
-	for _, ev := range rec.Events[movesAt+1:] {
+	for _, ev := range rec.Events[movesAt+1 : len(rec.Events)-1] {
 		if ev.Kind != presentertest.KindUnwound {
-			t.Errorf("want nothing but the unwind after the next moves; kinds = %v", rec.Kinds())
+			t.Errorf("want nothing but the unwind between the next moves and the close; kinds = %v", rec.Kinds())
 		}
+	}
+	wantOutcome := presenter.OutcomeFailed
+	if indexOfKind(rec, presentertest.KindUnwound) != -1 {
+		wantOutcome = presenter.OutcomeUnwound
+	}
+	if fin := closingEvent(t, rec); fin.Outcome != wantOutcome {
+		t.Errorf("closing outcome = %v, want %v", fin.Outcome, wantOutcome)
 	}
 	if gates := floorGates(rec); len(gates) != 0 {
 		t.Errorf("an unattended run was offered the choice: %+v", gates)

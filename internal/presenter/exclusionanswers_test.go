@@ -1,6 +1,7 @@
 package presenter_test
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -14,8 +15,8 @@ var releaseTableAnswers = presenter.ExclusionAnswers{Stage: "notes", File: ".min
 // recorded its answers before the notes were written.
 func driveAnsweredNotesStage(p presenter.Presenter) {
 	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true, Text: "generating release notes…"})
-	p.NotesChecking()
-	p.NotesChecked()
+	p.NotesChecking(presenter.NotesCheck{})
+	p.NotesChecked(presenter.NotesCheck{})
 	p.SuspendSpinner()
 	p.ExclusionAnswersRecorded(releaseTableAnswers)
 	p.ResumeSpinner()
@@ -68,13 +69,17 @@ func TestRecordingPresenter_ExclusionAnswersRecorded_RecordsItsPayload(t *testin
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{}
-	rec.ExclusionAnswersRecorded(releaseTableAnswers)
+	answers := releaseTableAnswers
+	answers.Key = "check"
+	answers.Exclude = []string{"vendor/**"}
+	answers.Keep = []string{"docs/**"}
+	rec.ExclusionAnswersRecorded(answers)
 
 	if len(rec.Events) != 1 {
 		t.Fatalf("events = %d, want one", len(rec.Events))
 	}
-	if got := rec.Events[0]; got.Kind != presentertest.KindExclusionAnswersRecorded || got.ExclusionAnswers != releaseTableAnswers {
-		t.Errorf("event = %v %+v, want %v %+v", got.Kind, got.ExclusionAnswers, presentertest.KindExclusionAnswersRecorded, releaseTableAnswers)
+	if got := rec.Events[0]; got.Kind != presentertest.KindExclusionAnswersRecorded || !reflect.DeepEqual(got.ExclusionAnswers, answers) {
+		t.Errorf("event = %v %+v, want %v %+v", got.Kind, got.ExclusionAnswers, presentertest.KindExclusionAnswersRecorded, answers)
 	}
 	if got := presentertest.KindExclusionAnswersRecorded.String(); got != "ExclusionAnswersRecorded" {
 		t.Errorf("kind string = %q, want ExclusionAnswersRecorded", got)

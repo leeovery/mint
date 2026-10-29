@@ -88,6 +88,7 @@ func TestRun_AIFailure_Attended_WarnCarriesToolOutputThenOpensEditor(t *testing.
 			assertWarnings(t, warnEvents(rec), []presenter.Warning{{
 				Label:   "ai",
 				Message: "could not generate a message, opening editor",
+				Key:     "message",
 				Output:  tt.want,
 			}})
 			if len(er.launches) != 1 {
@@ -133,6 +134,7 @@ func TestRun_AIFailure_Unattended_FailLoudCarriesToolOutput(t *testing.T) {
 			assertFailLoudNoMutation(t, rec, er, err)
 			assertStageFailures(t, stageFailures(rec), []presenter.StageFailure{{
 				Name:    "editor",
+				Key:     "message",
 				Message: failLoudMessage,
 				Output:  tt.want,
 			}})
@@ -164,6 +166,7 @@ func TestRun_RegenFailure_WarnCarriesRegenerationOutput(t *testing.T) {
 	assertWarnings(t, warnEvents(rec), []presenter.Warning{{
 		Label:   "ai",
 		Message: "could not generate a message, opening editor",
+		Key:     "message",
 		Output:  "error: unknown option '--safe-mode'",
 	}})
 	if len(er.launches) != 1 {
@@ -193,7 +196,7 @@ func TestRun_NonAIFallbackTriggers_CarryNoAIOutput(t *testing.T) {
 			name:     "Oversized",
 			root:     oversizedRoot,
 			l1Diff:   "diff --git a/x b/x\n+work\n",
-			attended: []presenter.Warning{{Label: "diff", Message: oversizedNote}},
+			attended: []presenter.Warning{{Label: "diff", Message: oversizedNote, Key: "message"}},
 		},
 		{
 			name: "AllExcluded",
@@ -202,13 +205,13 @@ func TestRun_NonAIFallbackTriggers_CarryNoAIOutput(t *testing.T) {
 				writeDiffExclude(t, dir, "*.min.js")
 				return dir
 			},
-			attended: []presenter.Warning{{Label: "diff", Message: "all changes are excluded from the AI context — opening editor"}},
+			attended: []presenter.Warning{{Label: "diff", Message: "all changes are excluded from the AI context — opening editor", Key: "message"}},
 		},
 	}
 
 	seed := func(noAI bool, l1Diff string, tail ...runner.ScriptedCall) *runner.FakeRunner {
 		f := runner.NewFakeRunner()
-		calls := []runner.ScriptedCall{{Result: runner.Result{Stdout: "x\n"}}}
+		calls := []runner.ScriptedCall{scriptedHead(), {Result: runner.Result{Stdout: "x\n"}}}
 		if !noAI {
 			calls = append(calls, runner.ScriptedCall{Result: runner.Result{Stdout: l1Diff}})
 		}
@@ -227,6 +230,7 @@ func TestRun_NonAIFallbackTriggers_CarryNoAIOutput(t *testing.T) {
 			f := seed(tt.noAI, tt.l1Diff,
 				runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 				runner.ScriptedCall{}, // git commit -F -
+				scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 			)
 			er := &editorRunner{fake: f, saved: "chore: human message\n"}
 			deps := editorDeps(rec, er, editorDepsOptions{Root: tt.root(t), NoAI: tt.noAI})
@@ -247,7 +251,7 @@ func TestRun_NonAIFallbackTriggers_CarryNoAIOutput(t *testing.T) {
 			err := commit.Run(context.Background(), deps)
 
 			assertFailLoudNoMutation(t, rec, er, err)
-			assertStageFailures(t, stageFailures(rec), []presenter.StageFailure{{Name: "editor", Message: failLoudMessage}})
+			assertStageFailures(t, stageFailures(rec), []presenter.StageFailure{{Name: "editor", Key: "message", Message: failLoudMessage}})
 			assertWarnings(t, warnEvents(rec), nil)
 		})
 	}

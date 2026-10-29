@@ -49,6 +49,7 @@ func seedPriorTagReadGates(f *runner.FakeRunner, root, releaseBranch string) {
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(priorTag+"\n"),           // tag --list (a prior tag exists)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -329,6 +330,7 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 		presentertest.KindRunStarted,
 		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
 		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindShowPlan,       // the run's stages, quiet
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindNotesChecking,  // the exclusion check's call
 		presentertest.KindNotesChecked,
@@ -429,12 +431,8 @@ func TestRelease_PriorTag_GateAbort_LeavesRepoClean(t *testing.T) {
 		t.Errorf("prior-tag gate-no issued a `git reset`; nothing to reset")
 	}
 	assertNoMutation(t, f)
-	// No RunFinished success line follows the aborted run.
-	for _, k := range rec.Kinds() {
-		if k == presentertest.KindRunFinished {
-			t.Errorf("a RunFinished followed the gate-n abort; kinds = %v", rec.Kinds())
-		}
-	}
+	// The aborted run closes declined, with no success line.
+	assertClosesDeclined(t, rec)
 }
 
 // TestRelease_PriorTag_UnderYes_PromptFiresOnceAndProceeds proves the engine ALWAYS
@@ -620,11 +618,8 @@ func TestRelease_PriorTag_Degenerate_EndToEnd(t *testing.T) {
 	if got := tagAnnotationBody(t, f, nextTag); got != terminatedAnnotationBody(want) {
 		t.Errorf("tag annotation body = %q, want degenerate StubBody %q", got, terminatedAnnotationBody(want))
 	}
-	// ShowNotes now sits at index 6 (after the version/preflight gate completions, the
-	// blocking notes stage pair, RunStarted, and ShowPlan).
-	notesEv, _ := rec.At(6)
-	if notesEv.ShowNotes.Body != want {
-		t.Errorf("ShowNotes.Body = %q, want degenerate StubBody %q", notesEv.ShowNotes.Body, want)
+	if got := showNotesBody(t, rec); got != want {
+		t.Errorf("ShowNotes.Body = %q, want degenerate StubBody %q", got, want)
 	}
 	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.Kind != presentertest.KindRunFinished {
@@ -805,4 +800,11 @@ func onlyStageFailureEvent(t *testing.T, rec *presentertest.RecordingPresenter) 
 		t.Fatalf("no StageFailed event recorded; kinds = %v", rec.Kinds())
 	}
 	return *found
+}
+
+// untimed is failure with its elapsed cleared, for a test pinning everything but the
+// wall-clock time the stage ran.
+func untimed(failure presenter.StageFailure) presenter.StageFailure {
+	failure.Elapsed = 0
+	return failure
 }

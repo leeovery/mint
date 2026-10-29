@@ -35,10 +35,12 @@ func indexOfGitArgs(r *runner.FakeRunner, verb string) int {
 func seedAllModeThenStageAndCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff HEAD -- . (read-only -a source)
 		runner.ScriptedCall{}, // git add -u (deferred staging on accept)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return r
 }
@@ -50,11 +52,13 @@ func seedAllModeThenStageAndCommit(diff string) *runner.FakeRunner {
 func seedAddAllModeThenStageAndCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff HEAD -- . (read-only tracked source)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},    // git ls-files --others (no untracked)
 		runner.ScriptedCall{}, // git add -A (deferred staging on accept)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return r
 }
@@ -163,6 +167,7 @@ func TestRun_AbortUnderAll_NoGitAddNoCommit(t *testing.T) {
 	// Preflight read (non-empty) then the read-only -a L1 diff; staging/commit must
 	// never be reached, so nothing past the read is scripted.
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}},
 	)
@@ -193,6 +198,7 @@ func TestRun_AbortUnderAddAll_IndexUntouched(t *testing.T) {
 	// Preflight read, the read-only -A tracked L1 diff, then the untracked enumeration —
 	// all read-only. No staging/commit is scripted: it must never be reached.
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}},
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},
@@ -230,6 +236,7 @@ func TestRun_AbortLeavesPreExistingStagingUntouched(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceNo}}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}},
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},
@@ -298,6 +305,7 @@ func TestRun_StagingAddRunsViaGitSafe(t *testing.T) {
 
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff HEAD -- . (read-only -a source)
 		runner.ScriptedCall{ // git add -u attempt 1: lock contention
@@ -306,6 +314,7 @@ func TestRun_StagingAddRunsViaGitSafe(t *testing.T) {
 		},
 		runner.ScriptedCall{}, // git add -u attempt 2: succeeds after the wrapper retries
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 
 	deps := commit.Deps{

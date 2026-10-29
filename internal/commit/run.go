@@ -34,9 +34,11 @@ import (
 	"mint/internal/ai"
 	"mint/internal/aitransport"
 	"mint/internal/config"
+	"mint/internal/fsutil"
 	"mint/internal/gitrepo"
 	"mint/internal/notes"
 	"mint/internal/presenter"
+	"mint/internal/runclose"
 	"mint/internal/runner"
 )
 
@@ -253,6 +255,15 @@ type Deps struct {
 	// save-as-accept) consume it through the single shared pushAfterCommit step, which
 	// warns-don't-unwinds on failure; no-commit runs never reach it.
 	Push bool
+	// MintVersion is mint's own bare version for the run's header, empty for a dev
+	// build, and Home the user's home directory the header shortens the repo root
+	// under. Both come from the cmd layer, so commit reads no environment for them.
+	MintVersion string
+	Home        string
+	// run closes the run Run opened, and branch is the branch HEAD stood at when it
+	// opened, the branch the commit lands on.
+	run    *runclose.Run
+	branch string
 }
 
 // editorUnavailable is the SINGLE "will the interactive editor refuse to open?" predicate.
@@ -293,7 +304,19 @@ func (d Deps) editorUnavailable() bool {
 //
 // A failure at any step surfaces through the presenter and aborts with a non-zero exit
 // (an *engine-style abort is owned by the cmd layer's exit mapping).
+//
+// A run that opened with RunStarted closes with one RunFinished, emitted here:
+// committed, with or without a warning, or, stopped short, declined or failed with
+// nothing changed.
 func Run(ctx context.Context, deps Deps) error {
+	deps.run = runclose.Begin(deps.Presenter)
+	err := mintCommit(ctx, deps)
+	deps.run.Close(errors.Is(err, errGateAborted) || errors.Is(err, errEditorNoOp))
+	return err
+}
+
+// mintCommit is Run's run; Run closes it.
+func mintCommit(ctx context.Context, deps Deps) error {
 	p := deps.Presenter
 
 	root, err := resolveRoot(ctx, deps)
@@ -306,10 +329,17 @@ func Run(ctx context.Context, deps Deps) error {
 		return surface(p, "config", err)
 	}
 
-	p.RunStarted(presenter.RunInfo{
+	// The run starts from the branch and commit HEAD stands at, read in one call, and
+	// its stages are known from the flags alone, so they are laid out at once.
+	head := gitrepo.ResolveHead(ctx, deps.Runner)
+	deps.branch = head.Branch
+	deps.run.Start(presenter.RunInfo{
 		Project: projectName(root),
 		Action:  commitAction,
+		Header:  presenter.Header{Command: commitCommand, Where: fsutil.HomeRelative(root, deps.Home), Version: deps.MintVersion},
+		Start:   presenter.Station{Name: head.Branch, Detail: head.ShortSHA},
 	})
+	p.ShowPlan(commitPlan(deps))
 
 	// Empty-staging preflight runs HERE — before generate, so the run fails loud on a
 	// genuinely clean tree before any AI call. It is staging-mode aware: it computes the
@@ -325,6 +355,7 @@ func Run(ctx context.Context, deps Deps) error {
 	if err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging); err != nil {
 		return surface(p, "preflight", err)
 	}
+	p.StageSucceeded(presenter.Settled(stageDiff, stagingDetail(deps.Staging)))
 
 	// --no-ai degradation path: skip L3 generate AND the Continue? gate (the gate is
 	// AI-path-only) and route straight to the editor fallback. The editor save IS the
@@ -356,7 +387,7 @@ func Run(ctx context.Context, deps Deps) error {
 		// path the fallback guard's StageFailed closes it instead.)
 		if errors.Is(err, notes.ErrDiffTooLarge) {
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage})
 			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
@@ -371,7 +402,7 @@ func Run(ctx context.Context, deps Deps) error {
 		// predicate the fallback's guard uses keeps the two in lock-step.
 		if errors.Is(err, errDiffFullyExcluded) {
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Label: excludedNoteLabel, Message: excludedNoteMessage})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: excludedNoteLabel, Message: excludedNoteMessage})
 			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
@@ -388,13 +419,13 @@ func Run(ctx context.Context, deps Deps) error {
 		if isAITransportFailure(err) {
 			output := aiFailureOutput(err)
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output})
 			}
 			return runEditorFallback(ctx, deps, root, output)
 		}
-		return surface(p, "generate", err)
+		return surfaceTimed(p, "generate", err, generated.elapsed())
 	}
-	generated("generated")
+	generated.done("generated")
 
 	// The minted message is shown for review and the Continue? gate is presented in the
 	// engine-owned review LOOP — both BEFORE the commit sink, so the core invariant
@@ -502,8 +533,9 @@ func runEditorFallback(ctx context.Context, deps Deps, root, aiOutput string) er
 	// Non-empty save = ACCEPT: run the SAME shared stage→commit→push accept tail the
 	// gate-accept path uses (commitAccept), committing the saved buffer verbatim. Routing
 	// through the one helper keeps the STAGE→COMMIT order, the single shared push step,
-	// the warn-don't-unwind push handling, and the always-fire RunFinished identical
-	// across both accept paths.
+	// the warn-don't-unwind push handling, and the landed ending identical across both
+	// accept paths.
+	p.StageSucceeded(presenter.Settled(stageMessage, "written in your editor"))
 	return commitAccept(ctx, deps, root, saved)
 }
 
@@ -614,7 +646,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// never produce an empty commit, so a non-launchable editor simply preserves the
 				// existing message.
 				if errors.Is(oerr, ErrNoEditor) || errors.Is(oerr, runner.ErrCommandNotFound) {
-					p.Warn(presenter.Warning{Label: editorNoLaunchWarnLabel, Message: editorNoLaunchWarnMessage})
+					p.Warn(presenter.Warning{Key: stageMessage, Label: editorNoLaunchWarnLabel, Message: editorNoLaunchWarnMessage})
 					continue
 				}
 				// Any OTHER OpenEditor error (a genuine IO failure, etc.) is unexpected — surface
@@ -664,7 +696,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// the spinner-stopping AI-failure Warn and an over-cap prompt via the oversized
 			// Warn (`r` is interactive-only, so both paths are always attended), any other
 			// failure via surface's StageFailed.
-			regenDone := startGenerateStage(p, "regenerating commit message…", "Regenerated commit message")
+			regenerating := startGenerateStage(p, "regenerating commit message…", "Regenerated commit message")
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {
 				// A regeneration FAILURE after the transport's one retry (an AI transport
@@ -674,20 +706,20 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// sentinel so Run owns the fallback call (the same entry point first-generation
 				// failures use): a successful fallback commit exits 0 and never double-stages.
 				if isAITransportFailure(gerr) {
-					p.Warn(presenter.Warning{Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr)})
+					p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr)})
 					return false, body, errRegenerateFallback
 				}
 				// A nudge that pushes the regeneration's composed prompt over max_prompt_bytes
 				// sends no call and takes the same empty-editor route, under the oversized note.
 				if errors.Is(gerr, notes.ErrDiffTooLarge) {
-					p.Warn(presenter.Warning{Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+					p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage})
 					return false, body, errRegenerateFallback
 				}
 				// Any OTHER regeneration error keeps the defensive surface-abort — it is
 				// unexpected and must fail loud rather than route to the editor.
-				return false, body, surface(p, "regenerate", gerr)
+				return false, body, surfaceTimed(p, "regenerate", gerr, regenerating.elapsed())
 			}
-			regenDone("regenerated")
+			regenerating.done("regenerated")
 			// Adopt the regenerated body as the new candidate and LOOP BACK: re-render
 			// ShowMessage(regenerated) → Prompt with the same y/n/e/r gate. `r` is NOT an
 			// accept — nothing stages, commits, or pushes here.
@@ -712,6 +744,7 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 // regenerate), matching NotesReviewGate's labels so both verbs' bars read alike.
 func commitReviewGate() presenter.Gate {
 	return presenter.Gate{
+		Stage:      stageMessage,
 		Question:   "Commit this message?",
 		Subject:    "message",
 		AcceptEcho: "accepted",
@@ -764,24 +797,37 @@ func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, 
 // startGenerateStage narrates the start of the blocking "message" stage (the AI
 // call — the run's one slow step; the pretty spinner animates it) and starts the
 // elapsed timer, mirroring the engine's emitBlockingStageStarted idiom. The
-// returned closure emits the matching StageSucceeded carrying the caller's detail
-// word ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure paths
-// never call it — their spinner-stopping Warn or StageFailed closes the stage
-// instead.
+// returned stage's done emits the matching StageSucceeded carrying the caller's
+// detail word ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure
+// paths never call it — their spinner-stopping Warn or StageFailed, timed by
+// elapsed, closes the stage instead.
 // text is the activity phrase the pretty spinner animates ("generating commit
 // message…" / "regenerating commit message…").
-func startGenerateStage(p presenter.Presenter, text, sentence string) func(detail string) {
-	p.StageStarted(presenter.StageStart{Name: generateStageName, Blocking: true, Text: text})
-	started := time.Now()
-	return func(detail string) {
-		p.StageSucceeded(presenter.StageSuccess{
-			Name:     generateStageName,
-			Detail:   detail,
-			Sentence: sentence,
-			Elapsed:  time.Since(started),
-			Blocking: true,
-		})
-	}
+func startGenerateStage(p presenter.Presenter, text, sentence string) generateStage {
+	p.StageStarted(presenter.StageStart{Name: generateStageName, Key: stageMessage, Blocking: true, Text: text})
+	return generateStage{p: p, sentence: sentence, started: time.Now()}
+}
+
+// generateStage is the blocking "message" stage under way.
+type generateStage struct {
+	p        presenter.Presenter
+	sentence string
+	started  time.Time
+}
+
+func (s generateStage) done(detail string) {
+	s.p.StageSucceeded(presenter.StageSuccess{
+		Name:     generateStageName,
+		Key:      stageMessage,
+		Detail:   detail,
+		Sentence: s.sentence,
+		Elapsed:  s.elapsed(),
+		Blocking: true,
+	})
+}
+
+func (s generateStage) elapsed() time.Duration {
+	return time.Since(s.started)
 }
 
 // isAITransportFailure reports whether err is one of the THREE L2 transport-failure
@@ -893,8 +939,10 @@ func createCommit(ctx context.Context, deps Deps, body string) (runner.Result, e
 //     "commit" StageFailed and aborts.
 //  3. pushAfterCommit runs the single shared auto-push (a no-op when -p is disarmed; on a
 //     FAILED push it warns-don't-unwind — the commit is kept and it returns errPushFailed).
-//  4. RunFinished ALWAYS fires: the commit IS the run's success, so the success close-out
-//     runs even when the push failed (the warn-don't-unwind contract).
+//  4. The commit IS the run's success, so it lands as committed even when the push
+//     failed (the warn-don't-unwind contract), with a warning then; Run closes with it.
+//     Its end station is the branch and the new commit, read with `git rev-parse
+//     --short HEAD`.
 //  5. The pushErr is returned: nil on a no-push/successful-push run, errPushFailed on a
 //     failed push → a non-zero exit with the commit left in place.
 func commitAccept(ctx context.Context, deps Deps, root, body string) error {
@@ -905,16 +953,40 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 		// diagnostic explains the failure instead of a bare exit status.
 		return surfaceOutput(p, "stage", err, res.Stderr)
 	}
+	if deps.Staging != StagedOnly {
+		p.StageSucceeded(presenter.Settled(stageStage, "staged"))
+	}
 	if res, err := createCommit(ctx, deps, body); err != nil {
 		return surfaceOutput(p, "commit", err, res.Stderr)
 	}
+	sha := gitrepo.ResolveShortHEAD(ctx, deps.Runner)
+	p.StageSucceeded(presenter.Settled(stageCommit, sha))
 	pushErr := pushAfterCommit(ctx, deps)
-	// VerbCommit selects the commit-shaped close-out (version-less, URL-less,
-	// "committed" not "released") — the zero-value Verb would render the RELEASE
-	// footer with a dangling empty version.
-	p.RunFinished(presenter.RunResult{Project: projectName(root), Verb: presenter.VerbCommit})
+	landed := presenter.RunResult{
+		Project: projectName(root),
+		Outcome: presenter.OutcomeCommitted,
+		End:     presenter.Station{Name: deps.branch, Detail: commitLanding(sha, deps.Push && pushErr == nil)},
+	}
+	if pushErr != nil {
+		landed.Outcome = presenter.OutcomeCommittedWithWarning
+	}
+	deps.run.Land(landed)
 	return pushErr
 }
+
+// commitLanding is the end station's detail: the new commit's short sha, and that
+// the branch is in sync with origin when a push went through.
+func commitLanding(sha string, pushed bool) string {
+	if !pushed {
+		return sha
+	}
+	if sha == "" {
+		return inSyncWithOrigin
+	}
+	return sha + " · " + inSyncWithOrigin
+}
+
+const inSyncWithOrigin = "in sync with origin"
 
 // pushAfterCommit is commit's SINGLE shared auto-push step, called by BOTH accept
 // paths after a successful commit (the gate-accept path here; the editor save-as-accept
@@ -953,7 +1025,7 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 // (set-upstream, non-fast-forward, …) stays visible without any mint reformatting. The
 // Warn does NOT suppress the success close-out and sets no presenter failure state;
 // the non-zero exit comes solely from returning errPushFailed (the commit succeeded —
-// that IS the run's success — so the caller still fires RunFinished). Empty/aborted
+// that IS the run's success — so the run still closes as committed). Empty/aborted
 // suppression (5-5) is already natural: push is only reached after a successful commit.
 func pushAfterCommit(ctx context.Context, deps Deps) error {
 	if !deps.Push {
@@ -965,11 +1037,13 @@ func pushAfterCommit(ctx context.Context, deps Deps) error {
 		// no-upstream "set an upstream" hint comes from git, never mint-authored text). No
 		// surface/StageFailed — the warn narrates; errPushFailed only drives the exit code.
 		deps.Presenter.Warn(presenter.Warning{
+			Key:     stagePush,
 			Label:   pushFailWarnLabel,
 			Message: pushFailWarnMessage,
 			Output:  res.Stderr,
 		})
 		return errPushFailed
 	}
+	deps.Presenter.StageSucceeded(presenter.Settled(stagePush, "pushed to its upstream"))
 	return nil
 }

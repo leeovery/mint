@@ -131,7 +131,10 @@ func (run *regenFailRun) assertWroteNothing(t *testing.T) {
 func regenerateSavedNotesMoves(version, path string) []presenter.NextMoves {
 	return []presenter.NextMoves{{
 		Stage: "regenerate",
-		Moves: []string{"tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release regenerate " + version + " --notes-file " + cmdline.Quote(path)},
+		Moves: []presenter.NextMove{{
+			Lead:    "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with",
+			Command: "mint release regenerate " + version + " --notes-file " + cmdline.Quote(path),
+		}},
 	}}
 }
 
@@ -331,7 +334,7 @@ func TestRegenerateRun_FailedRegensChunkNotesCannotBeSaved_KeepsTheFailureAndWar
 				notesGit, tr, cfg := chunkedFresh()
 				return notesGit, tr, cfg
 			},
-			failed: &presenter.StageFailure{Name: "regenerate", Message: "AI call failed (merging)", Output: loginOutput},
+			failed: &presenter.StageFailure{Name: "regenerate", Key: "notes", Message: "AI call failed (merging)", Output: loginOutput},
 		},
 		{
 			name: "the ladder-chunked r fails for good",
@@ -339,7 +342,7 @@ func TestRegenerateRun_FailedRegensChunkNotesCannotBeSaved_KeepsTheFailureAndWar
 			run: func() (*runner.FakeRunner, notes.Transport, config.Config) {
 				return singlePassFresh(), ladderChunkedRegen(), freshCfg()
 			},
-			failed: &presenter.StageFailure{Name: "regenerate", Message: "AI call failed (part 2 of 4)", Output: loginOutput},
+			failed: &presenter.StageFailure{Name: "regenerate", Key: "notes", Message: "AI call failed (part 2 of 4)", Output: loginOutput},
 		},
 		{
 			name: "stdin closes at the nudge",
@@ -360,7 +363,7 @@ func TestRegenerateRun_FailedRegensChunkNotesCannotBeSaved_KeepsTheFailureAndWar
 			assertAbortExitsOne(t, run.regenerate(t, notesGit, tr, cfg))
 
 			if tc.failed != nil {
-				if sf := onlyStageFailureEvent(t, run.rec); sf != *tc.failed {
+				if sf := untimed(onlyStageFailureEvent(t, run.rec)); sf != *tc.failed {
 					t.Errorf("StageFailure = %+v, want the failure unchanged %+v", sf, *tc.failed)
 				}
 				assertWarnedAfterTheFailure(t, run.rec)

@@ -17,10 +17,12 @@ import (
 // names the part count on the completion line only once a merge has written the
 // body; any other body completes as "Generated release notes".
 type notesStage struct {
-	p         presenter.Presenter
-	succeeded func(detail, sentence string)
-	parts     int
-	halved    bool
+	p     presenter.Presenter
+	stage *blockingStage
+	// checking is when the exclusion check's call started.
+	checking time.Time
+	parts    int
+	halved   bool
 	// largestCall is the biggest prompt of the run's succeeded calls carrying diff.
 	largestCall int
 	// fallbackCause is the failure the commit-subject list ships in place of, or nil.
@@ -37,20 +39,29 @@ var (
 const notesStageText = "generating release notes…"
 
 func startNotesStage(p presenter.Presenter) *notesStage {
-	return &notesStage{p: p, succeeded: startBlockingStage(p, "notes", notesStageText)}
+	return &notesStage{p: p, stage: startBlockingStage(p, stageNotes, notesStageText)}
 }
 
+// Checking narrates the exclusion check's call starting and times it, so Checked can
+// narrate its end with the call's elapsed; the pauses after it are not timed.
 func (s *notesStage) Checking() {
-	s.p.NotesChecking()
+	s.checking = time.Now()
+	s.p.NotesChecking(presenter.NotesCheck{Key: stageCheck})
 }
 
 func (s *notesStage) Checked() {
-	s.p.NotesChecked()
+	s.p.NotesChecked(presenter.NotesCheck{Key: stageCheck, Elapsed: time.Since(s.checking)})
+}
+
+// failure is the StageFailed payload for the notes stage failing on cause, timed.
+func (s *notesStage) failure(cause error) presenter.StageFailure {
+	return s.stage.failure(cause)
 }
 
 func (s *notesStage) CheckFailed(output string) {
 	s.p.SuspendSpinner()
 	s.p.Warn(presenter.Warning{
+		Key:     stageCheck,
 		Label:   "notes",
 		Message: "couldn't check for files that don't belong in the notes",
 		Output:  output,
@@ -164,8 +175,8 @@ type regenStage struct {
 	hint func(lowerCap int)
 	// began is when the r now generating started.
 	began time.Time
-	// succeeded closes the notes line the r now generating opened, nil while it has none.
-	succeeded func(detail, sentence string)
+	// stage is the notes line the r now generating opened, nil while it has none.
+	stage *blockingStage
 }
 
 var _ notes.Progress = (*regenStage)(nil)
@@ -187,10 +198,10 @@ func (r *regenStage) narrating(regenerator Regenerator) Regenerator {
 		return nil
 	}
 	return regeneratorFunc(func(ctx context.Context, oneTimeContext string) (string, error) {
-		r.began, r.succeeded = time.Now(), nil
+		r.began, r.stage = time.Now(), nil
 		body, err := regenerator.Regenerate(ctx, oneTimeContext)
-		if err == nil && r.succeeded != nil {
-			r.succeeded(mergedCompletion(r.parts))
+		if err == nil && r.stage != nil {
+			r.stage.succeeded(mergedCompletion(r.parts))
 		}
 		return body, err
 	})
@@ -198,8 +209,8 @@ func (r *regenStage) narrating(regenerator Regenerator) Regenerator {
 
 // chunked opens the r's notes line, timed from the r's start, unless it is open.
 func (r *regenStage) chunked() {
-	if r.succeeded == nil {
-		r.succeeded = startBlockingStageSince(r.run.p, "notes", notesStageText, r.began)
+	if r.stage == nil {
+		r.stage = startBlockingStageSince(r.run.p, stageNotes, notesStageText, r.began)
 	}
 }
 
@@ -282,14 +293,17 @@ func hintLowerCap(p presenter.Presenter, bytes int) {
 // done narrates the stage's success. Call it only once the generation has returned.
 func (s *notesStage) done() {
 	if s.parts == 0 {
-		s.succeeded("generated", "Generated release notes")
+		s.stage.succeeded(presenter.StageSuccess{Detail: "generated", Sentence: "Generated release notes"})
 		return
 	}
-	s.succeeded(mergedCompletion(s.parts))
+	s.stage.succeeded(mergedCompletion(s.parts))
 }
 
-// mergedCompletion is the detail and sentence of a notes stage whose merge wrote the
-// body from parts.
-func mergedCompletion(parts int) (detail, sentence string) {
-	return fmt.Sprintf("generated in %d parts, merged", parts), fmt.Sprintf("Notes written (%d parts, merged)", parts)
+// mergedCompletion is the success of a notes stage whose merge wrote the body from
+// parts.
+func mergedCompletion(parts int) presenter.StageSuccess {
+	return presenter.StageSuccess{
+		Detail:   fmt.Sprintf("generated in %d parts, merged", parts),
+		Sentence: fmt.Sprintf("Notes written (%d parts, merged)", parts),
+	}
 }

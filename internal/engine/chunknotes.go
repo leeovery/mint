@@ -77,7 +77,7 @@ func (k *chunkNotesKeeper) keepRegen(failure error) error {
 func (k *chunkNotesKeeper) reportKept(p presenter.Presenter, cause error, command string) {
 	k.warnUnsaved(p)
 	if saved := notes.SavedChunkNotesPath(cause); saved != "" {
-		p.NextMoves(presenter.NextMoves{Stage: "regenerate", Moves: []string{notesFileMove(command, saved)}})
+		p.NextMoves(presenter.NextMoves{Stage: "regenerate", Moves: []presenter.NextMove{notesFileMove(command, saved)}})
 	}
 }
 

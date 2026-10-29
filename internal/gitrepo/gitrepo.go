@@ -6,6 +6,9 @@
 // ResolveRoot underpins config location (.mint.toml lives at the root) and the
 // gate set; ResolveReleaseBranch feeds the on-branch gate. The two are split
 // because the root is unconditional while the branch is config-overridable.
+//
+// ResolveHead and ResolveShortHEAD read where HEAD stands for the stations a run
+// starts from and lands at; they are display data, never a gate.
 package gitrepo
 
 import (
@@ -82,4 +85,45 @@ func deriveFromOriginHead(ctx context.Context, r runner.CommandRunner) (string, 
 
 	ref := strings.TrimSpace(res.Stdout)
 	return strings.TrimPrefix(ref, originHeadPrefix), nil
+}
+
+// Head is where HEAD stands: the branch checked out ("HEAD" when detached) and the
+// commit's short sha.
+type Head struct {
+	Branch   string
+	ShortSHA string
+}
+
+// shortSHALength is how many hex digits of HEAD's sha Head carries.
+const shortSHALength = 7
+
+// ResolveHead reads where HEAD stands with one read, `git rev-parse HEAD
+// --abbrev-ref HEAD`, which prints the commit's sha and then the branch. It is
+// display data only, so a HEAD git cannot read (a repository with no commit yet)
+// is the zero Head rather than an error.
+func ResolveHead(ctx context.Context, r runner.CommandRunner) Head {
+	res, err := r.Run(ctx, "git", "rev-parse", "HEAD", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return Head{}
+	}
+	sha, branch, _ := strings.Cut(strings.TrimSpace(res.Stdout), "\n")
+	return Head{Branch: strings.TrimSpace(branch), ShortSHA: shortSHA(strings.TrimSpace(sha))}
+}
+
+// ResolveShortHEAD reads HEAD's short sha with `git rev-parse --short HEAD`, cut to
+// the length ResolveHead's is, so the two never differ for one commit. Like
+// ResolveHead it is display data, so a HEAD git cannot read is the empty string.
+func ResolveShortHEAD(ctx context.Context, r runner.CommandRunner) string {
+	res, err := r.Run(ctx, "git", "rev-parse", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return shortSHA(strings.TrimSpace(res.Stdout))
+}
+
+func shortSHA(sha string) string {
+	if len(sha) > shortSHALength {
+		return sha[:shortSHALength]
+	}
+	return sha
 }

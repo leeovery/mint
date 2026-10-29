@@ -205,6 +205,7 @@ func TestCommitGraph_OnlyHook_OneArtifactCommitThenTagAtHEAD(t *testing.T) {
 		ScriptedOut(root),             // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),    // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),               // tag --list (no tags)
+		ScriptedHead(),                // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),               // fetch --tags
 		ScriptedOut(""),               // status --porcelain (preflight clean-tree gate)
 		ScriptedOut("main"),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -275,6 +276,7 @@ func TestCommitGraph_Neither_ZeroCommitsThenTagAtExistingHEAD(t *testing.T) {
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),              // tag --list (no tags)
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain (clean)
 		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)

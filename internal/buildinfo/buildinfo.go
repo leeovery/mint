@@ -16,4 +16,16 @@ package buildinfo
 // Version is mint's own tool version, defaulting to "dev" until the release build
 // stamps the real value via -ldflags -X. It is the SINGLE source both version
 // surfaces read.
-var Version = "dev"
+var Version = devVersion
+
+// devVersion is Version's unstamped default.
+const devVersion = "dev"
+
+// Stamped is Version as a run's header shows it: the stamped version, or empty for
+// an unstamped dev build, which shows none.
+func Stamped() string {
+	if Version == devVersion {
+		return ""
+	}
+	return Version
+}

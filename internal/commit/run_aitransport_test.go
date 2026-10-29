@@ -26,9 +26,11 @@ import (
 func seedAIDiffThenCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return r
 }

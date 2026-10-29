@@ -1,0 +1,218 @@
+package commit_test
+
+// This file pins the data a commit puts in its presenter payloads for the rail to
+// draw: the header and the start station, the run's stages, the settles that fill
+// them, and the end station every run closes at.
+
+import (
+	"context"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"mint/internal/commit"
+	"mint/internal/presenter"
+	"mint/internal/presenter/presentertest"
+	"mint/internal/runner"
+)
+
+// railCommit runs a commit over r from a repo directly under the home directory, by
+// a stamped mint, answering its question with choice.
+func railCommit(t *testing.T, r *runner.FakeRunner, choice presenter.Choice, configure func(*commit.Deps)) (*presentertest.RecordingPresenter, string, error) {
+	t.Helper()
+	root := t.TempDir()
+	rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{choice}}
+	deps := newCommitDeps(rec, r, scriptedTransport("feat: rail payloads"), root)
+	deps.Home = filepath.Dir(root)
+	deps.MintVersion = "0.1.2"
+	configure(&deps)
+	return rec, root, commit.Run(context.Background(), deps)
+}
+
+func noFlags(*commit.Deps) {}
+
+// railEvent returns the one event of kind rec holds.
+func railEvent(t *testing.T, rec *presentertest.RecordingPresenter, kind presentertest.EventKind) presentertest.Event {
+	t.Helper()
+	var found []presentertest.Event
+	for _, ev := range rec.Events {
+		if ev.Kind == kind {
+			found = append(found, ev)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%v events = %d, want one; kinds = %v", kind, len(found), rec.Kinds())
+	}
+	return found[0]
+}
+
+// closingResult returns the run's RunFinished, failing unless it was the last event.
+func closingResult(t *testing.T, rec *presentertest.RecordingPresenter) presenter.RunResult {
+	t.Helper()
+	fin := railEvent(t, rec, presentertest.KindRunFinished)
+	if last := rec.Events[len(rec.Events)-1]; last.Kind != presentertest.KindRunFinished {
+		t.Errorf("last event = %v, want the closing RunFinished; kinds = %v", last.Kind, rec.Kinds())
+	}
+	return fin.RunFinished
+}
+
+// settles returns each success's key and detail, in order.
+func settles(rec *presentertest.RecordingPresenter) []presenter.StageSuccess {
+	var out []presenter.StageSuccess
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageSucceeded {
+			success := ev.StageSucceeded
+			success.Elapsed = 0
+			out = append(out, success)
+		}
+	}
+	return out
+}
+
+func TestRun_Rail_ACommitStartsAtTheBranchAndLandsAtTheNewCommit(t *testing.T) {
+	t.Parallel()
+
+	rec, root, err := railCommit(t, seedDiffThenCommit("diff --git a/x b/x\n+work"), presenter.ChoiceYes, noFlags)
+	if err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	info := railEvent(t, rec, presentertest.KindRunStarted).RunStarted
+	if want := (presenter.Header{Command: "commit", Where: "~/" + filepath.Base(root), Version: "0.1.2"}); info.Header != want {
+		t.Errorf("Header = %+v, want %+v", info.Header, want)
+	}
+	if want := (presenter.Station{Name: "main", Detail: "4f9c2e1"}); info.Start != want {
+		t.Errorf("Start = %+v, want %+v (the branch and HEAD's short sha)", info.Start, want)
+	}
+	fin := closingResult(t, rec)
+	if want := (presenter.Station{Name: "main", Detail: endHeadSHA}); fin.Outcome != presenter.OutcomeCommitted || fin.End != want {
+		t.Errorf("close = %v %+v, want OutcomeCommitted %+v", fin.Outcome, fin.End, want)
+	}
+	if fin.Elapsed <= 0 {
+		t.Errorf("Elapsed = %v, want the run's time", fin.Elapsed)
+	}
+}
+
+func TestRun_Rail_TheQuietPlanAndItsSettlesFillEveryNode(t *testing.T) {
+	t.Parallel()
+
+	rec, _, err := railCommit(t, seedDiffThenCommit("diff --git a/x b/x\n+work"), presenter.ChoiceYes, noFlags)
+	if err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	plan := railEvent(t, rec, presentertest.KindShowPlan).ShowPlan
+	want := []presenter.PlanStage{
+		{Key: "diff", Name: "diff", Detail: "staged changes"},
+		{Key: "message", Name: "message", Detail: "written by the AI"},
+		{Key: "commit", Name: "commit", Detail: "on main"},
+	}
+	if !plan.Quiet || plan.PointOfNoReturn != "" || !slices.Equal(plan.Stages, want) {
+		t.Errorf("plan = %+v, want a quiet plan of %+v with no point of no return", plan, want)
+	}
+	var keys []string
+	for _, s := range settles(rec) {
+		keys = append(keys, s.Key)
+	}
+	if wantKeys := []string{"diff", "message", "commit"}; !slices.Equal(keys, wantKeys) {
+		t.Errorf("settled keys = %q, want %q", keys, wantKeys)
+	}
+	if got := settles(rec)[2]; got != presenter.Settled("commit", endHeadSHA) {
+		t.Errorf("commit settle = %+v, want the new commit's short sha", got)
+	}
+	if gate := railEvent(t, rec, presentertest.KindPrompt).Prompt; gate.Stage != "message" {
+		t.Errorf("question Stage = %q, want the message node", gate.Stage)
+	}
+}
+
+func TestRun_Rail_StagingAndAPushAddTheirNodesAndAPushLandsInSync(t *testing.T) {
+	t.Parallel()
+
+	r := seedAddAllModeThenStageAndCommit("diff --git a/x b/x\n+work")
+	r.SeedSequence("git", runner.ScriptedCall{}) // git push
+	rec, _, err := railCommit(t, r, presenter.ChoiceYes, func(d *commit.Deps) {
+		d.Staging = commit.AddAll
+		d.Push = true
+	})
+	if err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+
+	plan := railEvent(t, rec, presentertest.KindShowPlan).ShowPlan
+	want := []presenter.PlanStage{
+		{Key: "diff", Name: "diff", Detail: "everything, staged when you accept"},
+		{Key: "message", Name: "message", Detail: "written by the AI"},
+		{Key: "stage", Name: "stage", Detail: "git add -A"},
+		{Key: "commit", Name: "commit", Detail: "on main"},
+		{Key: "push", Name: "push", Detail: "to its upstream"},
+	}
+	if !slices.Equal(plan.Stages, want) {
+		t.Errorf("plan stages = %+v, want %+v", plan.Stages, want)
+	}
+	got := settles(rec)
+	wantTail := []presenter.StageSuccess{
+		presenter.Settled("stage", "staged"),
+		presenter.Settled("commit", endHeadSHA),
+		presenter.Settled("push", "pushed to its upstream"),
+	}
+	if len(got) < len(wantTail) || !slices.Equal(got[len(got)-len(wantTail):], wantTail) {
+		t.Errorf("settles = %+v, want them to end %+v", got, wantTail)
+	}
+	if fin := closingResult(t, rec); fin.End != (presenter.Station{Name: "main", Detail: endHeadSHA + " · in sync with origin"}) {
+		t.Errorf("End = %+v, want the new commit in sync with origin", fin.End)
+	}
+}
+
+func TestRun_Rail_AFailedPushStillLandsAtTheCommitWithAWarning(t *testing.T) {
+	t.Parallel()
+
+	r := seedDiffThenCommitThenFailedPush("diff --git a/x b/x\n+work", "fatal: no upstream\n")
+	rec, _, err := railCommit(t, r, presenter.ChoiceYes, func(d *commit.Deps) { d.Push = true })
+	if err == nil {
+		t.Fatal("Run returned nil, want the push failure's exit")
+	}
+
+	fin := closingResult(t, rec)
+	if want := (presenter.Station{Name: "main", Detail: endHeadSHA}); fin.Outcome != presenter.OutcomeCommittedWithWarning || fin.End != want {
+		t.Errorf("close = %v %+v, want OutcomeCommittedWithWarning %+v", fin.Outcome, fin.End, want)
+	}
+	if warn := railEvent(t, rec, presentertest.KindWarn).Warn; warn.Key != "push" {
+		t.Errorf("warning Key = %q, want the push node", warn.Key)
+	}
+}
+
+func TestRun_Rail_ADeclinedCommitClosesAtTheStartHavingChangedNothing(t *testing.T) {
+	t.Parallel()
+
+	rec, _, err := railCommit(t, seedDiffThenCommit("diff --git a/x b/x\n+work"), presenter.ChoiceNo, noFlags)
+	if err == nil {
+		t.Fatal("Run returned nil, want the decline's exit")
+	}
+
+	fin := closingResult(t, rec)
+	if want := (presenter.Station{Name: "main", Detail: "nothing changed"}); fin.Outcome != presenter.OutcomeDeclined || fin.End != want {
+		t.Errorf("close = %v %+v, want OutcomeDeclined %+v", fin.Outcome, fin.End, want)
+	}
+}
+
+func TestRun_Rail_AFailedPreflightIsTheDiffNode(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.SeedSequence("git",
+		scriptedHead(),        // git rev-parse HEAD --abbrev-ref HEAD (the start station)
+		runner.ScriptedCall{}, // git diff --cached --name-only (empty index)
+		runner.ScriptedCall{}, // git status --porcelain (clean tree)
+	)
+	rec, _, err := railCommit(t, r, presenter.ChoiceYes, noFlags)
+	if err == nil {
+		t.Fatal("Run returned nil, want the empty index's exit")
+	}
+
+	if failure := railEvent(t, rec, presentertest.KindStageFailed).StageFailed; failure.Name != "preflight" || failure.Key != "diff" {
+		t.Errorf("failure Name/Key = %q/%q, want the preflight label on the diff node", failure.Name, failure.Key)
+	}
+	if fin := closingResult(t, rec); fin.Outcome != presenter.OutcomeFailed || fin.End != (presenter.Station{Name: "main", Detail: "nothing changed"}) {
+		t.Errorf("close = %v %+v, want OutcomeFailed back at main with nothing changed", fin.Outcome, fin.End)
+	}
+}

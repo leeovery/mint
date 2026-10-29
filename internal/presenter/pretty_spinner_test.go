@@ -282,7 +282,7 @@ func TestPrettyPresenterWarnStopsActiveSpinnerBatchSkipPath(t *testing.T) {
 		p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
 		// The skip path: a Warn with NO StageSucceeded, then the run's end summary.
 		p.Warn(presenter.Warning{Label: "skipped v1.1.0", Message: "notes generation failed"})
-		p.RunFinished(presenter.RunResult{Verb: presenter.VerbRegenerate, Project: "mint", Summary: "0 regenerated, 1 skipped: v1.1.0 (notes generation failed)"})
+		p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeAllRegenerated, Project: "mint", Summary: "0 regenerated, 1 skipped: v1.1.0 (notes generation failed)"})
 	})
 
 	if len(tr.created) != 1 {

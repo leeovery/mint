@@ -126,6 +126,7 @@ func seedInRepoNotesFileGit(f *runner.FakeRunner, root, notesStaged string) {
 		ScriptedOut(""),            // ls-files --ignored (the notes file is not ignored)
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(priorTag+"\n"), // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain
 		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
@@ -153,6 +154,7 @@ func firstReleaseGates(root, ignored string, stash ...runner.ScriptedCall) []run
 		ScriptedOut(ignored),       // ls-files --ignored
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 	}
 	calls = append(calls, stash...)
 	return append(calls,
@@ -278,6 +280,7 @@ func TestRelease_NotesFileInRepo_AnotherDirtyPath_StillFailsTheCleanTreeCheck(t 
 				ScriptedOut(""),            // ls-files --ignored
 				ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 				ScriptedOut(priorTag+"\n"), // tag --list
+				ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 				ScriptedOut(""),            // fetch --tags
 				ScriptedOut(tt.status),     // status --porcelain (the other path is dirty)
 			)

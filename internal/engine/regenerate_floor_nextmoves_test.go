@@ -8,6 +8,7 @@ import (
 
 	"mint/internal/config"
 	"mint/internal/engine"
+	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 	"mint/internal/version"
@@ -63,10 +64,10 @@ func assertRegenStopsWithNextMoves(t *testing.T, run *regenChunkNotes, err error
 	if len(got) != 1 {
 		t.Fatalf("NextMoves events = %+v, want one; kinds = %v", got, run.rec.Kinds())
 	}
-	if got[0].Stage != "notes" || !slices.Equal(got[0].Moves, want) {
-		t.Errorf("NextMoves = %q %q, want notes %q", got[0].Stage, got[0].Moves, want)
+	if got[0].Stage != "notes" || !slices.Equal(moveTexts(got[0].Moves), want) {
+		t.Errorf("NextMoves = %q %q, want notes %q", got[0].Stage, moveTexts(got[0].Moves), want)
 	}
-	for _, move := range got[0].Moves {
+	for _, move := range moveTexts(got[0].Moves) {
 		if strings.Contains(move, "--no-ai") || strings.Contains(move, "on_notes_failure") {
 			t.Errorf("move %q names a forward-release-only way out", move)
 		}
@@ -76,8 +77,11 @@ func assertRegenStopsWithNextMoves(t *testing.T, run *regenChunkNotes, err error
 	if failedAt == -1 || failedAt >= movesAt {
 		t.Errorf("want the next moves after the ✗ line; kinds = %v", run.rec.Kinds())
 	}
-	if movesAt != len(run.rec.Events)-1 {
-		t.Errorf("want nothing after the next moves; kinds = %v", run.rec.Kinds())
+	if movesAt != len(run.rec.Events)-2 {
+		t.Errorf("want nothing but the close after the next moves; kinds = %v", run.rec.Kinds())
+	}
+	if fin := closingEvent(t, run.rec); fin.Outcome != presenter.OutcomeFailed {
+		t.Errorf("closing outcome = %v, want OutcomeFailed", fin.Outcome)
 	}
 	if gates := promptGates(run.rec); len(gates) != 0 {
 		t.Errorf("an unattended run showed prompts: %+v", gates)

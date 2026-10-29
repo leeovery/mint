@@ -276,7 +276,7 @@ func TestUnwoundAppearsOnStdoutOnly(t *testing.T) {
 			t.Parallel()
 
 			p, out, errBuf := newSplit(tt.mode)
-			p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+			p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 
 			if !strings.Contains(out.String(), tt.wantOut) {
 				t.Errorf("%s: unwound missing from stdout = %q, want it to contain %q", tt.name, out.String(), tt.wantOut)
@@ -339,7 +339,7 @@ func TestUnwoundSuppressesSuccessRunEndLine(t *testing.T) {
 
 				p, out, _ := newSplit(tt.mode)
 				p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
-				p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+				p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 				p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 
 				if strings.Contains(out.String(), tt.notExpect) {
@@ -351,7 +351,7 @@ func TestUnwoundSuppressesSuccessRunEndLine(t *testing.T) {
 				t.Parallel()
 
 				p, out, _ := newSplit(tt.mode)
-				p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+				p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 				p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 
 				if strings.Contains(out.String(), tt.notExpect) {

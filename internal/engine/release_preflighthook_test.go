@@ -239,6 +239,7 @@ func TestRelease_PreflightHook_NotRunWhenGateFails(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(" M file.go"),  // status --porcelain (DIRTY — gate fails)
 	)

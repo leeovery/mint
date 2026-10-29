@@ -121,6 +121,7 @@ type Event struct {
 	NotesProgress        presenter.NotesProgress
 	NotesMerging         presenter.NotesMerge
 	NotesHalving         presenter.NotesHalving
+	NotesCheck           presenter.NotesCheck
 	NextMoves            presenter.NextMoves
 	ExclusionSuggestions presenter.ExclusionSuggestions
 	ExclusionAnswers     presenter.ExclusionAnswers
@@ -205,13 +206,13 @@ func (r *RecordingPresenter) ExclusionAnswersRecorded(a presenter.ExclusionAnswe
 }
 
 // NotesChecking records the exclusion check's call starting.
-func (r *RecordingPresenter) NotesChecking() {
-	r.Events = append(r.Events, Event{Kind: KindNotesChecking})
+func (r *RecordingPresenter) NotesChecking(c presenter.NotesCheck) {
+	r.Events = append(r.Events, Event{Kind: KindNotesChecking, NotesCheck: c})
 }
 
-// NotesChecked records the exclusion check's call ending.
-func (r *RecordingPresenter) NotesChecked() {
-	r.Events = append(r.Events, Event{Kind: KindNotesChecked})
+// NotesChecked records the exclusion check's call ending, with its elapsed.
+func (r *RecordingPresenter) NotesChecked(c presenter.NotesCheck) {
+	r.Events = append(r.Events, Event{Kind: KindNotesChecked, NotesCheck: c})
 }
 
 // NotesProgress records a chunked notes run's progress.

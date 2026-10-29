@@ -32,6 +32,7 @@ func seedAnyBranchHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		// NO rev-parse --abbrev-ref HEAD — the on-branch gate is skipped.
@@ -91,6 +92,7 @@ func TestRelease_NoAnyBranch_OffBranch_StillAborts(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain (clean)
 		ScriptedOut("feature/x"),   // rev-parse --abbrev-ref HEAD (OFF branch — gate fails)
@@ -147,6 +149,7 @@ func TestRelease_AnyBranch_DoesNotWeakenCleanTreeGate(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(dirtyStatus),   // status --porcelain (DIRTY — clean-tree gate fails)
 	)
@@ -172,6 +175,7 @@ func TestRelease_AnyBranch_DoesNotWeakenTagFreeGate(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain (clean)
 		// on-branch gate skipped (--any-branch)
@@ -199,6 +203,7 @@ func TestRelease_AnyBranch_DoesNotWeakenRemoteSyncGate(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain (clean)
 		// on-branch gate skipped (--any-branch)

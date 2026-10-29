@@ -22,6 +22,7 @@ func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, version
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -176,6 +177,7 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),              // tag --list (no tags)
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain (clean)
 		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)

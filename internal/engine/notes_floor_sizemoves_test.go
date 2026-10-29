@@ -109,10 +109,10 @@ func TestRelease_NotesFloorSizeMoves_LeanCommandMovePointsAtTheREADMEWithoutClau
 	_ = engine.Release(t.Context(), deps, priorTagNormalAIOptions())
 
 	moves := nextMovesEvents(rec)
-	if len(moves) != 1 || !slices.Contains(moves[0].Moves, leanCommandMove) {
+	if len(moves) != 1 || !slices.Contains(moveTexts(moves[0].Moves), leanCommandMove) {
 		t.Fatalf("NextMoves = %+v, want the lean-command move", moves)
 	}
-	for _, move := range moves[0].Moves {
+	for _, move := range moveTexts(moves[0].Moves) {
 		for _, flag := range []string{"--safe-mode", "--tools", "--strict-mcp-config", "--no-session-persistence", "--system-prompt", "--model"} {
 			if strings.Contains(move, flag) {
 				t.Errorf("move %q names the claude flag %s", move, flag)

@@ -97,9 +97,9 @@ type MadeState struct {
 //     keeps its content and staged state;
 //   - re-commits the exclusion answers on the starting commit when made.keptAnswers
 //     holds their commit and the reset succeeded;
-//   - reports each undone item and the kept answers commit via the Presenter's
-//     Unwound(Unwind{Summary}), the engine authoring the COMPLETE summary including
-//     its "; repo clean" tail.
+//   - reports each undone item, the kept answers commit and where the repo ended up
+//     via the Presenter's Unwound, the engine authoring every part, and tells the
+//     run's close it unwound, so the run closes back at its start station.
 //
 // With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
 // Unwound and issues NO git command. A reverted write alone emits no Unwound either.
@@ -129,7 +129,9 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK, restore)
 
 	if tagDeleted || commitsReset {
-		deps.Presenter.Unwound(unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: tagOK && editOK && resetOK && keptOK}))
+		clean := tagOK && editOK && resetOK && keptOK
+		deps.Presenter.Unwound(unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: clean}))
+		deps.run.Unwound(clean)
 	}
 	return abort(reason)
 }
@@ -329,53 +331,45 @@ type unwindOutcome struct {
 	clean       bool
 }
 
-// unwindEvent builds the Unwound payload whose engine-authored Summary names each
-// undone item and the kept answers commit. Only a clean outcome carries the
-// "; repo clean" tail, so the narration never calls the repo clean after a failed step.
+// unwindEvent builds the Unwound payload: what the unwind ATTEMPTED to undo, the kept
+// answers commit when it was re-committed, and where it left the repo. Only a clean
+// outcome reads "repo clean", so the narration never calls the repo clean after a
+// failed step. Each part is ASCII, so the plain presenter's joined line stays
+// byte-pure, and none leads with a "Reverted:"-style prefix — the presenter prefixes
+// the line with "unwound", so a prefix here would double-label.
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
-	return presenter.Unwind{Summary: surgicalSummary(tag, made, outcome)}
+	event := presenter.Unwind{Undone: undone(tag, made), Repo: repoState(outcome.clean)}
+	if outcome.answersKept {
+		event.Kept = "kept the answers commit on the starting commit"
+	}
+	return event
 }
 
-// surgicalSummary authors the engine-owned Unwound Summary describing what the unwind
-// ATTEMPTED to undo — the count of commits reset and the deleted tag — then the kept
-// answers commit when it was re-committed, and its trailing status tail. When every
-// recovery mutation succeeded the tail is "; repo clean"; when one FAILED the tail
-// becomes "; manual cleanup required" so the summary never falsely claims the repo is
-// clean. It is ASCII and semicolon-joined (matching the
-// existing "…; repo clean" style) so the plain presenter stays byte-pure; the presenter
-// renders it VERBATIM and synthesises no part of it. It never leads with a
-// "Reverted:"-style prefix — the presenter prefixes the line with "unwound", so a prefix
-// here would double-label.
-//
+// undone names what the unwind undid: the count of commits reset and the deleted tag.
 // It is only ever called when something was undone (a commit reset and/or a tag
 // deleted), so the zero/zero case is unreachable here; the operation no-ops before
 // reaching it.
-func surgicalSummary(tag string, made MadeState, outcome unwindOutcome) string {
-	tail := summaryTail(outcome.clean)
-	if outcome.answersKept {
-		tail = "; kept the answers commit on the starting commit" + tail
-	}
+func undone(tag string, made MadeState) string {
 	reset := made.Commits > 0
 	deleted := made.TagCreated
 	switch {
 	case reset && deleted:
-		return fmt.Sprintf("reset %s and deleted tag %s%s", commitsPhrase(made.Commits), tag, tail)
+		return fmt.Sprintf("reset %s and deleted tag %s", commitsPhrase(made.Commits), tag)
 	case reset:
-		return "reset " + commitsPhrase(made.Commits) + tail
+		return "reset " + commitsPhrase(made.Commits)
 	default:
-		return "deleted tag " + tag + tail
+		return "deleted tag " + tag
 	}
 }
 
-// summaryTail selects the Unwound summary's trailing status: the "; repo clean"
-// confirmation when all recovery succeeded, or the "; manual cleanup required" notice
-// when a recovery step failed (the failure was already warned with the exact manual
-// step).
-func summaryTail(clean bool) string {
+// repoState is where the unwind left the repo: "repo clean" when all recovery
+// succeeded, or "manual cleanup required" when a recovery step failed (the failure
+// was already warned with the exact manual step).
+func repoState(clean bool) string {
 	if clean {
-		return "; repo clean"
+		return "repo clean"
 	}
-	return "; manual cleanup required"
+	return "manual cleanup required"
 }
 
 // commitsPhrase renders the reset-commit count with correct singular/plural grammar:

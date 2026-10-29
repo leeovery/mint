@@ -83,6 +83,7 @@ func TestRun_NoAI_PushArmed_EmptyEditorSave_NoPushNoCommit(t *testing.T) {
 			// Only the preflight read + editor resolution are scripted; staging, commit, and
 			// push must never be reached on an empty save.
 			f.SeedSequence("git",
+				scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 				runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
 				runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 			)
@@ -117,6 +118,7 @@ func TestRun_NoAI_PushArmed_AbortedEditor_NoPushNoCommit(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 	)
@@ -150,6 +152,7 @@ func TestRun_NoAI_PushArmed_AddAll_EmptyEditorSave_NoPushNoCommit(t *testing.T) 
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --name-only (preflight tracked, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 	)
@@ -249,11 +252,13 @@ func TestRun_DashApy_RunsUnattendedEndToEnd(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{} // unscripted Prompt → gate Default (ChoiceYes), modelling the -y skip
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff HEAD --name-only (preflight tracked, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff HEAD -- . (read-only -A tracked source)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                          // git ls-files --others (no untracked files for the -A source)
 		runner.ScriptedCall{}, // git add -A (deferred staging on accept)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 		runner.ScriptedCall{}, // git push
 	)
 	deps := newCommitDeps(rec, f, scriptedTransport(message), t.TempDir())

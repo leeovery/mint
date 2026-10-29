@@ -52,6 +52,10 @@ func (run *releaseSeamRun) release(t *testing.T, stdinInteractive bool, args ...
 	return release(t.Context(), run.rec, run.f, opts, stdinInteractive, noteCache, notescache.NewChunkNotes(run.chunkNotesBase))
 }
 
+// startHead is what the start station's read reports: the sha HEAD stands on, then
+// its branch.
+const startHead = "4f9c2e1a0b7d3c5e6f8091a2b3c4d5e6f7a8b9c0\nmain\n"
+
 // seedReadGates scripts git up to the pre-gate HEAD capture of a release from v1.2.3
 // on main, with release_branch unset so the branch is read from origin/HEAD.
 func (run *releaseSeamRun) seedReadGates() {
@@ -59,6 +63,7 @@ func (run *releaseSeamRun) seedReadGates() {
 		gitOut(run.root),      // rev-parse --show-toplevel
 		gitOut("origin/main"), // symbolic-ref --short refs/remotes/origin/HEAD
 		gitOut("v1.2.3\n"),    // tag --list
+		gitOut(startHead),     // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		gitOut(""),            // fetch --tags
 		gitOut(""),            // status --porcelain
 		gitOut("main"),        // rev-parse --abbrev-ref HEAD
@@ -220,7 +225,7 @@ func TestRelease_NotesFailureWithStdinNotATerminal_StopsWithTheNextMoves(t *test
 		t.Errorf("a non-TTY run was offered the floor's choice: %+v", gates)
 	}
 	moves := nextMoves(run.rec)
-	if len(moves) != 1 || !slices.Contains(moves[0].Moves, releaseSeamFallbackMove) {
+	if len(moves) != 1 || !slices.Contains(moves[0].Moves, presenter.NextMove{Lead: releaseSeamFallbackMove}) {
 		t.Errorf("NextMoves = %+v, want one carrying %q", moves, releaseSeamFallbackMove)
 	}
 }

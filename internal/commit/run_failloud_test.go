@@ -64,6 +64,7 @@ func assertFailLoudNoMutation(t *testing.T, rec *presentertest.RecordingPresente
 func seedPreflightOnly() *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 	)
 	return f
@@ -75,6 +76,7 @@ func seedPreflightOnly() *runner.FakeRunner {
 func seedAIPreflightOnly() *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached -- . (L1)
 	)
@@ -271,6 +273,7 @@ func TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud(t *testing.T) {
 			seed: func() *runner.FakeRunner {
 				f := runner.NewFakeRunner()
 				f.SeedSequence("git",
+					scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 					runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                              // preflight (non-empty)
 					runner.ScriptedCall{Result: runner.Result{Stderr: "terminal is dumb", ExitCode: 128}, Err: errExitOne}, // git var GIT_EDITOR fails → ErrNoEditor
 				)
@@ -286,6 +289,7 @@ func TestRun_FallbackOnTTY_NoLaunchableEditor_FailsLoud(t *testing.T) {
 			seed: func() *runner.FakeRunner {
 				f := runner.NewFakeRunner()
 				f.SeedSequence("git",
+					scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 					runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},            // preflight (non-empty)
 					runner.ScriptedCall{Result: runner.Result{Stdout: "ghost-editor\n"}}, // git var GIT_EDITOR resolves
 				)
@@ -345,6 +349,7 @@ func TestRun_FallbackOnTTY_AbortedEditor_StaysTrueNoOp(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // preflight (non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR resolves
 	)

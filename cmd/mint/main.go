@@ -19,6 +19,7 @@ import (
 
 	"time"
 
+	"mint/internal/buildinfo"
 	"mint/internal/commit"
 	"mint/internal/config"
 	"mint/internal/engine"
@@ -193,6 +194,8 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 		ChunkNotes:       chunkNotes,
 		Yes:              req.Yes,
 		StdinInteractive: req.StdinInteractive,
+		MintVersion:      buildinfo.Stamped(),
+		Home:             homeDir(),
 	}
 
 	// The --all batch backfill (every version, oldest → newest) and the single-version
@@ -326,6 +329,8 @@ func release(ctx context.Context, p presenter.Presenter, r runner.CommandRunner,
 		ChunkNotes:       chunkNotes,
 		Yes:              opts.Yes,
 		StdinInteractive: stdinInteractive,
+		MintVersion:      buildinfo.Stamped(),
+		Home:             homeDir(),
 	}
 
 	if err := engine.Release(ctx, deps, opts.ReleaseOptions()); err != nil {
@@ -384,7 +389,9 @@ func runCommit(ctx context.Context, rest []string) int {
 		// Thread the -p/--push armed value (flag-only; no config default). Phase 5's later
 		// tasks consume it to push after a successful commit; disarmed leaves the path
 		// push-free.
-		Push: opts.Push,
+		Push:        opts.Push,
+		MintVersion: buildinfo.Stamped(),
+		Home:        homeDir(),
 	}
 
 	if err := commit.Run(ctx, deps); err != nil {
@@ -473,6 +480,16 @@ func newNoteCache() engine.NoteCache {
 		return nil
 	}
 	return notescache.NewStore(filepath.Join(dir, "mint", "cache"), time.Now)
+}
+
+// homeDir is the user's home directory a run's header shortens the repo root under,
+// or empty, shortening nothing, when it cannot be resolved.
+func homeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 // exitCode resolves the process exit code for a non-nil Release error: an engine

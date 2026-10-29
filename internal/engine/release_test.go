@@ -28,6 +28,17 @@ func ScriptedOut(stdout string) runner.ScriptedCall {
 	return runner.ScriptedCall{Result: runner.Result{Stdout: stdout}}
 }
 
+// ScriptedHead is the start station's read, `git rev-parse HEAD --abbrev-ref HEAD`,
+// which a release makes once its version is resolved and before RunStarted: the
+// starting commit's sha and then the branch it stands on.
+func ScriptedHead() runner.ScriptedCall {
+	return ScriptedOut(startHeadSHA + "\nmain\n")
+}
+
+// startHeadSHA is the full sha ScriptedHead reports; the start station shows its
+// first seven characters.
+const startHeadSHA = "4f9c2e1a0b7d3c5e6f8091a2b3c4d5e6f7a8b9c0"
+
 // ScriptedNonZero is a clean ran-and-exited-non-zero call (e.g. the tag-free
 // local probe when the tag is absent): a populated Result with exit 1 and a
 // non-nil error, matching the real runner's contract.
@@ -51,6 +62,7 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -137,6 +149,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git rev-parse --show-toplevel",
 		"git symbolic-ref --short refs/remotes/origin/HEAD",
 		"git tag --list",
+		"git rev-parse HEAD --abbrev-ref HEAD",
 		"git fetch --tags",
 		"git status --porcelain",
 		"git rev-parse --abbrev-ref HEAD",
@@ -171,6 +184,7 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		presentertest.KindRunStarted,
 		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
 		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindShowPlan,       // the run's stages, quiet
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
@@ -286,6 +300,7 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain (clean)
 		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
@@ -587,12 +602,8 @@ func TestRelease_GateNo_NoMutation_SurgicalNoOp(t *testing.T) {
 		t.Errorf("gate-n before mutation deleted a tag; no tag was created")
 	}
 	assertNoMutation(t, f)
-	// No RunFinished success line follows the aborted run.
-	for _, k := range rec.Kinds() {
-		if k == presentertest.KindRunFinished {
-			t.Errorf("a RunFinished followed a gate-n abort; an aborted run emits no success line; kinds = %v", rec.Kinds())
-		}
-	}
+	// The aborted run closes declined, with no success line.
+	assertClosesDeclined(t, rec)
 }
 
 // TestRelease_VersionGateNo_AbortsBeforePreflight proves a "no" at the new
@@ -615,6 +626,7 @@ func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(priorTag+"\n"), // tag --list (a prior tag exists)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 	)
 	rec := &presentertest.RecordingPresenter{
 		// The single ChoiceNo declines the version-confirmation gate (the first prompt).
@@ -645,10 +657,8 @@ func TestRelease_VersionGateNo_AbortsBeforePreflight(t *testing.T) {
 		t.Errorf("a bookkeeping commit ran despite a version-gate decline")
 	}
 	assertNoMutation(t, f)
-	// No success line follows the aborted run.
-	if recorded(rec, presentertest.KindRunFinished) {
-		t.Errorf("a RunFinished followed a version-gate decline; an aborted run emits no success line")
-	}
+	// The declined run closes declined, with no success line.
+	assertClosesDeclined(t, rec)
 }
 
 // TestRelease_PushRejected_ResetsCommitAndDeletesTag proves a push REJECTION
@@ -690,7 +700,7 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec)
 }
 
 // TestRelease_GhAuthFails_ResetsCommit proves a post-Record, pre-tag failure (the
@@ -732,7 +742,7 @@ func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec)
 }
 
 // TestRelease_AbortPathMatchesPrePushFailurePath proves the spec invariant that a
@@ -816,6 +826,7 @@ func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag stri
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -849,13 +860,13 @@ func seedHappyGitThroughTag(f *runner.FakeRunner, root, releaseBranch, tag strin
 	)
 }
 
-// unwoundSummary returns the Summary of the first recorded Unwound event, failing
+// unwoundSummary returns the sentence of the first recorded Unwound event, failing
 // the test if none fired.
 func unwoundSummary(t *testing.T, rec *presentertest.RecordingPresenter) string {
 	t.Helper()
 	for _, ev := range rec.Events {
 		if ev.Kind == presentertest.KindUnwound {
-			return ev.Unwound.Summary
+			return ev.Unwound.Text()
 		}
 	}
 	t.Fatalf("no Unwound event recorded; kinds = %v", rec.Kinds())
@@ -903,26 +914,52 @@ func assertStageFailedThenUnwound(t *testing.T, rec *presentertest.RecordingPres
 	}
 }
 
-// assertNoFinishAfterUnwound fails the test if any KindRunFinished follows a
-// KindUnwound — an unwound run is terminal and emits no success end-of-run line.
-func assertNoFinishAfterUnwound(t *testing.T, rec *presentertest.RecordingPresenter) {
+// assertClosesUnwound fails the test unless the run's Unwound is followed by its one
+// closing RunFinished, the last event, ending unwound — an unwound run closes as
+// unwound, never on a success outcome.
+func assertClosesUnwound(t *testing.T, rec *presentertest.RecordingPresenter) {
 	t.Helper()
-	kinds := rec.Kinds()
-	unwoundAt := -1
-	for i, k := range kinds {
-		if k == presentertest.KindUnwound {
-			unwoundAt = i
-			break
-		}
-	}
+	unwoundAt := indexOfKind(rec, presentertest.KindUnwound)
 	if unwoundAt == -1 {
-		t.Fatalf("no Unwound event recorded; kinds = %v", kinds)
+		t.Fatalf("no Unwound event recorded; kinds = %v", rec.Kinds())
 	}
-	for _, k := range kinds[unwoundAt+1:] {
-		if k == presentertest.KindRunFinished {
-			t.Errorf("a RunFinished followed the Unwound; an unwound run emits no success line; kinds = %v", kinds)
-		}
+	if fin := closingEvent(t, rec); fin.Outcome != presenter.OutcomeUnwound {
+		t.Errorf("closing outcome = %v, want OutcomeUnwound; kinds = %v", fin.Outcome, rec.Kinds())
 	}
+}
+
+// assertClosesDeclined fails the test unless the run's one closing RunFinished, the
+// last event, ends declined back at the start station with nothing changed.
+func assertClosesDeclined(t *testing.T, rec *presentertest.RecordingPresenter) {
+	t.Helper()
+	fin := closingEvent(t, rec)
+	if fin.Outcome != presenter.OutcomeDeclined {
+		t.Errorf("closing outcome = %v, want OutcomeDeclined; kinds = %v", fin.Outcome, rec.Kinds())
+	}
+	if want := (presenter.Station{Name: startStation(t, rec).Name, Detail: "nothing changed"}); fin.End != want {
+		t.Errorf("end station = %+v, want %+v (back at the start)", fin.End, want)
+	}
+}
+
+// closingEvent returns the run's one RunFinished, failing the test unless exactly
+// one was recorded and it is the run's last event.
+func closingEvent(t *testing.T, rec *presentertest.RecordingPresenter) presenter.RunResult {
+	t.Helper()
+	fin := finishEvent(t, rec)
+	if last := rec.Events[len(rec.Events)-1]; last.Kind != presentertest.KindRunFinished {
+		t.Errorf("the run's last event = %v, want its closing RunFinished; kinds = %v", last.Kind, rec.Kinds())
+	}
+	return fin
+}
+
+// startStation returns the start station the run's RunStarted carried.
+func startStation(t *testing.T, rec *presentertest.RecordingPresenter) presenter.Station {
+	t.Helper()
+	n := indexOfKind(rec, presentertest.KindRunStarted)
+	if n == -1 {
+		t.Fatalf("no RunStarted recorded; kinds = %v", rec.Kinds())
+	}
+	return rec.Events[n].RunStarted.Start
 }
 
 // fakeEditor is a scripted Editor seam: it captures the `current` body it was
@@ -1335,6 +1372,7 @@ func TestRelease_FailingGate_AbortsBeforeMutation(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(" M file.go"),  // status --porcelain (DIRTY — gate fails)
 	)
@@ -1437,6 +1475,7 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain
 		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
@@ -1672,6 +1711,7 @@ func TestRelease_ChangelogDisabled_SkipsChangelogTagStillCarriesBody(t *testing.
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),              // tag --list
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain
 		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD
@@ -1758,6 +1798,7 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain
 		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD

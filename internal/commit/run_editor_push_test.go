@@ -38,9 +38,11 @@ func editorGitIndexOf(er *editorRunner, verb string) int {
 func seedNoAIDefaultThenPush(editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 		runner.ScriptedCall{}, // git push
 	)
 	return f
@@ -87,10 +89,12 @@ func TestRun_NoAI_PushArmed_AddAll_EndToEnd(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --name-only (preflight tracked, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -A (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 		runner.ScriptedCall{}, // git push
 	)
 	er := &editorRunner{fake: f, saved: saved}
@@ -188,10 +192,12 @@ func TestRun_AIFailure_PushArmed_EditorSaveCommitsThenPushes(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached -- . (L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},                    // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 		runner.ScriptedCall{}, // git push
 	)
 	er := &editorRunner{fake: f, saved: saved}
@@ -230,10 +236,12 @@ func TestRun_Oversized_PushArmed_EditorSaveCommitsThenPushes(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached -- . (L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},                    // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 		runner.ScriptedCall{}, // git push
 	)
 	er := &editorRunner{fake: f, saved: saved}

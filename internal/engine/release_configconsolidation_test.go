@@ -183,7 +183,8 @@ func TestRelease_BadConfig_AbortsBeforePipelineWork(t *testing.T) {
 			// Explicitly assert the version, preflight, and notes stages were NOT reached.
 			for _, forbidden := range []string{
 				"git symbolic-ref --short refs/remotes/origin/HEAD", // release-branch resolution
-				"git tag --list",   // version determination
+				"git tag --list", // version determination
+				"git rev-parse HEAD --abbrev-ref HEAD",
 				"git fetch --tags", // preflight
 			} {
 				if containsCommand(gitCmds, forbidden) {

@@ -28,6 +28,7 @@ func seedVersionReadGates(f *runner.FakeRunner, root, releaseBranch, tagList str
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(tagList),                 // tag --list
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 	)
 }
 
@@ -152,6 +153,7 @@ func TestRelease_SetVersion_GreaterThanLatest_BecomesNext(t *testing.T) {
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut("v1.2.3\n"),      // tag --list (a prior tag exists)
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain (clean)
 		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
@@ -200,6 +202,7 @@ func TestRelease_SetVersion_FirstRelease_Accepted(t *testing.T) {
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),              // tag --list (no tags)
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain (clean)
 		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
@@ -244,6 +247,7 @@ func TestRelease_SetVersion_InjectsMintBumpExplicit(t *testing.T) {
 		ScriptedOut(root),            // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
 		ScriptedOut("v1.2.3\n"),      // tag --list
+		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),              // fetch --tags
 		ScriptedOut(""),              // status --porcelain (clean)
 		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)

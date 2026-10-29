@@ -37,7 +37,7 @@ func assertCheckFailedWarnedOnce(t *testing.T, rec *presentertest.RecordingPrese
 	if len(warnings) != 1 {
 		t.Fatalf("check-failed warnings = %d, want one; kinds = %v", len(warnings), rec.Kinds())
 	}
-	if want := (presenter.Warning{Label: "notes", Message: checkFailedMessage, Output: output}); warnings[0] != want {
+	if want := (presenter.Warning{Label: "notes", Message: checkFailedMessage, Key: "check", Output: output}); warnings[0] != want {
 		t.Errorf("warning = %+v, want %+v", warnings[0], want)
 	}
 	stage := releaseNotesStage(t, rec)

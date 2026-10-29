@@ -47,6 +47,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 		ScriptedOut(root),             // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),    // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),               // tag --list (no tags)
+		ScriptedHead(),                // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),               // fetch --tags
 		ScriptedOut(""),               // status --porcelain (preflight clean-tree gate)
 		ScriptedOut("main"),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -85,7 +86,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec)
 }
 
 // TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete proves a pre-push
@@ -123,7 +124,7 @@ func TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete(t *testing.
 	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec)
 }
 
 // TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag proves a push REJECTION
@@ -160,7 +161,7 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec)
 }
 
 // TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary proves the spec
@@ -180,6 +181,7 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 		ScriptedOut(gateRoot),         // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),    // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),               // tag --list
+		ScriptedHead(),                // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),               // fetch --tags
 		ScriptedOut(""),               // status --porcelain (clean)
 		ScriptedOut("main"),           // rev-parse --abbrev-ref HEAD
@@ -289,7 +291,7 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 		t.Errorf("Unwound.Summary = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec)
 }
 
 // TestRelease_PublishFailsAfterPush_NeverUnwinds_Surgical proves the post-PONR

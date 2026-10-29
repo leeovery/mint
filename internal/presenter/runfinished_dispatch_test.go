@@ -9,13 +9,12 @@ import (
 	"mint/internal/presenter"
 )
 
-// This file is the focused end-of-run DISPATCH suite for task 4-4: it proves
-// RunFinished is an EXHAUSTIVE, suppression-first verb dispatch across all four
-// shapes (release, regenerate, init, version) in BOTH render modes. The
-// verb-specific CONTENT (release footer form, regenerate summary form) is locked
-// by the existing plain_test/pretty_test cases; here the focus is the dispatch
-// table itself — the no-footer arms, the leaf-from-payload for RELEASE, and that
-// suppression precedes shaping for EVERY shape.
+// This file is the focused end-of-run DISPATCH suite: it proves RunFinished is an
+// EXHAUSTIVE, suppression-first dispatch on the run's Outcome in BOTH render modes.
+// The outcome-specific CONTENT (release footer form, regenerate summary form) is
+// locked by the existing plain_test/pretty_test cases; here the focus is the
+// dispatch table itself — the no-footer arms, the leaf-from-payload for RELEASE,
+// and that suppression precedes shaping for EVERY outcome.
 
 // TestRunFinishedReleaseFooterRendersWithURL locks the release arm's footer WITH
 // the url in both modes — plain "done: {project} v{X} {url}", pretty
@@ -27,7 +26,7 @@ func TestRunFinishedReleaseFooterRendersWithURL(t *testing.T) {
 		t.Parallel()
 
 		out, _ := drive(func(p *presenter.PlainPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", URL: url})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0", URL: url})
 		})
 
 		want := "done: acme v1.4.0 " + url + "\n"
@@ -40,7 +39,7 @@ func TestRunFinishedReleaseFooterRendersWithURL(t *testing.T) {
 		t.Parallel()
 
 		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", URL: url})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0", URL: url})
 		})
 
 		want := "\n🌿 released acme v1.4.0 · " + url + "\n"
@@ -70,7 +69,7 @@ func TestRunFinishedReleaseFooterLeafComesFromPayload(t *testing.T) {
 			t.Parallel()
 
 			out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-				p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", Leaf: tt.leaf})
+				p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0", Leaf: tt.leaf})
 			})
 
 			if got := out.String(); got != tt.want {
@@ -82,13 +81,13 @@ func TestRunFinishedReleaseFooterLeafComesFromPayload(t *testing.T) {
 
 // TestRunFinishedRegenerateCloseRendersWithoutURL locks the regenerate arm's
 // URL-less close in both modes — no url, no dangling separator. The engine sets
-// Verb=VerbRegenerate and the Summary; the URL field is omitted entirely.
+// Outcome=OutcomeAllRegenerated and the Summary; the URL field is omitted entirely.
 func TestRunFinishedRegenerateCloseRendersWithoutURL(t *testing.T) {
 	t.Run("plain", func(t *testing.T) {
 		t.Parallel()
 
 		out, _ := drive(func(p *presenter.PlainPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRegenerate, Project: "acme", Summary: "v1.4.0"})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeAllRegenerated, Project: "acme", Summary: "v1.4.0"})
 		})
 
 		if got := out.String(); got != "done: acme v1.4.0\n" {
@@ -100,7 +99,7 @@ func TestRunFinishedRegenerateCloseRendersWithoutURL(t *testing.T) {
 		t.Parallel()
 
 		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRegenerate, Project: "acme", Summary: "v1.4.0"})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeAllRegenerated, Project: "acme", Summary: "v1.4.0"})
 		})
 
 		if got := out.String(); got != "\n🌿 regenerated acme v1.4.0\n" {
@@ -120,7 +119,7 @@ func TestRunFinishedCommitCloseRendersVersionless(t *testing.T) {
 		t.Parallel()
 
 		out, _ := drive(func(p *presenter.PlainPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbCommit, Project: "acme"})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeCommitted, Project: "acme"})
 		})
 
 		if got := out.String(); got != "done: acme committed\n" {
@@ -132,7 +131,7 @@ func TestRunFinishedCommitCloseRendersVersionless(t *testing.T) {
 		t.Parallel()
 
 		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbCommit, Project: "acme"})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeCommitted, Project: "acme"})
 		})
 
 		if got := out.String(); got != "\n🌿 committed acme\n" {
@@ -141,69 +140,75 @@ func TestRunFinishedCommitCloseRendersVersionless(t *testing.T) {
 	})
 }
 
-// TestRunFinishedInitRendersNoFooter proves the VerbInit no-footer arm: init has
-// no release-style footer, so RunFinished renders NOTHING for VerbInit in both
-// modes (defensive completeness — in practice the engine never calls RunFinished
-// for init). A URL/Version on the payload must NOT coax a footer out.
-func TestRunFinishedInitRendersNoFooter(t *testing.T) {
-	t.Run("plain", func(t *testing.T) {
-		t.Parallel()
+// TestRunFinishedQuietOutcomesRenderNoFooter proves the no-footer arms: a single
+// regenerated version never had a close line, and a declined, unwound or failed run
+// ends on its own lines, so RunFinished renders NOTHING for those outcomes in both
+// modes. A URL, Version or Summary on the payload must NOT coax a footer out.
+func TestRunFinishedQuietOutcomesRenderNoFooter(t *testing.T) {
+	outcomes := []struct {
+		name    string
+		outcome presenter.Outcome
+	}{
+		{"regenerated", presenter.OutcomeRegenerated},
+		{"declined", presenter.OutcomeDeclined},
+		{"unwound", presenter.OutcomeUnwound},
+		{"failed", presenter.OutcomeFailed},
+	}
 
-		out, _ := drive(func(p *presenter.PlainPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbInit, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+	for _, o := range outcomes {
+		result := presenter.RunResult{Outcome: o.outcome, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0", Summary: "v1.4.0"}
+
+		t.Run("plain/"+o.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, _ := drive(func(p *presenter.PlainPresenter) { p.RunFinished(result) })
+
+			if got := out.String(); got != "" {
+				t.Errorf("plain %s must render NO footer, got %q", o.name, got)
+			}
 		})
 
-		if got := out.String(); got != "" {
-			t.Errorf("plain VerbInit must render NO footer, got %q", got)
-		}
-	})
+		t.Run("pretty/"+o.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("pretty", func(t *testing.T) {
-		t.Parallel()
+			out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) { p.RunFinished(result) })
 
-		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbInit, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+			if got := out.String(); got != "" {
+				t.Errorf("pretty %s must render NO footer, got %q", o.name, got)
+			}
 		})
-
-		if got := out.String(); got != "" {
-			t.Errorf("pretty VerbInit must render NO footer, got %q", got)
-		}
-	})
+	}
 }
 
-// TestRunFinishedVersionRendersNoFooter proves the VerbVersion no-footer arm:
-// version's value line IS its terminal output, so RunFinished renders NOTHING for
-// VerbVersion in both modes (defensive completeness — in practice the engine never
-// calls RunFinished for version).
-func TestRunFinishedVersionRendersNoFooter(t *testing.T) {
+// TestRunFinishedDryRunRendersItsPreviewLine locks the dry run's close in both
+// modes: it names the version and says nothing changed, never "released".
+func TestRunFinishedDryRunRendersItsPreviewLine(t *testing.T) {
+	result := presenter.RunResult{Outcome: presenter.OutcomeDryRun, Project: "acme", Version: "1.4.0"}
+
 	t.Run("plain", func(t *testing.T) {
 		t.Parallel()
 
-		out, _ := drive(func(p *presenter.PlainPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbVersion, Project: "acme", Version: "1.4.0"})
-		})
+		out, _ := drive(func(p *presenter.PlainPresenter) { p.RunFinished(result) })
 
-		if got := out.String(); got != "" {
-			t.Errorf("plain VerbVersion must render NO footer, got %q", got)
+		if got, want := out.String(), "dry run: acme v1.4.0 — no changes made\n"; got != want {
+			t.Errorf("plain dry-run close = %q, want %q", got, want)
 		}
 	})
 
 	t.Run("pretty", func(t *testing.T) {
 		t.Parallel()
 
-		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbVersion, Project: "acme", Version: "1.4.0"})
-		})
+		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) { p.RunFinished(result) })
 
-		if got := out.String(); got != "" {
-			t.Errorf("pretty VerbVersion must render NO footer, got %q", got)
+		if got, want := out.String(), "\n🌿 dry run · acme v1.4.0 — no changes made\n"; got != want {
+			t.Errorf("pretty dry-run close = %q, want %q", got, want)
 		}
 	})
 }
 
 // TestRunFinishedFailureSuppressesReleaseFooterDespiteURL proves suppression
 // PRECEDES shaping for the RELEASE arm: a prior StageFailed sets terminalFailure,
-// so RunFinished{Verb:VerbRelease} with a URL emits NO footer despite carrying the
+// so RunFinished{Outcome:OutcomeReleased} with a URL emits NO footer despite carrying the
 // URL — the success line is success-only.
 func TestRunFinishedFailureSuppressesReleaseFooterDespiteURL(t *testing.T) {
 	t.Run("plain", func(t *testing.T) {
@@ -211,7 +216,7 @@ func TestRunFinishedFailureSuppressesReleaseFooterDespiteURL(t *testing.T) {
 
 		out, _ := drive(func(p *presenter.PlainPresenter) {
 			p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected"})
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 		})
 
 		if strings.Contains(out.String(), "done:") {
@@ -224,7 +229,7 @@ func TestRunFinishedFailureSuppressesReleaseFooterDespiteURL(t *testing.T) {
 
 		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 			p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected"})
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 		})
 
 		if strings.Contains(out.String(), "released") {
@@ -235,7 +240,7 @@ func TestRunFinishedFailureSuppressesReleaseFooterDespiteURL(t *testing.T) {
 
 // TestRunFinishedAbortSuppressesRegenerateClose proves suppression precedes
 // shaping for the REGENERATE arm on the ABORT path: an Unwound with no prior
-// StageFailed (gate-n abort) sets terminalFailure, so RunFinished{Verb:VerbRegenerate}
+// StageFailed (gate-n abort) sets terminalFailure, so RunFinished{Outcome:OutcomeAllRegenerated}
 // emits NO closing summary.
 func TestRunFinishedAbortSuppressesRegenerateClose(t *testing.T) {
 	const summaryPlain = "removed tag v1.4.0, reset 2 commits; repo clean"
@@ -245,8 +250,8 @@ func TestRunFinishedAbortSuppressesRegenerateClose(t *testing.T) {
 		t.Parallel()
 
 		out, _ := drive(func(p *presenter.PlainPresenter) {
-			p.Unwound(presenter.Unwind{Summary: summaryPlain})
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRegenerate, Project: "acme", Summary: "v1.4.0"})
+			p.Unwound(presenter.Unwind{Undone: summaryPlain})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeAllRegenerated, Project: "acme", Summary: "v1.4.0"})
 		})
 
 		if strings.Contains(out.String(), "done:") {
@@ -258,8 +263,8 @@ func TestRunFinishedAbortSuppressesRegenerateClose(t *testing.T) {
 		t.Parallel()
 
 		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.Unwound(presenter.Unwind{Summary: summaryPretty})
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRegenerate, Project: "acme", Summary: "v1.4.0"})
+			p.Unwound(presenter.Unwind{Undone: summaryPretty})
+			p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeAllRegenerated, Project: "acme", Summary: "v1.4.0"})
 		})
 
 		if strings.Contains(out.String(), "regenerated") {
@@ -268,85 +273,113 @@ func TestRunFinishedAbortSuppressesRegenerateClose(t *testing.T) {
 	})
 }
 
-// TestRunFinishedSuppressionPrecedesShapingForEveryVerb locks the load-bearing
-// dispatch ordering: suppression is checked FIRST, BEFORE the verb switch, so a
-// terminal-failure run renders NOTHING for EVERY shape — including the no-footer
-// init/version arms (trivially nothing, but the point is the suppression branch is
-// reached first for all shapes, not the verb arm). This pins "suppression precedes
-// shaping" across the whole table.
-func TestRunFinishedSuppressionPrecedesShapingForEveryVerb(t *testing.T) {
-	verbs := []struct {
-		name string
-		verb presenter.RunVerb
+// TestRunFinishedSuppressionPrecedesShapingForEveryOutcome locks the load-bearing
+// dispatch ordering: suppression is checked FIRST, BEFORE the outcome switch, so a
+// terminal-failure run renders NOTHING for EVERY outcome — including the ones that
+// carry a footer on their own.
+func TestRunFinishedSuppressionPrecedesShapingForEveryOutcome(t *testing.T) {
+	outcomes := []struct {
+		name    string
+		outcome presenter.Outcome
 	}{
-		{"release", presenter.VerbRelease},
-		{"regenerate", presenter.VerbRegenerate},
-		{"init", presenter.VerbInit},
-		{"version", presenter.VerbVersion},
-		{"commit", presenter.VerbCommit},
+		{"released", presenter.OutcomeReleased},
+		{"released with warning", presenter.OutcomeReleasedWithWarning},
+		{"dry run", presenter.OutcomeDryRun},
+		{"committed", presenter.OutcomeCommitted},
+		{"committed with warning", presenter.OutcomeCommittedWithWarning},
+		{"regenerated", presenter.OutcomeRegenerated},
+		{"all regenerated", presenter.OutcomeAllRegenerated},
+		{"declined", presenter.OutcomeDeclined},
+		{"unwound", presenter.OutcomeUnwound},
+		{"failed", presenter.OutcomeFailed},
 	}
 
-	for _, v := range verbs {
-		t.Run("plain/"+v.name, func(t *testing.T) {
+	for _, o := range outcomes {
+		result := presenter.RunResult{Outcome: o.outcome, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0", Summary: "v1.4.0"}
+
+		t.Run("plain/"+o.name, func(t *testing.T) {
 			t.Parallel()
 
 			out, _ := drive(func(p *presenter.PlainPresenter) {
 				p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected"})
-				p.RunFinished(presenter.RunResult{Verb: v.verb, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0", Summary: "v1.4.0"})
+				p.RunFinished(result)
 			})
 
-			if strings.Contains(out.String(), "done:") {
-				t.Errorf("plain %s: terminal-failure run must emit no footer for any shape, got:\n%q", v.name, out.String())
+			if got := out.String(); strings.Contains(got, "done:") || strings.Contains(got, "dry run:") {
+				t.Errorf("plain %s: terminal-failure run must emit no footer for any outcome, got:\n%q", o.name, got)
 			}
 		})
 
-		t.Run("pretty/"+v.name, func(t *testing.T) {
+		t.Run("pretty/"+o.name, func(t *testing.T) {
 			t.Parallel()
 
 			out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 				p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected"})
-				p.RunFinished(presenter.RunResult{Verb: v.verb, Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0", Summary: "v1.4.0"})
+				p.RunFinished(result)
 			})
 
 			got := out.String()
-			if strings.Contains(got, "released") || strings.Contains(got, "regenerated") || strings.Contains(got, "committed") {
-				t.Errorf("pretty %s: terminal-failure run must emit no footer for any shape, got:\n%q", v.name, got)
+			for _, footer := range []string{"released", "regenerated", "committed", "dry run"} {
+				if strings.Contains(got, footer) {
+					t.Errorf("pretty %s: terminal-failure run must emit no footer for any outcome, got:\n%q", o.name, got)
+				}
 			}
 		})
 	}
 }
 
-// TestRunFinishedWarnOnlyStillEmitsVerbFooter proves Warn ALONE does not suppress
-// the footer (Warn does not set terminalFailure): a Warn then a successful release
-// RunFinished still emits the verb-shaped footer. This reuses the 2-6/2-8
-// semantics — only StageFailed/Unwound set terminalFailure.
-func TestRunFinishedWarnOnlyStillEmitsVerbFooter(t *testing.T) {
+// TestRunFinishedWithWarningStillEmitsTheFooter proves a warning past the point of
+// no return does not suppress the footer (Warn does not set terminalFailure): the
+// release and the commit both landed, so a Warn then a with-warning RunFinished
+// still renders the success line, exactly as for a clean run.
+func TestRunFinishedWithWarningStillEmitsTheFooter(t *testing.T) {
 	const url = "https://example/v1.4.0"
 
-	t.Run("plain", func(t *testing.T) {
-		t.Parallel()
+	cases := []struct {
+		name        string
+		result      presenter.RunResult
+		plain       string
+		prettyMatch string
+	}{
+		{
+			name:        "release",
+			result:      presenter.RunResult{Outcome: presenter.OutcomeReleasedWithWarning, Project: "acme", Version: "1.4.0", URL: url},
+			plain:       "done: acme v1.4.0 " + url + "\n",
+			prettyMatch: "released acme v1.4.0 · " + url,
+		},
+		{
+			name:        "commit",
+			result:      presenter.RunResult{Outcome: presenter.OutcomeCommittedWithWarning, Project: "acme"},
+			plain:       "done: acme committed\n",
+			prettyMatch: "committed acme",
+		},
+	}
 
-		out, _ := drive(func(p *presenter.PlainPresenter) {
-			p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", URL: url})
+	for _, c := range cases {
+		t.Run("plain/"+c.name, func(t *testing.T) {
+			t.Parallel()
+
+			out, _ := drive(func(p *presenter.PlainPresenter) {
+				p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
+				p.RunFinished(c.result)
+			})
+
+			if !strings.HasSuffix(out.String(), c.plain) {
+				t.Errorf("plain footer missing after a warn-only run:\n%q", out.String())
+			}
 		})
 
-		want := "done: acme v1.4.0 " + url + "\n"
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("plain release footer missing after a warn-only run:\n%q", out.String())
-		}
-	})
+		t.Run("pretty/"+c.name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("pretty", func(t *testing.T) {
-		t.Parallel()
+			out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
+				p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
+				p.RunFinished(c.result)
+			})
 
-		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
-			p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0", URL: url})
+			if !strings.Contains(out.String(), c.prettyMatch) {
+				t.Errorf("pretty footer missing after a warn-only run:\n%q", out.String())
+			}
 		})
-
-		if !strings.Contains(out.String(), "released acme v1.4.0 · "+url) {
-			t.Errorf("pretty release footer missing after a warn-only run:\n%q", out.String())
-		}
-	})
+	}
 }
