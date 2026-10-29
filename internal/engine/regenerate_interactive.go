@@ -308,6 +308,7 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, resolve PublisherResol
 		Body:        body,
 		Regenerator: produceRegenerator(req.ProduceRegenerator, source, chunkNotes.regenRun(regens)),
 		KeepOut:     keepOut,
+		NotesFile:   req.NotesFile,
 		LowerCap:    stage.lowerCap(),
 		regens:      regens,
 		chunkNotes:  chunkNotes,
@@ -534,16 +535,12 @@ func targetLabel(target RegenerateTarget, release string) string {
 	}
 }
 
-// regenerateMoveCommand is mint release regenerate of tag from source to target, as a
-// next move names it: the run's own source and target, the source left out where it
-// is the default, fresh notes. -y and --plain are how the run was attended and
+// regenerateMoveCommand is mint release regenerate of tag from source, fresh, tag or
+// release, to target, as a next move names it: both given, as a regenerate with
+// either left out asks for it. -y and --plain are how the run was attended and
 // printed, which the reader pasting the move decides afresh.
 func regenerateMoveCommand(tag string, source RegenerateSource, target RegenerateTarget) string {
-	command := "mint release regenerate " + tag
-	if source == RegenerateSourceTag || source == RegenerateSourceRelease {
-		command += " --source " + sourceLabel(source)
-	}
-	return command + " --target " + string(targetChoice(target))
+	return "mint release regenerate " + tag + " --source " + sourceLabel(source) + " --target " + string(targetChoice(target))
 }
 
 // targetChoice is the target prompt's key, and --target's value, for target.

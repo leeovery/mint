@@ -136,6 +136,9 @@ type RegenerateWriteRequest struct {
 	// it nil. A wired deps.Regenerator OVERRIDES it (the test-injection seam), mirroring
 	// the forward path's precedence.
 	Regenerator Regenerator
+	// NotesFile is the --notes-file path as given, empty without the flag: a supplied
+	// body's heal names it.
+	NotesFile string
 	// KeepOut is the path the changelog commit leaves out, any staged edits to it
 	// still staged afterwards.
 	KeepOut git.Exclusion
@@ -218,7 +221,7 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 			if pushed {
 				// Post-PONR: the changelog is already public, so never unwind — warn and
 				// point at the heal path, exactly as the forward path's post-push failure.
-				warnRegenerateProviderFailed(p, err, releaseName(publisher), regenerateMoveCommand(req.Tag, req.Source, RegenerateTargetRelease))
+				warnRegenerateProviderFailed(p, err, healMove(deps, root, req, body, releaseName(publisher)))
 				return nil
 			}
 			// Release-only: nothing was pushed, so this is a plain pre-PONR failure. The
@@ -510,13 +513,47 @@ func warnRegenerateProviderSkipped(p presenter.Presenter, key string) {
 	})
 }
 
+// healMove is the way to write the release again, named release, after its write
+// failed past the changelog's push, from the notes body the pushed changelog holds:
+// the run's own source, fresh, tag or release, read again; the notes file a supplied
+// body came from; or, for a body taken at the notes floor, which nothing can read
+// again, that body saved where chunk notes go, or, where it can't be saved, a file
+// the reader writes it to.
+func healMove(deps ReleaseDeps, root string, req RegenerateWriteRequest, body, release string) presenter.NextMove {
+	lead := "Re-heal the " + release + ":"
+	again := regenerateRerun(req.Tag, RegenerateTargetRelease)
+	switch req.Source {
+	case regenerateSourceSupplied:
+		return presenter.NextMove{Lead: lead, Command: notesFileCommand(again.command, req.NotesFile)}
+	case regenerateSourceFloor:
+		if saved := saveHealNotes(deps, root, req.Tag, body); saved != "" {
+			return presenter.NextMove{Lead: "Re-heal the " + release + " from its notes, saved to " + saved + ":", Command: notesFileCommand(again.command, saved)}
+		}
+		return presenter.NextMove{Lead: "Write the notes " + record.ChangelogFileName + " now holds to a file, then re-heal the " + release + " with it:", Command: again.command + " --notes-file <file>"}
+	}
+	return presenter.NextMove{Lead: lead, Command: regenerateMoveCommand(req.Tag, req.Source, RegenerateTargetRelease)}
+}
+
+// saveHealNotes saves body, tag's notes, where chunk notes go, returning the path, or
+// "" where there is nowhere to save it or the save failed.
+func saveHealNotes(deps ReleaseDeps, root, tag, body string) string {
+	if deps.ChunkNotes == nil {
+		return ""
+	}
+	saved, err := deps.ChunkNotes.Save(root, tag, body)
+	if err != nil {
+		return ""
+	}
+	return saved
+}
+
 // warnRegenerateProviderFailed emits the post-PONR warn-only notice when the provider
 // create/update fails AFTER the changelog has already been pushed: the changelog is
 // public, so the run must NOT unwind — it warns and points at the `--target release`
 // re-heal, mirroring the forward path's post-push warn-only handling. It rides the
 // Warn seam (no failure state), so the run finishes successfully. The rail's row says
-// what happened, and heal, the regenerate that writes release again, goes under next.
-func warnRegenerateProviderFailed(p presenter.Presenter, cause error, release, heal string) {
+// what happened, and heal, the way to write the release again, goes under next.
+func warnRegenerateProviderFailed(p presenter.Presenter, cause error, heal presenter.NextMove) {
 	const pushed = "changelog is already pushed"
 	p.Warn(presenter.Warning{
 		Key:     stagePublish,
@@ -525,7 +562,5 @@ func warnRegenerateProviderFailed(p presenter.Presenter, cause error, release, h
 		Row:     pushed,
 		Output:  cause.Error(),
 	})
-	p.NextMoves(presenter.NextMoves{Stage: stagePublish, Quiet: true, Moves: []presenter.NextMove{
-		{Lead: "Re-heal the " + release + ":", Command: heal},
-	}})
+	p.NextMoves(presenter.NextMoves{Stage: stagePublish, Quiet: true, Moves: []presenter.NextMove{heal}})
 }

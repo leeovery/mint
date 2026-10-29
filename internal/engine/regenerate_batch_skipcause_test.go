@@ -144,7 +144,7 @@ func TestRegenerateAll_NotesFailure_SkipsWhateverTheModeOrOnNotesFailure(t *test
 				// floor's moves.
 				want := presenter.NextMoves{Stage: batchV2Tag, Quiet: true, Moves: []presenter.NextMove{{
 					Lead:    batchV2Tag + " kept its old notes. To try it again:",
-					Command: "mint release regenerate " + batchV2Tag + " --target release",
+					Command: "mint release regenerate " + batchV2Tag + " --source fresh --target release",
 				}}}
 				if moves := nextMovesEvents(rec); len(moves) != 1 || !nextMovesEqual(moves[0], want) || !moves[0].Quiet {
 					t.Errorf("the batch printed next moves %+v, want the skip's retry alone, %+v", moves, want)

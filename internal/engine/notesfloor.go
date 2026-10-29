@@ -106,7 +106,7 @@ func releaseRerun(opts ReleaseOptions) rerun {
 // move, which takes the place of the run's source: --notes-file stands in for
 // --source, and is refused beside it.
 func regenerateRerun(tag string, target RegenerateTarget) rerun {
-	return rerun{verb: "regenerate", command: regenerateMoveCommand(tag, RegenerateSourceFresh, target)}
+	return rerun{verb: "regenerate", command: "mint release regenerate " + tag + " --target " + string(targetChoice(target))}
 }
 
 // versionFlags are the flags that pick opts' version, each with its leading space:

@@ -16,4 +16,4 @@
 
  next
    v1.2.0 kept its old notes. To try it again:
-     mint release regenerate v1.2.0 --target both
+     mint release regenerate v1.2.0 --source fresh --target both
