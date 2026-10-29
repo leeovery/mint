@@ -1,0 +1,33 @@
+ [1;38;2;95;215;175mmint[22;39m [2m─[22m release                       [2m~/Code/pigeon · v0.1.2[22m
+
+ [38;2;95;215;175m◇[39m  [1mv1.3.2[22m
+ [38;2;95;215;175m│[39m  [2mmain @ 7c1e0b4[22m
+ [38;2;95;215;175m│[39m
+ [38;2;95;215;175m●[39m  [1mversion[22m
+ [38;2;95;215;175m│[39m  v1.4.0 (minor bump)
+ [38;2;95;215;175m●[39m  [1mpreflight[22m
+ [38;2;95;215;175m│[39m  tree clean · on main · v1.4.0 free · in sync with origin
+ [38;2;95;215;175m●[39m  [1mpre_tag[22m
+ [38;2;95;215;175m│[39m  npm ci && npm run build
+ [38;2;95;215;175m│[39m  [2mcommitted dist/ (3 files) as chore(release): pre-tag [22m
+ [38;2;95;215;175m│[39m  [2martifacts[22m
+ [38;2;95;215;175m●[39m  [1mcheck[22m
+ [38;2;95;215;175m│[39m  files that don't belong in the notes
+ [38;2;95;215;175m│[39m  [2mdocs/specs/** excluded · design documents[22m
+ [38;2;95;215;175m│[39m  [2mwritten to .mint.toml's [release] table and committed[22m
+ [38;2;95;215;175m●[39m  [1mnotes[22m
+ [38;2;95;215;175m│[39m  written in 4 parts and merged[2m · accepted[22m
+ [38;2;95;215;175m●[39m  [1mrecord[22m
+ [38;2;95;215;175m│[39m  CHANGELOG.md · package.json → 🌿 Release v1.4.0
+ [38;2;95;215;175m│[39m
+ [38;2;95;215;175m┿[39m[2m━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[22m
+ [38;2;95;215;175m●[39m  [1mpush[22m
+ [38;2;95;215;175m│[39m  main + v1.4.0 → origin, atomic
+ [38;2;95;215;175m●[39m  [1mpublish[22m
+ [38;2;95;215;175m│[39m  GitHub release
+ [38;2;95;215;175m●[39m  [1mpost_release[22m
+ [38;2;95;215;175m│[39m  ./scripts/notify.sh
+ [38;2;95;215;175m│[39m
+ [38;2;95;215;175m◆[39m  [1mv1.4.0[22m
+    released
+    [38;2;95;215;175mhttps://github.com/acme/pigeon/releases/tag/v1.4.0[39m

@@ -1,0 +1,27 @@
+ [1;36mmint[22;39m [2m─[22m release                                                               [2m~/Code/pigeon · v0.1.2[22m
+
+ [36m◇[39m  [1mv1.3.2[22m        [2mmain @ 7c1e0b4[22m
+ [36m│[39m
+ [36m●[39m  [1mversion[22m       v1.4.0 (minor bump)
+ [36m●[39m  [1mpreflight[22m     tree clean · on main · v1.4.0 free · in sync with origin
+ [36m●[39m  [1mpre_tag[22m       npm ci && npm run build                                                       [2m4.1s[22m
+ [36m│[39m                [2mcommitted dist/ (3 files) as chore(release): pre-tag artifacts[22m
+ [36m●[39m  [1mcheck[22m         files that don't belong in the notes                                          [2m6.2s[22m
+ [33m![39m  [1mdocs/specs/**[22m flagged, not asked: design documents · 6 files, 48 kB
+ [31m✗[39m  [1;31mnotes[22;39m         the AI call for part 3 of 4 failed                                             [2m41s[22m
+ [31m│[39m                [2m│ [22mClaude usage limit reached. Your limit will reset at 4pm (Europe/London).
+ [31m│[39m                [2mpart notes saved to[22m
+ [31m│[39m                ~/Library/Caches/mint/chunk-notes/Users-lee-Code-pigeon/v1.4.0.md
+ [36m↩[39m  [1munwind[22m        pre-tag artifacts commit removed
+ [36m│[39m
+ [36m◇[39m  [1mv1.3.2[22m        back where it started · nothing pushed                                         [2m47s[22m
+
+ [1;36mnext[22;39m
+   Tidy the saved part notes, then release with them:
+     [36mmint release -m --notes-file ~/Library/Caches/mint/chunk-notes/Users-lee-Code-pigeon/v1.4.0.md[39m
+   Release with the commit-subject list:
+     [36mmint release -m --no-ai[39m
+   Ship that list whenever the AI fails, under [release] in .mint.toml:
+     [36mon_notes_failure = "fallback"[39m
+   Leave docs/specs/** out of the notes, under [release] in .mint.toml:
+     [36mdiff_exclude = ["docs/specs/**"][39m

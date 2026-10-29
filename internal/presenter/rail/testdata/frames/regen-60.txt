@@ -1,0 +1,28 @@
+ mint ─ release regenerate            ~/Code/pigeon · v0.1.2
+
+ ◇  7 versions
+ │  fresh notes → GitHub releases, then CHANGELOG.md
+ │
+ ●  v1.0.0
+ │  GitHub release · Initial release.
+ ●  v1.1.0
+ │  GitHub release
+ !  v1.2.0
+ │  skipped · the AI returned empty notes
+ ●  v1.2.1
+ │  GitHub release
+ ●  v1.3.0
+ │  GitHub release
+ ●  v1.3.2
+ │  GitHub release
+ ●  v1.4.0
+ │  GitHub release
+ ●  CHANGELOG.md
+ │  rebuilt, 7 entries · committed and pushed
+ │
+ ◆  done
+    6 of 7 versions regenerated · 1 skipped
+
+ next
+   v1.2.0 kept its old notes. To try it again:
+     mint release regenerate v1.2.0 --target both

@@ -1,0 +1,18 @@
+ mint ─ commit                        ~/Code/pigeon · v0.1.2
+
+ ◇  main
+ │  7c1e0b4
+ │
+ ●  diff
+ │  4 files · +86 −12 · everything, staged when you accept
+ ●  message
+ │  written · accepted
+ ●  stage
+ │  4 files
+ ●  commit
+ │  a3f9c21
+ ●  push
+ │  main → origin
+ │
+ ◆  main
+    a3f9c21 · pushed

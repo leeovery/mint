@@ -1,0 +1,41 @@
+ mint ─ release                       ~/Code/pigeon · v0.1.2
+
+ ◇  v1.3.2
+ │  main @ 7c1e0b4
+ │
+ ●  version
+ │  v1.4.0 (minor bump)
+ ●  preflight
+ │  tree clean · on main · v1.4.0 free · in sync with origin
+ ●  pre_tag
+ │  npm ci && npm run build
+ │  committed dist/ (3 files) as chore(release): pre-tag
+ │  artifacts
+ ●  check
+ │  files that don't belong in the notes
+ !  docs/specs/**
+ │  flagged, not asked: design documents · 6 files, 48 kB
+ ✗  notes
+ │  the AI call for part 3 of 4 failed
+ │  │ Claude usage limit reached. Your limit will reset at
+ │  │ 4pm (Europe/London).
+ │  part notes saved to
+ │  ~/Library/Caches/mint/chunk-notes/Users-lee-Code-pigeon/
+ │  v1.4.0.md
+ ↩  unwind
+ │  pre-tag artifacts commit removed
+ │
+ ◇  v1.3.2
+    back where it started · nothing pushed
+
+ next
+   Tidy the saved part notes, then release with them:
+     mint release -m --notes-file ~/Library/Caches/mint/chunk-notes/Users-lee-Code-pigeon/v1.4.0.md
+   Release with the commit-subject list:
+     mint release -m --no-ai
+   Ship that list whenever the AI fails, under [release] in
+   .mint.toml:
+     on_notes_failure = "fallback"
+   Leave docs/specs/** out of the notes, under [release] in
+   .mint.toml:
+     diff_exclude = ["docs/specs/**"]
