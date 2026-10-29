@@ -1,0 +1,22 @@
+ mint ─ commit                                                                ~/Code/pigeon · v0.1.2
+
+ ◇  main          7c1e0b4
+ │
+ ●  diff          2 files · +56 −12 · staged changes
+ ●  message       generated · regenerate                                                        0.7s
+ │
+ │    feat(webhooks): retry failed deliveries with backoff
+ │
+ │    Deliveries that fail are retried with exponential backoff for up to an
+ │    hour before they are marked dead.
+ │
+ ●  message       regenerated                                                                   0.7s
+ │
+ │    feat(webhooks): back off between delivery retries
+ │
+ │    A failed delivery waits longer before each retry, for up to an hour.
+ │
+ ●  review        accepted
+ ●  commit        a3f9c21
+ │
+ ◆  main          a3f9c21                                                                       3.5s

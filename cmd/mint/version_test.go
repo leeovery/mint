@@ -5,8 +5,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/muesli/termenv"
+
 	"mint/internal/buildinfo"
 	"mint/internal/presenter"
+	"mint/internal/presenter/frametest"
 	"mint/internal/presenter/presentertest"
 )
 
@@ -120,6 +123,29 @@ func TestHasVersionFlagRecognisesGlobalFlag(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestVersion_Frames holds the version, drawn on the rail through the version core onto
+// a virtual terminal 100 columns wide with colour off, to its frame in testdata/frames
+// cell for cell: " mint v0.1.2", the wordmark in the accent.
+// `go test ./cmd/mint -run Frames -update` writes it again.
+func TestVersion_Frames(t *testing.T) {
+	original := buildinfo.Version
+	t.Cleanup(func() { buildinfo.Version = original })
+	buildinfo.Version = "0.1.2"
+
+	term := frametest.NewTerminal(100, 40)
+	p := presenter.NewRailPresenter(term,
+		presenter.WithRailProfile(termenv.Ascii),
+		presenter.WithRailSize(func() (int, int) { return 100, 40 }),
+	)
+	emitVersion(p)
+	p.Close()
+	if err := term.Err(); err != nil {
+		t.Fatalf("the terminal was written what it can't apply: %v", err)
+	}
+
+	frametest.Check(t, "testdata/frames", map[string]string{"version-100": term.ANSI()})
 }
 
 // TestRunVersionWorksWithoutGitRepo proves printing the version requires NO git /

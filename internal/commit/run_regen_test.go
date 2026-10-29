@@ -24,7 +24,7 @@ func seedRegenThenAccept(diff string, regenerations int) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	calls := []runner.ScriptedCall{
 		scriptedHead(),                         // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --numstat (non-empty index)
 		{Result: runner.Result{Stdout: diff}},  // git diff --cached (initial L1)
 	}
 	for i := 0; i < regenerations; i++ {

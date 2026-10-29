@@ -13,8 +13,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/muesli/termenv"
+
 	"mint/internal/engine"
 	"mint/internal/presenter"
+	"mint/internal/presenter/frametest"
 	"mint/internal/runner"
 )
 
@@ -45,7 +48,32 @@ func initialise(t *testing.T, p presenter.Presenter, r initRun) error {
 	}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git", ScriptedOut(root+"\n")) // rev-parse --show-toplevel
-	return engine.Init(t.Context(), engine.InitDeps{Presenter: p, Runner: f}, engine.InitOptions{})
+	deps := engine.InitDeps{Presenter: p, Runner: f, MintVersion: "0.1.2", Home: home}
+	return engine.Init(t.Context(), deps, engine.InitOptions{})
+}
+
+// initFrames draws every init run on the rail, on a terminal set up as the release
+// frames' is, by name.
+func initFrames(t *testing.T) map[string]string {
+	t.Helper()
+	drawn := map[string]string{}
+	for name, r := range initRuns {
+		term := frametest.NewTerminal(railCols, railRows)
+		p := presenter.NewRailPresenter(term,
+			presenter.WithRailProfile(termenv.Ascii),
+			presenter.WithRailSize(func() (int, int) { return railCols, railRows }),
+			presenter.WithRailTicker(stillTicker),
+		)
+		if err := initialise(t, p, r); err != nil {
+			t.Errorf("%s: Init returned %v", name, err)
+		}
+		p.Close()
+		if err := term.Err(); err != nil {
+			t.Fatalf("the terminal was written what it can't apply: %v", err)
+		}
+		drawn[name] = term.ANSI()
+	}
+	return drawn
 }
 
 func TestInit_PlainTranscripts(t *testing.T) {

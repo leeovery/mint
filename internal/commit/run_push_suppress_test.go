@@ -84,7 +84,7 @@ func TestRun_NoAI_PushArmed_EmptyEditorSave_NoPushNoCommit(t *testing.T) {
 			// push must never be reached on an empty save.
 			f.SeedSequence("git",
 				scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-				runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
+				runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --numstat (non-empty index)
 				runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 			)
 			er := &editorRunner{fake: f, saved: tt.saved}
@@ -119,7 +119,7 @@ func TestRun_NoAI_PushArmed_AbortedEditor_NoPushNoCommit(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 	)
 	er := &editorRunner{fake: f, launchErr: errExitOne}
@@ -153,7 +153,8 @@ func TestRun_NoAI_PushArmed_AddAll_EmptyEditorSave_NoPushNoCommit(t *testing.T) 
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --name-only (preflight tracked, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --numstat (preflight tracked, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git ls-files --others (preflight: no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 	)
 	er := &editorRunner{fake: f, saved: "   \n"} // whitespace-only save
@@ -177,7 +178,7 @@ func TestRun_NoAI_PushArmed_AddAll_EmptyEditorSave_NoPushNoCommit(t *testing.T) 
 
 // TestRun_PushArmed_NoRemoteSyncProbeBeforePush proves no pre-push / remote-sync gate
 // runs on the gate-accept happy path with -p: the recorded git invocations are EXACTLY
-// [diff(--name-only preflight), diff(cached L1), commit, push] — there is NO fetch, NO
+// [diff(--numstat preflight), diff(cached L1), commit, push] — there is NO fetch, NO
 // rev-list/--count, NO @{upstream} behind-ahead probe, and NO ls-remote. The only
 // "remote" op is the plain `git push`, attempted directly with no behind/diverged
 // precheck (the dropped gates stay dropped).
@@ -253,7 +254,8 @@ func TestRun_DashApy_RunsUnattendedEndToEnd(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff HEAD --name-only (preflight tracked, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff HEAD --numstat (preflight tracked, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                          // git ls-files --others (preflight: no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff HEAD -- . (read-only -A tracked source)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                          // git ls-files --others (no untracked files for the -A source)
 		runner.ScriptedCall{}, // git add -A (deferred staging on accept)

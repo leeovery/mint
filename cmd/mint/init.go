@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 
+	"mint/internal/buildinfo"
 	"mint/internal/engine"
 	"mint/internal/presenter"
 	"mint/internal/runner"
@@ -73,9 +74,11 @@ func runInit(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
-	p := presenter.NewForStartup(opts.Plain, true, os.Stdout, os.Stderr, os.Stdin)
+	// Init's pretty output is the Rail, whose drawing ends once the run is over.
+	p := presenter.NewForStartup(opts.Plain, true, os.Stdout, os.Stderr, os.Stdin, presenter.WithRail())
+	defer presenter.Close(p)
 	r := runner.NewExecRunner()
-	deps := engine.InitDeps{Presenter: p, Runner: r}
+	deps := engine.InitDeps{Presenter: p, Runner: r, MintVersion: buildinfo.Stamped(), Home: homeDir()}
 
 	if err := engine.Init(ctx, deps, opts.InitOptions()); err != nil {
 		return exitCode(err)

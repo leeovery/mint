@@ -351,8 +351,10 @@ func runCommit(ctx context.Context, rest []string) int {
 	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
 
 	// Construct the presenter ONCE at startup — the single production construction
-	// site. TTY/mode detection never happens downstream.
-	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
+	// site. TTY/mode detection never happens downstream. Commit's pretty output is the
+	// Rail, whose drawing ends once the run is over, however it ends.
+	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin, presenter.WithRail())
+	defer presenter.Close(p)
 
 	// One runner backs the read-side staged-diff seam; the lock-resilient git Mutator
 	// is constructed ONCE over it and serves as the commit sink so the commit mutation

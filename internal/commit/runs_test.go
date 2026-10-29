@@ -39,8 +39,13 @@ const (
 	runEditedMessage = "feat(webhooks): retry failed deliveries for up to an hour\n"
 	runTrackedDiff   = "diff --git a/src/deliver.go b/src/deliver.go\n+\tretry(d)\n"
 	runStagedDiff    = "diff --git a/src/deliver.go b/src/deliver.go\n+\tretry(d)\n"
-	runUsageLimit    = "Claude AI usage limit reached|1761742800\n"
-	runPushRejected  = " ! [rejected]        main -> main (fetch first)\n" +
+	// runTrackedNumstat counts the two tracked files changed, and runUntracked lists the
+	// two untracked: four files, +86 −12, under -A.
+	runTrackedNumstat = "35\t9\tsrc/deliver.go\n21\t3\tsrc/queue.go\n"
+	runUntracked      = "src/backoff.go\x00src/backoff_test.go\x00"
+	runBackoffDiff    = "diff --git a/src/backoff.go b/src/backoff.go\nnew file mode 100644\n+package src\n"
+	runUsageLimit     = "Claude AI usage limit reached|1761742800\n"
+	runPushRejected   = " ! [rejected]        main -> main (fetch first)\n" +
 		"error: failed to push some refs to 'https://github.com/acme/pigeon'\n" +
 		"hint: Updates were rejected because the remote contains work that you do not\n" +
 		"hint: have locally. Integrate the remote changes (e.g., 'git pull ...')\n" +
@@ -143,13 +148,10 @@ func failing(stderr string) runner.ScriptedCall {
 	return runner.ScriptedCall{Result: runner.Result{Stderr: stderr, ExitCode: 1}, Err: errors.New("exit status 1")}
 }
 
-// addition is `git diff --no-index -- /dev/null <file>` rendering an untracked file,
-// which exits 1 as its inputs differ.
-func addition(file string) runner.ScriptedCall {
-	return runner.ScriptedCall{
-		Result: runner.Result{Stdout: "diff --git a/" + file + " b/" + file + "\nnew file mode 100644\n+package src\n", ExitCode: 1},
-		Err:    errors.New("exit status 1"),
-	}
+// addition is `git diff --no-index -- /dev/null <file>` rendering, or counting, an
+// untracked file as stdout, which exits 1 as its inputs differ.
+func addition(stdout string) runner.ScriptedCall {
+	return runner.ScriptedCall{Result: runner.Result{Stdout: stdout, ExitCode: 1}, Err: errors.New("exit status 1")}
 }
 
 // started scripts where HEAD stands as the run opens: main at 7c1e0b4.
@@ -157,33 +159,35 @@ func (w *commitWorld) started() {
 	w.f.SeedSequence("git", out("7c1e0b4d2a9f8e6c5b3a1f0e9d8c7b6a5f4e3d2c\nmain\n")) // rev-parse HEAD --abbrev-ref HEAD
 }
 
-// stagedDiff scripts what is staged: its probe finding something, then the diff the
-// AI reads.
+// stagedDiff scripts what is staged: its count, two files, then the diff the AI reads.
 func (w *commitWorld) stagedDiff() {
 	w.f.SeedSequence("git",
-		out("src/deliver.go\nsrc/queue.go\n"), // diff --cached --name-only -- .
-		out(runStagedDiff),                    // diff --cached -- .
+		out(runTrackedNumstat), // diff --cached --numstat -- .
+		out(runStagedDiff),     // diff --cached -- .
 	)
 }
 
-// trackedDiff scripts the tracked changes -a stages: its probe finding something, then
-// the diff the AI reads.
+// trackedDiff scripts the tracked changes -a stages: their count, two files, then the
+// diff the AI reads.
 func (w *commitWorld) trackedDiff() {
 	w.f.SeedSequence("git",
-		out("src/deliver.go\nsrc/queue.go\n"), // diff HEAD --name-only -- .
-		out(runTrackedDiff),                   // diff HEAD -- .
+		out(runTrackedNumstat), // diff HEAD --numstat -- .
+		out(runTrackedDiff),    // diff HEAD -- .
 	)
 }
 
 // everything scripts every change -A stages: the tracked changes, then the untracked
-// files, each rendered as an addition.
+// files, counted, then read for the AI, each rendered as an addition.
 func (w *commitWorld) everything() {
 	w.f.SeedSequence("git",
-		out("src/deliver.go\nsrc/queue.go\n"),            // diff HEAD --name-only -- .
-		out(runTrackedDiff),                              // diff HEAD -- .
-		out("src/backoff.go\x00src/backoff_test.go\x00"), // ls-files --others --exclude-standard -z -- .
-		addition("src/backoff.go"),                       // diff --no-index -- /dev/null src/backoff.go
-		addition("src/backoff_test.go"),                  // diff --no-index -- /dev/null src/backoff_test.go
+		out(runTrackedNumstat),                   // diff HEAD --numstat -- .
+		out(runUntracked),                        // ls-files --others --exclude-standard -z -- .
+		addition("18\t0\tsrc/backoff.go\n"),      // diff --no-index --numstat -- /dev/null src/backoff.go
+		addition("12\t0\tsrc/backoff_test.go\n"), // diff --no-index --numstat -- /dev/null src/backoff_test.go
+		out(runTrackedDiff),                      // diff HEAD -- .
+		out(runUntracked),                        // ls-files --others --exclude-standard -z -- .
+		addition(runBackoffDiff),                 // diff --no-index -- /dev/null src/backoff.go
+		addition(runBackoffDiff),                 // diff --no-index -- /dev/null src/backoff_test.go
 	)
 }
 
@@ -201,9 +205,12 @@ func (w *commitWorld) committed() {
 	)
 }
 
-// pushed scripts the push answering with push.
-func (w *commitWorld) pushed(push runner.ScriptedCall) {
-	w.f.SeedSequence("git", push) // push
+// pushed scripts the push going through, to origin's main.
+func (w *commitWorld) pushed() {
+	w.f.SeedSequence("git",
+		out(""),              // push
+		out("origin/main\n"), // rev-parse --abbrev-ref @{push}
+	)
 }
 
 // messages scripts the AI's answers, a message call each.
@@ -231,7 +238,7 @@ var commitRuns = map[string]commitRun{
 		w.messages(aiAnswer{body: runMessage})
 		w.f.SeedSequence("git", out("")) // add -A
 		w.committed()
-		w.pushed(out(""))
+		w.pushed()
 		return w.commit(t, addAllPush)
 	}},
 	// The message answered r, written again with no extra context, then y.
@@ -269,7 +276,7 @@ var commitRuns = map[string]commitRun{
 		w.stagedDiff()
 		w.messages(aiAnswer{body: runMessage})
 		w.committed()
-		w.pushed(failing(runPushRejected))
+		w.f.SeedSequence("git", failing(runPushRejected)) // push
 		return w.commit(t, func(d *commit.Deps) { d.Push = true })
 	}},
 	// commit -Ap with the message declined: nothing staged, nothing committed.

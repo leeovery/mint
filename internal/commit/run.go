@@ -352,20 +352,22 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	p.ShowPlan(commitPlan(deps))
 
 	// Empty-staging preflight runs HERE — before generate, so the run fails loud on a
-	// genuinely clean tree before any AI call. It is staging-mode aware: it computes the
-	// would-be-staged emptiness for deps.Staging READ-ONLY and, when empty, fails loud with
+	// genuinely clean tree before any AI call. It is staging-mode aware: it counts the
+	// would-be-staged set for deps.Staging READ-ONLY and, when empty, fails loud with
 	// the message keyed on the ACTUAL post-mode tree state (clean tree vs
-	// changes-the-mode-could-not-stage). A non-empty would-be-staged set proceeds.
+	// changes-the-mode-could-not-stage). A non-empty would-be-staged set proceeds, its
+	// count the diff node's row.
 	//
 	// The preflight is diff_exclude-BLIND: it answers "would `git commit` create a commit?",
 	// a property of the tree/index alone. diff_exclude only shapes the AI's L1 diff
 	// (generate.go), so a changeset whose every file is excluded is STILL something to
 	// commit — it passes here and the empty-AI-diff case is handled below by routing to the
 	// editor fallback, NOT by wrongly rejecting it as empty.
-	if err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging); err != nil {
+	stat, err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging)
+	if err != nil {
 		return surface(p, "preflight", err)
 	}
-	p.StageSucceeded(presenter.Settled(stageDiff, stagingDetail(deps.Staging)))
+	p.StageSucceeded(presenter.Settled(stageDiff, diffDetail(stat, deps.Staging)))
 
 	// --no-ai degradation path: skip L3 generate AND the Continue? gate (the gate is
 	// AI-path-only) and route straight to the editor fallback. The editor save IS the
@@ -397,7 +399,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		// path the fallback guard's StageFailed closes it instead.)
 		if errors.Is(err, notes.ErrDiffTooLarge) {
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage, Elapsed: generated.elapsed()})
 			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
@@ -412,7 +414,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		// predicate the fallback's guard uses keeps the two in lock-step.
 		if errors.Is(err, errDiffFullyExcluded) {
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Key: stageMessage, Label: excludedNoteLabel, Message: excludedNoteMessage})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: excludedNoteLabel, Message: excludedNoteMessage, Elapsed: generated.elapsed()})
 			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
@@ -429,7 +431,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		if isAITransportFailure(err) {
 			output := aiFailureOutput(err)
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output, Elapsed: generated.elapsed()})
 			}
 			return runEditorFallback(ctx, deps, root, output)
 		}
@@ -716,13 +718,13 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// sentinel so Run owns the fallback call (the same entry point first-generation
 				// failures use): a successful fallback commit exits 0 and never double-stages.
 				if isAITransportFailure(gerr) {
-					p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr)})
+					p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr), Elapsed: regenerating.elapsed()})
 					return false, body, errRegenerateFallback
 				}
 				// A nudge that pushes the regeneration's composed prompt over max_prompt_bytes
 				// sends no call and takes the same empty-editor route, under the oversized note.
 				if errors.Is(gerr, notes.ErrDiffTooLarge) {
-					p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+					p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage, Elapsed: regenerating.elapsed()})
 					return false, body, errRegenerateFallback
 				}
 				// Any OTHER regeneration error keeps the defensive surface-abort — it is
@@ -1051,23 +1053,61 @@ const (
 // the non-zero exit comes solely from returning errPushFailed (the commit succeeded —
 // that IS the run's success — so the run still closes as committed). Empty/aborted
 // suppression (5-5) is already natural: push is only reached after a successful commit.
+//
+// The push is timed, its node running while it goes: plain has never had a line for its
+// start or its success, so both are Quiet. A push that goes through names where it went,
+// read once it has (gitrepo.ResolvePushTarget), as the upstream may not be origin; the
+// rail's row for a failed one says what happened, and its remedy, plain's sentence, goes
+// to next as the command it names.
 func pushAfterCommit(ctx context.Context, deps Deps) error {
 	if !deps.Push {
 		return nil
 	}
+	p, now := deps.Presenter, deps.clock()
+	p.StageStarted(presenter.StageStart{Name: stagePush, Key: stagePush, Blocking: true, Text: pushingText, Quiet: true})
+	started := now()
 	res, err := deps.Mutator.Mutate(ctx, nil, "git", "push")
+	elapsed := now().Sub(started)
 	if err != nil {
 		// One generic warn for ALL causes; git's stderr travels verbatim in Output (the
 		// no-upstream "set an upstream" hint comes from git, never mint-authored text). No
 		// surface/StageFailed — the warn narrates; errPushFailed only drives the exit code.
-		deps.Presenter.Warn(presenter.Warning{
+		p.Warn(presenter.Warning{
 			Key:     stagePush,
 			Label:   pushFailWarnLabel,
 			Message: pushFailWarnMessage,
+			Row:     pushFailRow,
 			Output:  res.Stderr,
+			Elapsed: elapsed,
 		})
+		p.NextMoves(presenter.NextMoves{Stage: stagePush, Moves: []presenter.NextMove{pushAgain}, Quiet: true})
 		return errPushFailed
 	}
-	deps.Presenter.StageSucceeded(presenter.Settled(stagePush, "pushed to its upstream"))
+	p.StageSucceeded(presenter.StageSuccess{
+		Name:     stagePush,
+		Key:      stagePush,
+		Detail:   pushedTo(gitrepo.ResolvePushTarget(ctx, deps.Runner)),
+		Elapsed:  elapsed,
+		Blocking: true,
+		Quiet:    true,
+	})
 	return nil
 }
+
+// pushedTo is the push's row once it went through to target, the remote-tracking branch
+// it updated, or, where git names none, its upstream.
+func pushedTo(target string) string {
+	if target == "" {
+		return "pushed to its upstream"
+	}
+	return "pushed to " + target
+}
+
+// The push's words on the rail: what it is doing while it goes, its row where it failed,
+// and the move that pushes again.
+const (
+	pushingText = "pushing to its upstream…"
+	pushFailRow = "not pushed; the commit is in place"
+)
+
+var pushAgain = presenter.NextMove{Lead: "Push the commit:", Command: "git push"}

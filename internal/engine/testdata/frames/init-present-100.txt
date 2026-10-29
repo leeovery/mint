@@ -1,0 +1,4 @@
+ mint ─ init                                                                  ~/Code/pigeon · v0.1.2
+
+ ○  .mint.toml    exists, use --force
+ ●  release       created

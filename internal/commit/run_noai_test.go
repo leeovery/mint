@@ -46,7 +46,7 @@ func seedNoAIDefault(editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
 		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
@@ -144,7 +144,7 @@ func TestRun_NoAI_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --name-only (preflight, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --numstat (preflight, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -u (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
@@ -180,7 +180,8 @@ func TestRun_NoAI_NonEmptySaveUnderAddAll_AddsEverythingThenCommits(t *testing.T
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --name-only (preflight tracked, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --numstat (preflight tracked, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git ls-files --others (preflight: no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -A (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -

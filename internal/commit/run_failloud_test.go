@@ -65,7 +65,7 @@ func seedPreflightOnly() *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --numstat (non-empty index)
 	)
 	return f
 }
@@ -77,7 +77,7 @@ func seedAIPreflightOnly() *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached -- . (L1)
 	)
 	return f

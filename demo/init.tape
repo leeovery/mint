@@ -17,6 +17,6 @@ Show
 Type "mint init"
 Enter
 Wait
-# The line only an init that writes the release shim prints.
-Wait+Screen /created release/
+# The row only an init that writes the release shim draws.
+Wait+Screen /release +created/
 Sleep 600ms

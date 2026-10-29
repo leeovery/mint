@@ -1132,9 +1132,9 @@ func (p *PrettyPresenter) RunFinished(r RunResult) {
 		// commit verb word ("committed", not "released") and no v{X} segment. Every
 		// footer opens with a blank separator line — the close-out is its own block.
 		p.writef("\n%s committed %s\n", leafOrDefault(r.Leaf), r.Project)
-	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed:
-		// No footer: a single regenerated version never had one, and the other runs end
-		// on their own failure or unwind lines.
+	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed, OutcomeInitialised:
+		// No footer: a single regenerated version never had one, an init ends on its
+		// files' lines, and the other runs end on their own failure or unwind lines.
 	}
 }
 

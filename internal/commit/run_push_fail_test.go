@@ -42,7 +42,7 @@ func seedDiffThenCommitThenFailedPush(diff, pushStderr string) *runner.FakeRunne
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached
 		runner.ScriptedCall{}, // git commit -F - (succeeds)
 		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
@@ -329,7 +329,7 @@ func TestRun_PushFailure_EditorAcceptSameGenericWarn(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F - (succeeds)
 		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)

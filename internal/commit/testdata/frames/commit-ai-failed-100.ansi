@@ -1,0 +1,12 @@
+ mint ─ commit                                                                ~/Code/pigeon · v0.1.2
+
+ ◇  main          7c1e0b4
+ │
+ ●  diff          2 files · +56 −12 · tracked changes, staged when you accept
+ !  message       could not generate a message, opening editor                                  0.7s
+ │                │ Claude AI usage limit reached|1761742800
+ ●  message       written in your editor
+ ●  stage         staged
+ ●  commit        a3f9c21
+ │
+ ◆  main          a3f9c21                                                                       2.1s

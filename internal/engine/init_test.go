@@ -329,25 +329,38 @@ func TestInit_ScaffoldsOnlyTwoFiles(t *testing.T) {
 	}
 }
 
-// TestInit_NoRunFinishedNoPrompt proves init's terminal output is the InitResult
-// lines alone: it never calls RunFinished (no release-style footer) and never
+// TestInit_OpensWithTheHeaderAloneAndClosesWithNoLine proves init's terminal output is
+// the InitResult lines alone: its run opens Quiet with the rail's header and no
+// station, closes with the one outcome that has no line and no end station, and never
 // calls Prompt (no interactive gate).
-func TestInit_NoRunFinishedNoPrompt(t *testing.T) {
+func TestInit_OpensWithTheHeaderAloneAndClosesWithNoLine(t *testing.T) {
 	t.Parallel()
 
-	root := t.TempDir()
-	p, err := runInit(t, root, engine.InitOptions{})
-	if err != nil {
+	home := t.TempDir()
+	root := filepath.Join(home, "pigeon")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := runner.NewFakeRunner()
+	seedRoot(r, root)
+	p := &presentertest.RecordingPresenter{}
+	deps := engine.InitDeps{Presenter: p, Runner: r, MintVersion: "0.1.2", Home: home}
+	if err := engine.Init(context.Background(), deps, engine.InitOptions{}); err != nil {
 		t.Fatalf("Init returned unexpected error: %v", err)
 	}
 
-	for _, k := range p.Kinds() {
-		if k == presentertest.KindRunFinished {
-			t.Errorf("init called RunFinished; it must not (its InitResult lines are terminal)")
-		}
-		if k == presentertest.KindPrompt {
-			t.Errorf("init called Prompt; it has no interactive gate")
-		}
+	want := []presentertest.EventKind{presentertest.KindRunStarted, presentertest.KindInitResult, presentertest.KindInitResult, presentertest.KindRunFinished}
+	if got := p.Kinds(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("kinds = %v, want %v: the files' rows between the run's opening and its close, no Prompt", got, want)
+	}
+	opened := presenter.RunInfo{Project: "pigeon", Header: presenter.Header{Command: "init", Where: "~/pigeon", Version: "0.1.2"}, Quiet: true}
+	if got := p.Events[0].RunStarted; got != opened {
+		t.Errorf("RunStarted = %+v, want the header alone, Quiet, %+v", got, opened)
+	}
+	closed := p.Events[3].RunFinished
+	closed.Elapsed = 0
+	if want := (presenter.RunResult{Project: "pigeon", Outcome: presenter.OutcomeInitialised}); closed != want {
+		t.Errorf("RunFinished = %+v, want %+v", closed, want)
 	}
 }
 

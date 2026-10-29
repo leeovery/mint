@@ -559,9 +559,9 @@ func (p *PlainPresenter) RunFinished(r RunResult) {
 		// Version-less and URL-less: the commit IS the success, so the close-out
 		// carries only the verb word and the project.
 		p.writef("done: %s committed\n", r.Project)
-	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed:
-		// No line: a single regenerated version never had one, and the other runs end
-		// on their own failure or unwind lines.
+	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed, OutcomeInitialised:
+		// No line: a single regenerated version never had one, an init ends on its
+		// files' lines, and the other runs end on their own failure or unwind lines.
 	}
 }
 

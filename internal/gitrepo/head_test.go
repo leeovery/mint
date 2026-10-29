@@ -122,3 +122,29 @@ func TestResolveShortHEAD_AHeadGitCannotReadIsEmpty(t *testing.T) {
 		t.Errorf("ResolveShortHEAD = %q, want empty for an unreadable HEAD", got)
 	}
 }
+
+func TestResolvePushTarget_NamesTheRemoteTrackingBranchAPushGoesTo(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stdout: "upstream/main\n"}, nil)
+
+	if got := gitrepo.ResolvePushTarget(t.Context(), r); got != "upstream/main" {
+		t.Errorf("ResolvePushTarget = %q, want the remote-tracking branch git names", got)
+	}
+	invs := r.Invocations()
+	if len(invs) != 1 || !slices.Equal(invs[0].Args, []string{"rev-parse", "--abbrev-ref", "@{push}"}) {
+		t.Errorf("invocations = %+v, want the one git rev-parse --abbrev-ref @{push}", invs)
+	}
+}
+
+func TestResolvePushTarget_ATargetGitCannotNameIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	r.Seed("git", runner.Result{Stderr: "fatal: no upstream configured for branch 'main'\n", ExitCode: 128}, errors.New("exit status 128"))
+
+	if got := gitrepo.ResolvePushTarget(t.Context(), r); got != "" {
+		t.Errorf("ResolvePushTarget = %q, want empty where git names no push target", got)
+	}
+}

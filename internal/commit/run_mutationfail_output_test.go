@@ -66,7 +66,8 @@ func TestRun_StagingFailure_StderrReachesFailureOutput(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                     // tracked probe (non-empty, short-circuits)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                     // tracked probe (non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                        // untracked probe (none)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},             // L1 tracked diff
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                        // L1 untracked enumeration (none)
 		runner.ScriptedCall{Result: runner.Result{Stderr: gitStderr, ExitCode: 128}, Err: errExitOne}, // git add -A fails

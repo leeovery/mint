@@ -261,8 +261,8 @@ type Presenter interface {
 	// init has NO interactive gate (it never calls Prompt — its safety is structural
 	// via non-clobber + --force, not a prompt) and NO release-style brand footer /
 	// "done:" line: its created/skipped lines ARE the terminal output. The presenter
-	// does not special-case init for the footer; rather the engine simply never calls
-	// RunFinished or Prompt on an init run.
+	// does not special-case init for the footer; rather an init run opens Quiet, with
+	// the header alone, and closes as OutcomeInitialised, which has no line.
 	InitResult(r InitOutcome)
 	// RunFinished closes the run and renders the end-of-run success line for the
 	// outcomes that have one (see Outcome). Every run RunStarted opened closes with
@@ -919,6 +919,9 @@ const (
 	// question included; its ✗ line says why, and its End detail what it left (see
 	// End).
 	OutcomeFailed
+	// OutcomeInitialised is an init that wrote or left alone each of its files. Its
+	// lines are its files' rows, so it has no line of its own, and no end station.
+	OutcomeInitialised
 )
 
 // RunResult carries the end-of-run payload. URL is optional — outcomes that do not

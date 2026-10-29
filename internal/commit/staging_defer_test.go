@@ -30,13 +30,13 @@ func indexOfGitArgs(r *runner.FakeRunner, verb string) int {
 }
 
 // seedAllModeThenStageAndCommit scripts the -a (All) thread's git invocations IN
-// ORDER: the empty-index preflight read (non-empty), the L1 read-only `git diff HEAD`,
+// ORDER: the preflight count (non-empty), the L1 read-only `git diff HEAD`,
 // then the deferred `git add -u` and the `git commit -F -` on accept.
 func seedAllModeThenStageAndCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff HEAD --numstat (non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff HEAD -- . (read-only -a source)
 		runner.ScriptedCall{}, // git add -u (deferred staging on accept)
 		runner.ScriptedCall{}, // git commit -F -
@@ -46,14 +46,16 @@ func seedAllModeThenStageAndCommit(diff string) *runner.FakeRunner {
 }
 
 // seedAddAllModeThenStageAndCommit scripts the -A (AddAll) thread's git invocations IN
-// ORDER: the empty-index preflight read (non-empty), the L1 read-only `git diff HEAD`,
-// the untracked enumeration (empty — no untracked files for these tests), then the
-// deferred `git add -A` and the `git commit -F -` on accept.
+// ORDER: the preflight count of the tracked changes (non-empty) and the untracked files
+// (none), the L1 read-only `git diff HEAD`, the untracked enumeration (empty — no
+// untracked files for these tests), then the deferred `git add -A` and the `git commit
+// -F -` on accept.
 func seedAddAllModeThenStageAndCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff HEAD --numstat (non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},    // git ls-files --others (preflight: no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff HEAD -- . (read-only tracked source)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},    // git ls-files --others (no untracked)
 		runner.ScriptedCall{}, // git add -A (deferred staging on accept)
@@ -237,9 +239,10 @@ func TestRun_AbortLeavesPreExistingStagingUntouched(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
-		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}},
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff HEAD --numstat (non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                          // git ls-files --others (preflight: no untracked)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff HEAD -- . (read-only tracked source)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                          // git ls-files --others (no untracked)
 	)
 	deps := newCommitDeps(rec, r, scriptedTransport("feat: declined with prior staging"), t.TempDir())
 	deps.Staging = commit.AddAll
@@ -306,7 +309,7 @@ func TestRun_StagingAddRunsViaGitSafe(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff HEAD -- . (read-only -a source)
 		runner.ScriptedCall{ // git add -u attempt 1: lock contention
 			Result: runner.Result{Stderr: "fatal: Unable to create '/nope/.git/index.lock': File exists\nAnother git process seems to be running"},

@@ -35,9 +35,10 @@ func hasVersionFlag(args []string) bool {
 // to skip, but the flag keeps the construction on the non-interactive axis since
 // version never reads stdin. The first arg (false) is plainFlag, not a force-plain —
 // TTY detection still governs pretty vs plain, so `mint --version` on a terminal still
-// renders the dressed form.
+// renders the dressed form, drawn as the Rail draws it.
 func runVersion(stdout, stderr, stdin *os.File) int {
-	p := presenter.NewForStartup(false, true, stdout, stderr, stdin)
+	p := presenter.NewForStartup(false, true, stdout, stderr, stdin, presenter.WithRail())
+	defer presenter.Close(p)
 	emitVersion(p)
 	return 0
 }
@@ -45,8 +46,8 @@ func runVersion(stdout, stderr, stdin *os.File) int {
 // emitVersion drives the SINGLE presenter call for the version surface:
 // ShowVersion carrying mint's own tool version from the single buildinfo source.
 // It is the shared core both version entry points route through, so output can
-// never diverge. The Leaf is left empty — the pretty presenter defaults it to the
-// brand 🌿, so version needs no git/repo to derive a leaf. version drives no gate
+// never diverge. The Leaf is left empty — the rail draws none, and today's pretty
+// presenter defaults it to the brand 🌿 — so version needs no git/repo to derive a leaf. version drives no gate
 // (no Prompt) and no footer (no RunFinished): the value line is the terminal
 // output.
 func emitVersion(p presenter.Presenter) {
