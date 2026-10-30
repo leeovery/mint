@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/muesli/termenv"
@@ -11,6 +12,7 @@ import (
 	"mint/internal/presenter"
 	"mint/internal/presenter/frametest"
 	"mint/internal/presenter/presentertest"
+	"mint/internal/ptytest"
 )
 
 // TestEmitVersionRoutesThroughShowVersion proves the version core drives exactly
@@ -149,7 +151,69 @@ func TestRunVersionWorksWithoutGitRepo(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = devnull.Close() })
 
-	if code := runVersion(devnull, devnull, devnull); code != 0 {
+	if code := runVersion(false, devnull, devnull, devnull); code != 0 {
 		t.Fatalf("runVersion exit code = %d, want 0 (must work outside a git repo)", code)
+	}
+}
+
+// TestRunVersionHonoursPlainOnATerminal proves --plain reaches the version surface:
+// on a terminal, which alone would draw the dressed form, it prints the bare value.
+func TestRunVersionHonoursPlainOnATerminal(t *testing.T) {
+	original := buildinfo.Version
+	t.Cleanup(func() { buildinfo.Version = original })
+	buildinfo.Version = "1.2.3"
+
+	tests := []struct {
+		name  string
+		plain bool
+		check func(t *testing.T, written string)
+	}{
+		{
+			name:  "--plain prints the bare value",
+			plain: true,
+			check: func(t *testing.T, written string) {
+				if written != "1.2.3\r\n" {
+					t.Errorf("written = %q, want the bare value %q", written, "1.2.3\r\n")
+				}
+			},
+		},
+		{
+			name: "without it the terminal gets the dressed form",
+			check: func(t *testing.T, written string) {
+				if !strings.Contains(written, " mint v1.2.3\r\n") {
+					t.Errorf("written = %q, want the Rail's dressed %q", written, " mint v1.2.3")
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pty, tty := ptytest.Open(t)
+			if code := runVersion(tt.plain, tty, tty, tty); code != 0 {
+				t.Fatalf("runVersion exit code = %d, want 0", code)
+			}
+			tt.check(t, ptytest.Written(t, pty))
+		})
+	}
+}
+
+// TestHasPlainFlagFindsItAnywhere proves --plain is found as a whole token wherever
+// it appears, for `mint version --plain` and `mint --version --plain` alike.
+func TestHasPlainFlagFindsItAnywhere(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		args []string
+		want bool
+	}{
+		{args: []string{"--plain"}, want: true},
+		{args: []string{"--version", "--plain"}, want: true},
+		{args: []string{"--plainer"}, want: false},
+		{args: nil, want: false},
+	}
+	for _, tt := range tests {
+		if got := hasPlainFlag(tt.args); got != tt.want {
+			t.Errorf("hasPlainFlag(%v) = %v, want %v", tt.args, got, tt.want)
+		}
 	}
 }

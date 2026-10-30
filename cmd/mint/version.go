@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"slices"
 
 	"mint/internal/buildinfo"
 	"mint/internal/presenter"
@@ -12,17 +13,18 @@ import (
 // subcommand.
 const versionFlag = "--version"
 
+// plainArg is --plain, which the version surface honours wherever it appears, as the
+// global --version is found.
+const plainArg = "--plain"
+
 // hasVersionFlag reports whether the global --version flag appears anywhere in the
 // args. It is the standard "print version and exit" convention, matched as a whole
 // token so the `version` VERB (no leading dashes) is NOT mistaken for the flag.
-func hasVersionFlag(args []string) bool {
-	for _, a := range args {
-		if a == versionFlag {
-			return true
-		}
-	}
-	return false
-}
+func hasVersionFlag(args []string) bool { return slices.Contains(args, versionFlag) }
+
+// hasPlainFlag reports whether --plain appears anywhere in the args, matched as a
+// whole token as --version is.
+func hasPlainFlag(args []string) bool { return slices.Contains(args, plainArg) }
 
 // runVersion wires the production presenter and prints mint's own tool version,
 // returning the process exit code (always 0 — printing the version cannot fail).
@@ -33,11 +35,11 @@ func hasVersionFlag(args []string) bool {
 //
 // The presenter is constructed non-interactively (yes=true): version has no Prompt
 // to skip, but the flag keeps the construction on the non-interactive axis since
-// version never reads stdin. The first arg (false) is plainFlag, not a force-plain —
-// TTY detection still governs pretty vs plain, so `mint --version` on a terminal still
-// renders the dressed form, drawn as the Rail draws it.
-func runVersion(stdout, stderr, stdin *os.File) int {
-	p := presenter.NewForStartup(false, true, stdout, stderr, stdin)
+// version never reads stdin. plain is --plain: without it TTY detection governs
+// pretty vs plain, so `mint --version` on a terminal renders the dressed form, drawn
+// as the Rail draws it, and with it the bare value.
+func runVersion(plain bool, stdout, stderr, stdin *os.File) int {
+	p := presenter.NewForStartup(plain, true, stdout, stderr, stdin)
 	defer presenter.Close(p)
 	emitVersion(p)
 	return 0

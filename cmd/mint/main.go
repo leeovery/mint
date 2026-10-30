@@ -54,7 +54,7 @@ func run(args []string) int {
 	// byte-identical. It deliberately needs no git repo — and no signal context, since
 	// it spawns nothing to interrupt.
 	if hasVersionFlag(args) {
-		return runVersion(os.Stdout, os.Stderr, os.Stdin)
+		return runVersion(hasPlainFlag(args), os.Stdout, os.Stderr, os.Stdin)
 	}
 
 	// `mint help` / `mint --help` is the top-level help surface — a requested action,
@@ -100,7 +100,7 @@ func run(args []string) int {
 	case commandInit:
 		return runInit(ctx, rest)
 	case commandVersion:
-		return runVersion(os.Stdout, os.Stderr, os.Stdin)
+		return runVersion(hasPlainFlag(rest), os.Stdout, os.Stderr, os.Stdin)
 	case commandCommit:
 		return runCommit(ctx, rest)
 	case commandSetup:
