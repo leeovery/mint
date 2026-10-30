@@ -241,6 +241,14 @@ var railRuns = map[string]railRun{
 		w.published(ScriptedOut(railURL + "\n"))
 		return w.release(t, nil)
 	}},
+	// A release whose input closes at its review, Ctrl-D: the notes node fails saying
+	// why, as commit's message does.
+	"release-closed-at-review-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\n", false)
+		w.readGates(false)
+		w.notes()
+		return w.release(t, nil)
+	}},
 	// A release whose review is answered r, the notes written again in one call, then y.
 	"release-regenerated-100": {run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, "", "y\nr\n\ny\n", false)

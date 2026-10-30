@@ -235,7 +235,7 @@ func notesFloor(ctx context.Context, deps ReleaseDeps, gate presenter.Gate, subj
 	for {
 		choice, err := deps.Presenter.Prompt(gate)
 		if err != nil {
-			return "", err
+			return "", surfaceInputClosed(deps.Presenter, gateLabel(gate), gate.Stage, err)
 		}
 		switch choice {
 		case presenter.ChoiceCommitSubjects:

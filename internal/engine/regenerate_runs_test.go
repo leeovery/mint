@@ -346,6 +346,12 @@ var regenRuns = map[string]regenRun{
 		w.publisher = nil
 		return w.all(t, 3, engine.RegenerateTargetRelease, tallNotes("v1.1.0"))
 	}},
+	// --all at a terminal, the input closing at v1.1.0's review, Ctrl-D: that version
+	// fails saying why.
+	"regenerate-all-closed-100": {answers: "y\n", aborted: true, run: func(t *testing.T, w *regenWorld) error {
+		w.gh()
+		return w.all(t, 3, engine.RegenerateTargetRelease, versionNotes())
+	}},
 	// --all at a terminal: each version's notes reviewed, answered y.
 	"regenerate-all-attended-100": {answers: "y\ny\ny\n", run: func(t *testing.T, w *regenWorld) error {
 		w.gh()

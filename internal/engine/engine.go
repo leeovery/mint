@@ -24,6 +24,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -111,14 +112,37 @@ func FirstReleaseReviewGate() presenter.Gate {
 // in the abort's chain so the entry point can still branch on it via errors.Is.
 //
 // The presenter ALREADY renders the ErrNotInteractive failure line; ErrInputClosed
-// is unrendered by contract, so surfacing it (abort + exit code, and any closing
-// narration the orchestrator adds) is the engine's responsibility — owned here.
+// is unrendered by contract, so surfacing it is the engine's responsibility — owned
+// here: a failed stage on the node the gate asks about (surfaceInputClosed), then the
+// abort and its exit code.
 func ReviewDecision(p presenter.Presenter, gate presenter.Gate) (presenter.Choice, error) {
 	choice, err := p.Prompt(gate)
 	if err != nil {
-		return "", abort(err)
+		return "", abort(surfaceInputClosed(p, gateLabel(gate), gate.Stage, err))
 	}
 	return choice, nil
+}
+
+// surfaceInputClosed renders err where it is ErrInputClosed, which the presenter
+// leaves unrendered, so a run stopped by Ctrl-C or Ctrl-D at a question says why: a
+// failed stage labelled label on the node keyed key, the one asked about, in the
+// sentinel's own words, as commit's review shows it. Any other error, as
+// ErrNotInteractive, which the presenter has rendered, passes through unrendered. It
+// returns err.
+func surfaceInputClosed(p presenter.Presenter, label, key string, err error) error {
+	if errors.Is(err, presenter.ErrInputClosed) {
+		p.StageFailed(presenter.StageFailure{Name: label, Key: key, Message: presenter.ErrInputClosed.Error()})
+	}
+	return err
+}
+
+// gateLabel is the label a failure at gate goes under: "review" for a review, as
+// commit's is, else what the gate asks about.
+func gateLabel(gate presenter.Gate) string {
+	if gate.Review {
+		return "review"
+	}
+	return gate.Subject
 }
 
 // emitGateSucceeded narrates a read-only gate's successful completion: a

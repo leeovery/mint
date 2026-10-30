@@ -1,0 +1,10 @@
+ mint ─ release regenerate --all                                              ~/Code/pigeon · v0.1.2
+
+ ◇  3 versions    fresh notes → GitHub releases
+ │
+ ●  v1.0.0        GitHub release · the first release's default · accepted                       2.8s
+ ✗  v1.1.0        prompt: input closed before a choice was entered
+ │
+ │    What changed in v1.1.0, in a line.
+ │
+ ◇  3 versions    1 GitHub release written · nothing committed · nothing pushed                 8.4s

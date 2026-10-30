@@ -719,8 +719,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	regen := regens.review(perRunRegenerator(deps, generator, chunkNotes, regens, current.String(cfg.Release.TagPrefix), cfg), chunkNotes)
 	body, err = chunkNotes.reviewGate(ctx, deps, regen, gateForKind(kind), body, versionKey, releaseRerun(opts))
 	if err != nil {
-		// Unwind, not surfaceAndUnwind: reviewGate has already surfaced whatever
-		// needed a StageFailed.
+		// Unwind, not surfaceAndUnwind: reviewGate surfaces every failure it returns
+		// that needs a StageFailed, input closed at its question or at r's context line
+		// included; a decline needs none.
 		return Unwind(ctx, deps, start, made, err)
 	}
 
@@ -1427,9 +1428,12 @@ func cacheReuse(deps ReleaseDeps, root, versionKey string, dryRun bool, reuse fu
 		// A real run asks use/regenerate: the spinner is suspended for the prompt and
 		// resumed after (so "regenerate" runs the AI under a live spinner; "use" closes
 		// out moments later). Under -y the gate auto-accepts the default — use the cache.
+		// Prompt, not ReviewDecision: a read failure fails the notes stage, which
+		// surfaces it as it does every failure the selector returns, input closed
+		// included, as the exclusion check's pause does.
 		pr := deps.Presenter
 		pr.SuspendSpinner()
-		choice, derr := ReviewDecision(pr, reuseConfirmGate())
+		choice, derr := pr.Prompt(reuseConfirmGate())
 		pr.ResumeSpinner()
 		if derr != nil {
 			return "", false, derr
@@ -1980,7 +1984,7 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //
 //   - a Prompt error (ErrNotInteractive / ErrInputClosed) is already an
 //     *AbortError carrying a non-zero exit; it is returned as-is (ErrNotInteractive
-//     is pre-rendered by the presenter, ErrInputClosed is surfaced via the abort).
+//     is pre-rendered by the presenter, ErrInputClosed surfaced by ReviewDecision).
 //   - ChoiceYes (also the bare-Enter default) accepts: the loop RETURNS the current
 //     body so the spine proceeds to Record with exactly the reviewed text. Under -y
 //     the presenter returns the gate Default (ChoiceYes), so the loop accepts
@@ -2088,9 +2092,10 @@ func gateForKind(kind notes.Kind) presenter.Gate {
 // fail-loud:
 //
 //   - AskLine's ErrInputClosed / ErrNotInteractive abort (the read failed; the
-//     engine owns surfacing ErrInputClosed). Any AskLine error — including a
-//     defensively-handled ErrNotInteractive, which `r` being interactive-only should
-//     make unreachable — is wrapped by the generic abort; there is no dedicated branch.
+//     engine surfaces ErrInputClosed, on the node being reviewed, as "regenerate").
+//     Any AskLine error — including a defensively-handled ErrNotInteractive, which
+//     `r` being interactive-only should make unreachable — is wrapped by the generic
+//     abort; there is no dedicated branch.
 //   - a nil Regenerator (a misconfiguration that should never reach production for
 //     KindNormalAI) surfaces a clean error and aborts rather than panicking.
 //   - a Regenerator failure is surfaced and aborts. Richer handling could re-present
@@ -2104,9 +2109,9 @@ func regenerateBody(ctx context.Context, deps ReleaseDeps, regen reviewRegen, ve
 	line, err := p.AskLine(regenContextPrompt)
 	if err != nil {
 		// A closed/non-interactive input on the one-time-context read is fail-loud: the
-		// presenter leaves ErrInputClosed unrendered, so the abort (and any closing
-		// narration) is the engine's to surface — done via abort, mirroring ReviewDecision.
-		return "", abort(regen.keepFailed(err))
+		// presenter leaves ErrInputClosed unrendered, so the engine surfaces it, then
+		// aborts, mirroring ReviewDecision.
+		return "", abort(regen.keepFailed(surfaceInputClosed(p, "regenerate", regen.key, err)))
 	}
 
 	if regen.regenerator == nil {
