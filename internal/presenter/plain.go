@@ -445,7 +445,20 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 	render := func() {
 		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))
 	}
-	return readChoice(p.input.line, render, gate)
+	return readChoice(p.typedLine, render, gate)
+}
+
+// typedLine reads one typed line from the input. Where a terminal echoed one that
+// ended without an Enter, Ctrl-C's ^C or a line Ctrl-D closed, it ends that row, so
+// what plain writes next, the failure that says why, starts a row of its own, as on
+// the Rail.
+func (p *PlainPresenter) typedLine() (line string, ended bool, err error) {
+	read := !p.input.abandoned
+	line, ended, err = p.input.line()
+	if read && !ended && isTerminal(p.input.in) {
+		p.writef("\n")
+	}
+	return line, ended, err
 }
 
 // AskLine renders the terse free-text prompt "{prompt}: " (no trailing newline —
@@ -470,7 +483,7 @@ func (p *PlainPresenter) AskLine(prompt string) (string, error) {
 	}
 	p.input.discardTypedAhead()
 	p.writef("%s: ", prompt)
-	line, _, err := p.input.line()
+	line, _, err := p.typedLine()
 	return line, err
 }
 

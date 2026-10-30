@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -143,5 +144,51 @@ func TestInterrupt_ALineTypedToItsEnterAnswersAndEndsTheWatch(t *testing.T) {
 	}
 	if interrupts.watching() || interrupts.starts != 1 {
 		t.Errorf("watches started %d, still watching %v; want one, over with the read", interrupts.starts, interrupts.watching())
+	}
+}
+
+// TestInterrupt_PlainsFailureLineStartsARowOfItsOwnAfterCtrlC pins plain at a
+// terminal: the terminal echoes Ctrl-C as ^C with no newline, so plain ends that row
+// before the failure that says why, which would otherwise read on from the ^C. A line
+// typed to its Enter ends its own row, and plain adds none.
+func TestInterrupt_PlainsFailureLineStartsARowOfItsOwnAfterCtrlC(t *testing.T) {
+	t.Parallel()
+	failed := presenter.StageFailure{Name: "version", Key: "version", Message: presenter.ErrInputClosed.Error()}
+	for _, tt := range []struct {
+		name  string
+		ask   func(presenter.Presenter) error
+		asked string
+	}{
+		{name: "a choice", ask: func(p presenter.Presenter) error { _, err := p.Prompt(reviewGate()); return err }, asked: "Release with these notes?"},
+		{name: "a line", ask: func(p presenter.Presenter) error { _, err := p.AskLine("What should change?"); return err }, asked: "What should change?"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			pty, tty := ptytest.Open(t)
+			interrupts := newFakeInterrupts()
+			p := presenter.NewPlainPresenterWithInput(tty, io.Discard, tty).WithInterrupts(interrupts.watch)
+
+			got := make(chan error, 1)
+			go func() { got <- tt.ask(p) }()
+			if asked := ptytest.Written(t, pty); !strings.Contains(asked, tt.asked) {
+				t.Fatalf("the terminal shows %q, want the question asked", asked)
+			}
+			ptytest.Type(t, pty, "fre\x03")
+			interrupts.c <- os.Interrupt
+			select {
+			case err := <-got:
+				if !errors.Is(err, presenter.ErrInputClosed) {
+					t.Fatalf("answered %v, want ErrInputClosed", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Ctrl-C never ended the read")
+			}
+			p.StageFailed(failed)
+
+			shown := ptytest.Written(t, pty)
+			if !strings.Contains(shown, "^C\r\nversion: FAILED - ") {
+				t.Errorf("the terminal shows %q, want the failure on the row under the ^C", shown)
+			}
+		})
 	}
 }
