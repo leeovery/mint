@@ -7,7 +7,7 @@
  ●  pre_tag       npm ci && npm run build                                                       4.1s
  │                committed as chore(release): pre-tag artifacts
  ●  check         1 flagged                                                                     6.2s
- │                docs/specs/** excluded · design documents
+ │                ✓ docs/specs/** excluded · design documents
  │                written to .mint.toml's [release] table and committed
  ●  notes         written in 4 parts and merged · accepted                                     52.3s
  ●  record        CHANGELOG.md · package.json → 🌿 Release v1.4.0

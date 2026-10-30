@@ -7,8 +7,8 @@
  ●  pre_tag       npm ci && npm run build                                   4.1s
  │                committed dist/ (3 files) as chore(release): pre-tag artifacts
  ●  check         2 flagged                                                 6.2s
- │                docs/specs/** excluded · design documents
- │                ? Exclude fixtures/ from the notes?
+ │                ✓ docs/specs/** excluded · design documents
+ ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude fixtures/ from the notes?
  │                  test fixtures · 14 files, 212 kB
  │                  e exclude   K keep
  ┆

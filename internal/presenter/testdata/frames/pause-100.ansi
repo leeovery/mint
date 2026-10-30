@@ -7,7 +7,7 @@
  ●  pre_tag       npm ci && npm run build                                                       4.1s
  │                committed as chore(release): pre-tag artifacts
  ●  check         1 flagged                                                                     6.2s
- │                ? Exclude docs/specs/** from the notes?
+ ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude docs/specs/** from the notes?
  │                  design documents · 6 files, 48 kB
  │                  e exclude   K keep ›
  ┆

@@ -212,10 +212,36 @@ func (l Layout) hang(h Hang, rail span) []line {
 	switch h.Kind {
 	case Output:
 		return l.hangText(h.Text, plain, true, rail)
-	case Path:
+	case Did, Path:
 		return l.hangText(h.Text, plain, false, rail)
+	case Acted:
+		return l.answer(h, s("✓ ", accent), plain, rail)
+	case Kept:
+		return l.answer(h, s("– ", dim), dim, rail)
 	}
 	return l.hangText(h.Text, dim, false, rail)
+}
+
+func (Hanging) reached() bool { return true }
+
+func (h Hanging) draw(l Layout) []line {
+	var lines []line
+	for _, hang := range h.Lines {
+		lines = append(lines, l.hang(hang, solid)...)
+	}
+	return lines
+}
+
+// answer is h, an answer to a question under the node, where the question stood:
+// mark in the place of its ? and the space after it, then h's Text in st and what it
+// is About dim, wrapped under the Text.
+func (l Layout) answer(h Hang, mark span, st style, rail span) []line {
+	text := []span{s(h.Text, st)}
+	if h.About != "" {
+		text = append(text, s(" · "+h.About, dim))
+	}
+	room := l.width - l.detailCol() - subIndent
+	return l.sub(rail, mark, wrap(text, room, room))
 }
 
 // hangText is text's lines hanging off the rail at the detail column, each wrapped
@@ -310,37 +336,66 @@ func (q Question) tailed(last []span) []span {
 	return append(last, s(" · "+q.Tail, dim))
 }
 
-// subIndent is how far in from its ? a question under a node draws the lines after
-// its first.
+// subIndent is how far in from its mark a node's sub-matter, a question under it or
+// an answer to one, draws its text, and every line after its first.
 const subIndent = 2
+
+var indent = s(strings.Repeat(" ", subIndent), plain)
+
+// sub is content hanging off rail as a node's sub-matter, from the detail column:
+// lead before its first line, indent before the rest.
+func (l Layout) sub(rail, lead span, content [][]span) []line {
+	lines := make([]line, 0, len(content))
+	for _, c := range content {
+		lines = append(lines, l.hung(rail, l.detailCol(), append([]span{lead}, c...)))
+		lead = indent
+	}
+	return lines
+}
+
+// asked is whether the question waits on its answer, as a dry run's preview never
+// does.
+func (q Question) asked() bool { return len(q.Choices) > 0 || q.Typing }
 
 // under is the question drawn as sub-matter of the node above it, from the detail
 // column with the node's rail solid down every line: the ? and the question, then,
-// indented, what it is about and, on a line of its own, its keys.
+// indented, what it is about and, on a line of its own, its keys. While it is asked,
+// a branch joins its first line to the rail.
 func (q Question) under(l Layout) []line {
 	room := l.width - l.detailCol() - subIndent
-	indent := s(strings.Repeat(" ", subIndent), plain)
-	var lines []line
-	add := func(lead span, content [][]span) {
-		for _, c := range content {
-			lines = append(lines, l.hung(solid, l.detailCol(), append([]span{lead}, c...)))
-			lead = indent
-		}
-	}
 	text := []span{s(q.Text, bold)}
 	if q.About == "" {
 		text = q.tailed(text)
 	}
-	add(s("? ", accent), wrap(text, room, room))
-	if q.About != "" {
-		add(indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))
+	question := wrap(text, room, room)
+	lead := s("? ", accent)
+	var lines []line
+	if q.asked() {
+		lines = append(lines, l.branch(append([]span{lead}, question[0]...)))
+		question, lead = question[1:], indent
 	}
-	if len(q.Choices) > 0 || q.Typing {
+	lines = append(lines, l.sub(solid, lead, question)...)
+	if q.About != "" {
+		lines = append(lines, l.sub(solid, indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))...)
+	}
+	if q.asked() {
 		f := newFlow(room, room)
 		q.keys(f)
-		add(indent, f.done())
+		lines = append(lines, l.sub(solid, indent, f.done())...)
 	}
 	return lines
+}
+
+// branch is content hanging off the solid rail at the detail column, joined to it:
+// the rail's column a ├, then a dim ┄ up to a space before the content. A run with
+// no rail has nothing to join it to.
+func (l Layout) branch(content []span) line {
+	col := l.detailCol()
+	if l.bare {
+		return l.hung(solid, col, content)
+	}
+	joined := line{margin, s("├", accent), s(strings.Repeat("┄", col-cells(" ├ ")), dim), s(" ", plain)}
+	return append(joined, content...)
 }
 
 // inputMarker stands before what is typed at a question.

@@ -15,15 +15,16 @@ import (
 func TestFrames(t *testing.T) {
 	t.Parallel()
 	screens := map[string]func() rail.Run{
-		"paused":  paused,
-		"running": running,
-		"review":  review,
-		"done":    done,
-		"failed":  failed,
-		"commit":  commit,
-		"regen":   regenerated,
-		"dry-run": dryRun,
-		"init":    initialised,
+		"paused":   paused,
+		"answered": answered,
+		"running":  running,
+		"review":   review,
+		"done":     done,
+		"failed":   failed,
+		"commit":   commit,
+		"regen":    regenerated,
+		"dry-run":  dryRun,
+		"init":     initialised,
 	}
 	drawn := map[string]string{}
 	for name, screen := range screens {

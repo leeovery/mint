@@ -76,7 +76,7 @@ func TestEachStateDrawsItsOwnMarkWithNoColour(t *testing.T) {
 			name: "lines hanging off a failed node",
 			item: rail.Node{State: rail.Failed, Name: "pre_tag", Detail: "the pre_tag hook failed", Lines: []rail.Hang{
 				{Kind: rail.Output, Text: "npm ERR! missing script: build\n\nnpm ERR! see the log\n"},
-				{Kind: rail.Note, Text: "part notes saved to"},
+				{Kind: rail.Did, Text: "part notes saved to"},
 				{Kind: rail.Path, Text: "~/notes.md"},
 			}},
 			want: []string{
@@ -147,14 +147,14 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 		{
 			name: "solid down a question under a node, dotted below it",
 			items: []rail.Item{
-				rail.Node{Name: "check", Detail: "2 flagged", Lines: []rail.Hang{{Kind: rail.Note, Text: "demo/ excluded · demo tapes"}}},
+				rail.Node{Name: "check", Detail: "2 flagged", Lines: []rail.Hang{{Kind: rail.Acted, Text: "demo/ excluded", About: "demo tapes"}}},
 				rail.Question{Under: true, Text: "Exclude design/ from the notes?", About: "design documents · 1 file, 26 kB", Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
 				toCome,
 			},
 			want: []string{
 				" ●  check         2 flagged",
-				" │                demo/ excluded · demo tapes",
-				" │                ? Exclude design/ from the notes?",
+				" │                ✓ demo/ excluded · demo tapes",
+				" ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude design/ from the notes?",
 				" │                  design documents · 1 file, 26 kB",
 				" │                  e exclude   k keep",
 				" ┆",

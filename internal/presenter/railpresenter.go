@@ -251,7 +251,7 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 		n.Time = stageTime(s.Elapsed)
 	}
 	if s.Commit != "" {
-		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: committedAs + s.Commit})
+		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Did, Text: committedAs + s.Commit})
 	}
 	if s.Note != "" {
 		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: s.Note})
@@ -281,7 +281,7 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Output, Text: s.Output})
 	}
 	if s.SavedNotes != "" {
-		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Note, Text: savedNotesLead}, rail.Hang{Kind: rail.Path, Text: s.SavedNotes})
+		n.Lines = append(n.Lines, rail.Hang{Kind: rail.Did, Text: savedNotesLead}, rail.Hang{Kind: rail.Path, Text: s.SavedNotes})
 	}
 	p.errf("✗ %s  %s\n", s.Name, s.Message)
 	p.redraw()
@@ -398,7 +398,7 @@ func about(x ExclusionSuggestion) string {
 func (p *RailPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.run.hang(a.Key, rail.Hang{Kind: rail.Note, Text: exclusionAnswersText(a)})
+	p.run.hang(a.Key, rail.Hang{Kind: rail.Did, Text: exclusionAnswersText(a)})
 	p.redraw()
 }
 
@@ -470,7 +470,7 @@ func (p *RailPresenter) Unwound(u Unwind) {
 	defer p.mu.Unlock()
 	var kept []rail.Hang
 	if u.KeptRow != "" {
-		kept = append(kept, rail.Hang{Kind: rail.Note, Text: u.KeptRow})
+		kept = append(kept, rail.Hang{Kind: rail.Did, Text: u.KeptRow})
 	}
 	for _, pt := range p.run.parts {
 		if pt.key == u.Key {
@@ -479,7 +479,7 @@ func (p *RailPresenter) Unwound(u Unwind) {
 	}
 	if failed := p.run.find(u.Key); failed != nil && failed.node.State == rail.Failed {
 		if u.Undone != "" {
-			failed.node.Lines = slices.Insert(slices.Clone(failed.node.Lines), 0, rail.Hang{Kind: rail.Note, Text: u.Undone})
+			failed.node.Lines = slices.Insert(slices.Clone(failed.node.Lines), 0, rail.Hang{Kind: rail.Did, Text: u.Undone})
 		}
 		failed.node.Lines = append(failed.node.Lines, kept...)
 		p.run.touched = failed

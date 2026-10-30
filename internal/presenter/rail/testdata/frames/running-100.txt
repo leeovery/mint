@@ -7,7 +7,7 @@
  ●  pre_tag       npm ci && npm run build                                                       4.1s
  │                committed dist/ (3 files) as chore(release): pre-tag artifacts
  ●  check         files that don't belong in the notes                                          6.2s
- │                docs/specs/** excluded · design documents
+ │                ✓ docs/specs/** excluded · design documents
  │                written to .mint.toml's [release] table and committed
  ⠹  notes         3 of 4 parts done  ━━━━━━━━━━━━━━━━━━──────                                    38s
  ┆

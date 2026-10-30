@@ -286,7 +286,7 @@ func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestio
 		got := r.screen(t)[8:14]
 		want := []string{
 			pane(" ●  check         1 flagged                                                                     6.2s"),
-			" │                ? Exclude docs/specs/** from the notes?",
+			" ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude docs/specs/** from the notes?",
 			" │                  design documents · 6 files, 48 kB",
 			" │                  e exclude   K keep ›",
 			" ┆",
@@ -299,8 +299,117 @@ func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestio
 	if c, _ := r.Prompt(pauseGate()); c != presenter.ChoiceKeep {
 		t.Fatalf("Prompt = %q, want k", c)
 	}
-	if got := r.screen(t)[9]; got != " │                docs/specs/** kept · design documents" {
+	if got := r.screen(t)[9]; got != " │                – docs/specs/** kept · design documents" {
 		t.Errorf("the answer reads %q, want it under the check", got)
+	}
+}
+
+// TestRailGate_AnExclusionAnswerIsMarkedForWhatItDoes pins the mark each answer
+// takes in the question's place: an exclude, which the run acts on, a ✓ in the
+// accent, its text in the normal colour; a keep, which changes nothing, a – and all
+// of it dim, -y's keep included. It does so however the check stands when the answer
+// comes: still in the region, or settled already, as on a terminal too narrow for a
+// region or once the question was printed to read a typed line at, where the answer
+// hangs under the check's block as it would have under its node, and no node of its
+// own draws for it.
+func TestRailGate_AnExclusionAnswerIsMarkedForWhatItDoes(t *testing.T) {
+	t.Parallel()
+	modes := []struct {
+		name       string
+		cols, rows int
+		// echo is a terminal that echoes each line typed at it where its cursor
+		// stands, so a question reads its answer as a typed line printed last.
+		echo bool
+		// col is the detail column, where the mark goes.
+		col int
+	}{
+		{name: "in the region", cols: 100, rows: 30, col: 18},
+		{name: "printed as it happens, under sixty columns", cols: 50, rows: 40, col: 4},
+		{name: "after a typed line the terminal echoes", cols: 100, rows: 30, echo: true, col: 18},
+	}
+	tests := []struct {
+		name  string
+		typed []string
+		yes   bool
+		row   string
+		kept  bool
+	}{
+		{name: "an exclude", typed: []string{"y\n", "e\n"}, row: "✓ docs/specs/** excluded · design documents"},
+		{name: "a keep", typed: []string{"y\n", "k\n"}, row: "– docs/specs/** kept · design documents", kept: true},
+		{name: "a keep -y took", yes: true, row: "– docs/specs/** kept (-y) · design documents", kept: true},
+	}
+	for _, mode := range modes {
+		for _, tt := range tests {
+			t.Run(mode.name+", "+tt.name, func(t *testing.T) {
+				t.Parallel()
+				in := answers(tt.typed...)
+				r := newRailTermIn(t, termenv.TrueColor, mode.cols, mode.rows, in, presenter.WithRailEcho(mode.echo))
+				if mode.echo {
+					in.asked = func(int) { _, _ = io.WriteString(r.term, strings.ReplaceAll(in.answers[0], "\n", "\r\n")) }
+				}
+				r.WithYes(tt.yes)
+				preparedRelease(r, r.clock, "1 flagged")
+				_, _ = r.Prompt(pauseGate())
+				g, err := frametest.Parse(r.frame(t))
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := " │" + strings.Repeat(" ", mode.col-2) + tt.row
+				at := slices.Index(g.Text(), want)
+				if at < 0 {
+					t.Fatalf("no answer reads %q on\n%s", want, strings.Join(g.Text(), "\n"))
+				}
+				if mark := g[at][mode.col]; !tt.kept && mark.FG != accent || tt.kept && !mark.Faint {
+					t.Errorf("the mark draws %v, want a ✓ in the accent or a – dim", mark)
+				}
+				if glob := g[at][mode.col+2]; glob.Faint != tt.kept {
+					t.Errorf("the glob draws %v, want faint %v", glob, tt.kept)
+				}
+				nodes := slices.DeleteFunc(g.Text(), func(line string) bool { return !strings.HasPrefix(line, " ●  check") })
+				if len(nodes) != 1 {
+					t.Errorf("the check draws as %d done nodes, want one, the answer hung under its block", len(nodes))
+				}
+			})
+		}
+	}
+}
+
+// TestRailGate_OnAShortTerminalAnswersHangUnderTheSettledCheck pins that once the
+// check has settled out of a short terminal's region, each answer after it still
+// hangs as its line, marked for what it does, and draws no node of its own.
+func TestRailGate_OnAShortTerminalAnswersHangUnderTheSettledCheck(t *testing.T) {
+	t.Parallel()
+	const pauses = 14
+	typed := []string{"y\n"}
+	for i := range pauses {
+		typed = append(typed, []string{"e\n", "k\n"}[i%2])
+	}
+	r := newRailTerm(t, 100, 14, answers(typed...))
+	preparedRelease(r, r.clock, fmt.Sprintf("%d flagged", pauses))
+	for i := range pauses {
+		x := presenter.ExclusionSuggestion{Glob: fmt.Sprintf("gen/part%02d/", i), Reason: "generated", Matches: "1 file, 1 kB"}
+		g := pauseGate()
+		g.Suggestion, g.Subject, g.Question = &x, x.Glob, "Exclude "+x.Glob+" from the notes? (generated; 1 file, 1 kB)"
+		if _, err := r.Prompt(g); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]"})
+	screen := r.screen(t)
+	if !slices.Contains(screen, " │                written to .mint.toml's [release] table and committed") {
+		t.Errorf("the screen shows\n%s\nwant where the answers went hung under them", strings.Join(screen, "\n"))
+	}
+	for i := pauses - 4; i < pauses; i++ {
+		want := fmt.Sprintf(" │                ✓ gen/part%02d/ excluded · generated", i)
+		if i%2 == 1 {
+			want = fmt.Sprintf(" │                – gen/part%02d/ kept · generated", i)
+		}
+		if !slices.Contains(screen, want) {
+			t.Errorf("the screen shows\n%s\nwant %q", strings.Join(screen, "\n"), want)
+		}
+	}
+	if nodes := slices.DeleteFunc(screen, func(line string) bool { return !strings.HasPrefix(line, " ●  check") }); len(nodes) != 1 {
+		t.Errorf("the check draws as %d done nodes, want one, each answer hung under its block", len(nodes))
 	}
 }
 

@@ -18,8 +18,8 @@ type Run struct {
 	Region  []Live
 }
 
-// Item is one piece of the drawing: a Header, a Station, a Node, a Question, the
-// Rule, a Body, an End, Next or a Version.
+// Item is one piece of the drawing: a Header, a Station, a Node, Hanging lines, a
+// Question, the Rule, a Body, an End, Next or a Version.
 type Item interface {
 	draw(l Layout) []line
 	// reached is whether the run has come this far: the rail into an item, or out
@@ -126,19 +126,38 @@ type Progress struct {
 type HangKind int
 
 const (
-	// Note is mint's own words, dim.
+	// Note is metadata, dim: what a stage passed over, a reason, a size, a count.
 	Note HangKind = iota
+	// Did is what mint did, in the normal colour: a commit it made, a file it wrote,
+	// what an unwind undid.
+	Did
 	// Output is a command's own output, verbatim behind a gutter of its own.
 	Output
 	// Path is a path, on a line of its own.
 	Path
+	// Acted is an answer the run acts on, given to a question under the node (an
+	// exclusion check's exclude), in the question's place: ✓ in the accent where its ?
+	// stood, then Text, About dim.
+	Acted
+	// Kept is an answer that changes nothing (an exclusion check's keep), drawn as
+	// Acted is but marked –, and all of it dim.
+	Kept
 )
 
 // Hang is text hanging off a node, at the detail column, wrapped to the width with
-// the rail on every line. A newline in Text starts a line.
+// the rail on every line. A newline in Text starts a line. An answer, Acted or Kept,
+// has what it is About dim after " · ", and wraps under its Text, clear of its mark.
 type Hang struct {
-	Kind HangKind
-	Text string
+	Kind  HangKind
+	Text  string
+	About string
+}
+
+// Hanging is lines hanging off a node that settled before they came, as an answer
+// the exclusion check is given once its node has gone up the scrollback: the solid
+// rail, and each line as the node would hang it, under what the node drew last.
+type Hanging struct {
+	Lines []Hang
 }
 
 // Question is a question node: Text bold, then, on a line of their own, each
@@ -148,7 +167,8 @@ type Hang struct {
 // after the input marker. A question Under the node above it is that node's
 // sub-matter, as the exclusion check's are: no node of its own, but lines hanging off
 // the node's rail, Text after a ? in the accent, then, indented, About, dim, and the
-// keys.
+// keys. While it is asked, its Choices or Typing set, a branch joins its ? to the
+// rail.
 type Question struct {
 	Text    string
 	About   string
@@ -201,5 +221,6 @@ type Move struct {
 func (Station) live()  {}
 func (Node) live()     {}
 func (Question) live() {}
+func (Hanging) live()  {}
 func (Rule) live()     {}
 func (Body) live()     {}

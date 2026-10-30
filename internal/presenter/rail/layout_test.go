@@ -270,7 +270,7 @@ func TestAQuestionUnderANodeWrapsIndentedUnderItsMark(t *testing.T) {
 	}
 	got := draw(t, 70, q)
 	want := []string{
-		" │                ? Exclude docs/specs/archive/** from the release ",
+		" ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude docs/specs/archive/** from the release ",
 		" │                  notes?",
 		" │                  design documents and the plans written before ",
 		" │                  them · 6 files, 48 kB",
@@ -278,6 +278,64 @@ func TestAQuestionUnderANodeWrapsIndentedUnderItsMark(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("the question draws\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestAnAnswerUnderANodeWrapsUnderItsTextClearOfItsMark(t *testing.T) {
+	t.Parallel()
+	n := rail.Node{Name: "check", Lines: []rail.Hang{
+		{Kind: rail.Acted, Text: "docs/specs/archive/** excluded", About: "design documents and the plans written before them"},
+		{Kind: rail.Kept, Text: "fixtures/ kept", About: "test fixtures the suite reads at start-up, large and generated"},
+	}}
+	got := draw(t, 70, n)
+	want := []string{
+		" ●  check",
+		" │                ✓ docs/specs/archive/** excluded · design documents ",
+		" │                  and the plans written before them",
+		" │                – fixtures/ kept · test fixtures the suite reads at ",
+		" │                  start-up, large and generated",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the answers draw\n%q\nwant\n%q", got, want)
+	}
+}
+
+// A question under a node is joined to the rail by a branch only while it is asked:
+// a dry run's preview waits on nothing, and a run with no rail has none to join.
+func TestABranchJoinsAQuestionUnderANodeToTheRailWhileItIsAsked(t *testing.T) {
+	t.Parallel()
+	const text = "Exclude docs/ from the notes?"
+	keys := []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep", Default: true}}
+	tests := []struct {
+		name  string
+		width int
+		q     rail.Question
+		bare  bool
+		want  string
+	}{
+		{name: "asked for a key", width: 100, q: rail.Question{Under: true, Text: text, Choices: keys}, want: " ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude docs/ from the notes?"},
+		{name: "read as a typed line", width: 100, q: rail.Question{Under: true, Text: text, Typing: true}, want: " ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude docs/ from the notes?"},
+		{name: "asked under seventy columns, the detail column at the name's", width: 60, q: rail.Question{Under: true, Text: text, Choices: keys}, want: " ├┄ ? Exclude docs/ from the notes?"},
+		{name: "a dry run's preview, not asked", width: 100, q: rail.Question{Under: true, Text: text, Tail: "skipped (dry run)"}, want: " │                ? Exclude docs/ from the notes? · skipped (dry run)"},
+		{name: "asked in a run with no rail", width: 100, q: rail.Question{Under: true, Text: text, Choices: keys}, bare: true, want: "                  ? Exclude docs/ from the notes?"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := rail.Run{Settled: []rail.Item{tt.q}, Region: []rail.Live{rail.Station{Kind: rail.Pending}}}
+			if tt.bare {
+				r.Region = nil
+			}
+			got := rail.NewLayout(tt.width, rail.NoColour).Settled(r, 0)
+			if got[0] != tt.want {
+				t.Errorf("the question's first line draws\n%q\nwant\n%q", got[0], tt.want)
+			}
+			for _, ln := range got[1:] {
+				if strings.ContainsAny(ln, "├┄") {
+					t.Errorf("a line after the question's first draws %q, want the branch on its first alone", ln)
+				}
+			}
+		})
 	}
 }
 

@@ -5,7 +5,7 @@
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync, gh signed in
  ●  check         1 flagged                                                                     0.7s
- │                docs/design/ excluded · design documents
+ │                ✓ docs/design/ excluded · design documents
  │                written to .mint.toml's [release] table and committed
  ●  notes         generated · accepted                                                          0.7s
  ●  record        CHANGELOG.md committed

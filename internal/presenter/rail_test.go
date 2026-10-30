@@ -508,7 +508,7 @@ func TestRail_UnderSixtyColumnsAQuestionPrintsTheMomentItIsAsked(t *testing.T) {
 			r.SuspendSpinner()
 			_, _ = r.Prompt(cacheGate())
 		}},
-		{name: "the exclusion pause, under the check", want: " │  ? Exclude docs/specs/** from the notes?", ask: func(r *railTerm, _ func()) {
+		{name: "the exclusion pause, under the check", want: " ├┄ ? Exclude docs/specs/** from the notes?", ask: func(r *railTerm, _ func()) {
 			checked(r)
 			_, _ = r.Prompt(pauseGate())
 		}},

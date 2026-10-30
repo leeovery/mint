@@ -13,8 +13,8 @@
  │  artifacts
  ●  check
  │  2 flagged
- │  docs/specs/** excluded · design documents
- │  ? Exclude fixtures/ from the notes?
+ │  ✓ docs/specs/** excluded · design documents
+ ├┄ ? Exclude fixtures/ from the notes?
  │    test fixtures · 14 files, 212 kB
  │    e exclude   K keep
  ┆
