@@ -370,33 +370,31 @@ func autoTail(auto bool) string {
 	return ""
 }
 
-// chosen is what answering g with c chose: the gate's own word for its default, the
-// action of any other key.
+// chosen is what answering g with c chose: the gate's own word for its default, how
+// any other key reads once it answered.
 func chosen(g Gate, c Choice) string {
 	if c == g.Default {
 		return g.AcceptEcho
 	}
-	return action(g, c)
+	return answered(g, c)
 }
 
-// pauseAnswer is what became of the exclusion pause's glob: kept, the gate's own
-// word for its default, or excluded, marked (-y) where -y took it.
+// pauseAnswer is what became of the exclusion pause's glob, as chosen says it, marked
+// (-y) where -y took it.
 func pauseAnswer(g Gate, c Choice, auto bool) string {
 	word := chosen(g, c)
-	if c == ChoiceExclude {
-		word = "excluded"
-	}
 	if auto {
 		word += " (-y)"
 	}
 	return word
 }
 
-// action is the action g's key c names.
-func action(g Gate, c Choice) string {
+// answered is how g's key c reads once it is the answer: its own word for that, or
+// the action it names.
+func answered(g Gate, c Choice) string {
 	for _, choice := range g.Choices {
 		if choice.Key == c {
-			return choice.Action
+			return firstOf(choice.Answered, choice.Action)
 		}
 	}
 	return string(c)

@@ -197,7 +197,13 @@ const (
 	manualCleanup      = "manual cleanup required"
 	nothingCommitted   = "nothing committed"
 	nothingPushed      = "nothing pushed"
-	answersLeftInPlace = "the exclusion answers kept in " + config.FileName
+	answersLeftInPlace = "your exclusion answers kept in " + config.FileName
+	// answersKept is what the unwind's row says it kept of the exclusion answers,
+	// re-committed or left in a .mint.toml git ignores.
+	answersKept = "kept your exclusion answers in " + config.FileName
+	// answersRecommitted is the one commit past the start the close names where the
+	// unwind re-committed the answers.
+	answersRecommitted = "+ 1 commit (the " + config.FileName + " answers)"
 	notCommitted       = " written, not committed"
 	leftUntracked      = " left untracked"
 	preTagStaged       = "pre_tag's changes staged, not committed"
@@ -207,16 +213,17 @@ const (
 	noClaim = nothingCommitted + " · " + nothingPushed
 )
 
-// unwoundTo is where an unwind left the repo, as the run's close states it: on the
-// kept answers commit when it re-committed them, else back where it started when
-// atStart says HEAD is, then that recovery needs a hand when it does, the files the
-// record stage created and the reset left untracked, and the answers an ignored
-// .mint.toml keeps. An unwind runs only before the push, so it always pushed nothing.
+// unwoundTo is where an unwind left the repo, as the run's close states it: one
+// commit past the start, the answers', when it re-committed them, else back where it
+// started when atStart says HEAD is, then that recovery needs a hand when it does and
+// the files the record stage created and the reset left untracked. That it kept the
+// answers is the unwind's row's to say, not the close's. An unwind runs only before
+// the push, so it always pushed nothing.
 func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) string {
 	var parts []string
 	switch {
 	case event.Kept != "":
-		parts = append(parts, event.Kept)
+		parts = append(parts, answersRecommitted)
 	case atStart:
 		parts = append(parts, backWhereItStarted)
 	}
@@ -225,9 +232,6 @@ func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) stri
 	}
 	if len(made.created) > 0 {
 		parts = append(parts, strings.Join(made.created, " + ")+leftUntracked)
-	}
-	if made.answersLeft {
-		parts = append(parts, answersLeftInPlace)
 	}
 	return strings.Join(append(parts, nothingPushed), " · ")
 }
@@ -478,6 +482,9 @@ func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Un
 	event := presenter.Unwind{Undone: undone(tag, made.Commits, outcome), Repo: repoState(outcome.clean), Key: stageUnwind}
 	if outcome.answersKept {
 		event.Kept = "kept the answers commit on the starting commit"
+	}
+	if outcome.answersKept || made.answersLeft {
+		event.KeptRow = answersKept
 	}
 	return event
 }

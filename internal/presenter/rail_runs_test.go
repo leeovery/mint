@@ -69,7 +69,7 @@ func pauseGate() presenter.Gate {
 	return presenter.Gate{
 		Question: "Exclude docs/specs/** from the notes? (design documents; 6 files, 48 kB)",
 		Subject:  "docs/specs/**", AcceptEcho: "kept",
-		Choices: []presenter.GateChoice{{Key: presenter.ChoiceExclude, Action: "exclude"}, {Key: presenter.ChoiceKeep, Action: "keep"}},
+		Choices: []presenter.GateChoice{{Key: presenter.ChoiceExclude, Action: "exclude", Answered: "excluded"}, {Key: presenter.ChoiceKeep, Action: "keep"}},
 		Default: presenter.ChoiceKeep, Stage: "check", Suggestion: &s,
 	}
 }

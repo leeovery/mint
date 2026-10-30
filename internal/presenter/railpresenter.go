@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -451,7 +452,7 @@ func (p *RailPresenter) warned(key, label string) *part {
 	return p.run.stage(key, label)
 }
 
-// Unwound draws the unwind's node: what it undid, and what it kept under it. An
+// Unwound draws the unwind's node: what it undid, then what it kept, on its row. An
 // unwind that couldn't finish is already drawn, as the failed nodes of its steps
 // keyed as it is, which wait for it, unsettled, however the run is drawn: it hangs
 // what it undid first under the last, above the output of the step that failed, and
@@ -461,8 +462,8 @@ func (p *RailPresenter) Unwound(u Unwind) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var kept []rail.Hang
-	if u.Kept != "" {
-		kept = append(kept, rail.Hang{Kind: rail.Note, Text: u.Kept})
+	if u.KeptRow != "" {
+		kept = append(kept, rail.Hang{Kind: rail.Note, Text: u.KeptRow})
 	}
 	for _, pt := range p.run.parts {
 		if pt.key == u.Key {
@@ -476,7 +477,7 @@ func (p *RailPresenter) Unwound(u Unwind) {
 		failed.node.Lines = append(failed.node.Lines, kept...)
 		p.run.touched = failed
 	} else {
-		p.run.add(rail.Node{State: rail.Unwind, Name: unwindName, Detail: u.Undone, Lines: kept})
+		p.run.add(rail.Node{State: rail.Unwind, Name: unwindName, Detail: joinNonEmpty(" · ", u.Undone, u.KeptRow)})
 	}
 	p.redraw()
 }
@@ -673,6 +674,11 @@ func (p *RailPresenter) errf(format string, args ...any) {
 		return
 	}
 	_, _ = fmt.Fprintf(p.err, format, args...)
+}
+
+// joinNonEmpty is those of texts that aren't empty, joined with sep.
+func joinNonEmpty(sep string, texts ...string) string {
+	return strings.Join(slices.DeleteFunc(texts, func(t string) bool { return t == "" }), sep)
 }
 
 // firstOf is the first of texts that isn't empty.

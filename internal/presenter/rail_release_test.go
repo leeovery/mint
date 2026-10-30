@@ -131,7 +131,10 @@ func unfinishedUnwind(r *railTerm) {
 		Message: "automatic recovery failed; manually reset HEAD back to 7c1e0b4",
 		Output:  "fatal: could not write the index\n",
 	})
-	r.Unwound(presenter.Unwind{Undone: "reset 1 commit", Kept: "kept the answers commit on the starting commit", Repo: "manual cleanup required", Key: "unwind"})
+	r.Unwound(presenter.Unwind{
+		Undone: "reset 1 commit", Kept: "kept the answers commit on the starting commit",
+		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "manual cleanup required", Key: "unwind",
+	})
 	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "main", Detail: "manual cleanup required · nothing pushed"}, Elapsed: secs(4.9)})
 }
 
@@ -145,7 +148,7 @@ func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *te
 		" ✗  unwind        automatic recovery failed; manually reset HEAD back to 7c1e0b4",
 		" │                reset 1 commit",
 		" │                │ fatal: could not write the index",
-		" │                kept the answers commit on the starting commit",
+		" │                kept your exclusion answers in .mint.toml",
 		" │",
 		row(" ◇  main          manual cleanup required · nothing pushed", "4.9s"),
 	}
@@ -177,7 +180,7 @@ func TestRail_WithNoRegionAnUnwindThatCouldNotFinishStillHangsWhatItUndidUnderIt
 			at := func(text string) int {
 				return slices.IndexFunc(screen, func(line string) bool { return strings.Contains(line, text) })
 			}
-			failed, undone, output, kept := at("✗  unwind"), at("reset 1 commit"), at("fatal: could not write the index"), at("kept the answers commit")
+			failed, undone, output, kept := at("✗  unwind"), at("reset 1 commit"), at("fatal: could not write the index"), at("kept your exclusion answers")
 			if failed == -1 || failed >= undone || undone >= output || output >= kept {
 				t.Errorf("the terminal shows\n%s\nwant the failed unwind, then what it undid, the step's output and what it kept, in that order", strings.Join(screen, "\n"))
 			}

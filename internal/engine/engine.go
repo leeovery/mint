@@ -93,7 +93,7 @@ func FirstReleaseReviewGate() presenter.Gate {
 		AcceptEcho: "accepted",
 		Choices: []presenter.GateChoice{
 			{Key: presenter.ChoiceYes, Action: "release"},
-			{Key: presenter.ChoiceNo, Action: "abort"},
+			{Key: presenter.ChoiceNo, Action: "abort", Answered: "aborted"},
 			{Key: presenter.ChoiceEdit, Action: "edit in $EDITOR"},
 		},
 		Default: presenter.ChoiceYes,

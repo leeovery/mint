@@ -184,11 +184,13 @@ func TestRail_TheUnwindNamesWhatItUndidThenWhatItKept(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 24, answers())
 	commitRun(r)
-	r.Unwound(presenter.Unwind{Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit", Repo: "repo clean"})
-	got := r.screen(t)[4:7]
+	r.Unwound(presenter.Unwind{
+		Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit",
+		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "repo clean",
+	})
+	got := r.screen(t)[4:6]
 	want := []string{
-		" ↩  unwind        reset 2 commits",
-		" │                kept the answers commit on the starting commit",
+		" ↩  unwind        reset 2 commits · kept your exclusion answers in .mint.toml",
 		" ┆",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {

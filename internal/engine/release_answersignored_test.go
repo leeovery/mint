@@ -185,7 +185,8 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 		tail    []runner.ScriptedCall
 		want    string
 		summary string
-		// outcome and end are how the run closes: the answers' write it keeps named.
+		// outcome and end are how the run closes: the answers' write it keeps named
+		// there only where no unwind's row names it.
 		outcome presenter.Outcome
 		end     string
 	}{
@@ -197,7 +198,7 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit; repo clean",
 			outcome: presenter.OutcomeUnwound,
-			end:     "back where it started · the exclusion answers kept in .mint.toml · nothing pushed",
+			end:     "back where it started · nothing pushed",
 		},
 		{
 			name:    "the bookkeeping commit failing",
@@ -207,14 +208,14 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			want:    preTagHookConfig + ignoredAnswered,
 			summary: "reset 1 commit; repo clean",
 			outcome: presenter.OutcomeUnwound,
-			end:     "back where it started · the exclusion answers kept in .mint.toml · nothing pushed",
+			end:     "back where it started · nothing pushed",
 		},
 		{
 			name:    "a decline with the file the write created",
 			reviews: []presenter.Choice{presenter.ChoiceNo},
 			want:    createdAnswers,
 			outcome: presenter.OutcomeDeclined,
-			end:     "the exclusion answers kept in .mint.toml · nothing pushed",
+			end:     "your exclusion answers kept in .mint.toml · nothing pushed",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -247,6 +248,9 @@ func TestRelease_IgnoredConfig_AbortOrFailureAfterAnswering_KeepsTheWrite(t *tes
 			}
 			if got := unwoundText(t, rec); got != tc.summary {
 				t.Errorf("Unwound.Text() = %q, want %q", got, tc.summary)
+			}
+			if got, want := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound.KeptRow, "kept your exclusion answers in .mint.toml"; got != want {
+				t.Errorf("Unwound.KeptRow = %q, want the unwind's row to say %q", got, want)
 			}
 		})
 	}

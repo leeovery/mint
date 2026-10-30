@@ -1373,7 +1373,7 @@ func exclusionPauseGate(s notes.Suggestion, m notes.Matches) presenter.Gate {
 		Subject:    s.Glob,
 		AcceptEcho: "kept",
 		Choices: []presenter.GateChoice{
-			{Key: presenter.ChoiceExclude, Action: "exclude"},
+			{Key: presenter.ChoiceExclude, Action: "exclude", Answered: "excluded"},
 			{Key: presenter.ChoiceKeep, Action: "keep"},
 		},
 		Default: presenter.ChoiceKeep,

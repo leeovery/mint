@@ -795,6 +795,11 @@ type Unwind struct {
 	// Kept names what the unwind kept on purpose, empty for nothing:
 	// "kept the answers commit on the starting commit".
 	Kept string
+	// KeptRow is what the unwind kept as the Rail's unwind row says it, after what was
+	// undone, in its own words: "kept your exclusion answers in .mint.toml". It names
+	// answers the unwind left in a .mint.toml git ignores too, which Kept doesn't.
+	// Plain ignores it.
+	KeptRow string
 	// Repo is where the repo ended up: "repo clean", or "manual cleanup required"
 	// when a recovery step failed.
 	Repo string
