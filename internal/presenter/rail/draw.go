@@ -314,33 +314,62 @@ func (q Question) tailed(last []span) []span {
 // its first.
 const subIndent = 2
 
+var indent = s(strings.Repeat(" ", subIndent), plain)
+
+// sub is content hanging off the solid rail as a node's sub-matter, from the detail
+// column: lead before its first line, indent before the rest.
+func (l Layout) sub(lead span, content [][]span) []line {
+	lines := make([]line, 0, len(content))
+	for _, c := range content {
+		lines = append(lines, l.hung(solid, l.detailCol(), append([]span{lead}, c...)))
+		lead = indent
+	}
+	return lines
+}
+
+// asked is whether the question waits on its answer, as a dry run's preview never
+// does.
+func (q Question) asked() bool { return len(q.Choices) > 0 || q.Typing }
+
 // under is the question drawn as sub-matter of the node above it, from the detail
 // column with the node's rail solid down every line: the ? and the question, then,
-// indented, what it is about and, on a line of its own, its keys.
+// indented, what it is about and, on a line of its own, its keys. While it is asked,
+// a branch joins its first line to the rail.
 func (q Question) under(l Layout) []line {
 	room := l.width - l.detailCol() - subIndent
-	indent := s(strings.Repeat(" ", subIndent), plain)
-	var lines []line
-	add := func(lead span, content [][]span) {
-		for _, c := range content {
-			lines = append(lines, l.hung(solid, l.detailCol(), append([]span{lead}, c...)))
-			lead = indent
-		}
-	}
 	text := []span{s(q.Text, bold)}
 	if q.About == "" {
 		text = q.tailed(text)
 	}
-	add(s("? ", accent), wrap(text, room, room))
-	if q.About != "" {
-		add(indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))
+	question := wrap(text, room, room)
+	lead := s("? ", accent)
+	var lines []line
+	if q.asked() {
+		lines = append(lines, l.branch(append([]span{lead}, question[0]...)))
+		question, lead = question[1:], indent
 	}
-	if len(q.Choices) > 0 || q.Typing {
+	lines = append(lines, l.sub(lead, question)...)
+	if q.About != "" {
+		lines = append(lines, l.sub(indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))...)
+	}
+	if q.asked() {
 		f := newFlow(room, room)
 		q.keys(f)
-		add(indent, f.done())
+		lines = append(lines, l.sub(indent, f.done())...)
 	}
 	return lines
+}
+
+// branch is content hanging off the solid rail at the detail column, joined to it:
+// the rail's column a ├, then a dim ┄ up to a space before the content. A run with
+// no rail has nothing to join it to.
+func (l Layout) branch(content []span) line {
+	col := l.detailCol()
+	if l.bare {
+		return l.hung(solid, col, content)
+	}
+	joined := line{margin, s("├", accent), s(strings.Repeat("┄", col-cells(" ├ ")), dim), s(" ", plain)}
+	return append(joined, content...)
 }
 
 // inputMarker stands before what is typed at a question.

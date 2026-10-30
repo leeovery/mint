@@ -286,7 +286,7 @@ func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestio
 		got := r.screen(t)[8:14]
 		want := []string{
 			pane(" ●  check         1 flagged                                                                     6.2s"),
-			" │                ? Exclude docs/specs/** from the notes?",
+			" ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude docs/specs/** from the notes?",
 			" │                  design documents · 6 files, 48 kB",
 			" │                  e exclude   K keep ›",
 			" ┆",

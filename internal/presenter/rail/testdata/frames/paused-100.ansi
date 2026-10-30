@@ -8,7 +8,7 @@
  [38;2;95;215;175m│[39m                [2mcommitted dist/ (3 files) as chore(release): pre-tag artifacts[22m
  [38;2;95;215;175m●[39m  [1mcheck[22m         2 flagged                                                                     [2m6.2s[22m
  [38;2;95;215;175m│[39m                [2mdocs/specs/** excluded · design documents[22m
- [38;2;95;215;175m│[39m                [38;2;95;215;175m? [39m[1mExclude fixtures/ from the notes?[22m
+ [38;2;95;215;175m├[39m[2m┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄[22m [38;2;95;215;175m? [39m[1mExclude fixtures/ from the notes?[22m
  [38;2;95;215;175m│[39m                  [2mtest fixtures · 14 files, 212 kB[22m
  [38;2;95;215;175m│[39m                  [1;38;2;95;215;175me[22;39m exclude   [1;38;2;95;215;175mK[22;39m keep
  [2m┆[22m

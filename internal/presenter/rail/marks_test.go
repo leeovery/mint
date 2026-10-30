@@ -154,7 +154,7 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 			want: []string{
 				" ●  check         2 flagged",
 				" │                demo/ excluded · demo tapes",
-				" │                ? Exclude design/ from the notes?",
+				" ├┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ? Exclude design/ from the notes?",
 				" │                  design documents · 1 file, 26 kB",
 				" │                  e exclude   k keep",
 				" ┆",

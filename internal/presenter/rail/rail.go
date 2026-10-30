@@ -148,7 +148,8 @@ type Hang struct {
 // after the input marker. A question Under the node above it is that node's
 // sub-matter, as the exclusion check's are: no node of its own, but lines hanging off
 // the node's rail, Text after a ? in the accent, then, indented, About, dim, and the
-// keys.
+// keys. While it is asked, its Choices or Typing set, a branch joins its ? to the
+// rail.
 type Question struct {
 	Text    string
 	About   string
