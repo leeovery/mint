@@ -77,14 +77,25 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
-			name: "a stage failed: its mark, name and rail red, its output behind a dim gutter",
+			name: "a stage failed: its mark, name, detail and rail red, its output behind a dim gutter",
 			item: rail.Node{State: rail.Failed, Name: "notes", Detail: "it failed", Lines: []rail.Hang{{Kind: rail.Output, Text: "usage limit"}, {Kind: rail.Note, Text: "saved to"}, {Kind: rail.Path, Text: "~/n.md"}}},
 			want: func(string) []string {
 				return []string{
-					" " + rd("✗") + "  " + redBold("notes") + pad(9) + "it failed",
+					" " + rd("✗") + "  " + redBold("notes") + pad(9) + rd("it failed"),
 					" " + rd("│") + pad(16) + dm("│ ") + "usage limit",
 					" " + rd("│") + pad(16) + dm("saved to"),
 					" " + rd("│") + pad(16) + "~/n.md",
+				}
+			},
+		},
+		{
+			name: "a failed stage's detail: red on every line it runs to, wrapped or broken",
+			item: rail.Node{State: rail.Failed, Name: "pre_tag", Detail: strings.Repeat("failed ", 12) + "running sh:\ncontext canceled"},
+			want: func(string) []string {
+				return []string{
+					" " + rd("✗") + "  " + redBold("pre_tag") + pad(7) + rd(strings.Repeat("failed ", 11)),
+					" " + rd("│") + pad(16) + rd("failed running sh:"),
+					" " + rd("│") + pad(16) + rd("context canceled"),
 				}
 			},
 		},
