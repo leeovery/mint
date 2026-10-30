@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-30
+
+Mint's terminal output is redrawn as a live progress rail that shows every stage of a release, commit or regenerate run as it happens.
+
+✨ Added
+- Live "rail" display for `mint release`, `mint commit`, `mint release regenerate` and `mint init` — a header, a start and end station, a node per stage with a spinner and timings, and a plan of upcoming stages with the point of no return marked.
+- `mint commit` shows what it will commit up front (files and lines added and removed) and gives staging, commit and push their own rows.
+- Single-keypress answers for regenerate's Source and Target questions — press the first letter instead of typing the word.
+- A failed or skipped step now lists the exact commands to run next, such as re-releasing with your saved part notes, `--no-ai`, or `on_notes_failure = "fallback"`.
+- `mint --version` and `mint version` honour `--plain` to print the bare value.
+- When publishing a regenerated release fails after the changelog is pushed, the notes just pushed are saved to a file and a ready-to-run `--notes-file` command is given to retry.
+
+🔧 Changed
+- `gh` sign-in is now checked during preflight, before any hook, AI notes or commit, instead of just before tagging.
+- The notes exclusion check now says up front how many suggestions it flagged, and a dry run previews each exclusion question without asking it.
+- Typing ahead while mint works no longer answers a question it hasn't asked yet.
+- The final end-of-run line now says what the run left behind when it stopped short, such as "back where it started · nothing pushed".
+- Failures from git and `gh` show their own error output beneath the failed row, including push, tag and commit failures.
+
+🐛 Fixed
+- Ctrl-C at a question or typed prompt now ends the run cleanly and says it was interrupted, instead of leaving no explanation.
+- A cancelled run no longer reports a missing tag, branch sync or `gh` sign-in during preflight.
+
 ## [0.1.2] - 2026-10-28
 
 🔧 Changed
