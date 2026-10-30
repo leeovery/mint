@@ -89,12 +89,14 @@ func TestRelease_DryRun_NoMutation_FirstRelease(t *testing.T) {
 	if invokedWith(f, "git", "-C", root, "add", "CHANGELOG.md") {
 		t.Errorf("dry-run staged the changelog")
 	}
-	// Not a single gh command may have run (no auth gate, no release create).
+	// Not a single gh command may have run (no auth gate, no release create), nor
+	// the provider's detection.
 	for _, inv := range f.Invocations() {
 		if inv.Name == "gh" {
 			t.Errorf("dry-run issued a gh command: %q", commandLine(inv))
 		}
 	}
+	assertNoProviderRead(t, f)
 	// The run still finishes successfully.
 	fin, _ := rec.At(len(rec.Events) - 1)
 	if fin.Kind != presentertest.KindRunFinished {
@@ -217,7 +219,8 @@ func TestRelease_DryRun_PublishDisabled_NoPublishStep(t *testing.T) {
 	writeConfig(t, root, "[release]\npublish = false\n")
 
 	f := runner.NewFakeRunner()
-	// publish=false skips provider detection entirely, so no `remote get-url origin`.
+	// publish=false skips provider detection entirely, so no `remote get-url origin`:
+	// seeded all the same, so it is assertNoProviderRead that catches one.
 	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
@@ -249,6 +252,7 @@ func TestRelease_DryRun_PublishDisabled_NoPublishStep(t *testing.T) {
 			t.Errorf("dry-run with publish=false issued a gh command: %q", commandLine(inv))
 		}
 	}
+	assertNoProviderRead(t, f)
 	assertNoMutation(t, f)
 }
 

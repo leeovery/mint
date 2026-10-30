@@ -98,6 +98,16 @@ func seedRemote(f *runner.FakeRunner, url runner.ScriptedCall) {
 	f.SeedCall("git", []string{"remote", "get-url", "origin"}, url)
 }
 
+// assertNoProviderRead fails t where the run read the release remote's URL, the
+// read only provider detection makes: seedProvider answers it from any run, so a run
+// that publishes nothing must be caught reading it here.
+func assertNoProviderRead(t *testing.T, f *runner.FakeRunner) {
+	t.Helper()
+	if invokedWith(f, "git", "remote", "get-url", "origin") {
+		t.Error("a run that publishes nothing read origin's URL to detect a provider")
+	}
+}
+
 // newDeps builds the orchestrator's dependency set around a single FakeRunner so
 // every external call (git via the units, gh via the publisher) is scripted and
 // recorded on one timeline.
@@ -1519,12 +1529,14 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	// No gh invocation may have happened (no gate, no publish).
+	// No gh invocation may have happened (no gate, no publish), nor the provider's
+	// detection.
 	for _, inv := range f.Invocations() {
 		if inv.Name == "gh" {
 			t.Errorf("gh was invoked with publish=false: %q", commandLine(inv))
 		}
 	}
+	assertNoProviderRead(t, f)
 	// The run still tags and pushes, then finishes.
 	if !invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", "v0.0.1") {
 		t.Errorf("publish=false run did not reach the atomic push")
