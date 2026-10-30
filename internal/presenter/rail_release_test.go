@@ -93,6 +93,26 @@ func TestRail_AWarningAheadOfTheRunLeavesItsEdgeAboveThePlanStillToCome(t *testi
 	)...)
 }
 
+func TestRail_AWarningAheadOfAFailedStageStaysUnreachedWithTheUnwindAboveIt(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 24, answers())
+	commitRun(r)
+	r.Warn(presenter.Warning{Key: "commit", Label: "commit skipped", Message: "nothing staged"})
+	r.StageFailed(presenter.StageFailure{Name: "message", Key: "message", Message: "the AI failed"})
+	r.Unwound(presenter.Unwind{Undone: "reset 1 commit", Key: "unwind"})
+
+	wantScreen(t, r, append(commitHead,
+		" ✗  message       the AI failed",
+		" ↩  unwind        reset 1 commit",
+		" !  commit        nothing staged",
+		" ┆",
+		" ┿━━ point of no return "+strings.Repeat("━", 56),
+		" ○  push          to its upstream",
+		" ┆",
+		" ◇  main",
+	)...)
+}
+
 func TestRail_AWarningAfterTheCloseDrawsUnderTheEndStationWithNextLast(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 24, answers())

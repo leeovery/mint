@@ -157,6 +157,11 @@ func (pt *part) running() bool {
 	return pt.kind == nodePart && !pt.hidden && pt.node.State == rail.Running
 }
 
+// failed is whether the part is a node failed.
+func (pt *part) failed() bool {
+	return pt.kind == nodePart && pt.node.State == rail.Failed
+}
+
 // finished is whether the part may settle as it stands: a node past running or
 // passed by, an ongoing one included, a rule whose stage is over, a previewed
 // question. A body and a question go when the question is answered, the end station
@@ -481,17 +486,17 @@ func (m *runModel) partOf(kind partKind) *part {
 
 // insertionPoint is where a new part goes: at the run's edge, under the last part the
 // run has reached, so above the plan still to come but below a stage it passed by,
-// as a dry run passes its hooks. A stage a warning ended ahead of the run is not
-// reached while a part above it is still to come: the run is still above it.
+// as a dry run passes its hooks. A stage a warning ended ahead of the run is reached
+// only once the run has got there, every part above it past: one above it still to
+// come or running leaves the run above it, and so does one failed, as the run stops
+// there, its unwind under it.
 func (m *runModel) insertionPoint() int {
-	edge, toCome := 0, false
+	edge, short := 0, false
 	for i, pt := range m.parts {
-		switch {
-		case pt.toCome():
-			toCome = true
-		case !toCome || !pt.ahead:
+		if !pt.toCome() && (!pt.ahead || !short) {
 			edge = i + 1
 		}
+		short = short || pt.toCome() || pt.running() || pt.failed()
 	}
 	return edge
 }

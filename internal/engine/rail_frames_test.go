@@ -648,6 +648,21 @@ var railRuns = map[string]railRun{
 		w.notes()
 		return w.release(t, nil)
 	}},
+	// A downgraded release whose push is rejected: the unwind hangs under the failed
+	// push, above the publish slot's warning the run never reached.
+	"release-downgraded-unwound-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.f.SeedSequence("git",
+			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
+			ScriptedOut(""),                 // unwind: tag -d v1.3.0
+			ScriptedOut(""),                 // unwind: reset --hard startsha
+		)
+		return w.release(t, nil)
+	}},
 	// A release under --autostash whose work won't go back cleanly once it is out.
 	"release-autostash-conflict-100": {run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, "", "", true)
