@@ -20,7 +20,8 @@ package engine
 //     commit, so neither has anything to reset.
 //   - POST-PONR a provider create/update failure AFTER the changelog push is WARN
 //     ONLY — the changelog is already public, so the run never unwinds; the user
-//     re-heals the provider with `--target release`. This is the SAME warn-only
+//     re-heals the provider with `--target release` from the notes just pushed, which
+//     mint saves to a file and names with --notes-file. This is the SAME warn-only
 //     asymmetry the forward path uses post-push.
 //   - --target both is NON-ATOMIC across surfaces: the changelog (commit + push) is
 //     written FIRST, then the provider release; a provider failure after the
@@ -218,7 +219,8 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 			if pushed {
 				// Post-PONR: the changelog is already public, so never unwind — warn and
 				// point at the heal path, exactly as the forward path's post-push failure.
-				warnRegenerateProviderFailed(p, err, healMove(deps, root, req.Tag, body, releaseName(publisher)))
+				heal, with := healMove(deps, root, req.Tag, body, releaseName(publisher))
+				warnRegenerateProviderFailed(p, err, heal, with)
 				return nil
 			}
 			// Release-only: nothing was pushed, so this is a plain pre-PONR failure. The
@@ -512,13 +514,18 @@ func warnRegenerateProviderSkipped(p presenter.Presenter, key string) {
 // healMove is the way to write tag's release, named release, after its write failed
 // past the changelog's push, with body, the notes the pushed changelog holds, whatever
 // their source: body saved beside the tag's chunk notes, never over them, and passed
-// with --notes-file, or, where it can't be saved, a lead telling the reader to.
-func healMove(deps ReleaseDeps, root, tag, body, release string) presenter.NextMove {
+// with --notes-file, or, where it can't be saved, a lead telling the reader to. with
+// is what plain's warning re-heals the release with: the same command, the file
+// named, or, unsaved, the file the reader saves the notes to.
+func healMove(deps ReleaseDeps, root, tag, body, release string) (move presenter.NextMove, with string) {
 	again := regenerateRerun(tag, RegenerateTargetRelease)
 	if saved := saveHealNotes(deps, root, tag, body); saved != "" {
-		return presenter.NextMove{Lead: "Re-heal the " + release + " from the notes just pushed, saved to " + saved + ":", Command: notesFileCommand(again.command, saved)}
+		command := notesFileCommand(again.command, saved)
+		return presenter.NextMove{Lead: "Re-heal the " + release + " from the notes just pushed, saved to " + saved + ":", Command: command}, command
 	}
-	return presenter.NextMove{Lead: "Save the notes " + record.ChangelogFileName + " now holds for " + tag + " to a file, then re-heal the " + release + " with it (`" + again.command + " --notes-file <file>`)"}
+	unsaved := "the notes " + record.ChangelogFileName + " now holds for " + tag
+	return presenter.NextMove{Lead: "Save " + unsaved + " to a file, then re-heal the " + release + " with it (`" + again.command + " --notes-file <file>`)"},
+		again.command + " --notes-file <file>, " + unsaved + " saved to <file>"
 }
 
 // healNotesSuffix names the file a heal's notes are saved to apart from the tag's
@@ -544,13 +551,15 @@ func saveHealNotes(deps ReleaseDeps, root, tag, body string) string {
 // public, so the run must NOT unwind — it warns and points at the `--target release`
 // re-heal, mirroring the forward path's post-push warn-only handling. It rides the
 // Warn seam (no failure state), so the run finishes successfully. The rail's row says
-// what happened, and heal, the way to write the release again, goes under next.
-func warnRegenerateProviderFailed(p presenter.Presenter, cause error, heal presenter.NextMove) {
+// what happened, and heal, the way to write the release again, goes under next; plain's
+// line re-heals the release with with, heal's command, so a reader following it writes
+// the notes just pushed, never fresh ones that would disagree with the changelog.
+func warnRegenerateProviderFailed(p presenter.Presenter, cause error, heal presenter.NextMove, with string) {
 	const pushed = "changelog is already pushed"
 	p.Warn(presenter.Warning{
 		Key:     stagePublish,
 		Label:   "publish failed",
-		Message: pushed + "; re-heal the provider release with --target release",
+		Message: pushed + "; re-heal the provider release with " + with,
 		Row:     pushed,
 		Output:  publishFailureOutput(cause),
 	})

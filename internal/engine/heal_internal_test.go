@@ -133,6 +133,9 @@ func TestRegenerateWrite_AHealWritesTheReleaseFromTheNotesJustPushed(t *testing.
 			if filepath.Base(saved) != "v1.4.0.heal.md" || heal != want {
 				t.Errorf("heal = %+v, want the release written from the tag's heal file", heal)
 			}
+			if warned := publishWarning(t, rec); warned.Message != "changelog is already pushed; re-heal the provider release with "+heal.Command {
+				t.Errorf("plain's warning = %q, want it to re-heal with the heal's command, the file named", warned.Message)
+			}
 			if got, err := os.ReadFile(saved); err != nil || string(got) != tc.pushed {
 				t.Errorf("heal notes at %s = %q, %v, want the notes pushed, %q", saved, got, err, tc.pushed)
 			}
@@ -156,11 +159,27 @@ func TestHealMove_WithNowhereToSaveTheNotesTheLeadSaysHowToHeal(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := healMove(ReleaseDeps{ChunkNotes: tc.notes}, "/repo", "v1.4.0", "Initial release.\n", "GitHub release"); got != want {
+			got, with := healMove(ReleaseDeps{ChunkNotes: tc.notes}, "/repo", "v1.4.0", "Initial release.\n", "GitHub release")
+			if got != want {
 				t.Errorf("heal = %+v, want %+v", got, want)
+			}
+			if want := "mint release regenerate v1.4.0 --target release --notes-file <file>, the notes CHANGELOG.md now holds for v1.4.0 saved to <file>"; with != want {
+				t.Errorf("plain re-heals with %q, want %q", with, want)
 			}
 		})
 	}
+}
+
+// publishWarning is the post-push release warning recorded.
+func publishWarning(t *testing.T, rec *presentertest.RecordingPresenter) presenter.Warning {
+	t.Helper()
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && ev.Warn.Key == stagePublish {
+			return ev.Warn
+		}
+	}
+	t.Fatalf("no publish warning recorded; kinds = %v", rec.Kinds())
+	return presenter.Warning{}
 }
 
 // healMoves is the one move the post-push release warning recorded.
@@ -190,7 +209,7 @@ func TestHealMove_TheNotesAreSavedBesideTheTagsPartNotesNeverOverThem(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	move := healMove(ReleaseDeps{ChunkNotes: store}, "/repo", "v1.4.0", body, "GitHub release")
+	move, _ := healMove(ReleaseDeps{ChunkNotes: store}, "/repo", "v1.4.0", body, "GitHub release")
 
 	healed := filepath.Join(filepath.Dir(parts), "v1.4.0.heal.md")
 	if want := "mint release regenerate v1.4.0 --target release --notes-file " + healed; move.Command != want {
