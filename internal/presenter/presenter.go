@@ -689,17 +689,14 @@ type ExclusionSuggestions struct {
 }
 
 // ExclusionAnswers carries the ExclusionAnswersRecorded payload: stage's answers went
-// into Table of File, committed unless Ignored reports that git ignores File. Exclude
-// and Keep are the globs answered each way, in the order answered; Key names the
-// check's plan stage. Plain reads neither the globs nor Key.
+// into Table of File, committed unless Ignored reports that git ignores File. Key
+// names the check's plan stage, which plain doesn't read.
 type ExclusionAnswers struct {
 	Stage   string
 	Key     string
 	File    string
 	Table   string
 	Ignored bool
-	Exclude []string
-	Keep    []string
 }
 
 func exclusionAnswersText(a ExclusionAnswers) string {

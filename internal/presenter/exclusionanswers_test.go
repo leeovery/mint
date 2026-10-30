@@ -53,8 +53,6 @@ func TestRecordingPresenter_ExclusionAnswersRecorded_RecordsItsPayload(t *testin
 	rec := &presentertest.RecordingPresenter{}
 	answers := releaseTableAnswers
 	answers.Key = "check"
-	answers.Exclude = []string{"vendor/**"}
-	answers.Keep = []string{"docs/**"}
 	rec.ExclusionAnswersRecorded(answers)
 
 	if len(rec.Events) != 1 {

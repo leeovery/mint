@@ -121,7 +121,7 @@ func paused(p presenter.Presenter) {
 	_, _ = p.Prompt(pauseGate())
 	p.ResumeSpinner()
 	p.SuspendSpinner()
-	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Exclude: []string{"docs/specs/**"}})
+	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]"})
 	p.ResumeSpinner()
 }
 

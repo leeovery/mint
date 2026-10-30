@@ -1255,12 +1255,12 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 		}
 		a.leftInPlace = ignored
 		a.edit = nil
-		narrateAnswers(deps.Presenter, answers, ignored)
+		narrateAnswers(deps.Presenter, ignored)
 		return nil
 	}
 }
 
-func narrateAnswers(p presenter.Presenter, answers notes.Answers, ignored bool) {
+func narrateAnswers(p presenter.Presenter, ignored bool) {
 	p.SuspendSpinner()
 	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{
 		Stage:   "notes",
@@ -1268,8 +1268,6 @@ func narrateAnswers(p presenter.Presenter, answers notes.Answers, ignored bool) 
 		File:    config.FileName,
 		Table:   releaseTable,
 		Ignored: ignored,
-		Exclude: answers.Exclude,
-		Keep:    answers.Keep,
 	})
 	p.ResumeSpinner()
 }

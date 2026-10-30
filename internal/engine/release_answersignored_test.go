@@ -157,7 +157,7 @@ func TestRelease_IgnoredConfig_NarratesTheAnswersWrittenAndNotCommitted(t *testi
 		t.Fatalf("answers lines = %d, want one; events = %v", n, rec.Kinds())
 	}
 	recorded := indexOfKind(rec, presentertest.KindExclusionAnswersRecorded)
-	want := presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Ignored: true, Exclude: []string{"docs/design/"}}
+	want := presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Ignored: true}
 	if got := rec.Events[recorded].ExclusionAnswers; !reflect.DeepEqual(got, want) {
 		t.Errorf("answers payload = %+v, want %+v", got, want)
 	}
