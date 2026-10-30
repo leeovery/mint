@@ -597,7 +597,7 @@ func TestRail_ADryRunSettlesTheStagesItPassedBy(t *testing.T) {
 	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
 	r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
 	screen := r.screen(t)
-	for _, want := range []string{" ○  pre_tag       npm ci && npm run build", " │    - Signing secrets with a trailing newline are accepted again."} {
+	for _, want := range []string{" ○  pre_tag       npm ci && npm run build", " │    • Signing secrets with a trailing newline are accepted again."} {
 		if !slices.Contains(screen, want) {
 			t.Errorf("the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), want)
 		}
@@ -702,6 +702,35 @@ func TestRail_AStageStartedOnceTheRunIsOverSettlesStill(t *testing.T) {
 			want := []string{" ⠋  commit message", " ┆                writing…"}
 			if screen := r.screen(t); !slices.Equal(screen[max(len(screen)-len(want), 0):], want) {
 				t.Errorf("the terminal shows\n%s\nwant last\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
+			}
+		})
+	}
+}
+
+// TestRail_TheNotesDrawAsTheirMarkdownReads_ACommitMessageAsWritten pins that only the
+// notes are drawn as Markdown: a commit message, whose # lines and dashes are its
+// own, is shown as written.
+func TestRail_TheNotesDrawAsTheirMarkdownReads_ACommitMessageAsWritten(t *testing.T) {
+	t.Parallel()
+	const body = "## Added\n- `replay` resends a delivery"
+	tests := []struct {
+		name string
+		show func(presenter.Presenter)
+		want []string
+	}{
+		{name: "the notes", show: func(p presenter.Presenter) { p.ShowNotes(presenter.Notes{Body: body}) }, want: []string{" │    Added", " │    • replay resends a delivery"}},
+		{name: "a commit message", show: func(p presenter.Presenter) { p.ShowMessage(presenter.Message{Body: body}) }, want: []string{" │    ## Added", " │    - `replay` resends a delivery"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRailTerm(t, 80, 24, answers())
+			commitRun(r)
+			r.StageSucceeded(presenter.Settled("message", "written"))
+			tt.show(r)
+			screen := r.screen(t)
+			if at := slices.Index(screen, tt.want[0]); at < 0 || !slices.Equal(screen[at:at+len(tt.want)], tt.want) {
+				t.Errorf("the terminal shows\n%s\nwant\n%s", strings.Join(screen, "\n"), strings.Join(tt.want, "\n"))
 			}
 		})
 	}

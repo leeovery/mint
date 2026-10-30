@@ -6,19 +6,19 @@
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
  │
- │    ## ✨ Added
- │    - Failed webhook deliveries retry with backoff for up to an hour.
+ │    ✨ Added
+ │    • Failed webhook deliveries retry with backoff for up to an hour.
  │
- │    ## 🐛 Fixed
- │    - Signing secrets with a trailing newline are accepted again.
+ │    🐛 Fixed
+ │    • Signing secrets with a trailing newline are accepted again.
  │
  ●  review        regenerate
  ●  notes         generated                                                                     0.7s
  │
  │    Webhooks now retry failed deliveries for up to an hour.
  │
- │    ## ✨ Added
- │    - Backoff retries for failed webhook deliveries.
+ │    ✨ Added
+ │    • Backoff retries for failed webhook deliveries.
  │
  ●  review        accepted
  ●  release       GitHub release written

@@ -85,7 +85,7 @@ func review() rail.Run {
 	question := rail.Question{Text: "Release with these notes?", Choices: []rail.Choice{
 		{Key: "y", Action: "release", Default: true}, {Key: "n", Action: "abort"}, {Key: "e", Action: "edit"}, {Key: "r", Action: "regenerate"},
 	}}
-	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes, rail.Body{Text: notesBody}, question}, ahead()...)}
+	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes, rail.Body{Text: notesBody, Markdown: true}, question}, ahead()...)}
 }
 
 func done() rail.Run {

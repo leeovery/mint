@@ -79,8 +79,10 @@ type part struct {
 	// done, and over, done or not.
 	reached, crossed, ended bool
 	station                 rail.Station
-	text                    string
-	question                rail.Question
+	// text is a body's, drawn as its Markdown reads where markdown is set.
+	text     string
+	markdown bool
+	question rail.Question
 }
 
 // live is the part as the rail draws it now: a running node at its spinner's frame,
@@ -92,7 +94,7 @@ func (pt *part) live(now time.Time) rail.Live {
 	case endPart:
 		return pt.station
 	case bodyPart:
-		return rail.Body{Text: pt.text}
+		return rail.Body{Text: pt.text, Markdown: pt.markdown}
 	case questionPart, previewPart:
 		return pt.question
 	}
@@ -509,20 +511,21 @@ func (m *runModel) hang(key string, h rail.Hang) {
 	m.touched = pt
 }
 
-// show shows text for review under the run's edge, in place of any body shown.
-func (m *runModel) show(text string) {
+// show shows text for review under the run's edge, in place of any body shown, drawn
+// as its Markdown reads where markdown is set.
+func (m *runModel) show(text string, markdown bool) {
 	if m.bodyOut {
 		if text != m.lastBody {
-			m.insert(&part{kind: bodyPart, text: text, out: true}, m.insertionPoint())
+			m.insert(&part{kind: bodyPart, text: text, markdown: markdown, out: true}, m.insertionPoint())
 			m.lastBody = text
 		}
 		return
 	}
 	if b := m.partOf(bodyPart); b != nil {
-		b.text = text
+		b.text, b.markdown = text, markdown
 		return
 	}
-	m.insert(&part{kind: bodyPart, text: text}, m.insertionPoint())
+	m.insert(&part{kind: bodyPart, text: text, markdown: markdown}, m.insertionPoint())
 }
 
 // rerun makes the node of the stage keyed key final where it goes on past the

@@ -357,11 +357,19 @@ func (b Body) draw(l Layout) []line {
 	room := l.width - bodyCol
 	var lines []line
 	for _, text := range textLines(b.Text) {
-		for _, c := range wrap([]span{s(text, plain)}, room, room) {
+		for _, c := range wrap(b.spans(text), room, room) {
 			lines = append(lines, l.hung(solid, bodyCol, c))
 		}
 	}
 	return lines
+}
+
+// spans is a line of the body as drawn.
+func (b Body) spans(text string) []span {
+	if b.Markdown {
+		return markdown(shown(text))
+	}
+	return []span{s(text, plain)}
 }
 
 func (Next) reached() bool { return true }

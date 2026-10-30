@@ -15,12 +15,12 @@
  │    events.
  │
  │    ✨ Added
- │    - Failed webhook deliveries retry with backoff for up to an hour.
- │    - `pigeon replay <id>` resends any delivery from the last 30 days.
+ │    • Failed webhook deliveries retry with backoff for up to an hour.
+ │    • pigeon replay <id> resends any delivery from the last 30 days.
  │
  │    🐛 Fixed
- │    - The dashboard no longer shows a delivery twice after a reconnect.
- │    - Signing secrets with a trailing newline are accepted again.
+ │    • The dashboard no longer shows a delivery twice after a reconnect.
+ │    • Signing secrets with a trailing newline are accepted again.
  │
  ?  Release with these notes?
  ┆  Y release   n abort   e edit   r regenerate

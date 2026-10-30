@@ -88,6 +88,7 @@ func TestEveryFieldIsDrawnAsOneRowEach(t *testing.T) {
 		rail.Question{Text: hostile, Choices: []rail.Choice{{Key: "\x1b[2J", Action: hostile}}, Typing: true},
 		rail.Question{Under: true, Text: hostile, About: hostile, Choices: []rail.Choice{{Key: "\x1b[2J", Action: hostile}}, Typing: true},
 		rail.Body{Text: hostile},
+		rail.Body{Text: hostile, Markdown: true},
 		rail.End{Name: hostile, Detail: hostile, Time: hostile},
 		rail.Next{Moves: []rail.Move{{Lead: hostile, Command: "a\x1b[2Kb\tc\nd"}}},
 		rail.Version{Value: hostile},

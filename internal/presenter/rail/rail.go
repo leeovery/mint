@@ -175,9 +175,11 @@ type Rule struct {
 }
 
 // Body is a body shown for review (release notes, a commit message), four in behind
-// the rail, as it ships but for the wrap.
+// the rail, as it ships but for the wrap, or, Markdown, as its Markdown reads (see
+// markdown).
 type Body struct {
-	Text string
+	Text     string
+	Markdown bool
 }
 
 // Next is what the reader can do once the run is over, after the end station.

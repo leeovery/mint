@@ -11,8 +11,8 @@
  │
  │    Webhooks now retry failed deliveries for up to an hour.
  │
- │    ## ✨ Added
- │    - Backoff retries for failed webhook deliveries.
+ │    ✨ Added
+ │    • Backoff retries for failed webhook deliveries.
  │
  ●  v1.1.0        accepted
  ●  v1.1.0        GitHub release                                                                6.3s

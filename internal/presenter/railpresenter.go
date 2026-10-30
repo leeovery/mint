@@ -482,16 +482,17 @@ func (p *RailPresenter) Unwound(u Unwind) {
 }
 
 // ShowNotes shows the notes for review, hanging off the rail above the question that
-// follows.
-func (p *RailPresenter) ShowNotes(notes Notes) { p.show(notes.Body) }
+// follows, drawn as their Markdown reads.
+func (p *RailPresenter) ShowNotes(notes Notes) { p.show(notes.Body, true) }
 
-// ShowMessage shows the message for review, as ShowNotes does the notes.
-func (p *RailPresenter) ShowMessage(m Message) { p.show(m.Body) }
+// ShowMessage shows the message for review, as ShowNotes does the notes but as
+// written: a commit message is no Markdown.
+func (p *RailPresenter) ShowMessage(m Message) { p.show(m.Body, false) }
 
-func (p *RailPresenter) show(body string) {
+func (p *RailPresenter) show(body string, markdown bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.run.show(body)
+	p.run.show(body, markdown)
 	p.redraw()
 }
 

@@ -10,7 +10,7 @@
  ●  notes         generated · regenerate                                                        0.7s
  │
  │    ✨ Added
- │    - First attempt, one pass
+ │    • First attempt, one pass
  │
  ✗  notes         AI call failed                                                                1.4s
  │                │ Not logged in · Please run /login

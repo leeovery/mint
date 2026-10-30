@@ -22,15 +22,15 @@
  [38;2;95;215;175m│[39m    no longer drops events.
  [38;2;95;215;175m│[39m
  [38;2;95;215;175m│[39m    ✨ Added
- [38;2;95;215;175m│[39m    - Failed webhook deliveries retry with backoff for up 
+ [38;2;95;215;175m│[39m    • Failed webhook deliveries retry with backoff for up 
  [38;2;95;215;175m│[39m    to an hour.
- [38;2;95;215;175m│[39m    - `pigeon replay <id>` resends any delivery from the 
+ [38;2;95;215;175m│[39m    • [38;2;95;215;175mpigeon replay <id>[39m resends any delivery from the 
  [38;2;95;215;175m│[39m    last 30 days.
  [38;2;95;215;175m│[39m
  [38;2;95;215;175m│[39m    🐛 Fixed
- [38;2;95;215;175m│[39m    - The dashboard no longer shows a delivery twice 
+ [38;2;95;215;175m│[39m    • The dashboard no longer shows a delivery twice 
  [38;2;95;215;175m│[39m    after a reconnect.
- [38;2;95;215;175m│[39m    - Signing secrets with a trailing newline are 
+ [38;2;95;215;175m│[39m    • Signing secrets with a trailing newline are 
  [38;2;95;215;175m│[39m    accepted again.
  [38;2;95;215;175m│[39m
  [38;2;95;215;175m?[39m  [1mRelease with these notes?[22m
