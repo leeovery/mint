@@ -37,7 +37,7 @@ func prepared() []rail.Item {
 			{Kind: rail.Note, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
 		}},
 		rail.Node{Name: "check", Detail: "files that don't belong in the notes", Time: "6.2s", Lines: []rail.Hang{
-			{Kind: rail.Note, Text: "docs/specs/** excluded · design documents"},
+			{Kind: rail.Acted, Text: "docs/specs/** excluded", About: "design documents"},
 			{Kind: rail.Note, Text: "written to .mint.toml's [release] table and committed"},
 		}},
 	}
@@ -60,7 +60,7 @@ func ahead() []rail.Live {
 func paused() rail.Run {
 	items := prepared()
 	check := rail.Node{Name: "check", Detail: "2 flagged", Time: "6.2s", Lines: []rail.Hang{
-		{Kind: rail.Note, Text: "docs/specs/** excluded · design documents"},
+		{Kind: rail.Acted, Text: "docs/specs/** excluded", About: "design documents"},
 	}}
 	question := rail.Question{
 		Under: true, Text: "Exclude fixtures/ from the notes?", About: "test fixtures · 14 files, 212 kB",
@@ -68,6 +68,20 @@ func paused() rail.Run {
 	}
 	notes := rail.Node{State: rail.ToCome, Name: "notes", Detail: "written by the AI"}
 	return rail.Run{Settled: items[:len(items)-1], Region: append([]rail.Live{check, question, notes}, ahead()...)}
+}
+
+// answered is the release just past the exclusion check, its answers in the
+// questions' places, one wrapped under its text, and where they went under them.
+func answered() rail.Run {
+	items := prepared()
+	check := rail.Node{Name: "check", Detail: "3 flagged", Time: "9.4s", Lines: []rail.Hang{
+		{Kind: rail.Acted, Text: "docs/specs/** excluded", About: "design documents"},
+		{Kind: rail.Kept, Text: "fixtures/ kept", About: "test fixtures"},
+		{Kind: rail.Acted, Text: "demo/ excluded", About: "demo recording scripts and the tapes that record the README's art, with the world they run in"},
+		{Kind: rail.Note, Text: "written to .mint.toml's [release] table and committed"},
+	}}
+	notes := rail.Node{State: rail.Running, Name: "notes", Detail: "writing the notes…", Time: "0s"}
+	return rail.Run{Settled: append(items[:len(items)-1], check), Region: append([]rail.Live{notes}, ahead()...)}
 }
 
 func running() rail.Run {

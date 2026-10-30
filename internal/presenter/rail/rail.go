@@ -132,13 +132,22 @@ const (
 	Output
 	// Path is a path, on a line of its own.
 	Path
+	// Acted is an answer the run acts on, given to a question under the node (an
+	// exclusion check's exclude), in the question's place: ✓ in the accent where its ?
+	// stood, then Text, About dim.
+	Acted
+	// Kept is an answer that changes nothing (an exclusion check's keep), drawn as
+	// Acted is but marked –, and all of it dim.
+	Kept
 )
 
 // Hang is text hanging off a node, at the detail column, wrapped to the width with
-// the rail on every line. A newline in Text starts a line.
+// the rail on every line. A newline in Text starts a line. An answer, Acted or Kept,
+// has what it is About dim after " · ", and wraps under its Text, clear of its mark.
 type Hang struct {
-	Kind HangKind
-	Text string
+	Kind  HangKind
+	Text  string
+	About string
 }
 
 // Question is a question node: Text bold, then, on a line of their own, each

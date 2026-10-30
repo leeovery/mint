@@ -13,7 +13,7 @@
  [38;2;95;215;175m│[39m  [2martifacts[22m
  [38;2;95;215;175m●[39m  [1mcheck[22m
  [38;2;95;215;175m│[39m  2 flagged
- [38;2;95;215;175m│[39m  [2mdocs/specs/** excluded · design documents[22m
+ [38;2;95;215;175m│[39m  [38;2;95;215;175m✓ [39mdocs/specs/** excluded[2m · design documents[22m
  [38;2;95;215;175m├[39m[2m┄[22m [38;2;95;215;175m? [39m[1mExclude fixtures/ from the notes?[22m
  [38;2;95;215;175m│[39m    [2mtest fixtures · 14 files, 212 kB[22m
  [38;2;95;215;175m│[39m    [1;38;2;95;215;175me[22;39m exclude   [1;38;2;95;215;175mK[22;39m keep

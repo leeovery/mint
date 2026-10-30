@@ -517,7 +517,7 @@ func (m *runModel) remove(pt *part) {
 func (m *runModel) hang(key string, h rail.Hang) {
 	pt := m.find(key)
 	if pt == nil {
-		m.add(rail.Node{Name: key, Detail: h.Text})
+		m.add(rail.Node{Name: key, Detail: joinNonEmpty(" · ", h.Text, h.About)})
 		return
 	}
 	pt.node.Lines = append(pt.node.Lines, h)

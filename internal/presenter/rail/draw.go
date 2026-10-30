@@ -214,8 +214,24 @@ func (l Layout) hang(h Hang, rail span) []line {
 		return l.hangText(h.Text, plain, true, rail)
 	case Path:
 		return l.hangText(h.Text, plain, false, rail)
+	case Acted:
+		return l.answer(h, s("✓ ", accent), plain, rail)
+	case Kept:
+		return l.answer(h, s("– ", dim), dim, rail)
 	}
 	return l.hangText(h.Text, dim, false, rail)
+}
+
+// answer is h, an answer to a question under the node, where the question stood:
+// mark in the place of its ? and the space after it, then h's Text in st and what it
+// is About dim, wrapped under the Text.
+func (l Layout) answer(h Hang, mark span, st style, rail span) []line {
+	text := []span{s(h.Text, st)}
+	if h.About != "" {
+		text = append(text, s(" · "+h.About, dim))
+	}
+	room := l.width - l.detailCol() - subIndent
+	return l.sub(rail, mark, wrap(text, room, room))
 }
 
 // hangText is text's lines hanging off the rail at the detail column, each wrapped
@@ -310,18 +326,18 @@ func (q Question) tailed(last []span) []span {
 	return append(last, s(" · "+q.Tail, dim))
 }
 
-// subIndent is how far in from its ? a question under a node draws the lines after
-// its first.
+// subIndent is how far in from its mark a node's sub-matter, a question under it or
+// an answer to one, draws its text, and every line after its first.
 const subIndent = 2
 
 var indent = s(strings.Repeat(" ", subIndent), plain)
 
-// sub is content hanging off the solid rail as a node's sub-matter, from the detail
-// column: lead before its first line, indent before the rest.
-func (l Layout) sub(lead span, content [][]span) []line {
+// sub is content hanging off rail as a node's sub-matter, from the detail column:
+// lead before its first line, indent before the rest.
+func (l Layout) sub(rail, lead span, content [][]span) []line {
 	lines := make([]line, 0, len(content))
 	for _, c := range content {
-		lines = append(lines, l.hung(solid, l.detailCol(), append([]span{lead}, c...)))
+		lines = append(lines, l.hung(rail, l.detailCol(), append([]span{lead}, c...)))
 		lead = indent
 	}
 	return lines
@@ -348,14 +364,14 @@ func (q Question) under(l Layout) []line {
 		lines = append(lines, l.branch(append([]span{lead}, question[0]...)))
 		question, lead = question[1:], indent
 	}
-	lines = append(lines, l.sub(lead, question)...)
+	lines = append(lines, l.sub(solid, lead, question)...)
 	if q.About != "" {
-		lines = append(lines, l.sub(indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))...)
+		lines = append(lines, l.sub(solid, indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))...)
 	}
 	if q.asked() {
 		f := newFlow(room, room)
 		q.keys(f)
-		lines = append(lines, l.sub(indent, f.done())...)
+		lines = append(lines, l.sub(solid, indent, f.done())...)
 	}
 	return lines
 }

@@ -148,6 +148,26 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
+			name: "an answer acted on: its ✓ in the accent, its text in the normal colour, what it's about dim",
+			item: rail.Node{Name: "check", Lines: []rail.Hang{{Kind: rail.Acted, Text: "docs/ excluded", About: "design documents"}}},
+			want: func(a string) []string {
+				return []string{
+					" " + acc(a, "●") + "  " + bld("check"),
+					" " + acc(a, "│") + pad(16) + acc(a, "✓ ") + "docs/ excluded" + dm(" · design documents"),
+				}
+			},
+		},
+		{
+			name: "an answer kept: its – and all of it dim",
+			item: rail.Node{Name: "check", Lines: []rail.Hang{{Kind: rail.Kept, Text: "docs/ kept", About: "design documents"}}},
+			want: func(a string) []string {
+				return []string{
+					" " + acc(a, "●") + "  " + bld("check"),
+					" " + acc(a, "│") + pad(16) + dm("– docs/ kept · design documents"),
+				}
+			},
+		},
+		{
 			name: "the point of no return ahead: all of it dim",
 			item: rail.Rule{},
 			want: func(string) []string { return []string{" " + dm("┿━━ point of no return "+rule(76))} },

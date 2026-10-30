@@ -281,6 +281,25 @@ func TestAQuestionUnderANodeWrapsIndentedUnderItsMark(t *testing.T) {
 	}
 }
 
+func TestAnAnswerUnderANodeWrapsUnderItsTextClearOfItsMark(t *testing.T) {
+	t.Parallel()
+	n := rail.Node{Name: "check", Lines: []rail.Hang{
+		{Kind: rail.Acted, Text: "docs/specs/archive/** excluded", About: "design documents and the plans written before them"},
+		{Kind: rail.Kept, Text: "fixtures/ kept", About: "test fixtures the suite reads at start-up, large and generated"},
+	}}
+	got := draw(t, 70, n)
+	want := []string{
+		" ●  check",
+		" │                ✓ docs/specs/archive/** excluded · design documents ",
+		" │                  and the plans written before them",
+		" │                – fixtures/ kept · test fixtures the suite reads at ",
+		" │                  start-up, large and generated",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the answers draw\n%q\nwant\n%q", got, want)
+	}
+}
+
 // A question under a node is joined to the rail by a branch only while it is asked:
 // a dry run's preview waits on nothing, and a run with no rail has none to join.
 func TestABranchJoinsAQuestionUnderANodeToTheRailWhileItIsAsked(t *testing.T) {

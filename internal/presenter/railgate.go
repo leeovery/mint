@@ -262,9 +262,9 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 }
 
 // answer settles c as g's answer to the question q, nil where -y took it: the
-// exclusion pause's as a line under the check's node; one that aborts the run as a
-// failed row (abort); any other's as the tail of the
-// node it asked about, what hung above it gone, or, that node settled above or a body
+// exclusion pause's as a line under the check's node, marked as acted on or kept; one
+// that aborts the run as a failed row (abort); any other's as the tail of the node it
+// asked about, what hung above it gone, or, that node settled above or a body
 // of the question settled, on a row of its own under the last body; a gate asked
 // before the run's stages as a row naming what was chosen, unless the question and
 // the line typed at it stay as its record. A review's regenerate settles as any answer
@@ -278,7 +278,11 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	p.run.looping = false
 	if x := g.Suggestion; x != nil {
-		p.run.hang(g.Stage, rail.Hang{Kind: rail.Note, Text: x.Glob + " " + pauseAnswer(g, c, auto) + " · " + x.Reason})
+		kind := rail.Kept
+		if c == ChoiceExclude {
+			kind = rail.Acted
+		}
+		p.run.hang(g.Stage, rail.Hang{Kind: kind, Text: x.Glob + " " + pauseAnswer(g, c, auto), About: x.Reason})
 		return
 	}
 	if c == ChoiceEdit && g.Review {

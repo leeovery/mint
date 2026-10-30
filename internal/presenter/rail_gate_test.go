@@ -299,8 +299,37 @@ func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestio
 	if c, _ := r.Prompt(pauseGate()); c != presenter.ChoiceKeep {
 		t.Fatalf("Prompt = %q, want k", c)
 	}
-	if got := r.screen(t)[9]; got != " │                docs/specs/** kept · design documents" {
+	if got := r.screen(t)[9]; got != " │                – docs/specs/** kept · design documents" {
 		t.Errorf("the answer reads %q, want it under the check", got)
+	}
+}
+
+// TestRailGate_AnExclusionAnswerIsMarkedForWhatItDoes pins the mark each answer
+// takes in the question's place: an exclude, which the run acts on, a ✓, a keep,
+// which changes nothing, a –, -y's keep included.
+func TestRailGate_AnExclusionAnswerIsMarkedForWhatItDoes(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		typed []string
+		yes   bool
+		want  string
+	}{
+		{name: "an exclude", typed: []string{"y\n", "e\n"}, want: " │                ✓ docs/specs/** excluded · design documents"},
+		{name: "a keep", typed: []string{"y\n", "k\n"}, want: " │                – docs/specs/** kept · design documents"},
+		{name: "a keep -y took", yes: true, want: " │                – docs/specs/** kept (-y) · design documents"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRailTerm(t, 100, 30, answers(tt.typed...))
+			r.WithYes(tt.yes)
+			preparedRelease(r, r.clock, "1 flagged")
+			_, _ = r.Prompt(pauseGate())
+			if got := r.screen(t)[9]; got != tt.want {
+				t.Errorf("the answer reads %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
