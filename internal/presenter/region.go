@@ -76,8 +76,7 @@ func regionRows(rows int) int {
 }
 
 // Erase takes the region off the terminal, leaving the cursor where its first row
-// was, as before the editor takes the terminal or the shell stops the process; the
-// next Draw puts it back from where the cursor is then.
+// was, as before the editor takes the terminal; the next Draw puts it back.
 func (r *liveRegion) Erase() {
 	var b strings.Builder
 	r.back(&b)

@@ -47,9 +47,7 @@ func newTicker(d time.Duration) (<-chan time.Time, func()) {
 // the run and redraws, letting it go only while a question reads its answer; the
 // spinner's ticker runs only while a stage runs and nothing else holds the terminal
 // (no question waiting, no editor), and takes the mutex for each frame, drawing only
-// while it is still the ticker running, so nothing writes once it is stopped. A stop
-// at the shell's Ctrl-Z holds the mutex from taking the region off the terminal until
-// it is drawn again after fg.
+// while it is still the ticker running, so nothing writes once it is stopped.
 type RailPresenter struct {
 	mu  sync.Mutex
 	out io.Writer
@@ -79,14 +77,8 @@ type RailPresenter struct {
 	// dumb is a terminal that can't move its cursor, which gets no region.
 	dumb    bool
 	ticking *ticker
-	// suspended is the editor holding the terminal, asking a question waiting, halted
-	// the process stopped by the shell.
-	suspended, asking, halted bool
-
-	// stops is the stop the shell asks for at Ctrl-Z, which stopProcess carries out,
-	// returning once the shell resumes the process; nil watches for none.
-	stops       <-chan os.Signal
-	stopProcess func()
+	// suspended is the editor holding the terminal, asking a question waiting.
+	suspended, asking bool
 }
 
 // Compile-time proof the rail presenter satisfies the seam it renders.
@@ -141,15 +133,6 @@ func WithRailEcho(echo bool) RailOption {
 // run prints as it happens, as on a terminal too narrow for a region.
 func WithRailDumb(dumb bool) RailOption { return func(p *RailPresenter) { p.dumb = dumb } }
 
-// WithRailStops sets the signal the shell's Ctrl-Z sends, and stop, which stops the
-// process in its place and returns once fg resumes it: the Rail takes its region off
-// the terminal before stop, so the shell prints under settled lines alone, and draws
-// it afresh after. A closed stops ends the watch. Without it the Rail watches for
-// none.
-func WithRailStops(stops <-chan os.Signal, stop func()) RailOption {
-	return func(p *RailPresenter) { p.stops, p.stopProcess = stops, stop }
-}
-
 // WithRailClock sets the time a running stage's time is read from, the wall clock
 // without it.
 func WithRailClock(now func() time.Time) RailOption {
@@ -174,41 +157,7 @@ func NewRailPresenter(out io.Writer, opts ...RailOption) *RailPresenter {
 		opt(p)
 	}
 	p.echo = p.echoes(p.input.in)
-	if p.stops != nil {
-		go p.watchStops()
-	}
 	return p
-}
-
-// watchStops answers each stop the shell asks for until stops is closed, the Rail's
-// close included: whatever runs after it is stopped all the same.
-func (p *RailPresenter) watchStops() {
-	for range p.stops {
-		p.stopped()
-	}
-}
-
-// stopped stops the process at the shell's Ctrl-Z. The region comes off the terminal
-// and the spinner stops first, so the shell prints its lines under the settled ones
-// alone, and once fg resumes the process the region is drawn afresh where the cursor
-// is, under the shell's lines, and the spinner starts again. The mutex is held from
-// the erase to the fresh draw, so no frame or event draws while the process is
-// stopped or before the region is back. Where the editor holds the terminal, a
-// question waits or the run is closed, no region is drawn to take off, and the
-// process only stops.
-func (p *RailPresenter) stopped() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.suspended || p.asking || p.run.closed {
-		p.stopProcess()
-		return
-	}
-	p.halted = true
-	p.syncTicker()
-	p.region.Erase()
-	p.stopProcess()
-	p.halted = false
-	p.redraw()
 }
 
 func isTerminal(in io.Reader) bool {
@@ -691,7 +640,7 @@ type ticker struct {
 // syncTicker runs the spinner's ticker while a stage runs in a region drawn, the
 // run open and nothing else holding the terminal, and stops it otherwise.
 func (p *RailPresenter) syncTicker() {
-	want := p.fits && !p.run.closed && !p.suspended && !p.asking && !p.halted && p.run.running() != nil
+	want := p.fits && !p.run.closed && !p.suspended && !p.asking && p.run.running() != nil
 	switch {
 	case want && p.ticking == nil:
 		ticks, stop := p.tick(spinnerFrame)
