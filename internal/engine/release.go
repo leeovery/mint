@@ -1513,7 +1513,7 @@ func resolvePublisher(ctx context.Context, deps ReleaseDeps, cfg config.Config) 
 
 // ResolvePublisher is the SHARED publisher-resolution entry the regenerate cmd paths
 // (single-version and --all) call instead of discarding the resolver error. It performs
-// the SAME safe-downgrade branching the forward engine.Release Stage-6 applies, so the
+// the SAME safe-downgrade branching the forward engine.Release's publishGate applies at preflight, so the
 // regenerate paths can never again pass a nil Publisher down to DispatchRelease and crash:
 //
 //   - provider RESOLVED: returns the driver behind the Publisher interface, nil error.

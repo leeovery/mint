@@ -270,9 +270,9 @@ core:
     preflight -> pre_tag -> notes -> tag + push (PONR) -> publish -> post_release
 
 - preflight runs after the user confirms the version and mint's own gates pass
-  (clean tree, right branch, tag free, remote in sync), and before anything is
-  committed. Its failure ABORTS the release. Provider auth (gh) is checked later,
-  just before the tag, and only when publishing.
+  (clean tree, right branch, tag free, remote in sync, and gh signed in when
+  publishing), and before anything is committed. Its failure ABORTS the
+  release.
 - pre_tag runs AFTER preflight and BEFORE the notes, so the notes are written
   from the tree its artifacts leave. It also runs before the changelog and
   version file are updated: in the tree a pre_tag step sees, the changelog has
