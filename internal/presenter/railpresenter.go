@@ -271,6 +271,9 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 	pt.ongoing = false
 	p.run.ended(s.Key, false)
 	n.State, n.Detail, n.Time, n.Progress = rail.Failed, s.Message, "", nil
+	if s.Interrupted {
+		n.Detail = interrupted
+	}
 	if s.Elapsed > 0 {
 		n.Time = stageTime(s.Elapsed)
 	}
@@ -283,6 +286,9 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 	p.errf("✗ %s  %s\n", s.Name, s.Message)
 	p.redraw()
 }
+
+// interrupted is a failed stage's detail where the run was interrupted as it ran.
+const interrupted = "interrupted"
 
 // NotesChecking runs the exclusion check as its own node, holding back the notes
 // stage, which started first, to come until it starts again, the check done.

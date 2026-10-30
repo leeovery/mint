@@ -1643,8 +1643,9 @@ func stageFailure(stage string, cause error) presenter.StageFailure {
 		// failureOutput is called for EVERY stage — not special-cased to "notes" — because
 		// it returns "" for any cause it reads no tool output from, leaving the ✗ line
 		// standing alone.
-		Output:     failureOutput(cause),
-		SavedNotes: notes.SavedChunkNotesPath(cause),
+		Output:      failureOutput(cause),
+		SavedNotes:  notes.SavedChunkNotesPath(cause),
+		Interrupted: presenter.Interrupted(cause),
 	}
 }
 

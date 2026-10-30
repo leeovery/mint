@@ -12,6 +12,7 @@ package engine_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"maps"
 	"os"
@@ -474,6 +475,18 @@ var railRuns = map[string]railRun{
 		w.published(ScriptedOut(railURL + "\n"))
 		_, err := w.release(t, nil)
 		return g.frame(t), err
+	}},
+	// Ctrl-C as the pre_tag hook runs: the hook's node fails saying the run was
+	// interrupted, not what its command said of the cancelled context, the hook's own
+	// output still under it.
+	"release-interrupted-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\n", false)
+		w.readGates(false)
+		w.f.SeedSequence("sh", runner.ScriptedCall{ // the pre_tag hook, cancelled
+			Result: runner.Result{Stderr: "ok  \tpigeon/webhooks\t0.412s\n", ExitCode: -1},
+			Err:    fmt.Errorf("running %q: %w", "sh", context.Canceled),
+		})
+		return w.release(t, nil)
 	}},
 	// A dry run's preflight fetching: it runs on the rail as a real run's does.
 	"release-dry-run-preflight-running-100": {run: func(t *testing.T) (string, error) {
