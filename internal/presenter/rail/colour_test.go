@@ -113,6 +113,17 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
+			name: "a question under a node: the rail solid, its ? in the accent, the question bold, what it's about dim",
+			item: rail.Question{Under: true, Text: "Exclude docs/?", About: "design documents", Choices: []rail.Choice{{Key: "e", Action: "exclude"}}},
+			want: func(a string) []string {
+				return []string{
+					" " + acc(a, "│") + pad(16) + acc(a, "? ") + bld("Exclude docs/?"),
+					" " + acc(a, "│") + pad(18) + dm("design documents"),
+					" " + acc(a, "│") + pad(18) + accentBold(a, "e") + " exclude",
+				}
+			},
+		},
+		{
 			name: "the point of no return ahead: all of it dim",
 			item: rail.Rule{},
 			want: func(string) []string { return []string{" " + dm("┿━━ point of no return "+rule(76))} },

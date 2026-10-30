@@ -80,8 +80,6 @@ type part struct {
 	station                 rail.Station
 	text                    string
 	question                rail.Question
-	// about is the node an exclusion pause hangs its subject under while it asks.
-	about *part
 }
 
 // live is the part as the rail draws it now: a running node at its spinner's frame,

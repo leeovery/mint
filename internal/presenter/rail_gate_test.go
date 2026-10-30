@@ -271,7 +271,7 @@ func TestRailGate_AQuestionAboutAStageToComeStandsInItsPlace(t *testing.T) {
 	}
 }
 
-func TestRailGate_TheExclusionPauseAsksAboutItsGlobAndAnswersHangUnderTheCheck(t *testing.T) {
+func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestionsPlace(t *testing.T) {
 	t.Parallel()
 	in := answers("y\n", "k\n")
 	r := newRailTerm(t, 100, 30, in)
@@ -280,11 +280,12 @@ func TestRailGate_TheExclusionPauseAsksAboutItsGlobAndAnswersHangUnderTheCheck(t
 		if n == 1 {
 			return
 		}
-		got := r.screen(t)[8:11]
+		got := r.screen(t)[8:12]
 		want := []string{
 			pane(" ●  check         1 flagged                                                                     6.2s"),
-			" │                design documents · 6 files, 48 kB",
-			" ?  docs/specs/** Exclude it from the notes?   e exclude   k keep ›",
+			" │                ? Exclude docs/specs/** from the notes?",
+			" │                  design documents · 6 files, 48 kB",
+			" │                  e exclude   k keep ›",
 		}
 		if strings.Join(got, "\n") != strings.Join(want, "\n") {
 			t.Errorf("while asked the rail reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

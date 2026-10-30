@@ -55,6 +55,21 @@ func ahead() []rail.Live {
 	}
 }
 
+// paused is the release at the exclusion check's second question, its first
+// answered: the questions sit inside the check, and the notes wait to come.
+func paused() rail.Run {
+	items := prepared()
+	check := rail.Node{Name: "check", Detail: "2 flagged", Time: "6.2s", Lines: []rail.Hang{
+		{Kind: rail.Note, Text: "docs/specs/** excluded · design documents"},
+	}}
+	question := rail.Question{
+		Under: true, Text: "Exclude fixtures/ from the notes?", About: "test fixtures · 14 files, 212 kB",
+		Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}},
+	}
+	notes := rail.Node{State: rail.ToCome, Name: "notes", Detail: "written by the AI"}
+	return rail.Run{Settled: items[:len(items)-1], Region: append([]rail.Live{check, question, notes}, ahead()...)}
+}
+
 func running() rail.Run {
 	notes := rail.Node{
 		State: rail.Running, Name: "notes", Time: "38s", Frame: 2,

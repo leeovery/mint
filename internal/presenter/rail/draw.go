@@ -244,17 +244,26 @@ func guttered(c []span) []span {
 func (Question) reached() bool { return true }
 
 func (q Question) draw(l Layout) []line {
-	return l.row(row{mark: s("?", accent), name: s(q.Name, bold), rail: dotted, lay: q.lay})
+	if q.Under {
+		return q.under(l)
+	}
+	return l.row(row{mark: s("?", accent), rail: dotted, lay: q.lay})
 }
 
-// lay is the question, then its choices three spaces apart, a choice never split
-// from its action, then, for a question typing, the input marker and a cell for the
-// cursor, so what is typed reads as the answer, not one more choice.
+// lay is the question, then its keys.
 func (q Question) lay(first, rest int) [][]span {
 	f := newFlow(first, rest)
 	for _, w := range words(glyphsOf([]span{s(q.Text, bold)})) {
 		f.put(w, nil)
 	}
+	q.keys(f)
+	return f.done()
+}
+
+// keys puts the question's choices on f, three spaces apart, a choice never split
+// from its action, then, for a question typing, the input marker and a cell for the
+// cursor, so what is typed reads as the answer, not one more choice.
+func (q Question) keys(f *flow) {
 	apart := glyphsOf([]span{s("   ", plain)})
 	for _, c := range q.Choices {
 		f.put(glyphsOf([]span{s(c.Key, accentBold), s(" "+c.Action, plain)}), apart)
@@ -262,7 +271,35 @@ func (q Question) lay(first, rest int) [][]span {
 	if q.Typing {
 		f.put(glyphsOf([]span{s(inputMarker, accent), s("  ", plain)}), glyphsOf([]span{s(" ", plain)}))
 	}
-	return f.done()
+}
+
+// subIndent is how far in from its ? a question under a node draws the lines after
+// its first.
+const subIndent = 2
+
+// under is the question drawn as sub-matter of the node above it, from the detail
+// column with the node's rail solid down every line: the ? and the question, then,
+// indented, what it is about and, on a line of its own, its keys.
+func (q Question) under(l Layout) []line {
+	room := l.width - l.detailCol() - subIndent
+	indent := s(strings.Repeat(" ", subIndent), plain)
+	var lines []line
+	add := func(lead span, content [][]span) {
+		for _, c := range content {
+			lines = append(lines, l.hung(solid, l.detailCol(), append([]span{lead}, c...)))
+			lead = indent
+		}
+	}
+	add(s("? ", accent), wrap([]span{s(q.Text, bold)}, room, room))
+	if q.About != "" {
+		add(indent, wrap([]span{s(q.About, dim)}, room, room))
+	}
+	if len(q.Choices) > 0 || q.Typing {
+		f := newFlow(room, room)
+		q.keys(f)
+		add(indent, f.done())
+	}
+	return lines
 }
 
 // inputMarker stands before what is typed at a question.

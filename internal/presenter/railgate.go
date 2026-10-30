@@ -2,16 +2,16 @@ package presenter
 
 import (
 	"errors"
-	"slices"
+	"fmt"
 	"strings"
 
 	"mint/internal/presenter/rail"
 )
 
 const (
-	// pauseQuestion is the exclusion pause's question once its glob has moved into
-	// the question's name.
-	pauseQuestion = "Exclude it from the notes?"
+	// pauseQuestion is the exclusion pause's question about its glob, its reason and
+	// size moved under it.
+	pauseQuestion = "Exclude %s from the notes?"
 	// reviewName names the row that records a review's answer about a node already
 	// settled above the question, as a body too tall for the region leaves it, but
 	// for a node that goes on past the question, which the row names.
@@ -224,24 +224,21 @@ func (p *RailPresenter) answered(g Gate, q *part, c Choice, err error) error {
 	return err
 }
 
-// dismiss takes the question q off the rail: the node it stood in for, and the
-// node its pause hung its subject under, go back as they were.
+// dismiss takes the question q off the rail: the node it stood in for goes back as
+// it was.
 func (p *RailPresenter) dismiss(q *part) {
 	p.asking = false
 	p.run.remove(q)
-	if n := q.about; n != nil {
-		n.node.Lines = slices.Clone(n.node.Lines[:len(n.node.Lines)-1])
-	}
 	for _, pt := range p.run.parts {
 		pt.hidden = false
 	}
 }
 
-// question is g as a question part of kind: a preview has no keys. Where the
-// exclusion check's node is drawn, a pause asked takes its glob as its name, and what
-// the AI said of it hangs above it under that node until it is answered. With the
-// node settled, and in a dry run's previews, which stay, one under another, the pause
-// asks in the gate's own words, which say it all, so each carries its own reason.
+// question is g as a question part of kind: a preview has no keys. A pause asked
+// sits inside the exclusion check, the check's sub-matter, asking about its glob with
+// what the AI said of it under the question. In a dry run's previews, which stay, one
+// under another, the pause asks in the gate's own words, which say it all, so each
+// carries its own reason.
 func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
@@ -249,12 +246,9 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 			q.question.Choices = append(q.question.Choices, rail.Choice{Key: string(c.Key), Action: c.Action})
 		}
 	}
-	x, check := g.Suggestion, p.run.find(g.Stage)
-	if x == nil || check == nil || kind != questionPart {
-		return q
+	if x := g.Suggestion; x != nil && kind == questionPart {
+		q.question.Under, q.question.Text, q.question.About = true, fmt.Sprintf(pauseQuestion, x.Glob), about(*x)
 	}
-	check.node.Lines = append(slices.Clone(check.node.Lines), rail.Hang{Kind: rail.Note, Text: about(*x)})
-	q.question.Name, q.question.Text, q.about = x.Glob, pauseQuestion, check
 	return q
 }
 

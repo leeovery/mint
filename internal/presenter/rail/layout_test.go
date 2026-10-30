@@ -231,6 +231,26 @@ func TestAQuestionsKeysWrapWholeUnderIt(t *testing.T) {
 	}
 }
 
+func TestAQuestionUnderANodeWrapsIndentedUnderItsMark(t *testing.T) {
+	t.Parallel()
+	q := rail.Question{
+		Under: true, Text: "Exclude docs/specs/archive/** from the release notes?",
+		About:   "design documents and the plans written before them · 6 files, 48 kB",
+		Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}},
+	}
+	got := draw(t, 70, q)
+	want := []string{
+		" │                ? Exclude docs/specs/archive/** from the release ",
+		" │                  notes?",
+		" │                  design documents and the plans written before ",
+		" │                  them · 6 files, 48 kB",
+		" │                  e exclude   k keep",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the question draws\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
 func TestNextsCommandsAreNeverCutOrWrapped(t *testing.T) {
 	t.Parallel()
 	command := "mint release -m --notes-file " + strings.Repeat("very-long-path/", 8) + "v1.4.0.md"
@@ -268,7 +288,8 @@ func longRegion() rail.Run {
 		Region: []rail.Live{
 			rail.Node{Name: "check", Detail: long, Time: "6.2s", Lines: []rail.Hang{{Kind: rail.Note, Text: long}}},
 			rail.Body{Text: long + "\n\n" + notesBody},
-			rail.Question{Name: "docs/specs/**", Text: "Exclude it from the notes? " + long, Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
+			rail.Question{Under: true, Text: "Exclude docs/specs/** from the notes? " + long, About: long, Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
+			rail.Question{Text: "Release with these notes? " + long, Choices: []rail.Choice{{Key: "y", Action: "release"}, {Key: "n", Action: "abort"}}},
 			rail.Node{State: rail.ToCome, Name: "push", Detail: long},
 			rail.Station{Kind: rail.Pending, Name: "v1.4.0"},
 		},
