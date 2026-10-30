@@ -2,7 +2,7 @@
 
  ◇  3 versions    fresh notes → GitHub releases
  │
- ●  v1.0.0        GitHub release · the first release's default · accepted                       2.1s
+ ●  v1.0.0        GitHub release · the first release's default · accepted                       2.8s
  ●  v1.1.0        notes generated
  │
  │    Deliveries are batched per endpoint now.
@@ -50,7 +50,7 @@
  │    - Batched delivery change 40.
  │
  ●  v1.1.0        accepted
- ●  v1.1.0        GitHub release                                                                2.1s
- ●  v1.2.0        GitHub release · accepted                                                     2.1s
+ ●  v1.1.0        GitHub release                                                                2.8s
+ ●  v1.2.0        GitHub release · accepted                                                     2.8s
  │
- ◆  done          3 of 3 versions regenerated                                                   9.1s
+ ◆  done          3 of 3 versions regenerated                                                  13.3s

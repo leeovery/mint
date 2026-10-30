@@ -38,8 +38,10 @@ type part struct {
 	// doing is a running node's text, kept while the exclusion check holds it back.
 	doing string
 	// started is when the node began running: its spinner's frame counts from it,
-	// and, where timed, its time.
+	// and, where timed, its time. worked is how long an ongoing node ran before it
+	// went on past its step, which its time goes on from when it runs again.
 	started time.Time
+	worked  time.Duration
 	timed   bool
 	// hidden is a node to come that a question asks about, drawn as the question.
 	hidden bool

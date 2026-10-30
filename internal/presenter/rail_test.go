@@ -393,11 +393,12 @@ func TestRail_ARegenerateAllVersionRunsOnPastItsNotesOnOneNode(t *testing.T) {
 	r.StageStarted(presenter.StageStart{Name: "notes", Key: "v1.0.0", Blocking: true, Text: "generating release notes…"})
 	r.clock.Advance(3 * time.Second)
 	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "v1.0.0", Detail: "generated", Row: "notes generated", Blocking: true, Ongoing: true, Elapsed: 3 * time.Second})
+	r.clock.Advance(40 * time.Second) // the review waiting on its answer
 	r.StageStarted(presenter.StageStart{Name: "publish", Key: "v1.0.0", Blocking: true, Quiet: true, Text: "writing the GitHub release…"})
 	r.clock.Advance(time.Second)
 	r.ticks.tick(t)
-	if got := r.screen(t)[4]; !strings.Contains(got, "writing the GitHub release…") || !strings.HasSuffix(got, "4s") {
-		t.Errorf("the version's node reads %q, want it running on with the time since the version began", got)
+	if got := r.screen(t)[4]; !strings.Contains(got, "writing the GitHub release…") || !strings.HasSuffix(got, " 4s") {
+		t.Errorf("the version's node reads %q, want it running on with the time it ran, 4s, not the review's wait", got)
 	}
 }
 

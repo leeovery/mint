@@ -242,9 +242,10 @@ func (p *RailPresenter) ShowPlan(plan Plan) {
 
 // StageStarted sets the stage running: the spinner in its mark's place, what it is
 // doing in its detail and, for one that takes time, its time so far, which a stage
-// started again while it runs (an `r` that turns into a run in parts) or while it is
-// ongoing (a --all version past its notes) keeps counting. An open question's own
-// activity, as the review's edit, draws nothing.
+// started again while it runs (an `r` that turns into a run in parts) keeps
+// counting, and one ongoing (a --all version past its notes) counts on from the time
+// it ran, never the time it waited on its review. An open question's own activity,
+// as the review's edit, draws nothing.
 func (p *RailPresenter) StageStarted(s StageStart) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -253,7 +254,10 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 	}
 	pt := p.run.stage(s.Key, s.Name)
 	p.run.reach(pt)
-	if pt.node.State != rail.Running && !pt.ongoing {
+	switch {
+	case pt.ongoing:
+		pt.started = p.now().Add(-pt.worked)
+	case pt.node.State != rail.Running:
 		pt.started = p.now()
 	}
 	pt.ongoing = false
@@ -274,6 +278,9 @@ func (p *RailPresenter) StageSucceeded(s StageSuccess) {
 		return
 	}
 	pt := p.run.stage(s.Key, s.Name)
+	if s.Ongoing && pt.node.State == rail.Running {
+		pt.worked = p.now().Sub(pt.started)
+	}
 	pt.ongoing = s.Ongoing
 	if !s.Ongoing {
 		p.run.ended(s.Key, true)

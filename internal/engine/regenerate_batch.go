@@ -509,9 +509,11 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A
 	// gate DECLINE is a user choice (not a failure), so it propagates and ends the batch.
-	// An `r` prints no hint of its own: its calls and halving fold into the batch's.
+	// An `r` prints no hint of its own: its calls and halving fold into the batch's. The
+	// version's node goes on past the gate, its time leaving out the waits on its answers
+	// and the editor: an `r`'s new notes are mint's work and count.
 	regens := stage.regens(batch.hint.regenWritten)
-	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey, chunkNotes, regens)
+	reviewed, err := gatePerVersion(ctx, node.awaiting(deps), req, res, body, versionKey, chunkNotes, regens)
 	batch.hint.tried(stage)
 	if err != nil {
 		return RegeneratedVersion{}, nil, err

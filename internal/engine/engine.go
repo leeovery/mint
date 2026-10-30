@@ -175,13 +175,15 @@ func startQuietStep(p presenter.Presenter, now func() time.Time, step stepOf, te
 }
 
 // blockingStage is a blocking stage under way, timed by now from when its wait
-// began; a quiet one's events are Quiet.
+// began, less any time it spent waiting on an answer; a quiet one's events are
+// Quiet.
 type blockingStage struct {
 	p       presenter.Presenter
 	now     func() time.Time
 	step    stepOf
 	started time.Time
 	quiet   bool
+	waits   *answerWaits
 }
 
 // done narrates the stage's success with detail.
@@ -197,9 +199,13 @@ func (s *blockingStage) succeeded(success presenter.StageSuccess) {
 	s.p.StageSucceeded(success)
 }
 
-// elapsed is how long the stage has run.
+// elapsed is how long the stage has run, less the time it spent waiting on an answer.
 func (s *blockingStage) elapsed() time.Duration {
-	return s.now().Sub(s.started)
+	d := s.now().Sub(s.started)
+	if s.waits != nil {
+		d -= s.waits.total
+	}
+	return d
 }
 
 // failure is the StageFailed payload for the stage failing on cause, timed.
