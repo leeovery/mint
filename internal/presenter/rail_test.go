@@ -185,7 +185,7 @@ func TestRail_TheUnwindNamesWhatItUndidThenWhatItKept(t *testing.T) {
 	r := newRailTerm(t, 80, 24, answers())
 	commitRun(r)
 	r.Unwound(presenter.Unwind{
-		Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit",
+		Undone: "reset 2 commits", Kept: "kept your exclusion answers in .mint.toml",
 		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "repo clean",
 	})
 	got := r.screen(t)[4:6]

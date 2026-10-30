@@ -94,10 +94,10 @@ func TestUnwindTextRecomposesTheEngineSuppliedParts(t *testing.T) {
 			name: "kept answers sit between the undone part and the repo state",
 			unwind: presenter.Unwind{
 				Undone: "removed tag v1.4.0, reset 3 commits",
-				Kept:   "kept the answers commit on the starting commit",
+				Kept:   "kept your exclusion answers in .mint.toml",
 				Repo:   "repo clean",
 			},
-			want: "removed tag v1.4.0, reset 3 commits; kept the answers commit on the starting commit; repo clean",
+			want: "removed tag v1.4.0, reset 3 commits; kept your exclusion answers in .mint.toml; repo clean",
 		},
 		{
 			name:   "manual cleanup",

@@ -586,7 +586,7 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
 	want := presenter.Unwind{
-		Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit",
+		Undone: "reset 2 commits", Kept: "kept your exclusion answers in .mint.toml",
 		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "repo clean", Key: "unwind",
 	}
 	if unwound != want {

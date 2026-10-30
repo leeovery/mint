@@ -792,13 +792,12 @@ type Warning struct {
 type Unwind struct {
 	// Undone names what was undone: "reset 2 commits and deleted tag v1.4.0".
 	Undone string
-	// Kept names what the unwind kept on purpose, empty for nothing:
-	// "kept the answers commit on the starting commit".
+	// Kept names what the unwind kept on purpose, a commit it made again, empty for
+	// nothing: "kept your exclusion answers in .mint.toml".
 	Kept string
 	// KeptRow is what the unwind kept as the Rail's unwind row says it, after what was
-	// undone, in its own words: "kept your exclusion answers in .mint.toml". It names
-	// answers the unwind left in a .mint.toml git ignores too, which Kept doesn't.
-	// Plain ignores it.
+	// undone: "kept your exclusion answers in .mint.toml". It names answers the unwind
+	// left in a .mint.toml git ignores too, which Kept doesn't. Plain ignores it.
 	KeptRow string
 	// Repo is where the repo ended up: "repo clean", or "manual cleanup required"
 	// when a recovery step failed.

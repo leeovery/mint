@@ -198,8 +198,9 @@ const (
 	nothingCommitted   = "nothing committed"
 	nothingPushed      = "nothing pushed"
 	answersLeftInPlace = "your exclusion answers kept in " + config.FileName
-	// answersKept is what the unwind's row says it kept of the exclusion answers,
-	// re-committed or left in a .mint.toml git ignores.
+	// answersKept is what the unwind says it kept of the exclusion answers: plain's
+	// line where it re-committed them, the rail's row too where git ignores the
+	// .mint.toml that holds them.
 	answersKept = "kept your exclusion answers in " + config.FileName
 	// answersRecommitted is the one commit past the start the close names where the
 	// unwind re-committed the answers.
@@ -315,7 +316,7 @@ func answersRestoreStep(ctx context.Context, deps ReleaseDeps, made MadeState) [
 	if res, err := deps.Mutator.Run(ctx, "git", "rev-parse", "HEAD"+below); err == nil && strings.TrimSpace(res.Stdout) != "" {
 		commit = strings.TrimSpace(res.Stdout)
 	}
-	return []manualStep{{does: "restore the exclusion answers commit on top", commands: []string{"git cherry-pick " + commit}}}
+	return []manualStep{{does: "put your exclusion answers back on top", commands: []string{"git cherry-pick " + commit}}}
 }
 
 // deleteTagIfMade deletes the local tag mint created this run, returning whether a
@@ -472,8 +473,8 @@ type unwindOutcome struct {
 	clean          bool
 }
 
-// unwindEvent builds the Unwound payload: what the unwind undid, the kept answers
-// commit when it was re-committed, and where it left the repo. Only a clean outcome
+// unwindEvent builds the Unwound payload: what the unwind undid, the exclusion
+// answers it kept, and where it left the repo. Only a clean outcome
 // reads "repo clean", so the narration never calls the repo clean after a failed step.
 // Each part is ASCII, so the plain presenter's joined line stays byte-pure, and none
 // leads with a "Reverted:"-style prefix — the presenter prefixes the line with
@@ -481,7 +482,7 @@ type unwindOutcome struct {
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
 	event := presenter.Unwind{Undone: undone(tag, made.Commits, outcome), Repo: repoState(outcome.clean), Key: stageUnwind}
 	if outcome.answersKept {
-		event.Kept = "kept the answers commit on the starting commit"
+		event.Kept = answersKept
 	}
 	if outcome.answersKept || made.answersLeft {
 		event.KeptRow = answersKept

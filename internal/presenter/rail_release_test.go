@@ -132,7 +132,7 @@ func unfinishedUnwind(r *railTerm) {
 		Output:  "fatal: could not write the index\n",
 	})
 	r.Unwound(presenter.Unwind{
-		Undone: "reset 1 commit", Kept: "kept the answers commit on the starting commit",
+		Undone: "reset 1 commit", Kept: "kept your exclusion answers in .mint.toml",
 		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "manual cleanup required", Key: "unwind",
 	})
 	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "main", Detail: "manual cleanup required · nothing pushed"}, Elapsed: secs(4.9)})
