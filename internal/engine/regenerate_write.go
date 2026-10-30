@@ -215,6 +215,7 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 		}
 		// Regenerate's close carries no footer URL, so the dispatched release URL is
 		// discarded here — only the forward release path threads it into RunResult.URL.
+		showRunning(p, stagePublish, writingText(publisher))
 		if _, err := DispatchRelease(ctx, publisher, req.Tag, req.Tag, body); err != nil {
 			if pushed {
 				// Post-PONR: the changelog is already public, so never unwind — warn and

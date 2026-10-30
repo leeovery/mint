@@ -868,6 +868,7 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 	}
 	plan := rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan
 	wantStages := []presenter.PlanStage{
+		{Key: "preflight", Name: "preflight", Detail: "tree clean, on main, origin in sync, gh signed in"},
 		{Key: "notes", Name: "notes", Detail: "written by the AI"},
 		{Key: "review", Name: "review", Detail: "the notes before they are written"},
 		{Key: "record", Name: "CHANGELOG.md", Detail: "rewritten, committed and pushed"},

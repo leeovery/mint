@@ -2,6 +2,7 @@
 
  ◇  7 versions    fresh notes → GitHub releases, then CHANGELOG.md
  │
+ ●  preflight     tree clean, on main, origin in sync, gh signed in
  ●  v1.0.0        GitHub release · the first release's default                                  2.1s
  ●  v1.1.0        GitHub release                                                                2.1s
  !  v1.2.0        skipped · AI returned empty notes                                             1.4s

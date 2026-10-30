@@ -6,6 +6,7 @@
     R release (provider release)   c changelog (CHANGELOG.md)   b both › release
  ◇  v1.4.0        tag → GitHub release
  │
+ ●  preflight     gh signed in
  ●  notes         read from the tag annotation                                                  0.7s
  │
  │    Replay a delivery from the dashboard.

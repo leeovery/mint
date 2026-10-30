@@ -365,6 +365,13 @@ var regenRuns = map[string]regenRun{
 // it: the terminal shows each line as it is read.
 func railRegenerate(t *testing.T, r regenRun) (string, error) {
 	t.Helper()
+	return railRegenerateAt(t, r, "", "")
+}
+
+// railRegenerateAt is railRegenerate returning the screen as it stood when the run
+// first ran name with arg as its first argument, where name is given.
+func railRegenerateAt(t *testing.T, r regenRun, name, arg string) (string, error) {
+	t.Helper()
 	term := frametest.NewTerminal(railCols, railRows)
 	var in io.Reader = strings.NewReader(r.answers)
 	if r.echo {
@@ -379,12 +386,65 @@ func railRegenerate(t *testing.T, r regenRun) (string, error) {
 		presenter.WithRailTicker(stillTicker),
 		presenter.WithRailClock(func() time.Time { return railEpoch }),
 	)
-	err := r.run(t, newRegenWorld(t, p, r.yes))
+	w := newRegenWorld(t, p, r.yes)
+	var g *glimpsing
+	if name != "" {
+		g = &glimpsing{FakeRunner: w.f, term: term, name: name, arg: arg}
+		g.wire(&w.deps)
+		w.publisher = publish.NewGitHubPublisher(g)
+	}
+	err := r.run(t, w)
 	p.Close()
 	if terr := term.Err(); terr != nil {
 		t.Fatalf("the terminal was written what it can't apply: %v", terr)
 	}
+	if g != nil {
+		return g.frame(t), err
+	}
 	return term.ANSI(), err
+}
+
+// regenGlimpse is a regenerate run drawn on the rail as it stands while it runs the
+// command name with its first argument arg.
+type regenGlimpse struct {
+	regenRun
+	name, arg string
+}
+
+var regenGlimpses = map[string]regenGlimpse{
+	// The changelog's preflight fetching: preflight runs on the rail under the start
+	// station, the plan not yet known.
+	"regenerate-preflight-running-100": {name: "git", arg: "fetch", regenRun: regenRun{answers: "y\n", run: func(t *testing.T, w *regenWorld) error {
+		w.preflight()
+		w.gh()
+		w.changelogWritten(ScriptedOut(""))
+		return w.regenerate(t, w.single(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetBoth)))
+	}}},
+	// --all's preflight asking gh whether it is signed in.
+	"regenerate-all-preflight-running-100": {name: "gh", arg: "auth", regenRun: regenRun{yes: true, run: func(t *testing.T, w *regenWorld) error {
+		w.gh()
+		return w.all(t, 2, engine.RegenerateTargetRelease, versionNotes())
+	}}},
+	// The review accepted and the GitHub release being written: publish runs on the
+	// rail.
+	"regenerate-publish-running-100": {name: "gh", arg: "release", regenRun: regenRun{answers: "y\n", run: func(t *testing.T, w *regenWorld) error {
+		w.gh()
+		return w.regenerate(t, w.single(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease)))
+	}}},
+}
+
+// regenerateGlimpses draws each of regenGlimpses, by name.
+func regenerateGlimpses(t *testing.T) map[string]string {
+	t.Helper()
+	drawn := map[string]string{}
+	for name, g := range regenGlimpses {
+		screen, err := railRegenerateAt(t, g.regenRun, g.name, g.arg)
+		if aborted := err != nil; aborted != g.aborted {
+			t.Errorf("%s: the run returned %v, want aborted %v", name, err, g.aborted)
+		}
+		drawn[name] = screen
+	}
+	return drawn
 }
 
 // typedInput is what is typed at a terminal in cooked mode: each read is one line,

@@ -200,9 +200,14 @@ func (w *railWorld) release(t *testing.T, set func(*engine.ReleaseOptions)) (str
 // it once the run is over.
 func (w *railWorld) glimpse(name, arg string) *glimpsing {
 	g := &glimpsing{FakeRunner: w.f, term: w.term, name: name, arg: arg}
-	mut := git.NewMutator(g)
-	w.deps.Runner, w.deps.Mutator, w.deps.Releaser = g, mut, release.NewReleaser(mut)
+	g.wire(&w.deps)
 	return g
+}
+
+// wire runs every command deps runs, its git mutations included, through g.
+func (g *glimpsing) wire(deps *engine.ReleaseDeps) {
+	mut := git.NewMutator(g)
+	deps.Runner, deps.Mutator, deps.Releaser = g, mut, release.NewReleaser(mut)
 }
 
 // glimpsing is the world's runner keeping the screen at the command it watches for.
@@ -571,6 +576,7 @@ func TestRail_Frames(t *testing.T) {
 		drawn[name] = screen
 	}
 	maps.Copy(drawn, regenerateFrames(t))
+	maps.Copy(drawn, regenerateGlimpses(t))
 	maps.Copy(drawn, initFrames(t))
 
 	frametest.Check(t, "testdata/frames", drawn)

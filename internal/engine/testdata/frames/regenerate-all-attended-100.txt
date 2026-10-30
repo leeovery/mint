@@ -2,6 +2,7 @@
 
  ◇  3 versions    fresh notes → GitHub releases
  │
+ ●  preflight     gh signed in
  ●  v1.0.0        GitHub release · the first release's default · accepted                       2.8s
  ●  v1.1.0        GitHub release · accepted                                                     2.8s
  ●  v1.2.0        GitHub release · accepted                                                     2.8s

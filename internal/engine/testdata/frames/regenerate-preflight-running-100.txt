@@ -1,0 +1,5 @@
+ mint ─ release regenerate                                                    ~/Code/pigeon · v0.1.2
+
+ ◇  v1.4.0        fresh → CHANGELOG.md + GitHub release
+ │
+ ⠋  preflight     checking the tree, branch, origin and gh sign-in…                               0s
