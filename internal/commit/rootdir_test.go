@@ -70,6 +70,7 @@ func TestRun_AddAll_ReadsAnchoredAtRepoRoot(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                 // tracked probe (empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "new.go\x00"}},                       // untracked probe (non-empty → proceed)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                 // L1 tracked diff (empty)
@@ -77,6 +78,7 @@ func TestRun_AddAll_ReadsAnchoredAtRepoRoot(t *testing.T) {
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/new.go b/new.go\n+x"}}, // addition diff
 		runner.ScriptedCall{}, // git add -A
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	deps := newCommitDeps(rec, r, scriptedTransport("feat: anchored add-all"), root)
 	deps.Staging = commit.AddAll

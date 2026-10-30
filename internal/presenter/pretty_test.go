@@ -453,19 +453,20 @@ func TestPrettyPresenterBottomBrandOmitsEmptyURLSeparator(t *testing.T) {
 	}
 }
 
-// TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose drives a
-// single-version regenerate: the per-version block reuses the EXISTING events
-// exactly as release does (RunStarted("regenerating") → a stage → ShowNotes →
-// Prompt), then RunFinished{Verb:VerbRegenerate, Summary:"v1.4.0"} renders the
-// URL-less, verb-shaped closing summary "{leaf} regenerated {project} {Summary}".
-// The close must carry NO URL and NO dangling " · " separator.
-func TestPrettyPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *testing.T) {
+// TestPrettyPresenterRegenerateAllBlockThenURLlessBatchClose drives one version block
+// of a --all backfill: the block reuses the EXISTING events exactly as release does
+// (RunStarted("regenerating") → a stage → ShowNotes → Prompt), then the batch's
+// RunFinished{Outcome:OutcomeAllRegenerated, Summary:"v1.4.0"} renders the URL-less,
+// verb-shaped closing summary "{leaf} regenerated {project} {Summary}". The close must
+// carry NO URL and NO dangling " · " separator. (A single-version regenerate closes as
+// OutcomeRegenerated, which renders no line.)
+func TestPrettyPresenterRegenerateAllBlockThenURLlessBatchClose(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
 		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "Faster cold starts."})
 		_, _ = p.Prompt(presenter.NotesReviewGate())
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.4.0"})
 	})
 
 	got := out.String()
@@ -540,7 +541,7 @@ func TestPrettyPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder(t *testin
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.2.0", Action: "regenerating"})
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.3.0", Action: "regenerating"})
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.2.0–v1.4.0 (3 versions)"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.2.0–v1.4.0 (3 versions)"})
 	})
 
 	got := out.String()
@@ -575,11 +576,11 @@ func TestPrettyPresenterRegenerateBlockStartUsesRegeneratingNotReleasing(t *test
 // TestPrettyPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter
 // proves the --all SINGLE-version case still renders the regenerate arm: a
 // set-summary close, NOT a release-style v{X}+url footer. The presenter renders the
-// regenerate arm whenever Verb=VerbRegenerate, regardless of block count.
+// regenerate arm whenever Outcome=OutcomeAllRegenerated, regardless of block count.
 func TestPrettyPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "1 version (v1.4.0)"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "1 version (v1.4.0)"})
 	})
 
 	got := out.String()
@@ -600,7 +601,7 @@ func TestPrettyPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFoo
 // separator — and locks the exact closing line.
 func TestPrettyPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.4.0"})
 	})
 
 	got := out.String()
@@ -611,12 +612,12 @@ func TestPrettyPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testin
 
 // TestPrettyPresenterFailedRegenerateSuppressesClose proves the Phase-2
 // terminalFailure flag suppresses the regenerate closing summary too: a StageFailed
-// then RunFinished{Verb:VerbRegenerate} renders the ✗ line but NO closing brand
-// summary — the suppression check runs BEFORE the verb dispatch.
+// then RunFinished{Outcome:OutcomeAllRegenerated} renders the ✗ line but NO closing brand
+// summary — the suppression check runs BEFORE the outcome dispatch.
 func TestPrettyPresenterFailedRegenerateSuppressesClose(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.StageFailed(presenter.StageFailure{Name: "notes", Message: "AI call failed"})
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.4.0"})
 	})
 
 	got := out.String()
@@ -628,16 +629,16 @@ func TestPrettyPresenterFailedRegenerateSuppressesClose(t *testing.T) {
 	}
 }
 
-// TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultVerb is the regression
-// guard for the additive discriminator: a RunResult with NO Verb set (default
-// VerbRelease) still renders the release form WITH the URL.
-func TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultVerb(t *testing.T) {
+// TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultOutcome is the regression
+// guard for the additive discriminator: a RunResult with NO Outcome set (default
+// OutcomeReleased) still renders the release form WITH the URL.
+func TestPrettyPresenterReleaseRunFinishedUnchangedByDefaultOutcome(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://github.com/acme/acme/releases/tag/v1.4.0"})
 	})
 
 	if !strings.Contains(out.String(), "🌿 released acme v1.4.0 · https://github.com/acme/acme/releases/tag/v1.4.0\n") {
-		t.Errorf("default-Verb release close changed:\n%q", out.String())
+		t.Errorf("default-Outcome release close changed:\n%q", out.String())
 	}
 }
 
@@ -1001,7 +1002,7 @@ func TestPrettyPresenterUnwoundRendersGlyphLineWithVerbatimSummary(t *testing.T)
 		t.Parallel()
 
 		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.Unwound(presenter.Unwind{Summary: summary})
+			p.Unwound(presenter.Unwind{Undone: summary})
 		})
 
 		want := "↩ unwound    " + summary + "\n"
@@ -1017,7 +1018,7 @@ func TestPrettyPresenterUnwoundRendersGlyphLineWithVerbatimSummary(t *testing.T)
 		t.Parallel()
 
 		out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
-			p.Unwound(presenter.Unwind{Summary: summary})
+			p.Unwound(presenter.Unwind{Undone: summary})
 		})
 
 		if !bytes.ContainsRune(out.Bytes(), 0x1b) {
@@ -1040,7 +1041,7 @@ func TestPrettyPresenterUnwoundRendersGlyphLineWithVerbatimSummary(t *testing.T)
 func TestPrettyPresenterUnwoundWritesToStdoutOnly(t *testing.T) {
 	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
 	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.TrueColor))
-	p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
+	p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
 
 	if !strings.Contains(out.String(), "↩") {
 		t.Errorf("pretty: unwound line missing from stdout:\n%q", out.String())
@@ -1070,7 +1071,7 @@ func TestPrettyPresenterStageFailedThenRunFinishedSuppressesSuccessLine(t *testi
 func TestPrettyPresenterUnwoundAfterFailureSuppressesSuccessLine(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
 		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
-		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
+		p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
 		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 	})
 
@@ -1091,7 +1092,7 @@ func TestPrettyPresenterUnwoundAfterFailureSuppressesSuccessLine(t *testing.T) {
 // the closing brand line on the subsequent RunFinished.
 func TestPrettyPresenterUnwoundAfterAbortSuppressesSuccessLine(t *testing.T) {
 	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
+		p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 release commit(s) — repo clean"})
 		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 	})
 

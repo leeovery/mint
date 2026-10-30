@@ -29,12 +29,21 @@ const versionSlot = `\d+\.\d+\.\d+`
 // so errors.Is matches and the message names the file.
 var ErrVersionPatternNoMatch = errors.New("record: version_pattern matched nothing")
 
+// Projection is what a version-file projection did on disk.
+type Projection struct {
+	// Changed reports a net change written to the file.
+	Changed bool
+	// Created reports that the write created the file, absent before: a write no
+	// commit or staging holds, which a reset then leaves untracked.
+	Created bool
+}
+
 // ProjectVersionFile is the single entry point for the version-file projection: it
 // dispatches to the right mode from the configured knobs and reports whether the
-// projection produced a net change on disk.
+// projection produced a net change on disk, and whether it created the file.
 //
-//   - versionFile == "" → tag-only: there is NO projection, so it returns
-//     (false, nil) without touching the filesystem.
+//   - versionFile == "" → tag-only: there is NO projection, so it returns the zero
+//     Projection without touching the filesystem.
 //   - versionPattern == "" → PLAIN mode (the whole file IS the version):
 //     ProjectVersionFilePlain.
 //   - otherwise → EMBEDDED mode (surgical version-slot replacement in a real source
@@ -42,21 +51,24 @@ var ErrVersionPatternNoMatch = errors.New("record: version_pattern matched nothi
 //     (a configured pattern that matches nothing) propagates as the error so the
 //     release aborts during Record, before the tag.
 //
-// Like the mode functions it produces only the filesystem write and the changed
-// signal; the change is staged into the single bookkeeping commit by
-// CommitBookkeeping — there is no separate version-file commit.
-func ProjectVersionFile(root, versionFile, versionPattern, version string) (changed bool, err error) {
+// Like the mode functions it produces only the filesystem write and its report; the
+// change is staged into the single bookkeeping commit by CommitBookkeeping — there is
+// no separate version-file commit. Embedded mode only rewrites a file that exists, so
+// only plain mode creates one.
+func ProjectVersionFile(root, versionFile, versionPattern, version string) (Projection, error) {
 	if versionFile == "" {
-		return false, nil
+		return Projection{}, nil
 	}
 	if versionPattern == "" {
 		return ProjectVersionFilePlain(root, versionFile, version)
 	}
-	return ProjectVersionFileEmbedded(root, versionFile, versionPattern, version)
+	changed, err := ProjectVersionFileEmbedded(root, versionFile, versionPattern, version)
+	return Projection{Changed: changed}, err
 }
 
 // ProjectVersionFilePlain mirrors version into the PLAIN-mode version file at
-// {root}/{versionFile} and reports whether it produced a net change on disk.
+// {root}/{versionFile} and reports whether it produced a net change on disk, and
+// whether it created the file.
 //
 // PLAIN mode means the WHOLE file contents are the version: there is no surrounding
 // source, so the target content is the BARE version string (e.g. "1.4.0") with NO
@@ -77,25 +89,24 @@ func ProjectVersionFile(root, versionFile, versionPattern, version string) (chan
 // version) via an atomic temp-file+rename so a crash mid-write never leaves a
 // truncated mirror, and changed is true.
 //
-// This produces only the file write and the changed signal; it does NOT create or
-// stage any git commit — that is folded into the single bookkeeping commit in task
-// 3-7.
-func ProjectVersionFilePlain(root, versionFile, version string) (changed bool, err error) {
+// This produces only the file write and its report; it does NOT create or stage any
+// git commit — that is folded into the single bookkeeping commit in task 3-7.
+func ProjectVersionFilePlain(root, versionFile, version string) (Projection, error) {
 	path := filepath.Join(root, versionFile)
 	target := version + "\n"
 
 	existing, found, err := readVersionFileContent(path)
 	if err != nil {
-		return false, err
+		return Projection{}, err
 	}
 	if found && existing == target {
-		return false, nil
+		return Projection{}, nil
 	}
 
 	if err := writeFileAtomic(path, target); err != nil {
-		return false, err
+		return Projection{}, err
 	}
-	return true, nil
+	return Projection{Changed: true, Created: !found}, nil
 }
 
 // ProjectVersionFileEmbedded rewrites the version slot of version_pattern inside an

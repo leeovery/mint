@@ -28,6 +28,7 @@ func editDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr commit
 func seedEditThenAccept(diff, editor string, editorResolutions int) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	calls := []runner.ScriptedCall{
+		scriptedHead(),                         // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		{Result: runner.Result{Stdout: diff}},  // git diff --cached (L1)
 	}
@@ -35,6 +36,7 @@ func seedEditThenAccept(diff, editor string, editorResolutions int) *runner.Fake
 		calls = append(calls, runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}}) // git var GIT_EDITOR
 	}
 	calls = append(calls, runner.ScriptedCall{}) // git commit -F -
+	calls = append(calls, scriptedShortHead())   // git rev-parse --short HEAD (the end station)
 	f.SeedSequence("git", calls...)
 	return f
 }
@@ -186,6 +188,8 @@ func TestRun_EditNonEmptySaveLoopsBack_NotSaveAsAccept(t *testing.T) {
 	// edit ShowMessage, Prompt (re-rendered gate), then the commit on accept.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
@@ -194,6 +198,7 @@ func TestRun_EditNonEmptySaveLoopsBack_NotSaveAsAccept(t *testing.T) {
 		presentertest.KindResumeSpinner,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
+		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
 	got := rec.Kinds()
@@ -207,11 +212,11 @@ func TestRun_EditNonEmptySaveLoopsBack_NotSaveAsAccept(t *testing.T) {
 	}
 
 	// The first ShowMessage carries the generated body; the second carries the edit.
-	first, _ := rec.At(3)
+	first, _ := rec.At(5)
 	if first.ShowMessage.Body != generated {
 		t.Errorf("first ShowMessage body = %q, want the generated message %q", first.ShowMessage.Body, generated)
 	}
-	second, _ := rec.At(7)
+	second, _ := rec.At(9)
 	if second.ShowMessage.Body != edited {
 		t.Errorf("re-rendered ShowMessage body = %q, want the edited message %q", second.ShowMessage.Body, edited)
 	}
@@ -281,7 +286,7 @@ func TestRun_MultiLineEditedBodyPreservedThroughLoopBack(t *testing.T) {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}
 
-	second, _ := rec.At(7)
+	second, _ := rec.At(9)
 	if second.ShowMessage.Body != edited {
 		t.Errorf("re-rendered ShowMessage body = %q, want the multi-line edit intact %q", second.ShowMessage.Body, edited)
 	}

@@ -32,6 +32,7 @@ func seedDowngradeGit(f *runner.FakeRunner, root, releaseBranch, tag, remoteURL 
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -195,6 +196,7 @@ func TestRelease_Downgrade_NoRemote(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain (clean)
 		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD (on branch)
@@ -236,6 +238,7 @@ func TestRelease_PublishFalse_SilentTagPush(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain
 		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD

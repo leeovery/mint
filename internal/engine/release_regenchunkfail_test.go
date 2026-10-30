@@ -197,8 +197,8 @@ func TestRelease_RegenOverTheCapWhosePartFailsForGood_SavesTheOtherPartsNotesAnd
 
 	assertAbortNonZero(t, run.release(t.Context()))
 
-	want := presenter.StageFailure{Name: "regenerate", Message: "AI call failed (part 3 of 4)", Output: loginOutput, SavedNotes: run.savedPath()}
-	if sf := onlyStageFailureEvent(t, run.rec); sf != want {
+	want := presenter.StageFailure{Name: "regenerate", Key: "notes", Message: "AI call failed (part 3 of 4)", Output: loginOutput, SavedNotes: run.savedPath()}
+	if sf := untimed(onlyStageFailureEvent(t, run.rec)); sf != want {
 		t.Errorf("StageFailure = %+v, want %+v", sf, want)
 	}
 	run.assertSavedAs(t, notesMissingFor("c/3.go")+"\n\n"+regenPartNotes(1, 4)+"\n\n"+regenPartNotes(2, 4)+"\n\n"+regenPartNotes(4, 4))
@@ -416,8 +416,8 @@ func TestRelease_ChunkedRegensNotesCannotBeSaved_KeepsTheFailureAndWarnsWithTheW
 	err := run.release(t.Context())
 
 	assertUnwoundToStart(t, run.rec, run.f, err)
-	want := presenter.StageFailure{Name: "regenerate", Message: "AI call failed (part 3 of 4)", Output: loginOutput}
-	if sf := onlyStageFailureEvent(t, run.rec); sf != want {
+	want := presenter.StageFailure{Name: "regenerate", Key: "notes", Message: "AI call failed (part 3 of 4)", Output: loginOutput}
+	if sf := untimed(onlyStageFailureEvent(t, run.rec)); sf != want {
 		t.Errorf("StageFailure = %+v, want the failure unchanged %+v", sf, want)
 	}
 	assertWarnedAfterTheFailure(t, run.rec)

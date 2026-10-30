@@ -39,6 +39,7 @@ import (
 	"strings"
 
 	"mint/internal/cmdline"
+	"mint/internal/config"
 	"mint/internal/fsutil"
 	"mint/internal/git"
 	"mint/internal/presenter"
@@ -83,6 +84,35 @@ type MadeState struct {
 	// keptAnswers is the exclusion answers' commit, counted in Commits; the unwind
 	// re-commits it on the starting commit after its reset.
 	keptAnswers *answersCommit
+	// answersLeft reports that the answers went to a .mint.toml git ignores, a write
+	// the unwind leaves in place.
+	answersLeft bool
+	// written are the files the record stage wrote and no commit yet holds; with no
+	// commit to reset they stay as written.
+	written []string
+	// created are the files the record stage created that neither a commit nor the
+	// index holds, which a reset leaves untracked.
+	created []string
+	// hookRan reports that a preflight or pre_tag hook ran: what it did to the tree or
+	// HEAD is unknown to mint, so the close claims nothing a hook could have undone.
+	hookRan bool
+	// wrote reports that mint began a write of its own: the exclusion answers or the
+	// record stage.
+	wrote bool
+	// preTagStaged reports that mint staged what the pre_tag hook left and the commit
+	// of it failed, leaving it staged.
+	preTagStaged bool
+}
+
+// recordWrite tracks a file the record stage wrote, when it changed, and created, when
+// the write made it.
+func (m *MadeState) recordWrite(file string, changed, created bool) {
+	if changed {
+		m.written = append(m.written, file)
+	}
+	if created {
+		m.created = append(m.created, file)
+	}
 }
 
 // Unwind is the surgical pre-PONR recovery. Given the captured StartState and the
@@ -97,9 +127,11 @@ type MadeState struct {
 //     keeps its content and staged state;
 //   - re-commits the exclusion answers on the starting commit when made.keptAnswers
 //     holds their commit and the reset succeeded;
-//   - reports each undone item and the kept answers commit via the Presenter's
-//     Unwound(Unwind{Summary}), the engine authoring the COMPLETE summary including
-//     its "; repo clean" tail.
+//   - reports each undone item, the kept answers commit and where the repo ended up
+//     via the Presenter's Unwound, the engine authoring every part, and tells the
+//     run's close what mint did and where HEAD stands (unwoundTo), so the run closes
+//     back at its start station saying so; with nothing to unwind it tells the close
+//     what the run left behind (leftBehind).
 //
 // With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
 // Unwound and issues NO git command. A reverted write alone emits no Unwound either.
@@ -129,9 +161,93 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 	kept, keptOK := recommitAnswersIfKept(ctx, deps, made.keptAnswers, resetOK, restore)
 
 	if tagDeleted || commitsReset {
-		deps.Presenter.Unwound(unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: tagOK && editOK && resetOK && keptOK}))
+		clean := tagOK && editOK && resetOK && keptOK
+		event := unwindEvent(start.Tag, made, unwindOutcome{answersKept: kept, clean: clean})
+		deps.Presenter.Unwound(event)
+		// HEAD is back on the starting commit once the reset ran, or, with only a tag to
+		// delete, when nothing but mint could have moved it.
+		atStart := resetOK && (commitsReset || !made.hookRan)
+		deps.run.Unwound(unwoundTo(event, clean, atStart, made))
+	} else {
+		deps.run.Left(leftBehind(editOK, made))
 	}
 	return abort(reason)
+}
+
+// The parts of the detail a release that stopped short closes at. They state only
+// mint's own actions (what it committed, reset, wrote, staged, created or kept, and
+// that it pushed nothing) and where HEAD stands. They never describe how clean the
+// tree is, which the Unwound line reports, or what a hook did, which mint cannot see.
+const (
+	backWhereItStarted = "back where it started"
+	manualCleanup      = "manual cleanup required"
+	nothingCommitted   = "nothing committed"
+	nothingPushed      = "nothing pushed"
+	answersLeftInPlace = "the exclusion answers kept in " + config.FileName
+	notCommitted       = " written, not committed"
+	leftUntracked      = " left untracked"
+	preTagStaged       = "pre_tag's changes staged, not committed"
+	// noClaim is the detail of a run stopped once mint began a write of its own, no
+	// hook having run, with nothing of it left to name. Once a hook has run even
+	// "nothing committed" is beyond what mint knows, so the detail is nothingPushed.
+	noClaim = nothingCommitted + " · " + nothingPushed
+)
+
+// unwoundTo is where an unwind left the repo, as the run's close states it: on the
+// kept answers commit when it re-committed them, else back where it started when
+// atStart says HEAD is, then that recovery needs a hand when it does, the files the
+// record stage created and the reset left untracked, and the answers an ignored
+// .mint.toml keeps. An unwind runs only before the push, so it always pushed nothing.
+func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) string {
+	var parts []string
+	switch {
+	case event.Kept != "":
+		parts = append(parts, event.Kept)
+	case atStart:
+		parts = append(parts, backWhereItStarted)
+	}
+	if !clean {
+		parts = append(parts, manualCleanup)
+	}
+	if len(made.created) > 0 {
+		parts = append(parts, strings.Join(made.created, " + ")+leftUntracked)
+	}
+	if made.answersLeft {
+		parts = append(parts, answersLeftInPlace)
+	}
+	return strings.Join(append(parts, nothingPushed), " · ")
+}
+
+// leftBehind is what a release that stopped short with nothing to unwind left
+// behind: a failed revert of the answers' write, pre_tag's changes left staged, the
+// files the record stage wrote and no commit holds, and the answers an ignored
+// .mint.toml keeps, then that it pushed nothing. With none of those it is
+// nothingPushed once a hook has run, noClaim once mint began a write, and "" (the
+// close's "nothing changed") when neither has.
+func leftBehind(editOK bool, made MadeState) string {
+	var parts []string
+	if !editOK {
+		parts = append(parts, manualCleanup)
+	}
+	if made.preTagStaged {
+		parts = append(parts, preTagStaged)
+	}
+	if len(made.written) > 0 {
+		parts = append(parts, strings.Join(made.written, " + ")+notCommitted)
+	}
+	if made.answersLeft {
+		parts = append(parts, answersLeftInPlace)
+	}
+	switch {
+	case len(parts) > 0:
+		return strings.Join(append(parts, nothingPushed), " · ")
+	case made.hookRan:
+		return nothingPushed
+	case made.wrote:
+		return noClaim
+	default:
+		return ""
+	}
 }
 
 // recommitAnswersIfKept commits the exclusion answers again on the commit the reset
@@ -329,53 +445,45 @@ type unwindOutcome struct {
 	clean       bool
 }
 
-// unwindEvent builds the Unwound payload whose engine-authored Summary names each
-// undone item and the kept answers commit. Only a clean outcome carries the
-// "; repo clean" tail, so the narration never calls the repo clean after a failed step.
+// unwindEvent builds the Unwound payload: what the unwind ATTEMPTED to undo, the kept
+// answers commit when it was re-committed, and where it left the repo. Only a clean
+// outcome reads "repo clean", so the narration never calls the repo clean after a
+// failed step. Each part is ASCII, so the plain presenter's joined line stays
+// byte-pure, and none leads with a "Reverted:"-style prefix — the presenter prefixes
+// the line with "unwound", so a prefix here would double-label.
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
-	return presenter.Unwind{Summary: surgicalSummary(tag, made, outcome)}
+	event := presenter.Unwind{Undone: undone(tag, made), Repo: repoState(outcome.clean)}
+	if outcome.answersKept {
+		event.Kept = "kept the answers commit on the starting commit"
+	}
+	return event
 }
 
-// surgicalSummary authors the engine-owned Unwound Summary describing what the unwind
-// ATTEMPTED to undo — the count of commits reset and the deleted tag — then the kept
-// answers commit when it was re-committed, and its trailing status tail. When every
-// recovery mutation succeeded the tail is "; repo clean"; when one FAILED the tail
-// becomes "; manual cleanup required" so the summary never falsely claims the repo is
-// clean. It is ASCII and semicolon-joined (matching the
-// existing "…; repo clean" style) so the plain presenter stays byte-pure; the presenter
-// renders it VERBATIM and synthesises no part of it. It never leads with a
-// "Reverted:"-style prefix — the presenter prefixes the line with "unwound", so a prefix
-// here would double-label.
-//
+// undone names what the unwind undid: the count of commits reset and the deleted tag.
 // It is only ever called when something was undone (a commit reset and/or a tag
 // deleted), so the zero/zero case is unreachable here; the operation no-ops before
 // reaching it.
-func surgicalSummary(tag string, made MadeState, outcome unwindOutcome) string {
-	tail := summaryTail(outcome.clean)
-	if outcome.answersKept {
-		tail = "; kept the answers commit on the starting commit" + tail
-	}
+func undone(tag string, made MadeState) string {
 	reset := made.Commits > 0
 	deleted := made.TagCreated
 	switch {
 	case reset && deleted:
-		return fmt.Sprintf("reset %s and deleted tag %s%s", commitsPhrase(made.Commits), tag, tail)
+		return fmt.Sprintf("reset %s and deleted tag %s", commitsPhrase(made.Commits), tag)
 	case reset:
-		return "reset " + commitsPhrase(made.Commits) + tail
+		return "reset " + commitsPhrase(made.Commits)
 	default:
-		return "deleted tag " + tag + tail
+		return "deleted tag " + tag
 	}
 }
 
-// summaryTail selects the Unwound summary's trailing status: the "; repo clean"
-// confirmation when all recovery succeeded, or the "; manual cleanup required" notice
-// when a recovery step failed (the failure was already warned with the exact manual
-// step).
-func summaryTail(clean bool) string {
+// repoState is where the unwind left the repo: "repo clean" when all recovery
+// succeeded, or "manual cleanup required" when a recovery step failed (the failure
+// was already warned with the exact manual step).
+func repoState(clean bool) string {
 	if clean {
-		return "; repo clean"
+		return "repo clean"
 	}
-	return "; manual cleanup required"
+	return manualCleanup
 }
 
 // commitsPhrase renders the reset-commit count with correct singular/plural grammar:

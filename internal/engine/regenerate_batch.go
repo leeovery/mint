@@ -221,7 +221,7 @@ func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 	hintLowerCap(deps.Presenter, hint.lowerCap())
 	deps.Presenter.RunFinished(presenter.RunResult{
 		Project: req.Project,
-		Verb:    presenter.VerbRegenerate,
+		Outcome: presenter.OutcomeAllRegenerated,
 		Summary: batchSummary(len(collected), skipped),
 	})
 	return collected, nil
@@ -289,8 +289,9 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 		Project: req.Project,
 		Version: versionKey,
 		Action:  regenerateAction,
+		Header:  deps.header(regenerateAllCommand, root),
 	})
-	p.ShowPlan(regeneratePlan(req.Source, req.Target, res.Tag))
+	p.ShowPlan(regeneratePlan(req.Source, req.Target, res.Tag, aProviderRelease))
 
 	// A deterministic source against a body-less version is a per-version SKIP (not the
 	// single-mode fail-loud error): read the existing body up front — the tag annotation

@@ -42,12 +42,12 @@ func reachesNotesFloor(failure error) bool {
 // only unattended: at a terminal without -y the real run offers the choice instead of
 // stopping. savedNotes is the path the failed run saved its chunk notes to, or "".
 func (d ReleaseDeps) notesFloorMoves(failure error, cfg config.Config, savedNotes string) presenter.NextMoves {
-	moves := []string{
+	moves := []presenter.NextMove{
 		notesFileMove("mint release", savedNotes),
-		"re-run with --no-ai to release with the commit-subject list",
+		{Lead: "re-run with --no-ai to release with the commit-subject list"},
 	}
 	if !d.attended() {
-		moves = append(moves, `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`)
+		moves = append(moves, presenter.NextMove{Lead: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`})
 	}
 	return presenter.NextMoves{Stage: "notes", Moves: append(moves, causeMoves(failure, cfg)...)}
 }
@@ -56,17 +56,21 @@ func (d ReleaseDeps) notesFloorMoves(failure error, cfg config.Config, savedNote
 // unattended regenerate stopped at the floor on failure, then the moves that clear
 // failure's cause. Neither --no-ai nor on_notes_failure exists for a regenerate.
 func regenerateNotesFloorMoves(failure error, cfg config.Config, version, savedNotes string) presenter.NextMoves {
-	moves := []string{notesFileMove("mint release regenerate "+version, savedNotes)}
+	moves := []presenter.NextMove{notesFileMove("mint release regenerate "+version, savedNotes)}
 	return presenter.NextMoves{Stage: "notes", Moves: append(moves, causeMoves(failure, cfg)...)}
 }
 
 // notesFileMove is the --notes-file route through command: the chunk notes saved at
-// savedNotes, once tidied, or with none saved, notes written from scratch.
-func notesFileMove(command, savedNotes string) string {
+// savedNotes, once tidied, or with none saved, notes written from scratch. Its
+// command ends the move, so it stands apart from the lead.
+func notesFileMove(command, savedNotes string) presenter.NextMove {
 	if savedNotes == "" {
-		return "write the notes to a file and release with " + command + " --notes-file <file>"
+		return presenter.NextMove{Lead: "write the notes to a file and release with", Command: command + " --notes-file <file>"}
 	}
-	return "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with " + notesFileCommand(command, savedNotes)
+	return presenter.NextMove{
+		Lead:    "tidy the saved notes at " + savedNotes + ", filling in any files its marker lists, and release with",
+		Command: notesFileCommand(command, savedNotes),
+	}
 }
 
 // notesFileCommand is base run with --notes-file path. The reader pastes the command
@@ -78,12 +82,22 @@ func notesFileCommand(base, path string) string {
 
 const leanCommandMove = `if ai_command carries a large overhead of its own, use the lean command documented in the README under "The shipped default"`
 
-// causeMoves are the moves that clear failure's cause. A merge too large gets none: a
+// causeMoves are the moves that clear failure's cause, each a lead alone: none ends
+// in a command. A merge too large gets none: a
 // lower cap cuts the release into more parts and does not shrink what the merge holds.
 // An OTHER failure leaves the AI's own output to name its cause, adding the lean
 // command only where the release runs a command of the repo's own, whose overhead
 // alone can overflow the window.
-func causeMoves(failure error, cfg config.Config) []string {
+func causeMoves(failure error, cfg config.Config) []presenter.NextMove {
+	leads := causeLeads(failure, cfg)
+	moves := make([]presenter.NextMove, len(leads))
+	for i, lead := range leads {
+		moves[i] = presenter.NextMove{Lead: lead}
+	}
+	return moves
+}
+
+func causeLeads(failure error, cfg config.Config) []string {
 	cause, known := notes.ClassifyFailure(failure)
 	if !known {
 		return nil
@@ -137,6 +151,7 @@ func notesFloorGate(question string) presenter.Gate {
 			{Key: presenter.ChoiceAbort, Action: "abort"},
 		},
 		Default: presenter.ChoiceAbort,
+		Stage:   stageNotes,
 	}
 }
 

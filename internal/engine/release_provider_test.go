@@ -17,6 +17,7 @@ func seedHappyGitRemote(f *runner.FakeRunner, root, releaseBranch, tag, remoteUR
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (clean)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)

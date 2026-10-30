@@ -52,6 +52,9 @@ const sectionMarker = "## ["
 // uses to skip the bookkeeping commit (no empty commits).
 type WriteResult struct {
 	Changed bool
+	// Created reports that the write created the file, absent before: a write no
+	// commit or staging holds, which a reset then leaves untracked.
+	Created bool
 }
 
 // WriteChangelog records version's release section into {dir}/CHANGELOG.md and
@@ -80,7 +83,7 @@ func WriteChangelog(dir, version string, date time.Time, body string, enabled bo
 
 	path := filepath.Join(dir, ChangelogFileName)
 
-	existing, err := readExisting(path)
+	existing, found, err := readExisting(path)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -93,21 +96,21 @@ func WriteChangelog(dir, version string, date time.Time, body string, enabled bo
 	if err := writeAtomic(path, updated); err != nil {
 		return WriteResult{}, err
 	}
-	return WriteResult{Changed: true}, nil
+	return WriteResult{Changed: true, Created: !found}, nil
 }
 
-// readExisting returns the current changelog contents, or the empty string when
-// the file does not yet exist (the first-release create path). Any other read
-// error is surfaced.
-func readExisting(path string) (string, error) {
+// readExisting returns the current changelog contents and whether the file exists,
+// the empty string when it does not yet (the first-release create path). Any other
+// read error is surfaced.
+func readExisting(path string) (string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return "", nil
+			return "", false, nil
 		}
-		return "", fmt.Errorf("reading %s: %w", ChangelogFileName, err)
+		return "", false, fmt.Errorf("reading %s: %w", ChangelogFileName, err)
 	}
-	return string(data), nil
+	return string(data), true, nil
 }
 
 // insertSection returns existing with the new version section recorded newest-on-

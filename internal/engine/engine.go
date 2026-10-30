@@ -127,47 +127,73 @@ func ReviewDecision(p presenter.Presenter, gate presenter.Gate) (presenter.Choic
 // sentence is the pretty past-tense narration line ("Bumped patch version to
 // v1.4.0"); detail stays the terse plain value ("v1.4.0 (patch bump)").
 func emitGateSucceeded(p presenter.Presenter, name, detail, sentence string) {
-	p.StageSucceeded(presenter.StageSuccess{Name: name, Detail: detail, Sentence: sentence})
+	p.StageSucceeded(presenter.StageSuccess{Name: name, Key: name, Detail: detail, Sentence: sentence})
 }
 
 // emitBlockingStageStarted narrates the START of a BLOCKING stage — a long/slow
 // step (notes generation, the pre_tag and post_release hooks, the atomic push) — by
 // emitting a StageStarted with Blocking:true so the pretty spinner animates, and
-// starts the engine-side elapsed timer. It returns a completion closure that, when
-// the stage succeeds, emits the matching StageSucceeded carrying the engine-MEASURED
-// Elapsed (the engine times the stage; the presenter never does) and Blocking:true
-// so the success event mirrors the start. A FAILED stage simply does not call the
-// closure — its StageFailed (for post_release, its warn-only Warn) narrates the
-// stage instead — so a non-success path emits no StageSucceeded. The wall-clock
+// starts the engine-side elapsed timer. It returns the stage under way, whose done,
+// when the stage succeeds, emits the matching StageSucceeded carrying the
+// engine-MEASURED Elapsed (the engine times the stage; the presenter never does) and
+// Blocking:true so the success event mirrors the start. A FAILED stage never calls
+// done — its StageFailed, timed by failure (for post_release, its warn-only Warn),
+// narrates the stage instead — so a non-success path emits no StageSucceeded. The
+// stage's name is its plan Key too. The wall-clock
 // measurement uses the standard time package: this is production code timing the
 // real product, not the deterministic workflow harness.
 // text is the OPTIONAL activity phrase the pretty spinner animates while the
 // stage runs ("generating release notes…") — the state-what-is-happening rule;
 // empty falls back to the stage name. sentence is the pretty past-tense completion
 // line ("Generated release notes"); the presenter appends ({elapsed}) to it. detail
-// stays the terse plain completion value, passed to the returned closure.
-func emitBlockingStageStarted(p presenter.Presenter, name, text, sentence string) func(detail string) {
-	succeeded := startBlockingStage(p, name, text)
-	return func(detail string) { succeeded(detail, sentence) }
+// stays the terse plain completion value, passed to done.
+func emitBlockingStageStarted(p presenter.Presenter, name, text, sentence string) *blockingStage {
+	s := startBlockingStage(p, name, text)
+	s.sentence = sentence
+	return s
 }
 
 // startBlockingStage is emitBlockingStageStarted for a stage whose completion
 // sentence is settled only once it succeeds.
-func startBlockingStage(p presenter.Presenter, name, text string) func(detail, sentence string) {
+func startBlockingStage(p presenter.Presenter, name, text string) *blockingStage {
 	return startBlockingStageSince(p, name, text, time.Now())
 }
 
 // startBlockingStageSince is startBlockingStage for a stage whose wait began at
 // started, before the stage was narrated.
-func startBlockingStageSince(p presenter.Presenter, name, text string, started time.Time) func(detail, sentence string) {
-	p.StageStarted(presenter.StageStart{Name: name, Blocking: true, Text: text})
-	return func(detail, sentence string) {
-		p.StageSucceeded(presenter.StageSuccess{
-			Name:     name,
-			Detail:   detail,
-			Sentence: sentence,
-			Elapsed:  time.Since(started),
-			Blocking: true,
-		})
-	}
+func startBlockingStageSince(p presenter.Presenter, name, text string, started time.Time) *blockingStage {
+	p.StageStarted(presenter.StageStart{Name: name, Key: name, Blocking: true, Text: text})
+	return &blockingStage{p: p, name: name, started: started}
+}
+
+// blockingStage is a blocking stage under way, timed from when its wait began.
+type blockingStage struct {
+	p        presenter.Presenter
+	name     string
+	sentence string
+	started  time.Time
+}
+
+// done narrates the stage's success with detail and the sentence it started with.
+func (s *blockingStage) done(detail string) {
+	s.succeeded(presenter.StageSuccess{Detail: detail, Sentence: s.sentence})
+}
+
+// succeeded narrates the stage's success, filling in its name, key and elapsed.
+func (s *blockingStage) succeeded(success presenter.StageSuccess) {
+	success.Name, success.Key = s.name, s.name
+	success.Elapsed, success.Blocking = s.elapsed(), true
+	s.p.StageSucceeded(success)
+}
+
+// elapsed is how long the stage has run.
+func (s *blockingStage) elapsed() time.Duration {
+	return time.Since(s.started)
+}
+
+// failure is the StageFailed payload for the stage failing on cause, timed.
+func (s *blockingStage) failure(cause error) presenter.StageFailure {
+	failure := stageFailure(s.name, cause)
+	failure.Elapsed = s.elapsed()
+	return failure
 }

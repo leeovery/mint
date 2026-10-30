@@ -66,9 +66,22 @@ func RegenerateChangelog(ctx context.Context, m *git.Mutator, root, versionKey, 
 		return false, nil
 	}
 
-	subject := fmt.Sprintf("docs(changelog): regenerate notes for %s", tag)
-	if err := stageAndCommitChangelog(ctx, m, root, subject, keepOut); err != nil {
-		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, err)
+	if err := stageAndCommitChangelog(ctx, m, root, regenerateChangelogSubject(tag), keepOut); err != nil {
+		return false, fmt.Errorf("regenerating changelog for %s: %w", tag, &uncommittedChangelog{err: err})
 	}
 	return true, nil
+}
+
+// uncommittedChangelog is a failure to commit a CHANGELOG.md already rewritten, which
+// the rewrite is left as. Its message is the failure's own.
+type uncommittedChangelog struct{ err error }
+
+func (e *uncommittedChangelog) Error() string { return e.err.Error() }
+
+func (e *uncommittedChangelog) Unwrap() error { return e.err }
+
+// regenerateChangelogSubject is the subject of the commit a single-version regenerate
+// makes of tag's rewritten CHANGELOG.md section.
+func regenerateChangelogSubject(tag string) string {
+	return fmt.Sprintf("docs(changelog): regenerate notes for %s", tag)
 }

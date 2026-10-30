@@ -122,6 +122,16 @@ type Gate struct {
 	// Default is the choice that fires on a deliberate empty Enter. It must be a
 	// member of Choices.
 	Default Choice
+	// Stage is the Key of the plan stage the gate asks about, empty for a gate asked
+	// before the run's stages begin (regenerate's source and target).
+	Stage string
+	// Detail is what Stage settles to once the gate is answered, for a gate no stage
+	// event settles (the version confirmation); empty otherwise.
+	Detail string
+	// Suggestion is the exclusion check's suggestion the gate pauses on, nil for any
+	// other gate: what the Question asks about, kept whole so the rail need not read
+	// it out of the Question. Its Line is empty.
+	Suggestion *ExclusionSuggestion
 }
 
 // Has reports whether c is a member of the gate's DECLARED choice set. It reads

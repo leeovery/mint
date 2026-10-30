@@ -57,10 +57,12 @@ func diffOfLines(n int) string {
 func seedOversizedFallback(diff, editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},          // git diff --cached -- . (L1, over-limit)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return f
 }
@@ -72,9 +74,11 @@ func seedOversizedFallback(diff, editor string) *runner.FakeRunner {
 func seedPassesToL2(diff string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached -- . (L1, within ceiling)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return f
 }
@@ -275,11 +279,13 @@ func TestRun_Oversized_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing.T)
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},          // git diff HEAD --name-only (preflight, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diffOfLines(3)}}, // git diff HEAD -- . (L1, over-limit)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},     // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -u (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	tr := scriptedTransport("must never be returned (L2 was skipped)")
@@ -327,6 +333,7 @@ func TestRun_Oversized_EmptySave_TrueNoOp(t *testing.T) {
 			// Only the preflight read, the L1 diff, and the editor resolution are scripted;
 			// staging/commit must never be reached on an empty/aborted save.
 			f.SeedSequence("git",
+				scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 				runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 				runner.ScriptedCall{Result: runner.Result{Stdout: diffOfLines(3)}},
 				runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},
@@ -501,7 +508,7 @@ func TestRun_Oversized_ContextPushesPromptOverCap_OpensEmptyEditor(t *testing.T)
 	if tr.calls() != 0 {
 		t.Errorf("transport.Generate called %d times; an over-cap composed prompt must never be sent", tr.calls())
 	}
-	if warns := warnEvents(rec); len(warns) != 1 || warns[0] != (presenter.Warning{Label: "diff", Message: oversizedNote}) {
+	if warns := warnEvents(rec); len(warns) != 1 || warns[0] != (presenter.Warning{Label: "diff", Message: oversizedNote, Key: "message"}) {
 		t.Errorf("Warn events = %+v, want exactly the oversized note %q", warns, oversizedNote)
 	}
 	if opened != "" {
@@ -530,11 +537,13 @@ func TestRun_Oversized_RegenNudgeOverCap_OpensEmptyEditor(t *testing.T) {
 	}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},       // git diff --cached -- . (initial L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},       // git diff --cached -- . (regeneration L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	opened := "unset"
@@ -551,7 +560,7 @@ func TestRun_Oversized_RegenNudgeOverCap_OpensEmptyEditor(t *testing.T) {
 	if tr.calls() != 1 {
 		t.Errorf("transport.Generate called %d times, want exactly 1 (the first generation; no regeneration call)", tr.calls())
 	}
-	if warns := warnEvents(rec); len(warns) != 1 || warns[0] != (presenter.Warning{Label: "diff", Message: oversizedNote}) {
+	if warns := warnEvents(rec); len(warns) != 1 || warns[0] != (presenter.Warning{Label: "diff", Message: oversizedNote, Key: "message"}) {
 		t.Errorf("Warn events = %+v, want exactly the oversized note %q", warns, oversizedNote)
 	}
 	if containsKind(rec.Kinds(), presentertest.KindStageFailed) {

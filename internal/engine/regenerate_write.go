@@ -43,6 +43,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -204,9 +205,12 @@ func RegenerateWrite(ctx context.Context, deps ReleaseDeps, publisher publish.Pu
 				warnRegenerateProviderFailed(p, err)
 				return nil
 			}
-			// Release-only: nothing was pushed, so this is a plain pre-PONR failure.
-			return surface(p, "publish", err)
+			// Release-only: nothing was pushed, so this is a plain pre-PONR failure. The
+			// provider write ran, so the close names only what mint did.
+			deps.run.Left(noClaim)
+			return surface(p, stagePublish, err)
 		}
+		p.StageSucceeded(presenter.Settled(stagePublish, "written"))
 	}
 
 	return nil
@@ -237,7 +241,7 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 		// (the test seam), mirroring the forward path's perRunRegenerator precedence.
 		return reviewFresh(ctx, deps, req)
 	case regenerateSourceSupplied, regenerateSourceFloor:
-		return reviewGate(ctx, p, deps.Editor, reviewRegen{}, presenter.NotesReviewGateNoRegen(), req.Body, req.VersionKey)
+		return reviewGate(ctx, p, deps.Editor, reviewRegen{}, reviewing(presenter.NotesReviewGateNoRegen()), req.Body, req.VersionKey)
 	default:
 		// Deterministic source (tag annotation or provider release): the simple
 		// two-choice confirm — there are no freshly-generated notes to edit/regenerate.
@@ -250,10 +254,10 @@ func gateRegenerate(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRe
 func reviewFresh(ctx context.Context, deps ReleaseDeps, req RegenerateWriteRequest) (string, error) {
 	regenerator := regenerateRegenerator(deps, req.Regenerator)
 	if req.regens == nil || req.chunkNotes == nil {
-		return reviewGate(ctx, deps.Presenter, deps.Editor, reviewRegen{regenerator: regenerator}, presenter.NotesReviewGate(), req.Body, req.VersionKey)
+		return reviewGate(ctx, deps.Presenter, deps.Editor, reviewRegen{regenerator: regenerator}, reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey)
 	}
 	regen := req.regens.review(regenerator, req.chunkNotes)
-	return req.chunkNotes.reviewGate(ctx, deps, regen, presenter.NotesReviewGate(), req.Body, req.VersionKey, "mint release regenerate "+req.VersionKey)
+	return req.chunkNotes.reviewGate(ctx, deps, regen, reviewing(presenter.NotesReviewGate()), req.Body, req.VersionKey, "mint release regenerate "+req.VersionKey)
 }
 
 // regenerateRegenerator selects the Regenerator the fresh regenerate gate's `r` choice
@@ -275,7 +279,7 @@ func regenerateRegenerator(deps ReleaseDeps, perRun Regenerator) Regenerator {
 // ChoiceYes proceeds with the unchanged body; ChoiceNo is a clean abort; a Prompt
 // read failure is already an *AbortError carrying a non-zero exit.
 func reuseConfirm(p presenter.Presenter, body string) (string, error) {
-	choice, err := ReviewDecision(p, presenter.ReuseConfirmGate())
+	choice, err := ReviewDecision(p, reviewing(presenter.ReuseConfirmGate()))
 	if err != nil {
 		return "", err
 	}
@@ -310,6 +314,9 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 		return false, surface(p, "record", err)
 	}
 
+	// The write may leave CHANGELOG.md changed, so the close claims no more than the
+	// recovery below can name.
+	deps.run.Left(noClaim)
 	committed, err := RegenerateChangelog(ctx, deps.Mutator, root, req.VersionKey, req.Tag, date, body, req.KeepOut)
 	if err != nil {
 		// A failed write/stage/commit makes no commit, but a partial commit could have
@@ -320,8 +327,17 @@ func writeAndPushChangelog(ctx context.Context, deps ReleaseDeps, root string, r
 	if !committed {
 		// No net change → no commit → nothing to push. Reaching here with a no-op write
 		// is not a failure; the surface is simply byte-for-byte unchanged.
+		p.StageSucceeded(presenter.Settled(stageRecord, "unchanged"))
+		p.StageSucceeded(presenter.Settled(stagePush, "skipped: nothing to push"))
 		return false, nil
 	}
+	p.StageSucceeded(presenter.StageSuccess{
+		Name:   stageRecord,
+		Key:    stageRecord,
+		Detail: "rewritten and committed",
+		Commit: regenerateChangelogSubject(req.Tag),
+		Quiet:  true,
+	})
 
 	// The changelog commit landed: push it (the point of no return) via the shared
 	// regenerate push tail. A successful push crosses the PONR (return pushed=true); a
@@ -371,19 +387,32 @@ func stageAndCommitChangelog(ctx context.Context, m *git.Mutator, root, subject 
 // reset always applies. Keeping the push form, PONR narration, and reset wiring here
 // means the two regenerate paths can no longer drift on push form or recovery.
 func pushChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) error {
-	pushDone := emitBlockingStageStarted(deps.Presenter, "push", "pushing to origin…", "Pushed to origin")
+	push := emitBlockingStageStarted(deps.Presenter, stagePush, "pushing to origin…", "Pushed to origin")
 	if _, err := deps.Mutator.Mutate(ctx, nil, "git", "push", "origin", "HEAD"); err != nil {
-		return resetAndAbort(ctx, deps, start, true, "push", fmt.Errorf("pushing regenerated changelog: %w", err))
+		return resetAndAbort(ctx, deps, start, true, stagePush, &stageError{stage: push, err: fmt.Errorf("pushing regenerated changelog: %w", err)})
 	}
-	pushDone("pushed to origin")
+	push.done("pushed to origin")
 	return nil
 }
 
 // resetAndAbort handles a pre-PONR changelog failure: it surfaces the failed stage,
 // resets the local CHANGELOG commit back to start when a commit landed (resetTo — no
-// tag, best-effort), and returns the abort. With no commit made the reset is skipped.
+// tag, best-effort), tells the run's close where that left the repo, and returns the
+// abort. With no commit made the reset is skipped, and a CHANGELOG.md rewritten but
+// not committed is what the run leaves; a write that failed before that leaves the
+// close claiming nothing. The ✗ line carries the failure's message alone, no captured
+// output.
 func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, committed bool, stage string, cause error) error {
-	deps.Presenter.StageFailed(presenter.StageFailure{Name: stage, Message: failureMessage(cause)})
+	failure := presenter.StageFailure{Name: stage, Key: stage, Message: failureMessage(cause)}
+	var timed *stageError
+	if errors.As(cause, &timed) {
+		failure.Elapsed = timed.stage.elapsed()
+	}
+	deps.Presenter.StageFailed(failure)
+	var uncommitted *uncommittedChangelog
+	if errors.As(cause, &uncommitted) {
+		deps.run.Left(record.ChangelogFileName + notCommitted + " · " + nothingPushed)
+	}
 	if committed {
 		// The reset is RECOVERY that must run even when the abort was the parent context's
 		// own cancellation (a SIGINT/SIGTERM pre-PONR abort). Detaching with
@@ -396,10 +425,17 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 		// left in place.
 		if manual, output, err := resetTo(context.WithoutCancel(ctx), deps.Mutator, start); err != nil {
 			warnUnwindIncomplete(deps.Presenter, manual+" to drop the leftover changelog commit", output)
+			deps.run.Left(manualCleanup + " · " + nothingPushed)
+		} else {
+			deps.run.Left(changelogCommitReset + " · " + nothingPushed)
 		}
 	}
 	return abort(cause)
 }
+
+// changelogCommitReset is what a regenerate whose changelog commit was reset did: the
+// commit is gone and HEAD is back on the starting commit.
+const changelogCommitReset = "changelog commit reset · " + backWhereItStarted
 
 // readHistoricalDate recovers the version's ORIGINAL release date from the tag
 // metadata via `git for-each-ref --format=%(creatordate:short) refs/tags/<tag>`
@@ -435,6 +471,7 @@ func readHistoricalDate(ctx context.Context, r runner.CommandRunner, tag string)
 // second warn names which surface was skipped as a result.
 func warnRegenerateProviderSkipped(p presenter.Presenter) {
 	p.Warn(presenter.Warning{
+		Key:     stagePublish,
 		Label:   "publish skipped",
 		Message: "provider could not be resolved; the release surface was not written",
 	})
@@ -447,8 +484,17 @@ func warnRegenerateProviderSkipped(p presenter.Presenter) {
 // Warn seam (no failure state), so the run finishes successfully.
 func warnRegenerateProviderFailed(p presenter.Presenter, cause error) {
 	p.Warn(presenter.Warning{
+		Key:     stagePublish,
 		Label:   "publish failed",
 		Message: "changelog is already pushed; re-heal the provider release with --target release",
 		Output:  cause.Error(),
 	})
+}
+
+// reviewing is gate asked at a regenerate's review stage, which no stage event
+// settles, so the gate carries what its answer settles the node to.
+func reviewing(gate presenter.Gate) presenter.Gate {
+	gate.Stage = stageReview
+	gate.Detail = "accepted"
+	return gate
 }

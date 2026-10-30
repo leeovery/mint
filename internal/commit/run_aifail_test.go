@@ -51,10 +51,12 @@ func (f *failTransport) Generate(_ context.Context, _ string) (string, error) {
 func seedAIFailFallback(editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached -- . (L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}},                 // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return f
 }
@@ -139,11 +141,13 @@ func TestRun_AIFailure_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing.T)
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff HEAD --name-only (preflight, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff HEAD -- . (L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},                    // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -u (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	tr := &failTransport{err: fmt.Errorf("generating commit message: %w", ai.ErrGenerationFailed)}
@@ -187,6 +191,7 @@ func TestRun_AIFailure_EmptySave_TrueNoOp(t *testing.T) {
 			// Only the preflight read, the L1 diff, and the editor resolution are scripted;
 			// staging/commit must never be reached on an empty/aborted save.
 			f.SeedSequence("git",
+				scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 				runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 				runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},
 				runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},
@@ -246,6 +251,7 @@ func TestRun_AIFailure_Cancelled_DoesNotRouteToEditor(t *testing.T) {
 	// staging, and commit must never be reached on a cancellation.
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},
 	)

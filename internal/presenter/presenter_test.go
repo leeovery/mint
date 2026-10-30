@@ -24,8 +24,8 @@ func (p *nopPresenter) StageSucceeded(presenter.StageSuccess)               {}
 func (p *nopPresenter) StageFailed(presenter.StageFailure)                  {}
 func (p *nopPresenter) NotesProgress(presenter.NotesProgress)               {}
 func (p *nopPresenter) NotesMerging(presenter.NotesMerge)                   {}
-func (p *nopPresenter) NotesChecking()                                      {}
-func (p *nopPresenter) NotesChecked()                                       {}
+func (p *nopPresenter) NotesChecking(presenter.NotesCheck)                  {}
+func (p *nopPresenter) NotesChecked(presenter.NotesCheck)                   {}
 func (p *nopPresenter) NotesHalving(presenter.NotesHalving)                 {}
 func (p *nopPresenter) NextMoves(presenter.NextMoves)                       {}
 func (p *nopPresenter) ExclusionSuggestions(presenter.ExclusionSuggestions) {}
@@ -76,24 +76,60 @@ func TestNopPresenterSatisfiesInterface(t *testing.T) {
 	}
 }
 
-// TestUnwindCarriesEngineSuppliedSummary proves the Unwind payload carries the
-// engine's verbatim "what it undid" summary as a single field — including the
-// summary's own "repo clean" tail. The presenter renders it verbatim and never
-// synthesises the tail itself.
-func TestUnwindCarriesEngineSuppliedSummary(t *testing.T) {
-	u := presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"}
+// TestUnwindTextRecomposesTheEngineSuppliedParts proves Text joins the engine's
+// separate unwind parts — what it undid, what it kept, the repo's state — into
+// the one sentence plain has always printed, skipping any part the engine left
+// empty. The presenter composes no part itself.
+func TestUnwindTextRecomposesTheEngineSuppliedParts(t *testing.T) {
+	t.Parallel()
 
-	if u.Summary != "removed tag v1.4.0, reset 2 commits; repo clean" {
-		t.Errorf("Summary = %q, want %q", u.Summary, "removed tag v1.4.0, reset 2 commits; repo clean")
+	cases := []struct {
+		name   string
+		unwind presenter.Unwind
+		want   string
+	}{
+		{
+			name:   "undone and repo state",
+			unwind: presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits", Repo: "repo clean"},
+			want:   "removed tag v1.4.0, reset 2 commits; repo clean",
+		},
+		{
+			name: "kept answers sit between the undone part and the repo state",
+			unwind: presenter.Unwind{
+				Undone: "removed tag v1.4.0, reset 3 commits",
+				Kept:   "kept the answers commit on the starting commit",
+				Repo:   "repo clean",
+			},
+			want: "removed tag v1.4.0, reset 3 commits; kept the answers commit on the starting commit; repo clean",
+		},
+		{
+			name:   "manual cleanup",
+			unwind: presenter.Unwind{Undone: "removed tag v1.4.0", Repo: "manual cleanup required"},
+			want:   "removed tag v1.4.0; manual cleanup required",
+		},
+		{
+			name:   "nothing undone",
+			unwind: presenter.Unwind{Repo: "repo clean"},
+			want:   "repo clean",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := c.unwind.Text(); got != c.want {
+				t.Errorf("Text() = %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 
 // TestUnwoundPayloadRoundTripsThroughRecorder proves the recorder captures the
-// full Unwind payload so an engine-driven test can round-trip the unwind summary
+// full Unwind payload so an engine-driven test can round-trip the unwind's parts
 // independent of any rendering.
 func TestUnwoundPayloadRoundTripsThroughRecorder(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
-	u := presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"}
+	u := presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"}
 
 	rec.Unwound(u)
 
@@ -107,8 +143,8 @@ func TestUnwoundPayloadRoundTripsThroughRecorder(t *testing.T) {
 	if ev.Unwound != u {
 		t.Errorf("Unwound = %+v, want %+v", ev.Unwound, u)
 	}
-	if ev.Unwound.Summary != "removed tag v1.4.0, reset 2 commits; repo clean" {
-		t.Errorf("Summary = %q, want %q", ev.Unwound.Summary, "removed tag v1.4.0, reset 2 commits; repo clean")
+	if ev.Unwound.Text() != "removed tag v1.4.0, reset 2 commits; repo clean" {
+		t.Errorf("Summary = %q, want %q", ev.Unwound.Text(), "removed tag v1.4.0, reset 2 commits; repo clean")
 	}
 }
 
@@ -269,54 +305,39 @@ func TestRunResultCarriesProjectVersionAndOptionalURL(t *testing.T) {
 	}
 }
 
-// TestRunResultDefaultVerbIsRelease locks the iota-0 invariant: a RunResult
-// literal that sets no Verb defaults to VerbRelease, so every existing
-// (Verb-less) RunResult literal keeps rendering the release closing form. This is
-// the load-bearing guarantee that the new discriminator is additive and breaks no
-// prior RunFinished behaviour.
-func TestRunResultDefaultVerbIsRelease(t *testing.T) {
+// TestRunResultDefaultOutcomeIsReleased locks the iota-0 invariant: a RunResult
+// literal that sets no Outcome closes as a release, so every Outcome-less
+// RunResult literal keeps rendering the release footer.
+func TestRunResultDefaultOutcomeIsReleased(t *testing.T) {
+	t.Parallel()
+
 	r := presenter.RunResult{Project: "acme", Version: "1.4.0"}
 
-	if r.Verb != presenter.VerbRelease {
-		t.Errorf("zero-value Verb = %v, want VerbRelease (iota 0)", r.Verb)
+	if r.Outcome != presenter.OutcomeReleased {
+		t.Errorf("zero-value Outcome = %v, want OutcomeReleased (iota 0)", r.Outcome)
 	}
-	if presenter.VerbRelease != 0 {
-		t.Errorf("VerbRelease = %d, want 0 (iota-0 so existing literals default to release)", presenter.VerbRelease)
-	}
-}
-
-// TestRunResultCarriesVerbAndSummary proves the end-of-run payload carries the
-// verb discriminator and the engine-supplied closing detail (Summary), so the
-// regenerate arm renders a verb-shaped, engine-summarised closing line. The
-// presenter renders Summary verbatim and never computes the version set.
-func TestRunResultCarriesVerbAndSummary(t *testing.T) {
-	r := presenter.RunResult{
-		Project: "acme",
-		Verb:    presenter.VerbRegenerate,
-		Summary: "v1.2.0–v1.4.0 (3 versions)",
-	}
-
-	if r.Verb != presenter.VerbRegenerate {
-		t.Errorf("Verb = %v, want VerbRegenerate", r.Verb)
-	}
-	if r.Summary != "v1.2.0–v1.4.0 (3 versions)" {
-		t.Errorf("Summary = %q, want the engine-supplied set text verbatim", r.Summary)
+	if presenter.OutcomeReleased != 0 {
+		t.Errorf("OutcomeReleased = %d, want 0", presenter.OutcomeReleased)
 	}
 }
 
-// TestRunResultVerbAndSummaryRoundTripThroughRecorder proves the recorder
-// captures the whole RunResult — including the new Verb and Summary fields — so an
-// engine-driven test can round-trip the regenerate closing payload independent of
-// any rendering. The fields travel automatically because the recorder stores the
-// whole struct.
-func TestRunResultVerbAndSummaryRoundTripThroughRecorder(t *testing.T) {
+// TestRunResultRoundTripsThroughRecorder proves the recorder captures the whole
+// RunResult — the Outcome, the engine-supplied Summary, the end station and the
+// run's elapsed — so an engine-driven test can assert the closing payload
+// independent of any rendering.
+func TestRunResultRoundTripsThroughRecorder(t *testing.T) {
+	t.Parallel()
+
 	rec := &presentertest.RecordingPresenter{}
-
-	rec.RunFinished(presenter.RunResult{
+	want := presenter.RunResult{
 		Project: "acme",
-		Verb:    presenter.VerbRegenerate,
-		Summary: "v1.4.0",
-	})
+		Outcome: presenter.OutcomeAllRegenerated,
+		Summary: "v1.2.0–v1.4.0 (3 versions)",
+		End:     presenter.Station{Name: "v1.4.0", Detail: "regenerated"},
+		Elapsed: 3 * time.Second,
+	}
+
+	rec.RunFinished(want)
 
 	ev, ok := rec.At(0)
 	if !ok {
@@ -325,35 +346,8 @@ func TestRunResultVerbAndSummaryRoundTripThroughRecorder(t *testing.T) {
 	if ev.Kind != presentertest.KindRunFinished {
 		t.Fatalf("event kind = %v, want KindRunFinished", ev.Kind)
 	}
-	if ev.RunFinished.Verb != presenter.VerbRegenerate {
-		t.Errorf("recorded Verb = %v, want VerbRegenerate", ev.RunFinished.Verb)
-	}
-	if ev.RunFinished.Summary != "v1.4.0" {
-		t.Errorf("recorded Summary = %q, want %q", ev.RunFinished.Summary, "v1.4.0")
-	}
-}
-
-// TestRunVerbIotaOrdering locks the full discriminator ordering: the no-footer
-// shapes VerbInit and VerbVersion are appended AFTER VerbRegenerate, so the
-// load-bearing iota-0 value VerbRelease (and every existing Verb-less literal)
-// is unaffected. The exact values are pinned so a reorder that would shift
-// VerbRelease off zero — silently re-shaping every existing literal — is caught.
-func TestRunVerbIotaOrdering(t *testing.T) {
-	cases := []struct {
-		verb presenter.RunVerb
-		want int
-	}{
-		{presenter.VerbRelease, 0},
-		{presenter.VerbRegenerate, 1},
-		{presenter.VerbInit, 2},
-		{presenter.VerbVersion, 3},
-		{presenter.VerbCommit, 4},
-	}
-
-	for _, c := range cases {
-		if int(c.verb) != c.want {
-			t.Errorf("RunVerb value = %d, want %d", int(c.verb), c.want)
-		}
+	if ev.RunFinished != want {
+		t.Errorf("recorded RunFinished = %+v, want %+v", ev.RunFinished, want)
 	}
 }
 

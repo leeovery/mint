@@ -276,7 +276,7 @@ func assertPostReleaseStageStarted(t *testing.T, rec *presentertest.RecordingPre
 	if !ok {
 		t.Fatalf("no post_release StageStarted; kinds = %v", rec.Kinds())
 	}
-	want := presenter.StageStart{Name: "post_release", Blocking: true, Text: "running post_release hook…"}
+	want := presenter.StageStart{Name: "post_release", Key: "post_release", Blocking: true, Text: "running post_release hook…"}
 	if start != want {
 		t.Errorf("post_release StageStarted = %+v, want %+v", start, want)
 	}
@@ -318,7 +318,7 @@ func TestRelease_PostReleaseHook_NarratesAsBlockingStage(t *testing.T) {
 		t.Errorf("post_release StageSucceeded.Elapsed = %v, want a non-negative engine-measured duration", done.Elapsed)
 	}
 	done.Elapsed = 0
-	want := presenter.StageSuccess{Name: "post_release", Detail: "hook completed", Sentence: "Ran the post_release hook", Blocking: true}
+	want := presenter.StageSuccess{Name: "post_release", Key: "post_release", Detail: "hook completed", Sentence: "Ran the post_release hook", Blocking: true}
 	if done != want {
 		t.Errorf("post_release StageSucceeded = %+v, want %+v", done, want)
 	}
@@ -353,7 +353,7 @@ func TestRelease_PostReleaseHook_FailureWarnsInPlaceOfTheSuccessLine(t *testing.
 	if warnAt >= len(rec.Events) || rec.Events[warnAt].Kind != presentertest.KindWarn {
 		t.Fatalf("no Warn directly after the post_release StageStarted at %d; kinds = %v", startAt, rec.Kinds())
 	}
-	want := presenter.Warning{Label: "post_release", Message: postReleaseWarnMessage, Output: "notify boom\n"}
+	want := presenter.Warning{Label: "post_release", Message: postReleaseWarnMessage, Key: "post_release", Output: "notify boom\n"}
 	if got := rec.Events[warnAt].Warn; got != want {
 		t.Errorf("Warn = %+v, want %+v", got, want)
 	}

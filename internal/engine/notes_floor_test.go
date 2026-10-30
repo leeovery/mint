@@ -292,8 +292,8 @@ func TestRelease_NotesFloor_AbortEndsBeforeAnyTagAndUnwindsThePreTagCommit(t *te
 			if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
 				t.Errorf("the pre_tag artifact commit was not unwound; got %v", commandLines(f.Invocations()))
 			}
-			if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-				t.Errorf("Unwound.Summary = %q, want %q", got, want)
+			if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
+				t.Errorf("Unwound.Text() = %q, want %q", got, want)
 			}
 			if countCmd(f, "git", "log", "--format=%s", priorTag+"..HEAD") != 0 {
 				t.Errorf("an abort built the commit-subject list")

@@ -2,6 +2,7 @@ package commit
 
 import (
 	"path/filepath"
+	"time"
 
 	"mint/internal/presenter"
 )
@@ -20,12 +21,43 @@ func surface(p presenter.Presenter, stage string, cause error) error {
 // VERBATIM as StageFailure.Output. An empty output degrades to exactly surface's
 // rendering, so callers pass whatever output they captured unconditionally.
 func surfaceOutput(p presenter.Presenter, stage string, cause error, output string) error {
-	p.StageFailed(presenter.StageFailure{
-		Name:    stage,
-		Message: cause.Error(),
-		Output:  output,
-	})
+	return surfaceFailure(p, presenter.StageFailure{Name: stage, Message: cause.Error(), Output: output}, cause)
+}
+
+// surfaceTimed is surface for a blocking stage that ran for elapsed before it failed.
+func surfaceTimed(p presenter.Presenter, stage string, cause error, elapsed time.Duration) error {
+	return surfaceFailure(p, presenter.StageFailure{Name: stage, Message: cause.Error(), Elapsed: elapsed}, cause)
+}
+
+// surfaceFailure renders failure, keyed to the plan stage its label fails, and
+// returns cause.
+func surfaceFailure(p presenter.Presenter, failure presenter.StageFailure, cause error) error {
+	failure.Key = stageKey(failure.Name)
+	p.StageFailed(failure)
 	return cause
+}
+
+// The plan stage keys of a commit run.
+const (
+	stageDiff    = "diff"
+	stageMessage = "message"
+	stageStage   = "stage"
+	stageCommit  = "commit"
+	stagePush    = "push"
+)
+
+// stageKey is the plan stage a failure labelled label fails: the preflight finding
+// nothing to commit fails the diff, and every failure on the way to a message fails
+// the message.
+func stageKey(label string) string {
+	switch label {
+	case "preflight":
+		return stageDiff
+	case "generate", "editor", "review", "regenerate":
+		return stageMessage
+	default:
+		return label
+	}
 }
 
 // projectName derives the project label from the repo root's final path segment —

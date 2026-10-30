@@ -40,6 +40,7 @@ func seedDryRunFirstRelease(f *runner.FakeRunner, root, releaseBranch, tag strin
 		ScriptedOut(root),                      // rev-parse --show-toplevel
 		ScriptedOut("origin/" + releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                        // tag --list (no tags)
+		ScriptedHead(),                         // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                        // fetch --tags
 	}
 	if !skipCleanTree {
@@ -223,6 +224,7 @@ func TestRelease_DryRun_PublishDisabled_NoPublishStep(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain
 		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
@@ -326,6 +328,7 @@ func TestRelease_DryRun_NonAutostash_DirtyTreeStillAborts(t *testing.T) {
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(" M file.go"),  // status --porcelain (DIRTY — gate fails)
 	)

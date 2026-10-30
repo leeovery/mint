@@ -97,7 +97,10 @@ func chunkNotesPathIn(userCache, root, tag string) string {
 func releaseSavedNotesMoves(path string) []presenter.NextMoves {
 	return []presenter.NextMoves{{
 		Stage: "regenerate",
-		Moves: []string{"tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release --notes-file " + cmdline.Quote(path)},
+		Moves: []presenter.NextMove{{
+			Lead:    "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with",
+			Command: "mint release --notes-file " + cmdline.Quote(path),
+		}},
 	}}
 }
 
@@ -333,7 +336,7 @@ func TestRelease_FailedReMergesNotesCannotBeSaved_KeepsTheFailureAndWarnsWithThe
 		{
 			name:   "the re-merge fails with output",
 			rec:    regenOnce(exportNudge),
-			failed: &presenter.StageFailure{Name: "regenerate", Message: "AI call failed (merging)", Output: loginOutput},
+			failed: &presenter.StageFailure{Name: "regenerate", Key: "notes", Message: "AI call failed (merging)", Output: loginOutput},
 		},
 		{name: "stdin closes at the nudge", rec: closedAtNudge},
 	} {
@@ -347,7 +350,7 @@ func TestRelease_FailedReMergesNotesCannotBeSaved_KeepsTheFailureAndWarnsWithThe
 
 			assertUnwoundToStart(t, run.rec, run.f, err)
 			if tc.failed != nil {
-				if sf := onlyStageFailureEvent(t, run.rec); sf != *tc.failed {
+				if sf := untimed(onlyStageFailureEvent(t, run.rec)); sf != *tc.failed {
 					t.Errorf("StageFailure = %+v, want the failure unchanged %+v", sf, *tc.failed)
 				}
 				assertWarnedAfterTheFailure(t, run.rec)

@@ -92,7 +92,7 @@ func PreservedSection(version string) ChangelogSection {
 func RebuildChangelog(dir string, sections []ChangelogSection) (WriteResult, error) {
 	path := filepath.Join(dir, ChangelogFileName)
 
-	existing, err := readExisting(path)
+	existing, found, err := readExisting(path)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -105,7 +105,7 @@ func RebuildChangelog(dir string, sections []ChangelogSection) (WriteResult, err
 	if err := writeAtomic(path, rebuilt); err != nil {
 		return WriteResult{}, err
 	}
-	return WriteResult{Changed: true}, nil
+	return WriteResult{Changed: true, Created: !found}, nil
 }
 
 // composeChangelog builds the whole-file content: the KaC preamble, a blank separator,

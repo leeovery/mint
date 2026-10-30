@@ -29,6 +29,7 @@ func seedPreTagDirty(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (preflight clean-tree gate)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -56,6 +57,7 @@ func seedPreTagClean(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),                      // tag --list (no tags)
+		ScriptedHead(),                       // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                      // fetch --tags
 		ScriptedOut(""),                      // status --porcelain (preflight clean-tree gate)
 		ScriptedOut(releaseBranch),           // rev-parse --abbrev-ref HEAD (on branch)

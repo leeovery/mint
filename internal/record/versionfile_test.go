@@ -51,12 +51,12 @@ func TestProjectVersionFilePlain_AbsentFile_CreatedWithBareVersion(t *testing.T)
 	// deterministic, so they are asserted verbatim rather than by substring.
 	dir := t.TempDir()
 
-	changed, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
+	projection, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
 	if err != nil {
 		t.Fatalf("ProjectVersionFilePlain returned unexpected error: %v", err)
 	}
-	if !changed {
-		t.Errorf("changed = false, want true (absent file was created)")
+	if !projection.Changed || !projection.Created {
+		t.Errorf("projection = %+v, want changed and created (absent file was created)", projection)
 	}
 
 	if got := readVersionFile(t, dir, "release.txt"); got != "1.4.0\n" {
@@ -72,12 +72,12 @@ func TestProjectVersionFilePlain_OlderVersion_Overwritten(t *testing.T) {
 	dir := t.TempDir()
 	seedVersionFile(t, dir, "release.txt", "1.3.9\n")
 
-	changed, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
+	projection, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
 	if err != nil {
 		t.Fatalf("ProjectVersionFilePlain returned unexpected error: %v", err)
 	}
-	if !changed {
-		t.Errorf("changed = false, want true (older version overwritten)")
+	if !projection.Changed || projection.Created {
+		t.Errorf("projection = %+v, want changed, not created (older version overwritten)", projection)
 	}
 
 	if got := readVersionFile(t, dir, "release.txt"); got != "1.4.0\n" {
@@ -96,11 +96,11 @@ func TestProjectVersionFilePlain_AlreadyAtTarget_NoOp(t *testing.T) {
 	seedVersionFile(t, dir, "release.txt", "1.4.0\n")
 	before := statModTime(t, dir, "release.txt")
 
-	changed, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
+	projection, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
 	if err != nil {
 		t.Fatalf("ProjectVersionFilePlain returned unexpected error: %v", err)
 	}
-	if changed {
+	if projection.Changed {
 		t.Errorf("changed = true, want false (file already at the target version)")
 	}
 
@@ -122,11 +122,11 @@ func TestProjectVersionFilePlain_TargetVersionWithoutNewline_Rewritten(t *testin
 	dir := t.TempDir()
 	seedVersionFile(t, dir, "release.txt", "1.4.0")
 
-	changed, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
+	projection, err := record.ProjectVersionFilePlain(dir, "release.txt", "1.4.0")
 	if err != nil {
 		t.Fatalf("ProjectVersionFilePlain returned unexpected error: %v", err)
 	}
-	if !changed {
+	if !projection.Changed {
 		t.Errorf("changed = false, want true (missing trailing newline is a difference)")
 	}
 

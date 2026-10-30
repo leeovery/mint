@@ -40,10 +40,12 @@ func TestRun_StagedAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "app.min.js\n"}}, // preflight probe (UNFILTERED): staged index is dirty
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},             // L1 staged diff (filtered): all excluded → empty
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},     // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	transport := scriptedTransport("must never be returned (all excluded)")
@@ -90,11 +92,13 @@ func TestRun_AllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: " M app.min.js\n"}}, // preflight probe (UNFILTERED): tracked change present
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                // L1 tracked diff (filtered): all excluded → empty
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},        // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -u (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	transport := scriptedTransport("must never be returned (all excluded -a)")
@@ -139,6 +143,7 @@ func TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // preflight tracked probe (UNFILTERED): no tracked change
 		runner.ScriptedCall{Result: runner.Result{Stdout: "vendor.min.js\x00"}}, // preflight untracked probe (UNFILTERED): untracked file present
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                  // L1 tracked diff (filtered): empty
@@ -146,6 +151,7 @@ func TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},          // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -A (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	transport := scriptedTransport("must never be returned (all excluded -A)")
@@ -189,6 +195,7 @@ func TestRun_AllExcludedUnderYes_FailsLoud(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "app.min.js\n"}}, // preflight probe (UNFILTERED): dirty
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},             // L1 staged diff (filtered): all excluded → empty
 	)
@@ -223,9 +230,11 @@ func TestRun_StagedNonExcludedChange_ReachesGenerate(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "src/app.go\n"}},                                // preflight probe (unfiltered): a file is staged
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/src/app.go b/src/app.go\n+work"}}, // L1 staged diff (filtered): the non-excluded file remains
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	transport := scriptedTransport(message)
 	deps := newCommitDeps(rec, r, transport, root)

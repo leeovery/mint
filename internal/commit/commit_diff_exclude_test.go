@@ -35,9 +35,11 @@ func TestRun_CommitDiffExclude_AddsToTheSharedListOnTheAIDiff(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "app.lock\ntmp/run.log\nsrc/export.go\n"}}, // preflight probe (unfiltered)
 		runner.ScriptedCall{Result: runner.Result{Stdout: commitExportDiff}},                         // L1 staged diff (filtered)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	transport := scriptedTransport(message)
 	deps := newCommitDeps(rec, r, transport, root)
@@ -84,11 +86,13 @@ func TestRun_CommitDiffExclude_AddAllKeepsTheUntrackedExclusionOutOfTheAIDiffBut
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "src/export.go\n"}}, // preflight tracked probe (unfiltered): non-empty, short-circuits
 		runner.ScriptedCall{Result: runner.Result{Stdout: commitExportDiff}},  // L1 tracked diff (filtered)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                // L1 untracked enumeration (filtered): tmp/new.log excluded
 		runner.ScriptedCall{}, // git add -A
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	transport := scriptedTransport(message)
 	deps := newCommitDeps(rec, r, transport, root)
@@ -131,10 +135,12 @@ func TestRun_CommitDiffExclude_AllExcludedOpensTheEditorAndCommits(t *testing.T)
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "tmp/run.log\n"}}, // preflight probe (unfiltered): dirty
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},              // L1 staged diff (filtered): all excluded
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},      // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	transport := scriptedTransport("must never be returned (all excluded)")
@@ -154,7 +160,7 @@ func TestRun_CommitDiffExclude_AllExcludedOpensTheEditorAndCommits(t *testing.T)
 	if transport.calls() != 0 {
 		t.Errorf("transport called %d times; an all-excluded diff makes no AI call", transport.calls())
 	}
-	assertWarnings(t, warnEvents(rec), []presenter.Warning{{Label: "diff", Message: "all changes are excluded from the AI context — opening editor"}})
+	assertWarnings(t, warnEvents(rec), []presenter.Warning{{Label: "diff", Message: "all changes are excluded from the AI context — opening editor", Key: "message"}})
 	if len(er.launches) != 1 {
 		t.Fatalf("editor launches = %d, want 1", len(er.launches))
 	}
@@ -174,9 +180,11 @@ func TestRun_MakesOneAICallForTheMessageAndNoExclusionCheck(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "src/export.go\n"}}, // preflight probe
 		runner.ScriptedCall{Result: runner.Result{Stdout: commitExportDiff}},  // L1 staged diff
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	transport := scriptedTransport(message)
 	deps := newCommitDeps(rec, r, transport, root)

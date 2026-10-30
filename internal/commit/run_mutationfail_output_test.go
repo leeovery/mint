@@ -39,6 +39,7 @@ func TestRun_CommitHookRejection_StderrReachesFailureOutput(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                    // preflight probe (non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},            // L1 staged diff
 		runner.ScriptedCall{Result: runner.Result{Stderr: hookOutput, ExitCode: 1}, Err: errExitOne}, // git commit -F - (hook rejects)
@@ -64,6 +65,7 @@ func TestRun_StagingFailure_StderrReachesFailureOutput(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                                     // tracked probe (non-empty, short-circuits)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},             // L1 tracked diff
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},                                        // L1 untracked enumeration (none)

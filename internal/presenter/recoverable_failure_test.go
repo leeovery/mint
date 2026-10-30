@@ -30,7 +30,7 @@ func recoverableNotesFailure() presenter.StageFailure {
 func TestRecoverableFailure_LeavesTheSuccessLineStanding(t *testing.T) {
 	t.Parallel()
 
-	finished := presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0"}
+	finished := presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0"}
 
 	t.Run("plain", func(t *testing.T) {
 		t.Parallel()
@@ -65,8 +65,8 @@ func TestRecoverableFailure_StillEndsTheRunWhenItUnwinds(t *testing.T) {
 
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.StageFailed(recoverableNotesFailure())
-		p.Unwound(presenter.Unwind{Summary: "reset 1 commit; repo clean"})
-		p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0"})
+		p.Unwound(presenter.Unwind{Undone: "reset 1 commit; repo clean"})
+		p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0"})
 	})
 
 	if strings.Contains(out.String(), "done:") {

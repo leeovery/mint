@@ -227,6 +227,7 @@ func runDryRunNormalAIWithSha(t *testing.T, root, cacheBase, diff, aiBody, headS
 		ScriptedOut(root),                     // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),            // symbolic-ref --short origin/HEAD
 		ScriptedOut(priorTag+"\n"),            // tag --list (a prior tag exists)
+		ScriptedHead(),                        // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),                       // fetch --tags
 		ScriptedOut(""),                       // status --porcelain (clean)
 		ScriptedOut("main"),                   // rev-parse --abbrev-ref HEAD (on branch)

@@ -67,11 +67,13 @@ func regenFailDeps(rec *presentertest.RecordingPresenter, er *editorRunner, tr c
 func seedRegenFailFallback(editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached (initial L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached (regeneration L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}},                 // git var GIT_EDITOR (fallback)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return f
 }
@@ -198,12 +200,14 @@ func TestRun_RegenFailure_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing
 	}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff HEAD --name-only (preflight, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff HEAD -- . (initial L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff HEAD -- . (regeneration L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},                    // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -u (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 	tr := regenSucceedThenFail("feat: initial generated", fmt.Errorf("generating commit message: %w", ai.ErrGenerationFailed))
@@ -250,6 +254,7 @@ func TestRun_RegenFailure_EmptySave_TrueNoOp(t *testing.T) {
 			// Only the preflight read, the two L1 diffs, and the editor resolution are
 			// scripted; staging/commit must never be reached on an empty/aborted save.
 			f.SeedSequence("git",
+				scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 				runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 				runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},
 				runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}},

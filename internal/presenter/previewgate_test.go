@@ -70,7 +70,7 @@ func TestPreviewGate_LeavesTheSuccessLineStanding(t *testing.T) {
 
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.PreviewGate(previewedGate())
-		p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0"})
+		p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0"})
 	})
 
 	if want := "done: acme v1.4.0\n"; !bytes.HasSuffix(out.Bytes(), []byte(want)) {

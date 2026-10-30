@@ -3,6 +3,7 @@ package commit_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,12 +40,34 @@ var _ presenter.Presenter = (*presentertest.RecordingPresenter)(nil)
 func seedDiffThenCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return r
 }
+
+// scriptedHead is the start station's read, `git rev-parse HEAD --abbrev-ref HEAD`,
+// the run's first git call: the commit HEAD stands on, then its branch.
+func scriptedHead() runner.ScriptedCall {
+	return runner.ScriptedCall{Result: runner.Result{Stdout: startHeadSHA + "\nmain\n"}}
+}
+
+// scriptedShortHead is the end station's read, `git rev-parse --short HEAD`, made
+// once the commit lands: the new commit's short sha.
+func scriptedShortHead() runner.ScriptedCall {
+	return runner.ScriptedCall{Result: runner.Result{Stdout: endHeadSHA + "\n"}}
+}
+
+const (
+	// startHeadSHA is the full sha scriptedHead reports; the start station shows its
+	// first seven characters.
+	startHeadSHA = "4f9c2e1a0b7d3c5e6f8091a2b3c4d5e6f7a8b9c0"
+	// endHeadSHA is the short sha scriptedShortHead reports for the new commit.
+	endHeadSHA = "a3f9c21"
+)
 
 // scriptedTransport returns a recordingTransport that yields body for every prompt,
 // standing in for the AI so no real `claude` is ever spawned.
@@ -68,17 +91,29 @@ func newCommitDeps(rec *presentertest.RecordingPresenter, r *runner.FakeRunner, 
 	}
 }
 
-// gitInvocationsOf returns only the `git` invocations in invs, in order. It takes an
-// already-extracted invocation slice so ONE helper serves both the raw-runner
-// (r.Invocations()) and editorRunner (er.fake.Invocations()) sources.
+// gitInvocationsOf returns the commit pipeline's own `git` invocations in invs, in
+// order: every git call but the two station reads (scriptedHead's and
+// scriptedShortHead's), which only feed the presenter and are pinned by the station
+// tests. It takes an already-extracted invocation slice so ONE helper serves both the
+// raw-runner (r.Invocations()) and editorRunner (er.fake.Invocations()) sources.
 func gitInvocationsOf(invs []runner.Invocation) []runner.Invocation {
 	var gits []runner.Invocation
 	for _, inv := range invs {
-		if inv.Name == "git" {
+		if inv.Name == "git" && !isStationRead(inv.Args) {
 			gits = append(gits, inv)
 		}
 	}
 	return gits
+}
+
+// stationReads are the argv of the start and end stations' reads.
+var stationReads = [][]string{
+	{"rev-parse", "HEAD", "--abbrev-ref", "HEAD"},
+	{"rev-parse", "--short", "HEAD"},
+}
+
+func isStationRead(args []string) bool {
+	return slices.ContainsFunc(stationReads, func(read []string) bool { return slices.Equal(args, read) })
 }
 
 // gitVerbInvocations returns only the `git <verb> …` invocations in invs (Name=="git"
@@ -140,10 +175,13 @@ func TestRun_NarratesThroughRecordingPresenter(t *testing.T) {
 
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
+		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
+		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
 	got := rec.Kinds()
@@ -156,7 +194,7 @@ func TestRun_NarratesThroughRecordingPresenter(t *testing.T) {
 		}
 	}
 
-	msg, ok := rec.At(3)
+	msg, ok := rec.At(5)
 	if !ok {
 		t.Fatal("no ShowMessage event recorded")
 	}
@@ -204,6 +242,7 @@ func TestRun_CommitCreatedViaGitSafe(t *testing.T) {
 
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff --cached
 		runner.ScriptedCall{ // git commit attempt 1: lock contention

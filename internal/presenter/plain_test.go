@@ -510,7 +510,7 @@ func TestPlainPresenterWarnEmitsNoANSIGlyphOrAnimationBytes(t *testing.T) {
 // VERBATIM. The presenter synthesises no tail of its own.
 func TestPlainPresenterUnwoundRendersSummaryVerbatim(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
-		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+		p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 	})
 
 	want := "unwound: removed tag v1.4.0, reset 2 commits; repo clean\n"
@@ -525,7 +525,7 @@ func TestPlainPresenterUnwoundRendersSummaryVerbatim(t *testing.T) {
 // per-event table lists no stderr copy for it).
 func TestPlainPresenterUnwoundWritesToStdoutOnly(t *testing.T) {
 	out, errBuf := drive(func(p *presenter.PlainPresenter) {
-		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+		p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 	})
 
 	if !strings.Contains(out.String(), "unwound: removed tag v1.4.0, reset 2 commits; repo clean") {
@@ -541,7 +541,7 @@ func TestPlainPresenterUnwoundWritesToStdoutOnly(t *testing.T) {
 // PRETTY-only. (The summary here is ASCII so the whole line is asserted byte-pure.)
 func TestPlainPresenterUnwoundPrefixIsBytePureASCII(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
-		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+		p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 	})
 
 	assertBytePureASCII(t, out, "plain unwound output")
@@ -567,7 +567,7 @@ func TestPlainPresenterStageFailedThenRunFinishedSuppressesSuccessLine(t *testin
 func TestPlainPresenterUnwoundAfterFailureSuppressesSuccessLine(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
-		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+		p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 	})
 
@@ -588,7 +588,7 @@ func TestPlainPresenterUnwoundAfterFailureSuppressesSuccessLine(t *testing.T) {
 // "done:" line on the subsequent RunFinished.
 func TestPlainPresenterUnwoundAfterAbortSuppressesSuccessLine(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
-		p.Unwound(presenter.Unwind{Summary: "removed tag v1.4.0, reset 2 commits; repo clean"})
+		p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
 	})
 
@@ -637,19 +637,20 @@ func TestPlainPresenterRunFinishedOmitsTrailingSpaceWhenURLEmpty(t *testing.T) {
 	}
 }
 
-// TestPlainPresenterRegenerateSingleVersionRendersBlockThenURLlessClose drives a
-// single-version regenerate: the per-version block reuses the EXISTING events
-// exactly as release does (RunStarted("regenerating") → a stage → ShowNotes →
-// Prompt), then RunFinished{Verb:VerbRegenerate, Summary:"v1.4.0"} renders the
-// URL-less closing summary "done: {project} {Summary}". The block events are
-// asserted to flow through unchanged and the close to carry NO URL.
-func TestPlainPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *testing.T) {
+// TestPlainPresenterRegenerateAllBlockThenURLlessBatchClose drives one version block
+// of a --all backfill: the block reuses the EXISTING events exactly as release does
+// (RunStarted("regenerating") → a stage → ShowNotes → Prompt), then the batch's
+// RunFinished{Outcome:OutcomeAllRegenerated, Summary:"v1.4.0"} renders the URL-less
+// closing summary "done: {project} {Summary}". The block events are asserted to flow
+// through unchanged and the close to carry NO URL. (A single-version regenerate closes
+// as OutcomeRegenerated, which renders no line.)
+func TestPlainPresenterRegenerateAllBlockThenURLlessBatchClose(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
 		p.StageSucceeded(presenter.StageSuccess{Name: "notes", Detail: "generated", Blocking: true})
 		p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: "Faster cold starts."})
 		_, _ = p.Prompt(presenter.NotesReviewGate())
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.4.0"})
 	})
 
 	got := out.String()
@@ -669,12 +670,12 @@ func TestPlainPresenterRegenerateSingleVersionRendersBlockThenURLlessClose(t *te
 // TestPlainPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter
 // proves the --all SINGLE-version case still renders the regenerate arm: one block
 // + a set-summary close, NOT a release-style v{X}+url footer. The engine sets
-// Verb=VerbRegenerate and the set Summary; the presenter renders the regenerate arm
+// Outcome=OutcomeAllRegenerated and the set Summary; the presenter renders the regenerate arm
 // regardless of how many blocks preceded.
 func TestPlainPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFooter(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "1 version (v1.4.0)"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "1 version (v1.4.0)"})
 	})
 
 	got := out.String()
@@ -692,7 +693,7 @@ func TestPlainPresenterRegenerateAllSingleVersionRendersSetSummaryNotReleaseFoot
 // regenerate arm never reads URL). The exact line is locked.
 func TestPlainPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.4.0"})
 	})
 
 	if got := out.String(); got != "done: acme v1.4.0\n" {
@@ -702,13 +703,13 @@ func TestPlainPresenterRegenerateCloseOmitsURLWithNoDanglingSeparator(t *testing
 
 // TestPlainPresenterFailedRegenerateSuppressesClose proves the Phase-2
 // terminalFailure flag suppresses the regenerate success closing summary too: a
-// StageFailed in a regenerate block then RunFinished{Verb:VerbRegenerate} emits the
+// StageFailed in a regenerate block then RunFinished{Outcome:OutcomeAllRegenerated} emits the
 // FAILED line but NO closing "done:" summary — the suppression check runs BEFORE
-// the verb dispatch.
+// the outcome dispatch.
 func TestPlainPresenterFailedRegenerateSuppressesClose(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.StageFailed(presenter.StageFailure{Name: "notes", Message: "claude failed"})
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.4.0"})
 	})
 
 	got := out.String()
@@ -720,17 +721,17 @@ func TestPlainPresenterFailedRegenerateSuppressesClose(t *testing.T) {
 	}
 }
 
-// TestPlainPresenterReleaseRunFinishedUnchangedByDefaultVerb is the regression
-// guard for the additive discriminator: a RunResult with NO Verb set (default
-// VerbRelease) still renders the release form WITH the URL, byte-identical to the
+// TestPlainPresenterReleaseRunFinishedUnchangedByDefaultOutcome is the regression
+// guard for the additive discriminator: a RunResult with NO Outcome set (default
+// OutcomeReleased) still renders the release form WITH the URL, byte-identical to the
 // pre-discriminator behaviour.
-func TestPlainPresenterReleaseRunFinishedUnchangedByDefaultVerb(t *testing.T) {
+func TestPlainPresenterReleaseRunFinishedUnchangedByDefaultOutcome(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://github.com/acme/acme/releases/tag/v1.4.0"})
 	})
 
 	if got := out.String(); got != "done: acme v1.4.0 https://github.com/acme/acme/releases/tag/v1.4.0\n" {
-		t.Errorf("default-Verb release close changed: %q", got)
+		t.Errorf("default-Outcome release close changed: %q", got)
 	}
 }
 
@@ -739,7 +740,7 @@ func TestPlainPresenterReleaseRunFinishedUnchangedByDefaultVerb(t *testing.T) {
 // byte-pure ASCII (the Summary here is ASCII so the whole line is asserted).
 func TestPlainPresenterRegenerateCloseIsBytePureASCII(t *testing.T) {
 	out, _ := drive(func(p *presenter.PlainPresenter) {
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.4.0"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.4.0"})
 	})
 
 	assertBytePureASCII(t, out, "plain regenerate close")
@@ -755,7 +756,7 @@ func TestPlainPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder(t *testing
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.2.0", Action: "regenerating"})
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.3.0", Action: "regenerating"})
 		p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "regenerating"})
-		p.RunFinished(presenter.RunResult{Project: "acme", Verb: presenter.VerbRegenerate, Summary: "v1.2.0–v1.4.0 (3 versions)"})
+		p.RunFinished(presenter.RunResult{Project: "acme", Outcome: presenter.OutcomeAllRegenerated, Summary: "v1.2.0–v1.4.0 (3 versions)"})
 	})
 
 	got := out.String()

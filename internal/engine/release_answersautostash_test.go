@@ -95,6 +95,7 @@ func newAutostashedRelease(t *testing.T, rec *presentertest.RecordingPresenter, 
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
 		ScriptedOut(priorTag+"\n"), // tag --list (a prior tag exists)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		stashSaved(),               // stash push --include-untracked
 		ScriptedOut(""),            // fetch --tags
 		ScriptedOut(""),            // status --porcelain (clean once stashed)

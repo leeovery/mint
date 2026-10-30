@@ -31,6 +31,7 @@ func TestRun_AddAllOnPristineTree_ReportsCleanTree(t *testing.T) {
 	// --others --exclude-standard` (empty) → empty would-be-staged set. Then the tree
 	// state probe `git status --porcelain` (empty) → genuinely clean tree.
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --name-only (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git ls-files --others (no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git status --porcelain (clean tree)
@@ -66,6 +67,7 @@ func TestRun_AllOnPristineTree_ReportsCleanTree(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --name-only (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git status --porcelain (clean tree)
 	)
@@ -92,6 +94,7 @@ func TestRun_BareCommitUnstagedChangesNothingStaged_PointsAtStagingFlags(t *test
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},          // git diff --cached --name-only (nothing staged)
 		runner.ScriptedCall{Result: runner.Result{Stdout: " M file\n"}}, // git status --porcelain (unstaged changes exist)
 	)
@@ -127,6 +130,7 @@ func TestRun_AllWithOnlyUntrackedChanges_PointsAtAddAll(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git diff HEAD --name-only (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "?? new\n"}}, // git status --porcelain (untracked changes exist)
 	)
@@ -153,6 +157,7 @@ func TestRun_EmptyStagingMessageKeyedOnTreeStateNotFlag(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --name-only (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git ls-files --others (no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git status --porcelain (clean tree)
@@ -183,6 +188,7 @@ func TestRun_EmptyStaging_NoAIInvoked(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},          // git diff --cached --name-only (nothing staged)
 		runner.ScriptedCall{Result: runner.Result{Stdout: " M file\n"}}, // git status --porcelain (changes exist)
 	)
@@ -208,6 +214,7 @@ func TestRun_EmptyStaging_NoGitAddNoCommit(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git diff HEAD --name-only (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "?? new\n"}}, // git status --porcelain (untracked changes exist)
 	)

@@ -12,9 +12,9 @@ import (
 func notesNextMoves() presenter.NextMoves {
 	return presenter.NextMoves{
 		Stage: "notes",
-		Moves: []string{
-			"write the notes to a file and release with mint release --notes-file <file>",
-			"re-run with --no-ai to release with the commit-subject list",
+		Moves: []presenter.NextMove{
+			{Lead: "write the notes to a file and release with", Command: "mint release --notes-file <file>"},
+			{Lead: "re-run with --no-ai to release with the commit-subject list"},
 		},
 	}
 }
@@ -72,7 +72,7 @@ func TestNextMoves_LeaveTheSuccessLineStanding(t *testing.T) {
 
 	out, _ := drive(func(p *presenter.PlainPresenter) {
 		p.NextMoves(notesNextMoves())
-		p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: "acme", Version: "1.4.0"})
+		p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: "acme", Version: "1.4.0"})
 	})
 
 	if want := "done: acme v1.4.0\n"; !bytes.HasSuffix(out.Bytes(), []byte(want)) {

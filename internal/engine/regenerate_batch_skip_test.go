@@ -21,7 +21,7 @@ import (
 // RECORDED with a human reason, and the loop CONTINUES. A CONFIG-level fact
 // (a changelog/both target with changelog=false) aborts the WHOLE batch UP FRONT,
 // before any version is processed. The run closes with one RunFinished carrying a
-// VerbRegenerate, URL-less, engine-computed Summary that lists the regenerated count
+// OutcomeAllRegenerated, URL-less, engine-computed Summary that lists the regenerated count
 // and each skipped version with its reason (so the user re-runs stragglers); the
 // presenter renders that Summary VERBATIM.
 
@@ -115,8 +115,8 @@ func TestRegenerateAll_NotesFailureSummaryReports(t *testing.T) {
 	}
 
 	fin := finishEvent(t, rec)
-	if fin.Verb != presenter.VerbRegenerate {
-		t.Errorf("RunFinished.Verb = %v, want VerbRegenerate", fin.Verb)
+	if fin.Outcome != presenter.OutcomeAllRegenerated {
+		t.Errorf("RunFinished.Outcome = %v, want OutcomeAllRegenerated", fin.Outcome)
 	}
 	if fin.Project != batchProject {
 		t.Errorf("RunFinished.Project = %q, want %q", fin.Project, batchProject)
@@ -198,8 +198,8 @@ func TestRegenerateAll_OldestVersionFails_BatchContinues(t *testing.T) {
 		t.Errorf("dispatched %v, want %v (the oldest failure must not abort the rest)", got, wantTags)
 	}
 	// The run still closes successfully.
-	if fin := finishEvent(t, rec); fin.Verb != presenter.VerbRegenerate {
-		t.Errorf("RunFinished.Verb = %v, want VerbRegenerate", fin.Verb)
+	if fin := finishEvent(t, rec); fin.Outcome != presenter.OutcomeAllRegenerated {
+		t.Errorf("RunFinished.Outcome = %v, want OutcomeAllRegenerated", fin.Outcome)
 	}
 }
 

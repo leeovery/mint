@@ -475,11 +475,16 @@ func (p *PrettyPresenter) ResumeSpinner() {
 // without it. The completion-line rendering below is REUSED unchanged from Phase 2;
 // this task only added the spinner stop.
 //
+// A Quiet success renders nothing and leaves any spinner running.
+//
 // When nothing trails the name — an empty Detail on a short stage — the name is
 // emitted unpadded so the column's trailing spaces never become a
 // trailing-whitespace artefact (the padding exists only to align a following
 // detail; with nothing following it is noise).
 func (p *PrettyPresenter) StageSucceeded(s StageSuccess) {
+	if s.Quiet {
+		return
+	}
 	p.stopSpinner()
 	glyph := p.success.Render("✓")
 	// Sentence form (preferred): a full past-tense narration line, with ({elapsed})
@@ -519,12 +524,12 @@ func stageTrailing(s StageSuccess) string {
 }
 
 // NotesChecking rewrites the running notes line for the exclusion check's call.
-func (p *PrettyPresenter) NotesChecking() {
+func (p *PrettyPresenter) NotesChecking(NotesCheck) {
 	p.setSpinnerText("Checking for files that don't belong in the notes…")
 }
 
 // NotesChecked restores the running notes line's own text.
-func (p *PrettyPresenter) NotesChecked() {
+func (p *PrettyPresenter) NotesChecked(NotesCheck) {
 	p.setSpinnerText(p.activeStageText)
 }
 
@@ -590,14 +595,15 @@ func (p *PrettyPresenter) StageFailed(s StageFailure) {
 	}
 }
 
-// NextMoves lists the moves beneath a "next moves:" heading.
+// NextMoves lists the moves, each flattened to one sentence, beneath a "next moves:"
+// heading.
 func (p *PrettyPresenter) NextMoves(m NextMoves) {
 	if len(m.Moves) == 0 {
 		return
 	}
 	p.writef("%snext moves:\n", stageIndent)
 	for _, move := range m.Moves {
-		p.writef("%s  - %s\n", stageIndent, move)
+		p.writef("%s  - %s\n", stageIndent, move.Text())
 	}
 }
 
@@ -636,9 +642,8 @@ func (p *PrettyPresenter) PreviewGate(gate Gate) {
 // Unwound renders the auto-unwind line to OUT ONLY, MIRRORING the StageSucceeded
 // line shape exactly: two-space indent, the ↩ glyph styled through the renderer,
 // the literal label "unwound" padded to the stage column, then the engine-supplied
-// summary rendered VERBATIM — INCLUDING its own "— repo clean" tail (the presenter
-// synthesises no tail of its own). The worked example reads
-// "  ↩ unwound    removed tag v1.4.0, reset 2 release commit(s) — repo clean".
+// parts joined by Unwind.Text — the "repo clean" tail being the engine's Repo part
+// (the presenter synthesises no tail of its own).
 //
 // Per the per-event stream table the auto-unwind line is narration only and is NOT
 // duplicated to err, unlike the ✗/⚠ summaries. Unwound marks the run terminal
@@ -650,7 +655,7 @@ func (p *PrettyPresenter) PreviewGate(gate Gate) {
 func (p *PrettyPresenter) Unwound(u Unwind) {
 	p.terminalFailure = true
 	glyph := p.unwound.Render("↩")
-	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage("unwound"), u.Summary)
+	p.writef("%s%s %s%s\n", stageIndent, glyph, padStage("unwound"), u.Text())
 }
 
 // Warn renders a standalone amber warning line to out — two-space indent, the
@@ -734,9 +739,9 @@ const planIndent = "  "
 // bullets — no orphan header); a step with an empty target renders "  • {verb}" with
 // no trailing pad or space. The header is bold and the bullet glyph dim, but all
 // layout (the blank line, indents, the bullet, the column padding) survives a colour
-// downgrade as plain text.
+// downgrade as plain text. A Quiet plan renders nothing, as does an empty one.
 func (p *PrettyPresenter) ShowPlan(plan Plan) {
-	if len(plan.Steps) == 0 {
+	if plan.Quiet || len(plan.Steps) == 0 {
 		return
 	}
 	// One blank line precedes the plan as its own block, UNLESS the output already ends
@@ -1151,64 +1156,55 @@ func (p *PrettyPresenter) InitResult(r InitOutcome) {
 }
 
 // RunFinished renders the bottom brand line, flush-left, via an EXHAUSTIVE
-// dispatch on r.Verb — gated FIRST by the success-suppression flag.
+// dispatch on r.Outcome — gated FIRST by the success-suppression flag.
 //
 // SUPPRESSION PRECEDES SHAPING. The bottom brand line is SUCCESS-ONLY: when the
 // run has hit a terminal failure or abort (terminalFailure set by StageFailed or
 // Unwound) this emits NOTHING — there is no failure-flavoured closing brand line,
 // even for a release that still carries a URL. The run has already ended after the
 // ✗/unwound lines; failure is signalled by those lines plus the engine-owned
-// non-zero exit code. The presenter never sets the exit code. The suppression
-// check runs BEFORE the verb switch, so it covers EVERY shape — release,
-// regenerate, init, and version alike. Warn does NOT set terminalFailure, so a
-// warn-only run still emits the success footer.
+// non-zero exit code. The presenter never sets the exit code. Warn does NOT set
+// terminalFailure, so a warn-only run still emits the success footer.
 //
-// Verb dispatch (the presenter never re-derives the verb — the shape comes from
-// the payload):
+// Outcome dispatch (the presenter never re-derives the outcome — it comes from the
+// payload):
 //
-//   - VerbRelease (the iota-0 default, so a Verb-less literal lands here):
+//   - OutcomeReleased (the iota-0 default) and OutcomeReleasedWithWarning:
 //     "{leaf} released {project} v{X} · {url}". The leaf is the ENGINE-SUPPLIED
 //     brand leaf (r.Leaf via leafOrDefault, default 🌿) — never hardcoded — so a
 //     customised commit_prefix brand stays consistent with the start-of-run brand
 //     line. When URL is empty the " · {url}" segment is omitted cleanly with no
 //     dangling separator.
-//   - VerbRegenerate: regenerate publishes no release and has NO URL, so the close
-//     is the URL-less, verb-shaped "{leaf} regenerated {project} {Summary}" — the
-//     {url} field is omitted ENTIRELY (not rendered empty, no dangling " · "). The
-//     verb word "regenerated" mirrors "released"; the engine-supplied Summary is the
-//     single version or, under --all, the set/range/count text, rendered VERBATIM
-//     (the presenter never computes the version set). The --all single-version case
-//     still lands here (Verb=VerbRegenerate), so it renders the set summary, not a
-//     release-style v{X}+url footer.
-//   - VerbCommit: version-less and URL-less — "{leaf} committed {project}". A commit
-//     publishes no release and announces no version, so neither segment renders.
-//   - VerbInit, VerbVersion: NO footer — init's created/skipped lines and version's
-//     value line are themselves the terminal output. These arms render NOTHING
-//     (defensive completeness; in practice the engine does not call RunFinished for
-//     init/version).
+//   - OutcomeDryRun: "{leaf} dry run · {project} v{X} — no changes made".
+//   - OutcomeAllRegenerated: regenerate publishes no release and has NO URL, so the
+//     close is the URL-less "{leaf} regenerated {project} {Summary}", the
+//     engine-supplied --all Summary rendered VERBATIM (the presenter never computes
+//     the version set).
+//   - OutcomeCommitted and OutcomeCommittedWithWarning: version-less and URL-less —
+//     "{leaf} committed {project}".
+//   - Every other outcome renders NOTHING.
 func (p *PrettyPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
 		return
 	}
-	if r.DryRun {
+	switch r.Outcome {
+	case OutcomeReleased, OutcomeReleasedWithWarning:
+		p.writef("\n")
+		p.renderReleaseFooter(r)
+	case OutcomeDryRun:
 		// A dry run changed nothing — never render a "released"/"committed" line. State
 		// plainly that it was a preview.
 		p.writef("\n%s dry run %s %s v%s — no changes made\n", leafOrDefault(r.Leaf), p.dim.Render("·"), r.Project, r.Version)
-		return
-	}
-	switch r.Verb {
-	case VerbRelease:
-		p.writef("\n")
-		p.renderReleaseFooter(r)
-	case VerbRegenerate:
+	case OutcomeAllRegenerated:
 		p.writef("\n%s regenerated %s %s\n", leafOrDefault(r.Leaf), r.Project, r.Summary)
-	case VerbCommit:
+	case OutcomeCommitted, OutcomeCommittedWithWarning:
 		// Version-less and URL-less: mirrors the release brand footer's shape with the
 		// commit verb word ("committed", not "released") and no v{X} segment. Every
 		// footer opens with a blank separator line — the close-out is its own block.
 		p.writef("\n%s committed %s\n", leafOrDefault(r.Leaf), r.Project)
-	case VerbInit, VerbVersion:
-		// No release-style footer: these verbs' own lines are the terminal output.
+	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed:
+		// No footer: a single regenerated version never had one, and the other runs end
+		// on their own failure or unwind lines.
 	}
 }
 

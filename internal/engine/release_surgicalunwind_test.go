@@ -47,6 +47,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 		ScriptedOut(root),             // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),    // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),               // tag --list (no tags)
+		ScriptedHead(),                // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),               // fetch --tags
 		ScriptedOut(""),               // status --porcelain (preflight clean-tree gate)
 		ScriptedOut("main"),           // rev-parse --abbrev-ref HEAD (on branch)
@@ -81,11 +82,11 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
 		t.Errorf("gate-n deleted a tag though none was created")
 	}
-	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete proves a pre-push
@@ -120,10 +121,10 @@ func TestRelease_TagCreationFailure_Surgical_ResetsCommitNoTagDelete(t *testing.
 		t.Errorf("surgical unwind probed HEAD; reset must be driven by MadeState (rev-parse HEAD count = %d)", countCmd(f, "git", "rev-parse", "HEAD"))
 	}
 	assertStageFailedThenUnwound(t, rec)
-	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag proves a push REJECTION
@@ -157,10 +158,10 @@ func TestRelease_PushRejected_Surgical_ResetsCommitAndDeletesTag(t *testing.T) {
 		t.Errorf("surgical unwind probed HEAD; reset must be driven by MadeState (rev-parse HEAD count = %d)", countCmd(f, "git", "rev-parse", "HEAD"))
 	}
 	assertStageFailedThenUnwound(t, rec)
-	if got, want := unwoundSummary(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	if got, want := unwoundText(t, rec), "reset 1 commit and deleted tag v0.0.1; repo clean"; got != want {
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary proves the spec
@@ -180,6 +181,7 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 		ScriptedOut(gateRoot),         // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),    // symbolic-ref --short origin/HEAD
 		ScriptedOut(""),               // tag --list
+		ScriptedHead(),                // rev-parse HEAD --abbrev-ref HEAD (the start station)
 		ScriptedOut(""),               // fetch --tags
 		ScriptedOut(""),               // status --porcelain (clean)
 		ScriptedOut("main"),           // rev-parse --abbrev-ref HEAD
@@ -232,13 +234,13 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 	}
 
 	// IDENTICAL engine-authored Unwound summaries — the assertion at the core of 4-3.
-	gateSummary := unwoundSummary(t, gateRec)
-	pushSummary := unwoundSummary(t, pushRec)
+	gateSummary := unwoundText(t, gateRec)
+	pushSummary := unwoundText(t, pushRec)
 	if gateSummary != pushSummary {
 		t.Errorf("gate-n and pre-push failure produced DIFFERENT Unwound summaries:\n gate=%q\n push=%q", gateSummary, pushSummary)
 	}
 	if want := "reset 1 commit; repo clean"; gateSummary != want {
-		t.Errorf("shared Unwound.Summary = %q, want %q", gateSummary, want)
+		t.Errorf("shared Unwound.Text() = %q, want %q", gateSummary, want)
 	}
 }
 
@@ -285,11 +287,11 @@ func TestRelease_NotesFailure_AfterArtifactCommit_SurgicalResets(t *testing.T) {
 	}
 	// A StageFailed (the notes failure) precedes the Unwound.
 	assertStageFailedThenUnwound(t, rec)
-	if got, want := unwoundSummary(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Summary = %q, want %q", got, want)
+	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
+		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 	assertNoMutation(t, f)
-	assertNoFinishAfterUnwound(t, rec)
+	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
 // TestRelease_PublishFailsAfterPush_NeverUnwinds_Surgical proves the post-PONR

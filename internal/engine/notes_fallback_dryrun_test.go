@@ -36,7 +36,7 @@ func assertPreviewedTheCommitSubjectList(t *testing.T, rec *presentertest.Record
 	if got := showNotesBody(t, rec); got != commitSubjects {
 		t.Errorf("previewed notes = %q, want the commit-subject list %q", got, commitSubjects)
 	}
-	if n := indexOfKind(rec, presentertest.KindRunFinished); n == -1 || !rec.Events[n].RunFinished.DryRun {
+	if n := indexOfKind(rec, presentertest.KindRunFinished); n == -1 || rec.Events[n].RunFinished.Outcome != presenter.OutcomeDryRun {
 		t.Errorf("kinds = %v, want the run to close as a dry run", rec.Kinds())
 	}
 }

@@ -1,8 +1,9 @@
-// Package fsutil holds mint's small, shared filesystem primitives. Its first and
-// only member is WriteFile: the single crash-safe atomic-write idiom (temp file in
-// the target directory, then rename) that every mint writer of a tracked artifact —
-// the changelog, the version-file mirror, and the dry-run note cache — delegates to,
-// so the rename-based crash safety lives in ONE tested place rather than in triplicate.
+// Package fsutil holds mint's small, shared filesystem primitives: WriteFile, the
+// single crash-safe atomic-write idiom (temp file in the target directory, then
+// rename) that every mint writer of a tracked artifact — the changelog, the
+// version-file mirror, and the dry-run note cache — delegates to, so the rename-based
+// crash safety lives in ONE tested place rather than in triplicate; and HomeRelative,
+// the "~/…" form of a path that the run's header shows.
 package fsutil
 
 import (

@@ -29,3 +29,20 @@ func TestVersionIsAPackageVarOverridable(t *testing.T) {
 		t.Errorf("after override buildinfo.Version = %q, want %q", buildinfo.Version, "9.9.9")
 	}
 }
+
+// TestStamped_IsEmptyForAnUnstampedBuildAndTheVersionOtherwise pins what a run's
+// header shows: no version for an unstamped build, the stamped one otherwise. It
+// writes the shared var, so like the test above it does not run in parallel.
+func TestStamped_IsEmptyForAnUnstampedBuildAndTheVersionOtherwise(t *testing.T) {
+	original := buildinfo.Version
+	t.Cleanup(func() { buildinfo.Version = original })
+
+	buildinfo.Version = "dev"
+	if got := buildinfo.Stamped(); got != "" {
+		t.Errorf("Stamped() for an unstamped build = %q, want none", got)
+	}
+	buildinfo.Version = "0.1.2"
+	if got := buildinfo.Stamped(); got != "0.1.2" {
+		t.Errorf("Stamped() = %q, want %q", got, "0.1.2")
+	}
+}

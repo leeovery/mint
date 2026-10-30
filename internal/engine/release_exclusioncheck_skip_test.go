@@ -5,9 +5,20 @@ import (
 	"testing"
 
 	"mint/internal/engine"
+	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
 )
+
+// assertCheckSkipped fails unless the run's check node, laid out for a check that
+// never ran, was settled quietly saying why, leaving no planned stage unfilled.
+func assertCheckSkipped(t *testing.T, rec *presentertest.RecordingPresenter, why string) {
+	t.Helper()
+	if got, want := stageSuccess(t, rec, "check"), presenter.Settled("check", "skipped: "+why); got != want {
+		t.Errorf("check settle = %+v, want %+v", got, want)
+	}
+	assertEveryPlannedStageSettled(t, rec)
+}
 
 // assertNoCheck fails if the run made the exclusion check's call or showed its line.
 func assertNoCheck(t *testing.T, f *runner.FakeRunner, rec *presentertest.RecordingPresenter) {
@@ -139,6 +150,7 @@ func TestRelease_RangeChangingOnlyExcludedPaths_MakesNoCheckCallAndShipsTheMaint
 			if claudeInvoked(f) {
 				t.Errorf("claude was invoked for a range whose every change is excluded")
 			}
+			assertCheckSkipped(t, rec, "no source changes to check")
 			const want = "Maintenance release — no notable source changes"
 			if got := tagAnnotationBody(t, f, nextTag); got != terminatedAnnotationBody(want) {
 				t.Errorf("tag annotation body = %q, want the maintenance-release body %q", got, terminatedAnnotationBody(want))
@@ -172,6 +184,7 @@ func TestRelease_EveryChangedPathKeptOrExcluded_MakesNoCheckCallAndWritesTheNote
 
 	assertNotesGitCallsExclude(t, f, priorTag+"..HEAD", ":(exclude)CHANGELOG.md", ":(exclude).mint.toml", ":(exclude)*.lock")
 	assertNoCheck(t, f, rec)
+	assertCheckSkipped(t, rec, "every changed path is on the keep list")
 	notesCalls := notesInvocations(f, "claude")
 	if len(notesCalls) != 1 {
 		t.Fatalf("notes calls = %d, want one", len(notesCalls))

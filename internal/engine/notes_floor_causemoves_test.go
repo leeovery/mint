@@ -216,7 +216,7 @@ func TestRelease_NotesFloorCauseMoves_MergeTooLargeWithTheRepoOwnCommandTakesOnl
 func assertNoClaudeFlags(t *testing.T, rec *presentertest.RecordingPresenter) {
 	t.Helper()
 	for _, moves := range nextMovesEvents(rec) {
-		for _, move := range moves.Moves {
+		for _, move := range moveTexts(moves.Moves) {
 			for _, flag := range []string{"--safe-mode", "--tools", "--strict-mcp-config", "--no-session-persistence", "--system-prompt", "--model"} {
 				if strings.Contains(move, flag) {
 					t.Errorf("move %q names the claude flag %s", move, flag)

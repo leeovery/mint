@@ -108,7 +108,7 @@ func driveWorkedExample(p presenter.Presenter, driveBlocking bool) {
 	p.StageSucceeded(presenter.StageSuccess{Name: "record", Detail: "CHANGELOG.md + bin/acme"})
 	p.StageSucceeded(presenter.StageSuccess{Name: "tag/push", Detail: "v1.4.0 pushed (atomic)"})
 	p.StageSucceeded(presenter.StageSuccess{Name: "publish", Detail: "github release created"})
-	p.RunFinished(presenter.RunResult{Verb: presenter.VerbRelease, Project: transcriptProject, Version: transcriptVersion, URL: transcriptURL})
+	p.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeReleased, Project: transcriptProject, Version: transcriptVersion, URL: transcriptURL})
 }
 
 // TestPlainGoldenWorkedExampleTranscript drives the full plain -y worked-example

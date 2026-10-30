@@ -163,8 +163,12 @@ func (p *PlainPresenter) ResumeSpinner() {}
 // detail/ok text — the same long/blocking gate the pretty presenter uses. The
 // suffix is gated on Blocking, not on the Elapsed value: a short stage never shows
 // elapsed even with a non-zero duration, and a blocking stage that finished under
-// the timer's resolution still renders "(0.0s)" rather than suppressing it.
+// the timer's resolution still renders "(0.0s)" rather than suppressing it. A Quiet
+// success renders nothing.
 func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
+	if s.Quiet {
+		return
+	}
 	detail := s.Detail
 	if detail == "" {
 		detail = "ok"
@@ -213,10 +217,11 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 	}
 }
 
-// NextMoves prints each move as its own "{stage}: NEXT - {move}" line.
+// NextMoves prints each move as its own "{stage}: NEXT - {move}" line, the move's
+// lead and command flattened back into one sentence.
 func (p *PlainPresenter) NextMoves(m NextMoves) {
 	for _, move := range m.Moves {
-		p.writef("%s: NEXT - %s\n", m.Stage, move)
+		p.writef("%s: NEXT - %s\n", m.Stage, move.Text())
 	}
 }
 
@@ -240,12 +245,12 @@ func (p *PlainPresenter) PreviewGate(gate Gate) {
 }
 
 // NotesChecking prints the exclusion check's call as its own line.
-func (p *PlainPresenter) NotesChecking() {
+func (p *PlainPresenter) NotesChecking(NotesCheck) {
 	p.writef("notes: checking for files that don't belong in the notes\n")
 }
 
 // NotesChecked prints nothing: the notes' own lines follow.
-func (p *PlainPresenter) NotesChecked() {}
+func (p *PlainPresenter) NotesChecked(NotesCheck) {}
 
 // NotesProgress prints a chunked notes run's split and parts done as its own line.
 func (p *PlainPresenter) NotesProgress(n NotesProgress) {
@@ -263,8 +268,9 @@ func (p *PlainPresenter) NotesMerging(m NotesMerge) {
 }
 
 // Unwound renders the auto-unwind line "unwound: {summary}" to OUT ONLY — the
-// summary is the engine's verbatim "what it undid" text, rendered as-is INCLUDING
-// its own "; repo clean" tail (the presenter synthesises no tail of its own). Per
+// summary is the engine's "what it undid" parts joined by Unwind.Text, its
+// "; repo clean" tail being the engine's Repo part (the presenter synthesises no
+// tail of its own). Per
 // the per-event stream table the auto-unwind line is narration only and is NOT
 // duplicated to err, unlike the FAILED/WARN summaries.
 //
@@ -276,7 +282,7 @@ func (p *PlainPresenter) NotesMerging(m NotesMerge) {
 // prefix, not the engine summary).
 func (p *PlainPresenter) Unwound(u Unwind) {
 	p.terminalFailure = true
-	p.writef("unwound: %s\n", u.Summary)
+	p.writef("unwound: %s\n", u.Text())
 }
 
 // Warn renders the structured warning as "{label}: WARN - {message}" to out (the
@@ -320,8 +326,11 @@ func (p *PlainPresenter) Warn(w Warning) {
 // Edge forms, all synthesised byte-pure ASCII (the targets are engine-supplied and
 // rendered verbatim): an empty plan renders exactly "plan:" with no trailing space
 // and no separator; an empty-target step contributes just its verb with no trailing
-// space; a single step has no "; " separator at all.
+// space; a single step has no "; " separator at all. A Quiet plan renders nothing.
 func (p *PlainPresenter) ShowPlan(plan Plan) {
+	if plan.Quiet {
+		return
+	}
 	if len(plan.Steps) == 0 {
 		p.writef("plan:\n")
 		return
@@ -494,59 +503,50 @@ func (p *PlainPresenter) InitResult(r InitOutcome) {
 	p.writef("%s: created\n", r.Target)
 }
 
-// RunFinished renders the success-shaped, VERB-shaped end-of-run line via an
-// EXHAUSTIVE dispatch on r.Verb — gated FIRST by the success-suppression flag.
+// RunFinished renders the success-shaped end-of-run line via an EXHAUSTIVE dispatch
+// on r.Outcome — gated FIRST by the success-suppression flag.
 //
 // SUPPRESSION PRECEDES SHAPING. The end-of-run line is SUCCESS-ONLY: when the run
 // has hit a terminal failure or abort (terminalFailure set by StageFailed or
 // Unwound) this emits NOTHING — there is no failure-flavoured "done:" line, even
 // for a release that still carries a URL. The run has already ended after the
 // FAILED/unwound lines; failure is signalled by those lines plus the engine-owned
-// non-zero exit code. The presenter never sets the exit code. The suppression
-// check runs BEFORE the verb switch, so it covers EVERY shape — release,
-// regenerate, init, and version alike. Warn does NOT set terminalFailure, so a
-// warn-only run still emits the success footer.
+// non-zero exit code. The presenter never sets the exit code. Warn does NOT set
+// terminalFailure, so a warn-only run still emits the success footer.
 //
-// Verb dispatch (the presenter never re-derives the verb — the shape comes from
-// the payload):
+// Outcome dispatch (the presenter never re-derives the outcome — it comes from the
+// payload):
 //
-//   - VerbRelease (the iota-0 default, so a Verb-less literal lands here): the
+//   - OutcomeReleased (the iota-0 default) and OutcomeReleasedWithWarning: the
 //     release-success footer "done: {project} v{X} {url}". URL is optional — when
 //     empty the line collapses to "done: {project} v{X}" with no dangling trailing
 //     space.
-//   - VerbRegenerate: regenerate publishes no release and has NO URL, so the close
-//     is the URL-less "done: {project} {Summary}" — the {url} field is omitted
-//     ENTIRELY (not rendered empty, no dangling separator). The engine-supplied
-//     Summary is the single version or, under --all, the set/range/count text,
-//     rendered VERBATIM; the presenter never computes the version set. The --all
-//     single-version case still lands here (Verb=VerbRegenerate), so it renders the
-//     set summary, not a release-style v{X}+url footer.
-//   - VerbCommit: version-less and URL-less — "done: {project} committed". A commit
-//     publishes no release and announces no version, so neither segment renders.
-//   - VerbInit, VerbVersion: NO footer — init's created/skipped lines and version's
-//     value line are themselves the terminal output. These arms render NOTHING
-//     (defensive completeness; in practice the engine does not call RunFinished for
-//     init/version).
+//   - OutcomeDryRun: "dry run: {project} v{X} — no changes made".
+//   - OutcomeAllRegenerated: regenerate publishes no release and has NO URL, so the
+//     close is the URL-less "done: {project} {Summary}", the engine-supplied --all
+//     Summary rendered VERBATIM; the presenter never computes the version set.
+//   - OutcomeCommitted and OutcomeCommittedWithWarning: version-less and URL-less —
+//     "done: {project} committed".
+//   - Every other outcome renders NOTHING.
 func (p *PlainPresenter) RunFinished(r RunResult) {
 	if p.terminalFailure {
 		return
 	}
-	if r.DryRun {
+	switch r.Outcome {
+	case OutcomeReleased, OutcomeReleasedWithWarning:
+		p.renderReleaseFooter(r)
+	case OutcomeDryRun:
 		// A dry run changed nothing — never claim a release/commit happened.
 		p.writef("dry run: %s v%s — no changes made\n", r.Project, r.Version)
-		return
-	}
-	switch r.Verb {
-	case VerbRelease:
-		p.renderReleaseFooter(r)
-	case VerbRegenerate:
+	case OutcomeAllRegenerated:
 		p.writef("done: %s %s\n", r.Project, r.Summary)
-	case VerbCommit:
+	case OutcomeCommitted, OutcomeCommittedWithWarning:
 		// Version-less and URL-less: the commit IS the success, so the close-out
 		// carries only the verb word and the project.
 		p.writef("done: %s committed\n", r.Project)
-	case VerbInit, VerbVersion:
-		// No release-style footer: these verbs' own lines are the terminal output.
+	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed:
+		// No line: a single regenerated version never had one, and the other runs end
+		// on their own failure or unwind lines.
 	}
 }
 

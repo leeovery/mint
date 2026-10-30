@@ -89,7 +89,7 @@ func assertOnlyNotesRefusal(t *testing.T, code int, rec *presentertest.Recording
 	if len(rec.Events) != 1 || rec.Events[0].Kind != presentertest.KindStageFailed {
 		t.Fatalf("presenter events = %+v, want exactly one StageFailed", rec.Events)
 	}
-	want := presenter.StageFailure{Name: "notes", Message: wantMsg}
+	want := presenter.StageFailure{Name: "notes", Key: "notes", Message: wantMsg}
 	if got := rec.Events[0].StageFailed; got != want {
 		t.Errorf("StageFailed = %+v, want %+v", got, want)
 	}

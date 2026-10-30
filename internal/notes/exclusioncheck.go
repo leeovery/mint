@@ -12,14 +12,16 @@ import (
 	"mint/internal/bytesize"
 )
 
-// CheckNarration is told when the exclusion check's call starts and when it ends, and
-// when the check failed: after the call ends when the call failed or its answer was
+// CheckNarration is told when the exclusion check's call starts and when it ends, when
+// the keep list covers every changed path so there is nothing to call about, and when
+// the check failed: after the call ends when the call failed or its answer was
 // unreadable, and with no call at all when the call would not fit under the cap.
 // output is the AI's captured output, or its unreadable answer, verbatim but for
 // trailing whitespace, and empty when there is none.
 type CheckNarration interface {
 	Checking()
 	Checked()
+	AllKept()
 	CheckFailed(output string)
 }
 
@@ -27,6 +29,7 @@ type noCheckNarration struct{}
 
 func (noCheckNarration) Checking()          {}
 func (noCheckNarration) Checked()           {}
+func (noCheckNarration) AllKept()           {}
 func (noCheckNarration) CheckFailed(string) {}
 
 // ExclusionCheck asks the AI which of a release's changed paths look out of place in
@@ -113,7 +116,7 @@ func (c *ExclusionCheck) WithRecord(record func(context.Context, Answers) error)
 }
 
 // Check makes the check's call over diff, the post-exclusion notes diff, unless the
-// keep list covers every path in it: then it neither calls nor narrates. The call's
+// keep list covers every path in it: then it makes no call and narrates only that. The call's
 // list condenses by folder past a tenth of maxPromptBytes, and a call that would still
 // exceed maxPromptBytes is never made. A failed check, the call not fitting or failing
 // or its answer neither "none" nor yielding one usable suggestion, is narrated and
@@ -126,6 +129,7 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 	files := diffPaths(diff)
 	paths := slices.DeleteFunc(slices.Clone(files), func(p checkedPath) bool { return coveredBy(c.keep, p.path) })
 	if len(paths) == 0 {
+		c.narration.AllKept()
 		return nil, nil
 	}
 	prompt := composeCheckPrompt(checkList(paths, maxPromptBytes))

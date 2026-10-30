@@ -6,6 +6,7 @@ package presenter
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -82,11 +83,11 @@ type Presenter interface {
 	// StageFailed renders a stage's failure, including captured command output.
 	StageFailed(s StageFailure)
 	// NotesChecking narrates the exclusion check's call starting inside the blocking
-	// notes stage, and NotesChecked its end: pretty shows the check on the running
-	// notes line, then restores the line's own text; plain prints the check as its
-	// own line and nothing at its end.
-	NotesChecking()
-	NotesChecked()
+	// notes stage, and NotesChecked its end, with the call's elapsed: pretty shows the
+	// check on the running notes line, then restores the line's own text; plain
+	// prints the check as its own line and nothing at its end.
+	NotesChecking(c NotesCheck)
+	NotesChecked(c NotesCheck)
 	// NotesProgress, NotesHalving and NotesMerging narrate a chunked notes run
 	// inside its blocking notes stage: pretty rewrites the running notes line in
 	// place, plain prints a line per event. They are the stream-discipline
@@ -121,15 +122,15 @@ type Presenter interface {
 	Warn(w Warning)
 	// Unwound renders the auto-unwind event — a FIRST-CLASS event distinct from
 	// StageFailed — narrating what the engine undid after a failure or an abort. It
-	// has its own glyph (↩ in pretty) and renders the engine-supplied Summary
-	// VERBATIM (the presenter does NOT synthesise the "repo clean" tail — that tail
-	// is part of the engine's Summary). Unlike StageFailed/Warn, Unwound is
+	// has its own glyph (↩ in pretty) and renders the engine-supplied parts joined
+	// into one line (the presenter does NOT synthesise the "repo clean" tail — that
+	// is the engine's Repo part). Unlike StageFailed/Warn, Unwound is
 	// narration → out ONLY: per the per-event stream table the auto-unwind line is
 	// not duplicated to err. Like StageFailed it marks the run as terminal so the
 	// success end-of-run line is suppressed; the presenter never sets an exit code.
 	Unwound(u Unwind)
-	// ShowPlan renders the upcoming plan — the steps mint is about to perform.
-	// It is narration → out only; it never writes to err.
+	// ShowPlan renders the upcoming plan — the steps mint is about to perform — or,
+	// for a Quiet plan, nothing. It is narration → out only; it never writes to err.
 	ShowPlan(plan Plan)
 	// ShowNotes renders the generated release notes inside per-mode delimiters.
 	// It is narration → out only; it never writes to err. The body is written
@@ -261,7 +262,14 @@ type Presenter interface {
 	// does not special-case init for the footer; rather the engine simply never calls
 	// RunFinished or Prompt on an init run.
 	InitResult(r InitOutcome)
-	// RunFinished renders the end-of-run success line.
+	// RunFinished closes the run and renders the end-of-run success line for the
+	// outcomes that have one (see Outcome). A release, a single-version regenerate and
+	// a commit end every run they opened with RunStarted with exactly one. A
+	// regenerate --all backfill is the exception: it opens a block per version with a
+	// RunStarted of its own and closes the batch once, with one RunFinished, when its
+	// version loop finishes, even with every version skipped. That close comes before
+	// the changelog rebuild, which can still fail after it; a loop a decline or a
+	// cancel ends early closes nothing.
 	RunFinished(r RunResult)
 }
 
@@ -347,9 +355,33 @@ type PlanStep struct {
 //
 // An empty plan (no steps) is legal: plain renders exactly "plan:" with no
 // dangling separator; pretty omits the entire block (no orphan header).
+//
+// Stages and PointOfNoReturn are the rail's plan: the run's stages in order, each
+// the node a stage event's Key fills. A run may show both kinds: release shows its
+// Stages as soon as preflight passes, in a Quiet plan, and its Steps after the notes,
+// where plain's line has always been.
 type Plan struct {
 	// Steps is the ordered list of plan steps. A nil/empty slice is an empty plan.
 	Steps []PlanStep
+	// Stages are the stages the run will go through, in order, those already done
+	// included. A stage that will not run is left out.
+	Stages []PlanStage
+	// PointOfNoReturn is the Key of the first stage past the point of no return,
+	// empty for a run with none.
+	PointOfNoReturn string
+	// Quiet marks a plan that only lays out the run's structure: plain's log, pinned
+	// byte for byte from before the rail, has no line for it, so plain and today's
+	// pretty write nothing.
+	Quiet bool
+}
+
+// PlanStage is one stage of the rail's plan: the Key stage events carry, the Name
+// shown in its node and the Detail of what it will do ("main + v1.4.0 → origin,
+// atomic").
+type PlanStage struct {
+	Key    string
+	Name   string
+	Detail string
 }
 
 // Notes is the ShowNotes payload: the generated release notes the engine is
@@ -445,6 +477,9 @@ type Version struct {
 // presenter renders the supplied leaf rather than re-deriving or hardcoding one.
 // An empty Leaf defaults to 🌿 at render time, keeping existing callers (and
 // their leaf-less struct literals) working unchanged.
+//
+// Header and Start carry the rail's opening: its header line and the station the
+// run starts from. Plain and today's pretty read neither.
 type RunInfo struct {
 	Project string
 	Version string
@@ -455,6 +490,28 @@ type RunInfo struct {
 	// the first line — a dry run takes no action and (for release) shows no gates, so
 	// the marker is the user's standing reminder that nothing will be changed.
 	DryRun bool
+	Header Header
+	Start  Station
+}
+
+// Header is the data of the rail's header line: " mint ─ {Command}" on the left,
+// "{Where} · v{Version}" on the right.
+type Header struct {
+	// Command is the command words as the header shows them: "release", "commit",
+	// "release regenerate".
+	Command string
+	// Where is the repo root, the home directory shortened to "~".
+	Where string
+	// Version is mint's own bare version ("0.1.2"), empty for a dev build, which
+	// shows none.
+	Version string
+}
+
+// Station is a point the rail starts from or lands at: a name ("v1.3.2", "main")
+// and its detail ("main @ 7c1e0b4", "released").
+type Station struct {
+	Name   string
+	Detail string
 }
 
 // StageStart carries the StageStarted payload. Blocking is engine knowledge —
@@ -465,6 +522,11 @@ type RunInfo struct {
 type StageStart struct {
 	// Name is the engine-supplied stage label rendered verbatim.
 	Name string
+	// Key names the plan stage this event fills (PlanStage.Key). A stage outside the
+	// plan (the review gate's edit) carries a key no plan stage has. It is separate
+	// from Name because a stage's label is plain's text and can differ from its
+	// stage: a failed release push is labelled "tag".
+	Key string
 	// Blocking marks a long/slow stage. Renderers consume the flag directly and
 	// never derive it from Name.
 	Blocking bool
@@ -495,6 +557,16 @@ type StageStart struct {
 type StageSuccess struct {
 	// Name is the engine-supplied stage label rendered verbatim.
 	Name string
+	// Key names the plan stage this event settles (see StageStart.Key).
+	Key string
+	// Commit is the subject of the commit the stage made ("chore(release): pre-tag
+	// artifacts for v1.4.0"), empty when it made none. Plain and today's pretty
+	// ignore it.
+	Commit string
+	// Quiet marks a success that only settles a stage of the run's structure: plain's
+	// log, pinned byte for byte from before the rail, has no line for it, so plain
+	// and today's pretty write nothing.
+	Quiet bool
 	// Detail is the engine-supplied completion detail. The empty string is legal
 	// (semantic 3) and means "render the detail-less form".
 	Detail string
@@ -514,6 +586,11 @@ type StageSuccess struct {
 	// contract); an empty Sentence makes pretty fall back to the column form too, so
 	// the field is purely additive.
 	Sentence string
+}
+
+// Settled is the Quiet success that settles the plan stage key with detail.
+func Settled(key, detail string) StageSuccess {
+	return StageSuccess{Name: key, Key: key, Detail: detail, Quiet: true}
 }
 
 // NotesProgress carries a chunked notes run's progress: Done of Parts finished,
@@ -546,26 +623,56 @@ type NotesMerge struct {
 	Parts int
 }
 
+// NotesCheck carries the NotesChecking and NotesChecked payloads: Key names the
+// check's plan stage, and Elapsed, on NotesChecked alone, is the engine-measured
+// time of the check's call.
+type NotesCheck struct {
+	Key     string
+	Elapsed time.Duration
+}
+
 // StageFailure carries the StageFailed payload. Output is the underlying
 // command output the engine captured (git/claude/gh chatter) rather than
 // streamed; the presenter renders it. SavedNotes is the path of the file a failed
 // chunked notes run saved its finished part notes to, named after Output; empty
 // names none.
 type StageFailure struct {
-	Name       string
+	Name string
+	// Key names the plan stage that failed (see StageStart.Key).
+	Key        string
 	Message    string
 	Output     string
 	SavedNotes string
 	// Recoverable marks a failure the run may still go on past: it renders as any
 	// other, but leaves a later RunFinished's success line standing.
 	Recoverable bool
+	// Elapsed is the engine-measured time a blocking stage ran before it failed,
+	// zero for a short stage. Plain and today's pretty ignore it.
+	Elapsed time.Duration
 }
 
 // NextMoves carries the NextMoves payload: the engine-authored ways forward from
-// stage's failure, each rendered verbatim in order.
+// stage's failure, in order.
 type NextMoves struct {
 	Stage string
-	Moves []string
+	Moves []NextMove
+}
+
+// NextMove is one way forward: a Lead saying what to do and, when the move ends in
+// one, the Command or config line that does it, kept apart so the rail can set it on
+// a line of its own. A move whose command sits mid-sentence keeps it in its Lead.
+type NextMove struct {
+	Lead    string
+	Command string
+}
+
+// Text is the move as one sentence, Lead then Command: plain's and today's pretty's
+// line.
+func (m NextMove) Text() string {
+	if m.Command == "" {
+		return m.Lead
+	}
+	return m.Lead + " " + m.Command
 }
 
 // ExclusionSuggestions carries the ExclusionSuggestions payload: stage's suggestions,
@@ -577,12 +684,17 @@ type ExclusionSuggestions struct {
 }
 
 // ExclusionAnswers carries the ExclusionAnswersRecorded payload: stage's answers went
-// into Table of File, committed unless Ignored reports that git ignores File.
+// into Table of File, committed unless Ignored reports that git ignores File. Exclude
+// and Keep are the globs answered each way, in the order answered; Key names the
+// check's plan stage. Plain and today's pretty read neither the globs nor Key.
 type ExclusionAnswers struct {
 	Stage   string
+	Key     string
 	File    string
 	Table   string
 	Ignored bool
+	Exclude []string
+	Keep    []string
 }
 
 func exclusionAnswersText(a ExclusionAnswers) string {
@@ -630,6 +742,10 @@ type Warning struct {
 	// Message is the engine-supplied warning text, rendered verbatim. The empty
 	// string is legal and renders the label-prefixed form with no message.
 	Message string
+	// Key names the plan stage the warning ends in place of its success (a failed
+	// post_release hook or publish, a failed commit push), empty for a warning that
+	// ends no stage. Plain and today's pretty ignore it.
+	Key string
 	// Output is optional captured underlying-command output (e.g. git's stderr
 	// from a failed-but-non-fatal push) rendered VERBATIM beneath the warn line —
 	// the warn-flavoured counterpart of StageFailure.Output, for failures the
@@ -643,102 +759,120 @@ type Warning struct {
 	Output string
 }
 
-// Unwind carries the Unwound payload: the engine's verbatim "what it undid"
-// summary, narrated after a failed or aborted run. Summary is a single
-// engine-authored string that INCLUDES its own trailing "repo clean" tail (the
-// pretty worked example reads "… — repo clean"; the plain example reads "…; repo
-// clean"). The presenter renders Summary VERBATIM and synthesises NO part of it —
-// in particular it does not append, normalise, or invent the "repo clean" tail,
-// because the tail's exact wording and separator are engine content.
+// Unwind carries the Unwound payload: what the engine's unwind undid after a failed
+// or aborted run, what it kept, and where it left the repo, each engine-authored and
+// kept apart so the rail can set them on rows of their own. Plain and today's pretty
+// join the non-empty parts with "; " into today's one line (Text) and synthesise no
+// part of it.
 //
 // Unwound is a first-class event (not a StageFailed). It is the abort path's
 // terminal narration: gate-n produces an Unwound with no prior StageFailed, while
 // a failed stage produces a StageFailed followed by an Unwound. Either way the
 // presenter treats the run as terminal and suppresses the success end-of-run line.
 type Unwind struct {
-	// Summary is the engine-supplied "what it undid" text, rendered verbatim and
-	// INCLUDING its own "repo clean" tail. The empty string is legal and renders the
-	// label-prefixed form with no summary.
-	Summary string
+	// Undone names what was undone: "reset 2 commits and deleted tag v1.4.0".
+	Undone string
+	// Kept names what the unwind kept on purpose, empty for nothing:
+	// "kept the answers commit on the starting commit".
+	Kept string
+	// Repo is where the repo ended up: "repo clean", or "manual cleanup required"
+	// when a recovery step failed.
+	Repo string
 }
 
-// RunVerb is the end-of-run discriminator that selects which verb-shaped closing
-// summary RunFinished renders. The end-of-run line is success-shaped AND
-// verb-shaped: release publishes a versioned release with a URL; regenerate
-// publishes nothing and has no URL, so it renders a URL-less, set-summarising
-// closing line instead; init and version have no release-style footer at all.
+// Text is the unwind as one line, its non-empty parts joined with "; ".
+func (u Unwind) Text() string {
+	var parts []string
+	for _, part := range []string{u.Undone, u.Kept, u.Repo} {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+// Outcome is how a run ended, the discriminator RunFinished renders by. A release, a
+// single-version regenerate and a commit close every run they opened with one
+// RunFinished carrying its Outcome; a regenerate --all backfill opens a block per
+// version and closes the batch once, as OutcomeAllRegenerated, when its version loop
+// finishes, even with every version skipped, and before the changelog rebuild, which
+// can still fail after the close. A loop a decline or a cancel ends early closes
+// nothing.
+// Plain and today's pretty write today's success lines for the outcomes that had one —
+// released (with or without a warning), dry run, committed (with or without a
+// warning), and --all regenerated — and nothing for the rest, which end on lines of
+// their own (a failure, an unwind) or, before the rail, on none.
 //
-// iota makes the ZERO VALUE VerbRelease. That is load-bearing and intentional: a
-// RunResult literal that sets no Verb defaults to the release form, so every
-// existing (Verb-less) RunResult literal — and every prior RunFinished test —
-// keeps rendering the release closing line unchanged. The discriminator is purely
-// additive: the no-footer shapes are APPENDED after VerbRegenerate, so VerbRelease
-// stays iota-0 and existing literals are unaffected. RunFinished dispatches on
-// this enum as an EXHAUSTIVE switch (suppression first, then the verb arm).
-type RunVerb int
+// iota makes the zero value OutcomeReleased, so a RunResult literal that sets no
+// Outcome closes as a release.
+type Outcome int
 
 const (
-	// VerbRelease is the default closing form (iota 0): the release-success line
-	// "done: {project} v{X} {url}" (plain) / "{leaf} released {project} v{X} · {url}"
-	// (pretty), with the URL omitted when empty. Being iota-0 makes it the zero value,
-	// so a Verb-less RunResult renders this form.
-	VerbRelease RunVerb = iota
-	// VerbRegenerate is the regenerate closing form: a URL-less, verb-shaped summary
-	// "done: {project} {Summary}" (plain) / "{leaf} regenerated {project} {Summary}"
-	// (pretty). The {url} field is omitted ENTIRELY (regenerate publishes no release);
-	// the engine-supplied Summary carries the single version or the --all set/range/count
-	// text, rendered verbatim.
-	VerbRegenerate
-	// VerbInit is a NO-FOOTER shape: init has no versioned release, so its
-	// created/skipped lines (InitResult) are themselves the terminal output and there
-	// is no release-style brand footer. If RunFinished is ever called with VerbInit it
-	// renders NOTHING — defensive completeness so the dispatch is exhaustive; in
-	// practice the engine simply does not call RunFinished for an init run. Appended
-	// after VerbRegenerate so VerbRelease stays iota-0.
-	VerbInit
-	// VerbVersion is a NO-FOOTER shape: version's value line (ShowVersion) IS its
-	// terminal output, so there is no release-style brand footer. If RunFinished is
-	// ever called with VerbVersion it renders NOTHING — defensive completeness so the
-	// dispatch is exhaustive; in practice the engine does not call RunFinished for a
-	// version run. Appended after VerbRegenerate so VerbRelease stays iota-0.
-	VerbVersion
-	// VerbCommit is the commit closing form: version-less and URL-less (a commit
-	// publishes no release), "done: {project} committed" (plain) / "{leaf} committed
-	// {project}" (pretty). Without its own arm a commit RunResult would fall to the
-	// zero-value RELEASE form and close a successful `mint commit` with "released
-	// {project} v" — the wrong verb and a dangling version. Appended last so
-	// VerbRelease stays iota-0.
-	VerbCommit
+	// OutcomeReleased is a release that went out: "done: {project} v{X} {url}"
+	// (plain) / "{leaf} released {project} v{X} · {url}" (pretty), the URL omitted
+	// when empty.
+	OutcomeReleased Outcome = iota
+	// OutcomeReleasedWithWarning is a release that went out with a failure past the
+	// point of no return (a publish or post_release hook failure), warned and never
+	// unwound. It closes with the release line.
+	OutcomeReleasedWithWarning
+	// OutcomeDryRun is a dry run's close-out: "dry run: {project} v{X} — no changes
+	// made". A dry run mutated nothing, so it never claims it released anything.
+	OutcomeDryRun
+	// OutcomeCommitted is a commit that landed, pushed or not: "done: {project}
+	// committed" (plain) / "{leaf} committed {project}" (pretty), version-less and
+	// URL-less.
+	OutcomeCommitted
+	// OutcomeCommittedWithWarning is a commit that landed and whose -p push failed,
+	// warned and never unwound. It closes with the commit line.
+	OutcomeCommittedWithWarning
+	// OutcomeRegenerated is a single version regenerated. It has no line in plain or
+	// today's pretty.
+	OutcomeRegenerated
+	// OutcomeAllRegenerated is a --all backfill's close: "done: {project} {Summary}"
+	// (plain) / "{leaf} regenerated {project} {Summary}" (pretty), URL-less, the
+	// engine-computed Summary rendered verbatim.
+	OutcomeAllRegenerated
+	// OutcomeDeclined is a run stopped by a question answered no, with nothing to
+	// unwind. Its End detail says what it left (see End).
+	OutcomeDeclined
+	// OutcomeUnwound is a run whose unwind undid what it had made; the Unwound line
+	// says what, and its End detail where that left the repo.
+	OutcomeUnwound
+	// OutcomeFailed is a run that failed with nothing to unwind, input closing at a
+	// question included; its ✗ line says why, and its End detail what it left (see
+	// End).
+	OutcomeFailed
 )
 
-// RunResult carries the end-of-run success payload. URL is optional — verbs
-// that do not publish a release (e.g. regenerate) leave it empty.
+// RunResult carries the end-of-run payload. URL is optional — outcomes that do not
+// publish a release leave it empty.
 //
 // Leaf mirrors RunInfo.Leaf: the engine-supplied brand glyph for the closing
 // brand line, defaulting to 🌿 when empty. It travels on the result so the
 // end-of-run line renders the brand from the payload rather than hardcoding it.
 //
-// Verb selects the verb-shaped closing form (see RunVerb). It defaults to
-// VerbRelease (the iota-0 zero value), so a Verb-less literal renders the release
-// line unchanged — the discriminator is additive. Summary is the engine-supplied
-// closing detail used by the regenerate arm: the single version (e.g. "v1.4.0")
-// or, under --all, the engine-computed set/range/count text. The presenter
-// renders Summary VERBATIM and never computes the version set; it is unused by the
-// release arm (which renders Version + URL).
+// End and Elapsed carry the rail's close; plain and today's pretty read neither.
 type RunResult struct {
 	Project string
 	Version string
 	URL     string
 	Leaf    string
-	// Verb selects which verb-shaped closing summary RunFinished renders. The zero
-	// value VerbRelease keeps every existing Verb-less literal on the release form.
-	Verb RunVerb
-	// Summary is the engine-supplied closing detail rendered verbatim by the
-	// regenerate arm — the single version or the --all set text. The release arm
-	// ignores it (it renders Version + URL instead).
+	// Outcome is how the run ended, selecting which closing line RunFinished renders.
+	Outcome Outcome
+	// Summary is the engine-supplied closing detail of a --all backfill, rendered
+	// verbatim: the regenerated count and each skipped version.
 	Summary string
-	// DryRun marks a dry run's close-out. When set, RunFinished renders a
-	// "no changes made" footer instead of any verb's success line — a dry run
-	// mutated nothing, so it must never claim it released/committed anything.
-	DryRun bool
+	// End is the station the run landed at, its detail whole as the rail shows it and
+	// derived from what the run did: "v1.4.0" / "released", "main" / "a3f9c21 ·
+	// pushed", or the start station's name with what a run that stopped short left.
+	// That detail states only mint's own actions and where HEAD stands, never how clean
+	// the tree is or what a hook did: "nothing changed" only while no hook and no write
+	// of mint's has run; after that what mint did ("changes staged, not committed",
+	// "back where it started · nothing pushed", "nothing committed · nothing pushed"),
+	// or, once a hook has run and mint has nothing of its own to name, "nothing
+	// pushed".
+	End Station
+	// Elapsed is the engine-measured time of the whole run.
+	Elapsed time.Duration
 }

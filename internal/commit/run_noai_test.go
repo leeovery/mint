@@ -45,9 +45,11 @@ func editorCommitInvocations(er *editorRunner) []runner.Invocation {
 func seedNoAIDefault(editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --name-only (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	return f
 }
@@ -141,10 +143,12 @@ func TestRun_NoAI_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --name-only (preflight, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -u (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 
@@ -175,10 +179,12 @@ func TestRun_NoAI_NonEmptySaveUnderAddAll_AddsEverythingThenCommits(t *testing.T
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff HEAD --name-only (preflight tracked, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -A (deferred staging on save)
 		runner.ScriptedCall{}, // git commit -F -
+		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
 	)
 	er := &editorRunner{fake: f, saved: saved}
 
@@ -241,6 +247,7 @@ func TestRun_NoAI_WhitespaceOnlySave_TrueNoOp(t *testing.T) {
 			// Only the preflight read + editor resolution are scripted; staging/commit must
 			// never be reached on an empty save.
 			f.SeedSequence("git",
+				scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 				runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 				runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},
 			)
@@ -268,6 +275,7 @@ func TestRun_NoAI_AbortedEditor_TrueNoOp(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
+		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},
 	)
