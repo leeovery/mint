@@ -7,8 +7,9 @@
  !  dry-run       skipping pre_tag hook
  ┆
  ○  pre_tag       npm ci && npm run build
- ●  check         1 flagged, not asked                                                          6.2s
- ?  Exclude docs/specs/** from the notes? (design documents; 6 files, 48 kB)
+ ●  check         1 flagged                                                                     6.2s
+ │                ? Exclude docs/specs/** from the notes?
+ │                  design documents · 6 files, 48 kB · skipped (dry run)
  ●  notes         written in 4 parts and merged                                                52.3s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
@@ -20,6 +21,8 @@
  │    🐛 Fixed
  │    - The dashboard no longer shows a delivery twice after a reconnect.
  │    - Signing secrets with a trailing newline are accepted again.
+ │
+ ?  Release with these notes? · skipped (dry run)
  ┆
  ○  record        CHANGELOG.md · package.json
  ┆

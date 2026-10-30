@@ -18,7 +18,7 @@
  │    ## 🐛 Fixed
  │    - Signing secrets with a trailing newline are accepted again.
  │
- ?  Release with these notes?
+ ?  Release with these notes? · skipped (dry run)
  ┆
  ○  record        CHANGELOG.md
  ┆

@@ -50,7 +50,16 @@ func TestEachStateDrawsItsOwnMarkWithNoColour(t *testing.T) {
 			item: rail.Question{Text: "Source?", Choices: []rail.Choice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body", Default: true}}},
 			want: []string{" ?  Source?", " ┆  fresh re-diff + AI   tag tag annotation body (default)"},
 		},
-		{name: "a dry run's preview of a question", item: rail.Question{Text: "Release with these notes?"}, want: []string{" ?  Release with these notes?"}},
+		{
+			name: "a dry run's preview of a question",
+			item: rail.Question{Text: "Release with these notes?", Tail: "skipped (dry run)"},
+			want: []string{" ?  Release with these notes? · skipped (dry run)"},
+		},
+		{
+			name: "a dry run's preview of a question under a node",
+			item: rail.Question{Under: true, Text: "Exclude docs/ from the notes?", About: "documentation · 1 file, 176 B", Tail: "skipped (dry run)"},
+			want: []string{" │                ? Exclude docs/ from the notes?", " │                  documentation · 1 file, 176 B · skipped (dry run)"},
+		},
 		{name: "the point of no return ahead", item: rail.Rule{}, want: []string{" ┿━━ point of no return " + strings.Repeat("━", 76)}},
 		{name: "the point of no return crossed", item: rail.Rule{Crossed: true}, want: []string{" ┿━━ point of no return " + strings.Repeat("━", 76)}},
 		{

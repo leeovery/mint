@@ -1209,6 +1209,7 @@ func exclusionCheck(deps ReleaseDeps, cfg config.Config, opts ReleaseOptions, tr
 	case !deps.attended():
 		return check.WithReport(stage.suggested)
 	default:
+		stage.previews = true
 		return check.WithReport(exclusionPauses{p: deps.Presenter}.preview)
 	}
 }

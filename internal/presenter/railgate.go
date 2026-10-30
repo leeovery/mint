@@ -12,6 +12,8 @@ const (
 	// pauseQuestion is the exclusion pause's question about its glob, its reason and
 	// size moved under it.
 	pauseQuestion = "Exclude %s from the notes?"
+	// previewTail ends a question a dry run shows where a real run would ask it.
+	previewTail = "skipped (dry run)"
 	// reviewName names the row that records a review's answer about a node already
 	// settled above the question, as a body too tall for the region leaves it, but
 	// for a node that goes on past the question, which the row names.
@@ -111,8 +113,9 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	return line, err
 }
 
-// PreviewGate shows g as a dry run's preview: the question node with no keys, where
-// a real run would stop to ask it. It stays on the rail.
+// PreviewGate shows g as a dry run's preview, where and as a real run would stop to
+// ask it, but with no keys and a dim tail saying it was skipped. It stays on the
+// rail.
 func (p *RailPresenter) PreviewGate(g Gate) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -237,19 +240,20 @@ func (p *RailPresenter) dismiss(q *part) {
 	}
 }
 
-// question is g as a question part of kind: a preview has no keys. A pause asked
-// sits inside the exclusion check, the check's sub-matter, asking about its glob with
-// what the AI said of it under the question. In a dry run's previews, which stay, one
-// under another, the pause asks in the gate's own words, which say it all, so each
-// carries its own reason.
+// question is g as a question part of kind: a dry run's preview, in the place and
+// the shape the question takes when asked, has no keys, but a tail saying it was
+// skipped. A pause sits inside the exclusion check, the check's sub-matter, asking
+// about its glob with what the AI said of it under the question.
 func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
 		for _, c := range g.Choices {
 			q.question.Choices = append(q.question.Choices, rail.Choice{Key: string(c.Key), Action: c.Action, Default: c.Key == g.Default})
 		}
+	} else {
+		q.question.Tail = previewTail
 	}
-	if x := g.Suggestion; x != nil && kind == questionPart {
+	if x := g.Suggestion; x != nil {
 		q.question.Under, q.question.Text, q.question.About = true, fmt.Sprintf(pauseQuestion, x.Glob), about(*x)
 	}
 	return q

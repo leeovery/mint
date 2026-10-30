@@ -4,10 +4,13 @@
  │
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
- ●  check         3 flagged, not asked                                                          0.7s
- ?  Exclude docs/design/ from the notes? (design documents; 1 file, 176 B)
- ?  Exclude docs/ from the notes? (documentation; 1 file, 176 B)
- ?  Exclude src/ from the notes? (source code; 1 file, 179 B)
+ ●  check         3 flagged                                                                     0.7s
+ │                ? Exclude docs/design/ from the notes?
+ │                  design documents · 1 file, 176 B · skipped (dry run)
+ │                ? Exclude docs/ from the notes?
+ │                  documentation · 1 file, 176 B · skipped (dry run)
+ │                ? Exclude src/ from the notes?
+ │                  source code · 1 file, 179 B · skipped (dry run)
  ●  notes         generated                                                                     0.7s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
@@ -18,7 +21,7 @@
  │    ## 🐛 Fixed
  │    - Signing secrets with a trailing newline are accepted again.
  │
- ?  Release with these notes?
+ ?  Release with these notes? · skipped (dry run)
  ┆
  ○  record        CHANGELOG.md
  ┆

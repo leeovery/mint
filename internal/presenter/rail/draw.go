@@ -251,10 +251,10 @@ func (q Question) draw(l Layout) []line {
 	return l.row(row{mark: s("?", accent), rail: dotted, lay: q.lay})
 }
 
-// lay is the question, then its keys on a line of their own.
+// lay is the question and any tail, then its keys on a line of their own.
 func (q Question) lay(first, rest int) [][]span {
 	f := newFlow(first, rest)
-	for _, w := range words(glyphsOf([]span{s(q.Text, bold)})) {
+	for _, w := range words(glyphsOf(q.tailed([]span{s(q.Text, bold)}))) {
 		f.put(w, nil)
 	}
 	if len(q.Choices) > 0 {
@@ -293,6 +293,14 @@ func (c Choice) spans() []span {
 	return []span{s(c.Key, accentBold), s(" "+c.Action, plain), s(defaultMark, dim)}
 }
 
+// tailed is last, the question's last line, with its tail after it.
+func (q Question) tailed(last []span) []span {
+	if q.Tail == "" {
+		return last
+	}
+	return append(last, s(" · "+q.Tail, dim))
+}
+
 // subIndent is how far in from its ? a question under a node draws the lines after
 // its first.
 const subIndent = 2
@@ -310,9 +318,13 @@ func (q Question) under(l Layout) []line {
 			lead = indent
 		}
 	}
-	add(s("? ", accent), wrap([]span{s(q.Text, bold)}, room, room))
+	text := []span{s(q.Text, bold)}
+	if q.About == "" {
+		text = q.tailed(text)
+	}
+	add(s("? ", accent), wrap(text, room, room))
 	if q.About != "" {
-		add(indent, wrap([]span{s(q.About, dim)}, room, room))
+		add(indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))
 	}
 	if len(q.Choices) > 0 || q.Typing {
 		f := newFlow(room, room)

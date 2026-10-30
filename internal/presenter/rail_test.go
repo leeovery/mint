@@ -510,7 +510,7 @@ func TestRail_UnderSixtyColumnsAQuestionPrintsTheMomentItIsAsked(t *testing.T) {
 			checked(r)
 			_, _ = r.Prompt(pauseGate())
 		}},
-		{name: "a dry run's preview, under a stage it passed by", want: " ?  Exclude docs/specs/** from the notes? (design", ask: func(r *railTerm, look func()) {
+		{name: "a dry run's preview, under a stage it passed by", want: " │  ? Exclude docs/specs/** from the notes?", ask: func(r *railTerm, look func()) {
 			r.RunStarted(releaseStarted(true))
 			r.ShowPlan(releasePlan())
 			r.Warn(presenter.Warning{Label: "dry-run", Message: "skipping pre_tag hook"})

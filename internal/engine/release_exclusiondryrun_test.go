@@ -143,6 +143,36 @@ var unattendedDryRuns = []struct {
 	{name: "stdin not a terminal", interactive: false},
 }
 
+// TestRelease_DryRun_TheChecksRowSaysNotAskedOnlyWhereNoQuestionShows pins that an
+// attended dry run's check reads as flagged alone, each previewed question saying it
+// was skipped, while an unattended one's, which shows none, says they went unasked.
+func TestRelease_DryRun_TheChecksRowSaysNotAskedOnlyWhereNoQuestionShows(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name             string
+		yes, interactive bool
+		want             string
+	}{
+		{name: "attended", interactive: true, want: "1 flagged"},
+		{name: "-y at a terminal", yes: true, interactive: true, want: "1 flagged, not asked"},
+		{name: "stdin not a terminal", want: "1 flagged, not asked"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			run := newSuggestedRun(t, "", designSuggestion, notesBody(aiBody, nil))
+			run.deps.Yes, run.deps.StdinInteractive = tc.yes, tc.interactive
+			if err := run.releaseWith(t, dryRunOptions()); err != nil {
+				t.Fatalf("Release returned unexpected error: %v", err)
+			}
+			if got := run.rec.Events[indexOfKind(run.rec, presentertest.KindNotesChecked)].NotesCheck.Detail; got != tc.want {
+				t.Errorf("the check's row = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRelease_UnattendedDryRun_PrintsEachSuggestionAfterTheNotesWithTheLineThatExcludesIt(t *testing.T) {
 	t.Parallel()
 

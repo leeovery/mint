@@ -166,7 +166,7 @@ func regenerated() rail.Run {
 func dryRun() rail.Run {
 	return rail.Run{Settled: append(prepared(),
 		rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"},
-		rail.Question{Text: "Release with these notes?"},
+		rail.Question{Text: "Release with these notes?", Tail: "skipped (dry run)"},
 		rail.Node{State: rail.ToCome, Name: "record", Detail: "CHANGELOG.md · package.json"},
 		rail.Rule{},
 		rail.Node{State: rail.ToCome, Name: "push", Detail: "main + v1.4.0 → origin, atomic"},

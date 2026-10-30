@@ -226,13 +226,16 @@ func dryRun(p presenter.Presenter, clock *fakeClock) {
 	p.StageStarted(notesStarted())
 	p.NotesChecking(presenter.NotesCheck{Key: "check"})
 	clock.Advance(secs(6.2))
-	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: "1 flagged, not asked"})
+	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: "1 flagged"})
 	p.SuspendSpinner()
 	p.PreviewGate(pauseGate())
 	p.ResumeSpinner()
 	p.StageStarted(notesRestarted())
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
+	review := reviewGate()
+	review.Quiet = true
+	p.PreviewGate(review)
 	p.RunFinished(presenter.RunResult{
 		Project: "pigeon", Version: "1.4.0", Outcome: presenter.OutcomeDryRun,
 		End: presenter.Station{Name: "v1.4.0", Detail: "dry run · nothing changed"}, Elapsed: secs(61),
