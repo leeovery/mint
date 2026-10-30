@@ -97,6 +97,12 @@ func newRailWorld(t *testing.T, config, answers string, yes bool) *railWorld {
 // newRailWorldSized is newRailWorld on a terminal cols wide and rows tall.
 func newRailWorldSized(t *testing.T, cols, rows int, config, answers string, yes bool) *railWorld {
 	t.Helper()
+	return newRailWorldReading(t, cols, rows, config, strings.NewReader(answers), yes)
+}
+
+// newRailWorldReading is newRailWorldSized reading its answers from in.
+func newRailWorldReading(t *testing.T, cols, rows int, config string, in io.Reader, yes bool) *railWorld {
+	t.Helper()
 	home := t.TempDir()
 	root := filepath.Join(home, "Code", "pigeon")
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -107,7 +113,7 @@ func newRailWorldSized(t *testing.T, cols, rows int, config, answers string, yes
 	}
 	w := &railWorld{root: root, f: runner.NewFakeRunner(), term: frametest.NewTerminal(cols, rows)}
 	w.p = presenter.NewRailPresenter(w.term,
-		presenter.WithRailInput(strings.NewReader(answers)),
+		presenter.WithRailInput(in),
 		presenter.WithRailGating(yes, true),
 		presenter.WithRailProfile(termenv.Ascii),
 		presenter.WithRailSize(func() (int, int) { return cols, rows }),
@@ -178,6 +184,35 @@ func (w *railWorld) pushed() {
 // published scripts gh signed in, and the release's creation answering with publish.
 func (w *railWorld) published(publish runner.ScriptedCall) {
 	w.f.SeedSequence("gh", ScriptedOut(""), publish) // auth status, release create
+}
+
+// downgraded scripts origin on a host mint can't publish to: the release warns that
+// it is tag + push only, and never asks gh anything.
+func (w *railWorld) downgraded() {
+	seedRemote(w.f, ScriptedOut("git@gitlab.com:me/pigeon.git"))
+}
+
+// atReview is a world answering the version y, then keeping in screen the terminal
+// as the review asks, then answering the review with answers.
+func atReview(t *testing.T, answers string, screen *string) *railWorld {
+	t.Helper()
+	var w *railWorld
+	in := io.MultiReader(strings.NewReader("y\n"), &askedInput{r: strings.NewReader(answers), asked: func() { *screen = w.term.ANSI() }})
+	w = newRailWorldReading(t, railCols, railRows, "", in, false)
+	return w
+}
+
+// askedInput is answers that, as the first is read, call asked: once the question
+// reading it is drawn.
+type askedInput struct {
+	r     io.Reader
+	once  sync.Once
+	asked func()
+}
+
+func (in *askedInput) Read(p []byte) (int, error) {
+	in.once.Do(in.asked)
+	return in.r.Read(p)
 }
 
 // release runs a minor release with opts set, then ends the drawing as the cmd layer
@@ -568,6 +603,49 @@ var railRuns = map[string]railRun{
 			ScriptedOut(""),              // unwind: -C root add .mint.toml
 			ScriptedOut(""),              // unwind: -C root commit -m
 		)
+		return w.release(t, nil)
+	}},
+	// A downgraded release's review asking: the publish slot's warning waits in its
+	// place below the point of no return, the notes and the question under notes.
+	"release-downgraded-review-100": {run: func(t *testing.T) (string, error) {
+		var screen string
+		w := atReview(t, "y\n", &screen)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.pushed()
+		_, err := w.release(t, nil)
+		return screen, err
+	}},
+	// A downgraded release that lands, tag + push only.
+	"release-downgraded-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ny\n", false)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.pushed()
+		return w.release(t, nil)
+	}},
+	// A downgraded release whose review is answered r, then y: the r's notes node under
+	// the notes, above what is still to come.
+	"release-downgraded-regenerated-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\nr\n\ny\n", false)
+		w.deps.Regenerator = railRegenerator(railRegenNotes)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.pushed()
+		return w.release(t, nil)
+	}},
+	// A downgraded release whose review is answered n: the abort row under the notes.
+	"release-downgraded-aborted-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\nn\n", false)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
 		return w.release(t, nil)
 	}},
 	// A release under --autostash whose work won't go back cleanly once it is out.

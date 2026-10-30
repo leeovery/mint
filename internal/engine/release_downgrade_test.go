@@ -123,6 +123,53 @@ func TestRelease_Downgrade_UnknownProviderValue(t *testing.T) {
 	}
 }
 
+// TestRelease_Downgrade_WarnsOnceThePlanIsDrawn pins where the downgrade warns:
+// preflight finds it, but it warns only once preflight, its hook included, has passed
+// and the plan is drawn, so the rail's warning takes the publish stage's place in the
+// plan and plain prints it straight after the preflight line, before anything runs.
+func TestRelease_Downgrade_WarnsOnceThePlanIsDrawn(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	writeConfig(t, root, preflightHookConfig)
+	f := runner.NewFakeRunner()
+	seedDowngradeGit(f, root, "main", "v0.0.1", "https://gitlab.com/acme/widget.git")
+	f.SeedSequence("sh", ScriptedOut("")) // the preflight hook
+	rec := &presentertest.RecordingPresenter{}
+
+	if err := engine.Release(t.Context(), newDeps(rec, f), patchOptions()); err != nil {
+		t.Fatalf("Release returned %v, want nil (a non-github host downgrades)", err)
+	}
+
+	passed := -1
+	for i, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == "preflight" {
+			passed = i
+		}
+	}
+	if passed < 0 || passed+2 >= len(rec.Events) {
+		t.Fatalf("no preflight success with two events after it; kinds = %v", rec.Kinds())
+	}
+	plan, warn := rec.Events[passed+1], rec.Events[passed+2]
+	if plan.Kind != presentertest.KindShowPlan || warn.Kind != presentertest.KindWarn || warn.Warn.Label != downgradeWarnLabel {
+		t.Errorf("after preflight passed: %v then %v, want the plan then the downgrade warning; kinds = %v", plan.Kind, warn.Kind, rec.Kinds())
+	}
+	if n := countDowngradeWarns(rec); n != 1 {
+		t.Errorf("the downgrade warned %d times, want once", n)
+	}
+}
+
+// countDowngradeWarns is how many provider-unresolved downgrade Warns were recorded.
+func countDowngradeWarns(rec *presentertest.RecordingPresenter) int {
+	n := 0
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindWarn && ev.Warn.Label == downgradeWarnLabel {
+			n++
+		}
+	}
+	return n
+}
+
 // TestRelease_Downgrade_NonGitHubHost proves auto-detection with no matching driver
 // — a non-github.com host (GHE / GitLab / Gitea), publish=true, no explicit
 // provider — warns loudly (naming the host) and downgrades to tag + push only.

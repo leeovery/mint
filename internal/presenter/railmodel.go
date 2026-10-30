@@ -48,6 +48,9 @@ type part struct {
 	hidden bool
 	// passed is a stage a dry run went past without running it, hollow for good.
 	passed bool
+	// ahead is a stage still to come that a warning ended before the run reached
+	// it, as a downgrade warns of the publish it won't do at preflight.
+	ahead bool
 	// waits is a node finished, so final, but kept from settling until what goes
 	// under it comes: a failed recovery step of the unwind, until the Unwound keyed as
 	// it is hangs what the unwind undid under the last, or the run closes.
@@ -478,14 +481,19 @@ func (m *runModel) partOf(kind partKind) *part {
 
 // insertionPoint is where a new part goes: at the run's edge, under the last part the
 // run has reached, so above the plan still to come but below a stage it passed by,
-// as a dry run passes its hooks.
+// as a dry run passes its hooks. A stage a warning ended ahead of the run is not
+// reached while a part above it is still to come: the run is still above it.
 func (m *runModel) insertionPoint() int {
-	for i := len(m.parts) - 1; i >= 0; i-- {
-		if !m.parts[i].toCome() {
-			return i + 1
+	edge, toCome := 0, false
+	for i, pt := range m.parts {
+		switch {
+		case pt.toCome():
+			toCome = true
+		case !toCome || !pt.ahead:
+			edge = i + 1
 		}
 	}
-	return 0
+	return edge
 }
 
 func (m *runModel) insert(pt *part, at int) {

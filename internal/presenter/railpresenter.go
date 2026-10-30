@@ -417,6 +417,7 @@ func (p *RailPresenter) Warn(w Warning) {
 		pt.waits, pt.node.State = true, rail.Failed
 	} else {
 		pt = p.warned(w.Key, w.Label)
+		pt.ahead = pt.toCome()
 		pt.node.State = rail.Warning
 	}
 	p.run.ended(w.Key, false)

@@ -561,15 +561,17 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// resolved, checks gh's sign-in (publishGate). The one rule for that gate is "before
 	// the tag"; checking it here fails a missing or signed-out gh before any hook, the
 	// AI notes or any mutation, so nothing is left to unwind. A dry run publishes
-	// nothing and checks neither, as it never has.
+	// nothing and checks neither, as it never has. A provider it can't resolve
+	// downgrades the run, warned once the plan is drawn.
 	publishes := cfg.Release.Publish && !opts.DryRun
 	showRunning(p, stagePreflight, preflightText(publishes))
 	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch, opts.DryRun && opts.AutoStash, keepOut); err != nil {
 		return surface(p, "preflight", err)
 	}
 	var publisher publish.Publisher
+	var downgrade error
 	if publishes {
-		if publisher, err = publishGate(ctx, deps, cfg); err != nil {
+		if publisher, downgrade, err = publishGate(ctx, deps, cfg); err != nil {
 			return surface(p, "preflight", err)
 		}
 	}
@@ -605,6 +607,12 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		preflight: checked,
 		notes:     route,
 	}.stages())
+	// The downgrade warns here, not as preflight finds it: keyed to the publish
+	// stage, it takes that stage's place in the plan, and plain prints it straight
+	// after the preflight line, before anything runs.
+	if downgrade != nil {
+		warnPublishDowngraded(p, downgrade, "downgrading to tag + push only")
+	}
 
 	// Capture the clean starting state NOW: preflight has just confirmed the tree is
 	// clean and HEAD is resolvable, and nothing has mutated yet, so this HEAD is the
@@ -879,7 +887,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// created through the resolved Publisher INTERFACE (whichever driver detection
 	// picked), never a concrete type. It is gated on a publisher actually being
 	// SELECTED, not merely on publish=true: a safe downgrade (provider unresolved)
-	// leaves publisher nil and already warned at preflight, so publishing is skipped here —
+	// leaves publisher nil, warned once the plan was drawn, so publishing is skipped here —
 	// the run is tag + push only.
 	releaseURL := ""
 	outcome := presenter.OutcomeReleased
@@ -1846,27 +1854,26 @@ func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, d
 // unchanged: the orchestrator never names a concrete driver.
 //
 // SAFE DOWNGRADE (4-10): an UNRESOLVED provider (non-github.com host, unsupported
-// value, no remote, or an unparseable SSH URL) is NOT an abort. It WARNS loudly,
-// naming the reason, and returns a nil Publisher, so the gh gate is skipped (it gates
-// a selected driver, of which there is none) and the release is tag + push only: the
-// pushed tag is never stranded waiting on a release it cannot create. mint NEVER
-// silently assumes GitHub for an unresolved provider. This is DISTINCT from
-// publish=false, a SILENT tag + push the caller never calls this for. Any OTHER
-// resolution error, like a failed gh gate, is returned for the caller to fail
-// preflight on.
-func publishGate(ctx context.Context, deps ReleaseDeps, cfg config.Config) (publish.Publisher, error) {
-	publisher, err := resolvePublisher(ctx, deps, cfg)
+// value, no remote, or an unparseable SSH URL) is NOT an abort. It returns a nil
+// Publisher and the cause as downgrade, for the caller to warn loudly with once the
+// plan is drawn, so the gh gate is skipped (it gates a selected driver, of which there
+// is none) and the release is tag + push only: the pushed tag is never stranded
+// waiting on a release it cannot create. mint NEVER silently assumes GitHub for an
+// unresolved provider. This is DISTINCT from publish=false, a SILENT tag + push the
+// caller never calls this for. Any OTHER resolution error, like a failed gh gate, is
+// returned as err for the caller to fail preflight on.
+func publishGate(ctx context.Context, deps ReleaseDeps, cfg config.Config) (publisher publish.Publisher, downgrade, err error) {
+	publisher, err = resolvePublisher(ctx, deps, cfg)
 	switch {
 	case errors.Is(err, publish.ErrProviderUnresolved):
-		warnPublishDowngraded(deps.Presenter, err, "downgrading to tag + push only")
-		return nil, nil
+		return nil, err, nil
 	case err != nil:
-		return nil, err
+		return nil, nil, err
 	}
 	if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return publisher, nil
+	return publisher, nil, nil
 }
 
 // preflightHookText is what the preflight node says while the project's preflight

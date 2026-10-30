@@ -73,6 +73,26 @@ func TestRail_APushThatFailsLeavesThePointOfNoReturnReachedNotCrossed(t *testing
 	)...)
 }
 
+func TestRail_AWarningAheadOfTheRunLeavesItsEdgeAboveThePlanStillToCome(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 24, answers())
+	commitRun(r)
+	r.Warn(presenter.Warning{Key: "commit", Label: "commit skipped", Message: "nothing staged"})
+	r.Warn(presenter.Warning{Label: "editor", Message: "could not launch"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "message", Key: "message", Detail: "written"})
+
+	wantScreen(t, r, append(commitHead,
+		" !  editor        could not launch",
+		" ●  message       written",
+		" !  commit        nothing staged",
+		" ┆",
+		" ┿━━ point of no return "+strings.Repeat("━", 56),
+		" ○  push          to its upstream",
+		" ┆",
+		" ◇  main",
+	)...)
+}
+
 func TestRail_AWarningAfterTheCloseDrawsUnderTheEndStationWithNextLast(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 24, answers())
