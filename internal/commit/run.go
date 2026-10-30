@@ -767,7 +767,7 @@ func commitReviewGate() presenter.Gate {
 		AcceptEcho: "accepted",
 		Choices: []presenter.GateChoice{
 			{Key: presenter.ChoiceYes, Action: "accept"},
-			{Key: presenter.ChoiceNo, Action: "abort", Answered: "aborted"},
+			{Key: presenter.ChoiceNo, Action: "abort", Answered: "aborted", Aborts: true},
 			{Key: presenter.ChoiceEdit, Action: "edit"},
 			{Key: presenter.ChoiceRegen, Action: "regenerate"},
 		},

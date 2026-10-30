@@ -488,6 +488,12 @@ var railRuns = map[string]railRun{
 		})
 		return w.release(t, nil)
 	}},
+	// The version answered n: the version fails as aborted, and nothing changed.
+	"release-version-declined-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "n\n", false)
+		w.readGates(false)
+		return w.release(t, nil)
+	}},
 	// A dry run's preflight fetching: it runs on the rail as a real run's does.
 	"release-dry-run-preflight-running-100": {run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, preflightHookConfig, "", false)

@@ -223,3 +223,23 @@ func equalChoices(a, b []presenter.Choice) bool {
 	}
 	return true
 }
+
+// TestGates_TheirAbortIsMarkedAborts pins that each notes gate's n, the answer that
+// aborts the run, is marked so, for the rail to draw it as a failed row of its own.
+func TestGates_TheirAbortIsMarkedAborts(t *testing.T) {
+	t.Parallel()
+
+	gates := map[string]presenter.Gate{
+		"NotesReviewGate":        presenter.NotesReviewGate(),
+		"NotesReviewGateNoRegen": presenter.NotesReviewGateNoRegen(),
+		"ReleaseReviewGate":      presenter.ReleaseReviewGate(),
+		"ReuseConfirmGate":       presenter.ReuseConfirmGate(),
+	}
+	for name, g := range gates {
+		for _, c := range g.Choices {
+			if want := c.Key == presenter.ChoiceNo; c.Aborts != want {
+				t.Errorf("%s: choice %q Aborts = %v, want %v", name, c.Key, c.Aborts, want)
+			}
+		}
+	}
+}

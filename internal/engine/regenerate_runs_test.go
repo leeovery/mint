@@ -267,6 +267,12 @@ var regenRuns = map[string]regenRun{
 		w.changelogWritten(ScriptedOut(""))
 		return w.regenerate(t, w.single(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetBoth)))
 	}},
+	// The review answered n: the notes keep what they are, and the abort draws a red
+	// row of its own under them.
+	"regenerate-aborted-100": {answers: "n\n", aborted: true, run: func(t *testing.T, w *regenWorld) error {
+		w.gh()
+		return w.regenerate(t, w.single(engine.SourceOf(engine.RegenerateSourceFresh), engine.TargetOf(engine.RegenerateTargetRelease)))
+	}},
 	// The review answered r, the notes written again in one call, then y.
 	"regenerate-regenerated-100": {answers: "r\n\ny\n", run: func(t *testing.T, w *regenWorld) error {
 		w.deps.Regenerator = railRegenerator(railRegenNotes)

@@ -262,7 +262,8 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 }
 
 // answer settles c as g's answer to the question q, nil where -y took it: the
-// exclusion pause's as a line under the check's node; any other's as the tail of the
+// exclusion pause's as a line under the check's node; one that aborts the run as a
+// failed row (abort); any other's as the tail of the
 // node it asked about, what hung above it gone, or, that node settled above or a body
 // of the question settled, on a row of its own under the last body; a gate asked
 // before the run's stages as a row naming what was chosen, unless the question and
@@ -293,6 +294,10 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	case body != nil && !body.out:
 		p.run.remove(body)
 	}
+	if aborts(g, c) {
+		p.abort(g, c)
+		return
+	}
 	tail := answerTail(g, c, auto)
 	switch asked := p.run.find(g.Stage); {
 	case asked != nil && (!out && !warned || asked.node.State == rail.ToCome):
@@ -311,6 +316,30 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 		n := p.run.stage(g.Stage, g.Stage).node
 		n.Detail, n.Tail = g.Detail, tail
 	}
+}
+
+// abort draws c, the answer to g that aborts the run, as a failed row: as the node g
+// asked about where that node has no result of its own, still to come or not yet
+// drawn, as the version's is; else on a row of its own named for the review, under
+// the node, which keeps its result.
+func (p *RailPresenter) abort(g Gate, c Choice) {
+	detail := chosen(g, c)
+	if asked := p.run.find(g.Stage); g.Stage != "" && (asked == nil || asked.node.State == rail.ToCome) {
+		n := p.run.stage(g.Stage, g.Subject).node
+		n.State, n.Detail = rail.Failed, detail
+		return
+	}
+	p.run.add(rail.Node{State: rail.Failed, Name: reviewName, Detail: detail})
+}
+
+// aborts is whether c is a choice of g's that aborts the run.
+func aborts(g Gate, c Choice) bool {
+	for _, choice := range g.Choices {
+		if choice.Key == c {
+			return choice.Aborts
+		}
+	}
+	return false
 }
 
 // recordRow is the row recording c, g's answer to the question q, nil where -y took

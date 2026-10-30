@@ -79,6 +79,10 @@ type GateChoice struct {
 	// Answered is how the choice reads once it is the answer, on the Rail's node it
 	// settles ("aborted" for an "abort"); empty reads as Action. Plain ignores it.
 	Answered string
+	// Aborts marks the choice that aborts the run. The Rail draws it as a failed row
+	// of its own, named for what was asked, where the node asked about keeps its own
+	// result, or as that node failed where it had none yet. Plain ignores it.
+	Aborts bool
 }
 
 // Gate is a pure DATA model of one interactive prompt: the question text, the
@@ -190,7 +194,7 @@ func NotesReviewGate() Gate {
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept"},
-			{Key: ChoiceNo, Action: "abort", Answered: aborted},
+			{Key: ChoiceNo, Action: "abort", Answered: aborted, Aborts: true},
 			{Key: ChoiceEdit, Action: "edit"},
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
@@ -220,7 +224,7 @@ func ReleaseReviewGate() Gate {
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "release"},
-			{Key: ChoiceNo, Action: "abort", Answered: aborted},
+			{Key: ChoiceNo, Action: "abort", Answered: aborted, Aborts: true},
 			{Key: ChoiceEdit, Action: "edit"},
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
@@ -243,7 +247,7 @@ func ReuseConfirmGate() Gate {
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept"},
-			{Key: ChoiceNo, Action: "abort", Answered: aborted},
+			{Key: ChoiceNo, Action: "abort", Answered: aborted, Aborts: true},
 		},
 		Default: ChoiceYes,
 	}

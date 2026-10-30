@@ -3,6 +3,7 @@
  ◇  main          7c1e0b4
  │
  ●  diff          4 files · +86 −12 · everything, staged when you accept
- ●  message       generated · aborted                                                           0.7s
+ ●  message       generated                                                                     0.7s
+ ✗  review        aborted
  │
  ◇  main          nothing changed                                                               2.1s

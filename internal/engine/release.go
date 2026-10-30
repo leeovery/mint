@@ -993,7 +993,7 @@ func versionConfirmGate(current, next version.SemVer, prefix string, bumpKind ve
 		AcceptEcho: nextDisplay,
 		Choices: []presenter.GateChoice{
 			{Key: presenter.ChoiceYes, Action: "yes"},
-			{Key: presenter.ChoiceNo, Action: "no"},
+			{Key: presenter.ChoiceNo, Action: "no", Answered: "aborted", Aborts: true},
 		},
 		Default: presenter.ChoiceYes,
 	}
