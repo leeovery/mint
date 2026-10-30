@@ -425,8 +425,8 @@ func TestRail_UnderSixtyColumnsThereIsNoRegion_NothingIsRedrawn(t *testing.T) {
 	r.StageSucceeded(presenter.Settled("message", "written"))
 	r.ShowMessage(presenter.Message{Body: "feat: retry deliveries"})
 	in.asked = func(int) {
-		if got := r.screen(t); got[len(got)-1] != " ?  Commit this message?   y accept   n abort ›" {
-			t.Errorf("while asked the terminal ends %q, want the question printed where it can be seen", got[len(got)-1])
+		if got := r.screen(t); strings.Join(got[len(got)-2:], "\n") != " ?  Commit this message?\n ┆  y accept   n abort ›" {
+			t.Errorf("while asked the terminal ends %q, want the question printed where it can be seen", got[len(got)-2:])
 		}
 	}
 	g := presenter.ReuseConfirmGate()
@@ -608,9 +608,9 @@ func TestRail_ATerminalTooShortForARegionPrintsAsItHappens(t *testing.T) {
 	if r.ticks.running() {
 		t.Error("a spinner ticks with no region to draw it in")
 	}
-	const question = " ?  Cached notes found for this diff — use them?   y use cached   r regenerate"
+	const question, keys = " ?  Cached notes found for this diff — use them?", " ┆  y use cached   r regenerate ›"
 	in.asked = func(int) {
-		if screen := r.screen(t); !slices.Contains(screen, question) {
+		if screen := r.screen(t); !slices.Contains(screen, question) || !slices.Contains(screen, keys) {
 			t.Errorf("while the question waits the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), question)
 		}
 	}

@@ -250,11 +250,14 @@ func (q Question) draw(l Layout) []line {
 	return l.row(row{mark: s("?", accent), rail: dotted, lay: q.lay})
 }
 
-// lay is the question, then its keys.
+// lay is the question, then its keys on a line of their own.
 func (q Question) lay(first, rest int) [][]span {
 	f := newFlow(first, rest)
 	for _, w := range words(glyphsOf([]span{s(q.Text, bold)})) {
 		f.put(w, nil)
+	}
+	if len(q.Choices) > 0 {
+		f.next()
 	}
 	q.keys(f)
 	return f.done()

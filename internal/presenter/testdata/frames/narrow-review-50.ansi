@@ -4,8 +4,8 @@ n · v0.1.2
  ◇  v1.3.2
  │  main @ 7c1e0b4
  │
- ?  Release v1.3.2 → v1.4.0 (minor)?   y yes   n n
-o ›
+ ?  Release v1.3.2 → v1.4.0 (minor)?
+ ┆  y yes   n no ›
  ●  version
  │  v1.4.0 (minor bump)
  ●  preflight
@@ -55,6 +55,5 @@ wice
 e
  │    accepted again.
  │
- ?  Release with these notes?   y release   n abor
-t   e edit
- ┆  r regenerate ›
+ ?  Release with these notes?
+ ┆  y release   n abort   e edit   r regenerate ›

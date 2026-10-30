@@ -38,7 +38,7 @@ func TestEachStateDrawsItsOwnMarkWithNoColour(t *testing.T) {
 		{
 			name: "a question",
 			item: rail.Question{Text: "Commit this message?", Choices: []rail.Choice{{Key: "y", Action: "commit"}, {Key: "n", Action: "abort"}}},
-			want: []string{" ?  Commit this message?   y commit   n abort"},
+			want: []string{" ?  Commit this message?", " ┆  y commit   n abort"},
 		},
 		{name: "a dry run's preview of a question", item: rail.Question{Text: "Release with these notes?"}, want: []string{" ?  Release with these notes?"}},
 		{name: "the point of no return ahead", item: rail.Rule{}, want: []string{" ┿━━ point of no return " + strings.Repeat("━", 76)}},

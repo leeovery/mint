@@ -33,8 +33,8 @@
  │    - Signing secrets with a trailing newline are
  │    accepted again.
  │
- ?  Release with these notes?   y release   n abort   e edit
- ┆  r regenerate
+ ?  Release with these notes?
+ ┆  y release   n abort   e edit   r regenerate
  ┆
  ○  record
  ┆  CHANGELOG.md · package.json

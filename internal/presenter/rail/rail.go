@@ -141,9 +141,10 @@ type Hang struct {
 	Text string
 }
 
-// Question is a question node: Text bold, then each choice's key bold in the accent
-// with its action. A dry run's preview has no Choices. A question Typing reads a
-// line, typed on a cell for the cursor after it. A question Under the node above it
+// Question is a question node: Text bold, then, on a line of their own, each
+// choice's key bold in the accent with its action. A dry run's preview has no
+// Choices. A question Typing reads a line, typed on its last line, on a cell for the
+// cursor after the input marker. A question Under the node above it
 // is that node's sub-matter, as the exclusion check's are: no node of its own, but
 // lines hanging off the node's rail, Text after a ? in the accent, then, indented,
 // About, dim, and the keys.

@@ -106,10 +106,13 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
-			name: "a question: the question bold, each key bold in the accent",
+			name: "a question: the question bold, each key bold in the accent on a line of their own",
 			item: rail.Question{Text: "Use these notes?", Choices: []rail.Choice{{Key: "y", Action: "accept"}, {Key: "n", Action: "abort"}}},
 			want: func(a string) []string {
-				return []string{" " + acc(a, "?") + "  " + bld("Use these notes?") + "   " + accentBold(a, "y") + " accept   " + accentBold(a, "n") + " abort"}
+				return []string{
+					" " + acc(a, "?") + "  " + bld("Use these notes?"),
+					" " + dm("┆") + "  " + accentBold(a, "y") + " accept   " + accentBold(a, "n") + " abort",
+				}
 			},
 		},
 		{
