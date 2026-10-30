@@ -5,7 +5,7 @@ n · v0.1.2
  │  main @ 7c1e0b4
  │
  ?  Release v1.3.2 → v1.4.0 (minor)?
- ┆  y yes   n no ›
+ ┆  Y yes   n no ›
  ●  version
  │  v1.4.0 (minor bump)
  ●  preflight
@@ -24,14 +24,14 @@ ith origin
  │  1 flagged
  │  ? Exclude docs/specs/** from the notes?
  │    design documents · 6 files, 48 kB
- │    e exclude   k keep ›
+ │    e exclude   K keep ›
  ●  check
  │  docs/specs/** excluded · design documents
  ●  check
  │  written to .mint.toml's [release] table and co
 mmitted
  ?  Cached notes found for this diff — use them?
- ┆  y use cached   r regenerate ›
+ ┆  Y use cached   r regenerate ›
  ●  notes
  │  the dry run's, from the cache · reused
  │
@@ -56,4 +56,4 @@ e
  │    accepted again.
  │
  ?  Release with these notes?
- ┆  y release   n abort   e edit   r regenerate ›
+ ┆  Y release   n abort   e edit   r regenerate ›

@@ -64,7 +64,7 @@ func paused() rail.Run {
 	}}
 	question := rail.Question{
 		Under: true, Text: "Exclude fixtures/ from the notes?", About: "test fixtures · 14 files, 212 kB",
-		Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}},
+		Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep", Default: true}},
 	}
 	notes := rail.Node{State: rail.ToCome, Name: "notes", Detail: "written by the AI"}
 	return rail.Run{Settled: items[:len(items)-1], Region: append([]rail.Live{check, question, notes}, ahead()...)}
@@ -83,7 +83,7 @@ func running() rail.Run {
 func review() rail.Run {
 	notes := rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"}
 	question := rail.Question{Text: "Release with these notes?", Choices: []rail.Choice{
-		{Key: "y", Action: "release"}, {Key: "n", Action: "abort"}, {Key: "e", Action: "edit"}, {Key: "r", Action: "regenerate"},
+		{Key: "y", Action: "release", Default: true}, {Key: "n", Action: "abort"}, {Key: "e", Action: "edit"}, {Key: "r", Action: "regenerate"},
 	}}
 	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes, rail.Body{Text: notesBody}, question}, ahead()...)}
 }

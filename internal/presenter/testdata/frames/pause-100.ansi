@@ -9,7 +9,7 @@
  ●  check         1 flagged                                                                     6.2s
  │                ? Exclude docs/specs/** from the notes?
  │                  design documents · 6 files, 48 kB
- │                  e exclude   k keep ›
+ │                  e exclude   K keep ›
  ⠧  notes         writing the notes…                                                              6s
  ┆
  ○  record        CHANGELOG.md · package.json

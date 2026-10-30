@@ -11,7 +11,7 @@
  │    hour before they are marked dead.
  │
  ?  Commit this message?
- ┆  y accept   n abort   e edit   r regenerate ›
+ ┆  Y accept   n abort   e edit   r regenerate ›
  ┆
  ○  stage         git add -A
  ○  commit        on main

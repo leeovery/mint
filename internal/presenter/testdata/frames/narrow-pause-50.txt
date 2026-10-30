@@ -5,7 +5,7 @@ n · v0.1.2
  │  main @ 7c1e0b4
  │
  ?  Release v1.3.2 → v1.4.0 (minor)?
- ┆  y yes   n no ›
+ ┆  Y yes   n no ›
  ●  version
  │  v1.4.0 (minor bump)
  ●  preflight
@@ -24,4 +24,4 @@ ith origin
  │  1 flagged
  │  ? Exclude docs/specs/** from the notes?
  │    design documents · 6 files, 48 kB
- │    e exclude   k keep ›
+ │    e exclude   K keep ›

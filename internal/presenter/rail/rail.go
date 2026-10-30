@@ -156,10 +156,13 @@ type Question struct {
 	Under   bool
 }
 
-// Choice is a key that answers a question and what it does.
+// Choice is a key that answers a question and what it does. The Default, which Enter
+// takes, is marked as Y/n marks it: a key of one character drawn as a capital, a word
+// with a dim "(default)" after its action.
 type Choice struct {
-	Key    string
-	Action string
+	Key     string
+	Action  string
+	Default bool
 }
 
 // Rule is the point of no return drawn across the rail: the rail into it solid once

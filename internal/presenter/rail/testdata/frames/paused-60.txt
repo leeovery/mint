@@ -16,7 +16,7 @@
  │  docs/specs/** excluded · design documents
  │  ? Exclude fixtures/ from the notes?
  │    test fixtures · 14 files, 212 kB
- │    e exclude   k keep
+ │    e exclude   K keep
  ┆
  ○  notes
  ┆  written by the AI

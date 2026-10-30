@@ -243,7 +243,7 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
 		for _, c := range g.Choices {
-			q.question.Choices = append(q.question.Choices, rail.Choice{Key: string(c.Key), Action: c.Action})
+			q.question.Choices = append(q.question.Choices, rail.Choice{Key: string(c.Key), Action: c.Action, Default: c.Key == g.Default})
 		}
 	}
 	if x := g.Suggestion; x != nil && kind == questionPart {

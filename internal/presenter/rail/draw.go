@@ -3,6 +3,7 @@ package rail
 import (
 	"math"
 	"strings"
+	"unicode/utf8"
 )
 
 // minWhere is the least of the header's where worth showing once it's cut, as
@@ -269,11 +270,27 @@ func (q Question) lay(first, rest int) [][]span {
 func (q Question) keys(f *flow) {
 	apart := glyphsOf([]span{s("   ", plain)})
 	for _, c := range q.Choices {
-		f.put(glyphsOf([]span{s(c.Key, accentBold), s(" "+c.Action, plain)}), apart)
+		f.put(glyphsOf(c.spans()), apart)
 	}
 	if q.Typing {
 		f.put(glyphsOf([]span{s(inputMarker, accent), s("  ", plain)}), glyphsOf([]span{s(" ", plain)}))
 	}
+}
+
+// defaultMark follows the action of a default whose key is a word, which no capital
+// can mark.
+const defaultMark = " (default)"
+
+// spans is the choice as its question draws it: its key bold in the accent, its
+// action, and the default marked.
+func (c Choice) spans() []span {
+	if !c.Default {
+		return []span{s(c.Key, accentBold), s(" "+c.Action, plain)}
+	}
+	if utf8.RuneCountInString(c.Key) == 1 {
+		return []span{s(strings.ToUpper(c.Key), accentBold), s(" "+c.Action, plain)}
+	}
+	return []span{s(c.Key, accentBold), s(" "+c.Action, plain), s(defaultMark, dim)}
 }
 
 // subIndent is how far in from its ? a question under a node draws the lines after

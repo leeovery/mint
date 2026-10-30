@@ -10,7 +10,7 @@
  [38;2;95;215;175m│[39m                [2mdocs/specs/** excluded · design documents[22m
  [38;2;95;215;175m│[39m                [38;2;95;215;175m? [39m[1mExclude fixtures/ from the notes?[22m
  [38;2;95;215;175m│[39m                  [2mtest fixtures · 14 files, 212 kB[22m
- [38;2;95;215;175m│[39m                  [1;38;2;95;215;175me[22;39m exclude   [1;38;2;95;215;175mk[22;39m keep
+ [38;2;95;215;175m│[39m                  [1;38;2;95;215;175me[22;39m exclude   [1;38;2;95;215;175mK[22;39m keep
  [2m┆[22m
  [2m○[22m  [2mnotes[22m         [2mwritten by the AI[22m
  [2m○[22m  [2mrecord[22m        [2mCHANGELOG.md · package.json[22m
