@@ -1,0 +1,12 @@
+Source? [fresh/tag/release]
+Target? [release/changelog/both]
+mint: regenerating pigeon v1.4.0
+plan: source tag; release v1.4.0
+notes: running...
+notes: generated (0.7s)
+--- release notes v1.4.0 ---
+Replay a delivery from the dashboard.
+
+--- end notes ---
+Use these notes? [y/n]
+--- stderr ---

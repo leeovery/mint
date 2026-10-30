@@ -98,8 +98,9 @@ func releaseSavedNotesMoves(path string) []presenter.NextMoves {
 	return []presenter.NextMoves{{
 		Stage: "regenerate",
 		Moves: []presenter.NextMove{{
-			Lead:    "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with",
-			Command: "mint release --notes-file " + cmdline.Quote(path),
+			Lead:     "Tidy the saved part notes, then release with them:",
+			Command:  "mint release --notes-file " + cmdline.Quote(path),
+			Sentence: "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release --notes-file " + cmdline.Quote(path),
 		}},
 	}}
 }

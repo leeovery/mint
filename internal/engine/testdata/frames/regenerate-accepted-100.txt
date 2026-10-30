@@ -1,0 +1,11 @@
+ mint ─ release regenerate                                                    ~/Code/pigeon · v0.1.2
+
+ ◇  v1.4.0        fresh → CHANGELOG.md + GitHub release
+ │
+ ●  notes         generated                                                                     0.7s
+ ●  review        accepted
+ ●  CHANGELOG.md  rewritten · committed and pushed                                              2.1s
+ │                committed as docs(changelog): regenerate notes for v1.4.0
+ ●  release       GitHub release written
+ │
+ ◆  v1.4.0        regenerated                                                                   4.9s

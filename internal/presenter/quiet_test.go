@@ -3,8 +3,6 @@ package presenter_test
 import (
 	"testing"
 
-	"github.com/muesli/termenv"
-
 	"mint/internal/presenter"
 )
 
@@ -17,26 +15,87 @@ var quietPlan = presenter.Plan{
 	Quiet:           true,
 }
 
-// TestQuietEvents_WriteNothingInPlainOrTodaysPretty pins Quiet: an event that only
-// fills in the run's structure has no line in plain's log, pinned byte for byte
-// from before the rail, nor in today's pretty.
-func TestQuietEvents_WriteNothingInPlainOrTodaysPretty(t *testing.T) {
+// quietStart is the notes stage running again for an `r` that writes them in one
+// call, which plain has never had a line for.
+var quietStart = presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "generating release notes…", Quiet: true}
+
+// quietMoves are a failed unwind's manual step, which plain's warning line names.
+var quietMoves = presenter.NextMoves{
+	Stage: "unwind",
+	Quiet: true,
+	Moves: []presenter.NextMove{{Lead: "Reset HEAD back to 4f9c2e1:", Command: "git reset --hard 4f9c2e1"}},
+}
+
+// quietStation is a regenerate's start station, drawn once its questions are answered:
+// plain's start line comes later.
+var quietStation = presenter.RunInfo{
+	Project: "pigeon",
+	Version: "1.4.0",
+	Header:  presenter.Header{Command: "release regenerate", Where: "~/Code/pigeon"},
+	Start:   presenter.Station{Name: "v1.4.0", Detail: "fresh → GitHub release"},
+	Quiet:   true,
+}
+
+// quietUnwind is a regenerate's reset of its changelog commit, which plain has no
+// line for.
+var quietUnwind = presenter.Unwind{Key: "unwind", Undone: "reset the changelog commit", Quiet: true}
+
+// quietClose is a regenerate --all's close, which plain's end summary went ahead of.
+var quietClose = presenter.RunResult{
+	Project: "pigeon",
+	Outcome: presenter.OutcomeAllRegenerated,
+	End:     presenter.Station{Name: "done", Detail: "6 of 7 versions regenerated · 1 skipped"},
+	Quiet:   true,
+}
+
+// quietReview is the review a dry run previews only for the rail.
+func quietReview() presenter.Gate {
+	g := presenter.ReleaseReviewGate()
+	g.Stage, g.Quiet = "notes", true
+	return g
+}
+
+// TestQuietEvents_WriteNothingInPlain pins Quiet: an event that only fills in the
+// run's structure has no line in plain's log, pinned byte for byte from before the
+// rail.
+func TestQuietEvents_WriteNothingInPlain(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name   string
-		plain  func(*presenter.PlainPresenter)
-		pretty func(*presenter.PrettyPresenter)
+		name  string
+		plain func(*presenter.PlainPresenter)
 	}{
 		{
-			name:   "a quiet plan",
-			plain:  func(p *presenter.PlainPresenter) { p.ShowPlan(quietPlan) },
-			pretty: func(p *presenter.PrettyPresenter) { p.ShowPlan(quietPlan) },
+			name:  "a quiet plan",
+			plain: func(p *presenter.PlainPresenter) { p.ShowPlan(quietPlan) },
 		},
 		{
-			name:   "a settled stage",
-			plain:  func(p *presenter.PlainPresenter) { p.StageSucceeded(presenter.Settled("diff", "3 files staged")) },
-			pretty: func(p *presenter.PrettyPresenter) { p.StageSucceeded(presenter.Settled("diff", "3 files staged")) },
+			name:  "a settled stage",
+			plain: func(p *presenter.PlainPresenter) { p.StageSucceeded(presenter.Settled("diff", "3 files staged")) },
+		},
+		{
+			name:  "a quiet blocking start",
+			plain: func(p *presenter.PlainPresenter) { p.StageStarted(quietStart) },
+		},
+		{
+			name:  "a quiet gate's preview",
+			plain: func(p *presenter.PlainPresenter) { p.PreviewGate(quietReview()) },
+		},
+		{
+			name:  "quiet next moves",
+			plain: func(p *presenter.PlainPresenter) { p.NextMoves(quietMoves) },
+		},
+		{
+			name:  "a quiet start",
+			plain: func(p *presenter.PlainPresenter) { p.RunStarted(quietStation) },
+		},
+		{
+			name:  "a quiet unwind",
+			plain: func(p *presenter.PlainPresenter) { p.Unwound(quietUnwind) },
+		},
+		{
+			name:  "a quiet close",
+			plain: func(p *presenter.PlainPresenter) { p.RunFinished(quietClose) },
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -44,9 +103,6 @@ func TestQuietEvents_WriteNothingInPlainOrTodaysPretty(t *testing.T) {
 
 			if out, errBuf := drive(tc.plain); out.Len() != 0 || errBuf.Len() != 0 {
 				t.Errorf("plain wrote %q / %q, want nothing", out.String(), errBuf.String())
-			}
-			if out := drivePretty(termenv.Ascii, tc.pretty); out.Len() != 0 {
-				t.Errorf("pretty wrote %q, want nothing", out.String())
 			}
 		})
 	}
@@ -79,7 +135,7 @@ func TestSettled_IsAQuietSuccessKeyedAndNamedForItsStage(t *testing.T) {
 }
 
 // TestNextMoveText_FlattensLeadAndCommandToTheSentencePlainPrints pins the one join
-// plain and today's pretty print a move by: the lead, then the command after a
+// plain prints a move by: the lead, then the command after a
 // space, or the lead alone when the move names no command.
 func TestNextMoveText_FlattensLeadAndCommandToTheSentencePlainPrints(t *testing.T) {
 	t.Parallel()

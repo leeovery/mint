@@ -3,6 +3,7 @@ package runclose_test
 import (
 	"slices"
 	"testing"
+	"time"
 
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -12,7 +13,6 @@ import (
 var opened = presenter.RunInfo{
 	Project: "acme",
 	Version: "1.4.0",
-	Leaf:    "🌱",
 	Start:   presenter.Station{Name: "v1.3.2", Detail: "main @ 4f9c2e1"},
 }
 
@@ -56,6 +56,22 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *test
 			want:     presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "manual cleanup required · nothing pushed"}},
 		},
 		{
+			name: "a reset that never moved HEAD closes where HEAD stands",
+			stop: func(r *runclose.Run) {
+				r.StoppedAt("main")
+				r.Unwound("9f3e2a1 · 2 commits not reset · manual cleanup required · nothing pushed")
+			},
+			want: presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "main", Detail: "9f3e2a1 · 2 commits not reset · manual cleanup required · nothing pushed"}},
+		},
+		{
+			name: "a station git couldn't name keeps the start",
+			stop: func(r *runclose.Run) {
+				r.StoppedAt("")
+				r.Unwound("2 commits not reset · manual cleanup required · nothing pushed")
+			},
+			want: presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "2 commits not reset · manual cleanup required · nothing pushed"}},
+		},
+		{
 			name:     "a decline that left nothing changed nothing",
 			stop:     func(*runclose.Run) {},
 			declined: true,
@@ -71,12 +87,26 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *test
 			stop: func(r *runclose.Run) { r.Left("changes staged, not committed") },
 			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "changes staged, not committed"}},
 		},
+		{
+			name: "what a run wrote comes first, the latest written standing",
+			stop: func(r *runclose.Run) {
+				r.Wrote("1 GitHub release written")
+				r.Left("nothing committed · nothing pushed")
+				r.Wrote("2 GitHub releases written")
+			},
+			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "2 GitHub releases written · nothing committed · nothing pushed"}},
+		},
+		{
+			name: "what a run wrote alone is all it says",
+			stop: func(r *runclose.Run) { r.Wrote("1 GitHub release written") },
+			want: presenter.RunResult{Outcome: presenter.OutcomeFailed, End: presenter.Station{Name: "v1.3.2", Detail: "1 GitHub release written"}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
 			rec := &presentertest.RecordingPresenter{}
-			run := runclose.Begin(rec)
+			run := runclose.Begin(rec, time.Now)
 			run.Start(opened)
 			tc.stop(run)
 			run.Close(tc.declined)
@@ -87,7 +117,7 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *test
 			}
 			got.Elapsed = 0
 			want := tc.want
-			want.Project, want.Version, want.Leaf = "acme", "1.4.0", "🌱"
+			want.Project, want.Version = "acme", "1.4.0"
 			if got != want {
 				t.Errorf("RunFinished = %+v, want %+v", got, want)
 			}
@@ -104,7 +134,7 @@ func TestClose_ARunThatLandedClosesWithItsEndingWhateverItLeftOnTheWay(t *testin
 		End:     presenter.Station{Name: "main", Detail: "a3f9c21"},
 	}
 	rec := &presentertest.RecordingPresenter{}
-	run := runclose.Begin(rec)
+	run := runclose.Begin(rec, time.Now)
 	run.Start(opened)
 	run.Left("changes staged, not committed")
 	run.Land(landed)
@@ -117,11 +147,62 @@ func TestClose_ARunThatLandedClosesWithItsEndingWhateverItLeftOnTheWay(t *testin
 	}
 }
 
+func TestClose_TimesTheRunByTheClockItBeganWith(t *testing.T) {
+	t.Parallel()
+
+	reads := []time.Time{time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC), time.Date(2026, 10, 29, 12, 1, 14, 0, time.UTC)}
+	clock := func() time.Time {
+		now := reads[0]
+		reads = reads[1:]
+		return now
+	}
+	rec := &presentertest.RecordingPresenter{}
+	run := runclose.Begin(rec, clock)
+	run.Start(opened)
+	run.Close(false)
+
+	if got := closing(t, rec).Elapsed; got != 74*time.Second {
+		t.Errorf("Elapsed = %v, want the 1m 14s between the clock's reads at Begin and Close", got)
+	}
+}
+
+func TestOpen_OpensWithTheHeaderAloneAndStartDrawsTheStationLater(t *testing.T) {
+	t.Parallel()
+
+	header := presenter.Header{Command: "release regenerate", Where: "~/Code/pigeon"}
+	rec := &presentertest.RecordingPresenter{}
+	run := runclose.Begin(rec, time.Now)
+	run.Open(presenter.RunInfo{Project: "acme", Header: header, Start: opened.Start})
+
+	if got, want := rec.Events[0].RunStarted, (presenter.RunInfo{Project: "acme", Header: header, Quiet: true}); len(rec.Events) != 1 || got != want {
+		t.Fatalf("opening = %+v, want the one Quiet start %+v, carrying the header alone", rec.Events, want)
+	}
+	run.Start(opened)
+	run.Close(false)
+
+	if got := closing(t, rec).End; got != (presenter.Station{Name: "v1.3.2", Detail: "nothing changed"}) {
+		t.Errorf("close = %+v, want at the station Start drew", got)
+	}
+}
+
+func TestOpen_ARunThatClosesBeforeItsStationClosesWithNone(t *testing.T) {
+	t.Parallel()
+
+	rec := &presentertest.RecordingPresenter{}
+	run := runclose.Begin(rec, time.Now)
+	run.Open(presenter.RunInfo{Project: "acme", Header: presenter.Header{Command: "release regenerate"}})
+	run.Close(true)
+
+	if got := closing(t, rec); got.Outcome != presenter.OutcomeDeclined || got.End.Name != "" {
+		t.Errorf("close = %+v, want declined with no end station", got)
+	}
+}
+
 func TestClose_ARunThatNeverOpenedClosesSilently(t *testing.T) {
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{}
-	run := runclose.Begin(rec)
+	run := runclose.Begin(rec, time.Now)
 	run.Close(false)
 
 	if len(rec.Events) != 0 {
@@ -133,7 +214,7 @@ func TestRunDeferred_RunsTheDeferredWorkLastFirstAndOnlyOnce(t *testing.T) {
 	t.Parallel()
 
 	rec := &presentertest.RecordingPresenter{}
-	run := runclose.Begin(rec)
+	run := runclose.Begin(rec, time.Now)
 	var order []string
 	run.Defer(func() { order = append(order, "first registered"); rec.Warn(presenter.Warning{Label: "first"}) })
 	run.Defer(func() { order = append(order, "last registered") })
@@ -161,7 +242,7 @@ func TestRunDeferred_StillRunsWhenTheRunPanicsBeforeItsClose(t *testing.T) {
 	ran := false
 	func() {
 		defer func() { _ = recover() }()
-		run := runclose.Begin(rec)
+		run := runclose.Begin(rec, time.Now)
 		defer run.RunDeferred()
 		run.Start(opened)
 		run.Defer(func() { ran = true })
@@ -184,6 +265,8 @@ func TestRun_ANilRunDoesNothing(t *testing.T) {
 	run.Land(presenter.RunResult{})
 	run.Unwound("back where it started")
 	run.Left("changes staged, not committed")
+	run.Open(opened)
+	run.Wrote("1 GitHub release written")
 	run.RunDeferred()
 	run.Close(true)
 }

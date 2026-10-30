@@ -27,11 +27,11 @@ var ErrInputClosed = errors.New("prompt: input closed before a choice was entere
 // interactive gate can be neither answered nor safely blocked on. It is exported
 // precisely so the engine/main can map THIS path to a
 // non-zero exit via errors.Is; the presenter itself sets no exit code. The
-// failure is ALSO surfaced through the presenter as a rendered failure (styled in
-// pretty, terse in plain) and the one-line summary goes to stderr — this sentinel
+// failure is ALSO surfaced through the presenter as a rendered failure (a ✗ node on
+// the Rail, terse in plain) and the one-line summary goes to stderr — this sentinel
 // is the machine-readable companion to that human-facing rendering. The message
 // is the spec's ASCII form (a semicolon, never the em-dash) so the engine-facing
-// string stays byte-pure; the pretty rendering uses the em-dash form separately.
+// string stays byte-pure; the Rail's rendering uses the em-dash form separately.
 var ErrNotInteractive = errors.New("stdin is not a TTY; pass -y to run unattended")
 
 // parseChoice is the SHARED, mode-agnostic parse for one line of gate input. It is
@@ -66,62 +66,43 @@ func parseChoice(line string, g Gate) (Choice, bool) {
 	return "", false
 }
 
-// readChoice is the SHARED read-and-loop core both presenters drive from Prompt.
-// Factoring it as a free function (taking the persistent buffered reader and a
-// mode-specific render closure) keeps the parse/loop identical across modes —
-// only the render differs.
+// readChoice is plain's read-and-loop core for Prompt, reading each typed line with
+// read, as readTypedLine reads it, and rendering the prompt with render.
 //
 // Each pass: render the prompt, read ONE line, and parse it. On a recognised line
 // (including the empty-Enter default) the choice is returned. On an unrecognised
 // line the loop RE-RENDERS and reads again — repeated garbage keeps re-prompting.
 //
-// EOF handling is the load-bearing safety property: bufio.Reader.ReadString
-// returns the bytes read so far ALONGSIDE io.EOF, so a final line with no trailing
-// newline ("y" then EOF) is still parsed. Only when EOF arrives with no usable
-// line (an empty trailing read) does this return ErrInputClosed — never a silent
-// default-accept. A genuine empty Enter ("\n") is a real line, not EOF, so it
-// still selects the default.
-func readChoice(reader *bufio.Reader, render func(), g Gate) (Choice, error) {
+// EOF handling is the load-bearing safety property: a final line with no trailing
+// newline ("y" then EOF) is still parsed, but one it can't parse is the end, as is
+// EOF with no line at all — ErrInputClosed, never a silent default-accept. A
+// genuine empty Enter ("\n") is a real line, not EOF, so it still selects the
+// default.
+func readChoice(read func() (string, bool, error), render func(), g Gate) (Choice, error) {
 	for {
 		render()
-		line, err := reader.ReadString('\n')
-		if line != "" {
-			if choice, ok := parseChoice(line, g); ok {
-				return choice, nil
-			}
-			// A non-empty but unrecognised line: re-prompt. If that line also
-			// arrived with EOF, the next ReadString returns "" + io.EOF below.
-			if err != nil {
-				return "", ErrInputClosed
-			}
-			continue
-		}
-		// No bytes read. On EOF this is the closed-stream case (fail loud); any
-		// other read error is likewise unusable input.
+		line, ended, err := read()
 		if err != nil {
+			return "", err
+		}
+		if choice, ok := parseChoice(line, g); ok {
+			return choice, nil
+		}
+		if !ended {
 			return "", ErrInputClosed
 		}
 	}
 }
 
-// readLine is the SHARED free-text read core both presenters drive from AskLine.
-// It reads ONE raw line from the persistent buffered reader and returns it with
-// only the line terminator stripped — the trailing "\n" and any preceding "\r"
-// (a CRLF terminal) — otherwise VERBATIM: leading, inner, and trailing spaces are
+// readTypedLine is the SHARED free-text read core both presenters drive. It reads
+// ONE raw line from the persistent buffered reader and returns it with only the
+// line terminator stripped — the trailing "\n" and any preceding "\r" (a CRLF
+// terminal) — otherwise VERBATIM: leading, inner, and trailing spaces are
 // preserved and the empty string is a legal result (a deliberate empty Enter).
-//
-// EOF handling mirrors readChoice: bufio.Reader.ReadString returns the bytes read
-// so far ALONGSIDE io.EOF, so a final line with no trailing newline is still
-// returned as the answer. Only when EOF (or any other read error) arrives with NO
-// bytes does this return ErrInputClosed — a closed stream is never mistaken for a
-// deliberate empty answer.
-func readLine(reader *bufio.Reader) (string, error) {
-	line, _, err := readTypedLine(reader)
-	return line, err
-}
-
-// readTypedLine is readLine, and whether the line ended in a newline: one the input
-// closed on before an Enter has none.
+// ended is whether it ended in a newline: a line the input closed on before an
+// Enter has none, but is still the answer. Only when EOF (or any other read error)
+// arrives with NO bytes does this return ErrInputClosed — a closed stream is never
+// mistaken for a deliberate empty answer.
 func readTypedLine(reader *bufio.Reader) (line string, ended bool, err error) {
 	line, err = reader.ReadString('\n')
 	if line == "" && err != nil {
@@ -133,9 +114,8 @@ func readTypedLine(reader *bufio.Reader) (line string, ended bool, err error) {
 
 // plainKeyHint builds the slash-joined key hint (e.g. "y/n/e/r") from the gate's
 // DECLARED keys in render order. It reads g.Keys() so a two-choice gate renders
-// "y/n" — the hint is never a hardcoded y/n/e/r literal. Both the plain terse
-// prompt and the minimal pretty prompt use it this phase (the full pretty vertical
-// menu is task 3-4).
+// "y/n" — the hint is never a hardcoded y/n/e/r literal. Plain's terse prompt
+// uses it.
 func plainKeyHint(g Gate) string {
 	keys := g.Keys()
 	parts := make([]string, len(keys))
@@ -156,4 +136,20 @@ func bufferedReader(in io.Reader, cached **bufio.Reader) *bufio.Reader {
 		*cached = bufio.NewReader(in)
 	}
 	return *cached
+}
+
+// discardTypedAhead drops, where in is a terminal, what was typed before a question
+// is asked: the input the terminal holds unread, and whatever the buffered reader
+// read past the last line, so a key pressed while mint worked, a stray Enter, never
+// answers a question it hadn't asked yet. Input that isn't a terminal, a pipe or a
+// script, is the answers themselves, kept whole.
+func discardTypedAhead(in io.Reader, reader *bufio.Reader) {
+	f, ok := rawKeyFile(in)
+	if !ok {
+		return
+	}
+	flushInput(f)
+	if reader != nil {
+		_, _ = reader.Discard(reader.Buffered())
+	}
 }

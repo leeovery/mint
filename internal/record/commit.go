@@ -146,6 +146,11 @@ type GitError struct {
 	err    error
 }
 
+// NewGitError is the git step that failed with err, having written stderr.
+func NewGitError(stderr string, err error) *GitError {
+	return &GitError{Stderr: stderr, err: err}
+}
+
 func (e *GitError) Error() string { return e.err.Error() }
 
 // Unwrap exposes the runner error so errors.Is matches it.
@@ -163,14 +168,15 @@ var ErrNothingStaged = errors.New("nothing staged to commit")
 // commit runs, since an empty pathspec file commits the whole index, keepOut's staged
 // edits included. On this pathspec route git runs the commit hooks against a
 // temporary index, so a hook that re-stages its rewrite leaves the real index behind.
+// A failed commit's error carries git's stderr as a *GitError.
 func CommitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keepOut git.Exclusion) (bool, error) {
 	keepOutStaged, err := hasStagedEdits(ctx, m, dir, keepOut)
 	if err != nil {
 		return false, err
 	}
 	if !keepOutStaged {
-		if _, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
-			return false, err
+		if res, err := m.Mutate(ctx, nil, "git", "-C", dir, "commit", "-m", subject); err != nil {
+			return false, NewGitError(res.Stderr, err)
 		}
 		return true, nil
 	}
@@ -182,8 +188,8 @@ func CommitStaged(ctx context.Context, m *git.Mutator, dir, subject string, keep
 	if staged.Stdout == "" {
 		return false, nil
 	}
-	if _, err := m.Mutate(ctx, literalPathspecs(staged.Stdout), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
-		return false, err
+	if res, err := m.Mutate(ctx, literalPathspecs(staged.Stdout), "git", "-C", dir, "commit", "-m", subject, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+		return false, NewGitError(res.Stderr, err)
 	}
 	return true, nil
 }

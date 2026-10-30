@@ -17,10 +17,11 @@ import (
 	"mint/internal/version"
 )
 
-// skipWarns returns every `skipped <tag>` warning the recorder captured, in order.
+// skipWarns returns every `skipped <tag>` warning the recorder captured, in order, as
+// plain renders it.
 func skipWarns(rec *presentertest.RecordingPresenter) []presenter.Warning {
 	var warns []presenter.Warning
-	for _, w := range warnings(rec) {
+	for _, w := range plainWarnings(rec) {
 		if strings.HasPrefix(w.Label, "skipped ") {
 			warns = append(warns, w)
 		}
@@ -139,8 +140,14 @@ func TestRegenerateAll_NotesFailure_SkipsWhateverTheModeOrOnNotesFailure(t *test
 						t.Errorf("the batch showed the floor's choice: %+v", g)
 					}
 				}
-				if moves := nextMovesEvents(rec); len(moves) != 0 {
-					t.Errorf("the batch printed next moves %+v, want the skip alone", moves)
+				// The skip's own way to try again, for the rail's next alone: none of the
+				// floor's moves.
+				want := presenter.NextMoves{Stage: batchV2Tag, Quiet: true, Moves: []presenter.NextMove{{
+					Lead:    batchV2Tag + " kept its old notes. To try it again:",
+					Command: "mint release regenerate " + batchV2Tag + " --source fresh --target release",
+				}}}
+				if moves := nextMovesEvents(rec); len(moves) != 1 || !nextMovesEqual(moves[0], want) || !moves[0].Quiet {
+					t.Errorf("the batch printed next moves %+v, want the skip's retry alone, %+v", moves, want)
 				}
 			})
 		}

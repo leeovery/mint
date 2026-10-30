@@ -31,6 +31,12 @@ type railTerm struct {
 // from in.
 func newRailTerm(t *testing.T, cols, rows int, in io.Reader) *railTerm {
 	t.Helper()
+	return newRailTermIn(t, termenv.Ascii, cols, rows, in)
+}
+
+// newRailTermIn is newRailTerm drawing in profile's colour.
+func newRailTermIn(t *testing.T, profile termenv.Profile, cols, rows int, in io.Reader) *railTerm {
+	t.Helper()
 	r := &railTerm{
 		term:  frametest.NewTerminal(cols, rows),
 		err:   &bytes.Buffer{},
@@ -42,7 +48,7 @@ func newRailTerm(t *testing.T, cols, rows int, in io.Reader) *railTerm {
 	r.RailPresenter = presenter.NewRailPresenter(r.writes,
 		presenter.WithRailErr(r.err),
 		presenter.WithRailInput(in),
-		presenter.WithRailProfile(termenv.Ascii),
+		presenter.WithRailProfile(profile),
 		presenter.WithRailSize(r.size.get),
 		presenter.WithRailTicker(r.ticks.start),
 		presenter.WithRailClock(r.clock.Now),

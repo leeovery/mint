@@ -35,9 +35,10 @@ func TestResolveBatchAxes_NoFlags_PromptsSourceThenTarget(t *testing.T) {
 	}
 
 	req := regenerateRequest{Source: sourceFresh, SourceSet: false, Target: targetUnset, All: true}
-	source, target, err := resolveBatchAxes(rec, req, true)
+	asked, given := regenerateRunAxes(req)
+	source, target, err := engine.ResolveRegenerateAxes(rec, asked, given, true)
 	if err != nil {
-		t.Fatalf("resolveBatchAxes returned unexpected error: %v", err)
+		t.Fatalf("ResolveRegenerateAxes returned unexpected error: %v", err)
 	}
 	if source != engine.RegenerateSourceFresh {
 		t.Errorf("source = %v, want fresh", source)
@@ -67,9 +68,10 @@ func TestResolveBatchAxes_ReuseAll_AsksTargetWhenUnset(t *testing.T) {
 	}
 
 	req := regenerateRequest{Source: sourceTag, SourceSet: true, Target: targetUnset, All: true}
-	source, target, err := resolveBatchAxes(rec, req, true)
+	asked, given := regenerateRunAxes(req)
+	source, target, err := engine.ResolveRegenerateAxes(rec, asked, given, true)
 	if err != nil {
-		t.Fatalf("resolveBatchAxes returned unexpected error: %v", err)
+		t.Fatalf("ResolveRegenerateAxes returned unexpected error: %v", err)
 	}
 	if source != engine.RegenerateSourceTag {
 		t.Errorf("source = %v, want tag", source)
@@ -95,9 +97,10 @@ func TestResolveBatchAxes_SuppliedTarget_SkipsTargetPrompt(t *testing.T) {
 	}
 
 	req := regenerateRequest{Source: sourceFresh, SourceSet: false, Target: targetBoth, All: true}
-	source, target, err := resolveBatchAxes(rec, req, true)
+	asked, given := regenerateRunAxes(req)
+	source, target, err := engine.ResolveRegenerateAxes(rec, asked, given, true)
 	if err != nil {
-		t.Fatalf("resolveBatchAxes returned unexpected error: %v", err)
+		t.Fatalf("ResolveRegenerateAxes returned unexpected error: %v", err)
 	}
 	if source != engine.RegenerateSourceFresh {
 		t.Errorf("source = %v, want fresh", source)
@@ -123,9 +126,10 @@ func TestResolveBatchAxes_Yes_StillPromptsEveryAxis(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
 
 	req := regenerateRequest{Source: sourceFresh, SourceSet: false, Target: targetRelease, All: true, Yes: true}
-	source, target, err := resolveBatchAxes(rec, req, true)
+	asked, given := regenerateRunAxes(req)
+	source, target, err := engine.ResolveRegenerateAxes(rec, asked, given, true)
 	if err != nil {
-		t.Fatalf("resolveBatchAxes returned unexpected error: %v", err)
+		t.Fatalf("ResolveRegenerateAxes returned unexpected error: %v", err)
 	}
 	if source != engine.RegenerateSourceFresh {
 		t.Errorf("source = %v, want fresh (the source gate default)", source)

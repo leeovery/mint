@@ -30,6 +30,7 @@ package engine
 // pop-after ordering (4-4) layers on top of this wiring.
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -135,6 +136,10 @@ type reviewRegen struct {
 	regenerator Regenerator
 	shown       func()
 	keep        func(error) error
+	// key is the stage key the notes run under, which a failed `r`'s line fills: the
+	// notes stage's or a --all version's tag, "" for the notes stage's where the review
+	// narrates no stage of its own.
+	key string
 }
 
 func (r reviewRegen) keepFailed(cause error) error {
@@ -217,9 +222,19 @@ type ReleaseDeps struct {
 	// under. Both come from the cmd layer, so the engine reads no environment for them.
 	MintVersion string
 	Home        string
-	// run closes the run Release or RegenerateRun opened; nil outside them (a --all
-	// backfill's versions, a test driving Unwind alone).
+	// Clock is what the run and its stages are timed by, the wall clock when nil.
+	Clock func() time.Time
+	// run closes the run Release, RegenerateRun or RegenerateAllRun opened; nil
+	// outside them (a test driving RegenerateAll or Unwind alone).
 	run *runclose.Run
+}
+
+// clock is what the run and its stages are timed by: Clock, or the wall clock.
+func (d ReleaseDeps) clock() func() time.Time {
+	if d.Clock != nil {
+		return d.Clock
+	}
+	return time.Now
 }
 
 // header is the run's header line for command over root.
@@ -396,7 +411,7 @@ type ReleaseOptions struct {
 // dry run, or, stopped short, unwound, declined or failed, its end saying what the
 // run left behind.
 func Release(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) error {
-	deps.run = runclose.Begin(deps.Presenter)
+	deps.run = runclose.Begin(deps.Presenter, deps.clock())
 	// Deferred, so the work the run deferred (the autostash pop) runs after the close
 	// and still runs when the run panics, which closes nothing.
 	defer deps.run.RunDeferred()
@@ -466,8 +481,8 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 
 	// RunStarted OPENS the run: the brand header renders first, with every stage line
 	// beneath it (the spec worked example, the presenter golden transcript). Its payload
-	// depends ONLY on Stage-1 facts — the project name, the resolved version, the action
-	// verb, and the commit_prefix leaf — none of which depend on the notes body, the
+	// depends ONLY on Stage-1 facts — the project name, the resolved version and the
+	// action verb — none of which depend on the notes body, the
 	// pre_tag hook, or preflight, so it leads the version/preflight/pre_tag/notes stage
 	// events that follow. (ShowPlan/ShowNotes still fire after the notes body resolves.)
 	// Its start station is where the release starts from: the previous tag, and the
@@ -477,7 +492,6 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		Project: projectName(root),
 		Version: versionKey,
 		Action:  releaseAction,
-		Leaf:    cfg.Release.CommitPrefix,
 		DryRun:  opts.DryRun,
 		Header:  deps.header(releaseCommand, root),
 		Start:   releaseStart(current, cfg.Release.TagPrefix, head),
@@ -490,8 +504,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// the gate runs before preflight and any mutation, so a "no" aborts cleanly with
 	// nothing to unwind. -y auto-accepts (inside the presenter).
 	if opts.DryRun {
-		detail, sentence := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
-		emitGateSucceeded(p, "version", detail, sentence)
+		emitGateSucceeded(p, "version", versionPreview(current, next, cfg.Release.TagPrefix, bumpKind))
 	} else {
 		choice, derr := ReviewDecision(p, versionConfirmGate(current, next, cfg.Release.TagPrefix, bumpKind))
 		if derr != nil {
@@ -550,24 +563,27 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// entry) aborts the whole release cleanly: it is surfaced as a "preflight"
 	// StageFailed. Because this precedes all mutation there is nothing to unwind — a
 	// plain surface, not the auto-unwind path.
-	if err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun); err != nil {
+	hookSkipped, err := runPreflightHook(ctx, deps, cfg, root, current, next, tag, bumpKind, opts.DryRun)
+	if err != nil {
 		return surface(p, "preflight", err)
 	}
 	// Stage 2 narration: the preflight gates are read-only (no spinner), so emit a
 	// completion line only — no StageStarted. Fired once both the built-in gates and
-	// the project preflight hook have passed (Stage 2 complete).
+	// the project preflight hook have passed (Stage 2 complete), a dry run's skip of
+	// the hook its note.
 	checked := preflightDetail(releaseBranch, tag, opts.AnyBranch)
-	emitGateSucceeded(p, stagePreflight, checked, "Preflight passed: "+checked)
+	p.StageSucceeded(presenter.StageSuccess{Name: stagePreflight, Key: stagePreflight, Detail: checked, Note: hookSkipped})
 
 	// With preflight passed every stage the release will go through is known: lay them
 	// out now, ahead of the first slow one, in a Quiet plan. The steps plain prints
 	// still follow the notes, where its line has always been.
-	versionDetail, _ := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
+	versionDetail := versionPreview(current, next, cfg.Release.TagPrefix, bumpKind)
 	route := releaseNotesRoute(selectState(current, cfg, opts, supplied), opts.NotesBody != "")
+	branch := pushedBranch(releaseBranch, head, opts.AnyBranch)
 	p.ShowPlan(releasePlan{
 		cfg:       cfg,
 		tag:       tag,
-		branch:    pushedBranch(releaseBranch, head, opts.AnyBranch),
+		branch:    branch,
 		version:   versionDetail,
 		preflight: checked,
 		notes:     route,
@@ -633,7 +649,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// Stage 4 is BLOCKING: generating notes can call the AI. Narrate it with a
 	// blocking StageStarted (spinner), a chunked run's progress while it runs, and a
 	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
-	stage := startNotesStage(p)
+	stage := startNotesStage(p, deps.clock())
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
 	answers := &answersCommit{root: root, tag: tag}
 	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
@@ -658,7 +674,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		chunkNotes.warnUnsaved(p)
 		if !offersChoice {
 			if atFloor {
-				p.NextMoves(deps.notesFloorMoves(err, cfg, failure.SavedNotes))
+				p.NextMoves(deps.notesFloorMoves(err, cfg, releaseRerun(opts), failure.SavedNotes))
 				stage.showSuggestions(cfg.Release.DiffExclude)
 			}
 			return Unwind(ctx, deps, start, made, err)
@@ -669,12 +685,12 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		}
 	} else {
 		stage.settleUncheckedCheck(route.checks)
-		stage.done()
+		stage.doneFrom(kind, opts.NotesFile)
 		chunkNotes.warnUnsaved(p)
 		if opts.DryRun {
-			stage.warnDryRunFallback()
+			stage.warnDryRunFallback(releaseRerun(opts))
 		} else {
-			stage.warnFallback(versionKey)
+			stage.warnFallback(releaseRerun(opts), versionKey)
 		}
 	}
 
@@ -685,10 +701,14 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 
 	// DRY-RUN BOUNDARY: a dry run takes no action, so it asks for nothing — it stops
 	// HERE, before the review gate, having shown the full preview (version, plan, notes),
+	// previews the review where a real run asks it (Quiet: plain has no line for it),
 	// and prints the "no changes made" close-out instead of prompting, recording,
 	// tagging, pushing, or publishing. The working tree is byte-for-byte unchanged
 	// (hooks were skipped-and-reported above; the notes were generated read-only).
 	if opts.DryRun {
+		review := gateForKind(kind)
+		review.Quiet = true
+		p.PreviewGate(review)
 		return finishDryRun(ctx, deps, cfg, root, versionKey, current, next, tag, bumpKind)
 	}
 
@@ -697,10 +717,11 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// why ReleaseReviewGate's wording says "release", not "accept".
 	regens := stage.regens(func(lowerCap int) { hintLowerCap(p, lowerCap) })
 	regen := regens.review(perRunRegenerator(deps, generator, chunkNotes, regens, current.String(cfg.Release.TagPrefix), cfg), chunkNotes)
-	body, err = chunkNotes.reviewGate(ctx, deps, regen, gateForKind(kind), body, versionKey, "mint release")
+	body, err = chunkNotes.reviewGate(ctx, deps, regen, gateForKind(kind), body, versionKey, releaseRerun(opts))
 	if err != nil {
-		// Unwind, not surfaceAndUnwind: reviewGate has already surfaced whatever
-		// needed a StageFailed.
+		// Unwind, not surfaceAndUnwind: reviewGate surfaces every failure it returns
+		// that needs a StageFailed, input closed at its question or at r's context line
+		// included; a decline needs none.
 		return Unwind(ctx, deps, start, made, err)
 	}
 
@@ -763,10 +784,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// bookkeeping commit carried) rather than a bare stage codeword, so the user can
 	// follow the run without knowing mint's stage taxonomy.
 	recorded := presenter.StageSuccess{
-		Name:     stageRecord,
-		Key:      stageRecord,
-		Detail:   recordDetail(writeResult.Changed, versionChanged, bookkeepingCommitted),
-		Sentence: recordSentence(writeResult.Changed, versionChanged, bookkeepingCommitted),
+		Name:   stageRecord,
+		Key:    stageRecord,
+		Detail: recordDetail(writeResult.Changed, versionChanged, bookkeepingCommitted),
 	}
 	if bookkeepingCommitted {
 		recorded.Commit = record.BookkeepingSubject(cfg.Release.CommitPrefix, tag)
@@ -866,7 +886,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// with a blocking StageStarted (spinner) and a StageSucceeded carrying the
 	// engine-measured Elapsed once the push crosses the PONR. On failure a timed
 	// StageFailed narrates the stage instead, so no StageSucceeded fires.
-	push := emitBlockingStageStarted(p, stagePush, "pushing branch and tag to origin…", "Pushed branch + "+tag+" atomically")
+	push := startBlockingStage(p, deps.clock(), stagePush, "pushing branch and tag to origin…")
 	if _, err := deps.Releaser.TagAndPush(ctx, tag, cfg.Release.CommitPrefix, body); err != nil {
 		// Pre-PONR failure: route through the surgical unwind. A push REJECTION means the
 		// local tag WAS created (TagAndPush wraps it in release.ErrPushRejected), so the
@@ -876,7 +896,10 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		made.TagCreated = errors.Is(err, release.ErrPushRejected)
 		return failAndUnwind(ctx, deps, pushFailure(err, push.elapsed()), start, made, err)
 	}
-	push.done("branch + " + tag + " pushed atomically")
+	push.succeeded(presenter.StageSuccess{
+		Detail: "branch + " + tag + " pushed atomically",
+		Row:    branch + " + " + tag + " pushed atomically",
+	})
 
 	// Stage 7 — publish. Post-PONR: a publish failure is WARN-ONLY (the tag is
 	// already public); the run does not unwind and exits successfully. The release is
@@ -894,12 +917,12 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		// in the footer); a downgrade leaves publisher nil so releaseURL stays empty too.
 		url, err := publisher.CreateRelease(ctx, tag, tag, body)
 		if err != nil {
-			warnPublishFailed(p, err)
+			warnPublishFailed(p, err, versionKey)
 			outcome = presenter.OutcomeReleasedWithWarning
 		} else {
 			releaseURL = url
 			// Post-PONR success narration: the release exists on the provider now.
-			emitGateSucceeded(p, stagePublish, "release published", "Published the release")
+			emitGateSucceeded(p, stagePublish, "release published")
 		}
 	}
 
@@ -921,7 +944,6 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		Project: projectName(root),
 		Version: versionKey,
 		URL:     releaseURL,
-		Leaf:    cfg.Release.CommitPrefix,
 		Outcome: outcome,
 		End:     presenter.Station{Name: tag, Detail: "released"},
 	})
@@ -951,7 +973,7 @@ func versionConfirmGate(current, next version.SemVer, prefix string, bumpKind ve
 	if current.String("") == "0.0.0" {
 		question = fmt.Sprintf("Release %s (first release)?", nextDisplay)
 	}
-	settled, _ := versionPreview(current, next, prefix, bumpKind)
+	settled := versionPreview(current, next, prefix, bumpKind)
 	return presenter.Gate{
 		Stage:      stageVersion,
 		Detail:     settled,
@@ -966,22 +988,17 @@ func versionConfirmGate(current, next version.SemVer, prefix string, bumpKind ve
 	}
 }
 
-// versionPreview builds the dry-run "version" stage line's (detail, sentence): the
-// read-only counterpart to versionConfirmGate, stating the version a real run would
-// cut without asking for consent (a dry run prompts for nothing). detail is the terse
-// plain value ("v1.4.0 (minor bump)"); sentence is the pretty narration
-// ("Would release v1.4.0 (minor bump from v1.2.0)"). A first release (current 0.0.0)
-// reads "(first release)" with no from-version, mirroring the gate's first-release
-// wording.
-func versionPreview(current, next version.SemVer, prefix string, bumpKind version.Bump) (detail, sentence string) {
+// versionPreview builds the dry-run "version" stage line's detail ("v1.4.0 (minor
+// bump)"): the read-only counterpart to versionConfirmGate, stating the version a
+// real run would cut without asking for consent (a dry run prompts for nothing). A
+// first release (current 0.0.0) reads "(first release)", mirroring the gate's
+// first-release wording.
+func versionPreview(current, next version.SemVer, prefix string, bumpKind version.Bump) string {
 	nextDisplay := next.String(prefix)
 	if current.String("") == "0.0.0" {
-		return fmt.Sprintf("%s (first release)", nextDisplay),
-			fmt.Sprintf("Would release %s (first release)", nextDisplay)
+		return fmt.Sprintf("%s (first release)", nextDisplay)
 	}
-	bump := hookBump(bumpKind)
-	return fmt.Sprintf("%s (%s bump)", nextDisplay, bump),
-		fmt.Sprintf("Would release %s (%s bump from %s)", nextDisplay, bump, current.String(prefix))
+	return fmt.Sprintf("%s (%s bump)", nextDisplay, hookBump(bumpKind))
 }
 
 // resolveNextVersion picks this run's next version and its bump KIND from one of two
@@ -1239,12 +1256,12 @@ func (a *answersCommit) record(deps ReleaseDeps) func(context.Context, notes.Ans
 		}
 		a.leftInPlace = ignored
 		a.edit = nil
-		narrateAnswers(deps.Presenter, answers, ignored)
+		narrateAnswers(deps.Presenter, ignored)
 		return nil
 	}
 }
 
-func narrateAnswers(p presenter.Presenter, answers notes.Answers, ignored bool) {
+func narrateAnswers(p presenter.Presenter, ignored bool) {
 	p.SuspendSpinner()
 	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{
 		Stage:   "notes",
@@ -1252,8 +1269,6 @@ func narrateAnswers(p presenter.Presenter, answers notes.Answers, ignored bool) 
 		File:    config.FileName,
 		Table:   releaseTable,
 		Ignored: ignored,
-		Exclude: answers.Exclude,
-		Keep:    answers.Keep,
 	})
 	p.ResumeSpinner()
 }
@@ -1267,19 +1282,23 @@ func (a *answersCommit) commit(ctx context.Context, m *git.Mutator) error {
 }
 
 // recommit records the answers again on whatever HEAD is now. On failure it returns
-// the manual step that finishes the re-commit, given restore as the step that brings
+// the manual steps that finish the re-commit, given restore as the steps that bring
 // back the answers commit itself, and the failing tool's own message.
-func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore string) (manual, output string, err error) {
+func (a *answersCommit) recommit(ctx context.Context, m *git.Mutator, restore []manualStep) (manual []manualStep, output string, err error) {
 	if err := a.write(); err != nil {
 		return restore, err.Error(), err
 	}
 	if err := a.commit(ctx, m); err != nil {
 		root := cmdline.Quote(a.root)
-		manual = "commit the exclusion answers mint wrote to " + config.FileName +
-			" (`git -C " + root + " add " + config.FileName + "` then `git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)) + "`)"
-		return manual, gitOutput(err), err
+		return []manualStep{{
+			does: "commit the exclusion answers mint wrote to " + config.FileName,
+			commands: []string{
+				"git -C " + root + " add " + config.FileName,
+				"git -C " + root + " commit -m " + cmdline.Quote(record.AnswersSubject(a.tag)),
+			},
+		}}, gitOutput(err), err
 	}
-	return "", "", nil
+	return nil, "", nil
 }
 
 // answersRecordingError is the exclusion answers failing to be written or committed;
@@ -1409,9 +1428,12 @@ func cacheReuse(deps ReleaseDeps, root, versionKey string, dryRun bool, reuse fu
 		// A real run asks use/regenerate: the spinner is suspended for the prompt and
 		// resumed after (so "regenerate" runs the AI under a live spinner; "use" closes
 		// out moments later). Under -y the gate auto-accepts the default — use the cache.
+		// Prompt, not ReviewDecision: a read failure fails the notes stage, which
+		// surfaces it as it does every failure the selector returns, input closed
+		// included, as the exclusion check's pause does.
 		pr := deps.Presenter
 		pr.SuspendSpinner()
-		choice, derr := ReviewDecision(pr, reuseConfirmGate())
+		choice, derr := pr.Prompt(reuseConfirmGate())
 		pr.ResumeSpinner()
 		if derr != nil {
 			return "", false, derr
@@ -1653,9 +1675,13 @@ const dryRunLabel = "dry-run"
 // reportHookSkipped emits the dry-run hook-skip notice for a CONFIGURED point that
 // was not invoked because dry-run is active. The message is "skipping {point} hook"
 // (point = preflight / pre_tag / post_release), kept identical across the three call
-// sites so the convention is consistent. It rides the Warn seam (see dryRunLabel).
-func reportHookSkipped(p presenter.Presenter, point string) {
-	p.Warn(presenter.Warning{Label: dryRunLabel, Message: "skipping " + point + " hook"})
+// sites so the convention is consistent. It rides the Warn seam (see dryRunLabel),
+// Skipped and keyed to the hook's own node, which the rail leaves to come. It returns
+// the message, for a skip whose hook has no node of its own to carry it another way.
+func reportHookSkipped(p presenter.Presenter, point string) string {
+	message := "skipping " + point + " hook"
+	p.Warn(presenter.Warning{Label: dryRunLabel, Key: point, Skipped: true, Message: message})
+	return message
 }
 
 // hookRuns reports whether a hook point configured with value runs on this run: it
@@ -1675,19 +1701,19 @@ func hookRuns(value config.HookValue, dryRun bool) bool {
 //
 // DRY-RUN: when dryRun is active AND the hook is configured, the hook is NOT
 // invoked — no `sh -c …` reaches the runner; instead the skip is REPORTED via the
-// presenter and nil is returned. Once the hook runs the run's close says only that
-// nothing was pushed: what the hook did is unknown to mint.
-func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) error {
+// presenter and its message returned, for the preflight row to hang: the hook has no
+// node of its own. Once the hook runs the run's close says only that nothing was
+// pushed: what the hook did is unknown to mint.
+func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, root string, current, next version.SemVer, tag string, bump version.Bump, dryRun bool) (skipped string, err error) {
 	if !hooks.HasEntries(cfg.Release.Hooks.Preflight) {
-		return nil
+		return "", nil
 	}
 	if dryRun {
-		reportHookSkipped(deps.Presenter, "preflight")
-		return nil
+		return reportHookSkipped(deps.Presenter, "preflight"), nil
 	}
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	deps.run.Left(nothingPushed)
-	return hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
+	return "", hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
 }
 
 // runPreTagHook runs the project's optional Stage-3 pre_tag hook and then applies
@@ -1746,7 +1772,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	// carrying the engine-measured Elapsed once both the hook and its artifact commit
 	// land. The events fire ONLY here — when a hook is configured and actually runs —
 	// so a hookless run (returned above) narrates no pre_tag stage.
-	stage := emitBlockingStageStarted(deps.Presenter, stagePreTag, "running pre_tag hook…", "Ran the pre_tag hook")
+	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePreTag, "running pre_tag hook…")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PreTag, root, env); err != nil {
 		return false, &stageError{stage: stage, err: err}
@@ -1756,7 +1782,7 @@ func runPreTagHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, roo
 	if err != nil {
 		return committed, &stageError{stage: stage, err: err}
 	}
-	success := presenter.StageSuccess{Detail: "hook completed", Sentence: stage.sentence}
+	success := hookCompletion(cfg.Release.Hooks.PreTag)
 	if committed {
 		success.Commit = subject
 	}
@@ -1810,13 +1836,19 @@ func runPostReleaseHook(ctx context.Context, deps ReleaseDeps, cfg config.Config
 	// upload can run for minutes, so the spinner must show it is alive. A failure
 	// skips the success line; the caller's Warn stops the spinner and prints the ⚠
 	// line with the hook's output in its place.
-	stage := emitBlockingStageStarted(deps.Presenter, stagePostRelease, "running post_release hook…", "Ran the post_release hook")
+	stage := startBlockingStage(deps.Presenter, deps.clock(), stagePostRelease, "running post_release hook…")
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	if err := hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.PostRelease, root, env); err != nil {
 		return err
 	}
-	stage.done("hook completed")
+	stage.succeeded(hookCompletion(cfg.Release.Hooks.PostRelease))
 	return nil
+}
+
+// hookCompletion is the success of the stage hook value runs as: the rail's row names
+// its commands, as the plan did; plain keeps the detail it has always had.
+func hookCompletion(value config.HookValue) presenter.StageSuccess {
+	return presenter.StageSuccess{Detail: "hook completed", Row: hookDetail(value)}
 }
 
 // pretagArtifactSubject builds the FIXED subject for the pre_tag artifact commit. It
@@ -1872,22 +1904,6 @@ func recordDetail(changelogChanged, versionChanged, committed bool) string {
 		parts = append(parts, "version file")
 	}
 	return strings.Join(parts, " + ") + " committed"
-}
-
-// recordSentence is the pretty past-tense narration for the record gate: it names
-// what the bookkeeping commit carried, or says plainly nothing needed recording.
-func recordSentence(changelogChanged, versionChanged, committed bool) string {
-	if !committed {
-		return "Nothing to record"
-	}
-	var parts []string
-	if changelogChanged {
-		parts = append(parts, "CHANGELOG.md")
-	}
-	if versionChanged {
-		parts = append(parts, "version file")
-	}
-	return "Committed " + strings.Join(parts, " + ")
 }
 
 // hookBump maps the engine's version.Bump onto the hooks package's Bump so the
@@ -1946,7 +1962,6 @@ func finishDryRun(ctx context.Context, deps ReleaseDeps, cfg config.Config, root
 	deps.run.Land(presenter.RunResult{
 		Project: projectName(root),
 		Version: versionKey,
-		Leaf:    cfg.Release.CommitPrefix,
 		Outcome: presenter.OutcomeDryRun,
 		End:     presenter.Station{Name: tag, Detail: "dry run · nothing changed"},
 	})
@@ -1969,7 +1984,7 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //
 //   - a Prompt error (ErrNotInteractive / ErrInputClosed) is already an
 //     *AbortError carrying a non-zero exit; it is returned as-is (ErrNotInteractive
-//     is pre-rendered by the presenter, ErrInputClosed is surfaced via the abort).
+//     is pre-rendered by the presenter, ErrInputClosed surfaced by ReviewDecision).
 //   - ChoiceYes (also the bare-Enter default) accepts: the loop RETURNS the current
 //     body so the spine proceeds to Record with exactly the reviewed text. Under -y
 //     the presenter returns the gate Default (ChoiceYes), so the loop accepts
@@ -1992,7 +2007,8 @@ var errRegeneratorUnavailable = errors.New("regenerate chosen but no regenerator
 //     the user may regenerate again or settle on y/n/e.
 //
 // The gate never unwinds or emits an Unwound; any reset is the caller's.
-func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen reviewRegen, gate presenter.Gate, body, versionKey string) (string, error) {
+func reviewGate(ctx context.Context, deps ReleaseDeps, regen reviewRegen, gate presenter.Gate, body, versionKey string) (string, error) {
+	p := deps.Presenter
 	for {
 		choice, err := ReviewDecision(p, gate)
 		if err != nil {
@@ -2017,8 +2033,8 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// StageSucceeded fires once the edit completes (or returns to the gate) to stop
 			// it, while a genuine edit failure surfaces a StageFailed (which stops it) and
 			// emits no StageSucceeded.
-			editDone := emitBlockingStageStarted(p, "edit", "applying edited notes…", "Applied edited notes")
-			edited, eerr := editBody(ctx, editor, body)
+			editDone := startBlockingStage(p, deps.clock(), "edit", "applying edited notes…")
+			edited, eerr := editBody(ctx, deps.Editor, body)
 			switch {
 			case errors.Is(eerr, ErrEditorReturnToGate):
 				// No editor could be launched: the launcher already reported the problem
@@ -2041,7 +2057,7 @@ func reviewGate(ctx context.Context, p presenter.Presenter, editor Editor, regen
 			// Regenerate (only reachable on the four-choice gate): regenerate with a
 			// one-time context line, replace the body, re-show, and loop. Any failure
 			// (closed input, nil seam, regenerate error) is surfaced and aborts.
-			regenerated, rerr := regenerateBody(ctx, p, regen, versionKey)
+			regenerated, rerr := regenerateBody(ctx, deps, regen, versionKey)
 			if rerr != nil {
 				return "", rerr
 			}
@@ -2076,9 +2092,10 @@ func gateForKind(kind notes.Kind) presenter.Gate {
 // fail-loud:
 //
 //   - AskLine's ErrInputClosed / ErrNotInteractive abort (the read failed; the
-//     engine owns surfacing ErrInputClosed). Any AskLine error — including a
-//     defensively-handled ErrNotInteractive, which `r` being interactive-only should
-//     make unreachable — is wrapped by the generic abort; there is no dedicated branch.
+//     engine surfaces ErrInputClosed, on the node being reviewed, as "regenerate").
+//     Any AskLine error — including a defensively-handled ErrNotInteractive, which
+//     `r` being interactive-only should make unreachable — is wrapped by the generic
+//     abort; there is no dedicated branch.
 //   - a nil Regenerator (a misconfiguration that should never reach production for
 //     KindNormalAI) surfaces a clean error and aborts rather than panicking.
 //   - a Regenerator failure is surfaced and aborts. Richer handling could re-present
@@ -2087,26 +2104,28 @@ func gateForKind(kind notes.Kind) presenter.Gate {
 //
 // On success the regenerated body is re-shown (so the user reviews it), regen.shown
 // runs, and the body is returned; the caller replaces the body and loops the gate.
-func regenerateBody(ctx context.Context, p presenter.Presenter, regen reviewRegen, versionKey string) (string, error) {
+func regenerateBody(ctx context.Context, deps ReleaseDeps, regen reviewRegen, versionKey string) (string, error) {
+	p := deps.Presenter
 	line, err := p.AskLine(regenContextPrompt)
 	if err != nil {
 		// A closed/non-interactive input on the one-time-context read is fail-loud: the
-		// presenter leaves ErrInputClosed unrendered, so the abort (and any closing
-		// narration) is the engine's to surface — done via abort, mirroring ReviewDecision.
-		return "", abort(regen.keepFailed(err))
+		// presenter leaves ErrInputClosed unrendered, so the engine surfaces it, then
+		// aborts, mirroring ReviewDecision.
+		return "", abort(regen.keepFailed(surfaceInputClosed(p, regenerateLabel, cmp.Or(regen.key, stageNotes), err)))
 	}
 
 	if regen.regenerator == nil {
 		// `r` was offered (KindNormalAI) but no Regenerator was wired — a
 		// misconfiguration. Surface a clean failure and abort rather than panicking.
-		return "", regenFailed(p, errRegeneratorUnavailable, 0)
+		return "", regenFailed(p, regen.key, errRegeneratorUnavailable, 0)
 	}
 
-	began := time.Now()
+	now := deps.clock()
+	began := now()
 	regenerated, rerr := regen.regenerator.Regenerate(ctx, line)
 	if rerr != nil {
 		// A regenerate failure is fail-loud: surface and abort.
-		return "", regenFailed(p, regen.keepFailed(rerr), time.Since(began))
+		return "", regenFailed(p, regen.key, regen.keepFailed(rerr), now().Sub(began))
 	}
 
 	// Re-show the regenerated notes so the user reviews them before the gate re-prompts.
@@ -2119,10 +2138,10 @@ func regenerateBody(ctx context.Context, p presenter.Presenter, regen reviewRege
 
 // regenFailed surfaces an `r` that failed after elapsed and aborts. Its line keeps
 // the "regenerate" label, but it is the notes being written again, so it carries the
-// notes stage's key.
-func regenFailed(p presenter.Presenter, cause error, elapsed time.Duration) error {
+// key they run under: key, or the notes stage's where that is "".
+func regenFailed(p presenter.Presenter, key string, cause error, elapsed time.Duration) error {
 	failure := stageFailure(regenerateLabel, cause)
-	failure.Key, failure.Elapsed = stageNotes, elapsed
+	failure.Key, failure.Elapsed = cmp.Or(key, stageNotes), elapsed
 	p.StageFailed(failure)
 	return abort(cause)
 }
@@ -2175,15 +2194,33 @@ func downgradeReason(cause error) string {
 
 // warnPublishFailed emits the post-PONR warn-only event: by the time it runs the
 // push has already crossed the point of no return, so the tag is public and mint
-// must NOT unwind. It warns and points at the heal path; the run still finishes
-// successfully.
-func warnPublishFailed(p presenter.Presenter, cause error) {
+// must NOT unwind. It warns and points at the heal path, the regenerate that publishes
+// version's release from its tag; the run still finishes successfully. Plain's line
+// names the heal; the rail's row says what happened, and the heal's full command
+// reaches it as a Quiet next move.
+func warnPublishFailed(p presenter.Presenter, cause error, version string) {
 	p.Warn(presenter.Warning{
 		Key:     stagePublish,
 		Label:   "publish failed",
 		Message: "tag is already published; heal with regenerate --source tag",
-		Output:  cause.Error(),
+		Row:     "provider release failed · the tag is already pushed",
+		Output:  publishFailureOutput(cause),
 	})
+	p.NextMoves(presenter.NextMoves{Stage: stagePublish, Quiet: true, Moves: []presenter.NextMove{{
+		Lead:    "Publish the release from the tag's notes:",
+		Command: "mint release regenerate " + cmdline.Quote(version) + " --source tag --target release",
+	}}})
+}
+
+// publishFailureOutput is what a failed publish shows beneath its warning: what the
+// driver's CLI wrote to stderr, verbatim, or, where it wrote nothing, the failure's
+// own text.
+func publishFailureOutput(cause error) string {
+	var cliErr *publish.CLIError
+	if errors.As(cause, &cliErr) && cliErr.Stderr != "" {
+		return cliErr.Stderr
+	}
+	return cause.Error()
 }
 
 // warnPostReleaseFailed emits the post-PONR warn-only event for a failed
@@ -2239,7 +2276,8 @@ func hookFailureOutput(cause error) string {
 
 // failureOutput is the failing tool's own message for cause, shown beneath its ✗ line:
 // a failed answers recording's write error or git stderr, a failed preflight or
-// pre_tag hook entry's stderr, or claude's output.
+// pre_tag hook entry's stderr, the stderr of any other git step that failed (the
+// push, the tag, a commit), or claude's output.
 func failureOutput(cause error) string {
 	var recordingErr *answersRecordingError
 	if errors.As(cause, &recordingErr) {
@@ -2247,6 +2285,14 @@ func failureOutput(cause error) string {
 	}
 	if output := hookFailureOutput(cause); output != "" {
 		return output
+	}
+	var gitErr *record.GitError
+	if errors.As(cause, &gitErr) {
+		return gitErr.Stderr
+	}
+	var cliErr *publish.CLIError
+	if errors.As(cause, &cliErr) {
+		return cliErr.Stderr
 	}
 	return notesFailureOutput(cause)
 }

@@ -160,3 +160,21 @@ func downgradeWarnLabels(rec *presentertest.RecordingPresenter) []string {
 func noProviderConfig() config.Config {
 	return config.Config{}
 }
+
+// TestResolvePublisher_GitHubOrigin_ReturnsTheDriver proves a github origin resolves a
+// real driver and warns nothing — the normal path is unaffected by the guard.
+func TestResolvePublisher_GitHubOrigin_ReturnsTheDriver(t *testing.T) {
+	t.Parallel()
+
+	f := runner.NewFakeRunner()
+	f.Seed("git", runner.Result{Stdout: "https://github.com/acme/widget.git\n"}, nil)
+	rec := &presentertest.RecordingPresenter{}
+
+	publisher, err := engine.ResolvePublisher(t.Context(), regenWriteDeps(rec, f), noProviderConfig())
+	if err != nil || publisher == nil {
+		t.Fatalf("ResolvePublisher = %v, %v, want a GitHub driver for a github.com origin", publisher, err)
+	}
+	if hasWarn(rec) {
+		t.Errorf("a resolved provider warned; kinds = %v", rec.Kinds())
+	}
+}

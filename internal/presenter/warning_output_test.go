@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/muesli/termenv"
-
 	"mint/internal/presenter"
 )
 
@@ -87,57 +85,22 @@ func TestPlainWarnWithOutputDoesNotSuppressSuccessFooter(t *testing.T) {
 	}
 }
 
-// TestPrettyWarnRendersCapturedOutputFlushBelowOutOnly proves the pretty warn
-// renders a non-empty Output flush and unstyled below the ⚠ line — mirroring
-// StageFailed's boxless captured-body treatment — while err receives only the
-// unstyled one-line summary.
-func TestPrettyWarnRendersCapturedOutputFlushBelowOutOnly(t *testing.T) {
-	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithErr(errBuf))
-
-	p.Warn(pushWarning())
-
-	wantOut := "⚠ push  commit is in place; re-run the push to retry\n" +
-		"remote: permission denied\nfatal: unable to access 'origin'\n"
-	if out.String() != wantOut {
-		t.Errorf("pretty warn out = %q, want %q", out.String(), wantOut)
-	}
-	wantErr := "⚠ push  commit is in place; re-run the push to retry\n"
-	if errBuf.String() != wantErr {
-		t.Errorf("pretty warn err = %q, want only the one-line summary %q", errBuf.String(), wantErr)
-	}
-}
-
-// TestPrettyWarnEmptyOutputRendersNoBlock proves the pretty Output=="" case stays
-// byte-identical to the pre-Output warn rendering.
-func TestPrettyWarnEmptyOutputRendersNoBlock(t *testing.T) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii))
-
-	p.Warn(presenter.Warning{Label: "post_release", Message: "hook exited 1"})
-
-	want := "⚠ post_release  hook exited 1\n"
-	if out.String() != want {
-		t.Errorf("pretty warn out = %q, want %q (no output block)", out.String(), want)
-	}
-}
-
-// TestWarnOutputBodyIsByteIdenticalAcrossModes proves the captured body region is
-// the SAME bytes in both modes — both presenters write Warning.Output through the
-// shared verbatim helper; only the framing differs.
-func TestWarnOutputBodyIsByteIdenticalAcrossModes(t *testing.T) {
+// TestRailWarnHangsCapturedOutputOnOutOnly proves the Rail hangs a warning's
+// captured Output under its node, each line intact behind the gutter, while err
+// receives only the unstyled one-line summary.
+func TestRailWarnHangsCapturedOutputOnOutOnly(t *testing.T) {
 	w := pushWarning()
+	r := newRailTerm(t, 100, 24, answers())
 
-	plainOut := &bytes.Buffer{}
-	presenter.NewPlainPresenter(plainOut, &bytes.Buffer{}).Warn(w)
-	prettyOut := &bytes.Buffer{}
-	presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii)).Warn(w)
+	r.Warn(w)
 
-	wantBody := w.Output + "\n"
-	if !strings.Contains(plainOut.String(), wantBody) {
-		t.Errorf("plain warn out %q does not contain the verbatim body %q", plainOut.String(), wantBody)
+	screen := strings.Join(r.screen(t), "\n")
+	for _, line := range strings.Split(w.Output, "\n") {
+		if !strings.Contains(screen, "│ "+line) {
+			t.Errorf("the rail doesn't hang output line %q behind a gutter:\n%s", line, screen)
+		}
 	}
-	if !strings.Contains(prettyOut.String(), wantBody) {
-		t.Errorf("pretty warn out %q does not contain the verbatim body %q", prettyOut.String(), wantBody)
+	if want := "⚠ push  commit is in place; re-run the push to retry\n"; r.err.String() != want {
+		t.Errorf("rail warn err = %q, want only the one-line summary %q", r.err.String(), want)
 	}
 }

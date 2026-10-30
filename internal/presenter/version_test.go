@@ -11,20 +11,6 @@ import (
 	"mint/internal/presenter/presentertest"
 )
 
-// TestVersionCarriesValueAndLeaf proves the Version payload carries the resolved
-// version value plus the engine-supplied brand leaf as fields — the presenter
-// renders what it is handed (plain ignores the leaf; pretty renders it).
-func TestVersionCarriesValueAndLeaf(t *testing.T) {
-	v := presenter.Version{Value: "1.4.0", Leaf: "🌱"}
-
-	if v.Value != "1.4.0" {
-		t.Errorf("Value = %q, want %q", v.Value, "1.4.0")
-	}
-	if v.Leaf != "🌱" {
-		t.Errorf("Leaf = %q, want %q", v.Leaf, "🌱")
-	}
-}
-
 // TestPlainPresenterShowVersionEmitsBareValue is the LOAD-BEARING plain contract:
 // ShowVersion writes EXACTLY the bare value plus a single trailing newline —
 // byte-for-byte. No "version:" prefix, no "v" prefix, no glyph, no ANSI, no extra
@@ -96,93 +82,23 @@ func TestPlainPresenterShowVersionWritesToStdoutOnly(t *testing.T) {
 	}
 }
 
-// TestPrettyPresenterShowVersionRendersDressedLine is the core pretty acceptance:
-// ShowVersion renders the dressed "🌿 mint v{value}" form with the brand leaf, the
-// "mint" brand, and the "v"-prefixed value. Asserted under the no-colour profile so
-// the layout/glyph is exact.
-func TestPrettyPresenterShowVersionRendersDressedLine(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.ShowVersion(presenter.Version{Value: "1.4.0"})
-	})
-
-	want := "🌿 mint v1.4.0\n"
-	if got := out.String(); got != want {
-		t.Errorf("ShowVersion pretty = %q, want %q", got, want)
-	}
-}
-
-// TestPrettyPresenterShowVersionColourOnEmitsANSI forces a colour-capable profile
-// and asserts the dressed line carries ANSI SGR escapes (additive styling) while the
-// load-bearing value and brand glyph survive.
-func TestPrettyPresenterShowVersionColourOnEmitsANSI(t *testing.T) {
-	out := drivePretty(termenv.TrueColor, func(p *presenter.PrettyPresenter) {
-		p.ShowVersion(presenter.Version{Value: "1.4.0"})
-	})
-
-	got := out.String()
-	if !bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("colour-on version line contains no ESC (0x1b) — expected SGR codes:\n%q", got)
-	}
-	if !strings.Contains(got, "🌿") {
-		t.Errorf("🌿 brand glyph missing from version line:\n%q", got)
-	}
-	if !strings.Contains(got, "v1.4.0") {
-		t.Errorf("v-prefixed value missing from version line:\n%q", got)
-	}
-}
-
-// TestPrettyPresenterShowVersionLayoutSurvivesColourDowngrade forces the no-colour
-// profile and asserts the dressed line survives as bare text — the value present, no
-// SGR codes leaking, exact layout.
-func TestPrettyPresenterShowVersionLayoutSurvivesColourDowngrade(t *testing.T) {
-	out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.ShowVersion(presenter.Version{Value: "1.4.0"})
-	})
-
-	if bytes.ContainsRune(out.Bytes(), 0x1b) {
-		t.Errorf("downgraded version output leaked an SGR code:\n%q", out.String())
-	}
-	want := "🌿 mint v1.4.0\n"
-	if got := out.String(); got != want {
-		t.Errorf("downgraded version output = %q, want %q", got, want)
-	}
-}
-
-// TestPrettyPresenterShowVersionUsesPayloadLeaf proves the pretty brand leaf comes
-// from the payload (consistent with RunInfo/RunResult): a supplied leaf is rendered,
-// and an empty leaf falls back to the 🌿 default via leafOrDefault.
-func TestPrettyPresenterShowVersionUsesPayloadLeaf(t *testing.T) {
-	supplied := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.ShowVersion(presenter.Version{Value: "1.4.0", Leaf: "🌱"})
-	})
-	if got, want := supplied.String(), "🌱 mint v1.4.0\n"; got != want {
-		t.Errorf("supplied-leaf version = %q, want %q", got, want)
-	}
-
-	defaulted := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.ShowVersion(presenter.Version{Value: "1.4.0", Leaf: ""})
-	})
-	if got, want := defaulted.String(), "🌿 mint v1.4.0\n"; got != want {
-		t.Errorf("empty-leaf version = %q, want %q (🌿 default)", got, want)
-	}
-}
-
-// TestPrettyPresenterShowVersionWritesToStdoutOnly proves the dressed version line
-// is narration → out ONLY and never duplicates to err, in both the colour-on and
-// colour-off cases (the err writer is captured via the stderr-split test seam).
-func TestPrettyPresenterShowVersionWritesToStdoutOnly(t *testing.T) {
+// TestRailShowVersionWritesToStdoutOnly proves the Rail's dressed version line is
+// narration → out ONLY and never duplicates to err, in both the colour-on and
+// colour-off cases.
+func TestRailShowVersionWritesToStdoutOnly(t *testing.T) {
 	for _, profile := range []termenv.Profile{termenv.Ascii, termenv.TrueColor} {
 		out := &bytes.Buffer{}
 		errBuf := &bytes.Buffer{}
-		p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(profile))
+		p := presenter.NewRailPresenter(out, presenter.WithRailErr(errBuf), presenter.WithRailProfile(profile))
 
 		p.ShowVersion(presenter.Version{Value: "1.4.0"})
+		p.Close()
 
 		if errBuf.Len() != 0 {
 			t.Errorf("profile %v: ShowVersion wrote to err: %q", profile, errBuf.String())
 		}
-		if out.Len() == 0 {
-			t.Errorf("profile %v: ShowVersion wrote nothing to out", profile)
+		if !strings.Contains(out.String(), "v1.4.0") {
+			t.Errorf("profile %v: ShowVersion wrote no version to out: %q", profile, out.String())
 		}
 	}
 }
@@ -203,15 +119,13 @@ func TestShowVersionEmitsNoFooterOrGate(t *testing.T) {
 		t.Errorf("plain version run emitted a release-style \"done:\" footer:\n%q", plainGot)
 	}
 
-	prettyOut := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-		p.ShowVersion(presenter.Version{Value: "1.4.0"})
-	})
-	prettyGot := prettyOut.String()
-	if strings.Contains(prettyGot, "released") {
-		t.Errorf("pretty version run emitted a release-style \"released\" footer:\n%q", prettyGot)
-	}
-	for _, marker := range []string{"done:", "Use these notes?", "› ", "y accept"} {
-		if strings.Contains(plainGot, marker) || strings.Contains(prettyGot, marker) {
+	railOut := &bytes.Buffer{}
+	rail := presenter.NewRailPresenter(railOut, presenter.WithRailProfile(termenv.Ascii))
+	rail.ShowVersion(presenter.Version{Value: "1.4.0"})
+	rail.Close()
+	railGot := railOut.String()
+	for _, marker := range []string{"done:", "Use these notes?", "y accept", "◆", "released"} {
+		if strings.Contains(plainGot, marker) || strings.Contains(railGot, marker) {
 			t.Errorf("version run emitted gate/footer marker %q", marker)
 		}
 	}
@@ -236,11 +150,11 @@ func TestShowVersionDrawsNoGate(t *testing.T) {
 }
 
 // TestRecordingPresenterRecordsShowVersion proves the recorder captures the full
-// Version payload — value and leaf — so an engine-driven test can round-trip the
+// Version payload so an engine-driven test can round-trip the
 // version event independent of any rendering.
 func TestRecordingPresenterRecordsShowVersion(t *testing.T) {
 	rec := &presentertest.RecordingPresenter{}
-	v := presenter.Version{Value: "1.4.0", Leaf: "🌱"}
+	v := presenter.Version{Value: "1.4.0"}
 
 	rec.ShowVersion(v)
 
@@ -256,8 +170,5 @@ func TestRecordingPresenterRecordsShowVersion(t *testing.T) {
 	}
 	if ev.ShowVersion.Value != "1.4.0" {
 		t.Errorf("Value = %q, want %q", ev.ShowVersion.Value, "1.4.0")
-	}
-	if ev.ShowVersion.Leaf != "🌱" {
-		t.Errorf("Leaf = %q, want %q", ev.ShowVersion.Leaf, "🌱")
 	}
 }

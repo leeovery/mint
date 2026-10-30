@@ -1,0 +1,9 @@
+ mint ─ commit                                                                ~/Code/pigeon · v0.1.2
+
+ ◇  main          7c1e0b4
+ │
+ ●  diff          2 files · +56 −12 · staged changes
+ ●  message       generated · accepted                                                          0.7s
+ ●  commit        a3f9c21
+ │
+ ◆  main          a3f9c21                                                                       2.1s

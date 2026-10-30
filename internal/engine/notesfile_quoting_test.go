@@ -60,7 +60,7 @@ func TestRegenerateRun_NotesFloorNextMoves_SavedPathWithASpaceIsQuotedInTheComma
 	path := run.savedPath(regenFloorTag)
 	assertSpaced(t, path)
 	tidy := "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release regenerate " +
-		regenFloorVersion + " --notes-file '" + path + "'"
+		regenFloorVersion + " --target release --notes-file '" + path + "'"
 	assertRegenStopsWithNextMoves(t, run, err, []string{tidy})
 	if sf := onlyStageFailureEvent(t, run.rec); sf.SavedNotes != path {
 		t.Errorf("StageFailure.SavedNotes = %q, want the raw path %q", sf.SavedNotes, path)
@@ -106,7 +106,7 @@ func TestRelease_DryRunFallback_SavedPathWithASpaceIsQuotedInTheCommandOnly(t *t
 	assertOnlyWarning(t, run.rec, presenter.Warning{
 		Label: "notes",
 		Message: "AI call failed (part 2 of 2); falling back to the commit-subject list; part notes saved to " + path +
-			" — release them with mint release --notes-file '" + path + "'",
+			" — release them with mint release --dry-run --notes-file '" + path + "'",
 		Output: usageLimitOutput,
 	})
 }
@@ -122,9 +122,9 @@ func TestRegenerateAll_SavedPathWithASpaceIsQuotedInTheSkipsCommandOnly(t *testi
 	path := run.savedPath("v1.1.0")
 	assertSpaced(t, path)
 	cause := "AI call failed (part 2 of 2); part notes saved to " + path +
-		" — tidy them and put them on it with mint release regenerate 1.1.0 --notes-file '" + path + "'"
+		" — tidy them and put them on it with mint release regenerate 1.1.0 --target release --notes-file '" + path + "'"
 	wantWarns := []presenter.Warning{{Label: "skipped v1.1.0", Message: cause, Output: usageLimitOutput}}
-	if got := warnings(run.rec); !slices.Equal(got, wantWarns) {
+	if got := plainWarnings(run.rec); !slices.Equal(got, wantWarns) {
 		t.Errorf("warnings = %+v, want %+v", got, wantWarns)
 	}
 	want := "2 regenerated, 1 skipped: v1.1.0 (" + cause + ")"

@@ -35,21 +35,20 @@ func TestPlainPresenterNextMoves_PrintsEachMoveOnItsOwnLine(t *testing.T) {
 	assertBytePureASCIIStreams(t, "plain next moves", out, errBuf)
 }
 
-func TestPrettyPresenterNextMoves_ListsTheMovesUnderAHeading(t *testing.T) {
+func TestPlainPresenterNextMoves_AMoveWithASentenceOfItsOwnPrintsThatSentence(t *testing.T) {
 	t.Parallel()
 
-	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.Ascii))
-	p.NextMoves(notesNextMoves())
-
-	want := "next moves:\n" +
-		"  - write the notes to a file and release with mint release --notes-file <file>\n" +
-		"  - re-run with --no-ai to release with the commit-subject list\n"
-	if got := out.String(); got != want {
-		t.Errorf("NextMoves out\n got: %q\nwant: %q", got, want)
+	move := presenter.NextMove{
+		Lead:     "Ship that list whenever the AI fails, under [release] in .mint.toml:",
+		Command:  `on_notes_failure = "fallback"`,
+		Sentence: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
 	}
-	if errBuf.Len() != 0 {
-		t.Errorf("stderr = %q, want nothing", errBuf.String())
+	out, _ := drive(func(p *presenter.PlainPresenter) {
+		p.NextMoves(presenter.NextMoves{Stage: "notes", Moves: []presenter.NextMove{move}})
+	})
+
+	if want := "notes: NEXT - " + move.Sentence + "\n"; out.String() != want {
+		t.Errorf("NextMoves out = %q, want the move's own sentence %q", out.String(), want)
 	}
 }
 
@@ -61,9 +60,11 @@ func TestNextMoves_NoMovesPrintNothing(t *testing.T) {
 	if plain.Len() != 0 {
 		t.Errorf("plain NextMoves = %q, want nothing", plain.String())
 	}
-	pretty := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) { p.NextMoves(empty) })
-	if pretty.Len() != 0 {
-		t.Errorf("pretty NextMoves = %q, want nothing", pretty.String())
+	rail, railOut, _ := railGate(termenv.Ascii, nil, gateOpts{})
+	rail.NextMoves(empty)
+	rail.Close()
+	if railOut.Len() != 0 {
+		t.Errorf("rail NextMoves = %q, want nothing", railOut.String())
 	}
 }
 

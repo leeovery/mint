@@ -14,6 +14,8 @@ A Go CLI that cuts releases and writes commits with AI-written notes,
 
 </div>
 
+<img src="art/tour.webp" alt="mint release -m from start to finish: the version, preflight and the pre_tag build, the exclusion check pausing on docs/specs/** and told to exclude it, the notes written in 4 parts and merged, their review accepted, then the atomic push past the point of no return, the GitHub release and the post_release hook, ending at v1.4.0 released" width="840">
+
 ---
 
 Mint replaces the release script every project grows. `mint release` bumps the version, has the AI write the release notes from the diff, updates the changelog, tags, pushes and publishes the GitHub release, and stops to show you the notes before anything is pushed. `mint commit` writes a Conventional Commits message from the diff you're about to commit, and commits when you accept it.
@@ -85,6 +87,8 @@ Run `mint setup` and follow what it prints.
 
 Adds mint to a repo: a minimal `.mint.toml` (an empty body under a short header that points to this README and to `mint setup`) and a `release` shim, both at the repo root. `./release` runs `mint release` with whatever arguments you give it, and says how to install mint where it's missing. Existing files are left alone unless you pass `--force`.
 
+<img src="art/init.webp" alt="mint init creating .mint.toml and the release shim" width="840">
+
 ```bash
 mint init [--force] [--plain]
 ```
@@ -143,6 +147,8 @@ How mint writes notes for big releases, what it does with files that don't belon
 
 Rewrites the notes of a release that's already out, on the GitHub release, in `CHANGELOG.md`, or both. Where the notes come from (the **source**) and what gets written (the **target**) are independent: any source can write any target.
 
+<img src="art/regenerate.webp" alt="mint release regenerate --all --target both -y regenerating six of seven versions from fresh notes, skipping v1.2.0 when the AI returns empty notes, then rebuilding and pushing CHANGELOG.md, with the command to retry v1.2.0 under next" width="840">
+
 ```bash
 mint release regenerate <version> [options]
 mint release regenerate --all [options]
@@ -190,6 +196,8 @@ What `--all` does with versions it can't regenerate, and how it rebuilds `CHANGE
 ### `commit`
 
 Writes an AI Conventional Commits message from the diff you'd commit, shows it at the review gate, and commits when you accept. The diff is the index as staged, or with `-a`/`-A` the changes those flags will stage. Nothing is staged or committed until you accept, so declining leaves the index exactly as it was.
+
+<img src="art/commit.webp" alt="mint commit -Ap: four files counted, the AI message accepted, then staged, committed and pushed" width="840">
 
 ```bash
 mint commit [-a | -A] [-p] [-y] [--no-ai] [--plain]
@@ -314,6 +322,8 @@ Then the moves that clear the cause:
 | AI tool missing | Install it, or set `ai_command` |
 | Anything else | The AI's own output names the cause; where the release's `ai_command` isn't the shipped default, the moves also point at the lean command, for a command whose overhead alone can overflow the model's window |
 
+<img src="art/failed.webp" alt="mint release -m -y stopping when part 3 of 5 of the notes fails on a usage limit: the AI output and the saved part-notes path under the failed notes row, the unwind back to v1.3.2 with nothing pushed, and the next moves" width="840">
+
 A `--dry-run` asks nothing in any mode: it prints the next moves and exits `1`. At a terminal without `-y` it leaves out the `on_notes_failure = "fallback"` move, since the real run there offers the choice. Part notes it saved stay for the real run to release with `--notes-file` instead of calling the AI again.
 
 **Under `fallback`**, attended or not, there's no choice: the commit-subject list replaces the AI notes and the run goes on, with a warning that names the cause and the AI's output beneath it. Where the run saved part notes, the warning names the file and both commands that release it: `mint release regenerate <version> --notes-file <path>`, which puts them on the version once this release is out, and `mint release --notes-file <path>`, for a run that ends before the push, such as an abort at the review gate. An attended run then shows the list at the review gate (`y`, `n`, `e`). A `--dry-run` previews the list as the notes that would ship, with the same warning, naming a saved file with `mint release --notes-file <path>` only.
@@ -349,6 +359,8 @@ P may sit in the repo, untracked or a tracked file with uncommitted edits. Mint 
 ### Dry runs and cached notes
 
 `-d` runs the release up to the review gate without changing the repo. It fetches tags and calls the AI (the exclusion check and the notes), but runs no hooks, asks nothing, and makes no commit, stash or tag; then it prints the plan and the notes that would ship. With `--autostash` it previews a dirty tree without stashing; without it, a dirty tree fails the clean-tree check as a real run would.
+
+<img src="art/dry-run.webp" alt="mint release -m --dry-run: the hooks left hollow, the exclusion question and the notes review previewed without asking, the notes written in 5 parts, ending at v1.4.0 dry run, nothing changed" width="840">
 
 The previewed notes are cached for an hour, outside the repo. A real run within the hour whose diff, version and prompt match asks `Cached notes found for this diff — use them?` (`y` uses them, `r` writes new ones; `-y` uses them) instead of calling the AI for the notes again. A real run that stops before the push leaves its notes cached the same way. Since a dry run skips the hooks, a `pre_tag` that changes files, or an Exclude you answer in the real run, changes the diff, and the real run writes fresh notes.
 

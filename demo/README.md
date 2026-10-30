@@ -25,11 +25,13 @@ demo/record.sh tour commit   # the tapes named
 | `regenerate` | `regenerate.webp`, a still: `mint release regenerate --all --target both -y`, v1.2.0 skipped |
 | `init` | `init.webp`, a still: `mint init` in an empty repo |
 
-The art goes to `demo/out/art/`. `look.tape` holds the settings every tape sources; each tape
-sets the height its run needs. Each tape ends on a `Wait+Screen` for a line only its run's real
-flow prints, so a shim answering wrongly, or mint failing early, fails the recording rather than
-leaving a still that looks right. Those lines are mint's own words: a change to the output
-changes them too.
+The art goes to `art/` at the repository's root, where the README takes it from, so `git diff`
+shows what a recording changed and the art is committed with the change it shows. `look.tape`
+holds the settings every tape sources; each tape sets the height its run needs at its tallest,
+and a still is cropped to what its last frame drew. Each tape ends on a `Wait+Screen` for a line
+only its run's real flow prints, so a shim answering wrongly, or mint failing early, fails the
+recording rather than leaving a still that looks right. Those lines are mint's own words: a
+change to the output changes them too.
 
 ## The world
 
@@ -45,7 +47,8 @@ once, but the paths in its frames then name that directory: record the art at th
 delivery service, lives at `~/Code/pigeon`, released with mint from v1.0.0 to v1.3.2. Its
 `.mint.toml` names the AI command, a `pre_tag` hook (`npm ci && npm run build`, which writes
 `dist/`), a `post_release` hook, `package.json` as the version file, and a `max_prompt_bytes`
-low enough that the notes of v1.4.0 are written in 4 parts. Each variant is a mode of `world.sh`:
+low enough that the notes of v1.4.0 are written in 4 parts (in 5 where `docs/specs/` stays in
+the diff, as in `failed` and `dry-run`). Each variant is a mode of `world.sh`:
 
 - **`release`**: pigeon with the work since v1.3.2 committed and pushed, ready for v1.4.0: the
   retry, replay, dashboard and signing changes, and six design documents under `docs/specs/` for
@@ -75,8 +78,8 @@ reached through a `url.insteadOf` in the world's own gitconfig, which the shell 
 **The part count.** v1.4.0's notes come in 4 parts because `max_prompt_bytes` (in `mint_toml`
 in `world.sh`, 20800) leaves only so much room for diff beside mint's notes prompt, its Change
 Map and its framing. A change to mint's prompt, or to pigeon's history, shifts the room and so the
-count, without a word. To recalibrate, record `tour` and read its `Notes written (N parts,
-merged)`: raise `max_prompt_bytes` for fewer parts, lower it for more, a few hundred bytes at a
+count, without a word. To recalibrate, record `tour` and read its notes row, `generated in N parts,
+merged`: raise `max_prompt_bytes` for fewer parts, lower it for more, a few hundred bytes at a
 time. The exclusion check's pause must still come, and `failed` needs at least 3 parts.
 
 The shims on the world's `PATH`:
@@ -117,8 +120,12 @@ The shell reports `COLORTERM=truecolor`, as Ghostty and iTerm do.
 - **The art.** For a clip, an animated WebP, which GitHub shows inline, at the frames' 30 a second,
   and an H.264 MP4 of the same frames; for a still, a lossless WebP of the last frame. Each frame
   is set in a margin of the theme's background.
+- **The crop.** A still's screen is as tall as its run's tallest moment, such as `commit`'s
+  message at its question, so its last frame can end in empty rows. `finalize.sh` finds the
+  first and last rows holding a pixel unlike the margin's, reading every pixel, and cuts below
+  the last, leaving under it the margin above the first. Clips keep their full height.
 
-`demo/out/` is remade each time and never committed.
+`demo/out/`, the world and the frames, is remade each time and never committed.
 
 ## Setting up
 

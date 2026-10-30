@@ -32,7 +32,7 @@ var _ presenter.Presenter = (*presentertest.RecordingPresenter)(nil)
 
 // seedDiffThenCommit returns a FakeRunner scripting the bare-commit thread's three
 // git invocations IN ORDER: the empty-index preflight (`git diff --cached
-// --name-only`) reports a non-empty staged index so preflight passes, the L1
+// --numstat`) reports a non-empty staged index so preflight passes, the L1
 // `git diff --cached` read returns diff on stdout, then the `git commit -F -`
 // mutation returns a clean success. The FakeRunner matches on command name only, so
 // a SeedSequence keyed on "git" distinguishes the same-binary calls (a plain Seed
@@ -41,7 +41,7 @@ func seedDiffThenCommit(diff string) *runner.FakeRunner {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached
 		runner.ScriptedCall{}, // git commit -F -
 		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
@@ -92,28 +92,30 @@ func newCommitDeps(rec *presentertest.RecordingPresenter, r *runner.FakeRunner, 
 }
 
 // gitInvocationsOf returns the commit pipeline's own `git` invocations in invs, in
-// order: every git call but the two station reads (scriptedHead's and
-// scriptedShortHead's), which only feed the presenter and are pinned by the station
+// order: every git call but the display reads (scriptedHead's, scriptedShortHead's and
+// where a push went), which only feed the presenter and are pinned by the rail payload
 // tests. It takes an already-extracted invocation slice so ONE helper serves both the
 // raw-runner (r.Invocations()) and editorRunner (er.fake.Invocations()) sources.
 func gitInvocationsOf(invs []runner.Invocation) []runner.Invocation {
 	var gits []runner.Invocation
 	for _, inv := range invs {
-		if inv.Name == "git" && !isStationRead(inv.Args) {
+		if inv.Name == "git" && !isDisplayRead(inv.Args) {
 			gits = append(gits, inv)
 		}
 	}
 	return gits
 }
 
-// stationReads are the argv of the start and end stations' reads.
-var stationReads = [][]string{
+// displayReads are the argv of the reads that only feed the presenter: the start and
+// end stations', and, once a push has gone through, where it went.
+var displayReads = [][]string{
 	{"rev-parse", "HEAD", "--abbrev-ref", "HEAD"},
 	{"rev-parse", "--short", "HEAD"},
+	{"rev-parse", "--abbrev-ref", "@{push}"},
 }
 
-func isStationRead(args []string) bool {
-	return slices.ContainsFunc(stationReads, func(read []string) bool { return slices.Equal(args, read) })
+func isDisplayRead(args []string) bool {
+	return slices.ContainsFunc(displayReads, func(read []string) bool { return slices.Equal(args, read) })
 }
 
 // gitVerbInvocations returns only the `git <verb> …` invocations in invs (Name=="git"
@@ -243,7 +245,7 @@ func TestRun_CommitCreatedViaGitSafe(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                       // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work"}}, // git diff --cached
 		runner.ScriptedCall{ // git commit attempt 1: lock contention
 			Result: runner.Result{Stderr: "fatal: Unable to create '/nope/.git/index.lock': File exists\nAnother git process seems to be running"},
@@ -655,7 +657,7 @@ func TestRun_NotAGitRepository_FailsLoudNoAINoCommit(t *testing.T) {
 
 // TestRun_EmptyStagedIndex_FailsLoudWithGitMessage proves an empty staged index
 // fails loud with git's exact clean-tree line. The preflight read (`git diff
-// --cached --name-only`) reports an empty index (empty stdout), so the run aborts
+// --cached --numstat`) reports an empty index (empty stdout), so the run aborts
 // before generate, surfacing the message verbatim through the presenter.
 func TestRun_EmptyStagedIndex_FailsLoudWithGitMessage(t *testing.T) {
 	t.Parallel()
@@ -753,14 +755,14 @@ func TestRun_PreflightRunsBeforeGenerate(t *testing.T) {
 	if len(gits) < 2 {
 		t.Fatalf("git invocations = %v, want at least the preflight read then the generation diff", gits)
 	}
-	// The preflight read is the empty-index check (`git diff --cached --name-only`);
+	// The preflight read is the empty-index check (`git diff --cached --numstat`);
 	// the second is generation's L1 diff. Both are `git diff`, distinguished by the
-	// preflight carrying --name-only and running first.
-	if !containsArg(gits[0].Args, "--name-only") {
-		t.Errorf("first git call = %v, want the empty-index preflight read (`git diff --cached --name-only`)", gits[0].Args)
+	// preflight carrying --numstat and running first.
+	if !containsArg(gits[0].Args, "--numstat") {
+		t.Errorf("first git call = %v, want the empty-index preflight read (`git diff --cached --numstat`)", gits[0].Args)
 	}
-	if containsArg(gits[1].Args, "--name-only") {
-		t.Errorf("second git call = %v, want generation's L1 diff (not the --name-only preflight read)", gits[1].Args)
+	if containsArg(gits[1].Args, "--numstat") {
+		t.Errorf("second git call = %v, want generation's L1 diff (not the --numstat preflight read)", gits[1].Args)
 	}
 }
 

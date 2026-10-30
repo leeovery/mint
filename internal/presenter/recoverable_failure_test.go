@@ -1,12 +1,9 @@
 package presenter_test
 
 import (
-	"bytes"
 	"io"
 	"strings"
 	"testing"
-
-	"github.com/muesli/termenv"
 
 	"mint/internal/presenter"
 )
@@ -45,19 +42,6 @@ func TestRecoverableFailure_LeavesTheSuccessLineStanding(t *testing.T) {
 			t.Errorf("plain output = %q, want %q", got, want)
 		}
 	})
-
-	t.Run("pretty", func(t *testing.T) {
-		t.Parallel()
-
-		out := drivePretty(termenv.Ascii, func(p *presenter.PrettyPresenter) {
-			p.StageFailed(recoverableNotesFailure())
-			p.RunFinished(finished)
-		})
-
-		if !strings.HasSuffix(out.String(), "\n🌿 released acme v1.4.0\n") {
-			t.Errorf("pretty output = %q, want it to end with the release's success line", out.String())
-		}
-	})
 }
 
 func TestRecoverableFailure_StillEndsTheRunWhenItUnwinds(t *testing.T) {
@@ -86,24 +70,22 @@ func (s *readSnapshot) Read(p []byte) (int, error) {
 	return s.r.Read(p)
 }
 
-func TestPrettyRecoverableFailure_NoSpinnerAnimatesWhileTheNextGateWaits(t *testing.T) {
+func TestRailRecoverableFailure_NoSpinnerAnimatesWhileTheNextGateWaits(t *testing.T) {
 	t.Parallel()
 
-	tr := &spyTracker{}
-	activeAtRead := -1
-	in := &readSnapshot{r: strings.NewReader("a\n"), at: func() { activeAtRead = tr.active }}
-	p := presenter.NewPrettyPresenter(&bytes.Buffer{}, presenter.WithProfile(termenv.Ascii), presenter.WithErr(&bytes.Buffer{}), presenter.WithInput(in)).
-		WithSpinnerFactory(tr.factory()).
-		WithInteractiveStdin(true)
+	var r *railTerm
+	tickingAtRead := true
+	in := &readSnapshot{r: strings.NewReader("a\n"), at: func() { tickingAtRead = r.ticks.running() }}
+	r = newRailTerm(t, 80, 24, in)
 
-	p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
-	p.StageFailed(recoverableNotesFailure())
-	choice, err := p.Prompt(floorLikeGate())
+	r.StageStarted(presenter.StageStart{Name: "notes", Key: "notes", Blocking: true})
+	r.StageFailed(recoverableNotesFailure())
+	choice, err := r.Prompt(floorLikeGate())
 
 	if err != nil || choice != presenter.ChoiceAbort {
 		t.Fatalf("Prompt = %q, %v, want %q", choice, err, presenter.ChoiceAbort)
 	}
-	if activeAtRead != 0 {
-		t.Errorf("spinners animating while the gate waited = %d, want 0", activeAtRead)
+	if tickingAtRead {
+		t.Error("the spinner's ticker ran while the gate waited")
 	}
 }

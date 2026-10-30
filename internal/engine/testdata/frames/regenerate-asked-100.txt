@@ -1,0 +1,15 @@
+ mint ─ release regenerate                                                    ~/Code/pigeon · v0.1.2
+
+ ?  Source?   fresh re-diff + AI   tag tag annotation body   release published release body › tag
+ ?  Target?   release provider release   changelog CHANGELOG.md   both both › release
+ ◇  v1.4.0        tag → GitHub release
+ │
+ ●  notes         read from the tag annotation                                                  0.7s
+ │
+ │    Replay a delivery from the dashboard.
+ │
+ ?  Use these notes?   y accept   n abort › y
+ ●  review        accepted
+ ●  release       GitHub release written
+ │
+ ◆  v1.4.0        regenerated                                                                   2.1s

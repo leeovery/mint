@@ -1,0 +1,21 @@
+ mint ─ release regenerate --all                                              ~/Code/pigeon · v0.1.2
+
+ ◇  3 versions    fresh notes → GitHub releases
+ │
+ ●  v1.0.0        GitHub release · the first release's default · accepted                       2.8s
+ ●  v1.1.0        notes generated · regenerate
+ │
+ │    What changed in v1.1.0, in a line.
+ │
+ ●  v1.1.0        notes generated
+ │
+ │    Webhooks now retry failed deliveries for up to an hour.
+ │
+ │    ## ✨ Added
+ │    - Backoff retries for failed webhook deliveries.
+ │
+ ●  v1.1.0        accepted
+ ●  v1.1.0        GitHub release                                                                6.3s
+ ●  v1.2.0        GitHub release · accepted                                                     2.8s
+ │
+ ◆  done          3 of 3 versions regenerated                                                  18.2s

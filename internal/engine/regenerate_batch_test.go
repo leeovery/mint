@@ -68,12 +68,12 @@ func batchReq(source engine.RegenerateSource, versions []version.Resolution, yes
 }
 
 // runStartedVersions returns, in recorded order, the Version of every RunStarted event
-// — the load-bearing way to assert one narration block opened per version, oldest →
-// newest.
+// plain renders — the load-bearing way to assert one narration block opened per
+// version, oldest → newest. The rail's Quiet header and station are not plain's.
 func runStartedVersions(rec *presentertest.RecordingPresenter) []string {
 	var versions []string
 	for _, ev := range rec.Events {
-		if ev.Kind == presentertest.KindRunStarted {
+		if ev.Kind == presentertest.KindRunStarted && !ev.RunStarted.Quiet {
 			versions = append(versions, ev.RunStarted.Version)
 		}
 	}

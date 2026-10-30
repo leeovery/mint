@@ -54,7 +54,7 @@ func run(args []string) int {
 	// byte-identical. It deliberately needs no git repo — and no signal context, since
 	// it spawns nothing to interrupt.
 	if hasVersionFlag(args) {
-		return runVersion(os.Stdout, os.Stderr, os.Stdin)
+		return runVersion(hasPlainFlag(args), os.Stdout, os.Stderr, os.Stdin)
 	}
 
 	// `mint help` / `mint --help` is the top-level help surface — a requested action,
@@ -100,7 +100,7 @@ func run(args []string) int {
 	case commandInit:
 		return runInit(ctx, rest)
 	case commandVersion:
-		return runVersion(os.Stdout, os.Stderr, os.Stdin)
+		return runVersion(hasPlainFlag(rest), os.Stdout, os.Stderr, os.Stdin)
 	case commandCommit:
 		return runCommit(ctx, rest)
 	case commandSetup:
@@ -140,7 +140,10 @@ func runRegenerate(ctx context.Context, rest []string) int {
 		return usageExitCode
 	}
 
+	// Pretty output is the Rail, whose drawing ends once the run is over, however it
+	// ends.
 	p := presenter.NewForStartup(req.Plain, req.Yes, os.Stdout, os.Stderr, os.Stdin)
+	defer presenter.Close(p)
 	req.StdinInteractive = presenter.DetectStartupSignals(req.Plain, os.Stdout, os.Stdin).StdinInteractive
 	return regenerate(ctx, p, runner.NewExecRunner(), req, notescache.NewUserChunkNotes(os.UserCacheDir))
 }
@@ -174,11 +177,10 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 	}
 
 	// Resolve the release branch (read-only, the same way the forward path does) for the
-	// preflight on-branch / remote-sync gates. Both dispatch paths consume it: the batch
-	// path preflights here up front (its axes are resolved inside runRegenerateAll); the
-	// single-version path threads it into RegenerateRun, which preflights the RESOLVED
-	// target AFTER the interactive source/target prompts — the only point at which a bare
-	// `regenerate <ver>` (no --target) knows which surface(s) it writes.
+	// preflight on-branch / remote-sync gates. Both dispatch paths thread it into their
+	// run (RegenerateAllRun, RegenerateRunResolving), which preflights the RESOLVED
+	// target AFTER the interactive source/target prompts — the only point at which a
+	// bare invocation (no --target) knows which surface(s) it writes.
 	releaseBranch, err := gitrepo.ResolveReleaseBranch(ctx, r, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mint: %v\n", err)
@@ -212,8 +214,8 @@ func regenerate(ctx context.Context, p presenter.Presenter, r runner.CommandRunn
 
 // runRegenerateSingle executes one single-version interactive regenerate run: it
 // resolves the <version> argument to its canonical tag + fresh diff base (task 5-3),
-// resolves the publishing driver, then runs the interactive default flow (task 5-10) —
-// asking source/target as needed, preflighting the RESOLVED target's gate subset,
+// then runs the interactive default flow (task 5-10) — resolving the publishing driver
+// once the run has opened, asking source/target as needed, preflighting the RESOLVED target's gate subset,
 // showing the plan, and confirming before the write. releaseBranch threads to the
 // engine for the preflight on-branch / remote-sync gates, which run AFTER the
 // interactive target resolves (a bare `regenerate <ver>` does not know its surface(s)
@@ -233,16 +235,6 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 		return exitCode(err)
 	}
 
-	// Resolve the publishing driver through the SHARED engine helper, which handles an
-	// unresolvable provider exactly as the forward engine.Release path does — warn-and-
-	// downgrade (a nil publisher proceeds, the provider write is skipped downstream) or a
-	// clean abort. This REPLACES the former `publisher, _ := …` discard that passed a nil
-	// interface down and crashed DispatchRelease on a non-github / no-remote origin.
-	publisher, code, proceed := resolveRegeneratePublisher(ctx, deps, cfg)
-	if !proceed {
-		return code
-	}
-
 	runReq := regenerateRunFlags(req)
 	runReq.Supplied = supplied
 	runReq.Tag = res.Tag
@@ -252,34 +244,28 @@ func runRegenerateSingle(ctx context.Context, deps engine.ReleaseDeps, r runner.
 	runReq.ReleaseBranch = releaseBranch
 	runReq.ChangelogEnabled = cfg.Release.Changelog
 	runReq.Config = cfg
-	runReq.ProduceBody = newRegenerateBodyProducer(r, cfg, root, res, publisher)
+	// The publishing driver resolves inside the run, through the SHARED engine helper,
+	// which handles an unresolvable provider exactly as the forward engine.Release path
+	// does — warn-and-downgrade (a nil publisher proceeds, the provider write is skipped
+	// downstream) or a clean abort. The body producer reads the driver it resolved.
+	var publisher publish.Publisher
+	resolve := func(ctx context.Context) (publish.Publisher, error) {
+		var err error
+		publisher, err = engine.ResolvePublisher(ctx, deps, cfg)
+		return publisher, err
+	}
+	runReq.ProduceBody = func(ctx context.Context, source engine.RegenerateSource, sinks engine.NotesSinks) (string, error) {
+		return newRegenerateBodyProducer(r, cfg, root, res, publisher)(ctx, source, sinks)
+	}
 	// The fresh notes-review gate's `r` choice consults this per-run regenerator,
 	// bound to the resolved range — the regenerate analogue of the forward path's
 	// per-run regenerator. Without it the rendered `r` would abort.
 	runReq.ProduceRegenerator = newRegenerateRegeneratorProducer(r, cfg, root, res)
 
-	if err := engine.RegenerateRun(ctx, deps, publisher, root, runReq); err != nil {
+	if err := engine.RegenerateRunResolving(ctx, deps, root, runReq, resolve); err != nil {
 		return exitCode(err)
 	}
 	return 0
-}
-
-// resolveRegeneratePublisher resolves the publishing driver for a regenerate run via the
-// SHARED engine.ResolvePublisher, which mirrors the forward engine.Release Stage-6
-// handling: a RESOLVED provider yields the driver; an UNRESOLVED provider (a non-github /
-// no-remote origin) WARNS and downgrades to a nil publisher; any other resolution error
-// is a surfaced abort. It collapses that into the cmd layer's three needs: the publisher
-// to thread (nil on a downgrade — the engine write nil-guards it), the exit code, and
-// whether to proceed. It returns proceed=true with a nil publisher on a clean downgrade,
-// and proceed=false with the abort's exit code on a real failure. Both regenerate dispatch
-// paths (single-version and --all) share it so neither can drift back to discarding the
-// resolver error.
-func resolveRegeneratePublisher(ctx context.Context, deps engine.ReleaseDeps, cfg config.Config) (publish.Publisher, int, bool) {
-	publisher, err := engine.ResolvePublisher(ctx, deps, cfg)
-	if err != nil {
-		return nil, exitCode(err), false
-	}
-	return publisher, 0, true
 }
 
 // runRelease is the thin shell of `mint release`: it builds the production seams
@@ -301,8 +287,10 @@ func runRelease(ctx context.Context, rest []string) int {
 	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
 
 	// Construct the presenter ONCE at startup — the single production construction
-	// site. TTY/mode detection never happens downstream.
+	// site. TTY/mode detection never happens downstream. Pretty output is the Rail,
+	// whose drawing ends once the run is over, however it ends.
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
+	defer presenter.Close(p)
 
 	return release(ctx, p, runner.NewExecRunner(), opts, signals.StdinInteractive,
 		newNoteCache(), notescache.NewUserChunkNotes(os.UserCacheDir))
@@ -363,8 +351,10 @@ func runCommit(ctx context.Context, rest []string) int {
 	signals := presenter.DetectStartupSignals(opts.Plain, os.Stdout, os.Stdin)
 
 	// Construct the presenter ONCE at startup — the single production construction
-	// site. TTY/mode detection never happens downstream.
+	// site. TTY/mode detection never happens downstream. Pretty output is the Rail,
+	// whose drawing ends once the run is over, however it ends.
 	p := presenter.NewForStartup(opts.Plain, opts.Yes, os.Stdout, os.Stderr, os.Stdin)
+	defer presenter.Close(p)
 
 	// One runner backs the read-side staged-diff seam; the lock-resilient git Mutator
 	// is constructed ONCE over it and serves as the commit sink so the commit mutation

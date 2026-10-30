@@ -12,23 +12,29 @@ const (
 	// pauseQuestion is the exclusion pause's question once its glob has moved into
 	// the question's name.
 	pauseQuestion = "Exclude it from the notes?"
-	// reviewName names the row that records an answer about a node already settled
-	// above the question, as a body too tall for the region leaves it.
+	// reviewName names the row that records a review's answer about a node already
+	// settled above the question, as a body too tall for the region leaves it, but
+	// for a node that goes on past the question, which the row names.
 	reviewName = "review"
 )
 
 // Prompt asks g as a question node on the rail and returns its answer. Under -y
 // nothing is asked: the default is taken and the node it settles records it, the
 // auto-accept echo. Without an interactive stdin it fails loud, rendered, with
-// ErrNotInteractive. Otherwise a single keypress answers, as today's presenter reads
-// it, where the input is a terminal and every key one character, and a typed line
-// answers where not. Input closed before an answer returns ErrInputClosed, not
-// rendered.
+// ErrNotInteractive. Otherwise a single keypress answers where the input is a
+// terminal and every key one character, and a typed line answers where not, what
+// was typed before the question was asked discarded first. Input closed before an
+// answer, or Ctrl-C, returns ErrInputClosed, not rendered, and once Ctrl-C has ended
+// a typed line every question after it does.
 func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
 	if c, err, done := p.unasked(g); done {
 		return c, err
 	}
-	f, keys := rawKeyFile(p.in)
+	if p.input.abandoned {
+		return "", ErrInputClosed
+	}
+	p.input.discardTypedAhead()
+	f, keys := rawKeyFile(p.input.in)
 	keys = keys && singleKeyGate(g)
 	q := p.ask(g, !keys)
 	if keys {
@@ -48,7 +54,7 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 	defer p.mu.Unlock()
 	switch {
 	case p.yes:
-		p.answer(g, g.Default, true)
+		p.answer(g, g.Default, true, nil)
 		p.redraw()
 		return g.Default, nil, true
 	case !p.stdinInteractive:
@@ -62,12 +68,13 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 // after a line that names none of its keys.
 func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 	for {
-		line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
+		line, ended, err := p.input.line()
 		p.released(ended)
 		if err != nil {
 			return "", p.answered(g, q, "", err)
 		}
 		if c, ok := parseChoice(line, g); ok {
+			q.typed = line
 			return c, p.answered(g, q, c, nil)
 		}
 		p.reask(q)
@@ -76,9 +83,11 @@ func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 
 // AskLine asks prompt as a question node reading a typed line, the cursor on it, and
 // returns the line verbatim. What is typed is the terminal's echo, so nothing redraws
-// while the line is read, and the question and the line stay as typed. Without an
-// interactive stdin it fails loud, rendered, with ErrNotInteractive, -y or not;
-// input closed returns ErrInputClosed, not rendered.
+// while the line is read, and the question and the line stay as typed; what was
+// typed before it was asked is discarded first. Without an interactive stdin it fails
+// loud, rendered, with ErrNotInteractive, -y or not; input closed, or Ctrl-C, returns
+// ErrInputClosed, not rendered, and once Ctrl-C has ended a typed line it returns it
+// without asking.
 func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	p.mu.Lock()
 	if !p.stdinInteractive {
@@ -86,9 +95,14 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 		p.mu.Unlock()
 		return "", ErrNotInteractive
 	}
+	if p.input.abandoned {
+		p.mu.Unlock()
+		return "", ErrInputClosed
+	}
+	p.input.discardTypedAhead()
 	q := p.open(&part{kind: questionPart, question: rail.Question{Text: prompt, Typing: true}}, "")
 	p.mu.Unlock()
-	line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
+	line, ended, err := p.input.line()
 	p.released(ended)
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -143,7 +157,7 @@ func (p *RailPresenter) present(q *part) {
 // once the line is read, nothing gone back over. A stage still running above the
 // question comes back live with the region.
 func (p *RailPresenter) readAt(q *part, rows int) {
-	q.shown = true
+	q.shown, q.read = true, true
 	if p.fits {
 		p.run.settleAbove(q)
 	} else {
@@ -199,7 +213,12 @@ func (p *RailPresenter) answered(g Gate, q *part, c Choice, err error) error {
 	defer p.mu.Unlock()
 	p.dismiss(q)
 	if err == nil {
-		p.answer(g, c, false)
+		p.answer(g, c, false, q)
+	} else {
+		// A node that went on past the question goes on no more, so the failure
+		// that says why draws under what the question showed, as one after an
+		// answer does, not in place above it.
+		p.run.rerun(g.Stage)
 	}
 	p.redraw()
 	return err
@@ -219,9 +238,10 @@ func (p *RailPresenter) dismiss(q *part) {
 }
 
 // question is g as a question part of kind: a preview has no keys. Where the
-// exclusion check's node is drawn, the pause's glob is its name and what the AI said
-// of it hangs above it under that node, which a preview leaves there; with the node
-// settled, the pause asks in the gate's own words, which say it all.
+// exclusion check's node is drawn, a pause asked takes its glob as its name, and what
+// the AI said of it hangs above it under that node until it is answered. With the
+// node settled, and in a dry run's previews, which stay, one under another, the pause
+// asks in the gate's own words, which say it all, so each carries its own reason.
 func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
@@ -230,55 +250,99 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 		}
 	}
 	x, check := g.Suggestion, p.run.find(g.Stage)
-	if x == nil || check == nil {
+	if x == nil || check == nil || kind != questionPart {
 		return q
 	}
 	check.node.Lines = append(slices.Clone(check.node.Lines), rail.Hang{Kind: rail.Note, Text: about(*x)})
-	q.question.Name, q.question.Text = x.Glob, pauseQuestion
-	if kind == questionPart {
-		q.about = check
-	}
+	q.question.Name, q.question.Text, q.about = x.Glob, pauseQuestion, check
 	return q
 }
 
-// answer settles c as g's answer, auto where -y took it: the exclusion pause's as a
-// line under the check's node; any other's as the tail of the node it asked about,
-// what hung above it gone, or, that node settled above or a body of the question
-// settled, on a row of its own under the last body; a gate asked before the run's
-// stages as a row naming what was chosen. An edit or a regenerate settles nothing:
-// it opens the question's loop, until the next answer to any gate, the body is
-// shown again, in place, and the question comes back.
-func (p *RailPresenter) answer(g Gate, c Choice, auto bool) {
+// answer settles c as g's answer to the question q, nil where -y took it: the
+// exclusion pause's as a line under the check's node; any other's as the tail of the
+// node it asked about, what hung above it gone, or, that node settled above or a body
+// of the question settled, on a row of its own under the last body; a gate asked
+// before the run's stages as a row naming what was chosen, unless the question and
+// the line typed at it stay as its record. A review's regenerate settles as any answer
+// does, but its body stays, settled under the node it settles, so the draft is in
+// view while what to change is typed: its stage runs again as a node of its own
+// below, under which the body and the question come back. A review's edit settles
+// nothing: it opens the question's loop, until the next answer to any gate, the body
+// is shown again, in place, and the question comes back. A warning drawn while the
+// loop was open, under the node, came before the answer, which records on a row of
+// its own under it.
+func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	p.run.looping = false
 	if x := g.Suggestion; x != nil {
 		p.run.hang(g.Stage, rail.Hang{Kind: rail.Note, Text: x.Glob + " " + pauseAnswer(g, c, auto) + " · " + x.Reason})
 		return
 	}
-	if c == ChoiceEdit || c == ChoiceRegen {
+	if c == ChoiceEdit && g.Review {
 		p.run.looping, p.run.asked = true, g.Stage
 		return
 	}
-	out := p.run.bodyOut
-	p.run.bodyOut, p.run.lastBody = false, ""
-	if body := p.run.partOf(bodyPart); body != nil && !body.out {
+	out, last, warned := p.run.bodyOut, p.run.lastBody, p.run.loopWarned
+	p.run.bodyOut, p.run.lastBody, p.run.loopWarned = false, "", false
+	switch body := p.run.partOf(bodyPart); {
+	case c == ChoiceRegen && g.Review:
+		p.run.keepBody(body, out, last)
+		p.run.rerun(g.Stage)
+	case body != nil && !body.out:
 		p.run.remove(body)
 	}
 	tail := answerTail(g, c, auto)
 	switch asked := p.run.find(g.Stage); {
-	case asked != nil && (!out || asked.node.State == rail.ToCome):
+	case asked != nil && (!out && !warned || asked.node.State == rail.ToCome):
 		if asked.node.State == rail.ToCome {
-			asked.node.State, asked.node.Detail = rail.Done, firstOf(g.Detail, asked.plan)
+			asked.node.State = rail.Done
+			asked.node.Detail, tail = settled(g, c, asked.plan, tail)
 		}
 		asked.node.Tail = tail
 		p.run.touched = asked
+	case g.Stage == "" && q != nil && q.read && strings.TrimSpace(q.typed) != "":
 	case g.Stage == "":
 		p.run.add(rail.Node{Name: g.Subject, Detail: chosen(g, c), Tail: autoTail(auto)})
-	case out || p.run.gone[g.Stage]:
-		p.run.add(rail.Node{Name: reviewName, Detail: tail})
+	case out || warned || p.run.gone[g.Stage]:
+		p.run.add(recordRow(g, c, q, tail))
 	default:
 		n := p.run.stage(g.Stage, g.Stage).node
 		n.Detail, n.Tail = g.Detail, tail
 	}
+}
+
+// recordRow is the row recording c, g's answer to the question q, nil where -y took
+// it, tail being how the answer reads after a node, where what it asked about has
+// settled: named for that node where it goes on past the question, else the review.
+// A gate with no Detail of its own records the answer as the row's detail.
+func recordRow(g Gate, c Choice, q *part, tail string) rail.Node {
+	name := reviewName
+	if q != nil && q.record != "" {
+		name = q.record
+	}
+	if g.Detail == "" {
+		return rail.Node{Name: name, Detail: tail}
+	}
+	detail, tail := settled(g, c, "", tail)
+	return rail.Node{Name: name, Detail: detail, Tail: tail}
+}
+
+// settled is the detail and the tail a node waiting for g's answer settles to once c
+// answers it, tail being how that answer reads after it: plan, the node's plan
+// detail, for a gate with no Detail of its own; else the gate's Detail where its
+// default answered, which is what that detail says, or what c chose, the tail alone
+// where it only restates that, as a review's "accepted (-y)" does its "accepted".
+func settled(g Gate, c Choice, plan, tail string) (string, string) {
+	if g.Detail == "" {
+		return plan, tail
+	}
+	detail := g.Detail
+	if c != g.Default {
+		detail = chosen(g, c)
+	}
+	if strings.HasPrefix(tail, detail) {
+		return tail, ""
+	}
+	return detail, tail
 }
 
 // autoAccepted is the tail of every answer -y took, the auto-accept echo.

@@ -4,13 +4,13 @@
 # moves, prints the exclusion check's suggestion, and unwinds the pre_tag
 # artifacts commit.
 #
-# Record it, and make demo/out/art/failed.webp:
+# Record it, and make art/failed.webp:
 #   demo/record.sh failed
 
 Output "demo/out/failed/"
 Source "demo/look.tape"
-# 26 rows: room for what it shows.
-Set Height 1026
+# 36 rows: room for what it shows.
+Set Height 1396
 
 Hide
 Type 'demo/world.sh release && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh" && export DEMO_AI_FAIL_PART=3' Enter
@@ -20,6 +20,6 @@ Show
 Type "mint release -m -y"
 Enter
 Wait
-# The line only this run's unwind prints.
-Wait+Screen /unwound +reset 1 commit; repo clean/
+# The close only a run its unwind took back prints.
+Wait+Screen /back where it started · nothing pushed/
 Sleep 600ms

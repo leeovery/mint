@@ -87,6 +87,18 @@ func (t *Terminal) Grid() Grid {
 	return g
 }
 
+// Screen is the text of the rows on the screen now, the scrollback left off: what a
+// reader sees without scrolling back, a line a row, trailing blanks trimmed.
+func (t *Terminal) Screen() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var g Grid
+	for _, row := range t.screen {
+		g = append(g, trimmed(row))
+	}
+	return g.Text()
+}
+
 // ANSI is Grid drawn as the ANSI that draws it, for Check to hold to a golden frame:
 // Parse reads it back to the same cells.
 func (t *Terminal) ANSI() string {

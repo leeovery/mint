@@ -10,7 +10,7 @@ import (
 	"mint/internal/presenter"
 )
 
-// gateOpts carries the gate-arming toggles for the plainGate/prettyGate
+// gateOpts carries the gate-arming toggles for the plainGate/railGate
 // construction helpers. The zero value is the constructor default — no -y and an
 // interactive stdin — so a call site that armed neither toggle passes gateOpts{}.
 // The fields are named so each call site states its armed state explicitly (no
@@ -24,9 +24,9 @@ type gateOpts struct {
 	nonInteractiveStdin bool
 }
 
-// applyTo threads the armed toggles onto an already-constructed presenter via the
-// builder-style setters. Both setters return the presenter, but the helpers below
-// keep their own concrete pointer, so the chained return value is unused here.
+// applyToPlain and applyToRail thread the armed toggles onto an already-constructed
+// presenter via the builder-style setters. Both setters return the presenter, but the helpers
+// below keep their own concrete pointer, so the chained return value is unused here.
 func (o gateOpts) applyToPlain(p *presenter.PlainPresenter) {
 	if o.yes {
 		p.WithYes(true)
@@ -36,7 +36,7 @@ func (o gateOpts) applyToPlain(p *presenter.PlainPresenter) {
 	}
 }
 
-func (o gateOpts) applyToPretty(p *presenter.PrettyPresenter) {
+func (o gateOpts) applyToRail(p *presenter.RailPresenter) {
 	if o.yes {
 		p.WithYes(true)
 	}
@@ -59,22 +59,22 @@ func plainGate(in io.Reader, opts gateOpts) (p *presenter.PlainPresenter, out, e
 	return p, out, errBuf
 }
 
-// prettyGate mirrors plainGate for the pretty presenter. It forces the supplied
-// colour profile so colour-on/colour-off assertions stay deterministic regardless
-// of the test runner's own TTY, wires the err buffer (so the stream-split contract
-// is assertable), reads from in, applies the armed toggles, and returns the
-// presenter plus both buffers. Call sites that only assert on out ignore errBuf
-// with _.
-func prettyGate(profile termenv.Profile, in io.Reader, opts gateOpts) (p *presenter.PrettyPresenter, out, errBuf *bytes.Buffer) {
+// railGate mirrors plainGate for the Rail, pretty mode's presenter, on a terminal
+// 80 by 24. It forces the supplied colour profile so colour-on/colour-off assertions
+// stay deterministic regardless of the test runner's own TTY, wires the err buffer
+// (so the stream-split contract is assertable), reads from in, which is no terminal,
+// so every answer is a typed line, applies the armed toggles, and returns the
+// presenter plus both buffers.
+func railGate(profile termenv.Profile, in io.Reader, opts gateOpts) (p *presenter.RailPresenter, out, errBuf *bytes.Buffer) {
 	out = &bytes.Buffer{}
 	errBuf = &bytes.Buffer{}
-	p = presenter.NewPrettyPresenter(
-		out,
-		presenter.WithProfile(profile),
-		presenter.WithErr(errBuf),
-		presenter.WithInput(in),
+	p = presenter.NewRailPresenter(out,
+		presenter.WithRailErr(errBuf),
+		presenter.WithRailInput(in),
+		presenter.WithRailProfile(profile),
+		presenter.WithRailSize(func() (int, int) { return 80, 24 }),
 	)
-	opts.applyToPretty(p)
+	opts.applyToRail(p)
 	return p, out, errBuf
 }
 
@@ -91,16 +91,16 @@ type gateResult struct {
 }
 
 // gateDriver pairs a render-mode name with the one canonical one-Prompt driver,
-// built on the plainGate/prettyGate construction seams. It lets a GENUINELY
+// built on the plainGate/railGate construction seams. It lets a GENUINELY
 // mode-invariant gate/prompt property be asserted once inside t.Run(d.mode, ...)
-// instead of as two hand-duplicated plain-then-pretty arms. Mode-SPECIFIC
-// rendering (the exact plain "FAILED -" line vs the pretty "✗ gate" line, the
-// plain [y/n/e/r] hint vs the pretty vertical menu, the distinct -y echo bytes)
-// stays in its own dedicated test and is NOT driven through this table. The
-// pretty colour profile is an explicit parameter (the plain driver ignores it —
-// plain mode has no colour) so each call site states the profile it needs: Ascii
-// for deterministic captured text, TrueColor where the property must hold WHILE
-// SGR colour escapes are present (the render-only screen-control guard).
+// instead of as two hand-duplicated plain-then-rail arms. Mode-SPECIFIC rendering
+// (the exact plain "FAILED -" line vs the Rail's ✗ node, the plain [y/n/e/r] hint
+// vs the Rail's keys, the distinct -y echo bytes) stays in its own dedicated test
+// and is NOT driven through this table. The colour profile is an explicit
+// parameter (the plain driver ignores it — plain mode has no colour) so each call
+// site states the profile it needs: Ascii for deterministic captured text,
+// TrueColor where the property must hold WHILE SGR colour escapes are present (the
+// render-only screen-control guard).
 type gateDriver struct {
 	mode string
 	run  func(profile termenv.Profile, in io.Reader, opts gateOpts, gate presenter.Gate) gateResult
@@ -108,25 +108,20 @@ type gateDriver struct {
 
 // prompt is the prompt-test-shaped convenience over run: it scripts a single
 // Prompt from a string with the default gate options (no -y, interactive stdin) —
-// the shape the prompt tests need — selecting the pretty colour profile (ignored
-// by the plain driver).
+// the shape the prompt tests need — selecting the Rail's colour profile (ignored by
+// the plain driver).
 func (d gateDriver) prompt(profile termenv.Profile, input string, gate presenter.Gate) gateResult {
 	return d.run(profile, strings.NewReader(input), gateOpts{}, gate)
 }
 
-// renderCount counts how many times this mode's gate render appears in out — the
-// per-mode marker that occurs exactly once per render pass. Plain renders its
-// "Use these notes?" question line each pass; the pretty hotkey bar ends in the
-// "›" cursor on its own final line, which is the single per-pass marker (the
-// trailing space is styled separately under colour, so only the "›" glyph stays a
-// contiguous substring in both profiles). The re-prompt/loop tests count renders
-// through this seam so they assert the render-once-per-pass property without
-// hardcoding mode-specific layout at every call site.
-func (d gateDriver) renderCount(out string) int {
-	if d.mode == "plain" {
-		return strings.Count(out, "Use these notes?")
-	}
-	return strings.Count(out, "›")
+// renderCount counts how many times the gate's question was written to out, once
+// per pass in both modes: plain prints its question line each pass, and the Rail
+// prints the question its typed line is read at, again under each answer that names
+// no key. The re-prompt/loop tests count renders through this seam so they assert
+// the render-once-per-pass property without hardcoding mode-specific layout at every
+// call site.
+func (d gateDriver) renderCount(out string, gate presenter.Gate) int {
+	return strings.Count(out, gate.Question)
 }
 
 // gateDrivers returns one driver per render mode for the mode-invariant
@@ -142,9 +137,10 @@ func gateDrivers() []gateDriver {
 			},
 		},
 		{
-			mode: "pretty",
+			mode: "rail",
 			run: func(profile termenv.Profile, in io.Reader, opts gateOpts, gate presenter.Gate) gateResult {
-				p, out, errBuf := prettyGate(profile, in, opts)
+				p, out, errBuf := railGate(profile, in, opts)
+				defer p.Close()
 				choice, err := p.Prompt(gate)
 				return gateResult{choice: choice, out: out, errBuf: errBuf, err: err}
 			},

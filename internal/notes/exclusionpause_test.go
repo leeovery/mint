@@ -189,3 +189,37 @@ func TestExclusionCheck_EveryPauseAnsweredKeep_ReturnsNoGlob(t *testing.T) {
 		t.Errorf("excluded = %q, want none", excluded)
 	}
 }
+
+// TestExclusionCheck_TheCallsEndCountsWhatTheRunWillAskOrReport pins the count the
+// check's call ends with: what the pauses go on to ask, a suggestion the ones before
+// it already decide left out whatever they are answered, or, reported, every usable
+// suggestion; and whether they are asked.
+func TestExclusionCheck_TheCallsEndCountsWhatTheRunWillAskOrReport(t *testing.T) {
+	t.Parallel()
+
+	// docs/ matches only docs/design/export.md, which docs/design/ before it decides.
+	const answer = "docs/design/: design\ndocs/: docs\ntest/fixtures/: test data\n"
+	diff := sourceDiff + designDiff + fixturesDiff
+	for _, answers := range [][]notes.Answer{{notes.AnswerExclude, notes.AnswerKeep}, {notes.AnswerKeep, notes.AnswerKeep}} {
+		narration := &checkNarration{}
+		pauses := &recordedPauses{answers: answers}
+		if _, err := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).WithPauses(pauses).Check(t.Context(), diff, config.DefaultMaxPromptBytes); err != nil {
+			t.Fatalf("Check returned unexpected error: %v", err)
+		}
+		want := []notes.CheckResult{{Outcome: notes.CheckAnswered, Flagged: 2, Asked: true}}
+		if !slices.Equal(narration.results, want) || len(pauses.paused) != 2 {
+			t.Errorf("answered %v: checked %+v and paused %d times, want %+v and the 2 it counted", answers, narration.results, len(pauses.paused), want)
+		}
+	}
+
+	narration := &checkNarration{}
+	reported := 0
+	check := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).
+		WithReport(func(notes.Suggestion, notes.Matches) { reported++ })
+	if _, err := check.Check(t.Context(), diff, config.DefaultMaxPromptBytes); err != nil {
+		t.Fatalf("Check returned unexpected error: %v", err)
+	}
+	if want := []notes.CheckResult{{Outcome: notes.CheckAnswered, Flagged: 3}}; !slices.Equal(narration.results, want) || reported != 3 {
+		t.Errorf("reporting: checked %+v and reported %d, want %+v and the 3 it counted", narration.results, reported, want)
+	}
+}

@@ -56,12 +56,12 @@ func TestRun_StagedAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	}
 
 	// The preflight probe must read the FULL would-be-staged set, NOT the post-exclusion
-	// view: `git diff --cached --name-only -- .` with no :(exclude) pathspecs.
+	// view: `git diff --cached --numstat -- .` with no :(exclude) pathspecs.
 	gits := editorGitInvocations(er)
 	if len(gits) == 0 {
 		t.Fatal("no git invocations recorded; want the preflight probe first")
 	}
-	assertArgs(t, gits[0].Args, []string{"diff", "--cached", "--name-only", "--", "."})
+	assertArgs(t, gits[0].Args, []string{"diff", "--cached", "--numstat", "--", "."})
 
 	if transport.calls() != 0 {
 		t.Errorf("transport called %d times; an all-excluded diff must skip the AI and open the editor", transport.calls())
@@ -79,7 +79,7 @@ func TestRun_StagedAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 }
 
 // TestRun_AllModeAllExcluded_CommitsViaEditorFallback proves the same on the -a path: the
-// preflight probe `git diff HEAD --name-only -- .` is UNFILTERED, so an all-excluded
+// preflight probe `git diff HEAD --numstat -- .` is UNFILTERED, so an all-excluded
 // tracked change still passes preflight; the post-exclusion L1 diff is empty, so commit
 // stages tracked changes (`git add -u`) and commits the human-written save.
 func TestRun_AllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
@@ -112,7 +112,7 @@ func TestRun_AllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	if len(gits) == 0 {
 		t.Fatal("no git invocations recorded; want the -a preflight probe first")
 	}
-	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--name-only", "--", "."})
+	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--numstat", "--", "."})
 
 	if transport.calls() != 0 {
 		t.Errorf("transport called %d times; an all-excluded -a diff must skip the AI", transport.calls())
@@ -129,7 +129,7 @@ func TestRun_AllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 
 // TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback proves the same on the -A path,
 // where the only change is an excluded UNTRACKED file: the preflight runs BOTH the tracked
-// probe (`git diff HEAD --name-only -- .`) and the untracked probe (`git ls-files --others
+// probe (`git diff HEAD --numstat -- .`) and the untracked probe (`git ls-files --others
 // --exclude-standard -z -- .`), BOTH UNFILTERED, so the untracked file keeps the tree
 // dirty and preflight proceeds; the post-exclusion L1 diff is empty (the untracked file is
 // excluded), so commit stages everything (`git add -A`) and commits the human-written save.
@@ -166,7 +166,7 @@ func TestRun_AddAllModeAllExcluded_CommitsViaEditorFallback(t *testing.T) {
 	if len(gits) < 2 {
 		t.Fatalf("git invocations = %v, want the tracked probe then the untracked probe", gits)
 	}
-	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--name-only", "--", "."})
+	assertArgs(t, gits[0].Args, []string{"diff", "HEAD", "--numstat", "--", "."})
 	assertArgs(t, gits[1].Args, []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."})
 
 	if transport.calls() != 0 {

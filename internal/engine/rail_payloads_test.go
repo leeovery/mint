@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"mint/internal/presenter/presentertest"
 	"mint/internal/release"
 	"mint/internal/runner"
+	"mint/internal/version"
 )
 
 // railDeps are newDeps run from a repo directly under the home directory, by a
@@ -45,6 +47,51 @@ func runInfo(t *testing.T, rec *presentertest.RecordingPresenter) presenter.RunI
 		t.Fatalf("RunStarted events = %d, want one; kinds = %v", n, rec.Kinds())
 	}
 	return rec.Events[indexOfKind(rec, presentertest.KindRunStarted)].RunStarted
+}
+
+// regenerateStarts returns a regenerate's three starts: the Quiet opening that carries
+// its header ahead of the questions, the Quiet start station once they are answered,
+// and plain's start line after the preflight.
+func regenerateStarts(t *testing.T, rec *presentertest.RecordingPresenter) []presenter.RunInfo {
+	t.Helper()
+	var starts []presenter.RunInfo
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindRunStarted {
+			starts = append(starts, ev.RunStarted)
+		}
+	}
+	if len(starts) != 3 {
+		t.Fatalf("RunStarted events = %+v, want three; kinds = %v", starts, rec.Kinds())
+	}
+	return starts
+}
+
+// stageSuccesses returns every StageSucceeded keyed key, in order.
+func stageSuccesses(rec *presentertest.RecordingPresenter, key string) []presenter.StageSuccess {
+	var found []presenter.StageSuccess
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == key {
+			found = append(found, ev.StageSucceeded)
+		}
+	}
+	return found
+}
+
+// countStarts counts the StageStarted events named name.
+func countStarts(rec *presentertest.RecordingPresenter, name string) int {
+	n := 0
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Name == name {
+			n++
+		}
+	}
+	return n
+}
+
+// sameSuccess reports whether got is want but for its engine-measured Elapsed.
+func sameSuccess(got, want presenter.StageSuccess) bool {
+	got.Elapsed = want.Elapsed
+	return got == want
 }
 
 // quietPlan returns the run's one quiet plan: its stages for the rail.
@@ -514,7 +561,7 @@ func TestRelease_Rail_ARejectedPushIsThePushNodeTimedAndTheRunGoesBackToItsStart
 		t.Errorf("failure Elapsed = %v, want at least the push's %v", failure.Elapsed, stageDelay)
 	}
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
-	if want := (presenter.Unwind{Undone: "reset 1 commit and deleted tag v0.0.1", Repo: "repo clean"}); unwound != want {
+	if want := (presenter.Unwind{Undone: "reset 1 commit and deleted tag v0.0.1", Repo: "repo clean", Key: "unwind"}); unwound != want {
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
 	fin := closingEvent(t, rec)
@@ -535,7 +582,7 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 	_ = a.release(t.Context())
 
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
-	want := presenter.Unwind{Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit", Repo: "repo clean"}
+	want := presenter.Unwind{Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit", Repo: "repo clean", Key: "unwind"}
 	if unwound != want {
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
@@ -619,14 +666,130 @@ func TestRelease_Rail_TheCheckAndAFailedNotesStageAreTimedOnTheirOwnNodes(t *tes
 	if len(moves) != 1 {
 		t.Fatalf("NextMoves = %+v, want one", moves)
 	}
-	want := presenter.NextMove{Lead: "write the notes to a file and release with", Command: "mint release --notes-file <file>"}
-	if moves[0].Moves[0] != want {
-		t.Errorf("first move = %+v, want the command apart from its lead %+v", moves[0].Moves[0], want)
+	assertFloorMovesLeadTheRail(t, moves[0].Moves, "mint release")
+}
+
+// assertFloorMovesLeadTheRail fails unless moves open on the floor's three ways out,
+// each a capitalised lead ending in a colon and the command or config line apart from
+// it, command the release run again; plain's sentence its own, naming the same command
+// where it names one. Every move after them clears the cause: a capitalised lead
+// alone, plain's lowercase sentence under it.
+func assertFloorMovesLeadTheRail(t *testing.T, moves []presenter.NextMove, command string) {
+	t.Helper()
+	want := []presenter.NextMove{
+		{
+			Lead:     "Write the notes to a file, then release with it:",
+			Command:  command + " --notes-file <file>",
+			Sentence: "write the notes to a file and release with " + command + " --notes-file <file>",
+		},
+		{
+			Lead:     "Release with the commit-subject list:",
+			Command:  command + " --no-ai",
+			Sentence: "re-run with --no-ai to release with the commit-subject list",
+		},
+		{
+			Lead:     "Ship that list whenever the AI fails, under [release] in .mint.toml:",
+			Command:  `on_notes_failure = "fallback"`,
+			Sentence: `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`,
+		},
 	}
-	for _, move := range moves[0].Moves[1:] {
-		if move.Command != "" {
-			t.Errorf("move %+v carries a command; only the notes-file move names one", move)
+	if len(moves) < len(want) || !slices.Equal(moves[:len(want)], want) {
+		t.Fatalf("moves = %+v, want them opening on %+v", moves, want)
+	}
+	for _, move := range moves[len(want):] {
+		if move.Command != "" || move.Lead != strings.ToUpper(move.Sentence[:1])+move.Sentence[1:] {
+			t.Errorf("cause move = %+v, want a capitalised lead alone over plain's sentence", move)
 		}
+	}
+}
+
+// readGatesUnder scripts the prior-tag read gates as a run under opts reads them: the
+// stash first under a real run's --autostash, no clean-tree check under a dry run's,
+// and no on-branch probe under --any-branch.
+func readGatesUnder(f *runner.FakeRunner, root string, opts engine.ReleaseOptions) {
+	f.SeedSequence("git", ScriptedOut(root), ScriptedOut("origin/main"), ScriptedOut(priorTag+"\n"), ScriptedHead())
+	if opts.AutoStash && !opts.DryRun {
+		f.SeedSequence("git", stashSaved()) // stash push --include-untracked
+	}
+	f.SeedSequence("git", ScriptedOut("")) // fetch --tags
+	if !opts.AutoStash || !opts.DryRun {
+		f.SeedSequence("git", ScriptedOut("")) // status --porcelain
+	}
+	if !opts.AnyBranch {
+		f.SeedSequence("git", ScriptedOut("main")) // rev-parse --abbrev-ref HEAD
+	}
+	f.SeedSequence("git", ScriptedNonZero(), ScriptedOut("0\t1"), ScriptedOut(""), ScriptedOut(startingSHA))
+}
+
+func TestRelease_TheFloorsCommandsCarryTheRunsOwnFlags(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		opts    func(*engine.ReleaseOptions)
+		command string
+	}{
+		{name: "a patch bump, the default, carries none", opts: func(*engine.ReleaseOptions) {}, command: "mint release"},
+		{name: "a minor bump", opts: func(o *engine.ReleaseOptions) { o.Bump = version.BumpMinor }, command: "mint release -m"},
+		{name: "a major bump", opts: func(o *engine.ReleaseOptions) { o.Bump = version.BumpMajor }, command: "mint release -M"},
+		{name: "a set version, as typed", opts: func(o *engine.ReleaseOptions) { o.SetVersion = "v2.0.0" }, command: "mint release --set-version v2.0.0"},
+		{name: "--any-branch", opts: func(o *engine.ReleaseOptions) { o.AnyBranch = true }, command: "mint release --any-branch"},
+		{name: "--autostash", opts: func(o *engine.ReleaseOptions) { o.AutoStash = true }, command: "mint release --autostash"},
+		{name: "a dry run", opts: func(o *engine.ReleaseOptions) { o.DryRun = true }, command: "mint release --dry-run"},
+		{
+			name: "all of them",
+			opts: func(o *engine.ReleaseOptions) {
+				o.Bump, o.AnyBranch, o.AutoStash, o.DryRun = version.BumpMinor, true, true, true
+			},
+			command: "mint release -m --any-branch --autostash --dry-run",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := priorTagNormalAIOptions()
+			tc.opts(&opts)
+			root := t.TempDir()
+			f := runner.NewFakeRunner()
+			readGatesUnder(f, root, opts)
+			seedNormalAINotes(f)
+			if opts.AutoStash && !opts.DryRun {
+				f.SeedSequence("git", ScriptedOut("")) // stash pop
+			}
+			rec := &presentertest.RecordingPresenter{}
+			deps := railDeps(rec, f, root)
+			deps.Transport = slowTransport{}
+			deps.Yes = true
+
+			_ = engine.Release(t.Context(), deps, opts)
+
+			moves := nextMovesEvents(rec)
+			if len(moves) != 1 {
+				t.Fatalf("NextMoves = %+v, want one; kinds = %v", moves, rec.Kinds())
+			}
+			assertFloorMovesLeadTheRail(t, moves[0].Moves, tc.command)
+		})
+	}
+}
+
+func TestRelease_Rail_ADryRunPreviewsItsReviewQuietlyOnceTheNotesAreShown(t *testing.T) {
+	t.Parallel()
+
+	opts := priorTagNormalAIOptions()
+	opts.DryRun = true
+	rec, _ := runDryRunNormalAI(t, t.TempDir(), t.TempDir(), priorTagDiff, aiBody, opts)
+
+	at := indexOfKind(rec, presentertest.KindPreviewGate)
+	if at == -1 {
+		t.Fatalf("no review previewed; kinds = %v", rec.Kinds())
+	}
+	review := presenter.ReleaseReviewGate()
+	review.Stage, review.Quiet = "notes", true
+	if got := rec.Events[at].PreviewGate; !reflect.DeepEqual(got, review) {
+		t.Errorf("previewed = %+v, want the review a real run asks, Quiet %+v", got, review)
+	}
+	if shown := indexOfKind(rec, presentertest.KindShowNotes); shown == -1 || shown > at {
+		t.Errorf("the review previewed at %d before the notes shown at %d; kinds = %v", at, shown, rec.Kinds())
 	}
 }
 
@@ -652,8 +815,8 @@ func TestRelease_Rail_TheExclusionPauseCarriesItsSuggestionAndTheAnswersTheirGlo
 		}
 	}
 	answers := rec.Events[indexOfKind(rec, presentertest.KindExclusionAnswersRecorded)].ExclusionAnswers
-	if answers.Key != "check" || !reflect.DeepEqual(answers.Exclude, []string{"docs/design/"}) || !reflect.DeepEqual(answers.Keep, []string{"test/fixtures/"}) {
-		t.Errorf("answers = %+v, want the check node's exclude and keep globs", answers)
+	if answers.Key != "check" {
+		t.Errorf("answers = %+v, want them under the check node", answers)
 	}
 }
 
@@ -685,30 +848,38 @@ func TestRegenerateRun_Rail_ARegenerateStartsAtItsTagAndLandsRegenerated(t *test
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
 
-	info := runInfo(t, rec)
-	if want := (presenter.Station{Name: regenRunTag, Detail: "fresh → CHANGELOG.md + provider release"}); info.Start != want {
-		t.Errorf("Start = %+v, want %+v", info.Start, want)
+	header := presenter.Header{Command: "release regenerate", Where: "~/" + filepath.Base(dir), Version: "0.1.2"}
+	start := presenter.Station{Name: regenRunTag, Detail: "fresh → CHANGELOG.md + provider release"}
+	starts := regenerateStarts(t, rec)
+	if opened := starts[0]; !opened.Quiet || opened.Header != header || opened.Start != (presenter.Station{}) {
+		t.Errorf("opening = %+v, want a Quiet start carrying the header %+v alone", opened, header)
 	}
-	if want := (presenter.Header{Command: "release regenerate", Where: "~/" + filepath.Base(dir), Version: "0.1.2"}); info.Header != want {
-		t.Errorf("Header = %+v, want %+v", info.Header, want)
+	if stationed := starts[1]; !stationed.Quiet || stationed.Start != start {
+		t.Errorf("station = %+v, want a Quiet start carrying %+v", stationed, start)
+	}
+	if plain := starts[2]; plain.Quiet || plain.Version != regenRunVersionKey {
+		t.Errorf("plain's start = %+v, want plain's line for %s", plain, regenRunVersionKey)
 	}
 	plan := rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan
 	wantStages := []presenter.PlanStage{
 		{Key: "notes", Name: "notes", Detail: "written by the AI"},
 		{Key: "review", Name: "review", Detail: "the notes before they are written"},
-		{Key: "record", Name: "CHANGELOG.md", Detail: "rewritten and committed"},
-		{Key: "push", Name: "push", Detail: "HEAD → origin"},
+		{Key: "record", Name: "CHANGELOG.md", Detail: "rewritten, committed and pushed"},
 		{Key: "publish", Name: "release", Detail: "provider release"},
 	}
-	if !slices.Equal(plan.Stages, wantStages) || plan.PointOfNoReturn != "push" {
-		t.Errorf("plan = %+v / %q, want %+v / push", plan.Stages, plan.PointOfNoReturn, wantStages)
+	if !slices.Equal(plan.Stages, wantStages) || plan.PointOfNoReturn != "" {
+		t.Errorf("plan = %+v / %q, want %+v and no point of no return", plan.Stages, plan.PointOfNoReturn, wantStages)
 	}
 	assertKeysInPlan(t, rec, plan)
-	if got := stageSuccess(t, rec, "record"); got.Commit != "docs(changelog): regenerate notes for "+regenRunTag || !got.Quiet {
-		t.Errorf("record success = %+v, want a quiet settle carrying the changelog commit's subject", got)
+	record := stageSuccesses(rec, "record")
+	if len(record) != 2 || record[0].Name != "push" || !record[0].Ongoing || record[0].Quiet {
+		t.Fatalf("record successes = %+v, want plain's push as an Ongoing step of the node, then the node's own", record)
 	}
-	if got := stageSuccess(t, rec, "publish"); got.Detail != "written" || !got.Quiet {
-		t.Errorf("publish success = %+v, want a quiet settle", got)
+	if want := (presenter.StageSuccess{Name: "record", Key: "record", Quiet: true, Detail: "rewritten · committed and pushed", Commit: "docs(changelog): regenerate notes for " + regenRunTag, Blocking: true}); !sameSuccess(record[1], want) {
+		t.Errorf("CHANGELOG.md success = %+v, want %+v", record[1], want)
+	}
+	if got := stageSuccess(t, rec, "publish"); got.Detail != "provider release written" || !got.Quiet {
+		t.Errorf("publish success = %+v, want a quiet settle naming the release written", got)
 	}
 	if gates := promptGates(rec); len(gates) != 1 || gates[0].Stage != "review" {
 		t.Errorf("questions = %+v, want the one review question on the review node", gates)
@@ -790,6 +961,10 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		name string
 		tail []runner.ScriptedCall
 		end  string
+		// at is the station the run closes at, where it isn't its start.
+		at string
+		// unwound is a run whose reset ran, which closes as unwound.
+		unwound bool
 	}{
 		{
 			name: "a commit that fails leaves the rewrite",
@@ -797,14 +972,17 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 			end:  "CHANGELOG.md written, not committed · nothing pushed",
 		},
 		{
-			name: "a rejected push resets the commit",
-			tail: []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
-			end:  "changelog commit reset · back where it started · nothing pushed",
+			name:    "a rejected push resets the commit",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, ScriptedOut("")}, // add, commit, push, reset --hard
+			end:     "back where it started · nothing pushed",
+			unwound: true,
 		},
 		{
-			name: "a rejected push whose reset fails needs cleaning up",
-			tail: []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure()},
-			end:  "manual cleanup required · nothing pushed",
+			name:    "a rejected push whose reset fails needs cleaning up, on the commit HEAD never left",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
+			at:      "main",
+			end:     "9f3e2a1 · the changelog commit not reset · manual cleanup required · nothing pushed",
+			unwound: true,
 		},
 	}
 	for _, tt := range tests {
@@ -815,8 +993,16 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 
 			assertAbortNonZero(t, err)
 			fin := closingEvent(t, rec)
-			if want := (presenter.Station{Name: regenRunTag, Detail: tt.end}); fin.Outcome != presenter.OutcomeFailed || fin.End != want {
-				t.Errorf("close = %v %+v, want OutcomeFailed %+v", fin.Outcome, fin.End, want)
+			outcome := presenter.OutcomeFailed
+			if tt.unwound {
+				outcome = presenter.OutcomeUnwound
+			}
+			at := regenRunTag
+			if tt.at != "" {
+				at = tt.at
+			}
+			if want := (presenter.Station{Name: at, Detail: tt.end}); fin.Outcome != outcome || fin.End != want {
+				t.Errorf("close = %v %+v, want %v %+v", fin.Outcome, fin.End, outcome, want)
 			}
 		})
 	}
@@ -845,12 +1031,115 @@ func TestRegenerateRun_Rail_AnUnchangedChangelogSettlesThePushAsSkipped(t *testi
 		t.Fatalf("RegenerateRun returned unexpected error: %v", err)
 	}
 
-	if got := stageSuccess(t, rec, "record"); got.Detail != "unchanged" || !got.Quiet {
-		t.Errorf("record success = %+v, want a quiet unchanged settle", got)
+	if got := stageSuccess(t, rec, "record"); got.Detail != "unchanged · nothing to push" || !got.Quiet {
+		t.Errorf("record success = %+v, want a quiet settle saying it is unchanged, so nothing is pushed", got)
 	}
-	if got := stageSuccess(t, rec, "push"); got.Detail != "skipped: nothing to push" || !got.Quiet {
-		t.Errorf("push success = %+v, want a quiet settle saying why it was skipped", got)
+	if n := countStarts(rec, "push"); n != 0 {
+		t.Errorf("push starts = %d, want none: nothing was committed to push", n)
 	}
 	assertKeysInPlan(t, rec, rec.Events[indexOfKind(rec, presentertest.KindShowPlan)].ShowPlan)
 	assertEveryPlannedStageSettled(t, rec)
+}
+
+func TestRelease_Rail_NotesNothingGeneratedNameTheirSourceOnTheRowAndKeepPlainsDetail(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		seed func(*runner.FakeRunner)
+		opts func(*engine.ReleaseOptions)
+		row  string
+	}{
+		{
+			name: "an empty diff's stub",
+			seed: func(f *runner.FakeRunner) { f.SeedSequence("git", ScriptedOut("")) }, // diff v1.2.3..HEAD
+			opts: func(*engine.ReleaseOptions) {},
+			row:  "the stub for a release with no source changes",
+		},
+		{
+			name: "--no-ai",
+			seed: func(f *runner.FakeRunner) {
+				f.SeedSequence("git",
+					ScriptedOut(priorTagDiff),   // diff v1.2.3..HEAD
+					ScriptedOut(commitSubjects), // log --format=%s v1.2.3..HEAD
+				)
+			},
+			opts: func(o *engine.ReleaseOptions) { o.NoAI = true },
+			row:  "the commit-subject list",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			f := runner.NewFakeRunner()
+			seedPriorTagReadGates(f, root, "main")
+			tc.seed(f)
+			seedRecordTagPush(f, root)
+			f.Seed("gh", runner.Result{}, nil)
+			rec := &presentertest.RecordingPresenter{}
+			opts := priorTagNormalAIOptions()
+			tc.opts(&opts)
+
+			releaseOrFail(t, newDeps(rec, f), opts)
+
+			if got := stageSuccess(t, rec, "notes"); got.Detail != "generated" || got.Row != tc.row {
+				t.Errorf("notes success = %+v, want plain's %q and the rail's row %q", got, "generated", tc.row)
+			}
+		})
+	}
+}
+
+func TestRelease_Rail_ABodyTakenAtTheNotesFloorSettlesTheNotesAgainSayingWhereItCameFrom(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		choice presenter.Choice
+		seed   func(*runner.FakeRunner, *engine.ReleaseDeps)
+		detail string
+	}{
+		{
+			name:   "the commit subjects",
+			choice: presenter.ChoiceCommitSubjects,
+			seed: func(f *runner.FakeRunner, _ *engine.ReleaseDeps) {
+				f.SeedSequence("git", ScriptedOut(commitSubjects)) // log --format=%s v1.2.3..HEAD
+			},
+			detail: "the commit-subject list",
+		},
+		{
+			name:   "written in the editor",
+			choice: presenter.ChoiceEdit,
+			seed: func(_ *runner.FakeRunner, deps *engine.ReleaseDeps) {
+				deps.Editor = &fakeEditor{edited: editedBody}
+			},
+			detail: "written in your editor",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			f, rec, deps := singlePassFailingRun(t, root, &ai.GenerationError{Stdout: loginOutput, ExitCode: 1})
+			tc.seed(f, &deps)
+			seedRecordTagPush(f, root)
+			f.Seed("gh", runner.Result{}, nil)
+			rec.NextChoices = []presenter.Choice{presenter.ChoiceYes, tc.choice, presenter.ChoiceYes}
+
+			if err := engine.Release(t.Context(), deps, priorTagNormalAIOptions()); err != nil {
+				t.Fatalf("Release returned unexpected error: %v", err)
+			}
+
+			failed, shown := indexOfKind(rec, presentertest.KindStageFailed), indexOfKind(rec, presentertest.KindShowNotes)
+			settled := slices.IndexFunc(rec.Events, func(ev presentertest.Event) bool {
+				return ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == "notes"
+			})
+			if settled < failed || settled > shown {
+				t.Fatalf("notes settled at %d, want between the failure at %d and the notes shown at %d; kinds = %v", settled, failed, shown, rec.Kinds())
+			}
+			if got, want := rec.Events[settled].StageSucceeded, presenter.Settled("notes", tc.detail); got != want {
+				t.Errorf("notes settled = %+v, want %+v", got, want)
+			}
+		})
+	}
 }

@@ -14,6 +14,7 @@ import (
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
 	"mint/internal/runner"
+	"mint/internal/version"
 )
 
 const fallbackConfig = "[release]\non_notes_failure = \"fallback\"\n"
@@ -261,6 +262,41 @@ func TestRelease_Fallback_MergePromptOverTheCap_WarningNamesThePathAndBothComman
 	}
 
 	assertOnlyWarning(t, run.rec, savedFallbackWarning(mergeTooLargePhrase, "", run.savedPath(nextTag)))
+}
+
+// TestRelease_Fallback_TheWarningsReleaseCommandCarriesTheRunsOwnFlags pins that the
+// release the warning names is the run's own, its -m kept, with only --notes-file
+// added; the regenerate command takes no release flag.
+func TestRelease_Fallback_TheWarningsReleaseCommandCarriesTheRunsOwnFlags(t *testing.T) {
+	t.Parallel()
+
+	run := newChunkNotesRun(t, "fallback", func(_ context.Context, prompt string) (string, error) {
+		switch {
+		case isCheckPrompt(prompt):
+			return "none", nil
+		case isChunkCallPrompt(prompt):
+			return bigPartNotes, nil
+		}
+		return "merged notes", nil
+	})
+	run.deps.Yes = true
+	run.f.SeedSequence("git", ScriptedOut(commitSubjects)) // log --format=%s
+	seedRecordTagPush(run.f, run.root)
+	run.f.Seed("gh", runner.Result{}, nil)
+	opts := priorTagNormalAIOptions()
+	opts.Bump = version.BumpMinor
+
+	if err := engine.Release(t.Context(), run.deps, opts); err != nil {
+		t.Fatalf("Release returned unexpected error: %v", err)
+	}
+
+	path := run.savedPath("v1.3.0")
+	assertOnlyWarning(t, run.rec, presenter.Warning{
+		Label: "notes",
+		Message: mergeTooLargePhrase + "; falling back to the commit-subject list; part notes saved to " + path +
+			" — once this release is out, put them on it with mint release regenerate 1.3.0 --notes-file " + path +
+			", or if the run ends before the push, release them with mint release -m --notes-file " + path,
+	})
 }
 
 func TestRelease_Fallback_AttendedAbortAtTheReviewGate_UnwindsAndKeepsTheSavedPartNotes(t *testing.T) {

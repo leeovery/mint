@@ -1,0 +1,18 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.2.3        main @ 4f9c2e1
+ │
+ ●  version       v1.3.0 (minor bump) · accepted (-y)
+ ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
+ ●  check         nothing to leave out                                                          0.7s
+ ●  notes         generated · accepted (-y)                                                     2.1s
+ ●  record        CHANGELOG.md committed
+ │                committed as 🌿 Release v1.3.0
+ │
+ ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ✗  push          pushing tag "v1.3.0" atomically: push rejected: exit status 1                 0.7s
+ │                │  ! [rejected]        main -> main (fetch first)
+ │                │ error: failed to push some refs to 'https://github.com/acme/pigeon'
+ ↩  unwind        reset 1 commit and deleted tag v1.3.0
+ │
+ ◇  v1.2.3        back where it started · nothing pushed                                        4.9s

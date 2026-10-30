@@ -303,7 +303,8 @@ func assertLastBeforeRunFinished(t *testing.T, rec *presentertest.RecordingPrese
 // TestRelease_PostReleaseHook_NarratesAsBlockingStage proves a configured
 // post_release hook narrates as pre_tag does: a blocking StageStarted (the pretty
 // spinner) before the hook runs, then a blocking StageSucceeded carrying the
-// engine-measured Elapsed once it exits zero, directly before RunFinished.
+// engine-measured Elapsed, and the rail its command, once it exits zero, directly
+// before RunFinished.
 func TestRelease_PostReleaseHook_NarratesAsBlockingStage(t *testing.T) {
 	t.Parallel()
 
@@ -318,7 +319,7 @@ func TestRelease_PostReleaseHook_NarratesAsBlockingStage(t *testing.T) {
 		t.Errorf("post_release StageSucceeded.Elapsed = %v, want a non-negative engine-measured duration", done.Elapsed)
 	}
 	done.Elapsed = 0
-	want := presenter.StageSuccess{Name: "post_release", Key: "post_release", Detail: "hook completed", Sentence: "Ran the post_release hook", Blocking: true}
+	want := presenter.StageSuccess{Name: "post_release", Key: "post_release", Detail: "hook completed", Row: "notify.sh", Blocking: true}
 	if done != want {
 		t.Errorf("post_release StageSucceeded = %+v, want %+v", done, want)
 	}

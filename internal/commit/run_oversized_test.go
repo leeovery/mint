@@ -58,7 +58,7 @@ func seedOversizedFallback(diff, editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},         // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},          // git diff --cached -- . (L1, over-limit)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}}, // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git commit -F -
@@ -75,7 +75,7 @@ func seedPassesToL2(diff string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},  // git diff --cached -- . (L1, within ceiling)
 		runner.ScriptedCall{}, // git commit -F -
 		scriptedShortHead(),   // git rev-parse --short HEAD (the end station)
@@ -102,7 +102,11 @@ func warnEvents(rec *presentertest.RecordingPresenter) []presenter.Warning {
 	var warns []presenter.Warning
 	for _, ev := range rec.Events {
 		if ev.Kind == presentertest.KindWarn {
-			warns = append(warns, ev.Warn)
+			warn := ev.Warn
+			// The time a warning's stage ran is the wall clock's here; the timing tests
+			// pin it on a clock of their own.
+			warn.Elapsed = 0
+			warns = append(warns, warn)
 		}
 	}
 	return warns
@@ -280,7 +284,7 @@ func TestRun_Oversized_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing.T)
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},          // git diff HEAD --name-only (preflight, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},          // git diff HEAD --numstat (preflight, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diffOfLines(3)}}, // git diff HEAD -- . (L1, over-limit)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},     // git var GIT_EDITOR
 		runner.ScriptedCall{}, // git add -u (deferred staging on save)
@@ -538,7 +542,7 @@ func TestRun_Oversized_RegenNudgeOverCap_OpensEmptyEditor(t *testing.T) {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},      // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},       // git diff --cached -- . (initial L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: diff}},       // git diff --cached -- . (regeneration L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}}, // git var GIT_EDITOR

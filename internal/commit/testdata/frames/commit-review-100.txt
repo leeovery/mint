@@ -1,0 +1,19 @@
+ mint ─ commit                                                                ~/Code/pigeon · v0.1.2
+
+ ◇  main          7c1e0b4
+ │
+ ●  diff          4 files · +86 −12 · everything, staged when you accept
+ ●  message       generated                                                                     0.7s
+ │
+ │    feat(webhooks): retry failed deliveries with backoff
+ │
+ │    Deliveries that fail are retried with exponential backoff for up to an
+ │    hour before they are marked dead.
+ │
+ ?  Commit this message?   y accept   n abort   e edit   r regenerate ›
+ ┆
+ ○  stage         git add -A
+ ○  commit        on main
+ ○  push          to its upstream
+ ┆
+ ◇  main

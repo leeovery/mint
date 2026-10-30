@@ -146,6 +146,18 @@ func ResolveShortHEAD(ctx context.Context, r runner.CommandRunner) string {
 	return shortSHA(strings.TrimSpace(res.Stdout))
 }
 
+// ResolvePushTarget reads where a plain `git push` from HEAD's branch goes, the
+// remote-tracking branch `git rev-parse --abbrev-ref @{push}` names ("origin/main"),
+// which follows git's own push settings, so it names the remote even where that is not
+// origin. It is display data, so a target git cannot name is the empty string.
+func ResolvePushTarget(ctx context.Context, r runner.CommandRunner) string {
+	res, err := r.Run(ctx, "git", "rev-parse", "--abbrev-ref", "@{push}")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(res.Stdout)
+}
+
 func shortSHA(sha string) string {
 	if len(sha) > shortSHALength {
 		return sha[:shortSHALength]

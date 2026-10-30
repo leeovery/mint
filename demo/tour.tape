@@ -4,7 +4,7 @@
 # parts and merged, their review, answered release, then the record, the
 # push, the GitHub release and the post_release hook.
 #
-# Record it, and make demo/out/art/tour.webp and tour.mp4:
+# Record it, and make art/tour.webp and tour.mp4:
 #   demo/record.sh tour
 
 Output "demo/out/tour/"
@@ -27,7 +27,7 @@ Enter
 Wait+Screen /Release v1\.3\.2/
 Sleep 1500ms
 Type "y"
-Wait+Screen /Exclude docs/
+Wait+Screen /Exclude it from the notes/
 Sleep 2500ms
 Type "e"
 Wait+Screen /Release with these notes/
@@ -35,5 +35,5 @@ Sleep 3500ms
 Type "y"
 Wait
 # The line only a release that lands prints.
-Wait+Screen /released pigeon v1\.4\.0/
+Wait+Screen /v1\.4\.0 +released/
 Sleep 4s

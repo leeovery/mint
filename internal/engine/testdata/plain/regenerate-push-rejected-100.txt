@@ -1,0 +1,24 @@
+mint: regenerating pigeon v1.4.0
+plan: source fresh; changelog v1.4.0
+notes: running...
+notes: generated (0.7s)
+--- release notes v1.4.0 ---
+Webhooks retry on their own now, so a flaky endpoint no longer drops events.
+
+## ✨ Added
+- Failed webhook deliveries retry with backoff for up to an hour.
+
+## 🐛 Fixed
+- Signing secrets with a trailing newline are accepted again.
+
+--- end notes ---
+notes: accepted (-y)
+push: running...
+push: FAILED - pushing regenerated changelog: exit status 1
+--- output ---
+ ! [rejected]        main -> main (fetch first)
+error: failed to push some refs to 'https://github.com/acme/pigeon'
+
+--- end output ---
+--- stderr ---
+push: FAILED - pushing regenerated changelog: exit status 1

@@ -171,7 +171,7 @@ func checkPromptSize(prompt string, maxBytes int) error {
 // sourceDiff is commit's Layer-1 SOURCE selector: it returns the would-be-committed
 // diff for the resolved StagingMode by rendering and concatenating each source the SHARED
 // sourcesForMode descriptor lists for the mode — the SAME descriptor the preflight
-// emptiness path (wouldStageNothing) consumes, so the dispatch (and the AddAll
+// counting path (readDiffStat) consumes, so the dispatch (and the AddAll
 // tracked-then-untracked composition) is defined exactly once. Each source applies the
 // SAME diffExclude :(exclude) pathspecs (the shared plus [commit] lists); the post-exclusion result flows into the
 // shared compose + size-guard + L2 pipeline unchanged.
@@ -226,9 +226,9 @@ func (g *Generator) renderSource(ctx context.Context, spec sourceSpec, diffExclu
 // diffSourceText runs a diffSource — a `git diff …` whose stdout IS the post-exclusion
 // diff — built from the shared base prefix (stagedBaseArgs / trackedBaseArgs) plus the
 // diffExclude :(exclude) pathspecs via the single shared sourceArgs composer. The
-// SAME base feeds the matching preflight probe (which adds `--name-only` and NO exclusion
+// SAME base feeds the matching preflight probe (which adds `--numstat` and NO exclusion
 // tail — the preflight is diff_exclude-blind; see preflight.go), so the L1 diff and the
-// emptiness probe share the source COMMAND and differ only in the tail: the L1 diff
+// counting probe share the source COMMAND and differ only in the tail: the L1 diff
 // applies diff_exclude, the probe does not.
 //
 // Selecting the base prefix is the per-mode source SELECTION (sourcesForMode); the verb,

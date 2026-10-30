@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/muesli/termenv"
 	"github.com/rivo/uniseg"
@@ -301,29 +302,104 @@ func TestRail_TheCloseSettlesTheRun_AWarningAfterItDrawsUnderIt(t *testing.T) {
 	)...)
 }
 
-func TestRail_RegenerateAllDrawsABlockPerVersionAndClosesTheBatchOnce(t *testing.T) {
-	t.Parallel()
-	r := newRailTerm(t, 80, 24, answers())
-	for _, v := range []string{"1.0.0", "1.1.0", "2.0.0"} {
-		r.RunStarted(presenter.RunInfo{Version: v, Header: presenter.Header{Command: "release regenerate --all", Where: pigeonWhere}})
-		r.ShowPlan(presenter.Plan{Stages: []presenter.PlanStage{
-			{Key: "notes", Name: "notes", Detail: "written by the AI"},
-			{Key: "publish", Name: "release", Detail: "provider release"},
-		}})
-		r.StageStarted(notesStarted())
-		if v == "1.1.0" {
-			r.Warn(presenter.Warning{Label: "skipped v1.1.0", Message: "AI returned empty notes"})
+// regenerateAll drives a --all backfill of three versions as the engine narrates it:
+// one run, its header and station Quiet, a node per version that plain's own start
+// and plan for each version leave as they are, v1.1.0 skipped, then plain's close
+// Ahead and the run's Quiet close, then the presenter's.
+func regenerateAll(r *railTerm) {
+	header := presenter.Header{Command: "release regenerate --all", Where: pigeonWhere}
+	r.RunStarted(presenter.RunInfo{Project: "pigeon", Header: header, Quiet: true})
+	r.RunStarted(presenter.RunInfo{
+		Project: "pigeon", Header: header, Quiet: true, Toward: "done",
+		Start: presenter.Station{Name: "3 versions", Detail: "fresh notes → GitHub releases"},
+	})
+	tags := []string{"v1.0.0", "v1.1.0", "v2.0.0"}
+	stages := make([]presenter.PlanStage, len(tags))
+	for i, tag := range tags {
+		stages[i] = presenter.PlanStage{Key: tag, Name: tag, Detail: "GitHub release"}
+	}
+	r.ShowPlan(presenter.Plan{Quiet: true, Stages: stages})
+	for _, tag := range tags {
+		r.RunStarted(presenter.RunInfo{Project: "pigeon", Version: tag[1:], Header: header})
+		r.ShowPlan(presenter.Plan{Steps: []presenter.PlanStep{{Verb: "source", Target: "fresh"}, {Verb: "release", Target: tag}}})
+		r.StageStarted(presenter.StageStart{Name: tag, Key: tag, Blocking: true, Quiet: true, Text: "generating release notes…"})
+		r.StageStarted(presenter.StageStart{Name: "notes", Key: tag, Blocking: true, Text: "generating release notes…"})
+		r.clock.Advance(1400 * time.Millisecond)
+		if tag == "v1.1.0" {
+			r.Warn(presenter.Warning{Key: tag, Label: "skipped " + tag, Message: "AI returned empty notes", Row: "skipped · AI returned empty notes", Elapsed: 1400 * time.Millisecond})
+			r.NextMoves(presenter.NextMoves{Stage: tag, Quiet: true, Moves: []presenter.NextMove{{Lead: tag + " kept its old notes. To try it again:", Command: "mint release regenerate " + tag + " --target release"}}})
 			continue
 		}
-		r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Detail: "generated"})
+		r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: tag, Detail: "generated", Row: "notes generated", Blocking: true, Ongoing: true, Elapsed: 1400 * time.Millisecond})
+		r.StageStarted(presenter.StageStart{Name: "publish", Key: tag, Blocking: true, Quiet: true, Text: "writing the GitHub release…"})
+		r.clock.Advance(700 * time.Millisecond)
+		r.StageSucceeded(presenter.StageSuccess{Name: tag, Key: tag, Detail: "GitHub release", Blocking: true, Quiet: true, Elapsed: 2100 * time.Millisecond})
 	}
-	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeAllRegenerated, Summary: "2 regenerated, 1 skipped"})
-	header := row(" mint ─ release regenerate --all", "~/Code/pigeon")
+	r.RunFinished(presenter.RunResult{Project: "pigeon", Outcome: presenter.OutcomeAllRegenerated, Summary: "2 regenerated, 1 skipped: v1.1.0 (AI returned empty notes)", Ahead: true})
+	r.RunFinished(presenter.RunResult{Project: "pigeon", Outcome: presenter.OutcomeAllRegenerated, Quiet: true, End: presenter.Station{Name: "done", Detail: "2 of 3 versions regenerated · 1 skipped"}, Elapsed: 5600 * time.Millisecond})
+	r.Close()
+}
+
+func TestRail_RegenerateAllIsOneRunWithANodePerVersion(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 24, answers())
+	regenerateAll(r)
 	wantScreen(t, r,
-		header, "", " ●  notes         generated",
-		header, "", " !  skipped v1.1.0", "                  AI returned empty notes",
-		header, "", " ●  notes         generated",
+		row(" mint ─ release regenerate --all", "~/Code/pigeon"),
+		"",
+		" ◇  3 versions    fresh notes → GitHub releases",
+		" │",
+		" ●  v1.0.0        GitHub release                                            2.1s",
+		" !  v1.1.0        skipped · AI returned empty notes                         1.4s",
+		" ●  v2.0.0        GitHub release                                            2.1s",
+		" │",
+		" ◆  done          2 of 3 versions regenerated · 1 skipped                   5.6s",
+		"",
+		" next",
+		"   v1.1.0 kept its old notes. To try it again:",
+		"     mint release regenerate v1.1.0 --target release",
 	)
+}
+
+// TestRail_UnderSixtyColumnsAVersionSettlesAsItStandsAndGoesOnBelow pins that an
+// ongoing node is finished for every settling rule: with no region to hold it, a
+// --all version prints as it stands once its notes are done, and its release draws
+// as a node of its own below.
+func TestRail_UnderSixtyColumnsAVersionSettlesAsItStandsAndGoesOnBelow(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 50, 24, answers())
+	header := presenter.Header{Command: "release regenerate --all", Where: pigeonWhere}
+	r.RunStarted(presenter.RunInfo{Header: header, Quiet: true, Toward: "done", Start: presenter.Station{Name: "1 version", Detail: "fresh notes"}})
+	r.ShowPlan(presenter.Plan{Quiet: true, Stages: []presenter.PlanStage{{Key: "v1.0.0", Name: "v1.0.0", Detail: "GitHub release"}}})
+	r.StageStarted(presenter.StageStart{Name: "v1.0.0", Key: "v1.0.0", Blocking: true, Quiet: true, Text: "generating…"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "v1.0.0", Detail: "generated", Row: "notes generated", Blocking: true, Ongoing: true})
+	r.StageStarted(presenter.StageStart{Name: "publish", Key: "v1.0.0", Blocking: true, Quiet: true, Text: "writing…"})
+	r.StageSucceeded(presenter.StageSuccess{Name: "v1.0.0", Key: "v1.0.0", Detail: "GitHub release", Blocking: true, Quiet: true, Elapsed: 2 * time.Second})
+	screen := r.screen(t)
+	settled := slices.Index(screen, " │  notes generated")
+	released := slices.Index(screen, " │  GitHub release")
+	if settled < 0 || released <= settled || screen[released-1] != " ●  v1.0.0" {
+		t.Errorf("the terminal shows\n%s\nwant the version as its notes left it, then its release on a node below", strings.Join(screen, "\n"))
+	}
+}
+
+func TestRail_ARegenerateAllVersionRunsOnPastItsNotesOnOneNode(t *testing.T) {
+	t.Parallel()
+	r := newRailTerm(t, 80, 24, answers())
+	header := presenter.Header{Command: "release regenerate --all", Where: pigeonWhere}
+	r.RunStarted(presenter.RunInfo{Header: header, Quiet: true, Toward: "done", Start: presenter.Station{Name: "1 version", Detail: "fresh notes → GitHub releases"}})
+	r.ShowPlan(presenter.Plan{Quiet: true, Stages: []presenter.PlanStage{{Key: "v1.0.0", Name: "v1.0.0", Detail: "GitHub release"}}})
+	r.StageStarted(presenter.StageStart{Name: "v1.0.0", Key: "v1.0.0", Blocking: true, Quiet: true, Text: "generating release notes…"})
+	r.StageStarted(presenter.StageStart{Name: "notes", Key: "v1.0.0", Blocking: true, Text: "generating release notes…"})
+	r.clock.Advance(3 * time.Second)
+	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "v1.0.0", Detail: "generated", Row: "notes generated", Blocking: true, Ongoing: true, Elapsed: 3 * time.Second})
+	r.clock.Advance(40 * time.Second) // the review waiting on its answer
+	r.StageStarted(presenter.StageStart{Name: "publish", Key: "v1.0.0", Blocking: true, Quiet: true, Text: "writing the GitHub release…"})
+	r.clock.Advance(time.Second)
+	r.ticks.tick(t)
+	if got := r.screen(t)[4]; !strings.Contains(got, "writing the GitHub release…") || !strings.HasSuffix(got, " 4s") {
+		t.Errorf("the version's node reads %q, want it running on with the time it ran, 4s, not the review's wait", got)
+	}
 }
 
 func TestRail_TheWidthIsReadAgainAtEachRedraw(t *testing.T) {
@@ -349,7 +425,7 @@ func TestRail_UnderSixtyColumnsThereIsNoRegion_NothingIsRedrawn(t *testing.T) {
 	r.StageSucceeded(presenter.Settled("message", "written"))
 	r.ShowMessage(presenter.Message{Body: "feat: retry deliveries"})
 	in.asked = func(int) {
-		if got := r.screen(t); got[len(got)-1] != " ?  Commit this message?   y accept   n abort" {
+		if got := r.screen(t); got[len(got)-1] != " ?  Commit this message?   y accept   n abort ›" {
 			t.Errorf("while asked the terminal ends %q, want the question printed where it can be seen", got[len(got)-1])
 		}
 	}

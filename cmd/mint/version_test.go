@@ -3,11 +3,16 @@ package main
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/muesli/termenv"
 
 	"mint/internal/buildinfo"
 	"mint/internal/presenter"
+	"mint/internal/presenter/frametest"
 	"mint/internal/presenter/presentertest"
+	"mint/internal/ptytest"
 )
 
 // TestEmitVersionRoutesThroughShowVersion proves the version core drives exactly
@@ -81,20 +86,6 @@ func TestSubcommandAndFlagAreByteIdentical(t *testing.T) {
 	}
 }
 
-// TestEmitVersionPassesEmptyLeaf proves the version path supplies an EMPTY Leaf in
-// the payload — the pretty presenter defaults it to 🌿 (leafOrDefault), so version
-// needs no git/repo to derive a brand leaf. The presenter package owns the dressed
-// "{leaf} mint v{value}" rendering; here we only assert the cmd hands it an empty
-// leaf (no git-derived value).
-func TestEmitVersionPassesEmptyLeaf(t *testing.T) {
-	rec := &presentertest.RecordingPresenter{}
-	emitVersion(rec)
-
-	if leaf := rec.Events[0].ShowVersion.Leaf; leaf != "" {
-		t.Errorf("ShowVersion.Leaf = %q, want empty (no git-derived leaf for version)", leaf)
-	}
-}
-
 // TestHasVersionFlagRecognisesGlobalFlag proves the global --version flag is
 // detected regardless of position, while the verb / unrelated args are not
 // mistaken for it.
@@ -122,6 +113,29 @@ func TestHasVersionFlagRecognisesGlobalFlag(t *testing.T) {
 	}
 }
 
+// TestVersion_Frames holds the version, drawn on the rail through the version core onto
+// a virtual terminal 100 columns wide with colour off, to its frame in testdata/frames
+// cell for cell: " mint v0.1.2", the wordmark in the accent.
+// `go test ./cmd/mint -run Frames -update` writes it again.
+func TestVersion_Frames(t *testing.T) {
+	original := buildinfo.Version
+	t.Cleanup(func() { buildinfo.Version = original })
+	buildinfo.Version = "0.1.2"
+
+	term := frametest.NewTerminal(100, 40)
+	p := presenter.NewRailPresenter(term,
+		presenter.WithRailProfile(termenv.Ascii),
+		presenter.WithRailSize(func() (int, int) { return 100, 40 }),
+	)
+	emitVersion(p)
+	p.Close()
+	if err := term.Err(); err != nil {
+		t.Fatalf("the terminal was written what it can't apply: %v", err)
+	}
+
+	frametest.Check(t, "testdata/frames", map[string]string{"version-100": term.ANSI()})
+}
+
 // TestRunVersionWorksWithoutGitRepo proves printing the version requires NO git /
 // no repo-root resolution: runVersion is driven from a temp dir that is NOT a git
 // repository and still succeeds (exit 0). The cmd layer never constructs a runner
@@ -137,7 +151,69 @@ func TestRunVersionWorksWithoutGitRepo(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = devnull.Close() })
 
-	if code := runVersion(devnull, devnull, devnull); code != 0 {
+	if code := runVersion(false, devnull, devnull, devnull); code != 0 {
 		t.Fatalf("runVersion exit code = %d, want 0 (must work outside a git repo)", code)
+	}
+}
+
+// TestRunVersionHonoursPlainOnATerminal proves --plain reaches the version surface:
+// on a terminal, which alone would draw the dressed form, it prints the bare value.
+func TestRunVersionHonoursPlainOnATerminal(t *testing.T) {
+	original := buildinfo.Version
+	t.Cleanup(func() { buildinfo.Version = original })
+	buildinfo.Version = "1.2.3"
+
+	tests := []struct {
+		name  string
+		plain bool
+		check func(t *testing.T, written string)
+	}{
+		{
+			name:  "--plain prints the bare value",
+			plain: true,
+			check: func(t *testing.T, written string) {
+				if written != "1.2.3\r\n" {
+					t.Errorf("written = %q, want the bare value %q", written, "1.2.3\r\n")
+				}
+			},
+		},
+		{
+			name: "without it the terminal gets the dressed form",
+			check: func(t *testing.T, written string) {
+				if !strings.Contains(written, " mint v1.2.3\r\n") {
+					t.Errorf("written = %q, want the Rail's dressed %q", written, " mint v1.2.3")
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pty, tty := ptytest.Open(t)
+			if code := runVersion(tt.plain, tty, tty, tty); code != 0 {
+				t.Fatalf("runVersion exit code = %d, want 0", code)
+			}
+			tt.check(t, ptytest.Written(t, pty))
+		})
+	}
+}
+
+// TestHasPlainFlagFindsItAnywhere proves --plain is found as a whole token wherever
+// it appears, for `mint version --plain` and `mint --version --plain` alike.
+func TestHasPlainFlagFindsItAnywhere(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		args []string
+		want bool
+	}{
+		{args: []string{"--plain"}, want: true},
+		{args: []string{"--version", "--plain"}, want: true},
+		{args: []string{"--plainer"}, want: false},
+		{args: nil, want: false},
+	}
+	for _, tt := range tests {
+		if got := hasPlainFlag(tt.args); got != tt.want {
+			t.Errorf("hasPlainFlag(%v) = %v, want %v", tt.args, got, tt.want)
+		}
 	}
 }

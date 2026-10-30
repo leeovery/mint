@@ -109,7 +109,10 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitFails_WarnsTheStepThatCommi
 			err := a.release(t.Context())
 
 			want := presenter.Warning{
-				Label: "unwind incomplete",
+				Label:  "unwind incomplete",
+				Key:    "unwind",
+				Row:    "automatic recovery failed",
+				Failed: true,
 				Message: "automatic recovery failed; manually commit the exclusion answers mint wrote to .mint.toml (`git -C " + a.root +
 					" add .mint.toml` then `git -C " + a.root + " commit -m '" + answersSubject(minorTagV130) + "'`)",
 				Output: tc.stderr,
@@ -193,6 +196,9 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 			path := filepath.Join(a.root, config.FileName)
 			want := presenter.Warning{
 				Label:   "unwind incomplete",
+				Key:     "unwind",
+				Row:     "automatic recovery failed",
+				Failed:  true,
 				Message: "automatic recovery failed; manually restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
 				Output:  "reading " + config.FileName + ": read " + path + ": is a directory",
 			}
@@ -219,14 +225,14 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 		{
 			name:    "the answers commit at the tip",
 			rev:     "HEAD",
-			summary: "reset 2 commits; manual cleanup required",
+			summary: "manual cleanup required",
 		},
 		{
 			name:        "the answers commit below the bookkeeping commit",
 			tail:        pushRejectedAfterTheTag(),
 			beforeReset: []runner.ScriptedCall{ScriptedOut("")}, // tag -d v1.3.0
 			rev:         "HEAD~1",
-			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; manual cleanup required",
+			summary:     "deleted tag " + minorTagV130 + "; manual cleanup required",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -245,7 +251,10 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 			err := a.release(t.Context())
 
 			want := presenter.Warning{
-				Label: "unwind incomplete",
+				Label:  "unwind incomplete",
+				Key:    "unwind",
+				Row:    "automatic recovery failed",
+				Failed: true,
 				Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 					"`), then restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
 				Output: resetStderr,
@@ -256,8 +265,11 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 			if reset == -1 {
 				t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
-			if after := a.f.Invocations()[reset+1:]; len(after) != 0 {
-				t.Errorf("after the failed reset = %q, want no re-commit", commandLines(after))
+			// Only the close's reads of where HEAD stands follow the failed reset.
+			for _, line := range commandLines(a.f.Invocations()[reset+1:]) {
+				if !strings.HasPrefix(line, "git rev-parse HEAD --abbrev-ref HEAD") && !strings.HasPrefix(line, "git symbolic-ref") {
+					t.Errorf("after the failed reset ran %q, want no re-commit", line)
+				}
 			}
 		})
 	}
@@ -275,11 +287,18 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 	err := a.release(t.Context())
 
 	want := presenter.Warning{
-		Label: "unwind incomplete",
+		Label:  "unwind incomplete",
+		Key:    "unwind",
+		Row:    "automatic recovery failed",
+		Failed: true,
 		Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
 			"`), then restore the exclusion answers commit on top (`git cherry-pick ORIG_HEAD~1`)",
 		Output: resetStderr,
 	}
-	assertUnwoundWithOneWarning(t, rec, err, want, "reset 3 commits and deleted tag "+minorTagV130+"; manual cleanup required")
+	assertUnwoundWithOneWarning(t, rec, err, want, "deleted tag "+minorTagV130+"; manual cleanup required")
+	assertManualSteps(t, rec,
+		presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
+		presenter.NextMove{Lead: "Restore the exclusion answers commit on top:", Command: "git cherry-pick ORIG_HEAD~1"},
+	)
 	assertAnswersCommitReadFirst(t, a.f, "HEAD~1")
 }

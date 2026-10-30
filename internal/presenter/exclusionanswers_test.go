@@ -2,6 +2,7 @@ package presenter_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -23,28 +24,9 @@ func driveAnsweredNotesStage(p presenter.Presenter) {
 	p.StageSucceeded(presenter.StageSuccess{
 		Name:     "notes",
 		Detail:   "generated",
-		Sentence: "Generated release notes",
 		Elapsed:  4200 * time.Millisecond,
 		Blocking: true,
 	})
-}
-
-func TestPrettyPresenter_ExclusionAnswersRecorded_PrintsOneLineBeforeTheNotesLineResumes(t *testing.T) {
-	t.Parallel()
-
-	out, tr := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { driveAnsweredNotesStage(p) })
-
-	want := "✓ Answers written to .mint.toml's [release] table and committed\n" +
-		"✓ Generated release notes (4.2s)\n"
-	if got := out.String(); got != want {
-		t.Errorf("output =\n%q\nwant\n%q", got, want)
-	}
-	if len(tr.created) != 2 {
-		t.Fatalf("spinners created = %d, want the notes line and its resumption", len(tr.created))
-	}
-	if !tr.created[0].stopped || !tr.created[1].started {
-		t.Errorf("the notes line did not stop for the answers line and resume after it")
-	}
 }
 
 func TestPlainPresenter_ExclusionAnswersRecorded_PrintsItsOwnLine(t *testing.T) {
@@ -71,8 +53,6 @@ func TestRecordingPresenter_ExclusionAnswersRecorded_RecordsItsPayload(t *testin
 	rec := &presentertest.RecordingPresenter{}
 	answers := releaseTableAnswers
 	answers.Key = "check"
-	answers.Exclude = []string{"vendor/**"}
-	answers.Keep = []string{"docs/**"}
 	rec.ExclusionAnswersRecorded(answers)
 
 	if len(rec.Events) != 1 {
@@ -88,17 +68,6 @@ func TestRecordingPresenter_ExclusionAnswersRecorded_RecordsItsPayload(t *testin
 
 var ignoredReleaseTableAnswers = presenter.ExclusionAnswers{Stage: "notes", File: ".mint.toml", Table: "[release]", Ignored: true}
 
-func TestPrettyPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNotCommitted(t *testing.T) {
-	t.Parallel()
-
-	out, _ := drivePrettySpy(t, func(p *presenter.PrettyPresenter) { p.ExclusionAnswersRecorded(ignoredReleaseTableAnswers) })
-
-	want := "✓ Answers written to .mint.toml's [release] table and not committed, as git ignores .mint.toml\n"
-	if got := out.String(); got != want {
-		t.Errorf("output =\n%q\nwant\n%q", got, want)
-	}
-}
-
 func TestPlainPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNotCommitted(t *testing.T) {
 	t.Parallel()
 
@@ -109,4 +78,74 @@ func TestPlainPresenter_ExclusionAnswersRecorded_ForAnIgnoredFile_SaysTheyWereNo
 		t.Errorf("output =\n%s\nwant\n%s", got, want)
 	}
 	assertBytePureASCIIStreams(t, "plain ignored exclusion answers narration", out, errBuf)
+}
+
+// TestRailPresenter_ExclusionAnswersRecorded_HangsWhereTheAnswersWent pins the row
+// the Rail hangs under the check's node once the answers are written: committed, or
+// left uncommitted where git ignores the file.
+func TestRailPresenter_ExclusionAnswersRecorded_HangsWhereTheAnswersWent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		answers presenter.ExclusionAnswers
+		want    []string
+	}{
+		{
+			name:    "committed",
+			answers: releaseTableAnswers,
+			want:    []string{" │                written to .mint.toml's [release] table and committed"},
+		},
+		{
+			name:    "ignored",
+			answers: ignoredReleaseTableAnswers,
+			want: []string{
+				" │                written to .mint.toml's [release] table and not committed, as git ignores",
+				" │                .mint.toml",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := newRailTerm(t, 100, 24, answers())
+			r.RunStarted(releaseStarted(false))
+			r.ShowPlan(presenter.Plan{Stages: []presenter.PlanStage{
+				{Key: "check", Name: "check", Detail: "files that don't belong in the notes", Inside: true},
+				{Key: "notes", Name: "notes", Detail: "written by the AI"},
+			}})
+			r.StageStarted(notesStarted())
+			r.NotesChecking(presenter.NotesCheck{Key: "check"})
+			r.NotesChecked(presenter.NotesCheck{Key: "check", Detail: "1 flagged"})
+			a := tt.answers
+			a.Key = "check"
+			r.SuspendSpinner()
+			r.ExclusionAnswersRecorded(a)
+			r.ResumeSpinner()
+
+			screen := r.screen(t)
+			if got := hungUnder(screen, " ●  check ", " ⠋  notes "); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("rows under the check =\n%q\nwant\n%q\nscreen:\n%s", got, tt.want, strings.Join(screen, "\n"))
+			}
+		})
+	}
+}
+
+// hungUnder is the rows of screen between the row that starts with node and the
+// next that starts with next.
+func hungUnder(screen []string, node, next string) []string {
+	var rows []string
+	in := false
+	for _, l := range screen {
+		switch {
+		case strings.HasPrefix(l, node):
+			in = true
+		case strings.HasPrefix(l, next):
+			return rows
+		case in:
+			rows = append(rows, l)
+		}
+	}
+	return rows
 }

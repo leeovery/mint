@@ -87,6 +87,29 @@ func NewGitHubPublisher(r runner.CommandRunner) *GitHubPublisher {
 	return &GitHubPublisher{runner: r}
 }
 
+// CLIError is a failed call of a driver's CLI (gh, …), carrying the stderr it wrote,
+// which a failure shows verbatim beneath its line. Its message is the call's own.
+type CLIError struct {
+	Stderr string
+	err    error
+}
+
+func (e *CLIError) Error() string { return e.err.Error() }
+
+// Unwrap exposes the runner error so errors.Is matches it.
+func (e *CLIError) Unwrap() error { return e.err }
+
+// cliError is the call that failed with err, res being what it wrote.
+func cliError(res runner.Result, err error) *CLIError {
+	return &CLIError{Stderr: res.Stderr, err: err}
+}
+
+// ReleaseName is what the driver's releases are called where mint names one: "GitHub
+// release".
+func (*GitHubPublisher) ReleaseName() string {
+	return "GitHub release"
+}
+
 // CreateRelease publishes a new GitHub release for tag via
 // `gh release create {tag} --title {title} --notes-file - --verify-tag`.
 //
@@ -115,7 +138,7 @@ func (p *GitHubPublisher) CreateRelease(ctx context.Context, tag, title, body st
 		"--verify-tag",
 	)
 	if err != nil {
-		return "", fmt.Errorf("creating GitHub release for tag %q: %w", tag, err)
+		return "", fmt.Errorf("creating GitHub release for tag %q: %w", tag, cliError(res, err))
 	}
 	return strings.TrimSpace(res.Stdout), nil
 }
@@ -158,7 +181,7 @@ func (p *GitHubPublisher) ReleaseExists(ctx context.Context, tag string) (bool, 
 	if strings.Contains(res.Stderr, notFoundMarker) {
 		return false, nil
 	}
-	return false, fmt.Errorf("probing GitHub release for tag %q: %w", tag, err)
+	return false, fmt.Errorf("probing GitHub release for tag %q: %w", tag, cliError(res, err))
 }
 
 // UpdateRelease overwrites the GitHub release for an existing tag via
@@ -189,7 +212,7 @@ func (p *GitHubPublisher) UpdateRelease(ctx context.Context, tag, title, body st
 		"--verify-tag",
 	)
 	if err != nil {
-		return "", fmt.Errorf("updating GitHub release for tag %q: %w", tag, err)
+		return "", fmt.Errorf("updating GitHub release for tag %q: %w", tag, cliError(res, err))
 	}
 	return strings.TrimSpace(res.Stdout), nil
 }
@@ -223,7 +246,7 @@ func (p *GitHubPublisher) ReadReleaseBody(ctx context.Context, tag string) (stri
 		if strings.Contains(res.Stderr, notFoundMarker) {
 			return "", false, nil
 		}
-		return "", false, fmt.Errorf("reading GitHub release body for tag %q: %w", tag, err)
+		return "", false, fmt.Errorf("reading GitHub release body for tag %q: %w", tag, cliError(res, err))
 	}
 	return res.Stdout, strings.TrimSpace(res.Stdout) != "", nil
 }

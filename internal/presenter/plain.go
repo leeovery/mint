@@ -1,11 +1,11 @@
 package presenter
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"mint/internal/bytesize"
 )
@@ -23,16 +23,10 @@ type PlainPresenter struct {
 	// for redirect-visibility — the full narration still goes to out. A clean run
 	// writes nothing to err.
 	err io.Writer
-	// in is the gate INPUT stream (os.Stdin in production). It is injected so
-	// Prompt is testable without a real terminal: tests pass a strings.Reader
-	// script. It is wrapped ONCE in a persistent bufio.Reader (reader, below) so
-	// buffered bytes survive across re-prompt reads.
-	in io.Reader
-	// reader is the single persistent buffered wrapper around in, constructed
-	// lazily on the first Prompt read. Reusing one bufio.Reader for every read is
-	// essential: a fresh wrapper per read would drop bytes bufio read ahead into
-	// its buffer, losing the next line across a re-prompt.
-	reader *bufio.Reader
+	// input is the gate INPUT stream (os.Stdin in production), and the one buffered
+	// reader over it every read shares. The stream is injected so Prompt is testable
+	// without a real terminal: tests pass a strings.Reader script.
+	input input
 	// yes records the -y/--yes gating decision (the gating axis — orthogonal to
 	// render mode and the stream split). When set, Prompt SKIPS the gate entirely:
 	// it neither renders the menu nor reads the input stream, instead emitting the
@@ -89,7 +83,7 @@ func NewPlainPresenterWithInput(out, err io.Writer, in io.Reader) *PlainPresente
 	// stdinInteractive defaults to true (interactive) explicitly — see the field
 	// doc: the existing interactive-path tests must keep hitting the interactive
 	// loop, not the forbidden-combination fail path.
-	return &PlainPresenter{out: out, err: err, in: in, stdinInteractive: true}
+	return &PlainPresenter{out: out, err: err, input: input{in: in}, stdinInteractive: true}
 }
 
 // writef writes one narration line to out. A Presenter method returns nothing —
@@ -114,10 +108,14 @@ func (p *PlainPresenter) errf(format string, args ...any) {
 // "releasing", "regenerating", … — never a hardcoded literal. The bare payload
 // version is rendered with a "v" prefix; a version-LESS run (commit has no version
 // to announce) omits the segment entirely rather than dangling a bare "v" — the
-// same no-dangling-segment rule the success/footer lines follow.
+// same no-dangling-segment rule the success/footer lines follow. A Quiet start
+// renders nothing.
 func (p *PlainPresenter) RunStarted(info RunInfo) {
+	if info.Quiet {
+		return
+	}
 	// A dry run carries a trailing " (dry run)" marker so a live-tail/pipe consumer
-	// sees the preview framing from the first line, mirroring the pretty marker.
+	// sees the preview framing from the first line.
 	marker := ""
 	if info.DryRun {
 		marker = " (dry run)"
@@ -136,11 +134,11 @@ func (p *PlainPresenter) RunStarted(info RunInfo) {
 // every blocking stage rather than a stage-specific guess: the StageStart payload
 // carries only Name + Blocking, so the presenter must not invent stage-specific
 // narration (the event-payload principle). It is the plain equivalent of the
-// pretty spinner. Being synthesised, it stays byte-pure ASCII — an ASCII ellipsis
-// ("..."), not the U+2026 glyph the pretty spinner uses (the spec's "wording
-// refinable" latitude; the byte-purity guard is fixed).
+// Rail's spinner. Being synthesised, it stays byte-pure ASCII — an ASCII ellipsis
+// ("..."), not the U+2026 glyph (the spec's "wording refinable" latitude; the
+// byte-purity guard is fixed). A Quiet start renders nothing.
 func (p *PlainPresenter) StageStarted(s StageStart) {
-	if !s.Blocking {
+	if !s.Blocking || s.Quiet {
 		return
 	}
 	p.writef("%s: running...\n", s.Name)
@@ -151,20 +149,25 @@ func (p *PlainPresenter) StageStarted(s StageStart) {
 // suspend or resume around the engine's $EDITOR hand-off. They produce NO output and
 // never error, satisfying the engine-callable interface uniformly across both render
 // modes without plain pulling in any animation. The presenter does not invoke
-// $EDITOR; these hooks only exist for the pretty spinner's sake.
+// $EDITOR; these hooks only exist for the Rail's live region's sake.
 func (p *PlainPresenter) SuspendSpinner() {}
 
 // ResumeSpinner is the plain no-op pair of SuspendSpinner (see above).
 func (p *PlainPresenter) ResumeSpinner() {}
 
+// formatElapsed renders an engine-measured duration in the compact one-decimal
+// "{seconds}s" form (2.3s).
+func formatElapsed(d time.Duration) string {
+	return fmt.Sprintf("%.1fs", d.Seconds())
+}
+
 // StageSucceeded renders a stage's single completion line as "{stage}: {detail}",
 // falling back to "{stage}: ok" when no detail travels with the event. A blocking
 // stage additionally carries an elapsed suffix " ({elapsed})" after the
-// detail/ok text — the same long/blocking gate the pretty presenter uses. The
-// suffix is gated on Blocking, not on the Elapsed value: a short stage never shows
-// elapsed even with a non-zero duration, and a blocking stage that finished under
-// the timer's resolution still renders "(0.0s)" rather than suppressing it. A Quiet
-// success renders nothing.
+// detail/ok text. The suffix is gated on Blocking, not on the Elapsed value: a
+// short stage never shows elapsed even with a non-zero duration, and a blocking
+// stage that finished under the timer's resolution still renders "(0.0s)" rather
+// than suppressing it. A Quiet success renders nothing.
 func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 	if s.Quiet {
 		return
@@ -174,10 +177,8 @@ func (p *PlainPresenter) StageSucceeded(s StageSuccess) {
 		detail = "ok"
 	}
 	if s.Blocking {
-		// formatElapsed (in pretty.go) is the package-shared "{seconds}s" helper —
-		// same compact one-decimal form both presenters render. The suffix is gated
-		// on Blocking, not the Elapsed value, so a zero duration still renders
-		// "(0.0s)" rather than being suppressed.
+		// The suffix is gated on Blocking, not the Elapsed value, so a zero duration
+		// still renders "(0.0s)" rather than being suppressed.
 		p.writef("%s: %s (%s)\n", s.Name, detail, formatElapsed(s.Elapsed))
 		return
 	}
@@ -218,8 +219,11 @@ func (p *PlainPresenter) StageFailed(s StageFailure) {
 }
 
 // NextMoves prints each move as its own "{stage}: NEXT - {move}" line, the move's
-// lead and command flattened back into one sentence.
+// lead and command flattened back into one sentence. Quiet moves print nothing.
 func (p *PlainPresenter) NextMoves(m NextMoves) {
+	if m.Quiet {
+		return
+	}
 	for _, move := range m.Moves {
 		p.writef("%s: NEXT - %s\n", m.Stage, move.Text())
 	}
@@ -239,8 +243,11 @@ func (p *PlainPresenter) ExclusionAnswersRecorded(a ExclusionAnswers) {
 }
 
 // PreviewGate prints the gate's question as Prompt would, the key hint replaced by
-// the dry-run marker.
+// the dry-run marker. A Quiet gate's preview renders nothing.
 func (p *PlainPresenter) PreviewGate(gate Gate) {
+	if gate.Quiet {
+		return
+	}
 	p.writef("%s (%s)\n", gate.Question, previewMarker)
 }
 
@@ -279,8 +286,12 @@ func (p *PlainPresenter) NotesMerging(m NotesMerge) {
 // path (StageFailed → Unwound) and the abort path (gate-n: Unwound with no prior
 // StageFailed). The synthesised "unwound: " prefix is byte-pure ASCII; the summary
 // is engine content rendered verbatim (the byte-purity guard scans the synthesised
-// prefix, not the engine summary).
+// prefix, not the engine summary). A Quiet unwind renders nothing and sets nothing:
+// the failure before it has already marked the run.
 func (p *PlainPresenter) Unwound(u Unwind) {
+	if u.Quiet {
+		return
+	}
 	p.terminalFailure = true
 	p.writef("unwound: %s\n", u.Text())
 }
@@ -297,7 +308,7 @@ func (p *PlainPresenter) Unwound(u Unwind) {
 //
 // Empty-message edge: the fixed "{label}: WARN - " prefix renders with nothing
 // after it — no invented message text. The line is synthesised byte-pure ASCII (no
-// ⚠ glyph; that is pretty-only).
+// ⚠ glyph).
 //
 // When the warning carries captured underlying-command output (w.Output
 // non-empty), the captured body is rendered to OUT ONLY, below the WARN line,
@@ -320,8 +331,8 @@ func (p *PlainPresenter) Warn(w Warning) {
 
 // ShowPlan renders the plan as a single terse one-liner: "plan: {step}; {step}; …"
 // where each step is rendered "{verb} {target}" (or just "{verb}" when the target
-// is empty) and the steps are joined by "; ". It derives entirely from the SAME
-// structured steps the pretty block does — there is no separate terse field.
+// is empty) and the steps are joined by "; ". It derives entirely from the
+// structured steps — there is no separate terse field.
 //
 // Edge forms, all synthesised byte-pure ASCII (the targets are engine-supplied and
 // rendered verbatim): an empty plan renders exactly "plan:" with no trailing space
@@ -354,9 +365,7 @@ func renderPlainStep(step PlanStep) string {
 // ShowNotes renders the release notes wrapped in the sliceable plain rules
 // "--- release notes v{X} ---" … "--- end notes ---" so a reader/agent can
 // extract the block reliably. The body is written through the package-shared
-// writeNotesBody helper UNCHANGED — byte-for-byte verbatim, the same bytes the
-// pretty presenter writes — so the body region is provably identical across
-// modes; only these delimiters differ.
+// writeNotesBody helper UNCHANGED — byte-for-byte verbatim, the bytes that ship.
 //
 // The synthesised delimiter lines are byte-pure ASCII. The body itself may
 // legitimately contain emoji (e.g. ✨ Features / 🐛 Fixes) — that is engine
@@ -379,8 +388,7 @@ func (p *PlainPresenter) ShowNotes(notes Notes) {
 // release-notes framing). The title is engine content rendered VERBATIM in both
 // delimiter lines (ASCII by the engine's convention so the synthesised lines stay
 // byte-pure); the body is written through the package-shared writeNotesBody
-// helper UNCHANGED — byte-for-byte verbatim, the same bytes the pretty presenter
-// writes — so the body region is provably identical across modes.
+// helper UNCHANGED — byte-for-byte verbatim, the bytes that ship.
 //
 // Edge forms mirror ShowNotes exactly: an empty body writes nothing between the
 // delimiters; a body line that itself reads like a delimiter is written verbatim
@@ -411,13 +419,11 @@ func (p *PlainPresenter) ShowVersion(v Version) {
 // parseChoice, a whitespace-only line that trims to empty) selects the gate's
 // Default; case-insensitive input maps to a declared key; unrecognised input
 // re-prompts; EOF returns a non-nil error rather than silently default-accepting.
-// The parse/loop core is shared with the pretty presenter (readChoice/parseChoice)
-// — only the render closure differs.
+// The parse (parseChoice) is shared with the Rail.
 //
 // The plain render is a single terse line "{Question} [y/n/e/r]" with the hint
 // built from the gate's DECLARED keys (not a hardcoded set), so the two-choice
-// reuse gate renders "[y/n]". It is byte-pure ASCII — the pretty vertical menu is
-// task 3-4 and is not built here.
+// reuse gate renders "[y/n]". It is byte-pure ASCII.
 //
 // Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the menu is not
 // rendered and the input stream is NOT read at all. Instead the auto-accept is
@@ -435,11 +441,24 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 		p.failNotInteractive(gateFailLabel)
 		return "", ErrNotInteractive
 	}
-	reader := bufferedReader(p.in, &p.reader)
+	p.input.discardTypedAhead()
 	render := func() {
 		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))
 	}
-	return readChoice(reader, render, gate)
+	return readChoice(p.typedLine, render, gate)
+}
+
+// typedLine reads one typed line from the input. Where a terminal echoed one that
+// ended without an Enter, Ctrl-C's ^C or a line Ctrl-D closed, it ends that row, so
+// what plain writes next, the failure that says why, starts a row of its own, as on
+// the Rail.
+func (p *PlainPresenter) typedLine() (line string, ended bool, err error) {
+	read := !p.input.abandoned
+	line, ended, err = p.input.line()
+	if read && !ended && isTerminal(p.input.in) {
+		p.writef("\n")
+	}
+	return line, ended, err
 }
 
 // AskLine renders the terse free-text prompt "{prompt}: " (no trailing newline —
@@ -455,15 +474,17 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 // forbidden-combination rule as Prompt, labelled "input" (the free-text input
 // mechanism, not a gate) — and returns ErrNotInteractive. -y does not bypass the
 // check: free text has no declared default to auto-accept, and engine flows only
-// reach AskLine from an interactive gate choice. EOF with no usable line returns
-// ErrInputClosed, unrendered (the engine owns that failure's surfacing).
+// reach AskLine from an interactive gate choice. EOF with no usable line, or Ctrl-C,
+// returns ErrInputClosed, unrendered (the engine owns that failure's surfacing).
 func (p *PlainPresenter) AskLine(prompt string) (string, error) {
 	if !p.stdinInteractive {
 		p.failNotInteractive(inputFailLabel)
 		return "", ErrNotInteractive
 	}
+	p.input.discardTypedAhead()
 	p.writef("%s: ", prompt)
-	return readLine(bufferedReader(p.in, &p.reader))
+	line, _, err := p.typedLine()
+	return line, err
 }
 
 // failNotInteractive renders the FORBIDDEN-COMBINATION failure (non-TTY stdin
@@ -485,16 +506,15 @@ func (p *PlainPresenter) failNotInteractive(label string) {
 
 // InitResult renders one init outcome to OUT ONLY in plain's "{target}: {action}"
 // vocabulary: "{target}: created" for InitCreated, "{target}: skipped ({reason})"
-// for InitSkipped. The action word follows the target (the plain key:value form),
-// which is the reverse of pretty's "{glyph} {action-word} {target}" word order — the
-// spec fixes the order per mode. The engine-supplied Reason is rendered VERBATIM; the
-// presenter synthesises no reason text and reads Reason only for a skip.
+// for InitSkipped. The action word follows the target (the plain key:value form).
+// The engine-supplied Reason is rendered VERBATIM; the presenter synthesises no
+// reason text and reads Reason only for a skip.
 //
 // init has no gate and no release-style footer — these created/skipped lines ARE the
 // terminal output. InitResult is narration → out only and is never duplicated to err
 // (init carries no failure/warning semantics). The synthesised parts ("{target}: ",
-// "created", "skipped (", ")") are byte-pure ASCII — the pretty "·" middot and "✓"
-// glyph are PRETTY-only; the target and reason are engine content rendered verbatim.
+// "created", "skipped (", ")") are byte-pure ASCII; the target and reason are
+// engine content rendered verbatim.
 func (p *PlainPresenter) InitResult(r InitOutcome) {
 	if r.Action == InitSkipped {
 		p.writef("%s: skipped (%s)\n", r.Target, r.Reason)
@@ -527,9 +547,10 @@ func (p *PlainPresenter) InitResult(r InitOutcome) {
 //     Summary rendered VERBATIM; the presenter never computes the version set.
 //   - OutcomeCommitted and OutcomeCommittedWithWarning: version-less and URL-less —
 //     "done: {project} committed".
-//   - Every other outcome renders NOTHING.
+//   - Every other outcome renders NOTHING, as does a Quiet close, whose line went
+//     Ahead.
 func (p *PlainPresenter) RunFinished(r RunResult) {
-	if p.terminalFailure {
+	if p.terminalFailure || r.Quiet {
 		return
 	}
 	switch r.Outcome {
@@ -544,9 +565,9 @@ func (p *PlainPresenter) RunFinished(r RunResult) {
 		// Version-less and URL-less: the commit IS the success, so the close-out
 		// carries only the verb word and the project.
 		p.writef("done: %s committed\n", r.Project)
-	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed:
-		// No line: a single regenerated version never had one, and the other runs end
-		// on their own failure or unwind lines.
+	case OutcomeRegenerated, OutcomeDeclined, OutcomeUnwound, OutcomeFailed, OutcomeInitialised:
+		// No line: a single regenerated version never had one, an init ends on its
+		// files' lines, and the other runs end on their own failure or unwind lines.
 	}
 }
 

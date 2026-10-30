@@ -6,12 +6,11 @@ import (
 	"testing"
 )
 
-// TestSpinnerLibraryIsNotBubbleTea is the dependency guard for the spinner library
-// choice: the spec bans Bubble Tea (no alt-screen, no event-loop ownership). It
-// runs `go list -deps` on the presenter package and asserts no
-// charmbracelet/bubbletea is reachable in the dependency tree — proving the chosen
-// standalone spinner (briandowns) drags in no full-screen TUI runtime.
-func TestSpinnerLibraryIsNotBubbleTea(t *testing.T) {
+// TestPresenterDependsOnNoBubbleTea is the dependency guard for the spec's ban on
+// Bubble Tea (no alt-screen, no event-loop ownership). It runs `go list -deps` on
+// the presenter package and asserts no charmbracelet/bubbletea is reachable in the
+// dependency tree — the Rail draws its own spinner and live region.
+func TestPresenterDependsOnNoBubbleTea(t *testing.T) {
 	cmd := exec.Command("go", "list", "-deps", "mint/internal/presenter")
 	out, err := cmd.Output()
 	if err != nil {

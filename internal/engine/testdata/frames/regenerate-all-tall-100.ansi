@@ -1,0 +1,56 @@
+ mint ─ release regenerate --all                                              ~/Code/pigeon · v0.1.2
+
+ ◇  3 versions    fresh notes → GitHub releases
+ │
+ ●  v1.0.0        GitHub release · the first release's default · accepted                       2.8s
+ ●  v1.1.0        notes generated
+ │
+ │    Deliveries are batched per endpoint now.
+ │
+ │    ## ✨ Added
+ │    - Batched delivery change 1.
+ │    - Batched delivery change 2.
+ │    - Batched delivery change 3.
+ │    - Batched delivery change 4.
+ │    - Batched delivery change 5.
+ │    - Batched delivery change 6.
+ │    - Batched delivery change 7.
+ │    - Batched delivery change 8.
+ │    - Batched delivery change 9.
+ │    - Batched delivery change 10.
+ │    - Batched delivery change 11.
+ │    - Batched delivery change 12.
+ │    - Batched delivery change 13.
+ │    - Batched delivery change 14.
+ │    - Batched delivery change 15.
+ │    - Batched delivery change 16.
+ │    - Batched delivery change 17.
+ │    - Batched delivery change 18.
+ │    - Batched delivery change 19.
+ │    - Batched delivery change 20.
+ │    - Batched delivery change 21.
+ │    - Batched delivery change 22.
+ │    - Batched delivery change 23.
+ │    - Batched delivery change 24.
+ │    - Batched delivery change 25.
+ │    - Batched delivery change 26.
+ │    - Batched delivery change 27.
+ │    - Batched delivery change 28.
+ │    - Batched delivery change 29.
+ │    - Batched delivery change 30.
+ │    - Batched delivery change 31.
+ │    - Batched delivery change 32.
+ │    - Batched delivery change 33.
+ │    - Batched delivery change 34.
+ │    - Batched delivery change 35.
+ │    - Batched delivery change 36.
+ │    - Batched delivery change 37.
+ │    - Batched delivery change 38.
+ │    - Batched delivery change 39.
+ │    - Batched delivery change 40.
+ │
+ ●  v1.1.0        accepted
+ ●  v1.1.0        GitHub release                                                                2.8s
+ ●  v1.2.0        GitHub release · accepted                                                     2.8s
+ │
+ ◆  done          3 of 3 versions regenerated                                                  13.3s

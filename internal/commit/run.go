@@ -69,7 +69,7 @@ const (
 )
 
 // generateStageName is the blocking stage wrapping the AI generate/regenerate call
-// — the run's one slow step, so it carries the pretty spinner (plain prints the
+// — the run's one slow step, so it carries the Rail's spinner (plain prints the
 // terse start line). Both the first generation and the gate's `r` regeneration use
 // the SAME stage name: they are the same kind of wait.
 const generateStageName = "commit message"
@@ -260,10 +260,13 @@ type Deps struct {
 	// under. Both come from the cmd layer, so commit reads no environment for them.
 	MintVersion string
 	Home        string
-	// run closes the run Run opened, and branch is the branch HEAD stood at when it
-	// opened, the branch the commit lands on.
+	// Clock is what the run and its stages are timed by, the wall clock when nil.
+	Clock func() time.Time
+	// run closes the run Run opened, branch is the branch HEAD stood at when it opened,
+	// the branch the commit lands on, and stat the preflight's count of what it carries.
 	run    *runclose.Run
 	branch string
+	stat   diffStat
 }
 
 // editorUnavailable is the SINGLE "will the interactive editor refuse to open?" predicate.
@@ -278,6 +281,14 @@ type Deps struct {
 //     message and no contradictory preceding note.
 func (d Deps) editorUnavailable() bool {
 	return d.Yes || !d.StdinInteractive
+}
+
+// clock is what the run and its stages are timed by: Clock, or the wall clock.
+func (d Deps) clock() func() time.Time {
+	if d.Clock != nil {
+		return d.Clock
+	}
+	return time.Now
 }
 
 // Run executes the `mint commit` thread, orchestrating the pieces in EXACTLY this
@@ -309,7 +320,7 @@ func (d Deps) editorUnavailable() bool {
 // committed, with or without a warning, or, stopped short, declined or failed, its
 // end saying what the run left behind.
 func Run(ctx context.Context, deps Deps) error {
-	deps.run = runclose.Begin(deps.Presenter)
+	deps.run = runclose.Begin(deps.Presenter, deps.clock())
 	err := mintCommit(ctx, deps)
 	deps.run.Close(errors.Is(err, errGateAborted) || errors.Is(err, errEditorNoOp))
 	return err
@@ -342,20 +353,23 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	p.ShowPlan(commitPlan(deps))
 
 	// Empty-staging preflight runs HERE — before generate, so the run fails loud on a
-	// genuinely clean tree before any AI call. It is staging-mode aware: it computes the
-	// would-be-staged emptiness for deps.Staging READ-ONLY and, when empty, fails loud with
+	// genuinely clean tree before any AI call. It is staging-mode aware: it counts the
+	// would-be-staged set for deps.Staging READ-ONLY and, when empty, fails loud with
 	// the message keyed on the ACTUAL post-mode tree state (clean tree vs
-	// changes-the-mode-could-not-stage). A non-empty would-be-staged set proceeds.
+	// changes-the-mode-could-not-stage). A non-empty would-be-staged set proceeds, its
+	// count the diff node's row.
 	//
 	// The preflight is diff_exclude-BLIND: it answers "would `git commit` create a commit?",
 	// a property of the tree/index alone. diff_exclude only shapes the AI's L1 diff
 	// (generate.go), so a changeset whose every file is excluded is STILL something to
 	// commit — it passes here and the empty-AI-diff case is handled below by routing to the
 	// editor fallback, NOT by wrongly rejecting it as empty.
-	if err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging); err != nil {
+	stat, err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging)
+	if err != nil {
 		return surface(p, "preflight", err)
 	}
-	p.StageSucceeded(presenter.Settled(stageDiff, stagingDetail(deps.Staging)))
+	deps.stat = stat
+	p.StageSucceeded(presenter.Settled(stageDiff, diffDetail(stat, deps.Staging)))
 
 	// --no-ai degradation path: skip L3 generate AND the Continue? gate (the gate is
 	// AI-path-only) and route straight to the editor fallback. The editor save IS the
@@ -366,13 +380,13 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		return runEditorFallback(ctx, deps, root, "")
 	}
 
-	// The AI call is the run's one SLOW step, so it gets a blocking stage: the pretty
-	// presenter spins on "message" for its duration (plain prints the terse start
-	// line). EVERY exit from the generate step closes the stage: success via the
-	// timed completion closure, the two editor-fallback routes via a spinner-stopping
-	// Warn (attended) or the fallback guard's StageFailed (unattended), and a genuine
-	// failure via surface's StageFailed.
-	generated := startGenerateStage(p, "generating commit message…", "Generated commit message")
+	// The AI call is the run's one SLOW step, so it gets a blocking stage: the Rail
+	// spins on "message" for its duration (plain prints the terse start line). EVERY
+	// exit from the generate step closes the stage: success via the timed completion
+	// closure, the two editor-fallback routes via a spinner-stopping Warn (attended)
+	// or the fallback guard's StageFailed (unattended), and a genuine failure via
+	// surface's StageFailed.
+	generated := startGenerateStage(deps, "generating commit message…")
 	body, err := generateMessage(ctx, deps, cfg, root)
 	if err != nil {
 		// A composed prompt over max_prompt_bytes is a generate-SKIP, NOT a failure:
@@ -387,7 +401,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		// path the fallback guard's StageFailed closes it instead.)
 		if errors.Is(err, notes.ErrDiffTooLarge) {
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage, Elapsed: generated.elapsed()})
 			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
@@ -402,7 +416,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		// predicate the fallback's guard uses keeps the two in lock-step.
 		if errors.Is(err, errDiffFullyExcluded) {
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Key: stageMessage, Label: excludedNoteLabel, Message: excludedNoteMessage})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: excludedNoteLabel, Message: excludedNoteMessage, Elapsed: generated.elapsed()})
 			}
 			return runEditorFallback(ctx, deps, root, "")
 		}
@@ -419,7 +433,7 @@ func mintCommit(ctx context.Context, deps Deps) error {
 		if isAITransportFailure(err) {
 			output := aiFailureOutput(err)
 			if !deps.editorUnavailable() {
-				p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output})
+				p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: output, Elapsed: generated.elapsed()})
 			}
 			return runEditorFallback(ctx, deps, root, output)
 		}
@@ -691,12 +705,12 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 			// be "" → a plain re-roll). The transport's one retry is consumed inside
 			// regenerateMessage; commit does not re-run it.
 			// The regeneration is the same slow AI wait as the first generation, so it
-			// carries the SAME blocking "message" stage (spinner in pretty). Every exit
+			// carries the SAME blocking "message" stage (the Rail's spinner). Every exit
 			// closes it: success via the timed completion closure, a transport failure via
 			// the spinner-stopping AI-failure Warn and an over-cap prompt via the oversized
 			// Warn (`r` is interactive-only, so both paths are always attended), any other
 			// failure via surface's StageFailed.
-			regenerating := startGenerateStage(p, "regenerating commit message…", "Regenerated commit message")
+			regenerating := startGenerateStage(deps, "regenerating commit message…")
 			regenerated, gerr := regenerateMessage(ctx, deps, cfg, root, line)
 			if gerr != nil {
 				// A regeneration FAILURE after the transport's one retry (an AI transport
@@ -706,13 +720,13 @@ func reviewLoop(ctx context.Context, deps Deps, cfg config.Config, root, body st
 				// sentinel so Run owns the fallback call (the same entry point first-generation
 				// failures use): a successful fallback commit exits 0 and never double-stages.
 				if isAITransportFailure(gerr) {
-					p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr)})
+					p.Warn(presenter.Warning{Key: stageMessage, Label: aiFailWarnLabel, Message: aiFailWarnMessage, Output: aiFailureOutput(gerr), Elapsed: regenerating.elapsed()})
 					return false, body, errRegenerateFallback
 				}
 				// A nudge that pushes the regeneration's composed prompt over max_prompt_bytes
 				// sends no call and takes the same empty-editor route, under the oversized note.
 				if errors.Is(gerr, notes.ErrDiffTooLarge) {
-					p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage})
+					p.Warn(presenter.Warning{Key: stageMessage, Label: oversizedNoteLabel, Message: oversizedNoteMessage, Elapsed: regenerating.elapsed()})
 					return false, body, errRegenerateFallback
 				}
 				// Any OTHER regeneration error keeps the defensive surface-abort — it is
@@ -755,6 +769,7 @@ func commitReviewGate() presenter.Gate {
 			{Key: presenter.ChoiceRegen, Action: "regenerate"},
 		},
 		Default: presenter.ChoiceYes,
+		Review:  true,
 	}
 }
 
@@ -795,24 +810,24 @@ func regenerateMessage(ctx context.Context, deps Deps, cfg config.Config, root, 
 }
 
 // startGenerateStage narrates the start of the blocking "message" stage (the AI
-// call — the run's one slow step; the pretty spinner animates it) and starts the
-// elapsed timer, mirroring the engine's emitBlockingStageStarted idiom. The
-// returned stage's done emits the matching StageSucceeded carrying the caller's
-// detail word ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure
-// paths never call it — their spinner-stopping Warn or StageFailed, timed by
-// elapsed, closes the stage instead.
-// text is the activity phrase the pretty spinner animates ("generating commit
-// message…" / "regenerating commit message…").
-func startGenerateStage(p presenter.Presenter, text, sentence string) generateStage {
-	p.StageStarted(presenter.StageStart{Name: generateStageName, Key: stageMessage, Blocking: true, Text: text})
-	return generateStage{p: p, sentence: sentence, started: time.Now()}
+// call — the run's one slow step; the Rail's spinner animates it) and starts the
+// elapsed timer, mirroring the engine's startBlockingStage idiom. The returned
+// stage's done emits the matching StageSucceeded carrying the caller's detail word
+// ("generated"/"regenerated") and the engine-MEASURED Elapsed; failure paths never
+// call it — their Warn or StageFailed, timed by elapsed, closes the stage instead.
+// text is the activity phrase shown while it runs ("generating commit message…" /
+// "regenerating commit message…").
+func startGenerateStage(deps Deps, text string) generateStage {
+	deps.Presenter.StageStarted(presenter.StageStart{Name: generateStageName, Key: stageMessage, Blocking: true, Text: text})
+	now := deps.clock()
+	return generateStage{p: deps.Presenter, now: now, started: now()}
 }
 
-// generateStage is the blocking "message" stage under way.
+// generateStage is the blocking "message" stage under way, timed by now.
 type generateStage struct {
-	p        presenter.Presenter
-	sentence string
-	started  time.Time
+	p       presenter.Presenter
+	now     func() time.Time
+	started time.Time
 }
 
 func (s generateStage) done(detail string) {
@@ -820,14 +835,13 @@ func (s generateStage) done(detail string) {
 		Name:     generateStageName,
 		Key:      stageMessage,
 		Detail:   detail,
-		Sentence: s.sentence,
 		Elapsed:  s.elapsed(),
 		Blocking: true,
 	})
 }
 
 func (s generateStage) elapsed() time.Duration {
-	return time.Since(s.started)
+	return s.now().Sub(s.started)
 }
 
 // isAITransportFailure reports whether err is one of the THREE L2 transport-failure
@@ -957,7 +971,7 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 		return surfaceOutput(p, "stage", err, res.Stderr)
 	}
 	if deps.Staging != StagedOnly {
-		p.StageSucceeded(presenter.Settled(stageStage, "staged"))
+		p.StageSucceeded(presenter.Settled(stageStage, deps.stat.filesText()))
 		deps.run.Left(stagedNotCommitted)
 	}
 	if res, err := createCommit(ctx, deps, body); err != nil {
@@ -1038,23 +1052,61 @@ const (
 // the non-zero exit comes solely from returning errPushFailed (the commit succeeded —
 // that IS the run's success — so the run still closes as committed). Empty/aborted
 // suppression (5-5) is already natural: push is only reached after a successful commit.
+//
+// The push is timed, its node running while it goes: plain has never had a line for its
+// start or its success, so both are Quiet. A push that goes through names where it went,
+// read once it has (gitrepo.ResolvePushTarget), as the upstream may not be origin; the
+// rail's row for a failed one says what happened, and its remedy, plain's sentence, goes
+// to next as the command it names.
 func pushAfterCommit(ctx context.Context, deps Deps) error {
 	if !deps.Push {
 		return nil
 	}
+	p, now := deps.Presenter, deps.clock()
+	p.StageStarted(presenter.StageStart{Name: stagePush, Key: stagePush, Blocking: true, Text: pushingText, Quiet: true})
+	started := now()
 	res, err := deps.Mutator.Mutate(ctx, nil, "git", "push")
+	elapsed := now().Sub(started)
 	if err != nil {
 		// One generic warn for ALL causes; git's stderr travels verbatim in Output (the
 		// no-upstream "set an upstream" hint comes from git, never mint-authored text). No
 		// surface/StageFailed — the warn narrates; errPushFailed only drives the exit code.
-		deps.Presenter.Warn(presenter.Warning{
+		p.Warn(presenter.Warning{
 			Key:     stagePush,
 			Label:   pushFailWarnLabel,
 			Message: pushFailWarnMessage,
+			Row:     pushFailRow,
 			Output:  res.Stderr,
+			Elapsed: elapsed,
 		})
+		p.NextMoves(presenter.NextMoves{Stage: stagePush, Moves: []presenter.NextMove{pushAgain}, Quiet: true})
 		return errPushFailed
 	}
-	deps.Presenter.StageSucceeded(presenter.Settled(stagePush, "pushed to its upstream"))
+	p.StageSucceeded(presenter.StageSuccess{
+		Name:     stagePush,
+		Key:      stagePush,
+		Detail:   pushedTo(gitrepo.ResolvePushTarget(ctx, deps.Runner)),
+		Elapsed:  elapsed,
+		Blocking: true,
+		Quiet:    true,
+	})
 	return nil
 }
+
+// pushedTo is the push's row once it went through to target, the remote-tracking branch
+// it updated, or, where git names none, its upstream.
+func pushedTo(target string) string {
+	if target == "" {
+		return "pushed to its upstream"
+	}
+	return "pushed to " + target
+}
+
+// The push's words on the rail: what it is doing while it goes, its row where it failed,
+// and the move that pushes again.
+const (
+	pushingText = "pushing to its upstream…"
+	pushFailRow = "not pushed; the commit is in place"
+)
+
+var pushAgain = presenter.NextMove{Lead: "Push it once the cause above is fixed:", Command: "git push"}

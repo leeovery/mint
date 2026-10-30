@@ -1,0 +1,3 @@
+.mint.toml: skipped (exists, use --force)
+release: created
+--- stderr ---

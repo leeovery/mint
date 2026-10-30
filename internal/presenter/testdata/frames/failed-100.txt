@@ -6,7 +6,7 @@
  ●  preflight     tree clean · on main · v1.4.0 free · in sync with origin
  ●  pre_tag       npm ci && npm run build                                                       4.1s
  │                committed as chore(release): pre-tag artifacts
- ●  check         files that don't belong in the notes                                          6.2s
+ ●  check         1 flagged, not asked                                                          6.2s
  !  docs/specs/** flagged, not asked: design documents · 6 files, 48 kB
  ✗  notes         the AI call for part 3 of 4 failed                                           41.0s
  │                │ Claude usage limit reached. Your limit will reset at 4pm (Europe/London).
@@ -23,5 +23,5 @@
      mint release -m --no-ai
    Ship that list whenever the AI fails, under [release] in .mint.toml:
      on_notes_failure = "fallback"
-   Leave docs/specs/** out of the notes, under [release]:
+   Leave docs/specs/** out of the notes, under [release] in .mint.toml:
      diff_exclude = ["docs/specs/**"]

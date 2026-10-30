@@ -248,7 +248,8 @@ func (q Question) draw(l Layout) []line {
 }
 
 // lay is the question, then its choices three spaces apart, a choice never split
-// from its action, then, for a question typing, a cell for the cursor.
+// from its action, then, for a question typing, the input marker and a cell for the
+// cursor, so what is typed reads as the answer, not one more choice.
 func (q Question) lay(first, rest int) [][]span {
 	f := newFlow(first, rest)
 	for _, w := range words(glyphsOf([]span{s(q.Text, bold)})) {
@@ -259,16 +260,18 @@ func (q Question) lay(first, rest int) [][]span {
 		f.put(glyphsOf([]span{s(c.Key, accentBold), s(" "+c.Action, plain)}), apart)
 	}
 	if q.Typing {
-		cursor := glyphsOf([]span{s(" ", plain)})
-		f.put(cursor, cursor)
+		f.put(glyphsOf([]span{s(inputMarker, accent), s("  ", plain)}), glyphsOf([]span{s(" ", plain)}))
 	}
 	return f.done()
 }
 
+// inputMarker stands before what is typed at a question.
+const inputMarker = "›"
+
 // ruleLabel is the point of no return's own words, the rail's to draw.
 const ruleLabel = "━━ point of no return "
 
-func (r Rule) reached() bool { return r.Crossed }
+func (r Rule) reached() bool { return r.Reached || r.Crossed }
 
 func (r Rule) draw(l Layout) []line {
 	mark := s("┿", dim)

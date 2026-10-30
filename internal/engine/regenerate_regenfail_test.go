@@ -127,20 +127,22 @@ func (run *regenFailRun) assertWroteNothing(t *testing.T) {
 }
 
 // regenerateSavedNotesMoves is the failure's naming of the file at path with
-// version's regenerate that puts it on the version.
-func regenerateSavedNotesMoves(version, path string) []presenter.NextMoves {
+// version's regenerate to target, the run's own, that puts it on the version.
+func regenerateSavedNotesMoves(version, target, path string) []presenter.NextMoves {
+	command := "mint release regenerate " + version + " --target " + target + " --notes-file " + cmdline.Quote(path)
 	return []presenter.NextMoves{{
 		Stage: "regenerate",
 		Moves: []presenter.NextMove{{
-			Lead:    "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with",
-			Command: "mint release regenerate " + version + " --notes-file " + cmdline.Quote(path),
+			Lead:     "Tidy the saved part notes, then regenerate with them:",
+			Command:  command,
+			Sentence: "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with " + command,
 		}},
 	}}
 }
 
-func assertNamedWithRegenerate(t *testing.T, rec *presentertest.RecordingPresenter, version, path string) {
+func assertNamedWithRegenerate(t *testing.T, rec *presentertest.RecordingPresenter, version, target, path string) {
 	t.Helper()
-	if got, want := nextMovesEvents(rec), regenerateSavedNotesMoves(version, path); !slices.EqualFunc(got, want, nextMovesEqual) {
+	if got, want := nextMovesEvents(rec), regenerateSavedNotesMoves(version, target, path); !slices.EqualFunc(got, want, nextMovesEqual) {
 		t.Errorf("next moves = %+v, want %+v", got, want)
 	}
 }
@@ -191,7 +193,7 @@ func TestRegenerateRun_ReMergeFails_SavesEveryPartsNotesAndNamesThemWithTheVersi
 	if sf.SavedNotes != path {
 		t.Errorf("StageFailure.SavedNotes = %q, want the saved file's full path %q", sf.SavedNotes, path)
 	}
-	assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, path)
+	assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, "both", path)
 	if got := warnings(run.rec); len(got) != 0 {
 		t.Errorf("warnings = %+v, want none", got)
 	}
@@ -215,7 +217,7 @@ func TestRegenerateRun_RegenTheLadderChunkedFailsForGood_SavesTheFinishedPartsWi
 	if sf := onlyStageFailureEvent(t, run.rec); sf.SavedNotes != path {
 		t.Errorf("StageFailure.SavedNotes = %q, want the saved file's full path %q", sf.SavedNotes, path)
 	}
-	assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, path)
+	assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, "both", path)
 	run.assertWroteNothing(t)
 }
 
@@ -238,7 +240,7 @@ func TestRegenerateRun_StdinClosedAtTheNudgeOnChunkedNotes_MakesNoCallAndSavesEv
 	if got := readSaved(t, path); got != twoPartSaved {
 		t.Errorf("saved chunk notes = %q, want %q", got, twoPartSaved)
 	}
-	assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, path)
+	assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, "both", path)
 	run.assertWroteNothing(t)
 }
 
@@ -302,7 +304,7 @@ func TestRegenerateAll_RegenOnAChunkedVersionFails_SavesItsFileNamesItsRegenerat
 	if got := readSaved(t, path); got != twoPartSaved {
 		t.Errorf("v1.3.0 saved chunk notes = %q, want %q", got, twoPartSaved)
 	}
-	assertNamedWithRegenerate(t, rec, "1.3.0", path)
+	assertNamedWithRegenerate(t, rec, "1.3.0", "release", path)
 	if got := dispatchedTags(pub); !slices.Equal(got, []string{"v1.2.0"}) {
 		t.Errorf("provider writes = %v, want only v1.2.0", got)
 	}
@@ -432,7 +434,7 @@ func TestRegenerateRun_RegenFailsOnChunkedNotesAnEarlierRegenWrote_SavesThatRege
 			if got := readSaved(t, path); got != want {
 				t.Errorf("saved chunk notes = %q, want the earlier r's part notes unmarked %q", got, want)
 			}
-			assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, path)
+			assertNamedWithRegenerate(t, run.rec, regenRunVersionKey, "both", path)
 			run.assertWroteNothing(t)
 		})
 	}

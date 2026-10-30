@@ -1,0 +1,19 @@
+ mint ─ commit                                                                ~/Code/pigeon · v0.1.2
+
+ ◇  main          7c1e0b4
+ │
+ ●  diff          2 files · +56 −12 · staged changes
+ ●  message       generated · accepted                                                          0.7s
+ ●  commit        a3f9c21
+ !  push          not pushed; the commit is in place                                            0.7s
+ │                │  ! [rejected]        main -> main (fetch first)
+ │                │ error: failed to push some refs to 'https://github.com/acme/pigeon'
+ │                │ hint: Updates were rejected because the remote contains work that you do not
+ │                │ hint: have locally. Integrate the remote changes (e.g., 'git pull ...')
+ │                │ hint: before pushing again.
+ │
+ ◆  main          a3f9c21                                                                       3.5s
+
+ next
+   Push it once the cause above is fixed:
+     git push

@@ -66,9 +66,10 @@ func TestPromptPathImportsNoSubprocessDependency(t *testing.T) {
 // screenControlSequences are the terminal control sequences a LINEAR,
 // append-only presenter must NEVER emit: clear-screen, alt-screen enter/leave,
 // and cursor-home-to-overwrite. Their absence is what distinguishes mint's
-// print-style scrolling narration from a Bubble Tea / full-screen TUI. SGR
-// colour codes (ESC[...m) from lipgloss are deliberately NOT listed — they are
-// styling, not screen control, and are expected in pretty mode.
+// narration from a Bubble Tea / full-screen TUI: the Rail moves the cursor up only
+// over its own live region and erases below it, never the screen. SGR colour codes
+// (ESC[...m) are deliberately NOT listed — they are styling, not screen control,
+// and are expected in pretty mode.
 var screenControlSequences = []struct {
 	name string
 	seq  string
@@ -82,8 +83,7 @@ var screenControlSequences = []struct {
 }
 
 // assertNoScreenControl fails if out contains any clear-screen/alt-screen/
-// cursor-home sequence — the proof the render scrolls linearly and never
-// overwrites the terminal in place.
+// cursor-home sequence — the proof the render never takes over the screen.
 func assertNoScreenControl(t *testing.T, mode, out string) {
 	t.Helper()
 	for _, ctrl := range screenControlSequences {
@@ -94,10 +94,10 @@ func assertNoScreenControl(t *testing.T, mode, out string) {
 }
 
 // The render-only tests drive a single Prompt through the shared gateDrivers()
-// table (see gate_helpers_test.go), selecting termenv.TrueColor for the pretty
-// driver DELIBERATELY: the screen-control guard must pass even while lipgloss IS
-// emitting SGR colour escapes, proving the guard rejects only clear/alt-screen/
-// home sequences and not all ESC bytes. The plain driver ignores the profile.
+// table (see gate_helpers_test.go), selecting termenv.TrueColor for the Rail
+// DELIBERATELY: the screen-control guard must pass even while the Rail IS emitting
+// SGR colour escapes, proving the guard rejects only clear/alt-screen/home
+// sequences and not all ESC bytes. The plain driver ignores the profile.
 
 // TestPromptEditHasNoPresenterSideEffect locks the e (edit) render-only contract:
 // scripted "e\n" returns ChoiceEdit and the presenter does nothing else — it
@@ -147,10 +147,10 @@ func TestPromptRegenHasNoPresenterSideEffect(t *testing.T) {
 func simulateEngineLoop(t *testing.T, mode, input string, gate presenter.Gate) (presenter.Choice, []string, string) {
 	t.Helper()
 
-	// Construction routes through the shared plainGate/prettyGate seam so the loop
+	// Construction routes through the shared plainGate/railGate seam so the loop
 	// can't drift from the single-Prompt drivers; the presenter is built ONCE so its
-	// narration accumulates across passes. The pretty seam takes TrueColor so SGR
-	// colour escapes ARE present while the screen-control guard still passes.
+	// narration accumulates across passes. The Rail takes TrueColor so SGR colour
+	// escapes ARE present while the screen-control guard still passes.
 	var (
 		p   presenter.Presenter
 		out *bytes.Buffer
@@ -158,8 +158,10 @@ func simulateEngineLoop(t *testing.T, mode, input string, gate presenter.Gate) (
 	switch mode {
 	case "plain":
 		p, out, _ = plainGate(strings.NewReader(input), gateOpts{})
-	case "pretty":
-		p, out, _ = prettyGate(termenv.TrueColor, strings.NewReader(input), gateOpts{})
+	case "rail":
+		r, buf, _ := railGate(termenv.TrueColor, strings.NewReader(input), gateOpts{})
+		t.Cleanup(r.Close)
+		p, out = r, buf
 	default:
 		t.Fatalf("unknown mode %q", mode)
 	}
@@ -205,53 +207,47 @@ func bodyForPass(pass int) string {
 	}
 }
 
-// TestEngineLoopRendersLinearlyAcrossPasses is the core render-only acceptance:
-// the simulated engine loop (e, then r, then y — THREE passes ending on y)
+// TestEngineLoopRendersLinearlyAcrossPasses is the core render-only acceptance for
+// plain: the simulated engine loop (e, then r, then y — THREE passes ending on y)
 // re-renders linearly. Each pass's refreshed body appears EXACTLY ONCE, in pass
 // order, in the cumulative output; the gate/prompt appears once per pass; and the
 // output carries NO clear-screen/alt-screen/cursor-home sequence (the render
-// scrolls, it never overwrites). Asserted in BOTH modes against a real presenter.
+// scrolls, it never overwrites). The Rail instead redraws its live region in place,
+// pinned by the region and rail gate tests; the loop's end and the screen-control
+// guard hold for it in the tests below.
 func TestEngineLoopRendersLinearlyAcrossPasses(t *testing.T) {
-	for _, d := range gateDrivers() {
-		t.Run(d.mode, func(t *testing.T) {
-			gate := presenter.NotesReviewGate()
-			choice, bodies, out := simulateEngineLoop(t, d.mode, "e\nr\ny\n", gate)
+	gate := presenter.NotesReviewGate()
+	choice, bodies, out := simulateEngineLoop(t, "plain", "e\nr\ny\n", gate)
 
-			// Three passes: e (pass 0) -> r (pass 1) -> y (pass 2, exits).
-			if len(bodies) != 3 {
-				t.Fatalf("%s loop ran %d passes, want 3 (e, r, y):\nbodies=%v", d.mode, len(bodies), bodies)
-			}
-			if choice != presenter.ChoiceYes {
-				t.Errorf("%s loop final choice = %q, want %q (y exits the loop)", d.mode, choice, presenter.ChoiceYes)
-			}
-
-			// Each per-pass body appears exactly once, and in pass order — the proof
-			// the render is append-only/cumulative, not an in-place overwrite that
-			// would leave only the last body.
-			lastIdx := -1
-			for pass, body := range bodies {
-				if n := strings.Count(out, body); n != 1 {
-					t.Errorf("%s pass %d body %q appears %d times in cumulative output, want exactly 1 (append-only):\n%q", d.mode, pass, body, n, out)
-				}
-				idx := strings.Index(out, body)
-				if idx <= lastIdx {
-					t.Errorf("%s pass %d body %q is out of order (index %d, previous %d) — passes must scroll in order:\n%q", d.mode, pass, body, idx, lastIdx, out)
-				}
-				lastIdx = idx
-			}
-
-			// The gate/prompt is re-rendered once per pass (3 passes -> 3 prompts),
-			// counted via the per-mode render marker (plain's question line, the
-			// pretty bar's "› " cursor).
-			if n := d.renderCount(out); n != len(bodies) {
-				t.Errorf("%s gate render appears %d times, want %d (once per pass):\n%q", d.mode, n, len(bodies), out)
-			}
-
-			// No screen-clearing / alt-screen / cursor-home — even though pretty is
-			// emitting SGR colour escapes under TrueColor.
-			assertNoScreenControl(t, d.mode, out)
-		})
+	// Three passes: e (pass 0) -> r (pass 1) -> y (pass 2, exits).
+	if len(bodies) != 3 {
+		t.Fatalf("loop ran %d passes, want 3 (e, r, y):\nbodies=%v", len(bodies), bodies)
 	}
+	if choice != presenter.ChoiceYes {
+		t.Errorf("loop final choice = %q, want %q (y exits the loop)", choice, presenter.ChoiceYes)
+	}
+
+	// Each per-pass body appears exactly once, and in pass order — the proof the
+	// render is append-only/cumulative, not an in-place overwrite that would leave
+	// only the last body.
+	lastIdx := -1
+	for pass, body := range bodies {
+		if n := strings.Count(out, body); n != 1 {
+			t.Errorf("pass %d body %q appears %d times in cumulative output, want exactly 1 (append-only):\n%q", pass, body, n, out)
+		}
+		idx := strings.Index(out, body)
+		if idx <= lastIdx {
+			t.Errorf("pass %d body %q is out of order (index %d, previous %d) — passes must scroll in order:\n%q", pass, body, idx, lastIdx, out)
+		}
+		lastIdx = idx
+	}
+
+	// The gate's question is re-rendered once per pass (3 passes -> 3 prompts).
+	if n := strings.Count(out, gate.Question); n != len(bodies) {
+		t.Errorf("gate render appears %d times, want %d (once per pass):\n%q", n, len(bodies), out)
+	}
+
+	assertNoScreenControl(t, "plain", out)
 }
 
 // TestEngineLoopEndsOnYes proves y exits the loop: scripted "e\ny\n" loops ONCE

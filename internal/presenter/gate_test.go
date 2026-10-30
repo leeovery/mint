@@ -195,12 +195,12 @@ func TestPlainPromptReadsDefaultOnEmptyEnter(t *testing.T) {
 	}
 }
 
-// TestPrettyPromptReadsDefaultOnEmptyEnter proves the same for the pretty Prompt:
-// the stub is replaced by the shared line-read loop, and an injected empty-Enter
-// line selects the gate's Default (the full vertical menu is task 3-4).
-func TestPrettyPromptReadsDefaultOnEmptyEnter(t *testing.T) {
+// TestRailPromptReadsDefaultOnEmptyEnter proves the same for the Rail's Prompt: an
+// injected empty-Enter line selects the gate's Default.
+func TestRailPromptReadsDefaultOnEmptyEnter(t *testing.T) {
 	gate := presenter.NotesReviewGate()
-	p := presenter.NewPrettyPresenter(&bytes.Buffer{}, presenter.WithProfile(termenv.Ascii), presenter.WithInput(strings.NewReader("\n")))
+	p := presenter.NewRailPresenter(&bytes.Buffer{}, presenter.WithRailProfile(termenv.Ascii), presenter.WithRailInput(strings.NewReader("\n")))
+	defer p.Close()
 
 	choice, err := p.Prompt(gate)
 	if err != nil {

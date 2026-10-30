@@ -3,9 +3,11 @@ package engine
 // This file is the regenerate batch `--all` LOOP: the orchestration that
 // backfills EVERY matching version in one run. The version set is enumerated OLDEST →
 // NEWEST upstream (version.ResolveAllRegenerateTargets), and this loop processes each
-// in turn: it opens ONE narration block per version (each with its OWN RunStarted,
-// emitted in order — the presenter renders blocks linearly in emit order, so block
-// ordering is ENGINE-owned), produces the version's notes body (reuse read or fresh
+// in turn. The backfill is ONE run (RegenerateAllRun / RegenerateAllValidated open and
+// close it), drawn on the rail as a node per version, oldest first; plain keeps its
+// narration block per version (each with its OWN plain RunStarted, emitted in order,
+// so block ordering is ENGINE-owned) and its end summary, sent Ahead of the run's own
+// close. For each version the loop produces the notes body (reuse read or fresh
 // re-diff+AI, injected as ProduceBody), runs a per-version review gate BY DEFAULT
 // (-y opts out to run fully unattended), and dispatches the RELEASE surface via the
 // create-or-update DISPATCH — so the batch transparently mixes updates and creates
@@ -32,6 +34,8 @@ import (
 	"mint/internal/notes"
 	"mint/internal/presenter"
 	"mint/internal/publish"
+	"mint/internal/record"
+	"mint/internal/runclose"
 	"mint/internal/version"
 )
 
@@ -62,10 +66,10 @@ type BatchRegenerateRequest struct {
 	Target RegenerateTarget
 	// ReleaseBranch is the resolved release branch the preflight on-branch and
 	// remote-sync gates check, threaded from the cmd layer's read-only branch
-	// resolution. It backs the batch preflight that runs at the RegenerateAllValidated
-	// entry point AFTER the target resolves at the cmd-layer axis prompts — the cmd
-	// layer cannot run that gate set itself because it dispatches before the interactive
-	// batch target is known, exactly as the single-version RegenerateRunRequest.ReleaseBranch.
+	// resolution. It backs the batch preflight that runs inside the run AFTER the target
+	// resolves at its axis prompts — the cmd layer cannot run that gate set itself
+	// because it dispatches before the interactive batch target is known, exactly as the
+	// single-version RegenerateRunRequest.ReleaseBranch.
 	ReleaseBranch string
 	// ProduceBody yields one version's notes body for the resolved source. It is
 	// injected so the loop stays testable without a real AI transport / tag / release
@@ -99,8 +103,9 @@ type RegeneratedVersion struct {
 	Body string
 }
 
-// RegenerateAllValidated is the batch `--all` ENTRY POINT: it runs the static
-// CONFIG-level check UP FRONT — before any version is touched — then runs the
+// RegenerateAllValidated runs a --all backfill whose source and target are already
+// resolved, as RegenerateAllRun runs one once its questions are answered: it runs the
+// static CONFIG-level check UP FRONT — before any version is touched — then runs the
 // per-version loop, and finally (for a changelog/both target) performs the END-of-batch
 // whole-file CHANGELOG rebuild + single commit + push. A config-level fact (a
 // changelog/both target with the changelog DISABLED in config) is NOT a per-version
@@ -117,7 +122,63 @@ type RegeneratedVersion struct {
 // This is the batch counterpart of the cmd-layer validateTargetAgainstChangelog (task
 // 5-2): the same static rule, enforced at the engine boundary so the batch aborts
 // before it starts rather than emitting N per-version skips for one config mistake.
+//
+// The backfill is one run, opened here at its start station and closed here once.
 func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, changelogEnabled bool) error {
+	deps.run = runclose.Begin(deps.Presenter, deps.clock())
+	err := regenerateAllValidated(ctx, deps, publisher, root, req, changelogEnabled)
+	deps.run.Close(declined(err))
+	return err
+}
+
+// RegenerateAllRunRequest carries a --all backfill's inputs ahead of its questions:
+// the source and target given or to ask, whether the changelog is on, the project,
+// and Prepare, which resolves, once both are answered, the batch to run and the
+// provider driver that writes its releases (nil where none resolved).
+type RegenerateAllRunRequest struct {
+	Source           OptionalRegenerateSource
+	Target           OptionalRegenerateTarget
+	ChangelogEnabled bool
+	Project          string
+	Prepare          func(ctx context.Context, source RegenerateSource, target RegenerateTarget) (BatchRegenerateRequest, publish.Publisher, error)
+}
+
+// RegenerateAllRun runs a --all backfill from its questions: one run, opened with its
+// header ahead of Source? and Target?, which are asked as RegenerateRun asks them,
+// then prepared and run as RegenerateAllValidated runs it, and closed once.
+func RegenerateAllRun(ctx context.Context, deps ReleaseDeps, root string, req RegenerateAllRunRequest) error {
+	deps.run = runclose.Begin(deps.Presenter, deps.clock())
+	err := regenerateAllRun(ctx, deps, root, req)
+	deps.run.Close(declined(err))
+	return err
+}
+
+// regenerateAllRun is RegenerateAllRun's run; RegenerateAllRun closes it.
+func regenerateAllRun(ctx context.Context, deps ReleaseDeps, root string, req RegenerateAllRunRequest) error {
+	deps.run.Open(presenter.RunInfo{Project: req.Project, Header: deps.header(regenerateAllCommand, root)})
+	source, target, err := ResolveRegenerateAxes(deps.Presenter, req.Source, req.Target, req.ChangelogEnabled)
+	if err != nil {
+		return err
+	}
+	batch, publisher, err := req.Prepare(ctx, source, target)
+	if err != nil {
+		return err
+	}
+	return regenerateAllValidated(ctx, deps, publisher, root, batch, req.ChangelogEnabled)
+}
+
+// regenerateAllValidated is RegenerateAllValidated's run within the run deps holds:
+// its start station, its checks, the plan of a node per version, the loop, then the
+// changelog rebuild, landing at "done" with what the loop regenerated and skipped.
+func regenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, changelogEnabled bool) error {
+	release := releaseName(publisher)
+	deps.run.Start(presenter.RunInfo{
+		Project: req.Project,
+		Header:  deps.header(regenerateAllCommand, root),
+		Start:   batchStart(req, release),
+		Toward:  batchDone,
+		Quiet:   true,
+	})
 	if err := checkBatchTargetConfig(req.Target, changelogEnabled); err != nil {
 		return surface(deps.Presenter, "config", err)
 	}
@@ -132,8 +193,8 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	}
 	// Preflight the RESOLVED batch target BEFORE any version is processed, any provider
 	// write, or any changelog commit/push. A bare `--all` resolves its target
-	// INTERACTIVELY at the cmd-layer axis prompts (resolveBatchAxes) AFTER the cmd layer
-	// could run preflight, so the gate set is derived from the resolved req.Target HERE —
+	// INTERACTIVELY at RegenerateAllRun's axis prompts, AFTER the cmd layer could run
+	// preflight, so the gate set is derived from the resolved req.Target HERE —
 	// mirroring the single-version RegenerateRun: an interactive changelog/both runs the
 	// clean-tree + on-branch + remote-sync bucket before committing+pushing, and an
 	// interactive release/both runs gh-auth before the first provider dispatch. The batch
@@ -148,6 +209,7 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(req.Target, publisher != nil)); err != nil {
 		return err
 	}
+	deps.Presenter.ShowPlan(batchPlan(req, release))
 	collected, err := RegenerateAll(ctx, deps, publisher, root, req)
 	if err != nil {
 		return err
@@ -155,10 +217,95 @@ func RegenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	// With no version in the set there is nothing to rebuild from: a rebuild would cut
 	// CHANGELOG.md down to its bare preamble (a tag_prefix that matches no tag gets
 	// here), then commit and push that, so the file is left as it is.
-	if !req.Target.writesChangelog() || len(req.Versions) == 0 {
-		return nil
+	if req.Target.writesChangelog() && len(req.Versions) > 0 {
+		if err := rebuildBatchChangelog(ctx, deps, root, req, collected); err != nil {
+			return err
+		}
 	}
-	return rebuildBatchChangelog(ctx, deps, root, req, collected)
+	deps.run.Land(presenter.RunResult{
+		Project: req.Project,
+		Outcome: presenter.OutcomeAllRegenerated,
+		End:     presenter.Station{Name: batchDone, Detail: batchDoneDetail(len(req.Versions), len(collected))},
+		Quiet:   true,
+	})
+	return nil
+}
+
+// batchDone is the name of the station a --all backfill lands at.
+const batchDone = "done"
+
+// batchStart is the station a --all backfill starts from: how many versions, and
+// where their notes come from and go, release naming the provider's.
+func batchStart(req BatchRegenerateRequest, release string) presenter.Station {
+	return presenter.Station{
+		Name:   countOf(len(req.Versions), "version"),
+		Detail: batchSourceLabel(req.Source) + " → " + batchTargetLabel(req.Target, release),
+	}
+}
+
+// batchDoneDetail is what a --all backfill of total versions that regenerated some
+// did: how many of them, then how many it skipped, where it skipped any; or, with no
+// version to regenerate, that it had none.
+func batchDoneDetail(total, regenerated int) string {
+	if total == 0 {
+		return "nothing to regenerate"
+	}
+	detail := fmt.Sprintf("%d of %s regenerated", regenerated, countOf(total, "version"))
+	if skipped := total - regenerated; skipped > 0 {
+		detail += fmt.Sprintf(" · %d skipped", skipped)
+	}
+	return detail
+}
+
+// countOf is n things, the noun plural but for one, and none as no things.
+func countOf(n int, noun string) string {
+	switch n {
+	case 0:
+		return "no " + noun + "s"
+	case 1:
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// batchSourceLabel is where a --all backfill's notes come from, for its station.
+func batchSourceLabel(source RegenerateSource) string {
+	switch source {
+	case RegenerateSourceTag:
+		return "the tags' notes"
+	case RegenerateSourceRelease:
+		return "the releases' notes"
+	default:
+		return "fresh notes"
+	}
+}
+
+// batchTargetLabel is where a --all backfill's notes go, for its station: each
+// version's release, then the one changelog rebuilt.
+func batchTargetLabel(target RegenerateTarget, release string) string {
+	switch target {
+	case RegenerateTargetChangelog:
+		return record.ChangelogFileName
+	case RegenerateTargetBoth:
+		return release + "s, then " + record.ChangelogFileName
+	default:
+		return release + "s"
+	}
+}
+
+// batchPlan is a --all backfill's stages, Quiet as plain's plan comes per version: a
+// node per version, oldest first, keyed by its tag, then the changelog rebuilt where
+// the target writes it.
+func batchPlan(req BatchRegenerateRequest, release string) presenter.Plan {
+	detail := versionWrites(req.Target, release)
+	stages := make([]presenter.PlanStage, 0, len(req.Versions)+1)
+	for _, res := range req.Versions {
+		stages = append(stages, presenter.PlanStage{Key: res.Tag, Name: res.Tag, Detail: detail})
+	}
+	if req.Target.writesChangelog() && len(req.Versions) > 0 {
+		stages = append(stages, presenter.PlanStage{Key: stageRecord, Name: record.ChangelogFileName, Detail: "rebuilt, committed and pushed"})
+	}
+	return presenter.Plan{Stages: stages, Quiet: true}
 }
 
 // ErrChangelogDisabled is the single owned sentinel both changelog-disabled validators
@@ -182,15 +329,15 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 }
 
 // RegenerateAll runs the batch `--all` loop over the request's OLDEST → NEWEST version
-// set: for each version it opens a narration block, produces the body, runs the
+// set: for each version it opens plain's narration block, produces the body, runs the
 // per-version gate (unless -y), and dispatches the provider release (create-or-update
-// per version). A per-version FAILURE is CAUGHT, RECORDED with a human reason, and the
-// loop CONTINUES, so one version whose notes fail does not stop the others.
-// The run closes with one RunFinished carrying the engine-computed end Summary (the
-// regenerated count + each skipped version with its reason). It returns the COLLECTED
-// per-version bodies (oldest → newest) for the 5-13 whole-file changelog rebuild, or a
-// genuine abort (e.g. a gate DECLINE or a cancel) that ends the batch with no end
-// summary.
+// per version), all on the version's own node. A per-version FAILURE is CAUGHT,
+// RECORDED with a human reason, and the loop CONTINUES, so one version whose notes
+// fail does not stop the others. As the loop ends, plain's closing line goes Ahead,
+// carrying the engine-computed end Summary (the regenerated count + each skipped
+// version with its reason). It returns the COLLECTED per-version bodies (oldest →
+// newest) for the 5-13 whole-file changelog rebuild, or a genuine abort (e.g. a gate
+// DECLINE or a cancel) that ends the batch with no end summary.
 // Once any version's notes were written after halving, one lower-the-cap hint prints as
 // the batch ends, however it ends, and no version prints its own.
 // An empty version set is a clean no-op.
@@ -200,11 +347,11 @@ func checkBatchTargetConfig(target RegenerateTarget, changelogEnabled bool) erro
 func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest) ([]RegeneratedVersion, error) {
 	collected := make([]RegeneratedVersion, 0, len(req.Versions))
 	var skipped []skippedVersion
-	var hint batchLowerCap
+	batch := batchRun{release: releaseName(publisher)}
 	for _, res := range req.Versions {
-		processed, skip, err := processOneVersion(ctx, deps, publisher, root, req, res, &hint)
+		processed, skip, err := processOneVersion(ctx, deps, publisher, root, req, res, &batch)
 		if err != nil {
-			hintLowerCap(deps.Presenter, hint.lowerCap())
+			hintLowerCap(deps.Presenter, batch.hint.lowerCap())
 			return nil, err
 		}
 		if skip != nil {
@@ -214,17 +361,35 @@ func RegenerateAll(ctx context.Context, deps ReleaseDeps, publisher publish.Publ
 		collected = append(collected, processed)
 	}
 
-	// Close the run with the engine-computed end summary: the regenerated count and
-	// each skipped version with its reason, so the user can re-run the stragglers. The
-	// URL is omitted ENTIRELY (regenerate publishes no release); the presenter renders
-	// the Summary verbatim and never computes the version set.
-	hintLowerCap(deps.Presenter, hint.lowerCap())
+	// Plain's close, the engine-computed end summary: the regenerated count and each
+	// skipped version with its reason, so the user can re-run the stragglers. The URL
+	// is omitted ENTIRELY (regenerate publishes no release); the presenter renders the
+	// Summary verbatim and never computes the version set.
+	hintLowerCap(deps.Presenter, batch.hint.lowerCap())
 	deps.Presenter.RunFinished(presenter.RunResult{
 		Project: req.Project,
 		Outcome: presenter.OutcomeAllRegenerated,
 		Summary: batchSummary(len(collected), skipped),
+		Ahead:   true,
 	})
 	return collected, nil
+}
+
+// batchRun is what a --all loop carries from one version to the next: the lower-cap
+// hint it gathers, the name of the release each version writes, and how many it
+// has written.
+type batchRun struct {
+	hint    batchLowerCap
+	release string
+	written int
+}
+
+// wrote counts one more release written and tells the run's close: no reset takes
+// those back, and git is still as the run found it.
+func (b *batchRun) wrote(deps ReleaseDeps) {
+	b.written++
+	deps.run.Wrote(countOf(b.written, b.release) + " written")
+	deps.run.Left(noClaim)
 }
 
 // skippedVersion records one version the batch skipped: its canonical tag (shown in
@@ -237,8 +402,12 @@ type skippedVersion struct {
 	Reason string
 	// SavedNotes points at the version's saved chunk notes: the path, then the
 	// version's own regenerate that puts them on it. Empty when its notes failed with
-	// none saved, so the skip names no file.
+	// none saved, so the skip names no file. saved is the path alone, "" for none.
 	SavedNotes string
+	saved      string
+	// bodiless is a skip for a deterministic source with no notes to read, which its
+	// reason says fresh notes cure.
+	bodiless bool
 }
 
 // cause is the skip's text in its warning and in the end summary.
@@ -250,19 +419,20 @@ func (s skippedVersion) cause() string {
 }
 
 // savedNotesPointer names the chunk notes failure saved and the regenerate of version
-// that puts them on it, or "" when failure saved none.
-func savedNotesPointer(failure error, version string) string {
+// to target that puts them on it, or "" when failure saved none.
+func savedNotesPointer(failure error, version string, target RegenerateTarget) string {
 	saved := notes.SavedChunkNotesPath(failure)
 	if saved == "" {
 		return ""
 	}
-	return "part notes saved to " + saved + " — tidy them and put them on it with " + notesFileCommand("mint release regenerate "+version, saved)
+	return "part notes saved to " + saved + " — tidy them and put them on it with " + notesFileCommand(regenerateRerun(version, target).command, saved)
 }
 
 // processOneVersion runs the per-version batch step for one resolved version: it opens
-// the version's narration block (RunStarted + plan), produces the body, runs the
-// per-version gate (unless -y), then dispatches the provider release via the 5-7
-// create-or-update DISPATCH. It returns either the version's collected body (for the
+// plain's narration block for the version (RunStarted + plan) and runs the version's
+// node, on which it produces the body, runs the per-version gate (unless -y), then
+// dispatches the provider release via the 5-7 create-or-update DISPATCH, the node
+// settling with what the version wrote. It returns either the version's collected body (for the
 // 5-13 rebuild) OR a *skippedVersion (a caught per-version failure the loop records
 // and continues past) OR a genuine error that ends the batch (e.g. a gate DECLINE or
 // a cancel).
@@ -278,20 +448,22 @@ func savedNotesPointer(failure error, version string) string {
 // A gate DECLINE is NOT a failure — it is a user choice — so it propagates as an error
 // and ends the batch. A cancel (a Ctrl-C) is not a failure either and ends the batch the
 // same way, through a failed `notes` stage.
-func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, res version.Resolution, hint *batchLowerCap) (RegeneratedVersion, *skippedVersion, error) {
+func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, root string, req BatchRegenerateRequest, res version.Resolution, batch *batchRun) (RegeneratedVersion, *skippedVersion, error) {
 	p := deps.Presenter
 	versionKey := batchVersionKey(res.Tag, req.TagPrefix)
 
-	// Each version opens its OWN narration block: its own RunStarted then a plan. The
-	// presenter renders blocks linearly in emit order, so emitting in loop order is
-	// what makes the blocks read oldest → newest.
+	// Plain opens a block per version: its own RunStarted then a plan, emitted in loop
+	// order so the blocks read oldest → newest. The run's station and the version's
+	// node are drawn already, so on the rail this start and this plan of steps alone
+	// draw nothing; the version's node runs from here.
 	p.RunStarted(presenter.RunInfo{
 		Project: req.Project,
 		Version: versionKey,
 		Action:  regenerateAction,
 		Header:  deps.header(regenerateAllCommand, root),
 	})
-	p.ShowPlan(regeneratePlan(req.Source, req.Target, res.Tag, aProviderRelease))
+	p.ShowPlan(presenter.Plan{Steps: regenerateSteps(req.Source, req.Target, res.Tag)})
+	node := startQuietStep(p, deps.clock(), stepOf{name: res.Tag, key: res.Tag}, readingText(req.Source, batch.release))
 
 	// A deterministic source against a body-less version is a per-version SKIP (not the
 	// single-mode fail-loud error): read the existing body up front — the tag annotation
@@ -301,10 +473,10 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// second time — ONE read per version.
 	preReadBody, skipReason, err := preReadDeterministicBody(ctx, deps, publisher, req.Source, res.Tag)
 	if err != nil {
-		return RegeneratedVersion{}, nil, surface(p, "notes", err)
+		return RegeneratedVersion{}, nil, failVersion(p, node, stageNotes, err)
 	}
 	if skipReason != "" {
-		return reportSkip(p, skippedVersion{Tag: res.Tag, Reason: skipReason}, "")
+		return reportSkip(p, req, node, skippedVersion{Tag: res.Tag, Reason: skipReason, bodiless: true}, "")
 	}
 
 	// Produce the version's body for the resolved source BEFORE the gate — the
@@ -315,59 +487,117 @@ func processOneVersion(ctx context.Context, deps ReleaseDeps, publisher publish.
 	// so narrate it with a blocking StageStarted (spinner), a chunked run's progress
 	// while it runs, and a StageSucceeded carrying the engine-measured Elapsed once the
 	// body resolves; a per-version skip (production failure) closes the stage with no
-	// StageSucceeded — the skip Warn narrates it instead.
-	stage := startNotesStage(p)
+	// StageSucceeded — the skip Warn narrates it instead. On the rail the notes are a
+	// step of the version's node, which goes on past them.
+	stage := startNotesStep(p, deps.clock(), stepOf{name: stageNotes, key: res.Tag, ongoing: true})
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, res.Tag)
 	body, err := req.ProduceBody(ctx, req.Source, res, preReadBody, chunkNotes.sinks(stage))
 	if err != nil {
-		hint.tried(stage)
+		batch.hint.tried(stage)
 		if errors.Is(err, context.Canceled) {
-			return RegeneratedVersion{}, nil, surface(p, "notes", err)
+			return RegeneratedVersion{}, nil, failVersion(p, node, stageNotes, err)
 		}
 		reason, output := notesSkipCause(err)
-		skip := skippedVersion{Tag: res.Tag, Reason: reason, SavedNotes: savedNotesPointer(err, versionKey)}
-		processed, recorded, skipErr := reportSkip(p, skip, output)
+		skip := skippedVersion{Tag: res.Tag, Reason: reason, SavedNotes: savedNotesPointer(err, versionKey, req.Target), saved: notes.SavedChunkNotesPath(err)}
+		processed, recorded, skipErr := reportSkip(p, req, node, skip, output)
 		chunkNotes.warnUnsaved(p)
 		return processed, recorded, skipErr
 	}
-	stage.done()
-	hint.written(stage)
+	stage.read(readFrom(req.Source, batch.release, ""))
+	batch.hint.written(stage)
 
 	// Per-version gate BY DEFAULT (fresh → notes-review, reuse → simple confirm). -y
 	// opts out: the engine does not even prompt, so the batch runs fully unattended. A
 	// gate DECLINE is a user choice (not a failure), so it propagates and ends the batch.
-	// An `r` prints no hint of its own: its calls and halving fold into the batch's.
-	regens := stage.regens(hint.regenWritten)
-	reviewed, err := gatePerVersion(ctx, deps, req, res, body, versionKey, chunkNotes, regens)
-	hint.tried(stage)
+	// An `r` prints no hint of its own: its calls and halving fold into the batch's. The
+	// version's node goes on past the gate, its time leaving out the waits on its answers
+	// and the editor: an `r`'s new notes are mint's work and count.
+	regens := stage.regens(batch.hint.regenWritten)
+	reviewed, err := gatePerVersion(ctx, node.awaiting(deps), req, res, body, versionKey, chunkNotes, regens)
+	batch.hint.tried(stage)
 	if err != nil {
 		return RegeneratedVersion{}, nil, err
 	}
 
-	// Dispatch the RELEASE surface for this version when the target writes the provider
-	// (release/both): the 5-7 probe resolves create-vs-update per version, so the batch
-	// transparently mixes updates and creates. A changelog-only target skips the provider
-	// entirely — its surface is the end-of-batch whole-file CHANGELOG rebuild (task 5-13).
-	//
-	// NIL-GUARD: a downgraded batch (the provider could not be resolved — a non-github /
-	// no-remote origin) carries a nil publisher for every version. Skip the provider
-	// dispatch with a warn rather than dereferencing nil in DispatchRelease — mirroring
-	// the forward path's tag + push only downgrade. This is NOT a per-version FAILURE
-	// (the version is still collected for the changelog rebuild and counted as
-	// regenerated): the WHOLE run is downgraded, the same way the single-version path
-	// skips its one provider write.
+	if err := writeVersionRelease(ctx, deps, publisher, req, res, reviewed, node, batch); err != nil {
+		return RegeneratedVersion{}, nil, err
+	}
+	return RegeneratedVersion{Resolution: res, Body: reviewed}, nil, nil
+}
+
+// writeVersionRelease dispatches the RELEASE surface for a version whose notes are
+// body when the target writes the provider (release/both), then settles the version's
+// node with what it wrote: the 5-7 probe resolves create-vs-update per version, so the
+// batch transparently mixes updates and creates. A changelog-only target skips the
+// provider entirely — its surface is the end-of-batch whole-file CHANGELOG rebuild
+// (task 5-13).
+//
+// NIL-GUARD: a downgraded batch (the provider could not be resolved — a non-github /
+// no-remote origin) carries a nil publisher for every version. Skip the provider
+// dispatch with a warn, which ends the node, rather than dereferencing nil in
+// DispatchRelease — mirroring the forward path's tag + push only downgrade. This is NOT
+// a per-version FAILURE (the version is still collected for the changelog rebuild and
+// counted as regenerated): the WHOLE run is downgraded, the same way the single-version
+// path skips its one provider write.
+func writeVersionRelease(ctx context.Context, deps ReleaseDeps, publisher publish.Publisher, req BatchRegenerateRequest, res version.Resolution, body string, node *blockingStage, batch *batchRun) error {
+	p := deps.Presenter
 	if req.Target.writesProvider() {
 		if publisher == nil {
-			warnRegenerateProviderSkipped(p)
-		} else if _, err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, reviewed); err != nil {
-			// The batch's closing Summary carries no URL (regenerate publishes a set, not a
-			// single release with a footer URL), so the dispatched release URL is discarded
-			// here — only the forward release path threads it into RunResult.URL.
-			return RegeneratedVersion{}, nil, surface(p, "publish", err)
+			warnRegenerateProviderSkipped(p, res.Tag)
+			return nil
 		}
+		p.StageStarted(presenter.StageStart{Name: stagePublish, Key: res.Tag, Blocking: true, Text: "writing the " + batch.release + "…", Quiet: true})
+		// The batch's closing Summary carries no URL (regenerate publishes a set, not a
+		// single release with a footer URL), so the dispatched release URL is discarded
+		// here — only the forward release path threads it into RunResult.URL.
+		if _, err := DispatchRelease(ctx, publisher, res.Tag, res.Tag, body); err != nil {
+			return failVersion(p, node, stagePublish, err)
+		}
+		batch.wrote(deps)
 	}
+	node.succeeded(presenter.StageSuccess{Detail: versionDetail(req, res, batch.release)})
+	return nil
+}
 
-	return RegeneratedVersion{Resolution: res, Body: reviewed}, nil, nil
+// failVersion fails the version's node on cause, plain's line naming stage, the step
+// it failed at, and ends the batch.
+func failVersion(p presenter.Presenter, node *blockingStage, stage string, cause error) error {
+	failure := failedStage(stage, cause)
+	failure.Key, failure.Elapsed = node.step.key, node.elapsed()
+	p.StageFailed(failure)
+	return abort(cause)
+}
+
+// readingText is what a version's node does first: reading the notes a deterministic
+// source names, or generating fresh ones.
+func readingText(source RegenerateSource, release string) string {
+	switch source {
+	case RegenerateSourceTag:
+		return "reading the tag's notes…"
+	case RegenerateSourceRelease:
+		return "reading the " + release + "…"
+	default:
+		return notesStageText
+	}
+}
+
+// versionDetail is what a version's node settles with: what it wrote, and where the
+// first release's notes are fresh, that they are its default.
+func versionDetail(req BatchRegenerateRequest, res version.Resolution, release string) string {
+	detail := versionWrites(req.Target, release)
+	if res.FirstRelease && req.Source == RegenerateSourceFresh {
+		detail += " · " + notesSource(notes.KindFirstRelease, "")
+	}
+	return detail
+}
+
+// versionWrites is what each version of a --all backfill writing target writes: its
+// release, or, where the target writes none, its notes for the changelog rebuilt.
+func versionWrites(target RegenerateTarget, release string) string {
+	if !target.writesProvider() {
+		return "notes for " + record.ChangelogFileName
+	}
+	return release
 }
 
 // The human-readable skip reasons shown in the end summary. They are stable strings so
@@ -431,13 +661,34 @@ func preReadDeterministicBody(ctx context.Context, deps ReleaseDeps, publisher p
 }
 
 // reportSkip narrates a per-version skip as a non-terminal Warn (which does NOT set
-// failure state and does NOT suppress the end summary), its cause naming any saved
-// chunk notes, output verbatim beneath it, and
-// returns the *skippedVersion the loop records — so the version appears in the closing
-// summary for re-run.
-func reportSkip(p presenter.Presenter, skip skippedVersion, output string) (RegeneratedVersion, *skippedVersion, error) {
-	p.Warn(presenter.Warning{Label: "skipped " + skip.Tag, Message: skip.cause(), Output: output})
+// failure state and does NOT suppress the end summary) that ends the version's node in
+// its time, its cause naming any saved chunk notes, output verbatim beneath it, and the
+// way to try it again for the rail's next; it returns the *skippedVersion the loop
+// records — so the version appears in the closing summary for re-run.
+func reportSkip(p presenter.Presenter, req BatchRegenerateRequest, node *blockingStage, skip skippedVersion, output string) (RegeneratedVersion, *skippedVersion, error) {
+	p.Warn(presenter.Warning{
+		Key:     skip.Tag,
+		Label:   "skipped " + skip.Tag,
+		Message: skip.cause(),
+		Row:     "skipped · " + skip.Reason,
+		Elapsed: node.elapsed(),
+		Output:  output,
+	})
+	p.NextMoves(presenter.NextMoves{Stage: skip.Tag, Quiet: true, Moves: []presenter.NextMove{skip.move(req.Source, req.Target)}})
 	return RegeneratedVersion{}, &skip, nil
+}
+
+// move is the way to regenerate the skipped version again, from source to target as
+// the batch did: from the part notes it saved, from fresh notes where its source had
+// none, or the same again.
+func (s skippedVersion) move(source RegenerateSource, target RegenerateTarget) presenter.NextMove {
+	switch {
+	case s.saved != "":
+		return notesFileMove(regenerateRerun(s.Tag, target), s.saved)
+	case s.bodiless:
+		return presenter.NextMove{Lead: s.Tag + " kept its old notes. To write them fresh:", Command: regenerateMoveCommand(s.Tag, RegenerateSourceFresh, target)}
+	}
+	return presenter.NextMove{Lead: s.Tag + " kept its old notes. To try it again:", Command: regenerateMoveCommand(s.Tag, source, target)}
 }
 
 // batchSummary computes the end-of-run Summary the presenter renders VERBATIM: the
@@ -479,6 +730,7 @@ func gatePerVersion(ctx context.Context, deps ReleaseDeps, req BatchRegenerateRe
 		Regenerator: batchRegenerator(req.ProduceRegenerator, req.Source, res, chunkNotes.regenRun(regens)),
 		regens:      regens,
 		chunkNotes:  chunkNotes,
+		node:        res.Tag,
 	})
 }
 

@@ -58,11 +58,22 @@ func sized(t *testing.T, section func(body string) string, bytes int) string {
 	return section("+" + strings.Repeat("x", pad) + "\n")
 }
 
-type checkNarration struct{ events []string }
+// checkNarration records each event it is told as a line, and what each Checked found.
+type checkNarration struct {
+	events  []string
+	results []notes.CheckResult
+}
 
 func (n *checkNarration) Checking() { n.events = append(n.events, "checking") }
-func (n *checkNarration) Checked()  { n.events = append(n.events, "checked") }
 func (n *checkNarration) AllKept()  { n.events = append(n.events, "all kept") }
+func (n *checkNarration) Checked(result notes.CheckResult) {
+	n.events = append(n.events, map[notes.CheckOutcome]string{
+		notes.CheckAnswered: "checked",
+		notes.CheckClear:    "checked: clear",
+		notes.CheckUnusable: "checked: unusable",
+	}[result.Outcome])
+	n.results = append(n.results, result)
+}
 func (n *checkNarration) CheckFailed(output string) {
 	n.events = append(n.events, "failed: "+output)
 }
@@ -210,7 +221,7 @@ func TestExclusionCheck_NarratesTheCallStartingAndEnding(t *testing.T) {
 		t.Fatalf("Check returned unexpected error: %v", err)
 	}
 
-	if want := []string{"checking", "call", "checked"}; !slices.Equal(narration.events, want) {
+	if want := []string{"checking", "call", "checked: clear"}; !slices.Equal(narration.events, want) {
 		t.Errorf("narration = %v, want %v", narration.events, want)
 	}
 }
@@ -246,7 +257,7 @@ func TestExclusionCheck_AFailedCallLetsTheReleaseCarryOn_NarratingTheFailure(t *
 			if excluded != nil {
 				t.Errorf("excluded = %q, want nothing", excluded)
 			}
-			if want := []string{"checking", "checked", "failed: " + tt.wantOutput}; !slices.Equal(narration.events, want) {
+			if want := []string{"checking", "checked: unusable", "failed: " + tt.wantOutput}; !slices.Equal(narration.events, want) {
 				t.Errorf("narration = %q, want %q", narration.events, want)
 			}
 		})
@@ -280,7 +291,7 @@ func TestExclusionCheck_AnAnswerYieldingNoUsableSuggestion_IsAFailedCheckCarryin
 			if excluded != nil {
 				t.Errorf("excluded = %q, want nothing", excluded)
 			}
-			if want := []string{"checking", "checked", "failed: " + strings.TrimSuffix(tt.answer, "\n")}; !slices.Equal(narration.events, want) {
+			if want := []string{"checking", "checked: unusable", "failed: " + strings.TrimSuffix(tt.answer, "\n")}; !slices.Equal(narration.events, want) {
 				t.Errorf("narration = %q, want %q", narration.events, want)
 			}
 			if len(pauses.paused) != 0 {
@@ -309,7 +320,7 @@ func TestExclusionCheck_AReportingCheckWhoseAnswerIsUnreadable_ReportsNothingAnd
 	if len(reported) != 0 {
 		t.Errorf("reported %v, want nothing", reported)
 	}
-	if want := []string{"checking", "checked", "failed: vendor/: vendored code"}; !slices.Equal(narration.events, want) {
+	if want := []string{"checking", "checked: unusable", "failed: vendor/: vendored code"}; !slices.Equal(narration.events, want) {
 		t.Errorf("narration = %q, want %q", narration.events, want)
 	}
 }
@@ -325,7 +336,7 @@ func TestExclusionCheck_AnswerNone_IsNoFailure(t *testing.T) {
 			if _, err := notes.NewExclusionCheck(&recordingTransport{body: answer}, nil, narration).Check(t.Context(), sourceDiff, config.DefaultMaxPromptBytes); err != nil {
 				t.Fatalf("Check returned unexpected error: %v", err)
 			}
-			if want := []string{"checking", "checked"}; !slices.Equal(narration.events, want) {
+			if want := []string{"checking", "checked: clear"}; !slices.Equal(narration.events, want) {
 				t.Errorf("narration = %q, want %q", narration.events, want)
 			}
 		})

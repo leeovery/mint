@@ -1,7 +1,7 @@
 package commit
 
 // This file is commit's SINGLE source-of-truth for the per-mode git source COMMAND
-// selection shared by BOTH the preflight emptiness probes (preflight.go) and the AI's L1
+// selection shared by BOTH the preflight counting probes (preflight.go) and the AI's L1
 // diff sources (generate.go). Colocating the per-mode base argv prefixes, the `-- .`
 // selector, and the StagingMode→sources mapping HERE makes the command selection and the
 // AddAll composition STRUCTURAL — one definition, not two hand-aligned copies.
@@ -10,7 +10,7 @@ package commit
 // applies diff_exclude, the preflight does NOT. The preflight answers "would `git commit`
 // create a commit?" (tree/index state alone, diff_exclude-blind), while the L1 diff applies
 // diff_exclude to shape what the model reads. So the exclusion is L1-only, by design — it
-// must never influence the emptiness verdict.
+// must never influence the emptiness verdict or the counts.
 //
 // Each per-mode source is described once by a sourceSpec (its base argv prefix + its
 // kind). Both consumers iterate the SAME spec list per mode:
@@ -18,30 +18,29 @@ package commit
 //   - generate.go (L1 diff) appends excludePathspecs to each spec's base and renders the
 //     diff body (a diff source uses git's stdout verbatim; an untracked-list source
 //     enumerates paths then renders each as a read-only addition diff).
-//   - preflight.go (emptiness) appends `--name-only` (diff specs only) and NO excludes,
-//     and reports the would-be-staged set EMPTY iff EVERY spec is empty — which encodes
-//     the AddAll "tracked first, short-circuit on non-empty, else untracked" composition
-//     in ONE place (an all-specs-empty fold).
+//   - preflight.go (counting) appends `--numstat` (diff specs only) and NO excludes,
+//     counts each spec — an untracked list's paths counted in Go from the one listing —
+//     and reports the would-be-staged set EMPTY iff EVERY spec printed nothing, so the
+//     AddAll "tracked then untracked" composition lives in ONE place.
 //
 // So a mode's source-command prefix, its `-- .` selector, and the AddAll composition rule
 // each live in exactly one place; the preflight probe argv is provably the L1 source
-// COMMAND minus the diff_exclude tail, plus the `--name-only` the emptiness probe adds.
+// COMMAND minus the diff_exclude tail, plus the `--numstat` the counting probe adds.
 
 // sourceKind classifies a per-mode source so the two consumers render it correctly: a
-// diffSource is a `git diff …` whose stdout IS the diff (preflight adds `--name-only` to
+// diffSource is a `git diff …` whose stdout IS the diff (preflight adds `--numstat` to
 // it), while an untrackedListSource is a `git ls-files --others …` enumeration whose
-// paths are rendered as read-only addition diffs on the L1 path and whose emptiness IS
-// the probe on the preflight path (NO `--name-only` — the ls-files prefix is shared
-// verbatim).
+// paths are rendered as read-only addition diffs on the L1 path and whose listing IS
+// the probe on the preflight path (the ls-files prefix is shared verbatim).
 type sourceKind int
 
 const (
 	// diffSource is a `git diff …` source: stdout is the diff body (L1), and the
-	// emptiness probe carries `--name-only`.
+	// counting probe carries `--numstat`.
 	diffSource sourceKind = iota
 	// untrackedListSource is a `git ls-files --others --exclude-standard …` enumeration:
 	// each listed path becomes a read-only addition diff (L1), and the probe uses the
-	// SAME prefix verbatim (no `--name-only`).
+	// SAME prefix verbatim.
 	untrackedListSource
 )
 
@@ -57,7 +56,7 @@ type sourceSpec struct {
 // stagedBaseArgs is the StagedOnly source prefix: `git diff --cached -- .` — the staged
 // index. It is spelled ONCE here; both the L1 diff render (renderSource) and
 // stagedProbeArgs (preflight) derive from it — the L1 render appends the diff_exclude
-// tail, the probe appends only `--name-only` (no excludes).
+// tail, the probe appends only `--numstat` (no excludes).
 func stagedBaseArgs() []string {
 	return []string{"diff", "--cached", "--", "."}
 }
@@ -65,7 +64,7 @@ func stagedBaseArgs() []string {
 // trackedBaseArgs is the All (-a) / AddAll (-A) tracked source prefix: `git diff HEAD
 // -- .` — tracked modifications + deletions against HEAD (no untracked). Spelled ONCE;
 // the L1 diff render (renderSource) and trackedProbeArgs (preflight) both derive from it
-// — the L1 render appends the diff_exclude tail, the probe appends only `--name-only`.
+// — the L1 render appends the diff_exclude tail, the probe appends only `--numstat`.
 func trackedBaseArgs() []string {
 	return []string{"diff", "HEAD", "--", "."}
 }
@@ -73,23 +72,23 @@ func trackedBaseArgs() []string {
 // untrackedBaseArgs is the AddAll (-A) untracked source prefix: `git ls-files --others
 // --exclude-standard -z -- .` — the untracked, non-ignored enumeration. Spelled ONCE;
 // the L1 untracked render (untrackedAdditions) enumerates from it and untrackedProbeArgs
-// (preflight) reuses it VERBATIM (no `--name-only`). The `-z` is load-bearing: without
+// (preflight) reuses it VERBATIM. The `-z` is load-bearing: without
 // it git C-quotes unusual paths (non-ASCII, quotes, backslashes — core.quotePath), and
 // the quoted literal would reach `git diff --no-index` as a nonexistent filename; -z
-// emits raw NUL-terminated paths instead. The probe is unaffected (empty output is
-// empty either way).
+// emits raw NUL-terminated paths instead, which the preflight also reads each file of
+// to count it.
 func untrackedBaseArgs() []string {
 	return []string{"ls-files", "--others", "--exclude-standard", "-z", "--", "."}
 }
 
-// sourcesForMode is the SINGLE StagingMode→sources mapping both the emptiness path
-// (wouldStageNothing) and the diff path (sourceDiff) consume — so the dispatch and the
+// sourcesForMode is the SINGLE StagingMode→sources mapping both the counting path
+// (readDiffStat) and the diff path (sourceDiff) consume — so the dispatch and the
 // AddAll "tracked then untracked" composition are defined exactly once:
 //
 //   - All (-a): the tracked diff alone.
 //   - AddAll (-A): the tracked diff THEN the untracked enumeration (the order the L1
-//     combined diff uses; the emptiness fold makes "tracked first, short-circuit on
-//     non-empty, else untracked" fall out as all-specs-empty).
+//     combined diff uses; the preflight reads both and finds the set empty only when
+//     both are).
 //   - StagedOnly (the default): the staged diff alone.
 func sourcesForMode(mode StagingMode) []sourceSpec {
 	switch mode {

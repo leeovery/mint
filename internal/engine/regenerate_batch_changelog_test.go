@@ -465,6 +465,7 @@ func TestRegenerateAllValidated_CancelSkipsChangelogRebuild(t *testing.T) {
 			err := engine.RegenerateAllValidated(t.Context(), batchDeps(rec, f), pub, dir, req, true)
 
 			assertCancelEndedBatch(t, rec, err)
+			assertClosedFailed(t, rec, "a cancelled batch")
 			if want := []string{batchV1Tag, batchV2Tag}; !slices.Equal(*called, want) {
 				t.Errorf("ProduceBody called for %v, want %v (no body produced after the cancel)", *called, want)
 			}
@@ -506,7 +507,7 @@ func TestRegenerateAllValidated_Changelog_PlanNamesTheChangelog(t *testing.T) {
 
 	var plans int
 	for _, ev := range rec.Events {
-		if ev.Kind != presentertest.KindShowPlan {
+		if ev.Kind != presentertest.KindShowPlan || ev.ShowPlan.Quiet {
 			continue
 		}
 		plans++

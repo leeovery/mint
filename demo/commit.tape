@@ -2,13 +2,14 @@
 # not yet staged. The message the AI wrote, accepted, then everything staged,
 # committed and pushed.
 #
-# Record it, and make demo/out/art/commit.webp:
+# Record it, and make art/commit.webp:
 #   demo/record.sh commit
 
 Output "demo/out/commit/"
 Source "demo/look.tape"
-# 20 rows: room for what it shows.
-Set Height 804
+# 22 rows: room for what it shows, the message and the stages to come under its
+# question included, so nothing scrolls away.
+Set Height 878
 
 Hide
 Type 'demo/world.sh commit && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh"' Enter
@@ -21,6 +22,6 @@ Wait+Screen /Commit this message/
 Sleep 600ms
 Type "y"
 Wait
-# The line only a commit that lands prints.
-Wait+Screen /committed pigeon/
+# The end only a commit that lands and pushes lands at.
+Wait+Screen /main +[0-9a-f]{7} · pushed/
 Sleep 600ms

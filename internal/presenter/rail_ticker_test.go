@@ -62,6 +62,37 @@ func TestRailTicker_NothingWritesWhileTheEditorHasTheTerminal(t *testing.T) {
 	r.ticks.tick(t)
 }
 
+// TestRailTicker_AStageThatEndsWhileTheEditorHasTheTerminalRunsNoTickerOnResume pins
+// that a resume brings back only a spinner that still has a stage to show: one that
+// succeeded or failed while the region was erased runs none.
+func TestRailTicker_AStageThatEndsWhileTheEditorHasTheTerminalRunsNoTickerOnResume(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		end  func(r *railTerm)
+	}{
+		{name: "succeeded", end: func(r *railTerm) {
+			r.StageSucceeded(presenter.StageSuccess{Name: "commit message", Key: "message", Detail: "written", Blocking: true})
+		}},
+		{name: "failed", end: func(r *railTerm) {
+			r.StageFailed(presenter.StageFailure{Name: "commit message", Key: "message", Message: "the AI command failed"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRailTerm(t, 80, 24, answers())
+			messageRunning(r)
+			r.SuspendSpinner()
+			tt.end(r)
+			r.ResumeSpinner()
+			if r.ticks.running() {
+				t.Error("the ticker runs again for a stage that ended while the editor had the terminal")
+			}
+		})
+	}
+}
+
 func TestRailTicker_NothingWritesWhileAQuestionWaits(t *testing.T) {
 	t.Parallel()
 	in := newBlockingInput()

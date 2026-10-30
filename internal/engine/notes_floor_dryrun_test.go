@@ -28,7 +28,7 @@ func TestRelease_DryRunNotesFloor_AttendedAsksNothingAndPrintsTheMovesWithoutFal
 	if got := promptGates(rec); len(got) != 0 {
 		t.Errorf("a dry run asked: %+v", got)
 	}
-	assertStopsWithNextMoves(t, rec, err, []string{writeNotesMove, noAIMove})
+	assertStopsWithNextMoves(t, rec, err, []string{writeNotesMoveFor(dryRun), noAIMove})
 	assertNoTag(t, f)
 }
 
@@ -39,9 +39,11 @@ func TestRelease_DryRunNotesFloor_UnattendedAddsTheFallbackMove(t *testing.T) {
 		name             string
 		yes              bool
 		stdinInteractive bool
+		// run is the release run again with the run's own flags.
+		run string
 	}{
-		{name: "-y at a terminal", yes: true, stdinInteractive: true},
-		{name: "stdin not a terminal"},
+		{name: "-y at a terminal", yes: true, stdinInteractive: true, run: dryRun},
+		{name: "stdin not a terminal", run: dryRun},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -54,7 +56,7 @@ func TestRelease_DryRunNotesFloor_UnattendedAddsTheFallbackMove(t *testing.T) {
 
 			err := engine.Release(t.Context(), deps, dryRunOptions())
 
-			assertStopsWithNextMoves(t, rec, err, []string{writeNotesMove, noAIMove, fallbackMove})
+			assertStopsWithNextMoves(t, rec, err, []string{writeNotesMoveFor(tc.run), noAIMove, fallbackMove})
 		})
 	}
 }
@@ -74,7 +76,7 @@ func TestRelease_DryRunNotesFloor_ChunkedFailureSavesTheChunkNotesAndNamesThem(t
 	if sf := onlyStageFailureEvent(t, run.rec); sf.SavedNotes != path {
 		t.Errorf("StageFailure.SavedNotes = %q, want the saved file's full path %q", sf.SavedNotes, path)
 	}
-	assertStopsWithNextMoves(t, run.rec, err, []string{tidySavedNotesMove(path), noAIMove})
+	assertStopsWithNextMoves(t, run.rec, err, []string{tidySavedNotesMoveFor(dryRun, path), noAIMove})
 }
 
 func TestRelease_DryRunNotesFloor_TimeoutAddsRaiseTheTimeout(t *testing.T) {
@@ -87,7 +89,7 @@ func TestRelease_DryRunNotesFloor_TimeoutAddsRaiseTheTimeout(t *testing.T) {
 	if sf := onlyStageFailureEvent(t, rec); sf.Message != timeoutPhrase {
 		t.Errorf("StageFailure.Message = %q, want %q", sf.Message, timeoutPhrase)
 	}
-	assertStopsWithNextMoves(t, rec, err, []string{writeNotesMove, noAIMove, raiseTimeoutMove})
+	assertStopsWithNextMoves(t, rec, err, []string{writeNotesMoveFor(dryRun), noAIMove, raiseTimeoutMove})
 }
 
 func TestRelease_DryRunNotesFloor_HalvingRunsOutAddsTheSizeMoves(t *testing.T) {
@@ -108,7 +110,7 @@ func TestRelease_DryRunNotesFloor_HalvingRunsOutAddsTheSizeMoves(t *testing.T) {
 	if sf := onlyStageFailureEvent(t, rec); sf.Message != tc.wantPhrase(t, tr) {
 		t.Errorf("StageFailure.Message = %q, want %q", sf.Message, tc.wantPhrase(t, tr))
 	}
-	assertStopsWithNextMoves(t, rec, err, withSizeMoves(writeNotesMove, noAIMove, fallbackMove))
+	assertStopsWithNextMoves(t, rec, err, withSizeMoves(writeNotesMoveFor(dryRun), noAIMove, fallbackMove))
 }
 
 func TestRelease_DryRunNotesFloor_UnsavedChunkNotesWarnAndNameNoPath(t *testing.T) {
@@ -120,7 +122,7 @@ func TestRelease_DryRunNotesFloor_UnsavedChunkNotesWarnAndNameNoPath(t *testing.
 
 	err := engine.Release(t.Context(), run.deps, dryRunOptions())
 
-	assertStopsWithNextMoves(t, run.rec, err, []string{writeNotesMove, noAIMove})
+	assertStopsWithNextMoves(t, run.rec, err, []string{writeNotesMoveFor(dryRun), noAIMove})
 	got := warnings(run.rec)
 	if len(got) != 1 || got[0].Label != "notes" || got[0].Message != "the finished chunk notes could not be saved" || got[0].Output != "mkdir /cache: permission denied" {
 		t.Errorf("warnings = %+v, want the one saying the chunk notes could not be saved, with the write error verbatim", got)

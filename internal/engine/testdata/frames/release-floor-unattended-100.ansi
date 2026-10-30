@@ -1,0 +1,22 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.2.3        main @ 4f9c2e1
+ │
+ ●  version       v1.3.0 (minor bump) · accepted (-y)
+ ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
+ ●  check         1 flagged, not asked                                                          0.7s
+ !  docs/design/  flagged, not asked: design documents · 1 file, 176 B
+ ✗  notes         AI call failed                                                                2.1s
+ │                │ Not logged in · Please run /login
+ │
+ ◇  v1.2.3        nothing changed                                                               3.5s
+
+ next
+   Write the notes to a file, then release with it:
+     mint release -m --notes-file <file>
+   Release with the commit-subject list:
+     mint release -m --no-ai
+   Ship that list whenever the AI fails, under [release] in .mint.toml:
+     on_notes_failure = "fallback"
+   Leave docs/design/ out of the notes, under [release] in .mint.toml:
+     diff_exclude = ["docs/design/"]

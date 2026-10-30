@@ -29,7 +29,7 @@ func seedEditThenAccept(diff, editor string, editorResolutions int) *runner.Fake
 	f := runner.NewFakeRunner()
 	calls := []runner.ScriptedCall{
 		scriptedHead(),                         // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --name-only (non-empty index)
+		{Result: runner.Result{Stdout: "x\n"}}, // git diff --cached --numstat (non-empty index)
 		{Result: runner.Result{Stdout: diff}},  // git diff --cached (L1)
 	}
 	for i := 0; i < editorResolutions; i++ {

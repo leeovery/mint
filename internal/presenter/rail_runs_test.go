@@ -95,8 +95,9 @@ func notesStarted() presenter.StageStart {
 }
 
 // preparedRelease drives a release to its notes: the version asked, preflight, the
-// plan, the pre_tag hook and its commit, and the exclusion check, done in 6.2s.
-func preparedRelease(p presenter.Presenter, clock *fakeClock) {
+// plan, the pre_tag hook and its commit, and the exclusion check, done in 6.2s,
+// having found checked.
+func preparedRelease(p presenter.Presenter, clock *fakeClock, checked string) {
 	p.RunStarted(releaseStarted(false))
 	_, _ = p.Prompt(versionGate())
 	p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Key: "preflight", Detail: preflightDetail})
@@ -110,7 +111,7 @@ func preparedRelease(p presenter.Presenter, clock *fakeClock) {
 	p.StageStarted(notesStarted())
 	p.NotesChecking(presenter.NotesCheck{Key: "check"})
 	clock.Advance(secs(6.2))
-	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
+	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: checked})
 }
 
 // paused answers the exclusion pause, its spinner suspended around it as the
@@ -120,7 +121,7 @@ func paused(p presenter.Presenter) {
 	_, _ = p.Prompt(pauseGate())
 	p.ResumeSpinner()
 	p.SuspendSpinner()
-	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]", Exclude: []string{"docs/specs/**"}})
+	p.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Stage: "notes", Key: "check", File: ".mint.toml", Table: "[release]"})
 	p.ResumeSpinner()
 }
 
@@ -128,7 +129,7 @@ func paused(p presenter.Presenter) {
 // its answers e at the pause and y at each other question. running is called with
 // the notes written in parts, three of four done, 38.56s after they started.
 func tour(p presenter.Presenter, clock *fakeClock, running func()) {
-	preparedRelease(p, clock)
+	preparedRelease(p, clock, "1 flagged")
 	paused(p)
 	for done := range 4 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
@@ -148,7 +149,7 @@ func tour(p presenter.Presenter, clock *fakeClock, running func()) {
 // pause answered, the cached notes taken, asked while the notes stage runs with the
 // spinner suspended around the question as the engine's is, and the review.
 func cachedRelease(p presenter.Presenter, clock *fakeClock) {
-	preparedRelease(p, clock)
+	preparedRelease(p, clock, "1 flagged")
 	paused(p)
 	p.SuspendSpinner()
 	_, _ = p.Prompt(cacheGate())
@@ -178,7 +179,7 @@ func shipped(p presenter.Presenter) {
 // usage limit, and unwinding the pre_tag commit, a suggestion of the check's not
 // asked about.
 func failedRelease(p presenter.Presenter, clock *fakeClock) {
-	preparedRelease(p, clock)
+	preparedRelease(p, clock, "1 flagged, not asked")
 	for done := range 3 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
@@ -194,7 +195,7 @@ func failedRelease(p presenter.Presenter, clock *fakeClock) {
 	}})
 	s := specsSuggestion()
 	s.Line = `diff_exclude = ["docs/specs/**"]`
-	p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: "[release]", Suggestions: []presenter.ExclusionSuggestion{s}})
+	p.ExclusionSuggestions(presenter.ExclusionSuggestions{Stage: "notes", Table: "[release]", File: ".mint.toml", Suggestions: []presenter.ExclusionSuggestion{s}})
 	p.Unwound(presenter.Unwind{Undone: "pre-tag artifacts commit removed", Repo: "repo clean"})
 	p.RunFinished(presenter.RunResult{
 		Project: "pigeon", Version: "1.4.0", Outcome: presenter.OutcomeUnwound,
@@ -213,7 +214,7 @@ func dryRun(p presenter.Presenter, clock *fakeClock) {
 	p.StageStarted(notesStarted())
 	p.NotesChecking(presenter.NotesCheck{Key: "check"})
 	clock.Advance(secs(6.2))
-	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
+	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: "1 flagged, not asked"})
 	p.SuspendSpinner()
 	p.PreviewGate(pauseGate())
 	p.ResumeSpinner()

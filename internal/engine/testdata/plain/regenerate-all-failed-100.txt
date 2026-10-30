@@ -1,0 +1,19 @@
+mint: regenerating pigeon v1.0.0
+plan: source fresh; release v1.0.0
+notes: running...
+notes: generated (0.7s)
+mint: regenerating pigeon v1.1.0
+plan: source fresh; release v1.1.0
+notes: running...
+notes: generated (0.7s)
+mint: regenerating pigeon v1.2.0
+plan: source fresh; release v1.2.0
+notes: running...
+notes: generated (0.7s)
+publish: FAILED - updating GitHub release for tag "v1.2.0": exit status 1
+--- output ---
+HTTP 502: Bad Gateway (https://api.github.com/repos/acme/pigeon/releases/1)
+
+--- end output ---
+--- stderr ---
+publish: FAILED - updating GitHub release for tag "v1.2.0": exit status 1

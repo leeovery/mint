@@ -23,7 +23,7 @@ type modeCase struct {
 
 // bothModes is the shared table driving every stream-split assertion across the
 // two implementations. The split (narration → out; one-line failure summary →
-// err; success leaves err empty) must hold identically for plain and pretty.
+// err; success leaves err empty) must hold identically for plain and the Rail.
 var bothModes = []modeCase{
 	{name: "plain", mode: presenter.ModePlain},
 	{name: "pretty", mode: presenter.ModePretty},
@@ -31,20 +31,23 @@ var bothModes = []modeCase{
 
 // newSplit constructs a Presenter for the given mode via the raw wiring seam
 // (presenter.New), capturing the out and err streams into separate buffers so a
-// test can assert exactly which stream each line landed on.
-func newSplit(mode presenter.Mode) (p presenter.Presenter, out, errBuf *bytes.Buffer) {
+// test can assert exactly which stream each line landed on. The presenter is
+// closed when the test ends, so a Rail's spinner stops with it.
+func newSplit(t *testing.T, mode presenter.Mode) (p presenter.Presenter, out, errBuf *bytes.Buffer) {
+	t.Helper()
 	out = &bytes.Buffer{}
 	errBuf = &bytes.Buffer{}
 	p = presenter.New(mode, out, errBuf)
+	t.Cleanup(func() { presenter.Close(p) })
 	return p, out, errBuf
 }
 
 // TestNewSelectsImplementationMatchingMode asserts the constructor returns the
 // implementation matching the requested mode and wires both writers: ModePlain
-// yields the plain rendering, ModePretty the styled one, each writing to the
-// provided out. The mode is identified behaviourly (plain emits no glyph; pretty
-// emits the brand leaf) rather than by reflecting on the concrete type, keeping
-// the assertion on observable rendering.
+// yields the plain rendering, ModePretty the Rail, each writing to the provided
+// out. The mode is identified behaviourly (plain's terse line; the Rail's header
+// wordmark) rather than by reflecting on the concrete type, keeping the assertion
+// on observable rendering.
 func TestNewSelectsImplementationMatchingMode(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -56,12 +59,12 @@ func TestNewSelectsImplementationMatchingMode(t *testing.T) {
 			name:        "plain mode renders terse line",
 			mode:        presenter.ModePlain,
 			wantContain: "mint: releasing acme v1.4.0",
-			notContain:  "🌿",
+			notContain:  "─",
 		},
 		{
-			name:        "pretty mode renders brand leaf",
+			name:        "pretty mode draws the rail's header",
 			mode:        presenter.ModePretty,
-			wantContain: "🌿",
+			wantContain: " mint ─ release",
 		},
 	}
 
@@ -69,8 +72,8 @@ func TestNewSelectsImplementationMatchingMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, out, _ := newSplit(tt.mode)
-			p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing"})
+			p, out, _ := newSplit(t, tt.mode)
+			p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing", Header: presenter.Header{Command: "release"}})
 
 			if got := out.String(); !strings.Contains(got, tt.wantContain) {
 				t.Errorf("New(%v) RunStarted out = %q, want it to contain %q", tt.mode, got, tt.wantContain)
@@ -90,7 +93,7 @@ func TestNewWritesNarrationToProvidedOutWriter(t *testing.T) {
 		t.Run(mc.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, out, errBuf := newSplit(mc.mode)
+			p, out, errBuf := newSplit(t, mc.mode)
 			p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing"})
 
 			if out.Len() == 0 {
@@ -112,7 +115,7 @@ func TestSuccessRunLeavesStderrEmpty(t *testing.T) {
 		t.Run(mc.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, out, errBuf := newSplit(mc.mode)
+			p, out, errBuf := newSplit(t, mc.mode)
 			p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing"})
 			p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: "clean"})
 			p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
@@ -135,7 +138,7 @@ func TestNonFailureEventsNeverWriteToStderr(t *testing.T) {
 		t.Run(mc.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, _, errBuf := newSplit(mc.mode)
+			p, _, errBuf := newSplit(t, mc.mode)
 			p.RunStarted(presenter.RunInfo{Project: "acme", Version: "1.4.0", Action: "releasing"})
 			p.StageStarted(presenter.StageStart{Name: "notes", Blocking: true})
 			p.StageSucceeded(presenter.StageSuccess{Name: "preflight", Detail: "clean"})
@@ -174,7 +177,7 @@ func TestFailureSummaryAppearsOnBothStdoutAndStderr(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, out, errBuf := newSplit(tt.mode)
+			p, out, errBuf := newSplit(t, tt.mode)
 			p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
 
 			if !strings.Contains(out.String(), tt.wantSummary) {
@@ -205,10 +208,10 @@ func TestWarnAppearsOnBothStdoutAndStderr(t *testing.T) {
 			wantErr: "post_release: WARN - hook failed: scripts/notify.sh exited 1",
 		},
 		{
-			name:    "pretty warn line",
+			name:    "pretty warn node",
 			mode:    presenter.ModePretty,
-			wantOut: "⚠ post_release",
-			wantErr: "⚠ post_release",
+			wantOut: "hook failed: scripts/notify.sh exited 1",
+			wantErr: "⚠ post_release  hook failed: scripts/notify.sh exited 1",
 		},
 	}
 
@@ -216,7 +219,7 @@ func TestWarnAppearsOnBothStdoutAndStderr(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, out, errBuf := newSplit(tt.mode)
+			p, out, errBuf := newSplit(t, tt.mode)
 			p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed: scripts/notify.sh exited 1"})
 
 			if !strings.Contains(out.String(), tt.wantOut) {
@@ -224,35 +227,6 @@ func TestWarnAppearsOnBothStdoutAndStderr(t *testing.T) {
 			}
 			if !strings.Contains(errBuf.String(), tt.wantErr) {
 				t.Errorf("%s: warn missing from stderr = %q, want it to contain %q", tt.name, errBuf.String(), tt.wantErr)
-			}
-		})
-	}
-}
-
-// TestWarnDoesNotSuppressSuccessRunEndLine drives a warn-only successful run
-// (Warn → RunFinished) and asserts the success end-of-run line still renders for
-// BOTH modes — a warning does not flip the run to failure or suppress the
-// success-only closing line (suppression is a separate concern, owned elsewhere).
-func TestWarnDoesNotSuppressSuccessRunEndLine(t *testing.T) {
-	tests := []struct {
-		name    string
-		mode    presenter.Mode
-		wantEnd string
-	}{
-		{name: "plain", mode: presenter.ModePlain, wantEnd: "done: acme v1.4.0"},
-		{name: "pretty", mode: presenter.ModePretty, wantEnd: "released acme v1.4.0"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			p, out, _ := newSplit(tt.mode)
-			p.Warn(presenter.Warning{Label: "post_release", Message: "hook failed"})
-			p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
-
-			if !strings.Contains(out.String(), tt.wantEnd) {
-				t.Errorf("%s: success end-of-run line missing after a warn = %q, want it to contain %q", tt.name, out.String(), tt.wantEnd)
 			}
 		})
 	}
@@ -268,14 +242,14 @@ func TestUnwoundAppearsOnStdoutOnly(t *testing.T) {
 		wantOut string
 	}{
 		{name: "plain", mode: presenter.ModePlain, wantOut: "unwound: removed tag v1.4.0, reset 2 commits; repo clean"},
-		{name: "pretty", mode: presenter.ModePretty, wantOut: "↩ unwound"},
+		{name: "pretty", mode: presenter.ModePretty, wantOut: "removed tag v1.4.0, reset 2 commits"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, out, errBuf := newSplit(tt.mode)
+			p, out, errBuf := newSplit(t, tt.mode)
 			p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
 
 			if !strings.Contains(out.String(), tt.wantOut) {
@@ -284,80 +258,6 @@ func TestUnwoundAppearsOnStdoutOnly(t *testing.T) {
 			if errBuf.Len() != 0 {
 				t.Errorf("%s: Unwound wrote to stderr = %q, want empty", tt.name, errBuf.String())
 			}
-		})
-	}
-}
-
-// TestStageFailedSuppressesSuccessRunEndLine drives StageFailed → RunFinished and
-// asserts the success end-of-run line is suppressed in BOTH modes — the closing
-// line is success-only; a failed run ends after the ✗/FAILED line.
-func TestStageFailedSuppressesSuccessRunEndLine(t *testing.T) {
-	tests := []struct {
-		name      string
-		mode      presenter.Mode
-		notExpect string
-	}{
-		{name: "plain", mode: presenter.ModePlain, notExpect: "done:"},
-		{name: "pretty", mode: presenter.ModePretty, notExpect: "released"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			p, out, _ := newSplit(tt.mode)
-			p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
-			p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
-
-			if strings.Contains(out.String(), tt.notExpect) {
-				t.Errorf("%s: success end-of-run line must be suppressed after a StageFailed, got:\n%q", tt.name, out.String())
-			}
-		})
-	}
-}
-
-// TestUnwoundSuppressesSuccessRunEndLine drives the two unwind paths and asserts
-// the success end-of-run line is suppressed in BOTH modes whenever Unwound fired —
-// after a stage failure (StageFailed → Unwound → RunFinished) and after an abort
-// with no prior failure (Unwound → RunFinished, the gate-n path).
-func TestUnwoundSuppressesSuccessRunEndLine(t *testing.T) {
-	tests := []struct {
-		name      string
-		mode      presenter.Mode
-		notExpect string
-	}{
-		{name: "plain", mode: presenter.ModePlain, notExpect: "done:"},
-		{name: "pretty", mode: presenter.ModePretty, notExpect: "released"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			t.Run("after a stage failure", func(t *testing.T) {
-				t.Parallel()
-
-				p, out, _ := newSplit(tt.mode)
-				p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
-				p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
-				p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
-
-				if strings.Contains(out.String(), tt.notExpect) {
-					t.Errorf("%s: success line must be suppressed after failure+unwind, got:\n%q", tt.name, out.String())
-				}
-			})
-
-			t.Run("after an abort with no prior failure", func(t *testing.T) {
-				t.Parallel()
-
-				p, out, _ := newSplit(tt.mode)
-				p.Unwound(presenter.Unwind{Undone: "removed tag v1.4.0, reset 2 commits; repo clean"})
-				p.RunFinished(presenter.RunResult{Project: "acme", Version: "1.4.0", URL: "https://example/v1.4.0"})
-
-				if strings.Contains(out.String(), tt.notExpect) {
-					t.Errorf("%s: success line must be suppressed after an abort unwind, got:\n%q", tt.name, out.String())
-				}
-			})
 		})
 	}
 }
@@ -371,7 +271,7 @@ func TestFailureStderrSummaryIsSingleLine(t *testing.T) {
 		t.Run(mc.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, _, errBuf := newSplit(mc.mode)
+			p, _, errBuf := newSplit(t, mc.mode)
 			p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected: remote moved"})
 
 			if got := strings.Count(errBuf.String(), "\n"); got != 1 {
@@ -383,10 +283,10 @@ func TestFailureStderrSummaryIsSingleLine(t *testing.T) {
 
 // TestFailureStderrSummaryIsUnstyled asserts the stderr summary carries no ANSI
 // escape (ESC 0x1b) for BOTH modes — stderr is a redirect-visibility channel,
-// not a styled surface, so even pretty's stderr summary is plain text. The pretty
-// path forces a colour-capable profile via the explicit constructor so the test
-// proves the *absence* of styling on err is a deliberate choice, not an artefact
-// of lipgloss auto-downgrading on a non-TTY buffer.
+// not a styled surface, so even the Rail's stderr summary is plain text. The Rail
+// is built with a colour-capable profile so the test proves the *absence* of
+// styling on err is a deliberate choice, not an artefact of colour downgrading on
+// a non-TTY buffer.
 func TestFailureStderrSummaryIsUnstyled(t *testing.T) {
 	t.Run("plain", func(t *testing.T) {
 		t.Parallel()
@@ -400,23 +300,24 @@ func TestFailureStderrSummaryIsUnstyled(t *testing.T) {
 		}
 	})
 
-	t.Run("pretty with forced colour profile", func(t *testing.T) {
+	t.Run("the rail with forced colour profile", func(t *testing.T) {
 		t.Parallel()
 
 		out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-		p := presenter.NewPrettyPresenter(out, presenter.WithErr(errBuf), presenter.WithProfile(termenv.TrueColor))
+		p := presenter.NewRailPresenter(out, presenter.WithRailErr(errBuf), presenter.WithRailProfile(termenv.TrueColor))
+		defer p.Close()
 		p.StageFailed(presenter.StageFailure{Name: "tag/push", Message: "push rejected"})
 
-		// out carries the styled ✗ line (colour forced on), so it has ANSI.
-		if !bytes.ContainsRune(out.Bytes(), 0x1b) {
-			t.Errorf("pretty: stdout failure line should be styled (ANSI) under a colour profile:\n%q", out.String())
+		// out carries the styled ✗ node (colour forced on), so it has SGR colour.
+		if !strings.Contains(out.String(), "m✗") {
+			t.Errorf("rail: stdout failure node should be styled under a colour profile:\n%q", out.String())
 		}
 		// err carries the unstyled one-line summary, so it must have no ANSI.
 		if bytes.ContainsRune(errBuf.Bytes(), 0x1b) {
-			t.Errorf("pretty: stderr summary must be unstyled but contains an ESC (0x1b):\n%q", errBuf.String())
+			t.Errorf("rail: stderr summary must be unstyled but contains an ESC (0x1b):\n%q", errBuf.String())
 		}
 		if !strings.Contains(errBuf.String(), "tag/push") || !strings.Contains(errBuf.String(), "push rejected") {
-			t.Errorf("pretty: stderr summary missing stage/message:\n%q", errBuf.String())
+			t.Errorf("rail: stderr summary missing stage/message:\n%q", errBuf.String())
 		}
 	})
 }
@@ -434,7 +335,7 @@ func TestFailureOutputBodyNotDuplicatedToStderr(t *testing.T) {
 		t.Run(mc.name, func(t *testing.T) {
 			t.Parallel()
 
-			p, _, errBuf := newSplit(mc.mode)
+			p, _, errBuf := newSplit(t, mc.mode)
 			p.StageFailed(presenter.StageFailure{
 				Name:    "tag/push",
 				Message: "push rejected: remote moved",

@@ -3,21 +3,21 @@
 // from a single place: the ending the run landed, or, when it stopped short, the
 // start station it is back at, with what the run left there.
 //
-// A release, a single-version regenerate and a commit are each one such run. A
-// regenerate --all backfill is not: it opens a block per version with a RunStarted of
-// its own and closes the batch once, with one RunFinished, when its version loop
-// finishes, even with every version skipped, and before the changelog rebuild, which
-// can still fail after that close. A loop a decline or a cancel ends early closes
-// nothing. So it holds no Run.
+// A release, a commit, a single-version regenerate and a regenerate --all backfill are
+// each one such run. A regenerate opens its run with its header alone, ahead of the
+// questions that decide its start station, and draws the station once they are
+// answered; plain's start line, which a backfill prints per version, comes later
+// through the presenter, outside the Run.
 //
 // A stopped run's end detail states only mint's own actions (what it committed, reset,
 // wrote, staged, created or kept, and that it pushed nothing) and where HEAD stands,
 // never how clean the tree is or what a hook did. It is "nothing changed" only while
 // no hook and no write of mint's has run; from then on the orchestrator records, with
-// Left or Unwound, what mint did.
+// Wrote, Left or Unwound, what mint did.
 package runclose
 
 import (
+	"strings"
 	"time"
 
 	"mint/internal/presenter"
@@ -27,31 +27,59 @@ import (
 // it left nothing behind.
 const nothingChanged = "nothing changed"
 
-// Run is one run's close. A nil Run does nothing, so a code path shared with a run
-// that closes elsewhere (a --all backfill's versions) can hold none.
+// Run is one run's close. A nil Run does nothing, so a code path driven outside a
+// run (a test driving a piece of one alone) can hold none.
 type Run struct {
-	p       presenter.Presenter
+	p presenter.Presenter
+	// now is the clock the run is timed by.
+	now     func() time.Time
 	began   time.Time
 	info    *presenter.RunInfo
 	landed  *presenter.RunResult
 	unwound bool
-	// left is what a run that stopped short left behind, "" for nothing.
-	left     string
+	// wrote is what the run wrote that its close names first, "" for nothing, and left
+	// what a run that stopped short left behind besides, "" for nothing.
+	wrote, left string
+	// at is the station a run that stopped short closes at in place of its start, ""
+	// for the start.
+	at       string
 	deferred []func()
 }
 
-// Begin starts timing a run whose events go to p.
-func Begin(p presenter.Presenter) *Run {
-	return &Run{p: p, began: time.Now()}
+// Begin starts timing, by now, a run whose events go to p.
+func Begin(p presenter.Presenter, now func() time.Time) *Run {
+	return &Run{p: p, now: now, began: now()}
 }
 
-// Start opens the run with RunStarted.
+// Open opens the run with its header alone, a Quiet RunStarted carrying info's
+// header, ahead of what decides its start station; Start draws the station. A run
+// that closes before it has one closes with no end station.
+func (r *Run) Open(info presenter.RunInfo) {
+	if r == nil {
+		return
+	}
+	opened := presenter.RunInfo{Project: info.Project, Header: info.Header, Quiet: true}
+	r.info = &opened
+	r.p.RunStarted(opened)
+}
+
+// Start opens the run with RunStarted, or, opened already, draws its start station.
 func (r *Run) Start(info presenter.RunInfo) {
 	if r == nil {
 		return
 	}
 	r.info = &info
 	r.p.RunStarted(info)
+}
+
+// Wrote records what the run wrote that no recovery takes back, which a close short
+// of its ending names ahead of what Left or Unwound record: a --all backfill's
+// provider releases. It replaces any recorded before.
+func (r *Run) Wrote(detail string) {
+	if r == nil {
+		return
+	}
+	r.wrote = detail
 }
 
 // Land records the ending the run reached; Close closes with it whatever error the
@@ -70,6 +98,16 @@ func (r *Run) Unwound(detail string) {
 		return
 	}
 	r.unwound, r.left = true, detail
+}
+
+// StoppedAt names the station a run that stops short closes at, in place of its
+// start station, where HEAD never got back there: the branch a failed recovery reset
+// left it on. An empty name keeps the start station.
+func (r *Run) StoppedAt(name string) {
+	if r == nil {
+		return
+	}
+	r.at = name
 }
 
 // Left records what a run that stops short without an unwind leaves behind, the
@@ -107,8 +145,8 @@ func (r *Run) RunDeferred() {
 // Close emits the run's one RunFinished, timed from Begin, unless the run never
 // opened. A run that landed closes with its ending. One that stopped short closes at
 // its start station: unwound when its unwind ran, else declined when declined says
-// so, else failed, with the detail Left or Unwound recorded, or "nothing changed"
-// when none was.
+// so, else failed, with the detail Wrote then Left or Unwound recorded, or "nothing
+// changed" when none was.
 func (r *Run) Close(declined bool) {
 	if r == nil || r.info == nil {
 		return
@@ -117,12 +155,12 @@ func (r *Run) Close(declined bool) {
 	if r.landed != nil {
 		res = *r.landed
 	}
-	res.Elapsed = time.Since(r.began)
+	res.Elapsed = r.now().Sub(r.began)
 	r.p.RunFinished(res)
 }
 
 func (r *Run) stopped(declined bool) presenter.RunResult {
-	res := presenter.RunResult{Project: r.info.Project, Version: r.info.Version, Leaf: r.info.Leaf}
+	res := presenter.RunResult{Project: r.info.Project, Version: r.info.Version}
 	switch {
 	case r.unwound:
 		res.Outcome = presenter.OutcomeUnwound
@@ -131,10 +169,20 @@ func (r *Run) stopped(declined bool) presenter.RunResult {
 	default:
 		res.Outcome = presenter.OutcomeFailed
 	}
-	detail := r.left
+	var parts []string
+	for _, part := range []string{r.wrote, r.left} {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	detail := strings.Join(parts, " · ")
 	if detail == "" {
 		detail = nothingChanged
 	}
-	res.End = presenter.Station{Name: r.info.Start.Name, Detail: detail}
+	name := r.info.Start.Name
+	if r.at != "" {
+		name = r.at
+	}
+	res.End = presenter.Station{Name: name, Detail: detail}
 	return res
 }

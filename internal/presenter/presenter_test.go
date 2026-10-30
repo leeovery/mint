@@ -1,11 +1,8 @@
 package presenter_test
 
 import (
-	"bytes"
 	"testing"
 	"time"
-
-	"github.com/muesli/termenv"
 
 	"mint/internal/presenter"
 	"mint/internal/presenter/presentertest"
@@ -351,27 +348,6 @@ func TestRunResultRoundTripsThroughRecorder(t *testing.T) {
 	}
 }
 
-// TestRunInfoCarriesBrandLeaf proves the start-of-run payload carries the
-// engine-supplied brand leaf so the presenter renders it rather than hardcoding
-// a glyph. The leaf ties to the engine's commit_prefix brand.
-func TestRunInfoCarriesBrandLeaf(t *testing.T) {
-	info := presenter.RunInfo{Leaf: "🌱"}
-
-	if info.Leaf != "🌱" {
-		t.Errorf("Leaf = %q, want %q", info.Leaf, "🌱")
-	}
-}
-
-// TestRunResultCarriesBrandLeaf proves the end-of-run payload carries the same
-// engine-supplied brand leaf so the closing brand line is rendered, not hardcoded.
-func TestRunResultCarriesBrandLeaf(t *testing.T) {
-	r := presenter.RunResult{Leaf: "🌱"}
-
-	if r.Leaf != "🌱" {
-		t.Errorf("Leaf = %q, want %q", r.Leaf, "🌱")
-	}
-}
-
 // TestStageStartPayloadRoundTripsThroughRecorder proves the recorder captures the
 // full StageStart payload — name and the engine-supplied blocking flag — so an
 // engine-driven test can assert the flag the renderers depend on.
@@ -518,39 +494,5 @@ func TestShowPlanPayloadRoundTripsThroughRecorder(t *testing.T) {
 		if got[i] != want {
 			t.Errorf("step %d = %+v, want %+v", i, got[i], want)
 		}
-	}
-}
-
-// TestShowPlanSamePayloadFeedsBothModes proves the event-payload principle for
-// ShowPlan: one constructed []PlanStep, handed to BOTH presenters, produces the
-// plain one-liner AND the pretty bulleted block. Neither presenter consumes a
-// separate pre-formatted/terse field — both derive from the same structured
-// steps, so a single payload is sufficient to render both modes.
-func TestShowPlanSamePayloadFeedsBothModes(t *testing.T) {
-	steps := []presenter.PlanStep{
-		{Verb: "commit", Target: "changelog+version"},
-		{Verb: "tag", Target: "v1.4.0"},
-		{Verb: "push", Target: "--atomic"},
-		{Verb: "publish", Target: "github"},
-	}
-
-	plainOut := &bytes.Buffer{}
-	presenter.NewPlainPresenter(plainOut, &bytes.Buffer{}).ShowPlan(presenter.Plan{Steps: steps})
-
-	prettyOut := &bytes.Buffer{}
-	presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii)).ShowPlan(presenter.Plan{Steps: steps})
-
-	wantPlain := "plan: commit changelog+version; tag v1.4.0; push --atomic; publish github\n"
-	if got := plainOut.String(); got != wantPlain {
-		t.Errorf("plain one-liner = %q, want %q", got, wantPlain)
-	}
-
-	wantPretty := "\nPlan\n" +
-		"  • commit   changelog+version\n" +
-		"  • tag      v1.4.0\n" +
-		"  • push     --atomic\n" +
-		"  • publish  github\n"
-	if got := prettyOut.String(); got != wantPretty {
-		t.Errorf("pretty block = %q, want %q", got, wantPretty)
 	}
 }

@@ -14,8 +14,9 @@
 //
 // init has NO interactive gate (its safety is structural — non-clobber + --force, not
 // a prompt) and NO release-style end-of-run footer: the per-file created/skipped
-// InitResult lines ARE the terminal output, so Init never calls Prompt or
-// RunFinished.
+// InitResult lines ARE the terminal output, so Init never calls Prompt. Once the root
+// resolves, its run opens with the rail's header alone, Quiet, as plain has no line
+// for it, and no station, and closes with a RunFinished that has no line either.
 
 package engine
 
@@ -24,11 +25,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"mint/internal/config"
+	"mint/internal/fsutil"
 	"mint/internal/gitrepo"
 	"mint/internal/initgen"
 	"mint/internal/presenter"
+	"mint/internal/runclose"
 	"mint/internal/runner"
 )
 
@@ -46,12 +50,17 @@ const skipReason = "exists, use --force"
 // dependency graph.
 type InitDeps struct {
 	// Presenter is mint's single output seam. Init emits one InitResult per target
-	// and nothing else — no Prompt, no RunFinished.
+	// between the run's opening and its close, and no Prompt.
 	Presenter presenter.Presenter
 	// Runner is the read-only external-command seam used solely to resolve the repo
 	// root via `git rev-parse --show-toplevel`. Init writes files directly (no git
 	// mutation), so no lock-resilient Mutator is needed.
 	Runner runner.CommandRunner
+	// MintVersion is mint's own bare version for the run's header, empty for a dev
+	// build, and Home the user's home directory the header shortens the repo root
+	// under.
+	MintVersion string
+	Home        string
 }
 
 // InitOptions is the init run's resolved option set. Force mirrors the `--force`
@@ -102,26 +111,45 @@ const configFileMode os.FileMode = 0o644
 // The two targets are INDEPENDENT — one existing does not block the other. Files
 // land at the git-resolved root, never the invocation directory. Init scaffolds
 // NOTHING else (no hook scripts, prompt-override file, or auto-detected content) and
-// calls neither Prompt nor RunFinished — the created/skipped lines are the terminal
-// output.
+// never calls Prompt — the created/skipped lines are the terminal output.
 //
 // A root-resolution failure (not a git work tree) aborts BEFORE any target is
-// considered, so a non-repo invocation writes nothing and emits no outcome. That
-// failure, like a failed write, is surfaced as an "init" StageFailed before the abort
-// returns, so the user is told why init stopped.
+// considered and before the run opens, so a non-repo invocation writes nothing and
+// emits no outcome. That failure, like a failed write, is surfaced as an "init"
+// StageFailed before the abort returns, so the user is told why init stopped.
 func Init(ctx context.Context, deps InitDeps, opts InitOptions) error {
 	root, err := gitrepo.ResolveRoot(ctx, deps.Runner)
 	if err != nil {
 		return surface(deps.Presenter, initStage, fmt.Errorf("resolving repo root for init: %w", err))
 	}
 
+	run := runclose.Begin(deps.Presenter, time.Now)
+	project := filepath.Base(root)
+	run.Open(presenter.RunInfo{
+		Project: project,
+		Header:  presenter.Header{Command: initCommand, Where: fsutil.HomeRelative(root, deps.Home), Version: deps.MintVersion},
+	})
+	err = scaffold(deps.Presenter, root, opts.Force)
+	if err == nil {
+		run.Land(presenter.RunResult{Project: project, Outcome: presenter.OutcomeInitialised})
+	}
+	run.Close(false)
+	return err
+}
+
+// initCommand is the command words of the rail's header for an init run.
+const initCommand = "init"
+
+// scaffold writes the two scaffolding files at root, surfacing the first that can't be
+// written.
+func scaffold(p presenter.Presenter, root string, force bool) error {
 	targets := []initTarget{
 		{Name: config.FileName, Content: initgen.MintTOML(), Mode: configFileMode},
 		{Name: shimFileName, Content: initgen.ReleaseShim(), Mode: initgen.ShimMode},
 	}
 	for _, t := range targets {
-		if err := scaffoldTarget(deps.Presenter, root, t, opts.Force); err != nil {
-			return surface(deps.Presenter, initStage, err)
+		if err := scaffoldTarget(p, root, t, force); err != nil {
+			return surface(p, initStage, err)
 		}
 	}
 	return nil

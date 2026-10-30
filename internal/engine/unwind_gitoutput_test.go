@@ -2,6 +2,7 @@ package engine_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"mint/internal/engine"
@@ -21,7 +22,7 @@ const (
 
 // unwindIncomplete is the manual-cleanup warning naming action, with output beneath it.
 func unwindIncomplete(action, output string) presenter.Warning {
-	return presenter.Warning{Label: "unwind incomplete", Message: "automatic recovery failed; manually " + action, Output: output}
+	return presenter.Warning{Label: "unwind incomplete", Message: "automatic recovery failed; manually " + action, Output: output, Key: "unwind", Failed: true, Row: "automatic recovery failed"}
 }
 
 // onlyWarning fails the test unless rec holds exactly the one warning want.
@@ -35,6 +36,16 @@ func onlyWarning(t *testing.T, rec *presentertest.RecordingPresenter, want prese
 	}
 	if len(warns) != 1 || warns[0] != want {
 		t.Errorf("warnings = %#v, want only %#v", warns, want)
+	}
+}
+
+// assertManualSteps fails unless rec's only next moves are moves, the unwind's manual
+// steps, Quiet: plain's warning line already names them.
+func assertManualSteps(t *testing.T, rec *presentertest.RecordingPresenter, moves ...presenter.NextMove) {
+	t.Helper()
+	want := []presenter.NextMoves{{Stage: "unwind", Quiet: true, Moves: moves}}
+	if got := nextMovesEvents(rec); !reflect.DeepEqual(got, want) {
+		t.Errorf("next moves = %+v, want %+v", got, want)
 	}
 }
 
@@ -54,7 +65,7 @@ func TestUnwind_ResetLockedPastTheRetries_ShowsGitsLockStderrBeneathTheWarning(t
 	if got := countCmd(f, "git", "reset", "--hard", startingSHA); got != 3 {
 		t.Errorf("reset attempts = %d, want 3 (the Mutator's whole budget)", got)
 	}
-	if got, want := unwoundText(t, rec), "reset 2 commits and deleted tag v0.0.1; manual cleanup required"; got != want {
+	if got, want := unwoundText(t, rec), "deleted tag v0.0.1; manual cleanup required"; got != want {
 		t.Errorf("Unwound.Text() = %q, want %q", got, want)
 	}
 }
@@ -68,12 +79,18 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 		soft    = "`git reset --soft " + startingSHA + "`"
 		restore = "`git restore --source=" + startingSHA + " --staged --worktree -- ':(top,literal,exclude)NEXT_RELEASE.md'`"
 		keeping = ", leaving NEXT_RELEASE.md as it is ("
+		// restoreCmd is restore as the command alone on next's line.
+		restoreCmd = "git restore --source=" + startingSHA + " --staged --worktree -- ':(top,literal,exclude)NEXT_RELEASE.md'"
 	)
 	steps := []struct {
 		name    string
 		keepOut git.Exclusion
 		calls   func(failed runner.ScriptedCall) []runner.ScriptedCall
 		action  string
+		move    presenter.NextMove
+		// summary is the Unwound line, naming only the steps that succeeded: the tag
+		// delete when the reset fails after it, the reset when the delete fails, and
+		// both when the reset moved HEAD back and only the restore after it failed.
 		summary string
 	}{
 		{
@@ -82,7 +99,8 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				return []runner.ScriptedCall{ScriptedOut(""), failed}
 			},
 			action:  hard,
-			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+			move:    presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
+			summary: "deleted tag v0.0.1; manual cleanup required",
 		},
 		{
 			name: "the tag delete",
@@ -90,7 +108,8 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 				return []runner.ScriptedCall{failed, ScriptedOut("")}
 			},
 			action:  tag,
-			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+			move:    presenter.NextMove{Lead: "Delete the leftover tag v0.0.1:", Command: "git tag -d v0.0.1"},
+			summary: "reset 2 commits; manual cleanup required",
 		},
 		{
 			name:    "the keep-out soft reset",
@@ -98,8 +117,12 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			calls: func(failed runner.ScriptedCall) []runner.ScriptedCall {
 				return []runner.ScriptedCall{ScriptedOut(""), failed}
 			},
-			action:  "reset HEAD back to " + startingSHA + keeping + soft + " then " + restore + ")",
-			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
+			action: "reset HEAD back to " + startingSHA + keeping + soft + " then " + restore + ")",
+			move: presenter.NextMove{
+				Lead:    "Reset HEAD back to " + startingSHA + ", leaving NEXT_RELEASE.md as it is:",
+				Command: "git reset --soft " + startingSHA + " && " + restoreCmd,
+			},
+			summary: "deleted tag v0.0.1; manual cleanup required",
 		},
 		{
 			name:    "the keep-out restore",
@@ -107,7 +130,11 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 			calls: func(failed runner.ScriptedCall) []runner.ScriptedCall {
 				return []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), failed}
 			},
-			action:  "restore the index and work tree to " + startingSHA + keeping + restore + ")",
+			action: "restore the index and work tree to " + startingSHA + keeping + restore + ")",
+			move: presenter.NextMove{
+				Lead:    "Restore the index and work tree to " + startingSHA + ", leaving NEXT_RELEASE.md as it is:",
+				Command: restoreCmd,
+			},
 			summary: "reset 2 commits and deleted tag v0.0.1; manual cleanup required",
 		},
 	}
@@ -135,6 +162,7 @@ func TestUnwind_FailedGitStep_ShowsItsStderrOrElseTheErrorText(t *testing.T) {
 
 				assertAbortNonZero(t, err)
 				onlyWarning(t, rec, unwindIncomplete(step.action, failure.output))
+				assertManualSteps(t, rec, step.move)
 				if got := unwoundText(t, rec); got != step.summary {
 					t.Errorf("Unwound.Text() = %q, want %q", got, step.summary)
 				}
@@ -151,29 +179,43 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 	tests := []struct {
 		name    string
 		keepOut git.Exclusion
-		failed  runner.ScriptedCall
-		action  string
-		output  string
+		// recovery are the reset's git steps, the last of them failing.
+		recovery []runner.ScriptedCall
+		action   string
+		output   string
+		// undone is what the rail's unwind names undone: the reset, once HEAD moved.
+		undone string
 	}{
 		{
-			name:   "the hard reset with stderr",
-			failed: gitFailing(recoveryStderr),
-			action: "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
-			output: recoveryStderr,
+			name:     "the hard reset with stderr",
+			recovery: []runner.ScriptedCall{gitFailing(recoveryStderr)},
+			action:   "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
+			output:   recoveryStderr,
 		},
 		{
-			name:   "the hard reset without stderr",
-			failed: scriptedMutateFailure(),
-			action: "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
-			output: noStderrOutput,
+			name:     "the hard reset without stderr",
+			recovery: []runner.ScriptedCall{scriptedMutateFailure()},
+			action:   "reset HEAD back to startHEAD (`git reset --hard startHEAD`)" + leftover,
+			output:   noStderrOutput,
 		},
 		{
-			name:    "the keep-out soft reset with stderr",
-			keepOut: "notes.md",
-			failed:  gitFailing(recoveryStderr),
+			name:     "the keep-out soft reset with stderr",
+			keepOut:  "notes.md",
+			recovery: []runner.ScriptedCall{gitFailing(recoveryStderr)},
 			action: "reset HEAD back to startHEAD, leaving notes.md as it is " +
 				"(`git reset --soft startHEAD` then `git restore --source=startHEAD --staged --worktree -- ':(top,literal,exclude)notes.md'`)" + leftover,
 			output: recoveryStderr,
+		},
+		{
+			// HEAD has left the commit, so only its changes are left to drop.
+			name:     "the keep-out restore after the soft reset went through",
+			keepOut:  "notes.md",
+			recovery: []runner.ScriptedCall{ScriptedOut(""), gitFailing(recoveryStderr)},
+			action: "restore the index and work tree to startHEAD, leaving notes.md as it is " +
+				"(`git restore --source=startHEAD --staged --worktree -- ':(top,literal,exclude)notes.md'`)" +
+				" to drop the changelog commit's leftover changes",
+			output: recoveryStderr,
+			undone: "reset the changelog commit",
 		},
 	}
 
@@ -190,7 +232,7 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 			} else {
 				f.SeedSequence("git", keepOutCommit("", stagedChangelog)...)
 			}
-			f.SeedSequence("git", pushRejected, tt.failed)
+			f.SeedSequence("git", append([]runner.ScriptedCall{pushRejected}, tt.recovery...)...)
 			rec := &presentertest.RecordingPresenter{NextChoices: []presenter.Choice{presenter.ChoiceYes}}
 
 			req := freshWriteReq(engine.RegenerateTargetChangelog)
@@ -199,6 +241,9 @@ func TestRegenerateWrite_FailedChangelogReset_ShowsItsStderrOrElseTheErrorText(t
 
 			assertAbortNonZero(t, err)
 			onlyWarning(t, rec, unwindIncomplete(tt.action, tt.output))
+			if got := unwoundText(t, rec); got != tt.undone {
+				t.Errorf("Unwound = %q, want %q", got, tt.undone)
+			}
 		})
 	}
 }

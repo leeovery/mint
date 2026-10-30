@@ -66,9 +66,8 @@ func TestPromptIsCaseInsensitive(t *testing.T) {
 // TestPromptUnrecognisedReprompts proves an unrecognised key (x) re-prompts and a
 // subsequent valid line is accepted — and that the prompt was rendered TWICE (once
 // for the initial read, once for the re-prompt). The returned choice is
-// mode-invariant; the render count is asserted through the per-mode renderCount
-// marker (plain's "Use these notes?" question, pretty's bar cursor), once per
-// mode via the table.
+// mode-invariant; the render count is asserted through renderCount, the times the
+// question was written, once per mode via the table.
 func TestPromptUnrecognisedReprompts(t *testing.T) {
 	gate := presenter.NotesReviewGate()
 
@@ -81,7 +80,7 @@ func TestPromptUnrecognisedReprompts(t *testing.T) {
 			if res.choice != presenter.ChoiceNo {
 				t.Errorf("%s Prompt = %q, want %q", d.mode, res.choice, presenter.ChoiceNo)
 			}
-			if got := d.renderCount(res.out.String()); got != 2 {
+			if got := d.renderCount(res.out.String(), gate); got != 2 {
 				t.Errorf("%s prompt rendered %d times, want 2 (initial + re-prompt)", d.mode, got)
 			}
 		})
@@ -144,7 +143,7 @@ func TestPromptRepeatedUnrecognisedThenValid(t *testing.T) {
 			if res.choice != presenter.ChoiceRegen {
 				t.Errorf("%s Prompt = %q, want %q", d.mode, res.choice, presenter.ChoiceRegen)
 			}
-			if got := d.renderCount(res.out.String()); got != 4 {
+			if got := d.renderCount(res.out.String(), gate); got != 4 {
 				t.Errorf("%s prompt rendered %d times, want 4 (initial + three re-prompts)", d.mode, got)
 			}
 		})
@@ -180,7 +179,7 @@ func TestPromptEOFReturnsError(t *testing.T) {
 }
 
 // TestPromptCoreIsModeAgnostic proves the parse/loop core is shared: the same
-// input sequence yields the same Choice for BOTH plain and pretty across a range
+// input sequence yields the same Choice for BOTH plain and the Rail across a range
 // of scripts (empty, uppercase, re-prompt-then-valid, whitespace).
 func TestPromptCoreIsModeAgnostic(t *testing.T) {
 	gate := presenter.NotesReviewGate()
@@ -226,7 +225,7 @@ func TestPromptHonoursReuseGateDeclaredSet(t *testing.T) {
 			if res.choice != presenter.ChoiceYes {
 				t.Errorf("%s Prompt = %q, want %q ('e' is not declared by reuse gate -> re-prompt)", d.mode, res.choice, presenter.ChoiceYes)
 			}
-			if got := d.renderCount(res.out.String()); got != 2 {
+			if got := d.renderCount(res.out.String(), gate); got != 2 {
 				t.Errorf("%s prompt rendered %d times, want 2 ('e' re-prompts)", d.mode, got)
 			}
 		})

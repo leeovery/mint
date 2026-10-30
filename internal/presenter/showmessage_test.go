@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/muesli/termenv"
-
 	"mint/internal/presenter"
 )
 
@@ -70,60 +68,19 @@ func TestPlainShowMessageDelimiterLookalikeBodyPassesThrough(t *testing.T) {
 	}
 }
 
-// TestPrettyShowMessageRendersGutterPanel proves the pretty block uses the shared
-// gutter-panel treatment ShowNotes uses: a leading blank separator line, a dim
-// "│ {title}" line with the engine-supplied title verbatim, a bare "│" spacer,
-// then every body line behind the "│ " gutter (empty body lines as a bare "│") —
-// no titled/closing rules, no width math. Narration → out only, never err.
-func TestPrettyShowMessageRendersGutterPanel(t *testing.T) {
-	out, errBuf := &bytes.Buffer{}, &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii), presenter.WithErr(errBuf))
-
-	p.ShowMessage(commitMessage())
-
-	want := "\n│ commit message\n" +
-		"│\n" +
-		"│ feat: add retry to publish\n" +
-		"│\n" +
-		"│ Retries the gh release call once on a 5xx.\n"
-	if out.String() != want {
-		t.Errorf("pretty ShowMessage out = %q, want %q", out.String(), want)
-	}
-	if errBuf.Len() != 0 {
-		t.Errorf("pretty ShowMessage wrote to err: %q; messages are narration -> out only", errBuf.String())
-	}
-}
-
-// TestPrettyShowMessageBodyInFullAtAnyTermWidth proves termWidth no longer
-// affects ShowMessage: at a narrow, a huge, and an undetectable (0) width, every
-// body line still renders in full behind the gutter — the panel does no width
-// math and never truncates.
-func TestPrettyShowMessageBodyInFullAtAnyTermWidth(t *testing.T) {
-	m := commitMessage()
-	for _, width := range []int{30, 2000, 0} {
-		out := &bytes.Buffer{}
-		p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii)).WithTermWidth(width)
-
-		p.ShowMessage(m)
-
-		assertGutterPanel(t, out.String(), m.Title, m.Body)
-	}
-}
-
-// TestShowMessageBodyContentIntactAcrossModes pins the REVISED cross-mode
-// contract for message blocks (the old pretty-bytes-identical-to-plain invariant
-// was deliberately traded away for the gutter): (a) PLAIN still writes the body
-// VERBATIM between its delimiters — the shipped bytes are untouched; (b) PRETTY
-// renders every body line's CONTENT intact behind the "│ " gutter — same line
-// count, each non-empty line as "│ {line}", each empty line as a bare "│",
-// nothing truncated or reordered.
+// TestShowMessageBodyContentIntactAcrossModes pins the cross-mode contract for
+// message blocks: (a) PLAIN writes the body VERBATIM between its delimiters — the
+// shipped bytes are untouched; (b) the RAIL shows every body line's CONTENT intact
+// behind its gutter, in order, nothing truncated or reordered.
 func TestShowMessageBodyContentIntactAcrossModes(t *testing.T) {
 	m := commitMessage()
 
 	plainOut := &bytes.Buffer{}
 	presenter.NewPlainPresenter(plainOut, &bytes.Buffer{}).ShowMessage(m)
-	prettyOut := &bytes.Buffer{}
-	presenter.NewPrettyPresenter(prettyOut, presenter.WithProfile(termenv.Ascii)).ShowMessage(m)
+	r := newRailTerm(t, 100, 24, answers())
+	commitRun(r)
+	r.StageSucceeded(presenter.StageSuccess{Name: "message", Key: "message", Detail: "written"})
+	r.ShowMessage(m)
 
 	// (a) Plain: the body region between the positional delimiters is the source
 	// byte-for-byte.
@@ -136,7 +93,21 @@ func TestShowMessageBodyContentIntactAcrossModes(t *testing.T) {
 		t.Errorf("plain body region = %q, want the verbatim source %q", plainBody, want)
 	}
 
-	// (b) Pretty: title line, bare-"│" spacer, then exactly one gutter line per
-	// body line with the content intact.
-	assertGutterPanel(t, prettyOut.String(), m.Title, m.Body)
+	// (b) The Rail: each body line, behind the gutter, in order.
+	screen := r.screen(t)
+	at := 0
+	for _, line := range strings.Split(m.Body, "\n") {
+		if line == "" {
+			continue
+		}
+		for at < len(screen) && !strings.HasSuffix(pane(screen[at]), "    "+line) {
+			at++
+		}
+		if at == len(screen) {
+			t.Fatalf("the rail doesn't show body line %q intact, in order, behind its gutter:\n%s", line, strings.Join(screen, "\n"))
+		}
+		if !strings.HasPrefix(screen[at], " │") {
+			t.Errorf("body line %q is not behind the rail's gutter: %q", line, screen[at])
+		}
+	}
 }

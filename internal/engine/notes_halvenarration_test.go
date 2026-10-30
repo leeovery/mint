@@ -61,9 +61,6 @@ func assertMergedCompletion(t *testing.T, ev presentertest.Event, parts int) {
 	if ev.Kind != presentertest.KindStageSucceeded {
 		t.Fatalf("last notes stage event = %v, want the completion", ev.Kind)
 	}
-	if want := fmt.Sprintf("Notes written (%d parts, merged)", parts); done.Sentence != want {
-		t.Errorf("completion sentence = %q, want %q", done.Sentence, want)
-	}
 	if want := fmt.Sprintf("generated in %d parts, merged", parts); done.Detail != want {
 		t.Errorf("completion detail = %q, want %q", done.Detail, want)
 	}

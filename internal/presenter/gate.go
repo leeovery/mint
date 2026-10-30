@@ -54,11 +54,11 @@ const previewMarker = "dry run: not asked"
 
 // gateNotTTYMessageASCII is the byte-pure ASCII message text for the plain
 // forbidden-combination failure: a semicolon form (NOT the em-dash) so the plain
-// byte-purity guard stays green. The pretty presenter renders the spec's em-dash
-// form (gateNotTTYMessagePretty) instead.
+// byte-purity guard stays green. The Rail renders the spec's em-dash form
+// (gateNotTTYMessagePretty) instead.
 const gateNotTTYMessageASCII = "not a TTY; pass -y to run unattended"
 
-// gateNotTTYMessagePretty is the spec's message text for the pretty
+// gateNotTTYMessagePretty is the spec's message text for the Rail's
 // forbidden-combination failure, with the em dash allowed in pretty mode (no
 // byte-purity constraint there). The plain presenter uses the ASCII form above.
 const gateNotTTYMessagePretty = "not a TTY — pass -y to run unattended"
@@ -77,7 +77,7 @@ type GateChoice struct {
 
 // Gate is a pure DATA model of one interactive prompt: the question text, the
 // ordered set of choices it offers, and which choice is the default. It carries
-// NO rendering — no fmt, no lipgloss — so both presenters render the same gate
+// NO rendering — no fmt, no styling — so both presenters render the same gate
 // value their own way, and engine-driven tests can script answers against the
 // model alone.
 //
@@ -108,8 +108,8 @@ type Gate struct {
 	// only in the skip echo.
 	Subject string
 	// AcceptEcho is the word/value shown after the subject in the -y auto-accept
-	// echo: the presenter renders "{Subject}: {AcceptEcho} (-y)" (plain) /
-	// "✓ {Subject}  {AcceptEcho} (-y)" (pretty). For the notes/reuse gates it is the
+	// echo: plain renders "{Subject}: {AcceptEcho} (-y)"; the Rail settles the node
+	// asked about with a "· accepted (-y)" tail. For the notes/reuse gates it is the
 	// fixed word "accepted" (so the echo reads "notes: accepted (-y)"); for the
 	// source/target gates it is the CHOSEN value — the engine-set flag/default —
 	// so a captured log shows which source/target was used ("source: github (-y)").
@@ -132,6 +132,16 @@ type Gate struct {
 	// other gate: what the Question asks about, kept whole so the rail need not read
 	// it out of the Question. Its Line is empty.
 	Suggestion *ExclusionSuggestion
+	// Quiet marks a gate a dry run previews only to fill in the run's structure (the
+	// review it stops short of): plain's log, pinned byte for byte from before the rail,
+	// has no line for that preview, so plain writes nothing for it.
+	// It is never set on a gate asked.
+	Quiet bool
+	// Review marks the review of a body shown, whose e edits that body and asks the
+	// gate again: the rail draws that e as the question's loop, not as an answer. Any
+	// other gate's e, the notes floor's, is an answer like the rest. Plain ignores
+	// it.
+	Review bool
 }
 
 // Has reports whether c is a member of the gate's DECLARED choice set. It reads
@@ -179,6 +189,7 @@ func NotesReviewGate() Gate {
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
 		Default: ChoiceYes,
+		Review:  true,
 	}
 }
 
@@ -208,6 +219,7 @@ func ReleaseReviewGate() Gate {
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
 		Default: ChoiceYes,
+		Review:  true,
 	}
 }
 

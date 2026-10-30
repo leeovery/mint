@@ -73,9 +73,6 @@ func assertChunkedNotesStage(t *testing.T, stage []presentertest.Event, maxPromp
 		t.Errorf("merge = %+v, want %+v", got, want)
 	}
 	done := stage[4].StageSucceeded
-	if done.Sentence != "Notes written (2 parts, merged)" {
-		t.Errorf("completion sentence = %q, want %q", done.Sentence, "Notes written (2 parts, merged)")
-	}
 	if done.Detail != "generated in 2 parts, merged" {
 		t.Errorf("completion detail = %q, want %q", done.Detail, "generated in 2 parts, merged")
 	}
@@ -91,8 +88,8 @@ func assertSinglePassNotesStage(t *testing.T, stage []presentertest.Event) {
 		t.Fatalf("notes stage events = %v, want only the completion", kindsOf(stage))
 	}
 	done := stage[0].StageSucceeded
-	if done.Sentence != "Generated release notes" || done.Detail != "generated" || !done.Blocking {
-		t.Errorf("completion = %+v, want the as-built blocking %q / %q", done, "Generated release notes", "generated")
+	if done.Detail != "generated" || !done.Blocking {
+		t.Errorf("completion = %+v, want the as-built blocking %q", done, "generated")
 	}
 }
 
@@ -301,8 +298,8 @@ func TestRelease_OverCap_FailedChunkedRunFallsBack_NotesStageClaimsNoMerge(t *te
 				t.Fatalf("notes stages = %d, want one", len(stages))
 			}
 			done := stages[0][len(stages[0])-1].StageSucceeded
-			if done.Sentence != "Generated release notes" || done.Detail != "generated" {
-				t.Errorf("completion = %q / %q, want the as-built %q / %q", done.Sentence, done.Detail, "Generated release notes", "generated")
+			if done.Detail != "generated" {
+				t.Errorf("completion = %q, want the as-built %q", done.Detail, "generated")
 			}
 			if got := tagAnnotationBody(t, f, nextTag); got != "subject one\nsubject two\n" {
 				t.Errorf("tag annotation body = %q, want the commit-subject fallback", got)

@@ -144,6 +144,15 @@ func TestRelease_RegenOnChunkedNotes_ReShowsTheReMergeAndShipsItByteIdentical(t 
 	if reviewQuestions != 2 {
 		t.Errorf("review gate asked %d times, want once before the r and once after", reviewQuestions)
 	}
+	var settled []presenter.StageSuccess
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Key == "notes" {
+			settled = append(settled, ev.StageSucceeded)
+		}
+	}
+	if len(settled) != 2 || settled[1].Detail != fmt.Sprintf("merged from %d parts", len(sixPartPaths)) || !settled[1].Quiet {
+		t.Errorf("notes successes = %+v, want the r's Quiet, saying it merged the %d saved parts", settled, len(sixPartPaths))
+	}
 	if got := tagAnnotationBody(t, f, nextTag); got != firstRemergeBody {
 		t.Errorf("tag annotation body = %q, want the re-merge output %q", got, firstRemergeBody)
 	}

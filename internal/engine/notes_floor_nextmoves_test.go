@@ -13,13 +13,28 @@ import (
 )
 
 const (
-	writeNotesMove = "write the notes to a file and release with mint release --notes-file <file>"
-	noAIMove       = "re-run with --no-ai to release with the commit-subject list"
-	fallbackMove   = `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`
+	noAIMove     = "re-run with --no-ai to release with the commit-subject list"
+	fallbackMove = `set on_notes_failure = "fallback" under [release] to ship the commit-subject list rather than stop`
+
+	// dryRun is a dry run's release run again with its own flag.
+	dryRun = "mint release --dry-run"
 )
 
+// writeNotesMove is the write-the-notes move of a run with no flags of its own.
+var writeNotesMove = writeNotesMoveFor("mint release")
+
+// writeNotesMoveFor is the write-the-notes move whose command is run, the release run
+// again with its own flags.
+func writeNotesMoveFor(run string) string {
+	return "write the notes to a file and release with " + run + " --notes-file <file>"
+}
+
 func tidySavedNotesMove(path string) string {
-	return "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release --notes-file " + path
+	return tidySavedNotesMoveFor("mint release", path)
+}
+
+func tidySavedNotesMoveFor(run, path string) string {
+	return "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with " + run + " --notes-file " + path
 }
 
 // moveTexts is each move as plain prints it, lead and command joined.

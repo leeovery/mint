@@ -27,12 +27,12 @@ func TestRun_AddAllOnPristineTree_ReportsCleanTree(t *testing.T) {
 
 	rec := &presentertest.RecordingPresenter{}
 	r := runner.NewFakeRunner()
-	// -A would-be-staged probe: `git diff HEAD --name-only` (empty), then `git ls-files
+	// -A would-be-staged probe: `git diff HEAD --numstat` (empty), then `git ls-files
 	// --others --exclude-standard` (empty) → empty would-be-staged set. Then the tree
 	// state probe `git status --porcelain` (empty) → genuinely clean tree.
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --name-only (no tracked changes)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --numstat (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git ls-files --others (no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git status --porcelain (clean tree)
 	)
@@ -60,7 +60,7 @@ func TestRun_AddAllOnPristineTree_ReportsCleanTree(t *testing.T) {
 
 // TestRun_AllOnPristineTree_ReportsCleanTree proves `mint commit -a` on a pristine tree
 // fails loud with git's clean-tree line: the -a would-be-staged probe (`git diff HEAD
-// --name-only`) is empty and `git status --porcelain` reports a clean tree.
+// --numstat`) is empty and `git status --porcelain` reports a clean tree.
 func TestRun_AllOnPristineTree_ReportsCleanTree(t *testing.T) {
 	t.Parallel()
 
@@ -68,7 +68,7 @@ func TestRun_AllOnPristineTree_ReportsCleanTree(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --name-only (no tracked changes)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --numstat (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git status --porcelain (clean tree)
 	)
 	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned (clean tree)"), t.TempDir())
@@ -86,7 +86,7 @@ func TestRun_AllOnPristineTree_ReportsCleanTree(t *testing.T) {
 // TestRun_BareCommitUnstagedChangesNothingStaged_PointsAtStagingFlags proves a bare
 // `mint commit` with unstaged changes but nothing staged fails loud with mint's flavour
 // of git's "no changes added to commit" — naming the staging modes that would help. The
-// staged probe (`git diff --cached --name-only`) is empty, and `git status --porcelain`
+// staged probe (`git diff --cached --numstat`) is empty, and `git status --porcelain`
 // reports changes exist, so the message is the no-changes-staged guidance.
 func TestRun_BareCommitUnstagedChangesNothingStaged_PointsAtStagingFlags(t *testing.T) {
 	t.Parallel()
@@ -95,7 +95,7 @@ func TestRun_BareCommitUnstagedChangesNothingStaged_PointsAtStagingFlags(t *test
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},          // git diff --cached --name-only (nothing staged)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},          // git diff --cached --numstat (nothing staged)
 		runner.ScriptedCall{Result: runner.Result{Stdout: " M file\n"}}, // git status --porcelain (unstaged changes exist)
 	)
 	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned (nothing staged)"), t.TempDir())
@@ -121,7 +121,7 @@ func TestRun_BareCommitUnstagedChangesNothingStaged_PointsAtStagingFlags(t *test
 
 // TestRun_AllWithOnlyUntrackedChanges_PointsAtAddAll proves `mint commit -a` when the
 // only changes are untracked fails loud pointing specifically at -A/--add-all (the mode
-// that would include them). The -a tracked probe (`git diff HEAD --name-only`) is empty
+// that would include them). The -a tracked probe (`git diff HEAD --numstat`) is empty
 // (untracked files are not tracked changes), and `git status --porcelain` reports the
 // untracked changes exist, so the message points at -A.
 func TestRun_AllWithOnlyUntrackedChanges_PointsAtAddAll(t *testing.T) {
@@ -131,7 +131,7 @@ func TestRun_AllWithOnlyUntrackedChanges_PointsAtAddAll(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git diff HEAD --name-only (no tracked changes)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git diff HEAD --numstat (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "?? new\n"}}, // git status --porcelain (untracked changes exist)
 	)
 	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned (only untracked)"), t.TempDir())
@@ -158,7 +158,7 @@ func TestRun_EmptyStagingMessageKeyedOnTreeStateNotFlag(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --name-only (no tracked changes)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git diff HEAD --numstat (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git ls-files --others (no untracked)
 		runner.ScriptedCall{Result: runner.Result{Stdout: ""}}, // git status --porcelain (clean tree)
 	)
@@ -189,7 +189,7 @@ func TestRun_EmptyStaging_NoAIInvoked(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},          // git diff --cached --name-only (nothing staged)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},          // git diff --cached --numstat (nothing staged)
 		runner.ScriptedCall{Result: runner.Result{Stdout: " M file\n"}}, // git status --porcelain (changes exist)
 	)
 	transport := scriptedTransport("must never be returned (empty staging)")
@@ -215,7 +215,7 @@ func TestRun_EmptyStaging_NoGitAddNoCommit(t *testing.T) {
 	r := runner.NewFakeRunner()
 	r.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git diff HEAD --name-only (no tracked changes)
+		runner.ScriptedCall{Result: runner.Result{Stdout: ""}},         // git diff HEAD --numstat (no tracked changes)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "?? new\n"}}, // git status --porcelain (untracked changes exist)
 	)
 	deps := newCommitDeps(rec, r, scriptedTransport("must never be returned"), t.TempDir())

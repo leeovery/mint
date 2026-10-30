@@ -1,0 +1,20 @@
+mint: regenerating pigeon v1.0.0
+plan: source fresh; release v1.0.0
+notes: running...
+notes: generated (0.7s)
+--- release notes v1.0.0 ---
+Initial release.
+--- end notes ---
+Use these notes? [y/n/e/r]
+mint: regenerating pigeon v1.1.0
+plan: source fresh; release v1.1.0
+notes: running...
+notes: generated (0.7s)
+--- release notes v1.1.0 ---
+What changed in v1.1.0, in a line.
+
+--- end notes ---
+Use these notes? [y/n/e/r]
+Add one-time context for regeneration (optional):: regenerate: FAILED - AI returned empty notes
+--- stderr ---
+regenerate: FAILED - AI returned empty notes

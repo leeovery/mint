@@ -5,7 +5,7 @@ n · v0.1.2
  │  main @ 7c1e0b4
  │
  ?  Release v1.3.2 → v1.4.0 (minor)?   y yes   n n
-o
+o ›
  ●  version
  │  v1.4.0 (minor bump)
  ●  preflight
@@ -21,7 +21,7 @@ ith origin
  ⠋  check
  ┆  files that don't belong in the notes
  ●  check
- │  files that don't belong in the notes
+ │  1 flagged
  ?  Exclude docs/specs/** from the notes? (design
  ┆  documents; 6 files, 48 kB)   e exclude   k kee
-p
+p ›

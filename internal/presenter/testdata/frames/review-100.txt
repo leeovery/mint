@@ -6,7 +6,7 @@
  ●  preflight     tree clean · on main · v1.4.0 free · in sync with origin
  ●  pre_tag       npm ci && npm run build                                                       4.1s
  │                committed as chore(release): pre-tag artifacts
- ●  check         files that don't belong in the notes                                          6.2s
+ ●  check         1 flagged                                                                     6.2s
  │                docs/specs/** excluded · design documents
  │                written to .mint.toml's [release] table and committed
  ●  notes         written in 4 parts and merged                                                52.3s
@@ -21,7 +21,7 @@
  │    - The dashboard no longer shows a delivery twice after a reconnect.
  │    - Signing secrets with a trailing newline are accepted again.
  │
- ?  Release with these notes?   y release   n abort   e edit   r regenerate
+ ?  Release with these notes?   y release   n abort   e edit   r regenerate ›
  ┆
  ○  record        CHANGELOG.md · package.json
  ┆

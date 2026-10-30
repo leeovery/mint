@@ -38,6 +38,16 @@ func warnings(rec *presentertest.RecordingPresenter) []presenter.Warning {
 	return warns
 }
 
+// plainWarnings is warnings as plain renders them: the label, message and output alone,
+// the fields the rail alone reads cleared.
+func plainWarnings(rec *presentertest.RecordingPresenter) []presenter.Warning {
+	warns := warnings(rec)
+	for i, w := range warns {
+		warns[i] = presenter.Warning{Label: w.Label, Message: w.Message, Output: w.Output}
+	}
+	return warns
+}
+
 func assertOnlyWarning(t *testing.T, rec *presentertest.RecordingPresenter, want presenter.Warning) {
 	t.Helper()
 	if got := warnings(rec); len(got) != 1 || got[0] != want {

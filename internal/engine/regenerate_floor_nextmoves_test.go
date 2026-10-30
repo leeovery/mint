@@ -16,11 +16,11 @@ import (
 
 const (
 	regenFloorVersion   = "1.2.0"
-	regenWriteNotesMove = "write the notes to a file and release with mint release regenerate " + regenFloorVersion + " --notes-file <file>"
+	regenWriteNotesMove = "write the notes to a file and release with mint release regenerate " + regenFloorVersion + " --target release --notes-file <file>"
 )
 
 func regenTidySavedNotesMove(path string) string {
-	return "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release regenerate " + regenFloorVersion + " --notes-file " + path
+	return "tidy the saved notes at " + path + ", filling in any files its marker lists, and release with mint release regenerate " + regenFloorVersion + " --target release --notes-file " + path
 }
 
 // unattendedModes are the two ways a single-version regenerate runs with nobody to

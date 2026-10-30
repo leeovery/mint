@@ -195,15 +195,30 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			detail:  "back where it started · nothing pushed",
 		},
 		{
+			// The files were never staged, so no commit holds them, failed reset or not:
+			// they are untracked all the same.
+			name:   "files the record created, never staged, then a reset that fails",
+			config: preTagHookConfig + plainVersionFile,
+			git: [][]runner.ScriptedCall{{
+				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
+				gitFailing(stageStderr),         // add VERSION CHANGELOG.md
+				scriptedMutateFailure(),         // unwind: reset --hard
+				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands
+			}},
+			outcome: presenter.OutcomeUnwound,
+			detail:  "9f3e2a1 · 1 commit not reset · manual cleanup required · VERSION + CHANGELOG.md left untracked · nothing pushed",
+		},
+		{
 			name:   "an unwind whose reset fails",
 			config: preTagHookConfig,
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				ScriptedOut(""), gitFailing(commitStderr), // add CHANGELOG.md, commit
-				scriptedMutateFailure(), // unwind: reset --hard
+				scriptedMutateFailure(),         // unwind: reset --hard
+				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands
 			}},
 			outcome: presenter.OutcomeUnwound,
-			detail:  "manual cleanup required · nothing pushed",
+			detail:  "9f3e2a1 · 1 commit not reset · manual cleanup required · nothing pushed",
 		},
 	}
 	for _, tt := range tests {

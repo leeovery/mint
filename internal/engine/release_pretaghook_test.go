@@ -181,6 +181,45 @@ func TestRelease_PreTagHook_RunsAfterStartingHEADBeforeNotes(t *testing.T) {
 	}
 }
 
+// TestRelease_PreTagHook_SettlesItsRowWithItsCommands pins the pre_tag success: the
+// rail's row names the hook's commands joined as they run, as the plan names them,
+// while plain keeps "hook completed".
+func TestRelease_PreTagHook_SettlesItsRowWithItsCommands(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name, hook, want string
+	}{
+		{name: "one command", hook: `"build.sh"`, want: "build.sh"},
+		{name: "an array", hook: `["npm ci", "npm run build"]`, want: "npm ci && npm run build"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			writeConfig(t, root, "[release.hooks]\npre_tag = "+tt.hook+"\n")
+			f := runner.NewFakeRunner()
+			seedPreTagClean(f, root, "main", "v0.0.1")
+			f.Seed("sh", runner.Result{}, nil)
+			f.Seed("gh", runner.Result{}, nil)
+			rec := &presentertest.RecordingPresenter{}
+
+			if err := engine.Release(t.Context(), newDeps(rec, f), patchOptions()); err != nil {
+				t.Fatalf("Release returned unexpected error: %v", err)
+			}
+
+			done, ok := stageSucceeded(rec, "pre_tag")
+			if !ok {
+				t.Fatalf("no pre_tag StageSucceeded; kinds = %v", rec.Kinds())
+			}
+			if done.Row != tt.want || done.Detail != "hook completed" {
+				t.Errorf("pre_tag row = %q, detail = %q, want %q and plain's %q", done.Row, done.Detail, tt.want, "hook completed")
+			}
+		})
+	}
+}
+
 // TestRelease_PreTagHook_CleanTree_NoArtifactCommit proves a pre_tag hook that
 // leaves a CLEAN tree (empty porcelain after the hook) produces NO artifact commit:
 // no `git -C {root} add -A` and no `chore(release)` commit run, yet the run still

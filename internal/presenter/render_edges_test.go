@@ -24,20 +24,6 @@ func TestPlainUnwoundEmptySummaryRendersLabelOnly(t *testing.T) {
 	}
 }
 
-// TestPrettyUnwoundEmptySummaryRendersGlyphAndLabel locks the same edge in
-// pretty: the ↩ line renders with the padded "unwound" label and no summary —
-// the presenter invents nothing.
-func TestPrettyUnwoundEmptySummaryRendersGlyphAndLabel(t *testing.T) {
-	out := &bytes.Buffer{}
-	p := presenter.NewPrettyPresenter(out, presenter.WithProfile(termenv.Ascii))
-
-	p.Unwound(presenter.Unwind{})
-
-	if out.String() != "↩ unwound    \n" {
-		t.Errorf("pretty empty-summary unwound = %q, want %q", out.String(), "↩ unwound    \n")
-	}
-}
-
 // TestPlainPromptFinalLineWithoutNewlineSelectsChoice directly exercises the
 // EOF positive path: a final "y" with no trailing newline is still a parsed
 // answer, not an ErrInputClosed.
@@ -53,17 +39,18 @@ func TestPlainPromptFinalLineWithoutNewlineSelectsChoice(t *testing.T) {
 	}
 }
 
-// TestPrettyPromptFinalLineWithoutNewlineSelectsChoice mirrors the EOF positive
-// path through the pretty presenter's identical shared loop.
-func TestPrettyPromptFinalLineWithoutNewlineSelectsChoice(t *testing.T) {
-	p, _, _ := prettyGate(termenv.Ascii, strings.NewReader("n"), gateOpts{})
+// TestRailPromptFinalLineWithoutNewlineSelectsChoice mirrors the EOF positive path
+// through the Rail's typed line.
+func TestRailPromptFinalLineWithoutNewlineSelectsChoice(t *testing.T) {
+	p, _, _ := railGate(termenv.Ascii, strings.NewReader("n"), gateOpts{})
+	defer p.Close()
 
 	choice, err := p.Prompt(presenter.NotesReviewGate())
 	if err != nil {
-		t.Fatalf("pretty Prompt on un-terminated final line returned error: %v", err)
+		t.Fatalf("rail Prompt on un-terminated final line returned error: %v", err)
 	}
 	if choice != presenter.ChoiceNo {
-		t.Errorf("pretty Prompt = %q, want %q", choice, presenter.ChoiceNo)
+		t.Errorf("rail Prompt = %q, want %q", choice, presenter.ChoiceNo)
 	}
 }
 

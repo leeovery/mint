@@ -8,6 +8,18 @@ import (
 	"mint/internal/runner"
 )
 
+func TestGitHubPublisher_ReleaseName_IsAGitHubRelease(t *testing.T) {
+	t.Parallel()
+
+	r := runner.NewFakeRunner()
+	if got := publish.NewGitHubPublisher(r).ReleaseName(); got != "GitHub release" {
+		t.Errorf("ReleaseName() = %q, want %q", got, "GitHub release")
+	}
+	if calls := r.Invocations(); len(calls) != 0 {
+		t.Errorf("ReleaseName ran %v, want no command", calls)
+	}
+}
+
 func TestGitHubPublisher_CreateRelease_InvokesGhReleaseCreate(t *testing.T) {
 	t.Parallel()
 
@@ -114,6 +126,54 @@ func TestGitHubPublisher_CreateRelease_GhFails_SurfacesError(t *testing.T) {
 	}
 	if url != "" {
 		t.Errorf("url = %q, want empty alongside the surfaced gh failure", url)
+	}
+}
+
+// TestGitHubPublisher_AFailedGhCallCarriesItsStderr pins that every gh call that fails
+// carries what gh wrote to stderr as a *publish.CLIError, the error's message its own,
+// so a failure can show gh's diagnostics verbatim.
+func TestGitHubPublisher_AFailedGhCallCarriesItsStderr(t *testing.T) {
+	t.Parallel()
+
+	const stderr = "HTTP 502: Bad Gateway (https://api.github.com/repos/acme/widget/releases/1)\n"
+	for _, tc := range []struct {
+		name string
+		call func(*publish.GitHubPublisher) error
+	}{
+		{name: "create", call: func(p *publish.GitHubPublisher) error {
+			_, err := p.CreateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
+			return err
+		}},
+		{name: "update", call: func(p *publish.GitHubPublisher) error {
+			_, err := p.UpdateRelease(t.Context(), "v1.2.3", "v1.2.3", "body")
+			return err
+		}},
+		{name: "probe", call: func(p *publish.GitHubPublisher) error {
+			_, err := p.ReleaseExists(t.Context(), "v1.2.3")
+			return err
+		}},
+		{name: "read", call: func(p *publish.GitHubPublisher) error {
+			_, _, err := p.ReadReleaseBody(t.Context(), "v1.2.3")
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := runner.NewFakeRunner()
+			cause := errors.New("exit status 1")
+			r.Seed("gh", runner.Result{Stderr: stderr, ExitCode: 1}, cause)
+
+			err := tc.call(publish.NewGitHubPublisher(r))
+
+			var cliErr *publish.CLIError
+			if !errors.As(err, &cliErr) || cliErr.Stderr != stderr {
+				t.Fatalf("err = %v, want a *publish.CLIError carrying gh's stderr %q", err, stderr)
+			}
+			if !errors.Is(err, cause) || cliErr.Error() != cause.Error() {
+				t.Errorf("CLIError = %q, want the call's own message, wrapping it", cliErr.Error())
+			}
+		})
 	}
 }
 

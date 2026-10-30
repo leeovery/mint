@@ -68,7 +68,7 @@ func seedRegenFailFallback(editor string) *runner.FakeRunner {
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --name-only (non-empty index)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff --cached --numstat (non-empty index)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached (initial L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff --cached (regeneration L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: editor + "\n"}},                 // git var GIT_EDITOR (fallback)
@@ -201,7 +201,7 @@ func TestRun_RegenFailure_NonEmptySaveUnderAll_AddsTrackedThenCommits(t *testing
 	f := runner.NewFakeRunner()
 	f.SeedSequence("git",
 		scriptedHead(), // git rev-parse HEAD --abbrev-ref HEAD (the start station)
-		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff HEAD --name-only (preflight, non-empty)
+		runner.ScriptedCall{Result: runner.Result{Stdout: "x\n"}},                         // git diff HEAD --numstat (preflight, non-empty)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff HEAD -- . (initial L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "diff --git a/x b/x\n+work\n"}}, // git diff HEAD -- . (regeneration L1)
 		runner.ScriptedCall{Result: runner.Result{Stdout: "myedit\n"}},                    // git var GIT_EDITOR
