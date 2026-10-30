@@ -121,6 +121,7 @@ func assertCommitKeepsNotesOut(t *testing.T, f *runner.FakeRunner, root, rel, su
 // seedInRepoNotesFileGit scripts a prior-tag supplied-body release whose bookkeeping
 // commit keeps an in-repo notes file out; notesStaged is as for keepOutCommit.
 func seedInRepoNotesFileGit(f *runner.FakeRunner, root, notesStaged string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut(""),            // ls-files --ignored (the notes file is not ignored)
@@ -138,9 +139,8 @@ func seedInRepoNotesFileGit(f *runner.FakeRunner, root, notesStaged string) {
 	)
 	f.SeedSequence("git", keepOutCommit(notesStaged, stagedChangelog)...)
 	f.SeedSequence("git",
-		ScriptedOut(githubRemoteURL), // remote get-url origin
-		ScriptedOut(""),              // tag -a v1.2.4 -F -
-		ScriptedOut(""),              // push --atomic origin HEAD v1.2.4
+		ScriptedOut(""), // tag -a v1.2.4 -F -
+		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
 	)
 	f.Seed("gh", runner.Result{}, nil)
 }
@@ -179,9 +179,8 @@ func firstReleaseTailFor(notesStaged string) []runner.ScriptedCall {
 	calls := []runner.ScriptedCall{ScriptedOut("")} // -C root add CHANGELOG.md
 	calls = append(calls, keepOutCommit(notesStaged, stagedChangelog)...)
 	return append(calls,
-		ScriptedOut(githubRemoteURL), // remote get-url origin
-		ScriptedOut(""),              // tag -a v0.0.1 -F -
-		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
+		ScriptedOut(""), // tag -a v0.0.1 -F -
+		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
 	)
 }
 
@@ -189,11 +188,10 @@ func firstReleaseTailFor(notesStaged string) []runner.ScriptedCall {
 // tag and push.
 func bareFirstReleaseTail() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
-		ScriptedOut(""),              // -C root add CHANGELOG.md
-		ScriptedOut(""),              // -C root commit -m
-		ScriptedOut(githubRemoteURL), // remote get-url origin
-		ScriptedOut(""),              // tag -a v0.0.1 -F -
-		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
+		ScriptedOut(""), // -C root add CHANGELOG.md
+		ScriptedOut(""), // -C root commit -m
+		ScriptedOut(""), // tag -a v0.0.1 -F -
+		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
 	}
 }
 
@@ -304,6 +302,7 @@ func TestRelease_NotesFileInRepo_Autostash_StashesOnlyTheOtherChanges(t *testing
 	root := t.TempDir()
 	path := writeNotesFile(t, root, "NEXT_RELEASE.md", suppliedBody)
 	f := runner.NewFakeRunner()
+	seedProvider(f)
 	f.SeedSequence("git", firstReleaseGates(root, "", stashSaved())...)
 	f.SeedSequence("git", firstReleaseTail()...)
 	f.SeedSequence("git", stashPopped()) // stash pop (restore the other changes)
@@ -329,6 +328,7 @@ func TestRelease_NotesFileInRepo_Autostash_NotesFileTheOnlyChange_StashesNothing
 	root := t.TempDir()
 	path := writeNotesFile(t, root, "notes.md", suppliedBody)
 	f := runner.NewFakeRunner()
+	seedProvider(f)
 	f.SeedSequence("git", firstReleaseGates(root, "", stashNothing())...) // stash push saves nothing: only the notes file changed
 	f.SeedSequence("git", firstReleaseTail()...)
 	f.Seed("gh", runner.Result{}, nil)
@@ -390,6 +390,7 @@ func TestRelease_NotesFileInRepo_PreTagHook_ArtifactCommitLeavesTheNotesFileOut(
 			writeConfig(t, root, "[release.hooks]\npre_tag = \"build.sh\"\n")
 			path := writeNotesFile(t, root, "notes.md", suppliedBody)
 			f := runner.NewFakeRunner()
+			seedProvider(f)
 			f.SeedSequence("git", firstReleaseGates(root, "")...)
 			f.SeedSequence("git", tt.artifact...)
 			f.SeedSequence("git", firstReleaseTailFor(tt.notesStaged)...)
@@ -512,6 +513,7 @@ func TestRelease_NotesFileInRepo_ProbesWhetherGitIgnoresIt(t *testing.T) {
 	root := t.TempDir()
 	writeNotesFile(t, root, "tmp/notes [x].md", suppliedBody)
 	f := runner.NewFakeRunner()
+	seedProvider(f)
 	f.SeedSequence("git", firstReleaseGates(root, "")...)
 	f.SeedSequence("git", firstReleaseTail()...)
 	f.Seed("gh", runner.Result{}, nil)
@@ -539,6 +541,7 @@ func TestRelease_NotesFileInRepo_IgnoredByGit_GitStepsRunAsBuilt(t *testing.T) {
 		writeConfig(t, root, "[release.hooks]\npre_tag = \"build.sh\"\n")
 		path := writeNotesFile(t, root, "notes.md", suppliedBody)
 		f := runner.NewFakeRunner()
+		seedProvider(f)
 		f.SeedSequence("git", firstReleaseGates(root, ignored)...)
 		f.SeedSequence("git",
 			ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: dirty)
@@ -569,6 +572,7 @@ func TestRelease_NotesFileInRepo_IgnoredByGit_GitStepsRunAsBuilt(t *testing.T) {
 		root := t.TempDir()
 		path := writeNotesFile(t, root, "notes.md", suppliedBody)
 		f := runner.NewFakeRunner()
+		seedProvider(f)
 		f.SeedSequence("git", firstReleaseGates(root, ignored, stashSaved())...)
 		f.SeedSequence("git", bareFirstReleaseTail()...)
 		f.SeedSequence("git", stashPopped())

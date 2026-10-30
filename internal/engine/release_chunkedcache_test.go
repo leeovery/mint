@@ -75,7 +75,6 @@ func (repo chunkedCacheRepo) dryRun(t *testing.T, diff string, tr notes.Transpor
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, repo.root, "main")
 	seedFourPartNotes(f, diff)
-	f.SeedSequence("git", ScriptedOut(githubRemoteURL))
 	opts := priorTagNormalAIOptions()
 	opts.DryRun = true
 	if err := engine.Release(t.Context(), repo.deps(&presentertest.RecordingPresenter{}, f, tr, cacheWriteClock), opts); err != nil {
@@ -240,7 +239,6 @@ func TestRelease_WritingAChunkedEntry_LeavesTheWorkTreeAndIndexUntouched(t *test
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, repo.root, "main")
 	seedFourPartNotes(f, diff)
-	f.SeedSequence("git", ScriptedOut(githubRemoteURL))
 	opts := priorTagNormalAIOptions()
 	opts.DryRun = true
 

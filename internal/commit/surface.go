@@ -29,10 +29,10 @@ func surfaceTimed(p presenter.Presenter, stage string, cause error, elapsed time
 	return surfaceFailure(p, presenter.StageFailure{Name: stage, Message: cause.Error(), Elapsed: elapsed}, cause)
 }
 
-// surfaceFailure renders failure, keyed to the plan stage its label fails, and
-// returns cause.
+// surfaceFailure renders failure, keyed to the plan stage its label fails and marked
+// interrupted where cause is the run's cancel, and returns cause.
 func surfaceFailure(p presenter.Presenter, failure presenter.StageFailure, cause error) error {
-	failure.Key = stageKey(failure.Name)
+	failure.Key, failure.Interrupted = stageKey(failure.Name), presenter.Interrupted(cause)
 	p.StageFailed(failure)
 	return cause
 }

@@ -54,11 +54,10 @@ func assertUnwoundWithOneWarning(t *testing.T, rec *presentertest.RecordingPrese
 // push, leaving the answers commit one below the tip.
 func pushRejectedAfterTheTag() []runner.ScriptedCall {
 	return []runner.ScriptedCall{
-		ScriptedOut(""),              // -C root add CHANGELOG.md
-		ScriptedOut(""),              // -C root commit -m
-		ScriptedOut(githubRemoteURL), // remote get-url origin
-		ScriptedOut(""),              // tag -a v1.3.0 -F -
-		pushRejected(),               // push --atomic origin HEAD v1.3.0
+		ScriptedOut(""), // -C root add CHANGELOG.md
+		ScriptedOut(""), // -C root commit -m
+		ScriptedOut(""), // tag -a v1.3.0 -F -
+		pushRejected(),  // push --atomic origin HEAD v1.3.0
 	}
 }
 

@@ -25,6 +25,7 @@ func pretagArtifactSubject(tag string) string {
 // `chore(release): pre-tag artifacts for {tag}` commit — THEN the normal bookkeeping
 // add/commit, tag, and push follow. The caller seeds `sh` (the hook) and `gh`.
 func seedPreTagDirty(f *runner.FakeRunner, root, releaseBranch, tag string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -42,7 +43,6 @@ func seedPreTagDirty(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(""),                      // -C root commit -m chore(release): pre-tag artifacts
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
-		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -53,6 +53,7 @@ func seedPreTagDirty(f *runner.FakeRunner, root, releaseBranch, tag string) {
 // returns nothing, so NO artifact commit is made — the spine proceeds straight to
 // the bookkeeping add/commit, tag, and push. The caller seeds `sh` and `gh`.
 func seedPreTagClean(f *runner.FakeRunner, root, releaseBranch, tag string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -68,7 +69,6 @@ func seedPreTagClean(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(""),                      // -C root status --porcelain (post-hook: CLEAN)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
-		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)

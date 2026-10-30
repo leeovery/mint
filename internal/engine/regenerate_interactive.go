@@ -32,6 +32,7 @@ package engine
 
 import (
 	"context"
+	"slices"
 
 	"mint/internal/config"
 	"mint/internal/git"
@@ -264,7 +265,7 @@ func regenerateRun(ctx context.Context, deps ReleaseDeps, resolve PublisherResol
 	// (The spec order still holds: source/target were asked above, the plan shows here,
 	// the confirm fires inside RegenerateWrite.)
 	p.RunStarted(info)
-	p.ShowPlan(regeneratePlan(source, target, req.Tag, release))
+	p.ShowPlan(regeneratePlan(source, target, req.Tag, release, gates.planned(req.ReleaseBranch)))
 
 	// Produce the body for the resolved source BEFORE the confirm — the notes-review
 	// gate (fresh) reviews this body. A production failure aborts before the confirm,
@@ -455,12 +456,12 @@ func targetFromChoice(c presenter.Choice) RegenerateTarget {
 // update is resolved later per version (5-7), so the plan names the surfaces rather
 // than the dispatch decision. release names the release the provider surface is. The
 // changelog is one node from its rewrite to its push, so the plan marks no point of
-// no return inside it.
-func regeneratePlan(source RegenerateSource, target RegenerateTarget, tag, release string) presenter.Plan {
-	stages := []presenter.PlanStage{
-		{Key: stageNotes, Name: stageNotes, Detail: sourceDetail(source)},
-		{Key: stageReview, Name: stageReview, Detail: "the notes before they are written"},
-	}
+// no return inside it. The stages lead with checked, the preflight already passed.
+func regeneratePlan(source RegenerateSource, target RegenerateTarget, tag, release string, checked []presenter.PlanStage) presenter.Plan {
+	stages := append(slices.Clone(checked),
+		presenter.PlanStage{Key: stageNotes, Name: stageNotes, Detail: sourceDetail(source)},
+		presenter.PlanStage{Key: stageReview, Name: stageReview, Detail: "the notes before they are written"},
+	)
 	if target.writesChangelog() {
 		stages = append(stages, presenter.PlanStage{Key: stageRecord, Name: record.ChangelogFileName, Detail: "rewritten, committed and pushed"})
 	}
@@ -491,6 +492,16 @@ func releaseName(publisher publish.Publisher) string {
 		return named.ReleaseName()
 	}
 	return aProviderRelease
+}
+
+// writingText is what a stage writing publisher's release says while it runs.
+func writingText(publisher publish.Publisher) string {
+	return writingRelease(releaseName(publisher))
+}
+
+// writingRelease is what a stage writing the release named release says while it runs.
+func writingRelease(release string) string {
+	return "writing the " + release + "…"
 }
 
 // readFrom is where a regenerate from source read its notes, release naming the

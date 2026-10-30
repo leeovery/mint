@@ -1,0 +1,6 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.2.3        main @ 4f9c2e1
+ │
+ ●  version       v1.3.0 (minor bump)
+ ⠋  preflight     checking the tree, branch, tag and origin…                                      0s

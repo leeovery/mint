@@ -3,7 +3,7 @@
  ◇  v1.2.3        main @ 4f9c2e1
  │
  ●  version       v1.3.0 (minor bump) · accepted (-y)
- ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
+ ●  preflight     tree clean, on main, v1.3.0 free, origin in sync, gh signed in
  ●  check         1 flagged, not asked                                                          0.7s
  !  docs/design/  flagged, not asked: design documents · 1 file, 176 B
  ✗  notes         AI call failed                                                                0.7s

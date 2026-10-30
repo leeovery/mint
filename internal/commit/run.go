@@ -364,6 +364,9 @@ func mintCommit(ctx context.Context, deps Deps) error {
 	// (generate.go), so a changeset whose every file is excluded is STILL something to
 	// commit — it passes here and the empty-AI-diff case is handled below by routing to the
 	// editor fallback, NOT by wrongly rejecting it as empty.
+	//
+	// Reading a large tree takes a moment, so the rail shows the diff running.
+	showRunning(p, stageDiff, "reading the changes…", false)
 	stat, err := checkSomethingToCommit(ctx, deps.Runner, root, deps.Staging)
 	if err != nil {
 		return surface(p, "preflight", err)
@@ -764,7 +767,7 @@ func commitReviewGate() presenter.Gate {
 		AcceptEcho: "accepted",
 		Choices: []presenter.GateChoice{
 			{Key: presenter.ChoiceYes, Action: "accept"},
-			{Key: presenter.ChoiceNo, Action: "abort", Answered: "aborted"},
+			{Key: presenter.ChoiceNo, Action: "abort", Answered: "aborted", Aborts: true},
 			{Key: presenter.ChoiceEdit, Action: "edit"},
 			{Key: presenter.ChoiceRegen, Action: "regenerate"},
 		},
@@ -964,6 +967,9 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 	// From here git writes (the staging, the commit and its hooks), so a run that
 	// stops claims only what it knows it left.
 	deps.run.Left(nothingCommitted)
+	if deps.Staging != StagedOnly {
+		showRunning(p, stageStage, "staging "+deps.stat.filesText()+"…", false)
+	}
 	if res, err := stageForMode(ctx, deps); err != nil {
 		// git's captured stderr travels verbatim as the failure Output — the same
 		// pass-through convention the push warn uses — so a hook rejection or git's own
@@ -974,6 +980,8 @@ func commitAccept(ctx context.Context, deps Deps, root, body string) error {
 		p.StageSucceeded(presenter.Settled(stageStage, deps.stat.filesText()))
 		deps.run.Left(stagedNotCommitted)
 	}
+	// The commit runs the repo's own commit hooks, which can take a while: it is timed.
+	showRunning(p, stageCommit, "committing…", true)
 	if res, err := createCommit(ctx, deps, body); err != nil {
 		return surfaceOutput(p, "commit", err, res.Stderr)
 	}
@@ -1091,6 +1099,12 @@ func pushAfterCommit(ctx context.Context, deps Deps) error {
 		Quiet:    true,
 	})
 	return nil
+}
+
+// showRunning shows the stage keyed key running, doing text, with its time so far
+// where timed. Plain's log has never had a start line for it, so the start is Quiet.
+func showRunning(p presenter.Presenter, key, text string, timed bool) {
+	p.StageStarted(presenter.StageStart{Name: key, Key: key, Blocking: timed, Text: text, Quiet: true})
 }
 
 // pushedTo is the push's row once it went through to target, the remote-tracking branch

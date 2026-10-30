@@ -2,6 +2,7 @@
 
  ◇  v1.4.0        fresh → CHANGELOG.md + GitHub release
  │
+ ●  preflight     tree clean, on main, origin in sync, gh signed in
  ●  notes         generated                                                                     0.7s
  ●  review        accepted
  ●  CHANGELOG.md  rewritten · committed and pushed                                              2.1s

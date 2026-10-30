@@ -58,6 +58,7 @@ func ScriptedNonZero() runner.ScriptedCall {
 //	releaseBranch — `git symbolic-ref --short refs/remotes/origin/HEAD`
 //	tag           — the computed tag (e.g. "v0.0.1")
 func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -72,17 +73,40 @@ func seedHappyGit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
-		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
 }
 
-// githubRemoteURL is the github.com remote URL the happy-path git timeline returns
-// for `git remote get-url origin` so provider auto-detection resolves to the GitHub
+// githubRemoteURL is the github.com remote URL seedProvider answers
+// `git remote get-url origin` with, so provider auto-detection resolves to the GitHub
 // driver (the publish=true default). Tests exercising other hosts/forms script their
-// own remote via seedHappyGitRemote.
+// own remote with seedRemote.
 const githubRemoteURL = "https://github.com/acme/widget.git"
+
+// seedProvider scripts what a publishing release's preflight finds of its provider:
+// origin at githubRemoteURL, which resolves to the GitHub driver, and gh signed in,
+// gh answering every call nothing else scripts. Neither moves a sequence along, so
+// a dry run, which reads neither, follows the same script.
+func seedProvider(f *runner.FakeRunner) {
+	seedRemote(f, ScriptedOut(githubRemoteURL))
+	f.SeedFallback("gh", runner.Result{}, nil)
+}
+
+// seedRemote scripts `git remote get-url origin`, the read provider detection makes.
+func seedRemote(f *runner.FakeRunner, url runner.ScriptedCall) {
+	f.SeedCall("git", []string{"remote", "get-url", "origin"}, url)
+}
+
+// assertNoProviderRead fails t where the run read the release remote's URL, the
+// read only provider detection makes: seedProvider answers it from any run, so a run
+// that publishes nothing must be caught reading it here.
+func assertNoProviderRead(t *testing.T, f *runner.FakeRunner) {
+	t.Helper()
+	if invokedWith(f, "git", "remote", "get-url", "origin") {
+		t.Error("a run that publishes nothing read origin's URL to detect a provider")
+	}
+}
 
 // newDeps builds the orchestrator's dependency set around a single FakeRunner so
 // every external call (git via the units, gh via the publisher) is scripted and
@@ -143,8 +167,8 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	}
 
 	// The external-command timeline must follow the spine in exact order: read
-	// stages, fetch, local gates, network gates, bookkeeping commit, gh auth, tag,
-	// push, then the provider release create.
+	// stages, fetch, local gates, network gates, the provider and gh auth, the
+	// bookkeeping commit, tag, push, then the provider release create.
 	wantCmds := []string{
 		"git rev-parse --show-toplevel",
 		"git symbolic-ref --short refs/remotes/origin/HEAD",
@@ -156,11 +180,11 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		"git rev-parse -q --verify refs/tags/v0.0.1",
 		"git rev-list --left-right --count @{u}...HEAD",
 		"git ls-remote --tags origin refs/tags/v0.0.1",
+		"git remote get-url origin",
+		"gh auth status",
 		"git rev-parse HEAD",
 		"git -C " + root + " add CHANGELOG.md",
 		"git -C " + root + " commit -m 🌿 Release v0.0.1",
-		"git remote get-url origin",
-		"gh auth status",
 		"git tag -a --cleanup=verbatim v0.0.1 -F -",
 		"git push --atomic origin HEAD v0.0.1",
 		"gh release create v0.0.1 --title v0.0.1 --notes-file - --verify-tag",
@@ -176,23 +200,27 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	}
 
 	// The presenter event timeline must emit in spine order. RunStarted OPENS the run;
-	// then the read-only gates (version, preflight) narrate their completion; then the
+	// then the version gate is answered and preflight runs, its start quiet, to its
+	// completion; then the
 	// blocking notes stage brackets its spinner; then the existing ShowPlan, ShowNotes,
 	// Prompt block fires in order; then the blocking push stage brackets its spinner
 	// before the run finishes. (No pre_tag stage here — no hook is configured.)
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
-		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindStageStarted,   // preflight, quiet: the rail shows its network gates running
+		presentertest.KindStageSucceeded, // preflight
 		presentertest.KindShowPlan,       // the run's stages, quiet
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
 		presentertest.KindPrompt,         // notes review gate
+		presentertest.KindStageStarted,   // record, quiet: its commit runs the repo's hooks
 		presentertest.KindStageSucceeded, // record (what the bookkeeping commit carried)
 		presentertest.KindStageStarted,   // push (blocking)
 		presentertest.KindStageSucceeded, // push
+		presentertest.KindStageStarted,   // publish, quiet: written over the network
 		presentertest.KindStageSucceeded, // publish (post-PONR success narration)
 		presentertest.KindRunFinished,
 	}
@@ -293,6 +321,7 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 	f := runner.NewFakeRunner()
 	// The happy first-release timeline, with ONE lock-error injected on the bookkeeping
 	// `git add CHANGELOG.md` (attempt 1 contended → retried → succeeds).
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
@@ -306,11 +335,10 @@ func TestRelease_ContendedLockOnBookkeepingCommit_RecoversAndCompletes(t *testin
 		ScriptedOut(""),            // ls-remote --tags (free)
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture clean start)
 		runner.ScriptedCall{Result: runner.Result{Stderr: lockStderr, ExitCode: 128}, Err: errors.New("exit status 128")}, // -C root add CHANGELOG.md — CONTENDED
-		ScriptedOut(""),              // -C root add CHANGELOG.md — retry succeeds
-		ScriptedOut(""),              // -C root commit -m
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
-		ScriptedOut(""),              // tag -a v0.0.1 -F -
-		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
+		ScriptedOut(""), // -C root add CHANGELOG.md — retry succeeds
+		ScriptedOut(""), // -C root commit -m
+		ScriptedOut(""), // tag -a v0.0.1 -F -
+		ScriptedOut(""), // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -705,51 +733,49 @@ func TestRelease_PushRejected_ResetsCommitAndDeletesTag(t *testing.T) {
 	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
 }
 
-// TestRelease_GhAuthFails_ResetsCommit proves a post-Record, pre-tag failure (the
-// conditional gh-auth gate fails after the bookkeeping commit but before the tag)
-// routes through the surgical unwind AFTER a StageFailed: the tracked MadeState (one
-// bookkeeping commit, no tag) drives a `git reset --hard {startingSHA}` with NO HEAD
-// probe and NO `git tag -d` (no tag was created). The Unwound sentence names the reset commit
-// and the repo-clean tail, a StageFailed precedes the Unwound, and no success line
-// follows.
-func TestRelease_GhAuthFails_ResetsCommit(t *testing.T) {
+// TestRelease_GhSignedOut_FailsPreflightBeforeAnyHookTheNotesOrAMutation proves gh's
+// sign-in is a preflight gate: a signed-out gh fails the preflight node right after
+// the remote gates and the provider read, before the preflight and pre_tag hooks, the
+// AI notes, the starting commit's capture or any mutation, so there is nothing to
+// unwind and the run closes having changed nothing.
+func TestRelease_GhSignedOut_FailsPreflightBeforeAnyHookTheNotesOrAMutation(t *testing.T) {
 	t.Parallel()
 
 	root := t.TempDir()
+	writeConfig(t, root, "[release.hooks]\npreflight = \"make lint\"\npre_tag = \"make build\"\n")
 	f := runner.NewFakeRunner()
-	seedHappyGitThroughCommit(f, root, "main", "v0.0.1")
-	// The gh-auth gate fails after the bookkeeping commit; the surgical unwind resets
-	// the one tracked commit (no HEAD probe).
-	f.SeedSequence("git",
-		ScriptedOut(""), // unwind: reset --hard startingSHA
-	)
-	f.Seed("gh", runner.Result{ExitCode: 1}, errors.New("gh: not authenticated"))
+	seedPriorTagReadGates(f, root, "main")
+	f.SeedSequence("gh", runner.ScriptedCall{Result: runner.Result{ExitCode: 1}, Err: errors.New("gh: not logged in")})
 	rec := &presentertest.RecordingPresenter{}
 
 	err := engine.Release(t.Context(), newDeps(rec, f), patchOptions())
 
 	assertAbortNonZero(t, err)
-	if !invokedWith(f, "git", "reset", "--hard", startingSHA) {
-		t.Errorf("gh-auth-failure unwind did not reset to the starting SHA; got %v", commandLines(f.Invocations()))
+	lines := commandLines(f.Invocations())
+	if last := lines[len(lines)-1]; last != "gh auth status" {
+		t.Errorf("last invocation = %q, want the gh check to end the run; got %v", last, lines)
 	}
-	// No tag was created before the gh-auth gate, so none must be deleted.
-	if invokedWith(f, "git", "tag", "-d", "v0.0.1") {
-		t.Errorf("gh-auth-failure unwind deleted a tag; no tag was created yet")
+	for _, name := range []string{"sh", "claude"} {
+		if n := len(invocationsNamed(f, name)); n != 0 {
+			t.Errorf("%s ran %d times before the gh check failed, want none; got %v", name, n, lines)
+		}
 	}
-	// No HEAD probe inside the unwind — only the single pre-gate capture.
-	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 1 {
-		t.Errorf("rev-parse HEAD count = %d, want 1 (the pre-gate capture only)", got)
+	for _, ev := range rec.Events {
+		if ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Key != "preflight" {
+			t.Errorf("stage %q started before the gh check failed, want only preflight", ev.StageStarted.Key)
+		}
 	}
-	assertStageFailedThenUnwound(t, rec)
-	// Plain still labels it preflight, but preflight has settled: it fails on the
-	// publish node it gates.
-	if failure := onlyStageFailureEvent(t, rec); failure.Name != "preflight" || failure.Key != "publish" {
-		t.Errorf("failure Name/Key = %q/%q, want the preflight label on the publish node", failure.Name, failure.Key)
+	if got := countCmd(f, "git", "rev-parse", "HEAD"); got != 0 {
+		t.Errorf("rev-parse HEAD count = %d, want 0: the starting commit is captured after preflight", got)
 	}
-	if got, want := unwoundText(t, rec), "reset 1 commit; repo clean"; got != want {
-		t.Errorf("Unwound.Text() = %q, want %q", got, want)
+	failure := onlyStageFailureEvent(t, rec)
+	if failure.Name != "preflight" || failure.Key != "preflight" || !strings.Contains(failure.Message, "gh is not authenticated") {
+		t.Errorf("failure = %+v, want preflight failing on its own node with the gh gate's message", failure)
 	}
-	assertClosesUnwound(t, rec, "back where it started · nothing pushed")
+	if n := indexOfKind(rec, presentertest.KindUnwound); n != -1 {
+		t.Errorf("an Unwound was recorded; a preflight failure has nothing to unwind")
+	}
+	assertCloses(t, rec, presenter.OutcomeFailed, "nothing changed")
 }
 
 // TestRelease_AbortPathMatchesPrePushFailurePath proves the spec invariant that a
@@ -829,6 +855,7 @@ func pushRejected() runner.ScriptedCall {
 // `git rev-parse HEAD` capture — the read stages, the preflight gates, then the
 // starting-SHA capture. The caller seeds whatever the gate/unwind needs next.
 func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -851,9 +878,8 @@ func seedHappyGitThroughGate(f *runner.FakeRunner, root, releaseBranch, tag stri
 func seedHappyGitThroughCommit(f *runner.FakeRunner, root, releaseBranch, tag string) {
 	seedHappyGitThroughGate(f, root, releaseBranch, tag)
 	f.SeedSequence("git",
-		ScriptedOut(""),              // -C root add CHANGELOG.md
-		ScriptedOut(""),              // -C root commit -m
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
+		ScriptedOut(""), // -C root add CHANGELOG.md
+		ScriptedOut(""), // -C root commit -m
 	)
 }
 
@@ -1478,6 +1504,7 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	// No gh calls at all in this variant — the sequence ends at the push.
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
@@ -1502,12 +1529,14 @@ func TestRelease_PublishDisabled_NoGhNoPublish(t *testing.T) {
 		t.Fatalf("Release returned unexpected error: %v", err)
 	}
 
-	// No gh invocation may have happened (no gate, no publish).
+	// No gh invocation may have happened (no gate, no publish), nor the provider's
+	// detection.
 	for _, inv := range f.Invocations() {
 		if inv.Name == "gh" {
 			t.Errorf("gh was invoked with publish=false: %q", commandLine(inv))
 		}
 	}
+	assertNoProviderRead(t, f)
 	// The run still tags and pushes, then finishes.
 	if !invokedWith(f, "git", "push", "--atomic", "origin", "HEAD", "v0.0.1") {
 		t.Errorf("publish=false run did not reach the atomic push")
@@ -1714,21 +1743,21 @@ func TestRelease_ChangelogDisabled_SkipsChangelogTagStillCarriesBody(t *testing.
 	f := runner.NewFakeRunner()
 	// changelog=false: no `add CHANGELOG.md` / `commit` calls — the sequence runs
 	// the read gates, then tag + push directly. publish defaults true, so gh runs.
+	seedProvider(f)
 	f.SeedSequence("git",
-		ScriptedOut(root),            // rev-parse --show-toplevel
-		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),              // tag --list
-		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
-		ScriptedOut(""),              // fetch --tags
-		ScriptedOut(""),              // status --porcelain
-		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD
-		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1
-		ScriptedOut("0\t1"),          // rev-list left-right count
-		ScriptedOut(""),              // ls-remote --tags
-		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
-		ScriptedOut(""),              // tag -a v0.0.1 -F -
-		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
+		ScriptedOut(""),            // fetch --tags
+		ScriptedOut(""),            // status --porcelain
+		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD
+		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1
+		ScriptedOut("0\t1"),        // rev-list left-right count
+		ScriptedOut(""),            // ls-remote --tags
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		ScriptedOut(""),            // tag -a v0.0.1 -F -
+		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}
@@ -1801,6 +1830,7 @@ func TestRelease_PublishDisabled_TagStillCarriesBody(t *testing.T) {
 	writeConfig(t, root, "[release]\npublish = false\n")
 
 	f := runner.NewFakeRunner()
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD

@@ -3,6 +3,7 @@ package preflight_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -767,6 +768,41 @@ func TestCheckGhAuth_NotAuthenticated_FailsWithAuthMessage(t *testing.T) {
 	}
 	if !strings.Contains(gateErr.Message(), "not authenticated") {
 		t.Errorf("message = %q, want it to say gh is not authenticated", gateErr.Message())
+	}
+}
+
+// TestGates_ACancelReachesTheCallerWrapped pins that a cancel during a gate's probe
+// is never read as the gate's own verdict (gh signed out, no upstream, the tag
+// free): it reaches the caller as context.Canceled, so the run reads as interrupted.
+func TestGates_ACancelReachesTheCallerWrapped(t *testing.T) {
+	t.Parallel()
+	gates := map[string]struct {
+		name  string
+		check func(context.Context, runner.CommandRunner) error
+	}{
+		"gh's sign-in": {name: "gh", check: preflight.CheckGhAuth},
+		"remote sync": {name: "git", check: func(ctx context.Context, r runner.CommandRunner) error {
+			return preflight.CheckRemoteSync(ctx, r, "main")
+		}},
+		"tag free locally": {name: "git", check: func(ctx context.Context, r runner.CommandRunner) error {
+			return preflight.CheckTagFreeLocal(ctx, r, "v1.2.3")
+		}},
+	}
+	for label, g := range gates {
+		t.Run(label, func(t *testing.T) {
+			t.Parallel()
+			r := runner.NewFakeRunner()
+			r.Seed(g.name, runner.Result{ExitCode: -1}, fmt.Errorf("running %q: %w", g.name, context.Canceled))
+
+			err := g.check(t.Context(), r)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("error = %v, want it to wrap context.Canceled", err)
+			}
+			var gateErr *preflight.GateError
+			if errors.As(err, &gateErr) || errors.Is(err, preflight.ErrNoUpstream) {
+				t.Errorf("error = %v, want the cancel, not the gate's verdict", err)
+			}
+		})
 	}
 }
 

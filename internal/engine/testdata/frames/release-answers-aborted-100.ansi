@@ -3,11 +3,12 @@
  ◇  v1.2.3        main @ 4f9c2e1
  │
  ●  version       v1.3.0 (minor bump)
- ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
+ ●  preflight     tree clean, on main, v1.3.0 free, origin in sync, gh signed in
  ●  check         1 flagged                                                                     0.7s
  │                docs/design/ excluded · design documents
  │                written to .mint.toml's [release] table and committed
- ●  notes         generated · aborted                                                           0.7s
+ ●  notes         generated                                                                     0.7s
+ ✗  review        aborted
  ↩  unwind        reset 1 commit · kept your exclusion answers in .mint.toml
  │
  ◇  v1.2.3        + 1 commit (the .mint.toml answers) · nothing pushed                          5.6s

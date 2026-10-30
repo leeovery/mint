@@ -103,12 +103,12 @@ mint init [--force] [--plain]
 Cuts a release. An attended run asks you twice: once to confirm the version, once to accept the notes.
 
 1. **Confirm the version.** `Release v1.4.0 → v1.4.1 (patch)?`, or `Release v0.0.1 (first release)?` the first time.
-2. **Check the repo.** Mint fetches tags, then checks the tree is clean, you're on the release branch, the tag is free here and on `origin`, and the branch is in sync with `origin`. Then the `preflight` hook runs.
+2. **Check the repo.** Mint fetches tags, then checks the tree is clean, you're on the release branch, the tag is free here and on `origin`, the branch is in sync with `origin`, and `gh` is signed in (when publishing). Then the `preflight` hook runs.
 3. **Build.** The `pre_tag` hook runs, and whatever it leaves in the tree is committed as `chore(release): pre-tag artifacts for v1.4.1`.
 4. **Write the notes.** Mint checks for [files that don't belong in the notes](#files-that-dont-belong-in-the-notes), then the AI writes the notes from the diff since the last tag.
 5. **Review.** The notes review gate shows you the notes.
 6. **Record.** The new version goes into `version_file` and the notes into `CHANGELOG.md`, committed together as `🌿 Release v1.4.1`.
-7. **Tag and push.** Mint checks `gh` is signed in (when publishing), tags, and pushes the branch and the tag in one `git push --atomic`. This is the point of no return.
+7. **Tag and push.** Mint tags and pushes the branch and the tag in one `git push --atomic`. This is the point of no return.
 8. **Publish.** The GitHub release is created, then the `post_release` hook runs.
 
 ```bash

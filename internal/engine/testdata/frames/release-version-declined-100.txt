@@ -1,0 +1,7 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.2.3        main @ 4f9c2e1
+ │
+ ✗  version       aborted
+ │
+ ◇  v1.2.3        nothing changed                                                               0.7s

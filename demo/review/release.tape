@@ -1,8 +1,8 @@
 # A release's every question, a screenshot at each state: the version asked,
-# the exclusion check's two questions inside the check, the first answered
-# exclude, the second keep, the notes running once both are answered, the
-# review with its keys, edited with e and back, then aborted with n, the
-# unwind and the close.
+# preflight running once it is answered, the exclusion check's two questions
+# inside the check, the first answered exclude, the second keep, the notes
+# running once both are answered, the review with its keys, edited with e and
+# back, then aborted with n, the unwind and the close.
 #
 #   demo/review.sh release
 
@@ -23,32 +23,34 @@ Sleep 500ms
 Screenshot "demo/out/review/release/01-version.png"
 Sleep 1s
 Type "y"
+Wait+Screen /checking the tree, branch, tag, origin and gh sign-in/
+Screenshot "demo/out/review/release/02-preflight-running.png"
 Wait+Screen /Exclude docs\/specs\/\*\* from the notes/
 Sleep 500ms
-Screenshot "demo/out/review/release/02-exclude-specs.png"
+Screenshot "demo/out/review/release/03-exclude-specs.png"
 Sleep 1s
 Type "e"
 Wait+Screen /Exclude test\/ from the notes/
 Sleep 500ms
-Screenshot "demo/out/review/release/03-exclude-tests.png"
+Screenshot "demo/out/review/release/04-exclude-tests.png"
 Sleep 1s
 Type "k"
 Wait+Screen /parts done/
 Sleep 1500ms
-Screenshot "demo/out/review/release/04-notes-running.png"
+Screenshot "demo/out/review/release/05-notes-running.png"
 Sleep 1s
 Wait+Screen /Release with these notes/
 Sleep 500ms
-Screenshot "demo/out/review/release/05-review.png"
+Screenshot "demo/out/review/release/06-review.png"
 Sleep 1s
 Type "e"
 Wait+Screen /then give up/
 Sleep 500ms
-Screenshot "demo/out/review/release/06-review-edited.png"
+Screenshot "demo/out/review/release/07-review-edited.png"
 Sleep 1s
 Type "n"
 Wait
 Wait+Screen /nothing pushed/
 Sleep 500ms
-Screenshot "demo/out/review/release/07-aborted.png"
+Screenshot "demo/out/review/release/08-aborted.png"
 Sleep 1s

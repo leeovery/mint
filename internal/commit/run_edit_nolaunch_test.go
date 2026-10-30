@@ -87,6 +87,7 @@ func TestRun_EditNotLaunchable_WarnsAndReRenders(t *testing.T) {
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageStarted,   // diff running, quiet
 		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
@@ -95,6 +96,7 @@ func TestRun_EditNotLaunchable_WarnsAndReRenders(t *testing.T) {
 		presentertest.KindWarn,           // editor could not launch
 		presentertest.KindShowMessage,    // re-render with the UNEDITED body
 		presentertest.KindPrompt,         // re-rendered gate → y
+		presentertest.KindStageStarted,   // commit running, quiet
 		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
@@ -136,12 +138,13 @@ func TestRun_EditNotLaunchable_PreservesUneditedMessageVerbatim(t *testing.T) {
 	}
 
 	// The re-rendered ShowMessage carries the UNEDITED generated body. The sequence on a
-	// resolution-failure not-launchable signal is RunStarted, the quiet plan and diff
-	// settle, the message stage's start and success, ShowMessage, Prompt, Warn, then
-	// ShowMessage (the re-render), so the re-rendered ShowMessage is event[8].
-	second, ok := rec.At(8)
+	// resolution-failure not-launchable signal is RunStarted, the quiet plan, the diff's
+	// quiet start and settle, the message stage's start and success, ShowMessage,
+	// Prompt, Warn, then ShowMessage (the re-render), so the re-rendered ShowMessage is
+	// event[9].
+	second, ok := rec.At(9)
 	if !ok || second.Kind != presentertest.KindShowMessage {
-		t.Fatalf("event[8] = %+v, want the re-rendered ShowMessage", second)
+		t.Fatalf("event[9] = %+v, want the re-rendered ShowMessage", second)
 	}
 	if second.ShowMessage.Body != generated {
 		t.Errorf("re-rendered ShowMessage body = %q, want the unedited generated message %q", second.ShowMessage.Body, generated)

@@ -113,6 +113,7 @@ func TestRun_RegenPromptsForContextLineViaAskLine(t *testing.T) {
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageStarted,   // diff running, quiet
 		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
@@ -123,6 +124,7 @@ func TestRun_RegenPromptsForContextLineViaAskLine(t *testing.T) {
 		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
+		presentertest.KindStageStarted,   // commit running, quiet
 		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}

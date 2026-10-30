@@ -17,9 +17,11 @@ package engine
 
 import (
 	"context"
+	"strings"
 
 	"mint/internal/git"
 	"mint/internal/preflight"
+	"mint/internal/presenter"
 )
 
 // regeneratePreflightStage is the stage label a failing regenerate gate surfaces
@@ -50,6 +52,39 @@ type RegenerateGateSet struct {
 	CommitsAndPushes bool
 	// KeepOut is the path the clean-tree gate does not count.
 	KeepOut git.Exclusion
+}
+
+// narration is what the preflight node says while set's gates run and once they have
+// passed, branch the release branch the run must be on; both "" where set runs none.
+func (set RegenerateGateSet) narration(branch string) (checking, passed string) {
+	var checks, passes []string
+	if set.CommitsAndPushes {
+		checks = append(checks, "the tree", "branch", "origin")
+		passes = append(passes, "tree clean", "on "+branch, "origin in sync")
+	}
+	if set.CallsProvider {
+		checks = append(checks, "gh sign-in")
+		passes = append(passes, "gh signed in")
+	}
+	if len(checks) == 0 {
+		return "", ""
+	}
+	last := len(checks) - 1
+	listed := checks[last]
+	if last > 0 {
+		listed = strings.Join(checks[:last], ", ") + " and " + listed
+	}
+	return "checking " + listed + "…", strings.Join(passes, ", ")
+}
+
+// planned is the preflight stage set's gates settle as, for a plan to lead with: none
+// where set runs no gate.
+func (set RegenerateGateSet) planned(branch string) []presenter.PlanStage {
+	_, passed := set.narration(branch)
+	if passed == "" {
+		return nil
+	}
+	return []presenter.PlanStage{{Key: regeneratePreflightStage, Name: regeneratePreflightStage, Detail: passed}}
 }
 
 // regenerateGateSet maps a RESOLVED engine target — together with whether the
@@ -87,8 +122,18 @@ func regenerateGateSet(target RegenerateTarget, publisherResolved bool) Regenera
 // A failing gate is surfaced through the presenter (StageFailed) and returned as
 // the engine's typed non-zero abort, identical to the forward path's pre-mutation
 // gate failures — there is nothing to unwind because no work has begun.
+//
+// The gates go over the network (the fetch, origin's sync, gh's sign-in), so the rail
+// shows preflight running while they do, then settled with what passed. Plain has
+// never had a line for a regenerate preflight that passes, so both are Quiet; a set
+// with no gates shows nothing.
 func RegeneratePreflight(ctx context.Context, deps ReleaseDeps, releaseBranch string, set RegenerateGateSet) error {
 	p := deps.Presenter
+	checking, passed := set.narration(releaseBranch)
+	if checking == "" {
+		return nil
+	}
+	showRunning(p, regeneratePreflightStage, checking)
 
 	if set.CommitsAndPushes {
 		if err := preflight.CheckCleanTree(ctx, deps.Runner, set.KeepOut); err != nil {
@@ -113,5 +158,6 @@ func RegeneratePreflight(ctx context.Context, deps ReleaseDeps, releaseBranch st
 		}
 	}
 
+	p.StageSucceeded(presenter.Settled(regeneratePreflightStage, passed))
 	return nil
 }

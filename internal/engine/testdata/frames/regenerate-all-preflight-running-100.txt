@@ -1,0 +1,5 @@
+ mint ─ release regenerate --all                                              ~/Code/pigeon · v0.1.2
+
+ ◇  2 versions    fresh notes → GitHub releases
+ │
+ ⠋  preflight     checking gh sign-in…                                                            0s

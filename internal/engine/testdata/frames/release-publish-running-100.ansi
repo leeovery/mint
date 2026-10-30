@@ -1,0 +1,16 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.2.3        main @ 4f9c2e1
+ │
+ ●  version       v1.3.0 (minor bump)
+ ●  preflight     tree clean, on main, v1.3.0 free, origin in sync, gh signed in
+ ●  check         nothing to leave out                                                          0.7s
+ ●  notes         generated · accepted                                                          0.7s
+ ●  record        CHANGELOG.md committed
+ │                committed as 🌿 Release v1.3.0
+ │
+ ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ●  push          main + v1.3.0 pushed atomically                                               0.7s
+ ⠋  publish       writing the GitHub release…                                                     0s
+ ┆
+ ◇  v1.3.0

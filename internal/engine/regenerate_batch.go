@@ -206,10 +206,11 @@ func regenerateAllValidated(ctx context.Context, deps ReleaseDeps, publisher pub
 	// gh-auth, mirroring the forward spine's `if publisher != nil` guard. A failing
 	// applicable gate routes through the same surfaced abort as every other failure,
 	// before the loop starts.
-	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, regenerateGateSet(req.Target, publisher != nil)); err != nil {
+	gates := regenerateGateSet(req.Target, publisher != nil)
+	if err := RegeneratePreflight(ctx, deps, req.ReleaseBranch, gates); err != nil {
 		return err
 	}
-	deps.Presenter.ShowPlan(batchPlan(req, release))
+	deps.Presenter.ShowPlan(batchPlan(req, release, gates.planned(req.ReleaseBranch)))
 	collected, err := RegenerateAll(ctx, deps, publisher, root, req)
 	if err != nil {
 		return err
@@ -293,12 +294,13 @@ func batchTargetLabel(target RegenerateTarget, release string) string {
 	}
 }
 
-// batchPlan is a --all backfill's stages, Quiet as plain's plan comes per version: a
-// node per version, oldest first, keyed by its tag, then the changelog rebuilt where
-// the target writes it.
-func batchPlan(req BatchRegenerateRequest, release string) presenter.Plan {
+// batchPlan is a --all backfill's stages, Quiet as plain's plan comes per version:
+// checked, the preflight already passed, then a node per version, oldest first, keyed
+// by its tag, then the changelog rebuilt where the target writes it.
+func batchPlan(req BatchRegenerateRequest, release string, checked []presenter.PlanStage) presenter.Plan {
 	detail := versionWrites(req.Target, release)
-	stages := make([]presenter.PlanStage, 0, len(req.Versions)+1)
+	stages := make([]presenter.PlanStage, 0, len(checked)+len(req.Versions)+1)
+	stages = append(stages, checked...)
 	for _, res := range req.Versions {
 		stages = append(stages, presenter.PlanStage{Key: res.Tag, Name: res.Tag, Detail: detail})
 	}
@@ -546,7 +548,7 @@ func writeVersionRelease(ctx context.Context, deps ReleaseDeps, publisher publis
 			warnRegenerateProviderSkipped(p, res.Tag)
 			return nil
 		}
-		p.StageStarted(presenter.StageStart{Name: stagePublish, Key: res.Tag, Blocking: true, Text: "writing the " + batch.release + "…", Quiet: true})
+		p.StageStarted(presenter.StageStart{Name: stagePublish, Key: res.Tag, Blocking: true, Text: writingRelease(batch.release), Quiet: true})
 		// The batch's closing Summary carries no URL (regenerate publishes a set, not a
 		// single release with a footer URL), so the dispatched release URL is discarded
 		// here — only the forward release path threads it into RunResult.URL.

@@ -4,6 +4,8 @@
 package presenter
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -643,6 +645,18 @@ type StageFailure struct {
 	// Elapsed is the engine-measured time a blocking stage ran before it failed,
 	// zero for a short stage. Plain ignores it.
 	Elapsed time.Duration
+	// Interrupted marks a stage that failed because the run was interrupted
+	// (Interrupted): the rail says so in place of Message, a tool's words about its
+	// cancelled context, while Output still hangs under it. Plain ignores it.
+	Interrupted bool
+}
+
+// Interrupted reports whether a stage failed on cause because the run was
+// interrupted: main cancels the run's context on Ctrl-C, and the command or AI call
+// under way returns that cancel in its chain. Every StageFailure built from a cause
+// is marked by it.
+func Interrupted(cause error) bool {
+	return errors.Is(cause, context.Canceled)
 }
 
 // NextMoves carries the NextMoves payload: the engine-authored ways forward from

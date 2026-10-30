@@ -136,14 +136,14 @@ func CheckOnBranch(ctx context.Context, r runner.CommandRunner, releaseBranch st
 // `git rev-parse -q --verify refs/tags/{tag}`: a zero exit with a resolved hash
 // means the tag exists (the gate aborts), while a clean ran-and-exited-non-zero
 // means the tag is absent — the PASS case — and is NOT treated as a hard error.
-// A missing git binary (ErrCommandNotFound) is a genuine error and surfaces
-// as-is so it is never mistaken for the tag being free.
+// A missing git binary (ErrCommandNotFound) or a cancel (context.Canceled) is a
+// genuine error and surfaces wrapped so it is never mistaken for the tag being free.
 func CheckTagFreeLocal(ctx context.Context, r runner.CommandRunner, tag string) error {
 	res, err := r.Run(ctx, "git", "rev-parse", "-q", "--verify", "refs/tags/"+tag)
 	if err != nil {
-		// A missing binary is a real failure; a clean non-zero exit (tag absent) is
-		// the pass case and is swallowed here.
-		if errors.Is(err, runner.ErrCommandNotFound) {
+		// A missing binary or a cancel is a real failure; a clean non-zero exit (tag
+		// absent) is the pass case and is swallowed here.
+		if errors.Is(err, runner.ErrCommandNotFound) || errors.Is(err, context.Canceled) {
 			return fmt.Errorf("verifying local tag %q: %w", tag, err)
 		}
 		return nil
@@ -177,7 +177,8 @@ func Fetch(ctx context.Context, r runner.CommandRunner) error {
 // fails with a *GateError naming the behind count and upstream; up-to-date or
 // purely ahead — the expected release state, those being the commits released —
 // passes. A branch with no tracking remote yields ErrNoUpstream (a distinguishable
-// condition, not a gate abort); a missing git binary surfaces as ErrCommandNotFound.
+// condition, not a gate abort); a missing git binary surfaces as ErrCommandNotFound,
+// and a cancel as context.Canceled, each wrapped.
 //
 // releaseBranch names the upstream in the abort message (origin/{releaseBranch});
 // the comparison itself uses @{u}, which resolves HEAD's upstream — HEAD is
@@ -186,7 +187,7 @@ func Fetch(ctx context.Context, r runner.CommandRunner) error {
 func CheckRemoteSync(ctx context.Context, r runner.CommandRunner, releaseBranch string) error {
 	res, err := r.Run(ctx, "git", "rev-list", "--left-right", "--count", "@{u}...HEAD")
 	if err != nil {
-		if errors.Is(err, runner.ErrCommandNotFound) {
+		if errors.Is(err, runner.ErrCommandNotFound) || errors.Is(err, context.Canceled) {
 			return fmt.Errorf("computing remote sync state: %w", err)
 		}
 		// A non-zero exit here is the no-upstream case: with no tracking branch,
@@ -270,16 +271,18 @@ func CheckTagFreeRemote(ctx context.Context, r runner.CommandRunner, tag string)
 //     alongside a non-nil error, per the runner contract). This is an EXPECTED
 //     condition, not an infrastructure crash, so it is branched on and surfaced as
 //     a *GateError naming "gh not authenticated" — NOT re-raised as a raw error.
+//
+// A cancel (context.Canceled) is neither: it surfaces wrapped, so the run reads as
+// interrupted rather than advising a sign-in nothing showed was missing.
 func CheckGhAuth(ctx context.Context, r runner.CommandRunner) error {
 	_, err := r.Run(ctx, "gh", "auth", "status")
-	if err != nil {
-		// A missing gh binary is the not-installed prerequisite failure; any other
-		// non-zero exit is gh ran-and-reported not authenticated. Both are clean gate
-		// aborts that must stop the release before the tag.
-		if errors.Is(err, runner.ErrCommandNotFound) {
-			return newGateError("gh is not installed; install GitHub CLI (https://cli.github.com), then re-run — or set publish = false to tag and push only")
-		}
-		return newGateError("gh is not authenticated; run `gh auth login`, then re-run — or set publish = false to tag and push only")
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, context.Canceled):
+		return fmt.Errorf("checking gh's sign-in: %w", err)
+	case errors.Is(err, runner.ErrCommandNotFound):
+		return newGateError("gh is not installed; install GitHub CLI (https://cli.github.com), then re-run — or set publish = false to tag and push only")
 	}
-	return nil
+	return newGateError("gh is not authenticated; run `gh auth login`, then re-run — or set publish = false to tag and push only")
 }

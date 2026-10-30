@@ -13,6 +13,7 @@ import (
 // `git remote get-url origin` read that drives provider auto-detection. The
 // trailing gh calls (auth status, release create) are seeded by the caller.
 func seedHappyGitRemote(f *runner.FakeRunner, root, releaseBranch, tag, remoteURL string) {
+	seedRemote(f, ScriptedOut(remoteURL))
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -27,7 +28,6 @@ func seedHappyGitRemote(f *runner.FakeRunner, root, releaseBranch, tag, remoteUR
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
-		ScriptedOut(remoteURL),               // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)

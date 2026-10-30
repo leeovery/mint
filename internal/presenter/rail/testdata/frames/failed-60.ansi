@@ -16,7 +16,7 @@
  [33m![39m  [1mdocs/specs/**[22m
  [38;2;95;215;175m│[39m  flagged, not asked: design documents · 6 files, 48 kB
  [31m✗[39m  [1;31mnotes[22;39m
- [31m│[39m  the AI call for part 3 of 4 failed
+ [31m│[39m  [31mthe AI call for part 3 of 4 failed[39m
  [31m│[39m  [2m│ [22mClaude usage limit reached. Your limit will reset at 
  [31m│[39m  [2m│ [22m4pm (Europe/London).
  [31m│[39m  [2mpart notes saved to[22m

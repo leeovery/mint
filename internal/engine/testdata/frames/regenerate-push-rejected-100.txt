@@ -2,6 +2,7 @@
 
  ◇  v1.4.0        fresh → CHANGELOG.md
  │
+ ●  preflight     tree clean, on main, origin in sync
  ●  notes         generated                                                                     0.7s
  ●  review        accepted (-y)
  ✗  CHANGELOG.md  pushing regenerated changelog: exit status 1                                  2.1s

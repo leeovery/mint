@@ -133,11 +133,14 @@ func (n Node) nameStyle() style {
 	return bold
 }
 
-// detailStyle is dim while the node runs, is to come, or was left alone.
+// detailStyle is dim while the node runs, is to come, or was left alone, and red,
+// every line of it, where it failed, as its mark, name and rail are.
 func (n Node) detailStyle() style {
 	switch n.State {
 	case Running, ToCome, LeftAlone:
 		return dim
+	case Failed:
+		return red
 	}
 	return plain
 }

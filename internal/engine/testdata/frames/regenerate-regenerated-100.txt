@@ -2,6 +2,7 @@
 
  ◇  v1.4.0        fresh → GitHub release
  │
+ ●  preflight     gh signed in
  ●  notes         generated                                                                     0.7s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.

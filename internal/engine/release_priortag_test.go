@@ -45,6 +45,7 @@ const priorTagDiff = "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\
 // the first-release read gates, but `git tag --list` returns priorTag so the run
 // is NOT a first release and the diff base is priorTag..HEAD.
 func seedPriorTagReadGates(f *runner.FakeRunner, root, releaseBranch string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -77,11 +78,10 @@ func seedNormalAINotes(f *runner.FakeRunner) {
 // release create are seeded by the caller on the "gh" timeline.
 func seedRecordTagPush(f *runner.FakeRunner, root string) {
 	f.SeedSequence("git",
-		ScriptedOut(""),              // -C root add CHANGELOG.md
-		ScriptedOut(""),              // -C root commit -m
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
-		ScriptedOut(""),              // tag -a v1.2.4 -F -
-		ScriptedOut(""),              // push --atomic origin HEAD v1.2.4
+		ScriptedOut(""), // -C root add CHANGELOG.md
+		ScriptedOut(""), // -C root commit -m
+		ScriptedOut(""), // tag -a v1.2.4 -F -
+		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
 	)
 }
 
@@ -322,14 +322,15 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 	}
 
 	// The event timeline OPENS with RunStarted, then the version-confirmation Prompt
-	// (Stage 1, ahead of preflight), then narrates the read-only preflight gate, then
+	// (Stage 1, ahead of preflight), then narrates preflight running, quietly, and passing, then
 	// the blocking notes stage, then the existing ShowPlan/ShowNotes/Prompt block (the
 	// notes review gate), then the blocking push stage, then RunFinished. No pre_tag
 	// stage — the prior-tag normal-AI path configures no hook.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
-		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindStageStarted,   // preflight, quiet: the rail shows its network gates running
+		presentertest.KindStageSucceeded, // preflight
 		presentertest.KindShowPlan,       // the run's stages, quiet
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindNotesChecking,  // the exclusion check's call
@@ -339,9 +340,11 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
 		presentertest.KindPrompt,         // notes review gate
+		presentertest.KindStageStarted,   // record, quiet: its commit runs the repo's hooks
 		presentertest.KindStageSucceeded, // record (what the bookkeeping commit carried)
 		presentertest.KindStageStarted,   // push (blocking)
 		presentertest.KindStageSucceeded, // push
+		presentertest.KindStageStarted,   // publish, quiet: written over the network
 		presentertest.KindStageSucceeded, // publish (post-PONR success narration)
 		presentertest.KindRunFinished,
 	}

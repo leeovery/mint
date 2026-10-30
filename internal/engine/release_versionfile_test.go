@@ -18,6 +18,7 @@ import (
 // `git -C {root} add CHANGELOG.md {versionFile}` staging BOTH paths before the one
 // bookkeeping commit. The caller seeds `gh`.
 func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, versionFile string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -32,7 +33,6 @@ func seedVersionFileFold(f *runner.FakeRunner, root, releaseBranch, tag, version
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md {versionFile} (folded)
 		ScriptedOut(""),                      // -C root commit -m {commit_prefix} Release {tag}
-		ScriptedOut(githubRemoteURL),         // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -173,21 +173,21 @@ func TestRelease_VersionFile_NothingNetChanged_NoCommit(t *testing.T) {
 	f := runner.NewFakeRunner()
 	// No staging and no bookkeeping commit: the spine jumps from the startingHEAD
 	// capture straight to the tag + push.
+	seedProvider(f)
 	f.SeedSequence("git",
-		ScriptedOut(root),            // rev-parse --show-toplevel
-		ScriptedOut("origin/main"),   // symbolic-ref --short origin/HEAD
-		ScriptedOut(""),              // tag --list (no tags)
-		ScriptedHead(),               // rev-parse HEAD --abbrev-ref HEAD (the start station)
-		ScriptedOut(""),              // fetch --tags
-		ScriptedOut(""),              // status --porcelain (clean)
-		ScriptedOut("main"),          // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/v0.0.1 (absent)
-		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
-		ScriptedOut(""),              // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
-		ScriptedOut(""),              // tag -a v0.0.1 -F - (no commit precedes it)
-		ScriptedOut(""),              // push --atomic origin HEAD v0.0.1
+		ScriptedOut(root),          // rev-parse --show-toplevel
+		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
+		ScriptedOut(""),            // tag --list (no tags)
+		ScriptedHead(),             // rev-parse HEAD --abbrev-ref HEAD (the start station)
+		ScriptedOut(""),            // fetch --tags
+		ScriptedOut(""),            // status --porcelain (clean)
+		ScriptedOut("main"),        // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/v0.0.1 (absent)
+		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
+		ScriptedOut(""),            // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
+		ScriptedOut(""),            // tag -a v0.0.1 -F - (no commit precedes it)
+		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)
 	f.Seed("gh", runner.Result{}, nil)
 	rec := &presentertest.RecordingPresenter{}

@@ -93,7 +93,7 @@ func FirstReleaseReviewGate() presenter.Gate {
 		AcceptEcho: "accepted",
 		Choices: []presenter.GateChoice{
 			{Key: presenter.ChoiceYes, Action: "release"},
-			{Key: presenter.ChoiceNo, Action: "abort", Answered: "aborted"},
+			{Key: presenter.ChoiceNo, Action: "abort", Answered: "aborted", Aborts: true},
 			{Key: presenter.ChoiceEdit, Action: "edit in $EDITOR"},
 		},
 		Default: presenter.ChoiceYes,
@@ -152,6 +152,14 @@ func gateLabel(gate presenter.Gate) string {
 // detail is the terse completion value ("v1.4.0 (patch bump)").
 func emitGateSucceeded(p presenter.Presenter, name, detail string) {
 	p.StageSucceeded(presenter.StageSuccess{Name: name, Key: name, Detail: detail})
+}
+
+// showRunning shows the stage keyed key running, doing text, with its time so far,
+// where plain's log has never had a start line for it, so the start is Quiet. A stage
+// started again while it runs keeps its clock: a second call only changes what it
+// says it is doing.
+func showRunning(p presenter.Presenter, key, text string) {
+	p.StageStarted(presenter.StageStart{Name: key, Key: key, Blocking: true, Text: text, Quiet: true})
 }
 
 // startBlockingStage narrates the START of a BLOCKING stage — a long/slow step

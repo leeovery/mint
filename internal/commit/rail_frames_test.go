@@ -9,6 +9,7 @@ package commit_test
 // `go test ./internal/commit -run Frames -update` writes the frames again.
 
 import (
+	"context"
 	"io"
 	"strings"
 	"sync"
@@ -17,8 +18,10 @@ import (
 
 	"github.com/muesli/termenv"
 
+	"mint/internal/git"
 	"mint/internal/presenter"
 	"mint/internal/presenter/frametest"
+	"mint/internal/runner"
 )
 
 const railCols, railRows = 100, 40
@@ -33,6 +36,13 @@ func stillTicker(time.Duration) (<-chan time.Time, func()) {
 // the terminal as the first question waits for its answer.
 func drawCommit(t *testing.T, r commitRun, asked func(*frametest.Terminal)) (string, error) {
 	t.Helper()
+	return drawCommitAt(t, r, asked, nil)
+}
+
+// drawCommitAt is drawCommit, keeping in g, where set, the screen as it stood when the
+// run first ran the command g watches for.
+func drawCommitAt(t *testing.T, r commitRun, asked func(*frametest.Terminal), g *glimpsing) (string, error) {
+	t.Helper()
 	term := frametest.NewTerminal(railCols, railRows)
 	var in io.Reader = strings.NewReader(r.answers)
 	if asked != nil {
@@ -46,12 +56,57 @@ func drawCommit(t *testing.T, r commitRun, asked func(*frametest.Terminal)) (str
 		presenter.WithRailTicker(stillTicker),
 		presenter.WithRailClock(func() time.Time { return runEpoch }),
 	)
-	err := r.run(t, newCommitWorld(t, p))
+	w := newCommitWorld(t, p)
+	if g != nil {
+		g.CommandRunner, g.term = w.deps.Runner, term
+		w.deps.Runner, w.deps.Mutator = g, git.NewMutator(g)
+	}
+	err := r.run(t, w)
 	p.Close()
 	if terr := term.Err(); terr != nil {
 		t.Fatalf("the terminal was written what it can't apply: %v", terr)
 	}
 	return term.ANSI(), err
+}
+
+// glimpsing is a run's runner keeping the terminal's screen as it stands when the run
+// first runs name with arg as its first argument, as a reader sees it while that
+// command runs.
+type glimpsing struct {
+	runner.CommandRunner
+	term      *frametest.Terminal
+	name, arg string
+	screen    string
+}
+
+func (g *glimpsing) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.CommandRunner.Run(ctx, name, args...)
+}
+
+func (g *glimpsing) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.CommandRunner.RunWith(ctx, stdin, name, args...)
+}
+
+func (g *glimpsing) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.CommandRunner.RunInDir(ctx, dir, env, name, args...)
+}
+
+func (g *glimpsing) look(name string, args []string) {
+	if g.screen == "" && name == g.name && len(args) > 0 && args[0] == g.arg {
+		g.screen = g.term.ANSI()
+	}
+}
+
+// commitGlimpses are the -Ap run's screens while it runs a command, each by its frame's
+// name: the diff counted, everything staged, and the commit going in, its hooks
+// running.
+var commitGlimpses = map[string]struct{ name, arg string }{
+	"commit-diff-running-100":   {"git", "diff"},
+	"commit-stage-running-100":  {"git", "add"},
+	"commit-commit-running-100": {"git", "commit"},
 }
 
 // askedInput is answers that hand over the terminal as the first is read, the first
@@ -84,6 +139,16 @@ func TestCommit_Frames(t *testing.T) {
 			t.Errorf("%s: the run returned %v, want aborted %v", name, err, r.aborted)
 		}
 		drawn[name] = screen
+	}
+	for name, at := range commitGlimpses {
+		g := &glimpsing{name: at.name, arg: at.arg}
+		if _, err := drawCommitAt(t, commitRuns["commit-pushed-100"], nil, g); err != nil {
+			t.Errorf("%s: the run returned %v", name, err)
+		}
+		if g.screen == "" {
+			t.Fatalf("%s: the run never ran %s %s", name, at.name, at.arg)
+		}
+		drawn[name] = g.screen
 	}
 
 	frametest.Check(t, "testdata/frames", drawn)

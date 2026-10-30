@@ -12,6 +12,8 @@ package engine_test
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -95,6 +97,12 @@ func newRailWorld(t *testing.T, config, answers string, yes bool) *railWorld {
 // newRailWorldSized is newRailWorld on a terminal cols wide and rows tall.
 func newRailWorldSized(t *testing.T, cols, rows int, config, answers string, yes bool) *railWorld {
 	t.Helper()
+	return newRailWorldReading(t, cols, rows, config, strings.NewReader(answers), yes)
+}
+
+// newRailWorldReading is newRailWorldSized reading its answers from in.
+func newRailWorldReading(t *testing.T, cols, rows int, config string, in io.Reader, yes bool) *railWorld {
+	t.Helper()
 	home := t.TempDir()
 	root := filepath.Join(home, "Code", "pigeon")
 	if err := os.MkdirAll(root, 0o755); err != nil {
@@ -105,7 +113,7 @@ func newRailWorldSized(t *testing.T, cols, rows int, config, answers string, yes
 	}
 	w := &railWorld{root: root, f: runner.NewFakeRunner(), term: frametest.NewTerminal(cols, rows)}
 	w.p = presenter.NewRailPresenter(w.term,
-		presenter.WithRailInput(strings.NewReader(answers)),
+		presenter.WithRailInput(in),
 		presenter.WithRailGating(yes, true),
 		presenter.WithRailProfile(termenv.Ascii),
 		presenter.WithRailSize(func() (int, int) { return cols, rows }),
@@ -140,6 +148,7 @@ func (w *railWorld) readGates(stash bool) {
 	if stash {
 		w.f.SeedSequence("git", stashSaved()) // stash push --include-untracked
 	}
+	seedProvider(w.f)
 	w.f.SeedSequence("git",
 		ScriptedOut(""),          // fetch --tags
 		ScriptedOut(""),          // status --porcelain (clean)
@@ -163,7 +172,6 @@ func (w *railWorld) recorded() {
 	w.f.SeedSequence("git",
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
-		ScriptedOut("https://github.com/acme/pigeon.git"), // remote get-url origin
 		ScriptedOut(""), // tag -a v1.3.0 -F -
 	)
 }
@@ -176,6 +184,35 @@ func (w *railWorld) pushed() {
 // published scripts gh signed in, and the release's creation answering with publish.
 func (w *railWorld) published(publish runner.ScriptedCall) {
 	w.f.SeedSequence("gh", ScriptedOut(""), publish) // auth status, release create
+}
+
+// downgraded scripts origin on a host mint can't publish to: the release warns that
+// it is tag + push only, and never asks gh anything.
+func (w *railWorld) downgraded() {
+	seedRemote(w.f, ScriptedOut("git@gitlab.com:me/pigeon.git"))
+}
+
+// atReview is a world answering the version y, then keeping in screen the terminal
+// as the review asks, then answering the review with answers.
+func atReview(t *testing.T, answers string, screen *string) *railWorld {
+	t.Helper()
+	var w *railWorld
+	in := io.MultiReader(strings.NewReader("y\n"), &askedInput{r: strings.NewReader(answers), asked: func() { *screen = w.term.ANSI() }})
+	w = newRailWorldReading(t, railCols, railRows, "", in, false)
+	return w
+}
+
+// askedInput is answers that, as the first is read, call asked: once the question
+// reading it is drawn.
+type askedInput struct {
+	r     io.Reader
+	once  sync.Once
+	asked func()
+}
+
+func (in *askedInput) Read(p []byte) (int, error) {
+	in.once.Do(in.asked)
+	return in.r.Read(p)
 }
 
 // release runs a minor release with opts set, then ends the drawing as the cmd layer
@@ -192,6 +229,59 @@ func (w *railWorld) release(t *testing.T, set func(*engine.ReleaseOptions)) (str
 		t.Fatalf("the terminal was written what it can't apply: %v", terr)
 	}
 	return w.term.ANSI(), err
+}
+
+// glimpse keeps the terminal's screen as it stands when the run first runs name with
+// arg as its first argument, as a reader sees it while that command runs; frame holds
+// it once the run is over.
+func (w *railWorld) glimpse(name, arg string) *glimpsing {
+	g := &glimpsing{FakeRunner: w.f, term: w.term, name: name, arg: arg}
+	g.wire(&w.deps)
+	return g
+}
+
+// wire runs every command deps runs, its git mutations included, through g.
+func (g *glimpsing) wire(deps *engine.ReleaseDeps) {
+	mut := git.NewMutator(g)
+	deps.Runner, deps.Mutator, deps.Releaser = g, mut, release.NewReleaser(mut)
+}
+
+// glimpsing is the world's runner keeping the screen at the command it watches for.
+type glimpsing struct {
+	*runner.FakeRunner
+	term      *frametest.Terminal
+	name, arg string
+	screen    string
+}
+
+func (g *glimpsing) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.FakeRunner.Run(ctx, name, args...)
+}
+
+func (g *glimpsing) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.FakeRunner.RunWith(ctx, stdin, name, args...)
+}
+
+func (g *glimpsing) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.FakeRunner.RunInDir(ctx, dir, env, name, args...)
+}
+
+func (g *glimpsing) look(name string, args []string) {
+	if g.screen == "" && name == g.name && len(args) > 0 && args[0] == g.arg {
+		g.screen = g.term.ANSI()
+	}
+}
+
+// frame is the screen kept, failing t where the run never ran the command.
+func (g *glimpsing) frame(t *testing.T) string {
+	t.Helper()
+	if g.screen == "" {
+		t.Fatalf("the run never ran %s %s", g.name, g.arg)
+	}
+	return g.screen
 }
 
 // railRegenerator writes the notes again, in one call, as body.
@@ -376,6 +466,86 @@ var railRuns = map[string]railRun{
 		)
 		return w.release(t, nil)
 	}},
+	// The version answered and preflight fetching: preflight runs on the rail while
+	// its gates go over the network, the plan not yet known.
+	"release-preflight-running-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\n", false)
+		g := w.glimpse("git", "fetch")
+		w.readGates(false)
+		w.notes()
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// The project's preflight hook running, on preflight's own node.
+	"release-preflight-hook-running-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preflightHookConfig, "y\n", false)
+		g := w.glimpse("sh", "-c")
+		w.readGates(false)
+		w.f.SeedSequence("sh", ScriptedOut("")) // the preflight hook
+		w.notes()
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// The review accepted and the bookkeeping commit under way, which runs the repo's
+	// own commit hooks: record runs on the rail.
+	"release-record-running-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ny\n", false)
+		g := w.glimpse("git", "-C")
+		w.readGates(false)
+		w.notes()
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// Past the push, the release being written on GitHub: publish runs on the rail.
+	"release-publish-running-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ny\n", false)
+		g := w.glimpse("gh", "release")
+		w.readGates(false)
+		w.notes()
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// Ctrl-C as the pre_tag hook runs: the hook's node fails saying the run was
+	// interrupted, not what its command said of the cancelled context, the hook's own
+	// output still under it.
+	"release-interrupted-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\n", false)
+		w.readGates(false)
+		w.f.SeedSequence("sh", runner.ScriptedCall{ // the pre_tag hook, cancelled
+			Result: runner.Result{Stderr: "ok  \tpigeon/webhooks\t0.412s\n", ExitCode: -1},
+			Err:    fmt.Errorf("running %q: %w", "sh", context.Canceled),
+		})
+		return w.release(t, nil)
+	}},
+	// gh signed out: preflight fails on its own node, before any hook, the notes or
+	// any write, so nothing changed.
+	"release-gh-signed-out-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\n", false)
+		w.readGates(false)
+		w.f.SeedSequence("gh", gitFailing("You are not logged into any GitHub hosts. To log in, run: gh auth login\n")) // auth status
+		return w.release(t, nil)
+	}},
+	// The version answered n: the version fails as aborted, and nothing changed.
+	"release-version-declined-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "n\n", false)
+		w.readGates(false)
+		return w.release(t, nil)
+	}},
+	// A dry run's preflight fetching: it runs on the rail as a real run's does.
+	"release-dry-run-preflight-running-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preflightHookConfig, "", false)
+		g := w.glimpse("git", "fetch")
+		w.readGates(false)
+		w.notes()
+		_, err := w.release(t, func(o *engine.ReleaseOptions) { o.DryRun = true })
+		return g.frame(t), err
+	}},
 	// A dry run: its hooks skipped, the notes written, the review previewed, nothing
 	// changed.
 	"release-dry-run-100": {run: func(t *testing.T) (string, error) {
@@ -435,6 +605,64 @@ var railRuns = map[string]railRun{
 		)
 		return w.release(t, nil)
 	}},
+	// A downgraded release's review asking: the publish slot's warning waits in its
+	// place below the point of no return, the notes and the question under notes.
+	"release-downgraded-review-100": {run: func(t *testing.T) (string, error) {
+		var screen string
+		w := atReview(t, "y\n", &screen)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.pushed()
+		_, err := w.release(t, nil)
+		return screen, err
+	}},
+	// A downgraded release that lands, tag + push only.
+	"release-downgraded-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ny\n", false)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.pushed()
+		return w.release(t, nil)
+	}},
+	// A downgraded release whose review is answered r, then y: the r's notes node under
+	// the notes, above what is still to come.
+	"release-downgraded-regenerated-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\nr\n\ny\n", false)
+		w.deps.Regenerator = railRegenerator(railRegenNotes)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.pushed()
+		return w.release(t, nil)
+	}},
+	// A downgraded release whose review is answered n: the abort row under the notes.
+	"release-downgraded-aborted-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\nn\n", false)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		return w.release(t, nil)
+	}},
+	// A downgraded release whose push is rejected: the unwind hangs under the failed
+	// push, above the publish slot's warning the run never reached.
+	"release-downgraded-unwound-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "", true)
+		w.readGates(false)
+		w.downgraded()
+		w.notes()
+		w.recorded()
+		w.f.SeedSequence("git",
+			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
+			ScriptedOut(""),                 // unwind: tag -d v1.3.0
+			ScriptedOut(""),                 // unwind: reset --hard startsha
+		)
+		return w.release(t, nil)
+	}},
 	// A release under --autostash whose work won't go back cleanly once it is out.
 	"release-autostash-conflict-100": {run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, "", "", true)
@@ -468,6 +696,7 @@ func TestRail_Frames(t *testing.T) {
 		drawn[name] = screen
 	}
 	maps.Copy(drawn, regenerateFrames(t))
+	maps.Copy(drawn, regenerateGlimpses(t))
 	maps.Copy(drawn, initFrames(t))
 
 	frametest.Check(t, "testdata/frames", drawn)
