@@ -62,7 +62,7 @@ A node's row is the mark, two spaces, the stage name bold in a 14-column name co
 - **`NextMoves`** items become a lead plus a command line, as agntc's remedies are. A move whose flag or config sits mid-sentence stays a lead alone, its wording as today's. Plain flattens them back to today's sentences byte for byte.
 - **`RunFinished`** closes every run that `RunStarted` opened, exactly once: how it ended, the end station and the run's time. Plain still writes its line only for today's successful endings.
 - **`Quiet`** marks an event that only fills in the run's structure (release's early plan, a node no event settled before): plain's log, pinned byte for byte from before the rail, writes nothing for it.
-- **The `Leaf` fields go,** with the 🌿.
+- **The `Leaf` fields go,** with the 🌿, and so does `StageSuccess.Sentence`, which only today's pretty read.
 
 **Testing:**
 - **The renderer** is pure functions from rows, nodes and stations to lines, tested at widths 60, 80 and 100 with colour off, plus exact escape codes for each element with colour on.
@@ -85,7 +85,7 @@ A node's row is the mark, two spaces, the stage name bold in a 14-column name co
   - `commit`: `commit -Ap`
   - `regenerate`: `regenerate --all` with a skip
   - `init`
-- **Recording:** `demo/record.sh <name>` deletes the tape's old output, runs `vhs` with `TMPDIR` inside `demo/out/` (vhs writes nothing, and says nothing, when `TMPDIR` is on another volume), then `demo/finalize.sh`. That lays the cursor frames over the text frames, adds a margin and writes a lossless WebP: the last frame for a still, every frame for a clip, plus an MP4. Art is rendered at twice its display width and committed to `art/`. `brew install vhs ffmpeg webp`; vhs 0.12 or later.
+- **Recording:** `demo/record.sh <name>` deletes the tape's old output, runs `vhs` with `TMPDIR` inside `demo/out/` (vhs writes nothing, and says nothing, when `TMPDIR` is on another volume), then `demo/finalize.sh`. That lays the cursor frames over the text frames, adds a margin and writes a lossless WebP: the last frame for a still, cropped to the rows it drew with the top margin under them, every frame for a clip, plus an MP4. Art is rendered at twice its display width and written straight to `art/`, where it's committed, so a recording's change shows in the diff. `brew install vhs ffmpeg webp`; vhs 0.12 or later.
 - **Gotchas** go in `demo/README.md`, as Switchboard's `testdata/vhs/README.md` has them:
   - vhs's browser reaches ttyd over loopback, which an agent's sandbox blocks.
   - A `Set` after any other command is ignored.
@@ -113,4 +113,4 @@ Built without the `.workflows` pipeline, from this doc, as a stack of four PRs. 
 4. **The switch,** one slice per command: release, then regenerate, then commit, init and version.
    - Each slice moves its verb's pretty output onto the rail, writes its golden frames, and records its tapes, which are checked by eye before review.
    - Until then a switched verb opts in through a transitional `WithRail()` on `NewForStartup`, every run ends with `presenter.Close`, and the engine's golden runs drive the real orchestrator onto the virtual terminal.
-   - The last slice deletes today's pretty code and the `Leaf` fields, brings CLAUDE.md's presenter rules up to the live region, records the art and puts it in the README.
+   - The last slice deletes today's pretty code with its dependencies, `WithRail()` and the fields only it read, so pretty mode is always the rail; it brings CLAUDE.md's presenter rules up to the live region, records the art and puts it in the README: the tour clip leads, and each command's section shows its still.
