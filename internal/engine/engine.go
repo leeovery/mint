@@ -223,6 +223,18 @@ func (s *blockingStage) succeeded(success presenter.StageSuccess) {
 	s.p.StageSucceeded(success)
 }
 
+// restart times the stage afresh from now, where a stage run inside it, which it
+// started ahead of, and the answers that stage waited on, are over: it starts again
+// quietly, plain having had its line, with the activity text, so its time is its own
+// work from here.
+func (s *blockingStage) restart(text string) {
+	s.started = s.now()
+	if s.waits != nil {
+		s.waits.total = 0
+	}
+	s.p.StageStarted(presenter.StageStart{Name: s.step.name, Key: s.step.key, Blocking: true, Text: text, Quiet: true})
+}
+
 // elapsed is how long the stage has run, less the time it spent waiting on an answer.
 func (s *blockingStage) elapsed() time.Duration {
 	d := s.now().Sub(s.started)

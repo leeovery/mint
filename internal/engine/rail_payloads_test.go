@@ -659,8 +659,8 @@ func TestRelease_Rail_TheCheckAndAFailedNotesStageAreTimedOnTheirOwnNodes(t *tes
 		t.Errorf("NotesChecking Key = %q, want check", checking.Key)
 	}
 	failure := onlyStageFailureEvent(t, rec)
-	if failure.Key != "notes" || failure.Elapsed < 2*transportDelay {
-		t.Errorf("notes failure = %+v, want the notes node timed from the stage's start", failure)
+	if failure.Key != "notes" || failure.Elapsed < transportDelay {
+		t.Errorf("notes failure = %+v, want the notes node timed at least %v", failure, transportDelay)
 	}
 	moves := nextMovesEvents(rec)
 	if len(moves) != 1 {

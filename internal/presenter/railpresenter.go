@@ -221,8 +221,7 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 		pt.started = p.now()
 	}
 	pt.ongoing = false
-	pt.doing = firstOf(s.Text, pt.plan, s.Name)
-	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, pt.doing, "", nil
+	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, firstOf(s.Text, pt.plan, s.Name), "", nil
 	pt.timed = s.Blocking
 	p.redraw()
 }
@@ -285,13 +284,12 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 }
 
 // NotesChecking runs the exclusion check as its own node, holding back the notes
-// stage, which started first, until it is done.
+// stage, which started first, to come until it starts again, the check done.
 func (p *RailPresenter) NotesChecking(c NotesCheck) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if r := p.run.running(); r != nil && r.key != c.Key {
 		r.node.State, r.node.Detail = rail.ToCome, firstOf(r.plan, r.node.Detail)
-		p.run.held = r
 	}
 	pt := p.run.stage(c.Key, c.Key)
 	pt.node.State, pt.node.Detail, pt.node.Time = rail.Running, pt.plan, ""
@@ -300,9 +298,10 @@ func (p *RailPresenter) NotesChecking(c NotesCheck) {
 }
 
 // NotesChecked settles the exclusion check done in its time, stating what its call
-// found where the engine gives it and its plan where it gives nothing, and runs the
-// stage it held back again; the pauses' answers hang under it as they come. A Failed
-// check keeps its node, timed, for the warning that follows to end.
+// found where the engine gives it and its plan where it gives nothing; its questions
+// ask inside it, and their answers hang under it as they come. The stage it held
+// back stays to come until it starts again, once the check is done. A Failed check
+// keeps its node, timed, for the warning that follows to end.
 func (p *RailPresenter) NotesChecked(c NotesCheck) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -310,10 +309,6 @@ func (p *RailPresenter) NotesChecked(c NotesCheck) {
 	pt.timed, pt.node.Time = false, stageTime(c.Elapsed)
 	if !c.Failed {
 		pt.node.State, pt.node.Detail = rail.Done, firstOf(c.Detail, pt.plan)
-	}
-	if h := p.run.held; h != nil {
-		h.node.State, h.node.Detail = rail.Running, h.doing
-		p.run.held = nil
 	}
 	p.redraw()
 }

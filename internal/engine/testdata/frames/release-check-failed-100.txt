@@ -6,7 +6,7 @@
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
  !  check         couldn't check for files that don't belong in the notes                       0.7s
  │                │ I couldn't tell which of these belong.
- ●  notes         generated · accepted (-y)                                                     2.1s
+ ●  notes         generated · accepted (-y)                                                     0.7s
  ●  record        CHANGELOG.md committed
  │                committed as 🌿 Release v1.3.0
  │
@@ -14,5 +14,5 @@
  ●  push          main + v1.3.0 pushed atomically                                               0.7s
  ●  publish       release published
  │
- ◆  v1.3.0        released                                                                      4.9s
+ ◆  v1.3.0        released                                                                      5.6s
                   https://github.com/acme/pigeon/releases/tag/v1.3.0

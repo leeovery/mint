@@ -5,7 +5,7 @@
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
  ●  check         nothing to leave out                                                          0.7s
- ●  notes         generated · regenerate                                                        2.1s
+ ●  notes         generated · regenerate                                                        0.7s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
  │
@@ -30,5 +30,5 @@
  ●  push          main + v1.3.0 pushed atomically                                               0.7s
  ●  publish       release published
  │
- ◆  v1.3.0        released                                                                      7.0s
+ ◆  v1.3.0        released                                                                      7.7s
                   https://github.com/acme/pigeon/releases/tag/v1.3.0

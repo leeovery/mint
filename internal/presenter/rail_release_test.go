@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/muesli/termenv"
 
@@ -204,6 +205,30 @@ func TestRail_AnExclusionSuggestionsMoveSaysWhichTableOfWhichFileItGoesUnder(t *
 	}
 	if got := screen[len(screen)-2:]; !slices.Equal(got, want) {
 		t.Errorf("next ends\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestRail_AStagesClockStandsStillWhileAQuestionWaits pins that no node's time
+// counts a wait on an answer: the notes' clock stands while the cached-notes
+// question, asked as they run, waits, and goes on from there.
+func TestRail_AStagesClockStandsStillWhileAQuestionWaits(t *testing.T) {
+	t.Parallel()
+	in := answers("r\n")
+	r := newRailTerm(t, 80, 24, in)
+	r.RunStarted(releaseStarted(false))
+	r.StageStarted(notesStarted())
+	r.clock.Advance(secs(2.1))
+	in.asked = func(int) { r.clock.Advance(5 * time.Minute) }
+	r.SuspendSpinner()
+	if _, err := r.Prompt(cacheGate()); err != nil {
+		t.Fatal(err)
+	}
+	r.ResumeSpinner()
+	r.clock.Advance(secs(1))
+	r.ticks.tick(t)
+
+	if got, want := r.screen(t)[4], row(" ⠇  notes         writing the notes… · regenerate", "3s"); got != want {
+		t.Errorf("the running node reads %q, want its time without the wait %q", got, want)
 	}
 }
 

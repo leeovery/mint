@@ -17,12 +17,16 @@ import (
 // call about, and when the check failed: after the call ends when the call failed or
 // its answer was unreadable, and with no call at all when the call would not fit under
 // the cap. output is the AI's captured output, or its unreadable answer, verbatim but
-// for trailing whitespace, and empty when there is none.
+// for trailing whitespace, and empty when there is none. CheckDone is told, once a
+// call has started, that the check is over and the notes go on: after the call where
+// the check asks nothing, after the last pause's answers are recorded where it does;
+// never where Check returns an error.
 type CheckNarration interface {
 	Checking()
 	Checked(result CheckResult)
 	AllKept()
 	CheckFailed(output string)
+	CheckDone()
 }
 
 // CheckResult is what the check's call found: how it ended and, for a call whose
@@ -56,6 +60,7 @@ func (noCheckNarration) Checking()           {}
 func (noCheckNarration) Checked(CheckResult) {}
 func (noCheckNarration) AllKept()            {}
 func (noCheckNarration) CheckFailed(string)  {}
+func (noCheckNarration) CheckDone()          {}
 
 // ExclusionCheck asks the AI which of a release's changed paths look out of place in
 // its notes. Its call carries no diff, only the changed paths the notes diff carries
@@ -163,6 +168,16 @@ func (c *ExclusionCheck) Check(ctx context.Context, diff string, maxPromptBytes 
 		return nil, nil
 	}
 	c.narration.Checking()
+	excluded, err := c.call(ctx, prompt, paths, files)
+	if err == nil {
+		c.narration.CheckDone()
+	}
+	return excluded, err
+}
+
+// call makes the check's call with prompt over paths, of files the notes diff's
+// changed paths, and pauses on or reports what its answer suggests.
+func (c *ExclusionCheck) call(ctx context.Context, prompt string, paths, files []checkedPath) ([]string, error) {
 	answer, err := c.transport.Generate(ctx, prompt)
 	outcome, suggestions := checkOutcome(answer, err, paths)
 	if c.pauses != nil {

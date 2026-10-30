@@ -129,9 +129,11 @@ func (p *RailPresenter) ask(g Gate, typing bool) *part {
 }
 
 // open puts q on the rail about the stage keyed stage, and draws it with the spinner
-// stopped, as nothing may write while it waits.
+// stopped, as nothing may write while it waits, and the clock of any stage running
+// stood still, as no time spent waiting on an answer is a stage's.
 func (p *RailPresenter) open(q *part, stage string) *part {
 	p.run.ask(q, stage)
+	p.run.stop(p.now())
 	p.asking = true
 	p.present(q)
 	return q
@@ -225,9 +227,10 @@ func (p *RailPresenter) answered(g Gate, q *part, c Choice, err error) error {
 }
 
 // dismiss takes the question q off the rail: the node it stood in for goes back as
-// it was.
+// it was, and the clock of a stage running goes on from where it stood.
 func (p *RailPresenter) dismiss(q *part) {
 	p.asking = false
+	p.run.restart(p.now())
 	p.run.remove(q)
 	for _, pt := range p.run.parts {
 		pt.hidden = false

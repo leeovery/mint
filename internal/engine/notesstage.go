@@ -96,6 +96,12 @@ func flaggedDetail(result notes.CheckResult) string {
 	return detail
 }
 
+// CheckDone starts the notes running again, timed from now: the check ran inside
+// them, and its call and the answers to its questions are no part of their time.
+func (s *notesStage) CheckDone() {
+	s.stage.restart(notesStageText)
+}
+
 // AllKept settles the check's node quietly: the keep list covers every changed path.
 func (s *notesStage) AllKept() {
 	s.skipCheck("every changed path is on the keep list")

@@ -283,12 +283,14 @@ func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestio
 		if n == 1 {
 			return
 		}
-		got := r.screen(t)[8:12]
+		got := r.screen(t)[8:14]
 		want := []string{
 			pane(" ●  check         1 flagged                                                                     6.2s"),
 			" │                ? Exclude docs/specs/** from the notes?",
 			" │                  design documents · 6 files, 48 kB",
 			" │                  e exclude   K keep ›",
+			" ┆",
+			" ○  notes         written by the AI",
 		}
 		if strings.Join(got, "\n") != strings.Join(want, "\n") {
 			t.Errorf("while asked the rail reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

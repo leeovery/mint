@@ -23,7 +23,7 @@ func notesStages(t *testing.T, rec *presentertest.RecordingPresenter) [][]presen
 	inStage := false
 	for _, ev := range rec.Events {
 		switch {
-		case ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Name == "notes":
+		case ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Name == "notes" && (!inStage || !ev.StageStarted.Quiet):
 			inStage, current = true, nil
 		case !inStage:
 		case ev.Kind == presentertest.KindStageSucceeded && ev.StageSucceeded.Name == "notes":

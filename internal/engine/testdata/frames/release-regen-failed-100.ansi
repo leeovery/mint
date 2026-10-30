@@ -7,7 +7,7 @@
  ●  pre_tag       build.sh                                                                      0.7s
  │                committed as chore(release): pre-tag artifacts for v1.3.0
  ●  check         nothing to leave out                                                          0.7s
- ●  notes         generated · regenerate                                                        2.1s
+ ●  notes         generated · regenerate                                                        0.7s
  │
  │    ✨ Added
  │    - First attempt, one pass
@@ -16,4 +16,4 @@
  │                │ Not logged in · Please run /login
  ↩  unwind        reset 1 commit
  │
- ◇  v1.2.3        back where it started · nothing pushed                                        7.0s
+ ◇  v1.2.3        back where it started · nothing pushed                                        7.7s

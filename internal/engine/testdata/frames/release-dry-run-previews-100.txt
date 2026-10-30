@@ -8,7 +8,7 @@
  ?  Exclude docs/design/ from the notes? (design documents; 1 file, 176 B)
  ?  Exclude docs/ from the notes? (documentation; 1 file, 176 B)
  ?  Exclude src/ from the notes? (source code; 1 file, 179 B)
- ●  notes         generated                                                                     2.1s
+ ●  notes         generated                                                                     0.7s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
  │
@@ -26,4 +26,4 @@
  ○  push          main + v1.3.0 → origin, atomic
  ○  publish       provider release
  ┆
- ◇  v1.3.0        dry run · nothing changed                                                     3.5s
+ ◇  v1.3.0        dry run · nothing changed                                                     4.2s

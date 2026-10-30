@@ -648,11 +648,14 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	//
 	// Stage 4 is BLOCKING: generating notes can call the AI. Narrate it with a
 	// blocking StageStarted (spinner), a chunked run's progress while it runs, and a
-	// StageSucceeded carrying the engine-measured Elapsed once the body resolves.
+	// StageSucceeded carrying the engine-measured Elapsed once the body resolves. That
+	// time is the notes' own work: the exclusion check runs inside the stage, which
+	// starts again once the check and its questions are done, and a question asked
+	// while the notes run (the cached notes') is a wait it leaves out.
 	stage := startNotesStage(p, deps.clock())
 	chunkNotes := newChunkNotesKeeper(deps.ChunkNotes, root, tag)
 	answers := &answersCommit{root: root, tag: tag}
-	body, kind, generator, err := resolveBody(ctx, deps, root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
+	body, kind, generator, err := resolveBody(ctx, stage.stage.awaiting(deps), root, cfg, selectState(current, cfg, opts, supplied), chunkNotes, versionKey, opts, stage, answers)
 	if answers.landed {
 		made.Commits++
 		answers.position = made.Commits

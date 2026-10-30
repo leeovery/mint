@@ -94,6 +94,14 @@ func notesStarted() presenter.StageStart {
 	return presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "writing the notes…"}
 }
 
+// notesRestarted is the notes starting again, quietly, as the engine starts them
+// once the exclusion check and its questions are done.
+func notesRestarted() presenter.StageStart {
+	s := notesStarted()
+	s.Quiet = true
+	return s
+}
+
 // preparedRelease drives a release to its notes: the version asked, preflight, the
 // plan, the pre_tag hook and its commit, and the exclusion check, done in 6.2s,
 // having found checked.
@@ -127,14 +135,16 @@ func paused(p presenter.Presenter) {
 
 // tour is a release through the exclusion pause and the review to its end station,
 // its answers e at the pause and y at each other question. running is called with
-// the notes written in parts, three of four done, 38.56s after they started.
+// the notes written in parts, three of four done, 38.56s after they started again,
+// the check done.
 func tour(p presenter.Presenter, clock *fakeClock, running func()) {
 	preparedRelease(p, clock, "1 flagged")
 	paused(p)
+	p.StageStarted(notesRestarted())
 	for done := range 4 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
-	clock.Advance(secs(38.56) - secs(6.2))
+	clock.Advance(secs(38.56))
 	running()
 	p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: 4})
 	p.NotesMerging(presenter.NotesMerge{Parts: 4})
@@ -151,6 +161,7 @@ func tour(p presenter.Presenter, clock *fakeClock, running func()) {
 func cachedRelease(p presenter.Presenter, clock *fakeClock) {
 	preparedRelease(p, clock, "1 flagged")
 	paused(p)
+	p.StageStarted(notesRestarted())
 	p.SuspendSpinner()
 	_, _ = p.Prompt(cacheGate())
 	p.ResumeSpinner()
@@ -180,6 +191,7 @@ func shipped(p presenter.Presenter) {
 // asked about.
 func failedRelease(p presenter.Presenter, clock *fakeClock) {
 	preparedRelease(p, clock, "1 flagged, not asked")
+	p.StageStarted(notesRestarted())
 	for done := range 3 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
@@ -218,6 +230,7 @@ func dryRun(p presenter.Presenter, clock *fakeClock) {
 	p.SuspendSpinner()
 	p.PreviewGate(pauseGate())
 	p.ResumeSpinner()
+	p.StageStarted(notesRestarted())
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
 	p.RunFinished(presenter.RunResult{
