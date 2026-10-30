@@ -34,11 +34,11 @@ func prepared() []rail.Item {
 		rail.Node{Name: "version", Detail: "v1.4.0 (minor bump)"},
 		rail.Node{Name: "preflight", Detail: "tree clean · on main · v1.4.0 free · in sync with origin"},
 		rail.Node{Name: "pre_tag", Detail: "npm ci && npm run build", Time: "4.1s", Lines: []rail.Hang{
-			{Kind: rail.Note, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
+			{Kind: rail.Did, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
 		}},
 		rail.Node{Name: "check", Detail: "files that don't belong in the notes", Time: "6.2s", Lines: []rail.Hang{
 			{Kind: rail.Acted, Text: "docs/specs/** excluded", About: "design documents"},
-			{Kind: rail.Note, Text: "written to .mint.toml's [release] table and committed"},
+			{Kind: rail.Did, Text: "written to .mint.toml's [release] table and committed"},
 		}},
 	}
 }
@@ -78,7 +78,7 @@ func answered() rail.Run {
 		{Kind: rail.Acted, Text: "docs/specs/** excluded", About: "design documents"},
 		{Kind: rail.Kept, Text: "fixtures/ kept", About: "test fixtures"},
 		{Kind: rail.Acted, Text: "demo/ excluded", About: "demo recording scripts and the tapes that record the README's art, with the world they run in"},
-		{Kind: rail.Note, Text: "written to .mint.toml's [release] table and committed"},
+		{Kind: rail.Did, Text: "written to .mint.toml's [release] table and committed"},
 	}}
 	notes := rail.Node{State: rail.Running, Name: "notes", Detail: "writing the notes…", Time: "0s"}
 	return rail.Run{Settled: append(items[:len(items)-1], check), Region: append([]rail.Live{notes}, ahead()...)}
@@ -121,13 +121,13 @@ func failed() rail.Run {
 		rail.Node{Name: "version", Detail: "v1.4.0 (minor bump)", Tail: "accepted (-y)"},
 		rail.Node{Name: "preflight", Detail: "tree clean · on main · v1.4.0 free · in sync with origin"},
 		rail.Node{Name: "pre_tag", Detail: "npm ci && npm run build", Time: "4.1s", Lines: []rail.Hang{
-			{Kind: rail.Note, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
+			{Kind: rail.Did, Text: "committed dist/ (3 files) as chore(release): pre-tag artifacts"},
 		}},
 		rail.Node{Name: "check", Detail: "files that don't belong in the notes", Time: "6.2s"},
 		rail.Node{State: rail.Warning, Name: "docs/specs/**", Detail: "flagged, not asked: design documents · 6 files, 48 kB"},
 		rail.Node{State: rail.Failed, Name: "notes", Detail: "the AI call for part 3 of 4 failed", Time: "41.0s", Lines: []rail.Hang{
 			{Kind: rail.Output, Text: "Claude usage limit reached. Your limit will reset at 4pm (Europe/London).\n"},
-			{Kind: rail.Note, Text: "part notes saved to"},
+			{Kind: rail.Did, Text: "part notes saved to"},
 			{Kind: rail.Path, Text: savedPath},
 		}},
 		rail.Node{State: rail.Unwind, Name: "unwind", Detail: "pre-tag artifacts commit removed"},

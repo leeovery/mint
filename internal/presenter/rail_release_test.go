@@ -290,3 +290,71 @@ func TestRail_AStageStartedAgainWhileItRunsKeepsItsClock(t *testing.T) {
 		t.Errorf("the running node reads %q, want its time counted from its first start %q", got, want)
 	}
 }
+
+// TestRail_ALineSayingWhatMintDidIsDrawnInTheNormalColour pins which lines hanging
+// off a node read as mint's own deeds, in the normal colour, and which as metadata,
+// dim: a commit made, the answers written, the part notes saved and what an unwind
+// that couldn't finish undid and kept, against a step a stage passed over.
+func TestRail_ALineSayingWhatMintDidIsDrawnInTheNormalColour(t *testing.T) {
+	t.Parallel()
+	savedNotes := func(r *railTerm) {
+		r.StageFailed(presenter.StageFailure{Name: "notes", Key: "notes", Message: "the AI call failed", SavedNotes: "~/notes/v1.4.0.md"})
+	}
+	failedUnwind := func(r *railTerm) {
+		r.Warn(presenter.Warning{Key: "unwind", Label: "unwind", Message: "automatic recovery failed", Failed: true})
+		r.Unwound(presenter.Unwind{Key: "unwind", Undone: "deleted tag v1.4.0", KeptRow: "kept your exclusion answers in .mint.toml"})
+	}
+	tests := []struct {
+		name  string
+		event func(r *railTerm)
+		text  string
+		dim   bool
+	}{
+		{name: "a commit a stage made", text: "committed as chore(release): pre-tag artifacts", event: func(r *railTerm) {
+			r.StageSucceeded(presenter.StageSuccess{Name: "pre_tag", Key: "pre_tag", Detail: "npm run build", Commit: "chore(release): pre-tag artifacts"})
+		}},
+		{name: "the exclusion answers written", text: "written to .mint.toml's [release] table and committed", event: func(r *railTerm) {
+			r.StageSucceeded(presenter.StageSuccess{Name: "check", Key: "check", Detail: "1 flagged"})
+			r.ExclusionAnswersRecorded(presenter.ExclusionAnswers{Key: "check", File: ".mint.toml", Table: "[release]"})
+		}},
+		{name: "the part notes saved", text: "part notes saved to", event: savedNotes},
+		{name: "where the part notes were saved", text: "~/notes/v1.4.0.md", event: savedNotes},
+		{name: "what an unwind that couldn't finish undid", text: "deleted tag v1.4.0", event: failedUnwind},
+		{name: "what an unwind that couldn't finish kept", text: "kept your exclusion answers in .mint.toml", event: failedUnwind},
+		{name: "a step a stage passed over", text: "skipping preflight hook", dim: true, event: func(r *railTerm) {
+			r.StageSucceeded(presenter.StageSuccess{Name: "preflight", Key: "preflight", Detail: "tree clean", Note: "skipping preflight hook"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRailTermIn(t, termenv.TrueColor, 100, 40, answers())
+			commitRun(r)
+			tt.event(r)
+			r.Close()
+			for _, c := range hungCells(t, r, tt.text) {
+				if c.Faint != tt.dim {
+					t.Errorf("%q draws %v, want faint %v", tt.text, c, tt.dim)
+				}
+			}
+		})
+	}
+}
+
+// hungCells is the cells of the line hanging off a node that reads text, from the
+// detail column to the text's end.
+func hungCells(t *testing.T, r *railTerm, text string) []frametest.Cell {
+	t.Helper()
+	g, err := frametest.Parse(r.frame(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const detailCol = 18
+	for _, row := range g {
+		if hung := row[min(detailCol, len(row)):]; (frametest.Grid{hung}).Text()[0] == text {
+			return hung[:len([]rune(text))]
+		}
+	}
+	t.Fatalf("no line hangs %q:\n%s", text, strings.Join(g.Text(), "\n"))
+	return nil
+}

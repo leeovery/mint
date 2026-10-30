@@ -77,13 +77,13 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
-			name: "a stage failed: its mark, name, detail and rail red, its output behind a dim gutter",
-			item: rail.Node{State: rail.Failed, Name: "notes", Detail: "it failed", Lines: []rail.Hang{{Kind: rail.Output, Text: "usage limit"}, {Kind: rail.Note, Text: "saved to"}, {Kind: rail.Path, Text: "~/n.md"}}},
+			name: "a stage failed: its mark, name, detail and rail red, its output behind a dim gutter, what mint did and the path in the normal colour",
+			item: rail.Node{State: rail.Failed, Name: "notes", Detail: "it failed", Lines: []rail.Hang{{Kind: rail.Output, Text: "usage limit"}, {Kind: rail.Did, Text: "saved to"}, {Kind: rail.Path, Text: "~/n.md"}}},
 			want: func(string) []string {
 				return []string{
 					" " + rd("✗") + "  " + redBold("notes") + pad(9) + rd("it failed"),
 					" " + rd("│") + pad(16) + dm("│ ") + "usage limit",
-					" " + rd("│") + pad(16) + dm("saved to"),
+					" " + rd("│") + pad(16) + "saved to",
 					" " + rd("│") + pad(16) + "~/n.md",
 				}
 			},
@@ -107,12 +107,23 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
-			name: "the unwind: its mark in the accent, the rail under it solid",
-			item: rail.Node{State: rail.Unwind, Name: "unwind", Detail: "reset", Lines: []rail.Hang{{Kind: rail.Note, Text: "kept the answers"}}},
+			name: "the unwind: its mark in the accent, the rail under it solid, what it did in the normal colour",
+			item: rail.Node{State: rail.Unwind, Name: "unwind", Detail: "reset", Lines: []rail.Hang{{Kind: rail.Did, Text: "kept the answers"}}},
 			want: func(a string) []string {
 				return []string{
 					" " + acc(a, "↩") + "  " + bld("unwind") + pad(8) + "reset",
-					" " + acc(a, "│") + pad(16) + dm("kept the answers"),
+					" " + acc(a, "│") + pad(16) + "kept the answers",
+				}
+			},
+		},
+		{
+			name: "a stage done: what mint did under it in the normal colour, metadata dim",
+			item: rail.Node{Name: "preflight", Detail: "tree clean", Lines: []rail.Hang{{Kind: rail.Did, Text: "committed as chore: x"}, {Kind: rail.Note, Text: "skipping preflight hook"}}},
+			want: func(a string) []string {
+				return []string{
+					" " + acc(a, "●") + "  " + bld("preflight") + pad(5) + "tree clean",
+					" " + acc(a, "│") + pad(16) + "committed as chore: x",
+					" " + acc(a, "│") + pad(16) + dm("skipping preflight hook"),
 				}
 			},
 		},

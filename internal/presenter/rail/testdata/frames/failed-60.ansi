@@ -9,8 +9,8 @@
  [38;2;95;215;175m│[39m  tree clean · on main · v1.4.0 free · in sync with origin
  [38;2;95;215;175m●[39m  [1mpre_tag[22m
  [38;2;95;215;175m│[39m  npm ci && npm run build
- [38;2;95;215;175m│[39m  [2mcommitted dist/ (3 files) as chore(release): pre-tag [22m
- [38;2;95;215;175m│[39m  [2martifacts[22m
+ [38;2;95;215;175m│[39m  committed dist/ (3 files) as chore(release): pre-tag 
+ [38;2;95;215;175m│[39m  artifacts
  [38;2;95;215;175m●[39m  [1mcheck[22m
  [38;2;95;215;175m│[39m  files that don't belong in the notes
  [33m![39m  [1mdocs/specs/**[22m
@@ -19,7 +19,7 @@
  [31m│[39m  [31mthe AI call for part 3 of 4 failed[39m
  [31m│[39m  [2m│ [22mClaude usage limit reached. Your limit will reset at 
  [31m│[39m  [2m│ [22m4pm (Europe/London).
- [31m│[39m  [2mpart notes saved to[22m
+ [31m│[39m  part notes saved to
  [31m│[39m  ~/Library/Caches/mint/chunk-notes/Users-lee-Code-pigeon/
  [31m│[39m  v1.4.0.md
  [38;2;95;215;175m↩[39m  [1munwind[22m

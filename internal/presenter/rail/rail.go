@@ -126,8 +126,11 @@ type Progress struct {
 type HangKind int
 
 const (
-	// Note is mint's own words, dim.
+	// Note is metadata, dim: what a stage passed over, a reason, a size, a count.
 	Note HangKind = iota
+	// Did is what mint did, in the normal colour: a commit it made, a file it wrote,
+	// what an unwind undid.
+	Did
 	// Output is a command's own output, verbatim behind a gutter of its own.
 	Output
 	// Path is a path, on a line of its own.

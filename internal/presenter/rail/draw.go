@@ -212,7 +212,7 @@ func (l Layout) hang(h Hang, rail span) []line {
 	switch h.Kind {
 	case Output:
 		return l.hangText(h.Text, plain, true, rail)
-	case Path:
+	case Did, Path:
 		return l.hangText(h.Text, plain, false, rail)
 	case Acted:
 		return l.answer(h, s("✓ ", accent), plain, rail)

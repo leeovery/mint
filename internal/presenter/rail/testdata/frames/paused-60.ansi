@@ -9,8 +9,8 @@
  [38;2;95;215;175m│[39m  tree clean · on main · v1.4.0 free · in sync with origin
  [38;2;95;215;175m●[39m  [1mpre_tag[22m
  [38;2;95;215;175m│[39m  npm ci && npm run build
- [38;2;95;215;175m│[39m  [2mcommitted dist/ (3 files) as chore(release): pre-tag [22m
- [38;2;95;215;175m│[39m  [2martifacts[22m
+ [38;2;95;215;175m│[39m  committed dist/ (3 files) as chore(release): pre-tag 
+ [38;2;95;215;175m│[39m  artifacts
  [38;2;95;215;175m●[39m  [1mcheck[22m
  [38;2;95;215;175m│[39m  2 flagged
  [38;2;95;215;175m│[39m  [38;2;95;215;175m✓ [39mdocs/specs/** excluded[2m · design documents[22m
