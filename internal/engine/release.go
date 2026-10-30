@@ -2111,7 +2111,7 @@ func regenerateBody(ctx context.Context, deps ReleaseDeps, regen reviewRegen, ve
 		// A closed/non-interactive input on the one-time-context read is fail-loud: the
 		// presenter leaves ErrInputClosed unrendered, so the engine surfaces it, then
 		// aborts, mirroring ReviewDecision.
-		return "", abort(regen.keepFailed(surfaceInputClosed(p, "regenerate", regen.key, err)))
+		return "", abort(regen.keepFailed(surfaceInputClosed(p, regenerateLabel, cmp.Or(regen.key, stageNotes), err)))
 	}
 
 	if regen.regenerator == nil {

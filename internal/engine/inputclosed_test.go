@@ -169,7 +169,7 @@ func TestRegenerateWrite_InputClosedAtAQuestion_FailsTheReview(t *testing.T) {
 		{name: "r's context line", req: freshWriteReq(engine.RegenerateTargetRelease), rec: &presentertest.RecordingPresenter{
 			NextChoices:   []presenter.Choice{presenter.ChoiceRegen},
 			AskLineResult: func(string) (string, error) { return "", presenter.ErrInputClosed },
-		}, want: inputClosed("regenerate", "")},
+		}, want: inputClosed("regenerate", "notes")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

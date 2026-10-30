@@ -57,8 +57,9 @@ func SelectMode(plainFlag bool, isTTY bool) Mode {
 // os.Stdout.Stat().Mode()&os.ModeCharDevice != 0. This is the sole TTY signal
 // feeding mode selection; it consults no environment variable. In particular it
 // does NOT special-case TERM (so a colour-incapable but real TTY such as
-// TERM=dumb is still a terminal here — the Rail draws it uncoloured and with no live
-// region, which is the Rail's job, not the mode selector's).
+// TERM=dumb is still a terminal here — the Rail draws it with no live region, and
+// uncoloured unless COLORTERM says otherwise, which termenv's profile honours over
+// TERM; that is the Rail's job, not the mode selector's).
 func IsTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
