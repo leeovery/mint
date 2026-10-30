@@ -22,4 +22,4 @@ pre_tag = [
 [release]
 # Recorded by mint's exclusion check: paths answered Exclude at a release's
 # pauses, kept out of the release-notes diff only.
-diff_exclude = ["*_test.go", ".worktreeinclude", "CLAUDE.md", "internal/presenter/presentertest/", "internal/runner/fake_runner.go", "internal/runner/deadline_recording_runner.go"]
+diff_exclude = ["*_test.go", ".worktreeinclude", "CLAUDE.md", "internal/presenter/presentertest/", "internal/runner/fake_runner.go", "internal/runner/deadline_recording_runner.go", "design/", "demo/", "art/", "internal/presenter/frametest/", "internal/ptytest/", ".gitignore", "go.sum"]
