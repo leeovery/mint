@@ -49,7 +49,7 @@ demo/review.sh release plain     # the tapes named
 | `release` | the version asked; the exclusion check's two questions, answered `e` then `k`; the notes running once both are answered; the review with its keys, edited with `e` and back; aborted with `n`, the unwind and the close |
 | `dry-run` | `mint release -m --dry-run`: the check's questions and the review's, where a real run asks them, skipped |
 | `commit` | `mint commit -Ap`: the message with its keys, then committed and pushed |
-| `regenerate` | `mint release regenerate v1.4.0`: Source asked, `tag` typed, Target taken at its default, the review, the close |
+| `regenerate` | `mint release regenerate v1.4.0`: Source asked and answered `t`, Target taken at its default, the review, the close |
 | `plain` | `mint release -m --plain` at a terminal: each question one line, its hint marking the default |
 
 They make no art: the screenshots are never committed, and each run deletes its tape's old ones

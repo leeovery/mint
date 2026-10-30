@@ -273,7 +273,7 @@ func SourceGate(options []GateChoice, def Choice) Gate {
 		Question:   "Source?",
 		Subject:    "source",
 		AcceptEcho: string(def),
-		Choices:    options,
+		Choices:    valued(options),
 		Default:    def,
 	}
 }
@@ -299,7 +299,21 @@ func TargetGate(options []GateChoice, def Choice) Gate {
 		Question:   "Target?",
 		Subject:    "target",
 		AcceptEcho: string(def),
-		Choices:    options,
+		Choices:    valued(options),
 		Default:    def,
 	}
+}
+
+// valued is options as an enumerated gate offers them: each reads once it is the
+// answer as the value it chose, as AcceptEcho reads the default, not as what that
+// value is about.
+func valued(options []GateChoice) []GateChoice {
+	out := make([]GateChoice, len(options))
+	for i, o := range options {
+		out[i] = o
+		if o.Answered == "" {
+			out[i].Answered = string(o.Key)
+		}
+	}
+	return out
 }

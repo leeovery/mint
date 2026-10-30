@@ -24,8 +24,9 @@ const (
 // nothing is asked: the default is taken and the node it settles records it, the
 // auto-accept echo. Without an interactive stdin it fails loud, rendered, with
 // ErrNotInteractive. Otherwise a single keypress answers where the input is a
-// terminal and every key one character, and a typed line answers where not, what
-// was typed before the question was asked discarded first. Input closed before an
+// terminal and every key one character, or every key a word answering to its first
+// letter, and a typed line answers where not, what was typed before the question was
+// asked discarded first. Input closed before an
 // answer, or Ctrl-C, returns ErrInputClosed, not rendered, and once Ctrl-C has ended
 // a typed line every question after it does.
 func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
@@ -36,17 +37,19 @@ func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
 		return "", ErrInputClosed
 	}
 	p.input.discardTypedAhead()
+	l := letter(g)
 	f, keys := rawKeyFile(p.input.in)
-	keys = keys && singleKeyGate(g)
+	keys = keys && singleKeyGate(l.keyed)
 	q := p.ask(g, !keys)
 	if keys {
-		c, err := readKeypress(f, g)
+		c, err := readKeypress(f, l.keyed)
 		if !errors.Is(err, errNoRawMode) {
+			c = l.word(c)
 			return c, p.answered(g, q, c, err)
 		}
 		p.retype(q)
 	}
-	return p.typedChoice(g, q)
+	return p.typedChoice(l, q)
 }
 
 // unasked answers g without asking, under -y, or fails loud without an interactive
@@ -66,16 +69,17 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 	return "", nil, false
 }
 
-// typedChoice reads g's answer to the open question q as a typed line, asking again
-// after a line that names none of its keys.
-func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
+// typedChoice reads the answer to l's gate, the open question q, as a typed line,
+// asking again after a line that names none of its keys.
+func (p *RailPresenter) typedChoice(l lettering, q *part) (Choice, error) {
+	g := l.gate
 	for {
 		line, ended, err := p.input.line()
 		p.released(ended)
 		if err != nil {
 			return "", p.answered(g, q, "", err)
 		}
-		if c, ok := parseChoice(line, g); ok {
+		if c, ok := l.parse(line); ok {
 			q.typed = line
 			return c, p.answered(g, q, c, nil)
 		}
@@ -247,9 +251,7 @@ func (p *RailPresenter) dismiss(q *part) {
 func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
-		for _, c := range g.Choices {
-			q.question.Choices = append(q.question.Choices, rail.Choice{Key: string(c.Key), Action: c.Action, Default: c.Key == g.Default})
-		}
+		q.question.Choices = letter(g).choices()
 	} else {
 		q.question.Tail = previewTail
 	}

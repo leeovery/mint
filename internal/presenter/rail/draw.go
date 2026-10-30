@@ -282,15 +282,21 @@ func (q Question) keys(f *flow) {
 const defaultMark = " (default)"
 
 // spans is the choice as its question draws it: its key bold in the accent, its
-// action, and the default marked.
+// action, what it is about, and the default marked.
 func (c Choice) spans() []span {
-	if !c.Default {
-		return []span{s(c.Key, accentBold), s(" "+c.Action, plain)}
+	single := utf8.RuneCountInString(c.Key) == 1
+	key := c.Key
+	if c.Default && single {
+		key = strings.ToUpper(key)
 	}
-	if utf8.RuneCountInString(c.Key) == 1 {
-		return []span{s(strings.ToUpper(c.Key), accentBold), s(" "+c.Action, plain)}
+	out := []span{s(key, accentBold), s(" "+c.Action, plain)}
+	if c.About != "" {
+		out = append(out, s(" ("+c.About+")", dim))
 	}
-	return []span{s(c.Key, accentBold), s(" "+c.Action, plain), s(defaultMark, dim)}
+	if c.Default && !single {
+		out = append(out, s(defaultMark, dim))
+	}
+	return out
 }
 
 // tailed is last, the question's last line, with its tail after it.

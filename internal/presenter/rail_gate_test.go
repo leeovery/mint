@@ -352,9 +352,14 @@ func TestRailGate_TheKeysMarkTheGatesDefault(t *testing.T) {
 			keys: " ┆  y yes   N no ›",
 		},
 		{
-			name: "a word, marked after its action",
+			name: "a word's letter, a capital",
 			gate: presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}}, "tag"),
-			keys: " ┆  fresh re-diff + AI   tag tag annotation body (default) ›",
+			keys: " ┆  f fresh (re-diff + AI)   T tag (tag annotation body) ›",
+		},
+		{
+			name: "a word alike in its first letter, marked after its action",
+			gate: presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "file", Action: "a notes file"}}, "file"),
+			keys: " ┆  fresh re-diff + AI   file a notes file (default) ›",
 		},
 	}
 	for _, tt := range tests {
@@ -375,6 +380,48 @@ func TestRailGate_TheKeysMarkTheGatesDefault(t *testing.T) {
 	}
 }
 
+// TestRailGate_AWordAnswersToItsFirstLetter pins that a question whose keys are
+// words, regenerate's Source and Target, is asked as every other is: each word keyed
+// by its first letter, the default's a capital, the word, then what it means, dim in
+// parentheses, unless that only repeats the word. Its letter answers it, as does the
+// word typed in full, and Enter takes the default.
+func TestRailGate_AWordAnswersToItsFirstLetter(t *testing.T) {
+	t.Parallel()
+	source := presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}, {Key: "release", Action: "published release body"}}, "fresh")
+	target := presenter.TargetGate([]presenter.GateChoice{{Key: "release", Action: "provider release"}, {Key: "changelog", Action: "CHANGELOG.md"}, {Key: "both", Action: "both"}}, "release")
+	const sourceKeys = " ┆  F fresh (re-diff + AI)   t tag (tag annotation body)   r release (published release body) ›"
+	const targetKeys = " ┆  R release (provider release)   c changelog (CHANGELOG.md)   b both ›"
+	tests := []struct {
+		name  string
+		gate  presenter.Gate
+		keys  string
+		typed string
+		want  presenter.Choice
+	}{
+		{name: "its letter", gate: source, keys: sourceKeys, typed: "t", want: "tag"},
+		{name: "its letter as a capital", gate: source, keys: sourceKeys, typed: "R", want: "release"},
+		{name: "the word in full", gate: source, keys: sourceKeys, typed: "tag", want: "tag"},
+		{name: "Enter, the default", gate: source, keys: sourceKeys, typed: "", want: "fresh"},
+		{name: "a letter whose word only repeats its meaning", gate: target, keys: targetKeys, typed: "b", want: "both"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := answers(tt.typed + "\n")
+			r := newRailTerm(t, 100, 24, in)
+			r.RunStarted(presenter.RunInfo{Header: presenter.Header{Command: "release regenerate", Where: pigeonWhere}, Start: presenter.Station{Name: "v1.4.0"}})
+			in.asked = func(int) {
+				if screen := r.screen(t); !slices.Contains(screen, tt.keys) {
+					t.Errorf("asked, the terminal shows\n%s\nwant the keys %q", strings.Join(screen, "\n"), tt.keys)
+				}
+			}
+			if c, err := r.Prompt(tt.gate); err != nil || c != tt.want {
+				t.Fatalf("Prompt = %q, %v, want %q", c, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestRailGate_ATypedAnswerNamingNoKeyIsAskedAgain(t *testing.T) {
 	t.Parallel()
 	in := answers("nope\n", "tag\n")
@@ -388,8 +435,8 @@ func TestRailGate_ATypedAnswerNamingNoKeyIsAskedAgain(t *testing.T) {
 	if in.n != 2 {
 		t.Errorf("asked %d times, want again after the line naming no key", in.n)
 	}
-	if got := r.screen(t)[4]; got != " ●  source        tag annotation body" {
-		t.Errorf("the answer reads %q, want a row of its own, the question asked before any stage", got)
+	if got := r.screen(t)[4]; got != " ●  source        tag" {
+		t.Errorf("the answer reads %q, want a row of its own naming the value chosen, the question asked before any stage", got)
 	}
 }
 
@@ -638,7 +685,7 @@ func TestRailGate_ATypedLineIsReadAtTheQuestionPrintedLast(t *testing.T) {
 // answer's record, and no row repeats it.
 func TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine(t *testing.T) {
 	t.Parallel()
-	const question, keys = " ?  Source?", " ┆  fresh re-diff + AI (default)   tag tag annotation body › "
+	const question, keys = " ?  Source?", " ┆  F fresh (re-diff + AI)   t tag (tag annotation body) › "
 	in := answers("nope\n", "tag\n")
 	r := newRailTerm(t, 80, 24, in)
 	r.WithEcho(true)

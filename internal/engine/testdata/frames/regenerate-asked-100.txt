@@ -1,9 +1,9 @@
  mint ─ release regenerate                                                    ~/Code/pigeon · v0.1.2
 
  ?  Source?
-    fresh re-diff + AI (default)   tag tag annotation body   release published release body › tag
+    F fresh (re-diff + AI)   t tag (tag annotation body)   r release (published release body) › tag
  ?  Target?
-    release provider release (default)   changelog CHANGELOG.md   both both › release
+    R release (provider release)   c changelog (CHANGELOG.md)   b both › release
  ◇  v1.4.0        tag → GitHub release
  │
  ●  notes         read from the tag annotation                                                  0.7s
