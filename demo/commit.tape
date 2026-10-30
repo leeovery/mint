@@ -7,9 +7,9 @@
 
 Output "demo/out/commit/"
 Source "demo/look.tape"
-# 22 rows: room for what it shows, the message and the stages to come under its
-# question included, so nothing scrolls away.
-Set Height 878
+# 23 rows: room for what it shows, the message, its question's keys and the
+# stages to come under it included, so nothing scrolls away.
+Set Height 915
 
 Hide
 Type 'demo/world.sh commit && source "${DEMO_WORLD:-/tmp/mint-demo}/profile.sh"' Enter

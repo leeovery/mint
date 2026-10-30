@@ -23,6 +23,8 @@
 #   git     the real git, waiting a moment on a push, as the network would,
 #           and naming origin by its GitHub URL (see shims() below)
 #   npm    the pre_tag hook's `npm ci && npm run build`: writes dist/
+#   demo-edit  an editor for the review tapes' e: after a moment, it adds
+#           a few words to the notes' first item and exits
 #
 # Usage:  demo/world.sh release      pigeon at v1.3.2 with work since, ready
 #                                    for v1.4.0: release, failed, dry-run
@@ -142,6 +144,13 @@ ci) sleep 1.6 ;;
 esac
 EOF
 
+	# The review tapes' editor, which the README's tapes never open.
+	cat >"$bin/demo-edit" <<'EOF'
+#!/usr/bin/env bash
+sleep 1
+perl -pi -e 's/for up to an hour\./for up to an hour, then give up./' "$1"
+EOF
+
 	ai >"$bin/claude"
 	chmod +x "$bin"/*
 }
@@ -153,7 +162,9 @@ EOF
 #
 #   the classify call   "has failed. Classify the failure"  →  OTHER
 #   the exclusion check "about to be written from its diff" →  docs/specs/**,
-#                       where the list holds it, else none
+#                       where the list holds it, else none; with
+#                       DEMO_AI_CHECK_TESTS set, test/ too, for the
+#                       review tapes' second question
 #   the merge           "so it was read in N parts"         →  v1.4.0's notes
 #   a part              "What follows is part N of M"       →  that part's notes
 #   a commit message    "writing the git commit message"    →  the message
@@ -185,6 +196,9 @@ if has "has failed. Classify the failure"; then
 elif has "about to be written from its diff"; then
 	if has "- docs/specs/"; then
 		reply 2.2 check.txt
+		if [ -n "${DEMO_AI_CHECK_TESTS:-}" ] && has "- test/"; then
+			echo "test/: tests and their fixtures"
+		fi
 	else
 		sleep 1.2
 		echo none
@@ -303,7 +317,7 @@ export GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_DATE="$now" GIT_COMMITTER_DATE="$now"
 export TZ=UTC
 export COLORTERM=truecolor
-unset $leaks NO_COLOR FORCE_COLOR DEMO_AI_FAIL_PART
+unset $leaks NO_COLOR FORCE_COLOR DEMO_AI_FAIL_PART DEMO_AI_CHECK_TESTS
 PS1='\[\e[34m\]❯\[\e[0m\] '
 cd "$repo"
 clear

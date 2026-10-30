@@ -27,7 +27,7 @@ Enter
 Wait+Screen /Release v1\.3\.2/
 Sleep 1500ms
 Type "y"
-Wait+Screen /Exclude it from the notes/
+Wait+Screen /Exclude docs\/specs\/\*\* from the notes/
 Sleep 2500ms
 Type "e"
 Wait+Screen /Release with these notes/

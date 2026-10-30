@@ -33,6 +33,31 @@ only its run's real flow prints, so a shim answering wrongly, or mint failing ea
 recording rather than leaving a still that looks right. Those lines are mint's own words: a
 change to the output changes them too.
 
+## The review tapes
+
+The README's tapes show a run answered the way a user usually answers it. A change to mint's
+questions needs more: every question at every state it passes through. `demo/review/` holds a
+tape for that per run, each taking a `Screenshot` at each state, and `review.sh` records them:
+
+```bash
+demo/review.sh                   # every review tape
+demo/review.sh release plain     # the tapes named
+```
+
+| Tape | Screenshots, in `demo/out/review/<tape>/` |
+|---|---|
+| `release` | the version asked; the exclusion check's two questions, answered `e` then `k`; the notes running once both are answered; the review with its keys, edited with `e` and back; aborted with `n`, the unwind and the close |
+| `dry-run` | `mint release -m --dry-run`: the check's questions and the review's, where a real run asks them, skipped |
+| `commit` | `mint commit -Ap`: the message with its keys, then committed and pushed |
+| `regenerate` | `mint release regenerate v1.4.0`: Source asked, `tag` typed, Target taken at its default, the review, the close |
+| `plain` | `mint release -m --plain` at a terminal: each question one line, its hint marking the default |
+
+They make no art: the screenshots are never committed, and each run deletes its tape's old ones
+first. The tapes record in the `release`, `commit` and `regenerate` worlds, with two extras the
+README's tapes never use: `DEMO_AI_CHECK_TESTS=1` makes the exclusion check flag `test/` as well
+as `docs/specs/**`, for a second question, and `demo-edit`, set as `VISUAL` and `EDITOR`, is an
+editor that adds a few words to the notes' first item, so the review's `e` comes back changed.
+
 ## The world
 
 `demo/world.sh` builds it under `/tmp/mint-demo`, outside the checkout, and each tape builds it
@@ -90,7 +115,8 @@ The shims on the world's `PATH`:
   spinners show, and answers from canned replies chosen by what the prompt asks: the exclusion
   check, a part of the notes, the merge, single-pass notes, a commit message, or what a failed
   call's output means. `world.sh` lists the text that tells each apart. `DEMO_AI_FAIL_PART=3`
-  makes part 3 fail with a usage-limit message, for `failed`. Single-pass notes are chosen by the
+  makes part 3 fail with a usage-limit message, for `failed`. `DEMO_AI_CHECK_TESTS=1` has the
+  exclusion check flag `test/` too, for the review tapes. Single-pass notes are chosen by the
   file each version added; v1.2.0's come back empty, so `regenerate --all` skips it.
 - **`gh`**: signed in; `release create`, `edit` and `view` answer as GitHub would, from releases
   kept in the world's `github/`, with `https://github.com/acme/pigeon/releases/tag/<tag>`
@@ -99,6 +125,8 @@ The shims on the world's `PATH`:
   shows. `git remote get-url origin` answers with the URL as configured: git expands `insteadOf`
   there, which would show mint the bare repo's path and no GitHub to publish to.
 - **`npm`**: the `pre_tag` hook's install and build, which takes a moment and writes `dist/`.
+- **`demo-edit`**: the review tapes' editor; it waits a moment, adds a few words to the notes'
+  first item, and exits.
 
 ## The look
 
@@ -140,11 +168,14 @@ vhs 0.12 or later. `world.sh` builds mint with `go`, so Go must be on the `PATH`
 
 - **The sandbox.** vhs drives a headless browser that connects to `ttyd` over loopback, which an
   agent's sandbox refuses (`could not open ttyd: ... ERR_CONNECTION_REFUSED`): run `record.sh`
-  with the sandbox off.
+  (and `review.sh`) with the sandbox off.
 - **`TMPDIR` on another volume.** vhs records a tape's frames into a directory of its own under
   `$TMPDIR`, then moves it to the tape's `Output`. Where `$TMPDIR` is on another volume than the
   repository, the move fails without a word, and no frames come: `record.sh` gives vhs a `TMPDIR`
   in `demo/out`.
+- **A screenshot is the next frame.** `Screenshot` saves the next frame vhs captures, and on a tall
+  screen the capture lags the terminal, so it can land after the key the tape types next: the
+  review tapes wait a second after each one.
 - **Silent failures.** vhs can run a tape, report nothing wrong, and write nothing, leaving the
   last recording's frames to be judged as new. `record.sh` deletes a tape's output before it
   records, and `finalize.sh` stops when there are no frames.
