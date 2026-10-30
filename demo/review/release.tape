@@ -23,7 +23,7 @@ Sleep 500ms
 Screenshot "demo/out/review/release/01-version.png"
 Sleep 1s
 Type "y"
-Wait+Screen /checking the tree, branch, tag and origin/
+Wait+Screen /checking the tree, branch, tag, origin and gh sign-in/
 Screenshot "demo/out/review/release/02-preflight-running.png"
 Wait+Screen /Exclude docs\/specs\/\*\* from the notes/
 Sleep 500ms

@@ -1,0 +1,9 @@
+ mint ─ release                                                               ~/Code/pigeon · v0.1.2
+
+ ◇  v1.2.3        main @ 4f9c2e1
+ │
+ ●  version       v1.3.0 (minor bump)
+ ✗  preflight     gh is not authenticated; run `gh auth login`, then re-run — or set publish =
+ │                false to tag and push only
+ │
+ ◇  v1.2.3        nothing changed                                                               0.7s

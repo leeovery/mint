@@ -46,6 +46,7 @@ var (
 // seedReadGates scripts a first release's git reads through preflight, up to the
 // starting-HEAD capture.
 func seedReadGates(f *runner.FakeRunner, root string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
@@ -63,9 +64,9 @@ func seedReadGates(f *runner.FakeRunner, root string) {
 func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 	t.Parallel()
 
-	captured := ScriptedOut(startingSHA)                                           // rev-parse HEAD (capture the clean start)
-	recorded := []runner.ScriptedCall{ScriptedOut(""), ScriptedOut("")}            // add CHANGELOG.md, commit
-	tagged := []runner.ScriptedCall{ScriptedOut(githubRemoteURL), ScriptedOut("")} // remote get-url, tag -a
+	captured := ScriptedOut(startingSHA)                                // rev-parse HEAD (capture the clean start)
+	recorded := []runner.ScriptedCall{ScriptedOut(""), ScriptedOut("")} // add CHANGELOG.md, commit
+	tagged := []runner.ScriptedCall{ScriptedOut("")}                    // tag -a
 	tests := []struct {
 		name     string
 		config   string
@@ -152,12 +153,11 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			detail:  afterAHook,
 		},
 		{
-			name:    "the publish gate failing with nothing recorded, no hook having run",
+			name:    "the gh gate failing at preflight, before anything could write",
 			config:  noChangelog,
-			git:     [][]runner.ScriptedCall{{ScriptedOut(githubRemoteURL)}}, // remote get-url
 			gh:      errors.New("gh: not authenticated"),
 			outcome: presenter.OutcomeFailed,
-			detail:  noClaim,
+			detail:  "nothing changed",
 		},
 		{
 			name:    "the record's writes with no commit to reset",

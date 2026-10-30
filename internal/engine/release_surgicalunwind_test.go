@@ -43,6 +43,7 @@ func TestRelease_GateNo_Surgical_ResetsTrackedCommit(t *testing.T) {
 	f := runner.NewFakeRunner()
 	// Read stages, preflight, startingHEAD capture, then the pre_tag hook dirties the
 	// tree and mint makes ONE artifact commit — and the gate then answers `n`.
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),             // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),    // symbolic-ref --short origin/HEAD
@@ -177,6 +178,7 @@ func TestRelease_GateNoAndPrePushFailure_IdenticalCleanStateAndSummary(t *testin
 	gateRoot := t.TempDir()
 	writeConfig(t, gateRoot, "[release.hooks]\npre_tag = \"build.sh\"\n")
 	gateRunner := runner.NewFakeRunner()
+	seedProvider(gateRunner)
 	gateRunner.SeedSequence("git",
 		ScriptedOut(gateRoot),         // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),    // symbolic-ref --short origin/HEAD

@@ -142,6 +142,7 @@ func (w *railWorld) readGates(stash bool) {
 	if stash {
 		w.f.SeedSequence("git", stashSaved()) // stash push --include-untracked
 	}
+	seedProvider(w.f)
 	w.f.SeedSequence("git",
 		ScriptedOut(""),          // fetch --tags
 		ScriptedOut(""),          // status --porcelain (clean)
@@ -165,7 +166,6 @@ func (w *railWorld) recorded() {
 	w.f.SeedSequence("git",
 		ScriptedOut(""), // -C root add CHANGELOG.md
 		ScriptedOut(""), // -C root commit -m
-		ScriptedOut("https://github.com/acme/pigeon.git"), // remote get-url origin
 		ScriptedOut(""), // tag -a v1.3.0 -F -
 	)
 }
@@ -486,6 +486,14 @@ var railRuns = map[string]railRun{
 			Result: runner.Result{Stderr: "ok  \tpigeon/webhooks\t0.412s\n", ExitCode: -1},
 			Err:    fmt.Errorf("running %q: %w", "sh", context.Canceled),
 		})
+		return w.release(t, nil)
+	}},
+	// gh signed out: preflight fails on its own node, before any hook, the notes or
+	// any write, so nothing changed.
+	"release-gh-signed-out-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preTagHookConfig, "y\n", false)
+		w.readGates(false)
+		w.f.SeedSequence("gh", gitFailing("You are not logged into any GitHub hosts. To log in, run: gh auth login\n")) // auth status
 		return w.release(t, nil)
 	}},
 	// The version answered n: the version fails as aborted, and nothing changed.

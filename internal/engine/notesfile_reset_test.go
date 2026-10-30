@@ -61,6 +61,7 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 			writeConfig(t, root, "[release.hooks]\npre_tag = \"build.sh\"\n")
 			path := writeNotesFile(t, root, tt.file, suppliedBody)
 			f := runner.NewFakeRunner()
+			seedProvider(f)
 			f.SeedSequence("git", firstReleaseGates(root, "")...)
 			f.SeedSequence("git",
 				ScriptedOut(" M bundle.js\n"), // -C root status --porcelain (post-hook: dirty)
@@ -89,10 +90,10 @@ func TestRelease_NotesFileInRepo_GateAbortAfterArtifactCommit_ResetLeavesTheNote
 // seedThroughBookkeepingCommit scripts a first release with an in-repo notes file up
 // to and including its bookkeeping commit, with stash as for firstReleaseGates.
 func seedThroughBookkeepingCommit(f *runner.FakeRunner, root, notesStaged string, stash ...runner.ScriptedCall) {
+	seedProvider(f)
 	f.SeedSequence("git", firstReleaseGates(root, "", stash...)...)
 	f.SeedSequence("git", ScriptedOut("")) // -C root add CHANGELOG.md
 	f.SeedSequence("git", keepOutCommit(notesStaged, stagedChangelog)...)
-	f.SeedSequence("git", ScriptedOut(githubRemoteURL)) // remote get-url origin
 	f.Seed("gh", runner.Result{}, nil)
 }
 

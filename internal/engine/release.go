@@ -360,8 +360,9 @@ type ReleaseOptions struct {
 	// preflight gate is SKIPPED ENTIRELY (not evaluated — no `git rev-parse
 	// --abbrev-ref HEAD` is issued) so a deliberate off-branch release proceeds. Every
 	// OTHER gate (clean tree, tag-free local/remote, remote sync, gh auth) still runs
-	// unchanged — this flag weakens ONLY the branch gate, nothing else. Without the flag
-	// the branch gate runs exactly as the Phase 1 default (aborting off-branch). The
+	// unchanged (gh auth only where the run publishes) — this flag weakens ONLY the
+	// branch gate, nothing else. Without the flag the branch gate runs exactly as the
+	// Phase 1 default (aborting off-branch). The
 	// bypass is reported via the Presenter (a Warn) so an off-branch release is visible.
 	// It composes with --autostash and the rest with no interaction.
 	AnyBranch bool
@@ -555,9 +556,22 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	//
 	// The gates fetch and ask origin over the network, so the rail shows preflight
 	// running while they do.
-	showRunning(p, stagePreflight, preflightText)
+	//
+	// A real run that publishes then resolves its publishing driver and, for a driver
+	// resolved, checks gh's sign-in (publishGate). The one rule for that gate is "before
+	// the tag"; checking it here fails a missing or signed-out gh before any hook, the
+	// AI notes or any mutation, so nothing is left to unwind. A dry run publishes
+	// nothing and checks neither, as it never has.
+	publishes := cfg.Release.Publish && !opts.DryRun
+	showRunning(p, stagePreflight, preflightText(publishes))
 	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch, opts.DryRun && opts.AutoStash, keepOut); err != nil {
 		return surface(p, "preflight", err)
+	}
+	var publisher publish.Publisher
+	if publishes {
+		if publisher, err = publishGate(ctx, deps, cfg); err != nil {
+			return surface(p, "preflight", err)
+		}
 	}
 
 	// Stage 2 — project preflight hook. After mint's built-in gates pass and BEFORE
@@ -574,7 +588,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// Stage 2 narration: preflight settles once both the built-in gates and the
 	// project preflight hook have passed (Stage 2 complete), a dry run's skip of the
 	// hook its note. It is not timed: plain's line for it has never carried a time.
-	checked := preflightDetail(releaseBranch, tag, opts.AnyBranch)
+	checked := preflightDetail(releaseBranch, tag, opts.AnyBranch, publisher != nil)
 	p.StageSucceeded(presenter.StageSuccess{Name: stagePreflight, Key: stagePreflight, Detail: checked, Note: hookSkipped})
 
 	// With preflight passed every stage the release will go through is known: lay them
@@ -803,57 +817,6 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	}
 	p.StageSucceeded(recorded)
 
-	// Stage 6/7 — resolve the publishing driver, then run its conditional gh gate,
-	// only when publishing and BEFORE the tag.
-	//
-	// The Phase 1/2 hardwired "always GitHub when publish=true" selection is gone:
-	// the driver is now AUTO-DETECTED from the release remote's host (overridable by
-	// [release].provider), so a github.com remote — HTTPS or SSH — resolves to the
-	// GitHub driver behind the Publisher interface, and a future GitLab/Gitea driver
-	// slots in with no change here. The resolved publisher is held as the interface
-	// type and used UNCHANGED below for CreateRelease — the orchestrator never names a
-	// concrete driver.
-	//
-	// The gh install/auth gate is conditional on a driver actually being SELECTED and
-	// on publishing proceeding: it runs only for the resolved driver, before the tag,
-	// so a missing/unauthenticated gh never strands a pushed tag waiting on a release
-	// it cannot create.
-	//
-	// SAFE DOWNGRADE (4-10): an UNRESOLVED provider (non-github.com host, unsupported
-	// value, no remote, or an unparseable SSH URL) is NOT an abort. resolvePublisher
-	// returns ErrProviderUnresolved (a nil Publisher); the spine WARNS loudly — naming
-	// the reason — and DOWNGRADES the run to tag + push ONLY: publisher stays nil, so
-	// the gh gate below is skipped (it gates a selected driver, of which there is none)
-	// and the Stage-7 CreateRelease is skipped too. The annotated tag and the atomic
-	// push still happen, so the pushed tag is never stranded (publishing was simply
-	// never attempted). mint NEVER silently assumes GitHub for an unresolved provider.
-	// This is DISTINCT from publish=false: an explicit opt-out is a SILENT tag + push
-	// (this whole block is skipped), not a warned downgrade. Any OTHER resolution error,
-	// like a failed gh gate, is a pre-PONR abort labelled "preflight" on the publish node
-	// it gates, routed through the surgical unwind.
-	var publisher publish.Publisher
-	if cfg.Release.Publish {
-		resolved, err := resolvePublisher(ctx, deps, cfg)
-		switch {
-		case errors.Is(err, publish.ErrProviderUnresolved):
-			warnPublishDowngraded(p, err, "downgrading to tag + push only")
-		case err != nil:
-			return failAndUnwind(ctx, deps, publishGateFailure(err), start, made, err)
-		default:
-			publisher = resolved
-		}
-
-		// The gh gate gates ONLY an actually-selected driver: on a downgrade publisher is
-		// nil, so it is never reached — keeping the pushed tag from being stranded.
-		if publisher != nil {
-			if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
-				// The bookkeeping commit may have moved HEAD; the surgical unwind resets exactly
-				// the commits in made. No tag yet (made.TagCreated false).
-				return failAndUnwind(ctx, deps, publishGateFailure(err), start, made, err)
-			}
-		}
-	}
-
 	// Stage 6 — tag + atomic push.
 	//
 	// COMMIT-GRAPH INVARIANT (assembled across stages 3, 4 and 5): this run produces UP
@@ -916,7 +879,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// created through the resolved Publisher INTERFACE (whichever driver detection
 	// picked), never a concrete type. It is gated on a publisher actually being
 	// SELECTED, not merely on publish=true: a safe downgrade (provider unresolved)
-	// leaves publisher nil and already warned above, so publishing is skipped here —
+	// leaves publisher nil and already warned at preflight, so publishing is skipped here —
 	// the run is tag + push only.
 	releaseURL := ""
 	outcome := presenter.OutcomeReleased
@@ -1619,15 +1582,6 @@ func pushFailure(cause error, elapsed time.Duration) presenter.StageFailure {
 	return failure
 }
 
-// publishGateFailure is the StageFailed payload for the provider's resolution or its
-// auth gate failing on cause: labelled "preflight", as plain shows it, and keyed to
-// the publish stage it gates, since preflight has settled by then.
-func publishGateFailure(cause error) presenter.StageFailure {
-	failure := stageFailure(stagePreflight, cause)
-	failure.Key = stagePublish
-	return failure
-}
-
 // surfaceStageFailure renders stage's ✗ line for cause.
 func surfaceStageFailure(p presenter.Presenter, stage string, cause error) {
 	p.StageFailed(failedStage(stage, cause))
@@ -1652,8 +1606,8 @@ func stageFailure(stage string, cause error) presenter.StageFailure {
 // runPreflight runs the Stage 2 gate chain in the spec's order: fetch (read-only,
 // refreshes tags + upstream refs), then the cheap local gates, then the network
 // gates. The first failure short-circuits and is returned for the caller to
-// surface and abort on. The conditional gh gate is run separately by Release
-// (only when publishing, after the bookkeeping commit and before the tag).
+// surface and abort on. The conditional gh gate runs after these, still inside
+// preflight, by publishGate (only when a real run publishes).
 //
 // anyBranch is the --any-branch escape hatch: it is passed to RunLocalGates, which
 // SKIPS the on-release-branch gate when it is true (the gate is not evaluated). It
@@ -1883,22 +1837,65 @@ func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, d
 	return hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), dryRun)
 }
 
-// What the preflight node says while it runs: mint's own gates, then the project's
-// preflight hook, which runs on the same node.
-const (
-	preflightText     = "checking the tree, branch, tag and origin…"
-	preflightHookText = "running preflight hook…"
-)
+// publishGate resolves the publishing driver and, for a driver resolved, checks gh's
+// sign-in, inside preflight and so before any hook, the notes or any mutation.
+//
+// The driver is AUTO-DETECTED from the release remote's host (overridable by
+// [release].provider), so a github.com remote — HTTPS or SSH — resolves to the GitHub
+// driver behind the Publisher interface, which the release later writes through
+// unchanged: the orchestrator never names a concrete driver.
+//
+// SAFE DOWNGRADE (4-10): an UNRESOLVED provider (non-github.com host, unsupported
+// value, no remote, or an unparseable SSH URL) is NOT an abort. It WARNS loudly,
+// naming the reason, and returns a nil Publisher, so the gh gate is skipped (it gates
+// a selected driver, of which there is none) and the release is tag + push only: the
+// pushed tag is never stranded waiting on a release it cannot create. mint NEVER
+// silently assumes GitHub for an unresolved provider. This is DISTINCT from
+// publish=false, a SILENT tag + push the caller never calls this for. Any OTHER
+// resolution error, like a failed gh gate, is returned for the caller to fail
+// preflight on.
+func publishGate(ctx context.Context, deps ReleaseDeps, cfg config.Config) (publish.Publisher, error) {
+	publisher, err := resolvePublisher(ctx, deps, cfg)
+	switch {
+	case errors.Is(err, publish.ErrProviderUnresolved):
+		warnPublishDowngraded(deps.Presenter, err, "downgrading to tag + push only")
+		return nil, nil
+	case err != nil:
+		return nil, err
+	}
+	if err := preflight.CheckGhAuth(ctx, deps.Runner); err != nil {
+		return nil, err
+	}
+	return publisher, nil
+}
+
+// preflightHookText is what the preflight node says while the project's preflight
+// hook runs on it.
+const preflightHookText = "running preflight hook…"
+
+// preflightText is what the preflight node says while mint's own gates run, naming
+// gh's sign-in where the run checks it.
+func preflightText(checksGh bool) string {
+	if checksGh {
+		return "checking the tree, branch, tag, origin and gh sign-in…"
+	}
+	return "checking the tree, branch, tag and origin…"
+}
 
 // preflightDetail summarises WHICH gates just passed so the preflight ✓ line tells
 // the user what was actually checked, not a stage codeword: the clean tree, the
-// branch gate (or its --any-branch bypass), the free tag, and the remote sync.
-func preflightDetail(releaseBranch, tag string, anyBranch bool) string {
+// branch gate (or its --any-branch bypass), the free tag, the remote sync, and gh's
+// sign-in where ghChecked says it ran.
+func preflightDetail(releaseBranch, tag string, anyBranch, ghChecked bool) string {
 	branch := "on " + releaseBranch
 	if anyBranch {
 		branch = "branch gate bypassed"
 	}
-	return fmt.Sprintf("tree clean, %s, %s free, origin in sync", branch, tag)
+	detail := fmt.Sprintf("tree clean, %s, %s free, origin in sync", branch, tag)
+	if ghChecked {
+		detail += ", gh signed in"
+	}
+	return detail
 }
 
 // pushedBranch is the branch the atomic push sends: HEAD's, which preflight holds to

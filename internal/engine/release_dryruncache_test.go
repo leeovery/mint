@@ -51,7 +51,6 @@ func runDryRunNormalAI(t *testing.T, root, cacheBase, diff, aiBody string, opts 
 		ScriptedOut("A\tauth/login.go\n"),     // diff --name-status (change map)
 		ScriptedOut("20\t0\tauth/login.go\n"), // diff --numstat (change map)
 	)
-	f.SeedSequence("git", ScriptedOut(githubRemoteURL)) // remote get-url origin (provider detection)
 	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -223,6 +222,7 @@ func TestRelease_DryRun_CacheKeyInvariantToHEADSha(t *testing.T) {
 func runDryRunNormalAIWithSha(t *testing.T, root, cacheBase, diff, aiBody, headSha string) {
 	t.Helper()
 	f := runner.NewFakeRunner()
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                     // rev-parse --show-toplevel
 		ScriptedOut("origin/main"),            // symbolic-ref --short origin/HEAD
@@ -238,7 +238,6 @@ func runDryRunNormalAIWithSha(t *testing.T, root, cacheBase, diff, aiBody, headS
 		ScriptedOut(diff),                     // diff priorTag..HEAD (degenerate-check assemble)
 		ScriptedOut("A\tauth/login.go\n"),     // diff --name-status (change map)
 		ScriptedOut("20\t0\tauth/login.go\n"), // diff --numstat (change map)
-		ScriptedOut(githubRemoteURL),          // remote get-url origin (provider detection)
 	)
 	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
 	rec := &presentertest.RecordingPresenter{}

@@ -292,11 +292,10 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 		{
 			name: "the push is rejected after the tag",
 			tail: []runner.ScriptedCall{
-				ScriptedOut(""),              // -C root add CHANGELOG.md
-				ScriptedOut(""),              // -C root commit -m
-				ScriptedOut(githubRemoteURL), // remote get-url origin
-				ScriptedOut(""),              // tag -a v1.3.0 -F -
-				pushRejected(),               // push --atomic origin HEAD v1.3.0
+				ScriptedOut(""), // -C root add CHANGELOG.md
+				ScriptedOut(""), // -C root commit -m
+				ScriptedOut(""), // tag -a v1.3.0 -F -
+				pushRejected(),  // push --atomic origin HEAD v1.3.0
 			},
 			beforeReset: []runner.ScriptedCall{ScriptedOut("")}, // tag -d v1.3.0
 			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; kept your exclusion answers in .mint.toml; repo clean",

@@ -26,10 +26,10 @@ import (
 )
 
 // seedDryRunFirstRelease scripts a FakeRunner's git timeline for a no-tags
-// first-release dry run: the read-only gates (identical to the real path) plus the
-// read-only `git remote get-url origin` provider detection the dry-run plan uses to
-// name the publish target. CRUCIALLY it seeds NO mutation tail (no add/commit, no
-// tag, no push) — those calls are left unseeded so any attempt fails the run.
+// first-release dry run: the read-only gates, the real path's but for the provider
+// read and gh's sign-in, as a dry run publishes nothing. CRUCIALLY it seeds NO
+// mutation tail (no add/commit, no tag, no push) — those calls are left unseeded so
+// any attempt fails the run.
 //
 // skipCleanTree omits the `status --porcelain` (clean-tree) probe from the timeline —
 // the single gate the DryRun && AutoStash combo bypasses (a dirty tree previews
@@ -47,12 +47,11 @@ func seedDryRunFirstRelease(f *runner.FakeRunner, root, releaseBranch, tag strin
 		seq = append(seq, ScriptedOut("")) // status --porcelain (clean)
 	}
 	seq = append(seq,
-		ScriptedOut(releaseBranch),   // rev-parse --abbrev-ref HEAD (on branch)
-		ScriptedNonZero(),            // rev-parse -q --verify refs/tags/{tag} (absent)
-		ScriptedOut("0\t1"),          // rev-list left-right count (ahead only)
-		ScriptedOut(""),              // ls-remote --tags (tag free remote)
-		ScriptedOut(startingSHA),     // rev-parse HEAD (capture the clean start)
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection for the plan)
+		ScriptedOut(releaseBranch), // rev-parse --abbrev-ref HEAD (on branch)
+		ScriptedNonZero(),          // rev-parse -q --verify refs/tags/{tag} (absent)
+		ScriptedOut("0\t1"),        // rev-list left-right count (ahead only)
+		ScriptedOut(""),            // ls-remote --tags (tag free remote)
+		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 	)
 	f.SeedSequence("git", seq...)
 }
@@ -188,7 +187,6 @@ func TestRelease_DryRun_GeneratesNotesPreview(t *testing.T) {
 	f := runner.NewFakeRunner()
 	seedPriorTagReadGates(f, root, "main")
 	seedNormalAINotes(f)
-	f.SeedSequence("git", ScriptedOut(githubRemoteURL)) // remote get-url origin (provider detection)
 	f.Seed("claude", runner.Result{Stdout: aiBody}, nil)
 	rec := &presentertest.RecordingPresenter{}
 
@@ -220,6 +218,7 @@ func TestRelease_DryRun_PublishDisabled_NoPublishStep(t *testing.T) {
 
 	f := runner.NewFakeRunner()
 	// publish=false skips provider detection entirely, so no `remote get-url origin`.
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD

@@ -279,7 +279,7 @@ func TestRelease_Rail_ThePlanLaysOutEveryStageWithThePushAsThePointOfNoReturn(t 
 	plan := quietPlan(t, rec)
 	want := []presenter.PlanStage{
 		{Key: "version", Name: "version", Detail: "v1.2.4 (patch bump)"},
-		{Key: "preflight", Name: "preflight", Detail: "tree clean, on main, v1.2.4 free, origin in sync"},
+		{Key: "preflight", Name: "preflight", Detail: "tree clean, on main, v1.2.4 free, origin in sync, gh signed in"},
 		{Key: "check", Name: "check", Detail: "files that don't belong in the notes", Inside: true},
 		{Key: "notes", Name: "notes", Detail: "written by the AI"},
 		{Key: "record", Name: "record", Detail: "CHANGELOG.md"},
@@ -327,7 +327,7 @@ func TestRelease_Rail_ThePlanLeavesOutWhatTheRunWillNotDo(t *testing.T) {
 			},
 			want: []presenter.PlanStage{
 				{Key: "version", Name: "version", Detail: "v1.2.4 (patch bump)"},
-				{Key: "preflight", Name: "preflight", Detail: "tree clean, on main, v1.2.4 free, origin in sync"},
+				{Key: "preflight", Name: "preflight", Detail: "tree clean, on main, v1.2.4 free, origin in sync, gh signed in"},
 				{Key: "pre_tag", Name: "pre_tag", Detail: "make build && make dist"},
 				{Key: "notes", Name: "notes", Detail: "from the notes file"},
 				{Key: "record", Name: "record", Detail: "CHANGELOG.md + VERSION"},
@@ -713,6 +713,7 @@ func assertFloorMovesLeadTheRail(t *testing.T, moves []presenter.NextMove, comma
 // stash first under a real run's --autostash, no clean-tree check under a dry run's,
 // and no on-branch probe under --any-branch.
 func readGatesUnder(f *runner.FakeRunner, root string, opts engine.ReleaseOptions) {
+	seedProvider(f)
 	f.SeedSequence("git", ScriptedOut(root), ScriptedOut("origin/main"), ScriptedOut(priorTag+"\n"), ScriptedHead())
 	if opts.AutoStash && !opts.DryRun {
 		f.SeedSequence("git", stashSaved()) // stash push --include-untracked

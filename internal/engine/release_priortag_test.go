@@ -45,6 +45,7 @@ const priorTagDiff = "diff --git a/auth/login.go b/auth/login.go\n@@ -0,0 +1 @@\
 // the first-release read gates, but `git tag --list` returns priorTag so the run
 // is NOT a first release and the diff base is priorTag..HEAD.
 func seedPriorTagReadGates(f *runner.FakeRunner, root, releaseBranch string) {
+	seedProvider(f)
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -77,11 +78,10 @@ func seedNormalAINotes(f *runner.FakeRunner) {
 // release create are seeded by the caller on the "gh" timeline.
 func seedRecordTagPush(f *runner.FakeRunner, root string) {
 	f.SeedSequence("git",
-		ScriptedOut(""),              // -C root add CHANGELOG.md
-		ScriptedOut(""),              // -C root commit -m
-		ScriptedOut(githubRemoteURL), // remote get-url origin (provider detection)
-		ScriptedOut(""),              // tag -a v1.2.4 -F -
-		ScriptedOut(""),              // push --atomic origin HEAD v1.2.4
+		ScriptedOut(""), // -C root add CHANGELOG.md
+		ScriptedOut(""), // -C root commit -m
+		ScriptedOut(""), // tag -a v1.2.4 -F -
+		ScriptedOut(""), // push --atomic origin HEAD v1.2.4
 	)
 }
 

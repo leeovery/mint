@@ -28,6 +28,7 @@ const downgradeWarnLabel = "publish skipped"
 // still runs); the only difference from a published run is that the caller seeds NO gh,
 // because a downgrade must never reach gh.
 func seedDowngradeGit(f *runner.FakeRunner, root, releaseBranch, tag, remoteURL string) {
+	seedRemote(f, ScriptedOut(remoteURL))
 	f.SeedSequence("git",
 		ScriptedOut(root),                    // rev-parse --show-toplevel
 		ScriptedOut("origin/"+releaseBranch), // symbolic-ref --short origin/HEAD
@@ -42,7 +43,6 @@ func seedDowngradeGit(f *runner.FakeRunner, root, releaseBranch, tag, remoteURL 
 		ScriptedOut(startingSHA),             // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),                      // -C root add CHANGELOG.md
 		ScriptedOut(""),                      // -C root commit -m
-		ScriptedOut(remoteURL),               // remote get-url origin (provider detection)
 		ScriptedOut(""),                      // tag -a {tag} -F -
 		ScriptedOut(""),                      // push --atomic origin HEAD {tag}
 	)
@@ -192,6 +192,7 @@ func TestRelease_Downgrade_NoRemote(t *testing.T) {
 
 	root := t.TempDir()
 	f := runner.NewFakeRunner()
+	seedRemote(f, ScriptedNonZero()) // remote get-url origin: no origin remote, an empty URL
 	f.SeedSequence("git",
 		ScriptedOut(root),          // rev-parse --show-toplevel
 		ScriptedOut("origin/main"), // symbolic-ref --short origin/HEAD
@@ -206,7 +207,6 @@ func TestRelease_Downgrade_NoRemote(t *testing.T) {
 		ScriptedOut(startingSHA),   // rev-parse HEAD (capture the clean start)
 		ScriptedOut(""),            // -C root add CHANGELOG.md
 		ScriptedOut(""),            // -C root commit -m
-		ScriptedNonZero(),          // remote get-url origin (NO origin remote -> empty URL)
 		ScriptedOut(""),            // tag -a v0.0.1 -F -
 		ScriptedOut(""),            // push --atomic origin HEAD v0.0.1
 	)

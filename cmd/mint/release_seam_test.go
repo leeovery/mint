@@ -70,8 +70,10 @@ func (run *releaseSeamRun) seedReadGates() {
 		gitNonZero(),          // rev-parse -q --verify refs/tags/v1.2.4
 		gitOut("0\t1"),        // rev-list --left-right --count
 		gitOut(""),            // ls-remote --tags
+		gitOut(githubOrigin),  // remote get-url origin
 		gitOut("startsha"),    // rev-parse HEAD
 	)
+	run.f.Seed("gh", runner.Result{}, nil) // auth status, then the release
 }
 
 // seedNotesDiff scripts the notes diff and its Change Map.
@@ -82,13 +84,11 @@ func (run *releaseSeamRun) seedNotesDiff(diff, nameStatus, numstat string) {
 // seedRecordTagPush scripts the bookkeeping commit, the tag and the atomic push.
 func (run *releaseSeamRun) seedRecordTagPush() {
 	run.f.SeedSequence("git",
-		gitOut(""),           // -C root add CHANGELOG.md
-		gitOut(""),           // -C root commit -m
-		gitOut(githubOrigin), // remote get-url origin
-		gitOut(""),           // tag -a v1.2.4 -F -
-		gitOut(""),           // push --atomic origin HEAD v1.2.4
+		gitOut(""), // -C root add CHANGELOG.md
+		gitOut(""), // -C root commit -m
+		gitOut(""), // tag -a v1.2.4 -F -
+		gitOut(""), // push --atomic origin HEAD v1.2.4
 	)
-	run.f.Seed("gh", runner.Result{}, nil)
 }
 
 func (run *releaseSeamRun) writeConfig(t *testing.T, contents string) {

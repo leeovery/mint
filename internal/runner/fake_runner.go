@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -42,12 +43,16 @@ type ScriptedCall struct {
 // process: callers Seed each command name with the Result/error it should
 // return, and every call is recorded in arrival order for later assertion. It
 // matches on command name (the args are recorded for assertion but not used for
-// matching), which is sufficient for the engine's scripted-tool tests. It is safe
-// for concurrent use: each call records itself and consumes its outcome atomically,
-// so concurrent calls never share a SeedSequence entry.
+// matching), which is sufficient for the engine's scripted-tool tests; SeedCall
+// alone matches a whole argv, for a read whose place among a binary's calls varies
+// from run to run. It is safe for concurrent use: each call records itself and
+// consumes its outcome atomically, so concurrent calls never share a SeedSequence
+// entry.
 type FakeRunner struct {
 	mu          sync.Mutex
+	calls       map[string]ScriptedCall
 	scripts     map[string]scriptedResult
+	fallbacks   map[string]scriptedResult
 	sequences   map[string][]ScriptedCall
 	invocations []Invocation
 }
@@ -55,7 +60,9 @@ type FakeRunner struct {
 // NewFakeRunner returns an empty FakeRunner with no seeded commands.
 func NewFakeRunner() *FakeRunner {
 	return &FakeRunner{
+		calls:     make(map[string]ScriptedCall),
 		scripts:   make(map[string]scriptedResult),
+		fallbacks: make(map[string]scriptedResult),
 		sequences: make(map[string][]ScriptedCall),
 	}
 }
@@ -82,6 +89,29 @@ func (f *FakeRunner) SeedSequence(name string, calls ...ScriptedCall) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.sequences[name] = append(f.sequences[name], calls...)
+}
+
+// SeedCall registers the outcome of every call to name with exactly args, ahead of
+// any SeedSequence entry, which such a call never consumes: for a read some runs
+// make and others don't (a dry run resolves no provider), so a sequence scripted
+// for both stays in step.
+func (f *FakeRunner) SeedCall(name string, args []string, call ScriptedCall) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls[callKey(name, args)] = call
+}
+
+// SeedFallback registers the Result and error returned for a call to name that
+// nothing else scripts: no SeedSequence entry left and no Seed or SeedNotFound,
+// whichever order they were seeded in.
+func (f *FakeRunner) SeedFallback(name string, result Result, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fallbacks[name] = scriptedResult{result: result, err: err}
+}
+
+func callKey(name string, args []string) string {
+	return strings.Join(append([]string{name}, args...), "\x00")
 }
 
 // SeedNotFound registers name as a missing binary: future calls return an error
@@ -135,12 +165,15 @@ func (f *FakeRunner) record(inv Invocation) (Result, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.invocations = append(f.invocations, inv)
+	if call, ok := f.calls[callKey(inv.Name, inv.Args)]; ok {
+		return call.Result, call.Err
+	}
 	return f.outcome(inv.Name)
 }
 
 // outcome resolves the seeded Result/error for name: it consumes the next
 // SeedSequence entry first, then falls back to the name-keyed Seed/SeedNotFound
-// script, and surfaces an unseeded command as an error. It is the shared core of
+// script, then to SeedFallback's, and surfaces an unseeded command as an error. It is the shared core of
 // every recorded call so Run, RunWith, and RunInteractive script identically. The
 // caller holds f.mu.
 func (f *FakeRunner) outcome(name string) (Result, error) {
@@ -151,6 +184,9 @@ func (f *FakeRunner) outcome(name string) (Result, error) {
 	}
 
 	script, ok := f.scripts[name]
+	if !ok {
+		script, ok = f.fallbacks[name]
+	}
 	if !ok {
 		// Surface an unseeded command rather than returning a zero Result that
 		// could silently mask a missing test setup.
