@@ -81,6 +81,13 @@ type RailPresenter struct {
 	ticking *ticker
 	// suspended is the editor holding the terminal, asking a question waiting.
 	suspended, asking bool
+
+	// continued is the signal the process gets when the shell resumes it, which
+	// Continued answers until stopContinued stops it; nil watches for none.
+	continued     <-chan os.Signal
+	stopContinued func()
+	closing       sync.Once
+	closed        chan struct{}
 }
 
 // Compile-time proof the rail presenter satisfies the seam it renders.
@@ -128,6 +135,13 @@ func WithRailEcho(echo bool) RailOption {
 // run prints as it happens, as on a terminal too narrow for a region.
 func WithRailDumb(dumb bool) RailOption { return func(p *RailPresenter) { p.dumb = dumb } }
 
+// WithRailContinued sets the signal the process gets when the shell resumes it after
+// a stop, Ctrl-Z then fg, which the Rail answers with Continued; stop ends the signal
+// once the Rail is closed. Without it the Rail watches for none.
+func WithRailContinued(continued <-chan os.Signal, stop func()) RailOption {
+	return func(p *RailPresenter) { p.continued, p.stopContinued = continued, stop }
+}
+
 // WithRailClock sets the time a running stage's time is read from, the wall clock
 // without it.
 func WithRailClock(now func() time.Time) RailOption {
@@ -147,12 +161,43 @@ func NewRailPresenter(out io.Writer, opts ...RailOption) *RailPresenter {
 		region:           newLiveRegion(out),
 		run:              newRunModel(),
 		echoes:           isTerminal,
+		closed:           make(chan struct{}),
 	}
 	for _, opt := range opts {
 		opt(p)
 	}
 	p.echo = p.echoes(p.in)
+	if p.continued != nil {
+		go p.watchContinued()
+	}
 	return p
+}
+
+// watchContinued answers each resume with Continued until the Rail is closed.
+func (p *RailPresenter) watchContinued() {
+	for {
+		select {
+		case <-p.closed:
+			return
+		case <-p.continued:
+			p.Continued()
+		}
+	}
+}
+
+// Continued draws the run afresh once the shell has resumed the process: the shell
+// printed its own lines under the region while it was stopped, and left the cursor
+// below them, so the region is forgotten, never gone back over, and drawn again from
+// where the cursor is. The region's rows above the shell's lines stay, as the shell
+// left them. Where the editor holds the terminal or a question waits nothing is drawn
+// until what holds it is done.
+func (p *RailPresenter) Continued() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.region.Forget()
+	if !p.suspended && !p.asking && !p.run.closed {
+		p.redraw()
+	}
 }
 
 func isTerminal(in io.Reader) bool {
@@ -553,9 +598,16 @@ func landed(o Outcome) bool {
 }
 
 // Close ends the presenter's drawing: a run still open, one no RunFinished closed,
-// settles as a run that never landed, next settles last, and the spinner stops for
-// good. Whatever presents after it settles straight away.
+// settles as a run that never landed, next settles last, and the spinner and the
+// watch for the shell's resume stop for good. Whatever presents after it settles
+// straight away.
 func (p *RailPresenter) Close() {
+	p.closing.Do(func() {
+		close(p.closed)
+		if p.stopContinued != nil {
+			p.stopContinued()
+		}
+	})
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.run.open {

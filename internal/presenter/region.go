@@ -97,6 +97,10 @@ func (r *liveRegion) Ask(lines []string, rows int) {
 	r.write(b.String())
 }
 
+// Forget drops the region without going back over it, as where the shell printed
+// under it and moved the cursor on: the next Draw starts where the cursor is.
+func (r *liveRegion) Forget() { r.shown, r.up = false, 0 }
+
 // Released ends a typed read at the question Ask printed, the question and the line
 // staying as typed: a line the input closed on before an Enter gets the newline it
 // lacks, so what is drawn next starts on a row of its own.
