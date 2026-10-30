@@ -178,11 +178,13 @@ func TestRun_NarratesThroughRecordingPresenter(t *testing.T) {
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageStarted,   // diff running, quiet
 		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
+		presentertest.KindStageStarted,   // commit running, quiet
 		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
@@ -196,7 +198,7 @@ func TestRun_NarratesThroughRecordingPresenter(t *testing.T) {
 		}
 	}
 
-	msg, ok := rec.At(5)
+	msg, ok := rec.At(6)
 	if !ok {
 		t.Fatal("no ShowMessage event recorded")
 	}

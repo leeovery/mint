@@ -189,6 +189,7 @@ func TestRun_EditNonEmptySaveLoopsBack_NotSaveAsAccept(t *testing.T) {
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageStarted,   // diff running, quiet
 		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
@@ -198,6 +199,7 @@ func TestRun_EditNonEmptySaveLoopsBack_NotSaveAsAccept(t *testing.T) {
 		presentertest.KindResumeSpinner,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
+		presentertest.KindStageStarted,   // commit running, quiet
 		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
@@ -212,11 +214,11 @@ func TestRun_EditNonEmptySaveLoopsBack_NotSaveAsAccept(t *testing.T) {
 	}
 
 	// The first ShowMessage carries the generated body; the second carries the edit.
-	first, _ := rec.At(5)
+	first, _ := rec.At(6)
 	if first.ShowMessage.Body != generated {
 		t.Errorf("first ShowMessage body = %q, want the generated message %q", first.ShowMessage.Body, generated)
 	}
-	second, _ := rec.At(9)
+	second, _ := rec.At(10)
 	if second.ShowMessage.Body != edited {
 		t.Errorf("re-rendered ShowMessage body = %q, want the edited message %q", second.ShowMessage.Body, edited)
 	}
@@ -286,7 +288,7 @@ func TestRun_MultiLineEditedBodyPreservedThroughLoopBack(t *testing.T) {
 		t.Fatalf("Run returned unexpected error: %v", err)
 	}
 
-	second, _ := rec.At(9)
+	second, _ := rec.At(10)
 	if second.ShowMessage.Body != edited {
 		t.Errorf("re-rendered ShowMessage body = %q, want the multi-line edit intact %q", second.ShowMessage.Body, edited)
 	}

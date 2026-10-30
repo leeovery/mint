@@ -64,6 +64,7 @@ func TestRun_EditEmptySaveDiscardsEditReRendersWithPriorMessage(t *testing.T) {
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindShowPlan,       // the run's stages, quiet
+		presentertest.KindStageStarted,   // diff running, quiet
 		presentertest.KindStageSucceeded, // diff settled, quiet
 		presentertest.KindStageStarted,
 		presentertest.KindStageSucceeded,
@@ -73,6 +74,7 @@ func TestRun_EditEmptySaveDiscardsEditReRendersWithPriorMessage(t *testing.T) {
 		presentertest.KindResumeSpinner,
 		presentertest.KindShowMessage,
 		presentertest.KindPrompt,
+		presentertest.KindStageStarted,   // commit running, quiet
 		presentertest.KindStageSucceeded, // commit settled, quiet
 		presentertest.KindRunFinished,
 	}
