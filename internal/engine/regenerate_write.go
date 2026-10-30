@@ -448,9 +448,11 @@ func resetAndAbort(ctx context.Context, deps ReleaseDeps, start resetTarget, com
 //
 // A failed reset is not swallowed: it surfaces a manual-cleanup Warn naming the step
 // the user must run, and why: where HEAD has already left the commit, only the
-// commit's changes are left to drop.
+// commit's changes are left to drop. Where it never left it, the close names where
+// HEAD stands.
 func resetChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarget) {
-	moved, manual, output, err := resetTo(context.WithoutCancel(ctx), deps.Mutator, start)
+	ctx = context.WithoutCancel(ctx)
+	moved, manual, output, err := resetTo(ctx, deps.Mutator, start)
 	event := presenter.Unwind{Key: stageUnwind, Quiet: true}
 	if moved {
 		event.Undone = "reset the changelog commit"
@@ -463,7 +465,11 @@ func resetChangelogCommit(ctx context.Context, deps ReleaseDeps, start resetTarg
 		warnUnwindIncomplete(deps.Presenter, output, manual)
 	}
 	deps.Presenter.Unwound(event)
-	if err != nil {
+	switch {
+	case err != nil && !moved:
+		strandedAt(ctx, deps, "the changelog commit not reset", manualCleanup+" · "+nothingPushed)
+		return
+	case err != nil:
 		deps.run.Unwound(manualCleanup + " · " + nothingPushed)
 		return
 	}

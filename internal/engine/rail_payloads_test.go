@@ -961,6 +961,8 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 		name string
 		tail []runner.ScriptedCall
 		end  string
+		// at is the station the run closes at, where it isn't its start.
+		at string
 		// unwound is a run whose reset ran, which closes as unwound.
 		unwound bool
 	}{
@@ -976,9 +978,10 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 			unwound: true,
 		},
 		{
-			name:    "a rejected push whose reset fails needs cleaning up",
-			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure()},
-			end:     "manual cleanup required · nothing pushed",
+			name:    "a rejected push whose reset fails needs cleaning up, on the commit HEAD never left",
+			tail:    []runner.ScriptedCall{ScriptedOut(""), ScriptedOut(""), rejected, scriptedMutateFailure(), ScriptedOut("9f3e2a1c4b\nmain")},
+			at:      "main",
+			end:     "9f3e2a1 · the changelog commit not reset · manual cleanup required · nothing pushed",
 			unwound: true,
 		},
 	}
@@ -994,7 +997,11 @@ func TestRegenerateRun_Rail_AFailedRegenerateClosesSayingWhatItLeft(t *testing.T
 			if tt.unwound {
 				outcome = presenter.OutcomeUnwound
 			}
-			if want := (presenter.Station{Name: regenRunTag, Detail: tt.end}); fin.Outcome != outcome || fin.End != want {
+			at := regenRunTag
+			if tt.at != "" {
+				at = tt.at
+			}
+			if want := (presenter.Station{Name: at, Detail: tt.end}); fin.Outcome != outcome || fin.End != want {
 				t.Errorf("close = %v %+v, want %v %+v", fin.Outcome, fin.End, outcome, want)
 			}
 		})

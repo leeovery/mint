@@ -56,6 +56,22 @@ func TestClose_ARunThatStoppedShortClosesAtItsStartStationWithWhatItLeft(t *test
 			want:     presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "manual cleanup required · nothing pushed"}},
 		},
 		{
+			name: "a reset that never moved HEAD closes where HEAD stands",
+			stop: func(r *runclose.Run) {
+				r.StoppedAt("main")
+				r.Unwound("9f3e2a1 · 2 commits not reset · manual cleanup required · nothing pushed")
+			},
+			want: presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "main", Detail: "9f3e2a1 · 2 commits not reset · manual cleanup required · nothing pushed"}},
+		},
+		{
+			name: "a station git couldn't name keeps the start",
+			stop: func(r *runclose.Run) {
+				r.StoppedAt("")
+				r.Unwound("2 commits not reset · manual cleanup required · nothing pushed")
+			},
+			want: presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "v1.3.2", Detail: "2 commits not reset · manual cleanup required · nothing pushed"}},
+		},
+		{
 			name:     "a decline that left nothing changed nothing",
 			stop:     func(*runclose.Run) {},
 			declined: true,

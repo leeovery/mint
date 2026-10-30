@@ -36,12 +36,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"mint/internal/cmdline"
 	"mint/internal/config"
 	"mint/internal/fsutil"
 	"mint/internal/git"
+	"mint/internal/gitrepo"
 	"mint/internal/presenter"
 )
 
@@ -130,8 +132,9 @@ func (m *MadeState) recordWrite(file string, changed, created bool) {
 //   - reports each undone item, the kept answers commit and where the repo ended up
 //     via the Presenter's Unwound, the engine authoring every part, and tells the
 //     run's close what mint did and where HEAD stands (unwoundTo), so the run closes
-//     back at its start station saying so; with nothing to unwind it tells the close
-//     what the run left behind (leftBehind).
+//     back at its start station saying so, or, where its reset never moved HEAD, at
+//     the branch and commit HEAD stands on (strandedAt); with nothing to unwind it
+//     tells the close what the run left behind (leftBehind).
 //
 // With zero mutations (no tag, no commits, no write) it is a no-op: it emits NO
 // Unwound and issues NO git command. A reverted write alone emits no Unwound either.
@@ -170,9 +173,15 @@ func Unwind(ctx context.Context, deps ReleaseDeps, start StartState, made MadeSt
 		})
 		deps.Presenter.Unwound(event)
 		// HEAD is back on the starting commit once the reset ran, or, with only a tag to
-		// delete, when nothing but mint could have moved it.
+		// delete, when nothing but mint could have moved it; where the reset never moved
+		// it, it stands on mint's commits.
 		atStart := resetOK && (commitsReset || !made.hookRan)
-		deps.run.Unwound(unwoundTo(event, clean, atStart, made))
+		detail := unwoundTo(event, clean, atStart, made)
+		if commitsReset && !headMoved {
+			strandedAt(ctx, deps, commitsPhrase(made.Commits)+" not reset", detail)
+		} else {
+			deps.run.Unwound(detail)
+		}
 	} else {
 		deps.run.Left(leftBehind(editOK, made))
 	}
@@ -221,6 +230,21 @@ func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) stri
 		parts = append(parts, answersLeftInPlace)
 	}
 	return strings.Join(append(parts, nothingPushed), " · ")
+}
+
+// strandedAt tells the run's close that a recovery reset never moved HEAD off what mint
+// committed, notReset naming it: the close names the branch HEAD stands on and its
+// commit, read for display, in place of the start station HEAD never got back to, then
+// notReset and detail, the rest of what it states. A HEAD git can't read leaves the
+// start station, notReset saying how far HEAD is past it.
+func strandedAt(ctx context.Context, deps ReleaseDeps, notReset, detail string) {
+	head := gitrepo.ResolveHead(ctx, deps.Runner)
+	deps.run.StoppedAt(head.Branch)
+	parts := []string{notReset, detail}
+	if head.ShortSHA != "" {
+		parts = slices.Insert(parts, 0, head.ShortSHA)
+	}
+	deps.run.Unwound(strings.Join(parts, " · "))
 }
 
 // leftBehind is what a release that stopped short with nothing to unwind left

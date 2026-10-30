@@ -200,10 +200,11 @@ func TestRelease_AStoppedReleaseClosesClaimingOnlyWhatMintDid(t *testing.T) {
 			git: [][]runner.ScriptedCall{{
 				dirtyAfterHook, ScriptedOut(""), ScriptedOut(""), // status, add -A, artifact commit
 				ScriptedOut(""), gitFailing(commitStderr), // add CHANGELOG.md, commit
-				scriptedMutateFailure(), // unwind: reset --hard
+				scriptedMutateFailure(),         // unwind: reset --hard
+				ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands
 			}},
 			outcome: presenter.OutcomeUnwound,
-			detail:  "manual cleanup required · nothing pushed",
+			detail:  "9f3e2a1 · 1 commit not reset · manual cleanup required · nothing pushed",
 		},
 	}
 	for _, tt := range tests {

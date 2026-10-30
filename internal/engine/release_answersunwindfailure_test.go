@@ -265,8 +265,11 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 			if reset == -1 {
 				t.Fatalf("no reset to the starting commit; got %v", commandLines(a.f.Invocations()))
 			}
-			if after := a.f.Invocations()[reset+1:]; len(after) != 0 {
-				t.Errorf("after the failed reset = %q, want no re-commit", commandLines(after))
+			// Only the close's reads of where HEAD stands follow the failed reset.
+			for _, line := range commandLines(a.f.Invocations()[reset+1:]) {
+				if !strings.HasPrefix(line, "git rev-parse HEAD --abbrev-ref HEAD") && !strings.HasPrefix(line, "git symbolic-ref") {
+					t.Errorf("after the failed reset ran %q, want no re-commit", line)
+				}
 			}
 		})
 	}

@@ -40,7 +40,10 @@ type Run struct {
 	// wrote is what the run wrote that its close names first, "" for nothing, and left
 	// what a run that stopped short left behind besides, "" for nothing.
 	wrote, left string
-	deferred    []func()
+	// at is the station a run that stopped short closes at in place of its start, ""
+	// for the start.
+	at       string
+	deferred []func()
 }
 
 // Begin starts timing, by now, a run whose events go to p.
@@ -95,6 +98,16 @@ func (r *Run) Unwound(detail string) {
 		return
 	}
 	r.unwound, r.left = true, detail
+}
+
+// StoppedAt names the station a run that stops short closes at, in place of its
+// start station, where HEAD never got back there: the branch a failed recovery reset
+// left it on. An empty name keeps the start station.
+func (r *Run) StoppedAt(name string) {
+	if r == nil {
+		return
+	}
+	r.at = name
 }
 
 // Left records what a run that stops short without an unwind leaves behind, the
@@ -166,6 +179,10 @@ func (r *Run) stopped(declined bool) presenter.RunResult {
 	if detail == "" {
 		detail = nothingChanged
 	}
-	res.End = presenter.Station{Name: r.info.Start.Name, Detail: detail}
+	name := r.info.Start.Name
+	if r.at != "" {
+		name = r.at
+	}
+	res.End = presenter.Station{Name: name, Detail: detail}
 	return res
 }

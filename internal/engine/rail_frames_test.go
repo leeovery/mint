@@ -364,6 +364,7 @@ var railRuns = map[string]railRun{
 			gitRejected(pushRejectedStderr), // push --atomic origin HEAD v1.3.0
 			ScriptedOut(""),                 // unwind: tag -d v1.3.0
 			gitFailing(resetStderr),         // unwind: reset --hard startsha
+			ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands, never reset
 		)
 		return w.release(t, nil)
 	}},

@@ -17,7 +17,7 @@
  │                deleted tag v1.3.0
  │                │ fatal: Could not reset index file to revision 'startsha'.
  │
- ◇  v1.2.3        manual cleanup required · nothing pushed                                      4.9s
+ ◇  main          9f3e2a1 · 1 commit not reset · manual cleanup required · nothing pushed       4.9s
 
  next
    Reset HEAD back to startsha:
