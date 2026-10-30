@@ -5,7 +5,7 @@ notes: generated (0.7s)
 --- release notes v1.0.0 ---
 Initial release.
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 publish skipped: WARN - provider could not be resolved; the release surface was not written
 mint: regenerating pigeon v1.1.0
 plan: source fresh; release v1.1.0
@@ -57,7 +57,7 @@ Deliveries are batched per endpoint now.
 - Batched delivery change 40.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 publish skipped: WARN - provider could not be resolved; the release surface was not written
 mint: regenerating pigeon v1.2.0
 plan: source fresh; release v1.2.0
@@ -67,7 +67,7 @@ notes: generated (0.7s)
 What changed in v1.2.0, in a line.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 publish skipped: WARN - provider could not be resolved; the release surface was not written
 done: pigeon 3 regenerated
 --- stderr ---

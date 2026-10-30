@@ -38,14 +38,28 @@ func TestEachStateDrawsItsOwnMarkWithNoColour(t *testing.T) {
 		{
 			name: "a question",
 			item: rail.Question{Text: "Commit this message?", Choices: []rail.Choice{{Key: "y", Action: "commit"}, {Key: "n", Action: "abort"}}},
-			want: []string{" ?  Commit this message?   y commit   n abort"},
+			want: []string{" ?  Commit this message?", " ┆  y commit   n abort"},
 		},
 		{
-			name: "a question about a glob",
-			item: rail.Question{Name: "docs/specs/**", Text: "Exclude it from the notes?", Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
-			want: []string{" ?  docs/specs/** Exclude it from the notes?   e exclude   k keep"},
+			name: "a question's default key, a capital",
+			item: rail.Question{Text: "Commit this message?", Choices: []rail.Choice{{Key: "y", Action: "commit", Default: true}, {Key: "n", Action: "abort"}}},
+			want: []string{" ?  Commit this message?", " ┆  Y commit   n abort"},
 		},
-		{name: "a dry run's preview of a question", item: rail.Question{Text: "Release with these notes?"}, want: []string{" ?  Release with these notes?"}},
+		{
+			name: "a question's default word, marked after its action",
+			item: rail.Question{Text: "Source?", Choices: []rail.Choice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body", Default: true}}},
+			want: []string{" ?  Source?", " ┆  fresh re-diff + AI   tag tag annotation body (default)"},
+		},
+		{
+			name: "a dry run's preview of a question",
+			item: rail.Question{Text: "Release with these notes?", Tail: "skipped (dry run)"},
+			want: []string{" ?  Release with these notes? · skipped (dry run)"},
+		},
+		{
+			name: "a dry run's preview of a question under a node",
+			item: rail.Question{Under: true, Text: "Exclude docs/ from the notes?", About: "documentation · 1 file, 176 B", Tail: "skipped (dry run)"},
+			want: []string{" │                ? Exclude docs/ from the notes?", " │                  documentation · 1 file, 176 B · skipped (dry run)"},
+		},
 		{name: "the point of no return ahead", item: rail.Rule{}, want: []string{" ┿━━ point of no return " + strings.Repeat("━", 76)}},
 		{name: "the point of no return crossed", item: rail.Rule{Crossed: true}, want: []string{" ┿━━ point of no return " + strings.Repeat("━", 76)}},
 		{
@@ -129,6 +143,23 @@ func TestTheRailBetweenItemsSaysHowFarTheRunHasCome(t *testing.T) {
 			name:  "the rail around a body, and the question under it",
 			items: []rail.Item{done, rail.Body{Text: "notes"}, rail.Question{Text: "Use these notes?"}, toCome},
 			want:  []string{" ●  record        CHANGELOG.md", " │", " │    notes", " │", " ?  Use these notes?", " ┆", " ○  push"},
+		},
+		{
+			name: "solid down a question under a node, dotted below it",
+			items: []rail.Item{
+				rail.Node{Name: "check", Detail: "2 flagged", Lines: []rail.Hang{{Kind: rail.Note, Text: "demo/ excluded · demo tapes"}}},
+				rail.Question{Under: true, Text: "Exclude design/ from the notes?", About: "design documents · 1 file, 26 kB", Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
+				toCome,
+			},
+			want: []string{
+				" ●  check         2 flagged",
+				" │                demo/ excluded · demo tapes",
+				" │                ? Exclude design/ from the notes?",
+				" │                  design documents · 1 file, 26 kB",
+				" │                  e exclude   k keep",
+				" ┆",
+				" ○  push",
+			},
 		},
 		{
 			name:  "a blank over next",

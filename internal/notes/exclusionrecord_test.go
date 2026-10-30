@@ -74,6 +74,39 @@ func TestExclusionCheck_AFailedRecordIsReturned(t *testing.T) {
 	}
 }
 
+// TestExclusionCheck_IsDoneOnceTheAnswersAreRecorded pins that the check is told
+// done, the notes free to go on, only after the last pause's answers are recorded,
+// and never where recording them failed.
+func TestExclusionCheck_IsDoneOnceTheAnswersAreRecorded(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name string
+		err  error
+		want []string
+	}{
+		{name: "recorded", want: []string{"checking", "checked", "record", "done"}},
+		{name: "not recorded", err: errors.New("disk full"), want: []string{"checking", "checked", "record"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			narration := &checkNarration{}
+			record := func(context.Context, notes.Answers) error {
+				narration.events = append(narration.events, "record")
+				return tt.err
+			}
+			check := notes.NewExclusionCheck(&recordingTransport{body: "docs/design/: design\n"}, nil, narration).
+				WithPauses(&recordedPauses{answer: notes.AnswerExclude}).
+				WithRecord(record)
+			if _, err := check.Check(t.Context(), sourceDiff+designDiff, config.DefaultMaxPromptBytes); !errors.Is(err, tt.err) {
+				t.Fatalf("Check error = %v, want %v", err, tt.err)
+			}
+			if !slices.Equal(narration.events, tt.want) {
+				t.Errorf("narration = %q, want %q", narration.events, tt.want)
+			}
+		})
+	}
+}
+
 func equalAnswers(a, b notes.Answers) bool {
 	return slices.Equal(a.Exclude, b.Exclude) && slices.Equal(a.Keep, b.Keep)
 }

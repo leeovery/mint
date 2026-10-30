@@ -216,15 +216,65 @@ func TestALiveNodesLineIsCutNotWrapped(t *testing.T) {
 	}
 }
 
-func TestAQuestionsKeysWrapWholeUnderIt(t *testing.T) {
+func TestAQuestionsKeysGoOnALineOfTheirOwnAndWrapWhole(t *testing.T) {
 	t.Parallel()
 	q := rail.Question{Text: "Release with these notes?", Choices: []rail.Choice{
-		{Key: "y", Action: "release"}, {Key: "n", Action: "abort"}, {Key: "e", Action: "edit"}, {Key: "r", Action: "regenerate"},
+		{Key: "y", Action: "release with these notes"}, {Key: "n", Action: "abort the release"},
+		{Key: "e", Action: "edit them"}, {Key: "r", Action: "regenerate them"},
 	}}
 	got := draw(t, 60, q)
 	want := []string{
-		" ?  Release with these notes?   y release   n abort   e edit",
-		" ┆  r regenerate",
+		" ?  Release with these notes?",
+		" ┆  y release with these notes   n abort the release",
+		" ┆  e edit them   r regenerate them",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the question draws\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestATypedLineIsReadAfterTheKeysOnTheLastLine(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		q    rail.Question
+		want []string
+	}{
+		{
+			name: "a question with keys",
+			q:    rail.Question{Text: "Source?", Typing: true, Choices: []rail.Choice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}}},
+			want: []string{" ?  Source?", " ┆  fresh re-diff + AI   tag tag annotation body ›  "},
+		},
+		{
+			name: "a question with none",
+			q:    rail.Question{Text: "Add one-time context:", Typing: true},
+			want: []string{" ?  Add one-time context: ›  "},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := draw(t, 100, tt.q); !slices.Equal(got, tt.want) {
+				t.Errorf("the question draws\n%q\nwant\n%q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAQuestionUnderANodeWrapsIndentedUnderItsMark(t *testing.T) {
+	t.Parallel()
+	q := rail.Question{
+		Under: true, Text: "Exclude docs/specs/archive/** from the release notes?",
+		About:   "design documents and the plans written before them · 6 files, 48 kB",
+		Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}},
+	}
+	got := draw(t, 70, q)
+	want := []string{
+		" │                ? Exclude docs/specs/archive/** from the release ",
+		" │                  notes?",
+		" │                  design documents and the plans written before ",
+		" │                  them · 6 files, 48 kB",
+		" │                  e exclude   k keep",
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("the question draws\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -268,7 +318,8 @@ func longRegion() rail.Run {
 		Region: []rail.Live{
 			rail.Node{Name: "check", Detail: long, Time: "6.2s", Lines: []rail.Hang{{Kind: rail.Note, Text: long}}},
 			rail.Body{Text: long + "\n\n" + notesBody},
-			rail.Question{Name: "docs/specs/**", Text: "Exclude it from the notes? " + long, Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
+			rail.Question{Under: true, Text: "Exclude docs/specs/** from the notes? " + long, About: long, Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep"}}},
+			rail.Question{Text: "Release with these notes? " + long, Choices: []rail.Choice{{Key: "y", Action: "release"}, {Key: "n", Action: "abort"}}},
 			rail.Node{State: rail.ToCome, Name: "push", Detail: long},
 			rail.Station{Kind: rail.Pending, Name: "v1.4.0"},
 		},

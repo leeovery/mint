@@ -51,6 +51,8 @@ func waitFor(t *testing.T, out *syncedBuffer, text string) {
 func TestTypedAhead_WhatWasTypedBeforeTheQuestionNeverAnswersIt(t *testing.T) {
 	t.Parallel()
 	source := presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}}, "fresh")
+	// Two words alike in their first letter, so the Rail reads a typed word.
+	alike := presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "file", Action: "a notes file"}}, "fresh")
 	rail := func(out io.Writer, tty io.Reader) presenter.Presenter {
 		return presenter.NewRailPresenter(out,
 			presenter.WithRailInput(tty),
@@ -79,7 +81,8 @@ func TestTypedAhead_WhatWasTypedBeforeTheQuestionNeverAnswersIt(t *testing.T) {
 		want   string
 	}{
 		{name: "the rail's keypress", build: rail, ask: prompt(reviewGate()), asked: "Release with these notes?", ahead: "\r", answer: "n", want: "n"},
-		{name: "the rail's typed choice", build: rail, ask: prompt(source), asked: "Source?", ahead: "tag\r", answer: "fresh\r", want: "fresh"},
+		{name: "the rail's lettered keypress", build: rail, ask: prompt(source), asked: "Source?", ahead: "\r", answer: "t", want: "tag"},
+		{name: "the rail's typed choice", build: rail, ask: prompt(alike), asked: "Source?", ahead: "file\r", answer: "fresh\r", want: "fresh"},
 		{name: "the rail's typed line", build: rail, ask: askLine, asked: "What should change?", ahead: "stale\r", answer: "shorter\r", want: "shorter"},
 		{name: "plain's choice", build: plain, ask: prompt(reviewGate()), asked: "Release with these notes?", ahead: "\r", answer: "n\r", want: "n"},
 		{name: "plain's line", build: plain, ask: askLine, asked: "What should change?", ahead: "stale\r", answer: "shorter\r", want: "shorter"},

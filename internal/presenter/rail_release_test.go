@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/muesli/termenv"
 
@@ -130,7 +131,10 @@ func unfinishedUnwind(r *railTerm) {
 		Message: "automatic recovery failed; manually reset HEAD back to 7c1e0b4",
 		Output:  "fatal: could not write the index\n",
 	})
-	r.Unwound(presenter.Unwind{Undone: "reset 1 commit", Kept: "kept the answers commit on the starting commit", Repo: "manual cleanup required", Key: "unwind"})
+	r.Unwound(presenter.Unwind{
+		Undone: "reset 1 commit", Kept: "kept your exclusion answers in .mint.toml",
+		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "manual cleanup required", Key: "unwind",
+	})
 	r.RunFinished(presenter.RunResult{Outcome: presenter.OutcomeUnwound, End: presenter.Station{Name: "main", Detail: "manual cleanup required · nothing pushed"}, Elapsed: secs(4.9)})
 }
 
@@ -144,7 +148,7 @@ func TestRail_AnUnwindThatCouldNotFinishIsAFailedUnwindNodeWithWhatItUndid(t *te
 		" ✗  unwind        automatic recovery failed; manually reset HEAD back to 7c1e0b4",
 		" │                reset 1 commit",
 		" │                │ fatal: could not write the index",
-		" │                kept the answers commit on the starting commit",
+		" │                kept your exclusion answers in .mint.toml",
 		" │",
 		row(" ◇  main          manual cleanup required · nothing pushed", "4.9s"),
 	}
@@ -176,7 +180,7 @@ func TestRail_WithNoRegionAnUnwindThatCouldNotFinishStillHangsWhatItUndidUnderIt
 			at := func(text string) int {
 				return slices.IndexFunc(screen, func(line string) bool { return strings.Contains(line, text) })
 			}
-			failed, undone, output, kept := at("✗  unwind"), at("reset 1 commit"), at("fatal: could not write the index"), at("kept the answers commit")
+			failed, undone, output, kept := at("✗  unwind"), at("reset 1 commit"), at("fatal: could not write the index"), at("kept your exclusion answers")
 			if failed == -1 || failed >= undone || undone >= output || output >= kept {
 				t.Errorf("the terminal shows\n%s\nwant the failed unwind, then what it undid, the step's output and what it kept, in that order", strings.Join(screen, "\n"))
 			}
@@ -204,6 +208,30 @@ func TestRail_AnExclusionSuggestionsMoveSaysWhichTableOfWhichFileItGoesUnder(t *
 	}
 	if got := screen[len(screen)-2:]; !slices.Equal(got, want) {
 		t.Errorf("next ends\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestRail_AStagesClockStandsStillWhileAQuestionWaits pins that no node's time
+// counts a wait on an answer: the notes' clock stands while the cached-notes
+// question, asked as they run, waits, and goes on from there.
+func TestRail_AStagesClockStandsStillWhileAQuestionWaits(t *testing.T) {
+	t.Parallel()
+	in := answers("r\n")
+	r := newRailTerm(t, 80, 24, in)
+	r.RunStarted(releaseStarted(false))
+	r.StageStarted(notesStarted())
+	r.clock.Advance(secs(2.1))
+	in.asked = func(int) { r.clock.Advance(5 * time.Minute) }
+	r.SuspendSpinner()
+	if _, err := r.Prompt(cacheGate()); err != nil {
+		t.Fatal(err)
+	}
+	r.ResumeSpinner()
+	r.clock.Advance(secs(1))
+	r.ticks.tick(t)
+
+	if got, want := r.screen(t)[4], row(" ⠇  notes         writing the notes… · regenerate", "3s"); got != want {
+		t.Errorf("the running node reads %q, want its time without the wait %q", got, want)
 	}
 }
 

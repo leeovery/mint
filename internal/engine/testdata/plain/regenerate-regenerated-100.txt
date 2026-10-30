@@ -12,7 +12,7 @@ Webhooks retry on their own now, so a flaky endpoint no longer drops events.
 - Signing secrets with a trailing newline are accepted again.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 Add one-time context for regeneration (optional):: --- release notes v1.4.0 ---
 Webhooks now retry failed deliveries for up to an hour.
 
@@ -20,5 +20,5 @@ Webhooks now retry failed deliveries for up to an hour.
 - Backoff retries for failed webhook deliveries.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 --- stderr ---

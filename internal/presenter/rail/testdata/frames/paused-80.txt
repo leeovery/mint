@@ -1,0 +1,23 @@
+ mint ─ release                                           ~/Code/pigeon · v0.1.2
+
+ ◇  v1.3.2        main @ 7c1e0b4
+ │
+ ●  version       v1.4.0 (minor bump)
+ ●  preflight     tree clean · on main · v1.4.0 free · in sync with origin
+ ●  pre_tag       npm ci && npm run build                                   4.1s
+ │                committed dist/ (3 files) as chore(release): pre-tag artifacts
+ ●  check         2 flagged                                                 6.2s
+ │                docs/specs/** excluded · design documents
+ │                ? Exclude fixtures/ from the notes?
+ │                  test fixtures · 14 files, 212 kB
+ │                  e exclude   K keep
+ ┆
+ ○  notes         written by the AI
+ ○  record        CHANGELOG.md · package.json
+ ┆
+ ┿━━ point of no return ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ○  push          main + v1.4.0 → origin, atomic
+ ○  publish       GitHub release
+ ○  post_release  ./scripts/notify.sh
+ ┆
+ ◇  v1.4.0

@@ -33,6 +33,9 @@ type notesStage struct {
 	fallbackCause error
 	// suggestions are what the exclusion check reported on an unattended run.
 	suggestions []presenter.ExclusionSuggestion
+	// previews is an attended dry run's check, which shows each suggestion's question
+	// where a real run asks it, each saying it isn't asked.
+	previews bool
 }
 
 var (
@@ -69,8 +72,8 @@ func (s *notesStage) Checking() {
 }
 
 // Checked narrates the check's call ending with what it found: nothing to leave out,
-// or how many suggestions the run goes on to ask about or, not asked, report, each
-// pause's answer hanging under it as it comes. An unusable call's warning, next, ends
+// or how many suggestions the run goes on to ask about, preview or, not asked, report,
+// each pause's answer hanging under it as it comes. An unusable call's warning, next, ends
 // the check in place of a success; a cancelled one states nothing.
 func (s *notesStage) Checked(result notes.CheckResult) {
 	s.checkSettled = true
@@ -81,19 +84,25 @@ func (s *notesStage) Checked(result notes.CheckResult) {
 	case result.Outcome == notes.CheckUnusable:
 		check.Failed = true
 	case result.Flagged > 0:
-		check.Detail = flaggedDetail(result)
+		check.Detail = flaggedDetail(result, s.previews)
 	}
 	s.p.NotesChecked(check)
 }
 
 // flaggedDetail is how many suggestions the check flagged, and whether they go
-// unasked.
-func flaggedDetail(result notes.CheckResult) string {
+// unasked, which a preview's questions say for themselves.
+func flaggedDetail(result notes.CheckResult, previews bool) string {
 	detail := fmt.Sprintf("%d flagged", result.Flagged)
-	if !result.Asked {
+	if !result.Asked && !previews {
 		detail += ", not asked"
 	}
 	return detail
+}
+
+// CheckDone starts the notes running again, timed from now: the check ran inside
+// them, and its call and the answers to its questions are no part of their time.
+func (s *notesStage) CheckDone() {
+	s.stage.restart(notesStageText)
 }
 
 // AllKept settles the check's node quietly: the keep list covers every changed path.

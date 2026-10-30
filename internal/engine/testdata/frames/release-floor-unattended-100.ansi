@@ -6,10 +6,10 @@
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
  ●  check         1 flagged, not asked                                                          0.7s
  !  docs/design/  flagged, not asked: design documents · 1 file, 176 B
- ✗  notes         AI call failed                                                                2.1s
+ ✗  notes         AI call failed                                                                0.7s
  │                │ Not logged in · Please run /login
  │
- ◇  v1.2.3        nothing changed                                                               3.5s
+ ◇  v1.2.3        nothing changed                                                               4.2s
 
  next
    Write the notes to a file, then release with it:

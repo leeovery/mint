@@ -61,8 +61,8 @@ func (e waitingEditor) Edit(ctx context.Context, current string) (body string, e
 
 // awaiting is deps whose questions and editor are timed as waits the stage s leaves
 // out of its time, for the questions asked while it goes on: a --all version's
-// review, which its node goes on past to write the release. A failure on s it
-// narrates untimed is timed by s.
+// review, which its node goes on past to write the release, and the cached notes a
+// release's notes stage asks about. A failure on s it narrates untimed is timed by s.
 func (s *blockingStage) awaiting(deps ReleaseDeps) ReleaseDeps {
 	if s.waits == nil {
 		s.waits = &answerWaits{now: s.now}

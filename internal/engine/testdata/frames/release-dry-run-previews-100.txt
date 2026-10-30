@@ -4,21 +4,24 @@
  │
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
- ●  check         3 flagged, not asked                                                          0.7s
- ?  Exclude docs/design/ from the notes? (design documents; 1 file, 176 B)
- ?  Exclude docs/ from the notes? (documentation; 1 file, 176 B)
- ?  Exclude src/ from the notes? (source code; 1 file, 179 B)
- ●  notes         generated                                                                     2.1s
+ ●  check         3 flagged                                                                     0.7s
+ │                ? Exclude docs/design/ from the notes?
+ │                  design documents · 1 file, 176 B · skipped (dry run)
+ │                ? Exclude docs/ from the notes?
+ │                  documentation · 1 file, 176 B · skipped (dry run)
+ │                ? Exclude src/ from the notes?
+ │                  source code · 1 file, 179 B · skipped (dry run)
+ ●  notes         generated                                                                     0.7s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
  │
- │    ## ✨ Added
- │    - Failed webhook deliveries retry with backoff for up to an hour.
+ │    ✨ Added
+ │    • Failed webhook deliveries retry with backoff for up to an hour.
  │
- │    ## 🐛 Fixed
- │    - Signing secrets with a trailing newline are accepted again.
+ │    🐛 Fixed
+ │    • Signing secrets with a trailing newline are accepted again.
  │
- ?  Release with these notes?
+ ?  Release with these notes? · skipped (dry run)
  ┆
  ○  record        CHANGELOG.md
  ┆
@@ -26,4 +29,4 @@
  ○  push          main + v1.3.0 → origin, atomic
  ○  publish       provider release
  ┆
- ◇  v1.3.0        dry run · nothing changed                                                     3.5s
+ ◇  v1.3.0        dry run · nothing changed                                                     4.2s

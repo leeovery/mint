@@ -197,7 +197,14 @@ const (
 	manualCleanup      = "manual cleanup required"
 	nothingCommitted   = "nothing committed"
 	nothingPushed      = "nothing pushed"
-	answersLeftInPlace = "the exclusion answers kept in " + config.FileName
+	answersLeftInPlace = "your exclusion answers kept in " + config.FileName
+	// answersKept is what the unwind says it kept of the exclusion answers: plain's
+	// line where it re-committed them, the rail's row too where git ignores the
+	// .mint.toml that holds them.
+	answersKept = "kept your exclusion answers in " + config.FileName
+	// answersRecommitted is the one commit past the start the close names where the
+	// unwind re-committed the answers.
+	answersRecommitted = "+ 1 commit (the " + config.FileName + " answers)"
 	notCommitted       = " written, not committed"
 	leftUntracked      = " left untracked"
 	preTagStaged       = "pre_tag's changes staged, not committed"
@@ -207,16 +214,17 @@ const (
 	noClaim = nothingCommitted + " · " + nothingPushed
 )
 
-// unwoundTo is where an unwind left the repo, as the run's close states it: on the
-// kept answers commit when it re-committed them, else back where it started when
-// atStart says HEAD is, then that recovery needs a hand when it does, the files the
-// record stage created and the reset left untracked, and the answers an ignored
-// .mint.toml keeps. An unwind runs only before the push, so it always pushed nothing.
+// unwoundTo is where an unwind left the repo, as the run's close states it: one
+// commit past the start, the answers', when it re-committed them, else back where it
+// started when atStart says HEAD is, then that recovery needs a hand when it does and
+// the files the record stage created and the reset left untracked. That it kept the
+// answers is the unwind's row's to say, not the close's. An unwind runs only before
+// the push, so it always pushed nothing.
 func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) string {
 	var parts []string
 	switch {
 	case event.Kept != "":
-		parts = append(parts, event.Kept)
+		parts = append(parts, answersRecommitted)
 	case atStart:
 		parts = append(parts, backWhereItStarted)
 	}
@@ -225,9 +233,6 @@ func unwoundTo(event presenter.Unwind, clean, atStart bool, made MadeState) stri
 	}
 	if len(made.created) > 0 {
 		parts = append(parts, strings.Join(made.created, " + ")+leftUntracked)
-	}
-	if made.answersLeft {
-		parts = append(parts, answersLeftInPlace)
 	}
 	return strings.Join(append(parts, nothingPushed), " · ")
 }
@@ -311,7 +316,7 @@ func answersRestoreStep(ctx context.Context, deps ReleaseDeps, made MadeState) [
 	if res, err := deps.Mutator.Run(ctx, "git", "rev-parse", "HEAD"+below); err == nil && strings.TrimSpace(res.Stdout) != "" {
 		commit = strings.TrimSpace(res.Stdout)
 	}
-	return []manualStep{{does: "restore the exclusion answers commit on top", commands: []string{"git cherry-pick " + commit}}}
+	return []manualStep{{does: "put your exclusion answers back on top", commands: []string{"git cherry-pick " + commit}}}
 }
 
 // deleteTagIfMade deletes the local tag mint created this run, returning whether a
@@ -468,8 +473,8 @@ type unwindOutcome struct {
 	clean          bool
 }
 
-// unwindEvent builds the Unwound payload: what the unwind undid, the kept answers
-// commit when it was re-committed, and where it left the repo. Only a clean outcome
+// unwindEvent builds the Unwound payload: what the unwind undid, the exclusion
+// answers it kept, and where it left the repo. Only a clean outcome
 // reads "repo clean", so the narration never calls the repo clean after a failed step.
 // Each part is ASCII, so the plain presenter's joined line stays byte-pure, and none
 // leads with a "Reverted:"-style prefix — the presenter prefixes the line with
@@ -477,7 +482,10 @@ type unwindOutcome struct {
 func unwindEvent(tag string, made MadeState, outcome unwindOutcome) presenter.Unwind {
 	event := presenter.Unwind{Undone: undone(tag, made.Commits, outcome), Repo: repoState(outcome.clean), Key: stageUnwind}
 	if outcome.answersKept {
-		event.Kept = "kept the answers commit on the starting commit"
+		event.Kept = answersKept
+	}
+	if outcome.answersKept || made.answersLeft {
+		event.KeptRow = answersKept
 	}
 	return event
 }

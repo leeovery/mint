@@ -69,7 +69,7 @@ func pauseGate() presenter.Gate {
 	return presenter.Gate{
 		Question: "Exclude docs/specs/** from the notes? (design documents; 6 files, 48 kB)",
 		Subject:  "docs/specs/**", AcceptEcho: "kept",
-		Choices: []presenter.GateChoice{{Key: presenter.ChoiceExclude, Action: "exclude"}, {Key: presenter.ChoiceKeep, Action: "keep"}},
+		Choices: []presenter.GateChoice{{Key: presenter.ChoiceExclude, Action: "exclude", Answered: "excluded"}, {Key: presenter.ChoiceKeep, Action: "keep"}},
 		Default: presenter.ChoiceKeep, Stage: "check", Suggestion: &s,
 	}
 }
@@ -92,6 +92,14 @@ func cacheGate() presenter.Gate {
 
 func notesStarted() presenter.StageStart {
 	return presenter.StageStart{Name: "notes", Key: "notes", Blocking: true, Text: "writing the notes…"}
+}
+
+// notesRestarted is the notes starting again, quietly, as the engine starts them
+// once the exclusion check and its questions are done.
+func notesRestarted() presenter.StageStart {
+	s := notesStarted()
+	s.Quiet = true
+	return s
 }
 
 // preparedRelease drives a release to its notes: the version asked, preflight, the
@@ -127,14 +135,16 @@ func paused(p presenter.Presenter) {
 
 // tour is a release through the exclusion pause and the review to its end station,
 // its answers e at the pause and y at each other question. running is called with
-// the notes written in parts, three of four done, 38.56s after they started.
+// the notes written in parts, three of four done, 38.56s after they started again,
+// the check done.
 func tour(p presenter.Presenter, clock *fakeClock, running func()) {
 	preparedRelease(p, clock, "1 flagged")
 	paused(p)
+	p.StageStarted(notesRestarted())
 	for done := range 4 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
-	clock.Advance(secs(38.56) - secs(6.2))
+	clock.Advance(secs(38.56))
 	running()
 	p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: 4})
 	p.NotesMerging(presenter.NotesMerge{Parts: 4})
@@ -151,6 +161,7 @@ func tour(p presenter.Presenter, clock *fakeClock, running func()) {
 func cachedRelease(p presenter.Presenter, clock *fakeClock) {
 	preparedRelease(p, clock, "1 flagged")
 	paused(p)
+	p.StageStarted(notesRestarted())
 	p.SuspendSpinner()
 	_, _ = p.Prompt(cacheGate())
 	p.ResumeSpinner()
@@ -180,6 +191,7 @@ func shipped(p presenter.Presenter) {
 // asked about.
 func failedRelease(p presenter.Presenter, clock *fakeClock) {
 	preparedRelease(p, clock, "1 flagged, not asked")
+	p.StageStarted(notesRestarted())
 	for done := range 3 {
 		p.NotesProgress(presenter.NotesProgress{PromptBytes: 412_000, Parts: 4, Done: done})
 	}
@@ -214,12 +226,16 @@ func dryRun(p presenter.Presenter, clock *fakeClock) {
 	p.StageStarted(notesStarted())
 	p.NotesChecking(presenter.NotesCheck{Key: "check"})
 	clock.Advance(secs(6.2))
-	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: "1 flagged, not asked"})
+	p.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2), Detail: "1 flagged"})
 	p.SuspendSpinner()
 	p.PreviewGate(pauseGate())
 	p.ResumeSpinner()
+	p.StageStarted(notesRestarted())
 	p.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
 	p.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
+	review := reviewGate()
+	review.Quiet = true
+	p.PreviewGate(review)
 	p.RunFinished(presenter.RunResult{
 		Project: "pigeon", Version: "1.4.0", Outcome: presenter.OutcomeDryRun,
 		End: presenter.Station{Name: "v1.4.0", Detail: "dry run · nothing changed"}, Elapsed: secs(61),

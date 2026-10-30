@@ -15,6 +15,7 @@ import (
 func TestFrames(t *testing.T) {
 	t.Parallel()
 	screens := map[string]func() rail.Run{
+		"paused":  paused,
 		"running": running,
 		"review":  review,
 		"done":    done,

@@ -123,6 +123,7 @@ func TestRailPresenter_ExclusionAnswersRecorded_HangsWhereTheAnswersWent(t *test
 			r.SuspendSpinner()
 			r.ExclusionAnswersRecorded(a)
 			r.ResumeSpinner()
+			r.StageStarted(notesRestarted())
 
 			screen := r.screen(t)
 			if got := hungUnder(screen, " ●  check ", " ⠋  notes "); !reflect.DeepEqual(got, tt.want) {

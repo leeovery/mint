@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -59,14 +60,26 @@ func seedClaudeAfterCheck(f *runner.FakeRunner, calls ...runner.ScriptedCall) {
 // plainCheckLine is the line plain mode prints for the exclusion check's call.
 const plainCheckLine = "notes: checking for files that don't belong in the notes"
 
-// afterCheck fails unless stage opens with the exclusion check's call, and returns the
-// rest of the stage.
+// afterCheck fails unless stage opens with the exclusion check's call and the notes
+// start again, quietly, once the check is done, and returns the rest of the stage
+// without that start.
 func afterCheck(t *testing.T, stage []presentertest.Event) []presentertest.Event {
 	t.Helper()
 	if len(stage) < 2 || stage[0].Kind != presentertest.KindNotesChecking || stage[1].Kind != presentertest.KindNotesChecked {
 		t.Fatalf("notes stage events = %v, want the exclusion check's call first", kindsOf(stage))
 	}
-	return stage[2:]
+	rest := stage[2:]
+	at := slices.IndexFunc(rest, isNotesRestart)
+	if at < 0 {
+		t.Fatalf("notes stage events = %v, want the notes started again once the check is done", kindsOf(stage))
+	}
+	return append(rest[:at:at], rest[at+1:]...)
+}
+
+// isNotesRestart is whether ev starts the notes again, quietly, as the exclusion
+// check ends.
+func isNotesRestart(ev presentertest.Event) bool {
+	return ev.Kind == presentertest.KindStageStarted && ev.StageStarted.Key == "notes" && ev.StageStarted.Quiet
 }
 
 // releaseNotesStage is the run's one notes stage after the exclusion check's call.

@@ -1,8 +1,10 @@
  mint ─ release regenerate                                                    ~/Code/pigeon · v0.1.2
 
- ?  Source?   fresh re-diff + AI   tag tag annotation body   release published release body ›
+ ?  Source?
+    F fresh (re-diff + AI)   t tag (tag annotation body)   r release (published release body) ›
  ●  source        fresh
- ?  Target?   release provider release   changelog CHANGELOG.md   both both ›
+ ?  Target?
+    R release (provider release)   c changelog (CHANGELOG.md)   b both ›
  ●  target        release
  ◇  v1.4.0        fresh → GitHub release
  │
@@ -10,13 +12,14 @@
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
  │
- │    ## ✨ Added
- │    - Failed webhook deliveries retry with backoff for up to an hour.
+ │    ✨ Added
+ │    • Failed webhook deliveries retry with backoff for up to an hour.
  │
- │    ## 🐛 Fixed
- │    - Signing secrets with a trailing newline are accepted again.
+ │    🐛 Fixed
+ │    • Signing secrets with a trailing newline are accepted again.
  │
- ?  Use these notes?   y accept   n abort   e edit   r regenerate › y
+ ?  Use these notes?
+ ┆  Y accept   n abort   e edit   r regenerate › y
  ●  review        accepted
  ●  release       GitHub release written
  │

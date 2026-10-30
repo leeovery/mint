@@ -417,6 +417,24 @@ var railRuns = map[string]railRun{
 		w.published(ScriptedOut(railURL + "\n"))
 		return w.release(t, nil)
 	}},
+	// The same pause answered exclude, then the review answered n: the unwind says
+	// once, on its row, that it kept the answers, and the close names their commit.
+	"release-answers-aborted-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ne\nn\n", false)
+		w.readGates(false)
+		w.f.SeedSequence("git", withAnswersCommit(append([]runner.ScriptedCall{
+			ScriptedOut(exportGoDiff + designDocDiff), // diff, the check asking about docs/design/
+			ScriptedOut(exportGoDiff),                 // diff, docs/design/ excluded
+		}, exportOnlyChangeMap...)...)...)
+		w.f.SeedSequence("claude", ScriptedOut(designDocAnswer), ScriptedOut(railNotes))
+		w.f.SeedSequence("git",
+			ScriptedOut(answersSHA+"\n"), // rev-parse HEAD, the answers commit
+			ScriptedOut(""),              // unwind: reset --hard startsha
+			ScriptedOut(""),              // unwind: -C root add .mint.toml
+			ScriptedOut(""),              // unwind: -C root commit -m
+		)
+		return w.release(t, nil)
+	}},
 	// A release under --autostash whose work won't go back cleanly once it is out.
 	"release-autostash-conflict-100": {run: func(t *testing.T) (string, error) {
 		w := newRailWorld(t, "", "", true)

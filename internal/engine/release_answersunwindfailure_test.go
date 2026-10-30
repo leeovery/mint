@@ -199,7 +199,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheReCommitCannotWriteTheAnswers_Warns
 				Key:     "unwind",
 				Row:     "automatic recovery failed",
 				Failed:  true,
-				Message: "automatic recovery failed; manually restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
+				Message: "automatic recovery failed; manually put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
 				Output:  "reading " + config.FileName + ": read " + path + ": is a directory",
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
@@ -256,7 +256,7 @@ func TestRelease_UnwindAfterAnswering_WhenTheResetFails_DoesNotReCommitAndNamesT
 				Row:    "automatic recovery failed",
 				Failed: true,
 				Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
-					"`), then restore the exclusion answers commit on top (`git cherry-pick " + answersSHA + "`)",
+					"`), then put your exclusion answers back on top (`git cherry-pick " + answersSHA + "`)",
 				Output: resetStderr,
 			}
 			assertUnwoundWithOneWarning(t, rec, err, want, tc.summary)
@@ -292,13 +292,13 @@ func TestRelease_UnwindAfterAnswering_WhenTheShaCannotBeRead_StillResetsAndNames
 		Row:    "automatic recovery failed",
 		Failed: true,
 		Message: "automatic recovery failed; manually reset HEAD back to " + startingSHA + " (`git reset --hard " + startingSHA +
-			"`), then restore the exclusion answers commit on top (`git cherry-pick ORIG_HEAD~1`)",
+			"`), then put your exclusion answers back on top (`git cherry-pick ORIG_HEAD~1`)",
 		Output: resetStderr,
 	}
 	assertUnwoundWithOneWarning(t, rec, err, want, "deleted tag "+minorTagV130+"; manual cleanup required")
 	assertManualSteps(t, rec,
 		presenter.NextMove{Lead: "Reset HEAD back to " + startingSHA + ":", Command: "git reset --hard " + startingSHA},
-		presenter.NextMove{Lead: "Restore the exclusion answers commit on top:", Command: "git cherry-pick ORIG_HEAD~1"},
+		presenter.NextMove{Lead: "Put your exclusion answers back on top:", Command: "git cherry-pick ORIG_HEAD~1"},
 	)
 	assertAnswersCommitReadFirst(t, a.f, "HEAD~1")
 }

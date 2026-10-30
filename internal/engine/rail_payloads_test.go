@@ -570,6 +570,9 @@ func TestRelease_Rail_ARejectedPushIsThePushNodeTimedAndTheRunGoesBackToItsStart
 	}
 }
 
+// TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart pins that the rail says
+// the answers were kept once, in plain words, on the unwind's row, and the close names
+// the one commit past the start they are, while plain keeps its sentence.
 func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 	t.Parallel()
 
@@ -582,7 +585,10 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 	_ = a.release(t.Context())
 
 	unwound := rec.Events[indexOfKind(rec, presentertest.KindUnwound)].Unwound
-	want := presenter.Unwind{Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit", Repo: "repo clean", Key: "unwind"}
+	want := presenter.Unwind{
+		Undone: "reset 2 commits", Kept: "kept your exclusion answers in .mint.toml",
+		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "repo clean", Key: "unwind",
+	}
 	if unwound != want {
 		t.Errorf("Unwound = %+v, want %+v", unwound, want)
 	}
@@ -590,8 +596,8 @@ func TestRelease_Rail_AnUnwindKeepingTheAnswersNamesThemApart(t *testing.T) {
 		t.Errorf("Text() = %q, want plain's sentence %q", unwound.Text(), keptSummary)
 	}
 	fin := closingEvent(t, rec)
-	if want := "kept the answers commit on the starting commit · nothing pushed"; fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != want {
-		t.Errorf("close = %v %q, want OutcomeUnwound %q: the kept answers named, not back where it started", fin.Outcome, fin.End.Detail, want)
+	if want := "+ 1 commit (the .mint.toml answers) · nothing pushed"; fin.Outcome != presenter.OutcomeUnwound || fin.End.Detail != want {
+		t.Errorf("close = %v %q, want OutcomeUnwound %q: the answers' commit named, not back where it started", fin.Outcome, fin.End.Detail, want)
 	}
 }
 
@@ -659,8 +665,8 @@ func TestRelease_Rail_TheCheckAndAFailedNotesStageAreTimedOnTheirOwnNodes(t *tes
 		t.Errorf("NotesChecking Key = %q, want check", checking.Key)
 	}
 	failure := onlyStageFailureEvent(t, rec)
-	if failure.Key != "notes" || failure.Elapsed < 2*transportDelay {
-		t.Errorf("notes failure = %+v, want the notes node timed from the stage's start", failure)
+	if failure.Key != "notes" || failure.Elapsed < transportDelay {
+		t.Errorf("notes failure = %+v, want the notes node timed at least %v", failure, transportDelay)
 	}
 	moves := nextMovesEvents(rec)
 	if len(moves) != 1 {

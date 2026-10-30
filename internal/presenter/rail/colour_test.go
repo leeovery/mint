@@ -106,10 +106,34 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
-			name: "a question: the question bold, each key bold in the accent",
+			name: "a question: the question bold, each key bold in the accent on a line of their own",
 			item: rail.Question{Text: "Use these notes?", Choices: []rail.Choice{{Key: "y", Action: "accept"}, {Key: "n", Action: "abort"}}},
 			want: func(a string) []string {
-				return []string{" " + acc(a, "?") + "  " + bld("Use these notes?") + "   " + accentBold(a, "y") + " accept   " + accentBold(a, "n") + " abort"}
+				return []string{
+					" " + acc(a, "?") + "  " + bld("Use these notes?"),
+					" " + dm("┆") + "  " + accentBold(a, "y") + " accept   " + accentBold(a, "n") + " abort",
+				}
+			},
+		},
+		{
+			name: "a default word: its mark dim",
+			item: rail.Question{Text: "Source?", Choices: []rail.Choice{{Key: "tag", Action: "tag body", Default: true}}},
+			want: func(a string) []string {
+				return []string{
+					" " + acc(a, "?") + "  " + bld("Source?"),
+					" " + dm("┆") + "  " + accentBold(a, "tag") + " tag body" + dm(" (default)"),
+				}
+			},
+		},
+		{
+			name: "a question under a node: the rail solid, its ? in the accent, the question bold, what it's about dim",
+			item: rail.Question{Under: true, Text: "Exclude docs/?", About: "design documents", Choices: []rail.Choice{{Key: "e", Action: "exclude"}}},
+			want: func(a string) []string {
+				return []string{
+					" " + acc(a, "│") + pad(16) + acc(a, "? ") + bld("Exclude docs/?"),
+					" " + acc(a, "│") + pad(18) + dm("design documents"),
+					" " + acc(a, "│") + pad(18) + accentBold(a, "e") + " exclude",
+				}
 			},
 		},
 		{

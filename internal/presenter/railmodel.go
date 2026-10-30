@@ -35,13 +35,14 @@ type part struct {
 	node *rail.Node
 	// plan is what a planned node will do, its detail while it is to come.
 	plan string
-	// doing is a running node's text, kept while the exclusion check holds it back.
-	doing string
 	// started is when the node began running: its spinner's frame counts from it,
 	// and, where timed, its time. worked is how long an ongoing node ran before it
-	// went on past its step, which its time goes on from when it runs again.
+	// went on past its step, which its time goes on from when it runs again. stopped
+	// is when a question opened while it ran: its clock stands there until the
+	// answer, and goes on from where it stood, so its time never counts the wait.
 	started time.Time
 	worked  time.Duration
+	stopped time.Time
 	timed   bool
 	// hidden is a node to come that a question asks about, drawn as the question.
 	hidden bool
@@ -78,10 +79,10 @@ type part struct {
 	// done, and over, done or not.
 	reached, crossed, ended bool
 	station                 rail.Station
-	text                    string
-	question                rail.Question
-	// about is the node an exclusion pause hangs its subject under while it asks.
-	about *part
+	// text is a body's, drawn as its Markdown reads where markdown is set.
+	text     string
+	markdown bool
+	question rail.Question
 }
 
 // live is the part as the rail draws it now: a running node at its spinner's frame,
@@ -93,18 +94,40 @@ func (pt *part) live(now time.Time) rail.Live {
 	case endPart:
 		return pt.station
 	case bodyPart:
-		return rail.Body{Text: pt.text}
+		return rail.Body{Text: pt.text, Markdown: pt.markdown}
 	case questionPart, previewPart:
 		return pt.question
 	}
 	n := *pt.node
 	if n.State == rail.Running {
+		if !pt.stopped.IsZero() {
+			now = pt.stopped
+		}
 		n.Frame = int(now.Sub(pt.started) / spinnerFrame)
 		if pt.timed {
 			n.Time = liveTime(now.Sub(pt.started))
 		}
 	}
 	return n
+}
+
+// stop stands the clock of each node running at now, a question open.
+func (m *runModel) stop(now time.Time) {
+	for _, pt := range m.parts {
+		if pt.running() {
+			pt.stopped = now
+		}
+	}
+}
+
+// restart sets each clock stop stood going again at now, from where it stood.
+func (m *runModel) restart(now time.Time) {
+	for _, pt := range m.parts {
+		if !pt.stopped.IsZero() {
+			pt.started = pt.started.Add(now.Sub(pt.stopped))
+			pt.stopped = time.Time{}
+		}
+	}
 }
 
 // still is the part as it prints the moment it shows where there is no region: a
@@ -191,8 +214,6 @@ type runModel struct {
 	// wentOn names those that settled ongoing, for the record of a question about one.
 	gone   map[string]bool
 	wentOn map[string]string
-	// held is the running node the exclusion check holds back while it runs.
-	held *part
 	// looping is a question's loop open: from a review's e until the next answer
 	// to any gate. asked is the stage that question asks about. loopWarned is a
 	// warning drawn while it was open, as an editor that wouldn't launch: the answer
@@ -490,20 +511,21 @@ func (m *runModel) hang(key string, h rail.Hang) {
 	m.touched = pt
 }
 
-// show shows text for review under the run's edge, in place of any body shown.
-func (m *runModel) show(text string) {
+// show shows text for review under the run's edge, in place of any body shown, drawn
+// as its Markdown reads where markdown is set.
+func (m *runModel) show(text string, markdown bool) {
 	if m.bodyOut {
 		if text != m.lastBody {
-			m.insert(&part{kind: bodyPart, text: text, out: true}, m.insertionPoint())
+			m.insert(&part{kind: bodyPart, text: text, markdown: markdown, out: true}, m.insertionPoint())
 			m.lastBody = text
 		}
 		return
 	}
 	if b := m.partOf(bodyPart); b != nil {
-		b.text = text
+		b.text, b.markdown = text, markdown
 		return
 	}
-	m.insert(&part{kind: bodyPart, text: text}, m.insertionPoint())
+	m.insert(&part{kind: bodyPart, text: text, markdown: markdown}, m.insertionPoint())
 }
 
 // rerun makes the node of the stage keyed key final where it goes on past the
@@ -665,9 +687,6 @@ func (m *runModel) settlePart(pt *part) {
 	if m.touched == pt {
 		m.touched = nil
 	}
-	if m.held == pt {
-		m.held = nil
-	}
 }
 
 func (m *runModel) settleItem(it rail.Item) {
@@ -686,7 +705,7 @@ func (m *runModel) finish(end rail.End, dryRun bool) {
 	}
 	m.next = append(m.next, append(m.moves, m.suggested...)...)
 	m.moves, m.suggested, m.looping, m.bodyOut, m.lastBody = nil, nil, false, false, ""
-	m.open, m.closed, m.touched, m.held, m.planned = false, true, nil, nil, map[string]string{}
+	m.open, m.closed, m.touched, m.planned = false, true, nil, map[string]string{}
 }
 
 // keep keeps move for next in list, the run's moves or its suggestions, while the run

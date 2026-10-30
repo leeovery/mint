@@ -55,6 +55,21 @@ func ahead() []rail.Live {
 	}
 }
 
+// paused is the release at the exclusion check's second question, its first
+// answered: the questions sit inside the check, and the notes wait to come.
+func paused() rail.Run {
+	items := prepared()
+	check := rail.Node{Name: "check", Detail: "2 flagged", Time: "6.2s", Lines: []rail.Hang{
+		{Kind: rail.Note, Text: "docs/specs/** excluded · design documents"},
+	}}
+	question := rail.Question{
+		Under: true, Text: "Exclude fixtures/ from the notes?", About: "test fixtures · 14 files, 212 kB",
+		Choices: []rail.Choice{{Key: "e", Action: "exclude"}, {Key: "k", Action: "keep", Default: true}},
+	}
+	notes := rail.Node{State: rail.ToCome, Name: "notes", Detail: "written by the AI"}
+	return rail.Run{Settled: items[:len(items)-1], Region: append([]rail.Live{check, question, notes}, ahead()...)}
+}
+
 func running() rail.Run {
 	notes := rail.Node{
 		State: rail.Running, Name: "notes", Time: "38s", Frame: 2,
@@ -68,9 +83,9 @@ func running() rail.Run {
 func review() rail.Run {
 	notes := rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"}
 	question := rail.Question{Text: "Release with these notes?", Choices: []rail.Choice{
-		{Key: "y", Action: "release"}, {Key: "n", Action: "abort"}, {Key: "e", Action: "edit"}, {Key: "r", Action: "regenerate"},
+		{Key: "y", Action: "release", Default: true}, {Key: "n", Action: "abort"}, {Key: "e", Action: "edit"}, {Key: "r", Action: "regenerate"},
 	}}
-	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes, rail.Body{Text: notesBody}, question}, ahead()...)}
+	return rail.Run{Settled: prepared(), Region: append([]rail.Live{notes, rail.Body{Text: notesBody, Markdown: true}, question}, ahead()...)}
 }
 
 func done() rail.Run {
@@ -151,7 +166,7 @@ func regenerated() rail.Run {
 func dryRun() rail.Run {
 	return rail.Run{Settled: append(prepared(),
 		rail.Node{Name: "notes", Detail: "written in 4 parts and merged", Time: "52.3s"},
-		rail.Question{Text: "Release with these notes?"},
+		rail.Question{Text: "Release with these notes?", Tail: "skipped (dry run)"},
 		rail.Node{State: rail.ToCome, Name: "record", Detail: "CHANGELOG.md · package.json"},
 		rail.Rule{},
 		rail.Node{State: rail.ToCome, Name: "push", Detail: "main + v1.4.0 → origin, atomic"},

@@ -233,23 +233,37 @@ func TestPromptHonoursReuseGateDeclaredSet(t *testing.T) {
 }
 
 // TestPromptHintUsesDeclaredKeys proves the prompt hint is built from the gate's
-// declared keys, not a hardcoded y/n/e/r literal: the four-choice gate shows
-// [y/n/e/r] while the two-choice reuse gate shows only [y/n].
+// declared keys and default, not a hardcoded literal: the four-choice gate shows
+// [Y/n/e/r] while the two-choice reuse gate shows only [Y/n], and a gate whose
+// default is another key capitalises that one.
 func TestPromptHintUsesDeclaredKeys(t *testing.T) {
 	// The [y/n/e/r] hint is plain-mode-SPECIFIC rendering, so this builds the plain
 	// presenter directly via the shared plainGate construction seam.
 	notes, out, _ := plainGate(strings.NewReader("\n"), gateOpts{})
 	_, _ = notes.Prompt(presenter.NotesReviewGate())
-	if !strings.Contains(out.String(), "[y/n/e/r]") {
-		t.Errorf("plain notes-review hint = %q, want it to contain [y/n/e/r]", out.String())
+	if !strings.Contains(out.String(), "[Y/n/e/r]") {
+		t.Errorf("plain notes-review hint = %q, want it to contain [Y/n/e/r]", out.String())
 	}
 
 	reuse, reuseOut, _ := plainGate(strings.NewReader("\n"), gateOpts{})
 	_, _ = reuse.Prompt(presenter.ReuseConfirmGate())
-	if !strings.Contains(reuseOut.String(), "[y/n]") {
-		t.Errorf("plain reuse hint = %q, want it to contain [y/n]", reuseOut.String())
+	if !strings.Contains(reuseOut.String(), "[Y/n]") {
+		t.Errorf("plain reuse hint = %q, want it to contain [Y/n]", reuseOut.String())
 	}
-	if strings.Contains(reuseOut.String(), "[y/n/e/r]") {
+	if strings.Contains(reuseOut.String(), "[Y/n/e/r]") {
 		t.Errorf("plain reuse hint = %q, must NOT show e/r the gate does not declare", reuseOut.String())
+	}
+
+	pause, pauseOut, _ := plainGate(strings.NewReader("\n"), gateOpts{})
+	keep := presenter.Gate{
+		Question: "Exclude docs/ from the notes? (documentation; 1 file, 176 B)",
+		Choices:  []presenter.GateChoice{{Key: presenter.ChoiceExclude, Action: "exclude"}, {Key: presenter.ChoiceKeep, Action: "keep"}},
+		Default:  presenter.ChoiceKeep,
+	}
+	if c, _ := pause.Prompt(keep); c != presenter.ChoiceKeep {
+		t.Errorf("Enter answered %q, want the default k", c)
+	}
+	if got, want := pauseOut.String(), "Exclude docs/ from the notes? (documentation; 1 file, 176 B) [e/K]\n"; got != want {
+		t.Errorf("plain pause hint = %q, want %q", got, want)
 	}
 }

@@ -5,16 +5,16 @@
  ●  version       v1.3.0 (minor bump)
  ●  preflight     tree clean, on main, v1.3.0 free, origin in sync
  ●  check         nothing to leave out                                                          0.7s
- ●  notes         generated                                                                     2.1s
+ ●  notes         generated                                                                     0.7s
  │
  │    Webhooks retry on their own now, so a flaky endpoint no longer drops events.
  │
- │    ## ✨ Added
- │    - Failed webhook deliveries retry with backoff for up to an hour.
+ │    ✨ Added
+ │    • Failed webhook deliveries retry with backoff for up to an hour.
  │
- │    ## 🐛 Fixed
- │    - Signing secrets with a trailing newline are accepted again.
+ │    🐛 Fixed
+ │    • Signing secrets with a trailing newline are accepted again.
  │
  ✗  notes         prompt: input closed before a choice was entered
  │
- ◇  v1.2.3        nothing changed                                                               3.5s
+ ◇  v1.2.3        nothing changed                                                               4.2s

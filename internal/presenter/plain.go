@@ -421,9 +421,9 @@ func (p *PlainPresenter) ShowVersion(v Version) {
 // re-prompts; EOF returns a non-nil error rather than silently default-accepting.
 // The parse (parseChoice) is shared with the Rail.
 //
-// The plain render is a single terse line "{Question} [y/n/e/r]" with the hint
-// built from the gate's DECLARED keys (not a hardcoded set), so the two-choice
-// reuse gate renders "[y/n]". It is byte-pure ASCII.
+// The plain render is a single terse line "{Question} [Y/n/e/r]" with the hint
+// built from the gate's DECLARED keys and its default (not a hardcoded set), so the
+// two-choice reuse gate renders "[Y/n]" (see plainKeyHint). It is byte-pure ASCII.
 //
 // Under -y the gate is SKIPPED (not drawn-then-auto-pressed): the menu is not
 // rendered and the input stream is NOT read at all. Instead the auto-accept is
@@ -443,7 +443,7 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 	}
 	p.input.discardTypedAhead()
 	render := func() {
-		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))
+		p.writef("%s %s\n", gate.Question, plainKeyHint(gate))
 	}
 	return readChoice(p.typedLine, render, gate)
 }

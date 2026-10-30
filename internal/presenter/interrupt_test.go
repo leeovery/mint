@@ -49,7 +49,8 @@ func (f *fakeInterrupts) watching() bool {
 // for the interrupt runs only while the line is read. On the Rail and in plain alike.
 func TestInterrupt_CtrlCAtATypedQuestionClosesTheInput(t *testing.T) {
 	t.Parallel()
-	source := presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}}, "fresh")
+	// Two words alike in their first letter, so the Rail reads a typed word.
+	source := presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "file", Action: "a notes file"}}, "fresh")
 	rail := func(out io.Writer, tty io.Reader, i presenter.Interrupts) presenter.Presenter {
 		return presenter.NewRailPresenter(out,
 			presenter.WithRailInput(tty),

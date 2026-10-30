@@ -334,6 +334,7 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindNotesChecking,  // the exclusion check's call
 		presentertest.KindNotesChecked,
+		presentertest.KindStageStarted,   // notes again, quiet, timed from the check's end
 		presentertest.KindStageSucceeded, // notes
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,

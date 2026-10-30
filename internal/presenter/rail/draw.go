@@ -3,6 +3,7 @@ package rail
 import (
 	"math"
 	"strings"
+	"unicode/utf8"
 )
 
 // minWhere is the least of the header's where worth showing once it's cut, as
@@ -244,25 +245,99 @@ func guttered(c []span) []span {
 func (Question) reached() bool { return true }
 
 func (q Question) draw(l Layout) []line {
-	return l.row(row{mark: s("?", accent), name: s(q.Name, bold), rail: dotted, lay: q.lay})
+	if q.Under {
+		return q.under(l)
+	}
+	return l.row(row{mark: s("?", accent), rail: dotted, lay: q.lay})
 }
 
-// lay is the question, then its choices three spaces apart, a choice never split
-// from its action, then, for a question typing, the input marker and a cell for the
-// cursor, so what is typed reads as the answer, not one more choice.
+// lay is the question and any tail, then its keys on a line of their own.
 func (q Question) lay(first, rest int) [][]span {
 	f := newFlow(first, rest)
-	for _, w := range words(glyphsOf([]span{s(q.Text, bold)})) {
+	for _, w := range words(glyphsOf(q.tailed([]span{s(q.Text, bold)}))) {
 		f.put(w, nil)
 	}
+	if len(q.Choices) > 0 {
+		f.next()
+	}
+	q.keys(f)
+	return f.done()
+}
+
+// keys puts the question's choices on f, three spaces apart, a choice never split
+// from its action, then, for a question typing, the input marker and a cell for the
+// cursor, so what is typed reads as the answer, not one more choice.
+func (q Question) keys(f *flow) {
 	apart := glyphsOf([]span{s("   ", plain)})
 	for _, c := range q.Choices {
-		f.put(glyphsOf([]span{s(c.Key, accentBold), s(" "+c.Action, plain)}), apart)
+		f.put(glyphsOf(c.spans()), apart)
 	}
 	if q.Typing {
 		f.put(glyphsOf([]span{s(inputMarker, accent), s("  ", plain)}), glyphsOf([]span{s(" ", plain)}))
 	}
-	return f.done()
+}
+
+// defaultMark follows the action of a default whose key is a word, which no capital
+// can mark.
+const defaultMark = " (default)"
+
+// spans is the choice as its question draws it: its key bold in the accent, its
+// action, what it is about, and the default marked.
+func (c Choice) spans() []span {
+	single := utf8.RuneCountInString(c.Key) == 1
+	key := c.Key
+	if c.Default && single {
+		key = strings.ToUpper(key)
+	}
+	out := []span{s(key, accentBold), s(" "+c.Action, plain)}
+	if c.About != "" {
+		out = append(out, s(" ("+c.About+")", dim))
+	}
+	if c.Default && !single {
+		out = append(out, s(defaultMark, dim))
+	}
+	return out
+}
+
+// tailed is last, the question's last line, with its tail after it.
+func (q Question) tailed(last []span) []span {
+	if q.Tail == "" {
+		return last
+	}
+	return append(last, s(" · "+q.Tail, dim))
+}
+
+// subIndent is how far in from its ? a question under a node draws the lines after
+// its first.
+const subIndent = 2
+
+// under is the question drawn as sub-matter of the node above it, from the detail
+// column with the node's rail solid down every line: the ? and the question, then,
+// indented, what it is about and, on a line of its own, its keys.
+func (q Question) under(l Layout) []line {
+	room := l.width - l.detailCol() - subIndent
+	indent := s(strings.Repeat(" ", subIndent), plain)
+	var lines []line
+	add := func(lead span, content [][]span) {
+		for _, c := range content {
+			lines = append(lines, l.hung(solid, l.detailCol(), append([]span{lead}, c...)))
+			lead = indent
+		}
+	}
+	text := []span{s(q.Text, bold)}
+	if q.About == "" {
+		text = q.tailed(text)
+	}
+	add(s("? ", accent), wrap(text, room, room))
+	if q.About != "" {
+		add(indent, wrap(q.tailed([]span{s(q.About, dim)}), room, room))
+	}
+	if len(q.Choices) > 0 || q.Typing {
+		f := newFlow(room, room)
+		q.keys(f)
+		add(indent, f.done())
+	}
+	return lines
 }
 
 // inputMarker stands before what is typed at a question.
@@ -288,11 +363,19 @@ func (b Body) draw(l Layout) []line {
 	room := l.width - bodyCol
 	var lines []line
 	for _, text := range textLines(b.Text) {
-		for _, c := range wrap([]span{s(text, plain)}, room, room) {
+		for _, c := range wrap(b.spans(text), room, room) {
 			lines = append(lines, l.hung(solid, bodyCol, c))
 		}
 	}
 	return lines
+}
+
+// spans is a line of the body as drawn.
+func (b Body) spans(text string) []span {
+	if b.Markdown {
+		return markdown(shown(text))
+	}
+	return []span{s(text, plain)}
 }
 
 func (Next) reached() bool { return true }

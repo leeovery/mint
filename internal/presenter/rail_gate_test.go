@@ -39,6 +39,9 @@ func messageWritten(p presenter.Presenter, body string) {
 }
 
 // commitAhead is the commit's plan past its message, waiting.
+// commitKeys is the commit review's keys, read as a typed line.
+const commitKeys = " ┆  Y accept   n abort   e edit   r regenerate ›"
+
 var commitAhead = []string{
 	" ┆",
 	" ○  commit        on main",
@@ -149,7 +152,7 @@ func TestRailGate_AnEditRedrawsTheBodyInPlaceBeforeTheQuestionComesBack(t *testi
 	}
 	asked := func(text string) []string {
 		return append(append(commitHead[:4:4], " ●  message       written", " │", " │    "+text, " │",
-			" ?  Commit this message?   y accept   n abort   e edit   r regenerate ›"), commitAhead...)
+			" ?  Commit this message?", commitKeys), commitAhead...)
 	}
 	in.asked = func(n int) {
 		if n == 2 {
@@ -184,7 +187,7 @@ func TestRailGate_ABodyTooTallForTheRegionSettlesAboveTheQuestion(t *testing.T) 
 	}
 	shownBody = append(shownBody, " │")
 	in.asked = func(int) {
-		want := append(append(append(commitHead[:4:4], shownBody...), " ?  Commit this message?   y accept   n abort   e edit   r regenerate ›"), commitAhead...)
+		want := append(append(append(commitHead[:4:4], shownBody...), " ?  Commit this message?", commitKeys), commitAhead...)
 		wantScreen(t, r, want...)
 	}
 	if _, err := r.Prompt(commitGate()); err != nil {
@@ -257,7 +260,7 @@ func TestRailGate_AQuestionAboutAStageToComeStandsInItsPlace(t *testing.T) {
 	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Detail: "generated"})
 	r.ShowNotes(presenter.Notes{Body: "Retries."})
 	in.asked = func(int) {
-		if got := r.screen(t)[4:10]; !slices.Contains(got, " ?  Use these notes?   y accept   n abort   e edit   r regenerate ›") || slices.ContainsFunc(got, func(s string) bool { return strings.Contains(s, "○  review") }) {
+		if got := r.screen(t)[4:11]; !slices.Contains(got, " ?  Use these notes?") || !slices.Contains(got, " ┆  Y accept   n abort   e edit   r regenerate ›") || slices.ContainsFunc(got, func(s string) bool { return strings.Contains(s, "○  review") }) {
 			t.Errorf("while asked the rail reads\n%s\nwant the question in the review's place", strings.Join(got, "\n"))
 		}
 	}
@@ -271,7 +274,7 @@ func TestRailGate_AQuestionAboutAStageToComeStandsInItsPlace(t *testing.T) {
 	}
 }
 
-func TestRailGate_TheExclusionPauseAsksAboutItsGlobAndAnswersHangUnderTheCheck(t *testing.T) {
+func TestRailGate_TheExclusionPauseAsksInsideTheCheckAndItsAnswerTakesTheQuestionsPlace(t *testing.T) {
 	t.Parallel()
 	in := answers("y\n", "k\n")
 	r := newRailTerm(t, 100, 30, in)
@@ -280,11 +283,14 @@ func TestRailGate_TheExclusionPauseAsksAboutItsGlobAndAnswersHangUnderTheCheck(t
 		if n == 1 {
 			return
 		}
-		got := r.screen(t)[8:11]
+		got := r.screen(t)[8:14]
 		want := []string{
 			pane(" ●  check         1 flagged                                                                     6.2s"),
-			" │                design documents · 6 files, 48 kB",
-			" ?  docs/specs/** Exclude it from the notes?   e exclude   k keep ›",
+			" │                ? Exclude docs/specs/** from the notes?",
+			" │                  design documents · 6 files, 48 kB",
+			" │                  e exclude   K keep ›",
+			" ┆",
+			" ○  notes         written by the AI",
 		}
 		if strings.Join(got, "\n") != strings.Join(want, "\n") {
 			t.Errorf("while asked the rail reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -331,6 +337,91 @@ func TestRailGate_OnAShortTerminalEveryPauseIsOnScreenWhileItWaits(t *testing.T)
 	}
 }
 
+// TestRailGate_TheKeysMarkTheGatesDefault pins that the default marked on the keys
+// line is the gate's own, whichever key that is, and that Enter takes it.
+func TestRailGate_TheKeysMarkTheGatesDefault(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		gate presenter.Gate
+		keys string
+	}{
+		{
+			name: "a key, a capital",
+			gate: presenter.Gate{Question: "Go on?", Default: presenter.ChoiceNo, Choices: []presenter.GateChoice{{Key: presenter.ChoiceYes, Action: "yes"}, {Key: presenter.ChoiceNo, Action: "no"}}},
+			keys: " ┆  y yes   N no ›",
+		},
+		{
+			name: "a word's letter, a capital",
+			gate: presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}}, "tag"),
+			keys: " ┆  f fresh (re-diff + AI)   T tag (tag annotation body) ›",
+		},
+		{
+			name: "a word alike in its first letter, marked after its action",
+			gate: presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "file", Action: "a notes file"}}, "file"),
+			keys: " ┆  fresh re-diff + AI   file a notes file (default) ›",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := answers("\n")
+			r := newRailTerm(t, 80, 24, in)
+			r.RunStarted(presenter.RunInfo{Header: presenter.Header{Command: "release", Where: pigeonWhere}, Start: presenter.Station{Name: "v1.4.0"}})
+			in.asked = func(int) {
+				if screen := r.screen(t); !slices.Contains(screen, tt.keys) {
+					t.Errorf("asked, the terminal shows\n%s\nwant the keys %q", strings.Join(screen, "\n"), tt.keys)
+				}
+			}
+			if c, err := r.Prompt(tt.gate); err != nil || c != tt.gate.Default {
+				t.Fatalf("Prompt = %q, %v, want Enter to take the default %q", c, err, tt.gate.Default)
+			}
+		})
+	}
+}
+
+// TestRailGate_AWordAnswersToItsFirstLetter pins that a question whose keys are
+// words, regenerate's Source and Target, is asked as every other is: each word keyed
+// by its first letter, the default's a capital, the word, then what it means, dim in
+// parentheses, unless that only repeats the word. Its letter answers it, as does the
+// word typed in full, and Enter takes the default.
+func TestRailGate_AWordAnswersToItsFirstLetter(t *testing.T) {
+	t.Parallel()
+	source := presenter.SourceGate([]presenter.GateChoice{{Key: "fresh", Action: "re-diff + AI"}, {Key: "tag", Action: "tag annotation body"}, {Key: "release", Action: "published release body"}}, "fresh")
+	target := presenter.TargetGate([]presenter.GateChoice{{Key: "release", Action: "provider release"}, {Key: "changelog", Action: "CHANGELOG.md"}, {Key: "both", Action: "both"}}, "release")
+	const sourceKeys = " ┆  F fresh (re-diff + AI)   t tag (tag annotation body)   r release (published release body) ›"
+	const targetKeys = " ┆  R release (provider release)   c changelog (CHANGELOG.md)   b both ›"
+	tests := []struct {
+		name  string
+		gate  presenter.Gate
+		keys  string
+		typed string
+		want  presenter.Choice
+	}{
+		{name: "its letter", gate: source, keys: sourceKeys, typed: "t", want: "tag"},
+		{name: "its letter as a capital", gate: source, keys: sourceKeys, typed: "R", want: "release"},
+		{name: "the word in full", gate: source, keys: sourceKeys, typed: "tag", want: "tag"},
+		{name: "Enter, the default", gate: source, keys: sourceKeys, typed: "", want: "fresh"},
+		{name: "a letter whose word only repeats its meaning", gate: target, keys: targetKeys, typed: "b", want: "both"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := answers(tt.typed + "\n")
+			r := newRailTerm(t, 100, 24, in)
+			r.RunStarted(presenter.RunInfo{Header: presenter.Header{Command: "release regenerate", Where: pigeonWhere}, Start: presenter.Station{Name: "v1.4.0"}})
+			in.asked = func(int) {
+				if screen := r.screen(t); !slices.Contains(screen, tt.keys) {
+					t.Errorf("asked, the terminal shows\n%s\nwant the keys %q", strings.Join(screen, "\n"), tt.keys)
+				}
+			}
+			if c, err := r.Prompt(tt.gate); err != nil || c != tt.want {
+				t.Fatalf("Prompt = %q, %v, want %q", c, err, tt.want)
+			}
+		})
+	}
+}
+
 func TestRailGate_ATypedAnswerNamingNoKeyIsAskedAgain(t *testing.T) {
 	t.Parallel()
 	in := answers("nope\n", "tag\n")
@@ -344,8 +435,8 @@ func TestRailGate_ATypedAnswerNamingNoKeyIsAskedAgain(t *testing.T) {
 	if in.n != 2 {
 		t.Errorf("asked %d times, want again after the line naming no key", in.n)
 	}
-	if got := r.screen(t)[4]; got != " ●  source        tag annotation body" {
-		t.Errorf("the answer reads %q, want a row of its own, the question asked before any stage", got)
+	if got := r.screen(t)[4]; got != " ●  source        tag" {
+		t.Errorf("the answer reads %q, want a row of its own naming the value chosen, the question asked before any stage", got)
 	}
 }
 
@@ -418,7 +509,7 @@ func editStage(r *railTerm, warn *presenter.Warning) {
 // (TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow).
 func TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions(t *testing.T) {
 	t.Parallel()
-	const question = " ?  Release with these notes?   y release   n abort   e edit   r regenerate ›"
+	question := []string{" ?  Release with these notes?", " ┆  Y release   n abort   e edit   r regenerate ›"}
 	missing := &presenter.Warning{Label: "editor", Message: `could not launch editor "vim": not found`}
 	const warned = ` !  editor        could not launch editor "vim": not found`
 	tests := []struct {
@@ -454,7 +545,7 @@ func TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions(t *testing.T) {
 				if tt.warned {
 					want = append(want, warned)
 				}
-				want = append(want, question)
+				want = append(want, question...)
 				if at := slices.Index(screen, want[0]); at < 0 || !slices.Equal(screen[at:min(at+len(want), len(screen))], want) {
 					t.Errorf("asked again, the terminal shows\n%s\nwant the body in place and the question under it\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
 				}
@@ -500,9 +591,9 @@ func TestRailGate_OnAShortTerminalAnOpenQuestionStaysLive(t *testing.T) {
 	in := answers("y\n")
 	r := newRailTerm(t, 80, 12, in)
 	messageWritten(r, "feat: retry deliveries\n\nDeliveries that fail retry for up to an hour.")
-	const question = " ?  Commit this message?   y accept   n abort   e edit   r regenerate ›"
+	const question = " ?  Commit this message?"
 	in.asked = func(int) {
-		if screen := r.screen(t); !slices.Contains(screen, question) {
+		if screen := r.screen(t); !slices.Contains(screen, question) || !slices.Contains(screen, commitKeys) {
 			t.Errorf("the question isn't up:\n%s", strings.Join(screen, "\n"))
 		}
 	}
@@ -510,7 +601,7 @@ func TestRailGate_OnAShortTerminalAnOpenQuestionStaysLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	screen := r.screen(t)
-	if !slices.Contains(screen, " ●  message       written · accepted") || slices.Contains(screen, question) {
+	if !slices.Contains(screen, " ●  message       written · accepted") || slices.Contains(screen, question) || slices.Contains(screen, commitKeys) {
 		t.Errorf("once answered the terminal shows\n%s\nwant the question gone and the message settled with the answer", strings.Join(screen, "\n"))
 	}
 }
@@ -594,13 +685,13 @@ func TestRailGate_ATypedLineIsReadAtTheQuestionPrintedLast(t *testing.T) {
 // answer's record, and no row repeats it.
 func TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine(t *testing.T) {
 	t.Parallel()
-	const question = " ?  Source?   fresh re-diff + AI   tag tag annotation body › "
+	const question, keys = " ?  Source?", " ┆  F fresh (re-diff + AI)   t tag (tag annotation body) › "
 	in := answers("nope\n", "tag\n")
 	r := newRailTerm(t, 80, 24, in)
 	r.WithEcho(true)
 	r.RunStarted(presenter.RunInfo{Header: presenter.Header{Command: "release regenerate", Where: pigeonWhere}, Start: presenter.Station{Name: "v1.4.0"}})
 	in.asked = func(n int) {
-		if screen := r.screen(t); screen[len(screen)-1] != strings.TrimRight(question, " ") {
+		if screen := r.screen(t); !slices.Equal(screen[len(screen)-2:], []string{question, strings.TrimRight(keys, " ")}) {
 			t.Errorf("asked %d, the terminal shows\n%s\nwant the question last", n, strings.Join(screen, "\n"))
 		}
 		if _, err := r.term.Write([]byte([]string{"nope\n", "tag\n"}[n-1])); err != nil {
@@ -612,7 +703,7 @@ func TestRailGate_ATypedAnswerAskedAgainPrintsTheQuestionAgainUnderTheLine(t *te
 		t.Fatalf("Prompt = %q, %v, want tag", c, err)
 	}
 	screen := r.screen(t)
-	want := []string{question + "nope", question + "tag"}
+	want := []string{question, keys + "nope", question, keys + "tag"}
 	if at := slices.Index(screen, want[0]); at < 0 || !slices.Equal(screen[at:], want) {
 		t.Errorf("the terminal shows\n%s\nwant\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
 	}
@@ -674,8 +765,7 @@ func TestRailGate_ATypedLineUnderAStageStillRunningIsReadUnderTheSettledLines(t 
 	r.RunStarted(releaseStarted(false))
 	r.ShowPlan(releasePlan())
 	r.StageStarted(notesStarted())
-	// The question fills its row, so the input marker wraps to the row under it.
-	const question, marker = " ?  Cached notes found for this diff — use them?   y use cached   r regenerate", " ┆  ›"
+	const question, marker = " ?  Cached notes found for this diff — use them?", " ┆  Y use cached   r regenerate ›"
 	in.asked = func(int) {
 		screen := r.screen(t)
 		if !slices.Equal(screen[len(screen)-2:], []string{question, marker}) || slices.ContainsFunc(screen, func(s string) bool { return strings.Contains(s, "notes   ") }) {

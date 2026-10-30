@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -221,8 +222,7 @@ func (p *RailPresenter) StageStarted(s StageStart) {
 		pt.started = p.now()
 	}
 	pt.ongoing = false
-	pt.doing = firstOf(s.Text, pt.plan, s.Name)
-	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, pt.doing, "", nil
+	pt.node.State, pt.node.Detail, pt.node.Time, pt.node.Progress = rail.Running, firstOf(s.Text, pt.plan, s.Name), "", nil
 	pt.timed = s.Blocking
 	p.redraw()
 }
@@ -285,13 +285,12 @@ func (p *RailPresenter) StageFailed(s StageFailure) {
 }
 
 // NotesChecking runs the exclusion check as its own node, holding back the notes
-// stage, which started first, until it is done.
+// stage, which started first, to come until it starts again, the check done.
 func (p *RailPresenter) NotesChecking(c NotesCheck) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if r := p.run.running(); r != nil && r.key != c.Key {
 		r.node.State, r.node.Detail = rail.ToCome, firstOf(r.plan, r.node.Detail)
-		p.run.held = r
 	}
 	pt := p.run.stage(c.Key, c.Key)
 	pt.node.State, pt.node.Detail, pt.node.Time = rail.Running, pt.plan, ""
@@ -300,9 +299,10 @@ func (p *RailPresenter) NotesChecking(c NotesCheck) {
 }
 
 // NotesChecked settles the exclusion check done in its time, stating what its call
-// found where the engine gives it and its plan where it gives nothing, and runs the
-// stage it held back again; the pauses' answers hang under it as they come. A Failed
-// check keeps its node, timed, for the warning that follows to end.
+// found where the engine gives it and its plan where it gives nothing; its questions
+// ask inside it, and their answers hang under it as they come. The stage it held
+// back stays to come until it starts again, once the check is done. A Failed check
+// keeps its node, timed, for the warning that follows to end.
 func (p *RailPresenter) NotesChecked(c NotesCheck) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -310,10 +310,6 @@ func (p *RailPresenter) NotesChecked(c NotesCheck) {
 	pt.timed, pt.node.Time = false, stageTime(c.Elapsed)
 	if !c.Failed {
 		pt.node.State, pt.node.Detail = rail.Done, firstOf(c.Detail, pt.plan)
-	}
-	if h := p.run.held; h != nil {
-		h.node.State, h.node.Detail = rail.Running, h.doing
-		p.run.held = nil
 	}
 	p.redraw()
 }
@@ -456,7 +452,7 @@ func (p *RailPresenter) warned(key, label string) *part {
 	return p.run.stage(key, label)
 }
 
-// Unwound draws the unwind's node: what it undid, and what it kept under it. An
+// Unwound draws the unwind's node: what it undid, then what it kept, on its row. An
 // unwind that couldn't finish is already drawn, as the failed nodes of its steps
 // keyed as it is, which wait for it, unsettled, however the run is drawn: it hangs
 // what it undid first under the last, above the output of the step that failed, and
@@ -466,8 +462,8 @@ func (p *RailPresenter) Unwound(u Unwind) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var kept []rail.Hang
-	if u.Kept != "" {
-		kept = append(kept, rail.Hang{Kind: rail.Note, Text: u.Kept})
+	if u.KeptRow != "" {
+		kept = append(kept, rail.Hang{Kind: rail.Note, Text: u.KeptRow})
 	}
 	for _, pt := range p.run.parts {
 		if pt.key == u.Key {
@@ -481,22 +477,23 @@ func (p *RailPresenter) Unwound(u Unwind) {
 		failed.node.Lines = append(failed.node.Lines, kept...)
 		p.run.touched = failed
 	} else {
-		p.run.add(rail.Node{State: rail.Unwind, Name: unwindName, Detail: u.Undone, Lines: kept})
+		p.run.add(rail.Node{State: rail.Unwind, Name: unwindName, Detail: joinNonEmpty(" · ", u.Undone, u.KeptRow)})
 	}
 	p.redraw()
 }
 
 // ShowNotes shows the notes for review, hanging off the rail above the question that
-// follows.
-func (p *RailPresenter) ShowNotes(notes Notes) { p.show(notes.Body) }
+// follows, drawn as their Markdown reads.
+func (p *RailPresenter) ShowNotes(notes Notes) { p.show(notes.Body, true) }
 
-// ShowMessage shows the message for review, as ShowNotes does the notes.
-func (p *RailPresenter) ShowMessage(m Message) { p.show(m.Body) }
+// ShowMessage shows the message for review, as ShowNotes does the notes but as
+// written: a commit message is no Markdown.
+func (p *RailPresenter) ShowMessage(m Message) { p.show(m.Body, false) }
 
-func (p *RailPresenter) show(body string) {
+func (p *RailPresenter) show(body string, markdown bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.run.show(body)
+	p.run.show(body, markdown)
 	p.redraw()
 }
 
@@ -677,6 +674,11 @@ func (p *RailPresenter) errf(format string, args ...any) {
 		return
 	}
 	_, _ = fmt.Fprintf(p.err, format, args...)
+}
+
+// joinNonEmpty is those of texts that aren't empty, joined with sep.
+func joinNonEmpty(sep string, texts ...string) string {
+	return strings.Join(slices.DeleteFunc(texts, func(t string) bool { return t == "" }), sep)
 }
 
 // firstOf is the first of texts that isn't empty.

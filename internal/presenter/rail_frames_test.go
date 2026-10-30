@@ -9,8 +9,9 @@ import (
 
 // TestRailFrames holds the golden runs, whole runs driven by fixed events through a
 // virtual terminal 100 columns wide, colour off, to their frames in testdata/frames,
-// cell for cell: each run's whole screen once it ends, and two screens mid-run, the
-// notes running with the plan below and the review's question up. `go test
+// cell for cell: each run's whole screen once it ends, and three screens mid-run, the
+// exclusion check's question up inside the check, the notes running with the plan
+// below, and the review's question up. `go test
 // ./internal/presenter -run Frames -update` writes them again.
 func TestRailFrames(t *testing.T) {
 	t.Parallel()
@@ -19,7 +20,10 @@ func TestRailFrames(t *testing.T) {
 	in := answers("y\n", "e\n", "y\n")
 	r := newRailTerm(t, 100, 40, in)
 	in.asked = func(n int) {
-		if n == 3 {
+		switch n {
+		case 2:
+			drawn["pause-100"] = r.frame(t)
+		case 3:
 			drawn["review-100"] = r.frame(t)
 		}
 	}

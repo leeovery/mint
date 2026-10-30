@@ -100,7 +100,7 @@ func TestRelease_APause_OffersExcludeAndKeepWithKeepTheDefault(t *testing.T) {
 		t.Fatalf("pauses = %d, want one", len(gates))
 	}
 	want := []presenter.GateChoice{
-		{Key: "e", Action: "exclude"},
+		{Key: "e", Action: "exclude", Answered: "excluded"},
 		{Key: "k", Action: "keep"},
 	}
 	if !slices.Equal(gates[0].Choices, want) {

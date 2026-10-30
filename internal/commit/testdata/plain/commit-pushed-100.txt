@@ -8,6 +8,6 @@ Deliveries that fail are retried with exponential backoff for up to an
 hour before they are marked dead.
 
 --- end commit message ---
-Commit this message? [y/n/e/r]
+Commit this message? [Y/n/e/r]
 done: pigeon committed
 --- stderr ---

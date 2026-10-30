@@ -35,6 +35,9 @@ const (
 	ChoiceKeep Choice = "k"
 )
 
+// aborted is how a gate's abort reads once it is the answer.
+const aborted = "aborted"
+
 // gateFailLabel is the FIXED label both presenters render for the
 // forbidden-combination gate failure (non-TTY stdin without -y): "gate". It is the
 // gate MECHANISM that is failing, not the gate's Subject (the notes content), so
@@ -73,6 +76,9 @@ type GateChoice struct {
 	Key Choice
 	// Action is the engine/spec-supplied label rendered beside the key (verbatim).
 	Action string
+	// Answered is how the choice reads once it is the answer, on the Rail's node it
+	// settles ("aborted" for an "abort"); empty reads as Action. Plain ignores it.
+	Answered string
 }
 
 // Gate is a pure DATA model of one interactive prompt: the question text, the
@@ -184,7 +190,7 @@ func NotesReviewGate() Gate {
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept"},
-			{Key: ChoiceNo, Action: "abort"},
+			{Key: ChoiceNo, Action: "abort", Answered: aborted},
 			{Key: ChoiceEdit, Action: "edit"},
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
@@ -214,7 +220,7 @@ func ReleaseReviewGate() Gate {
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "release"},
-			{Key: ChoiceNo, Action: "abort"},
+			{Key: ChoiceNo, Action: "abort", Answered: aborted},
 			{Key: ChoiceEdit, Action: "edit"},
 			{Key: ChoiceRegen, Action: "regenerate"},
 		},
@@ -237,7 +243,7 @@ func ReuseConfirmGate() Gate {
 		AcceptEcho: "accepted",
 		Choices: []GateChoice{
 			{Key: ChoiceYes, Action: "accept"},
-			{Key: ChoiceNo, Action: "abort"},
+			{Key: ChoiceNo, Action: "abort", Answered: aborted},
 		},
 		Default: ChoiceYes,
 	}
@@ -267,7 +273,7 @@ func SourceGate(options []GateChoice, def Choice) Gate {
 		Question:   "Source?",
 		Subject:    "source",
 		AcceptEcho: string(def),
-		Choices:    options,
+		Choices:    valued(options),
 		Default:    def,
 	}
 }
@@ -293,7 +299,21 @@ func TargetGate(options []GateChoice, def Choice) Gate {
 		Question:   "Target?",
 		Subject:    "target",
 		AcceptEcho: string(def),
-		Choices:    options,
+		Choices:    valued(options),
 		Default:    def,
 	}
+}
+
+// valued is options as an enumerated gate offers them: each reads once it is the
+// answer as the value it chose, as AcceptEcho reads the default, not as what that
+// value is about.
+func valued(options []GateChoice) []GateChoice {
+	out := make([]GateChoice, len(options))
+	for i, o := range options {
+		out[i] = o
+		if o.Answered == "" {
+			out[i].Answered = string(o.Key)
+		}
+	}
+	return out
 }

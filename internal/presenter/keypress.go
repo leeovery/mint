@@ -17,11 +17,17 @@ var errNoRawMode = errors.New("the terminal would not go into raw mode")
 // keypress can name each choice.
 func singleKeyGate(g Gate) bool {
 	for _, key := range g.Keys() {
-		if utf8.RuneCountInString(string(key)) != 1 {
+		if !singleKey(key) {
 			return false
 		}
 	}
 	return true
+}
+
+// singleKey reports whether key is one character, a single keypress, rather than a
+// word.
+func singleKey(key Choice) bool {
+	return utf8.RuneCountInString(string(key)) == 1
 }
 
 // rawKeyFile reports whether in can host the single-keypress read: a real

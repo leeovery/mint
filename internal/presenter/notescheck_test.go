@@ -62,6 +62,7 @@ func TestRailPresenter_FailedExclusionCheck_KeepsTheNotesRunning(t *testing.T) {
 				p.NotesChecking(presenter.NotesCheck{Key: "check"})
 				p.NotesChecked(presenter.NotesCheck{Key: "check", Failed: true})
 				failedCheck(p)
+				p.StageStarted(notesRestarted())
 			},
 		},
 		{

@@ -2,16 +2,18 @@ package presenter
 
 import (
 	"errors"
-	"slices"
+	"fmt"
 	"strings"
 
 	"mint/internal/presenter/rail"
 )
 
 const (
-	// pauseQuestion is the exclusion pause's question once its glob has moved into
-	// the question's name.
-	pauseQuestion = "Exclude it from the notes?"
+	// pauseQuestion is the exclusion pause's question about its glob, its reason and
+	// size moved under it.
+	pauseQuestion = "Exclude %s from the notes?"
+	// previewTail ends a question a dry run shows where a real run would ask it.
+	previewTail = "skipped (dry run)"
 	// reviewName names the row that records a review's answer about a node already
 	// settled above the question, as a body too tall for the region leaves it, but
 	// for a node that goes on past the question, which the row names.
@@ -22,8 +24,9 @@ const (
 // nothing is asked: the default is taken and the node it settles records it, the
 // auto-accept echo. Without an interactive stdin it fails loud, rendered, with
 // ErrNotInteractive. Otherwise a single keypress answers where the input is a
-// terminal and every key one character, and a typed line answers where not, what
-// was typed before the question was asked discarded first. Input closed before an
+// terminal and every key one character, or every key a word answering to its first
+// letter, and a typed line answers where not, what was typed before the question was
+// asked discarded first. Input closed before an
 // answer, or Ctrl-C, returns ErrInputClosed, not rendered, and once Ctrl-C has ended
 // a typed line every question after it does.
 func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
@@ -34,17 +37,19 @@ func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
 		return "", ErrInputClosed
 	}
 	p.input.discardTypedAhead()
+	l := letter(g)
 	f, keys := rawKeyFile(p.input.in)
-	keys = keys && singleKeyGate(g)
+	keys = keys && singleKeyGate(l.keyed)
 	q := p.ask(g, !keys)
 	if keys {
-		c, err := readKeypress(f, g)
+		c, err := readKeypress(f, l.keyed)
 		if !errors.Is(err, errNoRawMode) {
+			c = l.word(c)
 			return c, p.answered(g, q, c, err)
 		}
 		p.retype(q)
 	}
-	return p.typedChoice(g, q)
+	return p.typedChoice(l, q)
 }
 
 // unasked answers g without asking, under -y, or fails loud without an interactive
@@ -64,16 +69,17 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 	return "", nil, false
 }
 
-// typedChoice reads g's answer to the open question q as a typed line, asking again
-// after a line that names none of its keys.
-func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
+// typedChoice reads the answer to l's gate, the open question q, as a typed line,
+// asking again after a line that names none of its keys.
+func (p *RailPresenter) typedChoice(l lettering, q *part) (Choice, error) {
+	g := l.gate
 	for {
 		line, ended, err := p.input.line()
 		p.released(ended)
 		if err != nil {
 			return "", p.answered(g, q, "", err)
 		}
-		if c, ok := parseChoice(line, g); ok {
+		if c, ok := l.parse(line); ok {
 			q.typed = line
 			return c, p.answered(g, q, c, nil)
 		}
@@ -111,8 +117,9 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	return line, err
 }
 
-// PreviewGate shows g as a dry run's preview: the question node with no keys, where
-// a real run would stop to ask it. It stays on the rail.
+// PreviewGate shows g as a dry run's preview, where and as a real run would stop to
+// ask it, but with no keys and a dim tail saying it was skipped. It stays on the
+// rail.
 func (p *RailPresenter) PreviewGate(g Gate) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -129,9 +136,11 @@ func (p *RailPresenter) ask(g Gate, typing bool) *part {
 }
 
 // open puts q on the rail about the stage keyed stage, and draws it with the spinner
-// stopped, as nothing may write while it waits.
+// stopped, as nothing may write while it waits, and the clock of any stage running
+// stood still, as no time spent waiting on an answer is a stage's.
 func (p *RailPresenter) open(q *part, stage string) *part {
 	p.run.ask(q, stage)
+	p.run.stop(p.now())
 	p.asking = true
 	p.present(q)
 	return q
@@ -224,37 +233,31 @@ func (p *RailPresenter) answered(g Gate, q *part, c Choice, err error) error {
 	return err
 }
 
-// dismiss takes the question q off the rail: the node it stood in for, and the
-// node its pause hung its subject under, go back as they were.
+// dismiss takes the question q off the rail: the node it stood in for goes back as
+// it was, and the clock of a stage running goes on from where it stood.
 func (p *RailPresenter) dismiss(q *part) {
 	p.asking = false
+	p.run.restart(p.now())
 	p.run.remove(q)
-	if n := q.about; n != nil {
-		n.node.Lines = slices.Clone(n.node.Lines[:len(n.node.Lines)-1])
-	}
 	for _, pt := range p.run.parts {
 		pt.hidden = false
 	}
 }
 
-// question is g as a question part of kind: a preview has no keys. Where the
-// exclusion check's node is drawn, a pause asked takes its glob as its name, and what
-// the AI said of it hangs above it under that node until it is answered. With the
-// node settled, and in a dry run's previews, which stay, one under another, the pause
-// asks in the gate's own words, which say it all, so each carries its own reason.
+// question is g as a question part of kind: a dry run's preview, in the place and
+// the shape the question takes when asked, has no keys, but a tail saying it was
+// skipped. A pause sits inside the exclusion check, the check's sub-matter, asking
+// about its glob with what the AI said of it under the question.
 func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 	q := &part{kind: kind, question: rail.Question{Text: g.Question, Typing: typing}}
 	if kind == questionPart {
-		for _, c := range g.Choices {
-			q.question.Choices = append(q.question.Choices, rail.Choice{Key: string(c.Key), Action: c.Action})
-		}
+		q.question.Choices = letter(g).choices()
+	} else {
+		q.question.Tail = previewTail
 	}
-	x, check := g.Suggestion, p.run.find(g.Stage)
-	if x == nil || check == nil || kind != questionPart {
-		return q
+	if x := g.Suggestion; x != nil {
+		q.question.Under, q.question.Text, q.question.About = true, fmt.Sprintf(pauseQuestion, x.Glob), about(*x)
 	}
-	check.node.Lines = append(slices.Clone(check.node.Lines), rail.Hang{Kind: rail.Note, Text: about(*x)})
-	q.question.Name, q.question.Text, q.about = x.Glob, pauseQuestion, check
 	return q
 }
 
@@ -369,33 +372,31 @@ func autoTail(auto bool) string {
 	return ""
 }
 
-// chosen is what answering g with c chose: the gate's own word for its default, the
-// action of any other key.
+// chosen is what answering g with c chose: the gate's own word for its default, how
+// any other key reads once it answered.
 func chosen(g Gate, c Choice) string {
 	if c == g.Default {
 		return g.AcceptEcho
 	}
-	return action(g, c)
+	return answered(g, c)
 }
 
-// pauseAnswer is what became of the exclusion pause's glob: kept, the gate's own
-// word for its default, or excluded, marked (-y) where -y took it.
+// pauseAnswer is what became of the exclusion pause's glob, as chosen says it, marked
+// (-y) where -y took it.
 func pauseAnswer(g Gate, c Choice, auto bool) string {
 	word := chosen(g, c)
-	if c == ChoiceExclude {
-		word = "excluded"
-	}
 	if auto {
 		word += " (-y)"
 	}
 	return word
 }
 
-// action is the action g's key c names.
-func action(g Gate, c Choice) string {
+// answered is how g's key c reads once it is the answer: its own word for that, or
+// the action it names.
+func answered(g Gate, c Choice) string {
 	for _, choice := range g.Choices {
 		if choice.Key == c {
-			return choice.Action
+			return firstOf(choice.Answered, choice.Action)
 		}
 	}
 	return string(c)

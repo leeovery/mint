@@ -10,7 +10,7 @@
  [38;2;95;215;175m│[39m                [2mdocs/specs/** excluded · design documents[22m
  [38;2;95;215;175m│[39m                [2mwritten to .mint.toml's [release] table and committed[22m
  [38;2;95;215;175m●[39m  [1mnotes[22m         written in 4 parts and merged                                                [2m52.3s[22m
- [38;2;95;215;175m?[39m  [1mRelease with these notes?[22m
+ [38;2;95;215;175m?[39m  [1mRelease with these notes?[22m[2m · skipped (dry run)[22m
  [2m┆[22m
  [2m○[22m  [2mrecord[22m        [2mCHANGELOG.md · package.json[22m
  [2m┆[22m

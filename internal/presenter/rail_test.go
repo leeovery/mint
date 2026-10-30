@@ -184,11 +184,13 @@ func TestRail_TheUnwindNamesWhatItUndidThenWhatItKept(t *testing.T) {
 	t.Parallel()
 	r := newRailTerm(t, 80, 24, answers())
 	commitRun(r)
-	r.Unwound(presenter.Unwind{Undone: "reset 2 commits", Kept: "kept the answers commit on the starting commit", Repo: "repo clean"})
-	got := r.screen(t)[4:7]
+	r.Unwound(presenter.Unwind{
+		Undone: "reset 2 commits", Kept: "kept your exclusion answers in .mint.toml",
+		KeptRow: "kept your exclusion answers in .mint.toml", Repo: "repo clean",
+	})
+	got := r.screen(t)[4:6]
 	want := []string{
-		" ↩  unwind        reset 2 commits",
-		" │                kept the answers commit on the starting commit",
+		" ↩  unwind        reset 2 commits · kept your exclusion answers in .mint.toml",
 		" ┆",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -209,11 +211,21 @@ func TestRail_TheExclusionCheckRunsAsANodeOfItsOwnAheadOfTheNotes(t *testing.T) 
 	if got := r.screen(t)[4:7]; !strings.HasPrefix(got[0], " ⠋  check         files that don't belong in the notes") || got[2] != " ○  notes         written by the AI" {
 		t.Errorf("while the check runs the rail reads\n%s\nwant the check running and the notes to come", strings.Join(got, "\n"))
 	}
+	r.clock.Advance(secs(6.2))
 	r.NotesChecked(presenter.NotesCheck{Key: "check", Elapsed: secs(6.2)})
-	got := r.screen(t)[4:6]
-	want := []string{row(" ●  check         files that don't belong in the notes", "6.2s"), row(" ⠋  notes         writing the notes…", "0s")}
+	got := r.screen(t)[4:7]
+	want := []string{row(" ●  check         files that don't belong in the notes", "6.2s"), " ┆", " ○  notes         written by the AI"}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Errorf("once the check is done the rail reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+		t.Errorf("once the check's call is done the rail reads\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	r.clock.Advance(secs(30))
+	r.StageStarted(notesRestarted())
+	r.clock.Advance(secs(2.4))
+	r.ticks.tick(t)
+	got = r.screen(t)[4:6]
+	want = []string{row(" ●  check         files that don't belong in the notes", "6.2s"), row(" ⠋  notes         writing the notes…", "2s")}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("once the check is done the rail reads\n%s\nwant\n%s, the notes timed from then", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }
 
@@ -425,8 +437,8 @@ func TestRail_UnderSixtyColumnsThereIsNoRegion_NothingIsRedrawn(t *testing.T) {
 	r.StageSucceeded(presenter.Settled("message", "written"))
 	r.ShowMessage(presenter.Message{Body: "feat: retry deliveries"})
 	in.asked = func(int) {
-		if got := r.screen(t); got[len(got)-1] != " ?  Commit this message?   y accept   n abort ›" {
-			t.Errorf("while asked the terminal ends %q, want the question printed where it can be seen", got[len(got)-1])
+		if got := r.screen(t); strings.Join(got[len(got)-2:], "\n") != " ?  Commit this message?\n ┆  Y accept   n abort ›" {
+			t.Errorf("while asked the terminal ends %q, want the question printed where it can be seen", got[len(got)-2:])
 		}
 	}
 	g := presenter.ReuseConfirmGate()
@@ -496,11 +508,11 @@ func TestRail_UnderSixtyColumnsAQuestionPrintsTheMomentItIsAsked(t *testing.T) {
 			r.SuspendSpinner()
 			_, _ = r.Prompt(cacheGate())
 		}},
-		{name: "the exclusion pause, the notes running again under the check", want: " ?  Exclude docs/specs/** from the notes? (design", ask: func(r *railTerm, _ func()) {
+		{name: "the exclusion pause, under the check", want: " │  ? Exclude docs/specs/** from the notes?", ask: func(r *railTerm, _ func()) {
 			checked(r)
 			_, _ = r.Prompt(pauseGate())
 		}},
-		{name: "a dry run's preview, under a stage it passed by", want: " ?  Exclude docs/specs/** from the notes? (design", ask: func(r *railTerm, look func()) {
+		{name: "a dry run's preview, under a stage it passed by", want: " │  ? Exclude docs/specs/** from the notes?", ask: func(r *railTerm, look func()) {
 			r.RunStarted(releaseStarted(true))
 			r.ShowPlan(releasePlan())
 			r.Warn(presenter.Warning{Label: "dry-run", Message: "skipping pre_tag hook"})
@@ -587,7 +599,7 @@ func TestRail_ADryRunSettlesTheStagesItPassedBy(t *testing.T) {
 	r.StageSucceeded(presenter.StageSuccess{Name: "notes", Key: "notes", Blocking: true, Elapsed: secs(52.3), Detail: "written in 4 parts and merged"})
 	r.ShowNotes(presenter.Notes{Version: "1.4.0", Body: pigeonNotes})
 	screen := r.screen(t)
-	for _, want := range []string{" ○  pre_tag       npm ci && npm run build", " │    - Signing secrets with a trailing newline are accepted again."} {
+	for _, want := range []string{" ○  pre_tag       npm ci && npm run build", " │    • Signing secrets with a trailing newline are accepted again."} {
 		if !slices.Contains(screen, want) {
 			t.Errorf("the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), want)
 		}
@@ -608,9 +620,9 @@ func TestRail_ATerminalTooShortForARegionPrintsAsItHappens(t *testing.T) {
 	if r.ticks.running() {
 		t.Error("a spinner ticks with no region to draw it in")
 	}
-	const question = " ?  Cached notes found for this diff — use them?   y use cached   r regenerate"
+	const question, keys = " ?  Cached notes found for this diff — use them?", " ┆  Y use cached   r regenerate ›"
 	in.asked = func(int) {
-		if screen := r.screen(t); !slices.Contains(screen, question) {
+		if screen := r.screen(t); !slices.Contains(screen, question) || !slices.Contains(screen, keys) {
 			t.Errorf("while the question waits the terminal shows\n%s\nwant %q on it", strings.Join(screen, "\n"), question)
 		}
 	}
@@ -692,6 +704,35 @@ func TestRail_AStageStartedOnceTheRunIsOverSettlesStill(t *testing.T) {
 			want := []string{" ⠋  commit message", " ┆                writing…"}
 			if screen := r.screen(t); !slices.Equal(screen[max(len(screen)-len(want), 0):], want) {
 				t.Errorf("the terminal shows\n%s\nwant last\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
+			}
+		})
+	}
+}
+
+// TestRail_TheNotesDrawAsTheirMarkdownReads_ACommitMessageAsWritten pins that only the
+// notes are drawn as Markdown: a commit message, whose # lines and dashes are its
+// own, is shown as written.
+func TestRail_TheNotesDrawAsTheirMarkdownReads_ACommitMessageAsWritten(t *testing.T) {
+	t.Parallel()
+	const body = "## Added\n- `replay` resends a delivery"
+	tests := []struct {
+		name string
+		show func(presenter.Presenter)
+		want []string
+	}{
+		{name: "the notes", show: func(p presenter.Presenter) { p.ShowNotes(presenter.Notes{Body: body}) }, want: []string{" │    Added", " │    • replay resends a delivery"}},
+		{name: "a commit message", show: func(p presenter.Presenter) { p.ShowMessage(presenter.Message{Body: body}) }, want: []string{" │    ## Added", " │    - `replay` resends a delivery"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := newRailTerm(t, 80, 24, answers())
+			commitRun(r)
+			r.StageSucceeded(presenter.Settled("message", "written"))
+			tt.show(r)
+			screen := r.screen(t)
+			if at := slices.Index(screen, tt.want[0]); at < 0 || !slices.Equal(screen[at:at+len(tt.want)], tt.want) {
+				t.Errorf("the terminal shows\n%s\nwant\n%s", strings.Join(screen, "\n"), strings.Join(tt.want, "\n"))
 			}
 		})
 	}

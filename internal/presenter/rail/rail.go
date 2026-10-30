@@ -141,21 +141,32 @@ type Hang struct {
 	Text string
 }
 
-// Question is a question node: Text bold after its Name (where it has one, as the
-// exclusion check's glob), then each choice's key bold in the accent with its
-// action. A dry run's preview has no Choices. A question Typing reads a line, typed
-// on a cell for the cursor after it.
+// Question is a question node: Text bold, then, on a line of their own, each
+// choice's key bold in the accent with its action. A dry run's preview has no
+// Choices, and a Tail, dim after " · " at the end of its last line, that says so. A
+// question Typing reads a line, typed on its last line, on a cell for the cursor
+// after the input marker. A question Under the node above it is that node's
+// sub-matter, as the exclusion check's are: no node of its own, but lines hanging off
+// the node's rail, Text after a ? in the accent, then, indented, About, dim, and the
+// keys.
 type Question struct {
-	Name    string
 	Text    string
+	About   string
 	Choices []Choice
+	Tail    string
 	Typing  bool
+	Under   bool
 }
 
-// Choice is a key that answers a question and what it does.
+// Choice is a key that answers a question and what it does, with what that is About,
+// where it says more, dim in parentheses after it. The Default, which Enter takes, is
+// marked as Y/n marks it: a key of one character drawn as a capital, a word with a
+// dim "(default)" after its action.
 type Choice struct {
-	Key    string
-	Action string
+	Key     string
+	Action  string
+	About   string
+	Default bool
 }
 
 // Rule is the point of no return drawn across the rail: the rail into it solid once
@@ -167,9 +178,11 @@ type Rule struct {
 }
 
 // Body is a body shown for review (release notes, a commit message), four in behind
-// the rail, as it ships but for the wrap.
+// the rail, as it ships but for the wrap, or, Markdown, as its Markdown reads (see
+// markdown).
 type Body struct {
-	Text string
+	Text     string
+	Markdown bool
 }
 
 // Next is what the reader can do once the run is over, after the end station.

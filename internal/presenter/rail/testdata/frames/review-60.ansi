@@ -22,19 +22,19 @@
  [38;2;95;215;175m│[39m    no longer drops events.
  [38;2;95;215;175m│[39m
  [38;2;95;215;175m│[39m    ✨ Added
- [38;2;95;215;175m│[39m    - Failed webhook deliveries retry with backoff for up 
+ [38;2;95;215;175m│[39m    • Failed webhook deliveries retry with backoff for up 
  [38;2;95;215;175m│[39m    to an hour.
- [38;2;95;215;175m│[39m    - `pigeon replay <id>` resends any delivery from the 
+ [38;2;95;215;175m│[39m    • [38;2;95;215;175mpigeon replay <id>[39m resends any delivery from the 
  [38;2;95;215;175m│[39m    last 30 days.
  [38;2;95;215;175m│[39m
  [38;2;95;215;175m│[39m    🐛 Fixed
- [38;2;95;215;175m│[39m    - The dashboard no longer shows a delivery twice 
+ [38;2;95;215;175m│[39m    • The dashboard no longer shows a delivery twice 
  [38;2;95;215;175m│[39m    after a reconnect.
- [38;2;95;215;175m│[39m    - Signing secrets with a trailing newline are 
+ [38;2;95;215;175m│[39m    • Signing secrets with a trailing newline are 
  [38;2;95;215;175m│[39m    accepted again.
  [38;2;95;215;175m│[39m
- [38;2;95;215;175m?[39m  [1mRelease with these notes?[22m   [1;38;2;95;215;175my[22;39m release   [1;38;2;95;215;175mn[22;39m abort   [1;38;2;95;215;175me[22;39m edit
- [2m┆[22m  [1;38;2;95;215;175mr[22;39m regenerate
+ [38;2;95;215;175m?[39m  [1mRelease with these notes?[22m
+ [2m┆[22m  [1;38;2;95;215;175mY[22;39m release   [1;38;2;95;215;175mn[22;39m abort   [1;38;2;95;215;175me[22;39m edit   [1;38;2;95;215;175mr[22;39m regenerate
  [2m┆[22m
  [2m○[22m  [2mrecord[22m
  [2m┆[22m  [2mCHANGELOG.md · package.json[22m

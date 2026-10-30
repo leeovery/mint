@@ -107,7 +107,7 @@ func (a *answeredAbort) release(ctx context.Context) error {
 	return engine.Release(ctx, a.deps, minorOptions())
 }
 
-const keptSummary = "reset 2 commits; kept the answers commit on the starting commit; repo clean"
+const keptSummary = "reset 2 commits; kept your exclusion answers in .mint.toml; repo clean"
 
 // assertAnswersKept fails unless the run exited 1 having made no tag left standing,
 // the unwind reset to the starting commit and then committed .mint.toml alone, holding
@@ -299,7 +299,7 @@ func TestRelease_FailuresBeforeThePushAfterAnswering_KeepTheAnswersCommit(t *tes
 				pushRejected(),               // push --atomic origin HEAD v1.3.0
 			},
 			beforeReset: []runner.ScriptedCall{ScriptedOut("")}, // tag -d v1.3.0
-			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; kept the answers commit on the starting commit; repo clean",
+			summary:     "reset 3 commits and deleted tag " + minorTagV130 + "; kept your exclusion answers in .mint.toml; repo clean",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -346,7 +346,7 @@ func TestRelease_DeclineAfterAnsweringWithNoPreTagHook_KeepsTheAnswersCommit(t *
 
 	err := a.release(t.Context())
 
-	assertAnswersKept(t, rec, a, err, "reset 1 commit; kept the answers commit on the starting commit; repo clean")
+	assertAnswersKept(t, rec, a, err, "reset 1 commit; kept your exclusion answers in .mint.toml; repo clean")
 }
 
 func TestRelease_AfterAnAbortThatKeptTheAnswers_TheNextReleaseNeitherListsNorPausesOnThem(t *testing.T) {

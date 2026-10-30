@@ -791,7 +791,7 @@ func TestPlainPresenterRegenerateAllRendersBlocksInEmitOrderNoReorder(t *testing
 
 // TestPlainPresenterRegenerateFreshNotesBlockRendersFourChoiceHint drives a
 // fresh-notes regenerate block: Prompt(NotesReviewGate()) renders the four-choice
-// [y/n/e/r] hint. The presenter renders whichever gate the engine passes — it does
+// [Y/n/e/r] hint, its default capitalised. The presenter renders whichever gate the engine passes — it does
 // NOT decide reuse-vs-fresh.
 func TestPlainPresenterRegenerateFreshNotesBlockRendersFourChoiceHint(t *testing.T) {
 	out := &bytes.Buffer{}
@@ -799,14 +799,14 @@ func TestPlainPresenterRegenerateFreshNotesBlockRendersFourChoiceHint(t *testing
 	p := presenter.NewPlainPresenterWithInput(out, errBuf, strings.NewReader("y\n"))
 	_, _ = p.Prompt(presenter.NotesReviewGate())
 
-	if !strings.Contains(out.String(), "[y/n/e/r]") {
-		t.Errorf("fresh-notes block hint = %q, want it to contain [y/n/e/r]", out.String())
+	if !strings.Contains(out.String(), "[Y/n/e/r]") {
+		t.Errorf("fresh-notes block hint = %q, want it to contain [Y/n/e/r]", out.String())
 	}
 }
 
 // TestPlainPresenterRegenerateReuseNotesBlockRendersTwoChoiceHint drives a
 // reused-notes regenerate block: Prompt(ReuseConfirmGate()) renders only the
-// two-choice [y/n] hint — no e/r.
+// two-choice [Y/n] hint — no e/r.
 func TestPlainPresenterRegenerateReuseNotesBlockRendersTwoChoiceHint(t *testing.T) {
 	out := &bytes.Buffer{}
 	errBuf := &bytes.Buffer{}
@@ -814,11 +814,11 @@ func TestPlainPresenterRegenerateReuseNotesBlockRendersTwoChoiceHint(t *testing.
 	_, _ = p.Prompt(presenter.ReuseConfirmGate())
 
 	got := out.String()
-	if !strings.Contains(got, "[y/n]") {
-		t.Errorf("reuse-notes block hint = %q, want it to contain [y/n]", got)
+	if !strings.Contains(got, "[Y/n]") {
+		t.Errorf("reuse-notes block hint = %q, want it to contain [Y/n]", got)
 	}
-	if strings.Contains(got, "[y/n/e/r]") {
-		t.Errorf("reuse-notes block hint must NOT contain the four-choice [y/n/e/r]: %q", got)
+	if strings.Contains(got, "[Y/n/e/r]") {
+		t.Errorf("reuse-notes block hint must NOT contain the four-choice [Y/n/e/r]: %q", got)
 	}
 }
 

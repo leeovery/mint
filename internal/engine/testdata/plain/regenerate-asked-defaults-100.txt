@@ -1,5 +1,5 @@
-Source? [fresh/tag/release]
-Target? [release/changelog/both]
+Source? [fresh/tag/release] (default: fresh)
+Target? [release/changelog/both] (default: release)
 mint: regenerating pigeon v1.4.0
 plan: source fresh; release v1.4.0
 notes: running...
@@ -14,5 +14,5 @@ Webhooks retry on their own now, so a flaky endpoint no longer drops events.
 - Signing secrets with a trailing newline are accepted again.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 --- stderr ---
