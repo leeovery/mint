@@ -48,7 +48,9 @@ func newTicker(d time.Duration) (<-chan time.Time, func()) {
 // the run and redraws, letting it go only while a question reads its answer; the
 // spinner's ticker runs only while a stage runs and nothing else holds the terminal
 // (no question waiting, no editor), and takes the mutex for each frame, drawing only
-// while it is still the ticker running, so nothing writes once it is stopped.
+// while it is still the ticker running, so nothing writes once it is stopped. A stop
+// at the shell's Ctrl-Z holds the mutex from taking the region off the terminal until
+// it is drawn again after fg.
 type RailPresenter struct {
 	mu  sync.Mutex
 	out io.Writer
@@ -79,15 +81,14 @@ type RailPresenter struct {
 	// dumb is a terminal that can't move its cursor, which gets no region.
 	dumb    bool
 	ticking *ticker
-	// suspended is the editor holding the terminal, asking a question waiting.
-	suspended, asking bool
+	// suspended is the editor holding the terminal, asking a question waiting, halted
+	// the process stopped by the shell.
+	suspended, asking, halted bool
 
-	// continued is the signal the process gets when the shell resumes it, which
-	// Continued answers until stopContinued stops it; nil watches for none.
-	continued     <-chan os.Signal
-	stopContinued func()
-	closing       sync.Once
-	closed        chan struct{}
+	// stops is the stop the shell asks for at Ctrl-Z, which stopProcess carries out,
+	// returning once the shell resumes the process; nil watches for none.
+	stops       <-chan os.Signal
+	stopProcess func()
 }
 
 // Compile-time proof the rail presenter satisfies the seam it renders.
@@ -135,11 +136,13 @@ func WithRailEcho(echo bool) RailOption {
 // run prints as it happens, as on a terminal too narrow for a region.
 func WithRailDumb(dumb bool) RailOption { return func(p *RailPresenter) { p.dumb = dumb } }
 
-// WithRailContinued sets the signal the process gets when the shell resumes it after
-// a stop, Ctrl-Z then fg, which the Rail answers with Continued; stop ends the signal
-// once the Rail is closed. Without it the Rail watches for none.
-func WithRailContinued(continued <-chan os.Signal, stop func()) RailOption {
-	return func(p *RailPresenter) { p.continued, p.stopContinued = continued, stop }
+// WithRailStops sets the signal the shell's Ctrl-Z sends, and stop, which stops the
+// process in its place and returns once fg resumes it: the Rail takes its region off
+// the terminal before stop, so the shell prints under settled lines alone, and draws
+// it afresh after. A closed stops ends the watch. Without it the Rail watches for
+// none.
+func WithRailStops(stops <-chan os.Signal, stop func()) RailOption {
+	return func(p *RailPresenter) { p.stops, p.stopProcess = stops, stop }
 }
 
 // WithRailClock sets the time a running stage's time is read from, the wall clock
@@ -161,43 +164,46 @@ func NewRailPresenter(out io.Writer, opts ...RailOption) *RailPresenter {
 		region:           newLiveRegion(out),
 		run:              newRunModel(),
 		echoes:           isTerminal,
-		closed:           make(chan struct{}),
 	}
 	for _, opt := range opts {
 		opt(p)
 	}
 	p.echo = p.echoes(p.in)
-	if p.continued != nil {
-		go p.watchContinued()
+	if p.stops != nil {
+		go p.watchStops()
 	}
 	return p
 }
 
-// watchContinued answers each resume with Continued until the Rail is closed.
-func (p *RailPresenter) watchContinued() {
-	for {
-		select {
-		case <-p.closed:
-			return
-		case <-p.continued:
-			p.Continued()
-		}
+// watchStops answers each stop the shell asks for until stops is closed, the Rail's
+// close included: whatever runs after it is stopped all the same.
+func (p *RailPresenter) watchStops() {
+	for range p.stops {
+		p.stopped()
 	}
 }
 
-// Continued draws the run afresh once the shell has resumed the process: the shell
-// printed its own lines under the region while it was stopped, and left the cursor
-// below them, so the region is forgotten, never gone back over, and drawn again from
-// where the cursor is. The region's rows above the shell's lines stay, as the shell
-// left them. Where the editor holds the terminal or a question waits nothing is drawn
-// until what holds it is done.
-func (p *RailPresenter) Continued() {
+// stopped stops the process at the shell's Ctrl-Z. The region comes off the terminal
+// and the spinner stops first, so the shell prints its lines under the settled ones
+// alone, and once fg resumes the process the region is drawn afresh where the cursor
+// is, under the shell's lines, and the spinner starts again. The mutex is held from
+// the erase to the fresh draw, so no frame or event draws while the process is
+// stopped or before the region is back. Where the editor holds the terminal, a
+// question waits or the run is closed, no region is drawn to take off, and the
+// process only stops.
+func (p *RailPresenter) stopped() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.region.Forget()
-	if !p.suspended && !p.asking && !p.run.closed {
-		p.redraw()
+	if p.suspended || p.asking || p.run.closed {
+		p.stopProcess()
+		return
 	}
+	p.halted = true
+	p.syncTicker()
+	p.region.Erase()
+	p.stopProcess()
+	p.halted = false
+	p.redraw()
 }
 
 func isTerminal(in io.Reader) bool {
@@ -606,16 +612,9 @@ func landed(o Outcome) bool {
 }
 
 // Close ends the presenter's drawing: a run still open, one no RunFinished closed,
-// settles as a run that never landed, next settles last, and the spinner and the
-// watch for the shell's resume stop for good. Whatever presents after it settles
-// straight away.
+// settles as a run that never landed, next settles last, and the spinner stops for
+// good. Whatever presents after it settles straight away.
 func (p *RailPresenter) Close() {
-	p.closing.Do(func() {
-		close(p.closed)
-		if p.stopContinued != nil {
-			p.stopContinued()
-		}
-	})
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.run.open {
@@ -687,7 +686,7 @@ type ticker struct {
 // syncTicker runs the spinner's ticker while a stage runs in a region drawn, the
 // run open and nothing else holding the terminal, and stops it otherwise.
 func (p *RailPresenter) syncTicker() {
-	want := p.fits && !p.run.closed && !p.suspended && !p.asking && p.run.running() != nil
+	want := p.fits && !p.run.closed && !p.suspended && !p.asking && !p.halted && p.run.running() != nil
 	switch {
 	case want && p.ticking == nil:
 		ticks, stop := p.tick(spinnerFrame)

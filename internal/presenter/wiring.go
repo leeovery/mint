@@ -62,8 +62,8 @@ func NewForStartup(plainFlag, yes bool, stdout, stderr, stdin *os.File) Presente
 
 // newForSignals is NewForStartup's presenter for the signals it resolved, with the
 // failure summaries going to errStream. The Rail on a TERM=dumb terminal, which can't
-// move its cursor, draws no live region, and it draws afresh when the shell resumes
-// the process, where the platform has a resume signal.
+// move its cursor, draws no live region, and it takes the region off the terminal
+// when the shell stops the process, Ctrl-Z, where the platform has job control.
 func newForSignals(signals StartupSignals, yes bool, stdout *os.File, errStream io.Writer, stdin *os.File) Presenter {
 	if signals.Mode == ModePretty {
 		return NewRailPresenter(stdout,
@@ -71,7 +71,7 @@ func newForSignals(signals StartupSignals, yes bool, stdout *os.File, errStream 
 			WithRailInput(stdin),
 			WithRailGating(yes, signals.StdinInteractive),
 			WithRailDumb(os.Getenv("TERM") == "dumb"),
-			WithRailContinued(continuedSignals()),
+			WithRailStops(stopSignals()),
 		)
 	}
 	p := NewPlainPresenterWithInput(stdout, errStream, stdin)
