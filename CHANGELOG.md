@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-30
+
+🔧 Changed
+- Exclusion check answers now show as "✓" when excluded or "–" (dimmed) when kept, in place of the question, with the reason shown after the answer.
+- While an exclusion question is waiting for your answer, a branch line now joins it to the rail.
+- Actions mint took, such as commits made, saved-notes messages and what an unwind undid, now show in the normal colour instead of dimmed.
+
+🐛 Fixed
+- Exclusion answers given after their stage has scrolled away now hang under the rail instead of appearing as a separate row.
+
 ## [0.2.0] - 2026-10-30
 
 Mint's terminal output is redrawn as a live progress rail that shows every stage of a release, commit or regenerate run as it happens.
