@@ -192,9 +192,11 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 		presentertest.KindShowPlan,
 		presentertest.KindShowNotes,
 		presentertest.KindPrompt,         // notes review gate
+		presentertest.KindStageStarted,   // record, quiet: its commit runs the repo's hooks
 		presentertest.KindStageSucceeded, // record (what the bookkeeping commit carried)
 		presentertest.KindStageStarted,   // push (blocking)
 		presentertest.KindStageSucceeded, // push
+		presentertest.KindStageStarted,   // publish, quiet: written over the network
 		presentertest.KindStageSucceeded, // publish (post-PONR success narration)
 		presentertest.KindRunFinished,
 	}

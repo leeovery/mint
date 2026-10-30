@@ -740,7 +740,11 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// partial dirty changelog behind. The projection is filesystem-only (no git), so it
 	// adds no git calls; its change is staged by CommitBookkeeping below. An empty
 	// version_file is tag-only and no-ops (versionChanged false).
+	//
+	// The bookkeeping commit runs the repo's own commit hooks, so the rail shows record
+	// running.
 	made.wrote = true
+	showRunning(p, stageRecord, "recording the release…")
 	projection, err := record.ProjectVersionFile(root, cfg.Release.VersionFile, cfg.Release.VersionPattern, versionKey)
 	if err != nil {
 		// Post-mutation, pre-PONR: route through the surgical unwind so any pre_tag
@@ -921,6 +925,7 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 		// stdout); thread it into RunResult.URL so the success footer renders the real
 		// URL. A publish FAILURE is warn-only and leaves releaseURL empty (no bogus URL
 		// in the footer); a downgrade leaves publisher nil so releaseURL stays empty too.
+		showRunning(p, stagePublish, writingText(publisher))
 		url, err := publisher.CreateRelease(ctx, tag, tag, body)
 		if err != nil {
 			warnPublishFailed(p, err, versionKey)

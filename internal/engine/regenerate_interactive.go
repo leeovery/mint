@@ -493,6 +493,16 @@ func releaseName(publisher publish.Publisher) string {
 	return aProviderRelease
 }
 
+// writingText is what a stage writing publisher's release says while it runs.
+func writingText(publisher publish.Publisher) string {
+	return writingRelease(releaseName(publisher))
+}
+
+// writingRelease is what a stage writing the release named release says while it runs.
+func writingRelease(release string) string {
+	return "writing the " + release + "…"
+}
+
 // readFrom is where a regenerate from source read its notes, release naming the
 // provider's, and notesFile a supplied body's: "" for fresh notes, which are written.
 func readFrom(source RegenerateSource, release, notesFile string) string {

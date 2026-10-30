@@ -546,7 +546,7 @@ func writeVersionRelease(ctx context.Context, deps ReleaseDeps, publisher publis
 			warnRegenerateProviderSkipped(p, res.Tag)
 			return nil
 		}
-		p.StageStarted(presenter.StageStart{Name: stagePublish, Key: res.Tag, Blocking: true, Text: "writing the " + batch.release + "…", Quiet: true})
+		p.StageStarted(presenter.StageStart{Name: stagePublish, Key: res.Tag, Blocking: true, Text: writingRelease(batch.release), Quiet: true})
 		// The batch's closing Summary carries no URL (regenerate publishes a set, not a
 		// single release with a footer URL), so the dispatched release URL is discarded
 		// here — only the forward release path threads it into RunResult.URL.

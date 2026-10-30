@@ -12,6 +12,7 @@ package engine_test
 
 import (
 	"context"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -199,7 +200,8 @@ func (w *railWorld) release(t *testing.T, set func(*engine.ReleaseOptions)) (str
 // it once the run is over.
 func (w *railWorld) glimpse(name, arg string) *glimpsing {
 	g := &glimpsing{FakeRunner: w.f, term: w.term, name: name, arg: arg}
-	w.deps.Runner = g
+	mut := git.NewMutator(g)
+	w.deps.Runner, w.deps.Mutator, w.deps.Releaser = g, mut, release.NewReleaser(mut)
 	return g
 }
 
@@ -214,6 +216,11 @@ type glimpsing struct {
 func (g *glimpsing) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
 	g.look(name, args)
 	return g.FakeRunner.Run(ctx, name, args...)
+}
+
+func (g *glimpsing) RunWith(ctx context.Context, stdin io.Reader, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.FakeRunner.RunWith(ctx, stdin, name, args...)
 }
 
 func (g *glimpsing) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (runner.Result, error) {
@@ -435,6 +442,31 @@ var railRuns = map[string]railRun{
 		w.readGates(false)
 		w.f.SeedSequence("sh", ScriptedOut("")) // the preflight hook
 		w.notes()
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// The review accepted and the bookkeeping commit under way, which runs the repo's
+	// own commit hooks: record runs on the rail.
+	"release-record-running-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ny\n", false)
+		g := w.glimpse("git", "-C")
+		w.readGates(false)
+		w.notes()
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// Past the push, the release being written on GitHub: publish runs on the rail.
+	"release-publish-running-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\ny\n", false)
+		g := w.glimpse("gh", "release")
+		w.readGates(false)
+		w.notes()
+		w.recorded()
+		w.pushed()
+		w.published(ScriptedOut(railURL + "\n"))
 		_, err := w.release(t, nil)
 		return g.frame(t), err
 	}},
