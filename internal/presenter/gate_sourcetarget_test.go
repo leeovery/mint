@@ -97,22 +97,23 @@ func TestSourceGateUnrecognisedInputRePromptsThenAccepts(t *testing.T) {
 
 // TestPlainSourceTargetRenderTerseKeyValueLines proves plain renders the source and
 // target prompts as terse key:value-style prompt lines with the option-key hint —
-// NOT a menu. The hint is built from the declared option keys.
+// NOT a menu. The hint is built from the declared option keys, and names the default
+// word after it, as no capital can mark a word.
 func TestPlainSourceTargetRenderTerseKeyValueLines(t *testing.T) {
 	src, srcOut, _ := plainGate(strings.NewReader("github\n"), gateOpts{})
 	if _, err := src.Prompt(presenter.SourceGate(sourceOptions(), presenter.Choice("github"))); err != nil {
 		t.Fatalf("plain source Prompt returned error: %v", err)
 	}
-	if got := srcOut.String(); got != "Source? [github/gitlab]\n" {
-		t.Errorf("plain source prompt = %q, want terse key:value line %q", got, "Source? [github/gitlab]\n")
+	if got := srcOut.String(); got != "Source? [github/gitlab] (default: github)\n" {
+		t.Errorf("plain source prompt = %q, want terse key:value line %q", got, "Source? [github/gitlab] (default: github)\n")
 	}
 
 	tgt, tgtOut, _ := plainGate(strings.NewReader("stable\n"), gateOpts{})
 	if _, err := tgt.Prompt(presenter.TargetGate(targetOptions(), presenter.Choice("stable"))); err != nil {
 		t.Fatalf("plain target Prompt returned error: %v", err)
 	}
-	if got := tgtOut.String(); got != "Target? [stable/beta]\n" {
-		t.Errorf("plain target prompt = %q, want terse key:value line %q", got, "Target? [stable/beta]\n")
+	if got := tgtOut.String(); got != "Target? [stable/beta] (default: stable)\n" {
+		t.Errorf("plain target prompt = %q, want terse key:value line %q", got, "Target? [stable/beta] (default: stable)\n")
 	}
 	// No menu artefacts in plain (no four-space option indent, no ›).
 	for _, buf := range []*bytes.Buffer{srcOut, tgtOut} {

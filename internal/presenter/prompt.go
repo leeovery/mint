@@ -112,17 +112,26 @@ func readTypedLine(reader *bufio.Reader) (line string, ended bool, err error) {
 	return strings.TrimSuffix(line, "\r"), ended, nil
 }
 
-// plainKeyHint builds the slash-joined key hint (e.g. "y/n/e/r") from the gate's
-// DECLARED keys in render order. It reads g.Keys() so a two-choice gate renders
-// "y/n" — the hint is never a hardcoded y/n/e/r literal. Plain's terse prompt
-// uses it.
+// plainKeyHint builds the bracketed, slash-joined key hint (e.g. "[Y/n/e/r]") from
+// the gate's DECLARED keys in render order, the default marked as Y/n marks it: a
+// one-character key capitalised, a word, which no capital can mark, named after the
+// hint ("[fresh/tag] (default: fresh)"). It reads g.Keys() and g.Default, so a
+// two-choice gate renders "[Y/n]" and a keep-default pause "[e/K]" — the hint is
+// never a hardcoded literal. Plain's terse prompt uses it.
 func plainKeyHint(g Gate) string {
 	keys := g.Keys()
 	parts := make([]string, len(keys))
 	for i, key := range keys {
 		parts[i] = string(key)
+		if key == g.Default && singleKey(key) {
+			parts[i] = strings.ToUpper(parts[i])
+		}
 	}
-	return strings.Join(parts, "/")
+	hint := "[" + strings.Join(parts, "/") + "]"
+	if !singleKey(g.Default) {
+		hint += " (default: " + string(g.Default) + ")"
+	}
+	return hint
 }
 
 // bufferedReader lazily wraps an io.Reader in a SINGLE persistent *bufio.Reader,

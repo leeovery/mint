@@ -12,7 +12,7 @@ Webhooks retry on their own now, so a flaky endpoint no longer drops events.
 - Signing secrets with a trailing newline are accepted again.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 push: running...
 push: pushed to origin (0.7s)
 --- stderr ---

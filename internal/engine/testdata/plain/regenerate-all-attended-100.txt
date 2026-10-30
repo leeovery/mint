@@ -5,7 +5,7 @@ notes: generated (0.7s)
 --- release notes v1.0.0 ---
 Initial release.
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 mint: regenerating pigeon v1.1.0
 plan: source fresh; release v1.1.0
 notes: running...
@@ -14,7 +14,7 @@ notes: generated (0.7s)
 What changed in v1.1.0, in a line.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 mint: regenerating pigeon v1.2.0
 plan: source fresh; release v1.2.0
 notes: running...
@@ -23,6 +23,6 @@ notes: generated (0.7s)
 What changed in v1.2.0, in a line.
 
 --- end notes ---
-Use these notes? [y/n/e/r]
+Use these notes? [Y/n/e/r]
 done: pigeon 3 regenerated
 --- stderr ---

@@ -8,7 +8,7 @@ Deliveries that fail are retried with exponential backoff for up to an
 hour before they are marked dead.
 
 --- end commit message ---
-Commit this message? [y/n/e/r]
+Commit this message? [Y/n/e/r]
 extra context for the regeneration (Enter to skip): commit message: running...
 commit message: regenerated (0.7s)
 --- commit message ---
@@ -17,6 +17,6 @@ feat(webhooks): back off between delivery retries
 A failed delivery waits longer before each retry, for up to an hour.
 
 --- end commit message ---
-Commit this message? [y/n/e/r]
+Commit this message? [Y/n/e/r]
 done: pigeon committed
 --- stderr ---
