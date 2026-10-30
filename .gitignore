@@ -7,5 +7,5 @@
 /mint
 dist/
 
-# demo recordings: the world, frames and art demo/record.sh makes
+# demo recordings: the world and frames demo/record.sh makes (the art goes to art/)
 /demo/out/

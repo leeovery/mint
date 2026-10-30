@@ -278,9 +278,8 @@ func (r *RecordingPresenter) ShowMessage(m presenter.Message) {
 	r.Events = append(r.Events, Event{Kind: KindShowMessage, ShowMessage: m})
 }
 
-// ShowVersion records the version event with its full payload — value and brand
-// leaf — so an engine-driven test can round-trip the version event independent of
-// any rendering.
+// ShowVersion records the version event with its full payload so an engine-driven
+// test can round-trip the version event independent of any rendering.
 func (r *RecordingPresenter) ShowVersion(v presenter.Version) {
 	r.Events = append(r.Events, Event{Kind: KindShowVersion, ShowVersion: v})
 }

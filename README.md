@@ -147,7 +147,7 @@ How mint writes notes for big releases, what it does with files that don't belon
 
 Rewrites the notes of a release that's already out, on the GitHub release, in `CHANGELOG.md`, or both. Where the notes come from (the **source**) and what gets written (the **target**) are independent: any source can write any target.
 
-<img src="art/regenerate.webp" alt="mint release regenerate --all --target both -y rewriting seven versions from fresh notes, skipping v1.2.0 when the AI returns empty notes, then rebuilding and pushing CHANGELOG.md, with the command to retry v1.2.0 under next" width="840">
+<img src="art/regenerate.webp" alt="mint release regenerate --all --target both -y regenerating six of seven versions from fresh notes, skipping v1.2.0 when the AI returns empty notes, then rebuilding and pushing CHANGELOG.md, with the command to retry v1.2.0 under next" width="840">
 
 ```bash
 mint release regenerate <version> [options]
