@@ -39,11 +39,11 @@ func newStoppedRail(t *testing.T, stop func(r *stoppedRail)) *stoppedRail {
 	return r
 }
 
-// awaitDrawn waits until the presenter has written past the first n bytes and its
-// spinner runs again: the region drawn again once the process is resumed.
+// awaitDrawn waits until the presenter has written past the first n bytes: the
+// region drawn again once the process is resumed.
 func (r *stoppedRail) awaitDrawn(t *testing.T, n int) {
 	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); len(r.out.written()) <= n || !r.ticks.running(); {
+	for deadline := time.Now().Add(5 * time.Second); len(r.out.written()) <= n; {
 		if time.Now().After(deadline) {
 			t.Fatalf("nothing was drawn once resumed; written %q", r.out.written())
 		}
@@ -52,11 +52,11 @@ func (r *stoppedRail) awaitDrawn(t *testing.T, n int) {
 }
 
 // whileStopped is what a stop saw while the process was stopped: what was written
-// when it stopped, whether the spinner ran then, and what was written after the
-// shell's lines and a spinner frame fired after them.
+// when it stopped, whether the spinner ran then, whether a frame fired after the
+// shell's lines was taken, and what was written after them.
 type whileStopped struct {
-	atStop, after string
-	spinning      bool
+	atStop, after       string
+	spinning, tickTaken bool
 }
 
 func notesRunning(s string) bool { return strings.Contains(s, "  notes         writing the notes…") }
@@ -76,9 +76,7 @@ func TestRail_StoppedByTheShellItTakesTheRegionOffAndDrawsItAfreshAfterFg(t *tes
 		if _, err := r.term.Write([]byte(shellStopAndResume)); err != nil {
 			t.Error(err)
 		}
-		// The fake's channel outlives its stop, so a spinner goroutine not yet gone
-		// may still take the frame; whether it draws is what counts.
-		r.ticks.fire(50 * time.Millisecond)
+		s.tickTaken = r.ticks.fire(50 * time.Millisecond)
 		time.Sleep(20 * time.Millisecond)
 		s.after = r.out.written()[len(s.atStop):]
 		seen <- s
@@ -95,8 +93,8 @@ func TestRail_StoppedByTheShellItTakesTheRegionOffAndDrawsItAfreshAfterFg(t *tes
 	if !strings.HasSuffix(atStop, "\x1b[J") {
 		t.Errorf("before the process stopped the writer ended %q, want the region erased", atStop[max(len(atStop)-40, 0):])
 	}
-	if s.spinning || s.after != "" {
-		t.Errorf("while stopped: spinner running %v, written %q; want nothing drawn", s.spinning, s.after)
+	if s.spinning || s.tickTaken || s.after != "" {
+		t.Errorf("while stopped: spinner running %v, a frame taken %v, written %q; want nothing drawn", s.spinning, s.tickTaken, s.after)
 	}
 	if again := r.out.written()[len(atStop):]; cursorUp.MatchString(again) {
 		t.Errorf("resumed, the writer wrote %q, want the region drawn where the cursor is, nothing moved up", again)
