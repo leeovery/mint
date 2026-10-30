@@ -75,7 +75,9 @@ type RailPresenter struct {
 	run    *runModel
 	layout rail.Layout
 	// fits is whether the terminal had room for a region when last measured.
-	fits    bool
+	fits bool
+	// dumb is a terminal that can't move its cursor, which gets no region.
+	dumb    bool
 	ticking *ticker
 	// suspended is the editor holding the terminal, asking a question waiting.
 	suspended, asking bool
@@ -121,6 +123,10 @@ func WithRailTicker(tick Ticker) RailOption { return func(p *RailPresenter) { p.
 func WithRailEcho(echo bool) RailOption {
 	return func(p *RailPresenter) { p.echoes = func(io.Reader) bool { return echo } }
 }
+
+// WithRailDumb sets whether the terminal can't move its cursor, TERM=dumb's, so the
+// run prints as it happens, as on a terminal too narrow for a region.
+func WithRailDumb(dumb bool) RailOption { return func(p *RailPresenter) { p.dumb = dumb } }
 
 // WithRailClock sets the time a running stage's time is read from, the wall clock
 // without it.
@@ -589,11 +595,11 @@ func (p *RailPresenter) draw(rows int) {
 }
 
 // measure reads the terminal's size and lays the run out for it, settling whether it
-// has room for a region, and returns its rows.
+// has room for a region, which a dumb terminal never has, and returns its rows.
 func (p *RailPresenter) measure() int {
 	cols, rows := p.size()
 	p.layout = rail.NewLayout(cols, p.level)
-	p.fits = p.layout.RegionFits() && (rows <= 0 || rows >= minRegionRows)
+	p.fits = !p.dumb && p.layout.RegionFits() && (rows <= 0 || rows >= minRegionRows)
 	return rows
 }
 

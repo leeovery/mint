@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -118,5 +119,38 @@ func TestClose_EndsTheRailsDrawingAndWritesNothingWhereNothingIsDrawn(t *testing
 		if out.Len() != 0 {
 			t.Errorf("Close on %s wrote %q, want nothing", mode.name, out.String())
 		}
+	}
+}
+
+// TestNewForStartup_OnADumbTerminalTheRailDrawsNoRegion pins that TERM=dumb, a
+// terminal that can't move its cursor, gets the Rail with no live region: its lines
+// only settle, and nothing ever moves back up over them.
+func TestNewForStartup_OnADumbTerminalTheRailDrawsNoRegion(t *testing.T) {
+	cursorUp := regexp.MustCompile(`\x1b\[\d+A`)
+	for _, tc := range []struct {
+		term    string
+		movesUp bool
+	}{
+		{term: "xterm-256color", movesUp: true},
+		{term: "dumb", movesUp: false},
+	} {
+		t.Run(tc.term, func(t *testing.T) {
+			t.Setenv("TERM", tc.term)
+			out := startupFile(t, "out")
+			p := presenter.NewForSignals(prettySignals, false, out, &bytes.Buffer{}, startupFile(t, "in"))
+			p.RunStarted(releaseStarted(false))
+			p.ShowPlan(releasePlan())
+			p.StageStarted(presenter.StageStart{Name: "pre_tag", Key: "pre_tag", Blocking: true, Text: "running the pre_tag hook…"})
+			p.StageSucceeded(presenter.StageSuccess{Name: "pre_tag", Key: "pre_tag", Blocking: true, Detail: "npm ci && npm run build"})
+			presenter.Close(p)
+
+			got := written(t, out)
+			if moved := cursorUp.MatchString(got); moved != tc.movesUp {
+				t.Errorf("TERM=%s moved the cursor up: %v, want %v\n%q", tc.term, moved, tc.movesUp, got)
+			}
+			if !strings.Contains(got, " ●  pre_tag") {
+				t.Errorf("TERM=%s: out = %q, want the pre_tag node settled", tc.term, got)
+			}
+		})
 	}
 }
