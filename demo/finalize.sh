@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Make the README's art from the frames a tape in demo/ recorded: for a clip,
 # an animated WebP, which GitHub shows inline, and an MP4; for a still, a WebP
-# of its last frame.
+# of its last frame, cropped to what it drew.
 #
 # vhs writes each frame it shows, a layer of text and one of the cursor,
 # exactly as the terminal drew them. The art is made from those, not from a
@@ -30,6 +30,28 @@ fi
 	exit 2
 }
 
+# drawn_rows <frame> <width> <height> prints the first and last rows of the frame
+# with anything drawn on them, counted from 0: rows holding a pixel unlike the
+# frame's top-left one, its margin. Every such pixel is made non-zero and the rest
+# zero, then each byte is read. Exact to the pixel, where cropdetect is not: it
+# averages a row, so the few pixels a row of the prompt's ❱ holds read as none.
+drawn_rows() {
+	local frame="$1" width="$2" height="$3"
+	ffmpeg -v error -i "$frame" \
+		-filter_complex "[0]format=gbrp,split[f][c];[c]crop=1:1:0:0,scale=$width:$height:flags=neighbor[bg];[f][bg]blend=all_mode=difference,lutrgb=r='if(val,255,0)':g='if(val,255,0)':b='if(val,255,0)',format=gray" \
+		-f rawvideo -pix_fmt gray - |
+		od -An -v -tu1 |
+		awk -v width="$width" '
+			/[1-9]/ {
+				for (i = 1; i <= NF; i++) if ($i) {
+					at = 16 * (NR - 1) + i - 1
+					if (first == "") first = at
+					last = at
+				}
+			}
+			END { print int(first / width), int(last / width) }'
+}
+
 frames="$(mktemp -d)"
 trap 'rm -rf "$frames"' EXIT
 mkdir -p "$art"
@@ -52,8 +74,14 @@ for name in "$@"; do
 
 	echo "==> $name"
 	if $still; then
+		# The screen's height is the tallest moment of the run, so its last frame
+		# can end in empty rows: cut them, leaving under the last row drawn the
+		# margin above the first.
 		shot=("$frames"/f*.png)
-		cwebp -quiet -lossless -m 6 "${shot[${#shot[@]} - 1]}" -o "$art/$name.webp"
+		last="${shot[${#shot[@]} - 1]}"
+		rows="$(drawn_rows "$last" $((w + 2 * pad)) $((h + 2 * pad)))"
+		read -r top bottom <<<"$rows"
+		cwebp -quiet -lossless -m 6 -crop 0 0 $((w + 2 * pad)) $((bottom + 1 + top)) "$last" -o "$art/$name.webp"
 		printf "   %-30s %s\n" "art/$name.webp" "$(du -h "$art/$name.webp" | cut -f1)"
 		continue
 	fi

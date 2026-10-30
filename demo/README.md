@@ -26,11 +26,12 @@ demo/record.sh tour commit   # the tapes named
 | `init` | `init.webp`, a still: `mint init` in an empty repo |
 
 The art goes to `art/` at the repository's root, where the README takes it from, so `git diff`
-shows what a recording changed and the art is committed with the change it shows. `look.tape` holds the settings every tape sources; each tape
-sets the height its run needs. Each tape ends on a `Wait+Screen` for a line only its run's real
-flow prints, so a shim answering wrongly, or mint failing early, fails the recording rather than
-leaving a still that looks right. Those lines are mint's own words: a change to the output
-changes them too.
+shows what a recording changed and the art is committed with the change it shows. `look.tape`
+holds the settings every tape sources; each tape sets the height its run needs at its tallest,
+and a still is cropped to what its last frame drew. Each tape ends on a `Wait+Screen` for a line
+only its run's real flow prints, so a shim answering wrongly, or mint failing early, fails the
+recording rather than leaving a still that looks right. Those lines are mint's own words: a
+change to the output changes them too.
 
 ## The world
 
@@ -119,6 +120,10 @@ The shell reports `COLORTERM=truecolor`, as Ghostty and iTerm do.
 - **The art.** For a clip, an animated WebP, which GitHub shows inline, at the frames' 30 a second,
   and an H.264 MP4 of the same frames; for a still, a lossless WebP of the last frame. Each frame
   is set in a margin of the theme's background.
+- **The crop.** A still's screen is as tall as its run's tallest moment, such as `commit`'s
+  message at its question, so its last frame can end in empty rows. `finalize.sh` finds the
+  first and last rows holding a pixel unlike the margin's, reading every pixel, and cuts below
+  the last, leaving under it the margin above the first. Clips keep their full height.
 
 `demo/out/`, the world and the frames, is remade each time and never committed.
 
