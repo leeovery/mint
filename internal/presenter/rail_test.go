@@ -424,7 +424,7 @@ func TestRail_UnderSixtyColumnsThereIsNoRegion_NothingIsRedrawn(t *testing.T) {
 	r.StageSucceeded(presenter.Settled("message", "written"))
 	r.ShowMessage(presenter.Message{Body: "feat: retry deliveries"})
 	in.asked = func(int) {
-		if got := r.screen(t); got[len(got)-1] != " ?  Commit this message?   y accept   n abort" {
+		if got := r.screen(t); got[len(got)-1] != " ?  Commit this message?   y accept   n abort ›" {
 			t.Errorf("while asked the terminal ends %q, want the question printed where it can be seen", got[len(got)-1])
 		}
 	}

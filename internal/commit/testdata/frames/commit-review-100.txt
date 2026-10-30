@@ -10,7 +10,7 @@
  │    Deliveries that fail are retried with exponential backoff for up to an
  │    hour before they are marked dead.
  │
- ?  Commit this message?   y accept   n abort   e edit   r regenerate
+ ?  Commit this message?   y accept   n abort   e edit   r regenerate ›
  ┆
  ○  stage         git add -A
  ○  commit        on main

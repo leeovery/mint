@@ -1,8 +1,8 @@
  mint ─ release regenerate                                                    ~/Code/pigeon · v0.1.2
 
- ?  Source?   fresh re-diff + AI   tag tag annotation body   release published release body
+ ?  Source?   fresh re-diff + AI   tag tag annotation body   release published release body ›
  ●  source        fresh
- ?  Target?   release provider release   changelog CHANGELOG.md   both both
+ ?  Target?   release provider release   changelog CHANGELOG.md   both both ›
  ●  target        release
  ◇  v1.4.0        fresh → GitHub release
  │
@@ -16,7 +16,7 @@
  │    ## 🐛 Fixed
  │    - Signing secrets with a trailing newline are accepted again.
  │
- ?  Use these notes?   y accept   n abort   e edit   r regenerate y
+ ?  Use these notes?   y accept   n abort   e edit   r regenerate › y
  ●  review        accepted
  ●  release       GitHub release written
  │
