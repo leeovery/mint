@@ -1,7 +1,6 @@
 package presenter
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -24,16 +23,10 @@ type PlainPresenter struct {
 	// for redirect-visibility — the full narration still goes to out. A clean run
 	// writes nothing to err.
 	err io.Writer
-	// in is the gate INPUT stream (os.Stdin in production). It is injected so
-	// Prompt is testable without a real terminal: tests pass a strings.Reader
-	// script. It is wrapped ONCE in a persistent bufio.Reader (reader, below) so
-	// buffered bytes survive across re-prompt reads.
-	in io.Reader
-	// reader is the single persistent buffered wrapper around in, constructed
-	// lazily on the first Prompt read. Reusing one bufio.Reader for every read is
-	// essential: a fresh wrapper per read would drop bytes bufio read ahead into
-	// its buffer, losing the next line across a re-prompt.
-	reader *bufio.Reader
+	// input is the gate INPUT stream (os.Stdin in production), and the one buffered
+	// reader over it every read shares. The stream is injected so Prompt is testable
+	// without a real terminal: tests pass a strings.Reader script.
+	input input
 	// yes records the -y/--yes gating decision (the gating axis — orthogonal to
 	// render mode and the stream split). When set, Prompt SKIPS the gate entirely:
 	// it neither renders the menu nor reads the input stream, instead emitting the
@@ -90,7 +83,7 @@ func NewPlainPresenterWithInput(out, err io.Writer, in io.Reader) *PlainPresente
 	// stdinInteractive defaults to true (interactive) explicitly — see the field
 	// doc: the existing interactive-path tests must keep hitting the interactive
 	// loop, not the forbidden-combination fail path.
-	return &PlainPresenter{out: out, err: err, in: in, stdinInteractive: true}
+	return &PlainPresenter{out: out, err: err, input: input{in: in}, stdinInteractive: true}
 }
 
 // writef writes one narration line to out. A Presenter method returns nothing —
@@ -448,12 +441,11 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 		p.failNotInteractive(gateFailLabel)
 		return "", ErrNotInteractive
 	}
-	discardTypedAhead(p.in, p.reader)
-	reader := bufferedReader(p.in, &p.reader)
+	p.input.discardTypedAhead()
 	render := func() {
 		p.writef("%s [%s]\n", gate.Question, plainKeyHint(gate))
 	}
-	return readChoice(reader, render, gate)
+	return readChoice(p.input.line, render, gate)
 }
 
 // AskLine renders the terse free-text prompt "{prompt}: " (no trailing newline —
@@ -469,16 +461,17 @@ func (p *PlainPresenter) Prompt(gate Gate) (Choice, error) {
 // forbidden-combination rule as Prompt, labelled "input" (the free-text input
 // mechanism, not a gate) — and returns ErrNotInteractive. -y does not bypass the
 // check: free text has no declared default to auto-accept, and engine flows only
-// reach AskLine from an interactive gate choice. EOF with no usable line returns
-// ErrInputClosed, unrendered (the engine owns that failure's surfacing).
+// reach AskLine from an interactive gate choice. EOF with no usable line, or Ctrl-C,
+// returns ErrInputClosed, unrendered (the engine owns that failure's surfacing).
 func (p *PlainPresenter) AskLine(prompt string) (string, error) {
 	if !p.stdinInteractive {
 		p.failNotInteractive(inputFailLabel)
 		return "", ErrNotInteractive
 	}
-	discardTypedAhead(p.in, p.reader)
+	p.input.discardTypedAhead()
 	p.writef("%s: ", prompt)
-	return readLine(bufferedReader(p.in, &p.reader))
+	line, _, err := p.input.line()
+	return line, err
 }
 
 // failNotInteractive renders the FORBIDDEN-COMBINATION failure (non-TTY stdin

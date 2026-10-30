@@ -191,9 +191,9 @@ type Presenter interface {
 	// The error return is the machine-readable failure channel, branched via
 	// errors.Is: ErrNotInteractive on the forbidden combination (non-TTY stdin
 	// without -y; ALSO rendered as a fail-loud failure line by the presenter
-	// itself), and ErrInputClosed on EOF mid-gate (NOT rendered — the engine owns
-	// that failure's surfacing; see ErrInputClosed). The presenter never sets an
-	// exit code.
+	// itself), and ErrInputClosed on EOF mid-gate or Ctrl-C at it (NOT rendered —
+	// the engine owns that failure's surfacing; see ErrInputClosed). The presenter
+	// never sets an exit code.
 	Prompt(gate Gate) (Choice, error)
 	// AskLine is the FREE-TEXT input seam: it renders a one-line prompt (the
 	// engine-supplied prompt label, framed per mode), reads ONE raw line from the
@@ -211,9 +211,9 @@ type Presenter interface {
 	// and returns ErrNotInteractive. -y does NOT auto-answer an AskLine (free text
 	// has no declared default to accept); engine flows only reach AskLine from an
 	// interactive gate choice, so under -y it is unreachable by construction. EOF
-	// with no usable line returns ErrInputClosed (NOT rendered — the engine owns
-	// that failure's surfacing); a final line without a trailing newline is still
-	// returned. The prompt is narration → out only.
+	// with no usable line, or Ctrl-C, returns ErrInputClosed (NOT rendered — the
+	// engine owns that failure's surfacing); a final line without a trailing newline
+	// is still returned. The prompt is narration → out only.
 	AskLine(prompt string) (string, error)
 	// SuspendSpinner and ResumeSpinner are ENGINE-CALLABLE control hooks the engine
 	// invokes AROUND its OWN $EDITOR hand-off (the presenter never detects or invokes

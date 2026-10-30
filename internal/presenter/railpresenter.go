@@ -1,7 +1,6 @@
 package presenter
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -57,9 +56,8 @@ type RailPresenter struct {
 	// err gets the one-line failure and warning summaries, as plain's does, for a
 	// stream split from out; nil writes none.
 	err io.Writer
-	in  io.Reader
-	// reader is the one buffered reader over in that every line read shares.
-	reader           *bufio.Reader
+	// input is the stream questions read their answers from, os.Stdin by default.
+	input            input
 	yes              bool
 	stdinInteractive bool
 	// echo is whether in is a terminal, which echoes a typed line where the cursor is,
@@ -102,7 +100,14 @@ func WithRailErr(err io.Writer) RailOption { return func(p *RailPresenter) { p.e
 
 // WithRailInput wires the stream questions read their answers from, os.Stdin
 // without it.
-func WithRailInput(in io.Reader) RailOption { return func(p *RailPresenter) { p.in = in } }
+func WithRailInput(in io.Reader) RailOption { return func(p *RailPresenter) { p.input.in = in } }
+
+// WithRailInterrupts sets the interrupt Ctrl-C sends while a typed line is read,
+// which ends the read with ErrInputClosed. Without it a typed line is read to its
+// Enter.
+func WithRailInterrupts(interrupts Interrupts) RailOption {
+	return func(p *RailPresenter) { p.input.interrupts = interrupts }
+}
 
 // WithRailGating sets the -y decision and whether stdin can answer a question, an
 // interactive stdin without -y without it.
@@ -155,7 +160,7 @@ func WithRailClock(now func() time.Time) RailOption {
 func NewRailPresenter(out io.Writer, opts ...RailOption) *RailPresenter {
 	p := &RailPresenter{
 		out:              out,
-		in:               os.Stdin,
+		input:            input{in: os.Stdin},
 		stdinInteractive: true,
 		level:            rail.LevelOf(termenv.EnvColorProfile()),
 		size:             terminalSize(out),
@@ -168,7 +173,7 @@ func NewRailPresenter(out io.Writer, opts ...RailOption) *RailPresenter {
 	for _, opt := range opts {
 		opt(p)
 	}
-	p.echo = p.echoes(p.in)
+	p.echo = p.echoes(p.input.in)
 	if p.stops != nil {
 		go p.watchStops()
 	}

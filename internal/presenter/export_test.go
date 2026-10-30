@@ -28,6 +28,13 @@ func (p *PlainPresenter) WithInteractiveStdin(interactive bool) *PlainPresenter 
 	return p
 }
 
+// WithInterrupts sets the interrupt that ends the plain presenter's typed reads and
+// returns it for chaining. See input.interrupts.
+func (p *PlainPresenter) WithInterrupts(interrupts Interrupts) *PlainPresenter {
+	p.input.interrupts = interrupts
+	return p
+}
+
 // SingleKeyGate exposes singleKeyGate, the test for whether a gate on the Rail can
 // be answered with one keypress, to the external gate tests.
 func SingleKeyGate(g Gate) bool { return singleKeyGate(g) }

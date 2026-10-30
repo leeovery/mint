@@ -24,13 +24,17 @@ const (
 // ErrNotInteractive. Otherwise a single keypress answers where the input is a
 // terminal and every key one character, and a typed line answers where not, what
 // was typed before the question was asked discarded first. Input closed before an
-// answer returns ErrInputClosed, not rendered.
+// answer, or Ctrl-C, returns ErrInputClosed, not rendered, and once Ctrl-C has ended
+// a typed line every question after it does.
 func (p *RailPresenter) Prompt(g Gate) (Choice, error) {
 	if c, err, done := p.unasked(g); done {
 		return c, err
 	}
-	discardTypedAhead(p.in, p.reader)
-	f, keys := rawKeyFile(p.in)
+	if p.input.abandoned {
+		return "", ErrInputClosed
+	}
+	p.input.discardTypedAhead()
+	f, keys := rawKeyFile(p.input.in)
 	keys = keys && singleKeyGate(g)
 	q := p.ask(g, !keys)
 	if keys {
@@ -64,7 +68,7 @@ func (p *RailPresenter) unasked(g Gate) (Choice, error, bool) {
 // after a line that names none of its keys.
 func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 	for {
-		line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
+		line, ended, err := p.input.line()
 		p.released(ended)
 		if err != nil {
 			return "", p.answered(g, q, "", err)
@@ -81,7 +85,7 @@ func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 // returns the line verbatim. What is typed is the terminal's echo, so nothing redraws
 // while the line is read, and the question and the line stay as typed; what was
 // typed before it was asked is discarded first. Without an interactive stdin it fails
-// loud, rendered, with ErrNotInteractive, -y or not; input closed returns
+// loud, rendered, with ErrNotInteractive, -y or not; input closed, or Ctrl-C, returns
 // ErrInputClosed, not rendered.
 func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	p.mu.Lock()
@@ -90,10 +94,10 @@ func (p *RailPresenter) AskLine(prompt string) (string, error) {
 		p.mu.Unlock()
 		return "", ErrNotInteractive
 	}
-	discardTypedAhead(p.in, p.reader)
+	p.input.discardTypedAhead()
 	q := p.open(&part{kind: questionPart, question: rail.Question{Text: prompt, Typing: true}}, "")
 	p.mu.Unlock()
-	line, ended, err := readTypedLine(bufferedReader(p.in, &p.reader))
+	line, ended, err := p.input.line()
 	p.released(ended)
 	p.mu.Lock()
 	defer p.mu.Unlock()
