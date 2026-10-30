@@ -179,6 +179,16 @@ func TestEachElementIsDrawnInItsOwnEscapesAtEachLevel(t *testing.T) {
 			},
 		},
 		{
+			name: "lines hanging off a node settled before them: the rail solid, each line as the node hangs it",
+			item: rail.Hanging{Lines: []rail.Hang{{Kind: rail.Kept, Text: "docs/ kept", About: "design documents"}, {Kind: rail.Did, Text: "written to .mint.toml"}}},
+			want: func(a string) []string {
+				return []string{
+					" " + acc(a, "│") + pad(16) + dm("– docs/ kept · design documents"),
+					" " + acc(a, "│") + pad(16) + "written to .mint.toml",
+				}
+			},
+		},
+		{
 			name: "the point of no return ahead: all of it dim",
 			item: rail.Rule{},
 			want: func(string) []string { return []string{" " + dm("┿━━ point of no return "+rule(76))} },

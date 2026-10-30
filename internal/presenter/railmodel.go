@@ -24,6 +24,8 @@ const (
 	questionPart
 	// previewPart is a question a dry run shows without asking it.
 	previewPart
+	// hangingPart is lines hanging off a node that settled before they came.
+	hangingPart
 )
 
 // part is one piece of the live region as the presenter keeps it, the rail item it
@@ -86,6 +88,8 @@ type part struct {
 	text     string
 	markdown bool
 	question rail.Question
+	// hanging are a hangingPart's lines.
+	hanging []rail.Hang
 }
 
 // live is the part as the rail draws it now: a running node at its spinner's frame,
@@ -100,6 +104,8 @@ func (pt *part) live(now time.Time) rail.Live {
 		return rail.Body{Text: pt.text, Markdown: pt.markdown}
 	case questionPart, previewPart:
 		return pt.question
+	case hangingPart:
+		return rail.Hanging{Lines: pt.hanging}
 	}
 	n := *pt.node
 	if n.State == rail.Running {
@@ -172,7 +178,7 @@ func (pt *part) finished() bool {
 		return !pt.hidden && (pt.passed || pt.node.State != rail.Running && pt.node.State != rail.ToCome)
 	case rulePart:
 		return pt.ended
-	case previewPart:
+	case previewPart, hangingPart:
 		return true
 	case bodyPart:
 		return pt.out
@@ -512,11 +518,18 @@ func (m *runModel) remove(pt *part) {
 	}
 }
 
-// hang hangs a line under the stage keyed key, or, its node gone, draws it as a node
-// of its own.
+// hang hangs a line under the stage keyed key: its node settled, under what that node
+// drew last, as the node would have hung it. A stage never drawn leaves the line
+// nothing to hang under, so it draws as a node of its own.
 func (m *runModel) hang(key string, h rail.Hang) {
 	pt := m.find(key)
-	if pt == nil {
+	switch {
+	case pt == nil && m.gone[key]:
+		hung := &part{kind: hangingPart, hanging: []rail.Hang{h}}
+		m.insert(hung, m.insertionPoint())
+		m.touched = hung
+		return
+	case pt == nil:
 		m.add(rail.Node{Name: key, Detail: joinNonEmpty(" · ", h.Text, h.About)})
 		return
 	}

@@ -18,8 +18,8 @@ type Run struct {
 	Region  []Live
 }
 
-// Item is one piece of the drawing: a Header, a Station, a Node, a Question, the
-// Rule, a Body, an End, Next or a Version.
+// Item is one piece of the drawing: a Header, a Station, a Node, Hanging lines, a
+// Question, the Rule, a Body, an End, Next or a Version.
 type Item interface {
 	draw(l Layout) []line
 	// reached is whether the run has come this far: the rail into an item, or out
@@ -153,6 +153,13 @@ type Hang struct {
 	About string
 }
 
+// Hanging is lines hanging off a node that settled before they came, as an answer
+// the exclusion check is given once its node has gone up the scrollback: the solid
+// rail, and each line as the node would hang it, under what the node drew last.
+type Hanging struct {
+	Lines []Hang
+}
+
 // Question is a question node: Text bold, then, on a line of their own, each
 // choice's key bold in the accent with its action. A dry run's preview has no
 // Choices, and a Tail, dim after " · " at the end of its last line, that says so. A
@@ -214,5 +221,6 @@ type Move struct {
 func (Station) live()  {}
 func (Node) live()     {}
 func (Question) live() {}
+func (Hanging) live()  {}
 func (Rule) live()     {}
 func (Body) live()     {}

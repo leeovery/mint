@@ -34,8 +34,9 @@ func newRailTerm(t *testing.T, cols, rows int, in io.Reader) *railTerm {
 	return newRailTermIn(t, termenv.Ascii, cols, rows, in)
 }
 
-// newRailTermIn is newRailTerm drawing in profile's colour.
-func newRailTermIn(t *testing.T, profile termenv.Profile, cols, rows int, in io.Reader) *railTerm {
+// newRailTermIn is newRailTerm drawing in profile's colour, configured further by
+// opts.
+func newRailTermIn(t *testing.T, profile termenv.Profile, cols, rows int, in io.Reader, opts ...presenter.RailOption) *railTerm {
 	t.Helper()
 	r := &railTerm{
 		term:  frametest.NewTerminal(cols, rows),
@@ -45,14 +46,14 @@ func newRailTermIn(t *testing.T, profile termenv.Profile, cols, rows int, in io.
 		size:  &termSize{cols: cols, rows: rows},
 	}
 	r.writes = &countingWriter{w: r.term}
-	r.RailPresenter = presenter.NewRailPresenter(r.writes,
+	r.RailPresenter = presenter.NewRailPresenter(r.writes, append([]presenter.RailOption{
 		presenter.WithRailErr(r.err),
 		presenter.WithRailInput(in),
 		presenter.WithRailProfile(profile),
 		presenter.WithRailSize(r.size.get),
 		presenter.WithRailTicker(r.ticks.start),
 		presenter.WithRailClock(r.clock.Now),
-	)
+	}, opts...)...)
 	t.Cleanup(r.Close)
 	return r
 }

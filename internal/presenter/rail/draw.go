@@ -222,6 +222,16 @@ func (l Layout) hang(h Hang, rail span) []line {
 	return l.hangText(h.Text, dim, false, rail)
 }
 
+func (Hanging) reached() bool { return true }
+
+func (h Hanging) draw(l Layout) []line {
+	var lines []line
+	for _, hang := range h.Lines {
+		lines = append(lines, l.hang(hang, solid)...)
+	}
+	return lines
+}
+
 // answer is h, an answer to a question under the node, where the question stood:
 // mark in the place of its ? and the space after it, then h's Text in st and what it
 // is About dim, wrapped under the Text.
