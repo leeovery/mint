@@ -451,6 +451,7 @@ func (p *RailPresenter) Warn(w Warning) {
 		pt.node.State = rail.Warning
 	}
 	p.run.ended(w.Key, false)
+	p.run.loopWarned = p.run.loopWarned || p.run.looping
 	n := pt.node
 	pt.ongoing, n.Detail, n.Progress = false, firstOf(w.Row, w.Message), nil
 	if w.Elapsed > 0 {

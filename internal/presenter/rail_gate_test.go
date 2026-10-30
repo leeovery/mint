@@ -412,7 +412,9 @@ func editStage(r *railTerm, warn *presenter.Warning) {
 // TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions pins the review's loop as the
 // engine runs it: what an e runs, the edit's stage around the editor, draws no node;
 // the body is shown again in place, the question comes back under it, and the accept
-// settles the notes with its tail. An r runs a stage of the run's again, its own node
+// settles the notes with its tail. A warning drawn while the loop is open, an editor
+// that wouldn't launch, came before the answer, so the answer records on a row of its
+// own under it. An r runs a stage of the run's again, its own node
 // (TestRailGate_ARegenerateSettlesTheAskedNodeAndRunsItsStageAgainBelow).
 func TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions(t *testing.T) {
 	t.Parallel()
@@ -471,13 +473,10 @@ func TestRailGate_WhatTheReviewsLoopRunsIsTheQuestions(t *testing.T) {
 			noEditRow(t, screen)
 			want := []string{" ●  notes         written by the AI · accepted"}
 			if tt.warned {
-				want = append(want, warned)
+				want = []string{" ●  notes         written by the AI", warned, " ●  review        accepted"}
 			}
 			if at := slices.Index(screen, want[0]); at < 0 || !slices.Equal(screen[at:min(at+len(want), len(screen))], want) {
-				t.Errorf("once accepted the terminal shows\n%s\nwant the notes settled with the answer\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
-			}
-			if slices.ContainsFunc(screen, func(s string) bool { return strings.HasPrefix(s, " ●  review") }) {
-				t.Errorf("the answer is on a row of its own:\n%s", strings.Join(screen, "\n"))
+				t.Errorf("once accepted the terminal shows\n%s\nwant the answer drawn where it came\n%s", strings.Join(screen, "\n"), strings.Join(want, "\n"))
 			}
 		})
 	}

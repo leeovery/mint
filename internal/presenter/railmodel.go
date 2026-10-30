@@ -192,9 +192,11 @@ type runModel struct {
 	// held is the running node the exclusion check holds back while it runs.
 	held *part
 	// looping is a question's loop open: from a review's e until the next answer
-	// to any gate. asked is the stage that question asks about.
-	looping bool
-	asked   string
+	// to any gate. asked is the stage that question asks about. loopWarned is a
+	// warning drawn while it was open, as an editor that wouldn't launch: the answer
+	// came after it, so it records on a row of its own under it.
+	looping, loopWarned bool
+	asked               string
 	// planned are the plan's stage keys, each with the name it gave the stage.
 	planned map[string]string
 	// bodyOut is a body of the question under review settled, too tall for the region

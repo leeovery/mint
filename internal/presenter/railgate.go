@@ -254,7 +254,9 @@ func (p *RailPresenter) question(kind partKind, g Gate, typing bool) *part {
 // view while what to change is typed: its stage runs again as a node of its own
 // below, under which the body and the question come back. A review's edit settles
 // nothing: it opens the question's loop, until the next answer to any gate, the body
-// is shown again, in place, and the question comes back.
+// is shown again, in place, and the question comes back. A warning drawn while the
+// loop was open, under the node, came before the answer, which records on a row of
+// its own under it.
 func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	p.run.looping = false
 	if x := g.Suggestion; x != nil {
@@ -265,8 +267,8 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 		p.run.looping, p.run.asked = true, g.Stage
 		return
 	}
-	out, last := p.run.bodyOut, p.run.lastBody
-	p.run.bodyOut, p.run.lastBody = false, ""
+	out, last, warned := p.run.bodyOut, p.run.lastBody, p.run.loopWarned
+	p.run.bodyOut, p.run.lastBody, p.run.loopWarned = false, "", false
 	switch body := p.run.partOf(bodyPart); {
 	case c == ChoiceRegen && g.Review:
 		p.run.keepBody(body, out, last)
@@ -276,7 +278,7 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	}
 	tail := answerTail(g, c, auto)
 	switch asked := p.run.find(g.Stage); {
-	case asked != nil && (!out || asked.node.State == rail.ToCome):
+	case asked != nil && (!out && !warned || asked.node.State == rail.ToCome):
 		if asked.node.State == rail.ToCome {
 			asked.node.State = rail.Done
 			asked.node.Detail, tail = settled(g, c, asked.plan, tail)
@@ -286,7 +288,7 @@ func (p *RailPresenter) answer(g Gate, c Choice, auto bool, q *part) {
 	case g.Stage == "" && q != nil && q.read && strings.TrimSpace(q.typed) != "":
 	case g.Stage == "":
 		p.run.add(rail.Node{Name: g.Subject, Detail: chosen(g, c), Tail: autoTail(auto)})
-	case out || p.run.gone[g.Stage]:
+	case out || warned || p.run.gone[g.Stage]:
 		p.run.add(recordRow(g, c, q, tail))
 	default:
 		n := p.run.stage(g.Stage, g.Stage).node
