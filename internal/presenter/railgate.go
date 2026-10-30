@@ -86,13 +86,18 @@ func (p *RailPresenter) typedChoice(g Gate, q *part) (Choice, error) {
 // while the line is read, and the question and the line stay as typed; what was
 // typed before it was asked is discarded first. Without an interactive stdin it fails
 // loud, rendered, with ErrNotInteractive, -y or not; input closed, or Ctrl-C, returns
-// ErrInputClosed, not rendered.
+// ErrInputClosed, not rendered, and once Ctrl-C has ended a typed line it returns it
+// without asking.
 func (p *RailPresenter) AskLine(prompt string) (string, error) {
 	p.mu.Lock()
 	if !p.stdinInteractive {
 		p.failNotInteractive(inputFailLabel)
 		p.mu.Unlock()
 		return "", ErrNotInteractive
+	}
+	if p.input.abandoned {
+		p.mu.Unlock()
+		return "", ErrInputClosed
 	}
 	p.input.discardTypedAhead()
 	q := p.open(&part{kind: questionPart, question: rail.Question{Text: prompt, Typing: true}}, "")

@@ -74,9 +74,12 @@ func TestInterrupt_CtrlCAtATypedQuestionClosesTheInput(t *testing.T) {
 		build func(out io.Writer, tty io.Reader, i presenter.Interrupts) presenter.Presenter
 		ask   func(presenter.Presenter) (string, error)
 		asked string
+		// unasked is whether a question after the interrupt draws nothing, as the
+		// Rail's never opens it.
+		unasked bool
 	}{
-		{name: "the rail's typed choice", build: rail, ask: prompt(source), asked: "Source?"},
-		{name: "the rail's typed line", build: rail, ask: askLine, asked: "What should change?"},
+		{name: "the rail's typed choice", build: rail, ask: prompt(source), asked: "Source?", unasked: true},
+		{name: "the rail's typed line", build: rail, ask: askLine, asked: "What should change?", unasked: true},
 		{name: "plain's choice", build: plain, ask: prompt(reviewGate()), asked: "Release with these notes?"},
 		{name: "plain's line", build: plain, ask: askLine, asked: "What should change?"},
 	} {
@@ -109,8 +112,12 @@ func TestInterrupt_CtrlCAtATypedQuestionClosesTheInput(t *testing.T) {
 				t.Error("the interrupt is still watched once the read is over")
 			}
 			ptytest.Type(t, pty, "\r")
+			before := out.String()
 			if a, err := tt.ask(p); !errors.Is(err, presenter.ErrInputClosed) {
 				t.Errorf("the next question answered %q, %v, want ErrInputClosed, reading nothing", a, err)
+			}
+			if drawn := out.String()[len(before):]; tt.unasked && drawn != "" {
+				t.Errorf("the next question drew %q, want it never asked", drawn)
 			}
 		})
 	}
