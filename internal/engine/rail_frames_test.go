@@ -194,6 +194,48 @@ func (w *railWorld) release(t *testing.T, set func(*engine.ReleaseOptions)) (str
 	return w.term.ANSI(), err
 }
 
+// glimpse keeps the terminal's screen as it stands when the run first runs name with
+// arg as its first argument, as a reader sees it while that command runs; frame holds
+// it once the run is over.
+func (w *railWorld) glimpse(name, arg string) *glimpsing {
+	g := &glimpsing{FakeRunner: w.f, term: w.term, name: name, arg: arg}
+	w.deps.Runner = g
+	return g
+}
+
+// glimpsing is the world's runner keeping the screen at the command it watches for.
+type glimpsing struct {
+	*runner.FakeRunner
+	term      *frametest.Terminal
+	name, arg string
+	screen    string
+}
+
+func (g *glimpsing) Run(ctx context.Context, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.FakeRunner.Run(ctx, name, args...)
+}
+
+func (g *glimpsing) RunInDir(ctx context.Context, dir string, env []string, name string, args ...string) (runner.Result, error) {
+	g.look(name, args)
+	return g.FakeRunner.RunInDir(ctx, dir, env, name, args...)
+}
+
+func (g *glimpsing) look(name string, args []string) {
+	if g.screen == "" && name == g.name && len(args) > 0 && args[0] == g.arg {
+		g.screen = g.term.ANSI()
+	}
+}
+
+// frame is the screen kept, failing t where the run never ran the command.
+func (g *glimpsing) frame(t *testing.T) string {
+	t.Helper()
+	if g.screen == "" {
+		t.Fatalf("the run never ran %s %s", g.name, g.arg)
+	}
+	return g.screen
+}
+
 // railRegenerator writes the notes again, in one call, as body.
 type railRegenerator string
 
@@ -375,6 +417,35 @@ var railRuns = map[string]railRun{
 			ScriptedOut("9f3e2a1c4b\nmain"), // where HEAD stands, never reset
 		)
 		return w.release(t, nil)
+	}},
+	// The version answered and preflight fetching: preflight runs on the rail while
+	// its gates go over the network, the plan not yet known.
+	"release-preflight-running-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, "", "y\n", false)
+		g := w.glimpse("git", "fetch")
+		w.readGates(false)
+		w.notes()
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// The project's preflight hook running, on preflight's own node.
+	"release-preflight-hook-running-100": {aborted: true, run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preflightHookConfig, "y\n", false)
+		g := w.glimpse("sh", "-c")
+		w.readGates(false)
+		w.f.SeedSequence("sh", ScriptedOut("")) // the preflight hook
+		w.notes()
+		_, err := w.release(t, nil)
+		return g.frame(t), err
+	}},
+	// A dry run's preflight fetching: it runs on the rail as a real run's does.
+	"release-dry-run-preflight-running-100": {run: func(t *testing.T) (string, error) {
+		w := newRailWorld(t, preflightHookConfig, "", false)
+		g := w.glimpse("git", "fetch")
+		w.readGates(false)
+		w.notes()
+		_, err := w.release(t, func(o *engine.ReleaseOptions) { o.DryRun = true })
+		return g.frame(t), err
 	}},
 	// A dry run: its hooks skipped, the notes written, the review previewed, nothing
 	// changed.

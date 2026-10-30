@@ -154,6 +154,14 @@ func emitGateSucceeded(p presenter.Presenter, name, detail string) {
 	p.StageSucceeded(presenter.StageSuccess{Name: name, Key: name, Detail: detail})
 }
 
+// showRunning shows the stage keyed key running, doing text, with its time so far,
+// where plain's log has never had a start line for it, so the start is Quiet. A stage
+// started again while it runs keeps its clock: a second call only changes what it
+// says it is doing.
+func showRunning(p presenter.Presenter, key, text string) {
+	p.StageStarted(presenter.StageStart{Name: key, Key: key, Blocking: true, Text: text, Quiet: true})
+}
+
 // startBlockingStage narrates the START of a BLOCKING stage — a long/slow step
 // (notes generation, the pre_tag and post_release hooks, the atomic push) — by
 // emitting a StageStarted with Blocking:true so the Rail's spinner animates, and

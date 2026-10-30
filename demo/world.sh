@@ -20,8 +20,8 @@
 #           asks, after a pause so the spinners show (see ai() below)
 #   gh      signed in; the release calls answer as GitHub would, from
 #           releases kept in the world's github/
-#   git     the real git, waiting a moment on a push, as the network would,
-#           and naming origin by its GitHub URL (see shims() below)
+#   git     the real git, waiting a moment on a fetch and a push, as the
+#           network would, and naming origin by its GitHub URL (see shims() below)
 #   npm    the pre_tag hook's `npm ci && npm run build`: writes dist/
 #   demo-edit  an editor for the review tapes' e: after a moment, it adds
 #           a few words to the notes' first item and exits
@@ -75,12 +75,14 @@ shims() {
 	# mint reads the remote's URL to find the provider, and `git remote get-url`
 	# expands insteadOf, which would show it the bare repo's file:// path, so
 	# that one read answers with the URL as configured.
-	# mint runs every push as `git push …`, with no option before it.
+	# mint runs every fetch and push as `git fetch …` and `git push …`, with no
+	# option before it.
 	cat >"$bin/git" <<EOF
 #!/usr/bin/env bash
 if [ "\$*" = "remote get-url origin" ]; then
 	exec "$git" config --get remote.origin.url
 fi
+[ "\${1:-}" = fetch ] && sleep 1
 [ "\${1:-}" = push ] && sleep 1.2
 exec "$git" "\$@"
 EOF

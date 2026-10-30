@@ -176,14 +176,16 @@ func TestRelease_FirstRelease_FullSpine(t *testing.T) {
 	}
 
 	// The presenter event timeline must emit in spine order. RunStarted OPENS the run;
-	// then the read-only gates (version, preflight) narrate their completion; then the
+	// then the version gate is answered and preflight runs, its start quiet, to its
+	// completion; then the
 	// blocking notes stage brackets its spinner; then the existing ShowPlan, ShowNotes,
 	// Prompt block fires in order; then the blocking push stage brackets its spinner
 	// before the run finishes. (No pre_tag stage here — no hook is configured.)
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
-		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindStageStarted,   // preflight, quiet: the rail shows its network gates running
+		presentertest.KindStageSucceeded, // preflight
 		presentertest.KindShowPlan,       // the run's stages, quiet
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindStageSucceeded, // notes

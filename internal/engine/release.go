@@ -552,6 +552,10 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	// dirty-tree dry run would newly abort here instead of completing its preview. The
 	// bypass is conditioned on DryRun && AutoStash, never DryRun alone, so a non-autostash
 	// dirty dry run still aborts at the clean-tree gate (correctly flagging the dirty tree).
+	//
+	// The gates fetch and ask origin over the network, so the rail shows preflight
+	// running while they do.
+	showRunning(p, stagePreflight, preflightText)
 	if err := runPreflight(ctx, deps.Runner, releaseBranch, tag, opts.AnyBranch, opts.DryRun && opts.AutoStash, keepOut); err != nil {
 		return surface(p, "preflight", err)
 	}
@@ -567,10 +571,9 @@ func cutRelease(ctx context.Context, deps ReleaseDeps, opts ReleaseOptions) erro
 	if err != nil {
 		return surface(p, "preflight", err)
 	}
-	// Stage 2 narration: the preflight gates are read-only (no spinner), so emit a
-	// completion line only — no StageStarted. Fired once both the built-in gates and
-	// the project preflight hook have passed (Stage 2 complete), a dry run's skip of
-	// the hook its note.
+	// Stage 2 narration: preflight settles once both the built-in gates and the
+	// project preflight hook have passed (Stage 2 complete), a dry run's skip of the
+	// hook its note. It is not timed: plain's line for it has never carried a time.
 	checked := preflightDetail(releaseBranch, tag, opts.AnyBranch)
 	p.StageSucceeded(presenter.StageSuccess{Name: stagePreflight, Key: stagePreflight, Detail: checked, Note: hookSkipped})
 
@@ -1717,6 +1720,7 @@ func runPreflightHook(ctx context.Context, deps ReleaseDeps, cfg config.Config, 
 	}
 	env := buildHookEnv(current, next, tag, bump, dryRun)
 	deps.run.Left(nothingPushed)
+	showRunning(deps.Presenter, stagePreflight, preflightHookText)
 	return "", hooks.NewRunner(deps.Runner).Run(ctx, cfg.Release.Hooks.Preflight, root, env)
 }
 
@@ -1872,6 +1876,13 @@ func pretagArtifactSubject(tag string) string {
 func buildHookEnv(current, next version.SemVer, tag string, bump version.Bump, dryRun bool) hooks.HookEnv {
 	return hooks.NewHookEnv(next.String(""), current.String(""), tag, hookBump(bump), dryRun)
 }
+
+// What the preflight node says while it runs: mint's own gates, then the project's
+// preflight hook, which runs on the same node.
+const (
+	preflightText     = "checking the tree, branch, tag and origin…"
+	preflightHookText = "running preflight hook…"
+)
 
 // preflightDetail summarises WHICH gates just passed so the preflight ✓ line tells
 // the user what was actually checked, not a stage codeword: the clean tree, the

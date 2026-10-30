@@ -322,14 +322,15 @@ func TestRelease_PriorTag_NormalAI_EventProtocol(t *testing.T) {
 	}
 
 	// The event timeline OPENS with RunStarted, then the version-confirmation Prompt
-	// (Stage 1, ahead of preflight), then narrates the read-only preflight gate, then
+	// (Stage 1, ahead of preflight), then narrates preflight running, quietly, and passing, then
 	// the blocking notes stage, then the existing ShowPlan/ShowNotes/Prompt block (the
 	// notes review gate), then the blocking push stage, then RunFinished. No pre_tag
 	// stage — the prior-tag normal-AI path configures no hook.
 	wantKinds := []presentertest.EventKind{
 		presentertest.KindRunStarted,
 		presentertest.KindPrompt,         // version-confirmation gate (real run, ahead of preflight)
-		presentertest.KindStageSucceeded, // preflight (read-only gate completion)
+		presentertest.KindStageStarted,   // preflight, quiet: the rail shows its network gates running
+		presentertest.KindStageSucceeded, // preflight
 		presentertest.KindShowPlan,       // the run's stages, quiet
 		presentertest.KindStageStarted,   // notes (blocking)
 		presentertest.KindNotesChecking,  // the exclusion check's call
